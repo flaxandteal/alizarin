@@ -158,19 +158,19 @@ class ArchesClientLocal extends ArchesClient {
     this.fs = import("fs").then((fs) => {
       return fs.promises;
     });
-    this.allGraphFile = allGraphFile || (() => "public/models/_all.json");
+    this.allGraphFile = allGraphFile || (() => "tests/definitions/models/_all.json");
     this.graphIdToGraphFile =
       graphIdToGraphFile ||
-      ((graphId: string) => `public/models/${graphId}.json`);
+      ((graphId: string) => `tests/definitions/models/${graphId}.json`);
     this.graphIdToResourcesFiles =
       graphIdToResourcesFiles ||
-      ((graphId: string) => [`public/resources/_${graphId}.json`]);
+      ((graphId: string) => [`tests/definitions/resources/_${graphId}.json`]);
     this.resourceIdToFile =
       resourceIdToFile ||
-      ((resourceId: string) => `public/resources/${resourceId}.json`);
+      ((resourceId: string) => `tests/definitions/resources/${resourceId}.json`);
     this.collectionIdToFile =
       collectionIdToFile ||
-      ((collectionId: string) => `public/collections/${collectionId}.json`);
+      ((collectionId: string) => `tests/definitions/collections/${collectionId}.json`);
   }
 
   async getGraphs(): Promise<GraphResult> {
