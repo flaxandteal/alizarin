@@ -3,6 +3,12 @@
 This is a pure JS/TS implementation of [AORM](https://github.com/flaxandteal/arches-orm/)
 for front or backend.
 
+### CI
+
+To get linting up and running, this uses `typescript-eslint`. Currently, this has a
+temporary allowed limit of 46 warnings, and sets several errors to warnings. This
+is temporary and will be progressively reduced.
+
 ### License
 
 Currently, and you should assume for the foreseeable future,

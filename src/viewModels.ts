@@ -1,9 +1,19 @@
-import { IReferenceDataManager, IStringKeyedObject, IInstanceWrapper, IModelWrapper } from './interfaces.ts';
-import { PseudoValue, PseudoList } from './pseudos';
-import { RDM } from './rdm';
-import { StaticResource } from './static-types';
-import { StaticTile, StaticNode, StaticValue, StaticConcept } from './static-types';
-import { AttrPromise } from './utils';
+import {
+  IReferenceDataManager,
+  IStringKeyedObject,
+  IInstanceWrapper,
+  IModelWrapper,
+} from "./interfaces.ts";
+import { PseudoValue, PseudoList } from "./pseudos";
+import { RDM } from "./rdm";
+import { StaticResource } from "./static-types";
+import {
+  StaticTile,
+  StaticNode,
+  StaticValue,
+  StaticConcept,
+} from "./static-types";
+import { AttrPromise } from "./utils";
 
 const TILE_LOADING_ERRORS = null; // "suppress" or "silence" TODO: enum
 
@@ -20,11 +30,15 @@ function tileLoadingError(reason: string, exc: any) {
 }
 
 class ValueList {
-  values: Map<string, any>
-  wrapper: IInstanceWrapper
-  tiles: StaticTile[] | null
+  values: Map<string, any>;
+  wrapper: IInstanceWrapper;
+  tiles: StaticTile[] | null;
 
-  constructor(values: Map<string, any>, wrapper: IInstanceWrapper, tiles: StaticTile[] | null) {
+  constructor(
+    values: Map<string, any>,
+    wrapper: IInstanceWrapper,
+    tiles: StaticTile[] | null,
+  ) {
     this.values = values;
     this.wrapper = wrapper;
     this.tiles = tiles;
@@ -43,32 +57,36 @@ class ValueList {
     return this.values.has(key);
   }
 
-  async retrieve(key: string, dflt: any=null, raiseError: boolean=false) {
+  async retrieve(key: string, dflt: any = null, raiseError: boolean = false) {
     let result: any = await this.values.get(key);
     if (result === false) {
       if (this.wrapper.resource) {
         // Will KeyError if we do not have it.
         const node = this.wrapper.model.getNodeObjectsByAlias().get(key);
         if (node === undefined) {
-          throw Error("Tried to retrieve a node key that does not exist on this resource");
+          throw Error(
+            "Tried to retrieve a node key that does not exist on this resource",
+          );
         }
         const values = new Map([...this.values.entries()]);
         const promise = new Promise((resolve) => {
-          this.wrapper.ensureNodegroup(
-            values,
-            node,
-            node.nodegroup_id,
-            this.wrapper.model.getNodeObjects(),
-            this.wrapper.model.getNodegroupObjects(),
-            this.wrapper.model.getEdges(),
-            false,
-            this.tiles
-          ).then(ngValues => {
-            for (let [key, value] of [...ngValues.entries()]) {
-              this.values.set(key, value);
-            }
-            resolve(null);
-          });
+          this.wrapper
+            .ensureNodegroup(
+              values,
+              node,
+              node.nodegroup_id,
+              this.wrapper.model.getNodeObjects(),
+              this.wrapper.model.getNodegroupObjects(),
+              this.wrapper.model.getEdges(),
+              false,
+              this.tiles,
+            )
+            .then((ngValues) => {
+              for (const [key, value] of [...ngValues.entries()]) {
+                this.values.set(key, value);
+              }
+              resolve(null);
+            });
         });
         this.values.set(key, promise);
         await promise;
@@ -96,24 +114,30 @@ class ValueList {
 }
 
 class ResourceInstanceViewModel implements IStringKeyedObject {
-  [key: string]: any
+  [key: string]: any;
   _: IInstanceWrapper;
   __: IModelWrapper;
   id: string;
   then: null = null;
 
   toString() {
-    return `[${this.__.wkrm.modelClassName}:${this.id ?? '-'}]`;
+    return `[${this.__.wkrm.modelClassName}:${this.id ?? "-"}]`;
   }
 
   async forJson() {
     return {
       type: this.__.wkrm.modelClassName,
-      id: this.id
+      id: this.id,
     };
   }
 
-  constructor(id: string, modelWrapper: IModelWrapper, instanceWrapperFactory: (rivm: ResourceInstanceViewModel) => IInstanceWrapper) {
+  constructor(
+    id: string,
+    modelWrapper: IModelWrapper,
+    instanceWrapperFactory: (
+      rivm: ResourceInstanceViewModel,
+    ) => IInstanceWrapper,
+  ) {
     this.id = id;
     this._ = instanceWrapperFactory(this);
     this.__ = modelWrapper;
@@ -133,11 +157,11 @@ class ResourceInstanceViewModel implements IStringKeyedObject {
           return object[k];
         }
         return new AttrPromise((resolve) => {
-          return object._.getOrmAttribute(k).then(v => {
+          return object._.getOrmAttribute(k).then((v) => {
             return resolve(v);
           });
         });
-      }
+      },
     });
   }
 }
@@ -148,10 +172,14 @@ class ConceptListViewModel extends Array implements IViewModel {
 
   async forJson() {
     const value = await this._value;
-    return value ? value.map(v => v ? v.forJson() : null) : null;
+    return value ? value.map((v) => (v ? v.forJson() : null)) : null;
   }
 
-  static async __create(tile: StaticTile, node: StaticNode, value: any): Promise<ConceptValueViewModel | null> {
+  static async __create(
+    tile: StaticTile,
+    node: StaticNode,
+    value: any,
+  ): Promise<ConceptValueViewModel | null> {
     const nodeid = node.nodeid;
     let val: (ConceptValueViewModel | Promise<ConceptValueViewModel> | null)[];
     if (tile) {
@@ -161,28 +189,32 @@ class ConceptListViewModel extends Array implements IViewModel {
       if (value !== null) {
         tile.data.set(nodeid, []);
         if (!Array.isArray(value)) {
-          throw Error("Cannot set an (entire) concept list value except via an array");
+          throw Error(
+            "Cannot set an (entire) concept list value except via an array",
+          );
         }
-        val = value.map(c => {
+        val = value.map((c) => {
           if (c instanceof ConceptValueViewModel) {
             return c;
           }
           return ConceptValueViewModel.__create(tile, node, c, RDM);
         });
-        this._value = Promise.all(val).then(vals => {
-          Promise.all(vals.map(async c => {
-            const v = await c;
-            return v ? (await v.getValue()).id : null;
-          })).then(ids => {
+        this._value = Promise.all(val).then((vals) => {
+          Promise.all(
+            vals.map(async (c) => {
+              const v = await c;
+              return v ? (await v.getValue()).id : null;
+            }),
+          ).then((ids) => {
             tile.data.set(nodeid, ids);
-            return ids
+            return ids;
           });
         });
       }
     }
 
     if (!tile || !val) {
-        return null;
+      return null;
     }
     const str = new ConceptListViewModel(...val);
     return str;
@@ -210,7 +242,11 @@ class ConceptValueViewModel extends String implements IViewModel {
     return this._value;
   }
 
-  static async __create(tile: StaticTile, node: StaticNode, value: any): Promise<ConceptValueViewModel | null> {
+  static async __create(
+    tile: StaticTile,
+    node: StaticNode,
+    value: any,
+  ): Promise<ConceptValueViewModel | null> {
     const nodeid = node.nodeid;
     let val: StaticValue = value;
     if (tile) {
@@ -225,26 +261,32 @@ class ConceptValueViewModel extends String implements IViewModel {
           val = null;
         } else if (value instanceof StaticValue) {
         } else if (value instanceof Promise) {
-          return value.then(value => {
+          return value.then((value) => {
             return ConceptValueViewModel.__create(tile, node, value);
           });
         } else if (typeof value == "string") {
-          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.exec(value)) {
+          if (
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.exec(
+              value,
+            )
+          ) {
             const collectionId = node.config["rdmCollection"];
             const collection = RDM.retrieveCollection(collectionId);
-            return collection.then(collection => {
+            return collection.then((collection) => {
               const val = collection.getConceptValue(value);
               tile.data.set(nodeid, val ? val.id : null);
 
               if (!tile || !val) {
-                  return null;
+                return null;
               }
               const str = new ConceptValueViewModel(val);
 
               return str;
             });
           } else {
-            throw Error("Set concepts using values from collections, not strings");
+            throw Error(
+              "Set concepts using values from collections, not strings",
+            );
           }
         } else {
           throw Error("Could not set concept from this data");
@@ -257,7 +299,7 @@ class ConceptValueViewModel extends String implements IViewModel {
     }
 
     if (!tile || !val) {
-        return null;
+      return null;
     }
     const str = new ConceptValueViewModel(val);
     return str;
@@ -269,12 +311,12 @@ class ConceptValueViewModel extends String implements IViewModel {
 }
 
 class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
-  [key: string]: any
+  [key: string]: any;
   __parentPseudo: PseudoValue | undefined;
 
-  _value: {[key: string]: any};
+  _value: { [key: string]: any };
 
-  constructor(jsonData: {[key: string]: any}) {
+  constructor(jsonData: { [key: string]: any }) {
     this._value = jsonData;
     return new Proxy(this, {
       get: (object: GeoJSONViewModel, key) => {
@@ -282,7 +324,7 @@ class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
         if (k in object) {
           return object[k];
         }
-        return this._value[k]
+        return this._value[k];
       },
       set: (object: GeoJSONViewModel, key, value) => {
         const k = key.toString();
@@ -292,14 +334,20 @@ class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
           this._value[k] = value;
         }
         return true;
-      }
+      },
     });
   }
 
-  static __create(tile: StaticTile, node: StaticNode, value: any): GeoJSONViewModel | Promise<GeoJSONViewModel | null> | null {
+  static __create(
+    tile: StaticTile,
+    node: StaticNode,
+    value: any,
+  ): GeoJSONViewModel | Promise<GeoJSONViewModel | null> | null {
     const nodeid = node.nodeid;
     if (value instanceof Promise) {
-      return value.then(value => GeoJSONViewModel.__create(tile, node, value));
+      return value.then((value) =>
+        GeoJSONViewModel.__create(tile, node, value),
+      );
     }
     if (tile) {
       if (!(nodeid in tile.data)) {
@@ -310,9 +358,9 @@ class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
       }
     }
 
-    let val = tile.data.get(nodeid);
+    const val = tile.data.get(nodeid);
     if (!tile || val === null || val === undefined) {
-        return null;
+      return null;
     }
     if (!(val instanceof Object)) {
       throw Error("GeoJSON should be a JSON object");
@@ -333,10 +381,12 @@ class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
 class StringViewModel extends String implements IViewModel {
   __parentPseudo: PseudoValue | undefined;
 
-  _value: Map<string, Object>;
+  _value: Map<string, object>;
 
-  constructor(value: Map<string, Object>, language: string | null=null) {
-    const displayValue = value.get(language || DEFAULT_LANGUAGE) || {"value": ""};
+  constructor(value: Map<string, object>, language: string | null = null) {
+    const displayValue = value.get(language || DEFAULT_LANGUAGE) || {
+      value: "",
+    };
     super(displayValue.value);
     this._value = value;
   }
@@ -354,10 +404,14 @@ class StringViewModel extends String implements IViewModel {
     }
   }
 
-  static __create(tile: StaticTile, node: StaticNode, value: any): StringViewModel | Promise<StringViewModel> | null {
+  static __create(
+    tile: StaticTile,
+    node: StaticNode,
+    value: any,
+  ): StringViewModel | Promise<StringViewModel> | null {
     const nodeid = node.nodeid;
     if (value instanceof Promise) {
-      return value.then(value => StringViewModel.__create(tile, node, value));
+      return value.then((value) => StringViewModel.__create(tile, node, value));
     }
     if (tile) {
       if (!(nodeid in tile.data)) {
@@ -365,8 +419,9 @@ class StringViewModel extends String implements IViewModel {
       }
       if (value !== null) {
         if (value instanceof Object) {
-          const entries = (value instanceof Map) ? value.entries() : Object.entries(value);
-          for (let [k, v] of [...entries]) {
+          const entries =
+            value instanceof Map ? value.entries() : Object.entries(value);
+          for (const [k, v] of [...entries]) {
             const val = tile.data.get(nodeid);
             if (val instanceof Map) {
               val.set(k, v);
@@ -378,15 +433,15 @@ class StringViewModel extends String implements IViewModel {
           }
         } else {
           tile.data.set(nodeid, {
-              [DEFAULT_LANGUAGE]: value
-          })
+            [DEFAULT_LANGUAGE]: value,
+          });
         }
       }
     }
 
-    let val = tile.data.get(nodeid);
+    const val = tile.data.get(nodeid);
     if (!tile || val === null || val === undefined) {
-        return null;
+      return null;
     }
     let mapVal;
     if (val instanceof Map) {
@@ -404,7 +459,7 @@ class StringViewModel extends String implements IViewModel {
 }
 
 class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
-  [key: string]: any
+  [key: string]: any;
   then: undefined;
 
   __parentPseudo: PseudoValue | undefined;
@@ -414,7 +469,12 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
   __tile: StaticTile | null;
   __node: StaticNode;
 
-  constructor(parentWkri: ResourceInstanceViewModel | null, childNodes: Map<string, StaticNode>, tile: StaticTile | null, node: StaticNode) {
+  constructor(
+    parentWkri: ResourceInstanceViewModel | null,
+    childNodes: Map<string, StaticNode>,
+    tile: StaticTile | null,
+    node: StaticNode,
+  ) {
     super();
     this.__childValues = new Map<string, any>();
     this.__parentWkri = parentWkri;
@@ -427,7 +487,7 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
         if (k.startsWith("__")) {
           object[k] = value;
         } else {
-          object.__set(k, value)
+          object.__set(k, value);
         }
         return true;
       },
@@ -440,26 +500,30 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
           return object.__childNodes.size;
         }
         return new AttrPromise((resolve) => {
-          object.__get(k).then(resolve)
+          object.__get(k).then(resolve);
         });
-      }
+      },
     });
   }
 
   async toString(): Promise<string> {
     const entries = this.__childValues.entries().map(([k, v]) => `${k}: ${v}`);
-    return `[[${entries.join(',')}]]`;
+    return `[[${entries.join(",")}]]`;
   }
 
   async forJson() {
-    const values = new Object(await Promise.all([...(await this.__getChildren(true)).entries()]));
+    const values = new Object(
+      await Promise.all([...(await this.__getChildren(true)).entries()]),
+    );
     return values;
   }
 
   async __update(map: Map<string, any>) {
-    return Promise.all([...map.entries()].map(([k, v]) => {
-      this.__set(k, v);
-    }))
+    return Promise.all(
+      [...map.entries()].map(([k, v]) => {
+        this.__set(k, v);
+      }),
+    );
   }
 
   async __get(key: string) {
@@ -469,7 +533,9 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
 
   async __set(key: string, value: any) {
     if (!this.__childNodes.has(key)) {
-      throw Error(`Semantic node does not have this key: ${key} (${[...this.__childNodes.keys()]})`);
+      throw Error(
+        `Semantic node does not have this key: ${key} (${[...this.__childNodes.keys()]})`,
+      );
     }
 
     if (!this.__childValues.has(key)) {
@@ -484,29 +550,39 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
   }
 
   async __getChildTypes() {
-    const promises = [...this.__childNodes.keys()].map(async key => [key, await this.__getChildValue(key)]);
+    const promises = [...this.__childNodes.keys()].map(async (key) => [
+      key,
+      await this.__getChildValue(key),
+    ]);
     const entries = await Promise.all(promises);
     return new Map<string, any>(...entries);
   }
 
-  async __getChildren(direct: null | boolean=null) {
+  async __getChildren(direct: null | boolean = null) {
     const items = new Map<string, any>();
-    for (let [key, value] of [...(await this.__getChildValues())]) {
+    for (const [key, value] of [...(await this.__getChildValues())]) {
       items.set(key, value);
     }
-    const children = [...items.entries()].filter(entry => {
-      const child = this.__childNodes.get(entry[0]);
-      if (!child) {
-        throw Error("Child key is not in child nodes");
-      }
-      return (direct === null || direct === !child.is_collector) && entry[1] !== null
-    }).map(entry => entry[1]);
-    return children
+    const children = [...items.entries()]
+      .filter((entry) => {
+        const child = this.__childNodes.get(entry[0]);
+        if (!child) {
+          throw Error("Child key is not in child nodes");
+        }
+        return (
+          (direct === null || direct === !child.is_collector) &&
+          entry[1] !== null
+        );
+      })
+      .map((entry) => entry[1]);
+    return children;
   }
 
   async __getChildValue(key: string) {
     if (!this.__childNodes.has(key)) {
-      throw Error(`Semantic node does not have this key: ${key} (${[...this.__childNodes.keys()]})`);
+      throw Error(
+        `Semantic node does not have this key: ${key} (${[...this.__childNodes.keys()]})`,
+      );
     }
 
     let child;
@@ -538,10 +614,10 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
     }
 
     const child = this.__parentWkri._.model.makePseudoCls(
-        key,
-        false,
-        (!childNode.is_collector ? this.__tile : null),  // Does it share a tile
-        this.__parentWkri
+      key,
+      false,
+      !childNode.is_collector ? this.__tile : null, // Does it share a tile
+      this.__parentWkri,
     );
 
     child.parentNode = this.__parentPseudo;
@@ -549,23 +625,27 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
       const valueList: ValueList<any> = this.__parentWkri._.valueList;
       valueList.setDefault(key, []).then((val: Array<any>) => val.push(child));
     }
-    return child
+    return child;
   }
 
-  static async __create(tile: StaticTile, node: StaticNode, value: any, parent: ResourceInstanceViewModel | null, childNodes: Map<string, StaticNode>): Promise<SemanticViewModel> {
-    const svm = new SemanticViewModel(
-        parent,
-        childNodes,
-        tile,
-        node
-    )
+  static async __create(
+    tile: StaticTile,
+    node: StaticNode,
+    value: any,
+    parent: ResourceInstanceViewModel | null,
+    childNodes: Map<string, StaticNode>,
+  ): Promise<SemanticViewModel> {
+    const svm = new SemanticViewModel(parent, childNodes, tile, node);
     if (value) {
       try {
         await svm.__update(value);
       } catch (e) {
-        tileLoadingError(`
+        tileLoadingError(
+          `
           Suppressed a tile loading error: ${e}: ${typeof e} (tile: ${tile}; node: ${node}) - ${value}
-        `, e)
+        `,
+          e,
+        );
       }
     }
     await svm.__getChildren();
@@ -575,9 +655,9 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
   async __asTileData() {
     // Ensure all nodes have populated the tile
     const relationships: any[] = [];
-    for (let value of this.__getChildren(true)) {
+    for (const value of this.__getChildren(true)) {
       // We do not use tile, because a child node will ignore its tile reference.
-      let [_, subrelationships] = await value.getTile();
+      const [_, subrelationships] = await value.getTile();
       relationships.push(...subrelationships);
     }
     // This is none because the semantic type has no nodal value,
@@ -592,12 +672,12 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
     const tile = this.__tile;
     const node = this.__node;
     if (!parent) {
-      return (targetKey === null) ? {} : null;
+      return targetKey === null ? {} : null;
     }
 
     // Ensure lazy-loading done.
     // TODO check this does not go deeper than necessary.
-    for (let key of childNodes.keys()) {
+    for (const key of childNodes.keys()) {
       await parent._.valueList.retrieve(key);
     }
 
@@ -610,28 +690,31 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
         continue;
       }
       const childNode = childNodes.get(key);
-      for (let value of values) {
+      for (const value of values) {
         if (
-            childNode
-            && value !== null
-            && (value.parentNode === null || value.parentNode === this.__parentPseudo)
+          childNode &&
+          value !== null &&
+          (value.parentNode === null ||
+            value.parentNode === this.__parentPseudo)
         ) {
           if (
-            (tile && value.parenttile_id == tile.tileid)
-            || (
-              value.node.nodegroup_id == node.nodeid
-              && (tile && value.tile == tile)
-              && !childNode.is_collector //  # It shares a tile
-            )
+            (tile && value.parenttile_id == tile.tileid) ||
+            (value.node.nodegroup_id == node.nodeid &&
+              tile &&
+              value.tile == tile &&
+              !childNode.is_collector) //  # It shares a tile
           ) {
             children.set(key, value);
           } else if (
-            node.nodegroup_id != value.node.nodegroup_id
-            && (childNode.is_collector) // It does not share a tile
+            node.nodegroup_id != value.node.nodegroup_id &&
+            childNode.is_collector // It does not share a tile
           ) {
             // This avoids list types that have their own tiles (like resource or concept lists)
             // from appearing doubly-nested
-            if ((value instanceof PseudoList) || (value.value && Array.isArray(value.value))) {
+            if (
+              value instanceof PseudoList ||
+              (value.value && Array.isArray(value.value))
+            ) {
               if (children.has(key)) {
                 children.get(key).push(...value);
               } else {
@@ -646,7 +729,7 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
         }
       }
     }
-    for (let [key, value] of [...children.entries()]) {
+    for (const [key, value] of [...children.entries()]) {
       value.parentNode = this.__parentPseudo;
       this.__childValues.set(key, value);
     }
@@ -658,11 +741,24 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
   }
 }
 
-async function getViewModel(parentPseudo: PseudoValue, tile: StaticTile, node: StaticNode, data: any, parent: ResourceInstanceViewModel | null, childNodes: Map<string, StaticNode>): Promise<[IViewModel, Function | null, string, boolean]> {
+async function getViewModel(
+  parentPseudo: PseudoValue,
+  tile: StaticTile,
+  node: StaticNode,
+  data: any,
+  parent: ResourceInstanceViewModel | null,
+  childNodes: Map<string, StaticNode>,
+): Promise<[IViewModel, Function | null, string, boolean]> {
   let vm;
   switch (node.datatype) {
     case "semantic":
-      vm = await SemanticViewModel.__create(tile, node, data, parent, childNodes);
+      vm = await SemanticViewModel.__create(
+        tile,
+        node,
+        data,
+        parent,
+        childNodes,
+      );
       break;
     case "concept":
       vm = await ConceptValueViewModel.__create(tile, node, data);
@@ -681,7 +777,7 @@ async function getViewModel(parentPseudo: PseudoValue, tile: StaticTile, node: S
   let asTileData: Function | null = null;
   if (vm) {
     vm.__parentPseudo = parentPseudo;
-    asTileData = vm.__asTileData.bind(vm)
+    asTileData = vm.__asTileData.bind(vm);
   }
 
   return [vm, asTileData, "string", false];

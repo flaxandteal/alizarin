@@ -1,13 +1,11 @@
-import { resolve } from 'path'
+import { resolve } from "path";
 
 export default {
   resolve: {
-    alias: [{ find: "@", replacement: resolve(__dirname, "./src") }]
+    alias: [{ find: "@", replacement: resolve(__dirname, "./src") }],
   },
   test: {
     globals: true,
-    setupFiles: [
-      "./tests/setupVitest.js"
-    ]
-  }
-}
+    setupFiles: ["./tests/setupVitest.js"],
+  },
+};

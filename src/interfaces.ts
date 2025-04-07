@@ -15,7 +15,6 @@ interface IInstanceWrapper {
   ensureNodegroup;
   setOrmAttribute;
   getOrmAttribute;
-  sync: boolean;
 };
 
 
@@ -32,9 +31,9 @@ interface IReferenceDataManager {
 };
 
 interface IPseudo {
-  parentNode: IPseudo | null = null;
+  parentNode: IPseudo | null;
 }
-}
+
 interface IViewModel {
   __parentPseudo: IPseudo | undefined;
 }

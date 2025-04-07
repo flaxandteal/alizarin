@@ -48,10 +48,16 @@
               "32dba023-c05e-11e9-aa88-a4d18cec433a": {
                 "de": { "direction": "ltr", "value": "" },
                 "el": { "direction": "ltr", "value": "" },
-                "en": { "direction": "ltr", "value": "Global root of group hierarchy." },
+                "en": {
+                  "direction": "ltr",
+                  "value": "Global root of group hierarchy."
+                },
                 "en-US": { "direction": "ltr", "value": "" },
                 "en-us": { "direction": "ltr", "value": "" },
-                "ga": { "direction": "ltr", "value": "Fréamh domhanda an ordlathais ghrúpa." },
+                "ga": {
+                  "direction": "ltr",
+                  "value": "Fréamh domhanda an ordlathais ghrúpa."
+                },
                 "fr": { "direction": "ltr", "value": "" },
                 "pt": { "direction": "ltr", "value": "" },
                 "ru": { "direction": "ltr", "value": "" },

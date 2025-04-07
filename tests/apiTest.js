@@ -1,7 +1,7 @@
-import { test } from 'vitest'
-import GroupJSON from './data/models/Group.json'
-import PersonJSON from './data/models/Person.json'
-import ArchesPluginJSON from './data/models/Arches Plugin.json'
+import { test } from "vitest";
+import GroupJSON from "./data/models/Group.json";
+import PersonJSON from "./data/models/Person.json";
+import ArchesPluginJSON from "./data/models/Arches Plugin.json";
 
 async function graphsResponse({ task }, use) {
   // TODO: this sends more back than it should
@@ -13,8 +13,8 @@ async function graphsResponse({ task }, use) {
   models[Person.graphid] = Person;
   models[ArchesPlugin.graphid] = ArchesPlugin;
   await use({
-    "models": models
-  })
+    models: models,
+  });
 }
 
 async function graphResponses({ task }, use) {
@@ -25,7 +25,7 @@ async function graphResponses({ task }, use) {
   models[Group.graphid] = Group;
   models[Person.graphid] = Person;
   models[ArchesPlugin.graphid] = ArchesPlugin;
-  await use(models)
+  await use(models);
 }
 
 const apiTest = test.extend({
