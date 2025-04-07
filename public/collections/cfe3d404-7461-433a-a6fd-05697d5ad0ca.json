@@ -1,0 +1,54 @@
+{
+  "id": "cfe3d404-7461-433a-a6fd-05697d5ad0ca",
+  "prefLabels": {
+    "": {
+      "value": "cfe3d404-7461-433a-a6fd-05697d5ad0ca"
+    }
+  },
+  "concepts": {
+    "70415d03-b11b-48a6-b989-933d788ffc88": {
+      "id": "70415d03-b11b-48a6-b989-933d788ffc88",
+      "prefLabels": {
+        "en": {
+          "id": "e3a6493e-5df4-4ad4-a699-ade7ccf01917",
+          "value": "Reading"
+        }
+      },
+      "source": null,
+      "sortOrder": null
+    },
+    "809598ac-6dc5-498e-a7af-52b1381942a4": {
+      "id": "809598ac-6dc5-498e-a7af-52b1381942a4",
+      "prefLabels": {
+        "en": {
+          "id": "4ccc137b-8804-4610-8378-a271fdb4385f",
+          "value": "Writing"
+        }
+      },
+      "source": null,
+      "sortOrder": null
+    },
+    "33a0218b-b1cc-42d8-9a79-31a6b2147893": {
+      "id": "33a0218b-b1cc-42d8-9a79-31a6b2147893",
+      "prefLabels": {
+        "en": {
+          "id": "9790952e-6f1d-4938-a02c-492915950107",
+          "value": "Deleting"
+        }
+      },
+      "source": null,
+      "sortOrder": null
+    },
+    "45d54859-bf3c-48f2-a387-55a0050ff572": {
+      "id": "45d54859-bf3c-48f2-a387-55a0050ff572",
+      "prefLabels": {
+        "en": {
+          "id": "1f5cb79d-035a-4d3e-a79b-f9c0489fd076",
+          "value": "Executing"
+        }
+      },
+      "source": null,
+      "sortOrder": null
+    }
+  }
+}
