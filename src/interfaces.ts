@@ -17,6 +17,8 @@ interface IInstanceWrapper {
   getOrmAttribute;
 };
 
+class INodeConfig {
+};
 
 interface IModelWrapper {
   getPermittedNodegroups(): Map<string, StaticNodegroup>;
@@ -38,4 +40,4 @@ interface IViewModel {
   __parentPseudo: IPseudo | undefined;
 }
 
-export type { IInstanceWrapper, IModelWrapper, IRIVM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo };
+export type { IInstanceWrapper, IModelWrapper, IRIVM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo, INodeConfig };

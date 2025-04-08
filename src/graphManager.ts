@@ -159,7 +159,7 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
     let newAllValues = allValues;
 
     if (value === false || (addIfMissing && value === undefined)) {
-      if (alias in newAllValues) {
+      if (newAllValues.has(alias)) {
         newAllValues.delete(alias);
       }
       let nodegroupTiles: (StaticTile | null)[];
@@ -271,7 +271,7 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
         .filter((node) => node.nodegroup_id == nodegroupId)
         .map((node) => node.alias),
     );
-    const _addNode = async (node: StaticNode, tile: StaticTile | null) => {
+    const _addPseudo = async (node: StaticNode, tile: StaticTile | null) => {
       const key = node.alias || "";
       nodesUnseen.delete(node.alias);
       let existing = existingValues.get(key);
@@ -281,7 +281,7 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
       if (existing !== false && existing !== undefined) {
         throw Error(`Tried to load node twice: ${key} ${existing}`);
       }
-      if (!(key in allValues)) {
+      if (!allValues.has(key)) {
         allValues.set(key, []);
       }
       const pseudoNode = this.model.makePseudoCls(key, false, tile, this.wkri);
@@ -326,14 +326,14 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
       if (parentNode === undefined) {
         continue;
       }
-      await _addNode(parentNode, tile);
+      await _addPseudo(parentNode, tile);
 
       if (tile) {
         const tileNodes = new Map();
         for (const [key, value] of [...tile.data.entries()]) {
           tileNodes.set(key, value);
         }
-        if (!(tile.nodegroup_id in tileNodes)) {
+        if (!tileNodes.has(tile.nodegroup_id)) {
           tileNodes.set(tile.nodegroup_id, {});
         }
         for (const [nodeid, nodeValue] of [...tileNodes.entries()]) {
@@ -346,7 +346,7 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
             throw Error("Unknown node in nodegroup");
           }
           if (nodeValue !== null) {
-            await _addNode(node, tile);
+            await _addPseudo(node, tile);
           }
         }
       }
@@ -606,7 +606,7 @@ class GraphManager {
     let graphs = Object.keys(graphJsons["models"]);
     if (configurationOptions.graphs !== null) {
       graphs = graphs.filter(
-        (graphId: string) => graphId in configurationOptions,
+        (graphId: string) => configurationOptions.graphs.includes(graphId),
       );
     }
 

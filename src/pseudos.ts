@@ -99,7 +99,7 @@ class PseudoValue implements IPseudo {
 
   clear() {
     this.value = null;
-    if (this.tile && this.tile.data && this.node.nodeid in this.tile.data) {
+    if (this.tile && this.tile.data && this.tile.data.has(this.node.nodeid)) {
       this.tile.data.delete(this.node.nodeid);
     }
   }

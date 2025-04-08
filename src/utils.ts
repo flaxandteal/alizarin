@@ -1,5 +1,12 @@
 import { IStringKeyedObject } from "./interfaces";
 
+// TODO: make this customizable.
+const DEFAULT_LANGUAGE = "en";
+
+function getCurrentLanguage(): string {
+  return ((typeof navigator != 'undefined' && navigator.language) || DEFAULT_LANGUAGE).slice(0, 2);
+}
+
 class AttrPromise<T> extends Promise<T> implements IStringKeyedObject {
   constructor(
     executor: (
@@ -39,4 +46,4 @@ class AttrPromise<T> extends Promise<T> implements IStringKeyedObject {
   }
 }
 
-export { AttrPromise };
+export { AttrPromise, getCurrentLanguage };

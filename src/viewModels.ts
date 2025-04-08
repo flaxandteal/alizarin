@@ -3,6 +3,7 @@ import {
   IStringKeyedObject,
   IInstanceWrapper,
   IModelWrapper,
+  IViewModel,
 } from "./interfaces.ts";
 import { PseudoValue, PseudoList } from "./pseudos";
 import { RDM } from "./rdm";
@@ -14,14 +15,15 @@ import {
   StaticConcept,
 } from "./static-types";
 import { AttrPromise } from "./utils";
+import { getCurrentLanguage } from './utils';
+import { nodeConfigManager } from './nodeConfig';
 
 const TILE_LOADING_ERRORS = null; // "suppress" or "silence" TODO: enum
 
 const DEFAULT_LANGUAGE = "en";
 
 function tileLoadingError(reason: string, exc: any) {
-  if (TILE_LOADING_ERRORS === "silence") {
-  } else {
+  if (TILE_LOADING_ERRORS !== "silence") {
     console.error(reason, exc);
     if (TILE_LOADING_ERRORS !== "suppress") {
       throw exc;
@@ -124,11 +126,17 @@ class ResourceInstanceViewModel implements IStringKeyedObject {
     return `[${this.__.wkrm.modelClassName}:${this.id ?? "-"}]`;
   }
 
-  async forJson() {
-    return {
+  async forJson(cascade: boolean=false) {
+    const basic = {
       type: this.__.wkrm.modelClassName,
+      graphId: this.__.wkrm.graphId,
       id: this.id,
     };
+    if (cascade) {
+      const root = await (await this._.getRoot()).getValue();
+      basic.root = await root.forJson();
+    }
+    return basic;
   }
 
   constructor(
@@ -183,7 +191,7 @@ class ConceptListViewModel extends Array implements IViewModel {
     const nodeid = node.nodeid;
     let val: (ConceptValueViewModel | Promise<ConceptValueViewModel> | null)[];
     if (tile) {
-      if (!(nodeid in tile.data)) {
+      if (!tile.data.has(nodeid)) {
         tile.data.set(nodeid, null);
       }
       if (value !== null) {
@@ -224,6 +232,136 @@ class ConceptListViewModel extends Array implements IViewModel {
     return this._value ? await this._value : null;
   }
 }
+
+class DomainValueListViewModel extends Array implements IViewModel {
+  __parentPseudo: PseudoValue | undefined;
+  _value: Promise<(DomainValueViewModel | null)[]> | null = null;
+
+  async forJson() {
+    const value = await this._value;
+    return value ? value.map((v) => (v ? v.forJson() : null)) : null;
+  }
+
+  static async __create(
+    tile: StaticTile,
+    node: StaticNode,
+    value: any,
+  ): Promise<DomainValueViewModel | null> {
+    const nodeid = node.nodeid;
+    let val: (DomainValueViewModel | Promise<DomainValueViewModel> | null)[];
+    if (tile) {
+      if (!tile.data.has(nodeid)) {
+        tile.data.set(nodeid, null);
+      }
+      if (value !== null) {
+        tile.data.set(nodeid, []);
+        if (!Array.isArray(value)) {
+          throw Error(
+            "Cannot set an (entire) domain list value except via an array",
+          );
+        }
+        val = value.map((c) => {
+          if (c instanceof DomainValueViewModel) {
+            return c;
+          }
+          return DomainValueViewModel.__create(tile, node, c, RDM);
+        });
+        this._value = Promise.all(val).then((vals) => {
+          tile.data.set(nodeid, vals.map(v => v.id));
+          return ids;
+        });
+      }
+    }
+
+    if (!tile || !val) {
+      return null;
+    }
+    const str = new DomainValueListViewModel(...val);
+    return str;
+  }
+
+  async __asTileData() {
+    return this._value ? await this._value : null;
+  }
+}
+
+
+
+class DomainValueViewModel extends String implements IViewModel {
+  __parentPseudo: PseudoValue | undefined;
+
+  _value: StaticDomainValue | Promise<StaticDomainValue>;
+
+  constructor(value: StaticDomainValue) {
+    super(value.toString());
+    this._value = value;
+  }
+
+  async forJson() {
+    return await this._value.forJson();
+  }
+
+  getValue(): StaticValue | Promise<StaticValue> {
+    return this._value;
+  }
+
+  lang(lang: string): string | undefined {
+    return this._value.lang(lang);
+  }
+
+  static async __create(
+    tile: StaticTile,
+    node: StaticNode,
+    value: any,
+  ): Promise<ConceptValueViewModel | null> {
+    const nodeid = node.nodeid;
+    let val: StaticDomainValue = value;
+    if (tile) {
+      if (!tile.data.has(nodeid)) {
+        tile.data.set(nodeid, null);
+      }
+      if (value !== null) {
+        if (!value && !(value instanceof StaticDomainValue)) {
+          val = null;
+        } else if (value instanceof Promise) {
+          return value.then((value) => {
+            return DomainValueViewModel.__create(tile, node, value);
+          });
+        } else if (typeof value == "string") {
+          if (
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.exec(
+              value,
+            )
+          ) {
+            const config = nodeConfigManager.retrieve(node);
+            val = config.valueFromId(value);
+          } else {
+            throw Error(
+              "Set domain values using values from domain lists, not strings",
+            );
+          }
+        } else {
+          throw Error("Could not set domain value from this data");
+        }
+
+        if (!(val instanceof Promise)) {
+          tile.data.set(nodeid, val ? val.id : null);
+        }
+      }
+    }
+
+    if (!tile || !val) {
+      return null;
+    }
+    const str = new DomainValueViewModel(val);
+    return str;
+  }
+
+  __asTileData() {
+    return this._value ? this._value.id : null;
+  }
+}
+
 class ConceptValueViewModel extends String implements IViewModel {
   __parentPseudo: PseudoValue | undefined;
 
@@ -235,7 +373,7 @@ class ConceptValueViewModel extends String implements IViewModel {
   }
 
   async forJson() {
-    return `${await this._value}`;
+    return `${(await this._value).value}`;
   }
 
   getValue(): StaticValue | Promise<StaticValue> {
@@ -250,7 +388,7 @@ class ConceptValueViewModel extends String implements IViewModel {
     const nodeid = node.nodeid;
     let val: StaticValue = value;
     if (tile) {
-      if (!(nodeid in tile.data)) {
+      if (!tile.data.has(nodeid)) {
         tile.data.set(nodeid, null);
       }
       if (value !== null) {
@@ -266,7 +404,7 @@ class ConceptValueViewModel extends String implements IViewModel {
           });
         } else if (typeof value == "string") {
           if (
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.exec(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.exec(
               value,
             )
           ) {
@@ -285,7 +423,7 @@ class ConceptValueViewModel extends String implements IViewModel {
             });
           } else {
             throw Error(
-              "Set concepts using values from collections, not strings",
+              `Set concepts using values from collections, not strings: ${value}`,
             );
           }
         } else {
@@ -350,7 +488,7 @@ class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
       );
     }
     if (tile) {
-      if (!(nodeid in tile.data)) {
+      if (!tile.data.has(nodeid)) {
         tile.data.set(nodeid, null);
       }
       if (value !== null) {
@@ -384,10 +522,13 @@ class StringViewModel extends String implements IViewModel {
   _value: Map<string, object>;
 
   constructor(value: Map<string, object>, language: string | null = null) {
-    const displayValue = value.get(language || DEFAULT_LANGUAGE) || {
+    let displayValue = value.get(language || DEFAULT_LANGUAGE) || {
       value: "",
     };
-    super(displayValue.value);
+    if (displayValue instanceof Object) {
+      displayValue = displayValue.value;
+    }
+    super(displayValue);
     this._value = value;
   }
 
@@ -398,7 +539,10 @@ class StringViewModel extends String implements IViewModel {
   lang(language: string) {
     const elt = this._value.get(language);
     if (elt) {
-      return elt.value;
+      if (elt instanceof Object) {
+        return elt.value;
+      }
+      return elt;
     } else {
       return undefined;
     }
@@ -414,7 +558,7 @@ class StringViewModel extends String implements IViewModel {
       return value.then((value) => StringViewModel.__create(tile, node, value));
     }
     if (tile) {
-      if (!(nodeid in tile.data)) {
+      if (!tile.data.has(nodeid)) {
         tile.data.set(nodeid, {});
       }
       if (value !== null) {
@@ -458,7 +602,7 @@ class StringViewModel extends String implements IViewModel {
   }
 }
 
-class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
+class SemanticViewModel implements IStringKeyedObject, IViewModel {
   [key: string]: any;
   then: undefined;
 
@@ -475,7 +619,6 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
     tile: StaticTile | null,
     node: StaticNode,
   ) {
-    super();
     this.__childValues = new Map<string, any>();
     this.__parentWkri = parentWkri;
     this.__tile = tile;
@@ -512,9 +655,28 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
   }
 
   async forJson() {
-    const values = new Object(
-      await Promise.all([...(await this.__getChildren(true)).entries()]),
-    );
+    async function _forJson(v) {
+      v = await v;
+      if (!v) {
+        return null;
+      }
+      if (v && v instanceof PseudoValue) {
+        v = await v.getValue();
+      }
+      if (v && v instanceof Array) {
+        return await Promise.all(v.map(n => _forJson(n)));
+      }
+      if (v && v instanceof Object && v.forJson) {
+        return await v.forJson();
+      }
+      return v;
+    };
+    let entries = [...(await this.__getChildValues()).entries()];
+    entries = Promise.all(entries.map(async ([k, vl]) => {
+        return [k, vl ? await _forJson(vl) : vl];
+    }));
+
+    const values = Object.fromEntries(await entries);
     return values;
   }
 
@@ -560,7 +722,7 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
 
   async __getChildren(direct: null | boolean = null) {
     const items = new Map<string, any>();
-    for (const [key, value] of [...(await this.__getChildValues())]) {
+    for (const [key, value] of [...(await this.__getChildValues()).entries()]) {
       items.set(key, value);
     }
     const children = [...items.entries()]
@@ -694,7 +856,7 @@ class SemanticViewModel extends Map implements IStringKeyedObject, IViewModel {
         if (
           childNode &&
           value !== null &&
-          (value.parentNode === null ||
+          (!(value.parentNode) ||
             value.parentNode === this.__parentPseudo)
         ) {
           if (
@@ -759,6 +921,12 @@ async function getViewModel(
         parent,
         childNodes,
       );
+      break;
+    case "domain-value":
+      vm = await DomainValueViewModel.__create(tile, node, data);
+      break;
+    case "domain-value-list":
+      vm = await DomainValueListViewModel.__create(tile, node, data);
       break;
     case "concept":
       vm = await ConceptValueViewModel.__create(tile, node, data);

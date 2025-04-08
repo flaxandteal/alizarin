@@ -111,11 +111,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.fs = Promise.resolve().then(() => __viteBrowserExternal$1).then((fs) => {
         return fs.promises;
       });
-      this.allGraphFile = allGraphFile || (() => "public/models/_all.json");
-      this.graphIdToGraphFile = graphIdToGraphFile || ((graphId) => `public/models/${graphId}.json`);
-      this.graphIdToResourcesFiles = graphIdToResourcesFiles || ((graphId) => [`public/resources/_${graphId}.json`]);
-      this.resourceIdToFile = resourceIdToFile || ((resourceId) => `public/resources/${resourceId}.json`);
-      this.collectionIdToFile = collectionIdToFile || ((collectionId) => `public/collections/${collectionId}.json`);
+      this.allGraphFile = allGraphFile || (() => "tests/definitions/models/_all.json");
+      this.graphIdToGraphFile = graphIdToGraphFile || ((graphId) => `tests/definitions/models/${graphId}.json`);
+      this.graphIdToResourcesFiles = graphIdToResourcesFiles || ((graphId) => [`tests/definitions/resources/_${graphId}.json`]);
+      this.resourceIdToFile = resourceIdToFile || ((resourceId) => `tests/definitions/resources/${resourceId}.json`);
+      this.collectionIdToFile = collectionIdToFile || ((collectionId) => `tests/definitions/collections/${collectionId}.json`);
     }
     async getGraphs() {
       const fs = await this.fs;
@@ -173,6 +173,44 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   function getCurrentLanguage() {
     return (typeof navigator != "undefined" && navigator.language || DEFAULT_LANGUAGE$1).slice(0, 2);
   }
+  class AttrPromise extends Promise {
+    constructor(executor) {
+      super(executor);
+      return new Proxy(this, {
+        set: (object, keyObj, value) => {
+          const key = keyObj.toString();
+          if (object instanceof Promise) {
+            return object.then((val) => {
+              val[key] = value;
+              return val;
+            });
+          }
+          object[key] = value;
+          return this;
+        },
+        get: (object, keyObj) => {
+          const key = keyObj.toString();
+          if (key in object) {
+            if (typeof object[key] === "function") {
+              return object[key].bind(object);
+            }
+            return object[key];
+          }
+          if (object instanceof Promise) {
+            return object.then((val) => {
+              return val ? val[key] : val;
+            });
+          }
+          return object[key];
+        }
+      });
+    }
+  }
+  const utils = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    AttrPromise,
+    getCurrentLanguage
+  }, Symbol.toStringTag, { value: "Module" }));
   class StaticTranslatableString extends String {
     constructor(s, lang = void 0) {
       let translations;
@@ -186,9 +224,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         }
       } else if (typeof s === "object") {
         translations = new Map(Object.entries(s));
-        if (lang === void 0 || !(lang in translations)) {
+        if (lang === void 0 || !translations.has(lang)) {
           const defaultLanguage = getCurrentLanguage();
-          if (!translations || defaultLanguage in translations) {
+          if (!translations || translations.has(defaultLanguage)) {
             finalLang = defaultLanguage;
           } else {
             finalLang = Object.keys(s)[0];
@@ -563,6 +601,37 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.graph_publication_id = jsonData.graph_publication_id;
     }
   }
+  let StaticDomainValue$1 = class StaticDomainValue {
+    constructor(jsonData) {
+      __publicField(this, "id");
+      __publicField(this, "selected");
+      __publicField(this, "text");
+      this.id = jsonData.id;
+      this.selected = jsonData.selected;
+      this.text = jsonData.text;
+    }
+    toString() {
+      const lang = getCurrentLanguage();
+      let localized = this.text[lang];
+      if (!(localized instanceof Object)) {
+        localized = Object.values(this.text)[0];
+      }
+      if (!localized) {
+        throw Error(`Could not render domain value ${this.id} in language ${lang}`);
+      }
+      return localized;
+    }
+    lang(lang) {
+      return this.text[lang];
+    }
+    async forJson() {
+      return {
+        id: this.id,
+        selected: this.selected,
+        text: this.text
+      };
+    }
+  };
   class StaticResource {
     constructor(jsonData) {
       __publicField(this, "resourceinstance");
@@ -577,6 +646,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     __proto__: null,
     StaticCollection,
     StaticConcept,
+    StaticDomainValue: StaticDomainValue$1,
     StaticEdge,
     StaticGraph,
     StaticNode,
@@ -603,43 +673,54 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   }
   const RDM = new ReferenceDataManager(archesClient);
-  class AttrPromise extends Promise {
-    constructor(executor) {
-      super(executor);
-      return new Proxy(this, {
-        set: (object, keyObj, value) => {
-          const key = keyObj.toString();
-          if (object instanceof Promise) {
-            return object.then((val) => {
-              val[key] = value;
-              return val;
-            });
+  class StaticNodeConfigDomain {
+    constructor(jsonData) {
+      __publicField(this, "i18n_config");
+      __publicField(this, "options");
+      this.i18n_config = jsonData.i18n_config;
+      this.options = jsonData.options;
+      if (this.options) {
+        this.options = this.options.map((sdv) => {
+          if (!(sdv instanceof StaticDomainValue$1)) {
+            return new StaticDomainValue$1(sdv);
           }
-          object[key] = value;
-          return this;
-        },
-        get: (object, keyObj) => {
-          const key = keyObj.toString();
-          if (key in object) {
-            if (typeof object[key] === "function") {
-              return object[key].bind(object);
-            }
-            return object[key];
-          }
-          if (object instanceof Promise) {
-            return object.then((val) => {
-              return val ? val[key] : val;
-            });
-          }
-          return object[key];
-        }
-      });
+          return sdv;
+        });
+      }
+    }
+    getSelected() {
+      return this.options.find((option) => option.selected);
+    }
+    valueFromId(id) {
+      return this.options.find((option) => option.id == id);
     }
   }
-  const utils = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-    __proto__: null,
-    AttrPromise
-  }, Symbol.toStringTag, { value: "Module" }));
+  const _NodeConfigManager = class _NodeConfigManager {
+    constructor(cache = void 0) {
+      __publicField(this, "cache");
+      if (!cache) {
+        cache = _NodeConfigManager._cache || /* @__PURE__ */ new Map();
+      }
+      this.cache = cache;
+    }
+    retrieve(node) {
+      if (this.cache.has(node.nodeid)) {
+        return this.cache.get(node.nodeid);
+      }
+      let nodeConfig = null;
+      switch (node.datatype) {
+        case "domain-value-list":
+        case "domain-value":
+          nodeConfig = new StaticNodeConfigDomain(node.config);
+          break;
+      }
+      this.cache.set(node.nodeid, nodeConfig);
+      return nodeConfig;
+    }
+  };
+  __publicField(_NodeConfigManager, "_cache");
+  let NodeConfigManager = _NodeConfigManager;
+  const nodeConfigManager = new NodeConfigManager();
   const DEFAULT_LANGUAGE = "en";
   function tileLoadingError(reason, exc) {
     {
@@ -754,11 +835,17 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     toString() {
       return `[${this.__.wkrm.modelClassName}:${this.id ?? "-"}]`;
     }
-    async forJson() {
-      return {
+    async forJson(cascade = false) {
+      const basic = {
         type: this.__.wkrm.modelClassName,
+        graphId: this.__.wkrm.graphId,
         id: this.id
       };
+      if (cascade) {
+        const root = await (await this._.getRoot()).getValue();
+        basic.root = await root.forJson();
+      }
+      return basic;
     }
   }
   class ConceptListViewModel extends Array {
@@ -775,7 +862,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       const nodeid = node.nodeid;
       let val;
       if (tile) {
-        if (!(nodeid in tile.data)) {
+        if (!tile.data.has(nodeid)) {
           tile.data.set(nodeid, null);
         }
         if (value !== null) {
@@ -797,9 +884,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
                 const v = await c;
                 return v ? (await v.getValue()).id : null;
               })
-            ).then((ids) => {
-              tile.data.set(nodeid, ids);
-              return ids;
+            ).then((ids2) => {
+              tile.data.set(nodeid, ids2);
+              return ids2;
             });
           });
         }
@@ -814,6 +901,111 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return this._value ? await this._value : null;
     }
   }
+  class DomainValueListViewModel extends Array {
+    constructor() {
+      super(...arguments);
+      __publicField(this, "__parentPseudo");
+      __publicField(this, "_value", null);
+    }
+    async forJson() {
+      const value = await this._value;
+      return value ? value.map((v) => v ? v.forJson() : null) : null;
+    }
+    static async __create(tile, node, value) {
+      const nodeid = node.nodeid;
+      let val;
+      if (tile) {
+        if (!tile.data.has(nodeid)) {
+          tile.data.set(nodeid, null);
+        }
+        if (value !== null) {
+          tile.data.set(nodeid, []);
+          if (!Array.isArray(value)) {
+            throw Error(
+              "Cannot set an (entire) domain list value except via an array"
+            );
+          }
+          val = value.map((c) => {
+            if (c instanceof DomainValueViewModel) {
+              return c;
+            }
+            return DomainValueViewModel.__create(tile, node, c, RDM);
+          });
+          this._value = Promise.all(val).then((vals) => {
+            tile.data.set(nodeid, vals.map((v) => v.id));
+            return ids;
+          });
+        }
+      }
+      if (!tile || !val) {
+        return null;
+      }
+      const str = new DomainValueListViewModel(...val);
+      return str;
+    }
+    async __asTileData() {
+      return this._value ? await this._value : null;
+    }
+  }
+  class DomainValueViewModel extends String {
+    constructor(value) {
+      super(value.toString());
+      __publicField(this, "__parentPseudo");
+      __publicField(this, "_value");
+      this._value = value;
+    }
+    async forJson() {
+      return await this._value.forJson();
+    }
+    getValue() {
+      return this._value;
+    }
+    lang(lang) {
+      return this._value.lang(lang);
+    }
+    static async __create(tile, node, value) {
+      const nodeid = node.nodeid;
+      let val = value;
+      if (tile) {
+        if (!tile.data.has(nodeid)) {
+          tile.data.set(nodeid, null);
+        }
+        if (value !== null) {
+          if (!value && !(value instanceof StaticDomainValue)) {
+            val = null;
+          } else if (value instanceof Promise) {
+            return value.then((value2) => {
+              return DomainValueViewModel.__create(tile, node, value2);
+            });
+          } else if (typeof value == "string") {
+            if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.exec(
+              value
+            )) {
+              const config = nodeConfigManager.retrieve(node);
+              val = config.valueFromId(value);
+            } else {
+              throw Error(
+                "Set domain values using values from domain lists, not strings"
+              );
+            }
+          } else {
+            throw Error("Could not set domain value from this data");
+          }
+          if (!(val instanceof Promise)) {
+            tile.data.set(nodeid, val ? val.id : null);
+          }
+        }
+      }
+      if (!tile || !val) {
+        return null;
+      }
+      const str = new DomainValueViewModel(val);
+      return str;
+    }
+    __asTileData() {
+      return this._value ? this._value.id : null;
+    }
+  }
   class ConceptValueViewModel extends String {
     constructor(value) {
       super(value.value);
@@ -822,7 +1014,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this._value = value;
     }
     async forJson() {
-      return `${await this._value}`;
+      return `${(await this._value).value}`;
     }
     getValue() {
       return this._value;
@@ -831,7 +1023,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       const nodeid = node.nodeid;
       let val = value;
       if (tile) {
-        if (!(nodeid in tile.data)) {
+        if (!tile.data.has(nodeid)) {
           tile.data.set(nodeid, null);
         }
         if (value !== null) {
@@ -846,7 +1038,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
               return ConceptValueViewModel.__create(tile, node, value2);
             });
           } else if (typeof value == "string") {
-            if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.exec(
+            if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.exec(
               value
             )) {
               const collectionId = node.config["rdmCollection"];
@@ -862,7 +1054,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
               });
             } else {
               throw Error(
-                "Set concepts using values from collections, not strings"
+                `Set concepts using values from collections, not strings: ${value}`
               );
             }
           } else {
@@ -915,7 +1107,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         );
       }
       if (tile) {
-        if (!(nodeid in tile.data)) {
+        if (!tile.data.has(nodeid)) {
           tile.data.set(nodeid, null);
         }
         if (value !== null) {
@@ -941,10 +1133,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   }
   class StringViewModel extends String {
     constructor(value, language = null) {
-      const displayValue = value.get(language || DEFAULT_LANGUAGE) || {
+      let displayValue = value.get(language || DEFAULT_LANGUAGE) || {
         value: ""
       };
-      super(displayValue.value);
+      if (displayValue instanceof Object) {
+        displayValue = displayValue.value;
+      }
+      super(displayValue);
       __publicField(this, "__parentPseudo");
       __publicField(this, "_value");
       this._value = value;
@@ -955,7 +1150,10 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     lang(language) {
       const elt = this._value.get(language);
       if (elt) {
-        return elt.value;
+        if (elt instanceof Object) {
+          return elt.value;
+        }
+        return elt;
       } else {
         return void 0;
       }
@@ -966,7 +1164,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         return value.then((value2) => StringViewModel.__create(tile, node, value2));
       }
       if (tile) {
-        if (!(nodeid in tile.data)) {
+        if (!tile.data.has(nodeid)) {
           tile.data.set(nodeid, {});
         }
         if (value !== null) {
@@ -1006,9 +1204,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return this._value;
     }
   }
-  class SemanticViewModel extends Map {
+  class SemanticViewModel {
     constructor(parentWkri, childNodes, tile, node) {
-      super();
       __publicField(this, "then");
       __publicField(this, "__parentPseudo");
       __publicField(this, "__childValues");
@@ -1050,9 +1247,27 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return `[[${entries.join(",")}]]`;
     }
     async forJson() {
-      const values = new Object(
-        await Promise.all([...(await this.__getChildren(true)).entries()])
-      );
+      async function _forJson(v) {
+        v = await v;
+        if (!v) {
+          return null;
+        }
+        if (v && v instanceof PseudoValue) {
+          v = await v.getValue();
+        }
+        if (v && v instanceof Array) {
+          return await Promise.all(v.map((n) => _forJson(n)));
+        }
+        if (v && v instanceof Object && v.forJson) {
+          return await v.forJson();
+        }
+        return v;
+      }
+      let entries = [...(await this.__getChildValues()).entries()];
+      entries = Promise.all(entries.map(async ([k, vl]) => {
+        return [k, vl ? await _forJson(vl) : vl];
+      }));
+      const values = Object.fromEntries(await entries);
       return values;
     }
     async __update(map) {
@@ -1092,7 +1307,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     async __getChildren(direct = null) {
       const items = /* @__PURE__ */ new Map();
-      for (const [key, value] of [...await this.__getChildValues()]) {
+      for (const [key, value] of [...(await this.__getChildValues()).entries()]) {
         items.set(key, value);
       }
       const children = [...items.entries()].filter((entry) => {
@@ -1192,7 +1407,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         }
         const childNode = childNodes.get(key);
         for (const value of values) {
-          if (childNode && value !== null && (value.parentNode === null || value.parentNode === this.__parentPseudo)) {
+          if (childNode && value !== null && (!value.parentNode || value.parentNode === this.__parentPseudo)) {
             if (tile && value.parenttile_id == tile.tileid || value.node.nodegroup_id == node.nodeid && tile && value.tile == tile && !childNode.is_collector) {
               children.set(key, value);
             } else if (node.nodegroup_id != value.node.nodegroup_id && childNode.is_collector) {
@@ -1230,6 +1445,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           parent,
           childNodes
         );
+        break;
+      case "domain-value":
+        vm = await DomainValueViewModel.__create(tile, node, data);
+        break;
+      case "domain-value-list":
+        vm = await DomainValueListViewModel.__create(tile, node, data);
         break;
       case "concept":
         vm = await ConceptValueViewModel.__create(tile, node, data);
@@ -1328,7 +1549,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     clear() {
       this.value = null;
-      if (this.tile && this.tile.data && this.node.nodeid in this.tile.data) {
+      if (this.tile && this.tile.data && this.tile.data.has(this.node.nodeid)) {
         this.tile.data.delete(this.node.nodeid);
       }
     }
@@ -1576,7 +1797,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       const value = node && await allValues.get(alias);
       let newAllValues = allValues;
       if (value === false || addIfMissing && value === void 0) {
-        if (alias in newAllValues) {
+        if (newAllValues.has(alias)) {
           newAllValues.delete(alias);
         }
         let nodegroupTiles;
@@ -1671,7 +1892,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       const nodesUnseen = new Set(
         [...nodeObjs.values()].filter((node) => node.nodegroup_id == nodegroupId).map((node) => node.alias)
       );
-      const _addNode = async (node, tile) => {
+      const _addPseudo = async (node, tile) => {
         const key = node.alias || "";
         nodesUnseen.delete(node.alias);
         let existing = existingValues.get(key);
@@ -1681,7 +1902,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         if (existing !== false && existing !== void 0) {
           throw Error(`Tried to load node twice: ${key} ${existing}`);
         }
-        if (!(key in allValues)) {
+        if (!allValues.has(key)) {
           allValues.set(key, []);
         }
         const pseudoNode = this.model.makePseudoCls(key, false, tile, this.wkri);
@@ -1719,13 +1940,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         if (parentNode === void 0) {
           continue;
         }
-        await _addNode(parentNode, tile);
+        await _addPseudo(parentNode, tile);
         if (tile) {
           const tileNodes = /* @__PURE__ */ new Map();
           for (const [key, value] of [...tile.data.entries()]) {
             tileNodes.set(key, value);
           }
-          if (!(tile.nodegroup_id in tileNodes)) {
+          if (!tileNodes.has(tile.nodegroup_id)) {
             tileNodes.set(tile.nodegroup_id, {});
           }
           for (const [nodeid, nodeValue] of [...tileNodes.entries()]) {
@@ -1737,7 +1958,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
               throw Error("Unknown node in nodegroup");
             }
             if (nodeValue !== null) {
-              await _addNode(node, tile);
+              await _addPseudo(node, tile);
             }
           }
         }
@@ -1943,7 +2164,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       let graphs = Object.keys(graphJsons["models"]);
       if (configurationOptions.graphs !== null) {
         graphs = graphs.filter(
-          (graphId) => graphId in configurationOptions
+          (graphId) => configurationOptions.graphs.includes(graphId)
         );
       }
       await Promise.all(

@@ -1,9 +1,4 @@
-// TODO: make this customizable.
-const DEFAULT_LANGUAGE = "en";
-
-function getCurrentLanguage(): string {
-  return ((typeof navigator != 'undefined' && navigator.language) || DEFAULT_LANGUAGE).slice(0, 2);
-}
+import { getCurrentLanguage } from './utils';
 
 class StaticTranslatableString extends String {
   translations: Map<string, string>;
@@ -24,9 +19,9 @@ class StaticTranslatableString extends String {
       }
     } else if (typeof s === "object") {
       translations = new Map(Object.entries(s));
-      if (lang === undefined || !(lang in translations)) {
+      if (lang === undefined || !translations.has(lang)) {
         const defaultLanguage = getCurrentLanguage();
-        if (!translations || defaultLanguage in translations) {
+        if (!translations || translations.has(defaultLanguage)) {
           finalLang = defaultLanguage;
         } else {
           finalLang = Object.keys(s)[0];
@@ -454,6 +449,42 @@ class StaticResourceMetadata {
   }
 }
 
+class StaticDomainValue {
+  id: string
+  selected: boolean
+  text: {[lang: string]: object}
+
+  constructor(jsonData: StaticDomainValue) {
+    this.id = jsonData.id;
+    this.selected = jsonData.selected;
+    this.text = jsonData.text;
+  }
+
+  toString() {
+    const lang = getCurrentLanguage();
+    let localized = this.text[lang];
+    if (!(localized instanceof Object)) {
+      localized = Object.values(this.text)[0];
+    }
+    if (!localized) {
+      throw Error(`Could not render domain value ${this.id} in language ${lang}`);
+    }
+    return localized;
+  }
+
+  lang(lang: string) {
+    return this.text[lang];
+  }
+
+  async forJson() {
+    return {
+      id: this.id,
+      selected: this.selected,
+      text: this.text
+    }
+  }
+}
+
 class StaticResource {
   resourceinstance: StaticResourceMetadata;
   tiles: Array<StaticTile> | null = null;
@@ -477,4 +508,5 @@ export {
   StaticEdge,
   StaticCollection,
   StaticConcept,
+  StaticDomainValue,
 };
