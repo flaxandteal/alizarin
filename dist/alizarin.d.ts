@@ -1,6 +1,6 @@
 declare abstract class ArchesClient {
     abstract getGraphs(): Promise<GraphResult>;
-    abstract getGraph(graphId: string): Promise<StaticGraph>;
+    abstract getGraph(graphId: string): Promise<StaticGraph | null>;
     abstract getResources(graphId: string, limit: number): Promise<StaticResource[]>;
     abstract getResource(resourceId: string): Promise<StaticResource>;
     abstract getCollection(collectionId: string): Promise<StaticCollection>;
@@ -19,7 +19,7 @@ declare class ArchesClientLocal extends ArchesClient {
         [k: string]: Function;
     });
     getGraphs(): Promise<GraphResult>;
-    getGraph(graphId: string): Promise<StaticGraph>;
+    getGraph(graphId: string): Promise<StaticGraph | null>;
     getResource(resourceId: string): Promise<StaticResource>;
     getCollection(collectionId: string): Promise<StaticCollection>;
     getResources(graphId: string, limit: number | null): Promise<StaticResource[]>;
@@ -29,7 +29,7 @@ declare class ArchesClientRemote extends ArchesClient {
     archesUrl: string;
     constructor(archesUrl: string);
     getGraphs(): Promise<GraphResult>;
-    getGraph(graphId: string): Promise<StaticGraph>;
+    getGraph(graphId: string | null): Promise<StaticGraph>;
     getResource(resourceId: string): Promise<StaticResource>;
     getCollection(collectionId: string): Promise<StaticCollection>;
     getResources(graphId: string, limit: number): Promise<StaticResource[]>;
@@ -46,7 +46,7 @@ declare class ArchesClientRemoteStatic extends ArchesClient {
         [k: string]: Function;
     });
     getGraphs(): Promise<GraphResult>;
-    getGraph(graphId: string): Promise<StaticGraph>;
+    getGraph(graphId: string): Promise<StaticGraph | null>;
     getResource(resourceId: string): Promise<StaticResource>;
     getCollection(collectionId: string): Promise<StaticCollection>;
     getResources(graphId: string, limit: number): Promise<StaticResource[]>;
@@ -54,6 +54,10 @@ declare class ArchesClientRemoteStatic extends ArchesClient {
 
 declare class AttrPromise<T> extends Promise<T> implements IStringKeyedObject {
     constructor(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason: any) => void) => void);
+}
+
+declare class Cleanable extends String {
+    __clean: String | undefined;
 }
 
 declare namespace client {
@@ -67,9 +71,54 @@ declare namespace client {
 }
 export { client }
 
+declare class ConceptValueViewModel extends String implements IViewModel {
+    __parentPseudo: PseudoValue | undefined;
+    describeField: () => string | null;
+    describeFieldGroup: () => string | null;
+    _value: StaticValue | Promise<StaticValue>;
+    constructor(value: StaticValue);
+    forJson(): Promise<StaticValue>;
+    getValue(): StaticValue | Promise<StaticValue>;
+    static __create(tile: StaticTile, node: StaticNode, value: any): Promise<ConceptValueViewModel | null>;
+    __asTileData(): any;
+}
+
 declare class ConfigurationOptions {
     graphs: Array<string> | null;
     constructor();
+}
+
+declare class DomainValueViewModel extends String implements IViewModel {
+    __parentPseudo: PseudoValue | undefined;
+    describeField: () => string | null;
+    describeFieldGroup: () => string | null;
+    _value: StaticDomainValue | Promise<StaticDomainValue>;
+    constructor(value: StaticDomainValue);
+    forJson(): Promise<StaticDomainValue>;
+    getValue(): StaticValue | Promise<StaticValue>;
+    lang(lang: string): string | undefined;
+    static __create(tile: StaticTile, node: StaticNode, value: any): Promise<DomainValueViewModel | null>;
+    __asTileData(): any;
+}
+
+declare class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
+    [key: string]: any;
+    __parentPseudo: PseudoValue | undefined;
+    describeField: () => string | null;
+    describeFieldGroup: () => string | null;
+    _value: {
+        [key: string]: any;
+    };
+    constructor(jsonData: {
+        [key: string]: any;
+    });
+    static __create(tile: StaticTile, node: StaticNode, value: any): GeoJSONViewModel | Promise<GeoJSONViewModel | null> | null;
+    forJson(): Promise<{
+        [key: string]: any;
+    }>;
+    __asTileData(): {
+        [key: string]: any;
+    };
 }
 
 declare function getCurrentLanguage(): string;
@@ -125,6 +174,31 @@ declare interface IStringKeyedObject {
 
 declare interface IViewModel {
     __parentPseudo: IPseudo | undefined;
+    forJson(): {
+        [key: string]: any;
+    } | {
+        [key: string]: any;
+    }[];
+}
+
+declare class JsonRenderer extends Renderer {
+    renderConceptValue(value: ConceptValueViewModel): Promise<any>;
+    renderDomainValue(value: DomainValueViewModel): Promise<any>;
+    renderResourceReference(value: ResourceInstanceViewModel): Promise<any>;
+}
+
+declare class MarkdownRenderer extends Renderer {
+    conceptValueToUrl: ((value: ConceptValueViewModel) => string) | undefined;
+    domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined;
+    resourceReferenceToUrl: ((value: ResourceInstanceViewModel) => string) | undefined;
+    constructor(callbacks: {
+        conceptValueToUrl: ((value: ConceptValueViewModel) => string) | undefined;
+        domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined;
+        resourceReferenceToUrl: ((value: ResourceInstanceViewModel) => string) | undefined;
+    });
+    renderDomainValue(domainValue: DomainValueViewModel): Promise<any>;
+    renderConceptValue(conceptValue: ConceptValueViewModel): Promise<any>;
+    renderResourceReference(rivm: ResourceInstanceViewModel): Promise<any>;
 }
 
 declare class PseudoValue implements IPseudo {
@@ -140,6 +214,8 @@ declare class PseudoValue implements IPseudo {
     childNodes: Map<string, StaticNode>;
     multiple: boolean;
     asTileData: Function | null;
+    describeField(): string;
+    describeFieldGroup(): string;
     constructor(node: StaticNode, tile: StaticTile | null, value: any, parent: IRIVM | null, childNodes: Map<string, StaticNode>);
     getParentTileId(): string | null;
     getTile(): Promise<(any[] | StaticTile | null)[]>;
@@ -161,6 +237,30 @@ declare class ReferenceDataManager {
     retrieveCollection(id: string): Promise<StaticCollection>;
 }
 
+declare class Renderer {
+    render(asset: ResourceInstanceViewModel): Promise<any>;
+    renderDomainValue(value: DomainValueViewModel): Promise<any>;
+    renderConceptValue(value: ConceptValueViewModel): Promise<any>;
+    renderResourceReference(value: ResourceInstanceViewModel): Promise<any>;
+    renderBlock(block: {
+        [key: string]: string;
+    } | {
+        [key: string]: string;
+    }[]): Promise<{
+        [key: string]: any;
+    }>;
+    renderValue(value: any): Promise<any>;
+}
+
+declare namespace renderers {
+    export {
+        MarkdownRenderer,
+        JsonRenderer,
+        Cleanable
+    }
+}
+export { renderers }
+
 declare class ResourceInstanceViewModel implements IStringKeyedObject {
     [key: string]: any;
     _: IInstanceWrapper;
@@ -168,11 +268,7 @@ declare class ResourceInstanceViewModel implements IStringKeyedObject {
     id: string;
     then: null;
     toString(): string;
-    forJson(cascade?: boolean): Promise<{
-        type: any;
-        graphId: any;
-        id: string;
-    }>;
+    forJson(cascade?: boolean): Promise<StaticResourceReference>;
     constructor(id: string, modelWrapper: IModelWrapper, instanceWrapperFactory: (rivm: ResourceInstanceViewModel) => IInstanceWrapper);
 }
 
@@ -186,6 +282,11 @@ declare class ResourceModelWrapper<RIVM extends ResourceInstanceViewModel> {
         limit: number;
         lazy: boolean;
     }): Promise<Array<RIVM>>;
+    resourceGenerator(staticResources: AsyncIterable<StaticResource, RIVM, unknown>, lazy?: boolean): AsyncGenerator<RIVM, void, unknown>;
+    iterAll(params: {
+        limit: number;
+        lazy: boolean;
+    }): AsyncGenerator<RIVM>;
     find(id: string, lazy?: boolean): Promise<RIVM>;
     getPermittedNodegroups(): Map<string, StaticNodegroup>;
     makeInstance(id: string, resource: StaticResource | null): IRIVM;
@@ -201,6 +302,31 @@ declare class ResourceModelWrapper<RIVM extends ResourceInstanceViewModel> {
     getNodegroupObjects(): Map<string, StaticNodegroup>;
     getRootNode(): StaticNode;
     fromStaticResource(resource: StaticResource, lazy?: boolean): Promise<RIVM>;
+}
+
+declare class SemanticViewModel implements IStringKeyedObject, IViewModel {
+    [key: string]: any;
+    then: undefined;
+    __parentPseudo: PseudoValue | undefined;
+    __childValues: Map<string, any>;
+    __parentWkri: ResourceInstanceViewModel | null;
+    __childNodes: Map<string, StaticNode>;
+    __tile: StaticTile | null;
+    __node: StaticNode;
+    constructor(parentWkri: ResourceInstanceViewModel | null, childNodes: Map<string, StaticNode>, tile: StaticTile | null, node: StaticNode);
+    toString(): Promise<string>;
+    toObject(): Promise<any>;
+    forJson(): Promise<any>;
+    __update(map: Map<string, any>): Promise<void[]>;
+    __get(key: string): Promise<any>;
+    __set(key: string, value: any): Promise<void>;
+    __getChildTypes(): Promise<Map<string, any>>;
+    __getChildren(direct?: null | boolean): Promise<any[]>;
+    __getChildValue(key: string): Promise<any>;
+    __makePseudo(key: string): any;
+    static __create(tile: StaticTile, node: StaticNode, value: any, parent: ResourceInstanceViewModel | null, childNodes: Map<string, StaticNode>): Promise<SemanticViewModel>;
+    __asTileData(): Promise<(any[] | null)[]>;
+    __getChildValues(targetKey?: string | null): Promise<any>;
 }
 
 declare class StaticCard {
@@ -389,6 +515,7 @@ declare class StaticPublication {
 declare class StaticResource {
     resourceinstance: StaticResourceMetadata;
     tiles: Array<StaticTile> | null;
+    __source: string | undefined;
     constructor(jsonData: StaticResource);
 }
 
@@ -404,10 +531,21 @@ declare class StaticResourceMetadata {
     constructor(jsonData: StaticResourceMetadata);
 }
 
+declare class StaticResourceReference {
+    id: string;
+    type: string | undefined;
+    graphId: string;
+    root: any | undefined;
+    constructor(jsonData: StaticResourceReference);
+}
+
 declare class StaticStore {
     archesClient: ArchesClient;
-    constructor(archesClient: ArchesClient);
-    loadAll(graphId: string, limit?: number | undefined): Promise<Array<StaticResource>>;
+    cache: Map<string, StaticResource | StaticResourceMetadata>;
+    cacheMetadataOnly: boolean;
+    constructor(archesClient: ArchesClient, cacheMetadataOnly?: boolean);
+    getMeta(id: string, onlyIfCached?: boolean): Promise<StaticResourceMetadata | null>;
+    loadAll(graphId: string, limit?: number | undefined): AsyncIterable<StaticResource>;
     loadOne(id: string): Promise<StaticResource>;
 }
 
@@ -436,12 +574,14 @@ declare namespace staticTypes {
         StaticTile,
         StaticGraph,
         StaticResource,
+        StaticResourceMetadata,
         StaticNode,
         StaticNodegroup,
         StaticEdge,
         StaticCollection,
         StaticConcept,
-        StaticDomainValue
+        StaticDomainValue,
+        StaticResourceReference
     }
 }
 export { staticTypes }
@@ -451,6 +591,19 @@ declare class StaticValue {
     value: string;
     __concept: StaticConcept | null;
     constructor(jsonData: StaticValue, concept?: StaticConcept | null);
+    toString(): string;
+}
+
+declare class StringViewModel extends String implements IViewModel {
+    __parentPseudo: PseudoValue | undefined;
+    describeField: () => string | null;
+    describeFieldGroup: () => string | null;
+    _value: Map<string, object>;
+    constructor(value: Map<string, object>, language?: string | null);
+    forJson(): string;
+    lang(language: string): any;
+    static __create(tile: StaticTile, node: StaticNode, value: any): StringViewModel | Promise<StringViewModel> | null;
+    __asTileData(): Map<string, object>;
 }
 
 declare namespace utils {
@@ -477,7 +630,12 @@ declare namespace viewModels {
     export {
         ResourceInstanceViewModel,
         ValueList,
-        getViewModel
+        getViewModel,
+        DomainValueViewModel,
+        SemanticViewModel,
+        StringViewModel,
+        GeoJSONViewModel,
+        ConceptValueViewModel
     }
 }
 export { viewModels }

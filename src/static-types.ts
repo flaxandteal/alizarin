@@ -313,6 +313,10 @@ class StaticValue {
     this.value = jsonData.value;
     this.__concept = concept;
   }
+
+  toString() {
+    return this.value;
+  }
 }
 
 class StaticConcept {
@@ -485,9 +489,24 @@ class StaticDomainValue {
   }
 }
 
+class StaticResourceReference {
+  id: string;
+  type: string | undefined;
+  graphId: string;
+  root: any | undefined;
+
+  constructor(jsonData: StaticResourceReference) {
+    this.id = jsonData.id;
+    this.type = jsonData.type;
+    this.graphId = jsonData.graphId;
+    this.root = jsonData.root;
+  }
+}
+
 class StaticResource {
   resourceinstance: StaticResourceMetadata;
   tiles: Array<StaticTile> | null = null;
+  __source: string | undefined = undefined;
 
   constructor(jsonData: StaticResource) {
     this.resourceinstance = new StaticResourceMetadata(
@@ -503,10 +522,12 @@ export {
   StaticTile,
   StaticGraph,
   StaticResource,
+  StaticResourceMetadata,
   StaticNode,
   StaticNodegroup,
   StaticEdge,
   StaticCollection,
   StaticConcept,
   StaticDomainValue,
+  StaticResourceReference
 };

@@ -1,5 +1,4 @@
 import {
-  IReferenceDataManager,
   IStringKeyedObject,
   IInstanceWrapper,
   IModelWrapper,
@@ -7,15 +6,15 @@ import {
 } from "./interfaces.ts";
 import { PseudoValue, PseudoList } from "./pseudos";
 import { RDM } from "./rdm";
-import { StaticResource } from "./static-types";
 import {
+  StaticDomainValue,
   StaticTile,
   StaticNode,
   StaticValue,
   StaticConcept,
+  StaticResourceReference
 } from "./static-types";
 import { AttrPromise } from "./utils";
-import { getCurrentLanguage } from './utils';
 import { nodeConfigManager } from './nodeConfig';
 
 const TILE_LOADING_ERRORS = null; // "suppress" or "silence" TODO: enum
@@ -83,7 +82,7 @@ class ValueList {
               false,
               this.tiles,
             )
-            .then((ngValues) => {
+            .then(([ngValues]) => {
               for (const [key, value] of [...ngValues.entries()]) {
                 this.values.set(key, value);
               }
@@ -127,11 +126,12 @@ class ResourceInstanceViewModel implements IStringKeyedObject {
   }
 
   async forJson(cascade: boolean=false) {
-    const basic = {
+    const jsonData: {[key: string]: string} = {
       type: this.__.wkrm.modelClassName,
       graphId: this.__.wkrm.graphId,
       id: this.id,
     };
+    const basic = new StaticResourceReference(jsonData);
     if (cascade) {
       const root = await (await this._.getRoot()).getValue();
       basic.root = await root.forJson();
@@ -176,6 +176,9 @@ class ResourceInstanceViewModel implements IStringKeyedObject {
 
 class ConceptListViewModel extends Array implements IViewModel {
   __parentPseudo: PseudoValue | undefined;
+
+  describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
+  describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
   _value: Promise<(ConceptValueViewModel | null)[]> | null = null;
 
   async forJson() {
@@ -235,6 +238,9 @@ class ConceptListViewModel extends Array implements IViewModel {
 
 class DomainValueListViewModel extends Array implements IViewModel {
   __parentPseudo: PseudoValue | undefined;
+
+  describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
+  describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
   _value: Promise<(DomainValueViewModel | null)[]> | null = null;
 
   async forJson() {
@@ -290,6 +296,9 @@ class DomainValueListViewModel extends Array implements IViewModel {
 class DomainValueViewModel extends String implements IViewModel {
   __parentPseudo: PseudoValue | undefined;
 
+  describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
+  describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
+
   _value: StaticDomainValue | Promise<StaticDomainValue>;
 
   constructor(value: StaticDomainValue) {
@@ -297,8 +306,8 @@ class DomainValueViewModel extends String implements IViewModel {
     this._value = value;
   }
 
-  async forJson() {
-    return await this._value.forJson();
+  async forJson(): Promise<StaticDomainValue> {
+    return this._value;
   }
 
   getValue(): StaticValue | Promise<StaticValue> {
@@ -313,7 +322,7 @@ class DomainValueViewModel extends String implements IViewModel {
     tile: StaticTile,
     node: StaticNode,
     value: any,
-  ): Promise<ConceptValueViewModel | null> {
+  ): Promise<DomainValueViewModel | null> {
     const nodeid = node.nodeid;
     let val: StaticDomainValue = value;
     if (tile) {
@@ -365,6 +374,9 @@ class DomainValueViewModel extends String implements IViewModel {
 class ConceptValueViewModel extends String implements IViewModel {
   __parentPseudo: PseudoValue | undefined;
 
+  describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
+  describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
+
   _value: StaticValue | Promise<StaticValue>;
 
   constructor(value: StaticValue) {
@@ -372,8 +384,8 @@ class ConceptValueViewModel extends String implements IViewModel {
     this._value = value;
   }
 
-  async forJson() {
-    return `${(await this._value).value}`;
+  async forJson(): Promise<StaticValue> {
+    return this._value;
   }
 
   getValue(): StaticValue | Promise<StaticValue> {
@@ -412,6 +424,11 @@ class ConceptValueViewModel extends String implements IViewModel {
             const collection = RDM.retrieveCollection(collectionId);
             return collection.then((collection) => {
               const val = collection.getConceptValue(value);
+
+              if (!val) {
+                console.error("Could not find concept for value", value, "for", node.alias, "in collection", collectionId);
+              }
+
               tile.data.set(nodeid, val ? val.id : null);
 
               if (!tile || !val) {
@@ -431,6 +448,10 @@ class ConceptValueViewModel extends String implements IViewModel {
         }
 
         if (!(val instanceof Promise)) {
+          if (!val) {
+            console.error("Could not find concept for value", value, "for", node.alias, "in collection", node.config.get("rdmCollection"));
+          }
+
           tile.data.set(nodeid, val ? val.id : null);
         }
       }
@@ -451,6 +472,9 @@ class ConceptValueViewModel extends String implements IViewModel {
 class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
   [key: string]: any;
   __parentPseudo: PseudoValue | undefined;
+
+  describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
+  describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
 
   _value: { [key: string]: any };
 
@@ -518,6 +542,9 @@ class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
 
 class StringViewModel extends String implements IViewModel {
   __parentPseudo: PseudoValue | undefined;
+
+  describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
+  describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
 
   _value: Map<string, object>;
 
@@ -654,8 +681,15 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     return `[[${entries.join(",")}]]`;
   }
 
+  async toObject() {
+    const entries = [...(await this.__getChildValues()).entries()];
+    return Object.fromEntries(await Promise.all(entries.map(async ([k, vl]) => {
+        return [k, (await vl).getValue()];
+    })));
+  }
+
   async forJson() {
-    async function _forJson(v) {
+    async function _forJson(v: IViewModel | null) {
       v = await v;
       if (!v) {
         return null;
@@ -663,21 +697,15 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       if (v && v instanceof PseudoValue) {
         v = await v.getValue();
       }
-      if (v && v instanceof Array) {
-        return await Promise.all(v.map(n => _forJson(n)));
-      }
       if (v && v instanceof Object && v.forJson) {
         return await v.forJson();
       }
       return v;
     };
-    let entries = [...(await this.__getChildValues()).entries()];
-    entries = Promise.all(entries.map(async ([k, vl]) => {
+    const entries = [...(await this.__getChildValues()).entries()];
+    return Object.fromEntries(await Promise.all(entries.map(async ([k, vl]) => {
         return [k, vl ? await _forJson(vl) : vl];
-    }));
-
-    const values = Object.fromEntries(await entries);
-    return values;
+    })));
   }
 
   async __update(map: Map<string, any>) {
@@ -706,7 +734,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
         child = this.__makePseudo(key);
       }
       this.__childValues.set(key, child);
-      child.parentNode = this;
+      child.parentNode = this.__parentPseudo;
     }
     this.__childValues.get(key).value = value;
   }
@@ -757,7 +785,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
         // local cache simply because the node is not loaded yet.
         this.__childValues.set(key, child);
       }
-      child.parentNode = this;
+      child.parentNode = this.__parentPseudo;
     } else {
       child = this.__childValues.get(key);
     }
@@ -845,6 +873,12 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
 
     const children: Map<string, any> = new Map();
     for (let [key, values] of [...parent._.valueList.values.entries()]) {
+      // if (this.__parentPseudo && this.__parentPseudo.node.alias == "localities_administrative_areas") {
+      //   console.log("M", key, values);
+      // }
+      // if (this.__node && this.__node.alias == "localities_administrative_areas" || this.__node.alias == "area_names") {
+      //   console.log(items, 'CHILDREN', this.__node.alias);
+      // }
       if (values instanceof Promise) {
         values = await values;
       }
@@ -861,7 +895,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
         ) {
           if (
             (tile && value.parenttile_id == tile.tileid) ||
-            (value.node.nodegroup_id == node.nodeid &&
+            (value.node.nodegroup_id == node.nodegroup_id &&
               tile &&
               value.tile == tile &&
               !childNode.is_collector) //  # It shares a tile
@@ -945,10 +979,19 @@ async function getViewModel(
   let asTileData: Function | null = null;
   if (vm) {
     vm.__parentPseudo = parentPseudo;
+    if (vm instanceof Array) {
+      for (const vme of vm) {
+        if (vme instanceof Promise) {
+          vme.then(vmep => { vmep.__parentPseudo = parentPseudo; });
+        } else {
+          vme.__parentPseudo = parentPseudo;
+        }
+      }
+    }
     asTileData = vm.__asTileData.bind(vm);
   }
 
   return [vm, asTileData, "string", false];
 }
 
-export { ResourceInstanceViewModel, ValueList, getViewModel };
+export { ResourceInstanceViewModel, ValueList, getViewModel, DomainValueViewModel, SemanticViewModel, StringViewModel, GeoJSONViewModel, ConceptValueViewModel };

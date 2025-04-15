@@ -12,7 +12,7 @@ class GraphResult {
 abstract class ArchesClient {
   abstract getGraphs(): Promise<GraphResult>;
 
-  abstract getGraph(graphId: string): Promise<StaticGraph>;
+  abstract getGraph(graphId: string): Promise<StaticGraph | null>;
 
   abstract getResources(
     graphId: string,
@@ -39,7 +39,7 @@ class ArchesClientRemote extends ArchesClient {
     return await response.json();
   }
 
-  async getGraph(graphId: string): Promise<StaticGraph> {
+  async getGraph(graphId: string | null): Promise<StaticGraph> {
     const response = await fetch(
       `${this.archesUrl}/graphs/${graphId}?format=arches-json&gen=`,
     );
@@ -101,7 +101,7 @@ class ArchesClientRemoteStatic extends ArchesClient {
     return await response.json();
   }
 
-  async getGraph(graphId: string): Promise<StaticGraph> {
+  async getGraph(graphId: string): Promise<StaticGraph | null> {
     const response = await fetch(
       `${this.archesUrl}/${this.graphIdToGraphFile(graphId)}`,
     );
@@ -109,10 +109,12 @@ class ArchesClientRemoteStatic extends ArchesClient {
   }
 
   async getResource(resourceId: string): Promise<StaticResource> {
-    const response = await fetch(
-      `${this.archesUrl}/${this.resourceIdToFile(resourceId)}`,
-    );
-    return await response.json();
+    const source = `${this.archesUrl}/${this.resourceIdToFile(resourceId)}`;
+    const response = await fetch(source);
+    return response.json().then((response: StaticResource) => {
+      response.__source = source;
+      return response;
+    });
   }
 
   async getCollection(collectionId: string): Promise<StaticCollection> {
@@ -128,8 +130,12 @@ class ArchesClientRemoteStatic extends ArchesClient {
   ): Promise<StaticResource[]> {
     const resources = [];
     for (const file of this.graphIdToResourcesFiles(graphId)) {
-      const response = await fetch(`${this.archesUrl}/${file}`);
-      const resourceSet = (await response.json()).business_data.resources;
+      const source = `${this.archesUrl}/${file}`;
+      const response = await fetch(source);
+      const resourceSet: StaticResource[] = (await response.json()).business_data.resources;
+      for (const resource of resourceSet) {
+        resource.__source = source;
+      }
       resources.push(...(limit ? resourceSet.slice(0, limit) : resourceSet));
       if (limit && resources.length > limit) {
         break;
@@ -179,10 +185,14 @@ class ArchesClientLocal extends ArchesClient {
     return await JSON.parse(response);
   }
 
-  async getGraph(graphId: string): Promise<StaticGraph> {
+  async getGraph(graphId: string): Promise<StaticGraph | null> {
     const fs = await this.fs;
+    const graphFile = this.graphIdToGraphFile(graphId);
+    if (!graphFile) {
+      return null;
+    }
     const response = await fs.readFile(
-      this.graphIdToGraphFile(graphId),
+      graphFile,
       "utf8",
     );
     return await JSON.parse(response).graph[0];
@@ -190,11 +200,15 @@ class ArchesClientLocal extends ArchesClient {
 
   async getResource(resourceId: string): Promise<StaticResource> {
     const fs = await this.fs;
+    const source = this.resourceIdToFile(resourceId);
     const response = await fs.readFile(
-      this.resourceIdToFile(resourceId),
+      source,
       "utf8",
     );
-    return await JSON.parse(response);
+    return JSON.parse(response).then((resource: StaticResource) => {
+      resource.__source = source;
+      return resource;
+    });
   }
 
   async getCollection(collectionId: string): Promise<StaticCollection> {
@@ -214,7 +228,13 @@ class ArchesClientLocal extends ArchesClient {
     const resources = [];
     for (const file of this.graphIdToResourcesFiles(graphId)) {
       const response = await fs.readFile(file, "utf8");
-      const resourceSet = (await JSON.parse(response)).business_data.resources;
+      const source = file;
+      const resourceSet: StaticResource[] = (await JSON.parse(response)).business_data.resources.filter(
+        (resource: StaticResource) => graphId === resource.resourceinstance.graph_id
+      );
+      for (const resource of resourceSet) {
+        resource.__source = source;
+      }
       resources.push(...(limit ? resourceSet.slice(0, limit) : resourceSet));
       if (limit && resources.length > limit) {
         break;

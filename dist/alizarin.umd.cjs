@@ -69,10 +69,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return (await response.json()).graph[0];
     }
     async getResource(resourceId) {
-      const response = await fetch(
-        `${this.archesUrl}/${this.resourceIdToFile(resourceId)}`
-      );
-      return await response.json();
+      const source = `${this.archesUrl}/${this.resourceIdToFile(resourceId)}`;
+      const response = await fetch(source);
+      return response.json().then((response2) => {
+        response2.__source = source;
+        return response2;
+      });
     }
     async getCollection(collectionId) {
       const response = await fetch(
@@ -83,8 +85,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     async getResources(graphId, limit) {
       const resources = [];
       for (const file of this.graphIdToResourcesFiles(graphId)) {
-        const response = await fetch(`${this.archesUrl}/${file}`);
+        const source = `${this.archesUrl}/${file}`;
+        const response = await fetch(source);
         const resourceSet = (await response.json()).business_data.resources;
+        for (const resource of resourceSet) {
+          resource.__source = source;
+        }
         resources.push(...limit ? resourceSet.slice(0, limit) : resourceSet);
         if (limit && resources.length > limit) {
           break;
@@ -124,19 +130,27 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     async getGraph(graphId) {
       const fs = await this.fs;
+      const graphFile = this.graphIdToGraphFile(graphId);
+      if (!graphFile) {
+        return null;
+      }
       const response = await fs.readFile(
-        this.graphIdToGraphFile(graphId),
+        graphFile,
         "utf8"
       );
       return await JSON.parse(response).graph[0];
     }
     async getResource(resourceId) {
       const fs = await this.fs;
+      const source = this.resourceIdToFile(resourceId);
       const response = await fs.readFile(
-        this.resourceIdToFile(resourceId),
+        source,
         "utf8"
       );
-      return await JSON.parse(response);
+      return JSON.parse(response).then((resource) => {
+        resource.__source = source;
+        return resource;
+      });
     }
     async getCollection(collectionId) {
       const fs = await this.fs;
@@ -151,7 +165,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       const resources = [];
       for (const file of this.graphIdToResourcesFiles(graphId)) {
         const response = await fs.readFile(file, "utf8");
-        const resourceSet = (await JSON.parse(response)).business_data.resources;
+        const source = file;
+        const resourceSet = (await JSON.parse(response)).business_data.resources.filter(
+          (resource) => graphId === resource.resourceinstance.graph_id
+        );
+        for (const resource of resourceSet) {
+          resource.__source = source;
+        }
         resources.push(...limit ? resourceSet.slice(0, limit) : resourceSet);
         if (limit && resources.length > limit) {
           break;
@@ -486,6 +506,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.value = jsonData.value;
       this.__concept = concept;
     }
+    toString() {
+      return this.value;
+    }
   }
   class StaticConcept {
     constructor(jsonData) {
@@ -601,7 +624,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.graph_publication_id = jsonData.graph_publication_id;
     }
   }
-  let StaticDomainValue$1 = class StaticDomainValue {
+  class StaticDomainValue {
     constructor(jsonData) {
       __publicField(this, "id");
       __publicField(this, "selected");
@@ -631,11 +654,24 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         text: this.text
       };
     }
-  };
+  }
+  class StaticResourceReference {
+    constructor(jsonData) {
+      __publicField(this, "id");
+      __publicField(this, "type");
+      __publicField(this, "graphId");
+      __publicField(this, "root");
+      this.id = jsonData.id;
+      this.type = jsonData.type;
+      this.graphId = jsonData.graphId;
+      this.root = jsonData.root;
+    }
+  }
   class StaticResource {
     constructor(jsonData) {
       __publicField(this, "resourceinstance");
       __publicField(this, "tiles", null);
+      __publicField(this, "__source");
       this.resourceinstance = new StaticResourceMetadata(
         jsonData.resourceinstance
       );
@@ -646,12 +682,14 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     __proto__: null,
     StaticCollection,
     StaticConcept,
-    StaticDomainValue: StaticDomainValue$1,
+    StaticDomainValue,
     StaticEdge,
     StaticGraph,
     StaticNode,
     StaticNodegroup,
     StaticResource,
+    StaticResourceMetadata,
+    StaticResourceReference,
     StaticTile,
     StaticValue
   }, Symbol.toStringTag, { value: "Module" }));
@@ -673,6 +711,58 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   }
   const RDM = new ReferenceDataManager(archesClient);
+  class StaticStore {
+    constructor(archesClient2, cacheMetadataOnly = true) {
+      __publicField(this, "archesClient");
+      __publicField(this, "cache");
+      __publicField(this, "cacheMetadataOnly");
+      this.archesClient = archesClient2;
+      this.cache = /* @__PURE__ */ new Map();
+      this.cacheMetadataOnly = cacheMetadataOnly;
+    }
+    async getMeta(id, onlyIfCached = true) {
+      if (this.cache.has(id)) {
+        const resource = this.cache.get(id);
+        if (resource instanceof StaticResource) {
+          return resource.resourceinstance;
+        }
+        return resource;
+      }
+      if (!onlyIfCached) {
+        const resource = await this.loadOne(id);
+        return resource.resourceinstance;
+      }
+      return null;
+    }
+    async *loadAll(graphId, limit = void 0) {
+      const resourcesJSON = await this.archesClient.getResources(graphId, limit || 0);
+      for (const resourceJSON of resourcesJSON.values()) {
+        const resource = new StaticResource(resourceJSON);
+        if (this.cacheMetadataOnly) {
+          this.cache.set(
+            resource.resourceinstance.resourceinstanceid,
+            this.cacheMetadataOnly ? resource.resourceinstance : resource
+          );
+        }
+        yield resource;
+      }
+    }
+    async loadOne(id) {
+      if (this.cache.has(id)) {
+        const resource2 = this.cache.get(id);
+        if (resource2 instanceof StaticResource) {
+          return resource2;
+        }
+      }
+      const resourceJSON = await this.archesClient.getResource(id);
+      const resource = new StaticResource(resourceJSON);
+      if (this.cacheMetadataOnly) {
+        this.cache.set(id, this.cacheMetadataOnly ? resource.resourceinstance : resource);
+      }
+      return resource;
+    }
+  }
+  const staticStore = new StaticStore(archesClient);
   class StaticNodeConfigDomain {
     constructor(jsonData) {
       __publicField(this, "i18n_config");
@@ -681,8 +771,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.options = jsonData.options;
       if (this.options) {
         this.options = this.options.map((sdv) => {
-          if (!(sdv instanceof StaticDomainValue$1)) {
-            return new StaticDomainValue$1(sdv);
+          if (!(sdv instanceof StaticDomainValue)) {
+            return new StaticDomainValue(sdv);
           }
           return sdv;
         });
@@ -770,7 +860,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
               this.wrapper.model.getEdges(),
               false,
               this.tiles
-            ).then((ngValues) => {
+            ).then(([ngValues]) => {
               for (const [key2, value] of [...ngValues.entries()]) {
                 this.values.set(key2, value);
               }
@@ -836,11 +926,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return `[${this.__.wkrm.modelClassName}:${this.id ?? "-"}]`;
     }
     async forJson(cascade = false) {
-      const basic = {
+      const jsonData = {
         type: this.__.wkrm.modelClassName,
         graphId: this.__.wkrm.graphId,
         id: this.id
       };
+      const basic = new StaticResourceReference(jsonData);
       if (cascade) {
         const root = await (await this._.getRoot()).getValue();
         basic.root = await root.forJson();
@@ -852,6 +943,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     constructor() {
       super(...arguments);
       __publicField(this, "__parentPseudo");
+      __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
+      __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
       __publicField(this, "_value", null);
     }
     async forJson() {
@@ -905,6 +998,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     constructor() {
       super(...arguments);
       __publicField(this, "__parentPseudo");
+      __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
+      __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
       __publicField(this, "_value", null);
     }
     async forJson() {
@@ -951,11 +1046,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     constructor(value) {
       super(value.toString());
       __publicField(this, "__parentPseudo");
+      __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
+      __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
       __publicField(this, "_value");
       this._value = value;
     }
     async forJson() {
-      return await this._value.forJson();
+      return this._value;
     }
     getValue() {
       return this._value;
@@ -1010,11 +1107,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     constructor(value) {
       super(value.value);
       __publicField(this, "__parentPseudo");
+      __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
+      __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
       __publicField(this, "_value");
       this._value = value;
     }
     async forJson() {
-      return `${(await this._value).value}`;
+      return this._value;
     }
     getValue() {
       return this._value;
@@ -1045,6 +1144,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
               const collection = RDM.retrieveCollection(collectionId);
               return collection.then((collection2) => {
                 const val2 = collection2.getConceptValue(value);
+                if (!val2) {
+                  console.error("Could not find concept for value", value, "for", node.alias, "in collection", collectionId);
+                }
                 tile.data.set(nodeid, val2 ? val2.id : null);
                 if (!tile || !val2) {
                   return null;
@@ -1061,6 +1163,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
             throw Error("Could not set concept from this data");
           }
           if (!(val instanceof Promise)) {
+            if (!val) {
+              console.error("Could not find concept for value", value, "for", node.alias, "in collection", node.config.get("rdmCollection"));
+            }
             tile.data.set(nodeid, val ? val.id : null);
           }
         }
@@ -1078,6 +1183,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   class GeoJSONViewModel {
     constructor(jsonData) {
       __publicField(this, "__parentPseudo");
+      __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
+      __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
       __publicField(this, "_value");
       this._value = jsonData;
       return new Proxy(this, {
@@ -1141,6 +1248,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       }
       super(displayValue);
       __publicField(this, "__parentPseudo");
+      __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
+      __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
       __publicField(this, "_value");
       this._value = value;
     }
@@ -1246,6 +1355,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       const entries = this.__childValues.entries().map(([k, v]) => `${k}: ${v}`);
       return `[[${entries.join(",")}]]`;
     }
+    async toObject() {
+      const entries = [...(await this.__getChildValues()).entries()];
+      return Object.fromEntries(await Promise.all(entries.map(async ([k, vl]) => {
+        return [k, (await vl).getValue()];
+      })));
+    }
     async forJson() {
       async function _forJson(v) {
         v = await v;
@@ -1255,20 +1370,15 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         if (v && v instanceof PseudoValue) {
           v = await v.getValue();
         }
-        if (v && v instanceof Array) {
-          return await Promise.all(v.map((n) => _forJson(n)));
-        }
         if (v && v instanceof Object && v.forJson) {
           return await v.forJson();
         }
         return v;
       }
-      let entries = [...(await this.__getChildValues()).entries()];
-      entries = Promise.all(entries.map(async ([k, vl]) => {
+      const entries = [...(await this.__getChildValues()).entries()];
+      return Object.fromEntries(await Promise.all(entries.map(async ([k, vl]) => {
         return [k, vl ? await _forJson(vl) : vl];
-      }));
-      const values = Object.fromEntries(await entries);
-      return values;
+      })));
     }
     async __update(map) {
       return Promise.all(
@@ -1293,7 +1403,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           child = this.__makePseudo(key);
         }
         this.__childValues.set(key, child);
-        child.parentNode = this;
+        child.parentNode = this.__parentPseudo;
       }
       this.__childValues.get(key).value = value;
     }
@@ -1333,7 +1443,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         } else {
           this.__childValues.set(key, child);
         }
-        child.parentNode = this;
+        child.parentNode = this.__parentPseudo;
       } else {
         child = this.__childValues.get(key);
       }
@@ -1408,7 +1518,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         const childNode = childNodes.get(key);
         for (const value of values) {
           if (childNode && value !== null && (!value.parentNode || value.parentNode === this.__parentPseudo)) {
-            if (tile && value.parenttile_id == tile.tileid || value.node.nodegroup_id == node.nodeid && tile && value.tile == tile && !childNode.is_collector) {
+            if (tile && value.parenttile_id == tile.tileid || value.node.nodegroup_id == node.nodegroup_id && tile && value.tile == tile && !childNode.is_collector) {
               children.set(key, value);
             } else if (node.nodegroup_id != value.node.nodegroup_id && childNode.is_collector) {
               if (value instanceof PseudoList || value.value && Array.isArray(value.value)) {
@@ -1468,13 +1578,29 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     let asTileData = null;
     if (vm) {
       vm.__parentPseudo = parentPseudo;
+      if (vm instanceof Array) {
+        for (const vme of vm) {
+          if (vme instanceof Promise) {
+            vme.then((vmep) => {
+              vmep.__parentPseudo = parentPseudo;
+            });
+          } else {
+            vme.__parentPseudo = parentPseudo;
+          }
+        }
+      }
       asTileData = vm.__asTileData.bind(vm);
     }
     return [vm, asTileData, "string", false];
   }
   const viewModels = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
     __proto__: null,
+    ConceptValueViewModel,
+    DomainValueViewModel,
+    GeoJSONViewModel,
     ResourceInstanceViewModel,
+    SemanticViewModel,
+    StringViewModel,
     ValueList,
     getViewModel
   }, Symbol.toStringTag, { value: "Module" }));
@@ -1518,6 +1644,23 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.value = value;
       this.accessed = false;
       this.originalTile = tile;
+    }
+    describeField() {
+      let fieldName = this.node.name;
+      if (this.parent) {
+        fieldName = `${this.parent.__.wkrm.modelName} - ${fieldName}`;
+      }
+      return fieldName;
+    }
+    describeFieldGroup() {
+      let fieldName = this.node.name;
+      if (this.parent && this.node.nodegroup_id) {
+        const nodegroup = this.parent._.model.getNodeObjects().get(this.node.nodegroup_id);
+        if (nodegroup) {
+          fieldName = `${this.parent.__.wkrm.modelName} - ${nodegroup.name}`;
+        }
+      }
+      return fieldName;
     }
     // TODO deepcopy
     //
@@ -1658,6 +1801,17 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.parenttileId = void 0;
       this.ghostChildren = /* @__PURE__ */ new Set();
     }
+    async forJson() {
+      const array = Array.from(
+        this.map(
+          async (entry) => {
+            const value = await entry;
+            return value && value instanceof Object && value.forJson ? value.forJson() : value;
+          }
+        )
+      );
+      return Promise.all(array);
+    }
     getValue() {
       return this;
     }
@@ -1710,25 +1864,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.graphs = null;
     }
   }
-  class StaticStore {
-    constructor(archesClient2) {
-      __publicField(this, "archesClient");
-      this.archesClient = archesClient2;
-    }
-    async loadAll(graphId, limit = void 0) {
-      const resourcesJSON = await this.archesClient.getResources(graphId, limit || 0);
-      resourcesJSON.length;
-      return [...resourcesJSON.entries()].map(
-        ([num, resourceJSON]) => {
-          return new StaticResource(resourceJSON);
-        }
-      );
-    }
-    async loadOne(id) {
-      const resourceJSON = await this.archesClient.getResource(id);
-      return new StaticResource(resourceJSON);
-    }
-  }
   class ResourceInstanceWrapper {
     constructor(wkri, model, resource) {
       __publicField(this, "wkri");
@@ -1750,6 +1885,10 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return (await this.getRoot()).entries();
     }
     async getOrmAttribute(key) {
+      if (this.resource === null) {
+        this.resource = await this.model.find(this.wkri.id);
+        await this.populate(true);
+      }
       const root = await this.getRoot();
       if (root) {
         const value = root.getValue();
@@ -1788,12 +1927,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         throw Error(`Tried to set ${key} on ${self}, which has no root`);
       }
     }
-    async ensureNodegroup(allValues, node, nodegroupId, nodeObjs, nodegroupObjs, edges, addIfMissing, tiles) {
+    async ensureNodegroup(allValues, node, nodegroupId, nodeObjs, nodegroupObjs, edges, addIfMissing, tiles, doImpliedNodegroups = true) {
       if (!node) {
         return allValues;
       }
       const alias = node.alias || "";
-      const impliedNodegroups = /* @__PURE__ */ new Set();
+      const impliedNodegroups = /* @__PURE__ */ new Map();
       const value = node && await allValues.get(alias);
       let newAllValues = allValues;
       if (value === false || addIfMissing && value === void 0) {
@@ -1823,25 +1962,30 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           [...newValues.entries()].forEach((entry) => {
             newAllValues.set(entry[0], entry[1]);
           });
-          [...newImpliedNodegroups.keys()].forEach((k) => {
-            impliedNodegroups.add(k);
+          [...newImpliedNodegroups.entries()].forEach(([k, v]) => {
+            impliedNodegroups.set(k, v);
           });
         }
       }
-      for (const nodegroupId2 of impliedNodegroups) {
-        newAllValues = await this.ensureNodegroup(
-          newAllValues,
-          node,
-          nodegroupId2,
-          nodeObjs,
-          nodegroupObjs,
-          edges,
-          true,
-          tiles
-          // RMV different from Python
-        );
+      if (doImpliedNodegroups) {
+        for (const [nodegroupId2, node2] of [...impliedNodegroups.entries()]) {
+          const [impliedValues] = await this.ensureNodegroup(
+            newAllValues,
+            node2,
+            nodegroupId2,
+            nodeObjs,
+            nodegroupObjs,
+            edges,
+            true,
+            tiles,
+            // RMV different from Python
+            true
+          );
+          newAllValues = impliedValues;
+        }
+        impliedNodegroups.clear();
       }
-      return newAllValues;
+      return [newAllValues, impliedNodegroups];
     }
     async populate(lazy) {
       const nodeObjs = this.model.getNodeObjects();
@@ -1863,8 +2007,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       allValues.set(rootNode.alias, false);
       if (!lazy && this.resource) {
         const tiles = this.resource.tiles;
+        let impliedNodegroups = /* @__PURE__ */ new Map();
         for (const [ng, _] of nodegroupObjs) {
-          for (const [key, value] of await this.ensureNodegroup(
+          const [values, newImpliedNodegroups] = await this.ensureNodegroup(
             allValues,
             nodeObjs.get(ng) || rootNode,
             // should be the only missing ID
@@ -1874,10 +2019,43 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
             edges,
             true,
             // RMV: check vs python
-            tiles
-          )) {
+            tiles,
+            false
+          );
+          for (const [key, value] of [...values.entries()]) {
             allValues.set(key, value);
           }
+          for (const [impliedNodegroup, impliedNode] of [...newImpliedNodegroups.entries()]) {
+            impliedNodegroups.set(impliedNodegroup, impliedNode);
+          }
+          impliedNodegroups.delete(ng);
+        }
+        while (impliedNodegroups.size) {
+          const newImpliedNodegroups = /* @__PURE__ */ new Map();
+          for (const [nodegroupId, impliedNode] of [...impliedNodegroups.entries()]) {
+            const currentValue = allValues.get(impliedNode.nodeid);
+            if (currentValue === false || currentValue === void 0) {
+              const [impliedValues, newImpliedNodegroups2] = await this.ensureNodegroup(
+                allValues,
+                impliedNode,
+                nodegroupId,
+                nodeObjs,
+                nodegroupObjs,
+                edges,
+                true,
+                tiles,
+                // RMV different from Python
+                true
+              );
+              for (const [impliedNodegroup, impliedNode2] of [...newImpliedNodegroups2.entries()]) {
+                newImpliedNodegroups2.set(impliedNodegroup, impliedNode2);
+              }
+              for (const [key, value] of [...impliedValues.entries()]) {
+                allValues.set(key, value);
+              }
+            }
+          }
+          impliedNodegroups = newImpliedNodegroups;
         }
       }
       this.valueList = new ValueList(
@@ -1888,32 +2066,44 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     async valuesFromResourceNodegroup(existingValues, nodegroupTiles, nodegroupId, nodeObjs, edges) {
       const allValues = /* @__PURE__ */ new Map();
-      const impliedNodegroups = /* @__PURE__ */ new Set();
+      const impliedNodegroups = /* @__PURE__ */ new Map();
+      const impliedNodes = /* @__PURE__ */ new Map();
       const nodesUnseen = new Set(
         [...nodeObjs.values()].filter((node) => node.nodegroup_id == nodegroupId).map((node) => node.alias)
       );
+      const tileNodesSeen = /* @__PURE__ */ new Set();
       const _addPseudo = async (node, tile) => {
         const key = node.alias || "";
         nodesUnseen.delete(node.alias);
+        const tileid = tile && tile.tileid;
+        if (tileid) {
+          tileNodesSeen.add([node.nodeid, tileid]);
+        }
         let existing = existingValues.get(key);
         if (existing instanceof Promise) {
           existing = await existing;
         }
         if (existing !== false && existing !== void 0) {
-          throw Error(`Tried to load node twice: ${key} ${existing}`);
+          console.error("Existing:", existing);
+          throw Error(`Tried to load node twice: ${key}`);
         }
         if (!allValues.has(key)) {
           allValues.set(key, []);
         }
         const pseudoNode = this.model.makePseudoCls(key, false, tile, this.wkri);
         for (const [domain, ranges] of edges) {
-          if (node.nodegroup_id && ranges.includes(node.nodegroup_id)) {
+          if (ranges.includes(node.nodeid)) {
             const domainNode = nodeObjs.get(domain);
             if (!domainNode) {
               throw Error("Edge error in graph");
             }
             const toAdd = domainNode.nodegroup_id ? domainNode.nodegroup_id : domainNode.nodeid;
-            impliedNodegroups.add(toAdd);
+            if (toAdd && toAdd !== nodegroupId) {
+              impliedNodegroups.set(toAdd, domainNode);
+            }
+            if (domainNode.nodegroup_id && domainNode.nodegroup_id !== domainNode.nodeid && domainNode.nodegroup_id === node.nodegroup_id && tileid && !impliedNodes.has(domainNode.nodeid + tileid)) {
+              impliedNodes.set(domainNode.nodeid + tileid, [domainNode, tile]);
+            }
             break;
           }
         }
@@ -1940,7 +2130,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         if (parentNode === void 0) {
           continue;
         }
-        await _addPseudo(parentNode, tile);
+        if (!parentNode.nodegroup_id || parentNode.nodegroup_id == nodegroupId) {
+          await _addPseudo(parentNode, tile);
+        }
         if (tile) {
           const tileNodes = /* @__PURE__ */ new Map();
           for (const [key, value] of [...tile.data.entries()]) {
@@ -1961,6 +2153,16 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
               await _addPseudo(node, tile);
             }
           }
+        }
+      }
+      while (impliedNodes.size > 0) {
+        const value = impliedNodes.entries().next().value;
+        if (value) {
+          const [node, tile] = value[1];
+          if (tile.tileid && !tileNodesSeen.has([node.nodeid, tile.tileid])) {
+            await _addPseudo(node, tile);
+          }
+          impliedNodes.delete(value[0]);
         }
       }
       [...nodesUnseen.keys()].forEach((nodeUnseen) => {
@@ -1986,13 +2188,19 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.makePseudoCls = makePseudoCls.bind(this);
     }
     async all(params) {
-      return Promise.all(
-        (await staticStore.loadAll(this.wkrm.graphId, params.limit)).map(
-          (resource) => {
-            return this.fromStaticResource(resource, params.lazy);
-          }
-        )
-      );
+      const promises = [];
+      for await (const resource of this.iterAll(params)) {
+        promises.push(resource);
+      }
+      return Promise.all(promises);
+    }
+    async *resourceGenerator(staticResources, lazy = false) {
+      for await (const staticResource of staticResources) {
+        yield this.fromStaticResource(staticResource, lazy);
+      }
+    }
+    async *iterAll(params) {
+      yield* this.resourceGenerator(staticStore.loadAll(this.wkrm.graphId, params.limit), params.lazy);
     }
     async find(id, lazy = true) {
       const rivm = await staticStore.loadOne(id);
@@ -2031,6 +2239,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.nodes = /* @__PURE__ */ new Map();
       this.nodegroups = /* @__PURE__ */ new Map();
       const graph = graphManager.getGraph(this.wkrm.graphId);
+      if (!graph) {
+        throw Error(`Could not find graph ${this.wkrm.graphId} for resource`);
+      }
       const nodes = new Map(graph.nodes.map((node) => [node.nodeid, node]));
       const nodegroups = new Map(
         graph.nodes.filter((node) => node.nodegroup_id).map((node) => [
@@ -2170,10 +2381,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       await Promise.all(
         graphs.map(async (graphId) => {
           const bodyJson = await this.archesClient.getGraph(graphId);
-          const graph = new StaticGraph(bodyJson);
-          const wkrm = new WKRM(graph.name.toString(), graph.graphid);
-          this.wkrms.set(wkrm.modelClassName, wkrm);
-          this.graphs.set(graph.graphid, makeResourceModelWrapper(wkrm, graph));
+          if (bodyJson) {
+            const graph = new StaticGraph(bodyJson);
+            const wkrm = new WKRM(graph.name.toString(), graph.graphid);
+            this.wkrms.set(wkrm.modelClassName, wkrm);
+            this.graphs.set(graph.graphid, makeResourceModelWrapper(wkrm, graph));
+          }
         })
       );
       this._initialized = true;
@@ -2199,7 +2412,140 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   }
   const graphManager = new GraphManager(archesClient);
-  const staticStore = new StaticStore(archesClient);
+  class Cleanable extends String {
+    constructor() {
+      super(...arguments);
+      __publicField(this, "__clean");
+    }
+  }
+  class Renderer {
+    async render(asset) {
+      const root = await (await asset._.getRoot()).getValue();
+      return this.renderValue(root);
+    }
+    async renderDomainValue(value) {
+      return value;
+    }
+    async renderConceptValue(value) {
+      return value;
+    }
+    async renderResourceReference(value) {
+      return value;
+    }
+    renderBlock(block) {
+      const renderedBlock = {};
+      const promises = [];
+      for (const [key, value] of Object.entries(block)) {
+        promises.push(
+          this.renderValue(value).then((val) => {
+            renderedBlock[key] = val;
+          })
+        );
+      }
+      return Promise.all(promises).then(() => renderedBlock);
+    }
+    async renderValue(value) {
+      let newValue;
+      if (value instanceof Promise) {
+        value = await value;
+      }
+      if (value instanceof DomainValueViewModel) {
+        newValue = this.renderDomainValue(value);
+      } else if (value instanceof ConceptValueViewModel) {
+        newValue = this.renderConceptValue(value);
+      } else if (value instanceof ResourceInstanceViewModel) {
+        newValue = this.renderResourceReference(value);
+      } else if (value instanceof SemanticViewModel) {
+        newValue = this.renderBlock(await value.toObject());
+      } else if (value instanceof Array) {
+        newValue = Promise.all(value.map((val) => this.renderValue(val)));
+      } else if (value instanceof StringViewModel) {
+        newValue = `${value}`;
+      } else if (value instanceof GeoJSONViewModel) {
+        newValue = this.renderBlock(await value.forJson());
+      } else if (value instanceof Object) {
+        newValue = this.renderBlock(value);
+      } else {
+        newValue = value;
+      }
+      return newValue;
+    }
+  }
+  class MarkdownRenderer extends Renderer {
+    constructor(callbacks) {
+      super();
+      __publicField(this, "conceptValueToUrl");
+      __publicField(this, "domainValueToUrl");
+      __publicField(this, "resourceReferenceToUrl");
+      this.conceptValueToUrl = callbacks.conceptValueToUrl;
+      this.domainValueToUrl = callbacks.domainValueToUrl;
+      this.resourceReferenceToUrl = callbacks.resourceReferenceToUrl;
+    }
+    async renderDomainValue(domainValue) {
+      const value = await domainValue.getValue();
+      const url = this.domainValueToUrl ? await this.domainValueToUrl(domainValue) : null;
+      const text = url ? `[${value.toString()}](${url.trim()})` : value.toString();
+      const wrapper = new Cleanable(`
+    <span
+      class='alizarin-domain-value' data-id='${value.id}'
+    >
+      ${text}
+    </span>`.replace(/\n/g, " "));
+      wrapper.__clean = domainValue.toString();
+      return wrapper;
+    }
+    async renderConceptValue(conceptValue) {
+      const value = await conceptValue.getValue();
+      const url = this.conceptValueToUrl ? await this.conceptValueToUrl(conceptValue) : null;
+      const text = url ? `[${value.value}](${url.trim()})` : value.value;
+      const wrapper = new Cleanable(`
+    <span
+      class='alizarin-concept-value' data-id='${value.id}'
+      data-concept-id='${value.__concept ? value.__concept.id : ""}'
+      data-concept-ref='$${value.__concept ? value.__concept.source : ""}'
+    >
+      ${text}
+    </span>`.replace(/\n/g, " "));
+      wrapper.__clean = conceptValue.toString();
+      return wrapper;
+    }
+    async renderResourceReference(rivm) {
+      const value = await rivm.forJson(false);
+      const url = this.resourceReferenceToUrl ? await this.resourceReferenceToUrl(rivm) : null;
+      let title = value.type || "Resource";
+      const text = url ? `[${title}](${url.trim()})` : title;
+      const resourceMetadata = await staticStore.getMeta(value.id);
+      if (resourceMetadata) {
+        title = resourceMetadata.name;
+      }
+      const wrapper = new Cleanable(`
+    <span
+      class='alizarin-resource-instance alizarin-related-resource' data-id='${value.id}'
+      data-graph-id='${value.graphId}'
+    >
+      ${text}
+    </span>`.replace(/\n/g, " "));
+      wrapper.__clean = rivm.toString();
+      return wrapper;
+    }
+  }
+  class JsonRenderer extends Renderer {
+    async renderConceptValue(value) {
+      return value.forJson();
+    }
+    async renderDomainValue(value) {
+      return value.forJson();
+    }
+    async renderResourceReference(value) {
+      return value.forJson();
+    }
+  }
+  const renderers = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    Cleanable,
+    JsonRenderer,
+    MarkdownRenderer
+  }, Symbol.toStringTag, { value: "Module" }));
   const __viteBrowserExternal = {};
   const __viteBrowserExternal$1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
     __proto__: null,
@@ -2208,6 +2554,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   exports2.RDM = RDM;
   exports2.client = client;
   exports2.graphManager = graphManager;
+  exports2.renderers = renderers;
   exports2.staticStore = staticStore;
   exports2.staticTypes = staticTypes;
   exports2.utils = utils;

@@ -1,4 +1,5 @@
 import { archesClient, ArchesClient, ArchesClientRemote } from "./client.ts";
+import { staticStore } from "./staticStore.ts"
 import {
   StaticValue,
   StaticConcept,
@@ -7,6 +8,7 @@ import {
   StaticNode,
   StaticNodegroup,
   StaticResource,
+  StaticResourceMetadata,
 } from "./static-types";
 import { ReferenceDataManager } from "./rdm";
 import { makePseudoCls } from "./pseudos.ts";
@@ -36,45 +38,17 @@ class ConfigurationOptions {
   }
 }
 
-class StaticStore {
-  archesClient: ArchesClient;
-
-  constructor(archesClient: ArchesClient) {
-    this.archesClient = archesClient;
-  }
-
-  async loadAll(
-    graphId: string,
-    limit: number | undefined = undefined,
-  ): Promise<Array<StaticResource>> {
-    const resourcesJSON: StaticResource[] =
-      await this.archesClient.getResources(graphId, limit || 0);
-    const count = resourcesJSON.length;
-    return [...resourcesJSON.entries()].map(
-      ([num, resourceJSON]: [number, StaticResource]) => {
-        return new StaticResource(resourceJSON);
-      },
-    );
-  }
-
-  async loadOne(id: string): Promise<StaticResource> {
-    const resourceJSON: StaticResource =
-      await this.archesClient.getResource(id);
-    return new StaticResource(resourceJSON);
-  }
-}
-
 class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements IInstanceWrapper {
   wkri: RIVM;
   model: ResourceModelWrapper<RIVM>;
 
-  resource: StaticResource | null;
-  valueList: ValueList<RIVM>;
+  resource: StaticResource | null | false ;
+  valueList: ValueList;
 
   constructor(
     wkri: RIVM,
     model: ResourceModelWrapper<RIVM>,
-    resource: StaticResource | null,
+    resource: StaticResource | null | false, // False to disable dynamic resource-loading
   ) {
     this.wkri = wkri;
     this.model = model;
@@ -95,6 +69,11 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
   }
 
   async getOrmAttribute(key: string): AttrPromise<IViewModel> | IViewModel {
+    if (this.resource === null) {
+      this.resource = await this.model.find(this.wkri.id);
+      await this.populate(true);
+    }
+
     // TODO remapping
     const root = await this.getRoot();
     if (root) {
@@ -148,12 +127,13 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
     edges: Map<string, string[]>,
     addIfMissing: boolean,
     tiles: StaticTile[] | null,
-  ): Promise<Map<string, any>> {
+    doImpliedNodegroups: boolean = true
+  ): Promise<[Map<string, any>, Map<string, StaticNode>]> {
     if (!node) {
       return allValues;
     }
     const alias: string = node.alias || "";
-    const impliedNodegroups: Set<string> = new Set();
+    const impliedNodegroups: Map<string, StaticNode> = new Map();
     const value = node && (await allValues.get(alias));
 
     let newAllValues = allValues;
@@ -186,27 +166,32 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
         [...newValues.entries()].forEach((entry) => {
           newAllValues.set(entry[0], entry[1]);
         });
-        [...newImpliedNodegroups.keys()].forEach((k) => {
-          impliedNodegroups.add(k);
+        [...newImpliedNodegroups.entries()].forEach(([k, v]) => {
+          impliedNodegroups.set(k, v);
         });
       }
     }
 
     // RMV double-check against Python logic
-    for (const nodegroupId of impliedNodegroups) {
-      newAllValues = await this.ensureNodegroup(
-        newAllValues,
-        node,
-        nodegroupId,
-        nodeObjs,
-        nodegroupObjs,
-        edges,
-        true,
-        tiles, // RMV different from Python
-      );
+    if (doImpliedNodegroups) {
+      for (const [nodegroupId, node] of [...impliedNodegroups.entries()]) {
+        const [impliedValues] = await this.ensureNodegroup(
+          newAllValues,
+          node,
+          nodegroupId,
+          nodeObjs,
+          nodegroupObjs,
+          edges,
+          true,
+          tiles, // RMV different from Python
+          true
+        );
+        newAllValues = impliedValues;
+      }
+      impliedNodegroups.clear();
     }
 
-    return newAllValues;
+    return [newAllValues, impliedNodegroups];
   }
 
   async populate(lazy: boolean) {
@@ -232,8 +217,9 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
 
     if (!lazy && this.resource) {
       const tiles = this.resource.tiles;
+      let impliedNodegroups = new Map<string, StaticNode>();
       for (const [ng, _] of nodegroupObjs) {
-        for (const [key, value] of await this.ensureNodegroup(
+        const [values, newImpliedNodegroups] = await this.ensureNodegroup(
           allValues,
           nodeObjs.get(ng) || rootNode, // should be the only missing ID
           ng,
@@ -242,9 +228,43 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
           edges,
           true, // RMV: check vs python
           tiles,
-        )) {
+          false
+        );
+        for (const [key, value] of [...values.entries()]) {
           allValues.set(key, value);
         }
+
+        for (const [impliedNodegroup, impliedNode] of [...newImpliedNodegroups.entries()]) {
+          impliedNodegroups.set(impliedNodegroup, impliedNode);
+        }
+        impliedNodegroups.delete(ng);
+      }
+
+      while (impliedNodegroups.size) {
+        const newImpliedNodegroups = new Map<string, StaticNode>();
+        for (const [nodegroupId, impliedNode] of [...impliedNodegroups.entries()]) {
+          const currentValue = allValues.get(impliedNode.nodeid);
+          if (currentValue === false || currentValue === undefined) {
+            const [impliedValues, newImpliedNodegroups] = await this.ensureNodegroup(
+              allValues,
+              impliedNode,
+              nodegroupId,
+              nodeObjs,
+              nodegroupObjs,
+              edges,
+              true,
+              tiles, // RMV different from Python
+              true
+            );
+            for (const [impliedNodegroup, impliedNode] of [...newImpliedNodegroups.entries()]) {
+              newImpliedNodegroups.set(impliedNodegroup, impliedNode);
+            }
+            for (const [key, value] of [...impliedValues.entries()]) {
+              allValues.set(key, value);
+            }
+          }
+        }
+        impliedNodegroups = newImpliedNodegroups;
       }
     }
 
@@ -264,22 +284,29 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
   ) {
     const allValues = new Map<string, any>();
 
-    const impliedNodegroups = new Set<string>();
+    const impliedNodegroups = new Map<string, StaticNode>();
+    const impliedNodes: Map<string, [StaticNode, StaticTile]> = new Map();
 
     const nodesUnseen = new Set(
       [...nodeObjs.values()]
         .filter((node) => node.nodegroup_id == nodegroupId)
         .map((node) => node.alias),
     );
+    const tileNodesSeen: Set<[string, string]> = new Set();
     const _addPseudo = async (node: StaticNode, tile: StaticTile | null) => {
       const key = node.alias || "";
       nodesUnseen.delete(node.alias);
+      const tileid = tile && tile.tileid;
+      if (tileid) {
+        tileNodesSeen.add([node.nodeid, tileid]);
+      }
       let existing = existingValues.get(key);
       if (existing instanceof Promise) {
         existing = await existing;
       }
       if (existing !== false && existing !== undefined) {
-        throw Error(`Tried to load node twice: ${key} ${existing}`);
+        console.error("Existing:", existing);
+        throw Error(`Tried to load node twice: ${key}`);
       }
       if (!allValues.has(key)) {
         allValues.set(key, []);
@@ -289,7 +316,7 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
       // be included below.
       // if tile.parenttile_id:
       for (const [domain, ranges] of edges) {
-        if (node.nodegroup_id && ranges.includes(node.nodegroup_id)) {
+        if (ranges.includes(node.nodeid)) {
           const domainNode = nodeObjs.get(domain);
           if (!domainNode) {
             throw Error("Edge error in graph");
@@ -297,7 +324,12 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
           const toAdd = domainNode.nodegroup_id
             ? domainNode.nodegroup_id
             : domainNode.nodeid;
-          impliedNodegroups.add(toAdd);
+          if (toAdd && toAdd !== nodegroupId) {
+            impliedNodegroups.set(toAdd, domainNode);
+          }
+          if (domainNode.nodegroup_id && domainNode.nodegroup_id !== domainNode.nodeid && domainNode.nodegroup_id === node.nodegroup_id && tileid && !impliedNodes.has(domainNode.nodeid + tileid)) {
+            impliedNodes.set(domainNode.nodeid + tileid, [domainNode, tile]);
+          }
           break;
         }
       }
@@ -326,7 +358,9 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
       if (parentNode === undefined) {
         continue;
       }
-      await _addPseudo(parentNode, tile);
+      if (!parentNode.nodegroup_id || parentNode.nodegroup_id == nodegroupId) {
+        await _addPseudo(parentNode, tile);
+      }
 
       if (tile) {
         const tileNodes = new Map();
@@ -349,6 +383,16 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
             await _addPseudo(node, tile);
           }
         }
+      }
+    }
+    while (impliedNodes.size > 0) {
+      const value = impliedNodes.entries().next().value;
+      if (value) {
+        const [node, tile] = value[1];
+        if (tile.tileid && !tileNodesSeen.has([node.nodeid, tile.tileid])) {
+          await _addPseudo(node, tile);
+        }
+        impliedNodes.delete(value[0]);
       }
     }
     // Remove any "unloaded" sentinel values so we do not try and
@@ -377,15 +421,21 @@ class ResourceModelWrapper<RIVM extends ResourceInstanceViewModel> {
   }
 
   async all(params: { limit: number; lazy: boolean }): Promise<Array<RIVM>> {
-    let x = 0;
-    return Promise.all(
-      (await staticStore.loadAll(this.wkrm.graphId, params.limit)).map(
-        (resource: StaticResource) => {
-          x += 1;
-          return this.fromStaticResource(resource, params.lazy);
-        },
-      ),
-    );
+    const promises = [];
+    for await (const resource of this.iterAll(params)) {
+      promises.push(resource);
+    }
+    return Promise.all(promises);
+  }
+
+  async* resourceGenerator(staticResources: AsyncIterable<StaticResource, RIVM, unknown>, lazy: boolean=false) {
+    for await (const staticResource of staticResources) {
+      yield this.fromStaticResource(staticResource, lazy);
+    }
+  }
+
+  async* iterAll(params: { limit: number; lazy: boolean }): AsyncGenerator<RIVM> {
+    yield* this.resourceGenerator(staticStore.loadAll(this.wkrm.graphId, params.limit), params.lazy);
   }
 
   async find(id: string, lazy: boolean = true): Promise<RIVM> {
@@ -439,6 +489,9 @@ class ResourceModelWrapper<RIVM extends ResourceInstanceViewModel> {
     this.nodegroups = new Map<string, StaticNodegroup>();
 
     const graph = graphManager.getGraph(this.wkrm.graphId);
+    if (!graph) {
+      throw Error(`Could not find graph ${this.wkrm.graphId} for resource`);
+    }
     const nodes = new Map(graph.nodes.map((node) => [node.nodeid, node]));
     const nodegroups = new Map(
       graph.nodes
@@ -613,10 +666,12 @@ class GraphManager {
     await Promise.all(
       graphs.map(async (graphId: string) => {
         const bodyJson = await this.archesClient.getGraph(graphId);
-        const graph = new StaticGraph(bodyJson);
-        const wkrm = new WKRM(graph.name.toString(), graph.graphid);
-        this.wkrms.set(wkrm.modelClassName, wkrm);
-        this.graphs.set(graph.graphid, makeResourceModelWrapper(wkrm, graph));
+        if (bodyJson) {
+          const graph = new StaticGraph(bodyJson);
+          const wkrm = new WKRM(graph.name.toString(), graph.graphid);
+          this.wkrms.set(wkrm.modelClassName, wkrm);
+          this.graphs.set(graph.graphid, makeResourceModelWrapper(wkrm, graph));
+        }
       }),
     );
 
@@ -647,6 +702,5 @@ class GraphManager {
 }
 
 const graphManager = new GraphManager(archesClient);
-const staticStore = new StaticStore(archesClient);
 
-export { graphManager, ArchesClientRemote, staticStore };
+export { GraphManager, graphManager, ArchesClientRemote, staticStore };

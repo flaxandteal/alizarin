@@ -4,6 +4,7 @@ import { graphManager, staticStore } from "./graphManager";
 import * as staticTypes from "./static-types";
 import * as utils from "./utils";
 import * as viewModels from "./viewModels";
+import * as renderers from "./renderers";
 
 export {
   client,
@@ -13,4 +14,5 @@ export {
   viewModels,
   staticStore,
   RDM,
+  renderers,
 };

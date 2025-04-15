@@ -34,6 +34,25 @@ class PseudoValue implements IPseudo {
   multiple: boolean = false;
   asTileData: Function | null = null;
 
+  describeField() {
+    let fieldName = this.node.name;
+    if (this.parent) {
+      fieldName = `${this.parent.__.wkrm.modelName} - ${fieldName}`;
+    }
+    return fieldName;
+  }
+
+  describeFieldGroup() {
+    let fieldName = this.node.name;
+    if (this.parent && this.node.nodegroup_id) {
+      const nodegroup = this.parent._.model.getNodeObjects().get(this.node.nodegroup_id);
+      if (nodegroup) {
+        fieldName = `${this.parent.__.wkrm.modelName} - ${nodegroup.name}`;
+      }
+    }
+    return fieldName;
+  }
+
   constructor(
     node: StaticNode,
     tile: StaticTile | null,
@@ -202,8 +221,8 @@ class PseudoValue implements IPseudo {
 }
 
 class PseudoList extends Array implements IPseudo {
-  node: StaticNode;
-  parent: IRIVM | null;
+  node: StaticNode | undefined = undefined;
+  parent: IRIVM | null | undefined = undefined;
   parentNode: PseudoValue | null = null;
   tile: StaticTile | undefined;
   parenttileId: string | undefined;
@@ -222,6 +241,18 @@ class PseudoList extends Array implements IPseudo {
     this.tile = undefined;
     this.parenttileId = undefined;
     this.ghostChildren = new Set();
+  }
+
+  async forJson(): Promise<{[key: string]: any}[]> {
+    const array: {[key: string]: any}[] = Array.from(
+      this.map(
+        async (entry: Promise<IViewModel> | IViewModel) => {
+          const value = await entry;
+          return (value && value instanceof Object && value.forJson) ? value.forJson() : value;
+        }
+      )
+    );
+    return Promise.all(array);
   }
 
   getValue() {

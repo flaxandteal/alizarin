@@ -38,6 +38,7 @@ interface IPseudo {
 
 interface IViewModel {
   __parentPseudo: IPseudo | undefined;
+  forJson(): {[key: string]: any} | {[key: string]: any}[];
 }
 
 export type { IInstanceWrapper, IModelWrapper, IRIVM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo, INodeConfig };
