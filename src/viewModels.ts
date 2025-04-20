@@ -3,6 +3,9 @@ import {
   IInstanceWrapper,
   IModelWrapper,
   IViewModel,
+  IPseudo,
+  IGraphManager,
+  GetMeta,
 } from "./interfaces.ts";
 import { PseudoValue, PseudoList } from "./pseudos";
 import { RDM } from "./rdm";
@@ -12,6 +15,7 @@ import {
   StaticNode,
   StaticValue,
   StaticConcept,
+  StaticResource,
   StaticResourceReference
 } from "./static-types";
 import { AttrPromise } from "./utils";
@@ -20,6 +24,11 @@ import { nodeConfigManager } from './nodeConfig';
 const TILE_LOADING_ERRORS = null; // "suppress" or "silence" TODO: enum
 
 const DEFAULT_LANGUAGE = "en";
+
+class ViewContext {
+  graphManager: IGraphManager | undefined
+};
+let viewContext = new ViewContext();
 
 function tileLoadingError(reason: string, exc: any) {
   if (TILE_LOADING_ERRORS !== "silence") {
@@ -86,7 +95,7 @@ class ValueList {
               for (const [key, value] of [...ngValues.entries()]) {
                 this.values.set(key, value);
               }
-              resolve(null);
+              resolve(false);
             });
         });
         this.values.set(key, promise);
@@ -114,29 +123,217 @@ class ValueList {
   }
 }
 
+class ConceptListCacheEntry implements IStringKeyedObject {
+  [key: string]: any;
+  datatype: string = 'concept-list';
+  _: ConceptValueCacheEntry[];
+  meta: {[key: string]: any};
+
+  constructor(meta: IStringKeyedObject | undefined, instances: ConceptValueCacheEntry[]) {
+    this._ = instances;
+    this.meta = meta || {};
+  }
+}
+
+class ConceptValueCacheEntry implements IStringKeyedObject {
+  [key: string]: any
+  datatype: string = 'concept';
+  id: string;
+  value: string;
+  conceptId: string | null;
+  meta: {[key: string]: any};
+
+  constructor(meta: IStringKeyedObject | undefined, id: string, value: string, conceptId: string | null) {
+    this.id = id;
+    this.value = value;
+    this.conceptId = conceptId;
+    this.meta = meta || {};
+  }
+}
+
+class ResourceInstanceListCacheEntry implements IStringKeyedObject {
+  [key: string]: any;
+  datatype: string = 'resource-instance-list';
+  _: ResourceInstanceCacheEntry[];
+  meta: {[key: string]: any};
+
+  constructor(meta: IStringKeyedObject | undefined, instances: ResourceInstanceCacheEntry[]) {
+    this._ = instances;
+    this.meta = meta || {};
+  }
+}
+
+class ResourceInstanceCacheEntry implements IStringKeyedObject {
+  [key: string]: any
+  datatype: string = 'resource-instance';
+  id: string;
+  type: string;
+  graphId: string;
+  title: string | null;
+  meta: {[key: string]: any};
+
+  constructor(meta: IStringKeyedObject | undefined, id: string, type: string, graphId: string, title: string | null) {
+    this.id = id;
+    this.type = type;
+    this.graphId = graphId;
+    this.meta = meta || {};
+    this.title = this.meta.title || title;
+  }
+}
+
+class ResourceInstanceListViewModel extends Array implements IViewModel {
+  __parentPseudo: IPseudo | undefined;
+
+  describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
+  describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
+  _value: Promise<(ResourceInstanceViewModel | null)[]> | null = null;
+
+  async forJson() {
+    const value = await this._value;
+    return value ? value.map((v) => (v ? v.forJson() : null)) : null;
+  }
+
+  async __forJsonCache(getMeta: GetMeta): Promise<ResourceInstanceListCacheEntry> {
+    return new ResourceInstanceListCacheEntry(
+      getMeta ? await getMeta(this) : getMeta,
+      await Promise.all([...this.values()].map(async (rivmPromise: Promise<ResourceInstanceViewModel>) => {
+        const rivm = await rivmPromise;
+        return await rivm.__forJsonCache(getMeta)
+      }))
+    );
+  }
+
+  static async __create(
+    tile: StaticTile,
+    node: StaticNode,
+    value: any,
+    cacheEntry: ResourceInstanceListCacheEntry | undefined = undefined
+  ): Promise<ResourceInstanceViewModel | null> {
+    const nodeid = node.nodeid;
+    let val: (ResourceInstanceViewModel | Promise<ResourceInstanceViewModel> | null)[];
+    if (tile) {
+      if (!tile.data.has(nodeid)) {
+        tile.data.set(nodeid, null);
+      }
+      if (value !== null) {
+        tile.data.set(nodeid, []);
+        if (!Array.isArray(value)) {
+          throw Error(
+            "Cannot set an (entire) resource list value except via an array",
+          );
+        }
+        val = value.map((v, i) => {
+          if (v instanceof ResourceInstanceViewModel) {
+            return v;
+          }
+          return ResourceInstanceViewModel.__create(tile, node, v, cacheEntry && cacheEntry._[i] ? cacheEntry._[i] : null);
+        });
+        this._value = Promise.all(val).then((vals) => {
+          Promise.all(
+            vals.map(async (c) => {
+              const v = await c;
+              return v ? (await v).id : null;
+            }),
+          ).then((ids) => {
+            tile.data.set(nodeid, ids);
+            return ids;
+          });
+        });
+      }
+    }
+
+    if (!tile || !val) {
+      return null;
+    }
+    const str = new ResourceInstanceListViewModel(...val);
+    return str;
+  }
+
+  async __asTileData() {
+    return this._value ? await this._value : null;
+  }
+}
+
 class ResourceInstanceViewModel implements IStringKeyedObject {
   [key: string]: any;
-  _: IInstanceWrapper;
+  _: IInstanceWrapper | null;
   __: IModelWrapper;
+  __parentPseudo: IPseudo | undefined = undefined;
+  __cacheEntry: ResourceInstanceCacheEntry | null;
   id: string;
   then: null = null;
 
   toString() {
+    if (!this.__) {
+      return `[Resource:${this.id}]`;
+    }
     return `[${this.__.wkrm.modelClassName}:${this.id ?? "-"}]`;
   }
 
-  async forJson(cascade: boolean=false) {
-    const jsonData: {[key: string]: string} = {
-      type: this.__.wkrm.modelClassName,
-      graphId: this.__.wkrm.graphId,
-      id: this.id,
+  async __asTileData() {
+    return {
+      resourceId: this.id
     };
+  }
+
+  async __forJsonCache(getMeta: GetMeta): Promise<ResourceInstanceCacheEntry> {
+    // TODO should we re-use the cacheEntry and rely on it being expired correctly?
+    if (!this.__) {
+      if (this.__cacheEntry) {
+        return this.__cacheEntry;
+      } else {
+        await this.retrieve();
+      }
+    }
+    this.__cacheEntry = new ResourceInstanceCacheEntry(
+      getMeta ? await getMeta(this) : undefined,
+      this.id,
+      this.__.wkrm.modelClassName,
+      this.__.wkrm.graphId,
+      null,
+    );
+    return this.__cacheEntry;
+  }
+
+  async forJson(cascade: boolean=false) {
+    let jsonData: {[key: string]: string};
+    if (!cascade && this.__cacheEntry) {
+      jsonData = this.__cacheEntry;
+    } else if (this.__) {
+      jsonData = {
+        type: this.__.wkrm.modelClassName,
+        graphId: this.__.wkrm.graphId,
+        id: this.id,
+      };
+    } else {
+      jsonData = {
+        type: "(unknown)",
+        graphId: "",
+        id: this.id
+      };
+    }
     const basic = new StaticResourceReference(jsonData);
     if (cascade) {
+      if (!this._) {
+        await this.retrieve();
+        if (!this._) {
+          throw Error("Could not retrieve resource");
+        }
+      }
       const root = await (await this._.getRoot()).getValue();
       basic.root = await root.forJson();
     }
     return basic;
+  }
+
+  async retrieve() {
+    if (viewContext.graphManager) {
+      const replacement = await viewContext.graphManager.getResource(this.id, true);
+      this._ = replacement._;
+      this.__ = replacement.__;
+    } else {
+      throw Error("Cannot traverse resource relationships without a GraphManager");
+    }
   }
 
   constructor(
@@ -145,16 +342,27 @@ class ResourceInstanceViewModel implements IStringKeyedObject {
     instanceWrapperFactory: (
       rivm: ResourceInstanceViewModel,
     ) => IInstanceWrapper,
+    cacheEntry: ResourceInstanceCacheEntry | null,
   ) {
     this.id = id;
-    this._ = instanceWrapperFactory(this);
+    this._ = instanceWrapperFactory ? instanceWrapperFactory(this) : null;
     this.__ = modelWrapper;
+    this.__cacheEntry = cacheEntry;
+
     return new Proxy(this, {
       set: (object: ResourceInstanceViewModel, key, value) => {
         const k = key.toString();
         if (k in object) {
           object[k] = value;
         } else {
+          if (!object._) {
+            return this.retrieve().then(() => {
+              if (!object._) {
+                throw Error("Could not retrieve resource");
+              }
+              object._.setOrmAttribute(k, value);
+            });
+          }
           object._.setOrmAttribute(k, value);
         }
         return true;
@@ -164,7 +372,13 @@ class ResourceInstanceViewModel implements IStringKeyedObject {
         if (k in object) {
           return object[k];
         }
-        return new AttrPromise((resolve) => {
+        return new AttrPromise(async (resolve) => {
+          if (!object._) {
+            await this.retrieve();
+            if (!object._) {
+              throw Error("Could not retrieve resource");
+            }
+          }
           return object._.getOrmAttribute(k).then((v) => {
             return resolve(v);
           });
@@ -172,10 +386,64 @@ class ResourceInstanceViewModel implements IStringKeyedObject {
       },
     });
   }
+
+  static async __create(
+    tile: StaticTile,
+    node: StaticNode,
+    value: any,
+    cacheEntry: ResourceInstanceCacheEntry | null
+  ): Promise<ResourceInstanceViewModel | null> {
+    const nodeid = node.nodeid;
+    let val: string = value;
+    if (tile) {
+      if (!tile.data.has(nodeid)) {
+        tile.data.set(nodeid, null);
+      }
+      if (value !== null) {
+        if (!value && !(value instanceof StaticResource) && !(value instanceof StaticResourceReference)) {
+          val = null;
+        } else if (value instanceof Promise) {
+          return value.then((value) => {
+            return ResourceInstanceViewModel.__create(tile, node, value, cacheEntry);
+          });
+        } else if (typeof value == "string") {
+          if (
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.exec(
+              value,
+            )
+          ) {
+            val = value;
+          } else {
+            throw Error(
+              "Set resource instances using id, not strings",
+            );
+          }
+        } else if (value instanceof Object && value.resourceId) {
+          val = value.resourceId;
+        } else if (value instanceof Array && value.length < 2 ) {
+          if (value.length == 1) {
+            return ResourceInstanceViewModel.__create(tile, node, value[0], cacheEntry);
+          }
+        } else {
+          throw Error("Could not set resource instance from this data");
+        }
+
+        if (!(val instanceof Promise)) {
+          tile.data.set(nodeid, val ? val : null);
+        }
+      }
+    }
+
+    if (!tile || !val) {
+      return null;
+    }
+    const str = new ResourceInstanceViewModel(val, null, null, cacheEntry);
+    return str;
+  }
 }
 
 class ConceptListViewModel extends Array implements IViewModel {
-  __parentPseudo: PseudoValue | undefined;
+  __parentPseudo: IPseudo | undefined;
 
   describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
   describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
@@ -186,10 +454,20 @@ class ConceptListViewModel extends Array implements IViewModel {
     return value ? value.map((v) => (v ? v.forJson() : null)) : null;
   }
 
+  async __forJsonCache(getMeta: GetMeta): Promise<ConceptListCacheEntry> {
+    return new ConceptListCacheEntry(
+      getMeta ? await getMeta(this) : getMeta,
+      await Promise.all([...this.values()].map(async (rivmPromise: Promise<ConceptValueViewModel>) => {
+        const rivm = await rivmPromise;
+        return await rivm.__forJsonCache(getMeta)
+      }))
+    );
+  }
   static async __create(
     tile: StaticTile,
     node: StaticNode,
     value: any,
+    cacheEntry: ConceptListCacheEntry
   ): Promise<ConceptValueViewModel | null> {
     const nodeid = node.nodeid;
     let val: (ConceptValueViewModel | Promise<ConceptValueViewModel> | null)[];
@@ -204,11 +482,11 @@ class ConceptListViewModel extends Array implements IViewModel {
             "Cannot set an (entire) concept list value except via an array",
           );
         }
-        val = value.map((c) => {
+        val = value.map((c, i) => {
           if (c instanceof ConceptValueViewModel) {
             return c;
           }
-          return ConceptValueViewModel.__create(tile, node, c, RDM);
+          return ConceptValueViewModel.__create(tile, node, c, cacheEntry && cacheEntry._[i] ? cacheEntry._[i] : null);
         });
         this._value = Promise.all(val).then((vals) => {
           Promise.all(
@@ -287,7 +565,8 @@ class DomainValueListViewModel extends Array implements IViewModel {
   }
 
   async __asTileData() {
-    return this._value ? await this._value : null;
+    const value = await this._value;
+    return value ?? null;
   }
 }
 
@@ -366,13 +645,14 @@ class DomainValueViewModel extends String implements IViewModel {
     return str;
   }
 
-  __asTileData() {
-    return this._value ? this._value.id : null;
+  async __asTileData() {
+    const value = await this._value;
+    return value ? value.id : null;
   }
 }
 
 class ConceptValueViewModel extends String implements IViewModel {
-  __parentPseudo: PseudoValue | undefined;
+  __parentPseudo: IPseudo | undefined;
 
   describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
   describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
@@ -388,6 +668,16 @@ class ConceptValueViewModel extends String implements IViewModel {
     return this._value;
   }
 
+  async __forJsonCache(getMeta: GetMeta): Promise<ConceptValueCacheEntry> {
+    const value = await this._value;
+    return new ConceptValueCacheEntry(
+      getMeta ? await getMeta(this) : undefined,
+      value.id,
+      value.value,
+      value.__conceptId
+    );
+  }
+
   getValue(): StaticValue | Promise<StaticValue> {
     return this._value;
   }
@@ -396,6 +686,7 @@ class ConceptValueViewModel extends String implements IViewModel {
     tile: StaticTile,
     node: StaticNode,
     value: any,
+    cacheEntry: ConceptValueCacheEntry | null
   ): Promise<ConceptValueViewModel | null> {
     const nodeid = node.nodeid;
     let val: StaticValue = value;
@@ -412,7 +703,7 @@ class ConceptValueViewModel extends String implements IViewModel {
         } else if (value instanceof StaticValue) {
         } else if (value instanceof Promise) {
           return value.then((value) => {
-            return ConceptValueViewModel.__create(tile, node, value);
+            return ConceptValueViewModel.__create(tile, node, value, cacheEntry);
           });
         } else if (typeof value == "string") {
           if (
@@ -420,24 +711,34 @@ class ConceptValueViewModel extends String implements IViewModel {
               value,
             )
           ) {
-            const collectionId = node.config["rdmCollection"];
-            const collection = RDM.retrieveCollection(collectionId);
-            return collection.then((collection) => {
-              const val = collection.getConceptValue(value);
+            if (cacheEntry) {
+              val = new StaticValue({
+                id: cacheEntry.id,
+                value: cacheEntry.value,
+                __concept: null,
+                __conceptId: cacheEntry.conceptId,
+              }, cacheEntry.conceptId);
+              return new ConceptValueViewModel(val);
+            } else {
+              const collectionId = node.config["rdmCollection"];
+              const collection = RDM.retrieveCollection(collectionId);
+              return collection.then((collection) => {
+                const val = collection.getConceptValue(value);
 
-              if (!val) {
-                console.error("Could not find concept for value", value, "for", node.alias, "in collection", collectionId);
-              }
+                if (!val) {
+                  console.error("Could not find concept for value", value, "for", node.alias, "in collection", collectionId);
+                }
 
-              tile.data.set(nodeid, val ? val.id : null);
+                tile.data.set(nodeid, val ? val.id : null);
 
-              if (!tile || !val) {
-                return null;
-              }
-              const str = new ConceptValueViewModel(val);
+                if (!tile || !val) {
+                  return null;
+                }
+                const str = new ConceptValueViewModel(val);
 
-              return str;
-            });
+                return str;
+              });
+            }
           } else {
             throw Error(
               `Set concepts using values from collections, not strings: ${value}`,
@@ -464,8 +765,9 @@ class ConceptValueViewModel extends String implements IViewModel {
     return str;
   }
 
-  __asTileData() {
-    return this._value ? this._value.id : null;
+  async __asTileData() {
+    const value = await this._value;
+    return value ? value.id : null;
   }
 }
 
@@ -639,6 +941,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
   __childNodes: Map<string, StaticNode>;
   __tile: StaticTile | null;
   __node: StaticNode;
+  __forJsonCache: undefined;
 
   constructor(
     parentWkri: ResourceInstanceViewModel | null,
@@ -873,12 +1176,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
 
     const children: Map<string, any> = new Map();
     for (let [key, values] of [...parent._.valueList.values.entries()]) {
-      // if (this.__parentPseudo && this.__parentPseudo.node.alias == "localities_administrative_areas") {
-      //   console.log("M", key, values);
-      // }
-      // if (this.__node && this.__node.alias == "localities_administrative_areas" || this.__node.alias == "area_names") {
-      //   console.log(items, 'CHILDREN', this.__node.alias);
-      // }
       if (values instanceof Promise) {
         values = await values;
       }
@@ -946,6 +1243,11 @@ async function getViewModel(
   childNodes: Map<string, StaticNode>,
 ): Promise<[IViewModel, Function | null, string, boolean]> {
   let vm;
+  const cacheEntries: {[tileId: string]: {[nodeId: string]: IStringKeyedObject}} | undefined = parentPseudo.parent ? await parentPseudo.parent._.getValueCache(false) : undefined;
+  let cacheEntry: IStringKeyedObject | undefined = undefined;
+  if (cacheEntries) {
+    cacheEntry = (tile.tileid ? (cacheEntries[tile.tileid] ?? {}) : {})[node.nodeid]
+  };
   switch (node.datatype) {
     case "semantic":
       vm = await SemanticViewModel.__create(
@@ -963,10 +1265,16 @@ async function getViewModel(
       vm = await DomainValueListViewModel.__create(tile, node, data);
       break;
     case "concept":
-      vm = await ConceptValueViewModel.__create(tile, node, data);
+      vm = await ConceptValueViewModel.__create(tile, node, data, cacheEntry);
+      break;
+    case "resource-instance":
+      vm = await ResourceInstanceViewModel.__create(tile, node, data, cacheEntry);
+      break;
+    case "resource-instance-list":
+      vm = await ResourceInstanceListViewModel.__create(tile, node, data, cacheEntry);
       break;
     case "concept-list":
-      vm = await ConceptListViewModel.__create(tile, node, data);
+      vm = await ConceptListViewModel.__create(tile, node, data, cacheEntry);
       break;
     case "geojson-feature-collection":
       vm = await GeoJSONViewModel.__create(tile, node, data);
@@ -994,4 +1302,4 @@ async function getViewModel(
   return [vm, asTileData, "string", false];
 }
 
-export { ResourceInstanceViewModel, ValueList, getViewModel, DomainValueViewModel, SemanticViewModel, StringViewModel, GeoJSONViewModel, ConceptValueViewModel };
+export { ResourceInstanceViewModel, ValueList, getViewModel, DomainValueViewModel, SemanticViewModel, StringViewModel, GeoJSONViewModel, ConceptValueViewModel, viewContext };

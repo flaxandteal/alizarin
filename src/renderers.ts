@@ -89,7 +89,7 @@ class MarkdownRenderer extends Renderer {
       class='alizarin-domain-value' data-id='${value.id}'
     >
       ${text}
-    </span>`.replace(/\n/g, ' '));
+    </span>`.replace(/\n/g, ' ').trim());
     wrapper.__clean = domainValue.toString();
     return wrapper;
   }
@@ -105,7 +105,7 @@ class MarkdownRenderer extends Renderer {
       data-concept-ref='$${value.__concept ? value.__concept.source : ""}'
     >
       ${text}
-    </span>`.replace(/\n/g, ' '));
+    </span>`.replace(/\n/g, ' ').trim());
     wrapper.__clean = conceptValue.toString();
     return wrapper;
   }
@@ -113,7 +113,7 @@ class MarkdownRenderer extends Renderer {
   async renderResourceReference(rivm: ResourceInstanceViewModel): Promise<any> {
     const value = await rivm.forJson(false);
     const url = this.resourceReferenceToUrl ? await this.resourceReferenceToUrl(rivm): null;
-    let title = value.type || 'Resource';
+    let title = value.title || value.type || 'Resource';
     const text = url ? `[${title}](${url.trim()})` : title;
     const resourceMetadata = await staticStore.getMeta(value.id);
     if (resourceMetadata) {
@@ -125,7 +125,7 @@ class MarkdownRenderer extends Renderer {
       data-graph-id='${value.graphId}'
     >
       ${text}
-    </span>`.replace(/\n/g, ' '));
+    </span>`.replace(/\n/g, ' ').trim());
     wrapper.__clean = rivm.toString();
     return wrapper;
   }

@@ -71,16 +71,29 @@ declare namespace client {
 }
 export { client }
 
+declare class ConceptValueCacheEntry implements IStringKeyedObject {
+    [key: string]: any;
+    datatype: string;
+    id: string;
+    value: string;
+    conceptId: string | null;
+    meta: {
+        [key: string]: any;
+    };
+    constructor(meta: IStringKeyedObject | undefined, id: string, value: string, conceptId: string | null);
+}
+
 declare class ConceptValueViewModel extends String implements IViewModel {
-    __parentPseudo: PseudoValue | undefined;
+    __parentPseudo: IPseudo | undefined;
     describeField: () => string | null;
     describeFieldGroup: () => string | null;
     _value: StaticValue | Promise<StaticValue>;
     constructor(value: StaticValue);
     forJson(): Promise<StaticValue>;
+    __forJsonCache(getMeta: GetMeta): Promise<ConceptValueCacheEntry>;
     getValue(): StaticValue | Promise<StaticValue>;
-    static __create(tile: StaticTile, node: StaticNode, value: any): Promise<ConceptValueViewModel | null>;
-    __asTileData(): any;
+    static __create(tile: StaticTile, node: StaticNode, value: any, cacheEntry: ConceptValueCacheEntry | null): Promise<ConceptValueViewModel | null>;
+    __asTileData(): Promise<string | null>;
 }
 
 declare class ConfigurationOptions {
@@ -98,7 +111,7 @@ declare class DomainValueViewModel extends String implements IViewModel {
     getValue(): StaticValue | Promise<StaticValue>;
     lang(lang: string): string | undefined;
     static __create(tile: StaticTile, node: StaticNode, value: any): Promise<DomainValueViewModel | null>;
-    __asTileData(): any;
+    __asTileData(): Promise<string | null>;
 }
 
 declare class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
@@ -123,9 +136,11 @@ declare class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
 
 declare function getCurrentLanguage(): string;
 
+declare type GetMeta = ((vm: IViewModel) => IStringKeyedObject) | undefined;
+
 declare function getViewModel(parentPseudo: PseudoValue, tile: StaticTile, node: StaticNode, data: any, parent: ResourceInstanceViewModel | null, childNodes: Map<string, StaticNode>): Promise<[IViewModel, Function | null, string, boolean]>;
 
-declare class GraphManager {
+export declare class GraphManager {
     _initialized: boolean;
     archesClient: ArchesClient;
     graphs: Map<string, ResourceModelWrapper<any>>;
@@ -133,6 +148,7 @@ declare class GraphManager {
     constructor(archesClient: ArchesClient);
     initialize(configurationOptions: ConfigurationOptions | undefined): Promise<void>;
     get(modelClassName: string): typeof ResourceInstanceViewModel;
+    getResource(resourceId: string, lazy?: boolean): Promise<ResourceInstanceViewModel>;
     getGraph(graphId: string): StaticGraph;
 }
 
@@ -143,12 +159,22 @@ declare class GraphResult {
     constructor(jsonData: GraphResult);
 }
 
+declare interface IGraphManager {
+    getResource(slug: string, lazy: boolean): IRIVM;
+}
+
 declare interface IInstanceWrapper {
     resource: any;
     model: any;
     ensureNodegroup: any;
     setOrmAttribute: any;
     getOrmAttribute: any;
+    getValueCache(build: boolean, getMeta: GetMeta): Promise<{
+        [tileId: string]: {
+            [nodeId: string]: IStringKeyedObject;
+        };
+    } | undefined>;
+    getRoot: any;
 }
 
 declare interface IModelWrapper {
@@ -159,13 +185,49 @@ declare interface IModelWrapper {
     wkrm: any;
 }
 
+declare class INodeConfig {
+}
+
+declare namespace interfaces {
+    export {
+        GetMeta,
+        IInstanceWrapper,
+        IModelWrapper,
+        IRIVM,
+        IStringKeyedObject,
+        IReferenceDataManager,
+        IViewModel,
+        IPseudo,
+        INodeConfig,
+        IGraphManager
+    }
+}
+export { interfaces }
+
 declare interface IPseudo {
     parentNode: IPseudo | null;
+    getValue(): IViewModel | null;
+    tile: any;
+    node: any;
+    describeField: () => string;
+    describeFieldGroup: () => string;
+}
+
+declare interface IReferenceDataManager {
+    retrieveCollection(id: string): Promise<StaticCollection>;
 }
 
 declare interface IRIVM {
+    id: string;
+    then: undefined;
     _: IInstanceWrapper;
     __: IModelWrapper;
+    __parentPseudo: IPseudo | undefined;
+    forJson(): {
+        [key: string]: any;
+    } | {
+        [key: string]: any;
+    }[];
 }
 
 declare interface IStringKeyedObject {
@@ -179,6 +241,7 @@ declare interface IViewModel {
     } | {
         [key: string]: any;
     }[];
+    __forJsonCache(GetMeta: any): IStringKeyedObject | null;
 }
 
 declare class JsonRenderer extends Renderer {
@@ -261,15 +324,36 @@ declare namespace renderers {
 }
 export { renderers }
 
+declare class ResourceInstanceCacheEntry implements IStringKeyedObject {
+    [key: string]: any;
+    datatype: string;
+    id: string;
+    type: string;
+    graphId: string;
+    title: string | null;
+    meta: {
+        [key: string]: any;
+    };
+    constructor(meta: IStringKeyedObject | undefined, id: string, type: string, graphId: string, title: string | null);
+}
+
 declare class ResourceInstanceViewModel implements IStringKeyedObject {
     [key: string]: any;
-    _: IInstanceWrapper;
+    _: IInstanceWrapper | null;
     __: IModelWrapper;
+    __parentPseudo: IPseudo | undefined;
+    __cacheEntry: ResourceInstanceCacheEntry | null;
     id: string;
     then: null;
     toString(): string;
+    __asTileData(): Promise<{
+        resourceId: string;
+    }>;
+    __forJsonCache(getMeta: GetMeta): Promise<ResourceInstanceCacheEntry>;
     forJson(cascade?: boolean): Promise<StaticResourceReference>;
-    constructor(id: string, modelWrapper: IModelWrapper, instanceWrapperFactory: (rivm: ResourceInstanceViewModel) => IInstanceWrapper);
+    retrieve(): Promise<void>;
+    constructor(id: string, modelWrapper: IModelWrapper, instanceWrapperFactory: (rivm: ResourceInstanceViewModel) => IInstanceWrapper, cacheEntry: ResourceInstanceCacheEntry | null);
+    static __create(tile: StaticTile, node: StaticNode, value: any, cacheEntry: ResourceInstanceCacheEntry | null): Promise<ResourceInstanceViewModel | null>;
 }
 
 declare class ResourceModelWrapper<RIVM extends ResourceInstanceViewModel> {
@@ -313,6 +397,7 @@ declare class SemanticViewModel implements IStringKeyedObject, IViewModel {
     __childNodes: Map<string, StaticNode>;
     __tile: StaticTile | null;
     __node: StaticNode;
+    __forJsonCache: undefined;
     constructor(parentWkri: ResourceInstanceViewModel | null, childNodes: Map<string, StaticNode>, tile: StaticTile | null, node: StaticNode);
     toString(): Promise<string>;
     toObject(): Promise<any>;
@@ -515,7 +600,13 @@ declare class StaticPublication {
 declare class StaticResource {
     resourceinstance: StaticResourceMetadata;
     tiles: Array<StaticTile> | null;
-    __source: string | undefined;
+    __cache: {
+        [tileId: string]: {
+            [nodeId: string]: {
+                [key: string]: string;
+            };
+        };
+    } | undefined;
     constructor(jsonData: StaticResource);
 }
 
@@ -535,6 +626,7 @@ declare class StaticResourceReference {
     id: string;
     type: string | undefined;
     graphId: string;
+    title: string | undefined;
     root: any | undefined;
     constructor(jsonData: StaticResourceReference);
 }
@@ -560,6 +652,7 @@ declare class StaticTile {
     provisionaledits: null | Array<StaticProvisionalEdit>;
     sortorder: number | null;
     constructor(jsonData: StaticTile);
+    ensureId(): string;
 }
 
 declare class StaticTranslatableString extends String {
@@ -590,7 +683,8 @@ declare class StaticValue {
     id: string;
     value: string;
     __concept: StaticConcept | null;
-    constructor(jsonData: StaticValue, concept?: StaticConcept | null);
+    __conceptId: string | null;
+    constructor(jsonData: StaticValue, concept?: StaticConcept | string | null);
     toString(): string;
 }
 
@@ -626,6 +720,12 @@ declare class ValueList {
     setDefault(key: string, value: any): Promise<any>;
 }
 
+declare class ViewContext {
+    graphManager: IGraphManager | undefined;
+}
+
+declare let viewContext: ViewContext;
+
 declare namespace viewModels {
     export {
         ResourceInstanceViewModel,
@@ -635,7 +735,8 @@ declare namespace viewModels {
         SemanticViewModel,
         StringViewModel,
         GeoJSONViewModel,
-        ConceptValueViewModel
+        ConceptValueViewModel,
+        viewContext
     }
 }
 export { viewModels }

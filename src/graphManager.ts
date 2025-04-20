@@ -12,8 +12,8 @@ import {
 } from "./static-types";
 import { ReferenceDataManager } from "./rdm";
 import { makePseudoCls } from "./pseudos.ts";
-import { ResourceInstanceViewModel, ValueList } from "./viewModels.ts";
-import { IRIVM, IStringKeyedObject, IInstanceWrapper, IViewModel } from "./interfaces";
+import { ResourceInstanceViewModel, ValueList, viewContext } from "./viewModels.ts";
+import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel } from "./interfaces";
 import { AttrPromise } from "./utils";
 
 class WKRM {
@@ -44,6 +44,7 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
 
   resource: StaticResource | null | false ;
   valueList: ValueList;
+  cache: {[tileId: string]: {[nodeId: string]: IStringKeyedObject}} | undefined;
 
   constructor(
     wkri: RIVM,
@@ -54,6 +55,7 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
     this.model = model;
     this.resource = resource;
     this.valueList = new ValueList<RIVM>(new Map<string, any>(), this);
+    this.cache = resource ? resource.__cache : undefined;
   }
 
   async keys() {
@@ -90,7 +92,7 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
     if (node) {
       let value;
       const alias = node.alias;
-      if (!alias) {
+      if (!(typeof alias == 'string')) {
         throw Error(`Alias missing for node ${node.nodeid}`);
       }
       await values.setDefault(alias, []);
@@ -273,6 +275,39 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
       this,
       this.resource ? this.resource.tiles : null,
     );
+  }
+
+  async getValueCache(build: boolean = true, getMeta: GetMeta = undefined): Promise<{[tileId: string]: {[nodeId: string]: IStringKeyedObject}} | undefined> {
+    if (build) {
+      this.cache = await this.buildValueCache(getMeta);
+    }
+    return this.cache;
+  }
+
+  async buildValueCache(getMeta: GetMeta): Promise<{[tileId: string]: {[nodeId: string]: IStringKeyedObject}}> {
+    const cacheByTile: {[tileId: string]: {[nodeId: string]: IStringKeyedObject}} = {};
+    for (const pseudos of this.valueList.values.values()) {
+      if (pseudos) {
+        await Promise.all(pseudos.map(async (pseudo: IPseudo) => {
+          const value = await pseudo.getValue();
+          if (pseudo.tile && value && value.__forJsonCache) {
+            const cacheJson = await value.__forJsonCache(getMeta); // caching JSON
+            if (cacheJson) {
+              const tileId = pseudo.tile.ensureId();
+              const nodeId = pseudo.node.nodeid;
+              if (!(tileId in cacheByTile)) {
+                cacheByTile[tileId] = {};
+              }
+              if (!(nodeId in cacheByTile[tileId])) {
+                cacheByTile[tileId][nodeId] = {};
+              }
+              cacheByTile[tileId][nodeId] = cacheJson;
+            }
+          }
+        }));
+      }
+    }
+    return cacheByTile;
   }
 
   async valuesFromResourceNodegroup(
@@ -577,6 +612,7 @@ class ResourceModelWrapper<RIVM extends ResourceInstanceViewModel> {
         `COULD NOT FIND ROOT NODE FOR ${this.wkrm.modelClassName}. Does the graph ${this.graph.graphid} still exist?`,
       );
     }
+    rootNode.alias = rootNode.alias || '';
     return rootNode;
   }
 
@@ -678,7 +714,7 @@ class GraphManager {
     this._initialized = true;
   }
 
-  get(modelClassName: string) {
+  get(modelClassName: string): typeof ResourceInstanceViewModel {
     // Initialize as a fallback
     this.initialize(undefined);
     const wkrm = this.wkrms.get(modelClassName);
@@ -692,6 +728,15 @@ class GraphManager {
     return wrapper.viewModelClass;
   }
 
+  async getResource(resourceId: string, lazy: boolean = true): Promise<ResourceInstanceViewModel> {
+    const rivm = await staticStore.loadOne(resourceId);
+    const graph = this.graphs.get(rivm.resourceinstance.graph_id);
+    if (!graph) {
+      throw Error(`Graph not found for resource ${resourceId}`);
+    }
+    return graph.fromStaticResource(rivm, lazy);
+  }
+
   getGraph(graphId: string): StaticGraph {
     const wrapper = this.graphs.get(graphId);
     if (wrapper === undefined) {
@@ -702,5 +747,6 @@ class GraphManager {
 }
 
 const graphManager = new GraphManager(archesClient);
+viewContext.graphManager = graphManager;
 
 export { GraphManager, graphManager, ArchesClientRemote, staticStore };

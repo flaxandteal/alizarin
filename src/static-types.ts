@@ -307,11 +307,18 @@ class StaticValue {
   id: string;
   value: string;
   __concept: StaticConcept | null;
+  __conceptId: string | null;
 
-  constructor(jsonData: StaticValue, concept: StaticConcept | null = null) {
+  constructor(jsonData: StaticValue, concept: StaticConcept | string | null = null) {
     this.id = jsonData.id;
     this.value = jsonData.value;
-    this.__concept = concept;
+    if (concept instanceof StaticConcept) {
+      this.__concept = concept;
+      this.__conceptId = concept ? concept.id : null;
+    } else {
+      this.__concept = null;
+      this.__conceptId = concept;
+    }
   }
 
   toString() {
@@ -426,6 +433,13 @@ class StaticTile {
     this.provisionaledits = jsonData.provisionaledits;
     this.sortorder = jsonData.sortorder;
   }
+
+  ensureId(): string {
+    if (!this.tileid) {
+      this.tileid = crypto.randomUUID();
+    }
+    return this.tileid;
+  }
 }
 
 class StaticResourceMetadata {
@@ -493,6 +507,7 @@ class StaticResourceReference {
   id: string;
   type: string | undefined;
   graphId: string;
+  title: string | undefined;
   root: any | undefined;
 
   constructor(jsonData: StaticResourceReference) {
@@ -500,13 +515,14 @@ class StaticResourceReference {
     this.type = jsonData.type;
     this.graphId = jsonData.graphId;
     this.root = jsonData.root;
+    this.title = jsonData.title;
   }
 }
 
 class StaticResource {
   resourceinstance: StaticResourceMetadata;
   tiles: Array<StaticTile> | null = null;
-  __source: string | undefined = undefined;
+  __cache: {[tileId: string]: {[nodeId: string]: {[key: string]: string}}} | undefined = undefined;
 
   constructor(jsonData: StaticResource) {
     this.resourceinstance = new StaticResourceMetadata(
@@ -514,6 +530,7 @@ class StaticResource {
     );
     this.tiles =
       jsonData.tiles && jsonData.tiles.map((tile) => new StaticTile(tile));
+    this.__cache = jsonData.__cache;
   }
 }
 

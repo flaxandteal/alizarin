@@ -1,12 +1,24 @@
 import { StaticCollection, StaticValue, StaticConcept, StaticTile, StaticGraph, StaticNode, StaticNodegroup, StaticResource } from "./static-types";
 
 interface IRIVM {
+  id: string
+  then: undefined;
   _: IInstanceWrapper,
   __: IModelWrapper,
+  __parentPseudo: IPseudo | undefined;
+  forJson(): {[key: string]: any} | {[key: string]: any}[];
 }
 
 interface IStringKeyedObject {
   [key: string]: any
+}
+
+type GetMeta = ((vm: IViewModel) => IStringKeyedObject) | undefined;
+
+interface IViewModel {
+  __parentPseudo: IPseudo | undefined;
+  forJson(): {[key: string]: any} | {[key: string]: any}[];
+  __forJsonCache(GetMeta): IStringKeyedObject | null;
 }
 
 interface IInstanceWrapper {
@@ -15,6 +27,8 @@ interface IInstanceWrapper {
   ensureNodegroup;
   setOrmAttribute;
   getOrmAttribute;
+  getValueCache(build: boolean, getMeta: GetMeta): Promise<{[tileId: string]: {[nodeId: string]: IStringKeyedObject}} | undefined>;
+  getRoot;
 };
 
 class INodeConfig {
@@ -34,11 +48,15 @@ interface IReferenceDataManager {
 
 interface IPseudo {
   parentNode: IPseudo | null;
+  getValue(): IViewModel | null;
+  tile: any;
+  node: any;
+  describeField: () => string;
+  describeFieldGroup: () => string;
 }
 
-interface IViewModel {
-  __parentPseudo: IPseudo | undefined;
-  forJson(): {[key: string]: any} | {[key: string]: any}[];
+interface IGraphManager {
+  getResource(slug: string, lazy: boolean): IRIVM;
 }
 
-export type { IInstanceWrapper, IModelWrapper, IRIVM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo, INodeConfig };
+export type { GetMeta, IInstanceWrapper, IModelWrapper, IRIVM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo, INodeConfig, IGraphManager };
