@@ -1,11 +1,44 @@
-import { StaticGraph, StaticResource } from "./static-types";
+import { StaticGraph, StaticResource, StaticNode } from "./static-types";
 import { StaticCollection } from "./rdm";
 
+class GraphMeta {
+  [key: string]: any
+  author: string | undefined
+  cards: number | undefined
+  cards_x_nodes_x_widgets: number | undefined
+  color: string | undefined
+  description: {[lang: string]: string} | undefined
+  edges: number | undefined
+  graphid: string
+  iconclass: string | undefined
+  is_editable: boolean | undefined
+  isresource: boolean | undefined
+  jsonldcontext: {[key: string]: any} | undefined
+  name: {[lang: string]: string} | undefined
+  nodegroups: number | undefined
+  nodes: number | undefined
+  ontology_id: string | undefined
+  publication: {[key: string]: string | null} | undefined
+  relatable_resource_model_ids: string[] = []
+  resource_2_resource_constraints: any[] = []
+  root: StaticNode | undefined
+  slug: string | undefined
+  subtitle: {[lang: string]: string} | undefined
+  version: string | undefined
+
+  constructor(jsondata: GraphMeta) {
+    this.graphid = jsondata.graphid;
+    Object.assign(this, jsondata)
+  }
+}
+
 class GraphResult {
-  models: string[];
+  models: {[graphId: string]: GraphMeta};
 
   constructor(jsonData: GraphResult) {
-    this.models = jsonData.models;
+    this.models = Object.fromEntries(
+      Object.entries(jsonData.models).map(([k, v]) => [k, new GraphMeta(v)])
+    );
   }
 }
 
@@ -182,7 +215,7 @@ class ArchesClientLocal extends ArchesClient {
   async getGraphs(): Promise<GraphResult> {
     const fs = await this.fs;
     const response = await fs.readFile(this.allGraphFile(), "utf8");
-    return await JSON.parse(response);
+    return new GraphResult(await JSON.parse(response));
   }
 
   async getGraph(graphId: string): Promise<StaticGraph | null> {
@@ -252,4 +285,6 @@ export {
   ArchesClientRemoteStatic,
   ArchesClientRemote,
   ArchesClientLocal,
+  GraphResult,
+  GraphMeta,
 };

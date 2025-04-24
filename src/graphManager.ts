@@ -1,4 +1,4 @@
-import { archesClient, ArchesClient, ArchesClientRemote } from "./client.ts";
+import { GraphMeta, GraphResult, archesClient, ArchesClient, ArchesClientRemote } from "./client.ts";
 import { staticStore } from "./staticStore.ts"
 import {
   StaticValue,
@@ -12,7 +12,7 @@ import {
 } from "./static-types";
 import { ReferenceDataManager } from "./rdm";
 import { makePseudoCls } from "./pseudos.ts";
-import { ResourceInstanceViewModel, ValueList, viewContext } from "./viewModels.ts";
+import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext } from "./viewModels.ts";
 import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel } from "./interfaces";
 import { AttrPromise } from "./utils";
 
@@ -20,18 +20,28 @@ class WKRM {
   modelName: string;
   modelClassName: string;
   graphId: string;
+  meta: GraphMeta;
 
-  constructor(modelName: string, graphId: string) {
-    this.modelName = modelName;
-    this.graphId = graphId;
-    this.modelClassName = modelName
-      .replace(/\s(.)/g, (c) => c.toUpperCase())
+  constructor(meta: GraphMeta) {
+    let name: {[lang: string]: string} | string | undefined;
+    if (meta.name instanceof Object) {
+      name = meta.name[DEFAULT_LANGUAGE].toString();
+    } else {
+      name = meta.name;
+    }
+    this.modelName = name || "Unnamed";
+    this.graphId = meta.graphid;
+    this.modelClassName = (meta.slug || this.modelName)
+      .replace(/[_-]/g, " ")
+      .replace(/\s(.)/g, (c: string) => c.toUpperCase())
       .replace(/\s/g, "");
+    this.modelClassName = this.modelClassName[0].toUpperCase() + this.modelClassName.slice(1);
+    this.meta = meta;
   }
 }
 
 class ConfigurationOptions {
-  graphs: Array<string> | null;
+  graphs: Array<string> | null | boolean;
 
   constructor() {
     this.graphs = null;
@@ -692,40 +702,54 @@ class GraphManager {
     }
     const graphJsons: GraphResult = await this.archesClient.getGraphs();
 
+    Object.entries(graphJsons["models"]).forEach(([graphId, meta]: [string, GraphMeta]) => {
+      meta.graphid = meta.graphid || graphId;
+      const wkrm = new WKRM(meta);
+      this.wkrms.set(wkrm.modelClassName, wkrm);
+    });
     let graphs = Object.keys(graphJsons["models"]);
-    if (configurationOptions.graphs !== null) {
-      graphs = graphs.filter(
-        (graphId: string) => configurationOptions.graphs.includes(graphId),
-      );
+    const allowedGraphs = configurationOptions.graphs;
+    if (allowedGraphs !== null) {
+      if (allowedGraphs !== true) {
+        graphs = graphs.filter(
+          (graphId: string) => allowedGraphs.includes(graphId),
+        );
+      }
+      await Promise.all(graphs.map(this.loadGraph));
     }
-
-    await Promise.all(
-      graphs.map(async (graphId: string) => {
-        const bodyJson = await this.archesClient.getGraph(graphId);
-        if (bodyJson) {
-          const graph = new StaticGraph(bodyJson);
-          const wkrm = new WKRM(graph.name.toString(), graph.graphid);
-          this.wkrms.set(wkrm.modelClassName, wkrm);
-          this.graphs.set(graph.graphid, makeResourceModelWrapper(wkrm, graph));
-        }
-      }),
-    );
 
     this._initialized = true;
   }
 
-  get(modelClassName: string): typeof ResourceInstanceViewModel {
+  async loadGraph(modelClassName: string): Promise<ResourceModelWrapper> {
+    const wkrm = this.wkrms.get(modelClassName);
+    if (wkrm === undefined) {
+      throw Error(`Only loading graphs for which metadata is present, not ${modelClassName}`);
+    }
+
+    const bodyJson = await this.archesClient.getGraph(wkrm.graphId);
+    if (!bodyJson) {
+      throw Error(`Could not load graph ${wkrm.graphId}`);
+    }
+
+    const graph = new StaticGraph(bodyJson);
+    const model = makeResourceModelWrapper(wkrm, graph);
+    this.graphs.set(graph.graphid, model);
+    return model;
+  }
+
+  async get(modelClassName: string): Promise<ResourceModelWrapper> {
     // Initialize as a fallback
     this.initialize(undefined);
-    const wkrm = this.wkrms.get(modelClassName);
+    let wkrm = this.wkrms.get(modelClassName);
     if (wkrm === undefined) {
       throw Error(`Cannot find model requested: ${modelClassName}`);
     }
     const wrapper = this.graphs.get(wkrm.graphId);
     if (wrapper === undefined) {
-      throw Error(`Cannot find graph requested: ${modelClassName}`);
+      return this.loadGraph(modelClassName);
     }
-    return wrapper.viewModelClass;
+    return wrapper;
   }
 
   async getResource(resourceId: string, lazy: boolean = true): Promise<ResourceInstanceViewModel> {

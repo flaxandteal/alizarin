@@ -1302,4 +1302,4 @@ async function getViewModel(
   return [vm, asTileData, "string", false];
 }
 
-export { ResourceInstanceViewModel, ValueList, getViewModel, DomainValueViewModel, SemanticViewModel, StringViewModel, GeoJSONViewModel, ConceptValueViewModel, viewContext };
+export { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, getViewModel, DomainValueViewModel, SemanticViewModel, StringViewModel, GeoJSONViewModel, ConceptValueViewModel, viewContext };

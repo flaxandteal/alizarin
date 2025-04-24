@@ -66,7 +66,9 @@ declare namespace client {
         ArchesClient,
         ArchesClientRemoteStatic,
         ArchesClientRemote,
-        ArchesClientLocal
+        ArchesClientLocal,
+        GraphResult,
+        GraphMeta
     }
 }
 export { client }
@@ -97,9 +99,11 @@ declare class ConceptValueViewModel extends String implements IViewModel {
 }
 
 declare class ConfigurationOptions {
-    graphs: Array<string> | null;
+    graphs: Array<string> | null | boolean;
     constructor();
 }
+
+declare const DEFAULT_LANGUAGE = "en";
 
 declare class DomainValueViewModel extends String implements IViewModel {
     __parentPseudo: PseudoValue | undefined;
@@ -147,15 +151,55 @@ export declare class GraphManager {
     wkrms: Map<string, WKRM>;
     constructor(archesClient: ArchesClient);
     initialize(configurationOptions: ConfigurationOptions | undefined): Promise<void>;
-    get(modelClassName: string): typeof ResourceInstanceViewModel;
+    loadGraph(modelClassName: string): Promise<ResourceModelWrapper>;
+    get(modelClassName: string): Promise<ResourceModelWrapper>;
     getResource(resourceId: string, lazy?: boolean): Promise<ResourceInstanceViewModel>;
     getGraph(graphId: string): StaticGraph;
 }
 
 export declare const graphManager: GraphManager;
 
+declare class GraphMeta {
+    [key: string]: any;
+    author: string | undefined;
+    cards: number | undefined;
+    cards_x_nodes_x_widgets: number | undefined;
+    color: string | undefined;
+    description: {
+        [lang: string]: string;
+    } | undefined;
+    edges: number | undefined;
+    graphid: string;
+    iconclass: string | undefined;
+    is_editable: boolean | undefined;
+    isresource: boolean | undefined;
+    jsonldcontext: {
+        [key: string]: any;
+    } | undefined;
+    name: {
+        [lang: string]: string;
+    } | undefined;
+    nodegroups: number | undefined;
+    nodes: number | undefined;
+    ontology_id: string | undefined;
+    publication: {
+        [key: string]: string | null;
+    } | undefined;
+    relatable_resource_model_ids: string[];
+    resource_2_resource_constraints: any[];
+    root: StaticNode | undefined;
+    slug: string | undefined;
+    subtitle: {
+        [lang: string]: string;
+    } | undefined;
+    version: string | undefined;
+    constructor(jsondata: GraphMeta);
+}
+
 declare class GraphResult {
-    models: string[];
+    models: {
+        [graphId: string]: GraphMeta;
+    };
     constructor(jsonData: GraphResult);
 }
 
@@ -728,6 +772,7 @@ declare let viewContext: ViewContext;
 
 declare namespace viewModels {
     export {
+        DEFAULT_LANGUAGE,
         ResourceInstanceViewModel,
         ValueList,
         getViewModel,
@@ -745,7 +790,8 @@ declare class WKRM {
     modelName: string;
     modelClassName: string;
     graphId: string;
-    constructor(modelName: string, graphId: string);
+    meta: GraphMeta;
+    constructor(meta: GraphMeta);
 }
 
 export { }

@@ -1,6 +1,42 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+class GraphMeta {
+  constructor(jsondata) {
+    __publicField(this, "author");
+    __publicField(this, "cards");
+    __publicField(this, "cards_x_nodes_x_widgets");
+    __publicField(this, "color");
+    __publicField(this, "description");
+    __publicField(this, "edges");
+    __publicField(this, "graphid");
+    __publicField(this, "iconclass");
+    __publicField(this, "is_editable");
+    __publicField(this, "isresource");
+    __publicField(this, "jsonldcontext");
+    __publicField(this, "name");
+    __publicField(this, "nodegroups");
+    __publicField(this, "nodes");
+    __publicField(this, "ontology_id");
+    __publicField(this, "publication");
+    __publicField(this, "relatable_resource_model_ids", []);
+    __publicField(this, "resource_2_resource_constraints", []);
+    __publicField(this, "root");
+    __publicField(this, "slug");
+    __publicField(this, "subtitle");
+    __publicField(this, "version");
+    this.graphid = jsondata.graphid;
+    Object.assign(this, jsondata);
+  }
+}
+class GraphResult {
+  constructor(jsonData) {
+    __publicField(this, "models");
+    this.models = Object.fromEntries(
+      Object.entries(jsonData.models).map(([k, v]) => [k, new GraphMeta(v)])
+    );
+  }
+}
 class ArchesClient {
 }
 class ArchesClientRemote extends ArchesClient {
@@ -122,7 +158,7 @@ class ArchesClientLocal extends ArchesClient {
   async getGraphs() {
     const fs = await this.fs;
     const response = await fs.readFile(this.allGraphFile(), "utf8");
-    return await JSON.parse(response);
+    return new GraphResult(await JSON.parse(response));
   }
   async getGraph(graphId) {
     const fs = await this.fs;
@@ -183,6 +219,8 @@ const client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProper
   ArchesClientLocal,
   ArchesClientRemote,
   ArchesClientRemoteStatic,
+  GraphMeta,
+  GraphResult,
   archesClient
 }, Symbol.toStringTag, { value: "Module" }));
 const interfaces = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
@@ -1880,6 +1918,7 @@ async function getViewModel(parentPseudo, tile, node, data, parent, childNodes) 
 const viewModels = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
   ConceptValueViewModel,
+  DEFAULT_LANGUAGE,
   DomainValueViewModel,
   GeoJSONViewModel,
   ResourceInstanceViewModel,
@@ -2134,13 +2173,22 @@ function makePseudoCls(key, single, tile = null, wkri = null) {
   return value;
 }
 class WKRM {
-  constructor(modelName, graphId) {
+  constructor(meta) {
     __publicField(this, "modelName");
     __publicField(this, "modelClassName");
     __publicField(this, "graphId");
-    this.modelName = modelName;
-    this.graphId = graphId;
-    this.modelClassName = modelName.replace(/\s(.)/g, (c) => c.toUpperCase()).replace(/\s/g, "");
+    __publicField(this, "meta");
+    let name;
+    if (meta.name instanceof Object) {
+      name = meta.name[DEFAULT_LANGUAGE].toString();
+    } else {
+      name = meta.name;
+    }
+    this.modelName = name || "Unnamed";
+    this.graphId = meta.graphid;
+    this.modelClassName = (meta.slug || this.modelName).replace(/[_-]/g, " ").replace(/\s(.)/g, (c) => c.toUpperCase()).replace(/\s/g, "");
+    this.modelClassName = this.modelClassName[0].toUpperCase() + this.modelClassName.slice(1);
+    this.meta = meta;
   }
 }
 class ConfigurationOptions {
@@ -2691,36 +2739,48 @@ class GraphManager {
       configurationOptions = new ConfigurationOptions();
     }
     const graphJsons = await this.archesClient.getGraphs();
+    Object.entries(graphJsons["models"]).forEach(([graphId, meta]) => {
+      meta.graphid = meta.graphid || graphId;
+      const wkrm = new WKRM(meta);
+      this.wkrms.set(wkrm.modelClassName, wkrm);
+    });
     let graphs = Object.keys(graphJsons["models"]);
-    if (configurationOptions.graphs !== null) {
-      graphs = graphs.filter(
-        (graphId) => configurationOptions.graphs.includes(graphId)
-      );
+    const allowedGraphs = configurationOptions.graphs;
+    if (allowedGraphs !== null) {
+      if (allowedGraphs !== true) {
+        graphs = graphs.filter(
+          (graphId) => allowedGraphs.includes(graphId)
+        );
+      }
+      await Promise.all(graphs.map(this.loadGraph));
     }
-    await Promise.all(
-      graphs.map(async (graphId) => {
-        const bodyJson = await this.archesClient.getGraph(graphId);
-        if (bodyJson) {
-          const graph = new StaticGraph(bodyJson);
-          const wkrm = new WKRM(graph.name.toString(), graph.graphid);
-          this.wkrms.set(wkrm.modelClassName, wkrm);
-          this.graphs.set(graph.graphid, makeResourceModelWrapper(wkrm, graph));
-        }
-      })
-    );
     this._initialized = true;
   }
-  get(modelClassName) {
-    this.initialize(void 0);
+  async loadGraph(modelClassName) {
     const wkrm = this.wkrms.get(modelClassName);
+    if (wkrm === void 0) {
+      throw Error(`Only loading graphs for which metadata is present, not ${modelClassName}`);
+    }
+    const bodyJson = await this.archesClient.getGraph(wkrm.graphId);
+    if (!bodyJson) {
+      throw Error(`Could not load graph ${wkrm.graphId}`);
+    }
+    const graph = new StaticGraph(bodyJson);
+    const model = makeResourceModelWrapper(wkrm, graph);
+    this.graphs.set(graph.graphid, model);
+    return model;
+  }
+  async get(modelClassName) {
+    this.initialize(void 0);
+    let wkrm = this.wkrms.get(modelClassName);
     if (wkrm === void 0) {
       throw Error(`Cannot find model requested: ${modelClassName}`);
     }
     const wrapper = this.graphs.get(wkrm.graphId);
     if (wrapper === void 0) {
-      throw Error(`Cannot find graph requested: ${modelClassName}`);
+      return this.loadGraph(modelClassName);
     }
-    return wrapper.viewModelClass;
+    return wrapper;
   }
   async getResource(resourceId, lazy = true) {
     const rivm = await staticStore.loadOne(resourceId);
