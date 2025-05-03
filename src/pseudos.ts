@@ -1,10 +1,24 @@
-import { StaticTile, StaticNode, StaticNodegroup } from "./static-types";
+import { StaticTile, StaticNode } from "./static-types";
 import { IViewModel, IPseudo, IRIVM, IModelWrapper } from "./interfaces";
 import { getViewModel } from "./viewModels";
 import { AttrPromise } from "./utils";
 
 class PseudoUnavailable implements IPseudo {
   parentNode: PseudoValue | null = null;
+  tile: null = null;
+  node: null = null;
+
+  async forJson(): Promise<{[key: string]: any}[] | null> {
+    return null;
+  }
+
+  describeField() {
+    return "Unavailable field";
+  }
+
+  describeFieldGroup() {
+    return "Unavailable field";
+  }
 
   async getValue() {
     console.warn("Tried to get value of unavailable node");
@@ -18,25 +32,37 @@ class PseudoUnavailable implements IPseudo {
   getChildren(_: boolean = false) {
     return [];
   }
+
+  isIterable(): boolean {
+    return false
+  }
 }
+
+const ITERABLE_DATATYPES = [
+  "concept-list",
+  "resource-instance-list",
+  "domain-value-list"
+];
 
 class PseudoValue implements IPseudo {
   node: StaticNode;
   tile: StaticTile | null;
   value: any;
-  parent: IRIVM | null;
+  parent: IRIVM<any> | null;
   parentNode: PseudoValue | null;
   valueLoaded: boolean | undefined = false;
   datatype: string | null = null;
   originalTile: StaticTile | null;
   accessed: boolean;
   childNodes: Map<string, StaticNode>;
-  multiple: boolean = false;
-  asTileData: Function | null = null;
+
+  isIterable(): boolean {
+    return this.datatype !== null && ITERABLE_DATATYPES.includes(this.datatype);
+  }
 
   describeField() {
     let fieldName = this.node.name;
-    if (this.parent) {
+    if (this.parent && this.parent.__) {
       fieldName = `${this.parent.__.wkrm.modelName} - ${fieldName}`;
     }
     return fieldName;
@@ -44,9 +70,9 @@ class PseudoValue implements IPseudo {
 
   describeFieldGroup() {
     let fieldName = this.node.name;
-    if (this.parent && this.node.nodegroup_id) {
+    if (this.parent && this.node.nodegroup_id && this.parent._) {
       const nodegroup = this.parent._.model.getNodeObjects().get(this.node.nodegroup_id);
-      if (nodegroup) {
+      if (nodegroup && this.parent.__) {
         fieldName = `${this.parent.__.wkrm.modelName} - ${nodegroup.name}`;
       }
     }
@@ -57,7 +83,7 @@ class PseudoValue implements IPseudo {
     node: StaticNode,
     tile: StaticTile | null,
     value: any,
-    parent: IRIVM | null,
+    parent: IRIVM<any> | null,
     childNodes: Map<string, StaticNode>,
   ) {
     this.node = node;
@@ -71,6 +97,7 @@ class PseudoValue implements IPseudo {
     this.value = value;
     this.accessed = false;
     this.originalTile = tile;
+    this.datatype = node.datatype;
   }
 
   // TODO deepcopy
@@ -85,9 +112,9 @@ class PseudoValue implements IPseudo {
 
     const relationships: Array<any> = [];
     let tileValue;
-    if (this.asTileData && this.value !== null) {
+    if (this.value !== null) {
       // It may be better to make this fully async if there's a performance benefit.
-      tileValue = await this.asTileData(this.value);
+      tileValue = await this.value.__asTileData();
     } else {
       tileValue = this.value;
     }
@@ -141,6 +168,7 @@ class PseudoValue implements IPseudo {
         resourceinstance_id: "",
         parenttile_id: null,
         provisionaledits: null,
+        ensureId: () => ""
       });
       // this.relationships = [];
     }
@@ -167,18 +195,14 @@ class PseudoValue implements IPseudo {
       );
 
       const resolveAttr = (vm: IViewModel) => {
-        let value;
-        [value, this.asTileData, this.datatype, this.multiple] = vm;
-        if (value !== null && this.value instanceof Object) {
-          value.__parentPseudo = this;
-        }
-        if (value !== null) {
+        if (vm !== null && vm instanceof Object) {
+          vm.__parentPseudo = this;
           this.valueLoaded = true;
         }
-        return value;
+        return vm;
       };
       this.value = new AttrPromise((resolve) => {
-        vm.then((vm) => resolve(resolveAttr(vm)));
+        vm.then((vm) => resolve(vm ? resolveAttr(vm) : vm));
       });
     }
     return this.value;
@@ -193,11 +217,6 @@ class PseudoValue implements IPseudo {
 
   getLength() {
     return this.getChildren().length;
-  }
-
-  async getType() {
-    await this.updateValue();
-    return [this.datatype, this.multiple];
   }
 
   async getChildTypes() {
@@ -218,18 +237,54 @@ class PseudoValue implements IPseudo {
     }
     return [];
   }
+
+  async forJson(): Promise<{[key: string]: any} | {[key: string]: any}[] | string | number | boolean | null> {
+    const value = (await this.getValue());
+    return value instanceof Object ? value.forJson() : value;
+  }
 }
 
 class PseudoList extends Array implements IPseudo {
   node: StaticNode | undefined = undefined;
-  parent: IRIVM | null | undefined = undefined;
+  parent: IRIVM<any> | null | undefined = undefined;
   parentNode: PseudoValue | null = null;
   tile: StaticTile | undefined;
   parenttileId: string | undefined;
   ghostChildren: Set<PseudoValue> | null = null;
 
+  isIterable(): boolean {
+    return true;
+  }
+
+  describeField() {
+    if (!this.node) {
+      return "[(uninitialized node)]";
+    }
+
+    let fieldName = this.node.name;
+    if (this.parent && this.parent.__) {
+      fieldName = `${this.parent.__.wkrm.modelName} - ${fieldName}`;
+    }
+    return `[${fieldName}]`;
+  }
+
+  describeFieldGroup() {
+    if (!this.node) {
+      return "[(uninitialized node)]";
+    }
+
+    let fieldName = this.node.name;
+    if (this.parent && this.node.nodegroup_id && this.parent._) {
+      const nodegroup = this.parent._.model.getNodeObjects().get(this.node.nodegroup_id);
+      if (nodegroup && this.parent.__) {
+        fieldName = `${this.parent.__.wkrm.modelName} - ${nodegroup.name}`;
+      }
+    }
+    return `[${fieldName}]`;
+  }
+
   // Otherwise interferes with Array methods;
-  initialize(node: StaticNode, parent: IRIVM | null) {
+  initialize(node: StaticNode, parent: IRIVM<any> | null) {
     this.node = node;
     if (Array.isArray(this.node)) {
       throw Error("Cannot make a list of lists");
@@ -255,8 +310,8 @@ class PseudoList extends Array implements IPseudo {
     return Promise.all(array);
   }
 
-  getValue() {
-    return this;
+  getValue(): AttrPromise<PseudoList> {
+    return new AttrPromise(resolve => resolve(this));
   }
 
   toString() {
@@ -266,21 +321,21 @@ class PseudoList extends Array implements IPseudo {
 
 // Fix wkri type.
 function makePseudoCls(
-  this: IModelWrapper,
+  model: IModelWrapper<any>,
   key: string,
   single: boolean,
   tile: StaticTile | null = null,
   wkri: any | null = null,
 ): PseudoList | PseudoValue | PseudoUnavailable {
-  const nodeObj = this.getNodeObjectsByAlias().get(key);
+  const nodeObj = model.getNodeObjectsByAlias().get(key);
   if (!nodeObj) {
     throw Error("Could not find node by alias");
   }
 
-  const nodegroups = this.getNodegroupObjects();
+  const nodegroups = model.getNodegroupObjects();
   const nodegroup = nodegroups.get(nodeObj.nodegroup_id || "");
 
-  const permitted = this.getPermittedNodegroups();
+  const permitted = model.getPermittedNodegroups();
   let value = null;
   if (
     nodeObj.nodegroup_id &&
@@ -297,7 +352,7 @@ function makePseudoCls(
     if (nodeObj.nodegroup_id && !permitted.get(nodeObj.nodegroup_id)) {
       nodeValue = new PseudoUnavailable();
     } else {
-      const childNodes = this.getChildNodes(nodeObj.nodeid);
+      const childNodes = model.getChildNodes(nodeObj.nodeid);
       nodeValue = new PseudoValue(nodeObj, tile, null, wkri, childNodes);
     }
     // If we have a tile in a list, add it

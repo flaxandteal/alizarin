@@ -1,43 +1,12 @@
-import { StaticGraph, StaticResource, StaticNode } from "./static-types";
+import { StaticGraphMeta, StaticGraph, StaticResource, StaticNode } from "./static-types";
 import { StaticCollection } from "./rdm";
 
-class GraphMeta {
-  [key: string]: any
-  author: string | undefined
-  cards: number | undefined
-  cards_x_nodes_x_widgets: number | undefined
-  color: string | undefined
-  description: {[lang: string]: string} | undefined
-  edges: number | undefined
-  graphid: string
-  iconclass: string | undefined
-  is_editable: boolean | undefined
-  isresource: boolean | undefined
-  jsonldcontext: {[key: string]: any} | undefined
-  name: {[lang: string]: string} | undefined
-  nodegroups: number | undefined
-  nodes: number | undefined
-  ontology_id: string | undefined
-  publication: {[key: string]: string | null} | undefined
-  relatable_resource_model_ids: string[] = []
-  resource_2_resource_constraints: any[] = []
-  root: StaticNode | undefined
-  slug: string | undefined
-  subtitle: {[lang: string]: string} | undefined
-  version: string | undefined
-
-  constructor(jsondata: GraphMeta) {
-    this.graphid = jsondata.graphid;
-    Object.assign(this, jsondata)
-  }
-}
-
 class GraphResult {
-  models: {[graphId: string]: GraphMeta};
+  models: {[graphId: string]: StaticGraphMeta};
 
   constructor(jsonData: GraphResult) {
     this.models = Object.fromEntries(
-      Object.entries(jsonData.models).map(([k, v]) => [k, new GraphMeta(v)])
+      Object.entries(jsonData.models).map(([k, v]) => [k, new StaticGraphMeta(v)])
     );
   }
 }
@@ -286,5 +255,4 @@ export {
   ArchesClientRemote,
   ArchesClientLocal,
   GraphResult,
-  GraphMeta,
 };

@@ -1,28 +1,25 @@
-import { GraphMeta, GraphResult, archesClient, ArchesClient, ArchesClientRemote } from "./client.ts";
+import { GraphResult, archesClient, ArchesClient, ArchesClientRemote } from "./client.ts";
 import { staticStore } from "./staticStore.ts"
 import {
-  StaticValue,
-  StaticConcept,
   StaticTile,
   StaticGraph,
   StaticNode,
   StaticNodegroup,
   StaticResource,
-  StaticResourceMetadata,
+  StaticGraphMeta,
 } from "./static-types";
-import { ReferenceDataManager } from "./rdm";
-import { makePseudoCls } from "./pseudos.ts";
-import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext } from "./viewModels.ts";
-import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel } from "./interfaces";
+import { makePseudoCls, PseudoList } from "./pseudos.ts";
+import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext, SemanticViewModel } from "./viewModels.ts";
+import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
 import { AttrPromise } from "./utils";
 
 class WKRM {
   modelName: string;
   modelClassName: string;
   graphId: string;
-  meta: GraphMeta;
+  meta: StaticGraphMeta;
 
-  constructor(meta: GraphMeta) {
+  constructor(meta: StaticGraphMeta) {
     let name: {[lang: string]: string} | string | undefined;
     if (meta.name instanceof Object) {
       name = meta.name[DEFAULT_LANGUAGE].toString();
@@ -48,12 +45,12 @@ class ConfigurationOptions {
   }
 }
 
-class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements IInstanceWrapper {
+class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrapper<RIVM> {
   wkri: RIVM;
   model: ResourceModelWrapper<RIVM>;
 
   resource: StaticResource | null | false ;
-  valueList: ValueList;
+  valueList: ValueList<RIVM>;
   cache: {[tileId: string]: {[nodeId: string]: IStringKeyedObject}} | undefined;
 
   constructor(
@@ -64,39 +61,80 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
     this.wkri = wkri;
     this.model = model;
     this.resource = resource;
-    this.valueList = new ValueList<RIVM>(new Map<string, any>(), this);
+    this.valueList = new ValueList(new Map<string, any>(), this, []);
     this.cache = resource ? resource.__cache : undefined;
   }
 
+  async loadNodes(aliases: Array<string>): Promise<void> {
+    for (const key of aliases) {
+      await this.valueList.retrieve(key);
+    }
+  }
+
+  addPseudo(childNode: StaticNode, tile: StaticTile | null): IPseudo {
+    const key = childNode.alias;
+    if (!key) {
+      throw Error(`Cannot add a pseudo node with no alias ${childNode.nodeid}`);
+    }
+    const child = makePseudoCls(
+      this.model,
+      key,
+      false,
+      !childNode.is_collector ? tile : null, // Does it share a tile
+      this,
+    );
+
+    const valueList: ValueList<any> = this.valueList;
+    valueList.setDefault(key, []).then((val: Array<any>) => val.push(child));
+    return child;
+  }
+
+  allEntries(): MapIterator<[string, Array<IPseudo> | false | null]> {
+    return this.valueList.values.entries()
+  }
+
   async keys() {
-    return (await this.getRoot()).keys();
+    return (await this.getRootViewModel()).keys();
   }
 
   async values() {
-    return (await this.getRoot()).values();
+    return (await this.getRootViewModel()).values();
   }
 
   async entries() {
-    return (await this.getRoot()).entries();
+    return (await this.getRootViewModel()).entries();
   }
 
-  async getOrmAttribute(key: string): AttrPromise<IViewModel> | IViewModel {
+  async getRootViewModel(): Promise<SemanticViewModel> {
+    const root = await this.getRoot();
+    let value: IViewModel | null = null;
+    if (root) {
+      const rootValue = await root.getValue();
+      if (!Array.isArray(rootValue)) {
+        value = rootValue;
+      }
+    }
+    if (!value || !(value instanceof SemanticViewModel)) {
+      throw Error(`Tried to get root on ${this}, which has no root`);
+    }
+    return value;
+  }
+
+  getOrmAttribute(key: string): AttrPromise<IViewModel> {
+    let promise: Promise<void>;
     if (this.resource === null) {
-      this.resource = await this.model.find(this.wkri.id);
-      await this.populate(true);
+      promise = this.model.findStatic(this.wkri.id).then(resource => {
+        this.resource = resource;
+      }).then(() => this.populate(true));
+    } else {
+      promise = new Promise((resolve) => { resolve(); });
     }
 
     // TODO remapping
-    const root = await this.getRoot();
-    if (root) {
-      const value = root.getValue();
-      return value[key];
-    } else {
-      throw Error(`Tried to get ${key} on ${this}, which has no root`);
-    }
+    return promise.then(() => this.getRootViewModel()).then(root => root[key]);
   }
 
-  async getRoot() {
+  async getRoot(): Promise<IPseudo | undefined> {
     const values = this.valueList;
     const node = this.model.getRootNode();
     if (node) {
@@ -113,7 +151,7 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
       } else if (nodeValues.length == 1) {
         value = nodeValues[0];
       } else {
-        value = this.model.makePseudoCls(alias, false, null, this.wkri);
+        value = makePseudoCls(this.model, alias, false, null, this.wkri);
         values.set(alias, [value]);
       }
       return value;
@@ -122,12 +160,13 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
 
   setOrmAttribute(key: string, value: any) {
     // TODO remapping
-    const root = this.getRoot();
-    if (root) {
-      root.value[key] = value;
-    } else {
-      throw Error(`Tried to set ${key} on ${self}, which has no root`);
-    }
+    return this.getRootViewModel().then((root) => {
+      if (root) {
+        root.value[key] = value;
+      } else {
+        throw Error(`Tried to set ${key} on ${self}, which has no root`);
+      }
+    });
   }
 
   async ensureNodegroup(
@@ -141,11 +180,11 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
     tiles: StaticTile[] | null,
     doImpliedNodegroups: boolean = true
   ): Promise<[Map<string, any>, Map<string, StaticNode>]> {
-    if (!node) {
-      return allValues;
-    }
     const alias: string = node.alias || "";
     const impliedNodegroups: Map<string, StaticNode> = new Map();
+    if (!node) {
+      return [allValues, impliedNodegroups];
+    }
     const value = node && (await allValues.get(alias));
 
     let newAllValues = allValues;
@@ -206,7 +245,7 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
     return [newAllValues, impliedNodegroups];
   }
 
-  async populate(lazy: boolean) {
+  async populate(lazy: boolean): Promise<void> {
     const nodeObjs = this.model.getNodeObjects();
     const nodegroupObjs = this.model.getNodegroupObjects();
     const edges = this.model.getEdges();
@@ -230,7 +269,7 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
     if (!lazy && this.resource) {
       const tiles = this.resource.tiles;
       let impliedNodegroups = new Map<string, StaticNode>();
-      for (const [ng, _] of nodegroupObjs) {
+      for (const [ng] of nodegroupObjs) {
         const [values, newImpliedNodegroups] = await this.ensureNodegroup(
           allValues,
           nodeObjs.get(ng) || rootNode, // should be the only missing ID
@@ -300,7 +339,8 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
       if (pseudos) {
         await Promise.all(pseudos.map(async (pseudo: IPseudo) => {
           const value = await pseudo.getValue();
-          if (pseudo.tile && value && value.__forJsonCache) {
+          // We do not try to cache pseudolists
+          if (pseudo.tile && value && !Array.isArray(value)) {
             const cacheJson = await value.__forJsonCache(getMeta); // caching JSON
             if (cacheJson) {
               const tileId = pseudo.tile.ensureId();
@@ -322,7 +362,7 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
 
   async valuesFromResourceNodegroup(
     existingValues: Map<string, any>,
-    nodegroupTiles: StaticTile[],
+    nodegroupTiles: (StaticTile | null)[],
     nodegroupId: string,
     nodeObjs: Map<string, StaticNode>,
     edges: Map<string, string[]>,
@@ -356,7 +396,7 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
       if (!allValues.has(key)) {
         allValues.set(key, []);
       }
-      const pseudoNode = this.model.makePseudoCls(key, false, tile, this.wkri);
+      const pseudoNode = makePseudoCls(this.model, key, false, tile, this.wkri);
       // We shouldn't have to take care of this case, as it should already
       // be included below.
       // if tile.parenttile_id:
@@ -381,14 +421,14 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
       if (Array.isArray(pseudoNode)) {
         const value = allValues.get(key);
         if (value !== undefined && value !== false) {
-          for (const pseudoNodeList of allValues.get(key)) {
-            if (!Array.isArray(pseudoNodeList)) {
-              throw Error(`Should be all lists not ${typeof pseudoNodeList}`);
+          for (const pseudoList of allValues.get(key)) {
+            if (!(pseudoList instanceof PseudoList) || !(pseudoNode instanceof PseudoList)) {
+              throw Error(`Should be all lists not ${typeof pseudoList} and ${typeof pseudoNode}`);
             }
 
-            if (pseudoNodeList.parentNode == pseudoNode.parentNode) {
+            if (pseudoList.parentNode == pseudoNode.parentNode) {
               for (const ps of pseudoNode) {
-                pseudoNodeList.push(ps);
+                pseudoList.push(ps);
               }
               return;
             }
@@ -453,21 +493,21 @@ class ResourceInstanceWrapper<RIVM extends ResourceInstanceViewModel> implements
   }
 }
 
-class ResourceModelWrapper<RIVM extends ResourceInstanceViewModel> {
+class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   wkrm: WKRM;
   graph: StaticGraph;
-  viewModelClass: typeof ResourceInstanceViewModel = ResourceInstanceViewModel;
-  makePseudoCls: Function;
+  viewModelClass: ResourceInstanceViewModelConstructor<RIVM>;
 
-  constructor(wkrm: WKRM, graph: StaticGraph) {
+  constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass: ResourceInstanceViewModelConstructor<RIVM>) {
     this.wkrm = wkrm;
     this.graph = graph;
-    this.makePseudoCls = makePseudoCls.bind(this);
+    this.viewModelClass = viewModelClass;
   }
 
-  async all(params: { limit: number; lazy: boolean }): Promise<Array<RIVM>> {
+  async all(params: { limit?: number; lazy?: boolean } | undefined = undefined): Promise<Array<RIVM>> {
+    const paramObj = params || { limit: undefined, lazy: undefined };
     const promises = [];
-    for await (const resource of this.iterAll(params)) {
+    for await (const resource of this.iterAll(paramObj)) {
       promises.push(resource);
     }
     return Promise.all(promises);
@@ -479,12 +519,16 @@ class ResourceModelWrapper<RIVM extends ResourceInstanceViewModel> {
     }
   }
 
-  async* iterAll(params: { limit: number; lazy: boolean }): AsyncGenerator<RIVM> {
+  async* iterAll(params: { limit?: number; lazy?: boolean }): AsyncGenerator<RIVM> {
     yield* this.resourceGenerator(staticStore.loadAll(this.wkrm.graphId, params.limit), params.lazy);
   }
 
+  async findStatic(id: string): Promise<StaticResource> {
+    return await staticStore.loadOne(id);
+  }
+
   async find(id: string, lazy: boolean = true): Promise<RIVM> {
-    const rivm = await staticStore.loadOne(id);
+    const rivm = await this.findStatic(id);
     return this.fromStaticResource(rivm, lazy);
   }
 
@@ -493,13 +537,14 @@ class ResourceModelWrapper<RIVM extends ResourceInstanceViewModel> {
     return this.getNodegroupObjects();
   }
 
-  makeInstance(id: string, resource: StaticResource | null) {
+  makeInstance(id: string, resource: StaticResource | null): RIVM {
     // TODO: This line needs fixed.
-    const instance: IRIVM = new this.viewModelClass(
+    const instance: RIVM = new this.viewModelClass(
       id,
       this.viewModelClass.prototype.__,
-      (rivm: ResourceInstanceViewModel) =>
+      (rivm: RIVM) =>
         new ResourceInstanceWrapper(rivm, this, resource),
+      null
     );
     return instance;
   }
@@ -513,7 +558,7 @@ class ResourceModelWrapper<RIVM extends ResourceInstanceViewModel> {
     const childNodes = new Map<string, StaticNode>();
     const edges = this.getEdges().get(nodeId);
     if (edges) {
-      for (const [_, n] of this.getNodeObjects()) {
+      for (const [, n] of this.getNodeObjects()) {
         if (edges.includes(n.nodeid)) {
           if (n.alias) {
             childNodes.set(n.alias, n);
@@ -631,54 +676,42 @@ class ResourceModelWrapper<RIVM extends ResourceInstanceViewModel> {
     lazy: boolean = false,
   ): Promise<RIVM> {
     // TODO: implement lazy
-    const wkri = this.makeInstance(
+    const wkri: RIVM = this.makeInstance(
       resource.resourceinstance.resourceinstanceid,
       resource,
     );
+
+    if (!wkri._) {
+      throw Error("Could not load resource from static definition");
+    }
+
     return wkri._.populate(lazy).then(() => wkri);
   }
 }
 
-function makeResourceModelWrapper(
+function makeResourceModelWrapper<T extends IRIVM<T>>(
+  viewModelClass: ResourceInstanceViewModelConstructor<T> | undefined,
   wkrm: WKRM,
   graph: StaticGraph,
-): ResourceModelWrapper<any> {
-  const viewModelClass: typeof ResourceInstanceViewModel = {
-    [wkrm.modelClassName]: class extends ResourceInstanceViewModel {
-      static _: ResourceInstanceWrapper<any>;
-      static __: ResourceModelWrapper<any>;
-      static async all(
-        params: { limit: number | null; lazy: boolean } = {
-          limit: null,
-          lazy: false,
-        },
-      ): Promise<Array<typeof viewModelClass>> {
-        return viewModelClass.prototype.__.all({
-          limit: params.limit,
-          lazy: params.lazy,
-        });
-      }
-      static async find(
-        id: string,
-        lazy: boolean = false,
-      ): Promise<Array<typeof viewModelClass>> {
-        return viewModelClass.prototype.__.find(id, lazy);
-      }
-      constructor(
-        id: string,
-        wrapper: ResourceModelWrapper<any>,
-        instanceWrapperFactory: (
-          rivm: ResourceInstanceViewModel,
-        ) => IInstanceWrapper,
-      ) {
-        super(id, wrapper, instanceWrapperFactory);
-      }
-    },
-  }[wkrm.modelClassName];
-  const wrapper = new ResourceModelWrapper<any>(wkrm, graph);
-  wrapper.viewModelClass = viewModelClass;
-  viewModelClass.prototype.__ = wrapper;
-  return wrapper;
+): ResourceInstanceViewModelConstructor<T> {
+  let vmc: ResourceInstanceViewModelConstructor<T>;
+  if (!viewModelClass) {
+    // @ts-expect-error It may be possible to correct this, but TS does not know that
+    // the dynamically-defined class meets the IRIVM interface.
+    const viewModelClassObj: {[name: string]: ResourceInstanceViewModelConstructor<T>} = {
+      [wkrm.modelClassName]: class extends ResourceInstanceViewModel<T> {
+        static _: ResourceInstanceWrapper<T> | null;
+        static __: ResourceModelWrapper<T> | null;
+      },
+    };
+    vmc = viewModelClassObj[wkrm.modelClassName];
+  } else {
+    vmc = viewModelClass;
+  }
+
+  const wrapper = new ResourceModelWrapper<T>(wkrm, graph, vmc);
+  vmc.prototype.__ = wrapper;
+  return vmc;
 }
 
 class GraphManager {
@@ -693,7 +726,7 @@ class GraphManager {
     this.wkrms = new Map<string, WKRM>();
   }
 
-  async initialize(configurationOptions: ConfigurationOptions | undefined) {
+  async initialize(configurationOptions: ConfigurationOptions | undefined = undefined) {
     if (this._initialized) {
       return;
     }
@@ -702,26 +735,35 @@ class GraphManager {
     }
     const graphJsons: GraphResult = await this.archesClient.getGraphs();
 
-    Object.entries(graphJsons["models"]).forEach(([graphId, meta]: [string, GraphMeta]) => {
+    Object.entries(graphJsons["models"]).forEach(([graphId, meta]: [string, StaticGraphMeta]) => {
       meta.graphid = meta.graphid || graphId;
       const wkrm = new WKRM(meta);
       this.wkrms.set(wkrm.modelClassName, wkrm);
     });
-    let graphs = Object.keys(graphJsons["models"]);
+    let graphs: Array<string> = Object.keys(graphJsons["models"]);
     const allowedGraphs = configurationOptions.graphs;
     if (allowedGraphs !== null) {
-      if (allowedGraphs !== true) {
+      if (allowedGraphs === false) {
+        throw Error("No current meaning of allowedGraphs === false");
+      } else if (allowedGraphs !== true) {
         graphs = graphs.filter(
           (graphId: string) => allowedGraphs.includes(graphId),
         );
       }
-      await Promise.all(graphs.map(this.loadGraph));
+      await Promise.all(graphs.map(g => this.loadGraph(g)));
     }
 
     this._initialized = true;
   }
 
-  async loadGraph(modelClassName: string): Promise<ResourceModelWrapper> {
+  async loadGraph<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string): Promise<ResourceModelWrapper<RIVM>> {
+    let modelClassName: string;
+    if (typeof modelClass == 'string') {
+      modelClassName = modelClass;
+    } else {
+      modelClassName = modelClass.name;
+    }
+
     const wkrm = this.wkrms.get(modelClassName);
     if (wkrm === undefined) {
       throw Error(`Only loading graphs for which metadata is present, not ${modelClassName}`);
@@ -733,26 +775,42 @@ class GraphManager {
     }
 
     const graph = new StaticGraph(bodyJson);
-    const model = makeResourceModelWrapper(wkrm, graph);
-    this.graphs.set(graph.graphid, model);
-    return model;
+
+    let model: ResourceInstanceViewModelConstructor<RIVM>;
+    if (typeof modelClass == 'string') {
+      modelClassName = modelClass;
+      model = makeResourceModelWrapper<RIVM>(undefined, wkrm, graph);
+    } else {
+      modelClassName = modelClass.name;
+      model = makeResourceModelWrapper<RIVM>(modelClass, wkrm, graph);
+    }
+
+    this.graphs.set(graph.graphid, model.prototype.__);
+    return model.prototype.__;
   }
 
-  async get(modelClassName: string): Promise<ResourceModelWrapper> {
+  async get<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string): Promise<ResourceModelWrapper<RIVM>> {
+    let modelClassName: string;
+    if (typeof modelClass == 'string') {
+      modelClassName = modelClass;
+    } else {
+      modelClassName = modelClass.name;
+    }
+
     // Initialize as a fallback
     this.initialize(undefined);
-    let wkrm = this.wkrms.get(modelClassName);
+    const wkrm = this.wkrms.get(modelClassName);
     if (wkrm === undefined) {
       throw Error(`Cannot find model requested: ${modelClassName}`);
     }
     const wrapper = this.graphs.get(wkrm.graphId);
     if (wrapper === undefined) {
-      return this.loadGraph(modelClassName);
+      return this.loadGraph(modelClass);
     }
     return wrapper;
   }
 
-  async getResource(resourceId: string, lazy: boolean = true): Promise<ResourceInstanceViewModel> {
+  async getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean = true): Promise<T> {
     const rivm = await staticStore.loadOne(resourceId);
     const graph = this.graphs.get(rivm.resourceinstance.graph_id);
     if (!graph) {

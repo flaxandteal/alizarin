@@ -1,52 +1,67 @@
-import { expect, test } from "vitest";
-import { ArchesClientLocal } from "@/client.ts";
-import { graphManager, staticStore } from "@/graphManager.ts";
-import { RDM } from "@/rdm.ts";
+import { assert, describe, beforeEach } from 'vitest';
+import fetchMock from '@fetch-mock/vitest';
+import { ArchesClientLocal } from "../src/client.ts";
+import { ResourceInstanceViewModel } from "../src/viewModels.ts";
+import { graphManager, staticStore } from "../src/graphManager.ts";
+import { RDM } from "../src/rdm.ts";
 import { apiTest } from "./apiTest";
+
+
+fetchMock.mockGlobal();
+
+class Group extends ResourceInstanceViewModel<Group> {};
 
 const archesClient = new ArchesClientLocal();
 graphManager.archesClient = archesClient;
 staticStore.archesClient = archesClient;
 RDM.archesClient = archesClient;
+await graphManager.initialize();
 
 describe("testing api", () => {
   beforeEach(() => {
-    fetch.resetMocks();
+    fetchMock.mockReset();
   });
 
   apiTest(
     "loads resource models",
     async ({ graphsResponse, graphResponses }) => {
-      fetch.once(JSON.stringify(graphsResponse));
+      fetchMock.once('*', JSON.stringify(graphsResponse));
       // Order doesn't strictly matter as long as it gets all, but it would be nicer to map to the request.
       Object.values(graphResponses).forEach((response) =>
-        fetch.once(JSON.stringify(response)),
+        fetchMock.once('*', JSON.stringify(response)),
       );
 
       await graphManager.initialize();
-      const Group = graphManager.get("Group");
-      const groups = await Group.all();
+      const Groups = await graphManager.get(Group);
+
+      const groups: Group[] = await Groups.all();
+
+      assert(groups[0].constructor.name === "Group");
       const name = await groups[0].basic_info[0].name;
       assert(name == "Global Group");
       assert(name.lang("ga") === "Grúpa Domhanda");
       const action = await groups[0].permissions[0].action[0];
       assert(action == "Reading");
       assert(action !== "Reading");
+
+      const GroupsByName = await graphManager.get("Group");
+      const groupsByName = await GroupsByName.all();
+      assert(await groupsByName[0].basic_info[0].name == "Global Group");
     },
   );
 
   apiTest(
     "loads resource models lazily",
     async ({ graphsResponse, graphResponses }) => {
-      fetch.once(JSON.stringify(graphsResponse));
+      fetchMock.once("*", JSON.stringify(graphsResponse));
       // Order doesn't strictly matter as long as it gets all, but it would be nicer to map to the request.
       Object.values(graphResponses).forEach((response) =>
-        fetch.once(JSON.stringify(response)),
+        fetchMock.once("*", JSON.stringify(response)),
       );
 
       await graphManager.initialize();
-      const Group = graphManager.get("Group");
-      const groups = await Group.all({ lazy: true });
+      const Groups = await graphManager.get(Group);
+      const groups = await Groups.all({ lazy: true });
       const name = await groups[0].basic_info[0].name;
       assert(name == "Global Group");
       assert(name.lang("ga") === "Grúpa Domhanda");

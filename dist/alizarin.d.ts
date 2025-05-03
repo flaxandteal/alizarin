@@ -67,8 +67,7 @@ declare namespace client {
         ArchesClientRemoteStatic,
         ArchesClientRemote,
         ArchesClientLocal,
-        GraphResult,
-        GraphMeta
+        GraphResult
     }
 }
 export { client }
@@ -112,8 +111,9 @@ declare class DomainValueViewModel extends String implements IViewModel {
     _value: StaticDomainValue | Promise<StaticDomainValue>;
     constructor(value: StaticDomainValue);
     forJson(): Promise<StaticDomainValue>;
-    getValue(): StaticValue | Promise<StaticValue>;
-    lang(lang: string): string | undefined;
+    __forJsonCache(): null;
+    getValue(): StaticDomainValue | Promise<StaticDomainValue>;
+    lang(lang: string): Promise<string | undefined>;
     static __create(tile: StaticTile, node: StaticNode, value: any): Promise<DomainValueViewModel | null>;
     __asTileData(): Promise<string | null>;
 }
@@ -126,6 +126,7 @@ declare class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
     _value: {
         [key: string]: any;
     };
+    __forJsonCache(): null;
     constructor(jsonData: {
         [key: string]: any;
     });
@@ -142,7 +143,7 @@ declare function getCurrentLanguage(): string;
 
 declare type GetMeta = ((vm: IViewModel) => IStringKeyedObject) | undefined;
 
-declare function getViewModel(parentPseudo: PseudoValue, tile: StaticTile, node: StaticNode, data: any, parent: ResourceInstanceViewModel | null, childNodes: Map<string, StaticNode>): Promise<[IViewModel, Function | null, string, boolean]>;
+declare function getViewModel<RIVM extends IRIVM<RIVM>>(parentPseudo: PseudoValue, tile: StaticTile, node: StaticNode, data: any, parent: IRIVM<RIVM> | null, childNodes: Map<string, StaticNode>): Promise<IViewModel | null>;
 
 export declare class GraphManager {
     _initialized: boolean;
@@ -150,83 +151,57 @@ export declare class GraphManager {
     graphs: Map<string, ResourceModelWrapper<any>>;
     wkrms: Map<string, WKRM>;
     constructor(archesClient: ArchesClient);
-    initialize(configurationOptions: ConfigurationOptions | undefined): Promise<void>;
-    loadGraph(modelClassName: string): Promise<ResourceModelWrapper>;
-    get(modelClassName: string): Promise<ResourceModelWrapper>;
-    getResource(resourceId: string, lazy?: boolean): Promise<ResourceInstanceViewModel>;
+    initialize(configurationOptions?: ConfigurationOptions | undefined): Promise<void>;
+    loadGraph<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string): Promise<ResourceModelWrapper<RIVM>>;
+    get<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string): Promise<ResourceModelWrapper<RIVM>>;
+    getResource<T extends IRIVM<T>>(resourceId: string, lazy?: boolean): Promise<T>;
     getGraph(graphId: string): StaticGraph;
 }
 
 export declare const graphManager: GraphManager;
 
-declare class GraphMeta {
-    [key: string]: any;
-    author: string | undefined;
-    cards: number | undefined;
-    cards_x_nodes_x_widgets: number | undefined;
-    color: string | undefined;
-    description: {
-        [lang: string]: string;
-    } | undefined;
-    edges: number | undefined;
-    graphid: string;
-    iconclass: string | undefined;
-    is_editable: boolean | undefined;
-    isresource: boolean | undefined;
-    jsonldcontext: {
-        [key: string]: any;
-    } | undefined;
-    name: {
-        [lang: string]: string;
-    } | undefined;
-    nodegroups: number | undefined;
-    nodes: number | undefined;
-    ontology_id: string | undefined;
-    publication: {
-        [key: string]: string | null;
-    } | undefined;
-    relatable_resource_model_ids: string[];
-    resource_2_resource_constraints: any[];
-    root: StaticNode | undefined;
-    slug: string | undefined;
-    subtitle: {
-        [lang: string]: string;
-    } | undefined;
-    version: string | undefined;
-    constructor(jsondata: GraphMeta);
-}
-
 declare class GraphResult {
     models: {
-        [graphId: string]: GraphMeta;
+        [graphId: string]: StaticGraphMeta;
     };
     constructor(jsonData: GraphResult);
 }
 
 declare interface IGraphManager {
-    getResource(slug: string, lazy: boolean): IRIVM;
+    getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean): Promise<T>;
 }
 
-declare interface IInstanceWrapper {
-    resource: any;
-    model: any;
-    ensureNodegroup: any;
-    setOrmAttribute: any;
-    getOrmAttribute: any;
+declare interface IInstanceWrapper<T extends IRIVM<T>> {
+    resource: StaticResource | null | false;
+    model: IModelWrapper<T>;
+    loadNodes(aliases: Array<string>): Promise<void>;
+    allEntries(): MapIterator<[string, Array<IPseudo> | false | null]>;
+    addPseudo(childNode: StaticNode, tile: StaticTile | null): IPseudo;
+    ensureNodegroup(allValues: Map<string, any>, node: StaticNode, nodegroupId: string | null, nodeObjs: Map<string, StaticNode>, nodegroupObjs: Map<string, StaticNodegroup>, edges: Map<string, string[]>, addIfMissing: boolean, tiles: StaticTile[] | null, doImpliedNodegroups: boolean): Promise<[Map<string, any>, Map<string, StaticNode>]>;
+    setOrmAttribute(key: string, value: any): Promise<void>;
+    getOrmAttribute(key: string): Promise<any>;
     getValueCache(build: boolean, getMeta: GetMeta): Promise<{
         [tileId: string]: {
             [nodeId: string]: IStringKeyedObject;
         };
     } | undefined>;
-    getRoot: any;
+    getRoot(): Promise<IPseudo | undefined>;
+    getRootViewModel(): Promise<IStringKeyedObject>;
+    populate(lazy: boolean): Promise<void>;
 }
 
-declare interface IModelWrapper {
+declare interface IModelWrapper<T extends IRIVM<T>> {
+    all(params: {
+        limit?: number;
+        lazy?: boolean;
+    } | undefined): Promise<Array<T>>;
     getPermittedNodegroups(): Map<string, StaticNodegroup>;
     getChildNodes(nodeId: string): Map<string, StaticNode>;
     getNodeObjectsByAlias(): Map<string, StaticNode>;
+    getNodeObjects(): Map<string, StaticNode>;
     getNodegroupObjects(): Map<string, StaticNodegroup>;
-    wkrm: any;
+    getEdges(): Map<string, string[]>;
+    wkrm: IWKRM;
 }
 
 declare class INodeConfig {
@@ -234,6 +209,7 @@ declare class INodeConfig {
 
 declare namespace interfaces {
     export {
+        ResourceInstanceViewModelConstructor,
         GetMeta,
         IInstanceWrapper,
         IModelWrapper,
@@ -250,7 +226,13 @@ export { interfaces }
 
 declare interface IPseudo {
     parentNode: IPseudo | null;
-    getValue(): IViewModel | null;
+    getValue(): AttrPromise<IViewModel | null | Array<IViewModel>>;
+    forJson(): {
+        [key: string]: any;
+    } | {
+        [key: string]: any;
+    }[] | string | number | boolean | null;
+    isIterable(): boolean;
     tile: any;
     node: any;
     describeField: () => string;
@@ -261,17 +243,13 @@ declare interface IReferenceDataManager {
     retrieveCollection(id: string): Promise<StaticCollection>;
 }
 
-declare interface IRIVM {
+declare interface IRIVM<T extends IRIVM<T>> {
+    [key: string]: any;
     id: string;
-    then: undefined;
-    _: IInstanceWrapper;
-    __: IModelWrapper;
+    then: null;
+    _: IInstanceWrapper<T> | null;
+    __: IModelWrapper<T> | null;
     __parentPseudo: IPseudo | undefined;
-    forJson(): {
-        [key: string]: any;
-    } | {
-        [key: string]: any;
-    }[];
 }
 
 declare interface IStringKeyedObject {
@@ -284,8 +262,15 @@ declare interface IViewModel {
         [key: string]: any;
     } | {
         [key: string]: any;
-    }[];
-    __forJsonCache(GetMeta: any): IStringKeyedObject | null;
+    }[] | string | number | boolean | null;
+    __forJsonCache(getMeta: GetMeta): IStringKeyedObject | null;
+}
+
+declare interface IWKRM {
+    modelName: string;
+    modelClassName: string;
+    graphId: string;
+    meta: StaticGraphMeta;
 }
 
 declare class JsonRenderer extends Renderer {
@@ -312,27 +297,30 @@ declare class PseudoValue implements IPseudo {
     node: StaticNode;
     tile: StaticTile | null;
     value: any;
-    parent: IRIVM | null;
+    parent: IRIVM<any> | null;
     parentNode: PseudoValue | null;
     valueLoaded: boolean | undefined;
     datatype: string | null;
     originalTile: StaticTile | null;
     accessed: boolean;
     childNodes: Map<string, StaticNode>;
-    multiple: boolean;
-    asTileData: Function | null;
+    isIterable(): boolean;
     describeField(): string;
     describeFieldGroup(): string;
-    constructor(node: StaticNode, tile: StaticTile | null, value: any, parent: IRIVM | null, childNodes: Map<string, StaticNode>);
+    constructor(node: StaticNode, tile: StaticTile | null, value: any, parent: IRIVM<any> | null, childNodes: Map<string, StaticNode>);
     getParentTileId(): string | null;
     getTile(): Promise<(any[] | StaticTile | null)[]>;
     clear(): void;
     updateValue(): AttrPromise<IViewModel>;
     getValue(): AttrPromise<IViewModel | null>;
     getLength(): any;
-    getType(): Promise<(string | boolean | null)[]>;
     getChildTypes(): Promise<any>;
     getChildren(direct?: null): any;
+    forJson(): Promise<{
+        [key: string]: any;
+    } | {
+        [key: string]: any;
+    }[] | string | number | boolean | null>;
 }
 
 export declare const RDM: ReferenceDataManager;
@@ -381,43 +369,44 @@ declare class ResourceInstanceCacheEntry implements IStringKeyedObject {
     constructor(meta: IStringKeyedObject | undefined, id: string, type: string, graphId: string, title: string | null);
 }
 
-declare class ResourceInstanceViewModel implements IStringKeyedObject {
+declare class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeyedObject {
     [key: string]: any;
-    _: IInstanceWrapper | null;
-    __: IModelWrapper;
+    _: IInstanceWrapper<RIVM> | null;
+    __: IModelWrapper<RIVM> | null;
     __parentPseudo: IPseudo | undefined;
     __cacheEntry: ResourceInstanceCacheEntry | null;
     id: string;
     then: null;
+    gm: IGraphManager | undefined;
     toString(): string;
-    __asTileData(): Promise<{
-        resourceId: string;
-    }>;
+    __asTileData(): Promise<IStringKeyedObject>;
     __forJsonCache(getMeta: GetMeta): Promise<ResourceInstanceCacheEntry>;
     forJson(cascade?: boolean): Promise<StaticResourceReference>;
-    retrieve(): Promise<void>;
-    constructor(id: string, modelWrapper: IModelWrapper, instanceWrapperFactory: (rivm: ResourceInstanceViewModel) => IInstanceWrapper, cacheEntry: ResourceInstanceCacheEntry | null);
-    static __create(tile: StaticTile, node: StaticNode, value: any, cacheEntry: ResourceInstanceCacheEntry | null): Promise<ResourceInstanceViewModel | null>;
+    retrieve(): Promise<[IInstanceWrapper<RIVM>, IModelWrapper<RIVM>]>;
+    constructor(id: string, modelWrapper: IModelWrapper<RIVM> | null, instanceWrapperFactory: ((rivm: RIVM) => IInstanceWrapper<RIVM>) | null, cacheEntry: object | null);
+    static __create(tile: StaticTile, node: StaticNode, value: any, cacheEntry: ResourceInstanceCacheEntry | null): Promise<ResourceInstanceViewModel<any> | null>;
 }
 
-declare class ResourceModelWrapper<RIVM extends ResourceInstanceViewModel> {
+declare type ResourceInstanceViewModelConstructor<T extends IRIVM<T>> = new (id: string, modelWrapper: IModelWrapper<T> | null, instanceWrapperFactory: ((rivm: T) => IInstanceWrapper<T>) | null, cacheEntry: object | null) => T;
+
+declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     wkrm: WKRM;
     graph: StaticGraph;
-    viewModelClass: typeof ResourceInstanceViewModel;
-    makePseudoCls: Function;
-    constructor(wkrm: WKRM, graph: StaticGraph);
-    all(params: {
-        limit: number;
-        lazy: boolean;
-    }): Promise<Array<RIVM>>;
+    viewModelClass: ResourceInstanceViewModelConstructor<RIVM>;
+    constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass: ResourceInstanceViewModelConstructor<RIVM>);
+    all(params?: {
+        limit?: number;
+        lazy?: boolean;
+    } | undefined): Promise<Array<RIVM>>;
     resourceGenerator(staticResources: AsyncIterable<StaticResource, RIVM, unknown>, lazy?: boolean): AsyncGenerator<RIVM, void, unknown>;
     iterAll(params: {
-        limit: number;
-        lazy: boolean;
+        limit?: number;
+        lazy?: boolean;
     }): AsyncGenerator<RIVM>;
+    findStatic(id: string): Promise<StaticResource>;
     find(id: string, lazy?: boolean): Promise<RIVM>;
     getPermittedNodegroups(): Map<string, StaticNodegroup>;
-    makeInstance(id: string, resource: StaticResource | null): IRIVM;
+    makeInstance(id: string, resource: StaticResource | null): RIVM;
     edges: Map<string, string[]> | undefined;
     nodes: Map<string, StaticNode> | undefined;
     nodegroups: Map<string, StaticNodegroup> | undefined;
@@ -437,25 +426,25 @@ declare class SemanticViewModel implements IStringKeyedObject, IViewModel {
     then: undefined;
     __parentPseudo: PseudoValue | undefined;
     __childValues: Map<string, any>;
-    __parentWkri: ResourceInstanceViewModel | null;
+    __parentWkri: IRIVM<any> | null;
     __childNodes: Map<string, StaticNode>;
     __tile: StaticTile | null;
     __node: StaticNode;
-    __forJsonCache: undefined;
-    constructor(parentWkri: ResourceInstanceViewModel | null, childNodes: Map<string, StaticNode>, tile: StaticTile | null, node: StaticNode);
+    __forJsonCache(): null;
+    constructor(parentWkri: IRIVM<any> | null, childNodes: Map<string, StaticNode>, tile: StaticTile | null, node: StaticNode);
     toString(): Promise<string>;
     toObject(): Promise<any>;
     forJson(): Promise<any>;
     __update(map: Map<string, any>): Promise<void[]>;
-    __get(key: string): Promise<any>;
+    __get(key: string): Promise<IViewModel | IViewModel[] | null>;
     __set(key: string, value: any): Promise<void>;
     __getChildTypes(): Promise<Map<string, any>>;
     __getChildren(direct?: null | boolean): Promise<any[]>;
-    __getChildValue(key: string): Promise<any>;
-    __makePseudo(key: string): any;
-    static __create(tile: StaticTile, node: StaticNode, value: any, parent: ResourceInstanceViewModel | null, childNodes: Map<string, StaticNode>): Promise<SemanticViewModel>;
+    __getChildValue(key: string, setDefault?: boolean): Promise<IPseudo>;
+    __makePseudo(key: string): IPseudo;
+    static __create(tile: StaticTile, node: StaticNode, value: any, parent: IRIVM<any> | null, childNodes: Map<string, StaticNode>): Promise<SemanticViewModel>;
     __asTileData(): Promise<(any[] | null)[]>;
-    __getChildValues(targetKey?: string | null): Promise<any>;
+    __getChildValues(): Promise<Map<string, IPseudo>>;
 }
 
 declare class StaticCard {
@@ -535,16 +524,16 @@ declare class StaticDomainValue {
     id: string;
     selected: boolean;
     text: {
-        [lang: string]: object;
+        [lang: string]: string;
     };
     constructor(jsonData: StaticDomainValue);
-    toString(): object;
-    lang(lang: string): object;
+    toString(): string;
+    lang(lang: string): string | undefined;
     forJson(): Promise<{
         id: string;
         selected: boolean;
         text: {
-            [lang: string]: object;
+            [lang: string]: string;
         };
     }>;
 }
@@ -596,6 +585,43 @@ declare class StaticGraph {
     template_id: string;
     version: string;
     constructor(jsonData: StaticGraph);
+}
+
+declare class StaticGraphMeta {
+    [key: string]: any;
+    author: string | undefined;
+    cards: number | undefined;
+    cards_x_nodes_x_widgets: number | undefined;
+    color: string | undefined;
+    description: {
+        [lang: string]: string;
+    } | undefined;
+    edges: number | undefined;
+    graphid: string;
+    iconclass: string | undefined;
+    is_editable: boolean | undefined;
+    isresource: boolean | undefined;
+    jsonldcontext: {
+        [key: string]: any;
+    } | undefined;
+    name: {
+        [lang: string]: string;
+    } | undefined;
+    nodegroups: number | undefined;
+    nodes: number | undefined;
+    ontology_id: string | undefined;
+    publication: {
+        [key: string]: string | null;
+    } | undefined;
+    relatable_resource_model_ids: string[];
+    resource_2_resource_constraints: any[];
+    root: StaticNode | undefined;
+    slug: string | undefined;
+    subtitle: {
+        [lang: string]: string;
+    } | undefined;
+    version: string | undefined;
+    constructor(jsondata: StaticGraphMeta);
 }
 
 declare class StaticNode {
@@ -718,7 +744,8 @@ declare namespace staticTypes {
         StaticCollection,
         StaticConcept,
         StaticDomainValue,
-        StaticResourceReference
+        StaticResourceReference,
+        StaticGraphMeta
     }
 }
 export { staticTypes }
@@ -732,16 +759,21 @@ declare class StaticValue {
     toString(): string;
 }
 
+declare class StringTranslatedLanguage {
+    value: string;
+}
+
 declare class StringViewModel extends String implements IViewModel {
     __parentPseudo: PseudoValue | undefined;
     describeField: () => string | null;
     describeFieldGroup: () => string | null;
-    _value: Map<string, object>;
-    constructor(value: Map<string, object>, language?: string | null);
+    _value: Map<string, StringTranslatedLanguage>;
+    __forJsonCache(): null;
+    constructor(value: Map<string, StringTranslatedLanguage>, language?: string | null);
     forJson(): string;
-    lang(language: string): any;
-    static __create(tile: StaticTile, node: StaticNode, value: any): StringViewModel | Promise<StringViewModel> | null;
-    __asTileData(): Map<string, object>;
+    lang(language: string): string | undefined;
+    static __create(tile: StaticTile, node: StaticNode, value: any): StringViewModel | Promise<StringViewModel | null> | null;
+    __asTileData(): Map<string, StringTranslatedLanguage>;
 }
 
 declare namespace utils {
@@ -752,11 +784,11 @@ declare namespace utils {
 }
 export { utils }
 
-declare class ValueList {
+declare class ValueList<T extends IRIVM<T>> {
     values: Map<string, any>;
-    wrapper: IInstanceWrapper;
+    wrapper: IInstanceWrapper<T>;
     tiles: StaticTile[] | null;
-    constructor(values: Map<string, any>, wrapper: IInstanceWrapper, tiles: StaticTile[] | null);
+    constructor(values: Map<string, any>, wrapper: IInstanceWrapper<T>, tiles: StaticTile[] | null);
     get(key: string): Promise<any>;
     set(key: string, value: any): void;
     has(key: string): Promise<boolean>;
@@ -768,10 +800,11 @@ declare class ViewContext {
     graphManager: IGraphManager | undefined;
 }
 
-declare let viewContext: ViewContext;
+declare const viewContext: ViewContext;
 
 declare namespace viewModels {
     export {
+        ResourceInstanceCacheEntry,
         DEFAULT_LANGUAGE,
         ResourceInstanceViewModel,
         ValueList,
@@ -790,8 +823,8 @@ declare class WKRM {
     modelName: string;
     modelClassName: string;
     graphId: string;
-    meta: GraphMeta;
-    constructor(meta: GraphMeta);
+    meta: StaticGraphMeta;
+    constructor(meta: StaticGraphMeta);
 }
 
 export { }

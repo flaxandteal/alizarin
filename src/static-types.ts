@@ -1,5 +1,36 @@
 import { getCurrentLanguage } from './utils';
 
+class StaticGraphMeta {
+  [key: string]: any
+  author: string | undefined
+  cards: number | undefined
+  cards_x_nodes_x_widgets: number | undefined
+  color: string | undefined
+  description: {[lang: string]: string} | undefined
+  edges: number | undefined
+  graphid: string
+  iconclass: string | undefined
+  is_editable: boolean | undefined
+  isresource: boolean | undefined
+  jsonldcontext: {[key: string]: any} | undefined
+  name: {[lang: string]: string} | undefined
+  nodegroups: number | undefined
+  nodes: number | undefined
+  ontology_id: string | undefined
+  publication: {[key: string]: string | null} | undefined
+  relatable_resource_model_ids: string[] = []
+  resource_2_resource_constraints: any[] = []
+  root: StaticNode | undefined
+  slug: string | undefined
+  subtitle: {[lang: string]: string} | undefined
+  version: string | undefined
+
+  constructor(jsondata: StaticGraphMeta) {
+    this.graphid = jsondata.graphid;
+    Object.assign(this, jsondata)
+  }
+}
+
 class StaticTranslatableString extends String {
   translations: Map<string, string>;
   lang: string;
@@ -470,7 +501,7 @@ class StaticResourceMetadata {
 class StaticDomainValue {
   id: string
   selected: boolean
-  text: {[lang: string]: object}
+  text: {[lang: string]: string}
 
   constructor(jsonData: StaticDomainValue) {
     this.id = jsonData.id;
@@ -481,7 +512,7 @@ class StaticDomainValue {
   toString() {
     const lang = getCurrentLanguage();
     let localized = this.text[lang];
-    if (!(localized instanceof Object)) {
+    if (typeof localized !== "string") {
       localized = Object.values(this.text)[0];
     }
     if (!localized) {
@@ -490,7 +521,7 @@ class StaticDomainValue {
     return localized;
   }
 
-  lang(lang: string) {
+  lang(lang: string): string | undefined {
     return this.text[lang];
   }
 
@@ -546,5 +577,6 @@ export {
   StaticCollection,
   StaticConcept,
   StaticDomainValue,
-  StaticResourceReference
+  StaticResourceReference,
+  StaticGraphMeta,
 };

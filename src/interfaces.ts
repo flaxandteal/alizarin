@@ -1,12 +1,21 @@
-import { StaticCollection, StaticValue, StaticConcept, StaticTile, StaticGraph, StaticNode, StaticNodegroup, StaticResource } from "./static-types";
+import { StaticResource, StaticTile, StaticGraphMeta, StaticCollection, StaticNode, StaticNodegroup } from "./static-types";
+import { AttrPromise } from "./utils";
 
-interface IRIVM {
+type ResourceInstanceViewModelConstructor<T extends IRIVM<T>> =
+  new (
+    id: string,
+    modelWrapper: IModelWrapper<T> | null,
+    instanceWrapperFactory: ((rivm: T) => IInstanceWrapper<T>) | null,
+    cacheEntry: object | null
+  ) => T;
+
+interface IRIVM<T extends IRIVM<T>> {
+  [key: string]: any;
   id: string
-  then: undefined;
-  _: IInstanceWrapper,
-  __: IModelWrapper,
+  then: null;
+  _: IInstanceWrapper<T> | null;
+  __: IModelWrapper<T> | null;
   __parentPseudo: IPseudo | undefined;
-  forJson(): {[key: string]: any} | {[key: string]: any}[];
 }
 
 interface IStringKeyedObject {
@@ -17,29 +26,55 @@ type GetMeta = ((vm: IViewModel) => IStringKeyedObject) | undefined;
 
 interface IViewModel {
   __parentPseudo: IPseudo | undefined;
-  forJson(): {[key: string]: any} | {[key: string]: any}[];
-  __forJsonCache(GetMeta): IStringKeyedObject | null;
+  forJson(): {[key: string]: any} | {[key: string]: any}[] | string | number | boolean | null;
+  __forJsonCache(getMeta: GetMeta): IStringKeyedObject | null;
 }
 
-interface IInstanceWrapper {
-  resource;
-  model;
-  ensureNodegroup;
-  setOrmAttribute;
-  getOrmAttribute;
+interface IInstanceWrapper<T extends IRIVM<T>> {
+  resource: StaticResource | null | false;
+  model: IModelWrapper<T>;
+  loadNodes(aliases: Array<string>): Promise<void>;
+  allEntries(): MapIterator<[string, Array<IPseudo> | false | null]>;
+  addPseudo(childNode: StaticNode, tile: StaticTile | null): IPseudo;
+  ensureNodegroup(
+    allValues: Map<string, any>,
+    node: StaticNode,
+    nodegroupId: string | null,
+    nodeObjs: Map<string, StaticNode>,
+    nodegroupObjs: Map<string, StaticNodegroup>,
+    edges: Map<string, string[]>,
+    addIfMissing: boolean,
+    tiles: StaticTile[] | null,
+    doImpliedNodegroups: boolean
+  ): Promise<[Map<string, any>, Map<string, StaticNode>]>;
+  setOrmAttribute(key: string, value: any): Promise<void>;
+  getOrmAttribute(key: string): Promise<any>;
   getValueCache(build: boolean, getMeta: GetMeta): Promise<{[tileId: string]: {[nodeId: string]: IStringKeyedObject}} | undefined>;
-  getRoot;
+  getRoot(): Promise<IPseudo | undefined>;
+  getRootViewModel(): Promise<IStringKeyedObject>;
+  populate(lazy: boolean): Promise<void>;
 };
+
 
 class INodeConfig {
 };
 
-interface IModelWrapper {
+interface IWKRM {
+  modelName: string;
+  modelClassName: string;
+  graphId: string;
+  meta: StaticGraphMeta;
+};
+
+interface IModelWrapper<T extends IRIVM<T>> {
+  all(params: { limit?: number; lazy?: boolean } | undefined): Promise<Array<T>>;
   getPermittedNodegroups(): Map<string, StaticNodegroup>;
   getChildNodes(nodeId: string): Map<string, StaticNode>;
   getNodeObjectsByAlias(): Map<string, StaticNode>;
+  getNodeObjects(): Map<string, StaticNode>;
   getNodegroupObjects(): Map<string, StaticNodegroup>;
-  wkrm;
+  getEdges(): Map<string, string[]>;
+  wkrm: IWKRM;
 };
 
 interface IReferenceDataManager {
@@ -48,7 +83,9 @@ interface IReferenceDataManager {
 
 interface IPseudo {
   parentNode: IPseudo | null;
-  getValue(): IViewModel | null;
+  getValue(): AttrPromise<IViewModel | null | Array<IViewModel>>;
+  forJson(): {[key: string]: any} | {[key: string]: any}[] | string | number | boolean | null;
+  isIterable(): boolean;
   tile: any;
   node: any;
   describeField: () => string;
@@ -56,7 +93,7 @@ interface IPseudo {
 }
 
 interface IGraphManager {
-  getResource(slug: string, lazy: boolean): IRIVM;
+  getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean): Promise<T>;
 }
 
-export type { GetMeta, IInstanceWrapper, IModelWrapper, IRIVM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo, INodeConfig, IGraphManager };
+export type { ResourceInstanceViewModelConstructor, GetMeta, IInstanceWrapper, IModelWrapper, IRIVM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo, INodeConfig, IGraphManager };

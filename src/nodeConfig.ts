@@ -63,4 +63,4 @@ class NodeConfigManager {
 
 const nodeConfigManager = new NodeConfigManager();
 
-export { nodeConfigManager };
+export { nodeConfigManager, StaticNodeConfigDomain };
