@@ -1,0 +1,33 @@
+---
+title: Quickstart
+description: First steps with Alizarin
+---
+
+## Quickstart
+
+```js
+import { AlizarinModel, graphManager } from 'alizarin';
+
+class Person extends AlizarinModel<Person> {};
+
+const Persons = graphManager.get(Person);
+const everyone = Persons.all({lazy: true});
+
+for (const person in everyone) {
+  console.log(person.name, "->", person.friends[0].name);
+}
+```
+
+To run Alizarin, you need [Arches](https://github.com/archesproject/arches) JSON,
+which can be generated with Arches or, in pure Python, with [AORM](https://github.com/flaxandteal/arches-orm).
+
+Alizarin can run via static JSON files, or from an Arches-compatible API.
+
+It needs, unless precached, JSON endpoints for collections, concepts, resources (tiles) and graphs.
+
+## Cards
+
+<Cards>
+  <Card title="Learn more about Next.js" href="https://nextjs.org/docs" />
+  <Card title="Learn more about Fumadocs" href="https://fumadocs.vercel.app" />
+</Cards>
