@@ -1,0 +1,256 @@
+{
+  "id": "10f1b99b-80c8-49a6-b825-440d8d2ced37",
+  "prefLabels": {
+    "": {
+      "value": "10f1b99b-80c8-49a6-b825-440d8d2ced37"
+    }
+  },
+  "concepts": {
+    "76e7def2-693d-48a2-b17f-84ae7b5f0796": {
+      "id": "76e7def2-693d-48a2-b17f-84ae7b5f0796",
+      "prefLabels": {
+        "en": {
+          "id": "ba31d906-accc-48f3-bb8f-52b59201adef",
+          "value": "User Need"
+        }
+      },
+      "source": null,
+      "sortOrder": null,
+      "children": [
+        {
+          "id": "4caf944a-5d85-4e34-8145-12050bc70693",
+          "prefLabels": {
+            "en": {
+              "id": "25c656b7-1ec6-4c05-8fe8-6da035b14975",
+              "value": "Mapwork"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "a48f699c-a081-41d3-bf4f-ea932c92981b",
+          "prefLabels": {
+            "en": {
+              "id": "09427b71-81cb-46ba-8464-e8fc2043380c",
+              "value": "Discovery"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "d5c8f1c9-ff41-4736-9eaf-916b4564362e",
+          "prefLabels": {
+            "en": {
+              "id": "a946365a-20f6-4706-8fe9-2973ec87801b",
+              "value": "Business Analysis"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "86b11b47-8fea-4eb3-8e24-4acf3ee30436",
+          "prefLabels": {
+            "en": {
+              "id": "395ac240-ae22-4327-a57a-2022810a40f5",
+              "value": "Fieldwork"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "de87aac2-8560-4609-9f54-5e27c990f9ce",
+          "prefLabels": {
+            "en": {
+              "id": "152fe3a0-f1de-43e4-9897-026587cee523",
+              "value": "Vocabularies"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "eadea232-3954-444e-9936-756b5d0d1960",
+          "prefLabels": {
+            "en": {
+              "id": "ed901be0-eec5-403c-a2ce-94df28f4192a",
+              "value": "Developer Experience"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "2eafe395-4eea-4d07-9f2d-f3740aff8b83",
+          "prefLabels": {
+            "en": {
+              "id": "96ee0dad-0b25-43c6-9d9a-358586060b39",
+              "value": "Data Entry"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "30c0a856-af73-4f17-881f-8b71213c1171",
+          "prefLabels": {
+            "en": {
+              "id": "81e75087-b3de-478d-af47-2343134ae44f",
+              "value": "Reporting"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        }
+      ]
+    },
+    "d6435de5-acdb-4ef3-8181-0bd035e5d5c6": {
+      "id": "d6435de5-acdb-4ef3-8181-0bd035e5d5c6",
+      "prefLabels": {
+        "en": {
+          "id": "0eb40fb1-fac3-4679-ae26-2b2e3df9b4a6",
+          "value": "Technical Area"
+        }
+      },
+      "source": null,
+      "sortOrder": null,
+      "children": [
+        {
+          "id": "07664c3b-d868-4e64-baf4-a12e08a5892e",
+          "prefLabels": {
+            "en": {
+              "id": "f31cf35b-e474-4dca-9134-9524292d4854",
+              "value": "Model Management"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "97c824a6-ad1b-4ed3-b56c-1572085fdfb1",
+          "prefLabels": {
+            "en": {
+              "id": "42365357-1a0d-489f-a18c-49756ada52fc",
+              "value": "Core"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "7c3226cf-4d13-41b4-8a9d-7c26a058fd44",
+          "prefLabels": {
+            "en": {
+              "id": "f71cff66-5421-4420-b06e-397376eb2f56",
+              "value": "Lingo & Controlled Lists"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "3cce47ca-eaec-4718-aca4-ba55902466c6",
+          "prefLabels": {
+            "en": {
+              "id": "08d28d3b-9c92-4004-b7ee-ed131a348e92",
+              "value": "Interoperability"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "243a4c59-a3f4-43fc-9e17-67fcc2d7c3f6",
+          "prefLabels": {
+            "en": {
+              "id": "821ad696-2f38-41bc-9b0d-474b1df656b7",
+              "value": "GIS"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "b990d374-d106-48c5-93f5-3db52d7bd89a",
+          "prefLabels": {
+            "en": {
+              "id": "c7220a6c-fa14-4ea8-8add-0c58b9443785",
+              "value": "ETL"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "c5792fcd-b810-4732-8ab3-1d6da6fb0be1",
+          "prefLabels": {
+            "en": {
+              "id": "56e63a80-6803-488b-9f4c-04002a8410e2",
+              "value": "Search"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "77277b72-1d4e-4a9a-9089-2bbe4ad180a6",
+          "prefLabels": {
+            "en": {
+              "id": "e86a567e-a219-4257-a849-563445d94e64",
+              "value": "Database"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "92883efe-a52e-4c0b-a6e6-108905c7418d",
+          "prefLabels": {
+            "en": {
+              "id": "585f318f-95d2-45a7-96b9-e75c2c5391ad",
+              "value": "LLM"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "96109912-c506-4706-a24f-5354e2bb1d3b",
+          "prefLabels": {
+            "en": {
+              "id": "66ccbbc2-8c9d-46ee-b312-380062541204",
+              "value": "Mobile"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "b7bbcfff-921a-45c2-9dad-27118e21fcaa",
+          "prefLabels": {
+            "en": {
+              "id": "ac07cf88-c3b0-4670-9305-01c0a0b92a15",
+              "value": "Permissions"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        },
+        {
+          "id": "75b6bdc7-a7ae-46fd-b1e2-7156fb757838",
+          "prefLabels": {
+            "en": {
+              "id": "38cf7f0c-6547-4817-8218-1626566dfc18",
+              "value": "Front-end"
+            }
+          },
+          "source": null,
+          "sortOrder": null
+        }
+      ]
+    }
+  }
+}

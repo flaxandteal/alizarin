@@ -1,0 +1,856 @@
+{
+    "graph": [
+        {
+            "author": " ",
+            "cards": [
+                {
+                    "active": true,
+                    "cardid": "2177de6b-c026-49d1-beea-c5841a27ef4e",
+                    "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+                    "config": null,
+                    "constraints": [],
+                    "cssclass": null,
+                    "description": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "helpenabled": false,
+                    "helptext": {
+                        "en": ""
+                    },
+                    "helptitle": {
+                        "en": ""
+                    },
+                    "instructions": {
+                        "en": ""
+                    },
+                    "is_editable": true,
+                    "name": {
+                        "en": "Slot 6"
+                    },
+                    "nodegroup_id": "6a25182e-1b5c-11f0-8399-a32be8fb5c91",
+                    "sortorder": null,
+                    "visible": true
+                },
+                {
+                    "active": true,
+                    "cardid": "2a22783b-b840-4c27-802b-2f5fae06b4bc",
+                    "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+                    "config": null,
+                    "constraints": [],
+                    "cssclass": null,
+                    "description": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "helpenabled": false,
+                    "helptext": {
+                        "en": ""
+                    },
+                    "helptitle": {
+                        "en": ""
+                    },
+                    "instructions": {
+                        "en": ""
+                    },
+                    "is_editable": false,
+                    "name": {
+                        "en": "Slot 1"
+                    },
+                    "nodegroup_id": "1b87ea30-1b5c-11f0-961a-8fd6f4eb1a02",
+                    "sortorder": null,
+                    "visible": true
+                },
+                {
+                    "active": true,
+                    "cardid": "529ae4bf-8ff7-4e08-98c6-c9a6e4392e6f",
+                    "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+                    "config": null,
+                    "constraints": [],
+                    "cssclass": null,
+                    "description": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "helpenabled": false,
+                    "helptext": {
+                        "en": ""
+                    },
+                    "helptitle": {
+                        "en": ""
+                    },
+                    "instructions": {
+                        "en": ""
+                    },
+                    "is_editable": false,
+                    "name": {
+                        "en": "Number"
+                    },
+                    "nodegroup_id": "93b58730-1b5c-11f0-b326-8fd6f4eb1a02",
+                    "sortorder": null,
+                    "visible": true
+                },
+                {
+                    "active": true,
+                    "cardid": "56d65225-66f5-4a37-8c97-645012bd9645",
+                    "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+                    "config": null,
+                    "constraints": [],
+                    "cssclass": null,
+                    "description": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "helpenabled": false,
+                    "helptext": {
+                        "en": ""
+                    },
+                    "helptitle": {
+                        "en": ""
+                    },
+                    "instructions": {
+                        "en": ""
+                    },
+                    "is_editable": false,
+                    "name": {
+                        "en": "Slot 2"
+                    },
+                    "nodegroup_id": "2a96e190-1b5c-11f0-bb7c-a32be8fb5c91",
+                    "sortorder": null,
+                    "visible": true
+                },
+                {
+                    "active": true,
+                    "cardid": "837ddb25-2e78-4ae4-8aad-43690d04a4ae",
+                    "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+                    "config": null,
+                    "constraints": [],
+                    "cssclass": null,
+                    "description": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "helpenabled": false,
+                    "helptext": {
+                        "en": ""
+                    },
+                    "helptitle": {
+                        "en": ""
+                    },
+                    "instructions": {
+                        "en": ""
+                    },
+                    "is_editable": false,
+                    "name": {
+                        "en": "Slot 4"
+                    },
+                    "nodegroup_id": "460291fc-1b5c-11f0-89c4-8fd6f4eb1a02",
+                    "sortorder": null,
+                    "visible": true
+                },
+                {
+                    "active": true,
+                    "cardid": "ba976cbd-4446-46c6-9a81-8a8a74f7af76",
+                    "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+                    "config": null,
+                    "constraints": [],
+                    "cssclass": null,
+                    "description": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "helpenabled": false,
+                    "helptext": {
+                        "en": ""
+                    },
+                    "helptitle": {
+                        "en": ""
+                    },
+                    "instructions": {
+                        "en": ""
+                    },
+                    "is_editable": false,
+                    "name": {
+                        "en": "Slot 3"
+                    },
+                    "nodegroup_id": "3bb91d0c-1b5c-11f0-9b90-8fd6f4eb1a02",
+                    "sortorder": null,
+                    "visible": true
+                },
+                {
+                    "active": true,
+                    "cardid": "d4e194b0-abbd-482f-bb3c-fc3f1548eb41",
+                    "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+                    "config": null,
+                    "constraints": [],
+                    "cssclass": null,
+                    "description": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "helpenabled": false,
+                    "helptext": {
+                        "en": ""
+                    },
+                    "helptitle": {
+                        "en": ""
+                    },
+                    "instructions": {
+                        "en": ""
+                    },
+                    "is_editable": true,
+                    "name": {
+                        "en": "Slot 5"
+                    },
+                    "nodegroup_id": "50061407-1b5c-11f0-a8cd-a32be8fb5c91",
+                    "sortorder": null,
+                    "visible": true
+                },
+                {
+                    "active": true,
+                    "cardid": "f9065ba2-c49b-48ef-822e-3e66ed5f455d",
+                    "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+                    "config": null,
+                    "constraints": [],
+                    "cssclass": null,
+                    "description": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "helpenabled": false,
+                    "helptext": {
+                        "en": ""
+                    },
+                    "helptitle": {
+                        "en": ""
+                    },
+                    "instructions": {
+                        "en": ""
+                    },
+                    "is_editable": false,
+                    "name": {
+                        "en": "Name"
+                    },
+                    "nodegroup_id": "8a029cda-1b5c-11f0-afc7-a32be8fb5c91",
+                    "sortorder": null,
+                    "visible": true
+                }
+            ],
+            "cards_x_nodes_x_widgets": [
+                {
+                    "card_id": "ba976cbd-4446-46c6-9a81-8a8a74f7af76",
+                    "config": {
+                        "defaultResourceInstance": [],
+                        "i18n_properties": [
+                            "placeholder"
+                        ],
+                        "label": "Slot 3",
+                        "placeholder": {
+                            "en": ""
+                        }
+                    },
+                    "id": "04b8d508-b43a-44c0-8910-67713353e1cf",
+                    "label": {
+                        "en": "Slot 3"
+                    },
+                    "node_id": "3bb91d0c-1b5c-11f0-9b90-8fd6f4eb1a02",
+                    "sortorder": 0,
+                    "visible": true,
+                    "widget_id": "31f3728c-7613-11e7-a139-784f435179ea"
+                },
+                {
+                    "card_id": "56d65225-66f5-4a37-8c97-645012bd9645",
+                    "config": {
+                        "defaultResourceInstance": [],
+                        "i18n_properties": [
+                            "placeholder"
+                        ],
+                        "label": "Slot 2",
+                        "placeholder": {
+                            "en": ""
+                        }
+                    },
+                    "id": "0b069892-8170-4af9-9242-87c99450290e",
+                    "label": {
+                        "en": "Slot 2"
+                    },
+                    "node_id": "2a96e190-1b5c-11f0-bb7c-a32be8fb5c91",
+                    "sortorder": 0,
+                    "visible": true,
+                    "widget_id": "31f3728c-7613-11e7-a139-784f435179ea"
+                },
+                {
+                    "card_id": "f9065ba2-c49b-48ef-822e-3e66ed5f455d",
+                    "config": {
+                        "defaultValue": {
+                            "en": {
+                                "direction": "ltr",
+                                "value": ""
+                            }
+                        },
+                        "i18n_properties": [
+                            "placeholder"
+                        ],
+                        "label": "Name",
+                        "maxLength": null,
+                        "placeholder": {
+                            "en": "Enter text"
+                        },
+                        "uneditable": false,
+                        "width": "100%"
+                    },
+                    "id": "54cd17b8-3942-4ea2-ae0d-6754f7ac920a",
+                    "label": {
+                        "en": "Name"
+                    },
+                    "node_id": "8a029cda-1b5c-11f0-afc7-a32be8fb5c91",
+                    "sortorder": 0,
+                    "visible": true,
+                    "widget_id": "10000000-0000-0000-0000-000000000001"
+                },
+                {
+                    "card_id": "529ae4bf-8ff7-4e08-98c6-c9a6e4392e6f",
+                    "config": {
+                        "defaultValue": "",
+                        "format": "",
+                        "i18n_properties": [
+                            "placeholder",
+                            "prefix",
+                            "suffix"
+                        ],
+                        "label": "Number",
+                        "max": "",
+                        "min": "",
+                        "placeholder": {
+                            "en": "Enter number"
+                        },
+                        "precision": "",
+                        "prefix": {
+                            "en": ""
+                        },
+                        "step": "",
+                        "suffix": {
+                            "en": ""
+                        },
+                        "uneditable": false,
+                        "width": "100%"
+                    },
+                    "id": "71283a8c-1c11-406c-86f0-2ba39cdbae88",
+                    "label": {
+                        "en": "Number"
+                    },
+                    "node_id": "93b58730-1b5c-11f0-b326-8fd6f4eb1a02",
+                    "sortorder": 0,
+                    "visible": true,
+                    "widget_id": "10000000-0000-0000-0000-000000000008"
+                },
+                {
+                    "card_id": "2177de6b-c026-49d1-beea-c5841a27ef4e",
+                    "config": {
+                        "defaultResourceInstance": [],
+                        "i18n_properties": [
+                            "placeholder"
+                        ],
+                        "label": "Slot 6",
+                        "placeholder": {
+                            "en": ""
+                        }
+                    },
+                    "id": "a9d63005-59a1-4aeb-b2f4-7153dafd3f0b",
+                    "label": {
+                        "en": "Slot 6"
+                    },
+                    "node_id": "6a25182e-1b5c-11f0-8399-a32be8fb5c91",
+                    "sortorder": 0,
+                    "visible": true,
+                    "widget_id": "31f3728c-7613-11e7-a139-784f435179ea"
+                },
+                {
+                    "card_id": "2a22783b-b840-4c27-802b-2f5fae06b4bc",
+                    "config": {
+                        "defaultResourceInstance": [],
+                        "i18n_properties": [
+                            "placeholder"
+                        ],
+                        "label": "Slot 1",
+                        "placeholder": {
+                            "en": ""
+                        }
+                    },
+                    "id": "eb3a1382-34c5-4517-bd40-4bcb69cbb9ee",
+                    "label": {
+                        "en": "Slot 1"
+                    },
+                    "node_id": "1b87ea30-1b5c-11f0-961a-8fd6f4eb1a02",
+                    "sortorder": 0,
+                    "visible": true,
+                    "widget_id": "31f3728c-7613-11e7-a139-784f435179ea"
+                },
+                {
+                    "card_id": "837ddb25-2e78-4ae4-8aad-43690d04a4ae",
+                    "config": {
+                        "defaultResourceInstance": [],
+                        "i18n_properties": [
+                            "placeholder"
+                        ],
+                        "label": "Slot 4",
+                        "placeholder": {
+                            "en": ""
+                        }
+                    },
+                    "id": "efaacb43-e45a-4b08-ba9b-1df7413722d7",
+                    "label": {
+                        "en": "Slot 4"
+                    },
+                    "node_id": "460291fc-1b5c-11f0-89c4-8fd6f4eb1a02",
+                    "sortorder": 0,
+                    "visible": true,
+                    "widget_id": "31f3728c-7613-11e7-a139-784f435179ea"
+                },
+                {
+                    "card_id": "d4e194b0-abbd-482f-bb3c-fc3f1548eb41",
+                    "config": {
+                        "defaultResourceInstance": [],
+                        "i18n_properties": [
+                            "placeholder"
+                        ],
+                        "label": "Slot 5",
+                        "placeholder": {
+                            "en": ""
+                        }
+                    },
+                    "id": "ffc1c406-4fd3-4a67-bc15-bbb9e2d4f75c",
+                    "label": {
+                        "en": "Slot 5"
+                    },
+                    "node_id": "50061407-1b5c-11f0-a8cd-a32be8fb5c91",
+                    "sortorder": 0,
+                    "visible": true,
+                    "widget_id": "31f3728c-7613-11e7-a139-784f435179ea"
+                }
+            ],
+            "color": null,
+            "config": {},
+            "deploymentdate": null,
+            "deploymentfile": null,
+            "description": {
+                "en": ""
+            },
+            "edges": [
+                {
+                    "description": null,
+                    "domainnode_id": "10da3fca-1b5c-11f0-a95c-8fd6f4eb1a02",
+                    "edgeid": "5054de1f-2b78-4475-a8c5-ab9f40453933",
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "name": null,
+                    "ontologyproperty": null,
+                    "rangenode_id": "460291fc-1b5c-11f0-89c4-8fd6f4eb1a02"
+                },
+                {
+                    "description": null,
+                    "domainnode_id": "10da3fca-1b5c-11f0-a95c-8fd6f4eb1a02",
+                    "edgeid": "54cb15f4-d895-44e6-9459-e514b97e69dd",
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "name": null,
+                    "ontologyproperty": null,
+                    "rangenode_id": "8a029cda-1b5c-11f0-afc7-a32be8fb5c91"
+                },
+                {
+                    "description": null,
+                    "domainnode_id": "10da3fca-1b5c-11f0-a95c-8fd6f4eb1a02",
+                    "edgeid": "93408fa7-5448-48b6-9e3f-9477b8b718bf",
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "name": null,
+                    "ontologyproperty": null,
+                    "rangenode_id": "3bb91d0c-1b5c-11f0-9b90-8fd6f4eb1a02"
+                },
+                {
+                    "description": null,
+                    "domainnode_id": "10da3fca-1b5c-11f0-a95c-8fd6f4eb1a02",
+                    "edgeid": "acfac2eb-ca01-4477-b4ce-cfba13444fce",
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "name": null,
+                    "ontologyproperty": null,
+                    "rangenode_id": "50061407-1b5c-11f0-a8cd-a32be8fb5c91"
+                },
+                {
+                    "description": null,
+                    "domainnode_id": "10da3fca-1b5c-11f0-a95c-8fd6f4eb1a02",
+                    "edgeid": "bf8a01ca-c70e-4645-951e-b3d53b8fd92e",
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "name": null,
+                    "ontologyproperty": null,
+                    "rangenode_id": "1b87ea30-1b5c-11f0-961a-8fd6f4eb1a02"
+                },
+                {
+                    "description": null,
+                    "domainnode_id": "10da3fca-1b5c-11f0-a95c-8fd6f4eb1a02",
+                    "edgeid": "c06070a1-0a49-451d-bf88-1f4afd735da3",
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "name": null,
+                    "ontologyproperty": null,
+                    "rangenode_id": "93b58730-1b5c-11f0-b326-8fd6f4eb1a02"
+                },
+                {
+                    "description": null,
+                    "domainnode_id": "10da3fca-1b5c-11f0-a95c-8fd6f4eb1a02",
+                    "edgeid": "c6a3107a-daeb-4be2-982e-121848953007",
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "name": null,
+                    "ontologyproperty": null,
+                    "rangenode_id": "6a25182e-1b5c-11f0-8399-a32be8fb5c91"
+                },
+                {
+                    "description": null,
+                    "domainnode_id": "10da3fca-1b5c-11f0-a95c-8fd6f4eb1a02",
+                    "edgeid": "f956e729-afbf-4868-a931-613f1e4e7407",
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "name": null,
+                    "ontologyproperty": null,
+                    "rangenode_id": "2a96e190-1b5c-11f0-bb7c-a32be8fb5c91"
+                }
+            ],
+            "functions_x_graphs": [],
+            "graphid": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+            "iconclass": "",
+            "is_editable": false,
+            "isresource": true,
+            "jsonldcontext": null,
+            "name": {
+                "en": "Session"
+            },
+            "nodegroups": [
+                {
+                    "cardinality": "1",
+                    "legacygroupid": null,
+                    "nodegroupid": "1b87ea30-1b5c-11f0-961a-8fd6f4eb1a02",
+                    "parentnodegroup_id": null
+                },
+                {
+                    "cardinality": "1",
+                    "legacygroupid": null,
+                    "nodegroupid": "2a96e190-1b5c-11f0-bb7c-a32be8fb5c91",
+                    "parentnodegroup_id": null
+                },
+                {
+                    "cardinality": "1",
+                    "legacygroupid": null,
+                    "nodegroupid": "3bb91d0c-1b5c-11f0-9b90-8fd6f4eb1a02",
+                    "parentnodegroup_id": null
+                },
+                {
+                    "cardinality": "1",
+                    "legacygroupid": null,
+                    "nodegroupid": "460291fc-1b5c-11f0-89c4-8fd6f4eb1a02",
+                    "parentnodegroup_id": null
+                },
+                {
+                    "cardinality": "1",
+                    "legacygroupid": null,
+                    "nodegroupid": "50061407-1b5c-11f0-a8cd-a32be8fb5c91",
+                    "parentnodegroup_id": null
+                },
+                {
+                    "cardinality": "1",
+                    "legacygroupid": null,
+                    "nodegroupid": "6a25182e-1b5c-11f0-8399-a32be8fb5c91",
+                    "parentnodegroup_id": null
+                },
+                {
+                    "cardinality": "1",
+                    "legacygroupid": null,
+                    "nodegroupid": "8a029cda-1b5c-11f0-afc7-a32be8fb5c91",
+                    "parentnodegroup_id": null
+                },
+                {
+                    "cardinality": "1",
+                    "legacygroupid": null,
+                    "nodegroupid": "93b58730-1b5c-11f0-b326-8fd6f4eb1a02",
+                    "parentnodegroup_id": null
+                }
+            ],
+            "nodes": [
+                {
+                    "alias": null,
+                    "config": {
+                        "en": ""
+                    },
+                    "datatype": "semantic",
+                    "description": "",
+                    "exportable": false,
+                    "fieldname": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "hascustomalias": false,
+                    "is_collector": false,
+                    "isrequired": false,
+                    "issearchable": true,
+                    "istopnode": true,
+                    "name": "Session",
+                    "nodegroup_id": null,
+                    "nodeid": "10da3fca-1b5c-11f0-a95c-8fd6f4eb1a02",
+                    "ontologyclass": null,
+                    "parentproperty": "",
+                    "sortorder": 0,
+                    "sourcebranchpublication_id": null
+                },
+                {
+                    "alias": "slot_1",
+                    "config": {
+                        "graphs": [
+                            {
+                                "graphid": "a6c412db-72e0-4099-a690-ccc75ba841a9",
+                                "name": "Talk"
+                            }
+                        ],
+                        "searchDsl": "",
+                        "searchString": ""
+                    },
+                    "datatype": "resource-instance",
+                    "description": null,
+                    "exportable": false,
+                    "fieldname": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "hascustomalias": false,
+                    "is_collector": true,
+                    "isrequired": false,
+                    "issearchable": true,
+                    "istopnode": false,
+                    "name": "Slot 1",
+                    "nodegroup_id": "1b87ea30-1b5c-11f0-961a-8fd6f4eb1a02",
+                    "nodeid": "1b87ea30-1b5c-11f0-961a-8fd6f4eb1a02",
+                    "ontologyclass": null,
+                    "parentproperty": null,
+                    "sortorder": 0,
+                    "sourcebranchpublication_id": null
+                },
+                {
+                    "alias": "slot_2",
+                    "config": {
+                        "graphs": [
+                            {
+                                "graphid": "a6c412db-72e0-4099-a690-ccc75ba841a9",
+                                "name": "Talk"
+                            }
+                        ],
+                        "searchDsl": "",
+                        "searchString": ""
+                    },
+                    "datatype": "resource-instance",
+                    "description": null,
+                    "exportable": false,
+                    "fieldname": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "hascustomalias": false,
+                    "is_collector": true,
+                    "isrequired": false,
+                    "issearchable": true,
+                    "istopnode": false,
+                    "name": "Slot 2",
+                    "nodegroup_id": "2a96e190-1b5c-11f0-bb7c-a32be8fb5c91",
+                    "nodeid": "2a96e190-1b5c-11f0-bb7c-a32be8fb5c91",
+                    "ontologyclass": null,
+                    "parentproperty": null,
+                    "sortorder": 0,
+                    "sourcebranchpublication_id": null
+                },
+                {
+                    "alias": "slot_3",
+                    "config": {
+                        "graphs": [
+                            {
+                                "graphid": "a6c412db-72e0-4099-a690-ccc75ba841a9",
+                                "name": "Talk"
+                            }
+                        ],
+                        "searchDsl": "",
+                        "searchString": ""
+                    },
+                    "datatype": "resource-instance",
+                    "description": null,
+                    "exportable": false,
+                    "fieldname": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "hascustomalias": false,
+                    "is_collector": true,
+                    "isrequired": false,
+                    "issearchable": true,
+                    "istopnode": false,
+                    "name": "Slot 3",
+                    "nodegroup_id": "3bb91d0c-1b5c-11f0-9b90-8fd6f4eb1a02",
+                    "nodeid": "3bb91d0c-1b5c-11f0-9b90-8fd6f4eb1a02",
+                    "ontologyclass": null,
+                    "parentproperty": null,
+                    "sortorder": 0,
+                    "sourcebranchpublication_id": null
+                },
+                {
+                    "alias": "slot_4",
+                    "config": {
+                        "graphs": [
+                            {
+                                "graphid": "a6c412db-72e0-4099-a690-ccc75ba841a9",
+                                "inverseRelationshipConcept": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                                "name": "Talk",
+                                "relationshipCollection": "00000000-0000-0000-0000-000000000005",
+                                "relationshipConcept": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                                "useOntologyRelationship": false
+                            }
+                        ],
+                        "searchDsl": "",
+                        "searchString": ""
+                    },
+                    "datatype": "resource-instance",
+                    "description": null,
+                    "exportable": false,
+                    "fieldname": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "hascustomalias": false,
+                    "is_collector": true,
+                    "isrequired": false,
+                    "issearchable": true,
+                    "istopnode": false,
+                    "name": "Slot 4",
+                    "nodegroup_id": "460291fc-1b5c-11f0-89c4-8fd6f4eb1a02",
+                    "nodeid": "460291fc-1b5c-11f0-89c4-8fd6f4eb1a02",
+                    "ontologyclass": null,
+                    "parentproperty": null,
+                    "sortorder": 0,
+                    "sourcebranchpublication_id": null
+                },
+                {
+                    "alias": "slot_5",
+                    "config": {
+                        "graphs": [
+                            {
+                                "graphid": "a6c412db-72e0-4099-a690-ccc75ba841a9",
+                                "inverseRelationshipConcept": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                                "name": "Talk",
+                                "relationshipCollection": "00000000-0000-0000-0000-000000000005",
+                                "relationshipConcept": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                                "useOntologyRelationship": false
+                            }
+                        ],
+                        "searchDsl": "",
+                        "searchString": ""
+                    },
+                    "datatype": "resource-instance",
+                    "description": null,
+                    "exportable": false,
+                    "fieldname": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "hascustomalias": false,
+                    "is_collector": true,
+                    "isrequired": false,
+                    "issearchable": true,
+                    "istopnode": false,
+                    "name": "Slot 5",
+                    "nodegroup_id": "50061407-1b5c-11f0-a8cd-a32be8fb5c91",
+                    "nodeid": "50061407-1b5c-11f0-a8cd-a32be8fb5c91",
+                    "ontologyclass": null,
+                    "parentproperty": null,
+                    "sortorder": 0,
+                    "sourcebranchpublication_id": null
+                },
+                {
+                    "alias": "slot_6",
+                    "config": {
+                        "graphs": [
+                            {
+                                "graphid": "a6c412db-72e0-4099-a690-ccc75ba841a9",
+                                "name": "Talk"
+                            }
+                        ],
+                        "searchDsl": "",
+                        "searchString": ""
+                    },
+                    "datatype": "resource-instance",
+                    "description": null,
+                    "exportable": false,
+                    "fieldname": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "hascustomalias": false,
+                    "is_collector": true,
+                    "isrequired": false,
+                    "issearchable": true,
+                    "istopnode": false,
+                    "name": "Slot 6",
+                    "nodegroup_id": "6a25182e-1b5c-11f0-8399-a32be8fb5c91",
+                    "nodeid": "6a25182e-1b5c-11f0-8399-a32be8fb5c91",
+                    "ontologyclass": null,
+                    "parentproperty": null,
+                    "sortorder": 0,
+                    "sourcebranchpublication_id": null
+                },
+                {
+                    "alias": "name",
+                    "config": {
+                        "en": ""
+                    },
+                    "datatype": "string",
+                    "description": null,
+                    "exportable": false,
+                    "fieldname": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "hascustomalias": false,
+                    "is_collector": true,
+                    "isrequired": false,
+                    "issearchable": true,
+                    "istopnode": false,
+                    "name": "Name",
+                    "nodegroup_id": "8a029cda-1b5c-11f0-afc7-a32be8fb5c91",
+                    "nodeid": "8a029cda-1b5c-11f0-afc7-a32be8fb5c91",
+                    "ontologyclass": null,
+                    "parentproperty": null,
+                    "sortorder": 0,
+                    "sourcebranchpublication_id": null
+                },
+                {
+                    "alias": "number",
+                    "config": {
+                        "en": ""
+                    },
+                    "datatype": "number",
+                    "description": null,
+                    "exportable": false,
+                    "fieldname": null,
+                    "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                    "hascustomalias": false,
+                    "is_collector": true,
+                    "isrequired": false,
+                    "issearchable": true,
+                    "istopnode": false,
+                    "name": "Number",
+                    "nodegroup_id": "93b58730-1b5c-11f0-b326-8fd6f4eb1a02",
+                    "nodeid": "93b58730-1b5c-11f0-b326-8fd6f4eb1a02",
+                    "ontologyclass": null,
+                    "parentproperty": null,
+                    "sortorder": 0,
+                    "sourcebranchpublication_id": null
+                }
+            ],
+            "ontology_id": null,
+            "publication": {
+                "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                "notes": null,
+                "publicationid": "9eee6ab6-1b5c-11f0-849d-8fd6f4eb1a02",
+                "published_time": "2025-04-17T02:21:46.585"
+            },
+            "relatable_resource_model_ids": [
+                "a6c412db-72e0-4099-a690-ccc75ba841a9"
+            ],
+            "resource_2_resource_constraints": [],
+            "root": {
+                "alias": null,
+                "config": {
+                    "en": ""
+                },
+                "datatype": "semantic",
+                "description": "",
+                "exportable": false,
+                "fieldname": null,
+                "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+                "hascustomalias": false,
+                "is_collector": false,
+                "isrequired": false,
+                "issearchable": true,
+                "istopnode": true,
+                "name": "Session",
+                "nodegroup_id": null,
+                "nodeid": "10da3fca-1b5c-11f0-a95c-8fd6f4eb1a02",
+                "ontologyclass": null,
+                "sortorder": 0,
+                "sourcebranchpublication_id": null
+            },
+            "slug": null,
+            "subtitle": {
+                "en": ""
+            },
+            "template_id": "50000000-0000-0000-0000-000000000001",
+            "version": ""
+        }
+    ]
+}

@@ -1,0 +1,8 @@
+{
+    "models": {
+        "0271fdde-e6c7-457c-b25a-e65a11aba499": {"name": "Institution"},
+        "a6c412db-72e0-4099-a690-ccc75ba841a9": {"name": "Talk"},
+        "47f5403a-2785-4613-a8e9-bda0cdd85254": {"name": "Person"},
+        "7d7d1c77-e660-48cc-b90d-292c81ea01cf": {"name": "Session"}
+    }
+}
