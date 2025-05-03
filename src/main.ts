@@ -7,7 +7,9 @@ import * as utils from "./utils";
 import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
 
+const AlizarinModel = viewModels.ResourceInstanceViewModel;
 export {
+  AlizarinModel,
   client,
   graphManager,
   GraphManager,

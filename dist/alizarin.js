@@ -1059,6 +1059,8 @@ class ResourceInstanceListViewModel extends Array {
         });
         value = val;
       }
+    } else {
+      value = [];
     }
     if (!tile || !value) {
       return null;
@@ -1302,6 +1304,8 @@ class ConceptListViewModel extends Array {
         });
       });
       value = val;
+    } else {
+      value = [];
     }
     const str = new ConceptListViewModel(...value);
     return str;
@@ -3088,7 +3092,9 @@ const renderers = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePro
   JsonRenderer,
   MarkdownRenderer
 }, Symbol.toStringTag, { value: "Module" }));
+const AlizarinModel = ResourceInstanceViewModel;
 export {
+  AlizarinModel,
   GraphManager,
   RDM,
   client,

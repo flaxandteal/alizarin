@@ -1,3 +1,5 @@
+export declare const AlizarinModel: typeof viewModels.ResourceInstanceViewModel;
+
 declare abstract class ArchesClient {
     abstract getGraphs(): Promise<GraphResult>;
     abstract getGraph(graphId: string): Promise<StaticGraph | null>;

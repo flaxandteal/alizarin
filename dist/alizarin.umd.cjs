@@ -1063,6 +1063,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           });
           value = val;
         }
+      } else {
+        value = [];
       }
       if (!tile || !value) {
         return null;
@@ -1306,6 +1308,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           });
         });
         value = val;
+      } else {
+        value = [];
       }
       const str = new ConceptListViewModel(...value);
       return str;
@@ -3092,11 +3096,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     JsonRenderer,
     MarkdownRenderer
   }, Symbol.toStringTag, { value: "Module" }));
+  const AlizarinModel = ResourceInstanceViewModel;
   const __viteBrowserExternal = {};
   const __viteBrowserExternal$1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
     __proto__: null,
     default: __viteBrowserExternal
   }, Symbol.toStringTag, { value: "Module" }));
+  exports2.AlizarinModel = AlizarinModel;
   exports2.GraphManager = GraphManager;
   exports2.RDM = RDM;
   exports2.client = client;

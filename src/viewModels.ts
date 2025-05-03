@@ -270,6 +270,8 @@ class ResourceInstanceListViewModel extends Array implements IViewModel {
         });
         value = val;
       }
+    } else {
+      value = [];
     }
 
     if (!tile || !value) {
@@ -554,6 +556,8 @@ class ConceptListViewModel extends Array implements IViewModel {
         });
       });
       value = val;
+    } else {
+      value = [];
     }
 
     const str = new ConceptListViewModel(...value);
@@ -613,6 +617,8 @@ class DomainValueListViewModel extends Array implements IViewModel {
           });
         });
       }
+    } else {
+      value = [];
     }
 
     const str = new DomainValueListViewModel(...value);
