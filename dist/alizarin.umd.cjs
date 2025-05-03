@@ -1361,6 +1361,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
             });
           });
         }
+      } else {
+        value = [];
       }
       const str = new DomainValueListViewModel(...value);
       return str;

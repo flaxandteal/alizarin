@@ -1357,6 +1357,8 @@ class DomainValueListViewModel extends Array {
           });
         });
       }
+    } else {
+      value = [];
     }
     const str = new DomainValueListViewModel(...value);
     return str;
