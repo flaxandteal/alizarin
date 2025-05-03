@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [dts({ rollupTypes: true })],
   build: {
     minify: false,
+    sourcemap: true,
     lib: {
       entry: resolve(__dirname, "src/main.ts"),
       name: "Alizarin",

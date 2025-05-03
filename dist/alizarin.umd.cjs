@@ -886,9 +886,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "values");
       __publicField(this, "wrapper");
       __publicField(this, "tiles");
+      __publicField(this, "promises");
       this.values = values;
       this.wrapper = wrapper;
       this.tiles = tiles;
+      this.promises = /* @__PURE__ */ new Map();
     }
     async get(key) {
       return this.retrieve(key, this.values.get(key), true);
@@ -901,21 +903,26 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return this.values.has(key);
     }
     async retrieve(key, dflt = null, raiseError = false) {
+      const node = this.wrapper.model.getNodeObjectsByAlias().get(key);
+      const promise = node ? this.promises.get(node.nodegroup_id) : null;
+      if (promise) {
+        await promise;
+      }
       let result = await this.values.get(key);
       if (result === false) {
         if (this.wrapper.resource) {
-          const node = this.wrapper.model.getNodeObjectsByAlias().get(key);
-          if (node === void 0) {
+          const node2 = this.wrapper.model.getNodeObjectsByAlias().get(key);
+          if (node2 === void 0) {
             throw Error(
               "Tried to retrieve a node key that does not exist on this resource"
             );
           }
           const values = new Map([...this.values.entries()]);
-          const promise = new Promise((resolve) => {
+          const promise2 = new Promise((resolve) => {
             this.wrapper.ensureNodegroup(
               values,
-              node,
-              node.nodegroup_id,
+              node2,
+              node2.nodegroup_id,
               this.wrapper.model.getNodeObjects(),
               this.wrapper.model.getNodegroupObjects(),
               this.wrapper.model.getEdges(),
@@ -923,14 +930,19 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
               this.tiles,
               true
             ).then(([ngValues]) => {
-              for (const [key2, value] of [...ngValues.entries()]) {
-                this.values.set(key2, value);
+              let original = false;
+              for (const [k, value] of [...ngValues.entries()]) {
+                if (key === k) {
+                  original = value;
+                }
+                this.values.set(k, value);
               }
-              resolve(false);
+              resolve(original);
             });
           });
-          this.values.set(key, promise);
-          await promise;
+          this.promises.set(node2.nodegroup_id, promise2);
+          this.values.set(key, promise2);
+          await promise2;
         } else {
           this.values.delete(key);
         }
@@ -1848,8 +1860,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           continue;
         }
         const childNode = childNodes.get(key);
-        for (const value of values) {
+        for (let value of values) {
           if (childNode && value !== null && (!value.parentNode || value.parentNode === this.__parentPseudo)) {
+            value = await value;
             if (tile && value.tile && value.tile.parenttile_id == tile.tileid || value.node.nodegroup_id == node.nodegroup_id && tile && value.tile == tile && !childNode.is_collector) {
               children.set(key, value);
             } else if (node.nodegroup_id != value.node.nodegroup_id && childNode.is_collector) {
@@ -2532,7 +2545,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     async buildValueCache(getMeta) {
       const cacheByTile = {};
-      for (const pseudos of this.valueList.values.values()) {
+      for (let pseudos of this.valueList.values.values()) {
+        pseudos = await pseudos;
         if (pseudos) {
           await Promise.all(pseudos.map(async (pseudo) => {
             const value = await pseudo.getValue();
@@ -3094,3 +3108,4 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   exports2.viewModels = viewModels;
   Object.defineProperty(exports2, Symbol.toStringTag, { value: "Module" });
 });
+//# sourceMappingURL=alizarin.umd.cjs.map

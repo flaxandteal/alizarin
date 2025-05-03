@@ -788,6 +788,7 @@ declare class ValueList<T extends IRIVM<T>> {
     values: Map<string, any>;
     wrapper: IInstanceWrapper<T>;
     tiles: StaticTile[] | null;
+    promises: Map<string | null, Promise<boolean | IViewModel>>;
     constructor(values: Map<string, any>, wrapper: IInstanceWrapper<T>, tiles: StaticTile[] | null);
     get(key: string): Promise<any>;
     set(key: string, value: any): void;

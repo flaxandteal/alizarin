@@ -47,6 +47,7 @@ class ValueList<T extends IRIVM<T>> {
   values: Map<string, any>;
   wrapper: IInstanceWrapper<T>;
   tiles: StaticTile[] | null;
+  promises: Map<string | null, Promise<boolean | IViewModel>>;
 
   constructor(
     values: Map<string, any>,
@@ -56,6 +57,7 @@ class ValueList<T extends IRIVM<T>> {
     this.values = values;
     this.wrapper = wrapper;
     this.tiles = tiles;
+    this.promises = new Map();
   }
 
   async get(key: string) {
@@ -72,7 +74,23 @@ class ValueList<T extends IRIVM<T>> {
   }
 
   async retrieve(key: string, dflt: any = null, raiseError: boolean = false) {
+    const node = this.wrapper.model.getNodeObjectsByAlias().get(key);
+    const promise = node ? this.promises.get(node.nodegroup_id) : null;
+    // When an unloaded node is found, the whole nodegroup is loaded.
+    // The promises member ensures that no other node in the nodegroup
+    // triggers the same nodegroup load. Note that there is _also_ the
+    // individual node promise, which allows any operation to wait for
+    // just that node to finish and resolve in to the approach pseudo
+    // even if `retrieve` is not used (e.g. allEntries).
+    // _However_, this means that allEntries will not see a promise for
+    // individual nodes in the nodegroup that are _not_ the first
+    // requested, until the first requested resolves and updates the
+    // values map for all nodes in the nodegroup.
+    if (promise) {
+      await promise;
+    }
     let result: any = await this.values.get(key);
+
     if (result === false) {
       if (this.wrapper.resource) {
         // Will KeyError if we do not have it.
@@ -83,7 +101,7 @@ class ValueList<T extends IRIVM<T>> {
           );
         }
         const values = new Map([...this.values.entries()]);
-        const promise = new Promise((resolve) => {
+        const promise: Promise<IViewModel | boolean> = new Promise((resolve) => {
           this.wrapper
             .ensureNodegroup(
               values,
@@ -97,12 +115,19 @@ class ValueList<T extends IRIVM<T>> {
               true
             )
             .then(([ngValues]) => {
-              for (const [key, value] of [...ngValues.entries()]) {
-                this.values.set(key, value);
+              let original = false;
+              for (const [k, value] of [...ngValues.entries()]) {
+                if (key === k) {
+                  // Other methods may be waiting on this specific
+                  // value to resolve.
+                  original = value;
+                }
+                this.values.set(k, value);
               }
-              resolve(false);
+              resolve(original);
             });
         });
+        this.promises.set(node.nodegroup_id, promise);
         this.values.set(key, promise);
         await promise;
       } else {
@@ -1228,13 +1253,16 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
         continue;
       }
       const childNode = childNodes.get(key);
-      for (const value of values) {
+      for (let value of values) {
         if (
           childNode &&
           value !== null &&
           (!(value.parentNode) ||
             value.parentNode === this.__parentPseudo)
         ) {
+          // It is possible that this value has already
+          // been requested, but the tile is in-flight.
+          value = await value;
           if (
             (tile && value.tile && value.tile.parenttile_id == tile.tileid) ||
             (value.node.nodegroup_id == node.nodegroup_id &&

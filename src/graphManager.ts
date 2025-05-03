@@ -335,7 +335,8 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
 
   async buildValueCache(getMeta: GetMeta): Promise<{[tileId: string]: {[nodeId: string]: IStringKeyedObject}}> {
     const cacheByTile: {[tileId: string]: {[nodeId: string]: IStringKeyedObject}} = {};
-    for (const pseudos of this.valueList.values.values()) {
+    for (let pseudos of this.valueList.values.values()) {
+      pseudos = await pseudos;
       if (pseudos) {
         await Promise.all(pseudos.map(async (pseudo: IPseudo) => {
           const value = await pseudo.getValue();
