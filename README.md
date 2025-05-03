@@ -1,4 +1,4 @@
-![Alizarin: Fast JS Knowledge Graphs](./docs/alizarin.png)
+![Alizarin: Fast JS Knowledge Graphs](./docs/banner.png)
 
 # Alizarin
 
