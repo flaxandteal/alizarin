@@ -934,6 +934,7 @@ class ValueList {
               this.values.set(k, value);
             }
             resolve(original);
+            this.promises.delete(node2.nodegroup_id);
           });
         });
         this.promises.set(node2.nodegroup_id, promise2);

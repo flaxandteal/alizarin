@@ -938,6 +938,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
                 this.values.set(k, value);
               }
               resolve(original);
+              this.promises.delete(node2.nodegroup_id);
             });
           });
           this.promises.set(node2.nodegroup_id, promise2);

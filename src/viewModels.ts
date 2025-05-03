@@ -125,6 +125,7 @@ class ValueList<T extends IRIVM<T>> {
                 this.values.set(k, value);
               }
               resolve(original);
+              this.promises.delete(node.nodegroup_id);
             });
         });
         this.promises.set(node.nodegroup_id, promise);
