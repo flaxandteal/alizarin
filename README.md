@@ -1,3 +1,5 @@
+![Alizarin: Fast JS Knowledge Graphs](./docs/alizarin.png)
+
 # Alizarin
 
 This is a pure JS/TS implementation of [AORM](https://github.com/flaxandteal/arches-orm/)
