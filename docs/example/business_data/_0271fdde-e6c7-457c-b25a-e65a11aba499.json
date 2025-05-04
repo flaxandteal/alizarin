@@ -1,0 +1,138 @@
+{
+  "business_data": {
+    "resources": [
+      {
+        "resourceinstance": {
+          "createdtime": "2025-04-16T11:44:27.413",
+          "descriptors": {
+            "en": {
+              "description": "",
+              "map_popup": "",
+              "name": "Company A"
+            }
+          },
+          "graph_id": "0271fdde-e6c7-457c-b25a-e65a11aba499",
+          "graph_publication_id": "fd170b82-1ae1-11f0-952f-8fd6f4eb1a02",
+          "legacyid": null,
+          "name": "Company A",
+          "principaluser_id": 1,
+          "resourceinstanceid": "fb8115bb-ba4e-48f7-993c-35071d29ae30",
+          "publication_id": "fd170b82-1ae1-11f0-952f-8fd6f4eb1a02"
+        },
+        "tiles": [
+          {
+            "data": {
+              "cc2ad26d-1ae0-11f0-96c3-8fd6f4eb1a02": {
+                "en": {
+                  "direction": "ltr",
+                  "value": "Company A"
+                }
+              }
+            },
+            "nodegroup_id": "cc2ad26d-1ae0-11f0-96c3-8fd6f4eb1a02",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "fb8115bb-ba4e-48f7-993c-35071d29ae30",
+            "sortorder": 0,
+            "tileid": "1755b0a7-aaba-4a39-a893-9c69394fac74"
+          },
+          {
+            "data": {
+              "dc9ede4d-1ae0-11f0-9def-8fd6f4eb1a02": {
+                "features": [
+                  {
+                    "geometry": {
+                      "coordinates": [
+                        -122.4041281791139,
+                        47.792875053296896
+                      ],
+                      "type": "Point"
+                    },
+                    "id": "50d80f437d68c8625fdc02931453a4a6",
+                    "properties": {
+                      "nodeId": "dc9ede4d-1ae0-11f0-9def-8fd6f4eb1a02"
+                    },
+                    "type": "Feature"
+                  }
+                ],
+                "type": "FeatureCollection"
+              }
+            },
+            "nodegroup_id": "dc9ede4d-1ae0-11f0-9def-8fd6f4eb1a02",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "fb8115bb-ba4e-48f7-993c-35071d29ae30",
+            "sortorder": 0,
+            "tileid": "f8b80888-06df-4907-a224-17f13f2f3fe9"
+          }
+        ]
+      },
+      {
+        "resourceinstance": {
+          "createdtime": "2025-04-16T11:48:55.611",
+          "descriptors": {
+            "en": {
+              "description": "",
+              "map_popup": "",
+              "name": "Organization B"
+            }
+          },
+          "graph_id": "0271fdde-e6c7-457c-b25a-e65a11aba499",
+          "graph_publication_id": "fd170b82-1ae1-11f0-952f-8fd6f4eb1a02",
+          "legacyid": null,
+          "name": "Organization B",
+          "principaluser_id": 1,
+          "resourceinstanceid": "891bf71e-d8c2-49de-9011-5c96da9fae65",
+          "publication_id": "fd170b82-1ae1-11f0-952f-8fd6f4eb1a02"
+        },
+        "tiles": [
+          {
+            "data": {
+              "dc9ede4d-1ae0-11f0-9def-8fd6f4eb1a02": {
+                "features": [
+                  {
+                    "geometry": {
+                      "coordinates": [
+                        -3.470080351422638,
+                        53.38513921088227
+                      ],
+                      "type": "Point"
+                    },
+                    "id": "34406e0848db51b2603734cbcc3cea2d",
+                    "properties": {
+                      "nodeId": "dc9ede4d-1ae0-11f0-9def-8fd6f4eb1a02"
+                    },
+                    "type": "Feature"
+                  }
+                ],
+                "type": "FeatureCollection"
+              }
+            },
+            "nodegroup_id": "dc9ede4d-1ae0-11f0-9def-8fd6f4eb1a02",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "891bf71e-d8c2-49de-9011-5c96da9fae65",
+            "sortorder": 0,
+            "tileid": "c03ad90e-0e0a-449c-9e19-3b572f524fff"
+          },
+          {
+            "data": {
+              "cc2ad26d-1ae0-11f0-96c3-8fd6f4eb1a02": {
+                "en": {
+                  "direction": "ltr",
+                  "value": "Organization B"
+                }
+              }
+            },
+            "nodegroup_id": "cc2ad26d-1ae0-11f0-96c3-8fd6f4eb1a02",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "891bf71e-d8c2-49de-9011-5c96da9fae65",
+            "sortorder": 0,
+            "tileid": "2e7d8eaa-0e29-453d-9048-080234b0a6b9"
+          }
+        ]
+      }
+    ]
+  }
+}

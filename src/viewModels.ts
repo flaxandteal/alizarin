@@ -294,6 +294,7 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
   __cacheEntry: ResourceInstanceCacheEntry | null = null;
   id: string;
   then: null = null;
+  [Symbol.toPrimitive]: undefined;
 
   gm: IGraphManager | undefined;
 
@@ -413,8 +414,11 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
       // condition with a subsequent read.
       // @ts-expect-error Returning a promise for set
       set: async (object: ResourceInstanceViewModel<RIVM>, key, value): Promise<boolean> => {
-        const k = key.toString();
-        if (k in object) {
+        const k: string = typeof key === 'symbol' ? key.description || '' : key;
+        if (key in object) {
+          // @ts-expect-error in certain cases (Symbol.toPrimitive) a unique symbol is an index.
+          object[key] = value;
+        } else if (k in object) {
           object[k] = value;
         } else {
           if (!object._) {
@@ -428,8 +432,11 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
         return true;
       },
       get: (object: ResourceInstanceViewModel<RIVM>, key) => {
-        const k = key.toString();
-        if (k in object) {
+        const k: string = typeof key === 'symbol' ? key.description || '' : key;
+        if (key in object) {
+          // @ts-expect-error in certain cases (Symbol.toPrimitive) a unique symbol is an index.
+          return object[key];
+        } else if (k in object) {
           return object[k];
         }
         return new AttrPromise(async (resolve) => {
@@ -858,15 +865,21 @@ class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
     this._value = jsonData;
     return new Proxy(this, {
       get: (object: GeoJSONViewModel, key) => {
-        const k = key.toString();
-        if (k in object) {
+        const k: string = typeof key === 'symbol' ? key.description || '' : key;
+        if (key in object) {
+          // @ts-expect-error in certain cases (Symbol.toPrimitive) a unique symbol is an index.
+          return object[key];
+        } else if (k in object) {
           return object[k];
         }
         return this._value[k];
       },
       set: (object: GeoJSONViewModel, key, value) => {
-        const k = key.toString();
-        if (k in object) {
+        const k: string = typeof key === 'symbol' ? key.description || '' : key;
+        if (key in object) {
+          // @ts-expect-error in certain cases (Symbol.toPrimitive) a unique symbol is an index.
+          object[k] = value;
+        } else if (k in object) {
           object[k] = value;
         } else {
           this._value[k] = value;
@@ -1019,6 +1032,7 @@ class StringViewModel extends String implements IViewModel {
 class SemanticViewModel implements IStringKeyedObject, IViewModel {
   [key: string]: any;
   then: undefined;
+  [Symbol.toPrimitive]: undefined;
 
   __parentPseudo: PseudoValue | undefined;
   __childValues: Map<string, any>;
@@ -1044,8 +1058,11 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     this.__childNodes = childNodes;
     return new Proxy(this, {
       set: (object, key, value) => {
-        const k: string = key.toString();
-        if (k.startsWith("__")) {
+        const k: string = typeof key === 'symbol' ? key.description || '' : key;
+        if (key in object) {
+          // @ts-expect-error in certain cases (Symbol.toPrimitive) a unique symbol is an index.
+          object[key] = value;
+        } else if (k.startsWith("__") || k in object) {
           object[k] = value;
         } else {
           object.__set(k, value);
@@ -1053,8 +1070,11 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
         return true;
       },
       get: (object, key) => {
-        const k: string = key.toString();
-        if (k.startsWith("__") || k in object) {
+        const k: string = typeof key === 'symbol' ? key.description || '' : key;
+        if (key in object) {
+          // @ts-expect-error in certain cases (Symbol.toPrimitive) a unique symbol is an index.
+          return object[key];
+        } else if (k.startsWith("__") || k in object) {
           return object[k];
         }
         if (k == "length") {

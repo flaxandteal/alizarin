@@ -1,0 +1,126 @@
+{
+  "business_data": {
+    "resources": [
+      {
+        "resourceinstance": {
+          "createdtime": "2025-04-17T02:22:18.137",
+          "descriptors": {
+            "en": {
+              "description": null,
+              "map_popup": null,
+              "name": null
+            }
+          },
+          "graph_id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
+          "graph_publication_id": "9eee6ab6-1b5c-11f0-849d-8fd6f4eb1a02",
+          "legacyid": null,
+          "name": "",
+          "principaluser_id": 1,
+          "resourceinstanceid": "d37f9f91-ad5b-4eff-9135-9f9850674e08",
+          "publication_id": "9eee6ab6-1b5c-11f0-849d-8fd6f4eb1a02"
+        },
+        "tiles": [
+          {
+            "data": {
+              "8a029cda-1b5c-11f0-afc7-a32be8fb5c91": {
+                "en": {
+                  "direction": "ltr",
+                  "value": "Arches End-to-End"
+                }
+              }
+            },
+            "nodegroup_id": "8a029cda-1b5c-11f0-afc7-a32be8fb5c91",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "d37f9f91-ad5b-4eff-9135-9f9850674e08",
+            "sortorder": 0,
+            "tileid": "c67805e9-f213-48b1-b43c-8e62be7ffb69"
+          },
+          {
+            "data": {
+              "93b58730-1b5c-11f0-b326-8fd6f4eb1a02": 1
+            },
+            "nodegroup_id": "93b58730-1b5c-11f0-b326-8fd6f4eb1a02",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "d37f9f91-ad5b-4eff-9135-9f9850674e08",
+            "sortorder": 0,
+            "tileid": "cff8c743-b745-474c-97dd-fa496f3a506d"
+          },
+          {
+            "data": {
+              "1b87ea30-1b5c-11f0-961a-8fd6f4eb1a02": [
+                {
+                  "inverseOntologyProperty": "",
+                  "ontologyProperty": "",
+                  "resourceId": "179b8583-3140-437e-bd0b-34d5aa2f1550",
+                  "resourceXresourceId": "1e9afbc7-2866-4f24-a613-eab09baaeea5"
+                }
+              ]
+            },
+            "nodegroup_id": "1b87ea30-1b5c-11f0-961a-8fd6f4eb1a02",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "d37f9f91-ad5b-4eff-9135-9f9850674e08",
+            "sortorder": 0,
+            "tileid": "471033b0-d5fa-458a-a7cb-35b717dc563c"
+          },
+          {
+            "data": {
+              "3bb91d0c-1b5c-11f0-9b90-8fd6f4eb1a02": [
+                {
+                  "inverseOntologyProperty": "",
+                  "ontologyProperty": "",
+                  "resourceId": "97cc9a1b-ee42-412e-9fa5-203d98bff815",
+                  "resourceXresourceId": "5c4194c8-d89c-4449-8772-de4126f8aaa2"
+                }
+              ]
+            },
+            "nodegroup_id": "3bb91d0c-1b5c-11f0-9b90-8fd6f4eb1a02",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "d37f9f91-ad5b-4eff-9135-9f9850674e08",
+            "sortorder": 0,
+            "tileid": "f8200951-f68a-4af6-a686-ce73d8ccd414"
+          },
+          {
+            "data": {
+              "2a96e190-1b5c-11f0-bb7c-a32be8fb5c91": [
+                {
+                  "inverseOntologyProperty": "",
+                  "ontologyProperty": "",
+                  "resourceId": "8f061cfd-f6a2-4b7a-8b88-b93115477519",
+                  "resourceXresourceId": "1542ef61-d38b-4cfc-abb6-2f2cec85b42a"
+                }
+              ]
+            },
+            "nodegroup_id": "2a96e190-1b5c-11f0-bb7c-a32be8fb5c91",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "d37f9f91-ad5b-4eff-9135-9f9850674e08",
+            "sortorder": 0,
+            "tileid": "baf41e33-4a13-41f2-be18-2b2cd9d1573e"
+          },
+          {
+            "data": {
+              "460291fc-1b5c-11f0-89c4-8fd6f4eb1a02": [
+                {
+                  "inverseOntologyProperty": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                  "ontologyProperty": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                  "resourceId": "a864ffd8-5a11-4d9c-a0fe-a7dcaff60286",
+                  "resourceXresourceId": "eef0063e-2d80-4325-bb06-10d3849efc38"
+                }
+              ]
+            },
+            "nodegroup_id": "460291fc-1b5c-11f0-89c4-8fd6f4eb1a02",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "d37f9f91-ad5b-4eff-9135-9f9850674e08",
+            "sortorder": 0,
+            "tileid": "8dca2f6c-49cb-4e28-938b-2b05283aeb18"
+          }
+        ]
+      }
+    ]
+  }
+}

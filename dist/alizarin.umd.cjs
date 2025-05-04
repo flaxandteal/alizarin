@@ -5,6 +5,7 @@
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
+  var _a, _b;
   const DEFAULT_LANGUAGE$1 = "en";
   function getCurrentLanguage() {
     return (typeof navigator != "undefined" && navigator.language || DEFAULT_LANGUAGE$1).slice(0, 2);
@@ -1076,7 +1077,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return this._value ? await this._value : null;
     }
   }
-  class ResourceInstanceViewModel {
+  _a = Symbol.toPrimitive;
+  const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
     constructor(id, modelWrapper, instanceWrapperFactory, cacheEntry) {
       __publicField(this, "_");
       __publicField(this, "__");
@@ -1084,6 +1086,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "__cacheEntry", null);
       __publicField(this, "id");
       __publicField(this, "then", null);
+      __publicField(this, _a);
       __publicField(this, "gm");
       this.id = id;
       this._ = instanceWrapperFactory ? instanceWrapperFactory(this) : null;
@@ -1096,8 +1099,10 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         // condition with a subsequent read.
         // @ts-expect-error Returning a promise for set
         set: async (object, key, value) => {
-          const k = key.toString();
-          if (k in object) {
+          const k = typeof key === "symbol" ? key.description || "" : key;
+          if (key in object) {
+            object[key] = value;
+          } else if (k in object) {
             object[k] = value;
           } else {
             if (!object._) {
@@ -1111,8 +1116,10 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           return true;
         },
         get: (object, key) => {
-          const k = key.toString();
-          if (k in object) {
+          const k = typeof key === "symbol" ? key.description || "" : key;
+          if (key in object) {
+            return object[key];
+          } else if (k in object) {
             return object[k];
           }
           return new AttrPromise(async (resolve) => {
@@ -1226,7 +1233,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
             val = null;
           } else if (value instanceof Promise) {
             return value.then((value2) => {
-              return ResourceInstanceViewModel.__create(tile, node, value2, cacheEntry);
+              return _ResourceInstanceViewModel.__create(tile, node, value2, cacheEntry);
             });
           } else if (typeof value == "string") {
             if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.exec(
@@ -1242,7 +1249,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
             val = value.resourceId;
           } else if (value instanceof Array && value.length < 2) {
             if (value.length == 1) {
-              return ResourceInstanceViewModel.__create(tile, node, value[0], cacheEntry);
+              return _ResourceInstanceViewModel.__create(tile, node, value[0], cacheEntry);
             }
           } else {
             throw Error("Could not set resource instance from this data");
@@ -1253,10 +1260,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       if (!tile || !val) {
         return null;
       }
-      const str = new ResourceInstanceViewModel(val, null, null, cacheEntry);
+      const str = new _ResourceInstanceViewModel(val, null, null, cacheEntry);
       return str;
     }
-  }
+  };
+  let ResourceInstanceViewModel = _ResourceInstanceViewModel;
   class ConceptListViewModel extends Array {
     constructor() {
       super(...arguments);
@@ -1547,15 +1555,19 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this._value = jsonData;
       return new Proxy(this, {
         get: (object, key) => {
-          const k = key.toString();
-          if (k in object) {
+          const k = typeof key === "symbol" ? key.description || "" : key;
+          if (key in object) {
+            return object[key];
+          } else if (k in object) {
             return object[k];
           }
           return this._value[k];
         },
         set: (object, key, value) => {
-          const k = key.toString();
-          if (k in object) {
+          const k = typeof key === "symbol" ? key.description || "" : key;
+          if (key in object) {
+            object[k] = value;
+          } else if (k in object) {
             object[k] = value;
           } else {
             this._value[k] = value;
@@ -1678,9 +1690,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return this._value;
     }
   }
-  class SemanticViewModel {
+  _b = Symbol.toPrimitive;
+  const _SemanticViewModel = class _SemanticViewModel {
     constructor(parentWkri, childNodes, tile, node) {
       __publicField(this, "then");
+      __publicField(this, _b);
       __publicField(this, "__parentPseudo");
       __publicField(this, "__childValues");
       __publicField(this, "__parentWkri");
@@ -1694,8 +1708,10 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.__childNodes = childNodes;
       return new Proxy(this, {
         set: (object, key, value) => {
-          const k = key.toString();
-          if (k.startsWith("__")) {
+          const k = typeof key === "symbol" ? key.description || "" : key;
+          if (key in object) {
+            object[key] = value;
+          } else if (k.startsWith("__") || k in object) {
             object[k] = value;
           } else {
             object.__set(k, value);
@@ -1703,8 +1719,10 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           return true;
         },
         get: (object, key) => {
-          const k = key.toString();
-          if (k.startsWith("__") || k in object) {
+          const k = typeof key === "symbol" ? key.description || "" : key;
+          if (key in object) {
+            return object[key];
+          } else if (k.startsWith("__") || k in object) {
             return object[k];
           }
           if (k == "length") {
@@ -1823,7 +1841,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return child;
     }
     static async __create(tile, node, value, parent, childNodes) {
-      const svm = new SemanticViewModel(parent, childNodes, tile, node);
+      const svm = new _SemanticViewModel(parent, childNodes, tile, node);
       if (value) {
         try {
           await svm.__update(value);
@@ -1899,7 +1917,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       }
       return children;
     }
-  }
+  };
+  let SemanticViewModel = _SemanticViewModel;
   async function getViewModel(parentPseudo, tile, node, data, parent, childNodes) {
     let vm;
     const cacheEntries = parentPseudo.parent && parentPseudo.parent._ ? await parentPseudo.parent._.getValueCache(false, void 0) : void 0;
@@ -2849,12 +2868,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   }
   function makeResourceModelWrapper(viewModelClass, wkrm, graph) {
-    var _a;
+    var _a2;
     let vmc;
     if (!viewModelClass) {
       const viewModelClassObj = {
-        [wkrm.modelClassName]: (_a = class extends ResourceInstanceViewModel {
-        }, __publicField(_a, "_"), __publicField(_a, "__"), _a)
+        [wkrm.modelClassName]: (_a2 = class extends ResourceInstanceViewModel {
+        }, __publicField(_a2, "_"), __publicField(_a2, "__"), _a2)
       };
       vmc = viewModelClassObj[wkrm.modelClassName];
     } else {

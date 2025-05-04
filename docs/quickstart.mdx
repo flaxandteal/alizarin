@@ -5,22 +5,10 @@ description: First steps with Alizarin
 
 import AlizarinComponent from '@/app/alizarin.tsx';
 
-<AlizarinComponent/>
-
 ## Quickstart
 
-```js
-import { AlizarinModel, graphManager } from 'alizarin';
+<AlizarinComponent module='/example/example-1.ts' />
 
-class Person extends AlizarinModel<Person> {};
-
-const Persons = graphManager.get(Person);
-const everyone = Persons.all({lazy: true});
-
-for (const person in everyone) {
-  console.log(person.name, "->", person.friends[0].name);
-}
-```
 
 To run Alizarin, you need [Arches](https://github.com/archesproject/arches) JSON,
 which can be generated with Arches or, in pure Python, with [AORM](https://github.com/flaxandteal/arches-orm).

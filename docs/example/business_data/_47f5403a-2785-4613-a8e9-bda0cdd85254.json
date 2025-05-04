@@ -1,0 +1,171 @@
+{
+  "business_data": {
+    "resources": [
+      {
+        "resourceinstance": {
+          "createdtime": "2025-04-16T12:27:33.217",
+          "descriptors": {
+            "en": {
+              "description": "",
+              "map_popup": "Undefined",
+              "name": "Person Y"
+            }
+          },
+          "graph_id": "47f5403a-2785-4613-a8e9-bda0cdd85254",
+          "graph_publication_id": "9105ed00-1ae7-11f0-ba66-8fd6f4eb1a02",
+          "legacyid": null,
+          "name": "Person Y",
+          "principaluser_id": 1,
+          "resourceinstanceid": "715116ee-3225-43ed-a74b-3f31657952cb",
+          "publication_id": "9105ed00-1ae7-11f0-ba66-8fd6f4eb1a02"
+        },
+        "tiles": [
+          {
+            "data": {
+              "a376f279-1ae0-11f0-b490-a32be8fb5c91": [
+                {
+                  "inverseOntologyProperty": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                  "ontologyProperty": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                  "resourceId": "891bf71e-d8c2-49de-9011-5c96da9fae65",
+                  "resourceXresourceId": "67fe3c66-4d7c-4bec-9280-3bfad83b5a59"
+                }
+              ]
+            },
+            "nodegroup_id": "a376f279-1ae0-11f0-b490-a32be8fb5c91",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "715116ee-3225-43ed-a74b-3f31657952cb",
+            "sortorder": 0,
+            "tileid": "0efa6b11-b0f0-45c9-995e-319f458bab4b"
+          },
+          {
+            "data": {
+              "99d3caa9-1ae0-11f0-8623-a32be8fb5c91": {
+                "en": {
+                  "direction": "ltr",
+                  "value": "Person Y"
+                }
+              }
+            },
+            "nodegroup_id": "99d3caa9-1ae0-11f0-8623-a32be8fb5c91",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "715116ee-3225-43ed-a74b-3f31657952cb",
+            "sortorder": 0,
+            "tileid": "e0c6403a-39d2-4b36-953f-2d1412dbccab"
+          }
+        ]
+      },
+      {
+        "resourceinstance": {
+          "createdtime": "2025-04-16T12:41:15.114",
+          "descriptors": {
+            "en": {
+              "description": "",
+              "map_popup": "Undefined",
+              "name": "Speaker Z"
+            }
+          },
+          "graph_id": "47f5403a-2785-4613-a8e9-bda0cdd85254",
+          "graph_publication_id": "9105ed00-1ae7-11f0-ba66-8fd6f4eb1a02",
+          "legacyid": null,
+          "name": "Speaker Z",
+          "principaluser_id": 1,
+          "resourceinstanceid": "e69b3705-7205-4288-aa64-2241403e735c",
+          "publication_id": "9105ed00-1ae7-11f0-ba66-8fd6f4eb1a02"
+        },
+        "tiles": [
+          {
+            "data": {
+              "99d3caa9-1ae0-11f0-8623-a32be8fb5c91": {
+                "en": {
+                  "direction": "ltr",
+                  "value": "Speaker Z"
+                }
+              }
+            },
+            "nodegroup_id": "99d3caa9-1ae0-11f0-8623-a32be8fb5c91",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "e69b3705-7205-4288-aa64-2241403e735c",
+            "sortorder": 0,
+            "tileid": "72e0b28d-8d2b-4c0f-9225-d84e0543e6a5"
+          },
+          {
+            "data": {
+              "a376f279-1ae0-11f0-b490-a32be8fb5c91": [
+                {
+                  "inverseOntologyProperty": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                  "ontologyProperty": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                  "resourceId": "fb8115bb-ba4e-48f7-993c-35071d29ae30",
+                  "resourceXresourceId": "bf8ffd41-b7d9-45db-acb5-4447d9785a38"
+                }
+              ]
+            },
+            "nodegroup_id": "a376f279-1ae0-11f0-b490-a32be8fb5c91",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "e69b3705-7205-4288-aa64-2241403e735c",
+            "sortorder": 0,
+            "tileid": "af64c987-9ee2-43b2-9948-66fed70e3297"
+          }
+        ]
+      },
+      {
+        "resourceinstance": {
+          "createdtime": "2025-04-16T12:27:53.187",
+          "descriptors": {
+            "en": {
+              "description": "",
+              "map_popup": "Undefined",
+              "name": "Person X"
+            }
+          },
+          "graph_id": "47f5403a-2785-4613-a8e9-bda0cdd85254",
+          "graph_publication_id": "9105ed00-1ae7-11f0-ba66-8fd6f4eb1a02",
+          "legacyid": null,
+          "name": "Person X",
+          "principaluser_id": 1,
+          "resourceinstanceid": "cecd577c-3d66-4d69-a466-47368b99e21e",
+          "publication_id": "9105ed00-1ae7-11f0-ba66-8fd6f4eb1a02"
+        },
+        "tiles": [
+          {
+            "data": {
+              "a376f279-1ae0-11f0-b490-a32be8fb5c91": [
+                {
+                  "inverseOntologyProperty": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                  "ontologyProperty": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                  "resourceId": "891bf71e-d8c2-49de-9011-5c96da9fae65",
+                  "resourceXresourceId": "0842797c-f2cd-4653-bfe9-8c0a91dd45ba"
+                }
+              ]
+            },
+            "nodegroup_id": "a376f279-1ae0-11f0-b490-a32be8fb5c91",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "cecd577c-3d66-4d69-a466-47368b99e21e",
+            "sortorder": 0,
+            "tileid": "36f924d2-23dc-4509-bcea-9b8e2001d39b"
+          },
+          {
+            "data": {
+              "99d3caa9-1ae0-11f0-8623-a32be8fb5c91": {
+                "en": {
+                  "direction": "ltr",
+                  "value": "Person X"
+                }
+              }
+            },
+            "nodegroup_id": "99d3caa9-1ae0-11f0-8623-a32be8fb5c91",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "cecd577c-3d66-4d69-a466-47368b99e21e",
+            "sortorder": 0,
+            "tileid": "a673e0f8-accf-40e1-b7e1-3078e180faaf"
+          }
+        ]
+      }
+    ]
+  }
+}

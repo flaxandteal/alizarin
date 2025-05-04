@@ -1,0 +1,181 @@
+{
+  "business_data": {
+    "resources": [
+      {
+        "resourceinstance": {
+          "createdtime": "2025-04-16T12:40:27.892",
+          "descriptors": {
+            "en": {
+              "description": "Widget, wodgets and wudgets",
+              "map_popup": "",
+              "name": "3 W's of UI"
+            }
+          },
+          "graph_id": "a6c412db-72e0-4099-a690-ccc75ba841a9",
+          "graph_publication_id": "d88e7ffb-1ae9-11f0-b805-a32be8fb5c91",
+          "legacyid": null,
+          "name": "3 W's of UI",
+          "principaluser_id": 1,
+          "resourceinstanceid": "179b8583-3140-437e-bd0b-34d5aa2f1550",
+          "publication_id": "d88e7ffb-1ae9-11f0-b805-a32be8fb5c91"
+        },
+        "tiles": [
+          {
+            "data": {
+              "7d8e443d-1ae0-11f0-8c5c-8fd6f4eb1a02": {
+                "en": {
+                  "direction": "ltr",
+                  "value": "Wudgets, widgets and wodgets"
+                }
+              }
+            },
+            "nodegroup_id": "7d8e443d-1ae0-11f0-8c5c-8fd6f4eb1a02",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "179b8583-3140-437e-bd0b-34d5aa2f1550",
+            "sortorder": 0,
+            "tileid": "9a7541c3-5dbb-4503-b442-83d2e911a10a"
+          },
+          {
+            "data": {
+              "6b06d097-1ae0-11f0-96c4-8fd6f4eb1a02": [
+                {
+                  "inverseOntologyProperty": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                  "ontologyProperty": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                  "resourceId": "e69b3705-7205-4288-aa64-2241403e735c",
+                  "resourceXresourceId": "b6ba13e1-da95-4890-96d4-2ef459d6fe13"
+                }
+              ]
+            },
+            "nodegroup_id": "6b06d097-1ae0-11f0-96c4-8fd6f4eb1a02",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "179b8583-3140-437e-bd0b-34d5aa2f1550",
+            "sortorder": 0,
+            "tileid": "a71ef1cb-4753-4408-aa14-491c750dc63a"
+          },
+          {
+            "data": {
+              "42b57041-1ae7-11f0-8647-a32be8fb5c91": {
+                "en": {
+                  "direction": "ltr",
+                  "value": "IOU a w*dget."
+                }
+              }
+            },
+            "nodegroup_id": "42b57041-1ae7-11f0-8647-a32be8fb5c91",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "179b8583-3140-437e-bd0b-34d5aa2f1550",
+            "sortorder": 0,
+            "tileid": "57b701fb-989b-4ba1-87b3-0b56f9302c1d"
+          },
+          {
+            "data": {
+              "3784d67d-1ae9-11f0-86d0-a32be8fb5c91": [
+                "f71cff66-5421-4420-b06e-397376eb2f56",
+                "152fe3a0-f1de-43e4-9897-026587cee523"
+              ]
+            },
+            "nodegroup_id": "3784d67d-1ae9-11f0-86d0-a32be8fb5c91",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "179b8583-3140-437e-bd0b-34d5aa2f1550",
+            "sortorder": 0,
+            "tileid": "5eb34c9d-9800-46b8-b5d0-b08dd57331d9"
+          }
+        ]
+      },
+      {
+        "resourceinstance": {
+          "createdtime": "2025-04-16T12:46:41.572",
+          "descriptors": {
+            "en": {
+              "description": "Talk on scripting",
+              "map_popup": "",
+              "name": "Javascript, Typescript and Manuscript"
+            }
+          },
+          "graph_id": "a6c412db-72e0-4099-a690-ccc75ba841a9",
+          "graph_publication_id": "d88e7ffb-1ae9-11f0-b805-a32be8fb5c91",
+          "legacyid": null,
+          "name": "Javascript, Typescript and Manuscript",
+          "principaluser_id": 1,
+          "resourceinstanceid": "97cc9a1b-ee42-412e-9fa5-203d98bff815",
+          "publication_id": "d88e7ffb-1ae9-11f0-b805-a32be8fb5c91"
+        },
+        "tiles": [
+          {
+            "data": {
+              "3784d67d-1ae9-11f0-86d0-a32be8fb5c91": [
+                "08d28d3b-9c92-4004-b7ee-ed131a348e92"
+              ]
+            },
+            "nodegroup_id": "3784d67d-1ae9-11f0-86d0-a32be8fb5c91",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "97cc9a1b-ee42-412e-9fa5-203d98bff815",
+            "sortorder": 0,
+            "tileid": "2af539b7-82c1-4709-a4f9-1d3fac85fd39"
+          },
+          {
+            "data": {
+              "7d8e443d-1ae0-11f0-8c5c-8fd6f4eb1a02": {
+                "en": {
+                  "direction": "ltr",
+                  "value": "Scripting for people who like papyrus"
+                }
+              }
+            },
+            "nodegroup_id": "7d8e443d-1ae0-11f0-8c5c-8fd6f4eb1a02",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "97cc9a1b-ee42-412e-9fa5-203d98bff815",
+            "sortorder": 0,
+            "tileid": "365a521c-5c80-4ecb-8eeb-be68fb86e527"
+          },
+          {
+            "data": {
+              "6b06d097-1ae0-11f0-96c4-8fd6f4eb1a02": [
+                {
+                  "inverseOntologyProperty": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                  "ontologyProperty": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                  "resourceId": "cecd577c-3d66-4d69-a466-47368b99e21e",
+                  "resourceXresourceId": "8aba85f0-5852-4915-a2ea-572b402688ca"
+                },
+                {
+                  "inverseOntologyProperty": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                  "ontologyProperty": "ac41d9be-79db-4256-b368-2f4559cfbe55",
+                  "resourceId": "715116ee-3225-43ed-a74b-3f31657952cb",
+                  "resourceXresourceId": "1bd2701d-209f-43d1-8a2d-14b002746596"
+                }
+              ]
+            },
+            "nodegroup_id": "6b06d097-1ae0-11f0-96c4-8fd6f4eb1a02",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "97cc9a1b-ee42-412e-9fa5-203d98bff815",
+            "sortorder": 0,
+            "tileid": "3de29bd7-6513-4c5c-bf4f-7c997ed7d181"
+          },
+          {
+            "data": {
+              "42b57041-1ae7-11f0-8647-a32be8fb5c91": {
+                "en": {
+                  "direction": "ltr",
+                  "value": "How do we write scripts? With IDEs, text editors and quills."
+                }
+              }
+            },
+            "nodegroup_id": "42b57041-1ae7-11f0-8647-a32be8fb5c91",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "resourceinstance_id": "97cc9a1b-ee42-412e-9fa5-203d98bff815",
+            "sortorder": 0,
+            "tileid": "663e3b6e-39a0-423c-ac79-24b52bd57f4a"
+          }
+        ]
+      }
+    ]
+  }
+}

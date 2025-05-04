@@ -379,6 +379,7 @@ declare class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements ISt
     __cacheEntry: ResourceInstanceCacheEntry | null;
     id: string;
     then: null;
+    [Symbol.toPrimitive]: undefined;
     gm: IGraphManager | undefined;
     toString(): string;
     __asTileData(): Promise<IStringKeyedObject>;
@@ -426,6 +427,7 @@ declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
 declare class SemanticViewModel implements IStringKeyedObject, IViewModel {
     [key: string]: any;
     then: undefined;
+    [Symbol.toPrimitive]: undefined;
     __parentPseudo: PseudoValue | undefined;
     __childValues: Map<string, any>;
     __parentWkri: IRIVM<any> | null;
