@@ -1,27 +1,33 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-var _a, _b;
+var _a, _b, _c, _d, _e;
 const DEFAULT_LANGUAGE$1 = "en";
 function getCurrentLanguage() {
   return (typeof navigator != "undefined" && navigator.language || DEFAULT_LANGUAGE$1).slice(0, 2);
 }
-class AttrPromise extends Promise {
+class AttrPromise extends (_b = Promise, _a = Symbol.toPrimitive, _b) {
   constructor(executor) {
     super(executor);
+    __publicField(this, _a);
     return new Proxy(this, {
       set: (object, keyObj, value) => {
-        const key = keyObj.toString();
         if (object instanceof Promise) {
           return object.then((val) => {
-            val[key] = value;
+            val[keyObj] = value;
             return val;
           });
         }
-        object[key] = value;
+        object[keyObj] = value;
         return this;
       },
       get: (object, keyObj) => {
+        if (keyObj in object) {
+          if (typeof object[keyObj] === "function") {
+            return object[keyObj].bind(object);
+          }
+          return object[keyObj];
+        }
         const key = keyObj.toString();
         if (key in object) {
           if (typeof object[key] === "function") {
@@ -31,10 +37,10 @@ class AttrPromise extends Promise {
         }
         if (object instanceof Promise) {
           return object.then((val) => {
-            return val ? val[key] : val;
+            return val ? val[keyObj] : val;
           });
         }
-        return object[key];
+        return object[keyObj];
       }
     });
   }
@@ -1073,7 +1079,7 @@ class ResourceInstanceListViewModel extends Array {
     return this._value ? await this._value : null;
   }
 }
-_a = Symbol.toPrimitive;
+_c = Symbol.toPrimitive;
 const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
   constructor(id, modelWrapper, instanceWrapperFactory, cacheEntry) {
     __publicField(this, "_");
@@ -1081,8 +1087,8 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
     __publicField(this, "__parentPseudo");
     __publicField(this, "__cacheEntry", null);
     __publicField(this, "id");
-    __publicField(this, "then", null);
-    __publicField(this, _a);
+    __publicField(this, "then");
+    __publicField(this, _c);
     __publicField(this, "gm");
     this.id = id;
     this._ = instanceWrapperFactory ? instanceWrapperFactory(this) : null;
@@ -1542,9 +1548,12 @@ class ConceptValueViewModel extends String {
     return value ? value.id : null;
   }
 }
-class GeoJSONViewModel {
+_d = Symbol.toPrimitive;
+const _GeoJSONViewModel = class _GeoJSONViewModel {
   constructor(jsonData) {
     __publicField(this, "__parentPseudo");
+    __publicField(this, "then");
+    __publicField(this, _d);
     __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
     __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
     __publicField(this, "_value");
@@ -1562,7 +1571,7 @@ class GeoJSONViewModel {
       set: (object, key, value) => {
         const k = typeof key === "symbol" ? key.description || "" : key;
         if (key in object) {
-          object[k] = value;
+          object[key] = value;
         } else if (k in object) {
           object[k] = value;
         } else {
@@ -1579,7 +1588,7 @@ class GeoJSONViewModel {
     const nodeid = node.nodeid;
     if (value instanceof Promise) {
       return value.then(
-        (value2) => GeoJSONViewModel.__create(tile, node, value2)
+        (value2) => _GeoJSONViewModel.__create(tile, node, value2)
       );
     }
     if (tile) {
@@ -1597,7 +1606,7 @@ class GeoJSONViewModel {
     if (!(val instanceof Object)) {
       throw Error("GeoJSON should be a JSON object");
     }
-    const str = new GeoJSONViewModel(val);
+    const str = new _GeoJSONViewModel(val);
     return str;
   }
   async forJson() {
@@ -1606,7 +1615,8 @@ class GeoJSONViewModel {
   __asTileData() {
     return this._value;
   }
-}
+};
+let GeoJSONViewModel = _GeoJSONViewModel;
 class StringViewModel extends String {
   constructor(value, language = null) {
     const lang = value.get(language || DEFAULT_LANGUAGE);
@@ -1686,11 +1696,11 @@ class StringViewModel extends String {
     return this._value;
   }
 }
-_b = Symbol.toPrimitive;
+_e = Symbol.toPrimitive;
 const _SemanticViewModel = class _SemanticViewModel {
   constructor(parentWkri, childNodes, tile, node) {
     __publicField(this, "then");
-    __publicField(this, _b);
+    __publicField(this, _e);
     __publicField(this, "__parentPseudo");
     __publicField(this, "__childValues");
     __publicField(this, "__parentWkri");

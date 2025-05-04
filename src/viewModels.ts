@@ -287,13 +287,13 @@ class ResourceInstanceListViewModel extends Array implements IViewModel {
 }
 
 class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeyedObject {
-  [key: string]: any;
+  [key: string | symbol]: any;
   _: IInstanceWrapper<RIVM> | null;
   __: IModelWrapper<RIVM> | null;
   __parentPseudo: IPseudo | undefined = undefined;
   __cacheEntry: ResourceInstanceCacheEntry | null = null;
   id: string;
-  then: null = null;
+  then: undefined;
   [Symbol.toPrimitive]: undefined;
 
   gm: IGraphManager | undefined;
@@ -416,7 +416,6 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
       set: async (object: ResourceInstanceViewModel<RIVM>, key, value): Promise<boolean> => {
         const k: string = typeof key === 'symbol' ? key.description || '' : key;
         if (key in object) {
-          // @ts-expect-error in certain cases (Symbol.toPrimitive) a unique symbol is an index.
           object[key] = value;
         } else if (k in object) {
           object[k] = value;
@@ -434,7 +433,6 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
       get: (object: ResourceInstanceViewModel<RIVM>, key) => {
         const k: string = typeof key === 'symbol' ? key.description || '' : key;
         if (key in object) {
-          // @ts-expect-error in certain cases (Symbol.toPrimitive) a unique symbol is an index.
           return object[key];
         } else if (k in object) {
           return object[k];
@@ -849,8 +847,10 @@ class ConceptValueViewModel extends String implements IViewModel {
 }
 
 class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
-  [key: string]: any;
+  [key: string | symbol]: any;
   __parentPseudo: PseudoValue | undefined;
+  then: undefined;
+  [Symbol.toPrimitive]: undefined;
 
   describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
   describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
@@ -867,7 +867,6 @@ class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
       get: (object: GeoJSONViewModel, key) => {
         const k: string = typeof key === 'symbol' ? key.description || '' : key;
         if (key in object) {
-          // @ts-expect-error in certain cases (Symbol.toPrimitive) a unique symbol is an index.
           return object[key];
         } else if (k in object) {
           return object[k];
@@ -877,8 +876,7 @@ class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
       set: (object: GeoJSONViewModel, key, value) => {
         const k: string = typeof key === 'symbol' ? key.description || '' : key;
         if (key in object) {
-          // @ts-expect-error in certain cases (Symbol.toPrimitive) a unique symbol is an index.
-          object[k] = value;
+          object[key] = value;
         } else if (k in object) {
           object[k] = value;
         } else {
@@ -1030,7 +1028,7 @@ class StringViewModel extends String implements IViewModel {
 }
 
 class SemanticViewModel implements IStringKeyedObject, IViewModel {
-  [key: string]: any;
+  [key: string | symbol]: any;
   then: undefined;
   [Symbol.toPrimitive]: undefined;
 
@@ -1060,7 +1058,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       set: (object, key, value) => {
         const k: string = typeof key === 'symbol' ? key.description || '' : key;
         if (key in object) {
-          // @ts-expect-error in certain cases (Symbol.toPrimitive) a unique symbol is an index.
           object[key] = value;
         } else if (k.startsWith("__") || k in object) {
           object[k] = value;
@@ -1072,7 +1069,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       get: (object, key) => {
         const k: string = typeof key === 'symbol' ? key.description || '' : key;
         if (key in object) {
-          // @ts-expect-error in certain cases (Symbol.toPrimitive) a unique symbol is an index.
           return object[key];
         } else if (k.startsWith("__") || k in object) {
           return object[k];

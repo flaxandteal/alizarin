@@ -19,7 +19,7 @@ interface IRIVM<T extends IRIVM<T>> {
 }
 
 interface IStringKeyedObject {
-  [key: string]: any
+  [key: string | symbol]: any
 }
 
 type GetMeta = ((vm: IViewModel) => IStringKeyedObject) | undefined;

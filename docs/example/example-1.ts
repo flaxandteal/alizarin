@@ -1,17 +1,35 @@
-import { AlizarinModel, graphManager } from 'alizarin'; // @alizcode-hide
+import { AlizarinModel, graphManager, staticStore } from 'alizarin'; 
 
 async function run({print}: {print: ((...inp: any) => void)}) {
+  // Preload so we do not need individual JSON files.
+  staticStore.cacheMetadataOnly = false;
+  (await graphManager.get("Session")).all();
+  (await graphManager.get("Talk")).all();
+  (await graphManager.get("Person")).all();
+  (await graphManager.get("Institution")).all();
   try {
-    class Person extends AlizarinModel<Person> {};
+// @alizcode-begin
+    class Session extends AlizarinModel<Session> {};
+    const Sessions = await graphManager.get(Session);
 
-    const Persons = await graphManager.get(Person);
-    print(Persons);
-    const everyone: Person[] = await Persons.all({lazy: true});
-    print(everyone);
-
-    for (const person of everyone) {
-      print(person.name, "->", person.friends[0].name);
+    for (const session of await Sessions.all()) {
+      print('Session', await session.name);
+      for (const slot of [1, 2, 3, 4, 5, 6]) {
+        const talk = session[`slot_${slot}`];
+        const title = await talk.title;
+        if (title) {
+          const presenterNames = await Promise.all(
+            (await talk.presenter).map(
+              async (presenter) => (await presenter).name
+            )
+          );
+          print(slot, ":", title, ' -- ', presenterNames.join(', '))
+        } else {
+          print(slot, ":", '(empty)')
+        }
+      }
     }
+// @alizcode-end
   } catch (e: any) {
     print(e)
   }

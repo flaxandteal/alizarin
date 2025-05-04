@@ -55,6 +55,7 @@ declare class ArchesClientRemoteStatic extends ArchesClient {
 }
 
 declare class AttrPromise<T> extends Promise<T> implements IStringKeyedObject {
+    [Symbol.toPrimitive]: undefined;
     constructor(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason: any) => void) => void);
 }
 
@@ -121,8 +122,10 @@ declare class DomainValueViewModel extends String implements IViewModel {
 }
 
 declare class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
-    [key: string]: any;
+    [key: string | symbol]: any;
     __parentPseudo: PseudoValue | undefined;
+    then: undefined;
+    [Symbol.toPrimitive]: undefined;
     describeField: () => string | null;
     describeFieldGroup: () => string | null;
     _value: {
@@ -255,7 +258,7 @@ declare interface IRIVM<T extends IRIVM<T>> {
 }
 
 declare interface IStringKeyedObject {
-    [key: string]: any;
+    [key: string | symbol]: any;
 }
 
 declare interface IViewModel {
@@ -372,13 +375,13 @@ declare class ResourceInstanceCacheEntry implements IStringKeyedObject {
 }
 
 declare class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeyedObject {
-    [key: string]: any;
+    [key: string | symbol]: any;
     _: IInstanceWrapper<RIVM> | null;
     __: IModelWrapper<RIVM> | null;
     __parentPseudo: IPseudo | undefined;
     __cacheEntry: ResourceInstanceCacheEntry | null;
     id: string;
-    then: null;
+    then: undefined;
     [Symbol.toPrimitive]: undefined;
     gm: IGraphManager | undefined;
     toString(): string;
@@ -425,7 +428,7 @@ declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
 }
 
 declare class SemanticViewModel implements IStringKeyedObject, IViewModel {
-    [key: string]: any;
+    [key: string | symbol]: any;
     then: undefined;
     [Symbol.toPrimitive]: undefined;
     __parentPseudo: PseudoValue | undefined;

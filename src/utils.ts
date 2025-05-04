@@ -8,6 +8,7 @@ function getCurrentLanguage(): string {
 }
 
 class AttrPromise<T> extends Promise<T> implements IStringKeyedObject {
+  [Symbol.toPrimitive]: undefined;
   constructor(
     executor: (
       resolve: (value: T | PromiseLike<T>) => void,
@@ -17,17 +18,22 @@ class AttrPromise<T> extends Promise<T> implements IStringKeyedObject {
     super(executor);
     return new Proxy(this, {
       set: (object: IStringKeyedObject, keyObj, value) => {
-        const key = keyObj.toString();
         if (object instanceof Promise) {
           return object.then((val) => {
-            val[key] = value;
+            val[keyObj] = value;
             return val;
           });
         }
-        object[key] = value;
+        object[keyObj] = value;
         return this;
       },
       get: (object: IStringKeyedObject, keyObj) => {
+        if (keyObj in object) {
+          if (typeof object[keyObj] === "function") {
+            return object[keyObj].bind(object);
+          }
+          return object[keyObj];
+        }
         const key = keyObj.toString();
         if (key in object) {
           if (typeof object[key] === "function") {
@@ -37,10 +43,10 @@ class AttrPromise<T> extends Promise<T> implements IStringKeyedObject {
         }
         if (object instanceof Promise) {
           return object.then((val) => {
-            return val ? val[key] : val;
+            return val ? val[keyObj] : val;
           });
         }
-        return object[key];
+        return object[keyObj];
       },
     });
   }
