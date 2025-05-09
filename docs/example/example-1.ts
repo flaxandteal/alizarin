@@ -3,9 +3,10 @@ import { AlizarinModel, graphManager, staticStore } from 'alizarin';
 async function run({print}: {print: ((...inp: any) => void)}) {
   // Preload so we do not need individual JSON files.
   staticStore.cacheMetadataOnly = false;
+  class Person extends AlizarinModel<Person> {};
   (await graphManager.get("Session")).all();
   (await graphManager.get("Talk")).all();
-  (await graphManager.get("Person")).all();
+  (await graphManager.get(Person)).all();
   (await graphManager.get("Institution")).all();
   try {
 // @alizcode-begin
@@ -20,7 +21,7 @@ async function run({print}: {print: ((...inp: any) => void)}) {
         if (title) {
           const presenterNames = await Promise.all(
             (await talk.presenter).map(
-              async (presenter) => (await presenter).name
+              async (presenter: Promise<Person>) => (await presenter)['name']
             )
           );
           print(slot, ":", title, ' -- ', presenterNames.join(', '))
