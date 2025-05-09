@@ -251,7 +251,7 @@ declare interface IReferenceDataManager {
 declare interface IRIVM<T extends IRIVM<T>> {
     [key: string]: any;
     id: string;
-    then: null;
+    then: undefined;
     _: IInstanceWrapper<T> | null;
     __: IModelWrapper<T> | null;
     __parentPseudo: IPseudo | undefined;
