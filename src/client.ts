@@ -1,4 +1,4 @@
-import { StaticGraphMeta, StaticGraph, StaticResource, StaticNode } from "./static-types";
+import { StaticGraphMeta, StaticGraph, StaticResource } from "./static-types";
 import { StaticCollection } from "./rdm";
 
 class GraphResult {
@@ -48,9 +48,13 @@ class ArchesClientRemote extends ArchesClient {
     return await response.json();
   }
 
-  async getResource(resourceId: string): Promise<StaticResource> {}
+  async getResource(resourceId: string): Promise<StaticResource> {
+    throw Error(`Not implemented yet: getResource(${resourceId}`);
+  }
 
-  async getCollection(collectionId: string): Promise<StaticCollection> {}
+  async getCollection(collectionId: string): Promise<StaticCollection> {
+    throw Error(`Not implemented yet: getCollection(${collectionId}`);
+  }
 
   async getResources(
     graphId: string,

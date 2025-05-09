@@ -554,6 +554,7 @@ class StaticResource {
   resourceinstance: StaticResourceMetadata;
   tiles: Array<StaticTile> | null = null;
   __cache: {[tileId: string]: {[nodeId: string]: {[key: string]: string}}} | undefined = undefined;
+  __source: string | undefined = undefined;
 
   constructor(jsonData: StaticResource) {
     this.resourceinstance = new StaticResourceMetadata(
