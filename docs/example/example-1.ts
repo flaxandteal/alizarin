@@ -1,6 +1,5 @@
-import { AlizarinModel, graphManager, staticStore } from 'alizarin'; 
-
 async function run({print}: {print: ((...inp: any) => void)}) {
+  const { AlizarinModel, graphManager, staticStore } = await import('alizarin');
   // Preload so we do not need individual JSON files.
   staticStore.cacheMetadataOnly = false;
   class Person extends AlizarinModel<Person> {};
