@@ -60,7 +60,7 @@ declare class AttrPromise<T> extends Promise<T> implements IStringKeyedObject {
 }
 
 declare class Cleanable extends String {
-    __clean: String | undefined;
+    __clean: string | undefined;
 }
 
 declare namespace client {
@@ -281,21 +281,21 @@ declare interface IWKRM {
 declare class JsonRenderer extends Renderer {
     renderConceptValue(value: ConceptValueViewModel): Promise<any>;
     renderDomainValue(value: DomainValueViewModel): Promise<any>;
-    renderResourceReference(value: ResourceInstanceViewModel): Promise<any>;
+    renderResourceReference(value: ResourceInstanceViewModel<any>): Promise<any>;
 }
 
 declare class MarkdownRenderer extends Renderer {
     conceptValueToUrl: ((value: ConceptValueViewModel) => string) | undefined;
     domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined;
-    resourceReferenceToUrl: ((value: ResourceInstanceViewModel) => string) | undefined;
+    resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined;
     constructor(callbacks: {
         conceptValueToUrl: ((value: ConceptValueViewModel) => string) | undefined;
         domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined;
-        resourceReferenceToUrl: ((value: ResourceInstanceViewModel) => string) | undefined;
+        resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined;
     });
     renderDomainValue(domainValue: DomainValueViewModel): Promise<any>;
     renderConceptValue(conceptValue: ConceptValueViewModel): Promise<any>;
-    renderResourceReference(rivm: ResourceInstanceViewModel): Promise<any>;
+    renderResourceReference(rivm: ResourceInstanceViewModel<any>): Promise<any>;
 }
 
 declare class PseudoValue implements IPseudo {
@@ -338,10 +338,10 @@ declare class ReferenceDataManager {
 }
 
 declare class Renderer {
-    render(asset: ResourceInstanceViewModel): Promise<any>;
+    render(asset: ResourceInstanceViewModel<any>): Promise<any>;
     renderDomainValue(value: DomainValueViewModel): Promise<any>;
     renderConceptValue(value: ConceptValueViewModel): Promise<any>;
-    renderResourceReference(value: ResourceInstanceViewModel): Promise<any>;
+    renderResourceReference(value: ResourceInstanceViewModel<any>): Promise<any>;
     renderBlock(block: {
         [key: string]: string;
     } | {

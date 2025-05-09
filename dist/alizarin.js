@@ -2997,7 +2997,10 @@ class Cleanable extends String {
 }
 class Renderer {
   async render(asset) {
-    const root = await (await asset._.getRoot()).getValue();
+    if (!asset._) {
+      throw Error("Cannot render unloaded asset - do you want to await asset.retrieve()?");
+    }
+    const root = await await asset._.getRootViewModel();
     return this.renderValue(root);
   }
   async renderDomainValue(value) {
