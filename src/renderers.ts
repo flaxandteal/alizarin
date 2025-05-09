@@ -1,14 +1,16 @@
 import { staticStore } from "./staticStore.ts"
-import { IViewModel } from "./interfaces.ts"
 import { ResourceInstanceViewModel, DomainValueViewModel, ConceptValueViewModel, StringViewModel, SemanticViewModel, GeoJSONViewModel } from './viewModels';
 
 class Cleanable extends String {
-  __clean: String | undefined
+  __clean: string | undefined
 }
 
 class Renderer {
-  async render(asset: ResourceInstanceViewModel) {
-    const root = await (await asset._.getRoot()).getValue();
+  async render(asset: ResourceInstanceViewModel<any>) {
+    if (!asset._) {
+      throw Error("Cannot render unloaded asset - do you want to await asset.retrieve()?");
+    }
+    const root = await (await asset._.getRootViewModel());
     return this.renderValue(root);
   }
 
@@ -20,7 +22,7 @@ class Renderer {
     return value;
   }
 
-  async renderResourceReference(value: ResourceInstanceViewModel): Promise<any> {
+  async renderResourceReference(value: ResourceInstanceViewModel<any>): Promise<any> {
     return value;
   }
 
@@ -66,12 +68,12 @@ class Renderer {
 class MarkdownRenderer extends Renderer {
   conceptValueToUrl: ((value: ConceptValueViewModel) => string) | undefined
   domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined
-  resourceReferenceToUrl: ((value: ResourceInstanceViewModel) => string) | undefined
+  resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined
 
   constructor(callbacks: {
     conceptValueToUrl: ((value: ConceptValueViewModel) => string) | undefined,
     domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined,
-    resourceReferenceToUrl: ((value: ResourceInstanceViewModel) => string) | undefined,
+    resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined,
   }) {
     super();
     this.conceptValueToUrl = callbacks.conceptValueToUrl;
@@ -110,7 +112,7 @@ class MarkdownRenderer extends Renderer {
     return wrapper;
   }
 
-  async renderResourceReference(rivm: ResourceInstanceViewModel): Promise<any> {
+  async renderResourceReference(rivm: ResourceInstanceViewModel<any>): Promise<any> {
     const value = await rivm.forJson(false);
     const url = this.resourceReferenceToUrl ? await this.resourceReferenceToUrl(rivm): null;
     let title = value.title || value.type || 'Resource';
@@ -140,7 +142,7 @@ class JsonRenderer extends Renderer {
     return value.forJson();
   }
 
-  async renderResourceReference(value: ResourceInstanceViewModel): Promise<any> {
+  async renderResourceReference(value: ResourceInstanceViewModel<any>): Promise<any> {
     return value.forJson();
   }
 }
