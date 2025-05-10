@@ -48,6 +48,7 @@ class ValueList<T extends IRIVM<T>> {
   wrapper: IInstanceWrapper<T>;
   tiles: StaticTile[] | null;
   promises: Map<string | null, Promise<boolean | IViewModel>>;
+  writeLock: null | Promise<boolean | IViewModel>;
 
   constructor(
     values: Map<string, any>,
@@ -58,6 +59,7 @@ class ValueList<T extends IRIVM<T>> {
     this.wrapper = wrapper;
     this.tiles = tiles;
     this.promises = new Map();
+    this.writeLock = null;
   }
 
   async get(key: string) {
@@ -92,6 +94,7 @@ class ValueList<T extends IRIVM<T>> {
     let result: any = await this.values.get(key);
 
     if (result === false) {
+      await this.writeLock;
       if (this.wrapper.resource) {
         // Will KeyError if we do not have it.
         const node = this.wrapper.model.getNodeObjectsByAlias().get(key);
@@ -128,7 +131,11 @@ class ValueList<T extends IRIVM<T>> {
               this.promises.delete(node.nodegroup_id);
             });
         });
+        // No writes should happen until this is done
+        this.writeLock = promise;
+        // No reads from this nodegroup should happen
         this.promises.set(node.nodegroup_id, promise);
+        // Other readers are welcome to wait for this nodegroup's read
         this.values.set(key, promise);
         await promise;
       } else {
