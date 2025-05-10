@@ -684,6 +684,7 @@ declare class StaticResource {
             };
         };
     } | undefined;
+    __source: string | undefined;
     constructor(jsonData: StaticResource);
 }
 
@@ -796,6 +797,7 @@ declare class ValueList<T extends IRIVM<T>> {
     wrapper: IInstanceWrapper<T>;
     tiles: StaticTile[] | null;
     promises: Map<string | null, Promise<boolean | IViewModel>>;
+    writeLock: null | Promise<boolean | IViewModel>;
     constructor(values: Map<string, any>, wrapper: IInstanceWrapper<T>, tiles: StaticTile[] | null);
     get(key: string): Promise<any>;
     set(key: string, value: any): void;

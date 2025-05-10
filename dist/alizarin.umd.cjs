@@ -538,6 +538,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "resourceinstance");
       __publicField(this, "tiles", null);
       __publicField(this, "__cache");
+      __publicField(this, "__source");
       this.resourceinstance = new StaticResourceMetadata(
         jsonData.resourceinstance
       );
@@ -590,8 +591,10 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return await response.json();
     }
     async getResource(resourceId) {
+      throw Error(`Not implemented yet: getResource(${resourceId}`);
     }
     async getCollection(collectionId) {
+      throw Error(`Not implemented yet: getCollection(${collectionId}`);
     }
     async getResources(graphId, limit) {
       const response = await fetch(
@@ -894,10 +897,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "wrapper");
       __publicField(this, "tiles");
       __publicField(this, "promises");
+      __publicField(this, "writeLock");
       this.values = values;
       this.wrapper = wrapper;
       this.tiles = tiles;
       this.promises = /* @__PURE__ */ new Map();
+      this.writeLock = null;
     }
     async get(key) {
       return this.retrieve(key, this.values.get(key), true);
@@ -917,6 +922,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       }
       let result = await this.values.get(key);
       if (result === false) {
+        await this.writeLock;
         if (this.wrapper.resource) {
           const node2 = this.wrapper.model.getNodeObjectsByAlias().get(key);
           if (node2 === void 0) {
@@ -948,6 +954,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
               this.promises.delete(node2.nodegroup_id);
             });
           });
+          this.writeLock = promise2;
           this.promises.set(node2.nodegroup_id, promise2);
           this.values.set(key, promise2);
           await promise2;
