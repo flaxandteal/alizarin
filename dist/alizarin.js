@@ -1261,6 +1261,7 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
             return _ResourceInstanceViewModel.__create(tile, node, value[0], cacheEntry);
           }
         } else {
+          console.log(value);
           throw Error("Could not set resource instance from this data");
         }
         tile.data.set(nodeid, val ? val : null);

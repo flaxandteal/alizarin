@@ -497,6 +497,7 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
             return ResourceInstanceViewModel.__create(tile, node, value[0], cacheEntry);
           }
         } else {
+          console.log(value);
           throw Error("Could not set resource instance from this data");
         }
 
