@@ -497,7 +497,7 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
             return ResourceInstanceViewModel.__create(tile, node, value[0], cacheEntry);
           }
         } else {
-	  console.log(value);
+          console.log(value);
           throw Error("Could not set resource instance from this data");
         }
 
@@ -1104,6 +1104,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
   }
 
   async forJson() {
+    console.log('fj');
     async function _forJson(v: IPseudo | IViewModel | null) {
       v = await v;
       if (!v) {
@@ -1112,6 +1113,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       return await v.forJson();
     };
     const entries = [...(await this.__getChildValues()).entries()];
+    console.log(this.__node.alias, 'xlias', entries);
     return Object.fromEntries(await Promise.all(entries.map(async ([k, vl]) => {
         return [k, vl ? await _forJson(vl) : vl];
     })));
@@ -1213,6 +1215,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     }
 
     if (!this.__parentWkri._) {
+      console.trace();
       // Could autoretreive?
       throw Error("This semantic node is currently on an unloaded WKRI");
     }
@@ -1229,6 +1232,8 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     parent: IRIVM<any> | null,
     childNodes: Map<string, StaticNode>,
   ): Promise<SemanticViewModel> {
+    console.log(node.alias, childNodes, parent, parent.constructor.name);
+    console.trace();
     const svm = new SemanticViewModel(parent, childNodes, tile, node);
     if (value) {
       try {
@@ -1272,6 +1277,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     // Ensure lazy-loading done.
     // TODO check this does not go deeper than necessary.
     await parent._.loadNodes([...childNodes.keys()]);
+    console.log(node.alias, [...childNodes.keys()]);
 
     const children: Map<string, any> = new Map();
     for (const entry of [...parent._.allEntries()]) {
@@ -1295,11 +1301,17 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
           // been requested, but the tile is in-flight.
           value = await value;
           if (
-            (tile && value.tile && value.tile.parenttile_id == tile.tileid) ||
+            (tile && value.tile && (!(value.tile.parenttile_id) || value.tile.parenttile_id == tile.tileid)) ||
             (value.node.nodegroup_id == node.nodegroup_id &&
               tile &&
               value.tile == tile &&
               !childNode.is_collector) //  # It shares a tile
+            // it feels like this should be necessary, but area_assignments->area_assignment fails with null parenttile_id
+            // (tile && value.tile && value.tile.parenttile_id == tile.tileid) ||
+            // (value.node.nodegroup_id == node.nodegroup_id &&
+            //   tile &&
+            //   value.tile == tile &&
+            //   !childNode.is_collector) //  # It shares a tile
           ) {
             children.set(key, value);
           } else if (

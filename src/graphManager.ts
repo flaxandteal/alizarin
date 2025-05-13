@@ -81,7 +81,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
       key,
       false,
       !childNode.is_collector ? tile : null, // Does it share a tile
-      this,
+      this.wkri,
     );
 
     const valueList: ValueList<any> = this.valueList;
@@ -215,7 +215,9 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
         const newImpliedNodegroups: Map<string, any> = rgValues[1];
 
         [...newValues.entries()].forEach((entry) => {
-          newAllValues.set(entry[0], entry[1]);
+          if (entry[1] !== undefined) {
+            newAllValues.set(entry[0], entry[1]);
+          }
         });
         [...newImpliedNodegroups.entries()].forEach(([k, v]) => {
           impliedNodegroups.set(k, v);
@@ -398,6 +400,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
         allValues.set(key, []);
       }
       const pseudoNode = makePseudoCls(this.model, key, false, tile, this.wkri);
+
       // We shouldn't have to take care of this case, as it should already
       // be included below.
       // if tile.parenttile_id:
@@ -413,7 +416,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
           if (toAdd && toAdd !== nodegroupId) {
             impliedNodegroups.set(toAdd, domainNode);
           }
-          if (domainNode.nodegroup_id && domainNode.nodegroup_id !== domainNode.nodeid && domainNode.nodegroup_id === node.nodegroup_id && tileid && !impliedNodes.has(domainNode.nodeid + tileid)) {
+          if (domainNode.nodegroup_id && domainNode.nodegroup_id !== domainNode.nodeid && tileid && !impliedNodes.has(domainNode.nodeid + tileid)) {
             impliedNodes.set(domainNode.nodeid + tileid, [domainNode, tile]);
           }
           break;

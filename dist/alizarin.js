@@ -1762,6 +1762,7 @@ const _SemanticViewModel = class _SemanticViewModel {
     })));
   }
   async forJson() {
+    console.log("fj");
     async function _forJson(v) {
       v = await v;
       if (!v) {
@@ -1770,6 +1771,7 @@ const _SemanticViewModel = class _SemanticViewModel {
       return await v.forJson();
     }
     const entries = [...(await this.__getChildValues()).entries()];
+    console.log(this.__node.alias, "xlias", entries);
     return Object.fromEntries(await Promise.all(entries.map(async ([k, vl]) => {
       return [k, vl ? await _forJson(vl) : vl];
     })));
@@ -1848,6 +1850,7 @@ const _SemanticViewModel = class _SemanticViewModel {
       throw Error("This semantic node is currently parentless (no WKRI)");
     }
     if (!this.__parentWkri._) {
+      console.trace();
       throw Error("This semantic node is currently on an unloaded WKRI");
     }
     const child = this.__parentWkri._.addPseudo(childNode, this.__tile);
@@ -1855,6 +1858,8 @@ const _SemanticViewModel = class _SemanticViewModel {
     return child;
   }
   static async __create(tile, node, value, parent, childNodes) {
+    console.log(node.alias, childNodes, parent, parent.constructor.name);
+    console.trace();
     const svm = new _SemanticViewModel(parent, childNodes, tile, node);
     if (value) {
       try {
@@ -1888,6 +1893,7 @@ const _SemanticViewModel = class _SemanticViewModel {
       return /* @__PURE__ */ new Map();
     }
     await parent._.loadNodes([...childNodes.keys()]);
+    console.log(node.alias, [...childNodes.keys()]);
     const children = /* @__PURE__ */ new Map();
     for (const entry of [...parent._.allEntries()]) {
       const key = entry[0];
@@ -1902,7 +1908,7 @@ const _SemanticViewModel = class _SemanticViewModel {
       for (let value of values) {
         if (childNode && value !== null && (!value.parentNode || value.parentNode === this.__parentPseudo)) {
           value = await value;
-          if (tile && value.tile && value.tile.parenttile_id == tile.tileid || value.node.nodegroup_id == node.nodegroup_id && tile && value.tile == tile && !childNode.is_collector) {
+          if (tile && value.tile && (!value.tile.parenttile_id || value.tile.parenttile_id == tile.tileid) || value.node.nodegroup_id == node.nodegroup_id && tile && value.tile == tile && !childNode.is_collector) {
             children.set(key, value);
           } else if (node.nodegroup_id != value.node.nodegroup_id && childNode.is_collector) {
             const childValue = value instanceof PseudoList ? value : value.isIterable() ? await value.getValue() : null;
@@ -2364,7 +2370,7 @@ class ResourceInstanceWrapper {
       false,
       !childNode.is_collector ? tile : null,
       // Does it share a tile
-      this
+      this.wkri
     );
     const valueList = this.valueList;
     valueList.setDefault(key, []).then((val) => val.push(child));
@@ -2473,7 +2479,9 @@ class ResourceInstanceWrapper {
         const newValues = rgValues[0];
         const newImpliedNodegroups = rgValues[1];
         [...newValues.entries()].forEach((entry) => {
-          newAllValues.set(entry[0], entry[1]);
+          if (entry[1] !== void 0) {
+            newAllValues.set(entry[0], entry[1]);
+          }
         });
         [...newImpliedNodegroups.entries()].forEach(([k, v]) => {
           impliedNodegroups.set(k, v);
@@ -2646,7 +2654,7 @@ class ResourceInstanceWrapper {
           if (toAdd && toAdd !== nodegroupId) {
             impliedNodegroups.set(toAdd, domainNode);
           }
-          if (domainNode.nodegroup_id && domainNode.nodegroup_id !== domainNode.nodeid && domainNode.nodegroup_id === node.nodegroup_id && tileid && !impliedNodes.has(domainNode.nodeid + tileid)) {
+          if (domainNode.nodegroup_id && domainNode.nodegroup_id !== domainNode.nodeid && tileid && !impliedNodes.has(domainNode.nodeid + tileid)) {
             impliedNodes.set(domainNode.nodeid + tileid, [domainNode, tile]);
           }
           break;
