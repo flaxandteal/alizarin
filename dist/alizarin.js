@@ -1245,7 +1245,7 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
             return _ResourceInstanceViewModel.__create(tile, node, value2, cacheEntry);
           });
         } else if (typeof value == "string") {
-          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.exec(
+          if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.exec(
             value
           )) {
             val = value;
