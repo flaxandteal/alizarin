@@ -488,7 +488,7 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
             val = value;
           } else {
             throw Error(
-              "Set resource instances using id, not strings",
+              `Set resource instances using id, not strings: ${value}`,
             );
           }
         } else if (value instanceof Object && value.resourceId) {

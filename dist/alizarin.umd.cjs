@@ -1255,7 +1255,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
               val = value;
             } else {
               throw Error(
-                "Set resource instances using id, not strings"
+                `Set resource instances using id, not strings: ${value}`
               );
             }
           } else if (value instanceof Object && value.resourceId) {
