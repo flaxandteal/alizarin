@@ -76,6 +76,7 @@ class ValueList<T extends IRIVM<T>> {
   }
 
   async retrieve(key: string, dflt: any = null, raiseError: boolean = false) {
+    // console.trace();
     const node = this.wrapper.model.getNodeObjectsByAlias().get(key);
     const promise = node ? this.promises.get(node.nodegroup_id) : null;
     // When an unloaded node is found, the whole nodegroup is loaded.
@@ -1104,7 +1105,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
   }
 
   async forJson() {
-    console.log('fj');
     async function _forJson(v: IPseudo | IViewModel | null) {
       v = await v;
       if (!v) {
@@ -1113,7 +1113,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       return await v.forJson();
     };
     const entries = [...(await this.__getChildValues()).entries()];
-    console.log(this.__node.alias, 'xlias', entries);
     return Object.fromEntries(await Promise.all(entries.map(async ([k, vl]) => {
         return [k, vl ? await _forJson(vl) : vl];
     })));
@@ -1215,7 +1214,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     }
 
     if (!this.__parentWkri._) {
-      console.trace();
       // Could autoretreive?
       throw Error("This semantic node is currently on an unloaded WKRI");
     }
@@ -1232,8 +1230,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     parent: IRIVM<any> | null,
     childNodes: Map<string, StaticNode>,
   ): Promise<SemanticViewModel> {
-    console.log(node.alias, childNodes, parent, parent.constructor.name);
-    console.trace();
     const svm = new SemanticViewModel(parent, childNodes, tile, node);
     if (value) {
       try {
@@ -1247,7 +1243,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
         );
       }
     }
-    await svm.__getChildren();
+    // await svm.__getChildren();
     return svm;
   }
 
@@ -1277,7 +1273,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     // Ensure lazy-loading done.
     // TODO check this does not go deeper than necessary.
     await parent._.loadNodes([...childNodes.keys()]);
-    console.log(node.alias, [...childNodes.keys()]);
 
     const children: Map<string, any> = new Map();
     for (const entry of [...parent._.allEntries()]) {

@@ -393,14 +393,15 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
         existing = await existing;
       }
       if (existing !== false && existing !== undefined) {
-        console.error("Existing:", existing);
-        throw Error(`Tried to load node twice: ${key}`);
+        // console.error("Existing:", existing);
+        // This might be correct - confirm.
+        // console.warn(`Tried to load node twice: ${key} (${node.nodeid}<${node.nodegroup_id})`);
+        allValues.set(key, existing);
       }
       if (!allValues.has(key)) {
         allValues.set(key, []);
       }
       const pseudoNode = makePseudoCls(this.model, key, false, tile, this.wkri);
-
       // We shouldn't have to take care of this case, as it should already
       // be included below.
       // if tile.parenttile_id:

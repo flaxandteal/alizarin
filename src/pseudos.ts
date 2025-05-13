@@ -256,6 +256,25 @@ class PseudoList extends Array implements IPseudo {
     return true;
   }
 
+  async sorted() {
+    const resolved = await Promise.all(this.map(async (pn) => await pn));
+    const test = [];
+    const sorted = resolved.sort((a, b) => {
+      const vals = [a, b].map(val => {
+        if (val && a.__parentPseudo && a.__parentPseudo.tile) {
+          if (val.__parentPseudo.tile.sortorder > 0) {
+            test.push(1);
+          }
+          return val.__parentPseudo.tile.sortorder;
+        } else {
+          return 0;
+        }
+      });
+      return vals[0] - vals[1];
+    });
+    return sorted;
+  }
+
   describeField() {
     if (!this.node) {
       return "[(uninitialized node)]";
@@ -300,7 +319,7 @@ class PseudoList extends Array implements IPseudo {
 
   async forJson(): Promise<{[key: string]: any}[]> {
     const array: {[key: string]: any}[] = Array.from(
-      this.map(
+      (await this.sorted()).map(
         async (entry: Promise<IViewModel> | IViewModel) => {
           const value = await entry;
           return (value && value instanceof Object && value.forJson) ? value.forJson() : value;

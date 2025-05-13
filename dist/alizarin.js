@@ -1762,7 +1762,6 @@ const _SemanticViewModel = class _SemanticViewModel {
     })));
   }
   async forJson() {
-    console.log("fj");
     async function _forJson(v) {
       v = await v;
       if (!v) {
@@ -1771,7 +1770,6 @@ const _SemanticViewModel = class _SemanticViewModel {
       return await v.forJson();
     }
     const entries = [...(await this.__getChildValues()).entries()];
-    console.log(this.__node.alias, "xlias", entries);
     return Object.fromEntries(await Promise.all(entries.map(async ([k, vl]) => {
       return [k, vl ? await _forJson(vl) : vl];
     })));
@@ -1850,7 +1848,6 @@ const _SemanticViewModel = class _SemanticViewModel {
       throw Error("This semantic node is currently parentless (no WKRI)");
     }
     if (!this.__parentWkri._) {
-      console.trace();
       throw Error("This semantic node is currently on an unloaded WKRI");
     }
     const child = this.__parentWkri._.addPseudo(childNode, this.__tile);
@@ -1858,8 +1855,6 @@ const _SemanticViewModel = class _SemanticViewModel {
     return child;
   }
   static async __create(tile, node, value, parent, childNodes) {
-    console.log(node.alias, childNodes, parent, parent.constructor.name);
-    console.trace();
     const svm = new _SemanticViewModel(parent, childNodes, tile, node);
     if (value) {
       try {
@@ -1873,7 +1868,6 @@ const _SemanticViewModel = class _SemanticViewModel {
         );
       }
     }
-    await svm.__getChildren();
     return svm;
   }
   async __asTileData() {
@@ -1893,7 +1887,6 @@ const _SemanticViewModel = class _SemanticViewModel {
       return /* @__PURE__ */ new Map();
     }
     await parent._.loadNodes([...childNodes.keys()]);
-    console.log(node.alias, [...childNodes.keys()]);
     const children = /* @__PURE__ */ new Map();
     for (const entry of [...parent._.allEntries()]) {
       const key = entry[0];
@@ -2232,6 +2225,21 @@ class PseudoList extends Array {
   isIterable() {
     return true;
   }
+  async sorted() {
+    const resolved = await Promise.all(this.map(async (pn) => await pn));
+    const sorted = resolved.sort((a, b) => {
+      const vals = [a, b].map((val) => {
+        if (val && a.__parentPseudo && a.__parentPseudo.tile) {
+          if (val.__parentPseudo.tile.sortorder > 0) ;
+          return val.__parentPseudo.tile.sortorder;
+        } else {
+          return 0;
+        }
+      });
+      return vals[0] - vals[1];
+    });
+    return sorted;
+  }
   describeField() {
     if (!this.node) {
       return "[(uninitialized node)]";
@@ -2271,7 +2279,7 @@ class PseudoList extends Array {
   }
   async forJson() {
     const array = Array.from(
-      this.map(
+      (await this.sorted()).map(
         async (entry) => {
           const value = await entry;
           return value && value instanceof Object && value.forJson ? value.forJson() : value;
@@ -2637,8 +2645,7 @@ class ResourceInstanceWrapper {
         existing = await existing;
       }
       if (existing !== false && existing !== void 0) {
-        console.error("Existing:", existing);
-        throw Error(`Tried to load node twice: ${key}`);
+        allValues.set(key, existing);
       }
       if (!allValues.has(key)) {
         allValues.set(key, []);
