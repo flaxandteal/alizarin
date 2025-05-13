@@ -1,5 +1,5 @@
 import { staticStore } from "./staticStore.ts"
-import { ResourceInstanceViewModel, DomainValueViewModel, ConceptValueViewModel, StringViewModel, SemanticViewModel, GeoJSONViewModel } from './viewModels';
+import { DateViewModel, ResourceInstanceViewModel, DomainValueViewModel, ConceptValueViewModel, StringViewModel, SemanticViewModel, GeoJSONViewModel } from './viewModels';
 
 class Cleanable extends String {
   __clean: string | undefined
@@ -15,6 +15,10 @@ class Renderer {
   }
 
   async renderDomainValue(value: DomainValueViewModel): Promise<any> {
+    return value;
+  }
+
+  async renderDate(value: DateViewModel): Promise<any> {
     return value;
   }
 
@@ -44,6 +48,8 @@ class Renderer {
     }
     if (value instanceof DomainValueViewModel) {
       newValue = this.renderDomainValue(value);
+    } else if (value instanceof DateViewModel) {
+      newValue = this.renderDate(value);
     } else if (value instanceof ConceptValueViewModel) {
       newValue = this.renderConceptValue(value);
     } else if (value instanceof ResourceInstanceViewModel) {
@@ -67,16 +73,19 @@ class Renderer {
 
 class MarkdownRenderer extends Renderer {
   conceptValueToUrl: ((value: ConceptValueViewModel) => string) | undefined
+  dateToText: ((value: DateViewModel) => string) | undefined
   domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined
   resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined
 
   constructor(callbacks: {
     conceptValueToUrl: ((value: ConceptValueViewModel) => string) | undefined,
+    dateToUrl: ((value: DateViewModel) => string) | undefined,
     domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined,
     resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined,
   }) {
     super();
     this.conceptValueToUrl = callbacks.conceptValueToUrl;
+    this.dateToUrl = callbacks.dateToUrl;
     this.domainValueToUrl = callbacks.domainValueToUrl;
     this.resourceReferenceToUrl = callbacks.resourceReferenceToUrl;
   }
@@ -93,6 +102,17 @@ class MarkdownRenderer extends Renderer {
       ${text}
     </span>`.replace(/\n/g, ' ').trim());
     wrapper.__clean = domainValue.toString();
+    return wrapper;
+  }
+
+  async renderDate(date: DateViewModel): Promise<any> {
+    const value = await date;
+    const text = this.dateToText ? await this.dateToText(value): value.toISOString();
+    const wrapper = new Cleanable(`
+    <time datetime='${text}'>
+      ${text}
+    </time>`.replace(/\n/g, ' ').trim());
+    wrapper.__clean = text;
     return wrapper;
   }
 
@@ -134,6 +154,10 @@ class MarkdownRenderer extends Renderer {
 }
 
 class JsonRenderer extends Renderer {
+  async renderDate(value: DateViewModel): Promise<any> {
+    return value.forJson();
+  }
+
   async renderConceptValue(value: ConceptValueViewModel): Promise<any> {
     return value.forJson();
   }

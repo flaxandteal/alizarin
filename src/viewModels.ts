@@ -855,6 +855,57 @@ class ConceptValueViewModel extends String implements IViewModel {
   }
 }
 
+class DateViewModel extends Date implements IViewModel {
+  __parentPseudo: PseudoValue | undefined;
+  then: undefined;
+
+  describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
+  describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
+
+  __forJsonCache(): null {
+    return null;
+  }
+
+  static __create(
+    tile: StaticTile,
+    node: StaticNode,
+    value: any,
+  ): DateViewModel | Promise<DateViewModel | null> | null {
+    const nodeid = node.nodeid;
+    if (value instanceof Promise) {
+      return value.then((value) =>
+        DateViewModel.__create(tile, node, value),
+      );
+    }
+    if (tile) {
+      if (!tile.data.has(nodeid)) {
+        tile.data.set(nodeid, null);
+      }
+      if (value !== null) {
+        tile.data.set(nodeid, value);
+      }
+    }
+
+    const val = tile.data.get(nodeid);
+    if (!tile || val === null || val === undefined) {
+      return null;
+    }
+    if (typeof val != "string") {
+      throw Error("Date should be a string");
+    }
+    const str = new DateViewModel(val);
+    return str;
+  }
+
+  async forJson() {
+    return this.toISOString();
+  }
+
+  __asTileData() {
+    return this.toISOString();
+  }
+}
+
 class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
   [key: string | symbol]: any;
   __parentPseudo: PseudoValue | undefined;
@@ -1405,6 +1456,9 @@ async function getViewModel<RIVM extends IRIVM<RIVM>>(
       }
       vm = await ConceptListViewModel.__create(tile, node, data, cacheEntry);
       break;
+    case "date":
+      vm = await DateViewModel.__create(tile, node, data);
+      break;
     case "geojson-feature-collection":
       vm = await GeoJSONViewModel.__create(tile, node, data);
       break;
@@ -1431,4 +1485,4 @@ async function getViewModel<RIVM extends IRIVM<RIVM>>(
   return vm;
 }
 
-export { ResourceInstanceCacheEntry, DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, getViewModel, DomainValueViewModel, SemanticViewModel, StringViewModel, GeoJSONViewModel, ConceptValueViewModel, viewContext };
+export { ResourceInstanceCacheEntry, DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, getViewModel, DomainValueViewModel, SemanticViewModel, StringViewModel, DateViewModel, GeoJSONViewModel, ConceptValueViewModel, viewContext };

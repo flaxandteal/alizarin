@@ -105,6 +105,17 @@ declare class ConfigurationOptions {
     constructor();
 }
 
+declare class DateViewModel extends Date implements IViewModel {
+    __parentPseudo: PseudoValue | undefined;
+    then: undefined;
+    describeField: () => string | null;
+    describeFieldGroup: () => string | null;
+    __forJsonCache(): null;
+    static __create(tile: StaticTile, node: StaticNode, value: any): DateViewModel | Promise<DateViewModel | null> | null;
+    forJson(): Promise<string>;
+    __asTileData(): string;
+}
+
 declare const DEFAULT_LANGUAGE = "en";
 
 declare class DomainValueViewModel extends String implements IViewModel {
@@ -279,6 +290,7 @@ declare interface IWKRM {
 }
 
 declare class JsonRenderer extends Renderer {
+    renderDate(value: DateViewModel): Promise<any>;
     renderConceptValue(value: ConceptValueViewModel): Promise<any>;
     renderDomainValue(value: DomainValueViewModel): Promise<any>;
     renderResourceReference(value: ResourceInstanceViewModel<any>): Promise<any>;
@@ -286,14 +298,17 @@ declare class JsonRenderer extends Renderer {
 
 declare class MarkdownRenderer extends Renderer {
     conceptValueToUrl: ((value: ConceptValueViewModel) => string) | undefined;
+    dateToText: ((value: DateViewModel) => string) | undefined;
     domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined;
     resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined;
     constructor(callbacks: {
         conceptValueToUrl: ((value: ConceptValueViewModel) => string) | undefined;
+        dateToUrl: ((value: DateViewModel) => string) | undefined;
         domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined;
         resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined;
     });
     renderDomainValue(domainValue: DomainValueViewModel): Promise<any>;
+    renderDate(date: DateViewModel): Promise<any>;
     renderConceptValue(conceptValue: ConceptValueViewModel): Promise<any>;
     renderResourceReference(rivm: ResourceInstanceViewModel<any>): Promise<any>;
 }
@@ -340,6 +355,7 @@ declare class ReferenceDataManager {
 declare class Renderer {
     render(asset: ResourceInstanceViewModel<any>): Promise<any>;
     renderDomainValue(value: DomainValueViewModel): Promise<any>;
+    renderDate(value: DateViewModel): Promise<any>;
     renderConceptValue(value: ConceptValueViewModel): Promise<any>;
     renderResourceReference(value: ResourceInstanceViewModel<any>): Promise<any>;
     renderBlock(block: {
@@ -822,6 +838,7 @@ declare namespace viewModels {
         DomainValueViewModel,
         SemanticViewModel,
         StringViewModel,
+        DateViewModel,
         GeoJSONViewModel,
         ConceptValueViewModel,
         viewContext

@@ -1556,6 +1556,49 @@ class ConceptValueViewModel extends String {
     return value ? value.id : null;
   }
 }
+class DateViewModel extends Date {
+  constructor() {
+    super(...arguments);
+    __publicField(this, "__parentPseudo");
+    __publicField(this, "then");
+    __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
+    __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
+  }
+  __forJsonCache() {
+    return null;
+  }
+  static __create(tile, node, value) {
+    const nodeid = node.nodeid;
+    if (value instanceof Promise) {
+      return value.then(
+        (value2) => DateViewModel.__create(tile, node, value2)
+      );
+    }
+    if (tile) {
+      if (!tile.data.has(nodeid)) {
+        tile.data.set(nodeid, null);
+      }
+      if (value !== null) {
+        tile.data.set(nodeid, value);
+      }
+    }
+    const val = tile.data.get(nodeid);
+    if (!tile || val === null || val === void 0) {
+      return null;
+    }
+    if (typeof val != "string") {
+      throw Error("Date should be a string");
+    }
+    const str = new DateViewModel(val);
+    return str;
+  }
+  async forJson() {
+    return this.toISOString();
+  }
+  __asTileData() {
+    return this.toISOString();
+  }
+}
 _d = Symbol.toPrimitive;
 const _GeoJSONViewModel = class _GeoJSONViewModel {
   constructor(jsonData) {
@@ -1983,6 +2026,9 @@ async function getViewModel(parentPseudo, tile, node, data, parent, childNodes) 
       }
       vm = await ConceptListViewModel.__create(tile, node, data, cacheEntry);
       break;
+    case "date":
+      vm = await DateViewModel.__create(tile, node, data);
+      break;
     case "geojson-feature-collection":
       vm = await GeoJSONViewModel.__create(tile, node, data);
       break;
@@ -2011,6 +2057,7 @@ const viewModels = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   __proto__: null,
   ConceptValueViewModel,
   DEFAULT_LANGUAGE,
+  DateViewModel,
   DomainValueViewModel,
   GeoJSONViewModel,
   ResourceInstanceCacheEntry,
@@ -3029,6 +3076,9 @@ class Renderer {
   async renderDomainValue(value) {
     return value;
   }
+  async renderDate(value) {
+    return value;
+  }
   async renderConceptValue(value) {
     return value;
   }
@@ -3054,6 +3104,8 @@ class Renderer {
     }
     if (value instanceof DomainValueViewModel) {
       newValue = this.renderDomainValue(value);
+    } else if (value instanceof DateViewModel) {
+      newValue = this.renderDate(value);
     } else if (value instanceof ConceptValueViewModel) {
       newValue = this.renderConceptValue(value);
     } else if (value instanceof ResourceInstanceViewModel) {
@@ -3078,9 +3130,11 @@ class MarkdownRenderer extends Renderer {
   constructor(callbacks) {
     super();
     __publicField(this, "conceptValueToUrl");
+    __publicField(this, "dateToText");
     __publicField(this, "domainValueToUrl");
     __publicField(this, "resourceReferenceToUrl");
     this.conceptValueToUrl = callbacks.conceptValueToUrl;
+    this.dateToUrl = callbacks.dateToUrl;
     this.domainValueToUrl = callbacks.domainValueToUrl;
     this.resourceReferenceToUrl = callbacks.resourceReferenceToUrl;
   }
@@ -3095,6 +3149,16 @@ class MarkdownRenderer extends Renderer {
       ${text}
     </span>`.replace(/\n/g, " ").trim());
     wrapper.__clean = domainValue.toString();
+    return wrapper;
+  }
+  async renderDate(date) {
+    const value = await date;
+    const text = this.dateToText ? await this.dateToText(value) : value.toISOString();
+    const wrapper = new Cleanable(`
+    <time datetime='${text}'>
+      ${text}
+    </time>`.replace(/\n/g, " ").trim());
+    wrapper.__clean = text;
     return wrapper;
   }
   async renderConceptValue(conceptValue) {
@@ -3133,6 +3197,9 @@ class MarkdownRenderer extends Renderer {
   }
 }
 class JsonRenderer extends Renderer {
+  async renderDate(value) {
+    return value.forJson();
+  }
   async renderConceptValue(value) {
     return value.forJson();
   }
