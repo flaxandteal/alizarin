@@ -168,8 +168,13 @@ class ConceptListCacheEntry implements IStringKeyedObject {
   _: ConceptValueCacheEntry[];
   meta: {[key: string]: any};
 
-  constructor(meta: IStringKeyedObject | undefined, instances: ConceptValueCacheEntry[]) {
-    this._ = instances;
+  constructor({meta, _}: {meta: IStringKeyedObject | undefined, _: ConceptValueCacheEntry[]}) {
+    this._ = _.map(instance => {
+      if (instance instanceof ConceptValueCacheEntry) {
+        return instance;
+      }
+      return new ConceptValueCacheEntry(instance);
+    });
     this.meta = meta || {};
   }
 }
@@ -182,7 +187,7 @@ class ConceptValueCacheEntry implements IStringKeyedObject {
   conceptId: string | null;
   meta: {[key: string]: any};
 
-  constructor(meta: IStringKeyedObject | undefined, id: string, value: string, conceptId: string | null) {
+  constructor({meta, id, value, conceptId}: {meta: IStringKeyedObject | undefined, id: string, value: string, conceptId: string | null}) {
     this.id = id;
     this.value = value;
     this.conceptId = conceptId;
@@ -196,8 +201,13 @@ class ResourceInstanceListCacheEntry implements IStringKeyedObject {
   _: ResourceInstanceCacheEntry[];
   meta: {[key: string]: any};
 
-  constructor(meta: IStringKeyedObject | undefined, instances: ResourceInstanceCacheEntry[]) {
-    this._ = instances;
+  constructor({meta, _}: {meta: IStringKeyedObject | undefined, _: ResourceInstanceCacheEntry[]}) {
+    this._ = _.map(instance => {
+      if (instance instanceof ResourceInstanceCacheEntry) {
+        return instance;
+      }
+      return new ResourceInstanceCacheEntry(instance);
+    });
     this.meta = meta || {};
   }
 }
@@ -211,7 +221,7 @@ class ResourceInstanceCacheEntry implements IStringKeyedObject {
   title: string | null;
   meta: {[key: string]: any};
 
-  constructor(meta: IStringKeyedObject | undefined, id: string, type: string, graphId: string, title: string | null) {
+  constructor({meta, id, type, graphId, title}: {meta: IStringKeyedObject | undefined, id: string, type: string, graphId: string, title: string | null}) {
     this.id = id;
     this.type = type;
     this.graphId = graphId;
@@ -233,13 +243,13 @@ class ResourceInstanceListViewModel extends Array implements IViewModel {
   }
 
   async __forJsonCache(getMeta: GetMeta): Promise<ResourceInstanceListCacheEntry> {
-    return new ResourceInstanceListCacheEntry(
-      getMeta ? await getMeta(this) : getMeta,
-      await Promise.all([...this.values()].map(async (rivmPromise: Promise<ResourceInstanceViewModel<any>>) => {
+    return new ResourceInstanceListCacheEntry({
+      meta: getMeta ? await getMeta(this) : getMeta,
+      _: await Promise.all([...this.values()].map(async (rivmPromise: Promise<ResourceInstanceViewModel<any>>) => {
         const rivm = await rivmPromise;
         return await rivm.__forJsonCache(getMeta)
       }))
-    );
+    });
   }
 
   static async __create(
@@ -331,13 +341,13 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
     } else {
       wrapper = this.__;
     }
-    this.__cacheEntry = new ResourceInstanceCacheEntry(
-      getMeta ? await getMeta(this) : undefined,
-      this.id,
-      wrapper.wkrm.modelClassName,
-      wrapper.wkrm.graphId,
-      null,
-    );
+    this.__cacheEntry = new ResourceInstanceCacheEntry({
+      meta: getMeta ? await getMeta(this) : undefined,
+      id: this.id,
+      type: wrapper.wkrm.modelClassName,
+      graphId: wrapper.wkrm.graphId,
+      title: null,
+    });
     return this.__cacheEntry;
   }
 
@@ -349,6 +359,7 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
         graphId: this.__cacheEntry.graphId,
         id: this.__cacheEntry.id,
         title: this.__cacheEntry.title || undefined,
+        meta: this.__cacheEntry.meta || undefined,
         root: null
       };
     } else if (this.__) {
@@ -357,6 +368,7 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
         graphId: this.__.wkrm.graphId,
         id: this.id,
         title: undefined,
+        meta: undefined,
         root: null
       };
     } else {
@@ -365,6 +377,7 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
         graphId: "",
         id: this.id,
         title: undefined,
+        meta: undefined,
         root: null
       };
     }
@@ -498,7 +511,6 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
             return ResourceInstanceViewModel.__create(tile, node, value[0], cacheEntry);
           }
         } else {
-          console.log(value);
           throw Error("Could not set resource instance from this data");
         }
 
@@ -527,13 +539,13 @@ class ConceptListViewModel extends Array implements IViewModel {
   }
 
   async __forJsonCache(getMeta: GetMeta): Promise<ConceptListCacheEntry> {
-    return new ConceptListCacheEntry(
-      getMeta ? await getMeta(this) : getMeta,
-      await Promise.all([...this.values()].map(async (rivmPromise: Promise<ConceptValueViewModel>) => {
+    return new ConceptListCacheEntry({
+      meta: getMeta ? await getMeta(this) : getMeta,
+      _: await Promise.all([...this.values()].map(async (rivmPromise: Promise<ConceptValueViewModel>) => {
         const rivm = await rivmPromise;
         return await rivm.__forJsonCache(getMeta)
       }))
-    );
+    });
   }
   static async __create(
     tile: StaticTile,
@@ -753,12 +765,12 @@ class ConceptValueViewModel extends String implements IViewModel {
 
   async __forJsonCache(getMeta: GetMeta): Promise<ConceptValueCacheEntry> {
     const value = await this._value;
-    return new ConceptValueCacheEntry(
-      getMeta ? await getMeta(this) : undefined,
-      value.id,
-      value.value,
-      value.__conceptId
-    );
+    return new ConceptValueCacheEntry({
+      meta: getMeta ? await getMeta(this) : undefined,
+      id: value.id,
+      value: value.value,
+      conceptId: value.__conceptId
+    });
   }
 
   getValue(): StaticValue | Promise<StaticValue> {
@@ -886,8 +898,13 @@ class DateViewModel extends Date implements IViewModel {
       }
     }
 
-    const val = tile.data.get(nodeid);
-    if (!tile || val === null || val === undefined) {
+    let val: string | {[key: string]: string} | any = tile.data.get(nodeid);
+    // TODO: catch rendering issues - this workaround should be removed
+    // as it is overly tolerant of input issues.
+    if (typeof val == "object" && val['en'] !== undefined) {
+      val = val.en;
+    }
+    if (!tile || val === null || val === undefined || val === '') {
       return null;
     }
     if (typeof val != "string") {
@@ -1429,30 +1446,34 @@ async function getViewModel<RIVM extends IRIVM<RIVM>>(
       vm = await DomainValueListViewModel.__create(tile, node, data);
       break;
     case "concept":
-      if (cacheEntry && !(cacheEntry instanceof ConceptValueCacheEntry)) {
-        cacheEntry = null;
-        console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ConceptValueCacheEntry`);
+      if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptValueCacheEntry)) {
+        // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
+        cacheEntry = new ConceptValueCacheEntry(cacheEntry);
+        // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ConceptValueCacheEntry`);
       }
       vm = await ConceptValueViewModel.__create(tile, node, data, cacheEntry);
       break;
     case "resource-instance":
-      if (cacheEntry && !(cacheEntry instanceof ResourceInstanceCacheEntry)) {
-        cacheEntry = null;
-        console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ResourceInstanceCacheEntry`);
+      if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceCacheEntry)) {
+        // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
+        cacheEntry = new ResourceInstanceCacheEntry(cacheEntry);
+        // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ResourceInstanceCacheEntry`);
       }
       vm = await ResourceInstanceViewModel.__create(tile, node, data, cacheEntry);
       break;
     case "resource-instance-list":
-      if (cacheEntry && !(cacheEntry instanceof ResourceInstanceListCacheEntry)) {
-        cacheEntry = null;
-        console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ResourceInstanceListCacheEntry`);
+      if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceListCacheEntry)) {
+        // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
+        cacheEntry = new ResourceInstanceListCacheEntry(cacheEntry);
+        // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ResourceInstanceListCacheEntry`);
       }
       vm = await ResourceInstanceListViewModel.__create(tile, node, data, cacheEntry);
       break;
     case "concept-list":
-      if (cacheEntry && !(cacheEntry instanceof ConceptListCacheEntry)) {
-        cacheEntry = null;
-        console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ConceptListCacheEntry`);
+      if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptListCacheEntry)) {
+        // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
+        cacheEntry = new ConceptListCacheEntry(cacheEntry);
+        // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ConceptListCacheEntry`);
       }
       vm = await ConceptListViewModel.__create(tile, node, data, cacheEntry);
       break;

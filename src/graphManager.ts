@@ -343,7 +343,8 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
         await Promise.all(pseudos.map(async (pseudo: IPseudo) => {
           const value = await pseudo.getValue();
           // We do not try to cache pseudolists
-          if (pseudo.tile && value && !Array.isArray(value)) {
+          if (pseudo.tile && value && (!Array.isArray(pseudo))) {
+            // @ts-expect-error this can be IViewModel[] while using a pseudolist
             const cacheJson = await value.__forJsonCache(getMeta); // caching JSON
             if (cacheJson) {
               const tileId = pseudo.tile.ensureId();

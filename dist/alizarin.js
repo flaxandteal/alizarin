@@ -522,11 +522,15 @@ class StaticResourceReference {
     __publicField(this, "graphId");
     __publicField(this, "title");
     __publicField(this, "root");
+    __publicField(this, "meta");
     this.id = jsonData.id;
     this.type = jsonData.type;
     this.graphId = jsonData.graphId;
     this.root = jsonData.root;
     this.title = jsonData.title;
+    if (jsonData.meta) {
+      this.meta = jsonData.meta;
+    }
   }
 }
 class StaticResource {
@@ -976,16 +980,21 @@ class ValueList {
   }
 }
 class ConceptListCacheEntry {
-  constructor(meta, instances) {
+  constructor({ meta, _ }) {
     __publicField(this, "datatype", "concept-list");
     __publicField(this, "_");
     __publicField(this, "meta");
-    this._ = instances;
+    this._ = _.map((instance) => {
+      if (instance instanceof ConceptValueCacheEntry) {
+        return instance;
+      }
+      return new ConceptValueCacheEntry(instance);
+    });
     this.meta = meta || {};
   }
 }
 class ConceptValueCacheEntry {
-  constructor(meta, id, value, conceptId) {
+  constructor({ meta, id, value, conceptId }) {
     __publicField(this, "datatype", "concept");
     __publicField(this, "id");
     __publicField(this, "value");
@@ -998,16 +1007,21 @@ class ConceptValueCacheEntry {
   }
 }
 class ResourceInstanceListCacheEntry {
-  constructor(meta, instances) {
+  constructor({ meta, _ }) {
     __publicField(this, "datatype", "resource-instance-list");
     __publicField(this, "_");
     __publicField(this, "meta");
-    this._ = instances;
+    this._ = _.map((instance) => {
+      if (instance instanceof ResourceInstanceCacheEntry) {
+        return instance;
+      }
+      return new ResourceInstanceCacheEntry(instance);
+    });
     this.meta = meta || {};
   }
 }
 class ResourceInstanceCacheEntry {
-  constructor(meta, id, type, graphId, title) {
+  constructor({ meta, id, type, graphId, title }) {
     __publicField(this, "datatype", "resource-instance");
     __publicField(this, "id");
     __publicField(this, "type");
@@ -1034,13 +1048,13 @@ class ResourceInstanceListViewModel extends Array {
     return value ? value.map((v) => v ? v.forJson() : null) : null;
   }
   async __forJsonCache(getMeta) {
-    return new ResourceInstanceListCacheEntry(
-      getMeta ? await getMeta(this) : getMeta,
-      await Promise.all([...this.values()].map(async (rivmPromise) => {
+    return new ResourceInstanceListCacheEntry({
+      meta: getMeta ? await getMeta(this) : getMeta,
+      _: await Promise.all([...this.values()].map(async (rivmPromise) => {
         const rivm = await rivmPromise;
         return await rivm.__forJsonCache(getMeta);
       }))
-    );
+    });
   }
   static async __create(tile, node, value, cacheEntry = null) {
     const nodeid = node.nodeid;
@@ -1167,13 +1181,13 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
     } else {
       wrapper = this.__;
     }
-    this.__cacheEntry = new ResourceInstanceCacheEntry(
-      getMeta ? await getMeta(this) : void 0,
-      this.id,
-      wrapper.wkrm.modelClassName,
-      wrapper.wkrm.graphId,
-      null
-    );
+    this.__cacheEntry = new ResourceInstanceCacheEntry({
+      meta: getMeta ? await getMeta(this) : void 0,
+      id: this.id,
+      type: wrapper.wkrm.modelClassName,
+      graphId: wrapper.wkrm.graphId,
+      title: null
+    });
     return this.__cacheEntry;
   }
   async forJson(cascade = false) {
@@ -1184,6 +1198,7 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
         graphId: this.__cacheEntry.graphId,
         id: this.__cacheEntry.id,
         title: this.__cacheEntry.title || void 0,
+        meta: this.__cacheEntry.meta || void 0,
         root: null
       };
     } else if (this.__) {
@@ -1192,6 +1207,7 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
         graphId: this.__.wkrm.graphId,
         id: this.id,
         title: void 0,
+        meta: void 0,
         root: null
       };
     } else {
@@ -1200,6 +1216,7 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
         graphId: "",
         id: this.id,
         title: void 0,
+        meta: void 0,
         root: null
       };
     }
@@ -1261,7 +1278,6 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
             return _ResourceInstanceViewModel.__create(tile, node, value[0], cacheEntry);
           }
         } else {
-          console.log(value);
           throw Error("Could not set resource instance from this data");
         }
         tile.data.set(nodeid, val ? val : null);
@@ -1288,13 +1304,13 @@ class ConceptListViewModel extends Array {
     return value ? value.map((v) => v ? v.forJson() : null) : null;
   }
   async __forJsonCache(getMeta) {
-    return new ConceptListCacheEntry(
-      getMeta ? await getMeta(this) : getMeta,
-      await Promise.all([...this.values()].map(async (rivmPromise) => {
+    return new ConceptListCacheEntry({
+      meta: getMeta ? await getMeta(this) : getMeta,
+      _: await Promise.all([...this.values()].map(async (rivmPromise) => {
         const rivm = await rivmPromise;
         return await rivm.__forJsonCache(getMeta);
       }))
-    );
+    });
   }
   static async __create(tile, node, value, cacheEntry = null) {
     const nodeid = node.nodeid;
@@ -1473,12 +1489,12 @@ class ConceptValueViewModel extends String {
   }
   async __forJsonCache(getMeta) {
     const value = await this._value;
-    return new ConceptValueCacheEntry(
-      getMeta ? await getMeta(this) : void 0,
-      value.id,
-      value.value,
-      value.__conceptId
-    );
+    return new ConceptValueCacheEntry({
+      meta: getMeta ? await getMeta(this) : void 0,
+      id: value.id,
+      value: value.value,
+      conceptId: value.__conceptId
+    });
   }
   getValue() {
     return this._value;
@@ -1582,8 +1598,11 @@ class DateViewModel extends Date {
         tile.data.set(nodeid, value);
       }
     }
-    const val = tile.data.get(nodeid);
-    if (!tile || val === null || val === void 0) {
+    let val = tile.data.get(nodeid);
+    if (typeof val == "object" && val["en"] !== void 0) {
+      val = val.en;
+    }
+    if (!tile || val === null || val === void 0 || val === "") {
       return null;
     }
     if (typeof val != "string") {
@@ -1999,30 +2018,26 @@ async function getViewModel(parentPseudo, tile, node, data, parent, childNodes) 
       vm = await DomainValueListViewModel.__create(tile, node, data);
       break;
     case "concept":
-      if (cacheEntry && !(cacheEntry instanceof ConceptValueCacheEntry)) {
-        cacheEntry = null;
-        console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ConceptValueCacheEntry`);
+      if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptValueCacheEntry)) {
+        cacheEntry = new ConceptValueCacheEntry(cacheEntry);
       }
       vm = await ConceptValueViewModel.__create(tile, node, data, cacheEntry);
       break;
     case "resource-instance":
-      if (cacheEntry && !(cacheEntry instanceof ResourceInstanceCacheEntry)) {
-        cacheEntry = null;
-        console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ResourceInstanceCacheEntry`);
+      if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceCacheEntry)) {
+        cacheEntry = new ResourceInstanceCacheEntry(cacheEntry);
       }
       vm = await ResourceInstanceViewModel.__create(tile, node, data, cacheEntry);
       break;
     case "resource-instance-list":
-      if (cacheEntry && !(cacheEntry instanceof ResourceInstanceListCacheEntry)) {
-        cacheEntry = null;
-        console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ResourceInstanceListCacheEntry`);
+      if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceListCacheEntry)) {
+        cacheEntry = new ResourceInstanceListCacheEntry(cacheEntry);
       }
       vm = await ResourceInstanceListViewModel.__create(tile, node, data, cacheEntry);
       break;
     case "concept-list":
-      if (cacheEntry && !(cacheEntry instanceof ConceptListCacheEntry)) {
-        cacheEntry = null;
-        console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ConceptListCacheEntry`);
+      if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptListCacheEntry)) {
+        cacheEntry = new ConceptListCacheEntry(cacheEntry);
       }
       vm = await ConceptListViewModel.__create(tile, node, data, cacheEntry);
       break;
@@ -2653,7 +2668,7 @@ class ResourceInstanceWrapper {
       if (pseudos) {
         await Promise.all(pseudos.map(async (pseudo) => {
           const value = await pseudo.getValue();
-          if (pseudo.tile && value && !Array.isArray(value)) {
+          if (pseudo.tile && value && !Array.isArray(pseudo)) {
             const cacheJson = await value.__forJsonCache(getMeta);
             if (cacheJson) {
               const tileId = pseudo.tile.ensureId();

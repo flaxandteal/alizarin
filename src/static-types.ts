@@ -540,6 +540,7 @@ class StaticResourceReference {
   graphId: string;
   title: string | undefined;
   root: any | undefined;
+  meta?: {[key: string]: any};
 
   constructor(jsonData: StaticResourceReference) {
     this.id = jsonData.id;
@@ -547,6 +548,9 @@ class StaticResourceReference {
     this.graphId = jsonData.graphId;
     this.root = jsonData.root;
     this.title = jsonData.title;
+    if (jsonData.meta) {
+      this.meta = jsonData.meta;
+    }
   }
 }
 

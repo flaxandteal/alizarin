@@ -84,7 +84,12 @@ declare class ConceptValueCacheEntry implements IStringKeyedObject {
     meta: {
         [key: string]: any;
     };
-    constructor(meta: IStringKeyedObject | undefined, id: string, value: string, conceptId: string | null);
+    constructor({ meta, id, value, conceptId }: {
+        meta: IStringKeyedObject | undefined;
+        id: string;
+        value: string;
+        conceptId: string | null;
+    });
 }
 
 declare class ConceptValueViewModel extends String implements IViewModel {
@@ -387,7 +392,13 @@ declare class ResourceInstanceCacheEntry implements IStringKeyedObject {
     meta: {
         [key: string]: any;
     };
-    constructor(meta: IStringKeyedObject | undefined, id: string, type: string, graphId: string, title: string | null);
+    constructor({ meta, id, type, graphId, title }: {
+        meta: IStringKeyedObject | undefined;
+        id: string;
+        type: string;
+        graphId: string;
+        title: string | null;
+    });
 }
 
 declare class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeyedObject {
@@ -722,6 +733,9 @@ declare class StaticResourceReference {
     graphId: string;
     title: string | undefined;
     root: any | undefined;
+    meta?: {
+        [key: string]: any;
+    };
     constructor(jsonData: StaticResourceReference);
 }
 
