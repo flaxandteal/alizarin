@@ -1066,6 +1066,7 @@ class ResourceInstanceListViewModel extends Array {
       if (value !== null) {
         tile.data.set(nodeid, []);
         if (!Array.isArray(value)) {
+          console.log(value);
           throw Error(
             "Cannot set an (entire) resource list value except via an array"
           );
