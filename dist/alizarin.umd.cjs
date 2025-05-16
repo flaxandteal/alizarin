@@ -697,11 +697,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     async getGraphs() {
       const fs = await this.fs;
       const response = await fs.readFile(this.allGraphFile(), "utf8");
+      console.log(response, this.allGraphFile());
       return new GraphResult(await JSON.parse(response));
     }
     async getGraph(graphId) {
       const fs = await this.fs;
       const graphFile = this.graphIdToGraphFile(graphId);
+      console.log(graphFile);
       if (!graphFile) {
         return null;
       }
@@ -1968,7 +1970,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         for (let value of values) {
           if (childNode && value !== null && (!value.parentNode || value.parentNode === this.__parentPseudo)) {
             value = await value;
-            if (tile && value.tile && (!value.tile.parenttile_id || value.tile.parenttile_id == tile.tileid) || value.node.nodegroup_id == node.nodegroup_id && tile && value.tile == tile && !childNode.is_collector) {
+            if (value.node.nodegroup_id != node.nodegroup_id && tile && value.tile && (!value.tile.parenttile_id || value.tile.parenttile_id == tile.tileid) || value.node.nodegroup_id == node.nodegroup_id && tile && value.tile == tile && !childNode.is_collector) {
               children.set(key, value);
             } else if (node.nodegroup_id != value.node.nodegroup_id && childNode.is_collector) {
               const childValue = value instanceof PseudoList ? value : value.isIterable() ? await value.getValue() : null;

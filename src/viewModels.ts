@@ -1365,7 +1365,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
           // been requested, but the tile is in-flight.
           value = await value;
           if (
-            (tile && value.tile && (!(value.tile.parenttile_id) || value.tile.parenttile_id == tile.tileid)) ||
+            (value.node.nodegroup_id != node.nodegroup_id && tile && value.tile && (!(value.tile.parenttile_id) || value.tile.parenttile_id == tile.tileid)) ||
             (value.node.nodegroup_id == node.nodegroup_id &&
               tile &&
               value.tile == tile &&

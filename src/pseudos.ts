@@ -263,6 +263,7 @@ class PseudoList extends Array implements IPseudo {
       const vals = [a, b].map(val => {
         if (val && a.__parentPseudo && a.__parentPseudo.tile) {
           if (val.__parentPseudo.tile.sortorder > 0) {
+            // RMV
             test.push(1);
           }
           return val.__parentPseudo.tile.sortorder;
