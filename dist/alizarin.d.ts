@@ -59,6 +59,23 @@ declare class AttrPromise<T> extends Promise<T> implements IStringKeyedObject {
     constructor(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason: any) => void) => void);
 }
 
+declare abstract class BaseRenderer {
+    render(asset: ResourceInstanceViewModel<any>): Promise<any>;
+    abstract renderDomainValue(value: DomainValueViewModel, _depth: number): Promise<any>;
+    abstract renderDate(value: DateViewModel, _depth: number): Promise<any>;
+    abstract renderConceptValue(value: ConceptValueViewModel, _depth: number): Promise<any>;
+    abstract renderResourceReference(value: ResourceInstanceViewModel<any>, _depth: number): Promise<any>;
+    abstract renderSemantic(value: SemanticViewModel, depth: number): Promise<any>;
+    abstract renderBlock(block: {
+        [key: string]: string;
+    } | {
+        [key: string]: string;
+    }[], depth: number): any;
+    abstract renderArray(value: any, depth: number): Promise<any>;
+    abstract renderString(value: String, _depth: number): Promise<any>;
+    renderValue(value: any, depth: number): Promise<any>;
+}
+
 declare class Cleanable extends String {
     __clean: string | undefined;
 }
@@ -135,6 +152,12 @@ declare class DomainValueViewModel extends String implements IViewModel {
     lang(lang: string): Promise<string | undefined>;
     static __create(tile: StaticTile, node: StaticNode, value: any): Promise<DomainValueViewModel | null>;
     __asTileData(): Promise<string | null>;
+}
+
+declare class FlatMarkdownRenderer extends MarkdownRenderer {
+    renderSemantic(vm: SemanticViewModel, depth: number): Promise<any>;
+    renderArray(value: any, depth: number): Promise<any>;
+    renderString(value: String, _depth: number): Promise<any>;
 }
 
 declare class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
@@ -295,10 +318,10 @@ declare interface IWKRM {
 }
 
 declare class JsonRenderer extends Renderer {
-    renderDate(value: DateViewModel): Promise<any>;
-    renderConceptValue(value: ConceptValueViewModel): Promise<any>;
-    renderDomainValue(value: DomainValueViewModel): Promise<any>;
-    renderResourceReference(value: ResourceInstanceViewModel<any>): Promise<any>;
+    renderDate(value: DateViewModel, _depth: number): Promise<any>;
+    renderConceptValue(value: ConceptValueViewModel, _depth: number): Promise<any>;
+    renderDomainValue(value: DomainValueViewModel, _depth: number): Promise<any>;
+    renderResourceReference(value: ResourceInstanceViewModel<any>, _depth: number): Promise<any>;
 }
 
 declare class MarkdownRenderer extends Renderer {
@@ -308,14 +331,14 @@ declare class MarkdownRenderer extends Renderer {
     resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined;
     constructor(callbacks: {
         conceptValueToUrl: ((value: ConceptValueViewModel) => string) | undefined;
-        dateToUrl: ((value: DateViewModel) => string) | undefined;
+        dateToText: ((value: DateViewModel) => string) | undefined;
         domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined;
         resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined;
     });
-    renderDomainValue(domainValue: DomainValueViewModel): Promise<any>;
-    renderDate(date: DateViewModel): Promise<any>;
-    renderConceptValue(conceptValue: ConceptValueViewModel): Promise<any>;
-    renderResourceReference(rivm: ResourceInstanceViewModel<any>): Promise<any>;
+    renderDomainValue(domainValue: DomainValueViewModel, _: number): Promise<any>;
+    renderDate(date: DateViewModel, _: number): Promise<any>;
+    renderConceptValue(conceptValue: ConceptValueViewModel, _: number): Promise<any>;
+    renderResourceReference(rivm: ResourceInstanceViewModel<any>, _: number): Promise<any>;
 }
 
 declare class PseudoValue implements IPseudo {
@@ -357,27 +380,27 @@ declare class ReferenceDataManager {
     retrieveCollection(id: string): Promise<StaticCollection>;
 }
 
-declare class Renderer {
-    render(asset: ResourceInstanceViewModel<any>): Promise<any>;
-    renderDomainValue(value: DomainValueViewModel): Promise<any>;
-    renderDate(value: DateViewModel): Promise<any>;
-    renderConceptValue(value: ConceptValueViewModel): Promise<any>;
-    renderResourceReference(value: ResourceInstanceViewModel<any>): Promise<any>;
+declare class Renderer extends BaseRenderer {
+    renderDomainValue(value: DomainValueViewModel, _depth: number): Promise<any>;
+    renderString(value: String, _depth: number): Promise<any>;
+    renderDate(value: DateViewModel, _depth: number): Promise<any>;
+    renderConceptValue(value: ConceptValueViewModel, _depth: number): Promise<any>;
+    renderResourceReference(value: ResourceInstanceViewModel<any>, _depth: number): Promise<any>;
+    renderSemantic(value: SemanticViewModel, depth: number): Promise<any>;
     renderBlock(block: {
         [key: string]: string;
     } | {
         [key: string]: string;
-    }[]): Promise<{
-        [key: string]: any;
-    }>;
-    renderValue(value: any): Promise<any>;
+    }[], depth: number): any;
+    renderArray(value: any, depth: number): Promise<any>;
 }
 
 declare namespace renderers {
     export {
         MarkdownRenderer,
         JsonRenderer,
-        Cleanable
+        Cleanable,
+        FlatMarkdownRenderer
     }
 }
 export { renderers }

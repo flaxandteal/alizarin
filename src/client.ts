@@ -1,5 +1,8 @@
+import * as bfj from "bfj";
+import * as check from 'check-types';
 import { StaticGraphMeta, StaticGraph, StaticResource } from "./static-types";
 import { StaticCollection } from "./rdm";
+import { IStringKeyedObject } from "./interfaces";
 
 class GraphResult {
   models: {[graphId: string]: StaticGraphMeta};
@@ -167,9 +170,7 @@ class ArchesClientLocal extends ArchesClient {
     collectionIdToFile,
   }: { [k: string]: Function } = {}) {
     super();
-    this.fs = import("fs").then((fs) => {
-      return fs.promises;
-    });
+    this.fs = import("fs");
     this.allGraphFile = allGraphFile || (() => "tests/definitions/models/_all.json");
     this.graphIdToGraphFile =
       graphIdToGraphFile ||
@@ -187,7 +188,7 @@ class ArchesClientLocal extends ArchesClient {
 
   async getGraphs(): Promise<GraphResult> {
     const fs = await this.fs;
-    const response = await fs.readFile(this.allGraphFile(), "utf8");
+    const response = await fs.promises.readFile(this.allGraphFile(), "utf8");
     console.log(response, this.allGraphFile())
     return new GraphResult(await JSON.parse(response));
   }
@@ -199,7 +200,7 @@ class ArchesClientLocal extends ArchesClient {
     if (!graphFile) {
       return null;
     }
-    const response = await fs.readFile(
+    const response = await fs.promises.readFile(
       graphFile,
       "utf8",
     );
@@ -209,7 +210,7 @@ class ArchesClientLocal extends ArchesClient {
   async getResource(resourceId: string): Promise<StaticResource> {
     const fs = await this.fs;
     const source = this.resourceIdToFile(resourceId);
-    const response = await fs.readFile(
+    const response = await fs.promises.readFile(
       source,
       "utf8",
     );
@@ -221,7 +222,7 @@ class ArchesClientLocal extends ArchesClient {
 
   async getCollection(collectionId: string): Promise<StaticCollection> {
     const fs = await this.fs;
-    const response = await fs.readFile(
+    const response = await fs.promises.readFile(
       this.collectionIdToFile(collectionId),
       "utf8",
     );
@@ -235,9 +236,30 @@ class ArchesClientLocal extends ArchesClient {
     const fs = await this.fs;
     const resources = [];
     for (const file of this.graphIdToResourcesFiles(graphId)) {
-      const response = await fs.readFile(file, "utf8");
+      const response = JSON.parse(await fs.promises.readFile(file, "utf8"));
       const source = file;
-      const resourceSet: StaticResource[] = (await JSON.parse(response)).business_data.resources.filter(
+      // const read = fs.createReadStream(file, { encoding: "utf8" });
+      // let buffer = '';
+      // let bufferLength = 0;
+      // const response: IStringKeyedObject = await (new Promise(resolve => {
+      //   read.pipe(bfj.unpipe((error: string, data: string) => {
+      //     if (error) {
+      //       throw Error(error);
+      //     }
+      //     return data;
+      //   })).on('data', (data: string) => {
+      //     const bl = Math.floor(buffer.length / 1000);
+      //     if (bl > bufferLength) {
+      //       console.log(bl);
+      //     }
+      //     bufferLength = bl;
+      //     buffer += data;
+      //   }).on('end', () => {
+      //     resolve(JSON.parse(buffer));
+      //   });
+      // }));
+
+      const resourceSet: StaticResource[] = response.business_data.resources.filter(
         (resource: StaticResource) => graphId === resource.resourceinstance.graph_id
       );
       for (const resource of resourceSet) {

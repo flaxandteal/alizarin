@@ -681,9 +681,7 @@ class ArchesClientLocal extends ArchesClient {
     __publicField(this, "graphIdToResourcesFiles");
     __publicField(this, "resourceIdToFile");
     __publicField(this, "collectionIdToFile");
-    this.fs = import("./__vite-browser-external-2Ng8QIWW.js").then((fs) => {
-      return fs.promises;
-    });
+    this.fs = import("./empty-smM22Y5N.js");
     this.allGraphFile = allGraphFile || (() => "tests/definitions/models/_all.json");
     this.graphIdToGraphFile = graphIdToGraphFile || ((graphId) => `tests/definitions/models/${graphId}.json`);
     this.graphIdToResourcesFiles = graphIdToResourcesFiles || ((graphId) => [`tests/definitions/resources/_${graphId}.json`]);
@@ -692,7 +690,7 @@ class ArchesClientLocal extends ArchesClient {
   }
   async getGraphs() {
     const fs = await this.fs;
-    const response = await fs.readFile(this.allGraphFile(), "utf8");
+    const response = await fs.promises.readFile(this.allGraphFile(), "utf8");
     console.log(response, this.allGraphFile());
     return new GraphResult(await JSON.parse(response));
   }
@@ -703,7 +701,7 @@ class ArchesClientLocal extends ArchesClient {
     if (!graphFile) {
       return null;
     }
-    const response = await fs.readFile(
+    const response = await fs.promises.readFile(
       graphFile,
       "utf8"
     );
@@ -712,7 +710,7 @@ class ArchesClientLocal extends ArchesClient {
   async getResource(resourceId) {
     const fs = await this.fs;
     const source = this.resourceIdToFile(resourceId);
-    const response = await fs.readFile(
+    const response = await fs.promises.readFile(
       source,
       "utf8"
     );
@@ -723,7 +721,7 @@ class ArchesClientLocal extends ArchesClient {
   }
   async getCollection(collectionId) {
     const fs = await this.fs;
-    const response = await fs.readFile(
+    const response = await fs.promises.readFile(
       this.collectionIdToFile(collectionId),
       "utf8"
     );
@@ -733,9 +731,9 @@ class ArchesClientLocal extends ArchesClient {
     const fs = await this.fs;
     const resources = [];
     for (const file of this.graphIdToResourcesFiles(graphId)) {
-      const response = await fs.readFile(file, "utf8");
+      const response = JSON.parse(await fs.promises.readFile(file, "utf8"));
       const source = file;
-      const resourceSet = (await JSON.parse(response)).business_data.resources.filter(
+      const resourceSet = response.business_data.resources.filter(
         (resource) => graphId === resource.resourceinstance.graph_id
       );
       for (const resource of resourceSet) {
@@ -3083,65 +3081,76 @@ class Cleanable extends String {
     __publicField(this, "__clean");
   }
 }
-class Renderer {
+class BaseRenderer {
   async render(asset) {
     if (!asset._) {
       throw Error("Cannot render unloaded asset - do you want to await asset.retrieve()?");
     }
     const root = await await asset._.getRootViewModel();
-    return this.renderValue(root);
+    return this.renderValue(root, 0);
   }
-  async renderDomainValue(value) {
+  async renderValue(value, depth) {
+    let newValue;
+    if (value instanceof Promise) {
+      value = await value;
+    }
+    if (value instanceof DomainValueViewModel) {
+      newValue = this.renderDomainValue(value, depth);
+    } else if (value instanceof DateViewModel) {
+      newValue = this.renderDate(value, depth);
+    } else if (value instanceof ConceptValueViewModel) {
+      newValue = this.renderConceptValue(value, depth);
+    } else if (value instanceof ResourceInstanceViewModel) {
+      newValue = this.renderResourceReference(value, depth);
+    } else if (value instanceof SemanticViewModel) {
+      newValue = this.renderSemantic(value, depth);
+    } else if (value instanceof Array) {
+      newValue = this.renderArray(value, depth);
+    } else if (value instanceof StringViewModel) {
+      newValue = this.renderString(value, depth);
+    } else if (value instanceof GeoJSONViewModel) {
+      newValue = this.renderBlock(await value.forJson(), depth);
+    } else if (value instanceof Object) {
+      newValue = this.renderBlock(value, depth);
+    } else {
+      newValue = value;
+    }
+    return newValue;
+  }
+}
+class Renderer extends BaseRenderer {
+  async renderDomainValue(value, _depth) {
     return value;
   }
-  async renderDate(value) {
+  async renderString(value, _depth) {
+    return `${value}`;
+  }
+  async renderDate(value, _depth) {
     return value;
   }
-  async renderConceptValue(value) {
+  async renderConceptValue(value, _depth) {
     return value;
   }
-  async renderResourceReference(value) {
+  async renderResourceReference(value, _depth) {
     return value;
   }
-  renderBlock(block) {
+  async renderSemantic(value, depth) {
+    return this.renderBlock(await value.toObject(), depth);
+  }
+  renderBlock(block, depth) {
     const renderedBlock = {};
     const promises = [];
     for (const [key, value] of Object.entries(block)) {
       promises.push(
-        this.renderValue(value).then((val) => {
+        this.renderValue(value, depth + 1).then((val) => {
           renderedBlock[key] = val;
         })
       );
     }
     return Promise.all(promises).then(() => renderedBlock);
   }
-  async renderValue(value) {
-    let newValue;
-    if (value instanceof Promise) {
-      value = await value;
-    }
-    if (value instanceof DomainValueViewModel) {
-      newValue = this.renderDomainValue(value);
-    } else if (value instanceof DateViewModel) {
-      newValue = this.renderDate(value);
-    } else if (value instanceof ConceptValueViewModel) {
-      newValue = this.renderConceptValue(value);
-    } else if (value instanceof ResourceInstanceViewModel) {
-      newValue = this.renderResourceReference(value);
-    } else if (value instanceof SemanticViewModel) {
-      newValue = this.renderBlock(await value.toObject());
-    } else if (value instanceof Array) {
-      newValue = Promise.all(value.map((val) => this.renderValue(val)));
-    } else if (value instanceof StringViewModel) {
-      newValue = `${value}`;
-    } else if (value instanceof GeoJSONViewModel) {
-      newValue = this.renderBlock(await value.forJson());
-    } else if (value instanceof Object) {
-      newValue = this.renderBlock(value);
-    } else {
-      newValue = value;
-    }
-    return newValue;
+  async renderArray(value, depth) {
+    return Promise.all(value.map((val) => this.renderValue(val, depth + 1)));
   }
 }
 class MarkdownRenderer extends Renderer {
@@ -3152,11 +3161,11 @@ class MarkdownRenderer extends Renderer {
     __publicField(this, "domainValueToUrl");
     __publicField(this, "resourceReferenceToUrl");
     this.conceptValueToUrl = callbacks.conceptValueToUrl;
-    this.dateToUrl = callbacks.dateToUrl;
+    this.dateToText = callbacks.dateToText;
     this.domainValueToUrl = callbacks.domainValueToUrl;
     this.resourceReferenceToUrl = callbacks.resourceReferenceToUrl;
   }
-  async renderDomainValue(domainValue) {
+  async renderDomainValue(domainValue, _) {
     const value = await domainValue.getValue();
     const url = this.domainValueToUrl ? await this.domainValueToUrl(domainValue) : null;
     const text = url ? `[${value.toString()}](${url.trim()})` : value.toString();
@@ -3169,7 +3178,7 @@ class MarkdownRenderer extends Renderer {
     wrapper.__clean = domainValue.toString();
     return wrapper;
   }
-  async renderDate(date) {
+  async renderDate(date, _) {
     const value = await date;
     const text = this.dateToText ? await this.dateToText(value) : value.toISOString();
     const wrapper = new Cleanable(`
@@ -3179,7 +3188,7 @@ class MarkdownRenderer extends Renderer {
     wrapper.__clean = text;
     return wrapper;
   }
-  async renderConceptValue(conceptValue) {
+  async renderConceptValue(conceptValue, _) {
     const value = await conceptValue.getValue();
     const url = this.conceptValueToUrl ? await this.conceptValueToUrl(conceptValue) : null;
     const text = url ? `[${value.value}](${url.trim()})` : value.value;
@@ -3194,7 +3203,7 @@ class MarkdownRenderer extends Renderer {
     wrapper.__clean = conceptValue.toString();
     return wrapper;
   }
-  async renderResourceReference(rivm) {
+  async renderResourceReference(rivm, _) {
     const value = await rivm.forJson(false);
     const url = this.resourceReferenceToUrl ? await this.resourceReferenceToUrl(rivm) : null;
     let title = value.title || value.type || "Resource";
@@ -3214,23 +3223,63 @@ class MarkdownRenderer extends Renderer {
     return wrapper;
   }
 }
+class FlatMarkdownRenderer extends MarkdownRenderer {
+  async renderSemantic(vm, depth) {
+    const children = [...(await vm.__getChildValues()).entries()].map(([k, v]) => [v.node.alias, v.node]);
+    const nodes = Object.fromEntries(await Promise.all(children));
+    return super.renderSemantic(vm, depth).then(async (block) => {
+      const text = [
+        `* <span class='node-type'>${vm.__node.name}</span> &rarr;`,
+        ...Object.entries(await block).map(([key, value]) => {
+          const node = nodes[key];
+          if ((typeof value == "string" || value instanceof String) && value.indexOf("\n") != -1) {
+            return `  * <span class='node-name'>${node.name}</span> <span class='node-alias'>[*${node.alias}*]</span>:<span class='node-value'>
+${value.split("\n").map((x) => `    ${x}`).join("\n")}</span>`;
+          } else {
+            return `  * <span class='node-name'>${node.name}</span> <span class='node-alias'>[*${node.alias}*]</span>: <span class='node-value'>${value}</span>`;
+          }
+        }).join("\n").split("\n")
+      ];
+      if (text[1] == "") {
+        text[0] += ` <span class='node-empty'>&lt;empty&gt;</span>`;
+        text.pop();
+      }
+      return text.map((line) => `  ${line}`).join("\n");
+    });
+  }
+  async renderArray(value, depth) {
+    const rows = await super.renderArray(value, depth);
+    console.log(depth, `[${rows[0]}]`, rows.join("\n"), value.constructor.name);
+    if (value instanceof PseudoList || value.indexOf("\n") != -1) {
+      return rows.map((x) => `${x}`).join("\n");
+    } else {
+      return rows.join(", ");
+    }
+  }
+  async renderString(value, _depth) {
+    if (value.indexOf("\n") != -1) {
+      return value.split("\n").join("\n");
+    }
+  }
+}
 class JsonRenderer extends Renderer {
-  async renderDate(value) {
+  async renderDate(value, _depth) {
     return value.forJson();
   }
-  async renderConceptValue(value) {
+  async renderConceptValue(value, _depth) {
     return value.forJson();
   }
-  async renderDomainValue(value) {
+  async renderDomainValue(value, _depth) {
     return value.forJson();
   }
-  async renderResourceReference(value) {
+  async renderResourceReference(value, _depth) {
     return value.forJson();
   }
 }
 const renderers = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
   Cleanable,
+  FlatMarkdownRenderer,
   JsonRenderer,
   MarkdownRenderer
 }, Symbol.toStringTag, { value: "Module" }));

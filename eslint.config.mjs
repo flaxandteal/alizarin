@@ -19,6 +19,12 @@ export default defineConfig([
       "prefer-const": "warn",
       "no-empty": "warn",
       "@typescript-eslint/no-unsafe-function-type": "warn",
+      "@typescript-eslint/naming-convention": [
+        "error",
+        {
+          "leadingUnderscore": "allow"
+        }
+      ]
     },
     extends: [eslint.configs.recommended, tseslint.configs.recommended],
   },
