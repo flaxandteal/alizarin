@@ -1586,12 +1586,14 @@ class ConceptValueViewModel extends String {
   }
 }
 class DateViewModel extends Date {
-  constructor() {
-    super(...arguments);
+  constructor(val) {
+    super(val);
     __publicField(this, "__parentPseudo");
+    __publicField(this, "__original");
     __publicField(this, "then");
     __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
     __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
+    this.__original = val;
   }
   __forJsonCache() {
     return null;
@@ -1625,7 +1627,12 @@ class DateViewModel extends Date {
     return str;
   }
   async forJson() {
-    return this.toISOString();
+    try {
+      return this.toISOString();
+    } catch (e) {
+      console.warn(e);
+      return this.__original;
+    }
   }
   __asTileData() {
     return this.toISOString();
@@ -1742,13 +1749,13 @@ class NumberViewModel extends Number {
     __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
   }
   toString() {
-    return Number.toString();
+    return `${this.valueOf()}`;
   }
   __forJsonCache() {
     return null;
   }
   forJson() {
-    return this ? true : false;
+    return this.valueOf();
   }
   static __create(tile, node, value) {
     const nodeid = node.nodeid;
@@ -1764,8 +1771,8 @@ class NumberViewModel extends Number {
     if (!tile || val === null || val === void 0) {
       return null;
     }
-    const bool = new NumberViewModel(val);
-    return bool;
+    const num = new NumberViewModel(val);
+    return num;
   }
   __asTileData() {
     return this ? true : false;
@@ -3348,7 +3355,7 @@ class Renderer extends BaseRenderer {
     return `${value}`;
   }
   async renderNumber(value, _depth) {
-    return value.toString();
+    return `${value}`;
   }
   async renderBoolean(value, _depth) {
     return value.toString();

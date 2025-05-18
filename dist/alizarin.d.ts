@@ -148,10 +148,12 @@ declare const CUSTOM_DATATYPES: Map<string, string | IViewModel>;
 
 declare class DateViewModel extends Date implements IViewModel {
     __parentPseudo: PseudoValue | undefined;
+    __original: string;
     then: undefined;
     describeField: () => string | null;
     describeFieldGroup: () => string | null;
     __forJsonCache(): null;
+    constructor(val: string);
     static __create(tile: StaticTile, node: StaticNode, value: any): DateViewModel | Promise<DateViewModel | null> | null;
     forJson(): Promise<string>;
     __asTileData(): string;
@@ -390,7 +392,7 @@ declare class NumberViewModel extends Number implements IViewModel {
     describeFieldGroup: () => string | null;
     toString(): string;
     __forJsonCache(): null;
-    forJson(): boolean;
+    forJson(): number;
     static __create(tile: StaticTile, node: StaticNode, value: any): NumberViewModel | Promise<NumberViewModel | null> | null;
     __asTileData(): boolean;
 }

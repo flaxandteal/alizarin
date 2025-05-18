@@ -70,7 +70,7 @@ class Renderer extends BaseRenderer {
   }
 
   async renderNumber(value: Number, _depth: number): Promise<any> {
-    return value.toString();
+    return `${value}`;
   }
 
   async renderBoolean(value: Boolean, _depth: number): Promise<any> {

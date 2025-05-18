@@ -870,6 +870,7 @@ class ConceptValueViewModel extends String implements IViewModel {
 
 class DateViewModel extends Date implements IViewModel {
   __parentPseudo: PseudoValue | undefined;
+  __original: string;
   then: undefined;
 
   describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
@@ -877,6 +878,11 @@ class DateViewModel extends Date implements IViewModel {
 
   __forJsonCache(): null {
     return null;
+  }
+
+  constructor(val: string) {
+    super(val);
+    this.__original = val;
   }
 
   static __create(
@@ -916,7 +922,12 @@ class DateViewModel extends Date implements IViewModel {
   }
 
   async forJson() {
-    return this.toISOString();
+    try {
+      return this.toISOString();
+    } catch (e) {
+      console.warn(e);
+      return this.__original;
+    }
   }
 
   __asTileData() {
@@ -1058,15 +1069,15 @@ class NumberViewModel extends Number implements IViewModel {
   describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
 
   toString(): string {
-    return Number.toString();
+    return `${this.valueOf()}`;
   }
 
   __forJsonCache(): null {
     return null;
   }
 
-  forJson(): boolean {
-    return this ? true : false;
+  forJson(): number {
+    return this.valueOf();
   }
 
   static __create(
@@ -1088,8 +1099,8 @@ class NumberViewModel extends Number implements IViewModel {
     if (!tile || val === null || val === undefined) {
       return null;
     }
-    const bool = new NumberViewModel(val);
-    return bool;
+    const num = new NumberViewModel(val);
+    return num;
   }
 
   __asTileData() {
