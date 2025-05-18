@@ -1010,6 +1010,94 @@ class StringTranslatedLanguage {
   value: string = ""
 }
 
+class NonLocalizedStringViewModel extends String implements IViewModel {
+  __parentPseudo: PseudoValue | undefined;
+
+  describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
+  describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
+
+  __forJsonCache(): null {
+    return null;
+  }
+
+  forJson(): string {
+    return this.toString();
+  }
+
+  static __create(
+    tile: StaticTile,
+    node: StaticNode,
+    value: any,
+  ): NonLocalizedStringViewModel | Promise<NonLocalizedStringViewModel | null> | null {
+    const nodeid = node.nodeid;
+    if (value instanceof Promise) {
+      return value.then((value) => NonLocalizedStringViewModel.__create(tile, node, value));
+    }
+    if (tile) {
+      if (value !== null) {
+        tile.data.set(nodeid, value);
+      }
+    }
+
+    const val = tile.data.get(nodeid);
+    if (!tile || val === null || val === undefined) {
+      return null;
+    }
+    const string = new NonLocalizedStringViewModel(val);
+    return string;
+  }
+
+  __asTileData() {
+    return this ? true : false;
+  }
+}
+
+class NumberViewModel extends Number implements IViewModel {
+  __parentPseudo: PseudoValue | undefined;
+
+  describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
+  describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
+
+  toString(): string {
+    return Number.toString();
+  }
+
+  __forJsonCache(): null {
+    return null;
+  }
+
+  forJson(): boolean {
+    return this ? true : false;
+  }
+
+  static __create(
+    tile: StaticTile,
+    node: StaticNode,
+    value: any,
+  ): NumberViewModel | Promise<NumberViewModel | null> | null {
+    const nodeid = node.nodeid;
+    if (value instanceof Promise) {
+      return value.then((value) => NumberViewModel.__create(tile, node, value));
+    }
+    if (tile) {
+      if (value !== null) {
+        tile.data.set(nodeid, value);
+      }
+    }
+
+    const val = tile.data.get(nodeid);
+    if (!tile || val === null || val === undefined) {
+      return null;
+    }
+    const bool = new NumberViewModel(val);
+    return bool;
+  }
+
+  __asTileData() {
+    return this ? true : false;
+  }
+}
+
 class BooleanViewModel extends Boolean implements IViewModel {
   __parentPseudo: PseudoValue | undefined;
   __config:  StaticNodeConfigBoolean;
@@ -1088,12 +1176,17 @@ class StringViewModel extends String implements IViewModel {
     const lang = value.get(language || DEFAULT_LANGUAGE);
     let displayValue: string;
     if (lang) {
-      displayValue = lang.value;
+      if (typeof lang == "string") {
+        displayValue = lang;
+      } else {
+        displayValue = lang.value;
+      }
     } else {
       // TODO: allow fallback
       displayValue = "";
     }
     super(displayValue);
+    console.log(value, displayValue, language);
     this._value = value;
   }
 
@@ -1159,6 +1252,7 @@ class StringViewModel extends String implements IViewModel {
     } else {
       mapVal = new Map(Object.entries(val));
     }
+    console.log(val, node.datatype);
     const str = new StringViewModel(mapVal);
     return str;
   }
@@ -1478,6 +1572,8 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
   }
 }
 
+const CUSTOM_DATATYPES: Map<string, string | IViewModel> = new Map();
+
 async function getViewModel<RIVM extends IRIVM<RIVM>>(
   parentPseudo: PseudoValue,
   tile: StaticTile,
@@ -1493,66 +1589,84 @@ async function getViewModel<RIVM extends IRIVM<RIVM>>(
   if (cacheEntries) {
     cacheEntry = (tile.tileid ? (cacheEntries[tile.tileid] ?? {}) : {})[node.nodeid]
   };
-  switch (node.datatype) {
-    case "semantic":
-      vm = await SemanticViewModel.__create(
-        tile,
-        node,
-        data,
-        parent,
-        childNodes,
-      );
-      break;
-    case "domain-value":
-      vm = await DomainValueViewModel.__create(tile, node, data);
-      break;
-    case "domain-value-list":
-      vm = await DomainValueListViewModel.__create(tile, node, data);
-      break;
-    case "concept":
-      if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptValueCacheEntry)) {
-        // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
-        cacheEntry = new ConceptValueCacheEntry(cacheEntry);
-        // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ConceptValueCacheEntry`);
-      }
-      vm = await ConceptValueViewModel.__create(tile, node, data, cacheEntry);
-      break;
-    case "resource-instance":
-      if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceCacheEntry)) {
-        // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
-        cacheEntry = new ResourceInstanceCacheEntry(cacheEntry);
-        // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ResourceInstanceCacheEntry`);
-      }
-      vm = await ResourceInstanceViewModel.__create(tile, node, data, cacheEntry);
-      break;
-    case "resource-instance-list":
-      if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceListCacheEntry)) {
-        // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
-        cacheEntry = new ResourceInstanceListCacheEntry(cacheEntry);
-        // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ResourceInstanceListCacheEntry`);
-      }
-      vm = await ResourceInstanceListViewModel.__create(tile, node, data, cacheEntry);
-      break;
-    case "concept-list":
-      if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptListCacheEntry)) {
-        // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
-        cacheEntry = new ConceptListCacheEntry(cacheEntry);
-        // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ConceptListCacheEntry`);
-      }
-      vm = await ConceptListViewModel.__create(tile, node, data, cacheEntry);
-      break;
-    case "date":
-      vm = await DateViewModel.__create(tile, node, data);
-      break;
-    case "geojson-feature-collection":
-      vm = await GeoJSONViewModel.__create(tile, node, data);
-      break;
-    case "boolean":
-      vm = await BooleanViewModel.__create(tile, node, data);
-      break;
-    case "string":
-    default:
-      vm = await StringViewModel.__create(tile, node, data);
+  if (node.datatype == "tm65centrepoint") {
+    console.log(tile.data, "tm65");
+  }
+  const datatype = CUSTOM_DATATYPES.get(node.datatype) ?? node.datatype;
+  if (!(typeof datatype == "string")) {
+    // @ts-expect-error Cannot make a static member part of the interface
+    vm = await datatype.__create(tile, node, data, cacheEntry);
+  } else {
+    switch (datatype) {
+      case "semantic":
+        vm = await SemanticViewModel.__create(
+          tile,
+          node,
+          data,
+          parent,
+          childNodes,
+        );
+        break;
+      case "domain-value":
+        vm = await DomainValueViewModel.__create(tile, node, data);
+        break;
+      case "domain-value-list":
+        vm = await DomainValueListViewModel.__create(tile, node, data);
+        break;
+      case "concept":
+        if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptValueCacheEntry)) {
+          // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
+          cacheEntry = new ConceptValueCacheEntry(cacheEntry);
+          // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ConceptValueCacheEntry`);
+        }
+        vm = await ConceptValueViewModel.__create(tile, node, data, cacheEntry);
+        break;
+      case "resource-instance":
+        if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceCacheEntry)) {
+          // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
+          cacheEntry = new ResourceInstanceCacheEntry(cacheEntry);
+          // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ResourceInstanceCacheEntry`);
+        }
+        vm = await ResourceInstanceViewModel.__create(tile, node, data, cacheEntry);
+        break;
+      case "resource-instance-list":
+        if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceListCacheEntry)) {
+          // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
+          cacheEntry = new ResourceInstanceListCacheEntry(cacheEntry);
+          // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ResourceInstanceListCacheEntry`);
+        }
+        vm = await ResourceInstanceListViewModel.__create(tile, node, data, cacheEntry);
+        break;
+      case "concept-list":
+        if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptListCacheEntry)) {
+          // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
+          cacheEntry = new ConceptListCacheEntry(cacheEntry);
+          // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ConceptListCacheEntry`);
+        }
+        vm = await ConceptListViewModel.__create(tile, node, data, cacheEntry);
+        break;
+      case "date":
+        vm = await DateViewModel.__create(tile, node, data);
+        break;
+      case "geojson-feature-collection":
+        vm = await GeoJSONViewModel.__create(tile, node, data);
+        break;
+      case "boolean":
+        vm = await BooleanViewModel.__create(tile, node, data);
+        break;
+      case "string":
+        vm = await StringViewModel.__create(tile, node, data);
+        break
+      case "number":
+        vm = await NumberViewModel.__create(tile, node, data);
+        break
+      case "non-localized-string":
+        vm = await NonLocalizedStringViewModel.__create(tile, node, data);
+        break;
+      default:
+        console.warn("Missing type for tile", tile.tileid, "on node", node.alias, "with type", node.datatype);
+        vm = await NonLocalizedStringViewModel.__create(tile, node, data);
+    }
   }
 
   if (vm === null) {
@@ -1573,4 +1687,4 @@ async function getViewModel<RIVM extends IRIVM<RIVM>>(
   return vm;
 }
 
-export { ResourceInstanceCacheEntry, DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, getViewModel, DomainValueViewModel, SemanticViewModel, StringViewModel, DateViewModel, GeoJSONViewModel, ConceptValueViewModel, viewContext };
+export { ResourceInstanceCacheEntry, DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, getViewModel, DomainValueViewModel, SemanticViewModel, StringViewModel, DateViewModel, GeoJSONViewModel, ConceptValueViewModel, viewContext, NonLocalizedStringViewModel, CUSTOM_DATATYPES, BooleanViewModel, NumberViewModel };

@@ -1,6 +1,6 @@
 import { staticStore } from "./staticStore.ts"
 import { PseudoList } from "./pseudos.ts"
-import { DateViewModel, ResourceInstanceViewModel, DomainValueViewModel, ConceptValueViewModel, StringViewModel, SemanticViewModel, GeoJSONViewModel } from './viewModels';
+import { DateViewModel, ResourceInstanceViewModel, DomainValueViewModel, ConceptValueViewModel, NonLocalizedStringViewModel, StringViewModel, SemanticViewModel, GeoJSONViewModel, BooleanViewModel, NumberViewModel } from './viewModels';
 
 class Cleanable extends String {
   __clean: string | undefined
@@ -23,6 +23,8 @@ abstract class BaseRenderer {
   abstract renderBlock(block: {[key: string]: string} | {[key: string]: string}[], depth: number): any;
   abstract renderArray(value: any, depth: number): Promise<any>;
   abstract renderString(value: String, _depth: number): Promise<any>;
+  abstract renderBoolean(value: Boolean, _depth: number): Promise<any>;
+  abstract renderNumber(value: Number, _depth: number): Promise<any>;
 
   async renderValue(value: any, depth: number): Promise<any> {
     let newValue;
@@ -41,8 +43,12 @@ abstract class BaseRenderer {
       newValue = this.renderSemantic(value, depth);
     } else if (value instanceof Array) {
       newValue = this.renderArray(value, depth);
-    } else if (value instanceof StringViewModel) {
+    } else if (value instanceof StringViewModel || value instanceof NonLocalizedStringViewModel) {
       newValue = this.renderString(value, depth);
+    } else if (value instanceof BooleanViewModel) {
+      newValue = this.renderBoolean(value, depth);
+    } else if (value instanceof NumberViewModel) {
+      newValue = this.renderNumber(value, depth);
     } else if (value instanceof GeoJSONViewModel) {
       newValue = this.renderBlock(await value.forJson(), depth);
     } else if (value instanceof Object) {
@@ -61,6 +67,14 @@ class Renderer extends BaseRenderer {
 
   async renderString(value: String, _depth: number): Promise<any> {
     return `${value}`;
+  }
+
+  async renderNumber(value: Number, _depth: number): Promise<any> {
+    return value.toString();
+  }
+
+  async renderBoolean(value: Boolean, _depth: number): Promise<any> {
+    return value.toString();
   }
 
   async renderDate(value: DateViewModel, _depth: number): Promise<any> {

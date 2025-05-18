@@ -29,6 +29,12 @@ interface IViewModel {
   __parentPseudo: IPseudo | undefined;
   forJson(): {[key: string]: any} | {[key: string]: any}[] | string | number | boolean | null;
   __forJsonCache(getMeta: GetMeta): IStringKeyedObject | null;
+  // static __create(
+  //   tile: StaticTile,
+  //   node: StaticNode,
+  //   value: any,
+  //   cacheEntry: IViewModel | null
+  // ): Promise<IViewModel | null>;
 }
 
 interface IInstanceWrapper<T extends IRIVM<T>> {

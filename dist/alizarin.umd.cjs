@@ -1705,6 +1705,77 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   };
   let GeoJSONViewModel = _GeoJSONViewModel;
+  class NonLocalizedStringViewModel extends String {
+    constructor() {
+      super(...arguments);
+      __publicField(this, "__parentPseudo");
+      __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
+      __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
+    }
+    __forJsonCache() {
+      return null;
+    }
+    forJson() {
+      return this.toString();
+    }
+    static __create(tile, node, value) {
+      const nodeid = node.nodeid;
+      if (value instanceof Promise) {
+        return value.then((value2) => NonLocalizedStringViewModel.__create(tile, node, value2));
+      }
+      if (tile) {
+        if (value !== null) {
+          tile.data.set(nodeid, value);
+        }
+      }
+      const val = tile.data.get(nodeid);
+      if (!tile || val === null || val === void 0) {
+        return null;
+      }
+      const string = new NonLocalizedStringViewModel(val);
+      return string;
+    }
+    __asTileData() {
+      return this ? true : false;
+    }
+  }
+  class NumberViewModel extends Number {
+    constructor() {
+      super(...arguments);
+      __publicField(this, "__parentPseudo");
+      __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
+      __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
+    }
+    toString() {
+      return Number.toString();
+    }
+    __forJsonCache() {
+      return null;
+    }
+    forJson() {
+      return this ? true : false;
+    }
+    static __create(tile, node, value) {
+      const nodeid = node.nodeid;
+      if (value instanceof Promise) {
+        return value.then((value2) => NumberViewModel.__create(tile, node, value2));
+      }
+      if (tile) {
+        if (value !== null) {
+          tile.data.set(nodeid, value);
+        }
+      }
+      const val = tile.data.get(nodeid);
+      if (!tile || val === null || val === void 0) {
+        return null;
+      }
+      const bool = new NumberViewModel(val);
+      return bool;
+    }
+    __asTileData() {
+      return this ? true : false;
+    }
+  }
   class BooleanViewModel extends Boolean {
     constructor(value, config) {
       super(value);
@@ -1755,7 +1826,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       const lang = value.get(language || DEFAULT_LANGUAGE);
       let displayValue;
       if (lang) {
-        displayValue = lang.value;
+        if (typeof lang == "string") {
+          displayValue = lang;
+        } else {
+          displayValue = lang.value;
+        }
       } else {
         displayValue = "";
       }
@@ -1764,6 +1839,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
       __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
       __publicField(this, "_value");
+      console.log(value, displayValue, language);
       this._value = value;
     }
     __forJsonCache() {
@@ -1822,6 +1898,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       } else {
         mapVal = new Map(Object.entries(val));
       }
+      console.log(val, node.datatype);
       const str = new StringViewModel(mapVal);
       return str;
     }
@@ -2057,6 +2134,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   };
   let SemanticViewModel = _SemanticViewModel;
+  const CUSTOM_DATATYPES = /* @__PURE__ */ new Map();
   async function getViewModel(parentPseudo, tile, node, data, parent, childNodes) {
     let vm;
     const cacheEntries = parentPseudo.parent && parentPseudo.parent._ ? await parentPseudo.parent._.getValueCache(false, void 0) : void 0;
@@ -2064,58 +2142,75 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     if (cacheEntries) {
       cacheEntry = (tile.tileid ? cacheEntries[tile.tileid] ?? {} : {})[node.nodeid];
     }
-    switch (node.datatype) {
-      case "semantic":
-        vm = await SemanticViewModel.__create(
-          tile,
-          node,
-          data,
-          parent,
-          childNodes
-        );
-        break;
-      case "domain-value":
-        vm = await DomainValueViewModel.__create(tile, node, data);
-        break;
-      case "domain-value-list":
-        vm = await DomainValueListViewModel.__create(tile, node, data);
-        break;
-      case "concept":
-        if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptValueCacheEntry)) {
-          cacheEntry = new ConceptValueCacheEntry(cacheEntry);
-        }
-        vm = await ConceptValueViewModel.__create(tile, node, data, cacheEntry);
-        break;
-      case "resource-instance":
-        if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceCacheEntry)) {
-          cacheEntry = new ResourceInstanceCacheEntry(cacheEntry);
-        }
-        vm = await ResourceInstanceViewModel.__create(tile, node, data, cacheEntry);
-        break;
-      case "resource-instance-list":
-        if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceListCacheEntry)) {
-          cacheEntry = new ResourceInstanceListCacheEntry(cacheEntry);
-        }
-        vm = await ResourceInstanceListViewModel.__create(tile, node, data, cacheEntry);
-        break;
-      case "concept-list":
-        if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptListCacheEntry)) {
-          cacheEntry = new ConceptListCacheEntry(cacheEntry);
-        }
-        vm = await ConceptListViewModel.__create(tile, node, data, cacheEntry);
-        break;
-      case "date":
-        vm = await DateViewModel.__create(tile, node, data);
-        break;
-      case "geojson-feature-collection":
-        vm = await GeoJSONViewModel.__create(tile, node, data);
-        break;
-      case "boolean":
-        vm = await BooleanViewModel.__create(tile, node, data);
-        break;
-      case "string":
-      default:
-        vm = await StringViewModel.__create(tile, node, data);
+    if (node.datatype == "tm65centrepoint") {
+      console.log(tile.data, "tm65");
+    }
+    const datatype = CUSTOM_DATATYPES.get(node.datatype) ?? node.datatype;
+    if (!(typeof datatype == "string")) {
+      vm = await datatype.__create(tile, node, data, cacheEntry);
+    } else {
+      switch (datatype) {
+        case "semantic":
+          vm = await SemanticViewModel.__create(
+            tile,
+            node,
+            data,
+            parent,
+            childNodes
+          );
+          break;
+        case "domain-value":
+          vm = await DomainValueViewModel.__create(tile, node, data);
+          break;
+        case "domain-value-list":
+          vm = await DomainValueListViewModel.__create(tile, node, data);
+          break;
+        case "concept":
+          if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptValueCacheEntry)) {
+            cacheEntry = new ConceptValueCacheEntry(cacheEntry);
+          }
+          vm = await ConceptValueViewModel.__create(tile, node, data, cacheEntry);
+          break;
+        case "resource-instance":
+          if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceCacheEntry)) {
+            cacheEntry = new ResourceInstanceCacheEntry(cacheEntry);
+          }
+          vm = await ResourceInstanceViewModel.__create(tile, node, data, cacheEntry);
+          break;
+        case "resource-instance-list":
+          if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceListCacheEntry)) {
+            cacheEntry = new ResourceInstanceListCacheEntry(cacheEntry);
+          }
+          vm = await ResourceInstanceListViewModel.__create(tile, node, data, cacheEntry);
+          break;
+        case "concept-list":
+          if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptListCacheEntry)) {
+            cacheEntry = new ConceptListCacheEntry(cacheEntry);
+          }
+          vm = await ConceptListViewModel.__create(tile, node, data, cacheEntry);
+          break;
+        case "date":
+          vm = await DateViewModel.__create(tile, node, data);
+          break;
+        case "geojson-feature-collection":
+          vm = await GeoJSONViewModel.__create(tile, node, data);
+          break;
+        case "boolean":
+          vm = await BooleanViewModel.__create(tile, node, data);
+          break;
+        case "string":
+          vm = await StringViewModel.__create(tile, node, data);
+          break;
+        case "number":
+          vm = await NumberViewModel.__create(tile, node, data);
+          break;
+        case "non-localized-string":
+          vm = await NonLocalizedStringViewModel.__create(tile, node, data);
+          break;
+        default:
+          console.warn("Missing type for tile", tile.tileid, "on node", node.alias, "with type", node.datatype);
+          vm = await NonLocalizedStringViewModel.__create(tile, node, data);
+      }
     }
     if (vm === null) {
       return null;
@@ -2136,11 +2231,15 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   }
   const viewModels = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
     __proto__: null,
+    BooleanViewModel,
+    CUSTOM_DATATYPES,
     ConceptValueViewModel,
     DEFAULT_LANGUAGE,
     DateViewModel,
     DomainValueViewModel,
     GeoJSONViewModel,
+    NonLocalizedStringViewModel,
+    NumberViewModel,
     ResourceInstanceCacheEntry,
     ResourceInstanceViewModel,
     SemanticViewModel,
@@ -3192,8 +3291,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         newValue = this.renderSemantic(value, depth);
       } else if (value instanceof Array) {
         newValue = this.renderArray(value, depth);
-      } else if (value instanceof StringViewModel) {
+      } else if (value instanceof StringViewModel || value instanceof NonLocalizedStringViewModel) {
         newValue = this.renderString(value, depth);
+      } else if (value instanceof BooleanViewModel) {
+        newValue = this.renderBoolean(value, depth);
+      } else if (value instanceof NumberViewModel) {
+        newValue = this.renderNumber(value, depth);
       } else if (value instanceof GeoJSONViewModel) {
         newValue = this.renderBlock(await value.forJson(), depth);
       } else if (value instanceof Object) {
@@ -3210,6 +3313,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     async renderString(value, _depth) {
       return `${value}`;
+    }
+    async renderNumber(value, _depth) {
+      return value.toString();
+    }
+    async renderBoolean(value, _depth) {
+      return value.toString();
     }
     async renderDate(value, _depth) {
       return value;

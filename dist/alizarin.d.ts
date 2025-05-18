@@ -73,7 +73,22 @@ declare abstract class BaseRenderer {
     }[], depth: number): any;
     abstract renderArray(value: any, depth: number): Promise<any>;
     abstract renderString(value: String, _depth: number): Promise<any>;
+    abstract renderBoolean(value: Boolean, _depth: number): Promise<any>;
+    abstract renderNumber(value: Number, _depth: number): Promise<any>;
     renderValue(value: any, depth: number): Promise<any>;
+}
+
+declare class BooleanViewModel extends Boolean implements IViewModel {
+    __parentPseudo: PseudoValue | undefined;
+    __config: StaticNodeConfigBoolean;
+    describeField: () => string | null;
+    describeFieldGroup: () => string | null;
+    constructor(value: boolean, config: StaticNodeConfigBoolean);
+    toString(lang?: string | undefined): string;
+    __forJsonCache(): null;
+    forJson(): boolean;
+    static __create(tile: StaticTile, node: StaticNode, value: any): BooleanViewModel | Promise<BooleanViewModel | null> | null;
+    __asTileData(): boolean;
 }
 
 declare type CheckPermission = ((node: StaticNode, tile: StaticTile | null) => boolean);
@@ -128,6 +143,8 @@ declare class ConfigurationOptions {
     graphs: Array<string> | null | boolean;
     constructor();
 }
+
+declare const CUSTOM_DATATYPES: Map<string, string | IViewModel>;
 
 declare class DateViewModel extends Date implements IViewModel {
     __parentPseudo: PseudoValue | undefined;
@@ -299,6 +316,16 @@ declare interface IRIVM<T extends IRIVM<T>> {
     __parentPseudo: IPseudo | undefined;
 }
 
+declare interface IStaticNodeConfigBoolean {
+    i18n_properties: string[];
+    falseLabel: {
+        [key: string]: string;
+    };
+    trueLabel: {
+        [key: string]: string;
+    };
+}
+
 declare interface IStringKeyedObject {
     [key: string | symbol]: any;
 }
@@ -346,6 +373,27 @@ declare class MarkdownRenderer extends Renderer {
     renderResourceReference(rivm: ResourceInstanceViewModel<any>, _: number): Promise<any>;
 }
 
+declare class NonLocalizedStringViewModel extends String implements IViewModel {
+    __parentPseudo: PseudoValue | undefined;
+    describeField: () => string | null;
+    describeFieldGroup: () => string | null;
+    __forJsonCache(): null;
+    forJson(): string;
+    static __create(tile: StaticTile, node: StaticNode, value: any): NonLocalizedStringViewModel | Promise<NonLocalizedStringViewModel | null> | null;
+    __asTileData(): boolean;
+}
+
+declare class NumberViewModel extends Number implements IViewModel {
+    __parentPseudo: PseudoValue | undefined;
+    describeField: () => string | null;
+    describeFieldGroup: () => string | null;
+    toString(): string;
+    __forJsonCache(): null;
+    forJson(): boolean;
+    static __create(tile: StaticTile, node: StaticNode, value: any): NumberViewModel | Promise<NumberViewModel | null> | null;
+    __asTileData(): boolean;
+}
+
 declare class PseudoValue implements IPseudo {
     node: StaticNode;
     tile: StaticTile | null;
@@ -388,6 +436,8 @@ declare class ReferenceDataManager {
 declare class Renderer extends BaseRenderer {
     renderDomainValue(value: DomainValueViewModel, _depth: number): Promise<any>;
     renderString(value: String, _depth: number): Promise<any>;
+    renderNumber(value: Number, _depth: number): Promise<any>;
+    renderBoolean(value: Boolean, _depth: number): Promise<any>;
     renderDate(value: DateViewModel, _depth: number): Promise<any>;
     renderConceptValue(value: ConceptValueViewModel, _depth: number): Promise<any>;
     renderResourceReference(value: ResourceInstanceViewModel<any>, _depth: number): Promise<any>;
@@ -713,6 +763,17 @@ declare class StaticNode {
     constructor(jsonData: StaticNode);
 }
 
+declare class StaticNodeConfigBoolean implements IStaticNodeConfigBoolean, INodeConfig {
+    i18n_properties: string[];
+    falseLabel: {
+        [key: string]: string;
+    };
+    trueLabel: {
+        [key: string]: string;
+    };
+    constructor(jsonData: IStaticNodeConfigBoolean);
+}
+
 declare class StaticNodegroup {
     legacygroupid: null;
     nodegroupid: string;
@@ -885,7 +946,11 @@ declare namespace viewModels {
         DateViewModel,
         GeoJSONViewModel,
         ConceptValueViewModel,
-        viewContext
+        viewContext,
+        NonLocalizedStringViewModel,
+        CUSTOM_DATATYPES,
+        BooleanViewModel,
+        NumberViewModel
     }
 }
 export { viewModels }
