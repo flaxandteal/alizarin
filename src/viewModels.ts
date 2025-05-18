@@ -268,7 +268,6 @@ class ResourceInstanceListViewModel extends Array implements IViewModel {
       if (value !== null) {
         tile.data.set(nodeid, []);
         if (!Array.isArray(value)) {
-          console.log(value);
           throw Error(
             "Cannot set an (entire) resource list value except via an array",
           );
@@ -1186,7 +1185,6 @@ class StringViewModel extends String implements IViewModel {
       displayValue = "";
     }
     super(displayValue);
-    console.log(value, displayValue, language);
     this._value = value;
   }
 
@@ -1252,7 +1250,6 @@ class StringViewModel extends String implements IViewModel {
     } else {
       mapVal = new Map(Object.entries(val));
     }
-    console.log(val, node.datatype);
     const str = new StringViewModel(mapVal);
     return str;
   }
@@ -1589,9 +1586,6 @@ async function getViewModel<RIVM extends IRIVM<RIVM>>(
   if (cacheEntries) {
     cacheEntry = (tile.tileid ? (cacheEntries[tile.tileid] ?? {}) : {})[node.nodeid]
   };
-  if (node.datatype == "tm65centrepoint") {
-    console.log(tile.data, "tm65");
-  }
   const datatype = CUSTOM_DATATYPES.get(node.datatype) ?? node.datatype;
   if (!(typeof datatype == "string")) {
     // @ts-expect-error Cannot make a static member part of the interface

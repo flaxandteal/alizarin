@@ -1083,7 +1083,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         if (value !== null) {
           tile.data.set(nodeid, []);
           if (!Array.isArray(value)) {
-            console.log(value);
             throw Error(
               "Cannot set an (entire) resource list value except via an array"
             );
@@ -1839,7 +1838,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
       __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
       __publicField(this, "_value");
-      console.log(value, displayValue, language);
       this._value = value;
     }
     __forJsonCache() {
@@ -1898,7 +1896,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       } else {
         mapVal = new Map(Object.entries(val));
       }
-      console.log(val, node.datatype);
       const str = new StringViewModel(mapVal);
       return str;
     }
@@ -2141,9 +2138,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     let cacheEntry = null;
     if (cacheEntries) {
       cacheEntry = (tile.tileid ? cacheEntries[tile.tileid] ?? {} : {})[node.nodeid];
-    }
-    if (node.datatype == "tm65centrepoint") {
-      console.log(tile.data, "tm65");
     }
     const datatype = CUSTOM_DATATYPES.get(node.datatype) ?? node.datatype;
     if (!(typeof datatype == "string")) {
