@@ -76,6 +76,7 @@ interface IWKRM {
 interface IModelWrapper<T extends IRIVM<T>> {
   all(params: { limit?: number; lazy?: boolean } | undefined): Promise<Array<T>>;
   getPermittedNodegroups(): Map<string | null, boolean | CheckPermission>;
+  isNodegroupPermitted(nodegroupId: string, node: StaticNode, tile: StaticTile | null): boolean;
   getChildNodes(nodeId: string): Map<string, StaticNode>;
   getNodeObjectsByAlias(): Map<string, StaticNode>;
   getNodeObjects(): Map<string, StaticNode>;

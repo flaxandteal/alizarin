@@ -259,6 +259,7 @@ declare interface IModelWrapper<T extends IRIVM<T>> {
         lazy?: boolean;
     } | undefined): Promise<Array<T>>;
     getPermittedNodegroups(): Map<string | null, boolean | CheckPermission>;
+    isNodegroupPermitted(nodegroupId: string, node: StaticNode, tile: StaticTile | null): boolean;
     getChildNodes(nodeId: string): Map<string, StaticNode>;
     getNodeObjectsByAlias(): Map<string, StaticNode>;
     getNodeObjects(): Map<string, StaticNode>;
@@ -510,6 +511,7 @@ declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
         limit?: number;
         lazy?: boolean;
     } | undefined): Promise<Array<RIVM>>;
+    stripTiles(resource: StaticResource): void;
     resourceGenerator(staticResources: AsyncIterable<StaticResource, RIVM, unknown>, lazy?: boolean): AsyncGenerator<RIVM, void, unknown>;
     iterAll(params: {
         limit?: number;
@@ -517,8 +519,9 @@ declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     }): AsyncGenerator<RIVM>;
     findStatic(id: string): Promise<StaticResource>;
     find(id: string, lazy?: boolean): Promise<RIVM>;
-    setPermittedNodegroups(permissions: Map<string | null, boolean>): void;
+    setPermittedNodegroups(permissions: Map<string | null, boolean | CheckPermission>): void;
     getPermittedNodegroups(): Map<string | null, boolean | CheckPermission>;
+    isNodegroupPermitted(nodegroupId: string, node: StaticNode, tile: StaticTile | null): boolean;
     makeInstance(id: string, resource: StaticResource | null): RIVM;
     edges: Map<string, string[]> | undefined;
     nodes: Map<string, StaticNode> | undefined;

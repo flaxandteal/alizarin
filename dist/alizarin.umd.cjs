@@ -2098,8 +2098,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         }
         const childNode = childNodes.get(key);
         for (let value of values) {
-          if (childNode && value !== null && (!value.parentNode || value.parentNode === this.__parentPseudo)) {
+          if (childNode && value.node && value !== null && (!value.parentNode || value.parentNode === this.__parentPseudo)) {
             value = await value;
+            if (!value.node) {
+              throw Error(`Node ${childNode.alias} (${childNode.nodeid}) is unavailable`);
+            }
             if (value.node.nodegroup_id != node.nodegroup_id && tile && value.tile && (!value.tile.parenttile_id || value.tile.parenttile_id == tile.tileid) || value.node.nodegroup_id == node.nodegroup_id && tile && value.tile == tile && !childNode.is_collector) {
               children.set(key, value);
             } else if (node.nodegroup_id != value.node.nodegroup_id && childNode.is_collector) {
@@ -2243,10 +2246,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     viewContext
   }, Symbol.toStringTag, { value: "Module" }));
   class PseudoUnavailable {
-    constructor() {
+    constructor(node) {
       __publicField(this, "parentNode", null);
       __publicField(this, "tile", null);
-      __publicField(this, "node", null);
+      __publicField(this, "node");
+      this.node = node;
     }
     async forJson() {
       return null;
@@ -2258,7 +2262,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return "Unavailable field";
     }
     async getValue() {
-      console.warn("Tried to get value of unavailable node");
       return null;
     }
     getLength() {
@@ -2523,7 +2526,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     const nodegroups = model.getNodegroupObjects();
     const nodegroup = nodegroups.get(nodeObj.nodegroup_id || "");
-    const permitted = model.getPermittedNodegroups();
     let value = null;
     if (nodeObj.nodegroup_id && nodeObj.is_collector && nodegroup && nodegroup.cardinality == "n" && true) {
       value = new PseudoList();
@@ -2531,17 +2533,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     if (value === null || tile) {
       let nodeValue;
-      if (nodeObj.nodegroup_id && !permitted.get(nodeObj.nodegroup_id)) {
-        nodeValue = new PseudoUnavailable();
-      } else {
+      const isPermitted = model.isNodegroupPermitted(nodeObj.nodegroup_id || "", nodeObj, tile);
+      if (isPermitted) {
         const childNodes = model.getChildNodes(nodeObj.nodeid);
         nodeValue = new PseudoValue(nodeObj, tile, null, wkri, childNodes);
-        const test = permitted.get(nodeObj.nodegroup_id);
-        if (test && typeof test == "function") {
-          if (!test(nodeObj, tile)) {
-            nodeValue = new PseudoUnavailable();
-          }
-        }
+      } else {
+        nodeValue = new PseudoUnavailable(nodeObj);
       }
       if (value) {
         value.push(nodeValue.getValue());
@@ -2585,6 +2582,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "cache");
       this.wkri = wkri;
       this.model = model;
+      if (resource) {
+        this.model.stripTiles(resource);
+      }
       this.resource = resource;
       this.valueList = new ValueList(/* @__PURE__ */ new Map(), this, []);
       this.cache = resource ? resource.__cache : void 0;
@@ -2699,7 +2699,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           console.error("Tiles must be provided and cannot be lazy-loaded yet");
         } else {
           nodegroupTiles = tiles.filter(
-            (tile) => tile.nodegroup_id == nodegroupId
+            (tile) => tile.nodegroup_id == nodegroupId && this.model.isNodegroupPermitted(nodegroupId, node, tile)
           );
           if (nodegroupTiles.length == 0 && addIfMissing) {
             nodegroupTiles = [null];
@@ -2982,6 +2982,18 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       }
       return Promise.all(promises);
     }
+    stripTiles(resource) {
+      if (resource.tiles) {
+        const nodes = this.getNodeObjects();
+        resource.tiles = resource.tiles.filter((tile) => {
+          const node = nodes.get(tile.nodegroup_id);
+          if (!node) {
+            throw Error(`Tile ${tile.tileid} has nodegroup ${tile.nodegroup_id} that is not on the model ${this.graph.graphid}`);
+          }
+          return this.isNodegroupPermitted(tile.nodegroup_id || "", node, tile);
+        });
+      }
+    }
     async *resourceGenerator(staticResources, lazy = false) {
       for await (const staticResource of staticResources) {
         yield this.fromStaticResource(staticResource, lazy);
@@ -2998,21 +3010,52 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return this.fromStaticResource(rivm, lazy);
     }
     setPermittedNodegroups(permissions) {
-      this.permittedNodegroups = permissions;
+      const nodegroups = this.getNodegroupObjects();
+      const nodes = this.getNodeObjectsByAlias();
+      const nodesById = this.getNodeObjects();
+      this.permittedNodegroups = new Map([...permissions].map(([key, value]) => {
+        const k = key || "";
+        if (nodegroups.has(k) || k === "") {
+          return [key, value];
+        } else {
+          const node = nodes.get(k);
+          if (node) {
+            if (node.nodeid !== node.nodegroup_id) {
+              const nodegroup = nodesById.has(node.nodegroup_id || "") ? `${nodesById.get(node.nodegroup_id).alias} (${node.nodegroup_id})` : node.nodegroup_id;
+              console.warn(`Applying a permissions rule to a nodegroup ${nodegroup} that contains, but is not the same as, the node you requested: ${node.alias} (${node.nodeid})`);
+            }
+            return [node.nodegroup_id, value];
+          } else {
+            throw Error(`Could not find ${key} in nodegroups for permissions`);
+          }
+        }
+      }));
     }
     // Defaults to visible, which helps reduce the risk of false sense of security
     // from front-end filtering masking the presence of data transferred to it.
     getPermittedNodegroups() {
       if (!this.permittedNodegroups) {
-        this.setPermittedNodegroups(
-          new Map(
-            [...this.getNodegroupObjects()].map(
-              ([k, _]) => [k, true]
-            )
-          )
-        );
+        const permissions = new Map([...this.getNodegroupObjects()].map(
+          ([k, _]) => [k, true]
+        ));
+        permissions.set("", true);
+        this.setPermittedNodegroups(permissions);
       }
       return this.permittedNodegroups;
+    }
+    isNodegroupPermitted(nodegroupId, node, tile) {
+      let permitted = this.getPermittedNodegroups().get(nodegroupId);
+      if (!permitted) {
+        return false;
+      } else {
+        if (typeof permitted == "function") {
+          permitted = permitted(node, tile);
+        }
+      }
+      if (permitted === true) {
+        return true;
+      }
+      throw Error(`Ambiguous permission state: ${permitted} for nodegroup ${nodegroupId}`);
     }
     makeInstance(id, resource) {
       const instance = new this.viewModelClass(

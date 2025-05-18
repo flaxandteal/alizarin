@@ -1511,6 +1511,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       for (let value of values) {
         if (
           childNode &&
+          value.node &&
           value !== null &&
           (!(value.parentNode) ||
             value.parentNode === this.__parentPseudo)
@@ -1518,6 +1519,9 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
           // It is possible that this value has already
           // been requested, but the tile is in-flight.
           value = await value;
+          if (!value.node) {
+            throw Error(`Node ${childNode.alias} (${childNode.nodeid}) is unavailable`);
+          }
           if (
             (value.node.nodegroup_id != node.nodegroup_id && tile && value.tile && (!(value.tile.parenttile_id) || value.tile.parenttile_id == tile.tileid)) ||
             (value.node.nodegroup_id == node.nodegroup_id &&

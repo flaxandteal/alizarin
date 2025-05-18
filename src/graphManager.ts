@@ -60,6 +60,9 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
   ) {
     this.wkri = wkri;
     this.model = model;
+    if (resource) {
+      this.model.stripTiles(resource);
+    }
     this.resource = resource;
     this.valueList = new ValueList(new Map<string, any>(), this, []);
     this.cache = resource ? resource.__cache : undefined;
@@ -199,7 +202,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
         console.error("Tiles must be provided and cannot be lazy-loaded yet");
       } else {
         nodegroupTiles = tiles.filter(
-          (tile) => tile.nodegroup_id == nodegroupId,
+          (tile) => tile.nodegroup_id == nodegroupId && this.model.isNodegroupPermitted(nodegroupId, node, tile)
         );
         if (nodegroupTiles.length == 0 && addIfMissing) {
           nodegroupTiles = [null];
@@ -520,6 +523,19 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     return Promise.all(promises);
   }
 
+  stripTiles(resource: StaticResource) {
+    if (resource.tiles) {
+      const nodes = this.getNodeObjects();
+      resource.tiles = resource.tiles.filter(tile => {
+        const node = nodes.get(tile.nodegroup_id);
+        if (!node) {
+          throw Error(`Tile ${tile.tileid} has nodegroup ${tile.nodegroup_id} that is not on the model ${this.graph.graphid}`);
+        }
+        return this.isNodegroupPermitted(tile.nodegroup_id || '', node, tile);
+      });
+    }
+  }
+
   async* resourceGenerator(staticResources: AsyncIterable<StaticResource, RIVM, unknown>, lazy: boolean=false) {
     for await (const staticResource of staticResources) {
       yield this.fromStaticResource(staticResource, lazy);
@@ -539,24 +555,58 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     return this.fromStaticResource(rivm, lazy);
   }
 
-  setPermittedNodegroups(permissions: Map<string | null, boolean>) {
-    this.permittedNodegroups = permissions;
+  setPermittedNodegroups(permissions: Map<string | null, boolean | CheckPermission>) {
+    const nodegroups = this.getNodegroupObjects();
+    const nodes = this.getNodeObjectsByAlias();
+    const nodesById = this.getNodeObjects();
+    this.permittedNodegroups = new Map([...permissions].map(([key, value]): [key: string | null, value: boolean | CheckPermission] => {
+      const k = key || '';
+      if (nodegroups.has(k) || k === '') {
+        return [key, value];
+      } else {
+        const node = nodes.get(k);
+        if (node) {
+          if (node.nodeid !== node.nodegroup_id) {
+            const nodegroup = nodesById.has(node.nodegroup_id || '') ?
+              `${nodesById.get(node.nodegroup_id).alias} (${node.nodegroup_id})` :
+              node.nodegroup_id;
+            console.warn(`Applying a permissions rule to a nodegroup ${nodegroup} that contains, but is not the same as, the node you requested: ${node.alias} (${node.nodeid})`);
+          }
+          return [node.nodegroup_id, value];
+        } else {
+          throw Error(`Could not find ${key} in nodegroups for permissions`);
+        }
+      }
+    }));
   }
 
   // Defaults to visible, which helps reduce the risk of false sense of security
   // from front-end filtering masking the presence of data transferred to it.
   getPermittedNodegroups(): Map<string | null, boolean | CheckPermission> {
     if (!this.permittedNodegroups) {
-      this.setPermittedNodegroups(
-        new Map(
-          [...this.getNodegroupObjects()].map(
-            ([k, _]: [k: string, _: StaticNodegroup]) => [k, true]
-          )
-        )
-      );
+      const permissions = new Map([...this.getNodegroupObjects()].map(
+        ([k, _]: [k: string, _: StaticNodegroup]) => [k, true]
+      ));
+      permissions.set("", true); // Have to have access to root node.
+      this.setPermittedNodegroups(permissions);
     }
     // TODO allow reducing
     return this.permittedNodegroups;
+  }
+
+  isNodegroupPermitted(nodegroupId: string, node: StaticNode, tile: StaticTile | null): boolean {
+    let permitted: boolean | CheckPermission | undefined = this.getPermittedNodegroups().get(nodegroupId);
+    if (!permitted) {
+      return false;
+    } else {
+      if (typeof permitted == 'function') {
+        permitted = permitted(node, tile);
+      }
+    }
+    if (permitted === true) {
+      return true;
+    }
+    throw Error(`Ambiguous permission state: ${permitted} for nodegroup ${nodegroupId}`);
   }
 
   makeInstance(id: string, resource: StaticResource | null): RIVM {

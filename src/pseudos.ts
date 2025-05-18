@@ -6,7 +6,11 @@ import { AttrPromise } from "./utils";
 class PseudoUnavailable implements IPseudo {
   parentNode: PseudoValue | null = null;
   tile: null = null;
-  node: null = null;
+  node: StaticNode;
+
+  constructor(node: StaticNode) {
+    this.node = node;
+  }
 
   async forJson(): Promise<{[key: string]: any}[] | null> {
     return null;
@@ -21,7 +25,6 @@ class PseudoUnavailable implements IPseudo {
   }
 
   async getValue() {
-    console.warn("Tried to get value of unavailable node");
     return null;
   }
 
@@ -355,7 +358,6 @@ function makePseudoCls(
   const nodegroups = model.getNodegroupObjects();
   const nodegroup = nodegroups.get(nodeObj.nodegroup_id || "");
 
-  const permitted = model.getPermittedNodegroups();
   let value = null;
   if (
     nodeObj.nodegroup_id &&
@@ -369,17 +371,12 @@ function makePseudoCls(
   }
   if (value === null || tile) {
     let nodeValue;
-    if (nodeObj.nodegroup_id && !permitted.get(nodeObj.nodegroup_id)) {
-      nodeValue = new PseudoUnavailable();
-    } else {
+    const isPermitted = model.isNodegroupPermitted(nodeObj.nodegroup_id || '', nodeObj, tile);
+    if (isPermitted) {
       const childNodes = model.getChildNodes(nodeObj.nodeid);
       nodeValue = new PseudoValue(nodeObj, tile, null, wkri, childNodes);
-      const test: boolean | CheckPermission | undefined = permitted.get(nodeObj.nodegroup_id);
-      if (test && typeof test == 'function') {
-        if (!test(nodeObj, tile)) {
-          nodeValue = new PseudoUnavailable();
-        }
-      }
+    } else {
+      nodeValue = new PseudoUnavailable(nodeObj);
     }
     // If we have a tile in a list, add it
     if (value) {
