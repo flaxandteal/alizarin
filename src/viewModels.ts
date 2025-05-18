@@ -12,6 +12,7 @@ import { PseudoValue, PseudoList } from "./pseudos";
 import { RDM } from "./rdm";
 import {
   StaticNodeConfigDomain,
+  StaticNodeConfigBoolean,
 } from './nodeConfig';
 import {
   StaticDomainValue,
@@ -1009,6 +1010,68 @@ class StringTranslatedLanguage {
   value: string = ""
 }
 
+class BooleanViewModel extends Boolean implements IViewModel {
+  __parentPseudo: PseudoValue | undefined;
+  __config:  StaticNodeConfigBoolean;
+
+  describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
+  describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
+
+  constructor(value: boolean, config: StaticNodeConfigBoolean) {
+    super(value);
+    this.__config = config;
+  }
+
+  toString(lang?: string | undefined): string {
+    const labelLang = lang || DEFAULT_LANGUAGE;
+    const isTrue: Boolean = this;
+    return isTrue ? (
+      this.__config && this.__config.trueLabel ? this.__config.trueLabel[labelLang] || 'true' : 'true'
+    ) : (
+      this.__config && this.__config.trueLabel ? this.__config.falseLabel[labelLang] || 'false' : 'false'
+    );
+  }
+
+  __forJsonCache(): null {
+    return null;
+  }
+
+  forJson(): boolean {
+    return this ? true : false;
+  }
+
+  static __create(
+    tile: StaticTile,
+    node: StaticNode,
+    value: any,
+  ): BooleanViewModel | Promise<BooleanViewModel | null> | null {
+    const nodeid = node.nodeid;
+    if (value instanceof Promise) {
+      return value.then((value) => BooleanViewModel.__create(tile, node, value));
+    }
+    if (tile) {
+      if (value !== null) {
+        tile.data.set(nodeid, value);
+      }
+    }
+
+    const val = tile.data.get(nodeid);
+    if (!tile || val === null || val === undefined) {
+      return null;
+    }
+    const config = nodeConfigManager.retrieve(node);
+    if (!config || !(config instanceof StaticNodeConfigBoolean)) {
+      throw Error(`Cannot form boolean value for ${node.nodeid} without config`);
+    }
+    const bool = new BooleanViewModel(val, config);
+    return bool;
+  }
+
+  __asTileData() {
+    return this ? true : false;
+  }
+}
+
 class StringViewModel extends String implements IViewModel {
   __parentPseudo: PseudoValue | undefined;
 
@@ -1483,6 +1546,9 @@ async function getViewModel<RIVM extends IRIVM<RIVM>>(
       break;
     case "geojson-feature-collection":
       vm = await GeoJSONViewModel.__create(tile, node, data);
+      break;
+    case "boolean":
+      vm = await BooleanViewModel.__create(tile, node, data);
       break;
     case "string":
     default:

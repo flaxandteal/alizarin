@@ -685,7 +685,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "graphIdToResourcesFiles");
       __publicField(this, "resourceIdToFile");
       __publicField(this, "collectionIdToFile");
-      this.fs = Promise.resolve().then(() => empty$1);
+      this.fs = Promise.resolve().then(() => __viteBrowserExternal$1);
       this.allGraphFile = allGraphFile || (() => "tests/definitions/models/_all.json");
       this.graphIdToGraphFile = graphIdToGraphFile || ((graphId) => `tests/definitions/models/${graphId}.json`);
       this.graphIdToResourcesFiles = graphIdToResourcesFiles || ((graphId) => [`tests/definitions/resources/_${graphId}.json`]);
@@ -832,6 +832,16 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   }
   const staticStore = new StaticStore(archesClient);
+  class StaticNodeConfigBoolean {
+    constructor(jsonData) {
+      __publicField(this, "i18n_properties");
+      __publicField(this, "falseLabel");
+      __publicField(this, "trueLabel");
+      this.i18n_properties = jsonData.i18n_properties;
+      this.falseLabel = jsonData.falseLabel;
+      this.trueLabel = jsonData.trueLabel;
+    }
+  }
   class StaticNodeConfigDomain {
     constructor(jsonData) {
       __publicField(this, "i18n_config");
@@ -868,6 +878,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       }
       let nodeConfig = null;
       switch (node.datatype) {
+        case "boolean":
+          nodeConfig = new StaticNodeConfigBoolean(node.config);
+          break;
         case "domain-value-list":
         case "domain-value":
           nodeConfig = new StaticNodeConfigDomain(node.config);
@@ -1692,6 +1705,51 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   };
   let GeoJSONViewModel = _GeoJSONViewModel;
+  class BooleanViewModel extends Boolean {
+    constructor(value, config) {
+      super(value);
+      __publicField(this, "__parentPseudo");
+      __publicField(this, "__config");
+      __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
+      __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
+      this.__config = config;
+    }
+    toString(lang) {
+      const labelLang = lang || DEFAULT_LANGUAGE;
+      const isTrue = this;
+      return isTrue ? this.__config && this.__config.trueLabel ? this.__config.trueLabel[labelLang] || "true" : "true" : this.__config && this.__config.trueLabel ? this.__config.falseLabel[labelLang] || "false" : "false";
+    }
+    __forJsonCache() {
+      return null;
+    }
+    forJson() {
+      return this ? true : false;
+    }
+    static __create(tile, node, value) {
+      const nodeid = node.nodeid;
+      if (value instanceof Promise) {
+        return value.then((value2) => BooleanViewModel.__create(tile, node, value2));
+      }
+      if (tile) {
+        if (value !== null) {
+          tile.data.set(nodeid, value);
+        }
+      }
+      const val = tile.data.get(nodeid);
+      if (!tile || val === null || val === void 0) {
+        return null;
+      }
+      const config = nodeConfigManager.retrieve(node);
+      if (!config || !(config instanceof StaticNodeConfigBoolean)) {
+        throw Error(`Cannot form boolean value for ${node.nodeid} without config`);
+      }
+      const bool = new BooleanViewModel(val, config);
+      return bool;
+    }
+    __asTileData() {
+      return this ? true : false;
+    }
+  }
   class StringViewModel extends String {
     constructor(value, language = null) {
       const lang = value.get(language || DEFAULT_LANGUAGE);
@@ -2052,6 +2110,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       case "geojson-feature-collection":
         vm = await GeoJSONViewModel.__create(tile, node, data);
         break;
+      case "boolean":
+        vm = await BooleanViewModel.__create(tile, node, data);
+        break;
       case "string":
       default:
         vm = await StringViewModel.__create(tile, node, data);
@@ -2382,6 +2443,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       } else {
         const childNodes = model.getChildNodes(nodeObj.nodeid);
         nodeValue = new PseudoValue(nodeObj, tile, null, wkri, childNodes);
+        const test = permitted.get(nodeObj.nodegroup_id);
+        if (test && typeof test == "function") {
+          if (!test(nodeObj, tile)) {
+            nodeValue = new PseudoUnavailable();
+          }
+        }
       }
       if (value) {
         value.push(nodeValue.getValue());
@@ -2515,7 +2582,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     setOrmAttribute(key, value) {
       return this.getRootViewModel().then((root) => {
         if (root) {
-          root.value[key] = value;
+          root[key] = value;
         } else {
           throw Error(`Tried to set ${key} on ${self}, which has no root`);
         }
@@ -2805,6 +2872,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "wkrm");
       __publicField(this, "graph");
       __publicField(this, "viewModelClass");
+      __publicField(this, "permittedNodegroups");
       __publicField(this, "edges");
       __publicField(this, "nodes");
       __publicField(this, "nodegroups");
@@ -2836,8 +2904,22 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       const rivm = await this.findStatic(id);
       return this.fromStaticResource(rivm, lazy);
     }
+    setPermittedNodegroups(permissions) {
+      this.permittedNodegroups = permissions;
+    }
+    // Defaults to visible, which helps reduce the risk of false sense of security
+    // from front-end filtering masking the presence of data transferred to it.
     getPermittedNodegroups() {
-      return this.getNodegroupObjects();
+      if (!this.permittedNodegroups) {
+        this.setPermittedNodegroups(
+          new Map(
+            [...this.getNodegroupObjects()].map(
+              ([k, _]) => [k, true]
+            )
+          )
+        );
+      }
+      return this.permittedNodegroups;
     }
     makeInstance(id, resource) {
       const instance = new this.viewModelClass(
@@ -3164,10 +3246,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "dateToText");
       __publicField(this, "domainValueToUrl");
       __publicField(this, "resourceReferenceToUrl");
+      __publicField(this, "nodeToUrl");
       this.conceptValueToUrl = callbacks.conceptValueToUrl;
       this.dateToText = callbacks.dateToText;
       this.domainValueToUrl = callbacks.domainValueToUrl;
       this.resourceReferenceToUrl = callbacks.resourceReferenceToUrl;
+      this.nodeToUrl = callbacks.nodeToUrl;
     }
     async renderDomainValue(domainValue, _) {
       const value = await domainValue.getValue();
@@ -3229,23 +3313,28 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   }
   class FlatMarkdownRenderer extends MarkdownRenderer {
     async renderSemantic(vm, depth) {
-      const children = [...(await vm.__getChildValues()).entries()].map(([k, v]) => [v.node.alias, v.node]);
+      const children = [...(await vm.__getChildValues()).entries()].map(([_, v]) => [v.node.alias, v.node]);
       const nodes = Object.fromEntries(await Promise.all(children));
       return super.renderSemantic(vm, depth).then(async (block) => {
         const text = [
           `* <span class='node-type'>${vm.__node.name}</span> &rarr;`,
           ...Object.entries(await block).map(([key, value]) => {
             const node = nodes[key];
+            let nodeName = node.name;
+            if (this.nodeToUrl) {
+              nodeName = `[${node.name}](${this.nodeToUrl(node)})`;
+            }
             if ((typeof value == "string" || value instanceof String) && value.indexOf("\n") != -1) {
-              return `  * <span class='node-name'>${node.name}</span> <span class='node-alias'>[*${node.alias}*]</span>:<span class='node-value'>
-${value.split("\n").map((x) => `    ${x}`).join("\n")}</span>`;
+              return `  * <span class='node-name'>${nodeName}</span> <span class='node-alias'>[*${node.alias}*]</span>:<span class='node-value'>
+${value.split("\n").map((x) => `    ${x}`).join("\n")}
+    </span>`;
             } else {
-              return `  * <span class='node-name'>${node.name}</span> <span class='node-alias'>[*${node.alias}*]</span>: <span class='node-value'>${value}</span>`;
+              return `  * <span class='node-name'>${nodeName}</span> <span class='node-alias'>[*${node.alias}*]</span>: <span class='node-value'>${value}</span>`;
             }
           }).join("\n").split("\n")
         ];
         if (text[1] == "") {
-          text[0] += ` <span class='node-empty'>&lt;empty&gt;</span>`;
+          text[0] += `<span class='node-empty'>&lt;empty&gt;</span>`;
           text.pop();
         }
         return text.map((line) => `  ${line}`).join("\n");
@@ -3253,7 +3342,6 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}</span>`;
     }
     async renderArray(value, depth) {
       const rows = await super.renderArray(value, depth);
-      console.log(depth, `[${rows[0]}]`, rows.join("\n"), value.constructor.name);
       if (value instanceof PseudoList || value.indexOf("\n") != -1) {
         return rows.map((x) => `${x}`).join("\n");
       } else {
@@ -3262,7 +3350,7 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}</span>`;
     }
     async renderString(value, _depth) {
       if (value.indexOf("\n") != -1) {
-        return value.split("\n").join("\n");
+        return "\n    " + value.split("\n").join("\n    ");
       }
     }
   }
@@ -3288,10 +3376,10 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}</span>`;
     MarkdownRenderer
   }, Symbol.toStringTag, { value: "Module" }));
   const AlizarinModel = ResourceInstanceViewModel;
-  var empty = null;
-  const empty$1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  const __viteBrowserExternal = {};
+  const __viteBrowserExternal$1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
     __proto__: null,
-    default: empty
+    default: __viteBrowserExternal
   }, Symbol.toStringTag, { value: "Module" }));
   exports2.AlizarinModel = AlizarinModel;
   exports2.GraphManager = GraphManager;

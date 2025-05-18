@@ -1,5 +1,5 @@
 import { StaticTile, StaticNode } from "./static-types";
-import { IViewModel, IPseudo, IRIVM, IModelWrapper } from "./interfaces";
+import { CheckPermission, IViewModel, IPseudo, IRIVM, IModelWrapper } from "./interfaces";
 import { getViewModel } from "./viewModels";
 import { AttrPromise } from "./utils";
 
@@ -374,6 +374,12 @@ function makePseudoCls(
     } else {
       const childNodes = model.getChildNodes(nodeObj.nodeid);
       nodeValue = new PseudoValue(nodeObj, tile, null, wkri, childNodes);
+      const test: boolean | CheckPermission | undefined = permitted.get(nodeObj.nodegroup_id);
+      if (test && typeof test == 'function') {
+        if (!test(nodeObj, tile)) {
+          nodeValue = new PseudoUnavailable();
+        }
+      }
     }
     // If we have a tile in a list, add it
     if (value) {

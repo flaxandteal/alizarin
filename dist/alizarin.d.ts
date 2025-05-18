@@ -76,6 +76,8 @@ declare abstract class BaseRenderer {
     renderValue(value: any, depth: number): Promise<any>;
 }
 
+declare type CheckPermission = ((node: StaticNode, tile: StaticTile | null) => boolean);
+
 declare class Cleanable extends String {
     __clean: string | undefined;
 }
@@ -239,7 +241,7 @@ declare interface IModelWrapper<T extends IRIVM<T>> {
         limit?: number;
         lazy?: boolean;
     } | undefined): Promise<Array<T>>;
-    getPermittedNodegroups(): Map<string, StaticNodegroup>;
+    getPermittedNodegroups(): Map<string | null, boolean | CheckPermission>;
     getChildNodes(nodeId: string): Map<string, StaticNode>;
     getNodeObjectsByAlias(): Map<string, StaticNode>;
     getNodeObjects(): Map<string, StaticNode>;
@@ -253,6 +255,7 @@ declare class INodeConfig {
 
 declare namespace interfaces {
     export {
+        CheckPermission,
         ResourceInstanceViewModelConstructor,
         GetMeta,
         IInstanceWrapper,
@@ -329,11 +332,13 @@ declare class MarkdownRenderer extends Renderer {
     dateToText: ((value: DateViewModel) => string) | undefined;
     domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined;
     resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined;
+    nodeToUrl: ((value: string) => string) | undefined;
     constructor(callbacks: {
         conceptValueToUrl: ((value: ConceptValueViewModel) => string) | undefined;
         dateToText: ((value: DateViewModel) => string) | undefined;
         domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined;
         resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined;
+        nodeToUrl: ((value: string) => string) | undefined;
     });
     renderDomainValue(domainValue: DomainValueViewModel, _: number): Promise<any>;
     renderDate(date: DateViewModel, _: number): Promise<any>;
@@ -449,6 +454,7 @@ declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     wkrm: WKRM;
     graph: StaticGraph;
     viewModelClass: ResourceInstanceViewModelConstructor<RIVM>;
+    permittedNodegroups: Map<string | null, boolean | CheckPermission>;
     constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass: ResourceInstanceViewModelConstructor<RIVM>);
     all(params?: {
         limit?: number;
@@ -461,7 +467,8 @@ declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     }): AsyncGenerator<RIVM>;
     findStatic(id: string): Promise<StaticResource>;
     find(id: string, lazy?: boolean): Promise<RIVM>;
-    getPermittedNodegroups(): Map<string, StaticNodegroup>;
+    setPermittedNodegroups(permissions: Map<string | null, boolean>): void;
+    getPermittedNodegroups(): Map<string | null, boolean | CheckPermission>;
     makeInstance(id: string, resource: StaticResource | null): RIVM;
     edges: Map<string, string[]> | undefined;
     nodes: Map<string, StaticNode> | undefined;

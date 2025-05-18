@@ -6,6 +6,24 @@ interface IStaticNodeConfigDomain {
   options: StaticDomainValue[];
 };
 
+interface IStaticNodeConfigBoolean {
+  i18n_properties: string[]
+  falseLabel: {[key: string]: string}
+  trueLabel: {[key: string]: string}
+};
+
+class StaticNodeConfigBoolean implements IStaticNodeConfigBoolean, INodeConfig {
+  i18n_properties: string[]
+  falseLabel: {[key: string]: string}
+  trueLabel: {[key: string]: string}
+
+  constructor(jsonData: IStaticNodeConfigBoolean) {
+    this.i18n_properties = jsonData.i18n_properties;
+    this.falseLabel = jsonData.falseLabel;
+    this.trueLabel = jsonData.trueLabel;
+  }
+}
+
 class StaticNodeConfigDomain implements IStaticNodeConfigDomain, INodeConfig {
   i18n_config: {[key: string]: string}
   options: StaticDomainValue[];
@@ -49,6 +67,10 @@ class NodeConfigManager {
     }
     let nodeConfig = null;
     switch (node.datatype) {
+      case "boolean":
+        // @ts-expect-error node.config is not typed
+        nodeConfig = new StaticNodeConfigBoolean(node.config);
+        break;
       case "domain-value-list":
       case "domain-value":
         // @ts-expect-error node.config is not typed
@@ -63,4 +85,4 @@ class NodeConfigManager {
 
 const nodeConfigManager = new NodeConfigManager();
 
-export { nodeConfigManager, StaticNodeConfigDomain };
+export { nodeConfigManager, StaticNodeConfigDomain, StaticNodeConfigBoolean };

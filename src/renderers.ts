@@ -101,18 +101,21 @@ class MarkdownRenderer extends Renderer {
   dateToText: ((value: DateViewModel) => string) | undefined
   domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined
   resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined
+  nodeToUrl: ((value: string) => string) | undefined
 
   constructor(callbacks: {
     conceptValueToUrl: ((value: ConceptValueViewModel) => string) | undefined,
     dateToText: ((value: DateViewModel) => string) | undefined,
     domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined,
     resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined,
+    nodeToUrl: ((value: string) => string) | undefined,
   }) {
     super();
     this.conceptValueToUrl = callbacks.conceptValueToUrl;
     this.dateToText = callbacks.dateToText;
     this.domainValueToUrl = callbacks.domainValueToUrl;
     this.resourceReferenceToUrl = callbacks.resourceReferenceToUrl;
+    this.nodeToUrl = callbacks.nodeToUrl;
   }
 
 
@@ -180,23 +183,26 @@ class MarkdownRenderer extends Renderer {
 
 class FlatMarkdownRenderer extends MarkdownRenderer {
   override async renderSemantic(vm: SemanticViewModel, depth: number): Promise<any> {
-    const indent = '  '.repeat(depth);
-    const children = [...(await vm.__getChildValues()).entries()].map(([k, v]) => [v.node.alias, v.node]);
+    const children = [...(await vm.__getChildValues()).entries()].map(([_, v]) => [v.node.alias, v.node]);
     const nodes = Object.fromEntries(await Promise.all(children));
     return super.renderSemantic(vm, depth).then(async block => {
       const text = [
         `* <span class='node-type'>${vm.__node.name}</span> &rarr;`,
         ...Object.entries(await block).map(([key, value]) => {
           const node = nodes[key];
+          let nodeName = node.name;
+          if (this.nodeToUrl) {
+            nodeName = `[${node.name}](${this.nodeToUrl(node)})`;
+          }
           if ((typeof value == 'string' || value instanceof String) && value.indexOf('\n') != -1) {
-            return `  * <span class='node-name'>${node.name}</span> <span class='node-alias'>[*${node.alias}*]</span>:<span class='node-value'>\n${value.split('\n').map(x => `    ${x}`).join('\n')}</span>`;
+            return `  * <span class='node-name'>${nodeName}</span> <span class='node-alias'>[*${node.alias}*]</span>:<span class='node-value'>\n${value.split('\n').map(x => `    ${x}`).join('\n')}\n    </span>`;
           } else {
-            return `  * <span class='node-name'>${node.name}</span> <span class='node-alias'>[*${node.alias}*]</span>: <span class='node-value'>${value}</span>`;
+            return `  * <span class='node-name'>${nodeName}</span> <span class='node-alias'>[*${node.alias}*]</span>: <span class='node-value'>${value}</span>`;
           }
         }).join('\n').split('\n')
       ];
       if (text[1] == '') {
-        text[0] += ` <span class='node-empty'>&lt;empty&gt;</span>`;
+        text[0] += `<span class='node-empty'>&lt;empty&gt;</span>`;
         text.pop();
       }
       return text.map(line => `  ${line}`).join('\n');
@@ -205,7 +211,6 @@ class FlatMarkdownRenderer extends MarkdownRenderer {
 
   override async renderArray(value: any, depth: number): Promise<any> {
       const rows = await super.renderArray(value, depth);
-      console.log(depth, `[${rows[0]}]`, rows.join("\n"), value.constructor.name);
       if (value instanceof PseudoList || value.indexOf('\n') != -1) {
         return rows.map(x => `${x}`).join('\n');
       } else {
@@ -215,7 +220,7 @@ class FlatMarkdownRenderer extends MarkdownRenderer {
 
   async renderString(value: String, _depth: number): Promise<any> {
     if (value.indexOf('\n') != -1) {
-      return value.split('\n').join('\n');
+      return '\n    ' + value.split('\n').join('\n    ');
     }
   }
 }

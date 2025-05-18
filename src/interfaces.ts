@@ -23,6 +23,7 @@ interface IStringKeyedObject {
 }
 
 type GetMeta = ((vm: IViewModel) => IStringKeyedObject) | undefined;
+type CheckPermission = ((node: StaticNode, tile: StaticTile | null) => boolean);
 
 interface IViewModel {
   __parentPseudo: IPseudo | undefined;
@@ -68,7 +69,7 @@ interface IWKRM {
 
 interface IModelWrapper<T extends IRIVM<T>> {
   all(params: { limit?: number; lazy?: boolean } | undefined): Promise<Array<T>>;
-  getPermittedNodegroups(): Map<string, StaticNodegroup>;
+  getPermittedNodegroups(): Map<string | null, boolean | CheckPermission>;
   getChildNodes(nodeId: string): Map<string, StaticNode>;
   getNodeObjectsByAlias(): Map<string, StaticNode>;
   getNodeObjects(): Map<string, StaticNode>;
@@ -96,4 +97,4 @@ interface IGraphManager {
   getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean): Promise<T>;
 }
 
-export type { ResourceInstanceViewModelConstructor, GetMeta, IInstanceWrapper, IModelWrapper, IRIVM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo, INodeConfig, IGraphManager };
+export type { CheckPermission, ResourceInstanceViewModelConstructor, GetMeta, IInstanceWrapper, IModelWrapper, IRIVM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo, INodeConfig, IGraphManager };

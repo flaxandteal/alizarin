@@ -10,7 +10,7 @@ import {
 } from "./static-types";
 import { makePseudoCls, PseudoList } from "./pseudos.ts";
 import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext, SemanticViewModel } from "./viewModels.ts";
-import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
+import { CheckPermission, GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
 import { AttrPromise } from "./utils";
 
 class WKRM {
@@ -162,7 +162,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     // TODO remapping
     return this.getRootViewModel().then((root) => {
       if (root) {
-        root.value[key] = value;
+        root[key] = value;
       } else {
         throw Error(`Tried to set ${key} on ${self}, which has no root`);
       }
@@ -503,6 +503,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   wkrm: WKRM;
   graph: StaticGraph;
   viewModelClass: ResourceInstanceViewModelConstructor<RIVM>;
+  permittedNodegroups: Map<string | null, boolean | CheckPermission>;
 
   constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass: ResourceInstanceViewModelConstructor<RIVM>) {
     this.wkrm = wkrm;
@@ -538,9 +539,24 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     return this.fromStaticResource(rivm, lazy);
   }
 
-  getPermittedNodegroups(): Map<string, StaticNodegroup> {
+  setPermittedNodegroups(permissions: Map<string | null, boolean>) {
+    this.permittedNodegroups = permissions;
+  }
+
+  // Defaults to visible, which helps reduce the risk of false sense of security
+  // from front-end filtering masking the presence of data transferred to it.
+  getPermittedNodegroups(): Map<string | null, boolean | CheckPermission> {
+    if (!this.permittedNodegroups) {
+      this.setPermittedNodegroups(
+        new Map(
+          [...this.getNodegroupObjects()].map(
+            ([k, _]: [k: string, _: StaticNodegroup]) => [k, true]
+          )
+        )
+      );
+    }
     // TODO allow reducing
-    return this.getNodegroupObjects();
+    return this.permittedNodegroups;
   }
 
   makeInstance(id: string, resource: StaticResource | null): RIVM {
