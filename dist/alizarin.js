@@ -537,13 +537,17 @@ class StaticResource {
   constructor(jsonData) {
     __publicField(this, "resourceinstance");
     __publicField(this, "tiles", null);
+    __publicField(this, "metadata");
     __publicField(this, "__cache");
     __publicField(this, "__source");
+    __publicField(this, "__scopes");
     this.resourceinstance = new StaticResourceMetadata(
       jsonData.resourceinstance
     );
     this.tiles = jsonData.tiles && jsonData.tiles.map((tile) => new StaticTile(tile));
+    this.metadata = jsonData.metadata || {};
     this.__cache = jsonData.__cache;
+    this.__scopes = jsonData.__scopes;
   }
 }
 const staticTypes = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
@@ -2629,6 +2633,8 @@ class ResourceInstanceWrapper {
     this.resource = resource;
     this.valueList = new ValueList(/* @__PURE__ */ new Map(), this, []);
     this.cache = resource ? resource.__cache : void 0;
+    this.scopes = resource ? resource.__scopes : void 0;
+    this.metadata = resource ? resource.metadata : void 0;
   }
   async loadNodes(aliases) {
     for (const key of aliases) {

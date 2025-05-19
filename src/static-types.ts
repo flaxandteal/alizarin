@@ -557,8 +557,10 @@ class StaticResourceReference {
 class StaticResource {
   resourceinstance: StaticResourceMetadata;
   tiles: Array<StaticTile> | null = null;
+  metadata: {[key: string]: string};
   __cache: {[tileId: string]: {[nodeId: string]: {[key: string]: string}}} | undefined = undefined;
   __source: string | undefined = undefined;
+  __scopes: string[] | undefined = undefined;
 
   constructor(jsonData: StaticResource) {
     this.resourceinstance = new StaticResourceMetadata(
@@ -566,7 +568,9 @@ class StaticResource {
     );
     this.tiles =
       jsonData.tiles && jsonData.tiles.map((tile) => new StaticTile(tile));
+    this.metadata = jsonData.metadata || {};
     this.__cache = jsonData.__cache;
+    this.__scopes = jsonData.__scopes;
   }
 }
 

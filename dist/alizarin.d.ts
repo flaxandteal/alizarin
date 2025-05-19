@@ -800,6 +800,9 @@ declare class StaticPublication {
 declare class StaticResource {
     resourceinstance: StaticResourceMetadata;
     tiles: Array<StaticTile> | null;
+    metadata: {
+        [key: string]: string;
+    };
     __cache: {
         [tileId: string]: {
             [nodeId: string]: {
@@ -808,6 +811,7 @@ declare class StaticResource {
         };
     } | undefined;
     __source: string | undefined;
+    __scopes: string[] | undefined;
     constructor(jsonData: StaticResource);
 }
 

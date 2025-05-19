@@ -66,6 +66,8 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     this.resource = resource;
     this.valueList = new ValueList(new Map<string, any>(), this, []);
     this.cache = resource ? resource.__cache : undefined;
+    this.scopes = resource ? resource.__scopes : undefined;
+    this.metadata = resource ? resource.metadata : undefined;
   }
 
   async loadNodes(aliases: Array<string>): Promise<void> {
