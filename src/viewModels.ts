@@ -1108,6 +1108,48 @@ class NumberViewModel extends Number implements IViewModel {
   }
 }
 
+class UrlViewModel extends String implements IViewModel {
+  __parentPseudo: PseudoValue | undefined;
+
+  describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
+  describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
+
+  __forJsonCache(): null {
+    return null;
+  }
+
+  forJson(): boolean {
+    return this ? true : false;
+  }
+
+  static __create(
+    tile: StaticTile,
+    node: StaticNode,
+    value: any,
+  ): UrlViewModel | Promise<UrlViewModel | null> | null {
+    const nodeid = node.nodeid;
+    if (value instanceof Promise) {
+      return value.then((value) => UrlViewModel.__create(tile, node, value));
+    }
+    if (tile) {
+      if (value !== null) {
+        tile.data.set(nodeid, value);
+      }
+    }
+
+    const val = tile.data.get(nodeid);
+    if (!tile || val === null || val === undefined) {
+      return null;
+    }
+    const url = new UrlViewModel(val);
+    return url;
+  }
+
+  __asTileData() {
+    return this ? true : false;
+  }
+}
+
 class BooleanViewModel extends Boolean implements IViewModel {
   __parentPseudo: PseudoValue | undefined;
   __config:  StaticNodeConfigBoolean;
@@ -1669,6 +1711,9 @@ async function getViewModel<RIVM extends IRIVM<RIVM>>(
       case "number":
         vm = await NumberViewModel.__create(tile, node, data);
         break
+      case "url":
+        vm = await UrlViewModel.__create(tile, node, data);
+        break;
       case "non-localized-string":
         vm = await NonLocalizedStringViewModel.__create(tile, node, data);
         break;
@@ -1696,4 +1741,4 @@ async function getViewModel<RIVM extends IRIVM<RIVM>>(
   return vm;
 }
 
-export { ResourceInstanceCacheEntry, DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, getViewModel, DomainValueViewModel, SemanticViewModel, StringViewModel, DateViewModel, GeoJSONViewModel, ConceptValueViewModel, viewContext, NonLocalizedStringViewModel, CUSTOM_DATATYPES, BooleanViewModel, NumberViewModel };
+export { ResourceInstanceCacheEntry, DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, getViewModel, DomainValueViewModel, SemanticViewModel, StringViewModel, DateViewModel, GeoJSONViewModel, ConceptValueViewModel, viewContext, NonLocalizedStringViewModel, CUSTOM_DATATYPES, BooleanViewModel, NumberViewModel, UrlViewModel };

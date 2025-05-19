@@ -910,6 +910,16 @@ declare class StringViewModel extends String implements IViewModel {
     __asTileData(): Map<string, StringTranslatedLanguage>;
 }
 
+declare class UrlViewModel extends String implements IViewModel {
+    __parentPseudo: PseudoValue | undefined;
+    describeField: () => string | null;
+    describeFieldGroup: () => string | null;
+    __forJsonCache(): null;
+    forJson(): boolean;
+    static __create(tile: StaticTile, node: StaticNode, value: any): UrlViewModel | Promise<UrlViewModel | null> | null;
+    __asTileData(): boolean;
+}
+
 declare namespace utils {
     export {
         AttrPromise,
@@ -955,7 +965,8 @@ declare namespace viewModels {
         NonLocalizedStringViewModel,
         CUSTOM_DATATYPES,
         BooleanViewModel,
-        NumberViewModel
+        NumberViewModel,
+        UrlViewModel
     }
 }
 export { viewModels }

@@ -1782,6 +1782,40 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return this ? true : false;
     }
   }
+  class UrlViewModel extends String {
+    constructor() {
+      super(...arguments);
+      __publicField(this, "__parentPseudo");
+      __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
+      __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
+    }
+    __forJsonCache() {
+      return null;
+    }
+    forJson() {
+      return this ? true : false;
+    }
+    static __create(tile, node, value) {
+      const nodeid = node.nodeid;
+      if (value instanceof Promise) {
+        return value.then((value2) => UrlViewModel.__create(tile, node, value2));
+      }
+      if (tile) {
+        if (value !== null) {
+          tile.data.set(nodeid, value);
+        }
+      }
+      const val = tile.data.get(nodeid);
+      if (!tile || val === null || val === void 0) {
+        return null;
+      }
+      const url = new UrlViewModel(val);
+      return url;
+    }
+    __asTileData() {
+      return this ? true : false;
+    }
+  }
   class BooleanViewModel extends Boolean {
     constructor(value, config) {
       super(value);
@@ -2208,6 +2242,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         case "number":
           vm = await NumberViewModel.__create(tile, node, data);
           break;
+        case "url":
+          vm = await UrlViewModel.__create(tile, node, data);
+          break;
         case "non-localized-string":
           vm = await NonLocalizedStringViewModel.__create(tile, node, data);
           break;
@@ -2248,6 +2285,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     ResourceInstanceViewModel,
     SemanticViewModel,
     StringViewModel,
+    UrlViewModel,
     ValueList,
     getViewModel,
     viewContext
