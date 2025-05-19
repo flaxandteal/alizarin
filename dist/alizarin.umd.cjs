@@ -3537,6 +3537,7 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}
   exports2.AlizarinModel = AlizarinModel;
   exports2.GraphManager = GraphManager;
   exports2.RDM = RDM;
+  exports2.WKRM = WKRM;
   exports2.client = client;
   exports2.graphManager = graphManager;
   exports2.interfaces = interfaces;

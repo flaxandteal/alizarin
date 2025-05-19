@@ -960,7 +960,7 @@ declare namespace viewModels {
 }
 export { viewModels }
 
-declare class WKRM {
+export declare class WKRM {
     modelName: string;
     modelClassName: string;
     graphId: string;

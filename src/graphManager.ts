@@ -903,4 +903,4 @@ class GraphManager {
 const graphManager = new GraphManager(archesClient);
 viewContext.graphManager = graphManager;
 
-export { GraphManager, graphManager, ArchesClientRemote, staticStore };
+export { GraphManager, graphManager, ArchesClientRemote, staticStore, WKRM };

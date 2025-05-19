@@ -1,7 +1,7 @@
 import * as client from "./client";
 import * as interfaces from "./interfaces";
 import { RDM } from "./rdm";
-import { graphManager, staticStore, GraphManager } from "./graphManager";
+import { WKRM, graphManager, staticStore, GraphManager } from "./graphManager";
 import * as staticTypes from "./static-types";
 import * as utils from "./utils";
 import * as viewModels from "./viewModels";
@@ -20,4 +20,5 @@ export {
   RDM,
   renderers,
   interfaces,
+  WKRM,
 };

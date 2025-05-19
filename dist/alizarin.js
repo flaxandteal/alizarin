@@ -3529,6 +3529,7 @@ export {
   AlizarinModel,
   GraphManager,
   RDM,
+  WKRM,
   client,
   graphManager,
   interfaces,
