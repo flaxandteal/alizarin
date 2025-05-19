@@ -1281,7 +1281,7 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
             val = value;
           } else {
             throw Error(
-              `Set resource instances using id, not strings: ${value}`
+              `Set resource instances using id, not strings in node ${node.alias}: ${value}`
             );
           }
         } else if (value instanceof Object && value.resourceId) {
