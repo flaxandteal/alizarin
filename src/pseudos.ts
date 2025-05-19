@@ -350,7 +350,8 @@ function makePseudoCls(
   tile: StaticTile | null = null,
   wkri: any | null = null,
 ): PseudoList | PseudoValue | PseudoUnavailable {
-  const nodeObj = model.getNodeObjectsByAlias().get(key);
+  const nodeObjs = model.getNodeObjectsByAlias();
+  const nodeObj = nodeObjs.get(key);
   if (!nodeObj) {
     throw Error("Could not find node by alias");
   }
@@ -371,7 +372,7 @@ function makePseudoCls(
   }
   if (value === null || tile) {
     let nodeValue;
-    const isPermitted = model.isNodegroupPermitted(nodeObj.nodegroup_id || '', nodeObj, tile);
+    const isPermitted = model.isNodegroupPermitted(nodeObj.nodegroup_id || '', tile, nodeObjs);
     if (isPermitted) {
       const childNodes = model.getChildNodes(nodeObj.nodeid);
       nodeValue = new PseudoValue(nodeObj, tile, null, wkri, childNodes);

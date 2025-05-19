@@ -204,7 +204,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
         console.error("Tiles must be provided and cannot be lazy-loaded yet");
       } else {
         nodegroupTiles = tiles.filter(
-          (tile) => tile.nodegroup_id == nodegroupId && this.model.isNodegroupPermitted(nodegroupId, node, tile)
+          (tile) => tile.nodegroup_id == nodegroupId && this.model.isNodegroupPermitted(nodegroupId, tile)
         );
         if (nodegroupTiles.length == 0 && addIfMissing) {
           nodegroupTiles = [null];
@@ -273,8 +273,9 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
 
     allValues.set(rootNode.alias, false);
 
+    let tiles = null;
     if (!lazy && this.resource) {
-      const tiles = this.resource.tiles;
+      tiles = this.resource.tiles;
       let impliedNodegroups = new Map<string, StaticNode>();
       for (const [ng] of nodegroupObjs) {
         const [values, newImpliedNodegroups] = await this.ensureNodegroup(
@@ -324,6 +325,8 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
         }
         impliedNodegroups = newImpliedNodegroups;
       }
+    } else if (this.resource) {
+      this.model.stripTiles(this.resource);
     }
 
     this.valueList = new ValueList(
@@ -508,7 +511,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   wkrm: WKRM;
   graph: StaticGraph;
   viewModelClass: ResourceInstanceViewModelConstructor<RIVM>;
-  permittedNodegroups: Map<string | null, boolean | CheckPermission>;
+  permittedNodegroups?: Map<string | null, boolean | CheckPermission>;
 
   constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass: ResourceInstanceViewModelConstructor<RIVM>) {
     this.wkrm = wkrm;
@@ -533,7 +536,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
         if (!node) {
           throw Error(`Tile ${tile.tileid} has nodegroup ${tile.nodegroup_id} that is not on the model ${this.graph.graphid}`);
         }
-        return this.isNodegroupPermitted(tile.nodegroup_id || '', node, tile);
+        return this.isNodegroupPermitted(tile.nodegroup_id || '', tile);
       });
     }
   }
@@ -592,18 +595,22 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
       permissions.set("", true); // Have to have access to root node.
       this.setPermittedNodegroups(permissions);
     }
+    const permittedNodegroups = this.permittedNodegroups;
+    if (permittedNodegroups === undefined) {
+      throw Error("Could not set permitted nodegroups");
+    }
     // TODO allow reducing
-    return this.permittedNodegroups;
+    return permittedNodegroups;
   }
 
-  isNodegroupPermitted(nodegroupId: string, node: StaticNode, tile: StaticTile | null): boolean {
+  isNodegroupPermitted(nodegroupId: string, tile: StaticTile | null): boolean {
     let permitted: boolean | CheckPermission | undefined = this.getPermittedNodegroups().get(nodegroupId);
+    if (permitted && typeof permitted == 'function') {
+      const nodes = this.getNodeObjectsByAlias();
+      permitted = permitted(nodegroupId, tile, nodes);
+    }
     if (!permitted) {
       return false;
-    } else {
-      if (typeof permitted == 'function') {
-        permitted = permitted(node, tile);
-      }
     }
     if (permitted === true) {
       return true;

@@ -91,7 +91,7 @@ declare class BooleanViewModel extends Boolean implements IViewModel {
     __asTileData(): boolean;
 }
 
-declare type CheckPermission = ((node: StaticNode, tile: StaticTile | null) => boolean);
+declare type CheckPermission = ((nodegroupId: string, tile: StaticTile | null, node: Map<string, StaticNode>) => boolean);
 
 declare class Cleanable extends String {
     __clean: string | undefined;
@@ -261,7 +261,7 @@ declare interface IModelWrapper<T extends IRIVM<T>> {
         lazy?: boolean;
     } | undefined): Promise<Array<T>>;
     getPermittedNodegroups(): Map<string | null, boolean | CheckPermission>;
-    isNodegroupPermitted(nodegroupId: string, node: StaticNode, tile: StaticTile | null): boolean;
+    isNodegroupPermitted(nodegroupId: string, tile: StaticTile | null, nodes: Map<string, StaticNode>): boolean;
     getChildNodes(nodeId: string): Map<string, StaticNode>;
     getNodeObjectsByAlias(): Map<string, StaticNode>;
     getNodeObjects(): Map<string, StaticNode>;
@@ -329,6 +329,13 @@ declare interface IStaticNodeConfigBoolean {
     };
 }
 
+declare interface IStaticNodeConfigDomain {
+    i18n_config: {
+        [key: string]: string;
+    };
+    options: StaticDomainValue[];
+}
+
 declare interface IStringKeyedObject {
     [key: string | symbol]: any;
 }
@@ -375,6 +382,24 @@ declare class MarkdownRenderer extends Renderer {
     renderConceptValue(conceptValue: ConceptValueViewModel, _: number): Promise<any>;
     renderResourceReference(rivm: ResourceInstanceViewModel<any>, _: number): Promise<any>;
 }
+
+declare namespace nodeConfig {
+    export {
+        nodeConfigManager,
+        StaticNodeConfigDomain,
+        StaticNodeConfigBoolean
+    }
+}
+export { nodeConfig }
+
+declare class NodeConfigManager {
+    static _cache: Map<string, INodeConfig | null>;
+    cache: Map<string, INodeConfig | null>;
+    constructor(cache?: Map<string, INodeConfig | null> | undefined);
+    retrieve(node: StaticNode): INodeConfig | StaticNodeConfigBoolean | StaticNodeConfigDomain | null | undefined;
+}
+
+declare const nodeConfigManager: NodeConfigManager;
 
 declare class NonLocalizedStringViewModel extends String implements IViewModel {
     __parentPseudo: PseudoValue | undefined;
@@ -507,7 +532,7 @@ declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     wkrm: WKRM;
     graph: StaticGraph;
     viewModelClass: ResourceInstanceViewModelConstructor<RIVM>;
-    permittedNodegroups: Map<string | null, boolean | CheckPermission>;
+    permittedNodegroups?: Map<string | null, boolean | CheckPermission>;
     constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass: ResourceInstanceViewModelConstructor<RIVM>);
     all(params?: {
         limit?: number;
@@ -523,7 +548,7 @@ declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     find(id: string, lazy?: boolean): Promise<RIVM>;
     setPermittedNodegroups(permissions: Map<string | null, boolean | CheckPermission>): void;
     getPermittedNodegroups(): Map<string | null, boolean | CheckPermission>;
-    isNodegroupPermitted(nodegroupId: string, node: StaticNode, tile: StaticTile | null): boolean;
+    isNodegroupPermitted(nodegroupId: string, tile: StaticTile | null): boolean;
     makeInstance(id: string, resource: StaticResource | null): RIVM;
     edges: Map<string, string[]> | undefined;
     nodes: Map<string, StaticNode> | undefined;
@@ -777,6 +802,16 @@ declare class StaticNodeConfigBoolean implements IStaticNodeConfigBoolean, INode
         [key: string]: string;
     };
     constructor(jsonData: IStaticNodeConfigBoolean);
+}
+
+declare class StaticNodeConfigDomain implements IStaticNodeConfigDomain, INodeConfig {
+    i18n_config: {
+        [key: string]: string;
+    };
+    options: StaticDomainValue[];
+    getSelected(): StaticDomainValue | undefined;
+    valueFromId(id: string): StaticDomainValue | undefined;
+    constructor(jsonData: IStaticNodeConfigDomain);
 }
 
 declare class StaticNodegroup {

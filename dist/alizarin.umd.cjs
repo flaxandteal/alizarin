@@ -880,23 +880,29 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       if (this.cache.has(node.nodeid)) {
         return this.cache.get(node.nodeid);
       }
-      let nodeConfig = null;
+      let nodeConfig2 = null;
       switch (node.datatype) {
         case "boolean":
-          nodeConfig = new StaticNodeConfigBoolean(node.config);
+          nodeConfig2 = new StaticNodeConfigBoolean(node.config);
           break;
         case "domain-value-list":
         case "domain-value":
-          nodeConfig = new StaticNodeConfigDomain(node.config);
+          nodeConfig2 = new StaticNodeConfigDomain(node.config);
           break;
       }
-      this.cache.set(node.nodeid, nodeConfig);
-      return nodeConfig;
+      this.cache.set(node.nodeid, nodeConfig2);
+      return nodeConfig2;
     }
   };
   __publicField(_NodeConfigManager, "_cache");
   let NodeConfigManager = _NodeConfigManager;
   const nodeConfigManager = new NodeConfigManager();
+  const nodeConfig = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+    __proto__: null,
+    StaticNodeConfigBoolean,
+    StaticNodeConfigDomain,
+    nodeConfigManager
+  }, Symbol.toStringTag, { value: "Module" }));
   const DEFAULT_LANGUAGE = "en";
   class ViewContext {
     constructor() {
@@ -2569,7 +2575,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   }
   function makePseudoCls(model, key, single, tile = null, wkri = null) {
-    const nodeObj = model.getNodeObjectsByAlias().get(key);
+    const nodeObjs = model.getNodeObjectsByAlias();
+    const nodeObj = nodeObjs.get(key);
     if (!nodeObj) {
       throw Error("Could not find node by alias");
     }
@@ -2582,7 +2589,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     if (value === null || tile) {
       let nodeValue;
-      const isPermitted = model.isNodegroupPermitted(nodeObj.nodegroup_id || "", nodeObj, tile);
+      const isPermitted = model.isNodegroupPermitted(nodeObj.nodegroup_id || "", tile, nodeObjs);
       if (isPermitted) {
         const childNodes = model.getChildNodes(nodeObj.nodeid);
         nodeValue = new PseudoValue(nodeObj, tile, null, wkri, childNodes);
@@ -2750,7 +2757,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           console.error("Tiles must be provided and cannot be lazy-loaded yet");
         } else {
           nodegroupTiles = tiles.filter(
-            (tile) => tile.nodegroup_id == nodegroupId && this.model.isNodegroupPermitted(nodegroupId, node, tile)
+            (tile) => tile.nodegroup_id == nodegroupId && this.model.isNodegroupPermitted(nodegroupId, tile)
           );
           if (nodegroupTiles.length == 0 && addIfMissing) {
             nodegroupTiles = [null];
@@ -2812,8 +2819,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         throw Error("Cannot populate a model with no proper root node");
       }
       allValues.set(rootNode.alias, false);
+      let tiles = null;
       if (!lazy && this.resource) {
-        const tiles = this.resource.tiles;
+        tiles = this.resource.tiles;
         let impliedNodegroups = /* @__PURE__ */ new Map();
         for (const [ng] of nodegroupObjs) {
           const [values, newImpliedNodegroups] = await this.ensureNodegroup(
@@ -2864,6 +2872,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           }
           impliedNodegroups = newImpliedNodegroups;
         }
+      } else if (this.resource) {
+        this.model.stripTiles(this.resource);
       }
       this.valueList = new ValueList(
         allValues,
@@ -3041,7 +3051,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           if (!node) {
             throw Error(`Tile ${tile.tileid} has nodegroup ${tile.nodegroup_id} that is not on the model ${this.graph.graphid}`);
           }
-          return this.isNodegroupPermitted(tile.nodegroup_id || "", node, tile);
+          return this.isNodegroupPermitted(tile.nodegroup_id || "", tile);
         });
       }
     }
@@ -3092,16 +3102,20 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         permissions.set("", true);
         this.setPermittedNodegroups(permissions);
       }
-      return this.permittedNodegroups;
+      const permittedNodegroups = this.permittedNodegroups;
+      if (permittedNodegroups === void 0) {
+        throw Error("Could not set permitted nodegroups");
+      }
+      return permittedNodegroups;
     }
-    isNodegroupPermitted(nodegroupId, node, tile) {
+    isNodegroupPermitted(nodegroupId, tile) {
       let permitted = this.getPermittedNodegroups().get(nodegroupId);
+      if (permitted && typeof permitted == "function") {
+        const nodes = this.getNodeObjectsByAlias();
+        permitted = permitted(nodegroupId, tile, nodes);
+      }
       if (!permitted) {
         return false;
-      } else {
-        if (typeof permitted == "function") {
-          permitted = permitted(node, tile);
-        }
       }
       if (permitted === true) {
         return true;
@@ -3585,6 +3599,7 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}
   exports2.client = client;
   exports2.graphManager = graphManager;
   exports2.interfaces = interfaces;
+  exports2.nodeConfig = nodeConfig;
   exports2.renderers = renderers;
   exports2.staticStore = staticStore;
   exports2.staticTypes = staticTypes;

@@ -6,6 +6,7 @@ import * as staticTypes from "./static-types";
 import * as utils from "./utils";
 import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
+import * as nodeConfig from "./nodeConfig";
 
 const AlizarinModel = viewModels.ResourceInstanceViewModel;
 export {
@@ -21,4 +22,5 @@ export {
   renderers,
   interfaces,
   WKRM,
+  nodeConfig,
 };
