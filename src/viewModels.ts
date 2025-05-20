@@ -96,6 +96,8 @@ class ValueList<T extends IRIVM<T>> {
     let result: any = await this.values.get(key);
 
     if (result === false) {
+      // FIXME: the evidence is that this is not successfully functioning as
+      // a resource-wide lock...
       await this.writeLock;
       if (this.wrapper.resource) {
         // Will KeyError if we do not have it.
@@ -127,7 +129,14 @@ class ValueList<T extends IRIVM<T>> {
                   // value to resolve.
                   original = value;
                 }
-                this.values.set(k, value);
+                // In theory, this should never happen when this.values[k] is
+                // not false, as the resource-wide write lock means that no other nodegroup
+                // can write. This _is_ happening however. In theory, once set, the
+                // value will be a list, so passed by reference, and so should not
+                // undo and changes that happened concurrently.
+                if (value !== false) {
+                  this.values.set(k, value);
+                }
               }
               resolve(original);
               this.promises.delete(node.nodegroup_id);

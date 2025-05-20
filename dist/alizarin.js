@@ -700,13 +700,11 @@ class ArchesClientLocal extends ArchesClient {
   async getGraphs() {
     const fs = await this.fs;
     const response = await fs.promises.readFile(this.allGraphFile(), "utf8");
-    console.log(response, this.allGraphFile());
     return new GraphResult(await JSON.parse(response));
   }
   async getGraph(graphId) {
     const fs = await this.fs;
     const graphFile = this.graphIdToGraphFile(graphId);
-    console.log(graphFile);
     if (!graphFile) {
       return null;
     }
@@ -976,7 +974,9 @@ class ValueList {
               if (key === k) {
                 original = value;
               }
-              this.values.set(k, value);
+              if (value !== false) {
+                this.values.set(k, value);
+              }
             }
             resolve(original);
             this.promises.delete(node2.nodegroup_id);
@@ -3046,6 +3046,26 @@ class ResourceModelWrapper {
     this.graph = graph;
     this.viewModelClass = viewModelClass;
   }
+  getCollections(accessible) {
+    const accessibleOnly = accessible || false;
+    const nodes = [...this.graph.nodes.values()];
+    return [...nodes.reduce(
+      (acc, node) => {
+        var _a2;
+        if (["concept", "concept-list"].includes(node.datatype) && ((_a2 = node.config) == null ? void 0 : _a2.rdmCollection)) {
+          if (accessibleOnly) {
+            if (this.isNodegroupPermitted(node.nodegroup_id || "", null)) {
+              acc.add(node.config.rdmCollection);
+            }
+          } else {
+            acc.add(node.config.rdmCollection);
+          }
+        }
+        return acc;
+      },
+      /* @__PURE__ */ new Set()
+    )];
+  }
   pruneGraph(keepFunctions) {
     const allNodegroups = this.getNodegroupObjects();
     const root = this.graph.root.nodeid;
@@ -3087,12 +3107,8 @@ class ResourceModelWrapper {
       throw Error("Hit edge traversal limit when pruning, is the graph well-formed without cycles?");
     }
     const allowedNodes = new Set([...this.getNodeObjects().values()].filter((node) => {
-      if (node.alias === "heritage_asset_references") {
-        console.log(allowedNodegroups.get(node.nodegroup_id));
-      }
       return node.nodegroup_id && allowedNodegroups.get(node.nodegroup_id) || node.nodeid === root;
     }).map((node) => node.nodeid));
-    console.log(allowedNodes, "an");
     this.graph.cards = (this.graph.cards || []).filter((card) => allowedNodegroups.get(card.nodegroup_id));
     this.graph.cards_x_nodes_x_widgets = (this.graph.cards_x_nodes_x_widgets || []).filter((card) => allowedNodes.has(card.node_id));
     this.graph.edges = (this.graph.edges || []).filter((edge) => (edge.domainnode_id === root || allowedNodes.has(edge.domainnode_id)) && allowedNodes.has(edge.rangenode_id));
@@ -3175,7 +3191,6 @@ class ResourceModelWrapper {
     const nodegroups = this.getNodegroupObjects();
     const nodes = this.getNodeObjectsByAlias();
     const nodesById = this.getNodeObjects();
-    console.log(nodes);
     this.permittedNodegroups = new Map([...permissions].map(([key, value]) => {
       const k = key || "";
       if (nodegroups.has(k) || k === "") {

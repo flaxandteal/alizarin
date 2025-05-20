@@ -525,6 +525,25 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     this.viewModelClass = viewModelClass;
   }
 
+  getCollections(accessible?: boolean): string[] {
+    const accessibleOnly = accessible || false;
+    const nodes = [...this.graph.nodes.values()];
+    return [...nodes.reduce(
+      (acc: Set<string>, node: StaticNode): Set<string> => {
+        if (['concept', 'concept-list'].includes(node.datatype) && node.config?.rdmCollection) {
+          if (accessibleOnly) {
+            if (this.isNodegroupPermitted(node.nodegroup_id || '', null)) {
+              acc.add(node.config.rdmCollection);
+            }
+          } else {
+            acc.add(node.config.rdmCollection);
+          }
+        }
+        return acc;
+      }, new Set()
+    )];
+  }
+
   pruneGraph(keepFunctions?: string[]): undefined {
     const allNodegroups = this.getNodegroupObjects();
     const root = this.graph.root.nodeid;
@@ -572,13 +591,8 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     }
 
     const allowedNodes = new Set([...this.getNodeObjects().values()].filter((node: StaticNode) => {
-      // We can't have a graph without a root node.
-      if (node.alias === "heritage_asset_references") {
-        console.log(allowedNodegroups.get(node.nodegroup_id))
-      }
       return (node.nodegroup_id && allowedNodegroups.get(node.nodegroup_id)) || node.nodeid === root;
     }).map((node: StaticNode) => node.nodeid));
-    console.log(allowedNodes, 'an');
 
     this.graph.cards = (this.graph.cards || []).filter((card: StaticCard) => allowedNodegroups.get(card.nodegroup_id));
     this.graph.cards_x_nodes_x_widgets = (this.graph.cards_x_nodes_x_widgets || []).filter((card: StaticCardsXNodesXWidgets) => allowedNodes.has(card.node_id));
@@ -672,7 +686,6 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     const nodegroups = this.getNodegroupObjects();
     const nodes = this.getNodeObjectsByAlias();
     const nodesById = this.getNodeObjects();
-    console.log(nodes);
     this.permittedNodegroups = new Map([...permissions].map(([key, value]): [key: string | null, value: boolean | CheckPermission] => {
       const k = key || '';
       if (nodegroups.has(k) || k === '') {

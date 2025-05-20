@@ -189,14 +189,12 @@ class ArchesClientLocal extends ArchesClient {
   async getGraphs(): Promise<GraphResult> {
     const fs = await this.fs;
     const response = await fs.promises.readFile(this.allGraphFile(), "utf8");
-    console.log(response, this.allGraphFile())
     return new GraphResult(await JSON.parse(response));
   }
 
   async getGraph(graphId: string): Promise<StaticGraph | null> {
     const fs = await this.fs;
     const graphFile = this.graphIdToGraphFile(graphId);
-    console.log(graphFile)
     if (!graphFile) {
       return null;
     }

@@ -535,6 +535,7 @@ export declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>;
     permittedNodegroups?: Map<string | null, boolean | CheckPermission>;
     constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>);
+    getCollections(accessible?: boolean): string[];
     pruneGraph(keepFunctions?: string[]): undefined;
     exportGraph(): StaticGraph;
     all(params?: {
