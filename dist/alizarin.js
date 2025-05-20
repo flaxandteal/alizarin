@@ -305,7 +305,8 @@ class StaticGraph {
     __publicField(this, "ontology_id");
     __publicField(this, "publication", null);
     __publicField(this, "relatable_resource_model_ids");
-    __publicField(this, "resource_2_resource_constringaints", null);
+    __publicField(this, "resource_2_resource_constraints", null);
+    __publicField(this, "root");
     __publicField(this, "slug");
     __publicField(this, "subtitle");
     __publicField(this, "template_id");
@@ -337,7 +338,8 @@ class StaticGraph {
     this.ontology_id = jsonData.ontology_id;
     this.publication = jsonData.publication && new StaticPublication(jsonData.publication);
     this.relatable_resource_model_ids = jsonData.relatable_resource_model_ids;
-    this.resource_2_resource_constringaints = jsonData.resource_2_resource_constringaints;
+    this.resource_2_resource_constraints = jsonData.resource_2_resource_constraints;
+    this.root = jsonData.root;
     this.slug = jsonData.slug;
     this.subtitle = new StaticTranslatableString(jsonData.subtitle);
     this.template_id = jsonData.template_id;
@@ -552,10 +554,13 @@ class StaticResource {
 }
 const staticTypes = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
+  StaticCard,
+  StaticCardsXNodesXWidgets,
   StaticCollection,
   StaticConcept,
   StaticDomainValue,
   StaticEdge,
+  StaticFunctionsXGraphs,
   StaticGraph,
   StaticGraphMeta,
   StaticNode,
@@ -1187,6 +1192,12 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
       return `[Resource:${this.id}]`;
     }
     return `[${this.__.wkrm.modelClassName}:${this.id ?? "-"}]`;
+  }
+  async __has(key) {
+    if (!this._) {
+      return void 0;
+    }
+    return (await this._.getRootViewModel() || /* @__PURE__ */ new Map()).__has(key);
   }
   async __asTileData() {
     return {
@@ -2039,6 +2050,9 @@ const _SemanticViewModel = class _SemanticViewModel {
     }
     throw Error(`Setting semantic keys (${key} = ${value}) is not implemented yet in Javascript`);
   }
+  __has(key) {
+    return this.__childNodes.has(key);
+  }
   async __getChildTypes() {
     const promises = [...this.__childNodes.keys()].map(async (key) => [
       key,
@@ -2600,6 +2614,7 @@ function makePseudoCls(model, key, single, tile = null, wkri = null) {
   }
   return value;
 }
+const MAX_GRAPH_DEPTH = 100;
 class WKRM {
   constructor(meta) {
     __publicField(this, "modelName");
@@ -3031,6 +3046,96 @@ class ResourceModelWrapper {
     this.graph = graph;
     this.viewModelClass = viewModelClass;
   }
+  pruneGraph(keepFunctions) {
+    const allNodegroups = this.getNodegroupObjects();
+    const root = this.graph.root.nodeid;
+    const allowedNodegroups = new Map([...allNodegroups.values()].filter((nodegroup) => {
+      return this.isNodegroupPermitted(nodegroup.nodegroupid || "", null);
+    }).map((nodegroup) => [nodegroup.nodegroupid, nodegroup.nodegroupid === null || nodegroup.nodegroupid === "" || nodegroup.nodegroupid === root]));
+    const backedges = /* @__PURE__ */ new Map();
+    for (const [d, rs] of this.getEdges()) {
+      for (const r of rs) {
+        if (backedges.has(r)) {
+          throw Error(`Graph is malformed, node ${r} has multiple parents, ${backedges.get(r)} and ${d} at least`);
+        }
+        backedges.set(r, d);
+      }
+    }
+    let loops = 0;
+    allowedNodegroups.set(root, true);
+    while (loops < MAX_GRAPH_DEPTH) {
+      const unrooted = [...allowedNodegroups.entries()].filter(([_, rooted]) => !rooted);
+      if (unrooted.length === 0) {
+        break;
+      }
+      for (const [ng] of unrooted) {
+        if (ng === root) {
+          continue;
+        }
+        const next = backedges.get(ng);
+        if (!next) {
+          throw Error(`Graph does not have a parent for ${ng}`);
+        }
+        allowedNodegroups.set(ng, true);
+        if (!allowedNodegroups.has(next)) {
+          allowedNodegroups.set(next, false);
+        }
+      }
+      loops += 1;
+    }
+    if (loops >= MAX_GRAPH_DEPTH) {
+      throw Error("Hit edge traversal limit when pruning, is the graph well-formed without cycles?");
+    }
+    const allowedNodes = new Set([...this.getNodeObjects().values()].filter((node) => {
+      if (node.alias === "heritage_asset_references") {
+        console.log(allowedNodegroups.get(node.nodegroup_id));
+      }
+      return node.nodegroup_id && allowedNodegroups.get(node.nodegroup_id) || node.nodeid === root;
+    }).map((node) => node.nodeid));
+    console.log(allowedNodes, "an");
+    this.graph.cards = (this.graph.cards || []).filter((card) => allowedNodegroups.get(card.nodegroup_id));
+    this.graph.cards_x_nodes_x_widgets = (this.graph.cards_x_nodes_x_widgets || []).filter((card) => allowedNodes.has(card.node_id));
+    this.graph.edges = (this.graph.edges || []).filter((edge) => (edge.domainnode_id === root || allowedNodes.has(edge.domainnode_id)) && allowedNodes.has(edge.rangenode_id));
+    this.graph.nodegroups = (this.graph.nodegroups || []).filter((ng) => allowedNodegroups.has(ng.nodegroupid));
+    this.graph.nodes = (this.graph.nodes || []).filter((node) => allowedNodes.has(node.nodeid));
+    if (Array.isArray(keepFunctions) && this.graph.functions_x_graphs) {
+      this.graph.functions_x_graphs = this.graph.functions_x_graphs.filter((fxg) => keepFunctions.includes(fxg.function_id));
+    } else {
+      this.graph.functions_x_graphs = [];
+    }
+  }
+  exportGraph() {
+    const graph = this.graph;
+    return new StaticGraph({
+      author: graph.author,
+      cards: graph.cards,
+      cards_x_nodes_x_widgets: graph.cards_x_nodes_x_widgets,
+      color: graph.color,
+      config: graph.config,
+      deploymentdate: graph.deploymentdate,
+      deploymentfile: graph.deploymentfile,
+      description: graph.description,
+      edges: graph.edges,
+      functions_x_graphs: graph.functions_x_graphs,
+      graphid: graph.graphid,
+      iconclass: graph.iconclass,
+      is_editable: graph.is_editable,
+      isresource: graph.isresource,
+      jsonldcontext: graph.jsonldcontext,
+      name: graph.name,
+      nodegroups: graph.nodegroups,
+      nodes: graph.nodes,
+      ontology_id: graph.ontology_id,
+      publication: graph.publication,
+      relatable_resource_model_ids: graph.relatable_resource_model_ids,
+      resource_2_resource_constraints: graph.resource_2_resource_constraints,
+      root: graph.root,
+      slug: graph.slug,
+      subtitle: graph.subtitle,
+      template_id: graph.template_id,
+      version: graph.version
+    });
+  }
   async all(params = void 0) {
     const paramObj = params || { limit: void 0, lazy: void 0 };
     const promises = [];
@@ -3070,6 +3175,7 @@ class ResourceModelWrapper {
     const nodegroups = this.getNodegroupObjects();
     const nodes = this.getNodeObjectsByAlias();
     const nodesById = this.getNodeObjects();
+    console.log(nodes);
     this.permittedNodegroups = new Map([...permissions].map(([key, value]) => {
       const k = key || "";
       if (nodegroups.has(k) || k === "") {
@@ -3119,6 +3225,9 @@ class ResourceModelWrapper {
     throw Error(`Ambiguous permission state: ${permitted} for nodegroup ${nodegroupId}`);
   }
   makeInstance(id, resource) {
+    if (!this.viewModelClass) {
+      throw Error(`Cannot instantiate without a viewModelClass in ${this.wkrm.modelClassName}`);
+    }
     const instance = new this.viewModelClass(
       id,
       this.viewModelClass.prototype.__,
@@ -3148,7 +3257,7 @@ class ResourceModelWrapper {
     this.edges = /* @__PURE__ */ new Map();
     this.nodes = /* @__PURE__ */ new Map();
     this.nodegroups = /* @__PURE__ */ new Map();
-    const graph = graphManager.getGraph(this.wkrm.graphId);
+    const graph = this.graph ?? graphManager.getGraph(this.wkrm.graphId);
     if (!graph) {
       throw Error(`Could not find graph ${this.wkrm.graphId} for resource`);
     }
@@ -3587,6 +3696,7 @@ export {
   AlizarinModel,
   GraphManager,
   RDM,
+  ResourceModelWrapper,
   WKRM,
   client,
   graphManager,

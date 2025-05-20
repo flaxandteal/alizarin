@@ -1,6 +1,10 @@
 import { GraphResult, archesClient, ArchesClient, ArchesClientRemote } from "./client.ts";
 import { staticStore } from "./staticStore.ts"
 import {
+  StaticCard,
+  StaticEdge,
+  StaticCardsXNodesXWidgets,
+  StaticFunctionsXGraphs,
   StaticTile,
   StaticGraph,
   StaticNode,
@@ -12,6 +16,8 @@ import { makePseudoCls, PseudoList } from "./pseudos.ts";
 import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext, SemanticViewModel } from "./viewModels.ts";
 import { CheckPermission, GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
 import { AttrPromise } from "./utils";
+
+const MAX_GRAPH_DEPTH = 100;
 
 class WKRM {
   modelName: string;
@@ -510,13 +516,115 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
 class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   wkrm: WKRM;
   graph: StaticGraph;
-  viewModelClass: ResourceInstanceViewModelConstructor<RIVM>;
+  viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>;
   permittedNodegroups?: Map<string | null, boolean | CheckPermission>;
 
-  constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass: ResourceInstanceViewModelConstructor<RIVM>) {
+  constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>) {
     this.wkrm = wkrm;
     this.graph = graph;
     this.viewModelClass = viewModelClass;
+  }
+
+  pruneGraph(keepFunctions?: string[]): undefined {
+    const allNodegroups = this.getNodegroupObjects();
+    const root = this.graph.root.nodeid;
+    // Strictly, this ultimately also contains nodes, but not all allowed nodes - the key point is that
+    // it has only and all nodegroups that we will keep.
+    const allowedNodegroups = new Map([...allNodegroups.values()].filter((nodegroup: StaticNodegroup) => {
+      return this.isNodegroupPermitted(nodegroup.nodegroupid || '', null);
+    }).map((nodegroup: StaticNodegroup) => [nodegroup.nodegroupid, nodegroup.nodegroupid === null || nodegroup.nodegroupid === '' || nodegroup.nodegroupid === root]));
+    const backedges: Map<string, string> = new Map();
+    for (const [d, rs] of this.getEdges()) {
+      for (const r of rs) {
+        if (backedges.has(r)) {
+          throw Error(`Graph is malformed, node ${r} has multiple parents, ${backedges.get(r)} and ${d} at least`);
+        }
+        backedges.set(r, d);
+      }
+    }
+
+    let loops = 0;
+    // This is not a fast approach, but it's simple enough. Optimize if needed.
+    allowedNodegroups.set(root, true);
+    while (loops < MAX_GRAPH_DEPTH) {
+      const unrooted = [...allowedNodegroups.entries()].filter(([_, rooted]: [string, boolean]) => !rooted);
+      if (unrooted.length === 0) {
+        break;
+      }
+      for (const [ng] of unrooted) {
+        if (ng === root) {
+          continue;
+        }
+        const next = backedges.get(ng);
+        if (!next) {
+          throw Error(`Graph does not have a parent for ${ng}`);
+        }
+        allowedNodegroups.set(ng, true);
+        if (!allowedNodegroups.has(next)) {
+          allowedNodegroups.set(next, false);
+        }
+      }
+      loops += 1;
+    }
+
+    if (loops >= MAX_GRAPH_DEPTH) {
+      throw Error("Hit edge traversal limit when pruning, is the graph well-formed without cycles?")
+    }
+
+    const allowedNodes = new Set([...this.getNodeObjects().values()].filter((node: StaticNode) => {
+      // We can't have a graph without a root node.
+      if (node.alias === "heritage_asset_references") {
+        console.log(allowedNodegroups.get(node.nodegroup_id))
+      }
+      return (node.nodegroup_id && allowedNodegroups.get(node.nodegroup_id)) || node.nodeid === root;
+    }).map((node: StaticNode) => node.nodeid));
+    console.log(allowedNodes, 'an');
+
+    this.graph.cards = (this.graph.cards || []).filter((card: StaticCard) => allowedNodegroups.get(card.nodegroup_id));
+    this.graph.cards_x_nodes_x_widgets = (this.graph.cards_x_nodes_x_widgets || []).filter((card: StaticCardsXNodesXWidgets) => allowedNodes.has(card.node_id));
+    this.graph.edges = (this.graph.edges || []).filter((edge: StaticEdge) => (edge.domainnode_id === root || allowedNodes.has(edge.domainnode_id)) && allowedNodes.has(edge.rangenode_id));
+    this.graph.nodegroups = (this.graph.nodegroups || []).filter((ng: StaticNodegroup) => allowedNodegroups.has(ng.nodegroupid));
+    this.graph.nodes = (this.graph.nodes || []).filter((node: StaticNode) => allowedNodes.has(node.nodeid));
+
+    // At this point, every originally-allowed nodegroup has an allowed parent, up to the root.
+    if (Array.isArray(keepFunctions) && this.graph.functions_x_graphs) {
+      this.graph.functions_x_graphs = this.graph.functions_x_graphs.filter((fxg: StaticFunctionsXGraphs) => keepFunctions.includes(fxg.function_id));
+    } else {
+      this.graph.functions_x_graphs = [];
+    }
+  }
+
+  exportGraph(): StaticGraph {
+    const graph = this.graph;
+    return new StaticGraph({
+      author: graph.author,
+      cards: graph.cards,
+      cards_x_nodes_x_widgets: graph.cards_x_nodes_x_widgets,
+      color: graph.color,
+      config: graph.config,
+      deploymentdate: graph.deploymentdate,
+      deploymentfile: graph.deploymentfile,
+      description: graph.description,
+      edges: graph.edges,
+      functions_x_graphs: graph.functions_x_graphs,
+      graphid: graph.graphid,
+      iconclass: graph.iconclass,
+      is_editable: graph.is_editable,
+      isresource: graph.isresource,
+      jsonldcontext: graph.jsonldcontext,
+      name: graph.name,
+      nodegroups: graph.nodegroups,
+      nodes: graph.nodes,
+      ontology_id: graph.ontology_id,
+      publication: graph.publication,
+      relatable_resource_model_ids: graph.relatable_resource_model_ids,
+      resource_2_resource_constraints: graph.resource_2_resource_constraints,
+      root: graph.root,
+      slug: graph.slug,
+      subtitle: graph.subtitle,
+      template_id: graph.template_id,
+      version: graph.version,
+    });
   }
 
   async all(params: { limit?: number; lazy?: boolean } | undefined = undefined): Promise<Array<RIVM>> {
@@ -564,6 +672,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     const nodegroups = this.getNodegroupObjects();
     const nodes = this.getNodeObjectsByAlias();
     const nodesById = this.getNodeObjects();
+    console.log(nodes);
     this.permittedNodegroups = new Map([...permissions].map(([key, value]): [key: string | null, value: boolean | CheckPermission] => {
       const k = key || '';
       if (nodegroups.has(k) || k === '') {
@@ -619,6 +728,9 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   }
 
   makeInstance(id: string, resource: StaticResource | null): RIVM {
+    if (!this.viewModelClass) {
+      throw Error(`Cannot instantiate without a viewModelClass in ${this.wkrm.modelClassName}`);
+    }
     // TODO: This line needs fixed.
     const instance: RIVM = new this.viewModelClass(
       id,
@@ -659,7 +771,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     this.nodes = new Map<string, StaticNode>();
     this.nodegroups = new Map<string, StaticNodegroup>();
 
-    const graph = graphManager.getGraph(this.wkrm.graphId);
+    const graph = this.graph ?? graphManager.getGraph(this.wkrm.graphId);
     if (!graph) {
       throw Error(`Could not find graph ${this.wkrm.graphId} for resource`);
     }
@@ -912,4 +1024,4 @@ class GraphManager {
 const graphManager = new GraphManager(archesClient);
 viewContext.graphManager = graphManager;
 
-export { GraphManager, graphManager, ArchesClientRemote, staticStore, WKRM };
+export { GraphManager, graphManager, ArchesClientRemote, staticStore, WKRM, ResourceModelWrapper };

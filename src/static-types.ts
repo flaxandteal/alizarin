@@ -280,7 +280,8 @@ class StaticGraph {
   ontology_id: string | null;
   publication: StaticPublication | null = null;
   relatable_resource_model_ids: Array<string>;
-  resource_2_resource_constringaints: Array<any> | null = null;
+  resource_2_resource_constraints: Array<any> | null = null;
+  root: StaticNode;
   slug: string | null;
   subtitle: StaticTranslatableString;
   template_id: string;
@@ -321,8 +322,9 @@ class StaticGraph {
     this.publication =
       jsonData.publication && new StaticPublication(jsonData.publication);
     this.relatable_resource_model_ids = jsonData.relatable_resource_model_ids;
-    this.resource_2_resource_constringaints =
-      jsonData.resource_2_resource_constringaints;
+    this.resource_2_resource_constraints =
+      jsonData.resource_2_resource_constraints;
+    this.root = jsonData.root;
     this.slug = jsonData.slug;
     this.subtitle = new StaticTranslatableString(jsonData.subtitle);
     this.template_id = jsonData.template_id;
@@ -583,9 +585,12 @@ export {
   StaticNode,
   StaticNodegroup,
   StaticEdge,
+  StaticCard,
+  StaticCardsXNodesXWidgets,
   StaticCollection,
   StaticConcept,
   StaticDomainValue,
   StaticResourceReference,
   StaticGraphMeta,
+  StaticFunctionsXGraphs
 };

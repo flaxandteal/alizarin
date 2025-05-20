@@ -324,6 +324,15 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
     return `[${this.__.wkrm.modelClassName}:${this.id ?? "-"}]`;
   }
 
+  async __has(key: string): Promise<boolean | undefined> {
+    // There is a catch here, that because we lazy-load, we do not
+    // know, hence three possible return values.
+    if (!this._) {
+      return undefined;
+    }
+    return (await this._.getRootViewModel() || new Map()).__has(key);
+  }
+
   async __asTileData(): Promise<IStringKeyedObject> {
     return {
       resourceId: this.id
@@ -1418,6 +1427,10 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     throw Error(`Setting semantic keys (${key} = ${value}) is not implemented yet in Javascript`);
     // const child = await this.__getChildValue(key, true);
     // child.value = value;
+  }
+
+  __has(key: string) {
+    return this.__childNodes.has(key);
   }
 
   async __getChildTypes() {

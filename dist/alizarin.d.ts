@@ -518,6 +518,7 @@ declare class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements ISt
     [Symbol.toPrimitive]: undefined;
     gm: IGraphManager | undefined;
     toString(): string;
+    __has(key: string): Promise<boolean | undefined>;
     __asTileData(): Promise<IStringKeyedObject>;
     __forJsonCache(getMeta: GetMeta): Promise<ResourceInstanceCacheEntry>;
     forJson(cascade?: boolean): Promise<StaticResourceReference>;
@@ -528,12 +529,14 @@ declare class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements ISt
 
 declare type ResourceInstanceViewModelConstructor<T extends IRIVM<T>> = new (id: string, modelWrapper: IModelWrapper<T> | null, instanceWrapperFactory: ((rivm: T) => IInstanceWrapper<T>) | null, cacheEntry: object | null) => T;
 
-declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
+export declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     wkrm: WKRM;
     graph: StaticGraph;
-    viewModelClass: ResourceInstanceViewModelConstructor<RIVM>;
+    viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>;
     permittedNodegroups?: Map<string | null, boolean | CheckPermission>;
-    constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass: ResourceInstanceViewModelConstructor<RIVM>);
+    constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>);
+    pruneGraph(keepFunctions?: string[]): undefined;
+    exportGraph(): StaticGraph;
     all(params?: {
         limit?: number;
         lazy?: boolean;
@@ -582,6 +585,7 @@ declare class SemanticViewModel implements IStringKeyedObject, IViewModel {
     __update(map: Map<string, any>): Promise<void[]>;
     __get(key: string): Promise<IViewModel | IViewModel[] | null>;
     __set(key: string, value: any): Promise<void>;
+    __has(key: string): boolean;
     __getChildTypes(): Promise<Map<string, any>>;
     __getChildren(direct?: null | boolean): Promise<any[]>;
     __getChildValue(key: string, setDefault?: boolean): Promise<IPseudo>;
@@ -723,7 +727,8 @@ declare class StaticGraph {
     ontology_id: string | null;
     publication: StaticPublication | null;
     relatable_resource_model_ids: Array<string>;
-    resource_2_resource_constringaints: Array<any> | null;
+    resource_2_resource_constraints: Array<any> | null;
+    root: StaticNode;
     slug: string | null;
     subtitle: StaticTranslatableString;
     template_id: string;
@@ -914,11 +919,14 @@ declare namespace staticTypes {
         StaticNode,
         StaticNodegroup,
         StaticEdge,
+        StaticCard,
+        StaticCardsXNodesXWidgets,
         StaticCollection,
         StaticConcept,
         StaticDomainValue,
         StaticResourceReference,
-        StaticGraphMeta
+        StaticGraphMeta,
+        StaticFunctionsXGraphs
     }
 }
 export { staticTypes }
