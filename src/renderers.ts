@@ -1,6 +1,6 @@
 import { staticStore } from "./staticStore.ts"
 import { PseudoList } from "./pseudos.ts"
-import { DateViewModel, ResourceInstanceViewModel, DomainValueViewModel, ConceptValueViewModel, NonLocalizedStringViewModel, StringViewModel, SemanticViewModel, GeoJSONViewModel, BooleanViewModel, NumberViewModel } from './viewModels';
+import { UrlViewModel, DateViewModel, ResourceInstanceViewModel, DomainValueViewModel, ConceptValueViewModel, NonLocalizedStringViewModel, StringViewModel, SemanticViewModel, GeoJSONViewModel, BooleanViewModel, NumberViewModel } from './viewModels';
 
 class Cleanable extends String {
   __clean: string | undefined
@@ -21,10 +21,11 @@ abstract class BaseRenderer {
   abstract renderResourceReference(value: ResourceInstanceViewModel<any>, _depth: number): Promise<any>;
   abstract renderSemantic(value: SemanticViewModel, depth: number): Promise<any>;
   abstract renderBlock(block: {[key: string]: string} | {[key: string]: string}[], depth: number): any;
-  abstract renderArray(value: any, depth: number): Promise<any>;
+  abstract renderArray(value: any[], depth: number): Promise<any>;
   abstract renderString(value: String, _depth: number): Promise<any>;
-  abstract renderBoolean(value: Boolean, _depth: number): Promise<any>;
-  abstract renderNumber(value: Number, _depth: number): Promise<any>;
+  abstract renderBoolean(value: BooleanViewModel, _depth: number): Promise<any>;
+  abstract renderNumber(value: NumberViewModel, _depth: number): Promise<any>;
+  abstract renderUrl(value: UrlViewModel, _depth: number): Promise<any>;
 
   async renderValue(value: any, depth: number): Promise<any> {
     let newValue;
@@ -43,7 +44,7 @@ abstract class BaseRenderer {
       newValue = this.renderSemantic(value, depth);
     } else if (value instanceof Array) {
       newValue = this.renderArray(value, depth);
-    } else if (value instanceof StringViewModel || value instanceof NonLocalizedStringViewModel) {
+    } else if (value instanceof StringViewModel || value instanceof NonLocalizedStringViewModel || typeof value === 'string') {
       newValue = this.renderString(value, depth);
     } else if (value instanceof BooleanViewModel) {
       newValue = this.renderBoolean(value, depth);
@@ -51,6 +52,8 @@ abstract class BaseRenderer {
       newValue = this.renderNumber(value, depth);
     } else if (value instanceof GeoJSONViewModel) {
       newValue = this.renderBlock(await value.forJson(), depth);
+    } else if (value instanceof UrlViewModel) {
+      newValue = this.renderUrl(await value, depth);
     } else if (value instanceof Object) {
       newValue = this.renderBlock(value, depth);
     } else {
@@ -93,6 +96,10 @@ class Renderer extends BaseRenderer {
     return this.renderBlock(await value.toObject(), depth);
   }
 
+  async renderUrl(value: UrlViewModel, _depth: number): Promise<any> {
+    return value;
+  }
+
   renderBlock(block: {[key: string]: string} | {[key: string]: string}[], depth: number): any {
     const renderedBlock: {[key: string]: any} = {};
     const promises: Promise<void>[] = [];
@@ -132,6 +139,9 @@ class MarkdownRenderer extends Renderer {
     this.nodeToUrl = callbacks.nodeToUrl;
   }
 
+  async renderUrl(value: UrlViewModel, _depth: number): Promise<any> {
+    return `[${value}](${value})`;
+  }
 
   override async renderDomainValue(domainValue: DomainValueViewModel, _: number): Promise<any> {
     const value = await domainValue.getValue();
