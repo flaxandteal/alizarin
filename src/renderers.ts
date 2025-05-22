@@ -244,8 +244,9 @@ class FlatMarkdownRenderer extends MarkdownRenderer {
 
   async renderString(value: String, _depth: number): Promise<any> {
     if (value.indexOf('\n') != -1) {
-      return '\n    ' + value.split('\n').join('\n    ');
+      value = '\n    ' + value.split('\n').join('\n    ');
     }
+    return value;
   }
 }
 

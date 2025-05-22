@@ -3513,7 +3513,7 @@ class BaseRenderer {
       newValue = this.renderSemantic(value, depth);
     } else if (value instanceof Array) {
       newValue = this.renderArray(value, depth);
-    } else if (value instanceof StringViewModel || value instanceof NonLocalizedStringViewModel) {
+    } else if (value instanceof StringViewModel || value instanceof NonLocalizedStringViewModel || typeof value === "string") {
       newValue = this.renderString(value, depth);
     } else if (value instanceof BooleanViewModel) {
       newValue = this.renderBoolean(value, depth);
@@ -3521,6 +3521,8 @@ class BaseRenderer {
       newValue = this.renderNumber(value, depth);
     } else if (value instanceof GeoJSONViewModel) {
       newValue = this.renderBlock(await value.forJson(), depth);
+    } else if (value instanceof UrlViewModel) {
+      newValue = this.renderUrl(await value, depth);
     } else if (value instanceof Object) {
       newValue = this.renderBlock(value, depth);
     } else {
@@ -3554,6 +3556,9 @@ class Renderer extends BaseRenderer {
   async renderSemantic(value, depth) {
     return this.renderBlock(await value.toObject(), depth);
   }
+  async renderUrl(value, _depth) {
+    return value;
+  }
   renderBlock(block, depth) {
     const renderedBlock = {};
     const promises = [];
@@ -3583,6 +3588,9 @@ class MarkdownRenderer extends Renderer {
     this.domainValueToUrl = callbacks.domainValueToUrl;
     this.resourceReferenceToUrl = callbacks.resourceReferenceToUrl;
     this.nodeToUrl = callbacks.nodeToUrl;
+  }
+  async renderUrl(value, _depth) {
+    return `[${value}](${value})`;
   }
   async renderDomainValue(domainValue, _) {
     const value = await domainValue.getValue();
@@ -3681,8 +3689,9 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}
   }
   async renderString(value, _depth) {
     if (value.indexOf("\n") != -1) {
-      return "\n    " + value.split("\n").join("\n    ");
+      value = "\n    " + value.split("\n").join("\n    ");
     }
+    return value;
   }
 }
 class JsonRenderer extends Renderer {

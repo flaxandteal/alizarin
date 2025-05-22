@@ -71,10 +71,11 @@ declare abstract class BaseRenderer {
     } | {
         [key: string]: string;
     }[], depth: number): any;
-    abstract renderArray(value: any, depth: number): Promise<any>;
+    abstract renderArray(value: any[], depth: number): Promise<any>;
     abstract renderString(value: String, _depth: number): Promise<any>;
-    abstract renderBoolean(value: Boolean, _depth: number): Promise<any>;
-    abstract renderNumber(value: Number, _depth: number): Promise<any>;
+    abstract renderBoolean(value: BooleanViewModel, _depth: number): Promise<any>;
+    abstract renderNumber(value: NumberViewModel, _depth: number): Promise<any>;
+    abstract renderUrl(value: UrlViewModel, _depth: number): Promise<any>;
     renderValue(value: any, depth: number): Promise<any>;
 }
 
@@ -377,6 +378,7 @@ declare class MarkdownRenderer extends Renderer {
         resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined;
         nodeToUrl: ((value: string) => string) | undefined;
     });
+    renderUrl(value: UrlViewModel, _depth: number): Promise<any>;
     renderDomainValue(domainValue: DomainValueViewModel, _: number): Promise<any>;
     renderDate(date: DateViewModel, _: number): Promise<any>;
     renderConceptValue(conceptValue: ConceptValueViewModel, _: number): Promise<any>;
@@ -470,6 +472,7 @@ declare class Renderer extends BaseRenderer {
     renderConceptValue(value: ConceptValueViewModel, _depth: number): Promise<any>;
     renderResourceReference(value: ResourceInstanceViewModel<any>, _depth: number): Promise<any>;
     renderSemantic(value: SemanticViewModel, depth: number): Promise<any>;
+    renderUrl(value: UrlViewModel, _depth: number): Promise<any>;
     renderBlock(block: {
         [key: string]: string;
     } | {
