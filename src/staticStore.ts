@@ -47,11 +47,14 @@ class StaticStore {
       await this.archesClient.getResources(graphId, limit || 0);
     for (const resourceJSON of resourcesJSON.values()) {
       const resource = new StaticResource(resourceJSON);
-        this.cache.set(
-          resource.resourceinstance.resourceinstanceid,
-          this.cacheMetadataOnly ? resource.resourceinstance : resource
-        );
-        yield resource;
+      if (resource.resourceinstance.graph_id !== graphId) {
+        continue;
+      }
+      this.cache.set(
+        resource.resourceinstance.resourceinstanceid,
+        this.cacheMetadataOnly ? resource.resourceinstance : resource
+      );
+      yield resource;
     }
   }
 

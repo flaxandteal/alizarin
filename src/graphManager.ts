@@ -990,9 +990,13 @@ class GraphManager {
       modelClassName = modelClass.name;
     }
 
-    const wkrm = this.wkrms.get(modelClassName);
+    let wkrm = this.wkrms.get(modelClassName);
     if (wkrm === undefined) {
-      throw Error(`Only loading graphs for which metadata is present, not ${modelClassName}`);
+      wkrm = [...this.wkrms.values()].find(wkrm => wkrm.graphId === modelClassName);
+      if (wkrm === undefined) {
+        throw Error(`Only loading graphs for which metadata is present, not ${modelClassName}`);
+      }
+      modelClass = wkrm.modelClassName;
     }
 
     const bodyJson = await this.archesClient.getGraph(wkrm.graphId);

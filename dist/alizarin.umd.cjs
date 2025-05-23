@@ -816,6 +816,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       const resourcesJSON = await this.archesClient.getResources(graphId, limit || 0);
       for (const resourceJSON of resourcesJSON.values()) {
         const resource = new StaticResource(resourceJSON);
+        if (resource.resourceinstance.graph_id !== graphId) {
+          continue;
+        }
         this.cache.set(
           resource.resourceinstance.resourceinstanceid,
           this.cacheMetadataOnly ? resource.resourceinstance : resource
@@ -3450,9 +3453,13 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       } else {
         modelClassName = modelClass.name;
       }
-      const wkrm = this.wkrms.get(modelClassName);
+      let wkrm = this.wkrms.get(modelClassName);
       if (wkrm === void 0) {
-        throw Error(`Only loading graphs for which metadata is present, not ${modelClassName}`);
+        wkrm = [...this.wkrms.values()].find((wkrm2) => wkrm2.graphId === modelClassName);
+        if (wkrm === void 0) {
+          throw Error(`Only loading graphs for which metadata is present, not ${modelClassName}`);
+        }
+        modelClass = wkrm.modelClassName;
       }
       const bodyJson = await this.archesClient.getGraph(wkrm.graphId);
       if (!bodyJson) {
