@@ -3050,6 +3050,26 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.graph = graph;
       this.viewModelClass = viewModelClass;
     }
+    // TODO: Switch to getBranches
+    getBranchPublicationIds(accessible) {
+      const accessibleOnly = accessible || false;
+      const nodes = [...this.graph.nodes.values()];
+      return [...nodes.reduce(
+        (acc, node) => {
+          if (node.sourcebranchpublication_id) {
+            if (accessibleOnly) {
+              if (this.isNodegroupPermitted(node.nodegroup_id || "", null)) {
+                acc.add(node.config.rdmCollection);
+              }
+            } else {
+              acc.add(node.config.rdmCollection);
+            }
+          }
+          return acc;
+        },
+        /* @__PURE__ */ new Set()
+      )];
+    }
     getCollections(accessible) {
       const accessibleOnly = accessible || false;
       const nodes = [...this.graph.nodes.values()];

@@ -525,6 +525,26 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     this.viewModelClass = viewModelClass;
   }
 
+  // TODO: Switch to getBranches
+  getBranchPublicationIds(accessible?: boolean): string[] {
+    const accessibleOnly = accessible || false;
+    const nodes = [...this.graph.nodes.values()];
+    return [...nodes.reduce(
+      (acc: Set<string>, node: StaticNode): Set<string> => {
+        if (node.sourcebranchpublication_id) {
+          if (accessibleOnly) {
+            if (this.isNodegroupPermitted(node.nodegroup_id || '', null)) {
+              acc.add(node.config.rdmCollection);
+            }
+          } else {
+            acc.add(node.config.rdmCollection);
+          }
+        }
+        return acc;
+      }, new Set()
+    )];
+  }
+
   getCollections(accessible?: boolean): string[] {
     const accessibleOnly = accessible || false;
     const nodes = [...this.graph.nodes.values()];
