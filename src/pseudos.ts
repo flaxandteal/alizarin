@@ -7,6 +7,7 @@ class PseudoUnavailable implements IPseudo {
   parentNode: PseudoValue | null = null;
   tile: null = null;
   node: StaticNode;
+  isOuter: boolean = false;
 
   constructor(node: StaticNode) {
     this.node = node;
@@ -58,6 +59,9 @@ class PseudoValue implements IPseudo {
   originalTile: StaticTile | null;
   accessed: boolean;
   childNodes: Map<string, StaticNode>;
+  isOuter: boolean = false;
+  isInner: boolean = false;
+  inner: PseudoValue | null = null;
 
   isIterable(): boolean {
     return this.datatype !== null && ITERABLE_DATATYPES.includes(this.datatype);
@@ -73,8 +77,8 @@ class PseudoValue implements IPseudo {
 
   describeFieldGroup() {
     let fieldName = this.node.name;
-    if (this.parent && this.node.nodegroup_id && this.parent._) {
-      const nodegroup = this.parent._.model.getNodeObjects().get(this.node.nodegroup_id);
+    if (this.parent && this.node.nodegroup_id && this.parent.$) {
+      const nodegroup = this.parent.$.model.getNodeObjects().get(this.node.nodegroup_id);
       if (nodegroup && this.parent.__) {
         fieldName = `${this.parent.__.wkrm.modelName} - ${nodegroup.name}`;
       }
@@ -88,6 +92,7 @@ class PseudoValue implements IPseudo {
     value: any,
     parent: IRIVM<any> | null,
     childNodes: Map<string, StaticNode>,
+    inner: boolean | PseudoValue,
   ) {
     this.node = node;
     this.tile = tile;
@@ -101,6 +106,14 @@ class PseudoValue implements IPseudo {
     this.accessed = false;
     this.originalTile = tile;
     this.datatype = node.datatype;
+    if (inner instanceof PseudoValue) {
+      this.isOuter = true;
+      this.inner = inner;
+    }
+    if (inner === true) {
+      this.isInner = true;
+      this.datatype = 'semantic';
+    }
   }
 
   // TODO deepcopy
@@ -113,11 +126,16 @@ class PseudoValue implements IPseudo {
   async getTile() {
     await this.updateValue();
 
-    const relationships: Array<any> = [];
+    let relationships: Array<any> = [];
+
+    if (this.inner) {
+      this.tile, relationships = await this.inner.getTile();
+    }
+
     let tileValue;
     if (this.value !== null) {
       // It may be better to make this fully async if there's a performance benefit.
-      tileValue = await this.value.__asTileData();
+      tileValue = (await this.value).__asTileData();
     } else {
       tileValue = this.value;
     }
@@ -155,25 +173,33 @@ class PseudoValue implements IPseudo {
 
   updateValue(): AttrPromise<IViewModel> {
     this.accessed = true;
+    if (this.inner) {
+      this.inner.accessed = true;
+    }
 
     if (!this.tile) {
       if (!this.node) {
         throw Error("Empty tile");
       }
-      // NB: You may see issues where the nodegroup is null because it is the root node,
-      // and a node below is not marked as a collector, so tries to fill its tile in
-      // A cardinality n node below the root should be a collector.
-      this.tile = new StaticTile({
-        nodegroup_id: this.node.nodegroup_id || "",
-        tileid: null,
-        data: new Map<string, any>(),
-        sortorder: this.node.sortorder,
-        resourceinstance_id: "",
-        parenttile_id: null,
-        provisionaledits: null,
-        ensureId: () => ""
-      });
-      // this.relationships = [];
+      if (this.inner) {
+        this.tile, this.relationships = this.inner.getTile();
+      }
+      if (!this.tile) {
+        // NB: You may see issues where the nodegroup is null because it is the root node,
+        // and a node below is not marked as a collector, so tries to fill its tile in
+        // A cardinality n node below the root should be a collector.
+        this.tile = new StaticTile({
+          nodegroup_id: this.node.nodegroup_id || "",
+          tileid: null,
+          data: new Map<string, any>(),
+          sortorder: this.node.sortorder,
+          resourceinstance_id: "",
+          parenttile_id: null,
+          provisionaledits: null,
+          ensureId: () => ""
+        });
+        // this.relationships = [];
+      }
     }
     if (this.valueLoaded === false) {
       this.valueLoaded = undefined;
@@ -181,13 +207,28 @@ class PseudoValue implements IPseudo {
       if (
         this.value === null &&
         this.tile.data !== null &&
-        this.tile.data.has(this.node.nodeid)
+        this.tile.data.has(this.node.nodeid) &&
+        this.datatype !== 'semantic' // Semantic nodes only have placeholder data
       ) {
         data = this.tile.data.get(this.node.nodeid);
       } else {
         data = this.value;
       }
 
+      if (this.isOuter && typeof data === 'object' && this.inner && data) {
+        let outerData = undefined;
+        if ("_" in data && !data.constructor) {
+          outerData = data["_"];
+          delete data["_"];
+          this.inner.getValue().then(v => v && v.update(data));
+          data = outerData;
+        } else if (data instanceof Map && data.has("_")) {
+          outerData = data.get("_");
+          data.delete("_");
+          this.inner.getValue().then(v => v && v.update(data));
+          data = outerData;
+        }
+      }
       const vm = getViewModel(
         this,
         this.tile,
@@ -195,11 +236,16 @@ class PseudoValue implements IPseudo {
         data,
         this.parent,
         this.childNodes,
+        this.isInner
       );
 
       const resolveAttr = (vm: IViewModel) => {
         if (vm !== null && vm instanceof Object) {
           vm.__parentPseudo = this;
+          if (this.isOuter && this.inner) {
+            vm._ = this.inner.getValue();
+          }
+
           this.valueLoaded = true;
         }
         return vm;
@@ -224,21 +270,29 @@ class PseudoValue implements IPseudo {
 
   async getChildTypes() {
     await this.updateValue();
+    let childTypes = {};
     if (this.value instanceof Object) {
       try {
-        return this.value.get_child_types();
+        childTypes = this.value.getChildTypes();
       } catch (AttributeError) {}
     }
-    return {};
+    if (this.inner) {
+      Object.assign(childTypes, this.inner.getChildTypes());
+    }
+    return childTypes;
   }
 
-  getChildren(direct = null) {
+  getChildren(direct = null): IPseudo[] {
+    let children = [];
     if (this.value) {
       try {
-        return this.value.getChildren(direct);
+        children = this.value.getChildren(direct);
       } catch (AttributeError) {}
     }
-    return [];
+    if (this.inner) {
+      children = [...children, ...this.inner.getChildren(direct)];
+    }
+    return children;
   }
 
   async forJson(): Promise<{[key: string]: any} | {[key: string]: any}[] | string | number | boolean | null> {
@@ -254,6 +308,7 @@ class PseudoList extends Array implements IPseudo {
   tile: StaticTile | undefined;
   parenttileId: string | undefined;
   ghostChildren: Set<PseudoValue> | null = null;
+  isOuter: boolean = false;
 
   isIterable(): boolean {
     return true;
@@ -297,8 +352,8 @@ class PseudoList extends Array implements IPseudo {
     }
 
     let fieldName = this.node.name;
-    if (this.parent && this.node.nodegroup_id && this.parent._) {
-      const nodegroup = this.parent._.model.getNodeObjects().get(this.node.nodegroup_id);
+    if (this.parent && this.node.nodegroup_id && this.parent.$) {
+      const nodegroup = this.parent.$.model.getNodeObjects().get(this.node.nodegroup_id);
       if (nodegroup && this.parent.__) {
         fieldName = `${this.parent.__.wkrm.modelName} - ${nodegroup.name}`;
       }
@@ -374,8 +429,12 @@ function makePseudoCls(
     let nodeValue;
     const isPermitted = model.isNodegroupPermitted(nodeObj.nodegroup_id || '', tile, nodeObjs);
     if (isPermitted) {
-      const childNodes = model.getChildNodes(nodeObj.nodeid);
-      nodeValue = new PseudoValue(nodeObj, tile, null, wkri, childNodes);
+      const childNodes: Map<string, StaticNode> = model.getChildNodes(nodeObj.nodeid);
+      let inner: boolean | PseudoValue = false;
+      if (childNodes && childNodes.size && nodeObj.datatype !== 'semantic') {
+        inner = new PseudoValue(nodeObj, tile, null, wkri, childNodes, true);
+      }
+      nodeValue = new PseudoValue(nodeObj, tile, null, wkri, inner !== false ? new Map() : childNodes, inner);
     } else {
       nodeValue = new PseudoUnavailable(nodeObj);
     }

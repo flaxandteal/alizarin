@@ -13,7 +13,7 @@ interface IRIVM<T extends IRIVM<T>> {
   [key: string]: any;
   id: string
   then: undefined;
-  _: IInstanceWrapper<T> | null;
+  $: IInstanceWrapper<T> | null;
   __: IModelWrapper<T> | null;
   __parentPseudo: IPseudo | undefined;
 }
@@ -26,6 +26,7 @@ type GetMeta = ((vm: IViewModel) => IStringKeyedObject) | undefined;
 type CheckPermission = ((nodegroupId: string, tile: StaticTile | null, node: Map<string, StaticNode>) => boolean);
 
 interface IViewModel {
+  _: IViewModel | undefined | Promise<IViewModel | null>;
   __parentPseudo: IPseudo | undefined;
   forJson(): {[key: string]: any} | {[key: string]: any}[] | string | number | boolean | null;
   __forJsonCache(getMeta: GetMeta): IStringKeyedObject | null;

@@ -446,7 +446,7 @@ class StaticTile {
     __publicField(this, "provisionaledits", null);
     __publicField(this, "sortorder", null);
     this.data = jsonData.data;
-    if (this.data && !(this.data instanceof Map)) {
+    if (typeof this.data === "object" && !(this.data instanceof Map)) {
       this.data = new Map(Object.entries(this.data));
     }
     this.nodegroup_id = jsonData.nodegroup_id;
@@ -960,8 +960,8 @@ class ValueList {
           );
         }
         const values = new Map([...this.values.entries()]);
-        const promise2 = new Promise((resolve) => {
-          this.wrapper.ensureNodegroup(
+        const promise2 = new Promise(async (resolve) => {
+          const [ngValues] = await this.wrapper.ensureNodegroup(
             values,
             node2,
             node2.nodegroup_id,
@@ -971,19 +971,19 @@ class ValueList {
             false,
             this.tiles,
             true
-          ).then(([ngValues]) => {
-            let original = false;
-            for (const [k, value] of [...ngValues.entries()]) {
-              if (key === k) {
-                original = value;
-              }
-              if (value !== false) {
-                this.values.set(k, value);
-              }
+          );
+          let original = false;
+          for (const [k, value] of [...ngValues.entries()]) {
+            const concreteValue = await value;
+            if (key === k) {
+              original = concreteValue;
             }
-            resolve(original);
-            this.promises.delete(node2.nodegroup_id);
-          });
+            if (concreteValue !== false) {
+              this.values.set(k, concreteValue);
+            }
+          }
+          resolve(original);
+          this.promises.delete(node2.nodegroup_id);
         });
         this.writeLock = promise2;
         this.promises.set(node2.nodegroup_id, promise2);
@@ -1018,9 +1018,11 @@ class ConceptListCacheEntry {
     this._ = _.map((instance) => {
       if (instance instanceof ConceptValueCacheEntry) {
         return instance;
+      } else if (instance) {
+        return new ConceptValueCacheEntry(instance);
       }
-      return new ConceptValueCacheEntry(instance);
-    });
+      return null;
+    }).filter((cvce) => cvce !== null);
     this.meta = meta || {};
   }
 }
@@ -1069,6 +1071,7 @@ class ResourceInstanceCacheEntry {
 class ResourceInstanceListViewModel extends Array {
   constructor() {
     super(...arguments);
+    __publicField(this, "_");
     __publicField(this, "__parentPseudo");
     __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
     __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
@@ -1113,7 +1116,11 @@ class ResourceInstanceListViewModel extends Array {
             return v ? (await v).id : null;
           })
         ).then((ids) => {
-          tile.data.set(nodeid, ids);
+          tile.data.set(nodeid, ids.map((id) => {
+            return {
+              resourceId: id
+            };
+          }));
           return ids;
         });
         value = val;
@@ -1134,7 +1141,7 @@ class ResourceInstanceListViewModel extends Array {
 _c = Symbol.toPrimitive;
 const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
   constructor(id, modelWrapper, instanceWrapperFactory, cacheEntry) {
-    __publicField(this, "_");
+    __publicField(this, "$");
     __publicField(this, "__");
     __publicField(this, "__parentPseudo");
     __publicField(this, "__cacheEntry", null);
@@ -1143,7 +1150,7 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
     __publicField(this, _c);
     __publicField(this, "gm");
     this.id = id;
-    this._ = instanceWrapperFactory ? instanceWrapperFactory(this) : null;
+    this.$ = instanceWrapperFactory ? instanceWrapperFactory(this) : null;
     this.__ = modelWrapper;
     if (cacheEntry instanceof ResourceInstanceCacheEntry) {
       this.__cacheEntry = cacheEntry;
@@ -1159,13 +1166,13 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
         } else if (k in object) {
           object[k] = value;
         } else {
-          if (!object._) {
+          if (!object.$) {
             await this.retrieve();
-            if (!object._) {
+            if (!object.$) {
               throw Error("Could not retrieve resource");
             }
           }
-          object._.setOrmAttribute(k, value);
+          object.$.setOrmAttribute(k, value);
         }
         return true;
       },
@@ -1177,13 +1184,13 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
           return object[k];
         }
         return new AttrPromise(async (resolve) => {
-          if (!object._) {
+          if (!object.$) {
             await this.retrieve();
-            if (!object._) {
+            if (!object.$) {
               throw Error("Could not retrieve resource");
             }
           }
-          return object._.getOrmAttribute(k).then((v) => {
+          return object.$.getOrmAttribute(k).then((v) => {
             return resolve(v);
           });
         });
@@ -1197,10 +1204,10 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
     return `[${this.__.wkrm.modelClassName}:${this.id ?? "-"}]`;
   }
   async __has(key) {
-    if (!this._) {
+    if (!this.$) {
       return void 0;
     }
-    return (await this._.getRootViewModel() || /* @__PURE__ */ new Map()).__has(key);
+    return (await this.$.getRootViewModel() || /* @__PURE__ */ new Map()).__has(key);
   }
   async __asTileData() {
     return {
@@ -1259,13 +1266,13 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
     }
     const basic = new StaticResourceReference(jsonData);
     if (cascade) {
-      if (!this._) {
+      if (!this.$) {
         await this.retrieve();
-        if (!this._) {
+        if (!this.$) {
           throw Error("Could not retrieve resource");
         }
       }
-      const root = await this._.getRootViewModel();
+      const root = await this.$.getRootViewModel();
       basic.root = await root.forJson();
     }
     return basic;
@@ -1275,12 +1282,12 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
     let mw;
     if (viewContext.graphManager) {
       const replacement = await viewContext.graphManager.getResource(this.id, true);
-      iw = replacement._;
+      iw = replacement.$;
       mw = replacement.__;
     } else {
       throw Error("Cannot traverse resource relationships without a GraphManager");
     }
-    this._ = iw;
+    this.$ = iw;
     this.__ = mw;
     return [iw, mw];
   }
@@ -1317,7 +1324,7 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
         } else {
           throw Error("Could not set resource instance from this data");
         }
-        tile.data.set(nodeid, val ? val : null);
+        tile.data.set(nodeid, val ? [{ resourceId: val }] : null);
       }
     }
     if (!tile || !val) {
@@ -1328,9 +1335,63 @@ const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
   }
 };
 let ResourceInstanceViewModel = _ResourceInstanceViewModel;
+class FileListViewModel extends Array {
+  constructor() {
+    super(...arguments);
+    __publicField(this, "_");
+    __publicField(this, "__parentPseudo");
+    __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
+    __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
+    __publicField(this, "_value", null);
+  }
+  async forJson() {
+    const value = await this._value;
+    return value ? value.map((v) => v ? v.forJson() : null) : null;
+  }
+  async __forJsonCache() {
+    return null;
+  }
+  static async __create(tile, node, value) {
+    const nodeid = node.nodeid;
+    let val = [];
+    if (!tile.data.has(nodeid)) {
+      tile.data.set(nodeid, null);
+    }
+    if (value !== null) {
+      tile.data.set(nodeid, []);
+      if (!Array.isArray(value)) {
+        throw Error(
+          `Cannot set an (entire) concept list value except via an array: ${JSON.stringify(value)}`
+        );
+      }
+      val = value.map((c) => {
+        return c;
+      });
+      Promise.all(val).then((vals) => {
+        Promise.all(
+          vals.map(async (c) => {
+            const v = await c;
+            return v ? (await v.getValue()).id : null;
+          })
+        ).then((ids) => {
+          tile.data.set(nodeid, ids);
+        });
+      });
+      value = val;
+    } else {
+      value = [];
+    }
+    const str = new FileListViewModel(...value);
+    return str;
+  }
+  async __asTileData() {
+    return this._value ? await this._value : null;
+  }
+}
 class ConceptListViewModel extends Array {
   constructor() {
     super(...arguments);
+    __publicField(this, "_");
     __publicField(this, "__parentPseudo");
     __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
     __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
@@ -1345,7 +1406,9 @@ class ConceptListViewModel extends Array {
       meta: getMeta ? await getMeta(this) : getMeta,
       _: await Promise.all([...this.values()].map(async (rivmPromise) => {
         const rivm = await rivmPromise;
-        return await rivm.__forJsonCache(getMeta);
+        if (rivm) {
+          return await rivm.__forJsonCache(getMeta);
+        }
       }))
     });
   }
@@ -1392,6 +1455,7 @@ class ConceptListViewModel extends Array {
 class DomainValueListViewModel extends Array {
   constructor() {
     super(...arguments);
+    __publicField(this, "_");
     __publicField(this, "__parentPseudo");
     __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
     __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
@@ -1446,6 +1510,7 @@ class DomainValueListViewModel extends Array {
 class DomainValueViewModel extends String {
   constructor(value) {
     super(value.toString());
+    __publicField(this, "_");
     __publicField(this, "__parentPseudo");
     __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
     __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
@@ -1515,6 +1580,7 @@ class DomainValueViewModel extends String {
 class ConceptValueViewModel extends String {
   constructor(value) {
     super(value.value);
+    __publicField(this, "_");
     __publicField(this, "__parentPseudo");
     __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
     __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
@@ -1612,6 +1678,7 @@ class ConceptValueViewModel extends String {
 class DateViewModel extends Date {
   constructor(val) {
     super(val);
+    __publicField(this, "_");
     __publicField(this, "__parentPseudo");
     __publicField(this, "__original");
     __publicField(this, "then");
@@ -1665,6 +1732,7 @@ class DateViewModel extends Date {
 _d = Symbol.toPrimitive;
 const _GeoJSONViewModel = class _GeoJSONViewModel {
   constructor(jsonData) {
+    __publicField(this, "_");
     __publicField(this, "__parentPseudo");
     __publicField(this, "then");
     __publicField(this, _d);
@@ -1731,9 +1799,45 @@ const _GeoJSONViewModel = class _GeoJSONViewModel {
   }
 };
 let GeoJSONViewModel = _GeoJSONViewModel;
+class EDTFViewModel extends String {
+  constructor() {
+    super(...arguments);
+    __publicField(this, "_");
+    __publicField(this, "__parentPseudo");
+    __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
+    __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
+  }
+  __forJsonCache() {
+    return null;
+  }
+  forJson() {
+    return this.toString();
+  }
+  static __create(tile, node, value) {
+    const nodeid = node.nodeid;
+    if (value instanceof Promise) {
+      return value.then((value2) => EDTFViewModel.__create(tile, node, value2));
+    }
+    if (tile) {
+      if (value !== null) {
+        tile.data.set(nodeid, value);
+      }
+    }
+    const val = tile.data.get(nodeid);
+    if (!tile || val === null || val === void 0) {
+      return null;
+    }
+    const string = new EDTFViewModel(val);
+    return string;
+  }
+  __asTileData() {
+    return `${this}`;
+  }
+}
 class NonLocalizedStringViewModel extends String {
   constructor() {
     super(...arguments);
+    __publicField(this, "_");
     __publicField(this, "__parentPseudo");
     __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
     __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
@@ -1762,12 +1866,13 @@ class NonLocalizedStringViewModel extends String {
     return string;
   }
   __asTileData() {
-    return this ? true : false;
+    return `${this}`;
   }
 }
 class NumberViewModel extends Number {
   constructor() {
     super(...arguments);
+    __publicField(this, "_");
     __publicField(this, "__parentPseudo");
     __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
     __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
@@ -1802,43 +1907,10 @@ class NumberViewModel extends Number {
     return this ? true : false;
   }
 }
-class UrlViewModel extends String {
-  constructor() {
-    super(...arguments);
-    __publicField(this, "__parentPseudo");
-    __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
-    __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
-  }
-  __forJsonCache() {
-    return null;
-  }
-  forJson() {
-    return this ? true : false;
-  }
-  static __create(tile, node, value) {
-    const nodeid = node.nodeid;
-    if (value instanceof Promise) {
-      return value.then((value2) => UrlViewModel.__create(tile, node, value2));
-    }
-    if (tile) {
-      if (value !== null) {
-        tile.data.set(nodeid, value);
-      }
-    }
-    const val = tile.data.get(nodeid);
-    if (!tile || val === null || val === void 0) {
-      return null;
-    }
-    const url = new UrlViewModel(val);
-    return url;
-  }
-  __asTileData() {
-    return this ? true : false;
-  }
-}
 class BooleanViewModel extends Boolean {
   constructor(value, config) {
     super(value);
+    __publicField(this, "_");
     __publicField(this, "__parentPseudo");
     __publicField(this, "__config");
     __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
@@ -1881,6 +1953,84 @@ class BooleanViewModel extends Boolean {
     return this ? true : false;
   }
 }
+class Url {
+  constructor(url, url_label) {
+    __publicField(this, "url");
+    __publicField(this, "url_label");
+    this.url = url;
+    this.url_label = url_label;
+  }
+}
+class UrlViewModel extends String {
+  constructor(value) {
+    const displayValue = value.url_label || value.url;
+    super(displayValue);
+    __publicField(this, "_");
+    __publicField(this, "__parentPseudo");
+    __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
+    __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
+    __publicField(this, "_value");
+    this._value = value;
+  }
+  __forJsonCache() {
+    return null;
+  }
+  forJson() {
+    return {
+      url: this._value.url,
+      url_label: this._value.url_label || ""
+    };
+  }
+  label() {
+    return this._value.url_label || this._value.url;
+  }
+  href() {
+    return this._value.url;
+  }
+  static __create(tile, node, value) {
+    const nodeid = node.nodeid;
+    if (value instanceof Promise) {
+      return value.then((value2) => UrlViewModel.__create(tile, node, value2));
+    }
+    if (tile) {
+      if (!tile.data.has(nodeid)) {
+        tile.data.set(nodeid, {});
+      }
+      if (value !== null) {
+        if (value instanceof UrlViewModel) {
+          value = value._value;
+        } else if (value instanceof Object) {
+          if (!value.url) {
+            throw Error(`A URL must be null or have a 'url' field: ${value}`);
+          }
+        }
+        tile.data.set(nodeid, {
+          url: value.url,
+          url_label: value.url_label
+        });
+      }
+    }
+    const val = tile.data.get(nodeid);
+    if (!tile || val === null || val === void 0) {
+      return null;
+    }
+    let url;
+    if (typeof val !== "object") {
+      url = new Url(`${val}`);
+    } else if (val instanceof Map) {
+      url = new Url(val.get("url"), val.get("url_label"));
+    } else if ("url" in val && typeof val === "object" && typeof val.url === "string" && "url_label" in val && (val.url_label === void 0 || typeof val.url_label === "string")) {
+      url = new Url(val.url, val.url_label);
+    } else {
+      throw Error(`Unrecognised URL type: ${val}`);
+    }
+    const str = new UrlViewModel(url);
+    return str;
+  }
+  __asTileData() {
+    return this.forJson();
+  }
+}
 class StringViewModel extends String {
   constructor(value, language = null) {
     const lang = value.get(language || DEFAULT_LANGUAGE);
@@ -1895,6 +2045,7 @@ class StringViewModel extends String {
       displayValue = "";
     }
     super(displayValue);
+    __publicField(this, "_");
     __publicField(this, "__parentPseudo");
     __publicField(this, "describeField", () => this.__parentPseudo ? this.__parentPseudo.describeField() : null);
     __publicField(this, "describeFieldGroup", () => this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null);
@@ -1967,6 +2118,7 @@ class StringViewModel extends String {
 _e = Symbol.toPrimitive;
 const _SemanticViewModel = class _SemanticViewModel {
   constructor(parentWkri, childNodes, tile, node) {
+    __publicField(this, "_");
     __publicField(this, "then");
     __publicField(this, _e);
     __publicField(this, "__parentPseudo");
@@ -2110,10 +2262,10 @@ const _SemanticViewModel = class _SemanticViewModel {
     if (!this.__parentWkri) {
       throw Error("This semantic node is currently parentless (no WKRI)");
     }
-    if (!this.__parentWkri._) {
+    if (!this.__parentWkri.$) {
       throw Error("This semantic node is currently on an unloaded WKRI");
     }
-    const child = this.__parentWkri._.addPseudo(childNode, this.__tile);
+    const child = this.__parentWkri.$.addPseudo(childNode, this.__tile);
     child.parentNode = this.__parentPseudo || null;
     return child;
   }
@@ -2146,12 +2298,12 @@ const _SemanticViewModel = class _SemanticViewModel {
     const childNodes = this.__childNodes;
     const tile = this.__tile;
     const node = this.__node;
-    if (!parent || !parent._) {
+    if (!parent || !parent.$) {
       return /* @__PURE__ */ new Map();
     }
-    await parent._.loadNodes([...childNodes.keys()]);
+    await parent.$.loadNodes([...childNodes.keys()]);
     const children = /* @__PURE__ */ new Map();
-    for (const entry of [...parent._.allEntries()]) {
+    for (const entry of [...parent.$.allEntries()]) {
       const key = entry[0];
       let values = entry[1];
       if (values instanceof Promise) {
@@ -2199,14 +2351,14 @@ const _SemanticViewModel = class _SemanticViewModel {
 };
 let SemanticViewModel = _SemanticViewModel;
 const CUSTOM_DATATYPES = /* @__PURE__ */ new Map();
-async function getViewModel(parentPseudo, tile, node, data, parent, childNodes) {
+async function getViewModel(parentPseudo, tile, node, data, parent, childNodes, isInner = false) {
   let vm;
-  const cacheEntries = parentPseudo.parent && parentPseudo.parent._ ? await parentPseudo.parent._.getValueCache(false, void 0) : void 0;
+  const cacheEntries = parentPseudo.parent && parentPseudo.parent.$ ? await parentPseudo.parent.$.getValueCache(false, void 0) : void 0;
   let cacheEntry = null;
   if (cacheEntries) {
     cacheEntry = (tile.tileid ? cacheEntries[tile.tileid] ?? {} : {})[node.nodeid];
   }
-  const datatype = CUSTOM_DATATYPES.get(node.datatype) ?? node.datatype;
+  const datatype = isInner ? "semantic" : CUSTOM_DATATYPES.get(node.datatype) ?? node.datatype;
   if (!(typeof datatype == "string")) {
     vm = await datatype.__create(tile, node, data, cacheEntry);
   } else {
@@ -2265,6 +2417,12 @@ async function getViewModel(parentPseudo, tile, node, data, parent, childNodes) 
       case "number":
         vm = await NumberViewModel.__create(tile, node, data);
         break;
+      case "file-list":
+        vm = await FileListViewModel.__create(tile, node, data);
+        break;
+      case "edtf":
+        vm = await EDTFViewModel.__create(tile, node, data);
+        break;
       case "url":
         vm = await UrlViewModel.__create(tile, node, data);
         break;
@@ -2284,7 +2442,7 @@ async function getViewModel(parentPseudo, tile, node, data, parent, childNodes) 
     for (const vme of vm) {
       if (vme instanceof Promise) {
         vme.then((vmep) => {
-          vmep.__parentPseudo = parentPseudo;
+          if (vmep !== null) vmep.__parentPseudo = parentPseudo;
         });
       } else {
         vme.__parentPseudo = parentPseudo;
@@ -2318,6 +2476,7 @@ class PseudoUnavailable {
     __publicField(this, "parentNode", null);
     __publicField(this, "tile", null);
     __publicField(this, "node");
+    __publicField(this, "isOuter", false);
     this.node = node;
   }
   async forJson() {
@@ -2348,7 +2507,7 @@ const ITERABLE_DATATYPES = [
   "domain-value-list"
 ];
 class PseudoValue {
-  constructor(node, tile, value, parent, childNodes) {
+  constructor(node, tile, value, parent, childNodes, inner) {
     __publicField(this, "node");
     __publicField(this, "tile");
     __publicField(this, "value");
@@ -2359,6 +2518,9 @@ class PseudoValue {
     __publicField(this, "originalTile");
     __publicField(this, "accessed");
     __publicField(this, "childNodes");
+    __publicField(this, "isOuter", false);
+    __publicField(this, "isInner", false);
+    __publicField(this, "inner", null);
     this.node = node;
     this.tile = tile;
     if (!parent) {
@@ -2371,6 +2533,14 @@ class PseudoValue {
     this.accessed = false;
     this.originalTile = tile;
     this.datatype = node.datatype;
+    if (inner instanceof PseudoValue) {
+      this.isOuter = true;
+      this.inner = inner;
+    }
+    if (inner === true) {
+      this.isInner = true;
+      this.datatype = "semantic";
+    }
   }
   isIterable() {
     return this.datatype !== null && ITERABLE_DATATYPES.includes(this.datatype);
@@ -2384,8 +2554,8 @@ class PseudoValue {
   }
   describeFieldGroup() {
     let fieldName = this.node.name;
-    if (this.parent && this.node.nodegroup_id && this.parent._) {
-      const nodegroup = this.parent._.model.getNodeObjects().get(this.node.nodegroup_id);
+    if (this.parent && this.node.nodegroup_id && this.parent.$) {
+      const nodegroup = this.parent.$.model.getNodeObjects().get(this.node.nodegroup_id);
       if (nodegroup && this.parent.__) {
         fieldName = `${this.parent.__.wkrm.modelName} - ${nodegroup.name}`;
       }
@@ -2399,10 +2569,13 @@ class PseudoValue {
   }
   async getTile() {
     await this.updateValue();
-    const relationships = [];
+    let relationships = [];
+    if (this.inner) {
+      this.tile, relationships = await this.inner.getTile();
+    }
     let tileValue;
     if (this.value !== null) {
-      tileValue = await this.value.__asTileData();
+      tileValue = (await this.value).__asTileData();
     } else {
       tileValue = this.value;
     }
@@ -2428,28 +2601,50 @@ class PseudoValue {
   }
   updateValue() {
     this.accessed = true;
+    if (this.inner) {
+      this.inner.accessed = true;
+    }
     if (!this.tile) {
       if (!this.node) {
         throw Error("Empty tile");
       }
-      this.tile = new StaticTile({
-        nodegroup_id: this.node.nodegroup_id || "",
-        tileid: null,
-        data: /* @__PURE__ */ new Map(),
-        sortorder: this.node.sortorder,
-        resourceinstance_id: "",
-        parenttile_id: null,
-        provisionaledits: null,
-        ensureId: () => ""
-      });
+      if (this.inner) {
+        this.tile, this.relationships = this.inner.getTile();
+      }
+      if (!this.tile) {
+        this.tile = new StaticTile({
+          nodegroup_id: this.node.nodegroup_id || "",
+          tileid: null,
+          data: /* @__PURE__ */ new Map(),
+          sortorder: this.node.sortorder,
+          resourceinstance_id: "",
+          parenttile_id: null,
+          provisionaledits: null,
+          ensureId: () => ""
+        });
+      }
     }
     if (this.valueLoaded === false) {
       this.valueLoaded = void 0;
       let data;
-      if (this.value === null && this.tile.data !== null && this.tile.data.has(this.node.nodeid)) {
+      if (this.value === null && this.tile.data !== null && this.tile.data.has(this.node.nodeid) && this.datatype !== "semantic") {
         data = this.tile.data.get(this.node.nodeid);
       } else {
         data = this.value;
+      }
+      if (this.isOuter && typeof data === "object" && this.inner && data) {
+        let outerData = void 0;
+        if ("_" in data && !data.constructor) {
+          outerData = data["_"];
+          delete data["_"];
+          this.inner.getValue().then((v) => v && v.update(data));
+          data = outerData;
+        } else if (data instanceof Map && data.has("_")) {
+          outerData = data.get("_");
+          data.delete("_");
+          this.inner.getValue().then((v) => v && v.update(data));
+          data = outerData;
+        }
       }
       const vm = getViewModel(
         this,
@@ -2457,11 +2652,15 @@ class PseudoValue {
         this.node,
         data,
         this.parent,
-        this.childNodes
+        this.childNodes,
+        this.isInner
       );
       const resolveAttr = (vm2) => {
         if (vm2 !== null && vm2 instanceof Object) {
           vm2.__parentPseudo = this;
+          if (this.isOuter && this.inner) {
+            vm2._ = this.inner.getValue();
+          }
           this.valueLoaded = true;
         }
         return vm2;
@@ -2482,22 +2681,30 @@ class PseudoValue {
   }
   async getChildTypes() {
     await this.updateValue();
+    let childTypes = {};
     if (this.value instanceof Object) {
       try {
-        return this.value.get_child_types();
+        childTypes = this.value.getChildTypes();
       } catch (AttributeError) {
       }
     }
-    return {};
+    if (this.inner) {
+      Object.assign(childTypes, this.inner.getChildTypes());
+    }
+    return childTypes;
   }
   getChildren(direct = null) {
+    let children = [];
     if (this.value) {
       try {
-        return this.value.getChildren(direct);
+        children = this.value.getChildren(direct);
       } catch (AttributeError) {
       }
     }
-    return [];
+    if (this.inner) {
+      children = [...children, ...this.inner.getChildren(direct)];
+    }
+    return children;
   }
   async forJson() {
     const value = await this.getValue();
@@ -2513,6 +2720,7 @@ class PseudoList extends Array {
     __publicField(this, "tile");
     __publicField(this, "parenttileId");
     __publicField(this, "ghostChildren", null);
+    __publicField(this, "isOuter", false);
   }
   isIterable() {
     return true;
@@ -2547,8 +2755,8 @@ class PseudoList extends Array {
       return "[(uninitialized node)]";
     }
     let fieldName = this.node.name;
-    if (this.parent && this.node.nodegroup_id && this.parent._) {
-      const nodegroup = this.parent._.model.getNodeObjects().get(this.node.nodegroup_id);
+    if (this.parent && this.node.nodegroup_id && this.parent.$) {
+      const nodegroup = this.parent.$.model.getNodeObjects().get(this.node.nodegroup_id);
       if (nodegroup && this.parent.__) {
         fieldName = `${this.parent.__.wkrm.modelName} - ${nodegroup.name}`;
       }
@@ -2605,7 +2813,11 @@ function makePseudoCls(model, key, single, tile = null, wkri = null) {
     const isPermitted = model.isNodegroupPermitted(nodeObj.nodegroup_id || "", tile, nodeObjs);
     if (isPermitted) {
       const childNodes = model.getChildNodes(nodeObj.nodeid);
-      nodeValue = new PseudoValue(nodeObj, tile, null, wkri, childNodes);
+      let inner = false;
+      if (childNodes && childNodes.size && nodeObj.datatype !== "semantic") {
+        inner = new PseudoValue(nodeObj, tile, null, wkri, childNodes, true);
+      }
+      nodeValue = new PseudoValue(nodeObj, tile, null, wkri, inner !== false ? /* @__PURE__ */ new Map() : childNodes, inner);
     } else {
       nodeValue = new PseudoUnavailable(nodeObj);
     }
@@ -3058,10 +3270,10 @@ class ResourceModelWrapper {
         if (node.sourcebranchpublication_id) {
           if (accessibleOnly) {
             if (this.isNodegroupPermitted(node.nodegroup_id || "", null)) {
-              acc.add(node.config.rdmCollection);
+              acc.add(node.sourcebranchpublication_id);
             }
           } else {
-            acc.add(node.config.rdmCollection);
+            acc.add(node.sourcebranchpublication_id);
           }
         }
         return acc;
@@ -3383,10 +3595,10 @@ class ResourceModelWrapper {
       resource.resourceinstance.resourceinstanceid,
       resource
     );
-    if (!wkri._) {
+    if (!wkri.$) {
       throw Error("Could not load resource from static definition");
     }
-    return wkri._.populate(lazy).then(() => wkri);
+    return wkri.$.populate(lazy).then(() => wkri);
   }
 }
 function makeResourceModelWrapper(viewModelClass, wkrm, graph) {
@@ -3517,10 +3729,10 @@ class Cleanable extends String {
 }
 class BaseRenderer {
   async render(asset) {
-    if (!asset._) {
+    if (!asset.$) {
       throw Error("Cannot render unloaded asset - do you want to await asset.retrieve()?");
     }
-    const root = await await asset._.getRootViewModel();
+    const root = await await asset.$.getRootViewModel();
     return this.renderValue(root, 0);
   }
   async renderValue(value, depth) {
@@ -3617,7 +3829,11 @@ class MarkdownRenderer extends Renderer {
     this.nodeToUrl = callbacks.nodeToUrl;
   }
   async renderUrl(value, _depth) {
-    return `[${value}](${value})`;
+    const text = `[${value}](${value})`;
+    const wrapper = new Cleanable(text);
+    wrapper.__clean = value.href();
+    console.log(wrapper);
+    return wrapper;
   }
   async renderDomainValue(domainValue, _) {
     const value = await domainValue.getValue();
@@ -3732,7 +3948,8 @@ class JsonRenderer extends Renderer {
     return value.forJson();
   }
   async renderResourceReference(value, _depth) {
-    return value.forJson();
+    const val = value.forJson();
+    return val;
   }
 }
 const renderers = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({

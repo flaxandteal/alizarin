@@ -534,10 +534,10 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
         if (node.sourcebranchpublication_id) {
           if (accessibleOnly) {
             if (this.isNodegroupPermitted(node.nodegroup_id || '', null)) {
-              acc.add(node.config.rdmCollection);
+              acc.add(node.sourcebranchpublication_id);
             }
           } else {
-            acc.add(node.config.rdmCollection);
+            acc.add(node.sourcebranchpublication_id);
           }
         }
         return acc;
@@ -907,11 +907,11 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
       resource,
     );
 
-    if (!wkri._) {
+    if (!wkri.$) {
       throw Error("Could not load resource from static definition");
     }
 
-    return wkri._.populate(lazy).then(() => wkri);
+    return wkri.$.populate(lazy).then(() => wkri);
   }
 }
 

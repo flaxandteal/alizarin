@@ -80,6 +80,7 @@ declare abstract class BaseRenderer {
 }
 
 declare class BooleanViewModel extends Boolean implements IViewModel {
+    _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: PseudoValue | undefined;
     __config: StaticNodeConfigBoolean;
     describeField: () => string | null;
@@ -128,6 +129,7 @@ declare class ConceptValueCacheEntry implements IStringKeyedObject {
 }
 
 declare class ConceptValueViewModel extends String implements IViewModel {
+    _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: IPseudo | undefined;
     describeField: () => string | null;
     describeFieldGroup: () => string | null;
@@ -148,6 +150,7 @@ declare class ConfigurationOptions {
 declare const CUSTOM_DATATYPES: Map<string, string | IViewModel>;
 
 declare class DateViewModel extends Date implements IViewModel {
+    _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: PseudoValue | undefined;
     __original: string;
     then: undefined;
@@ -163,6 +166,7 @@ declare class DateViewModel extends Date implements IViewModel {
 declare const DEFAULT_LANGUAGE = "en";
 
 declare class DomainValueViewModel extends String implements IViewModel {
+    _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: PseudoValue | undefined;
     describeField: () => string | null;
     describeFieldGroup: () => string | null;
@@ -184,6 +188,7 @@ declare class FlatMarkdownRenderer extends MarkdownRenderer {
 
 declare class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
     [key: string | symbol]: any;
+    _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: PseudoValue | undefined;
     then: undefined;
     [Symbol.toPrimitive]: undefined;
@@ -209,7 +214,7 @@ declare function getCurrentLanguage(): string;
 
 declare type GetMeta = ((vm: IViewModel) => IStringKeyedObject) | undefined;
 
-declare function getViewModel<RIVM extends IRIVM<RIVM>>(parentPseudo: PseudoValue, tile: StaticTile, node: StaticNode, data: any, parent: IRIVM<RIVM> | null, childNodes: Map<string, StaticNode>): Promise<IViewModel | null>;
+declare function getViewModel<RIVM extends IRIVM<RIVM>>(parentPseudo: PseudoValue, tile: StaticTile, node: StaticNode, data: any, parent: IRIVM<RIVM> | null, childNodes: Map<string, StaticNode>, isInner?: boolean): Promise<IViewModel | null>;
 
 export declare class GraphManager {
     _initialized: boolean;
@@ -315,7 +320,7 @@ declare interface IRIVM<T extends IRIVM<T>> {
     [key: string]: any;
     id: string;
     then: undefined;
-    _: IInstanceWrapper<T> | null;
+    $: IInstanceWrapper<T> | null;
     __: IModelWrapper<T> | null;
     __parentPseudo: IPseudo | undefined;
 }
@@ -342,6 +347,7 @@ declare interface IStringKeyedObject {
 }
 
 declare interface IViewModel {
+    _: IViewModel | undefined | Promise<IViewModel | null>;
     __parentPseudo: IPseudo | undefined;
     forJson(): {
         [key: string]: any;
@@ -404,16 +410,18 @@ declare class NodeConfigManager {
 declare const nodeConfigManager: NodeConfigManager;
 
 declare class NonLocalizedStringViewModel extends String implements IViewModel {
+    _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: PseudoValue | undefined;
     describeField: () => string | null;
     describeFieldGroup: () => string | null;
     __forJsonCache(): null;
     forJson(): string;
     static __create(tile: StaticTile, node: StaticNode, value: any): NonLocalizedStringViewModel | Promise<NonLocalizedStringViewModel | null> | null;
-    __asTileData(): boolean;
+    __asTileData(): string;
 }
 
 declare class NumberViewModel extends Number implements IViewModel {
+    _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: PseudoValue | undefined;
     describeField: () => string | null;
     describeFieldGroup: () => string | null;
@@ -435,18 +443,21 @@ declare class PseudoValue implements IPseudo {
     originalTile: StaticTile | null;
     accessed: boolean;
     childNodes: Map<string, StaticNode>;
+    isOuter: boolean;
+    isInner: boolean;
+    inner: PseudoValue | null;
     isIterable(): boolean;
     describeField(): string;
     describeFieldGroup(): string;
-    constructor(node: StaticNode, tile: StaticTile | null, value: any, parent: IRIVM<any> | null, childNodes: Map<string, StaticNode>);
+    constructor(node: StaticNode, tile: StaticTile | null, value: any, parent: IRIVM<any> | null, childNodes: Map<string, StaticNode>, inner: boolean | PseudoValue);
     getParentTileId(): string | null;
     getTile(): Promise<(any[] | StaticTile | null)[]>;
     clear(): void;
     updateValue(): AttrPromise<IViewModel>;
     getValue(): AttrPromise<IViewModel | null>;
-    getLength(): any;
-    getChildTypes(): Promise<any>;
-    getChildren(direct?: null): any;
+    getLength(): number;
+    getChildTypes(): Promise<{}>;
+    getChildren(direct?: null): IPseudo[];
     forJson(): Promise<{
         [key: string]: any;
     } | {
@@ -512,7 +523,7 @@ declare class ResourceInstanceCacheEntry implements IStringKeyedObject {
 
 declare class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeyedObject {
     [key: string | symbol]: any;
-    _: IInstanceWrapper<RIVM> | null;
+    $: IInstanceWrapper<RIVM> | null;
     __: IModelWrapper<RIVM> | null;
     __parentPseudo: IPseudo | undefined;
     __cacheEntry: ResourceInstanceCacheEntry | null;
@@ -574,6 +585,7 @@ export declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
 
 declare class SemanticViewModel implements IStringKeyedObject, IViewModel {
     [key: string | symbol]: any;
+    _: IViewModel | Promise<IViewModel> | undefined;
     then: undefined;
     [Symbol.toPrimitive]: undefined;
     __parentPseudo: PseudoValue | undefined;
@@ -950,6 +962,7 @@ declare class StringTranslatedLanguage {
 }
 
 declare class StringViewModel extends String implements IViewModel {
+    _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: PseudoValue | undefined;
     describeField: () => string | null;
     describeFieldGroup: () => string | null;
@@ -962,14 +975,29 @@ declare class StringViewModel extends String implements IViewModel {
     __asTileData(): Map<string, StringTranslatedLanguage>;
 }
 
+declare class Url {
+    url: string;
+    url_label?: string;
+    constructor(url: string, url_label?: string);
+}
+
 declare class UrlViewModel extends String implements IViewModel {
+    _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: PseudoValue | undefined;
     describeField: () => string | null;
     describeFieldGroup: () => string | null;
+    _value: Url;
     __forJsonCache(): null;
-    forJson(): boolean;
+    constructor(value: Url);
+    forJson(): {
+        [key: string]: string;
+    };
+    label(): string;
+    href(): string;
     static __create(tile: StaticTile, node: StaticNode, value: any): UrlViewModel | Promise<UrlViewModel | null> | null;
-    __asTileData(): boolean;
+    __asTileData(): {
+        [key: string]: string;
+    };
 }
 
 declare namespace utils {

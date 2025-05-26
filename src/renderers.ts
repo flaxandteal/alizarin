@@ -8,10 +8,10 @@ class Cleanable extends String {
 
 abstract class BaseRenderer {
   async render(asset: ResourceInstanceViewModel<any>) {
-    if (!asset._) {
+    if (!asset.$) {
       throw Error("Cannot render unloaded asset - do you want to await asset.retrieve()?");
     }
-    const root = await (await asset._.getRootViewModel());
+    const root = await (await asset.$.getRootViewModel());
     return this.renderValue(root, 0);
   }
 
@@ -140,7 +140,11 @@ class MarkdownRenderer extends Renderer {
   }
 
   async renderUrl(value: UrlViewModel, _depth: number): Promise<any> {
-    return `[${value}](${value})`;
+    const text = `[${value}](${value})`;
+    const wrapper = new Cleanable(text);
+    wrapper.__clean = value.href();
+    console.log(wrapper);
+    return wrapper;
   }
 
   override async renderDomainValue(domainValue: DomainValueViewModel, _: number): Promise<any> {
@@ -264,7 +268,8 @@ class JsonRenderer extends Renderer {
   }
 
   async renderResourceReference(value: ResourceInstanceViewModel<any>, _depth: number): Promise<any> {
-    return value.forJson();
+    const val = value.forJson();
+    return val;
   }
 }
 

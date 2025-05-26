@@ -456,7 +456,7 @@ class StaticTile {
 
   constructor(jsonData: StaticTile) {
     this.data = jsonData.data;
-    if (this.data && !(this.data instanceof Map)) {
+    if (typeof this.data === 'object' && !(this.data instanceof Map)) {
       this.data = new Map(Object.entries(this.data));
     }
     this.nodegroup_id = jsonData.nodegroup_id;
