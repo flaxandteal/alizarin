@@ -482,7 +482,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
           }
           const node = nodeObjs.get(nodeid);
           if (!node) {
-            throw Error("Unknown node in nodegroup");
+            throw Error(`Unknown node in nodegroup: ${nodeid} in ${nodegroupId}`);
           }
           if (nodeValue !== null) {
             await _addPseudo(node, tile);
