@@ -247,7 +247,7 @@ declare interface IInstanceWrapper<T extends IRIVM<T>> {
     model: IModelWrapper<T>;
     loadNodes(aliases: Array<string>): Promise<void>;
     allEntries(): MapIterator<[string, Array<IPseudo> | false | null]>;
-    addPseudo(childNode: StaticNode, tile: StaticTile | null): IPseudo;
+    addPseudo(childNode: StaticNode, tile: StaticTile | null, node: StaticNode): IPseudo;
     ensureNodegroup(allValues: Map<string, any>, node: StaticNode, nodegroupId: string | null, nodeObjs: Map<string, StaticNode>, nodegroupObjs: Map<string, StaticNodegroup>, edges: Map<string, string[]>, addIfMissing: boolean, tiles: StaticTile[] | null, doImpliedNodegroups: boolean): Promise<[Map<string, any>, Map<string, StaticNode>]>;
     setOrmAttribute(key: string, value: any): Promise<void>;
     getOrmAttribute(key: string): Promise<any>;
@@ -446,6 +446,7 @@ declare class PseudoValue implements IPseudo {
     isOuter: boolean;
     isInner: boolean;
     inner: PseudoValue | null;
+    independent: boolean;
     isIterable(): boolean;
     describeField(): string;
     describeFieldGroup(): string;

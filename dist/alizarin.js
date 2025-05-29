@@ -2265,7 +2265,7 @@ const _SemanticViewModel = class _SemanticViewModel {
     if (!this.__parentWkri.$) {
       throw Error("This semantic node is currently on an unloaded WKRI");
     }
-    const child = this.__parentWkri.$.addPseudo(childNode, this.__tile);
+    const child = this.__parentWkri.$.addPseudo(childNode, this.__tile, this.__node);
     child.parentNode = this.__parentPseudo || null;
     return child;
   }
@@ -2313,30 +2313,35 @@ const _SemanticViewModel = class _SemanticViewModel {
         continue;
       }
       const childNode = childNodes.get(key);
-      for (let value of values) {
-        if (childNode && value.node && value !== null && (!value.parentNode || value.parentNode === this.__parentPseudo)) {
-          value = await value;
-          if (!value.node) {
-            throw Error(`Node ${childNode.alias} (${childNode.nodeid}) is unavailable`);
-          }
-          if (value.node.nodegroup_id != node.nodegroup_id && tile && value.tile && (!value.tile.parenttile_id || value.tile.parenttile_id == tile.tileid) || value.node.nodegroup_id == node.nodegroup_id && tile && value.tile == tile && !childNode.is_collector) {
-            children.set(key, value);
-          } else if (node.nodegroup_id != value.node.nodegroup_id && childNode.is_collector) {
-            const childValue = value instanceof PseudoList ? value : value.isIterable() ? await value.getValue() : null;
-            let listValue;
-            if (childValue && Array.isArray(childValue)) {
-              listValue = childValue;
-            } else {
-              listValue = null;
+      if (childNode) {
+        for (let value of values) {
+          if (value !== null && value.node && (!value.parentNode || value.parentNode === this.__parentPseudo)) {
+            value = await value;
+            if (!value.node) {
+              throw Error(`Node ${childNode.alias} (${childNode.nodeid}) is unavailable`);
             }
-            if (listValue !== null) {
-              if (children.has(key)) {
-                children.get(key).push(...listValue);
-              } else {
-                children.set(key, listValue);
-              }
-            } else {
+            if (
+              // value.node.nodegroup_id == node.nodeid in all cases for first possibility?
+              value.node.nodegroup_id != node.nodegroup_id && tile && value.tile && (!value.tile.parenttile_id || value.tile.parenttile_id == tile.tileid) || value.node.nodegroup_id == node.nodegroup_id && tile && value.tile == tile && !childNode.is_collector
+            ) {
               children.set(key, value);
+            } else if (node.nodegroup_id != value.node.nodegroup_id && childNode.is_collector) {
+              const childValue = value instanceof PseudoList ? value : value.isIterable() ? await value.getValue() : null;
+              let listValue;
+              if (childValue && Array.isArray(childValue)) {
+                listValue = childValue;
+              } else {
+                listValue = null;
+              }
+              if (listValue !== null) {
+                if (children.has(key)) {
+                  children.get(key).push(...listValue);
+                } else {
+                  children.set(key, listValue);
+                }
+              } else {
+                children.set(key, value);
+              }
             }
           }
         }
@@ -2521,8 +2526,10 @@ class PseudoValue {
     __publicField(this, "isOuter", false);
     __publicField(this, "isInner", false);
     __publicField(this, "inner", null);
+    __publicField(this, "independent");
     this.node = node;
     this.tile = tile;
+    this.independent = tile === null;
     if (!parent) {
       throw Error("Must have a parent or parent class for a pseudo-node");
     }
@@ -2590,7 +2597,7 @@ class PseudoValue {
     } else {
       this.tile.data.set(this.node.nodeid, tileValue);
     }
-    const tile = this.node.is_collector ? this.tile : null;
+    const tile = this.independent ? this.tile : null;
     return [tile, relationships];
   }
   clear() {
@@ -2878,7 +2885,7 @@ class ResourceInstanceWrapper {
       await this.valueList.retrieve(key);
     }
   }
-  addPseudo(childNode, tile) {
+  addPseudo(childNode, tile, node) {
     const key = childNode.alias;
     if (!key) {
       throw Error(`Cannot add a pseudo node with no alias ${childNode.nodeid}`);
@@ -2887,7 +2894,7 @@ class ResourceInstanceWrapper {
       this.model,
       key,
       false,
-      !childNode.is_collector ? tile : null,
+      !childNode.is_collector && childNode.nodegroup_id === node.nodegroup_id ? tile : null,
       // Does it share a tile
       this.wkri
     );
@@ -2974,9 +2981,9 @@ class ResourceInstanceWrapper {
     const value = node && await allValues.get(alias);
     let newAllValues = allValues;
     if (value === false || addIfMissing && value === void 0) {
-      if (newAllValues.has(alias)) {
-        newAllValues.delete(alias);
-      }
+      [...nodeObjs.values()].filter((node2) => {
+        return node2.nodegroup_id === nodegroupId;
+      }).forEach((node2) => newAllValues.delete(node2.alias || ""));
       let nodegroupTiles;
       if (tiles === null) {
         nodegroupTiles = [];
@@ -3032,7 +3039,7 @@ class ResourceInstanceWrapper {
     const nodegroupObjs = this.model.getNodegroupObjects();
     const edges = this.model.getEdges();
     const allValues = new Map(
-      [...nodegroupObjs.keys()].map((id) => {
+      [...nodeObjs.keys()].map((id) => {
         const node = nodeObjs.get(id);
         if (!node) {
           throw Error(`Could not find node for nodegroup ${id}`);
@@ -3175,7 +3182,7 @@ class ResourceInstanceWrapper {
           if (toAdd && toAdd !== nodegroupId) {
             impliedNodegroups.set(toAdd, domainNode);
           }
-          if (domainNode.nodegroup_id && domainNode.nodegroup_id !== domainNode.nodeid && tileid && !impliedNodes.has(domainNode.nodeid + tileid)) {
+          if (domainNode.nodegroup_id && tile && domainNode.nodegroup_id === tile.nodegroup_id && domainNode.nodegroup_id !== domainNode.nodeid && tileid && !impliedNodes.has(domainNode.nodeid + tileid)) {
             impliedNodes.set(domainNode.nodeid + tileid, [domainNode, tile]);
           }
           break;
@@ -3212,6 +3219,9 @@ class ResourceInstanceWrapper {
         for (const [key, value] of [...tile.data.entries()]) {
           tileNodes.set(key, value);
         }
+        [...nodeObjs.values()].filter((node) => {
+          return node.nodegroup_id === nodegroupId && !tileNodes.get(node.nodeid) && node.datatype === "semantic";
+        }).forEach((node) => tileNodes.set(node.nodeid, {}));
         if (!tileNodes.has(tile.nodegroup_id)) {
           tileNodes.set(tile.nodegroup_id, {});
         }
@@ -3221,7 +3231,7 @@ class ResourceInstanceWrapper {
           }
           const node = nodeObjs.get(nodeid);
           if (!node) {
-            throw Error("Unknown node in nodegroup");
+            throw Error(`Unknown node in nodegroup: ${nodeid} in ${nodegroupId}`);
           }
           if (nodeValue !== null) {
             await _addPseudo(node, tile);
@@ -3425,7 +3435,7 @@ class ResourceModelWrapper {
   setPermittedNodegroups(permissions) {
     const nodegroups = this.getNodegroupObjects();
     const nodes = this.getNodeObjectsByAlias();
-    const nodesById = this.getNodeObjects();
+    this.getNodeObjects();
     this.permittedNodegroups = new Map([...permissions].map(([key, value]) => {
       const k = key || "";
       if (nodegroups.has(k) || k === "") {
@@ -3433,11 +3443,7 @@ class ResourceModelWrapper {
       } else {
         const node = nodes.get(k);
         if (node) {
-          if (node.nodeid !== node.nodegroup_id) {
-            const nodegroup = nodesById.has(node.nodegroup_id || "") ? `${nodesById.get(node.nodegroup_id).alias} (${node.nodegroup_id})` : node.nodegroup_id;
-            console.warn(`Applying a permissions rule to a nodegroup ${nodegroup} that contains, but is not the same as, the node you requested: ${node.alias} (${node.nodeid})`);
-          }
-          return [node.nodegroup_id, value];
+          return [node.nodeid, value];
         } else {
           throw Error(`Could not find ${key} in nodegroups for permissions`);
         }

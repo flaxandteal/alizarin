@@ -62,6 +62,7 @@ class PseudoValue implements IPseudo {
   isOuter: boolean = false;
   isInner: boolean = false;
   inner: PseudoValue | null = null;
+  independent: boolean;
 
   isIterable(): boolean {
     return this.datatype !== null && ITERABLE_DATATYPES.includes(this.datatype);
@@ -96,6 +97,7 @@ class PseudoValue implements IPseudo {
   ) {
     this.node = node;
     this.tile = tile;
+    this.independent = tile === null;
     if (!parent) {
       throw Error("Must have a parent or parent class for a pseudo-node");
     }
@@ -158,7 +160,7 @@ class PseudoValue implements IPseudo {
     } else {
       this.tile.data.set(this.node.nodeid, tileValue);
     }
-    const tile = this.node.is_collector ? this.tile : null;
+    const tile = this.independent ? this.tile : null;
 
     // TODO relationships
     return [tile, relationships];

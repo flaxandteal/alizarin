@@ -82,7 +82,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     }
   }
 
-  addPseudo(childNode: StaticNode, tile: StaticTile | null): IPseudo {
+  addPseudo(childNode: StaticNode, tile: StaticTile | null, node: StaticNode): IPseudo {
     const key = childNode.alias;
     if (!key) {
       throw Error(`Cannot add a pseudo node with no alias ${childNode.nodeid}`);
@@ -91,7 +91,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
       this.model,
       key,
       false,
-      !childNode.is_collector ? tile : null, // Does it share a tile
+      (!childNode.is_collector && childNode.nodegroup_id === node.nodegroup_id) ? tile : null, // Does it share a tile
       this.wkri,
     );
 
@@ -182,7 +182,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
 
   async ensureNodegroup(
     allValues: Map<string, any>,
-    node: StaticNode,
+    node: StaticNode, // TODO: remove node from this call.
     nodegroupId: string,
     nodeObjs: Map<string, StaticNode>,
     nodegroupObjs: Map<string, StaticNodegroup>,
@@ -201,9 +201,9 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     let newAllValues = allValues;
 
     if (value === false || (addIfMissing && value === undefined)) {
-      if (newAllValues.has(alias)) {
-        newAllValues.delete(alias);
-      }
+      [...nodeObjs.values()].filter((node: StaticNode) => {
+        return node.nodegroup_id === nodegroupId;
+      }).forEach((node: StaticNode) => newAllValues.delete(node.alias || ''));
       let nodegroupTiles: (StaticTile | null)[];
       if (tiles === null) {
         nodegroupTiles = [];
@@ -263,7 +263,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     const nodegroupObjs = this.model.getNodegroupObjects();
     const edges = this.model.getEdges();
     const allValues: Map<string, any> = new Map(
-      [...nodegroupObjs.keys()].map((id: string) => {
+      [...nodeObjs.keys()].map((id: string) => {
         const node = nodeObjs.get(id);
         if (!node) {
           throw Error(`Could not find node for nodegroup ${id}`);
@@ -408,7 +408,6 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
         existing = await existing;
       }
       if (existing !== false && existing !== undefined) {
-        // console.error("Existing:", existing);
         // This might be correct - confirm.
         // console.warn(`Tried to load node twice: ${key} (${node.nodeid}<${node.nodegroup_id})`);
         allValues.set(key, existing);
@@ -432,7 +431,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
           if (toAdd && toAdd !== nodegroupId) {
             impliedNodegroups.set(toAdd, domainNode);
           }
-          if (domainNode.nodegroup_id && domainNode.nodegroup_id !== domainNode.nodeid && tileid && !impliedNodes.has(domainNode.nodeid + tileid)) {
+          if (domainNode.nodegroup_id && tile && domainNode.nodegroup_id === tile.nodegroup_id && domainNode.nodegroup_id !== domainNode.nodeid && tileid && !impliedNodes.has(domainNode.nodeid + tileid)) {
             impliedNodes.set(domainNode.nodeid + tileid, [domainNode, tile]);
           }
           break;
@@ -472,6 +471,12 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
         for (const [key, value] of [...tile.data.entries()]) {
           tileNodes.set(key, value);
         }
+
+        // Semantic nodes in this tile should always have a pseudo-node
+        [...nodeObjs.values()].filter((node: StaticNode) => {
+          return node.nodegroup_id === nodegroupId && !tileNodes.get(node.nodeid) && node.datatype === 'semantic';
+        }).forEach((node: StaticNode) => tileNodes.set(node.nodeid, {}));
+
         if (!tileNodes.has(tile.nodegroup_id)) {
           tileNodes.set(tile.nodegroup_id, {});
         }
@@ -494,6 +499,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
       const value = impliedNodes.entries().next().value;
       if (value) {
         const [node, tile] = value[1];
+        // If nodeid!=nodegroup_id, then it has its own tile.
         if (tile.tileid && !tileNodesSeen.has([node.nodeid, tile.tileid])) {
           await _addPseudo(node, tile);
         }
@@ -713,13 +719,9 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
       } else {
         const node = nodes.get(k);
         if (node) {
-          if (node.nodeid !== node.nodegroup_id) {
-            const nodegroup = nodesById.has(node.nodegroup_id || '') ?
-              `${nodesById.get(node.nodegroup_id).alias} (${node.nodegroup_id})` :
-              node.nodegroup_id;
-            console.warn(`Applying a permissions rule to a nodegroup ${nodegroup} that contains, but is not the same as, the node you requested: ${node.alias} (${node.nodeid})`);
-          }
-          return [node.nodegroup_id, value];
+          // The nodeid is the nodegroup ID of the children, but may not be the nodegroup ID of
+          // the semantic node itself.
+          return [node.nodeid, value];
         } else {
           throw Error(`Could not find ${key} in nodegroups for permissions`);
         }

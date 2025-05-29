@@ -1692,7 +1692,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       throw Error("This semantic node is currently on an unloaded WKRI");
     }
 
-    const child = this.__parentWkri.$.addPseudo(childNode, this.__tile);
+    const child = this.__parentWkri.$.addPseudo(childNode, this.__tile, this.__node);
     child.parentNode = this.__parentPseudo || null;
     return child;
   }
@@ -1748,6 +1748,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     // TODO check this does not go deeper than necessary.
     await parent.$.loadNodes([...childNodes.keys()]);
 
+    // TODO: Why not just use edges?
     const children: Map<string, any> = new Map();
     for (const entry of [...parent.$.allEntries()]) {
       const key = entry[0];
@@ -1759,57 +1760,59 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
         continue;
       }
       const childNode = childNodes.get(key);
-      for (let value of values) {
-        if (
-          childNode &&
-          value.node &&
-          value !== null &&
-          (!(value.parentNode) ||
-            value.parentNode === this.__parentPseudo)
-        ) {
-          // It is possible that this value has already
-          // been requested, but the tile is in-flight.
-          value = await value;
-          if (!value.node) {
-            throw Error(`Node ${childNode.alias} (${childNode.nodeid}) is unavailable`);
-          }
+      if (childNode) {
+        for (let value of values) {
           if (
-            (value.node.nodegroup_id != node.nodegroup_id && tile && value.tile && (!(value.tile.parenttile_id) || value.tile.parenttile_id == tile.tileid)) ||
-            (value.node.nodegroup_id == node.nodegroup_id &&
-              tile &&
-              value.tile == tile &&
-              !childNode.is_collector) //  # It shares a tile
-            // it feels like this should be necessary, but area_assignments->area_assignment fails with null parenttile_id
-            // (tile && value.tile && value.tile.parenttile_id == tile.tileid) ||
-            // (value.node.nodegroup_id == node.nodegroup_id &&
-            //   tile &&
-            //   value.tile == tile &&
-            //   !childNode.is_collector) //  # It shares a tile
+            value !== null &&
+            value.node &&
+            (!(value.parentNode) ||
+              value.parentNode === this.__parentPseudo)
           ) {
-            children.set(key, value);
-          } else if (
-            node.nodegroup_id != value.node.nodegroup_id &&
-            childNode.is_collector // It does not share a tile
-          ) {
-            // This avoids list types that have their own tiles (like resource or concept lists)
-            // from appearing doubly-nested
-            const childValue = value instanceof PseudoList ? value : (value.isIterable() ? await value.getValue() : null);
-            let listValue: PseudoList | Array<any> | null;
-            if (childValue && Array.isArray(childValue)) {
-              listValue = childValue;
-            } else {
-              listValue = null;
+            // It is possible that this value has already
+            // been requested, but the tile is in-flight.
+            value = await value;
+            if (!value.node) {
+              throw Error(`Node ${childNode.alias} (${childNode.nodeid}) is unavailable`);
             }
-            if (listValue !== null) {
-              if (children.has(key)) {
-                children.get(key).push(...listValue);
-              } else {
-                children.set(key, listValue);
-              }
-            } else {
-              // In this case, we have a value, but the wrapper logic did not make it a PseudoList, so
-              // we should treat it as singular.
+            if (
+              // value.node.nodegroup_id == node.nodeid in all cases for first possibility?
+              (value.node.nodegroup_id != node.nodegroup_id && tile && value.tile && (!(value.tile.parenttile_id) || value.tile.parenttile_id == tile.tileid)) ||
+              (value.node.nodegroup_id == node.nodegroup_id &&
+                tile &&
+                value.tile == tile &&
+                !childNode.is_collector) //  # It shares a tile
+              // it feels like this should be necessary, but area_assignments->area_assignment fails with null parenttile_id
+              // (tile && value.tile && value.tile.parenttile_id == tile.tileid) ||
+              // (value.node.nodegroup_id == node.nodegroup_id &&
+              //   tile &&
+              //   value.tile == tile &&
+              //   !childNode.is_collector) //  # It shares a tile
+            ) {
               children.set(key, value);
+            } else if (
+              node.nodegroup_id != value.node.nodegroup_id &&
+              childNode.is_collector // It does not share a tile
+            ) {
+              // This avoids list types that have their own tiles (like resource or concept lists)
+              // from appearing doubly-nested
+              const childValue = value instanceof PseudoList ? value : (value.isIterable() ? await value.getValue() : null);
+              let listValue: PseudoList | Array<any> | null;
+              if (childValue && Array.isArray(childValue)) {
+                listValue = childValue;
+              } else {
+                listValue = null;
+              }
+              if (listValue !== null) {
+                if (children.has(key)) {
+                  children.get(key).push(...listValue);
+                } else {
+                  children.set(key, listValue);
+                }
+              } else {
+                // In this case, we have a value, but the wrapper logic did not make it a PseudoList, so
+                // we should treat it as singular.
+                children.set(key, value);
+              }
             }
           }
         }

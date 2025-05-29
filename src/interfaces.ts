@@ -43,7 +43,7 @@ interface IInstanceWrapper<T extends IRIVM<T>> {
   model: IModelWrapper<T>;
   loadNodes(aliases: Array<string>): Promise<void>;
   allEntries(): MapIterator<[string, Array<IPseudo> | false | null]>;
-  addPseudo(childNode: StaticNode, tile: StaticTile | null): IPseudo;
+  addPseudo(childNode: StaticNode, tile: StaticTile | null, node: StaticNode): IPseudo;
   ensureNodegroup(
     allValues: Map<string, any>,
     node: StaticNode,
