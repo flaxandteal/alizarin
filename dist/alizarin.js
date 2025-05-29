@@ -921,7 +921,7 @@ function tileLoadingError(reason, exc) {
   }
 }
 class ValueList {
-  constructor(values, wrapper, tiles) {
+  constructor(values, allNodegroups, wrapper, tiles) {
     __publicField(this, "values");
     __publicField(this, "wrapper");
     __publicField(this, "tiles");
@@ -930,7 +930,7 @@ class ValueList {
     this.values = values;
     this.wrapper = wrapper;
     this.tiles = tiles;
-    this.promises = /* @__PURE__ */ new Map();
+    this.promises = allNodegroups;
     this.writeLock = null;
   }
   async get(key) {
@@ -944,13 +944,18 @@ class ValueList {
     return this.values.has(key);
   }
   async retrieve(key, dflt = null, raiseError = false) {
-    const node = this.wrapper.model.getNodeObjectsByAlias().get(key);
-    const promise = node ? this.promises.get(node.nodegroup_id) : null;
-    if (promise) {
-      await promise;
+    let result = this.values.get(key);
+    if (Array.isArray(result)) {
+      return result;
     }
-    let result = await this.values.get(key);
-    if (result === false) {
+    const node = this.wrapper.model.getNodeObjectsByAlias().get(key);
+    result = await result;
+    if (!node) {
+      throw Error(`This key ${key} has no corresponding node`);
+    }
+    const nodegroupId = node.nodegroup_id || "";
+    const promise = node ? await this.promises.get(nodegroupId) : false;
+    if (promise === false) {
       await this.writeLock;
       if (this.wrapper.resource) {
         const node2 = this.wrapper.model.getNodeObjectsByAlias().get(key);
@@ -963,8 +968,8 @@ class ValueList {
         const promise2 = new Promise(async (resolve) => {
           const [ngValues] = await this.wrapper.ensureNodegroup(
             values,
-            node2,
-            node2.nodegroup_id,
+            this.promises,
+            nodegroupId,
             this.wrapper.model.getNodeObjects(),
             this.wrapper.model.getNodegroupObjects(),
             this.wrapper.model.getEdges(),
@@ -983,16 +988,16 @@ class ValueList {
             }
           }
           resolve(original);
-          this.promises.delete(node2.nodegroup_id);
         });
         this.writeLock = promise2;
-        this.promises.set(node2.nodegroup_id, promise2);
+        this.promises.set(nodegroupId, promise2);
         this.values.set(key, promise2);
         await promise2;
+        this.promises.set(nodegroupId, true);
       } else {
         this.values.delete(key);
       }
-      result = this.values.get(key);
+      result = await this.values.get(key);
     }
     result = await result;
     if (result === void 0 || result === false) {
@@ -2972,18 +2977,14 @@ class ResourceInstanceWrapper {
       }
     });
   }
-  async ensureNodegroup(allValues, node, nodegroupId, nodeObjs, nodegroupObjs, edges, addIfMissing, tiles, doImpliedNodegroups = true) {
-    const alias = node.alias || "";
-    const impliedNodegroups = /* @__PURE__ */ new Map();
-    if (!node) {
-      return [allValues, impliedNodegroups];
-    }
-    const value = node && await allValues.get(alias);
-    let newAllValues = allValues;
-    if (value === false || addIfMissing && value === void 0) {
-      [...nodeObjs.values()].filter((node2) => {
-        return node2.nodegroup_id === nodegroupId;
-      }).forEach((node2) => newAllValues.delete(node2.alias || ""));
+  async ensureNodegroup(allValues, allNodegroups, nodegroupId, nodeObjs, nodegroupObjs, edges, addIfMissing, tiles, doImpliedNodegroups = true) {
+    const impliedNodegroups = /* @__PURE__ */ new Set();
+    const sentinel = allNodegroups.get(nodegroupId);
+    let newValues = /* @__PURE__ */ new Map();
+    if (sentinel === false || addIfMissing && sentinel === void 0) {
+      [...nodeObjs.values()].filter((node) => {
+        return node.nodegroup_id === nodegroupId;
+      }).forEach((node) => allValues.delete(node.alias || ""));
       let nodegroupTiles;
       if (tiles === null) {
         nodegroupTiles = [];
@@ -2996,29 +2997,30 @@ class ResourceInstanceWrapper {
           nodegroupTiles = [null];
         }
         const rgValues = await this.valuesFromResourceNodegroup(
-          newAllValues,
+          allValues,
           nodegroupTiles,
           nodegroupId,
           nodeObjs,
           edges
         );
-        const newValues = rgValues[0];
+        newValues = rgValues[0];
         const newImpliedNodegroups = rgValues[1];
         [...newValues.entries()].forEach((entry) => {
           if (entry[1] !== void 0) {
-            newAllValues.set(entry[0], entry[1]);
+            allValues.set(entry[0], entry[1]);
           }
         });
-        [...newImpliedNodegroups.entries()].forEach(([k, v]) => {
-          impliedNodegroups.set(k, v);
+        [...newImpliedNodegroups].forEach((v) => {
+          impliedNodegroups.add(v);
         });
+        allNodegroups.set(nodegroupId, true);
       }
     }
     if (doImpliedNodegroups) {
-      for (const [nodegroupId2, node2] of [...impliedNodegroups.entries()]) {
+      for (const nodegroupId2 of [...impliedNodegroups]) {
         const [impliedValues] = await this.ensureNodegroup(
-          newAllValues,
-          node2,
+          allValues,
+          allNodegroups,
           nodegroupId2,
           nodeObjs,
           nodegroupObjs,
@@ -3028,25 +3030,22 @@ class ResourceInstanceWrapper {
           // RMV different from Python
           true
         );
-        newAllValues = impliedValues;
+        for (const [key, value] of impliedValues) {
+          newValues.set(key, value);
+        }
       }
       impliedNodegroups.clear();
     }
-    return [newAllValues, impliedNodegroups];
+    return [newValues, impliedNodegroups];
   }
   async populate(lazy) {
     const nodeObjs = this.model.getNodeObjects();
     const nodegroupObjs = this.model.getNodegroupObjects();
     const edges = this.model.getEdges();
-    const allValues = new Map(
-      [...nodegroupObjs.keys()].map((id) => {
-        const node = nodeObjs.get(id);
-        if (!node) {
-          throw Error(`Could not find node for nodegroup ${id}`);
-        }
-        return [node.alias || "", false];
-      })
-    );
+    const allValues = /* @__PURE__ */ new Map();
+    const allNodegroups = new Map([...nodegroupObjs.keys()].map((id) => {
+      return [id || "", false];
+    }));
     const rootNode = this.model.getRootNode();
     if (rootNode.alias === null) {
       throw Error("Cannot populate a model with no proper root node");
@@ -3055,12 +3054,11 @@ class ResourceInstanceWrapper {
     let tiles = null;
     if (!lazy && this.resource) {
       tiles = this.resource.tiles;
-      let impliedNodegroups = /* @__PURE__ */ new Map();
+      let impliedNodegroups = /* @__PURE__ */ new Set();
       for (const [ng] of nodegroupObjs) {
-        const [values, newImpliedNodegroups] = await this.ensureNodegroup(
+        const [_, newImpliedNodegroups] = await this.ensureNodegroup(
           allValues,
-          nodeObjs.get(ng) || rootNode,
-          // should be the only missing ID
+          allNodegroups,
           ng,
           nodeObjs,
           nodegroupObjs,
@@ -3070,22 +3068,19 @@ class ResourceInstanceWrapper {
           tiles,
           false
         );
-        for (const [key, value] of [...values.entries()]) {
-          allValues.set(key, value);
-        }
-        for (const [impliedNodegroup, impliedNode] of [...newImpliedNodegroups.entries()]) {
-          impliedNodegroups.set(impliedNodegroup, impliedNode);
+        for (const impliedNodegroup of [...newImpliedNodegroups]) {
+          impliedNodegroups.add(impliedNodegroup);
         }
         impliedNodegroups.delete(ng);
       }
       while (impliedNodegroups.size) {
-        const newImpliedNodegroups = /* @__PURE__ */ new Map();
-        for (const [nodegroupId, impliedNode] of [...impliedNodegroups.entries()]) {
-          const currentValue = allValues.get(impliedNode.nodeid);
+        const newImpliedNodegroups = /* @__PURE__ */ new Set();
+        for (const nodegroupId of [...impliedNodegroups]) {
+          const currentValue = allNodegroups.get(nodegroupId);
           if (currentValue === false || currentValue === void 0) {
-            const [impliedValues, newImpliedNodegroups2] = await this.ensureNodegroup(
+            const [_, newImpliedNodegroups2] = await this.ensureNodegroup(
               allValues,
-              impliedNode,
+              allNodegroups,
               nodegroupId,
               nodeObjs,
               nodegroupObjs,
@@ -3095,11 +3090,8 @@ class ResourceInstanceWrapper {
               // RMV different from Python
               true
             );
-            for (const [impliedNodegroup, impliedNode2] of [...newImpliedNodegroups2.entries()]) {
-              newImpliedNodegroups2.set(impliedNodegroup, impliedNode2);
-            }
-            for (const [key, value] of [...impliedValues.entries()]) {
-              allValues.set(key, value);
+            for (const impliedNodegroup of [...newImpliedNodegroups2]) {
+              newImpliedNodegroups2.add(impliedNodegroup);
             }
           }
         }
@@ -3110,6 +3102,7 @@ class ResourceInstanceWrapper {
     }
     this.valueList = new ValueList(
       allValues,
+      allNodegroups,
       this,
       this.resource ? this.resource.tiles : null
     );
@@ -3148,7 +3141,7 @@ class ResourceInstanceWrapper {
   }
   async valuesFromResourceNodegroup(existingValues, nodegroupTiles, nodegroupId, nodeObjs, edges) {
     const allValues = /* @__PURE__ */ new Map();
-    const impliedNodegroups = /* @__PURE__ */ new Map();
+    const impliedNodegroups = /* @__PURE__ */ new Set();
     const impliedNodes = /* @__PURE__ */ new Map();
     const nodesUnseen = new Set(
       [...nodeObjs.values()].filter((node) => node.nodegroup_id == nodegroupId).map((node) => node.alias)
@@ -3178,9 +3171,9 @@ class ResourceInstanceWrapper {
           if (!domainNode) {
             throw Error("Edge error in graph");
           }
-          const toAdd = domainNode.nodegroup_id ? domainNode.nodegroup_id : domainNode.nodeid;
+          const toAdd = domainNode.nodegroup_id ? domainNode.nodegroup_id : "";
           if (toAdd && toAdd !== nodegroupId) {
-            impliedNodegroups.set(toAdd, domainNode);
+            impliedNodegroups.add(toAdd);
           }
           if (domainNode.nodegroup_id && tile && domainNode.nodegroup_id === tile.nodegroup_id && domainNode.nodegroup_id !== domainNode.nodeid && tileid && !impliedNodes.has(domainNode.nodeid + tileid)) {
             impliedNodes.set(domainNode.nodeid + tileid, [domainNode, tile]);

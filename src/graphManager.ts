@@ -182,7 +182,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
 
   async ensureNodegroup(
     allValues: Map<string, any>,
-    node: StaticNode, // TODO: remove node from this call.
+    allNodegroups: Map<string, boolean | Promise<any>>,
     nodegroupId: string,
     nodeObjs: Map<string, StaticNode>,
     nodegroupObjs: Map<string, StaticNodegroup>,
@@ -190,20 +190,15 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     addIfMissing: boolean,
     tiles: StaticTile[] | null,
     doImpliedNodegroups: boolean = true
-  ): Promise<[Map<string, any>, Map<string, StaticNode>]> {
-    const alias: string = node.alias || "";
-    const impliedNodegroups: Map<string, StaticNode> = new Map();
-    if (!node) {
-      return [allValues, impliedNodegroups];
-    }
-    const value = node && (await allValues.get(alias));
+  ): Promise<[Map<string, any>, Set<string>]> {
+    const impliedNodegroups: Set<string> = new Set();
+    const sentinel = allNodegroups.get(nodegroupId); // no action required if pending
+    let newValues = new Map();
 
-    let newAllValues = allValues;
-
-    if (value === false || (addIfMissing && value === undefined)) {
+    if (sentinel === false || (addIfMissing && sentinel === undefined)) {
       [...nodeObjs.values()].filter((node: StaticNode) => {
         return node.nodegroup_id === nodegroupId;
-      }).forEach((node: StaticNode) => newAllValues.delete(node.alias || ''));
+      }).forEach((node: StaticNode) => allValues.delete(node.alias || ''));
       let nodegroupTiles: (StaticTile | null)[];
       if (tiles === null) {
         nodegroupTiles = [];
@@ -216,32 +211,34 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
           nodegroupTiles = [null];
         }
         const rgValues = await this.valuesFromResourceNodegroup(
-          newAllValues,
+          allValues,
           nodegroupTiles,
           nodegroupId,
           nodeObjs,
           edges,
         );
-        const newValues = rgValues[0];
-        const newImpliedNodegroups: Map<string, any> = rgValues[1];
+        newValues = rgValues[0];
+        const newImpliedNodegroups: Set<string> = rgValues[1];
 
         [...newValues.entries()].forEach((entry) => {
           if (entry[1] !== undefined) {
-            newAllValues.set(entry[0], entry[1]);
+            allValues.set(entry[0], entry[1]);
           }
         });
-        [...newImpliedNodegroups.entries()].forEach(([k, v]) => {
-          impliedNodegroups.set(k, v);
+        [...newImpliedNodegroups].forEach((v) => {
+          impliedNodegroups.add(v);
         });
+        allNodegroups.set(nodegroupId, true);
       }
     }
 
     // RMV double-check against Python logic
     if (doImpliedNodegroups) {
-      for (const [nodegroupId, node] of [...impliedNodegroups.entries()]) {
+      for (const nodegroupId of [...impliedNodegroups]) {
+        // TODO: why are we not keeping implied nodegroups?
         const [impliedValues] = await this.ensureNodegroup(
-          newAllValues,
-          node,
+          allValues,
+          allNodegroups,
           nodegroupId,
           nodeObjs,
           nodegroupObjs,
@@ -250,12 +247,14 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
           tiles, // RMV different from Python
           true
         );
-        newAllValues = impliedValues;
+        for (const [key, value] of impliedValues) {
+          newValues.set(key, value);
+        }
       }
       impliedNodegroups.clear();
     }
 
-    return [newAllValues, impliedNodegroups];
+    return [newValues, impliedNodegroups];
   }
 
   async populate(lazy: boolean): Promise<void> {
@@ -267,15 +266,17 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     // (e.g. children of designation_and_protection_timespan)
     // get loaded - however, just doing that drops performance
     // by half or two-thirds, so a less wasteful approach is needed.
-    const allValues: Map<string, any> = new Map(
-      [...nodegroupObjs.keys()].map((id: string) => {
-        const node = nodeObjs.get(id);
-        if (!node) {
-          throw Error(`Could not find node for nodegroup ${id}`);
-        }
-        return [node.alias || "", false];
-      }),
-    );
+    const allValues: Map<string, any> = new Map();
+    const allNodegroups: Map<string, any> = new Map([...nodegroupObjs.keys()].map((id: string) => {
+      return [id || "", false];
+    }));
+    //[...nodegroupObjs.keys()].map((id: string) => {
+    //  const node = nodeObjs.get(id);
+    //  if (!node) {
+    //    throw Error(`Could not find node for nodegroup ${id}`);
+    //  }
+    //  allValues.set(node.alias || "", false);
+    //});
     const rootNode = this.model.getRootNode();
 
     if (rootNode.alias === null) {
@@ -287,11 +288,11 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     let tiles = null;
     if (!lazy && this.resource) {
       tiles = this.resource.tiles;
-      let impliedNodegroups = new Map<string, StaticNode>();
+      let impliedNodegroups = new Set<string>();
       for (const [ng] of nodegroupObjs) {
-        const [values, newImpliedNodegroups] = await this.ensureNodegroup(
+        const [_, newImpliedNodegroups] = await this.ensureNodegroup(
           allValues,
-          nodeObjs.get(ng) || rootNode, // should be the only missing ID
+          allNodegroups,
           ng,
           nodeObjs,
           nodegroupObjs,
@@ -300,24 +301,21 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
           tiles,
           false
         );
-        for (const [key, value] of [...values.entries()]) {
-          allValues.set(key, value);
-        }
 
-        for (const [impliedNodegroup, impliedNode] of [...newImpliedNodegroups.entries()]) {
-          impliedNodegroups.set(impliedNodegroup, impliedNode);
+        for (const impliedNodegroup of [...newImpliedNodegroups]) {
+          impliedNodegroups.add(impliedNodegroup);
         }
         impliedNodegroups.delete(ng);
       }
 
       while (impliedNodegroups.size) {
-        const newImpliedNodegroups = new Map<string, StaticNode>();
-        for (const [nodegroupId, impliedNode] of [...impliedNodegroups.entries()]) {
-          const currentValue = allValues.get(impliedNode.nodeid);
+        const newImpliedNodegroups = new Set<string>();
+        for (const nodegroupId of [...impliedNodegroups]) {
+          const currentValue = allNodegroups.get(nodegroupId);
           if (currentValue === false || currentValue === undefined) {
-            const [impliedValues, newImpliedNodegroups] = await this.ensureNodegroup(
+            const [_, newImpliedNodegroups] = await this.ensureNodegroup(
               allValues,
-              impliedNode,
+              allNodegroups,
               nodegroupId,
               nodeObjs,
               nodegroupObjs,
@@ -326,11 +324,8 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
               tiles, // RMV different from Python
               true
             );
-            for (const [impliedNodegroup, impliedNode] of [...newImpliedNodegroups.entries()]) {
-              newImpliedNodegroups.set(impliedNodegroup, impliedNode);
-            }
-            for (const [key, value] of [...impliedValues.entries()]) {
-              allValues.set(key, value);
+            for (const impliedNodegroup of [...newImpliedNodegroups]) {
+              newImpliedNodegroups.add(impliedNodegroup);
             }
           }
         }
@@ -342,6 +337,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
 
     this.valueList = new ValueList(
       allValues,
+      allNodegroups,
       this,
       this.resource ? this.resource.tiles : null,
     );
@@ -389,10 +385,10 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     nodegroupId: string,
     nodeObjs: Map<string, StaticNode>,
     edges: Map<string, string[]>,
-  ) {
+  ): Promise<[Map<string, any>, Set<string>]> {
     const allValues = new Map<string, any>();
 
-    const impliedNodegroups = new Map<string, StaticNode>();
+    const impliedNodegroups = new Set<string>();
     const impliedNodes: Map<string, [StaticNode, StaticTile]> = new Map();
 
     const nodesUnseen = new Set(
@@ -414,7 +410,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
       }
       if (existing !== false && existing !== undefined) {
         // This might be correct - confirm.
-        // console.warn(`Tried to load node twice: ${key} (${node.nodeid}<${node.nodegroup_id})`);
+        // console.warn(`Tried to load node twice: ${key} (${node.nodeid}<${node.nodegroup_id})`, nodegroupId);
         allValues.set(key, existing);
       }
       if (!allValues.has(key)) {
@@ -432,9 +428,9 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
           }
           const toAdd = domainNode.nodegroup_id
             ? domainNode.nodegroup_id
-            : domainNode.nodeid;
+            : '';
           if (toAdd && toAdd !== nodegroupId) {
-            impliedNodegroups.set(toAdd, domainNode);
+            impliedNodegroups.add(toAdd);
           }
           if (domainNode.nodegroup_id && tile && domainNode.nodegroup_id === tile.nodegroup_id && domainNode.nodegroup_id !== domainNode.nodeid && tileid && !impliedNodes.has(domainNode.nodeid + tileid)) {
             impliedNodes.set(domainNode.nodeid + tileid, [domainNode, tile]);

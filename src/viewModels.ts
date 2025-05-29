@@ -48,18 +48,19 @@ class ValueList<T extends IRIVM<T>> {
   values: Map<string, any>;
   wrapper: IInstanceWrapper<T>;
   tiles: StaticTile[] | null;
-  promises: Map<string | null, Promise<boolean | IViewModel>>;
+  promises: Map<string, boolean | Promise<boolean | IViewModel>>;
   writeLock: null | Promise<boolean | IViewModel>;
 
   constructor(
     values: Map<string, any>,
+    allNodegroups: Map<string, boolean>,
     wrapper: IInstanceWrapper<T>,
     tiles: StaticTile[] | null,
   ) {
     this.values = values;
     this.wrapper = wrapper;
     this.tiles = tiles;
-    this.promises = new Map();
+    this.promises = allNodegroups;
     this.writeLock = null;
   }
 
@@ -77,9 +78,19 @@ class ValueList<T extends IRIVM<T>> {
   }
 
   async retrieve(key: string, dflt: any = null, raiseError: boolean = false) {
-    // console.trace();
+    let result: any = this.values.get(key);
+    if (Array.isArray(result)) {
+      return result;
+    }
     const node = this.wrapper.model.getNodeObjectsByAlias().get(key);
-    const promise = node ? this.promises.get(node.nodegroup_id) : null;
+
+    result = await result;
+
+    if (!node) {
+      throw Error(`This key ${key} has no corresponding node`);
+    }
+    const nodegroupId = node.nodegroup_id || '';
+    const promise = node ? await this.promises.get(nodegroupId) : false;
     // When an unloaded node is found, the whole nodegroup is loaded.
     // The promises member ensures that no other node in the nodegroup
     // triggers the same nodegroup load. Note that there is _also_ the
@@ -90,12 +101,7 @@ class ValueList<T extends IRIVM<T>> {
     // individual nodes in the nodegroup that are _not_ the first
     // requested, until the first requested resolves and updates the
     // values map for all nodes in the nodegroup.
-    if (promise) {
-      await promise;
-    }
-    let result: any = await this.values.get(key);
-
-    if (result === false) {
+    if (promise === false) {
       // FIXME: the evidence is that this is not successfully functioning as
       // a resource-wide lock...
       await this.writeLock;
@@ -112,8 +118,8 @@ class ValueList<T extends IRIVM<T>> {
           const [ngValues] = await this.wrapper
             .ensureNodegroup(
               values,
-              node,
-              node.nodegroup_id,
+              this.promises,
+              nodegroupId,
               this.wrapper.model.getNodeObjects(),
               this.wrapper.model.getNodegroupObjects(),
               this.wrapper.model.getEdges(),
@@ -139,19 +145,19 @@ class ValueList<T extends IRIVM<T>> {
             }
           }
           resolve(original);
-          this.promises.delete(node.nodegroup_id);
         });
         // No writes should happen until this is done
         this.writeLock = promise;
-        // No reads from this nodegroup should happen
-        this.promises.set(node.nodegroup_id, promise);
+        // No reads from this nodegroup should happen [legacy comment]
+        this.promises.set(nodegroupId, promise);
         // Other readers are welcome to wait for this nodegroup's read
         this.values.set(key, promise);
         await promise;
+        this.promises.set(nodegroupId, true);
       } else {
         this.values.delete(key);
       }
-      result = this.values.get(key);
+      result = await this.values.get(key);
     }
     result = await result;
     if (result === undefined || result === false) {

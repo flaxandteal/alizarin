@@ -46,7 +46,7 @@ interface IInstanceWrapper<T extends IRIVM<T>> {
   addPseudo(childNode: StaticNode, tile: StaticTile | null, node: StaticNode): IPseudo;
   ensureNodegroup(
     allValues: Map<string, any>,
-    node: StaticNode,
+    allNodegroups: Map<string, boolean | Promise<any>>,
     nodegroupId: string | null,
     nodeObjs: Map<string, StaticNode>,
     nodegroupObjs: Map<string, StaticNodegroup>,
@@ -54,7 +54,7 @@ interface IInstanceWrapper<T extends IRIVM<T>> {
     addIfMissing: boolean,
     tiles: StaticTile[] | null,
     doImpliedNodegroups: boolean
-  ): Promise<[Map<string, any>, Map<string, StaticNode>]>;
+  ): Promise<[Map<string, any>, Set<string>]>;
   setOrmAttribute(key: string, value: any): Promise<void>;
   getOrmAttribute(key: string): Promise<any>;
   getValueCache(build: boolean, getMeta: GetMeta): Promise<{[tileId: string]: {[nodeId: string]: IStringKeyedObject}} | undefined>;
