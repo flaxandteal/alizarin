@@ -262,8 +262,13 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     const nodeObjs = this.model.getNodeObjects();
     const nodegroupObjs = this.model.getNodegroupObjects();
     const edges = this.model.getEdges();
+    // FIXME: this needs to be nodeObjs to ensure tiles
+    // whose nodegroup node is in a different nodegroup
+    // (e.g. children of designation_and_protection_timespan)
+    // get loaded - however, just doing that drops performance
+    // by half or two-thirds, so a less wasteful approach is needed.
     const allValues: Map<string, any> = new Map(
-      [...nodeObjs.keys()].map((id: string) => {
+      [...nodegroupObjs.keys()].map((id: string) => {
         const node = nodeObjs.get(id);
         if (!node) {
           throw Error(`Could not find node for nodegroup ${id}`);

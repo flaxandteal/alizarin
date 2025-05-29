@@ -3043,7 +3043,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       const nodegroupObjs = this.model.getNodegroupObjects();
       const edges = this.model.getEdges();
       const allValues = new Map(
-        [...nodeObjs.keys()].map((id) => {
+        [...nodegroupObjs.keys()].map((id) => {
           const node = nodeObjs.get(id);
           if (!node) {
             throw Error(`Could not find node for nodegroup ${id}`);
