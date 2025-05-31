@@ -1172,7 +1172,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           const k = typeof key === "symbol" ? key.description || "" : key;
           if (key in object) {
             object[key] = value;
-          } else if (k in object) {
+          } else if (k in object || k.startsWith("__")) {
             object[k] = value;
           } else {
             if (!object.$) {
@@ -1189,7 +1189,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           const k = typeof key === "symbol" ? key.description || "" : key;
           if (key in object) {
             return object[key];
-          } else if (k in object) {
+          } else if (k in object || k.startsWith("__")) {
             return object[k];
           }
           return new AttrPromise(async (resolve) => {
@@ -3696,9 +3696,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         modelClassName = modelClass.name;
       }
       this.initialize(void 0);
-      const wkrm = this.wkrms.get(modelClassName);
+      let wkrm = this.wkrms.get(modelClassName);
       if (wkrm === void 0) {
-        throw Error(`Cannot find model requested: ${modelClassName}`);
+        wkrm = [...this.wkrms.values()].find((w) => w.graphId === modelClassName);
+        if (wkrm === void 0) {
+          throw Error(`Cannot find model requested: ${modelClassName}`);
+        }
       }
       const wrapper = this.graphs.get(wkrm.graphId);
       if (wrapper === void 0) {

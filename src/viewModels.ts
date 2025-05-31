@@ -469,7 +469,7 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
         const k: string = typeof key === 'symbol' ? key.description || '' : key;
         if (key in object) {
           object[key] = value;
-        } else if (k in object) {
+        } else if (k in object || k.startsWith('__')) {
           object[k] = value;
         } else {
           if (!object.$) {
@@ -486,7 +486,7 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
         const k: string = typeof key === 'symbol' ? key.description || '' : key;
         if (key in object) {
           return object[key];
-        } else if (k in object) {
+        } else if (k in object || k.startsWith('__')) {
           return object[k];
         }
         return new AttrPromise(async (resolve) => {

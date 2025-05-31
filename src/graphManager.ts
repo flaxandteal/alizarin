@@ -1032,10 +1032,14 @@ class GraphManager {
 
     // Initialize as a fallback
     this.initialize(undefined);
-    const wkrm = this.wkrms.get(modelClassName);
+    let wkrm = this.wkrms.get(modelClassName);
     if (wkrm === undefined) {
-      throw Error(`Cannot find model requested: ${modelClassName}`);
+      wkrm = [...this.wkrms.values()].find(w => w.graphId === modelClassName);
+      if (wkrm === undefined) {
+        throw Error(`Cannot find model requested: ${modelClassName}`);
+      }
     }
+
     const wrapper = this.graphs.get(wkrm.graphId);
     if (wrapper === undefined) {
       return this.loadGraph(modelClass);
