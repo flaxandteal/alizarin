@@ -2993,9 +2993,10 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
               let semanticValue = await (await this.valueList.retrieve(semanticNode.alias || ""))[0];
               if (semanticValue instanceof PseudoList) {
                 semanticValue = await semanticValue[0];
+              } else {
+                semanticValue = await semanticValue.getValue();
               }
               if (semanticValue) {
-                semanticValue = await semanticValue.getValue();
                 if (semanticValue) {
                   relevantValues = await Promise.all(relevantNodes.filter(([_, alias]) => semanticValue.__has(alias)).map(([name, alias]) => semanticValue[alias].then((value) => [name, value])));
                 }
