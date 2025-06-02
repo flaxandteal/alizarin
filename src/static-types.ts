@@ -475,8 +475,27 @@ class StaticTile {
   }
 }
 
+class StaticResourceDescriptors {
+  [key: string]: (string | undefined | Function);
+  name?: string;
+  map_popup?: string;
+  description?: string;
+
+  constructor(jsonData?: StaticResourceDescriptors) {
+    if (jsonData) {
+      this.name = jsonData.name;
+      this.map_popup = jsonData.map_popup;
+      this.description = jsonData.description;
+    }
+  }
+
+  isEmpty(): boolean {
+    return !(this.name || this.map_popup || this.description);
+  }
+}
+
 class StaticResourceMetadata {
-  descriptors: Map<string, any>;
+  descriptors: StaticResourceDescriptors;
   graph_id: string;
   name: string;
   resourceinstanceid: string;
@@ -487,8 +506,12 @@ class StaticResourceMetadata {
 
   constructor(jsonData: StaticResourceMetadata) {
     this.descriptors = jsonData.descriptors;
-    if (!(this.descriptors instanceof Map)) {
-      this.descriptors = new Map([...Object.entries(this.descriptors)]);
+    if (!(this.descriptors instanceof StaticResourceDescriptors)) {
+      if (jsonData.descriptors instanceof Map) {
+        this.descriptors = new StaticResourceDescriptors(Object.fromEntries(jsonData.descriptors.entries()));
+      } else {
+        this.descriptors = new StaticResourceDescriptors(this.descriptors);
+      }
     }
     this.graph_id = jsonData.graph_id;
     this.name = jsonData.name;
@@ -592,5 +615,6 @@ export {
   StaticDomainValue,
   StaticResourceReference,
   StaticGraphMeta,
-  StaticFunctionsXGraphs
+  StaticFunctionsXGraphs,
+  StaticResourceDescriptors
 };

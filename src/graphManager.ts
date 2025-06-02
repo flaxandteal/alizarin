@@ -10,6 +10,7 @@ import {
   StaticNode,
   StaticNodegroup,
   StaticResource,
+  StaticResourceDescriptors,
   StaticGraphMeta,
 } from "./static-types";
 import { makePseudoCls, PseudoList } from "./pseudos.ts";
@@ -18,6 +19,7 @@ import { CheckPermission, GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstance
 import { AttrPromise } from "./utils";
 
 const MAX_GRAPH_DEPTH = 100;
+const DESCRIPTOR_FUNCTION_ID = "60000000-0000-0000-0000-000000000001";
 
 class WKRM {
   modelName: string;
@@ -58,6 +60,8 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
   resource: StaticResource | null | false ;
   valueList: ValueList<RIVM>;
   cache: {[tileId: string]: {[nodeId: string]: IStringKeyedObject}} | undefined;
+  scopes?: string[];
+  metadata?: {[key: string]: string};
 
   constructor(
     wkri: RIVM,
@@ -70,7 +74,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
       this.model.stripTiles(resource);
     }
     this.resource = resource;
-    this.valueList = new ValueList(new Map<string, any>(), this, []);
+    this.valueList = new ValueList(new Map<string, any>(), new Map<string, boolean>(), this, []);
     this.cache = resource ? resource.__cache : undefined;
     this.scopes = resource ? resource.__scopes : undefined;
     this.metadata = resource ? resource.metadata : undefined;
@@ -80,6 +84,73 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     for (const key of aliases) {
       await this.valueList.retrieve(key);
     }
+  }
+
+  async getName(update: boolean = false) {
+    let resourceName = this.resource && this.resource.resourceinstance.name;
+    if (update || !resourceName) {
+      const descriptors = await this.getDescriptors(update);
+      resourceName = (descriptors && descriptors.name) || resourceName || '<Unnamed>';
+      if (this.resource && this.resource.resourceinstance) {
+        this.resource.resourceinstance.name = resourceName;
+      }
+    }
+    return resourceName;
+  }
+
+  async getDescriptors(update: boolean = false) {
+    let descriptors = this.resource && this.resource.resourceinstance.descriptors;
+    if (update || !descriptors || descriptors.isEmpty()) {
+      descriptors = new StaticResourceDescriptors();
+      let descriptorConfig;
+      if (this.model.graph.functions_x_graphs) {
+        const descriptorNode = this.model.graph.functions_x_graphs.find(node => node.function_id === DESCRIPTOR_FUNCTION_ID);
+        if (descriptorNode) {
+          descriptorConfig = descriptorNode.config;
+        }
+      }
+      const nodes = this.model.getNodeObjects();
+      if (descriptorConfig) {
+        for (const [descriptor, config] of Object.entries(descriptorConfig.descriptor_types)) {
+          const semanticNode = nodes.get(config.nodegroup_id);
+          let description = config.string_template;
+          if (!description) {
+            continue;
+          }
+          const requestedNodes = [...description.match(/<[A-Za-z _-]*>/g)];
+          const relevantNodes = [...nodes.values()].filter(node => node.nodegroup_id === config.nodegroup_id && requestedNodes.includes(`<${node.name}>`)).map(node => [node.name, node.alias || '']);
+          let relevantValues;
+          // First try and see if we can find all of these on one tile, for consistency.
+          if (semanticNode) {
+            let semanticValue = await (await this.valueList.retrieve(semanticNode.alias || ''))[0];
+            if (semanticValue instanceof PseudoList) {
+              semanticValue = await semanticValue[0];
+            }
+            if (semanticValue) {
+              semanticValue = await semanticValue.getValue();
+              if (semanticValue) {
+                relevantValues = await Promise.all(relevantNodes.filter(([_, alias]) => semanticValue.__has(alias)).map(([name, alias]) => semanticValue[alias].then((value: IViewModel) => [name, value])));
+              }
+            }
+          }
+          if (relevantValues) {
+            description = relevantValues.reduce((desc, [name, value]) => value ? desc.replace(`<${name}>`, value) : desc, description);
+          }
+          relevantValues = await Promise.all(relevantNodes.map(([name, alias]) => this.valueList.retrieve(alias).then(values => [name, values ? values[0] : undefined])));
+          if (relevantValues) {
+            description = relevantValues.reduce((desc, [name, value]) => value ? desc.replace(`<${name}>`, value) : desc, description);
+          }
+          descriptors[descriptor] = description;
+        }
+      }
+    }
+    if (this.resource && this.resource.resourceinstance) {
+      this.resource.resourceinstance.descriptors = descriptors;
+      if (descriptors.name) {
+        this.resource.resourceinstance.descriptors.name = descriptors.name;
+      }
+    }
+    return descriptors;
   }
 
   addPseudo(childNode: StaticNode, tile: StaticTile | null, node: StaticNode): IPseudo {
@@ -1002,7 +1073,12 @@ class GraphManager {
       modelClass = wkrm.modelClassName;
     }
 
-    const bodyJson = await this.archesClient.getGraph(wkrm.graphId);
+    const wrapper = this.graphs.get(wkrm.graphId);
+    if (wrapper !== undefined) {
+      return wrapper;
+    }
+
+    const bodyJson = await this.archesClient.getGraph(wkrm.meta);
     if (!bodyJson) {
       throw Error(`Could not load graph ${wkrm.graphId}`);
     }
@@ -1049,9 +1125,12 @@ class GraphManager {
 
   async getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean = true): Promise<T> {
     const rivm = await staticStore.loadOne(resourceId);
-    const graph = this.graphs.get(rivm.resourceinstance.graph_id);
+    let graph = this.graphs.get(rivm.resourceinstance.graph_id);
     if (!graph) {
-      throw Error(`Graph not found for resource ${resourceId}`);
+      graph = await this.loadGraph(rivm.resourceinstance.graph_id);
+      if (!graph) {
+        throw Error(`Graph not found for resource ${resourceId}`);
+      }
     }
     return graph.fromStaticResource(rivm, lazy);
   }

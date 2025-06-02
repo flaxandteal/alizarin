@@ -2,7 +2,8 @@ export declare const AlizarinModel: typeof viewModels.ResourceInstanceViewModel;
 
 declare abstract class ArchesClient {
     abstract getGraphs(): Promise<GraphResult>;
-    abstract getGraph(graphId: string): Promise<StaticGraph | null>;
+    abstract getGraph(graph: StaticGraphMeta): Promise<StaticGraph | null>;
+    abstract getGraphByIdOnly(graphId: string): Promise<StaticGraph | null>;
     abstract getResources(graphId: string, limit: number): Promise<StaticResource[]>;
     abstract getResource(resourceId: string): Promise<StaticResource>;
     abstract getCollection(collectionId: string): Promise<StaticCollection>;
@@ -13,15 +14,17 @@ declare const archesClient: ArchesClientRemote;
 declare class ArchesClientLocal extends ArchesClient {
     fs: any;
     allGraphFile: Function;
+    graphToGraphFile: Function;
     graphIdToGraphFile: Function;
     graphIdToResourcesFiles: Function;
     resourceIdToFile: Function;
     collectionIdToFile: Function;
-    constructor({ allGraphFile, graphIdToGraphFile, graphIdToResourcesFiles, resourceIdToFile, collectionIdToFile, }?: {
+    constructor({ allGraphFile, graphToGraphFile, graphIdToResourcesFiles, resourceIdToFile, collectionIdToFile, graphIdToGraphFile, }?: {
         [k: string]: Function;
     });
     getGraphs(): Promise<GraphResult>;
-    getGraph(graphId: string): Promise<StaticGraph | null>;
+    getGraph(graph: StaticGraphMeta): Promise<StaticGraph | null>;
+    getGraphByIdOnly(graphId: string): Promise<StaticGraph | null>;
     getResource(resourceId: string): Promise<StaticResource>;
     getCollection(collectionId: string): Promise<StaticCollection>;
     getResources(graphId: string, limit: number | null): Promise<StaticResource[]>;
@@ -31,7 +34,8 @@ declare class ArchesClientRemote extends ArchesClient {
     archesUrl: string;
     constructor(archesUrl: string);
     getGraphs(): Promise<GraphResult>;
-    getGraph(graphId: string | null): Promise<StaticGraph>;
+    getGraph(graph: StaticGraphMeta): Promise<StaticGraph>;
+    getGraphByIdOnly(graphId: string): Promise<StaticGraph>;
     getResource(resourceId: string): Promise<StaticResource>;
     getCollection(collectionId: string): Promise<StaticCollection>;
     getResources(graphId: string, limit: number): Promise<StaticResource[]>;
@@ -40,15 +44,17 @@ declare class ArchesClientRemote extends ArchesClient {
 declare class ArchesClientRemoteStatic extends ArchesClient {
     archesUrl: string;
     allGraphFile: Function;
+    graphToGraphFile: Function;
     graphIdToGraphFile: Function;
     graphIdToResourcesFiles: Function;
     resourceIdToFile: Function;
     collectionIdToFile: Function;
-    constructor(archesUrl: string, { allGraphFile, graphIdToGraphFile, graphIdToResourcesFiles, resourceIdToFile, collectionIdToFile, }?: {
+    constructor(archesUrl: string, { allGraphFile, graphToGraphFile, graphIdToResourcesFiles, resourceIdToFile, collectionIdToFile, graphIdToGraphFile, }?: {
         [k: string]: Function;
     });
     getGraphs(): Promise<GraphResult>;
-    getGraph(graphId: string): Promise<StaticGraph | null>;
+    getGraph(graph: StaticGraphMeta): Promise<StaticGraph | null>;
+    getGraphByIdOnly(graphId: string): Promise<StaticGraph | null>;
     getResource(resourceId: string): Promise<StaticResource>;
     getCollection(collectionId: string): Promise<StaticCollection>;
     getResources(graphId: string, limit: number): Promise<StaticResource[]>;
@@ -83,8 +89,8 @@ declare class BooleanViewModel extends Boolean implements IViewModel {
     _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: PseudoValue | undefined;
     __config: StaticNodeConfigBoolean;
-    describeField: () => string | null;
-    describeFieldGroup: () => string | null;
+    describeField: () => any;
+    describeFieldGroup: () => any;
     constructor(value: boolean, config: StaticNodeConfigBoolean);
     toString(lang?: string | undefined): string;
     __forJsonCache(): null;
@@ -154,8 +160,8 @@ declare class DateViewModel extends Date implements IViewModel {
     __parentPseudo: PseudoValue | undefined;
     __original: string;
     then: undefined;
-    describeField: () => string | null;
-    describeFieldGroup: () => string | null;
+    describeField: () => any;
+    describeFieldGroup: () => any;
     __forJsonCache(): null;
     constructor(val: string);
     static __create(tile: StaticTile, node: StaticNode, value: any): DateViewModel | Promise<DateViewModel | null> | null;
@@ -168,8 +174,8 @@ declare const DEFAULT_LANGUAGE = "en";
 declare class DomainValueViewModel extends String implements IViewModel {
     _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: PseudoValue | undefined;
-    describeField: () => string | null;
-    describeFieldGroup: () => string | null;
+    describeField: () => any;
+    describeFieldGroup: () => any;
     _value: StaticDomainValue | Promise<StaticDomainValue>;
     constructor(value: StaticDomainValue);
     forJson(): Promise<StaticDomainValue>;
@@ -192,8 +198,8 @@ declare class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
     __parentPseudo: PseudoValue | undefined;
     then: undefined;
     [Symbol.toPrimitive]: undefined;
-    describeField: () => string | null;
-    describeFieldGroup: () => string | null;
+    describeField: () => any;
+    describeFieldGroup: () => any;
     _value: {
         [key: string]: any;
     };
@@ -282,6 +288,7 @@ declare class INodeConfig {
 declare namespace interfaces {
     export {
         CheckPermission,
+        ISemantic,
         ResourceInstanceViewModelConstructor,
         GetMeta,
         IInstanceWrapper,
@@ -323,6 +330,12 @@ declare interface IRIVM<T extends IRIVM<T>> {
     $: IInstanceWrapper<T> | null;
     __: IModelWrapper<T> | null;
     __parentPseudo: IPseudo | undefined;
+}
+
+declare interface ISemantic extends IViewModel {
+    update(mapLike: Map<string, any> | {
+        [key: string]: any;
+    }): void;
 }
 
 declare interface IStaticNodeConfigBoolean {
@@ -412,8 +425,8 @@ declare const nodeConfigManager: NodeConfigManager;
 declare class NonLocalizedStringViewModel extends String implements IViewModel {
     _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: PseudoValue | undefined;
-    describeField: () => string | null;
-    describeFieldGroup: () => string | null;
+    describeField: () => any;
+    describeFieldGroup: () => any;
     __forJsonCache(): null;
     forJson(): string;
     static __create(tile: StaticTile, node: StaticNode, value: any): NonLocalizedStringViewModel | Promise<NonLocalizedStringViewModel | null> | null;
@@ -423,8 +436,8 @@ declare class NonLocalizedStringViewModel extends String implements IViewModel {
 declare class NumberViewModel extends Number implements IViewModel {
     _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: PseudoValue | undefined;
-    describeField: () => string | null;
-    describeFieldGroup: () => string | null;
+    describeField: () => any;
+    describeFieldGroup: () => any;
     toString(): string;
     __forJsonCache(): null;
     forJson(): number;
@@ -432,12 +445,12 @@ declare class NumberViewModel extends Number implements IViewModel {
     __asTileData(): boolean;
 }
 
-declare class PseudoValue implements IPseudo {
+declare class PseudoValue<VM extends IViewModel> implements IPseudo {
     node: StaticNode;
     tile: StaticTile | null;
     value: any;
     parent: IRIVM<any> | null;
-    parentNode: PseudoValue | null;
+    parentNode: PseudoValue<any> | null;
     valueLoaded: boolean | undefined;
     datatype: string | null;
     originalTile: StaticTile | null;
@@ -445,17 +458,17 @@ declare class PseudoValue implements IPseudo {
     childNodes: Map<string, StaticNode>;
     isOuter: boolean;
     isInner: boolean;
-    inner: PseudoValue | null;
+    inner: PseudoValue<ISemantic> | null;
     independent: boolean;
     isIterable(): boolean;
     describeField(): string;
     describeFieldGroup(): string;
-    constructor(node: StaticNode, tile: StaticTile | null, value: any, parent: IRIVM<any> | null, childNodes: Map<string, StaticNode>, inner: boolean | PseudoValue);
+    constructor(node: StaticNode, tile: StaticTile | null, value: any, parent: IRIVM<any> | null, childNodes: Map<string, StaticNode>, inner: boolean | PseudoValue<ISemantic>);
     getParentTileId(): string | null;
-    getTile(): Promise<(any[] | StaticTile | null)[]>;
+    getTile(): Promise<[StaticTile | null, any[]]>;
     clear(): void;
-    updateValue(): AttrPromise<IViewModel>;
-    getValue(): AttrPromise<IViewModel | null>;
+    updateValue(tile?: StaticTile | null): AttrPromise<VM>;
+    getValue(): AttrPromise<VM | null>;
     getLength(): number;
     getChildTypes(): Promise<{}>;
     getChildren(direct?: null): IPseudo[];
@@ -873,8 +886,17 @@ declare class StaticResource {
     constructor(jsonData: StaticResource);
 }
 
+declare class StaticResourceDescriptors {
+    [key: string]: (string | undefined | Function);
+    name?: string;
+    map_popup?: string;
+    description?: string;
+    constructor(jsonData?: StaticResourceDescriptors);
+    isEmpty(): boolean;
+}
+
 declare class StaticResourceMetadata {
-    descriptors: Map<string, any>;
+    descriptors: StaticResourceDescriptors;
     graph_id: string;
     name: string;
     resourceinstanceid: string;
@@ -944,7 +966,8 @@ declare namespace staticTypes {
         StaticDomainValue,
         StaticResourceReference,
         StaticGraphMeta,
-        StaticFunctionsXGraphs
+        StaticFunctionsXGraphs,
+        StaticResourceDescriptors
     }
 }
 export { staticTypes }
@@ -965,8 +988,8 @@ declare class StringTranslatedLanguage {
 declare class StringViewModel extends String implements IViewModel {
     _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: PseudoValue | undefined;
-    describeField: () => string | null;
-    describeFieldGroup: () => string | null;
+    describeField: () => any;
+    describeFieldGroup: () => any;
     _value: Map<string, StringTranslatedLanguage>;
     __forJsonCache(): null;
     constructor(value: Map<string, StringTranslatedLanguage>, language?: string | null);
@@ -985,8 +1008,8 @@ declare class Url {
 declare class UrlViewModel extends String implements IViewModel {
     _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: PseudoValue | undefined;
-    describeField: () => string | null;
-    describeFieldGroup: () => string | null;
+    describeField: () => any;
+    describeFieldGroup: () => any;
     _value: Url;
     __forJsonCache(): null;
     constructor(value: Url);

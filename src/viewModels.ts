@@ -286,7 +286,7 @@ class ResourceInstanceListViewModel extends Array implements IViewModel {
         tile.data.set(nodeid, []);
         if (!Array.isArray(value)) {
           throw Error(
-            "Cannot set an (entire) resource list value except via an array",
+            `Cannot set an (entire) resource list value on node ${nodeid} except via an array: ${JSON.stringify(value)}`,
           );
         }
         val = value.map((v, i) => {
@@ -588,7 +588,7 @@ class FileListViewModel extends Array implements IViewModel {
       tile.data.set(nodeid, []);
       if (!Array.isArray(value)) {
         throw Error(
-          `Cannot set an (entire) concept list value except via an array: ${JSON.stringify(value)}`,
+          `Cannot set an (entire) file list value on node ${nodeid} except via an array: ${JSON.stringify(value)}`,
         );
       }
       val = value.map((c) => {
@@ -657,7 +657,7 @@ class ConceptListViewModel extends Array implements IViewModel {
       tile.data.set(nodeid, []);
       if (!Array.isArray(value)) {
         throw Error(
-          "Cannot set an (entire) concept list value except via an array",
+          `Cannot set an (entire) concept list value on node ${nodeid} except via an array: ${JSON.stringify(value)}`,
         );
       }
       val = value.map((c, i) => {
@@ -723,7 +723,7 @@ class DomainValueListViewModel extends Array implements IViewModel {
         tile.data.set(nodeid, []);
         if (!Array.isArray(value)) {
           throw Error(
-            "Cannot set an (entire) domain list value except via an array",
+            `Cannot set an (entire) domain list value on node ${nodeid} except via an array: ${JSON.stringify(value)}`,
           );
         }
         val = value.map((c) => {

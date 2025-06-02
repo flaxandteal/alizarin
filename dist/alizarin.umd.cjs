@@ -467,6 +467,21 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return this.tileid;
     }
   }
+  class StaticResourceDescriptors {
+    constructor(jsonData) {
+      __publicField(this, "name");
+      __publicField(this, "map_popup");
+      __publicField(this, "description");
+      if (jsonData) {
+        this.name = jsonData.name;
+        this.map_popup = jsonData.map_popup;
+        this.description = jsonData.description;
+      }
+    }
+    isEmpty() {
+      return !(this.name || this.map_popup || this.description);
+    }
+  }
   class StaticResourceMetadata {
     constructor(jsonData) {
       __publicField(this, "descriptors");
@@ -478,8 +493,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "legacyid", null);
       __publicField(this, "graph_publication_id", null);
       this.descriptors = jsonData.descriptors;
-      if (!(this.descriptors instanceof Map)) {
-        this.descriptors = new Map([...Object.entries(this.descriptors)]);
+      if (!(this.descriptors instanceof StaticResourceDescriptors)) {
+        if (jsonData.descriptors instanceof Map) {
+          this.descriptors = new StaticResourceDescriptors(Object.fromEntries(jsonData.descriptors.entries()));
+        } else {
+          this.descriptors = new StaticResourceDescriptors(this.descriptors);
+        }
       }
       this.graph_id = jsonData.graph_id;
       this.name = jsonData.name;
@@ -570,6 +589,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     StaticNode,
     StaticNodegroup,
     StaticResource,
+    StaticResourceDescriptors,
     StaticResourceMetadata,
     StaticResourceReference,
     StaticTile,
@@ -597,7 +617,10 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       );
       return await response.json();
     }
-    async getGraph(graphId) {
+    async getGraph(graph) {
+      return this.getGraphByIdOnly(graph.graphid);
+    }
+    async getGraphByIdOnly(graphId) {
       const response = await fetch(
         `${this.archesUrl}/graphs/${graphId}?format=arches-json&gen=`
       );
@@ -619,20 +642,23 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   class ArchesClientRemoteStatic extends ArchesClient {
     constructor(archesUrl, {
       allGraphFile,
-      graphIdToGraphFile,
+      graphToGraphFile,
       graphIdToResourcesFiles,
       resourceIdToFile,
-      collectionIdToFile
+      collectionIdToFile,
+      graphIdToGraphFile
     } = {}) {
       super();
       __publicField(this, "archesUrl");
       __publicField(this, "allGraphFile");
+      __publicField(this, "graphToGraphFile");
       __publicField(this, "graphIdToGraphFile");
       __publicField(this, "graphIdToResourcesFiles");
       __publicField(this, "resourceIdToFile");
       __publicField(this, "collectionIdToFile");
       this.archesUrl = archesUrl;
       this.allGraphFile = allGraphFile || (() => "resource_models/_all.json");
+      this.graphToGraphFile = graphToGraphFile;
       this.graphIdToGraphFile = graphIdToGraphFile || ((graphId) => `resource_models/${graphId}.json`);
       this.graphIdToResourcesFiles = graphIdToResourcesFiles || ((graphId) => [`business_data/_${graphId}.json`]);
       this.resourceIdToFile = resourceIdToFile || ((resourceId) => `business_data/${resourceId}.json`);
@@ -642,7 +668,16 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       const response = await fetch(`${this.archesUrl}/${this.allGraphFile()}`);
       return await response.json();
     }
-    async getGraph(graphId) {
+    async getGraph(graph) {
+      if (!this.graphToGraphFile) {
+        return this.getGraphByIdOnly(graph.graphid);
+      }
+      const response = await fetch(
+        `${this.archesUrl}/${this.graphToGraphFile(graph)}`
+      );
+      return (await response.json()).graph[0];
+    }
+    async getGraphByIdOnly(graphId) {
       const response = await fetch(
         `${this.archesUrl}/${this.graphIdToGraphFile(graphId)}`
       );
@@ -682,20 +717,23 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   class ArchesClientLocal extends ArchesClient {
     constructor({
       allGraphFile,
-      graphIdToGraphFile,
+      graphToGraphFile,
       graphIdToResourcesFiles,
       resourceIdToFile,
-      collectionIdToFile
+      collectionIdToFile,
+      graphIdToGraphFile
     } = {}) {
       super();
       __publicField(this, "fs");
       __publicField(this, "allGraphFile");
+      __publicField(this, "graphToGraphFile");
       __publicField(this, "graphIdToGraphFile");
       __publicField(this, "graphIdToResourcesFiles");
       __publicField(this, "resourceIdToFile");
       __publicField(this, "collectionIdToFile");
       this.fs = Promise.resolve().then(() => __viteBrowserExternal$1);
       this.allGraphFile = allGraphFile || (() => "tests/definitions/models/_all.json");
+      this.graphToGraphFile = graphToGraphFile || ((graph) => `tests/definitions/models/${graph.graphid}.json`);
       this.graphIdToGraphFile = graphIdToGraphFile || ((graphId) => `tests/definitions/models/${graphId}.json`);
       this.graphIdToResourcesFiles = graphIdToResourcesFiles || ((graphId) => [`tests/definitions/resources/_${graphId}.json`]);
       this.resourceIdToFile = resourceIdToFile || ((resourceId) => `tests/definitions/resources/${resourceId}.json`);
@@ -706,7 +744,19 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       const response = await fs.promises.readFile(this.allGraphFile(), "utf8");
       return new GraphResult(await JSON.parse(response));
     }
-    async getGraph(graphId) {
+    async getGraph(graph) {
+      const fs = await this.fs;
+      const graphFile = this.graphToGraphFile ? this.graphToGraphFile(graph) : this.graphIdToGraphFile(graph.graphid);
+      if (!graphFile) {
+        return null;
+      }
+      const response = await fs.promises.readFile(
+        graphFile,
+        "utf8"
+      );
+      return await JSON.parse(response).graph[0];
+    }
+    async getGraphByIdOnly(graphId) {
       const fs = await this.fs;
       const graphFile = this.graphIdToGraphFile(graphId);
       if (!graphFile) {
@@ -1110,7 +1160,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           tile.data.set(nodeid, []);
           if (!Array.isArray(value)) {
             throw Error(
-              "Cannot set an (entire) resource list value except via an array"
+              `Cannot set an (entire) resource list value on node ${nodeid} except via an array: ${JSON.stringify(value)}`
             );
           }
           val = value.map((v, i) => {
@@ -1370,7 +1420,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         tile.data.set(nodeid, []);
         if (!Array.isArray(value)) {
           throw Error(
-            `Cannot set an (entire) concept list value except via an array: ${JSON.stringify(value)}`
+            `Cannot set an (entire) file list value on node ${nodeid} except via an array: ${JSON.stringify(value)}`
           );
         }
         val = value.map((c) => {
@@ -1431,7 +1481,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         tile.data.set(nodeid, []);
         if (!Array.isArray(value)) {
           throw Error(
-            "Cannot set an (entire) concept list value except via an array"
+            `Cannot set an (entire) concept list value on node ${nodeid} except via an array: ${JSON.stringify(value)}`
           );
         }
         val = value.map((c, i) => {
@@ -1489,7 +1539,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           tile.data.set(nodeid, []);
           if (!Array.isArray(value)) {
             throw Error(
-              "Cannot set an (entire) domain list value except via an array"
+              `Cannot set an (entire) domain list value on node ${nodeid} except via an array: ${JSON.stringify(value)}`
             );
           }
           val = value.map((c) => {
@@ -2502,8 +2552,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     describeFieldGroup() {
       return "Unavailable field";
     }
-    async getValue() {
-      return null;
+    getValue() {
+      return new AttrPromise((resolve) => resolve(null));
     }
     getLength() {
       return 0;
@@ -2591,9 +2641,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       }
       let tileValue;
       if (this.value !== null) {
-        tileValue = (await this.value).__asTileData();
+        let [newTileValue, ownRelationships] = await (await this.value).__asTileData();
+        tileValue = newTileValue;
+        relationships = [...relationships, ...ownRelationships];
       } else {
-        tileValue = this.value;
+        tileValue = null;
       }
       if (!this.tile) {
         throw Error();
@@ -2615,7 +2667,10 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         this.tile.data.delete(this.node.nodeid);
       }
     }
-    updateValue() {
+    updateValue(tile) {
+      if (tile) {
+        this.tile = tile;
+      }
       this.accessed = true;
       if (this.inner) {
         this.inner.accessed = true;
@@ -2625,7 +2680,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           throw Error("Empty tile");
         }
         if (this.inner) {
-          this.tile, this.relationships = this.inner.getTile();
+          return new AttrPromise(async (resolve) => {
+            var _a2;
+            const tile2 = await ((_a2 = this.inner) == null ? void 0 : _a2.getTile());
+            resolve(this.updateValue(tile2 ? tile2[0] : void 0));
+          });
         }
         if (!this.tile) {
           this.tile = new StaticTile({
@@ -2846,6 +2905,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     return value;
   }
   const MAX_GRAPH_DEPTH = 100;
+  const DESCRIPTOR_FUNCTION_ID = "60000000-0000-0000-0000-000000000001";
   class WKRM {
     constructor(meta) {
       __publicField(this, "modelName");
@@ -2878,13 +2938,15 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "resource");
       __publicField(this, "valueList");
       __publicField(this, "cache");
+      __publicField(this, "scopes");
+      __publicField(this, "metadata");
       this.wkri = wkri;
       this.model = model;
       if (resource) {
         this.model.stripTiles(resource);
       }
       this.resource = resource;
-      this.valueList = new ValueList(/* @__PURE__ */ new Map(), this, []);
+      this.valueList = new ValueList(/* @__PURE__ */ new Map(), /* @__PURE__ */ new Map(), this, []);
       this.cache = resource ? resource.__cache : void 0;
       this.scopes = resource ? resource.__scopes : void 0;
       this.metadata = resource ? resource.metadata : void 0;
@@ -2893,6 +2955,70 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       for (const key of aliases) {
         await this.valueList.retrieve(key);
       }
+    }
+    async getName(update = false) {
+      let resourceName = this.resource && this.resource.resourceinstance.name;
+      if (update || !resourceName) {
+        const descriptors = await this.getDescriptors(update);
+        resourceName = descriptors && descriptors.name || resourceName || "<Unnamed>";
+        if (this.resource && this.resource.resourceinstance) {
+          this.resource.resourceinstance.name = resourceName;
+        }
+      }
+      return resourceName;
+    }
+    async getDescriptors(update = false) {
+      let descriptors = this.resource && this.resource.resourceinstance.descriptors;
+      if (update || !descriptors || descriptors.isEmpty()) {
+        descriptors = new StaticResourceDescriptors();
+        let descriptorConfig;
+        if (this.model.graph.functions_x_graphs) {
+          const descriptorNode = this.model.graph.functions_x_graphs.find((node) => node.function_id === DESCRIPTOR_FUNCTION_ID);
+          if (descriptorNode) {
+            descriptorConfig = descriptorNode.config;
+          }
+        }
+        const nodes = this.model.getNodeObjects();
+        if (descriptorConfig) {
+          for (const [descriptor, config] of Object.entries(descriptorConfig.descriptor_types)) {
+            const semanticNode = nodes.get(config.nodegroup_id);
+            let description = config.string_template;
+            if (!description) {
+              continue;
+            }
+            const requestedNodes = [...description.match(/<[A-Za-z _-]*>/g)];
+            const relevantNodes = [...nodes.values()].filter((node) => node.nodegroup_id === config.nodegroup_id && requestedNodes.includes(`<${node.name}>`)).map((node) => [node.name, node.alias || ""]);
+            let relevantValues;
+            if (semanticNode) {
+              let semanticValue = await (await this.valueList.retrieve(semanticNode.alias || ""))[0];
+              if (semanticValue instanceof PseudoList) {
+                semanticValue = await semanticValue[0];
+              }
+              if (semanticValue) {
+                semanticValue = await semanticValue.getValue();
+                if (semanticValue) {
+                  relevantValues = await Promise.all(relevantNodes.filter(([_, alias]) => semanticValue.__has(alias)).map(([name, alias]) => semanticValue[alias].then((value) => [name, value])));
+                }
+              }
+            }
+            if (relevantValues) {
+              description = relevantValues.reduce((desc, [name, value]) => value ? desc.replace(`<${name}>`, value) : desc, description);
+            }
+            relevantValues = await Promise.all(relevantNodes.map(([name, alias]) => this.valueList.retrieve(alias).then((values) => [name, values ? values[0] : void 0])));
+            if (relevantValues) {
+              description = relevantValues.reduce((desc, [name, value]) => value ? desc.replace(`<${name}>`, value) : desc, description);
+            }
+            descriptors[descriptor] = description;
+          }
+        }
+      }
+      if (this.resource && this.resource.resourceinstance) {
+        this.resource.resourceinstance.descriptors = descriptors;
+        if (descriptors.name) {
+          this.resource.resourceinstance.descriptors.name = descriptors.name;
+        }
+      }
+      return descriptors;
     }
     addPseudo(childNode, tile, node) {
       const key = childNode.alias;
@@ -3672,7 +3798,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         }
         modelClass = wkrm.modelClassName;
       }
-      const bodyJson = await this.archesClient.getGraph(wkrm.graphId);
+      const wrapper = this.graphs.get(wkrm.graphId);
+      if (wrapper !== void 0) {
+        return wrapper;
+      }
+      const bodyJson = await this.archesClient.getGraph(wkrm.meta);
       if (!bodyJson) {
         throw Error(`Could not load graph ${wkrm.graphId}`);
       }
@@ -3711,9 +3841,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     async getResource(resourceId, lazy = true) {
       const rivm = await staticStore.loadOne(resourceId);
-      const graph = this.graphs.get(rivm.resourceinstance.graph_id);
+      let graph = this.graphs.get(rivm.resourceinstance.graph_id);
       if (!graph) {
-        throw Error(`Graph not found for resource ${resourceId}`);
+        graph = await this.loadGraph(rivm.resourceinstance.graph_id);
+        if (!graph) {
+          throw Error(`Graph not found for resource ${resourceId}`);
+        }
       }
       return graph.fromStaticResource(rivm, lazy);
     }

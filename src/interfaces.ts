@@ -101,8 +101,12 @@ interface IPseudo {
   describeFieldGroup: () => string;
 }
 
+interface ISemantic extends IViewModel {
+  update(mapLike: Map<string, any> | {[key: string]: any}): void;
+}
+
 interface IGraphManager {
   getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean): Promise<T>;
 }
 
-export type { CheckPermission, ResourceInstanceViewModelConstructor, GetMeta, IInstanceWrapper, IModelWrapper, IRIVM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo, INodeConfig, IGraphManager };
+export type { CheckPermission, ISemantic, ResourceInstanceViewModelConstructor, GetMeta, IInstanceWrapper, IModelWrapper, IRIVM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo, INodeConfig, IGraphManager };

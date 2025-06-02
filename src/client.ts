@@ -17,7 +17,9 @@ class GraphResult {
 abstract class ArchesClient {
   abstract getGraphs(): Promise<GraphResult>;
 
-  abstract getGraph(graphId: string): Promise<StaticGraph | null>;
+  abstract getGraph(graph: StaticGraphMeta): Promise<StaticGraph | null>;
+
+  abstract getGraphByIdOnly(graphId: string): Promise<StaticGraph | null>;
 
   abstract getResources(
     graphId: string,
@@ -44,7 +46,11 @@ class ArchesClientRemote extends ArchesClient {
     return await response.json();
   }
 
-  async getGraph(graphId: string | null): Promise<StaticGraph> {
+  async getGraph(graph: StaticGraphMeta): Promise<StaticGraph> {
+    return this.getGraphByIdOnly(graph.graphid);
+  }
+
+  async getGraphByIdOnly(graphId: string): Promise<StaticGraph> {
     const response = await fetch(
       `${this.archesUrl}/graphs/${graphId}?format=arches-json&gen=`,
     );
@@ -73,6 +79,7 @@ class ArchesClientRemote extends ArchesClient {
 class ArchesClientRemoteStatic extends ArchesClient {
   archesUrl: string;
   allGraphFile: Function;
+  graphToGraphFile: Function;
   graphIdToGraphFile: Function;
   graphIdToResourcesFiles: Function;
   resourceIdToFile: Function;
@@ -82,15 +89,17 @@ class ArchesClientRemoteStatic extends ArchesClient {
     archesUrl: string,
     {
       allGraphFile,
-      graphIdToGraphFile,
+      graphToGraphFile,
       graphIdToResourcesFiles,
       resourceIdToFile,
       collectionIdToFile,
+      graphIdToGraphFile,
     }: { [k: string]: Function } = {},
   ) {
     super();
     this.archesUrl = archesUrl;
     this.allGraphFile = allGraphFile || (() => "resource_models/_all.json");
+    this.graphToGraphFile = graphToGraphFile;
     this.graphIdToGraphFile =
       graphIdToGraphFile ||
       ((graphId: string) => `resource_models/${graphId}.json`);
@@ -110,7 +119,17 @@ class ArchesClientRemoteStatic extends ArchesClient {
     return await response.json();
   }
 
-  async getGraph(graphId: string): Promise<StaticGraph | null> {
+  async getGraph(graph: StaticGraphMeta): Promise<StaticGraph | null> {
+    if (!this.graphToGraphFile) {
+      return this.getGraphByIdOnly(graph.graphid);
+    }
+    const response = await fetch(
+      `${this.archesUrl}/${this.graphToGraphFile(graph)}`,
+    );
+    return (await response.json()).graph[0];
+  }
+
+  async getGraphByIdOnly(graphId: string): Promise<StaticGraph | null> {
     const response = await fetch(
       `${this.archesUrl}/${this.graphIdToGraphFile(graphId)}`,
     );
@@ -157,6 +176,7 @@ class ArchesClientRemoteStatic extends ArchesClient {
 class ArchesClientLocal extends ArchesClient {
   fs: any;
   allGraphFile: Function;
+  graphToGraphFile: Function;
   graphIdToGraphFile: Function;
   graphIdToResourcesFiles: Function;
   resourceIdToFile: Function;
@@ -164,14 +184,18 @@ class ArchesClientLocal extends ArchesClient {
 
   constructor({
     allGraphFile,
-    graphIdToGraphFile,
+    graphToGraphFile,
     graphIdToResourcesFiles,
     resourceIdToFile,
     collectionIdToFile,
+    graphIdToGraphFile,
   }: { [k: string]: Function } = {}) {
     super();
     this.fs = import("fs");
     this.allGraphFile = allGraphFile || (() => "tests/definitions/models/_all.json");
+    this.graphToGraphFile =
+      graphToGraphFile ||
+      ((graph: StaticGraph) => `tests/definitions/models/${graph.graphid}.json`);
     this.graphIdToGraphFile =
       graphIdToGraphFile ||
       ((graphId: string) => `tests/definitions/models/${graphId}.json`);
@@ -192,7 +216,20 @@ class ArchesClientLocal extends ArchesClient {
     return new GraphResult(await JSON.parse(response));
   }
 
-  async getGraph(graphId: string): Promise<StaticGraph | null> {
+  async getGraph(graph: StaticGraphMeta): Promise<StaticGraph | null> {
+    const fs = await this.fs;
+    const graphFile = this.graphToGraphFile ? this.graphToGraphFile(graph) : this.graphIdToGraphFile(graph.graphid);
+    if (!graphFile) {
+      return null;
+    }
+    const response = await fs.promises.readFile(
+      graphFile,
+      "utf8",
+    );
+    return await JSON.parse(response).graph[0];
+  }
+
+  async getGraphByIdOnly(graphId: string): Promise<StaticGraph | null> {
     const fs = await this.fs;
     const graphFile = this.graphIdToGraphFile(graphId);
     if (!graphFile) {

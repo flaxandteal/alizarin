@@ -1,10 +1,10 @@
 import { StaticTile, StaticNode } from "./static-types";
-import { CheckPermission, IViewModel, IPseudo, IRIVM, IModelWrapper } from "./interfaces";
+import { ISemantic, IViewModel, IPseudo, IRIVM, IModelWrapper } from "./interfaces";
 import { getViewModel } from "./viewModels";
 import { AttrPromise } from "./utils";
 
 class PseudoUnavailable implements IPseudo {
-  parentNode: PseudoValue | null = null;
+  parentNode: PseudoValue<any> | null = null;
   tile: null = null;
   node: StaticNode;
   isOuter: boolean = false;
@@ -25,8 +25,8 @@ class PseudoUnavailable implements IPseudo {
     return "Unavailable field";
   }
 
-  async getValue() {
-    return null;
+  getValue(): AttrPromise<null> {
+    return new AttrPromise(resolve => resolve(null));
   }
 
   getLength() {
@@ -48,12 +48,12 @@ const ITERABLE_DATATYPES = [
   "domain-value-list"
 ];
 
-class PseudoValue implements IPseudo {
+class PseudoValue<VM extends IViewModel> implements IPseudo {
   node: StaticNode;
   tile: StaticTile | null;
   value: any;
   parent: IRIVM<any> | null;
-  parentNode: PseudoValue | null;
+  parentNode: PseudoValue<any> | null;
   valueLoaded: boolean | undefined = false;
   datatype: string | null = null;
   originalTile: StaticTile | null;
@@ -61,7 +61,7 @@ class PseudoValue implements IPseudo {
   childNodes: Map<string, StaticNode>;
   isOuter: boolean = false;
   isInner: boolean = false;
-  inner: PseudoValue | null = null;
+  inner: PseudoValue<ISemantic> | null = null;
   independent: boolean;
 
   isIterable(): boolean {
@@ -93,7 +93,7 @@ class PseudoValue implements IPseudo {
     value: any,
     parent: IRIVM<any> | null,
     childNodes: Map<string, StaticNode>,
-    inner: boolean | PseudoValue,
+    inner: boolean | PseudoValue<ISemantic>,
   ) {
     this.node = node;
     this.tile = tile;
@@ -125,7 +125,7 @@ class PseudoValue implements IPseudo {
     return this.tile ? this.tile.parenttile_id : null;
   }
 
-  async getTile() {
+  async getTile(): Promise<[StaticTile | null, any[]]> {
     await this.updateValue();
 
     let relationships: Array<any> = [];
@@ -137,9 +137,11 @@ class PseudoValue implements IPseudo {
     let tileValue;
     if (this.value !== null) {
       // It may be better to make this fully async if there's a performance benefit.
-      tileValue = (await this.value).__asTileData();
+      let [newTileValue, ownRelationships] = await (await this.value).__asTileData();
+      tileValue = newTileValue;
+      relationships = [...relationships, ...ownRelationships];
     } else {
-      tileValue = this.value;
+      tileValue = null;
     }
     // if isinstance(tile_value, tuple):
     //     relationships = [
@@ -173,18 +175,23 @@ class PseudoValue implements IPseudo {
     }
   }
 
-  updateValue(): AttrPromise<IViewModel> {
+  updateValue(tile?: StaticTile | null): AttrPromise<VM> {
+    if (tile) {
+      this.tile = tile;
+    }
     this.accessed = true;
     if (this.inner) {
       this.inner.accessed = true;
     }
-
     if (!this.tile) {
       if (!this.node) {
         throw Error("Empty tile");
       }
       if (this.inner) {
-        this.tile, this.relationships = this.inner.getTile();
+        return new AttrPromise(async (resolve) => {
+          const tile = await this.inner?.getTile();
+          resolve(this.updateValue(tile ? tile[0] : undefined));
+        });
       }
       if (!this.tile) {
         // NB: You may see issues where the nodegroup is null because it is the root node,
@@ -205,7 +212,7 @@ class PseudoValue implements IPseudo {
     }
     if (this.valueLoaded === false) {
       this.valueLoaded = undefined;
-      let data;
+      let data: any;
       if (
         this.value === null &&
         this.tile.data !== null &&
@@ -222,12 +229,12 @@ class PseudoValue implements IPseudo {
         if ("_" in data && !data.constructor) {
           outerData = data["_"];
           delete data["_"];
-          this.inner.getValue().then(v => v && v.update(data));
+          this.inner.getValue().then((v: ISemantic | null) => v && v.update(data));
           data = outerData;
         } else if (data instanceof Map && data.has("_")) {
           outerData = data.get("_");
           data.delete("_");
-          this.inner.getValue().then(v => v && v.update(data));
+          this.inner.getValue().then((v: ISemantic | null) => v && v.update(data));
           data = outerData;
         }
       }
@@ -256,10 +263,11 @@ class PseudoValue implements IPseudo {
         vm.then((vm) => resolve(vm ? resolveAttr(vm) : vm));
       });
     }
+
     return this.value;
   }
 
-  public getValue(): AttrPromise<IViewModel | null> {
+  public getValue(): AttrPromise<VM | null> {
     return this.updateValue();
   }
 
@@ -306,10 +314,10 @@ class PseudoValue implements IPseudo {
 class PseudoList extends Array implements IPseudo {
   node: StaticNode | undefined = undefined;
   parent: IRIVM<any> | null | undefined = undefined;
-  parentNode: PseudoValue | null = null;
+  parentNode: PseudoValue<any> | null = null;
   tile: StaticTile | undefined;
   parenttileId: string | undefined;
-  ghostChildren: Set<PseudoValue> | null = null;
+  ghostChildren: Set<PseudoValue<any>> | null = null;
   isOuter: boolean = false;
 
   isIterable(): boolean {
@@ -406,7 +414,7 @@ function makePseudoCls(
   single: boolean,
   tile: StaticTile | null = null,
   wkri: any | null = null,
-): PseudoList | PseudoValue | PseudoUnavailable {
+): PseudoList | PseudoValue<any> | PseudoUnavailable {
   const nodeObjs = model.getNodeObjectsByAlias();
   const nodeObj = nodeObjs.get(key);
   if (!nodeObj) {
@@ -432,7 +440,7 @@ function makePseudoCls(
     const isPermitted = model.isNodegroupPermitted(nodeObj.nodegroup_id || '', tile, nodeObjs);
     if (isPermitted) {
       const childNodes: Map<string, StaticNode> = model.getChildNodes(nodeObj.nodeid);
-      let inner: boolean | PseudoValue = false;
+      let inner: boolean | PseudoValue<any> = false;
       if (childNodes && childNodes.size && nodeObj.datatype !== 'semantic') {
         inner = new PseudoValue(nodeObj, tile, null, wkri, childNodes, true);
       }
