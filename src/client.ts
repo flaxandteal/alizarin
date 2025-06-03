@@ -284,9 +284,6 @@ class ArchesClientLocal extends ArchesClient {
       //     return data;
       //   })).on('data', (data: string) => {
       //     const bl = Math.floor(buffer.length / 1000);
-      //     if (bl > bufferLength) {
-      //       console.log(bl);
-      //     }
       //     bufferLength = bl;
       //     buffer += data;
       //   }).on('end', () => {

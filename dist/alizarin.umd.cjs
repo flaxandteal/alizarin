@@ -2928,11 +2928,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   class ConfigurationOptions {
     constructor() {
       __publicField(this, "graphs");
+      __publicField(this, "eagerLoadGraphs", false);
       this.graphs = null;
     }
   }
   class ResourceInstanceWrapper {
-    constructor(wkri, model, resource) {
+    constructor(wkri, model, resource, pruneTiles = true) {
       __publicField(this, "wkri");
       __publicField(this, "model");
       __publicField(this, "resource");
@@ -2950,6 +2951,18 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.cache = resource ? resource.__cache : void 0;
       this.scopes = resource ? resource.__scopes : void 0;
       this.metadata = resource ? resource.metadata : void 0;
+      if (pruneTiles && this.resource) {
+        this.pruneResourceTiles();
+      }
+    }
+    pruneResourceTiles() {
+      if (!this.resource) {
+        console.warn("Trying to prune tiles for an empty resource", this.wkri.modelClassName);
+        return;
+      }
+      this.resource.tiles = (this.resource.tiles || []).filter((tile) => {
+        return this.model.isNodegroupPermitted(tile.nodegroup_id || "", tile);
+      });
     }
     async loadNodes(aliases) {
       for (const key of aliases) {
@@ -2986,28 +2999,32 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
             if (!description) {
               continue;
             }
-            const requestedNodes = [...description.match(/<[A-Za-z _-]*>/g)];
+            let requestedNodes = [...description.match(/<[A-Za-z _-]*>/g)];
             const relevantNodes = [...nodes.values()].filter((node) => node.nodegroup_id === config.nodegroup_id && requestedNodes.includes(`<${node.name}>`)).map((node) => [node.name, node.alias || ""]);
-            let relevantValues;
+            let relevantValues = [];
             if (semanticNode) {
               let semanticValue = await (await this.valueList.retrieve(semanticNode.alias || ""))[0];
               if (semanticValue instanceof PseudoList) {
                 semanticValue = await semanticValue[0];
+              } else if (semanticValue.inner) {
+                relevantValues.push([semanticNode.name || "", await semanticValue.getValue()]);
+                semanticValue = await semanticValue.inner.getValue();
               } else {
                 semanticValue = await semanticValue.getValue();
               }
               if (semanticValue) {
-                if (semanticValue) {
-                  relevantValues = await Promise.all(relevantNodes.filter(([_, alias]) => semanticValue.__has(alias)).map(([name, alias]) => semanticValue[alias].then((value) => [name, value])));
-                }
+                relevantValues = [...relevantValues, ...await Promise.all(relevantNodes.filter(([_, alias]) => semanticValue.__has(alias)).map(([name, alias]) => semanticValue[alias].then((value) => [name, value])))];
               }
             }
             if (relevantValues) {
               description = relevantValues.reduce((desc, [name, value]) => value ? desc.replace(`<${name}>`, value) : desc, description);
             }
-            relevantValues = await Promise.all(relevantNodes.map(([name, alias]) => this.valueList.retrieve(alias).then((values) => [name, values ? values[0] : void 0])));
-            if (relevantValues) {
-              description = relevantValues.reduce((desc, [name, value]) => value ? desc.replace(`<${name}>`, value) : desc, description);
+            requestedNodes = [...description.match(/<[A-Za-z _-]*>/g) || []];
+            if (requestedNodes.length) {
+              relevantValues = await Promise.all(relevantNodes.map(([name, alias]) => this.valueList.retrieve(alias).then((values) => [name, values ? values[0] : void 0])));
+              if (relevantValues) {
+                description = relevantValues.reduce((desc, [name, value]) => value ? desc.replace(`<${name}>`, value) : desc, description);
+              }
             }
             descriptors[descriptor] = description;
           }
@@ -3060,7 +3077,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         }
       }
       if (!value || !(value instanceof SemanticViewModel)) {
-        throw Error(`Tried to get root on ${this}, which has no root`);
+        throw Error(`Tried to get root on ${this.model.wkrm.modelClassName}, which has no root`);
       }
       return value;
     }
@@ -3541,9 +3558,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         });
       }
     }
-    async *resourceGenerator(staticResources, lazy = false) {
+    async *resourceGenerator(staticResources, lazy = false, pruneTiles = true) {
       for await (const staticResource of staticResources) {
-        yield this.fromStaticResource(staticResource, lazy);
+        yield this.fromStaticResource(staticResource, lazy, pruneTiles);
       }
     }
     async *iterAll(params) {
@@ -3552,9 +3569,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     async findStatic(id) {
       return await staticStore.loadOne(id);
     }
-    async find(id, lazy = true) {
+    async find(id, lazy = true, pruneTiles = true) {
       const rivm = await this.findStatic(id);
-      return this.fromStaticResource(rivm, lazy);
+      return this.fromStaticResource(rivm, lazy, pruneTiles);
     }
     setPermittedNodegroups(permissions) {
       const nodegroups = this.getNodegroupObjects();
@@ -3604,14 +3621,14 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       }
       throw Error(`Ambiguous permission state: ${permitted} for nodegroup ${nodegroupId}`);
     }
-    makeInstance(id, resource) {
+    makeInstance(id, resource, pruneTiles = true) {
       if (!this.viewModelClass) {
         throw Error(`Cannot instantiate without a viewModelClass in ${this.wkrm.modelClassName}`);
       }
       const instance = new this.viewModelClass(
         id,
         this.viewModelClass.prototype.__,
-        (rivm) => new ResourceInstanceWrapper(rivm, this, resource),
+        (rivm) => new ResourceInstanceWrapper(rivm, this, resource, pruneTiles),
         null
       );
       return instance;
@@ -3720,10 +3737,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       rootNode.alias = rootNode.alias || "";
       return rootNode;
     }
-    fromStaticResource(resource, lazy = false) {
+    fromStaticResource(resource, lazy = false, pruneTiles = true) {
       const wkri = this.makeInstance(
         resource.resourceinstance.resourceinstanceid,
-        resource
+        resource,
+        pruneTiles
       );
       if (!wkri.$) {
         throw Error("Could not load resource from static definition");
@@ -3765,22 +3783,24 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         configurationOptions = new ConfigurationOptions();
       }
       const graphJsons = await this.archesClient.getGraphs();
-      Object.entries(graphJsons["models"]).forEach(([graphId, meta]) => {
-        meta.graphid = meta.graphid || graphId;
-        const wkrm = new WKRM(meta);
-        this.wkrms.set(wkrm.modelClassName, wkrm);
-      });
-      let graphs = Object.keys(graphJsons["models"]);
+      let graphs = Object.entries(graphJsons["models"]);
       const allowedGraphs = configurationOptions.graphs;
       if (allowedGraphs !== null) {
         if (allowedGraphs === false) {
           throw Error("No current meaning of allowedGraphs === false");
         } else if (allowedGraphs !== true) {
           graphs = graphs.filter(
-            (graphId) => allowedGraphs.includes(graphId)
+            ([graphId, _]) => allowedGraphs.includes(graphId)
           );
         }
-        await Promise.all(graphs.map((g) => this.loadGraph(g)));
+      }
+      graphs.forEach(([graphId, meta]) => {
+        meta.graphid = meta.graphid || graphId;
+        const wkrm = new WKRM(meta);
+        this.wkrms.set(wkrm.modelClassName, wkrm);
+      });
+      if (configurationOptions.eagerLoadGraphs) {
+        await Promise.all(graphs.map(([g]) => this.loadGraph(g)));
       }
       this._initialized = true;
     }
@@ -3840,7 +3860,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       }
       return wrapper;
     }
-    async getResource(resourceId, lazy = true) {
+    async getResource(resourceId, lazy = true, pruneTiles = true) {
       const rivm = await staticStore.loadOne(resourceId);
       let graph = this.graphs.get(rivm.resourceinstance.graph_id);
       if (!graph) {
@@ -3849,7 +3869,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           throw Error(`Graph not found for resource ${resourceId}`);
         }
       }
-      return graph.fromStaticResource(rivm, lazy);
+      return graph.fromStaticResource(rivm, lazy, pruneTiles);
     }
     getGraph(graphId) {
       const wrapper = this.graphs.get(graphId);
@@ -3972,7 +3992,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       const text = `[${value}](${value})`;
       const wrapper = new Cleanable(text);
       wrapper.__clean = value.href();
-      console.log(wrapper);
       return wrapper;
     }
     async renderDomainValue(domainValue, _) {

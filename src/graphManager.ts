@@ -47,6 +47,7 @@ class WKRM {
 
 class ConfigurationOptions {
   graphs: Array<string> | null | boolean;
+  eagerLoadGraphs: boolean = false;
 
   constructor() {
     this.graphs = null;
@@ -67,6 +68,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     wkri: RIVM,
     model: ResourceModelWrapper<RIVM>,
     resource: StaticResource | null | false, // False to disable dynamic resource-loading
+    pruneTiles: boolean = true
   ) {
     this.wkri = wkri;
     this.model = model;
@@ -78,6 +80,19 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     this.cache = resource ? resource.__cache : undefined;
     this.scopes = resource ? resource.__scopes : undefined;
     this.metadata = resource ? resource.metadata : undefined;
+    if (pruneTiles && this.resource) {
+      this.pruneResourceTiles()
+    }
+  }
+
+  pruneResourceTiles(): undefined {
+    if (!this.resource) {
+      console.warn("Trying to prune tiles for an empty resource", this.wkri.modelClassName);
+      return;
+    }
+    this.resource.tiles = (this.resource.tiles || []).filter((tile: StaticTile) => {
+      return this.model.isNodegroupPermitted(tile.nodegroup_id || '', tile);
+    });
   }
 
   async loadNodes(aliases: Array<string>): Promise<void> {
@@ -117,29 +132,34 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
           if (!description) {
             continue;
           }
-          const requestedNodes = [...description.match(/<[A-Za-z _-]*>/g)];
+          let requestedNodes = [...description.match(/<[A-Za-z _-]*>/g)];
           const relevantNodes = [...nodes.values()].filter(node => node.nodegroup_id === config.nodegroup_id && requestedNodes.includes(`<${node.name}>`)).map(node => [node.name, node.alias || '']);
-          let relevantValues;
+          let relevantValues: [string, string | undefined][] = [];
           // First try and see if we can find all of these on one tile, for consistency.
           if (semanticNode) {
             let semanticValue = await (await this.valueList.retrieve(semanticNode.alias || ''))[0];
             if (semanticValue instanceof PseudoList) {
               semanticValue = await semanticValue[0];
+            } else if (semanticValue.inner) {
+              // TODO: Do we need to re-add the e.g. stringviewmodel as a <...> variable?
+              relevantValues.push([semanticNode.name || '', await semanticValue.getValue()]);
+              semanticValue = await semanticValue.inner.getValue();
             } else {
               semanticValue = await semanticValue.getValue();
             }
             if (semanticValue) {
-              if (semanticValue) {
-                relevantValues = await Promise.all(relevantNodes.filter(([_, alias]) => semanticValue.__has(alias)).map(([name, alias]) => semanticValue[alias].then((value: IViewModel) => [name, value])));
-              }
+              relevantValues = [...relevantValues, ...await Promise.all(relevantNodes.filter(([_, alias]) => semanticValue.__has(alias)).map(([name, alias]) => semanticValue[alias].then((value: IViewModel) => [name, value])))];
             }
           }
           if (relevantValues) {
             description = relevantValues.reduce((desc, [name, value]) => value ? desc.replace(`<${name}>`, value) : desc, description);
           }
-          relevantValues = await Promise.all(relevantNodes.map(([name, alias]) => this.valueList.retrieve(alias).then(values => [name, values ? values[0] : undefined])));
-          if (relevantValues) {
-            description = relevantValues.reduce((desc, [name, value]) => value ? desc.replace(`<${name}>`, value) : desc, description);
+          requestedNodes = [...(description.match(/<[A-Za-z _-]*>/g) || [])];
+          if (requestedNodes.length) {
+            relevantValues = await Promise.all(relevantNodes.map(([name, alias]) => this.valueList.retrieve(alias).then((values: string[]): [string, string | undefined] => [name, values ? values[0] : undefined])));
+            if (relevantValues) {
+              description = relevantValues.reduce((desc, [name, value]) => value ? desc.replace(`<${name}>`, value) : desc, description);
+            }
           }
           descriptors[descriptor] = description;
         }
@@ -198,7 +218,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
       }
     }
     if (!value || !(value instanceof SemanticViewModel)) {
-      throw Error(`Tried to get root on ${this}, which has no root`);
+      throw Error(`Tried to get root on ${this.model.wkrm.modelClassName}, which has no root`);
     }
     return value;
   }
@@ -762,9 +782,9 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     }
   }
 
-  async* resourceGenerator(staticResources: AsyncIterable<StaticResource, RIVM, unknown>, lazy: boolean=false) {
+  async* resourceGenerator(staticResources: AsyncIterable<StaticResource, RIVM, unknown>, lazy: boolean=false, pruneTiles: boolean = true) {
     for await (const staticResource of staticResources) {
-      yield this.fromStaticResource(staticResource, lazy);
+      yield this.fromStaticResource(staticResource, lazy, pruneTiles);
     }
   }
 
@@ -776,9 +796,9 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     return await staticStore.loadOne(id);
   }
 
-  async find(id: string, lazy: boolean = true): Promise<RIVM> {
+  async find(id: string, lazy: boolean = true, pruneTiles: boolean = true): Promise<RIVM> {
     const rivm = await this.findStatic(id);
-    return this.fromStaticResource(rivm, lazy);
+    return this.fromStaticResource(rivm, lazy, pruneTiles);
   }
 
   setPermittedNodegroups(permissions: Map<string | null, boolean | CheckPermission>) {
@@ -835,7 +855,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     throw Error(`Ambiguous permission state: ${permitted} for nodegroup ${nodegroupId}`);
   }
 
-  makeInstance(id: string, resource: StaticResource | null): RIVM {
+  makeInstance(id: string, resource: StaticResource | null, pruneTiles: boolean = true): RIVM {
     if (!this.viewModelClass) {
       throw Error(`Cannot instantiate without a viewModelClass in ${this.wkrm.modelClassName}`);
     }
@@ -844,7 +864,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
       id,
       this.viewModelClass.prototype.__,
       (rivm: RIVM) =>
-        new ResourceInstanceWrapper(rivm, this, resource),
+        new ResourceInstanceWrapper(rivm, this, resource, pruneTiles),
       null
     );
     return instance;
@@ -975,11 +995,13 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   fromStaticResource(
     resource: StaticResource,
     lazy: boolean = false,
+    pruneTiles: boolean = true
   ): Promise<RIVM> {
     // TODO: implement lazy
     const wkri: RIVM = this.makeInstance(
       resource.resourceinstance.resourceinstanceid,
       resource,
+      pruneTiles
     );
 
     if (!wkri.$) {
@@ -1036,22 +1058,24 @@ class GraphManager {
     }
     const graphJsons: GraphResult = await this.archesClient.getGraphs();
 
-    Object.entries(graphJsons["models"]).forEach(([graphId, meta]: [string, StaticGraphMeta]) => {
-      meta.graphid = meta.graphid || graphId;
-      const wkrm = new WKRM(meta);
-      this.wkrms.set(wkrm.modelClassName, wkrm);
-    });
-    let graphs: Array<string> = Object.keys(graphJsons["models"]);
+    let graphs: Array<[string, StaticGraphMeta]> = Object.entries(graphJsons["models"]);
     const allowedGraphs = configurationOptions.graphs;
     if (allowedGraphs !== null) {
       if (allowedGraphs === false) {
         throw Error("No current meaning of allowedGraphs === false");
       } else if (allowedGraphs !== true) {
         graphs = graphs.filter(
-          (graphId: string) => allowedGraphs.includes(graphId),
+          ([graphId, _]: [string, StaticGraphMeta]) => allowedGraphs.includes(graphId),
         );
       }
-      await Promise.all(graphs.map(g => this.loadGraph(g)));
+    }
+    graphs.forEach(([graphId, meta]: [string, StaticGraphMeta]) => {
+      meta.graphid = meta.graphid || graphId;
+      const wkrm = new WKRM(meta);
+      this.wkrms.set(wkrm.modelClassName, wkrm);
+    });
+    if (configurationOptions.eagerLoadGraphs) {
+      await Promise.all(graphs.map(([g]) => this.loadGraph(g)));
     }
 
     this._initialized = true;
@@ -1124,7 +1148,7 @@ class GraphManager {
     return wrapper;
   }
 
-  async getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean = true): Promise<T> {
+  async getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean = true, pruneTiles: boolean = true): Promise<T> {
     const rivm = await staticStore.loadOne(resourceId);
     let graph = this.graphs.get(rivm.resourceinstance.graph_id);
     if (!graph) {
@@ -1133,7 +1157,7 @@ class GraphManager {
         throw Error(`Graph not found for resource ${resourceId}`);
       }
     }
-    return graph.fromStaticResource(rivm, lazy);
+    return graph.fromStaticResource(rivm, lazy, pruneTiles);
   }
 
   getGraph(graphId: string): StaticGraph {

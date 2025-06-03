@@ -143,7 +143,6 @@ class MarkdownRenderer extends Renderer {
     const text = `[${value}](${value})`;
     const wrapper = new Cleanable(text);
     wrapper.__clean = value.href();
-    console.log(wrapper);
     return wrapper;
   }
 
