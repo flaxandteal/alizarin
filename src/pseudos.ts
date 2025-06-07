@@ -25,7 +25,7 @@ class PseudoUnavailable implements IPseudo {
     return "Unavailable field";
   }
 
-  getValue(): AttrPromise<null> {
+  public getValue(): AttrPromise<null> {
     return new AttrPromise(resolve => resolve(null));
   }
 
@@ -131,13 +131,13 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     let relationships: Array<any> = [];
 
     if (this.inner) {
-      this.tile, relationships = await this.inner.getTile();
+      [this.tile, relationships] = await this.inner.getTile();
     }
 
     let tileValue;
     if (this.value !== null) {
       // It may be better to make this fully async if there's a performance benefit.
-      let [newTileValue, ownRelationships] = await (await this.value).__asTileData();
+      const [newTileValue, ownRelationships] = await (await this.value).__asTileData();
       tileValue = newTileValue;
       relationships = [...relationships, ...ownRelationships];
     } else {
@@ -281,10 +281,8 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
   async getChildTypes() {
     await this.updateValue();
     let childTypes = {};
-    if (this.value instanceof Object) {
-      try {
-        childTypes = this.value.getChildTypes();
-      } catch (AttributeError) {}
+    if (this.value && this.value instanceof Object && 'getChildTypes' in this.value && typeof this.value.getChildTypes === 'function') {
+      childTypes = this.value.getChildTypes();
     }
     if (this.inner) {
       Object.assign(childTypes, this.inner.getChildTypes());
@@ -294,10 +292,8 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
 
   getChildren(direct = null): IPseudo[] {
     let children = [];
-    if (this.value) {
-      try {
-        children = this.value.getChildren(direct);
-      } catch (AttributeError) {}
+    if (this.value && this.value instanceof Object && 'getChildren' in this.value && typeof this.value.getChildren === 'function') {
+      children = this.value.getChildren(direct);
     }
     if (this.inner) {
       children = [...children, ...this.inner.getChildren(direct)];

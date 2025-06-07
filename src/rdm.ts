@@ -1,4 +1,4 @@
-import { StaticCollection, StaticConcept } from "./static-types";
+import { StaticCollection } from "./static-types";
 import { ArchesClient, archesClient } from "./client";
 
 class ReferenceDataManager {

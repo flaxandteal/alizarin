@@ -10,30 +10,29 @@ class AttrPromise extends (_b = Promise, _a = Symbol.toPrimitive, _b) {
   constructor(executor) {
     super(executor);
     __publicField(this, _a);
-    return new Proxy(this, {
+    const proxy = new Proxy(this, {
       set: (object, keyObj, value) => {
-        if (object instanceof Promise) {
-          return object.then((val) => {
-            val[keyObj] = value;
-            return val;
-          });
-        }
-        object[keyObj] = value;
-        return this;
+        object.then((val) => {
+          val[keyObj] = value;
+          return val;
+        });
+        return true;
       },
       get: (object, keyObj) => {
         if (keyObj in object) {
-          if (typeof object[keyObj] === "function") {
-            return object[keyObj].bind(object);
+          const value = object[keyObj];
+          if (typeof value === "function") {
+            return value.bind(object);
           }
-          return object[keyObj];
+          return value;
         }
         const key = keyObj.toString();
         if (key in object) {
-          if (typeof object[key] === "function") {
-            return object[key].bind(object);
+          const value = object[key];
+          if (typeof value === "function") {
+            return value.bind(object);
           }
-          return object[key];
+          return value;
         }
         if (object instanceof Promise) {
           return object.then((val) => {
@@ -43,6 +42,7 @@ class AttrPromise extends (_b = Promise, _a = Symbol.toPrimitive, _b) {
         return object[keyObj];
       }
     });
+    return proxy;
   }
 }
 const utils = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
@@ -410,7 +410,7 @@ class StaticCollection {
     this.__values = {};
     const addValues = (concept) => {
       this.__allConcepts[concept.id] = concept;
-      for (const [_, value] of Object.entries(concept.prefLabels)) {
+      for (const [, value] of Object.entries(concept.prefLabels)) {
         this.__values[value.id] = value;
       }
       if (concept.children) {
@@ -431,6 +431,10 @@ class StaticCollection {
   }
   getConceptValue(valueId) {
     return this.__values[valueId];
+  }
+  getConceptByValue(label) {
+    var _a2;
+    return (_a2 = Object.values(this.__values).find((value) => value.value == label)) == null ? void 0 : _a2.__concept;
   }
   toString() {
     return this.prefLabels[getCurrentLanguage()] || Object.values(this.prefLabels)[0];
@@ -850,7 +854,7 @@ class StaticStore {
       if (resource instanceof StaticResource) {
         return resource.resourceinstance;
       }
-      return resource;
+      return resource || null;
     }
     if (!onlyIfCached) {
       const resource = await this.loadOne(id);
@@ -1015,8 +1019,8 @@ class ValueList {
           );
         }
         const values = new Map([...this.values.entries()]);
-        const promise2 = new Promise(async (resolve) => {
-          const [ngValues] = await this.wrapper.ensureNodegroup(
+        const promise2 = new Promise((resolve) => {
+          return this.wrapper.ensureNodegroup(
             values,
             this.promises,
             nodegroupId,
@@ -1026,18 +1030,21 @@ class ValueList {
             false,
             this.tiles,
             true
-          );
-          let original = false;
-          for (const [k, value] of [...ngValues.entries()]) {
-            const concreteValue = await value;
-            if (key === k) {
-              original = concreteValue;
-            }
-            if (concreteValue !== false) {
-              this.values.set(k, concreteValue);
-            }
-          }
-          resolve(original);
+          ).then(async ([ngValues]) => {
+            let original = false;
+            return Promise.all([...ngValues.entries()].map(([k, value]) => {
+              return value.then((concreteValue) => {
+                if (key === k) {
+                  original = concreteValue;
+                }
+                if (concreteValue !== false) {
+                  this.values.set(k, concreteValue);
+                }
+              });
+            })).then(() => {
+              resolve(original);
+            });
+          });
         });
         this.writeLock = promise2;
         this.promises.set(nodegroupId, promise2);
@@ -1196,6 +1203,7 @@ class ResourceInstanceListViewModel extends Array {
 _c = Symbol.toPrimitive;
 const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
   constructor(id, modelWrapper, instanceWrapperFactory, cacheEntry) {
+    __publicField(this, "_");
     __publicField(this, "$");
     __publicField(this, "__");
     __publicField(this, "__parentPseudo");
@@ -1459,12 +1467,12 @@ class ConceptListViewModel extends Array {
   async __forJsonCache(getMeta) {
     return new ConceptListCacheEntry({
       meta: getMeta ? await getMeta(this) : getMeta,
-      _: await Promise.all([...this.values()].map(async (rivmPromise) => {
+      _: (await Promise.all([...this.values()].map(async (rivmPromise) => {
         const rivm = await rivmPromise;
         if (rivm) {
           return await rivm.__forJsonCache(getMeta);
         }
-      }))
+      }))).filter((val) => val !== void 0)
     });
   }
   static async __create(tile, node, value, cacheEntry = null) {
@@ -1959,7 +1967,7 @@ class NumberViewModel extends Number {
     return num;
   }
   __asTileData() {
-    return this ? true : false;
+    return this.valueOf();
   }
 }
 class BooleanViewModel extends Boolean {
@@ -1974,14 +1982,13 @@ class BooleanViewModel extends Boolean {
   }
   toString(lang) {
     const labelLang = lang || DEFAULT_LANGUAGE;
-    const isTrue = this;
-    return isTrue ? this.__config && this.__config.trueLabel ? this.__config.trueLabel[labelLang] || "true" : "true" : this.__config && this.__config.trueLabel ? this.__config.falseLabel[labelLang] || "false" : "false";
+    return this.valueOf() ? this.__config && this.__config.trueLabel ? this.__config.trueLabel[labelLang] || "true" : "true" : this.__config && this.__config.trueLabel ? this.__config.falseLabel[labelLang] || "false" : "false";
   }
   __forJsonCache() {
     return null;
   }
   forJson() {
-    return this ? true : false;
+    return this.valueOf();
   }
   static __create(tile, node, value) {
     const nodeid = node.nodeid;
@@ -2001,11 +2008,14 @@ class BooleanViewModel extends Boolean {
     if (!config || !(config instanceof StaticNodeConfigBoolean)) {
       throw Error(`Cannot form boolean value for ${node.nodeid} without config`);
     }
+    if (typeof val !== "boolean") {
+      throw Error(`Refusing to use truthiness for value ${val} in boolean`);
+    }
     const bool = new BooleanViewModel(val, config);
     return bool;
   }
   __asTileData() {
-    return this ? true : false;
+    return this.valueOf();
   }
 }
 class Url {
@@ -2419,6 +2429,10 @@ async function getViewModel(parentPseudo, tile, node, data, parent, childNodes, 
     cacheEntry = (tile.tileid ? cacheEntries[tile.tileid] ?? {} : {})[node.nodeid];
   }
   const datatype = isInner ? "semantic" : CUSTOM_DATATYPES.get(node.datatype) ?? node.datatype;
+  let conceptCacheEntry;
+  let conceptValueCacheEntry;
+  let resourceInstanceCacheEntry;
+  let resourceInstanceListCacheEntry;
   if (!(typeof datatype == "string")) {
     vm = await datatype.__create(tile, node, data, cacheEntry);
   } else {
@@ -2440,27 +2454,35 @@ async function getViewModel(parentPseudo, tile, node, data, parent, childNodes, 
         break;
       case "concept":
         if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptValueCacheEntry)) {
-          cacheEntry = new ConceptValueCacheEntry(cacheEntry);
+          conceptValueCacheEntry = new ConceptValueCacheEntry(cacheEntry);
+        } else {
+          conceptValueCacheEntry = cacheEntry;
         }
-        vm = await ConceptValueViewModel.__create(tile, node, data, cacheEntry);
+        vm = await ConceptValueViewModel.__create(tile, node, data, conceptValueCacheEntry);
         break;
       case "resource-instance":
         if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceCacheEntry)) {
-          cacheEntry = new ResourceInstanceCacheEntry(cacheEntry);
+          resourceInstanceCacheEntry = new ResourceInstanceCacheEntry(cacheEntry);
+        } else {
+          resourceInstanceCacheEntry = cacheEntry;
         }
-        vm = await ResourceInstanceViewModel.__create(tile, node, data, cacheEntry);
+        vm = await ResourceInstanceViewModel.__create(tile, node, data, resourceInstanceCacheEntry);
         break;
       case "resource-instance-list":
         if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceListCacheEntry)) {
-          cacheEntry = new ResourceInstanceListCacheEntry(cacheEntry);
+          resourceInstanceListCacheEntry = new ResourceInstanceListCacheEntry(cacheEntry);
+        } else {
+          resourceInstanceListCacheEntry = cacheEntry;
         }
-        vm = await ResourceInstanceListViewModel.__create(tile, node, data, cacheEntry);
+        vm = await ResourceInstanceListViewModel.__create(tile, node, data, resourceInstanceListCacheEntry);
         break;
       case "concept-list":
         if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptListCacheEntry)) {
-          cacheEntry = new ConceptListCacheEntry(cacheEntry);
+          conceptCacheEntry = new ConceptListCacheEntry(cacheEntry);
+        } else {
+          conceptCacheEntry = cacheEntry;
         }
-        vm = await ConceptListViewModel.__create(tile, node, data, cacheEntry);
+        vm = await ConceptListViewModel.__create(tile, node, data, conceptCacheEntry);
         break;
       case "date":
         vm = await DateViewModel.__create(tile, node, data);
@@ -2633,11 +2655,11 @@ class PseudoValue {
     await this.updateValue();
     let relationships = [];
     if (this.inner) {
-      this.tile, relationships = await this.inner.getTile();
+      [this.tile, relationships] = await this.inner.getTile();
     }
     let tileValue;
     if (this.value !== null) {
-      let [newTileValue, ownRelationships] = await (await this.value).__asTileData();
+      const [newTileValue, ownRelationships] = await (await this.value).__asTileData();
       tileValue = newTileValue;
       relationships = [...relationships, ...ownRelationships];
     } else {
@@ -2753,11 +2775,8 @@ class PseudoValue {
   async getChildTypes() {
     await this.updateValue();
     let childTypes = {};
-    if (this.value instanceof Object) {
-      try {
-        childTypes = this.value.getChildTypes();
-      } catch (AttributeError) {
-      }
+    if (this.value && this.value instanceof Object && "getChildTypes" in this.value && typeof this.value.getChildTypes === "function") {
+      childTypes = this.value.getChildTypes();
     }
     if (this.inner) {
       Object.assign(childTypes, this.inner.getChildTypes());
@@ -2766,11 +2785,8 @@ class PseudoValue {
   }
   getChildren(direct = null) {
     let children = [];
-    if (this.value) {
-      try {
-        children = this.value.getChildren(direct);
-      } catch (AttributeError) {
-      }
+    if (this.value && this.value instanceof Object && "getChildren" in this.value && typeof this.value.getChildren === "function") {
+      children = this.value.getChildren(direct);
     }
     if (this.inner) {
       children = [...children, ...this.inner.getChildren(direct)];
@@ -2980,7 +2996,7 @@ class ResourceInstanceWrapper {
     let descriptors = this.resource && this.resource.resourceinstance.descriptors;
     if (update || !descriptors || descriptors.isEmpty()) {
       descriptors = new StaticResourceDescriptors();
-      let descriptorConfig;
+      let descriptorConfig = void 0;
       if (this.model.graph.functions_x_graphs) {
         const descriptorNode = this.model.graph.functions_x_graphs.find((node) => node.function_id === DESCRIPTOR_FUNCTION_ID);
         if (descriptorNode) {
@@ -2995,8 +3011,8 @@ class ResourceInstanceWrapper {
           if (!description) {
             continue;
           }
-          let requestedNodes = [...description.match(/<[A-Za-z _-]*>/g)];
-          const relevantNodes = [...nodes.values()].filter((node) => node.nodegroup_id === config.nodegroup_id && requestedNodes.includes(`<${node.name}>`)).map((node) => [node.name, node.alias || ""]);
+          let requestedNodes = description.match(/<[A-Za-z _-]*>/g) || [];
+          const relevantNodes = [...nodes.values()].filter((node) => node.nodegroup_id === config.nodegroup_id && [...requestedNodes].includes(`<${node.name}>`)).map((node) => [node.name, node.alias || ""]);
           let relevantValues = [];
           if (semanticNode) {
             let semanticValue = await (await this.valueList.retrieve(semanticNode.alias || ""))[0];
@@ -3015,7 +3031,7 @@ class ResourceInstanceWrapper {
           if (relevantValues) {
             description = relevantValues.reduce((desc, [name, value]) => value ? desc.replace(`<${name}>`, value) : desc, description);
           }
-          requestedNodes = [...description.match(/<[A-Za-z _-]*>/g) || []];
+          requestedNodes = description.match(/<[A-Za-z _-]*>/g) || [];
           if (requestedNodes.length) {
             relevantValues = await Promise.all(relevantNodes.map(([name, alias]) => this.valueList.retrieve(alias).then((values) => [name, values ? values[0] : void 0])));
             if (relevantValues) {
@@ -3088,7 +3104,9 @@ class ResourceInstanceWrapper {
         resolve();
       });
     }
-    return promise.then(() => this.getRootViewModel()).then((root) => root[key]);
+    return new AttrPromise((resolve) => {
+      promise.then(() => this.getRootViewModel()).then((root) => resolve(root[key]));
+    });
   }
   async getRoot() {
     const values = this.valueList;
@@ -3572,7 +3590,6 @@ class ResourceModelWrapper {
   setPermittedNodegroups(permissions) {
     const nodegroups = this.getNodegroupObjects();
     const nodes = this.getNodeObjectsByAlias();
-    this.getNodeObjects();
     this.permittedNodegroups = new Map([...permissions].map(([key, value]) => {
       const k = key || "";
       if (nodegroups.has(k) || k === "") {
@@ -4095,6 +4112,9 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}
 class JsonRenderer extends Renderer {
   async renderDate(value, _depth) {
     return value.forJson();
+  }
+  async renderBoolean(value, _depth) {
+    return typeof value === "boolean" ? value : value.forJson();
   }
   async renderConceptValue(value, _depth) {
     return value.forJson();

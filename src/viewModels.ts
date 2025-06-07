@@ -114,8 +114,8 @@ class ValueList<T extends IRIVM<T>> {
           );
         }
         const values = new Map([...this.values.entries()]);
-        const promise: Promise<IViewModel | boolean> = new Promise(async (resolve) => {
-          const [ngValues] = await this.wrapper
+        const promise: Promise<IViewModel | boolean> = new Promise((resolve) => {
+           return this.wrapper
             .ensureNodegroup(
               values,
               this.promises,
@@ -126,25 +126,28 @@ class ValueList<T extends IRIVM<T>> {
               false,
               this.tiles,
               true
-            );
-          let original = false;
-          for (const [k, value] of [...ngValues.entries()]) {
-            const concreteValue = await value;
-            if (key === k) {
-              // Other methods may be waiting on this specific
-              // value to resolve.
-              original = concreteValue;
-            }
-            // In theory, this should never happen when this.values[k] is
-            // not false, as the resource-wide write lock means that no other nodegroup
-            // can write. This _is_ happening however. In theory, once set, the
-            // value will be a list, so passed by reference, and so should not
-            // undo and changes that happened concurrently.
-            if (concreteValue !== false) {
-              this.values.set(k, concreteValue);
-            }
-          }
-          resolve(original);
+            ).then(async ([ngValues]) => {
+              let original = false;
+              return Promise.all([...ngValues.entries()].map(([k, value]) => {
+                return value.then((concreteValue: any) => {
+                  if (key === k) {
+                    // Other methods may be waiting on this specific
+                    // value to resolve.
+                    original = concreteValue;
+                  }
+                  // In theory, this should never happen when this.values[k] is
+                  // not false, as the resource-wide write lock means that no other nodegroup
+                  // can write. This _is_ happening however. In theory, once set, the
+                  // value will be a list, so passed by reference, and so should not
+                  // undo and changes that happened concurrently.
+                  if (concreteValue !== false) {
+                    this.values.set(k, concreteValue);
+                  }
+                });
+              })).then(() => {
+                resolve(original);
+              });
+            });
         });
         // No writes should happen until this is done
         this.writeLock = promise;
@@ -328,6 +331,7 @@ class ResourceInstanceListViewModel extends Array implements IViewModel {
 
 class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeyedObject {
   [key: string | symbol]: any;
+  _: IViewModel | Promise<IViewModel> | undefined = undefined;
   $: IInstanceWrapper<RIVM> | null;
   __: IModelWrapper<RIVM> | null;
   __parentPseudo: IPseudo | undefined = undefined;
@@ -634,12 +638,12 @@ class ConceptListViewModel extends Array implements IViewModel {
   async __forJsonCache(getMeta: GetMeta): Promise<ConceptListCacheEntry> {
     return new ConceptListCacheEntry({
       meta: getMeta ? await getMeta(this) : getMeta,
-      _: await Promise.all([...this.values()].map(async (rivmPromise: Promise<ConceptValueViewModel>) => {
+      _: (await Promise.all([...this.values()].map(async (rivmPromise: Promise<ConceptValueViewModel>) => {
         const rivm = await rivmPromise;
         if (rivm) {
           return await rivm.__forJsonCache(getMeta)
         }
-      }))
+      }))).filter(val => val !== undefined)
     });
   }
   static async __create(
@@ -692,7 +696,7 @@ class ConceptListViewModel extends Array implements IViewModel {
 
 class DomainValueListViewModel extends Array implements IViewModel {
   _: IViewModel | Promise<IViewModel> | undefined = undefined;
-  __parentPseudo: PseudoValue | undefined;
+  __parentPseudo: PseudoValue<any> | undefined;
 
   describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
   describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
@@ -757,7 +761,7 @@ class DomainValueListViewModel extends Array implements IViewModel {
 
 class DomainValueViewModel extends String implements IViewModel {
   _: IViewModel | Promise<IViewModel> | undefined = undefined;
-  __parentPseudo: PseudoValue | undefined;
+  __parentPseudo: PseudoValue<any> | undefined;
 
   describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
   describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
@@ -967,7 +971,7 @@ class ConceptValueViewModel extends String implements IViewModel {
 
 class DateViewModel extends Date implements IViewModel {
   _: IViewModel | Promise<IViewModel> | undefined = undefined;
-  __parentPseudo: PseudoValue | undefined;
+  __parentPseudo: PseudoValue<any> | undefined;
   __original: string;
   then: undefined;
 
@@ -1036,7 +1040,7 @@ class DateViewModel extends Date implements IViewModel {
 class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
   [key: string | symbol]: any;
   _: IViewModel | Promise<IViewModel> | undefined = undefined;
-  __parentPseudo: PseudoValue | undefined;
+  __parentPseudo: PseudoValue<any> | undefined;
   then: undefined;
   [Symbol.toPrimitive]: undefined;
 
@@ -1121,7 +1125,7 @@ class StringTranslatedLanguage {
 
 class EDTFViewModel extends String implements IViewModel {
   _: IViewModel | Promise<IViewModel> | undefined = undefined;
-  __parentPseudo: PseudoValue | undefined;
+  __parentPseudo: PseudoValue<any> | undefined;
 
   describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
   describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
@@ -1164,7 +1168,7 @@ class EDTFViewModel extends String implements IViewModel {
 
 class NonLocalizedStringViewModel extends String implements IViewModel {
   _: IViewModel | Promise<IViewModel> | undefined = undefined;
-  __parentPseudo: PseudoValue | undefined;
+  __parentPseudo: PseudoValue<any> | undefined;
 
   describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
   describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
@@ -1207,7 +1211,7 @@ class NonLocalizedStringViewModel extends String implements IViewModel {
 
 class NumberViewModel extends Number implements IViewModel {
   _: IViewModel | Promise<IViewModel> | undefined = undefined;
-  __parentPseudo: PseudoValue | undefined;
+  __parentPseudo: PseudoValue<any> | undefined;
 
   describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
   describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
@@ -1248,13 +1252,14 @@ class NumberViewModel extends Number implements IViewModel {
   }
 
   __asTileData() {
-    return this ? true : false;
+    return this.valueOf();
   }
 }
 
+// Note that this is a Boolean _object__, not an actual boolean
 class BooleanViewModel extends Boolean implements IViewModel {
   _: IViewModel | Promise<IViewModel> | undefined = undefined;
-  __parentPseudo: PseudoValue | undefined;
+  __parentPseudo: PseudoValue<any> | undefined;
   __config:  StaticNodeConfigBoolean;
 
   describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
@@ -1267,8 +1272,7 @@ class BooleanViewModel extends Boolean implements IViewModel {
 
   toString(lang?: string | undefined): string {
     const labelLang = lang || DEFAULT_LANGUAGE;
-    const isTrue: Boolean = this;
-    return isTrue ? (
+    return this.valueOf() ? (
       this.__config && this.__config.trueLabel ? this.__config.trueLabel[labelLang] || 'true' : 'true'
     ) : (
       this.__config && this.__config.trueLabel ? this.__config.falseLabel[labelLang] || 'false' : 'false'
@@ -1280,7 +1284,7 @@ class BooleanViewModel extends Boolean implements IViewModel {
   }
 
   forJson(): boolean {
-    return this ? true : false;
+    return this.valueOf();
   }
 
   static __create(
@@ -1306,12 +1310,15 @@ class BooleanViewModel extends Boolean implements IViewModel {
     if (!config || !(config instanceof StaticNodeConfigBoolean)) {
       throw Error(`Cannot form boolean value for ${node.nodeid} without config`);
     }
+    if (typeof val !== 'boolean') {
+      throw Error(`Refusing to use truthiness for value ${val} in boolean`);
+    }
     const bool = new BooleanViewModel(val, config);
     return bool;
   }
 
   __asTileData() {
-    return this ? true : false;
+    return this.valueOf();
   }
 }
 
@@ -1327,7 +1334,7 @@ class Url {
 
 class UrlViewModel extends String implements IViewModel {
   _: IViewModel | Promise<IViewModel> | undefined = undefined;
-  __parentPseudo: PseudoValue | undefined;
+  __parentPseudo: PseudoValue<any> | undefined;
 
   describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
   describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
@@ -1412,7 +1419,7 @@ class UrlViewModel extends String implements IViewModel {
 
 class StringViewModel extends String implements IViewModel {
   _: IViewModel | Promise<IViewModel> | undefined = undefined;
-  __parentPseudo: PseudoValue | undefined;
+  __parentPseudo: PseudoValue<any> | undefined;
 
   describeField = () => (this.__parentPseudo ? this.__parentPseudo.describeField() : null)
   describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
@@ -1517,7 +1524,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
   then: undefined;
   [Symbol.toPrimitive]: undefined;
 
-  __parentPseudo: PseudoValue | undefined;
+  __parentPseudo: PseudoValue<any> | undefined;
   __childValues: Map<string, any>;
   __parentWkri: IRIVM<any> | null;
   __childNodes: Map<string, StaticNode>;
@@ -1836,7 +1843,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
 const CUSTOM_DATATYPES: Map<string, string | IViewModel> = new Map();
 
 async function getViewModel<RIVM extends IRIVM<RIVM>>(
-  parentPseudo: PseudoValue,
+  parentPseudo: PseudoValue<any>,
   tile: StaticTile,
   node: StaticNode,
   data: any,
@@ -1852,6 +1859,13 @@ async function getViewModel<RIVM extends IRIVM<RIVM>>(
     cacheEntry = (tile.tileid ? (cacheEntries[tile.tileid] ?? {}) : {})[node.nodeid]
   };
   const datatype = isInner ? "semantic" : CUSTOM_DATATYPES.get(node.datatype) ?? node.datatype;
+
+  // TODO: find a neater way.
+  let conceptCacheEntry: ConceptListCacheEntry | null;
+  let conceptValueCacheEntry: ConceptValueCacheEntry | null;
+  let resourceInstanceCacheEntry: ResourceInstanceCacheEntry | null;
+  let resourceInstanceListCacheEntry: ResourceInstanceListCacheEntry | null;
+
   if (!(typeof datatype == "string")) {
     // @ts-expect-error Cannot make a static member part of the interface
     vm = await datatype.__create(tile, node, data, cacheEntry);
@@ -1875,34 +1889,38 @@ async function getViewModel<RIVM extends IRIVM<RIVM>>(
       case "concept":
         if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptValueCacheEntry)) {
           // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
-          cacheEntry = new ConceptValueCacheEntry(cacheEntry);
-          // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ConceptValueCacheEntry`);
+          conceptValueCacheEntry = new ConceptValueCacheEntry(cacheEntry);
+        } else {
+          conceptValueCacheEntry = cacheEntry;
         }
-        vm = await ConceptValueViewModel.__create(tile, node, data, cacheEntry);
+        vm = await ConceptValueViewModel.__create(tile, node, data, conceptValueCacheEntry);
         break;
       case "resource-instance":
         if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceCacheEntry)) {
           // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
-          cacheEntry = new ResourceInstanceCacheEntry(cacheEntry);
-          // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ResourceInstanceCacheEntry`);
+          resourceInstanceCacheEntry = new ResourceInstanceCacheEntry(cacheEntry);
+        } else {
+          resourceInstanceCacheEntry = cacheEntry;
         }
-        vm = await ResourceInstanceViewModel.__create(tile, node, data, cacheEntry);
+        vm = await ResourceInstanceViewModel.__create(tile, node, data, resourceInstanceCacheEntry);
         break;
       case "resource-instance-list":
         if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ResourceInstanceListCacheEntry)) {
           // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
-          cacheEntry = new ResourceInstanceListCacheEntry(cacheEntry);
-          // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ResourceInstanceListCacheEntry`);
+          resourceInstanceListCacheEntry = new ResourceInstanceListCacheEntry(cacheEntry);
+        } else {
+          resourceInstanceListCacheEntry = cacheEntry;
         }
-        vm = await ResourceInstanceListViewModel.__create(tile, node, data, cacheEntry);
+        vm = await ResourceInstanceListViewModel.__create(tile, node, data, resourceInstanceListCacheEntry);
         break;
       case "concept-list":
         if (cacheEntry && typeof cacheEntry === "object" && !(cacheEntry instanceof ConceptListCacheEntry)) {
           // @ts-expect-error We do not know the cache entry is structured correctly, and any such checks are in the constructor.
-          cacheEntry = new ConceptListCacheEntry(cacheEntry);
-          // console.warn(`Cache entry for tile ${tile.tileid} on node ${node.nodeid} is not of type ConceptListCacheEntry`);
+          conceptCacheEntry = new ConceptListCacheEntry(cacheEntry);
+        } else {
+          conceptCacheEntry = cacheEntry;
         }
-        vm = await ConceptListViewModel.__create(tile, node, data, cacheEntry);
+        vm = await ConceptListViewModel.__create(tile, node, data, conceptCacheEntry);
         break;
       case "date":
         vm = await DateViewModel.__create(tile, node, data);

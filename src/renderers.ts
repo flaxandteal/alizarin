@@ -22,9 +22,9 @@ abstract class BaseRenderer {
   abstract renderSemantic(value: SemanticViewModel, depth: number): Promise<any>;
   abstract renderBlock(block: {[key: string]: string} | {[key: string]: string}[], depth: number): any;
   abstract renderArray(value: any[], depth: number): Promise<any>;
-  abstract renderString(value: String, _depth: number): Promise<any>;
-  abstract renderBoolean(value: BooleanViewModel, _depth: number): Promise<any>;
-  abstract renderNumber(value: NumberViewModel, _depth: number): Promise<any>;
+  abstract renderString(value: string | StringViewModel | NonLocalizedStringViewModel, _depth: number): Promise<any>;
+  abstract renderBoolean(value: boolean | BooleanViewModel, _depth: number): Promise<any>;
+  abstract renderNumber(value: number | NumberViewModel, _depth: number): Promise<any>;
   abstract renderUrl(value: UrlViewModel, _depth: number): Promise<any>;
 
   async renderValue(value: any, depth: number): Promise<any> {
@@ -68,15 +68,15 @@ class Renderer extends BaseRenderer {
     return value;
   }
 
-  async renderString(value: String, _depth: number): Promise<any> {
+  async renderString(value: string | StringViewModel | NonLocalizedStringViewModel, _depth: number): Promise<any> {
     return `${value}`;
   }
 
-  async renderNumber(value: Number, _depth: number): Promise<any> {
+  async renderNumber(value: number | NumberViewModel, _depth: number): Promise<any> {
     return `${value}`;
   }
 
-  async renderBoolean(value: Boolean, _depth: number): Promise<any> {
+  async renderBoolean(value: boolean | BooleanViewModel, _depth: number): Promise<any> {
     return value.toString();
   }
 
@@ -239,13 +239,13 @@ class FlatMarkdownRenderer extends MarkdownRenderer {
   override async renderArray(value: any, depth: number): Promise<any> {
       const rows = await super.renderArray(value, depth);
       if (value instanceof PseudoList || value.indexOf('\n') != -1) {
-        return rows.map(x => `${x}`).join('\n');
+        return rows.map((x: any) => `${x}`).join('\n');
       } else {
         return rows.join(", ");
       }
   }
 
-  async renderString(value: String, _depth: number): Promise<any> {
+  async renderString(value: string | StringViewModel | NonLocalizedStringViewModel, _depth: number): Promise<any> {
     if (value.indexOf('\n') != -1) {
       value = '\n    ' + value.split('\n').join('\n    ');
     }
@@ -256,6 +256,10 @@ class FlatMarkdownRenderer extends MarkdownRenderer {
 class JsonRenderer extends Renderer {
   async renderDate(value: DateViewModel, _depth: number): Promise<any> {
     return value.forJson();
+  }
+
+  async renderBoolean(value: boolean | BooleanViewModel, _depth: number): Promise<any> {
+    return typeof value === "boolean" ? value : value.forJson();
   }
 
   async renderConceptValue(value: ConceptValueViewModel, _depth: number): Promise<any> {

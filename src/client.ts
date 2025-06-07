@@ -1,8 +1,5 @@
-import * as bfj from "bfj";
-import * as check from 'check-types';
 import { StaticGraphMeta, StaticGraph, StaticResource } from "./static-types";
 import { StaticCollection } from "./rdm";
-import { IStringKeyedObject } from "./interfaces";
 
 class GraphResult {
   models: {[graphId: string]: StaticGraphMeta};
@@ -78,12 +75,12 @@ class ArchesClientRemote extends ArchesClient {
 
 class ArchesClientRemoteStatic extends ArchesClient {
   archesUrl: string;
-  allGraphFile: Function;
-  graphToGraphFile: Function;
-  graphIdToGraphFile: Function;
-  graphIdToResourcesFiles: Function;
-  resourceIdToFile: Function;
-  collectionIdToFile: Function;
+  allGraphFile: () => string;
+  graphToGraphFile?: (graph: StaticGraphMeta) => string;
+  graphIdToGraphFile: (graphId: string) => string;
+  graphIdToResourcesFiles: (graphId: string) => string[];
+  resourceIdToFile: (resourceId: string) => string;
+  collectionIdToFile: (collectionId: string) => string;
 
   constructor(
     archesUrl: string,
@@ -94,7 +91,14 @@ class ArchesClientRemoteStatic extends ArchesClient {
       resourceIdToFile,
       collectionIdToFile,
       graphIdToGraphFile,
-    }: { [k: string]: Function } = {},
+    }: {
+      allGraphFile?: () => string,
+      graphToGraphFile?: (graph: StaticGraphMeta) => string,
+      graphIdToGraphFile?: (graphId: string) => string;
+      graphIdToResourcesFiles?: (graphId: string) => string[];
+      resourceIdToFile?: (resourceId: string) => string;
+      collectionIdToFile?: (collectionId: string) => string;
+    } = {},
   ) {
     super();
     this.archesUrl = archesUrl;
@@ -175,27 +179,34 @@ class ArchesClientRemoteStatic extends ArchesClient {
 
 class ArchesClientLocal extends ArchesClient {
   fs: any;
-  allGraphFile: Function;
-  graphToGraphFile: Function;
-  graphIdToGraphFile: Function;
-  graphIdToResourcesFiles: Function;
-  resourceIdToFile: Function;
-  collectionIdToFile: Function;
+  allGraphFile: () => string;
+  graphToGraphFile?: (graph: StaticGraphMeta) => string;
+  graphIdToGraphFile: (graphId: string) => string;
+  graphIdToResourcesFiles: (graphId: string) => string[];
+  resourceIdToFile: (resourceId: string) => string;
+  collectionIdToFile: (collectionId: string) => string;
 
   constructor({
-    allGraphFile,
-    graphToGraphFile,
-    graphIdToResourcesFiles,
-    resourceIdToFile,
-    collectionIdToFile,
-    graphIdToGraphFile,
-  }: { [k: string]: Function } = {}) {
+      allGraphFile,
+      graphToGraphFile,
+      graphIdToResourcesFiles,
+      resourceIdToFile,
+      collectionIdToFile,
+      graphIdToGraphFile,
+    }: {
+      allGraphFile?: () => string,
+      graphToGraphFile?: (graph: StaticGraphMeta) => string,
+      graphIdToGraphFile?: (graphId: string) => string;
+      graphIdToResourcesFiles?: (graphId: string) => string[];
+      resourceIdToFile?: (resourceId: string) => string;
+      collectionIdToFile?: (collectionId: string) => string;
+    } = {}) {
     super();
     this.fs = import("fs");
     this.allGraphFile = allGraphFile || (() => "tests/definitions/models/_all.json");
     this.graphToGraphFile =
       graphToGraphFile ||
-      ((graph: StaticGraph) => `tests/definitions/models/${graph.graphid}.json`);
+      ((graph: StaticGraphMeta) => `tests/definitions/models/${graph.graphid}.json`);
     this.graphIdToGraphFile =
       graphIdToGraphFile ||
       ((graphId: string) => `tests/definitions/models/${graphId}.json`);

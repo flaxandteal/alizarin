@@ -8,6 +8,7 @@ function getCurrentLanguage(): string {
 }
 
 class AttrPromise<T> extends Promise<T> implements IStringKeyedObject {
+  [key: string | symbol]: any;
   [Symbol.toPrimitive]: undefined;
   constructor(
     executor: (
@@ -16,39 +17,39 @@ class AttrPromise<T> extends Promise<T> implements IStringKeyedObject {
     ) => void,
   ) {
     super(executor);
-    return new Proxy(this, {
-      set: (object: IStringKeyedObject, keyObj, value) => {
-        if (object instanceof Promise) {
-          return object.then((val) => {
-            val[keyObj] = value;
-            return val;
-          });
-        }
-        object[keyObj] = value;
-        return this;
+    const proxy = new Proxy(this, {
+      set: (object: AttrPromise<T>, keyObj, value) => {
+        object.then((val: any) => {
+          val[keyObj] = value;
+          return val;
+        });
+        return true;
       },
-      get: (object: IStringKeyedObject, keyObj) => {
+      get: (object: AttrPromise<T>, keyObj: string | symbol) => {
         if (keyObj in object) {
-          if (typeof object[keyObj] === "function") {
-            return object[keyObj].bind(object);
+          const value: any = object[keyObj];
+          if (typeof value === "function") {
+            return value.bind(object);
           }
-          return object[keyObj];
+          return value;
         }
         const key = keyObj.toString();
         if (key in object) {
-          if (typeof object[key] === "function") {
-            return object[key].bind(object);
+          const value: any = object[key];
+          if (typeof value === "function") {
+            return value.bind(object);
           }
-          return object[key];
+          return value;
         }
         if (object instanceof Promise) {
-          return object.then((val) => {
+          return object.then((val: any) => {
             return val ? val[keyObj] : val;
           });
         }
         return object[keyObj];
       },
     });
+    return proxy;
   }
 }
 

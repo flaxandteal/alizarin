@@ -230,8 +230,15 @@ class StaticEdge {
   }
 }
 
+interface IStaticDescriptorConfig {
+  descriptor_types: {
+    nodegroup_id: string,
+    string_template: string
+  }[],
+};
+
 class StaticFunctionsXGraphs {
-  config: object;
+  config: IStaticDescriptorConfig;
   function_id: string;
   graph_id: string;
   id: string;
@@ -413,7 +420,7 @@ class StaticCollection {
     this.__values = {};
     const addValues = (concept: StaticConcept) => {
       this.__allConcepts[concept.id] = concept;
-      for (const [_, value] of Object.entries(concept.prefLabels)) {
+      for (const [, value] of Object.entries(concept.prefLabels)) {
         this.__values[value.id] = value;
       }
       if (concept.children) {
@@ -435,6 +442,10 @@ class StaticCollection {
 
   getConceptValue(valueId: string) {
     return this.__values[valueId];
+  }
+
+  getConceptByValue(label: string) {
+    return Object.values(this.__values).find(value => value.value == label)?.__concept;
   }
 
   toString() {
@@ -476,7 +487,7 @@ class StaticTile {
 }
 
 class StaticResourceDescriptors {
-  [key: string]: (string | undefined | Function);
+  [key: string]: (string | undefined | (() => boolean));
   name?: string;
   map_popup?: string;
   description?: string;
@@ -616,5 +627,6 @@ export {
   StaticResourceReference,
   StaticGraphMeta,
   StaticFunctionsXGraphs,
-  StaticResourceDescriptors
+  StaticResourceDescriptors,
+  type IStaticDescriptorConfig
 };

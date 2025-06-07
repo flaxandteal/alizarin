@@ -12,10 +12,12 @@ import {
   StaticResource,
   StaticResourceDescriptors,
   StaticGraphMeta,
+  IStaticDescriptorConfig
 } from "./static-types";
 import { makePseudoCls, PseudoList } from "./pseudos.ts";
 import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext, SemanticViewModel } from "./viewModels.ts";
 import { CheckPermission, GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
+import { } from "./nodeConfig.ts";
 import { AttrPromise } from "./utils";
 
 const MAX_GRAPH_DEPTH = 100;
@@ -117,7 +119,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     let descriptors = this.resource && this.resource.resourceinstance.descriptors;
     if (update || !descriptors || descriptors.isEmpty()) {
       descriptors = new StaticResourceDescriptors();
-      let descriptorConfig;
+      let descriptorConfig: IStaticDescriptorConfig | undefined = undefined;
       if (this.model.graph.functions_x_graphs) {
         const descriptorNode = this.model.graph.functions_x_graphs.find(node => node.function_id === DESCRIPTOR_FUNCTION_ID);
         if (descriptorNode) {
@@ -132,8 +134,8 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
           if (!description) {
             continue;
           }
-          let requestedNodes = [...description.match(/<[A-Za-z _-]*>/g)];
-          const relevantNodes = [...nodes.values()].filter(node => node.nodegroup_id === config.nodegroup_id && requestedNodes.includes(`<${node.name}>`)).map(node => [node.name, node.alias || '']);
+          let requestedNodes = description.match(/<[A-Za-z _-]*>/g) || [];
+          const relevantNodes = [...nodes.values()].filter(node => node.nodegroup_id === config.nodegroup_id && [...requestedNodes].includes(`<${node.name}>`)).map(node => [node.name, node.alias || '']);
           let relevantValues: [string, string | undefined][] = [];
           // First try and see if we can find all of these on one tile, for consistency.
           if (semanticNode) {
@@ -154,7 +156,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
           if (relevantValues) {
             description = relevantValues.reduce((desc, [name, value]) => value ? desc.replace(`<${name}>`, value) : desc, description);
           }
-          requestedNodes = [...(description.match(/<[A-Za-z _-]*>/g) || [])];
+          requestedNodes = description.match(/<[A-Za-z _-]*>/g) || [];
           if (requestedNodes.length) {
             relevantValues = await Promise.all(relevantNodes.map(([name, alias]) => this.valueList.retrieve(alias).then((values: string[]): [string, string | undefined] => [name, values ? values[0] : undefined])));
             if (relevantValues) {
@@ -234,7 +236,9 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     }
 
     // TODO remapping
-    return promise.then(() => this.getRootViewModel()).then(root => root[key]);
+    return new AttrPromise(resolve => {
+      promise.then(() => this.getRootViewModel()).then(root => resolve(root[key]));
+    });
   }
 
   async getRoot(): Promise<IPseudo | undefined> {
@@ -804,7 +808,6 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   setPermittedNodegroups(permissions: Map<string | null, boolean | CheckPermission>) {
     const nodegroups = this.getNodegroupObjects();
     const nodes = this.getNodeObjectsByAlias();
-    const nodesById = this.getNodeObjects();
     this.permittedNodegroups = new Map([...permissions].map(([key, value]): [key: string | null, value: boolean | CheckPermission] => {
       const k = key || '';
       if (nodegroups.has(k) || k === '') {

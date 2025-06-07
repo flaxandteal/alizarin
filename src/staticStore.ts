@@ -1,11 +1,5 @@
-import { archesClient, ArchesClient, ArchesClientRemote } from "./client.ts";
+import { archesClient, ArchesClient } from "./client.ts";
 import {
-  StaticValue,
-  StaticConcept,
-  StaticTile,
-  StaticGraph,
-  StaticNode,
-  StaticNodegroup,
   StaticResource,
   StaticResourceMetadata,
 } from "./static-types";
@@ -29,7 +23,7 @@ class StaticStore {
       if (resource instanceof StaticResource) {
         return resource.resourceinstance;
       }
-      return resource;
+      return resource || null;
     }
 
     if (!onlyIfCached) {

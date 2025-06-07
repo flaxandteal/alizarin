@@ -15,14 +15,29 @@ export default defineConfig([
     },
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/no-unused-vars": "warn",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          "argsIgnorePattern": "^_",
+          "varsIgnorePattern": "^_"
+        }
+      ],
       "prefer-const": "warn",
       "no-empty": "warn",
       "@typescript-eslint/no-unsafe-function-type": "warn",
       "@typescript-eslint/naming-convention": [
         "error",
         {
+          "selector": "property",
+          "format": ["camelCase", "snake_case"],
+          "filter": "^(?!__)",
           "leadingUnderscore": "allow"
+        },
+        {
+          "selector": "property",
+          "format": ["camelCase"],
+          "filter": "__",
+          "prefix": ["__"]
         }
       ]
     },
