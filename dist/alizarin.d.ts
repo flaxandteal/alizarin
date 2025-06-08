@@ -740,7 +740,7 @@ declare class StaticDomainValue {
 }
 
 declare class StaticEdge {
-    description: null;
+    description: string | null;
     domainnode_id: string;
     edgeid: string;
     graph_id: string;
@@ -748,6 +748,7 @@ declare class StaticEdge {
     rangenode_id: string;
     ontologyproperty: null | string;
     constructor(jsonData: StaticEdge);
+    copy?(): StaticEdge;
 }
 
 declare class StaticFunctionsXGraphs {
@@ -756,6 +757,7 @@ declare class StaticFunctionsXGraphs {
     graph_id: string;
     id: string;
     constructor(jsonData: StaticFunctionsXGraphs);
+    copy(): StaticFunctionsXGraphs;
 }
 
 declare class StaticGraph {
@@ -787,6 +789,7 @@ declare class StaticGraph {
     template_id: string;
     version: string;
     constructor(jsonData: StaticGraph);
+    copy?(): StaticGraph;
 }
 
 declare class StaticGraphMeta {
@@ -830,7 +833,7 @@ declare class StaticNode {
     alias: string | null;
     config: {
         [key: string]: any;
-    };
+    } | null;
     datatype: string;
     description: string | null;
     exportable: boolean;
@@ -849,6 +852,7 @@ declare class StaticNode {
     ontologyclass: string | null;
     sourcebranchpublication_id: null | string;
     constructor(jsonData: StaticNode);
+    copy?(): StaticNode;
 }
 
 declare class StaticNodeConfigBoolean implements IStaticNodeConfigBoolean, INodeConfig {
@@ -878,6 +882,7 @@ declare class StaticNodegroup {
     parentnodegroup_id: string | null;
     cardinality: "1" | "n" | null;
     constructor(jsonData: StaticNodegroup);
+    copy(): StaticNodegroup;
 }
 
 declare type StaticProvisionalEdit = any;
@@ -888,6 +893,7 @@ declare class StaticPublication {
     publicationid: string;
     published_time: string;
     constructor(jsonData: StaticPublication);
+    copy(): StaticPublication;
 }
 
 declare class StaticResource {
@@ -969,6 +975,7 @@ declare class StaticTranslatableString extends String {
     translations: Map<string, string>;
     lang: string;
     constructor(s: string | StaticTranslatableString, lang?: undefined | string);
+    copy(): StaticTranslatableString;
 }
 
 declare namespace staticTypes {

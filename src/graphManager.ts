@@ -1,3 +1,4 @@
+import { v5 as uuidv5 } from 'uuid';
 import { GraphResult, archesClient, ArchesClient, ArchesClientRemote } from "./client.ts";
 import { staticStore } from "./staticStore.ts"
 import {
@@ -22,6 +23,7 @@ import { AttrPromise } from "./utils";
 
 const MAX_GRAPH_DEPTH = 100;
 const DESCRIPTOR_FUNCTION_ID = "60000000-0000-0000-0000-000000000001";
+const UUID_NAMESPACE = 'flaxandteal.github.io/alizarin';
 
 class WKRM {
   modelName: string;
@@ -616,6 +618,106 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
   }
 }
 
+type GraphMutation = (baseGraph: StaticGraph) => StaticGraph;
+
+class GraphMutator {
+  baseGraph: StaticGraph;
+  mutations: GraphMutation[];
+
+  _generateUuidv5(key: string) {
+    return uuidv5(`${this.baseGraph.graphid}:${key}`, UUID_NAMESPACE);
+  }
+
+  _generateEdge(fromNode: string, toNode: string, ontologyProperty: string, name?: string, description?: string) {
+    const edgeId = this._generateUuidv5(`node-${fromNode}-${toNode}`);
+    return new StaticEdge({
+      description: description || null,
+      domainnode_id: fromNode,
+      edgeid: edgeId,
+      graph_id: this.baseGraph.graphid,
+      name: name || null,
+      rangenode_id: toNode,
+      ontologyproperty: ontologyProperty,
+    });
+  }
+
+  constructor(baseGraph: StaticGraph) {
+    this.baseGraph = baseGraph;
+    this.mutations = [];
+  }
+
+  _addStringNode(nodegroupId: string, alias: string, name: string, ontologyClass: string, parentProperty: string, description?: string, options: {
+    exportable?: boolean,
+    fieldname?: string,
+    hascustomalias?: boolean;
+    is_collector?: boolean;
+    isrequired?: boolean;
+    issearchable?: boolean;
+    istopnode?: boolean;
+    sortorder?: number;
+  } = {}, config?: {[key: string]: any}) {
+    return this._addGenericNode(
+      nodegroupId,
+      alias,
+      name,
+      "string",
+      ontologyClass,
+      parentProperty,
+      description,
+      options,
+      config
+    );
+  }
+
+  _addGenericNode(nodegroupId: string, alias: string, name: string, datatype: string, ontologyClass: string, parentProperty: string, description?: string, options: {
+    exportable?: boolean,
+    fieldname?: string,
+    hascustomalias?: boolean;
+    is_collector?: boolean;
+    isrequired?: boolean;
+    issearchable?: boolean;
+    istopnode?: boolean;
+    sortorder?: number;
+  } = {}, config?: {[key: string]: any}) {
+    const nodeId = this._generateUuidv5(`node-${nodegroupId}-${alias}`);
+    const node = {
+      alias: alias,
+      config: config || null,
+      datatype: datatype,
+      description: description || null,
+      exportable: options.exportable || false,
+      fieldname: options.fieldname || null,
+      graph_id: this.baseGraph.graphid,
+      hascustomalias: options.hascustomalias || false,
+      is_collector: options.is_collector || false,
+      isrequired: options.isrequired || false,
+      issearchable: options.issearchable || false,
+      istopnode: options.istopnode || false,
+      name: name,
+      nodegroup_id: nodegroupId,
+      nodeid: nodeId,
+      parentproperty: parentProperty,
+      sortorder: options.sortorder || 0,
+      ontologyclass: ontologyClass,
+      sourcebranchpublication_id: null,
+    };
+    this.mutations.push((graph: StaticGraph) => {
+      const newNode = new StaticNode(node);
+      graph.nodes.push(newNode);
+      const edge = this._generateEdge(nodegroupId, nodeId, parentProperty);
+      graph.edges.push(edge);
+      return graph;
+    });
+    return this;
+  }
+
+  apply() {
+    // TODO: complete deepcopies
+    const graph = this.baseGraph.copy();
+    return this.mutations.reduce((graph, mutation) => mutation(graph), graph);
+  }
+}
+
 class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   wkrm: WKRM;
   graph: StaticGraph;
@@ -1175,4 +1277,4 @@ class GraphManager {
 const graphManager = new GraphManager(archesClient);
 viewContext.graphManager = graphManager;
 
-export { GraphManager, graphManager, ArchesClientRemote, staticStore, WKRM, ResourceModelWrapper };
+export { GraphManager, graphManager, ArchesClientRemote, staticStore, WKRM, ResourceModelWrapper, GraphMutator };

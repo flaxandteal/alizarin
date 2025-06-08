@@ -70,6 +70,10 @@ class StaticTranslatableString extends String {
     this.translations = translations;
     this.lang = finalLang;
   }
+
+  copy() {
+    return new StaticTranslatableString(this, this.lang);
+  }
 }
 
 class StaticNodegroup {
@@ -84,11 +88,15 @@ class StaticNodegroup {
     this.parentnodegroup_id = jsonData.parentnodegroup_id;
     this.cardinality = jsonData.cardinality;
   }
+
+  copy(): StaticNodegroup {
+    return new StaticNodegroup(this);
+  }
 }
 
 class StaticNode {
   alias: string | null;
-  config: { [key: string]: any };
+  config: { [key: string]: any } | null;
   datatype: string;
   description: string | null;
   exportable: boolean;
@@ -127,6 +135,11 @@ class StaticNode {
     this.sortorder = jsonData.sortorder;
     this.ontologyclass = jsonData.ontologyclass;
     this.sourcebranchpublication_id = jsonData.sourcebranchpublication_id;
+  }
+
+  copy?(): StaticNode {
+    // TODO: config should be deep copied
+    return new StaticNode(this);
   }
 }
 
@@ -211,7 +224,7 @@ class StaticCardsXNodesXWidgets {
 }
 
 class StaticEdge {
-  description: null;
+  description: string | null;
   domainnode_id: string;
   edgeid: string;
   graph_id: string;
@@ -227,6 +240,10 @@ class StaticEdge {
     this.name = jsonData.name;
     this.rangenode_id = jsonData.rangenode_id;
     this.ontologyproperty = jsonData.ontologyproperty;
+  }
+
+  copy?(): StaticEdge {
+    return new StaticEdge(this);
   }
 }
 
@@ -249,6 +266,10 @@ class StaticFunctionsXGraphs {
     this.graph_id = jsonData.graph_id;
     this.id = jsonData.id;
   }
+
+  copy(): StaticFunctionsXGraphs {
+    return new StaticFunctionsXGraphs(this);
+  }
 }
 
 class StaticPublication {
@@ -262,6 +283,10 @@ class StaticPublication {
     this.notes = jsonData.notes;
     this.publicationid = jsonData.publicationid;
     this.published_time = jsonData.published_time;
+  }
+
+  copy(): StaticPublication {
+    return new StaticPublication(this);
   }
 }
 
@@ -336,6 +361,41 @@ class StaticGraph {
     this.subtitle = new StaticTranslatableString(jsonData.subtitle);
     this.template_id = jsonData.template_id;
     this.version = jsonData.version;
+  }
+
+  // TODO: complete deepcopy
+  copy?(): StaticGraph {
+    const newGraph = new StaticGraph(this);
+    Object.assign(newGraph, {
+      author: this.author,
+      cards: this.cards?.map(card => new StaticCard(card)) || [],
+      cards_x_nodes_x_widgets: this.cards_x_nodes_x_widgets?.map(cnw => new StaticCardsXNodesXWidgets(cnw)) || [],
+      color: this.color,
+      config: Object.assign({}, this.config), // TODO: deepcopy;
+      deploymentdate: this.deploymentdate,
+      deploymentfile: this.deploymentfile,
+      description: this.description.copy(),
+      edges: this.edges.map(edge => edge.copy && edge.copy()),
+      functions_x_graphs: this.functions_x_graphs?.map(fxg => fxg.copy()) || [],
+      graphid: this.graphid,
+      iconclass: this.iconclass,
+      is_editable: this.is_editable,
+      isresource: this.isresource,
+      jsonldcontext: this.jsonldcontext,
+      name: this.name.copy(),
+      nodegroups: this.nodegroups?.map(ng => ng.copy()),
+      nodes: this.nodes?.map(n => n.copy && n.copy()),
+      ontology_id: this.ontology_id,
+      publication: this.publication?.copy() || null,
+      relatable_resource_model_ids: [...this.relatable_resource_model_ids || []],
+      resource_2_resource_constraints: [...this.resource_2_resource_constraints || []],
+      root: this.root.copy && this.root.copy(),
+      slug: this.slug,
+      subtitle: this.subtitle.copy(),
+      template_id: this.template_id,
+      version: this.version
+    });
+    return newGraph;
   }
 }
 

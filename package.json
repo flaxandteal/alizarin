@@ -34,6 +34,7 @@
   },
   "dependencies": {
     "bfj": "^9.1.2",
-    "geojson": "^0.5.0"
+    "geojson": "^0.5.0",
+    "uuid": "^11.1.0"
   }
 }
