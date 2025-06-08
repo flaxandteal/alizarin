@@ -1032,15 +1032,19 @@ class ValueList {
             true
           ).then(async ([ngValues]) => {
             let original = false;
+            const processValue = (k, concreteValue) => {
+              if (key === k) {
+                original = concreteValue;
+              }
+              if (concreteValue !== false) {
+                this.values.set(k, concreteValue);
+              }
+            };
             return Promise.all([...ngValues.entries()].map(([k, value]) => {
-              return value.then((concreteValue) => {
-                if (key === k) {
-                  original = concreteValue;
-                }
-                if (concreteValue !== false) {
-                  this.values.set(k, concreteValue);
-                }
-              });
+              if (value instanceof Promise) {
+                return value.then((concreteValue) => processValue(k, concreteValue));
+              }
+              processValue(k, value);
             })).then(() => {
               resolve(original);
             });
@@ -2008,10 +2012,10 @@ class BooleanViewModel extends Boolean {
     if (!config || !(config instanceof StaticNodeConfigBoolean)) {
       throw Error(`Cannot form boolean value for ${node.nodeid} without config`);
     }
-    if (typeof val !== "boolean") {
+    if (typeof val !== "boolean" && val !== 0 && val !== 1) {
       throw Error(`Refusing to use truthiness for value ${val} in boolean`);
     }
-    const bool = new BooleanViewModel(val, config);
+    const bool = new BooleanViewModel(val ? true : false, config);
     return bool;
   }
   __asTileData() {

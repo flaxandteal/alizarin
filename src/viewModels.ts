@@ -128,22 +128,26 @@ class ValueList<T extends IRIVM<T>> {
               true
             ).then(async ([ngValues]) => {
               let original = false;
+              const processValue = (k: string, concreteValue: any) => {
+                if (key === k) {
+                  // Other methods may be waiting on this specific
+                  // value to resolve.
+                  original = concreteValue;
+                }
+                // In theory, this should never happen when this.values[k] is
+                // not false, as the resource-wide write lock means that no other nodegroup
+                // can write. This _is_ happening however. In theory, once set, the
+                // value will be a list, so passed by reference, and so should not
+                // undo and changes that happened concurrently.
+                if (concreteValue !== false) {
+                  this.values.set(k, concreteValue);
+                }
+              }
               return Promise.all([...ngValues.entries()].map(([k, value]) => {
-                return value.then((concreteValue: any) => {
-                  if (key === k) {
-                    // Other methods may be waiting on this specific
-                    // value to resolve.
-                    original = concreteValue;
-                  }
-                  // In theory, this should never happen when this.values[k] is
-                  // not false, as the resource-wide write lock means that no other nodegroup
-                  // can write. This _is_ happening however. In theory, once set, the
-                  // value will be a list, so passed by reference, and so should not
-                  // undo and changes that happened concurrently.
-                  if (concreteValue !== false) {
-                    this.values.set(k, concreteValue);
-                  }
-                });
+                if (value instanceof Promise) {
+                  return value.then((concreteValue: any) => processValue(k, concreteValue));
+                }
+                processValue(k, value);
               })).then(() => {
                 resolve(original);
               });
@@ -1310,10 +1314,10 @@ class BooleanViewModel extends Boolean implements IViewModel {
     if (!config || !(config instanceof StaticNodeConfigBoolean)) {
       throw Error(`Cannot form boolean value for ${node.nodeid} without config`);
     }
-    if (typeof val !== 'boolean') {
+    if (typeof val !== 'boolean' && val !== 0 && val !== 1) {
       throw Error(`Refusing to use truthiness for value ${val} in boolean`);
     }
-    const bool = new BooleanViewModel(val, config);
+    const bool = new BooleanViewModel(val ? true : false, config);
     return bool;
   }
 
