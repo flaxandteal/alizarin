@@ -271,6 +271,7 @@ class JsonRenderer extends Renderer {
   }
 
   async renderResourceReference(value: ResourceInstanceViewModel<any>, _depth: number): Promise<any> {
+    // TODO: decide if this makes sense: await value.retrieve();
     const val = value.forJson();
     return val;
   }

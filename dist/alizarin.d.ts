@@ -249,6 +249,54 @@ export declare class GraphManager {
 
 export declare const graphManager: GraphManager;
 
+declare type GraphMutation = (baseGraph: StaticGraph) => StaticGraph;
+
+export declare class GraphMutator {
+    baseGraph: StaticGraph;
+    mutations: GraphMutation[];
+    _generateUuidv5(key: string): string;
+    _generateEdge(fromNode: string, toNode: string, ontologyProperty: string, name?: string, description?: string): StaticEdge;
+    constructor(baseGraph: StaticGraph);
+    addSemanticNode(parentAlias: string, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options?: {
+        exportable?: boolean;
+        fieldname?: string;
+        hascustomalias?: boolean;
+        is_collector?: boolean;
+        isrequired?: boolean;
+        issearchable?: boolean;
+        istopnode?: boolean;
+        sortorder?: number;
+    }, config?: {
+        [key: string]: any;
+    }): this;
+    addStringNode(parentAlias: string, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options?: {
+        exportable?: boolean;
+        fieldname?: string;
+        hascustomalias?: boolean;
+        is_collector?: boolean;
+        isrequired?: boolean;
+        issearchable?: boolean;
+        istopnode?: boolean;
+        sortorder?: number;
+    }, config?: {
+        [key: string]: any;
+    }): this;
+    _addNodegroup(parentAlias: string | null, nodegroupId: string, cardinality: 'n' | '1'): this;
+    _addGenericNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', datatype: string, ontologyClass: string, parentProperty: string, description?: string, options?: {
+        exportable?: boolean;
+        fieldname?: string;
+        hascustomalias?: boolean;
+        is_collector?: boolean;
+        isrequired?: boolean;
+        issearchable?: boolean;
+        istopnode?: boolean;
+        sortorder?: number;
+    }, config?: {
+        [key: string]: any;
+    }): this;
+    apply(): StaticGraph;
+}
+
 declare class GraphResult {
     models: {
         [graphId: string]: StaticGraphMeta;
@@ -367,6 +415,10 @@ declare interface IStaticNodeConfigBoolean {
     };
 }
 
+declare interface IStaticNodeConfigConcept {
+    rdmCollection: string;
+}
+
 declare interface IStaticNodeConfigDomain {
     i18n_config: {
         [key: string]: string;
@@ -428,7 +480,8 @@ declare namespace nodeConfig {
     export {
         nodeConfigManager,
         StaticNodeConfigDomain,
-        StaticNodeConfigBoolean
+        StaticNodeConfigBoolean,
+        StaticNodeConfigConcept
     }
 }
 export { nodeConfig }
@@ -866,6 +919,11 @@ declare class StaticNodeConfigBoolean implements IStaticNodeConfigBoolean, INode
     constructor(jsonData: IStaticNodeConfigBoolean);
 }
 
+declare class StaticNodeConfigConcept implements IStaticNodeConfigConcept, INodeConfig {
+    rdmCollection: string;
+    constructor(jsonData: IStaticNodeConfigConcept);
+}
+
 declare class StaticNodeConfigDomain implements IStaticNodeConfigDomain, INodeConfig {
     i18n_config: {
         [key: string]: string;
@@ -882,7 +940,7 @@ declare class StaticNodegroup {
     parentnodegroup_id: string | null;
     cardinality: "1" | "n" | null;
     constructor(jsonData: StaticNodegroup);
-    copy(): StaticNodegroup;
+    copy?(): StaticNodegroup;
 }
 
 declare type StaticProvisionalEdit = any;
@@ -975,7 +1033,7 @@ declare class StaticTranslatableString extends String {
     translations: Map<string, string>;
     lang: string;
     constructor(s: string | StaticTranslatableString, lang?: undefined | string);
-    copy(): StaticTranslatableString;
+    copy?(): StaticTranslatableString;
 }
 
 declare namespace staticTypes {

@@ -71,7 +71,7 @@ class StaticTranslatableString extends String {
     this.lang = finalLang;
   }
 
-  copy() {
+  copy?() {
     return new StaticTranslatableString(this, this.lang);
   }
 }
@@ -89,7 +89,7 @@ class StaticNodegroup {
     this.cardinality = jsonData.cardinality;
   }
 
-  copy(): StaticNodegroup {
+  copy?(): StaticNodegroup {
     return new StaticNodegroup(this);
   }
 }
@@ -374,7 +374,7 @@ class StaticGraph {
       config: Object.assign({}, this.config), // TODO: deepcopy;
       deploymentdate: this.deploymentdate,
       deploymentfile: this.deploymentfile,
-      description: this.description.copy(),
+      description: this.description.copy && this.description.copy(),
       edges: this.edges.map(edge => edge.copy && edge.copy()),
       functions_x_graphs: this.functions_x_graphs?.map(fxg => fxg.copy()) || [],
       graphid: this.graphid,
@@ -382,8 +382,8 @@ class StaticGraph {
       is_editable: this.is_editable,
       isresource: this.isresource,
       jsonldcontext: this.jsonldcontext,
-      name: this.name.copy(),
-      nodegroups: this.nodegroups?.map(ng => ng.copy()),
+      name: this.name.copy && this.name.copy(),
+      nodegroups: this.nodegroups?.map(ng => ng.copy && ng.copy()),
       nodes: this.nodes?.map(n => n.copy && n.copy()),
       ontology_id: this.ontology_id,
       publication: this.publication?.copy() || null,
@@ -391,7 +391,7 @@ class StaticGraph {
       resource_2_resource_constraints: [...this.resource_2_resource_constraints || []],
       root: this.root.copy && this.root.copy(),
       slug: this.slug,
-      subtitle: this.subtitle.copy(),
+      subtitle: this.subtitle.copy && this.subtitle.copy(),
       template_id: this.template_id,
       version: this.version
     });

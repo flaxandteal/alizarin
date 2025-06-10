@@ -12,6 +12,10 @@ interface IStaticNodeConfigBoolean {
   trueLabel: {[key: string]: string}
 };
 
+interface IStaticNodeConfigConcept {
+  rdmCollection: string
+};
+
 class StaticNodeConfigBoolean implements IStaticNodeConfigBoolean, INodeConfig {
   i18n_properties: string[]
   falseLabel: {[key: string]: string}
@@ -21,6 +25,14 @@ class StaticNodeConfigBoolean implements IStaticNodeConfigBoolean, INodeConfig {
     this.i18n_properties = jsonData.i18n_properties;
     this.falseLabel = jsonData.falseLabel;
     this.trueLabel = jsonData.trueLabel;
+  }
+}
+
+class StaticNodeConfigConcept implements IStaticNodeConfigConcept, INodeConfig {
+  rdmCollection: string;
+
+  constructor(jsonData: IStaticNodeConfigConcept) {
+    this.rdmCollection = jsonData.rdmCollection;
   }
 }
 
@@ -85,4 +97,4 @@ class NodeConfigManager {
 
 const nodeConfigManager = new NodeConfigManager();
 
-export { nodeConfigManager, StaticNodeConfigDomain, StaticNodeConfigBoolean };
+export { nodeConfigManager, StaticNodeConfigDomain, StaticNodeConfigBoolean, StaticNodeConfigConcept };

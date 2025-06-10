@@ -23,7 +23,7 @@ import { AttrPromise } from "./utils";
 
 const MAX_GRAPH_DEPTH = 100;
 const DESCRIPTOR_FUNCTION_ID = "60000000-0000-0000-0000-000000000001";
-const UUID_NAMESPACE = 'flaxandteal.github.io/alizarin';
+const UUID_NAMESPACE = '1a79f1c8-9505-4bea-a18e-28a053f725ca'; // Generated for this purpose.
 
 class WKRM {
   modelName: string;
@@ -646,7 +646,7 @@ class GraphMutator {
     this.mutations = [];
   }
 
-  _addStringNode(nodegroupId: string, alias: string, name: string, ontologyClass: string, parentProperty: string, description?: string, options: {
+  addSemanticNode(parentAlias: string, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options: {
     exportable?: boolean,
     fieldname?: string,
     hascustomalias?: boolean;
@@ -657,10 +657,11 @@ class GraphMutator {
     sortorder?: number;
   } = {}, config?: {[key: string]: any}) {
     return this._addGenericNode(
-      nodegroupId,
+      parentAlias,
       alias,
       name,
-      "string",
+      cardinality,
+      "semantic",
       ontologyClass,
       parentProperty,
       description,
@@ -669,7 +670,7 @@ class GraphMutator {
     );
   }
 
-  _addGenericNode(nodegroupId: string, alias: string, name: string, datatype: string, ontologyClass: string, parentProperty: string, description?: string, options: {
+  addStringNode(parentAlias: string, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options: {
     exportable?: boolean,
     fieldname?: string,
     hascustomalias?: boolean;
@@ -679,7 +680,49 @@ class GraphMutator {
     istopnode?: boolean;
     sortorder?: number;
   } = {}, config?: {[key: string]: any}) {
-    const nodeId = this._generateUuidv5(`node-${nodegroupId}-${alias}`);
+    return this._addGenericNode(
+      parentAlias,
+      alias,
+      name,
+      cardinality,
+      "string",
+      ontologyClass,
+      parentProperty,
+      description,
+      options,
+      config
+    );
+  }
+
+  _addNodegroup(parentAlias: string | null, nodegroupId: string, cardinality: 'n' | '1') {
+    this.mutations.push((graph: StaticGraph) => {
+      const prnt = parentAlias === null ? graph.root : graph.nodes.find(node => node.alias === parentAlias);
+      if (!prnt) {
+        throw Error(`Missing parent for nodegroup: ${parentAlias}`);
+      }
+      const nodegroup = new StaticNodegroup({
+        cardinality: cardinality,
+        legacygroupid: null,
+        nodegroupid: nodegroupId,
+        parentnodegroup_id: prnt.nodegroup_id
+      });
+      graph.nodegroups.push(nodegroup);
+      return graph;
+    });
+    return this;
+  }
+
+  _addGenericNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', datatype: string, ontologyClass: string, parentProperty: string, description?: string, options: {
+    exportable?: boolean,
+    fieldname?: string,
+    hascustomalias?: boolean;
+    is_collector?: boolean;
+    isrequired?: boolean;
+    issearchable?: boolean;
+    istopnode?: boolean;
+    sortorder?: number;
+  } = {}, config?: {[key: string]: any}) {
+    const nodeId = this._generateUuidv5(`node-${alias}`);
     const node = {
       alias: alias,
       config: config || null,
@@ -694,17 +737,27 @@ class GraphMutator {
       issearchable: options.issearchable || false,
       istopnode: options.istopnode || false,
       name: name,
-      nodegroup_id: nodegroupId,
+      nodegroup_id: '',
       nodeid: nodeId,
       parentproperty: parentProperty,
       sortorder: options.sortorder || 0,
       ontologyclass: ontologyClass,
       sourcebranchpublication_id: null,
     };
+    if (cardinality === 'n' || parentAlias === null) {
+      node.nodegroup_id = nodeId;
+      this._addNodegroup(parentAlias, node.nodegroup_id, cardinality);
+    }
     this.mutations.push((graph: StaticGraph) => {
+      const prnt = parentAlias === null ? graph.root : graph.nodes.find(node => node.alias === parentAlias);
+      if (!prnt) {
+        throw Error(`Parent node does not exist: ${parentAlias}`);
+      }
+      // FIXME: we assume we are not adding a root node, but nowhere do we say this.
+      node.nodegroup_id = node.nodegroup_id !== '' ? node.nodegroup_id : prnt.nodegroup_id || '';
       const newNode = new StaticNode(node);
       graph.nodes.push(newNode);
-      const edge = this._generateEdge(nodegroupId, nodeId, parentProperty);
+      const edge = this._generateEdge(prnt.nodeid, nodeId, parentProperty);
       graph.edges.push(edge);
       return graph;
     });
@@ -712,6 +765,9 @@ class GraphMutator {
   }
 
   apply() {
+    if (!this.baseGraph.copy) {
+      throw Error("Attempt to build a mutator without a proper StaticGraph base graph");
+    }
     // TODO: complete deepcopies
     const graph = this.baseGraph.copy();
     return this.mutations.reduce((graph, mutation) => mutation(graph), graph);
