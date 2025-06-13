@@ -646,7 +646,7 @@ class GraphMutator {
     this.mutations = [];
   }
 
-  addSemanticNode(parentAlias: string, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options: {
+  addSemanticNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options: {
     exportable?: boolean,
     fieldname?: string,
     hascustomalias?: boolean;
@@ -670,7 +670,7 @@ class GraphMutator {
     );
   }
 
-  addStringNode(parentAlias: string, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options: {
+  addStringNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options: {
     exportable?: boolean,
     fieldname?: string,
     hascustomalias?: boolean;

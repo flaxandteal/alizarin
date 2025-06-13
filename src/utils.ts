@@ -2,6 +2,11 @@ import { IStringKeyedObject } from "./interfaces";
 
 // TODO: make this customizable.
 const DEFAULT_LANGUAGE = "en";
+const SLUG_LENGTH = 20;
+
+function slugify(original: any): string {
+    return `${original}`.replaceAll(/[^A-Za-z0-9_]/g, "").slice(0, SLUG_LENGTH);
+}
 
 function getCurrentLanguage(): string {
   return ((typeof navigator != 'undefined' && navigator.language) || DEFAULT_LANGUAGE).slice(0, 2);
@@ -53,4 +58,4 @@ class AttrPromise<T> extends Promise<T> implements IStringKeyedObject {
   }
 }
 
-export { AttrPromise, getCurrentLanguage };
+export { slugify, AttrPromise, getCurrentLanguage };

@@ -1,4 +1,5 @@
-import { getCurrentLanguage } from './utils';
+import { v4 as uuidv4 } from 'uuid';
+import { getCurrentLanguage, slugify } from './utils';
 
 class StaticGraphMeta {
   [key: string]: any
@@ -74,6 +75,15 @@ class StaticTranslatableString extends String {
   copy?() {
     return new StaticTranslatableString(this, this.lang);
   }
+
+  toString(): string {
+    const current = this.lang || getCurrentLanguage();
+    let asString;
+    if (this.translations.size) {
+      asString = this.translations.get(current) || this.translations.values().next().value
+    }
+    return `${asString}`;
+  }
 }
 
 class StaticNodegroup {
@@ -140,6 +150,53 @@ class StaticNode {
   copy?(): StaticNode {
     // TODO: config should be deep copied
     return new StaticNode(this);
+  }
+
+  // true -- same object
+  // 2 -- identical
+  // 1 -- identical not counting falsey nodeid, nodegroupid and/or graphid
+  // -1 -- identical up to nodeid
+  // -2 -- identical up to nodeid, nodegroupid
+  // -3 -- identical up to nodeid, nodegroupid and graphid
+  // false -- different
+  // for <2, falsey nodeid, nodegroupid and graphid count as matches
+  // and copy/compare are ignored.
+  static compare(nodeA: StaticNode | {[key: string]: any}, nodeB: StaticNode | {[key: string]: any}): number | boolean {
+    if (nodeA === nodeB) {
+      return true;
+    }
+    const keys = [...Object.keys(nodeA), ...Object.keys(nodeB)].filter(key => ![
+      'compare',
+      'copy',
+      'nodeid',
+      'graph_id',
+      'nodegroup_id'
+    ].includes(key));
+    // doubles keys...
+    for (const key of keys) {
+      if (nodeA[key] !== nodeB[key]) {
+        return false;
+      }
+    }
+
+    // We know these are the same up to the IDs
+    if (nodeA.graph_id && nodeB.graph_id && nodeA.graph_id !== nodeB.graph_id) {
+      return -3;
+    }
+    if (nodeA.nodegroup_id && nodeB.nodegroup_id && nodeA.nodegroup_id !== nodeB.nodegroup_id) {
+      return -2;
+    }
+    if (nodeA.nodeid && nodeB.nodeid && nodeA.nodeid !== nodeB.nodeid) {
+      return -1;
+    }
+    if (
+      (nodeA.graph_id && nodeB.graph_id || nodeA.graph_id === nodeB.graph_id) &&
+      (nodeA.nodegroup_id && nodeB.nodegroup_id || nodeA.nodegroup_id === nodeB.nodegroup_id) &&
+      (nodeA.nodeid && nodeB.nodeid || nodeA.nodeid === nodeB.nodeid)
+    ) {
+      return 2;
+    }
+    return 1;
   }
 }
 
@@ -285,7 +342,7 @@ class StaticPublication {
     this.published_time = jsonData.published_time;
   }
 
-  copy(): StaticPublication {
+  copy?(): StaticPublication {
     return new StaticPublication(this);
   }
 }
@@ -296,8 +353,8 @@ class StaticGraph {
   cards_x_nodes_x_widgets: Array<StaticCardsXNodesXWidgets> | null = null;
   color: string | null;
   config: object;
-  deploymentdate: null | string;
-  deploymentfile: null | string;
+  deploymentdate: null | string = null;
+  deploymentfile: null | string = null;
   description: StaticTranslatableString;
   edges: Array<StaticEdge>;
   functions_x_graphs: Array<StaticFunctionsXGraphs> | null = null;
@@ -305,16 +362,16 @@ class StaticGraph {
   iconclass: string;
   is_editable: boolean | null = null;
   isresource: boolean;
-  jsonldcontext: string | null;
+  jsonldcontext: string | null = null;
   name: StaticTranslatableString;
   nodegroups: Array<StaticNodegroup>;
   nodes: Array<StaticNode>;
-  ontology_id: string | null;
+  ontology_id: string | null = null;
   publication: StaticPublication | null = null;
   relatable_resource_model_ids: Array<string>;
   resource_2_resource_constraints: Array<any> | null = null;
   root: StaticNode;
-  slug: string | null;
+  slug: string | null = null;
   subtitle: StaticTranslatableString;
   template_id: string;
   version: string;
@@ -374,28 +431,120 @@ class StaticGraph {
       config: Object.assign({}, this.config), // TODO: deepcopy;
       deploymentdate: this.deploymentdate,
       deploymentfile: this.deploymentfile,
-      description: this.description.copy && this.description.copy(),
-      edges: this.edges.map(edge => edge.copy && edge.copy()),
+      description: this.description.copy && this.description.copy() || this.description,
+      edges: this.edges.map(edge => edge.copy && edge.copy() || edge),
       functions_x_graphs: this.functions_x_graphs?.map(fxg => fxg.copy()) || [],
       graphid: this.graphid,
       iconclass: this.iconclass,
       is_editable: this.is_editable,
       isresource: this.isresource,
       jsonldcontext: this.jsonldcontext,
-      name: this.name.copy && this.name.copy(),
-      nodegroups: this.nodegroups?.map(ng => ng.copy && ng.copy()),
-      nodes: this.nodes?.map(n => n.copy && n.copy()),
+      name: this.name.copy && this.name.copy() || this.name,
+      nodegroups: this.nodegroups?.map(ng => ng.copy && ng.copy() || ng),
+      nodes: this.nodes?.map(n => n.copy && n.copy() || n),
       ontology_id: this.ontology_id,
-      publication: this.publication?.copy() || null,
+      publication: this.publication?.copy && this.publication.copy() || null,
       relatable_resource_model_ids: [...this.relatable_resource_model_ids || []],
       resource_2_resource_constraints: [...this.resource_2_resource_constraints || []],
-      root: this.root.copy && this.root.copy(),
+      root: this.root.copy && this.root.copy() || this.root,
       slug: this.slug,
       subtitle: this.subtitle.copy && this.subtitle.copy(),
       template_id: this.template_id,
       version: this.version
     });
     return newGraph;
+  }
+
+  static create(props: {
+    author?: string,
+    color?: string | null,
+    config?: object,
+    deploymentdate?: null | string,
+    deploymentfile?: null | string,
+    description?: string | StaticTranslatableString,
+    graphid?: string,
+    iconclass?: string,
+    is_editable?: boolean | null,
+    isresource?: boolean,
+    jsonldcontext?: string | null,
+    name?: string | StaticTranslatableString,
+    ontology_id?: string | null,
+    relatable_resource_model_ids?: Array<string>,
+    resource_2_resource_constraints?: Array<any> | null,
+    slug?: string | null,
+    subtitle?: string | StaticTranslatableString,
+    template_id?: string,
+    version?: string
+  }, published: boolean=true): StaticGraph {
+    const graphid = props.graphid || uuidv4();
+    const publication = published ? new StaticPublication({
+      graph_id: graphid,
+      notes: null,
+      publicationid: uuidv4(),
+      published_time: (new Date()).toISOString()
+    }) : null;
+    // TODO: check name is not just string in upstream
+    const name = props.name ? (
+      props.name instanceof StaticTranslatableString ?
+      props.name : new StaticTranslatableString(props.name)
+    ) : new StaticTranslatableString('');
+    const alias = slugify(name);
+    const root = new StaticNode({
+      "alias": alias,
+      "config": {},
+      "datatype": "semantic",
+      "description": "",
+      "exportable": false,
+      "fieldname": "",
+      "graph_id": graphid,
+      "hascustomalias": false,
+      "is_collector": false,
+      "isrequired": false,
+      "issearchable": true,
+      "istopnode": true,
+      "name": name.toString(),
+      "nodegroup_id": null,
+      "nodeid": graphid,
+      "ontologyclass": props.ontology_id || null,
+      "parentproperty": null,
+      "sortorder": 0,
+      "sourcebranchpublication_id": null
+    });
+    return new StaticGraph({
+      author: props.author,
+      cards: null,
+      cards_x_nodes_x_widgets: null,
+      color: props.color || null,
+      config: props.config || {},
+      deploymentdate: props.deploymentdate || null,
+      deploymentfile: props.deploymentfile || null,
+      description: props.description ? (
+        props.description instanceof StaticTranslatableString ?
+        props.description : new StaticTranslatableString(props.description)
+      ) : null,
+      edges: [],
+      functions_x_graphs: [],
+      graphid: graphid,
+      iconclass: props.iconclass || '',
+      is_editable: props.is_editable || null,
+      isresource: props.isresource || null,
+      jsonldcontext: props.jsonldcontext || null,
+      name: name,
+      nodegroups: [],
+      nodes: [root.copy()],
+      ontology_id: props.ontology_id || null,
+      publication: publication,
+      relatable_resource_model_ids: props.relatable_resource_model_ids || [],
+      resource_2_resource_constraints: props.resource_2_resource_constraints || null,
+      root: root,
+      slug: props.slug || null,
+      subtitle: props.subtitle ? (
+        props.subtitle instanceof StaticTranslatableString ?
+        props.subtitle : new StaticTranslatableString(props.subtitle)
+      ) : new StaticTranslatableString(''),
+      template_id: props.template_id || '',
+      version: props.version || ''
+    });
   }
 }
 
@@ -688,5 +837,6 @@ export {
   StaticGraphMeta,
   StaticFunctionsXGraphs,
   StaticResourceDescriptors,
+  StaticTranslatableString,
   type IStaticDescriptorConfig
 };
