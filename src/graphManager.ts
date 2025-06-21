@@ -1,6 +1,9 @@
-import { GraphResult, archesClient, ArchesClient, ArchesClientRemote } from "./client.ts";
-import { staticStore } from "./staticStore.ts"
+import { GraphResult, archesClient, ArchesClient, ArchesClientRemote } from './client';
+import { staticStore } from './staticStore';
+import { CardComponent, DEFAULT_CARD_COMPONENT, Widget, getDefaultWidgetForNode } from './cards';
 import {
+  StaticTranslatableString,
+  StaticConstraint,
   StaticCard,
   StaticEdge,
   StaticCardsXNodesXWidgets,
@@ -622,6 +625,16 @@ class GraphMutator {
   baseGraph: StaticGraph;
   mutations: GraphMutation[];
 
+  autocreateCard: boolean;
+
+  constructor(baseGraph: StaticGraph, options: {
+    autocreateCard?: boolean
+  } = {}) {
+    this.baseGraph = baseGraph;
+    this.mutations = [];
+    this.autocreateCard = options.autocreateCard === undefined || options.autocreateCard;
+  }
+
   _generateUuidv5(key: string) {
     return generateUuidv5(['graph', this.baseGraph.graphid], key);
   }
@@ -637,11 +650,6 @@ class GraphMutator {
       rangenode_id: toNode,
       ontologyproperty: ontologyProperty,
     });
-  }
-
-  constructor(baseGraph: StaticGraph) {
-    this.baseGraph = baseGraph;
-    this.mutations = [];
   }
 
   addSemanticNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options: {
@@ -697,6 +705,64 @@ class GraphMutator {
     );
   }
 
+  addCard(nodegroup: string | StaticNodegroup, name: string | StaticTranslatableString, component?: CardComponent, options: {
+    active?: boolean,
+    constraints?: Array<StaticConstraint>,
+    cssclass?: string | null,
+    helpenabled?: boolean,
+    helptext?: string | null | StaticTranslatableString,
+    helptitle?: string | null | StaticTranslatableString,
+    instructions?: string | null | StaticTranslatableString,
+    is_editable?: boolean,
+    description?: string | null | StaticTranslatableString,
+    sortorder?: number | null,
+    visible?: boolean
+  } = {}, config?: {[key: string]: any}) {
+    const nodegroupId = typeof nodegroup === 'string' ? nodegroup : nodegroup.nodegroupid;
+    const cardName = name instanceof StaticTranslatableString ? name : new StaticTranslatableString(name);
+    const cardComponent = component || DEFAULT_CARD_COMPONENT;
+    const helptext = options?.helptext && (
+      options.helptext instanceof StaticTranslatableString ?
+        options.helptext : new StaticTranslatableString(options.helptext)
+    );
+    const helptitle = (options?.helptitle && (
+      options.helptitle instanceof StaticTranslatableString ?
+        options.helptitle : new StaticTranslatableString(options.helptitle)
+    ));
+    const instructions = (options?.instructions && (
+      options.instructions instanceof StaticTranslatableString ?
+        options.instructions : new StaticTranslatableString(options.instructions)
+    ));
+    this.mutations.push((graph: StaticGraph) => {
+      graph.cards = graph.cards || [];
+      if (graph.cards.filter(card => card.nodegroup_id === nodegroup).length > 0) {
+        throw Error(`This nodegroup, ${nodegroupId}, already has a card`);
+      }
+      const cardId = this._generateUuidv5(`card-ng-${nodegroupId}`);
+      const card = new StaticCard({
+        active: options.active === undefined ? true : options.active,
+        cardid: cardId,
+        component_id: cardComponent.id,
+        config: config || null,
+        constraints: options.constraints || [],
+        cssclass: options.cssclass || null,
+        description: options.description || null,
+        graph_id: graph.graphid,
+        helpenabled: !!(options.helpenabled || (options.helpenabled === undefined && (helptext || helptitle))),
+        helptext: helptext || new StaticTranslatableString(''),
+        helptitle: helptitle || new StaticTranslatableString(''),
+        instructions: instructions || new StaticTranslatableString(''),
+        is_editable: options.is_editable === undefined ? true : options.is_editable,
+        name: cardName,
+        nodegroup_id: nodegroupId,
+        sortorder: options.sortorder || null,
+        visible: options.visible === undefined ? true : options.visible
+      });
+      graph.cards.push(card);
+      return graph;
+    });
+  }
+
   addStringNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options: {
     exportable?: boolean,
     fieldname?: string,
@@ -721,7 +787,7 @@ class GraphMutator {
     );
   }
 
-  _addNodegroup(parentAlias: string | null, nodegroupId: string, cardinality: 'n' | '1') {
+  _addNodegroup(parentAlias: string | null, nodegroupId: string, cardinality: 'n' | '1', name?: StaticTranslatableString) {
     this.mutations.push((graph: StaticGraph) => {
       const prnt = parentAlias === null ? graph.root : graph.nodes.find(node => node.alias === parentAlias);
       if (!prnt) {
@@ -736,6 +802,9 @@ class GraphMutator {
       graph.nodegroups.push(nodegroup);
       return graph;
     });
+    if (this.autocreateCard) {
+      this.addCard(nodegroupId, name || '(unnamed)');
+    }
     return this;
   }
 
@@ -773,7 +842,7 @@ class GraphMutator {
     };
     if (cardinality === 'n' || parentAlias === null) {
       node.nodegroup_id = nodeId;
-      this._addNodegroup(parentAlias, node.nodegroup_id, cardinality);
+      this._addNodegroup(parentAlias, node.nodegroup_id, cardinality, new StaticTranslatableString(name));
     }
     this.mutations.push((graph: StaticGraph) => {
       const prnt = parentAlias === null ? graph.root : graph.nodes.find(node => node.alias === parentAlias);
@@ -786,6 +855,58 @@ class GraphMutator {
       graph.nodes.push(newNode);
       const edge = this._generateEdge(prnt.nodeid, nodeId, parentProperty);
       graph.edges.push(edge);
+      return graph;
+    });
+    if (this.autocreateCard && datatype !== 'semantic' && node.nodegroup_id) {
+      const widget = getDefaultWidgetForNode(node);
+      const config = widget.getDefaultConfig();
+      config.label = name;
+      this.addWidgetToCard(
+        nodeId,
+        node.nodegroup_id,
+        widget,
+        name,
+        config,
+        {
+          sortorder: node.sortorder,
+          silentSkip: true // if, for some reason, the card is not present (i.e. was removed), we should not worry
+        }
+      );
+    }
+    return this;
+  }
+
+  addWidgetToCard(
+    nodeId: string,
+    nodegroupId: string,
+    widget: Widget,
+    name: string,
+    config: {[key: string]: any},
+    options: {
+      sortorder?: number | null,
+      silentSkip?: boolean,
+      visible?: boolean
+    } = {}
+  ): GraphMutator {
+    this.mutations.push((graph: StaticGraph) => {
+      const card = graph.cards?.find(card => card.nodegroup_id === nodegroupId);
+      if (card) {
+        const cardXNodeXWidgetId = this._generateUuidv5(`cxnxw-${nodeId}-${widget.id}`);
+        const cardXNodeXWidget = new StaticCardsXNodesXWidgets({
+          card_id: card.cardid,
+          config: config,
+          id: cardXNodeXWidgetId,
+          label: new StaticTranslatableString(name),
+          node_id: nodeId,
+          sortorder: options.sortorder || 0,
+          visible: options.visible === undefined || options.visible,
+          widget_id: widget.id
+        });
+        graph.cards_x_nodes_x_widgets = graph.cards_x_nodes_x_widgets || [];
+        graph.cards_x_nodes_x_widgets.push(cardXNodeXWidget);
+      } else if (!options.silentSkip) {
+        throw Error(`Failed adding widget for ${nodeId} to card for ${nodegroupId} on graph ${graph.graphid}, as no card for this nodegroup (yet?)`);
+      }
       return graph;
     });
     return this;

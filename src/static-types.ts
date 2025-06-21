@@ -989,5 +989,6 @@ export {
   StaticFunctionsXGraphs,
   StaticResourceDescriptors,
   StaticTranslatableString,
+  StaticConstraint,
   type IStaticDescriptorConfig
 };

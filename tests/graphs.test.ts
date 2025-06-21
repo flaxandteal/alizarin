@@ -104,7 +104,10 @@ describe("testing graph", () => {
         }
       );
       const outputGraph = mutator.apply();
+      assert(mutator.autocreateCard);
       assert(outputGraph.nodes.length === 2);
+      assert(outputGraph.cards?.length === 1);
+      assert(outputGraph.cards_x_nodes_x_widgets?.length === 1);
       assert(StaticNode.compare(
         outputGraph.nodes[0],
         outputGraph.root
