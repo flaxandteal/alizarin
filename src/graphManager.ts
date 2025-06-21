@@ -670,6 +670,34 @@ class GraphMutator {
     );
   }
 
+  addConceptNode(parentAlias: string | null, alias: string, name: string, collection: StaticCollection, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options: {
+    is_list?: boolean,
+    exportable?: boolean,
+    fieldname?: string,
+    hascustomalias?: boolean;
+    is_collector?: boolean;
+    isrequired?: boolean;
+    issearchable?: boolean;
+    istopnode?: boolean;
+    sortorder?: number;
+  } = {}, config?: {[key: string]: any}) {
+    if (collection?.id) {
+      config['rdmCollection'] = collection.id
+    }
+    return this._addGenericNode(
+      parentAlias,
+      alias,
+      name,
+      cardinality,
+      is_list ? "concept-list" : "concept",
+      ontologyClass,
+      parentProperty,
+      description,
+      options,
+      config
+    );
+  }
+
   addStringNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options: {
     exportable?: boolean,
     fieldname?: string,
@@ -734,7 +762,7 @@ class GraphMutator {
       hascustomalias: options.hascustomalias || false,
       is_collector: options.is_collector || false,
       isrequired: options.isrequired || false,
-      issearchable: options.issearchable || false,
+      issearchable: options.issearchable || true, // This is the default in Arches I believe
       istopnode: options.istopnode || false,
       name: name,
       nodegroup_id: '',
