@@ -890,6 +890,10 @@ class ConceptValueViewModel extends String implements IViewModel {
     cacheEntry: ConceptValueCacheEntry | null
   ): Promise<ConceptValueViewModel | null> {
     const nodeid = node.nodeid;
+    const collectionId = node.config?.rdmCollection;
+    if (!collectionId) {
+      throw Error(`Node ${node.alias} (${node.nodeid}) missing rdmCollection in config`);
+    }
     let val: StaticValue | null = value;
     if (tile) {
       if (!tile.data.has(nodeid)) {
@@ -897,7 +901,11 @@ class ConceptValueViewModel extends String implements IViewModel {
       }
       if (value !== null) {
         if (value instanceof StaticConcept) {
-          val = value.getPrefLabel();
+          if (value.getPrefLabel) {
+            val = value.getPrefLabel();
+          } else {
+            throw Error("Recognizing value as StaticConcept, but no getPrefLabel member");
+          }
         }
         if (!value) {
           val = null;
@@ -922,9 +930,11 @@ class ConceptValueViewModel extends String implements IViewModel {
               }, cacheEntry.conceptId);
               return new ConceptValueViewModel(val);
             } else {
-              const collectionId = node.config["rdmCollection"];
               const collection = RDM.retrieveCollection(collectionId);
               return collection.then((collection) => {
+                if (!collection.getConceptValue) {
+                  throw Error(`Collection ${collection.id} must be a StaticCollection here, not a key/value object`);
+                }
                 const val = collection.getConceptValue(value);
 
                 if (!val) {
@@ -952,7 +962,7 @@ class ConceptValueViewModel extends String implements IViewModel {
 
         if (!(val instanceof Promise)) {
           if (!val) {
-            console.error("Could not find concept for value", value, "for", node.alias, "in collection", node.config.get("rdmCollection"));
+            console.error("Could not find concept for value", value, "for", node.alias, "in collection", collectionId);
           }
 
           tile.data.set(nodeid, val ? val.id : null);

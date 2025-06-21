@@ -1,4 +1,3 @@
-import { v5 as uuidv5 } from 'uuid';
 import { GraphResult, archesClient, ArchesClient, ArchesClientRemote } from "./client.ts";
 import { staticStore } from "./staticStore.ts"
 import {
@@ -19,11 +18,10 @@ import { makePseudoCls, PseudoList } from "./pseudos.ts";
 import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext, SemanticViewModel } from "./viewModels.ts";
 import { CheckPermission, GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
 import { } from "./nodeConfig.ts";
-import { AttrPromise } from "./utils";
+import { generateUuidv5, AttrPromise } from "./utils";
 
 const MAX_GRAPH_DEPTH = 100;
 const DESCRIPTOR_FUNCTION_ID = "60000000-0000-0000-0000-000000000001";
-const UUID_NAMESPACE = '1a79f1c8-9505-4bea-a18e-28a053f725ca'; // Generated for this purpose.
 
 class WKRM {
   modelName: string;
@@ -625,7 +623,7 @@ class GraphMutator {
   mutations: GraphMutation[];
 
   _generateUuidv5(key: string) {
-    return uuidv5(`${this.baseGraph.graphid}:${key}`, UUID_NAMESPACE);
+    return generateUuidv5(['graph', this.baseGraph.graphid], key);
   }
 
   _generateEdge(fromNode: string, toNode: string, ontologyProperty: string, name?: string, description?: string) {
@@ -681,6 +679,7 @@ class GraphMutator {
     istopnode?: boolean;
     sortorder?: number;
   } = {}, config?: {[key: string]: any}) {
+    config = config || {};
     if (collection?.id) {
       config['rdmCollection'] = collection.id
     }
@@ -689,7 +688,7 @@ class GraphMutator {
       alias,
       name,
       cardinality,
-      is_list ? "concept-list" : "concept",
+      options.is_list ? "concept-list" : "concept",
       ontologyClass,
       parentProperty,
       description,

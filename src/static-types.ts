@@ -1,4 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
+import { generateUuidv5 } from './utils';
+const UUID_NAMESPACE = '1a79f1c8-9505-4bea-a18e-28a053f725ca'; // Generated for this purpose.
 import { getCurrentLanguage, slugify } from './utils';
 
 class StaticGraphMeta {
@@ -173,10 +175,36 @@ class StaticNode {
       'nodegroup_id'
     ].includes(key));
     // doubles keys...
-    for (const key of keys) {
-      if (nodeA[key] !== nodeB[key]) {
-        return false;
+    function compareEntries(entriesA: [string, any][], entriesB: [string, any][]) {
+      const entryPairs: {[key: string]: any} = {};
+      for (const [key, value] of [...entriesA, ...entriesB]) {
+        entryPairs[key] = entryPairs[key] || [];
+        entryPairs[key].push(value);
       }
+      for (const [_, [valA, valB]] of Object.entries(entryPairs)) {
+        if (valA && valB && typeof valA === 'object' && typeof valB === 'object') {
+          if (!compareEntries(Object.entries(valA), Object.entries(valB))) {
+            return false;
+          }
+        }
+        if (Array.isArray(valA) && Array.isArray(valB)) {
+          if (!compareEntries(Object.entries(valA), Object.entries(valB))) {
+            return false;
+          }
+        }
+        if (valA !== valB) {
+          return false;
+        }
+      }
+      return true;
+    }
+    if (!compareEntries(
+      // @ts-expect-error Expecting values to be symbols
+      keys.map((k: string): [string, any][] => [k, nodeA[k]]),
+      // @ts-expect-error Expecting values to be symbols
+      keys.map((k: string): [string, any][] => [k, nodeB[k]])
+    )) {
+      return false;
     }
 
     // We know these are the same up to the IDs
@@ -555,8 +583,8 @@ type StaticProvisionalEdit = any;
 class StaticValue {
   id: string;
   value: string;
-  __concept: StaticConcept | null;
-  __conceptId: string | null;
+  __concept?: StaticConcept | null;
+  __conceptId?: string | null;
 
   constructor(jsonData: StaticValue, concept: StaticConcept | string | null = null) {
     this.id = jsonData.id;
@@ -572,6 +600,24 @@ class StaticValue {
 
   toString() {
     return this.value;
+  }
+
+  static create(referent: string | StaticConcept, valueType: string, value: string, language?: string) {
+    const lang = language || getCurrentLanguage();
+    const referentId = referent instanceof StaticConcept ? referent.id : referent;
+    // NB: this means passing an ID of a concept, and a concept, have different ID-creating behaviour.
+    const concept = referent instanceof StaticConcept ? referent : null;
+    const id = generateUuidv5(
+      ['value'],
+      `${referentId}/${valueType}/${value}/${lang}`
+    );
+    return new StaticValue(
+      {
+        id: id,
+        value: value
+      },
+      concept
+    );
   }
 }
 
@@ -602,14 +648,60 @@ class StaticConcept {
     }
   }
 
-  getPrefLabel(): StaticValue {
+  getPrefLabel?(): StaticValue {
     return (
       this.prefLabels[getCurrentLanguage()] || Object.values(this.prefLabels)[0]
     );
   }
 
   toString() {
+    if (!this.getPrefLabel) {
+      return this.constructor(this).getPrefLabel().value;
+    }
     return this.getPrefLabel().value;
+  }
+
+  // NB: copies value, does not make it a child
+  static fromValue(conceptScheme: StaticConcept | null, value: string | StaticValue | { [lang: string]: StaticValue }, children?: (string | StaticValue | StaticConcept)[], config: {baseLanguage?: string, source?: string | null, sortOrder?: number | null} = {}): StaticConcept {
+    // TODO make sure that children are in the same concept scheme so that deterministic IDs are preserved.
+    let lang = config?.baseLanguage || getCurrentLanguage();
+    let tmpValue;
+    let prefLabels: { [lang: string]: StaticValue };
+    if (typeof value === 'string') {
+      tmpValue = value;
+      prefLabels = {[lang]: new StaticValue({id: '', value: tmpValue})};
+    } else if (value instanceof StaticValue) {
+      tmpValue = value.value;
+      prefLabels = {[lang]: value};
+    } else if (lang in value) {
+      tmpValue = value[lang].value;
+      prefLabels = value;
+    } else {
+      const firstValue = Object.entries(value).sort()[0];
+      if (firstValue === undefined) {
+        throw Error("Cannot create a concept from values without a non-empty value");
+      }
+      lang = firstValue[0];
+      tmpValue = firstValue[1].value;
+      prefLabels = value;
+    }
+    const conceptId = generateUuidv5(
+      ['concept'],
+      `${conceptScheme?.id || '(none)'}/${tmpValue}`
+    );
+    const childConcepts = (children || []).map(child => {
+      if (!(child instanceof StaticConcept)) {
+        return StaticConcept.fromValue(conceptScheme, value, [], {baseLanguage: config.baseLanguage});
+      }
+      return child;
+    });
+    return new StaticConcept({
+      id: conceptId,
+      prefLabels,
+      source: config.source || null,
+      sortOrder: config.sortOrder || null,
+      children: childConcepts
+    });
   }
 }
 
@@ -620,6 +712,65 @@ class StaticCollection {
   concepts: { [conceptId: string]: StaticConcept };
   __allConcepts: { [conceptId: string]: StaticConcept };
   __values: { [valueId: string]: StaticValue };
+
+  static fromConceptScheme(props: {
+    collectionid?: string,
+    name?: string | { [lang: string]: StaticValue } | StaticValue;
+    conceptScheme: StaticConcept
+  }): StaticCollection {
+    const collectionName = props.name ?? props.conceptScheme.toString();
+    return StaticCollection.create({
+      name: collectionName,
+      concepts: props.conceptScheme.children || []
+    })
+  }
+
+  static create(props: {
+    collectionid?: string,
+    name: string | { [lang: string]: StaticValue } | StaticValue;
+    concepts: StaticConcept[] | { [conceptId: string]: StaticConcept }
+  }): StaticCollection {
+    let concepts = props.concepts;
+    if (Array.isArray(concepts)) {
+      concepts = concepts.reduce(
+        (acc: { [conceptId: string]: StaticConcept }, c: StaticConcept) => {
+          acc[c.id] = c;
+          return acc;
+        },
+      {});
+    }
+    const name: StaticValue | { [lang: string]: StaticValue } = (
+      typeof props.name === 'string' ?
+        StaticValue.create('', 'prefLabel', props.name) :
+        props.name
+      );
+    let collectionid = props.collectionid;
+    if (!collectionid) {
+      if (typeof name === 'string') {
+        collectionid = generateUuidv5(
+          ['collection'],
+          name
+        );
+      } else if (name instanceof StaticValue) {
+        collectionid = generateUuidv5(
+          ['collection'],
+          name.value
+        );
+      } else {
+        throw Error("Must have a unique name to create a collection ID");
+      }
+    }
+    const prefLabels: { [lang: string]: StaticValue } = name instanceof StaticValue ? {
+      [getCurrentLanguage()]: name
+    } : name;
+    return new StaticCollection({
+      id: collectionid,
+      prefLabels: prefLabels,
+      concepts: concepts,
+      __allConcepts: {},
+      __values: {}
+    });
+  }
 
   constructor(jsonData: StaticCollection) {
     this.id = jsonData.id;
@@ -649,16 +800,16 @@ class StaticCollection {
     }
   }
 
-  getConceptValue(valueId: string) {
+  getConceptValue?(valueId: string) {
     return this.__values[valueId];
   }
 
-  getConceptByValue(label: string) {
+  getConceptByValue?(label: string) {
     return Object.values(this.__values).find(value => value.value == label)?.__concept;
   }
 
-  toString() {
-    return this.prefLabels[getCurrentLanguage()] || Object.values(this.prefLabels)[0];
+  toString(): string {
+    return (this.prefLabels[getCurrentLanguage()] || Object.values(this.prefLabels)[0] || '').toString();
   }
 }
 
