@@ -110,6 +110,12 @@ declare class BooleanViewModel extends Boolean implements IViewModel {
     __asTileData(): boolean;
 }
 
+declare class CardComponent {
+    id: string;
+    name: string;
+    constructor(id: string, name: string);
+}
+
 declare type CheckPermission = ((nodegroupId: string, tile: StaticTile | null, node: Map<string, StaticNode>) => boolean);
 
 declare class Cleanable extends String {
@@ -204,6 +210,8 @@ declare class FlatMarkdownRenderer extends MarkdownRenderer {
     renderString(value: string | StringViewModel | NonLocalizedStringViewModel, _depth: number): Promise<any>;
 }
 
+declare function generateUuidv5(group: [type: string, id?: string], key: string | string[]): string;
+
 declare class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
     [key: string | symbol]: any;
     _: IViewModel | Promise<IViewModel> | undefined;
@@ -228,7 +236,9 @@ declare class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
     };
 }
 
-declare function getCurrentLanguage(): string;
+export declare const getCurrentLanguage: typeof utils.getCurrentLanguage;
+
+declare function getCurrentLanguage_2(): string;
 
 declare type GetMeta = ((vm: IViewModel) => IStringKeyedObject) | undefined;
 
@@ -254,9 +264,12 @@ declare type GraphMutation = (baseGraph: StaticGraph) => StaticGraph;
 export declare class GraphMutator {
     baseGraph: StaticGraph;
     mutations: GraphMutation[];
+    autocreateCard: boolean;
+    constructor(baseGraph: StaticGraph, options?: {
+        autocreateCard?: boolean;
+    });
     _generateUuidv5(key: string): string;
     _generateEdge(fromNode: string, toNode: string, ontologyProperty: string, name?: string, description?: string): StaticEdge;
-    constructor(baseGraph: StaticGraph);
     addSemanticNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options?: {
         exportable?: boolean;
         fieldname?: string;
@@ -269,6 +282,34 @@ export declare class GraphMutator {
     }, config?: {
         [key: string]: any;
     }): this;
+    addConceptNode(parentAlias: string | null, alias: string, name: string, collection: StaticCollection, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options?: {
+        is_list?: boolean;
+        exportable?: boolean;
+        fieldname?: string;
+        hascustomalias?: boolean;
+        is_collector?: boolean;
+        isrequired?: boolean;
+        issearchable?: boolean;
+        istopnode?: boolean;
+        sortorder?: number;
+    }, config?: {
+        [key: string]: any;
+    }): this;
+    addCard(nodegroup: string | StaticNodegroup, name: string | StaticTranslatableString, component?: CardComponent, options?: {
+        active?: boolean;
+        constraints?: Array<StaticConstraint>;
+        cssclass?: string | null;
+        helpenabled?: boolean;
+        helptext?: string | null | StaticTranslatableString;
+        helptitle?: string | null | StaticTranslatableString;
+        instructions?: string | null | StaticTranslatableString;
+        is_editable?: boolean;
+        description?: string | null;
+        sortorder?: number | null;
+        visible?: boolean;
+    }, config?: {
+        [key: string]: any;
+    }): void;
     addStringNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options?: {
         exportable?: boolean;
         fieldname?: string;
@@ -281,7 +322,7 @@ export declare class GraphMutator {
     }, config?: {
         [key: string]: any;
     }): this;
-    _addNodegroup(parentAlias: string | null, nodegroupId: string, cardinality: 'n' | '1'): this;
+    _addNodegroup(parentAlias: string | null, nodegroupId: string, cardinality: 'n' | '1', name?: StaticTranslatableString): this;
     _addGenericNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', datatype: string, ontologyClass: string, parentProperty: string, description?: string, options?: {
         exportable?: boolean;
         fieldname?: string;
@@ -294,6 +335,13 @@ export declare class GraphMutator {
     }, config?: {
         [key: string]: any;
     }): this;
+    addWidgetToCard(nodeId: string, widget: Widget, name: string, config: {
+        [key: string]: any;
+    }, options?: {
+        sortorder?: number | null;
+        silentSkip?: boolean;
+        visible?: boolean;
+    }): GraphMutator;
     apply(): StaticGraph;
 }
 
@@ -700,6 +748,12 @@ declare class SemanticViewModel implements IStringKeyedObject, IViewModel {
     __getChildValues(): Promise<Map<string, IPseudo>>;
 }
 
+export declare const setCurrentLanguage: typeof utils.setCurrentLanguage;
+
+declare function setCurrentLanguage_2(lang: string): void;
+
+declare function slugify(original: any): string;
+
 declare class StaticCard {
     active: boolean;
     cardid: string;
@@ -707,7 +761,7 @@ declare class StaticCard {
     config: null | object;
     constraints: Array<StaticConstraint>;
     cssclass: null | string;
-    description: string | null | StaticTranslatableString;
+    description: string | null;
     graph_id: string;
     helpenabled: boolean;
     helptext: StaticTranslatableString;
@@ -747,10 +801,26 @@ declare class StaticCollection {
     __values: {
         [valueId: string]: StaticValue;
     };
+    static fromConceptScheme(props: {
+        collectionid?: string;
+        name?: string | {
+            [lang: string]: StaticValue;
+        } | StaticValue;
+        conceptScheme: StaticConcept;
+    }): StaticCollection;
+    static create(props: {
+        collectionid?: string;
+        name: string | {
+            [lang: string]: StaticValue;
+        } | StaticValue;
+        concepts: StaticConcept[] | {
+            [conceptId: string]: StaticConcept;
+        };
+    }): StaticCollection;
     constructor(jsonData: StaticCollection);
-    getConceptValue(valueId: string): StaticValue;
-    getConceptByValue(label: string): StaticConcept | null | undefined;
-    toString(): StaticValue;
+    getConceptValue?(valueId: string): StaticValue;
+    getConceptByValue?(label: string): StaticConcept | null | undefined;
+    toString(): string;
 }
 
 declare class StaticConcept {
@@ -762,8 +832,15 @@ declare class StaticConcept {
     sortOrder: number | null;
     children: StaticConcept[] | null;
     constructor(jsonData: StaticConcept);
-    getPrefLabel(): StaticValue;
-    toString(): string;
+    getPrefLabel?(): StaticValue;
+    toString(): any;
+    static fromValue(conceptScheme: StaticConcept | null, value: string | StaticValue | {
+        [lang: string]: StaticValue;
+    }, children?: (string | StaticValue | StaticConcept)[], config?: {
+        baseLanguage?: string;
+        source?: string | null;
+        sortOrder?: number | null;
+    }): StaticConcept;
 }
 
 declare class StaticConstraint {
@@ -798,8 +875,8 @@ declare class StaticEdge {
     edgeid: string;
     graph_id: string;
     name: null | string;
-    rangenode_id: string;
     ontologyproperty: null | string;
+    rangenode_id: string;
     constructor(jsonData: StaticEdge);
     copy?(): StaticEdge;
 }
@@ -843,6 +920,27 @@ declare class StaticGraph {
     version: string;
     constructor(jsonData: StaticGraph);
     copy?(): StaticGraph;
+    static create(props: {
+        author?: string;
+        color?: string | null;
+        config?: object;
+        deploymentdate?: null | string;
+        deploymentfile?: null | string;
+        description?: string | StaticTranslatableString;
+        graphid?: string;
+        iconclass?: string;
+        is_editable?: boolean | null;
+        isresource?: boolean;
+        jsonldcontext?: string | null;
+        name?: string | StaticTranslatableString;
+        ontology_id?: string | null;
+        relatable_resource_model_ids?: Array<string>;
+        resource_2_resource_constraints?: Array<any> | null;
+        slug?: string | null;
+        subtitle?: string | StaticTranslatableString;
+        template_id?: string;
+        version?: string;
+    }, published?: boolean): StaticGraph;
 }
 
 declare class StaticGraphMeta {
@@ -900,12 +998,17 @@ declare class StaticNode {
     name: string;
     nodegroup_id: string | null;
     nodeid: string;
+    ontologyclass: string | null;
     parentproperty: string | null;
     sortorder: number;
-    ontologyclass: string | null;
     sourcebranchpublication_id: null | string;
     constructor(jsonData: StaticNode);
     copy?(): StaticNode;
+    static compare(nodeA: StaticNode | {
+        [key: string]: any;
+    }, nodeB: StaticNode | {
+        [key: string]: any;
+    }): number | boolean;
 }
 
 declare class StaticNodeConfigBoolean implements IStaticNodeConfigBoolean, INodeConfig {
@@ -935,10 +1038,10 @@ declare class StaticNodeConfigDomain implements IStaticNodeConfigDomain, INodeCo
 }
 
 declare class StaticNodegroup {
+    cardinality: "1" | "n" | null;
     legacygroupid: null;
     nodegroupid: string;
     parentnodegroup_id: string | null;
-    cardinality: "1" | "n" | null;
     constructor(jsonData: StaticNodegroup);
     copy?(): StaticNodegroup;
 }
@@ -951,7 +1054,7 @@ declare class StaticPublication {
     publicationid: string;
     published_time: string;
     constructor(jsonData: StaticPublication);
-    copy(): StaticPublication;
+    copy?(): StaticPublication;
 }
 
 declare class StaticResource {
@@ -1034,6 +1137,10 @@ declare class StaticTranslatableString extends String {
     lang: string;
     constructor(s: string | StaticTranslatableString, lang?: undefined | string);
     copy?(): StaticTranslatableString;
+    toString(): string;
+    toJSON(): {
+        [key: string]: string;
+    };
 }
 
 declare namespace staticTypes {
@@ -1055,6 +1162,8 @@ declare namespace staticTypes {
         StaticGraphMeta,
         StaticFunctionsXGraphs,
         StaticResourceDescriptors,
+        StaticTranslatableString,
+        StaticConstraint,
         IStaticDescriptorConfig
     }
 }
@@ -1063,10 +1172,11 @@ export { staticTypes }
 declare class StaticValue {
     id: string;
     value: string;
-    __concept: StaticConcept | null;
-    __conceptId: string | null;
+    __concept?: StaticConcept | null;
+    __conceptId?: string | null;
     constructor(jsonData: StaticValue, concept?: StaticConcept | string | null);
     toString(): string;
+    static create(referent: string | StaticConcept, valueType: string, value: string, language?: string): StaticValue;
 }
 
 declare class StringTranslatedLanguage {
@@ -1114,8 +1224,11 @@ declare class UrlViewModel extends String implements IViewModel {
 
 declare namespace utils {
     export {
+        slugify,
         AttrPromise,
-        getCurrentLanguage
+        getCurrentLanguage_2 as getCurrentLanguage,
+        generateUuidv5,
+        setCurrentLanguage_2 as setCurrentLanguage
     }
 }
 export { utils }
@@ -1162,6 +1275,17 @@ declare namespace viewModels {
     }
 }
 export { viewModels }
+
+declare class Widget {
+    id: string;
+    name: string;
+    datatype: string;
+    defaultConfig: string;
+    constructor(id: string, name: string, datatype: string, defaultConfig: string);
+    getDefaultConfig(): {
+        [key: string]: any;
+    };
+}
 
 export declare class WKRM {
     modelName: string;

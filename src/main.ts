@@ -9,6 +9,8 @@ import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
 
 const AlizarinModel = viewModels.ResourceInstanceViewModel;
+const setCurrentLanguage = utils.setCurrentLanguage;
+const getCurrentLanguage = utils.getCurrentLanguage;
 export {
   AlizarinModel,
   client,
@@ -24,5 +26,7 @@ export {
   WKRM,
   nodeConfig,
   ResourceModelWrapper,
-  GraphMutator
+  GraphMutator,
+  setCurrentLanguage,
+  getCurrentLanguage,
 };

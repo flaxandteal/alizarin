@@ -86,13 +86,17 @@ class StaticTranslatableString extends String {
     }
     return `${asString}`;
   }
+
+  toJSON(): {[key: string]: string} {
+    return Object.fromEntries(this.translations);
+  }
 }
 
 class StaticNodegroup {
+  cardinality: "1" | "n" | null;
   legacygroupid: null;
   nodegroupid: string;
   parentnodegroup_id: string | null;
-  cardinality: "1" | "n" | null;
 
   constructor(jsonData: StaticNodegroup) {
     this.legacygroupid = jsonData.legacygroupid;
@@ -122,9 +126,9 @@ class StaticNode {
   name: string;
   nodegroup_id: string | null;
   nodeid: string;
+  ontologyclass: string | null = null;
   parentproperty: string | null = null;
   sortorder: number;
-  ontologyclass: string | null = null;
   sourcebranchpublication_id: null | string = null;
 
   constructor(jsonData: StaticNode) {
@@ -249,7 +253,7 @@ class StaticCard {
   config: null | object;
   constraints: Array<StaticConstraint>;
   cssclass: null | string;
-  description: string | null | StaticTranslatableString;
+  description: string | null;
   graph_id: string;
   helpenabled: boolean;
   helptext: StaticTranslatableString;
@@ -270,9 +274,7 @@ class StaticCard {
       (constraint) => new StaticConstraint(constraint),
     );
     this.cssclass = jsonData.cssclass;
-    this.description =
-      jsonData.description &&
-      new StaticTranslatableString(jsonData.description);
+    this.description = jsonData.description;
     this.graph_id = jsonData.graph_id;
     this.helpenabled = jsonData.helpenabled;
     this.helptext = new StaticTranslatableString(jsonData.helptext);
@@ -314,8 +316,8 @@ class StaticEdge {
   edgeid: string;
   graph_id: string;
   name: null | string;
-  rangenode_id: string;
   ontologyproperty: null | string = null;
+  rangenode_id: string;
 
   constructor(jsonData: StaticEdge) {
     this.description = jsonData.description;

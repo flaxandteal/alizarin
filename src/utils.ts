@@ -7,12 +7,18 @@ const SLUG_LENGTH = 20;
 const UUID_NAMESPACE = '1a79f1c8-9505-4bea-a18e-28a053f725ca'; // Generated for this purpose.
 const UUID_NAMESPACE_COMPRESSION = uuidv5('compression', '1a79f1c8-9505-4bea-a18e-28a053f725ca');
 
+let currentLanguage: string | undefined;
+
 function slugify(original: any): string {
     return `${original}`.replaceAll(/[^A-Za-z0-9_]/g, "").slice(0, SLUG_LENGTH);
 }
 
 function getCurrentLanguage(): string {
-  return ((typeof navigator != 'undefined' && navigator.language) || DEFAULT_LANGUAGE).slice(0, 2);
+  return currentLanguage || ((typeof navigator != 'undefined' && navigator.language) || DEFAULT_LANGUAGE).slice(0, 2);
+}
+
+function setCurrentLanguage(lang: string) {
+  currentLanguage = lang;
 }
 
 class AttrPromise<T> extends Promise<T> implements IStringKeyedObject {
@@ -78,4 +84,4 @@ function generateUuidv5(group: [type: string, id?: string], key: string | string
   return uuidv5(`${group[0]}:${group[1]}:${key}`, UUID_NAMESPACE);
 }
 
-export { slugify, AttrPromise, getCurrentLanguage, generateUuidv5 };
+export { slugify, AttrPromise, getCurrentLanguage, generateUuidv5, setCurrentLanguage };

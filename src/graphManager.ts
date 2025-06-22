@@ -3,6 +3,7 @@ import { staticStore } from './staticStore';
 import { CardComponent, DEFAULT_CARD_COMPONENT, Widget, getDefaultWidgetForNode } from './cards';
 import {
   StaticTranslatableString,
+  StaticCollection,
   StaticConstraint,
   StaticCard,
   StaticEdge,
@@ -714,7 +715,7 @@ class GraphMutator {
     helptitle?: string | null | StaticTranslatableString,
     instructions?: string | null | StaticTranslatableString,
     is_editable?: boolean,
-    description?: string | null | StaticTranslatableString,
+    description?: string | null,
     sortorder?: number | null,
     visible?: boolean
   } = {}, config?: {[key: string]: any}) {
@@ -857,13 +858,13 @@ class GraphMutator {
       graph.edges.push(edge);
       return graph;
     });
-    if (this.autocreateCard && datatype !== 'semantic' && node.nodegroup_id) {
+
+    if (this.autocreateCard && datatype !== 'semantic') {
       const widget = getDefaultWidgetForNode(node);
       const config = widget.getDefaultConfig();
       config.label = name;
       this.addWidgetToCard(
         nodeId,
-        node.nodegroup_id,
         widget,
         name,
         config,
@@ -878,7 +879,6 @@ class GraphMutator {
 
   addWidgetToCard(
     nodeId: string,
-    nodegroupId: string,
     widget: Widget,
     name: string,
     config: {[key: string]: any},
@@ -889,9 +889,15 @@ class GraphMutator {
     } = {}
   ): GraphMutator {
     this.mutations.push((graph: StaticGraph) => {
-      const card = graph.cards?.find(card => card.nodegroup_id === nodegroupId);
+      const node = graph.nodes.find(node => node.nodeid === nodeId);
+      if (!node) {
+        throw Error(`Tried to add card to graph ${graph.graphid} for node ${nodeId} but it was not found.`);
+      }
+      const card = graph.cards?.find(card => card.nodegroup_id === node.nodegroup_id);
+
       if (card) {
         const cardXNodeXWidgetId = this._generateUuidv5(`cxnxw-${nodeId}-${widget.id}`);
+
         const cardXNodeXWidget = new StaticCardsXNodesXWidgets({
           card_id: card.cardid,
           config: config,
@@ -905,7 +911,7 @@ class GraphMutator {
         graph.cards_x_nodes_x_widgets = graph.cards_x_nodes_x_widgets || [];
         graph.cards_x_nodes_x_widgets.push(cardXNodeXWidget);
       } else if (!options.silentSkip) {
-        throw Error(`Failed adding widget for ${nodeId} to card for ${nodegroupId} on graph ${graph.graphid}, as no card for this nodegroup (yet?)`);
+        throw Error(`Failed adding widget for ${nodeId} to card for ${node.nodegroup_id} on graph ${graph.graphid}, as no card for this nodegroup (yet?)`);
       }
       return graph;
     });

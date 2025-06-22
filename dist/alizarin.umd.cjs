@@ -6,9 +6,161 @@ var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { en
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
   var _a, _b, _c, _d, _e;
+  const REGEX = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/i;
+  function validate(uuid) {
+    return typeof uuid === "string" && REGEX.test(uuid);
+  }
+  function parse(uuid) {
+    if (!validate(uuid)) {
+      throw TypeError("Invalid UUID");
+    }
+    let v;
+    return Uint8Array.of((v = parseInt(uuid.slice(0, 8), 16)) >>> 24, v >>> 16 & 255, v >>> 8 & 255, v & 255, (v = parseInt(uuid.slice(9, 13), 16)) >>> 8, v & 255, (v = parseInt(uuid.slice(14, 18), 16)) >>> 8, v & 255, (v = parseInt(uuid.slice(19, 23), 16)) >>> 8, v & 255, (v = parseInt(uuid.slice(24, 36), 16)) / 1099511627776 & 255, v / 4294967296 & 255, v >>> 24 & 255, v >>> 16 & 255, v >>> 8 & 255, v & 255);
+  }
+  const byteToHex = [];
+  for (let i = 0; i < 256; ++i) {
+    byteToHex.push((i + 256).toString(16).slice(1));
+  }
+  function unsafeStringify(arr, offset = 0) {
+    return (byteToHex[arr[offset + 0]] + byteToHex[arr[offset + 1]] + byteToHex[arr[offset + 2]] + byteToHex[arr[offset + 3]] + "-" + byteToHex[arr[offset + 4]] + byteToHex[arr[offset + 5]] + "-" + byteToHex[arr[offset + 6]] + byteToHex[arr[offset + 7]] + "-" + byteToHex[arr[offset + 8]] + byteToHex[arr[offset + 9]] + "-" + byteToHex[arr[offset + 10]] + byteToHex[arr[offset + 11]] + byteToHex[arr[offset + 12]] + byteToHex[arr[offset + 13]] + byteToHex[arr[offset + 14]] + byteToHex[arr[offset + 15]]).toLowerCase();
+  }
+  let getRandomValues;
+  const rnds8 = new Uint8Array(16);
+  function rng() {
+    if (!getRandomValues) {
+      if (typeof crypto === "undefined" || !crypto.getRandomValues) {
+        throw new Error("crypto.getRandomValues() not supported. See https://github.com/uuidjs/uuid#getrandomvalues-not-supported");
+      }
+      getRandomValues = crypto.getRandomValues.bind(crypto);
+    }
+    return getRandomValues(rnds8);
+  }
+  function stringToBytes(str) {
+    str = unescape(encodeURIComponent(str));
+    const bytes = new Uint8Array(str.length);
+    for (let i = 0; i < str.length; ++i) {
+      bytes[i] = str.charCodeAt(i);
+    }
+    return bytes;
+  }
+  const DNS = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+  const URL = "6ba7b811-9dad-11d1-80b4-00c04fd430c8";
+  function v35(version, hash, value, namespace, buf, offset) {
+    const valueBytes = typeof value === "string" ? stringToBytes(value) : value;
+    const namespaceBytes = typeof namespace === "string" ? parse(namespace) : namespace;
+    if (typeof namespace === "string") {
+      namespace = parse(namespace);
+    }
+    if ((namespace == null ? void 0 : namespace.length) !== 16) {
+      throw TypeError("Namespace must be array-like (16 iterable integer values, 0-255)");
+    }
+    let bytes = new Uint8Array(16 + valueBytes.length);
+    bytes.set(namespaceBytes);
+    bytes.set(valueBytes, namespaceBytes.length);
+    bytes = hash(bytes);
+    bytes[6] = bytes[6] & 15 | version;
+    bytes[8] = bytes[8] & 63 | 128;
+    return unsafeStringify(bytes);
+  }
+  const randomUUID = typeof crypto !== "undefined" && crypto.randomUUID && crypto.randomUUID.bind(crypto);
+  const native = { randomUUID };
+  function v4(options, buf, offset) {
+    var _a2;
+    if (native.randomUUID && true && !options) {
+      return native.randomUUID();
+    }
+    options = options || {};
+    const rnds = options.random ?? ((_a2 = options.rng) == null ? void 0 : _a2.call(options)) ?? rng();
+    if (rnds.length < 16) {
+      throw new Error("Random bytes length must be >= 16");
+    }
+    rnds[6] = rnds[6] & 15 | 64;
+    rnds[8] = rnds[8] & 63 | 128;
+    return unsafeStringify(rnds);
+  }
+  function f(s, x, y, z) {
+    switch (s) {
+      case 0:
+        return x & y ^ ~x & z;
+      case 1:
+        return x ^ y ^ z;
+      case 2:
+        return x & y ^ x & z ^ y & z;
+      case 3:
+        return x ^ y ^ z;
+    }
+  }
+  function ROTL(x, n) {
+    return x << n | x >>> 32 - n;
+  }
+  function sha1(bytes) {
+    const K = [1518500249, 1859775393, 2400959708, 3395469782];
+    const H = [1732584193, 4023233417, 2562383102, 271733878, 3285377520];
+    const newBytes = new Uint8Array(bytes.length + 1);
+    newBytes.set(bytes);
+    newBytes[bytes.length] = 128;
+    bytes = newBytes;
+    const l = bytes.length / 4 + 2;
+    const N = Math.ceil(l / 16);
+    const M = new Array(N);
+    for (let i = 0; i < N; ++i) {
+      const arr = new Uint32Array(16);
+      for (let j = 0; j < 16; ++j) {
+        arr[j] = bytes[i * 64 + j * 4] << 24 | bytes[i * 64 + j * 4 + 1] << 16 | bytes[i * 64 + j * 4 + 2] << 8 | bytes[i * 64 + j * 4 + 3];
+      }
+      M[i] = arr;
+    }
+    M[N - 1][14] = (bytes.length - 1) * 8 / Math.pow(2, 32);
+    M[N - 1][14] = Math.floor(M[N - 1][14]);
+    M[N - 1][15] = (bytes.length - 1) * 8 & 4294967295;
+    for (let i = 0; i < N; ++i) {
+      const W = new Uint32Array(80);
+      for (let t = 0; t < 16; ++t) {
+        W[t] = M[i][t];
+      }
+      for (let t = 16; t < 80; ++t) {
+        W[t] = ROTL(W[t - 3] ^ W[t - 8] ^ W[t - 14] ^ W[t - 16], 1);
+      }
+      let a = H[0];
+      let b = H[1];
+      let c = H[2];
+      let d = H[3];
+      let e = H[4];
+      for (let t = 0; t < 80; ++t) {
+        const s = Math.floor(t / 20);
+        const T = ROTL(a, 5) + f(s, b, c, d) + e + K[s] + W[t] >>> 0;
+        e = d;
+        d = c;
+        c = ROTL(b, 30) >>> 0;
+        b = a;
+        a = T;
+      }
+      H[0] = H[0] + a >>> 0;
+      H[1] = H[1] + b >>> 0;
+      H[2] = H[2] + c >>> 0;
+      H[3] = H[3] + d >>> 0;
+      H[4] = H[4] + e >>> 0;
+    }
+    return Uint8Array.of(H[0] >> 24, H[0] >> 16, H[0] >> 8, H[0], H[1] >> 24, H[1] >> 16, H[1] >> 8, H[1], H[2] >> 24, H[2] >> 16, H[2] >> 8, H[2], H[3] >> 24, H[3] >> 16, H[3] >> 8, H[3], H[4] >> 24, H[4] >> 16, H[4] >> 8, H[4]);
+  }
+  function v5(value, namespace, buf, offset) {
+    return v35(80, sha1, value, namespace);
+  }
+  v5.DNS = DNS;
+  v5.URL = URL;
   const DEFAULT_LANGUAGE$1 = "en";
-  function getCurrentLanguage() {
-    return (typeof navigator != "undefined" && navigator.language || DEFAULT_LANGUAGE$1).slice(0, 2);
+  const SLUG_LENGTH = 20;
+  const UUID_NAMESPACE = "1a79f1c8-9505-4bea-a18e-28a053f725ca";
+  const UUID_NAMESPACE_COMPRESSION = v5("compression", "1a79f1c8-9505-4bea-a18e-28a053f725ca");
+  let currentLanguage;
+  function slugify(original) {
+    return `${original}`.replaceAll(/[^A-Za-z0-9_]/g, "").slice(0, SLUG_LENGTH);
+  }
+  function getCurrentLanguage$1() {
+    return currentLanguage || (typeof navigator != "undefined" && navigator.language || DEFAULT_LANGUAGE$1).slice(0, 2);
+  }
+  function setCurrentLanguage$1(lang) {
+    currentLanguage = lang;
   }
   class AttrPromise extends (_b = Promise, _a = Symbol.toPrimitive, _b) {
     constructor(executor) {
@@ -49,10 +201,29 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return proxy;
     }
   }
+  const KEY_COMPRESSION_LENGTH = 1e3;
+  function generateUuidv5(group, key) {
+    if (Array.isArray(key)) {
+      let shortKey = "";
+      let keyTracker = "";
+      key.forEach((k) => {
+        if (keyTracker.length + k.length + 1 > KEY_COMPRESSION_LENGTH) {
+          shortKey = v5(shortKey + ">" + keyTracker, UUID_NAMESPACE_COMPRESSION);
+          keyTracker = k;
+        } else {
+          keyTracker += ";" + k;
+        }
+      });
+    }
+    return v5(`${group[0]}:${group[1]}:${key}`, UUID_NAMESPACE);
+  }
   const utils = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
     __proto__: null,
     AttrPromise,
-    getCurrentLanguage
+    generateUuidv5,
+    getCurrentLanguage: getCurrentLanguage$1,
+    setCurrentLanguage: setCurrentLanguage$1,
+    slugify
   }, Symbol.toStringTag, { value: "Module" }));
   class StaticGraphMeta {
     constructor(jsondata) {
@@ -96,7 +267,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       } else if (typeof s === "object") {
         translations = new Map(Object.entries(s));
         if (lang === void 0 || !translations.has(lang)) {
-          const defaultLanguage = getCurrentLanguage();
+          const defaultLanguage = getCurrentLanguage$1();
           if (!translations || translations.has(defaultLanguage)) {
             finalLang = defaultLanguage;
           } else {
@@ -107,7 +278,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         }
       } else {
         translations = /* @__PURE__ */ new Map();
-        finalLang = lang || getCurrentLanguage();
+        finalLang = lang || getCurrentLanguage$1();
         translations.set(finalLang, s);
       }
       s = translations.get(finalLang) || "";
@@ -120,13 +291,24 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     copy() {
       return new StaticTranslatableString(this, this.lang);
     }
+    toString() {
+      const current = this.lang || getCurrentLanguage$1();
+      let asString;
+      if (this.translations.size) {
+        asString = this.translations.get(current) || this.translations.values().next().value;
+      }
+      return `${asString}`;
+    }
+    toJSON() {
+      return Object.fromEntries(this.translations);
+    }
   }
   class StaticNodegroup {
     constructor(jsonData) {
+      __publicField(this, "cardinality");
       __publicField(this, "legacygroupid");
       __publicField(this, "nodegroupid");
       __publicField(this, "parentnodegroup_id");
-      __publicField(this, "cardinality");
       this.legacygroupid = jsonData.legacygroupid;
       this.nodegroupid = jsonData.nodegroupid;
       this.parentnodegroup_id = jsonData.parentnodegroup_id;
@@ -153,9 +335,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "name");
       __publicField(this, "nodegroup_id");
       __publicField(this, "nodeid");
+      __publicField(this, "ontologyclass", null);
       __publicField(this, "parentproperty", null);
       __publicField(this, "sortorder");
-      __publicField(this, "ontologyclass", null);
       __publicField(this, "sourcebranchpublication_id", null);
       this.alias = jsonData.alias;
       this.config = jsonData.config;
@@ -179,6 +361,71 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     copy() {
       return new StaticNode(this);
+    }
+    // true -- same object
+    // 2 -- identical
+    // 1 -- identical not counting falsey nodeid, nodegroupid and/or graphid
+    // -1 -- identical up to nodeid
+    // -2 -- identical up to nodeid, nodegroupid
+    // -3 -- identical up to nodeid, nodegroupid and graphid
+    // false -- different
+    // for <2, falsey nodeid, nodegroupid and graphid count as matches
+    // and copy/compare are ignored.
+    static compare(nodeA, nodeB) {
+      if (nodeA === nodeB) {
+        return true;
+      }
+      const keys = [...Object.keys(nodeA), ...Object.keys(nodeB)].filter((key) => ![
+        "compare",
+        "copy",
+        "nodeid",
+        "graph_id",
+        "nodegroup_id"
+      ].includes(key));
+      function compareEntries(entriesA, entriesB) {
+        const entryPairs = {};
+        for (const [key, value] of [...entriesA, ...entriesB]) {
+          entryPairs[key] = entryPairs[key] || [];
+          entryPairs[key].push(value);
+        }
+        for (const [_, [valA, valB]] of Object.entries(entryPairs)) {
+          if (valA && valB && typeof valA === "object" && typeof valB === "object") {
+            if (!compareEntries(Object.entries(valA), Object.entries(valB))) {
+              return false;
+            }
+          }
+          if (Array.isArray(valA) && Array.isArray(valB)) {
+            if (!compareEntries(Object.entries(valA), Object.entries(valB))) {
+              return false;
+            }
+          }
+          if (valA !== valB) {
+            return false;
+          }
+        }
+        return true;
+      }
+      if (!compareEntries(
+        // @ts-expect-error Expecting values to be symbols
+        keys.map((k) => [k, nodeA[k]]),
+        // @ts-expect-error Expecting values to be symbols
+        keys.map((k) => [k, nodeB[k]])
+      )) {
+        return false;
+      }
+      if (nodeA.graph_id && nodeB.graph_id && nodeA.graph_id !== nodeB.graph_id) {
+        return -3;
+      }
+      if (nodeA.nodegroup_id && nodeB.nodegroup_id && nodeA.nodegroup_id !== nodeB.nodegroup_id) {
+        return -2;
+      }
+      if (nodeA.nodeid && nodeB.nodeid && nodeA.nodeid !== nodeB.nodeid) {
+        return -1;
+      }
+      if ((nodeA.graph_id && nodeB.graph_id || nodeA.graph_id === nodeB.graph_id) && (nodeA.nodegroup_id && nodeB.nodegroup_id || nodeA.nodegroup_id === nodeB.nodegroup_id) && (nodeA.nodeid && nodeB.nodeid || nodeA.nodeid === nodeB.nodeid)) {
+        return 2;
+      }
+      return 1;
     }
   }
   class StaticConstraint {
@@ -220,7 +467,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         (constraint) => new StaticConstraint(constraint)
       );
       this.cssclass = jsonData.cssclass;
-      this.description = jsonData.description && new StaticTranslatableString(jsonData.description);
+      this.description = jsonData.description;
       this.graph_id = jsonData.graph_id;
       this.helpenabled = jsonData.helpenabled;
       this.helptext = new StaticTranslatableString(jsonData.helptext);
@@ -260,8 +507,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "edgeid");
       __publicField(this, "graph_id");
       __publicField(this, "name");
-      __publicField(this, "rangenode_id");
       __publicField(this, "ontologyproperty", null);
+      __publicField(this, "rangenode_id");
       this.description = jsonData.description;
       this.domainnode_id = jsonData.domainnode_id;
       this.edgeid = jsonData.edgeid;
@@ -311,8 +558,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "cards_x_nodes_x_widgets", null);
       __publicField(this, "color");
       __publicField(this, "config");
-      __publicField(this, "deploymentdate");
-      __publicField(this, "deploymentfile");
+      __publicField(this, "deploymentdate", null);
+      __publicField(this, "deploymentfile", null);
       __publicField(this, "description");
       __publicField(this, "edges");
       __publicField(this, "functions_x_graphs", null);
@@ -320,16 +567,16 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       __publicField(this, "iconclass");
       __publicField(this, "is_editable", null);
       __publicField(this, "isresource");
-      __publicField(this, "jsonldcontext");
+      __publicField(this, "jsonldcontext", null);
       __publicField(this, "name");
       __publicField(this, "nodegroups");
       __publicField(this, "nodes");
-      __publicField(this, "ontology_id");
+      __publicField(this, "ontology_id", null);
       __publicField(this, "publication", null);
       __publicField(this, "relatable_resource_model_ids");
       __publicField(this, "resource_2_resource_constraints", null);
       __publicField(this, "root");
-      __publicField(this, "slug");
+      __publicField(this, "slug", null);
       __publicField(this, "subtitle");
       __publicField(this, "template_id");
       __publicField(this, "version");
@@ -392,7 +639,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         nodegroups: (_d2 = this.nodegroups) == null ? void 0 : _d2.map((ng) => ng.copy && ng.copy() || ng),
         nodes: (_e2 = this.nodes) == null ? void 0 : _e2.map((n) => n.copy && n.copy() || n),
         ontology_id: this.ontology_id,
-        publication: ((_f = this.publication) == null ? void 0 : _f.copy()) || null,
+        publication: ((_f = this.publication) == null ? void 0 : _f.copy) && this.publication.copy() || null,
         relatable_resource_model_ids: [...this.relatable_resource_model_ids || []],
         resource_2_resource_constraints: [...this.resource_2_resource_constraints || []],
         root: this.root.copy && this.root.copy() || this.root,
@@ -402,6 +649,67 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         version: this.version
       });
       return newGraph;
+    }
+    static create(props, published = true) {
+      const graphid = props.graphid || v4();
+      const publication = published ? new StaticPublication({
+        graph_id: graphid,
+        notes: null,
+        publicationid: v4(),
+        published_time: (/* @__PURE__ */ new Date()).toISOString()
+      }) : null;
+      const name = props.name ? props.name instanceof StaticTranslatableString ? props.name : new StaticTranslatableString(props.name) : new StaticTranslatableString("");
+      const alias = slugify(name);
+      const root = new StaticNode({
+        "alias": alias,
+        "config": {},
+        "datatype": "semantic",
+        "description": "",
+        "exportable": false,
+        "fieldname": "",
+        "graph_id": graphid,
+        "hascustomalias": false,
+        "is_collector": false,
+        "isrequired": false,
+        "issearchable": true,
+        "istopnode": true,
+        "name": name.toString(),
+        "nodegroup_id": null,
+        "nodeid": graphid,
+        "ontologyclass": props.ontology_id || null,
+        "parentproperty": null,
+        "sortorder": 0,
+        "sourcebranchpublication_id": null
+      });
+      return new StaticGraph({
+        author: props.author,
+        cards: null,
+        cards_x_nodes_x_widgets: null,
+        color: props.color || null,
+        config: props.config || {},
+        deploymentdate: props.deploymentdate || null,
+        deploymentfile: props.deploymentfile || null,
+        description: props.description ? props.description instanceof StaticTranslatableString ? props.description : new StaticTranslatableString(props.description) : null,
+        edges: [],
+        functions_x_graphs: [],
+        graphid,
+        iconclass: props.iconclass || "",
+        is_editable: props.is_editable || null,
+        isresource: props.isresource || null,
+        jsonldcontext: props.jsonldcontext || null,
+        name,
+        nodegroups: [],
+        nodes: [root.copy()],
+        ontology_id: props.ontology_id || null,
+        publication,
+        relatable_resource_model_ids: props.relatable_resource_model_ids || [],
+        resource_2_resource_constraints: props.resource_2_resource_constraints || null,
+        root,
+        slug: props.slug || null,
+        subtitle: props.subtitle ? props.subtitle instanceof StaticTranslatableString ? props.subtitle : new StaticTranslatableString(props.subtitle) : new StaticTranslatableString(""),
+        template_id: props.template_id || "",
+        version: props.version || ""
+      });
     }
   }
   class StaticValue {
@@ -422,6 +730,22 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
     toString() {
       return this.value;
+    }
+    static create(referent, valueType, value, language) {
+      const lang = language || getCurrentLanguage$1();
+      const referentId = referent instanceof StaticConcept ? referent.id : referent;
+      const concept = referent instanceof StaticConcept ? referent : null;
+      const id = generateUuidv5(
+        ["value"],
+        `${referentId}/${valueType}/${value}/${lang}`
+      );
+      return new StaticValue(
+        {
+          id,
+          value
+        },
+        concept
+      );
     }
   }
   class StaticConcept {
@@ -448,10 +772,54 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       }
     }
     getPrefLabel() {
-      return this.prefLabels[getCurrentLanguage()] || Object.values(this.prefLabels)[0];
+      return this.prefLabels[getCurrentLanguage$1()] || Object.values(this.prefLabels)[0];
     }
     toString() {
+      if (!this.getPrefLabel) {
+        return this.constructor(this).getPrefLabel().value;
+      }
       return this.getPrefLabel().value;
+    }
+    // NB: copies value, does not make it a child
+    static fromValue(conceptScheme, value, children, config = {}) {
+      let lang = (config == null ? void 0 : config.baseLanguage) || getCurrentLanguage$1();
+      let tmpValue;
+      let prefLabels;
+      if (typeof value === "string") {
+        tmpValue = value;
+        prefLabels = { [lang]: new StaticValue({ id: "", value: tmpValue }) };
+      } else if (value instanceof StaticValue) {
+        tmpValue = value.value;
+        prefLabels = { [lang]: value };
+      } else if (lang in value) {
+        tmpValue = value[lang].value;
+        prefLabels = value;
+      } else {
+        const firstValue = Object.entries(value).sort()[0];
+        if (firstValue === void 0) {
+          throw Error("Cannot create a concept from values without a non-empty value");
+        }
+        lang = firstValue[0];
+        tmpValue = firstValue[1].value;
+        prefLabels = value;
+      }
+      const conceptId = generateUuidv5(
+        ["concept"],
+        `${(conceptScheme == null ? void 0 : conceptScheme.id) || "(none)"}/${tmpValue}`
+      );
+      const childConcepts = (children || []).map((child) => {
+        if (!(child instanceof StaticConcept)) {
+          return StaticConcept.fromValue(conceptScheme, value, [], { baseLanguage: config.baseLanguage });
+        }
+        return child;
+      });
+      return new StaticConcept({
+        id: conceptId,
+        prefLabels,
+        source: config.source || null,
+        sortOrder: config.sortOrder || null,
+        children: childConcepts
+      });
     }
   }
   class StaticCollection {
@@ -487,6 +855,52 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         addValues(this.concepts[id]);
       }
     }
+    static fromConceptScheme(props) {
+      const collectionName = props.name ?? props.conceptScheme.toString();
+      return StaticCollection.create({
+        name: collectionName,
+        concepts: props.conceptScheme.children || []
+      });
+    }
+    static create(props) {
+      let concepts = props.concepts;
+      if (Array.isArray(concepts)) {
+        concepts = concepts.reduce(
+          (acc, c) => {
+            acc[c.id] = c;
+            return acc;
+          },
+          {}
+        );
+      }
+      const name = typeof props.name === "string" ? StaticValue.create("", "prefLabel", props.name) : props.name;
+      let collectionid = props.collectionid;
+      if (!collectionid) {
+        if (typeof name === "string") {
+          collectionid = generateUuidv5(
+            ["collection"],
+            name
+          );
+        } else if (name instanceof StaticValue) {
+          collectionid = generateUuidv5(
+            ["collection"],
+            name.value
+          );
+        } else {
+          throw Error("Must have a unique name to create a collection ID");
+        }
+      }
+      const prefLabels = name instanceof StaticValue ? {
+        [getCurrentLanguage$1()]: name
+      } : name;
+      return new StaticCollection({
+        id: collectionid,
+        prefLabels,
+        concepts,
+        __allConcepts: {},
+        __values: {}
+      });
+    }
     getConceptValue(valueId) {
       return this.__values[valueId];
     }
@@ -495,7 +909,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return (_a2 = Object.values(this.__values).find((value) => value.value == label)) == null ? void 0 : _a2.__concept;
     }
     toString() {
-      return this.prefLabels[getCurrentLanguage()] || Object.values(this.prefLabels)[0];
+      return (this.prefLabels[getCurrentLanguage$1()] || Object.values(this.prefLabels)[0] || "").toString();
     }
   }
   class StaticTile {
@@ -577,7 +991,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       this.text = jsonData.text;
     }
     toString() {
-      const lang = getCurrentLanguage();
+      const lang = getCurrentLanguage$1();
       let localized = this.text[lang];
       if (typeof localized !== "string") {
         localized = Object.values(this.text)[0];
@@ -639,6 +1053,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     StaticCardsXNodesXWidgets,
     StaticCollection,
     StaticConcept,
+    StaticConstraint,
     StaticDomainValue,
     StaticEdge,
     StaticFunctionsXGraphs,
@@ -651,6 +1066,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     StaticResourceMetadata,
     StaticResourceReference,
     StaticTile,
+    StaticTranslatableString,
     StaticValue
   }, Symbol.toStringTag, { value: "Module" }));
   class GraphResult {
@@ -897,121 +1313,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   }
   const RDM = new ReferenceDataManager(archesClient);
-  const REGEX = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/i;
-  function validate(uuid) {
-    return typeof uuid === "string" && REGEX.test(uuid);
-  }
-  function parse(uuid) {
-    if (!validate(uuid)) {
-      throw TypeError("Invalid UUID");
-    }
-    let v;
-    return Uint8Array.of((v = parseInt(uuid.slice(0, 8), 16)) >>> 24, v >>> 16 & 255, v >>> 8 & 255, v & 255, (v = parseInt(uuid.slice(9, 13), 16)) >>> 8, v & 255, (v = parseInt(uuid.slice(14, 18), 16)) >>> 8, v & 255, (v = parseInt(uuid.slice(19, 23), 16)) >>> 8, v & 255, (v = parseInt(uuid.slice(24, 36), 16)) / 1099511627776 & 255, v / 4294967296 & 255, v >>> 24 & 255, v >>> 16 & 255, v >>> 8 & 255, v & 255);
-  }
-  const byteToHex = [];
-  for (let i = 0; i < 256; ++i) {
-    byteToHex.push((i + 256).toString(16).slice(1));
-  }
-  function unsafeStringify(arr, offset = 0) {
-    return (byteToHex[arr[offset + 0]] + byteToHex[arr[offset + 1]] + byteToHex[arr[offset + 2]] + byteToHex[arr[offset + 3]] + "-" + byteToHex[arr[offset + 4]] + byteToHex[arr[offset + 5]] + "-" + byteToHex[arr[offset + 6]] + byteToHex[arr[offset + 7]] + "-" + byteToHex[arr[offset + 8]] + byteToHex[arr[offset + 9]] + "-" + byteToHex[arr[offset + 10]] + byteToHex[arr[offset + 11]] + byteToHex[arr[offset + 12]] + byteToHex[arr[offset + 13]] + byteToHex[arr[offset + 14]] + byteToHex[arr[offset + 15]]).toLowerCase();
-  }
-  function stringToBytes(str) {
-    str = unescape(encodeURIComponent(str));
-    const bytes = new Uint8Array(str.length);
-    for (let i = 0; i < str.length; ++i) {
-      bytes[i] = str.charCodeAt(i);
-    }
-    return bytes;
-  }
-  const DNS = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
-  const URL = "6ba7b811-9dad-11d1-80b4-00c04fd430c8";
-  function v35(version, hash, value, namespace, buf, offset) {
-    const valueBytes = typeof value === "string" ? stringToBytes(value) : value;
-    const namespaceBytes = typeof namespace === "string" ? parse(namespace) : namespace;
-    if (typeof namespace === "string") {
-      namespace = parse(namespace);
-    }
-    if ((namespace == null ? void 0 : namespace.length) !== 16) {
-      throw TypeError("Namespace must be array-like (16 iterable integer values, 0-255)");
-    }
-    let bytes = new Uint8Array(16 + valueBytes.length);
-    bytes.set(namespaceBytes);
-    bytes.set(valueBytes, namespaceBytes.length);
-    bytes = hash(bytes);
-    bytes[6] = bytes[6] & 15 | version;
-    bytes[8] = bytes[8] & 63 | 128;
-    return unsafeStringify(bytes);
-  }
-  function f(s, x, y, z) {
-    switch (s) {
-      case 0:
-        return x & y ^ ~x & z;
-      case 1:
-        return x ^ y ^ z;
-      case 2:
-        return x & y ^ x & z ^ y & z;
-      case 3:
-        return x ^ y ^ z;
-    }
-  }
-  function ROTL(x, n) {
-    return x << n | x >>> 32 - n;
-  }
-  function sha1(bytes) {
-    const K = [1518500249, 1859775393, 2400959708, 3395469782];
-    const H = [1732584193, 4023233417, 2562383102, 271733878, 3285377520];
-    const newBytes = new Uint8Array(bytes.length + 1);
-    newBytes.set(bytes);
-    newBytes[bytes.length] = 128;
-    bytes = newBytes;
-    const l = bytes.length / 4 + 2;
-    const N = Math.ceil(l / 16);
-    const M = new Array(N);
-    for (let i = 0; i < N; ++i) {
-      const arr = new Uint32Array(16);
-      for (let j = 0; j < 16; ++j) {
-        arr[j] = bytes[i * 64 + j * 4] << 24 | bytes[i * 64 + j * 4 + 1] << 16 | bytes[i * 64 + j * 4 + 2] << 8 | bytes[i * 64 + j * 4 + 3];
-      }
-      M[i] = arr;
-    }
-    M[N - 1][14] = (bytes.length - 1) * 8 / Math.pow(2, 32);
-    M[N - 1][14] = Math.floor(M[N - 1][14]);
-    M[N - 1][15] = (bytes.length - 1) * 8 & 4294967295;
-    for (let i = 0; i < N; ++i) {
-      const W = new Uint32Array(80);
-      for (let t = 0; t < 16; ++t) {
-        W[t] = M[i][t];
-      }
-      for (let t = 16; t < 80; ++t) {
-        W[t] = ROTL(W[t - 3] ^ W[t - 8] ^ W[t - 14] ^ W[t - 16], 1);
-      }
-      let a = H[0];
-      let b = H[1];
-      let c = H[2];
-      let d = H[3];
-      let e = H[4];
-      for (let t = 0; t < 80; ++t) {
-        const s = Math.floor(t / 20);
-        const T = ROTL(a, 5) + f(s, b, c, d) + e + K[s] + W[t] >>> 0;
-        e = d;
-        d = c;
-        c = ROTL(b, 30) >>> 0;
-        b = a;
-        a = T;
-      }
-      H[0] = H[0] + a >>> 0;
-      H[1] = H[1] + b >>> 0;
-      H[2] = H[2] + c >>> 0;
-      H[3] = H[3] + d >>> 0;
-      H[4] = H[4] + e >>> 0;
-    }
-    return Uint8Array.of(H[0] >> 24, H[0] >> 16, H[0] >> 8, H[0], H[1] >> 24, H[1] >> 16, H[1] >> 8, H[1], H[2] >> 24, H[2] >> 16, H[2] >> 8, H[2], H[3] >> 24, H[3] >> 16, H[3] >> 8, H[3], H[4] >> 24, H[4] >> 16, H[4] >> 8, H[4]);
-  }
-  function v5(value, namespace, buf, offset) {
-    return v35(80, sha1, value, namespace);
-  }
-  v5.DNS = DNS;
-  v5.URL = URL;
   class StaticStore {
     constructor(archesClient2, cacheMetadataOnly = true) {
       __publicField(this, "archesClient");
@@ -1065,6 +1366,106 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   }
   const staticStore = new StaticStore(archesClient);
+  class CardComponent {
+    constructor(id, name) {
+      __publicField(this, "id");
+      __publicField(this, "name");
+      this.id = id;
+      this.name = name;
+    }
+  }
+  class Widget {
+    // as JSON - always need a fresh copy
+    constructor(id, name, datatype, defaultConfig) {
+      __publicField(this, "id");
+      __publicField(this, "name");
+      __publicField(this, "datatype");
+      __publicField(this, "defaultConfig");
+      this.id = id;
+      this.name = name;
+      this.datatype = datatype;
+      this.defaultConfig = defaultConfig;
+    }
+    getDefaultConfig() {
+      return JSON.parse(this.defaultConfig);
+    }
+  }
+  const DEFAULT_CARD_COMPONENT = new CardComponent(
+    "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+    "Default Card"
+  );
+  const _WIDGET_VALUES = [
+    ["10000000-0000-0000-0000-000000000001", "text-widget", "string", '{ "placeholder": "Enter text", "width": "100%", "maxLength": null}'],
+    ["10000000-0000-0000-0000-000000000002", "concept-select-widget", "concept", '{ "placeholder": "Select an option", "options": [] }'],
+    ["10000000-0000-0000-0000-000000000012", "concept-multiselect-widget", "concept-list", '{ "placeholder": "Select an option", "options": [] }'],
+    ["10000000-0000-0000-0000-000000000015", "domain-select-widget", "domain-value", '{ "placeholder": "Select an option" }'],
+    ["10000000-0000-0000-0000-000000000016", "domain-multiselect-widget", "domain-value-list", '{ "placeholder": "Select an option" }'],
+    ["10000000-0000-0000-0000-000000000003", "switch-widget", "boolean", '{ "subtitle": "Click to switch"}'],
+    ["10000000-0000-0000-0000-000000000004", "datepicker-widget", "date", `{
+      "placeholder": "Enter date",
+      "viewMode": "days",
+      "dateFormat": "YYYY-MM-DD",
+      "minDate": false,
+      "maxDate": false
+    }`],
+    ["10000000-0000-0000-0000-000000000005", "rich-text-widget", "string", "{}"],
+    ["10000000-0000-0000-0000-000000000006", "radio-boolean-widget", "boolean", '{"trueLabel": "Yes", "falseLabel": "No"}'],
+    ["10000000-0000-0000-0000-000000000007", "map-widget", "geojson-feature-collection", `{
+      "basemap": "streets",
+      "geometryTypes": [{"text":"Point", "id":"Point"}, {"text":"Line", "id":"Line"}, {"text":"Polygon", "id":"Polygon"}],
+      "overlayConfigs": [],
+      "overlayOpacity": 0.0,
+      "geocodeProvider": "MapzenGeocoder",
+      "zoom": 0,
+      "maxZoom": 20,
+      "minZoom": 0,
+      "centerX": 0,
+      "centerY": 0,
+      "pitch": 0.0,
+      "bearing": 0.0,
+      "geocodePlaceholder": "Search",
+      "geocoderVisible": true,
+      "featureColor": null,
+      "featureLineWidth": null,
+      "featurePointSize": null
+    }`],
+    ["10000000-0000-0000-0000-000000000008", "number-widget", "number", '{ "placeholder": "Enter number", "width": "100%", "min":"", "max":""}'],
+    ["10000000-0000-0000-0000-000000000009", "concept-radio-widget", "concept", '{ "options": [] }'],
+    ["10000000-0000-0000-0000-000000000013", "concept-checkbox-widget", "concept-list", '{ "options": [] }'],
+    ["10000000-0000-0000-0000-000000000017", "domain-radio-widget", "domain-value", "{}"],
+    ["10000000-0000-0000-0000-000000000018", "domain-checkbox-widget", "domain-value-list", "{}"],
+    ["10000000-0000-0000-0000-000000000019", "file-widget", "file-list", '{"acceptedFiles": "", "maxFilesize": "200"}']
+  ];
+  const WIDGETS = Object.fromEntries(_WIDGET_VALUES.map((constructor) => [constructor[1], new Widget(...constructor)]));
+  function getDefaultWidgetForNode(node, preferences = {}) {
+    const datatype = node.datatype;
+    if (datatype in preferences) {
+      return WIDGETS[preferences[datatype]];
+    }
+    if (datatype === "semantic") {
+      throw Error("Not default widget for a semantic node");
+    } else if (datatype === "number") {
+      return WIDGETS["number-widget"];
+    } else if (datatype === "string") {
+      return WIDGETS["text-widget"];
+    } else if (datatype === "concept") {
+      return WIDGETS["concept-select-widget"];
+    } else if (datatype === "concept-list") {
+      return WIDGETS["concept-multiselect-widget"];
+    } else if (datatype === "domain-value") {
+      return WIDGETS["domain-select-widget"];
+    } else if (datatype === "domain-value-list") {
+      return WIDGETS["domain-multiselect-widget"];
+    } else if (datatype === "geojson-feature-collection") {
+      return WIDGETS["geojson-feature-collection"];
+    } else if (datatype === "boolean") {
+      return WIDGETS["switch-widget"];
+    } else if (datatype === "date") {
+      return WIDGETS["datepicker-widget"];
+    } else {
+      throw Error(`No default widget for ${datatype} datatype - perhaps you could supply a manual preference`);
+    }
+  }
   class StaticNodeConfigBoolean {
     constructor(jsonData) {
       __publicField(this, "i18n_properties");
@@ -1850,7 +2251,12 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       return this._value;
     }
     static async __create(tile, node, value, cacheEntry) {
+      var _a2;
       const nodeid = node.nodeid;
+      const collectionId = (_a2 = node.config) == null ? void 0 : _a2.rdmCollection;
+      if (!collectionId) {
+        throw Error(`Node ${node.alias} (${node.nodeid}) missing rdmCollection in config`);
+      }
       let val = value;
       if (tile) {
         if (!tile.data.has(nodeid)) {
@@ -1858,7 +2264,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         }
         if (value !== null) {
           if (value instanceof StaticConcept) {
-            val = value.getPrefLabel();
+            if (value.getPrefLabel) {
+              val = value.getPrefLabel();
+            } else {
+              throw Error("Recognizing value as StaticConcept, but no getPrefLabel member");
+            }
           }
           if (!value) {
             val = null;
@@ -1880,9 +2290,11 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
                 }, cacheEntry.conceptId);
                 return new ConceptValueViewModel(val);
               } else {
-                const collectionId = node.config["rdmCollection"];
                 const collection = RDM.retrieveCollection(collectionId);
                 return collection.then((collection2) => {
+                  if (!collection2.getConceptValue) {
+                    throw Error(`Collection ${collection2.id} must be a StaticCollection here, not a key/value object`);
+                  }
                   const val2 = collection2.getConceptValue(value);
                   if (!val2) {
                     console.error("Could not find concept for value", value, "for", node.alias, "in collection", collectionId);
@@ -1905,7 +2317,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
           }
           if (!(val instanceof Promise)) {
             if (!val) {
-              console.error("Could not find concept for value", value, "for", node.alias, "in collection", node.config.get("rdmCollection"));
+              console.error("Could not find concept for value", value, "for", node.alias, "in collection", collectionId);
             }
             tile.data.set(nodeid, val ? val.id : null);
           }
@@ -3102,7 +3514,6 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
   }
   const MAX_GRAPH_DEPTH = 100;
   const DESCRIPTOR_FUNCTION_ID = "60000000-0000-0000-0000-000000000001";
-  const UUID_NAMESPACE = "1a79f1c8-9505-4bea-a18e-28a053f725ca";
   class WKRM {
     constructor(meta) {
       __publicField(this, "modelName");
@@ -3598,14 +4009,16 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
     }
   }
   class GraphMutator {
-    constructor(baseGraph) {
+    constructor(baseGraph, options = {}) {
       __publicField(this, "baseGraph");
       __publicField(this, "mutations");
+      __publicField(this, "autocreateCard");
       this.baseGraph = baseGraph;
       this.mutations = [];
+      this.autocreateCard = options.autocreateCard === void 0 || options.autocreateCard;
     }
     _generateUuidv5(key) {
-      return v5(`${this.baseGraph.graphid}:${key}`, UUID_NAMESPACE);
+      return generateUuidv5(["graph", this.baseGraph.graphid], key);
     }
     _generateEdge(fromNode, toNode, ontologyProperty, name, description) {
       const edgeId = this._generateUuidv5(`node-${fromNode}-${toNode}`);
@@ -3633,6 +4046,60 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         config
       );
     }
+    addConceptNode(parentAlias, alias, name, collection, cardinality, ontologyClass, parentProperty, description, options = {}, config) {
+      config = config || {};
+      if (collection == null ? void 0 : collection.id) {
+        config["rdmCollection"] = collection.id;
+      }
+      return this._addGenericNode(
+        parentAlias,
+        alias,
+        name,
+        cardinality,
+        options.is_list ? "concept-list" : "concept",
+        ontologyClass,
+        parentProperty,
+        description,
+        options,
+        config
+      );
+    }
+    addCard(nodegroup, name, component, options = {}, config) {
+      const nodegroupId = typeof nodegroup === "string" ? nodegroup : nodegroup.nodegroupid;
+      const cardName = name instanceof StaticTranslatableString ? name : new StaticTranslatableString(name);
+      const cardComponent = component || DEFAULT_CARD_COMPONENT;
+      const helptext = (options == null ? void 0 : options.helptext) && (options.helptext instanceof StaticTranslatableString ? options.helptext : new StaticTranslatableString(options.helptext));
+      const helptitle = (options == null ? void 0 : options.helptitle) && (options.helptitle instanceof StaticTranslatableString ? options.helptitle : new StaticTranslatableString(options.helptitle));
+      const instructions = (options == null ? void 0 : options.instructions) && (options.instructions instanceof StaticTranslatableString ? options.instructions : new StaticTranslatableString(options.instructions));
+      this.mutations.push((graph) => {
+        graph.cards = graph.cards || [];
+        if (graph.cards.filter((card2) => card2.nodegroup_id === nodegroup).length > 0) {
+          throw Error(`This nodegroup, ${nodegroupId}, already has a card`);
+        }
+        const cardId = this._generateUuidv5(`card-ng-${nodegroupId}`);
+        const card = new StaticCard({
+          active: options.active === void 0 ? true : options.active,
+          cardid: cardId,
+          component_id: cardComponent.id,
+          config: config || null,
+          constraints: options.constraints || [],
+          cssclass: options.cssclass || null,
+          description: options.description || null,
+          graph_id: graph.graphid,
+          helpenabled: !!(options.helpenabled || options.helpenabled === void 0 && (helptext || helptitle)),
+          helptext: helptext || new StaticTranslatableString(""),
+          helptitle: helptitle || new StaticTranslatableString(""),
+          instructions: instructions || new StaticTranslatableString(""),
+          is_editable: options.is_editable === void 0 ? true : options.is_editable,
+          name: cardName,
+          nodegroup_id: nodegroupId,
+          sortorder: options.sortorder || null,
+          visible: options.visible === void 0 ? true : options.visible
+        });
+        graph.cards.push(card);
+        return graph;
+      });
+    }
     addStringNode(parentAlias, alias, name, cardinality, ontologyClass, parentProperty, description, options = {}, config) {
       return this._addGenericNode(
         parentAlias,
@@ -3647,7 +4114,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         config
       );
     }
-    _addNodegroup(parentAlias, nodegroupId, cardinality) {
+    _addNodegroup(parentAlias, nodegroupId, cardinality, name) {
       this.mutations.push((graph) => {
         const prnt = parentAlias === null ? graph.root : graph.nodes.find((node) => node.alias === parentAlias);
         if (!prnt) {
@@ -3662,6 +4129,9 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         graph.nodegroups.push(nodegroup);
         return graph;
       });
+      if (this.autocreateCard) {
+        this.addCard(nodegroupId, name || "(unnamed)");
+      }
       return this;
     }
     _addGenericNode(parentAlias, alias, name, cardinality, datatype, ontologyClass, parentProperty, description, options = {}, config) {
@@ -3677,7 +4147,8 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         hascustomalias: options.hascustomalias || false,
         is_collector: options.is_collector || false,
         isrequired: options.isrequired || false,
-        issearchable: options.issearchable || false,
+        issearchable: options.issearchable || true,
+        // This is the default in Arches I believe
         istopnode: options.istopnode || false,
         name,
         nodegroup_id: "",
@@ -3689,7 +4160,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       };
       if (cardinality === "n" || parentAlias === null) {
         node.nodegroup_id = nodeId;
-        this._addNodegroup(parentAlias, node.nodegroup_id, cardinality);
+        this._addNodegroup(parentAlias, node.nodegroup_id, cardinality, new StaticTranslatableString(name));
       }
       this.mutations.push((graph) => {
         const prnt = parentAlias === null ? graph.root : graph.nodes.find((node2) => node2.alias === parentAlias);
@@ -3701,6 +4172,51 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
         graph.nodes.push(newNode);
         const edge = this._generateEdge(prnt.nodeid, nodeId, parentProperty);
         graph.edges.push(edge);
+        return graph;
+      });
+      if (this.autocreateCard && datatype !== "semantic") {
+        const widget = getDefaultWidgetForNode(node);
+        const config2 = widget.getDefaultConfig();
+        config2.label = name;
+        this.addWidgetToCard(
+          nodeId,
+          widget,
+          name,
+          config2,
+          {
+            sortorder: node.sortorder,
+            silentSkip: true
+            // if, for some reason, the card is not present (i.e. was removed), we should not worry
+          }
+        );
+      }
+      return this;
+    }
+    addWidgetToCard(nodeId, widget, name, config, options = {}) {
+      this.mutations.push((graph) => {
+        var _a2;
+        const node = graph.nodes.find((node2) => node2.nodeid === nodeId);
+        if (!node) {
+          throw Error(`Tried to add card to graph ${graph.graphid} for node ${nodeId} but it was not found.`);
+        }
+        const card = (_a2 = graph.cards) == null ? void 0 : _a2.find((card2) => card2.nodegroup_id === node.nodegroup_id);
+        if (card) {
+          const cardXNodeXWidgetId = this._generateUuidv5(`cxnxw-${nodeId}-${widget.id}`);
+          const cardXNodeXWidget = new StaticCardsXNodesXWidgets({
+            card_id: card.cardid,
+            config,
+            id: cardXNodeXWidgetId,
+            label: new StaticTranslatableString(name),
+            node_id: nodeId,
+            sortorder: options.sortorder || 0,
+            visible: options.visible === void 0 || options.visible,
+            widget_id: widget.id
+          });
+          graph.cards_x_nodes_x_widgets = graph.cards_x_nodes_x_widgets || [];
+          graph.cards_x_nodes_x_widgets.push(cardXNodeXWidget);
+        } else if (!options.silentSkip) {
+          throw Error(`Failed adding widget for ${nodeId} to card for ${node.nodegroup_id} on graph ${graph.graphid}, as no card for this nodegroup (yet?)`);
+        }
         return graph;
       });
       return this;
@@ -4436,6 +4952,8 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}
     MarkdownRenderer
   }, Symbol.toStringTag, { value: "Module" }));
   const AlizarinModel = ResourceInstanceViewModel;
+  const setCurrentLanguage = setCurrentLanguage$1;
+  const getCurrentLanguage = getCurrentLanguage$1;
   const __viteBrowserExternal = {};
   const __viteBrowserExternal$1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
     __proto__: null,
@@ -4448,10 +4966,12 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}
   exports2.ResourceModelWrapper = ResourceModelWrapper;
   exports2.WKRM = WKRM;
   exports2.client = client;
+  exports2.getCurrentLanguage = getCurrentLanguage;
   exports2.graphManager = graphManager;
   exports2.interfaces = interfaces;
   exports2.nodeConfig = nodeConfig;
   exports2.renderers = renderers;
+  exports2.setCurrentLanguage = setCurrentLanguage;
   exports2.staticStore = staticStore;
   exports2.staticTypes = staticTypes;
   exports2.utils = utils;
