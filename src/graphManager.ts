@@ -822,7 +822,7 @@ class GraphMutator {
     const nodeId = this._generateUuidv5(`node-${alias}`);
     const node = {
       alias: alias,
-      config: config || null,
+      config: config || {},
       datatype: datatype,
       description: description || null,
       exportable: options.exportable || false,

@@ -112,7 +112,7 @@ class StaticNodegroup {
 
 class StaticNode {
   alias: string | null;
-  config: { [key: string]: any } | null;
+  config: { [key: string]: any };
   datatype: string;
   description: string | null;
   exportable: boolean;
@@ -250,7 +250,7 @@ class StaticCard {
   active: boolean;
   cardid: string;
   component_id: string;
-  config: null | object;
+  config?: object;
   constraints: Array<StaticConstraint>;
   cssclass: null | string;
   description: string | null;
@@ -436,6 +436,8 @@ class StaticGraph {
     this.nodegroups = jsonData.nodegroups.map(
       (nodegroup) => new StaticNodegroup(nodegroup),
     );
+    // We should probably confirm that there is one node in nodes and it is
+    // equivalent to root.
     this.nodes = jsonData.nodes.map((node) => new StaticNode(node));
     this.ontology_id = jsonData.ontology_id;
     this.publication =
