@@ -758,7 +758,7 @@ declare class StaticCard {
     active: boolean;
     cardid: string;
     component_id: string;
-    config: null | object;
+    config?: object;
     constraints: Array<StaticConstraint>;
     cssclass: null | string;
     description: string | null;
@@ -984,7 +984,7 @@ declare class StaticNode {
     alias: string | null;
     config: {
         [key: string]: any;
-    } | null;
+    };
     datatype: string;
     description: string | null;
     exportable: boolean;

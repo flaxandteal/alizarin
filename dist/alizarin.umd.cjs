@@ -4138,7 +4138,7 @@ var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "sy
       const nodeId = this._generateUuidv5(`node-${alias}`);
       const node = {
         alias,
-        config: config || null,
+        config: config || {},
         datatype,
         description: description || null,
         exportable: options.exportable || false,
