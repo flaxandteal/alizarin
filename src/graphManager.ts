@@ -1325,6 +1325,43 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
 
     return wkri.$.populate(lazy).then(() => wkri);
   }
+
+  asTree(): {[key: string]: any} {
+    const root = this.getRootNode();
+    const nodegroups = this.getNodegroupObjects();
+    const addChildren = (node: StaticNode) => {
+      const branch: {[key: string]: any} = {};
+      const children = this.getChildNodes(node.nodeid);
+      if (!children.size) {
+        return false;
+      }
+      for (const child of children.values()) {
+        const nodegroup = nodegroups.get(child.nodegroup_id || '');
+        const multiple = (
+          child.nodegroup_id &&
+          child.is_collector &&
+          nodegroup &&
+          nodegroup.cardinality == 'n' &&
+          node.nodegroup_id !== child.nodegroup_id
+        ) || child.datatype.endsWith('-list');
+        const childBranch = addChildren(child);
+        const alias = child.alias || '';
+        if (childBranch === false) {
+          branch[alias] = child.datatype;
+        } else {
+          branch[alias] = childBranch;
+          if (child.datatype !== 'semantic') {
+             branch[alias]['_'] = child.datatype;
+          }
+        }
+        if (multiple) {
+          branch[alias] = [branch[alias]];
+        }
+      }
+      return branch;
+    }
+    return addChildren(root) || {};
+  }
 }
 
 function makeResourceModelWrapper<T extends IRIVM<T>>(
