@@ -1,4 +1,3 @@
-import { greet } from "alizarin-wasm";
 import * as client from "./client";
 import * as interfaces from "./interfaces";
 import { RDM } from "./rdm";

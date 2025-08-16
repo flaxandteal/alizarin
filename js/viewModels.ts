@@ -1574,6 +1574,11 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       },
       get: (object, key) => {
         const k: string = typeof key === 'symbol' ? key.description || '' : key;
+
+        if (key.toString() === "Symbol.toStringTag") {
+          return () => this.constructor.name;
+        }
+
         if (key in object) {
           return object[key];
         } else if (k.startsWith("__") || k in object) {
