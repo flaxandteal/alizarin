@@ -5,7 +5,7 @@ import {
   getCurrentLanguage, 
   generateUuidv5, 
   setCurrentLanguage 
-} from '../src/utils';
+} from '../js/utils';
 
 describe('Utils', () => {
   beforeEach(() => {
