@@ -17,9 +17,61 @@ Alizarin can run via static JSON files, or from an Arches-compatible API.
 
 It needs, unless precached, JSON endpoints for collections, concepts, resources (tiles) and graphs.
 
-## Cards
+## Installation
 
-<Cards>
-  <Card title="Learn more about Next.js" href="https://nextjs.org/docs" />
-  <Card title="Learn more about Fumadocs" href="https://fumadocs.vercel.app" />
-</Cards>
+```bash
+npm install alizarin
+```
+
+## Quick Start
+
+### Basic Usage
+
+```typescript
+import { ArchesClientRemote, GraphManager } from 'alizarin';
+
+// Connect to an Arches instance
+const client = new ArchesClientRemote('https://your-arches-instance.org');
+const graphManager = new GraphManager(client);
+
+// Load a resource model
+const MonumentModel = await graphManager.loadGraph('Monument');
+
+// Query all monuments
+const monuments = await MonumentModel.all();
+
+// Access monument data
+for (const monument of monuments) {
+  console.log(monument.name);
+  console.log(monument.constructionDate);
+  console.log(monument.heritage_status?.prefLabel);
+}
+```
+
+### Working with Static Data
+
+```typescript
+import { ArchesClientRemoteStatic, GraphManager } from 'alizarin';
+
+// Load from static JSON exports
+const client = new ArchesClientRemoteStatic('/data/exports');
+const graphManager = new GraphManager(client);
+
+// Usage is identical to remote client
+const PersonModel = await graphManager.loadGraph('Person');
+```
+
+### Creating Resources
+
+```typescript
+const PersonModel = await graphManager.loadGraph('Person');
+
+// Create a new person
+const newPerson = PersonModel.create();
+newPerson.forename = "Jane";
+newPerson.surname = "Smith";
+newPerson.birthDate = new Date(1990, 5, 15);
+
+// Save to server (if using remote client)
+await newPerson.save();
+```

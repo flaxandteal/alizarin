@@ -1,0 +1,45 @@
+---
+title: Background
+description: Motivation for Alizarin
+---
+
+Alizarin began as a need for a static site for [Arches](https://archesproject.org),
+for Northern Ireland's Historic Environment Division of the [Department for Communities](https://www.communities-ni.gov.uk/).
+Arches itself is a complex system, whose strengths are based on its ability
+to handle large amounts of detailed records, flexibility and in a highly-structured way.
+However, much of this functionality is unnecessary for the majority of public visitors
+and can lead to inefficiency in scaling.
+
+This project is based on the insight that much of the public-facing functionality of Arches
+that is relevant to rapid-search can be derived easily from its native data structures.
+Moreover, those data structures can be read and written efficiently, and are relatively efficient for
+communicating data. In Arches itself, much of the work is done on the back-end, for a range
+of reasons - in particular, providing a degree of flexibility and integration with individual user roles,
+etc. Alizarin makes the trade-off that, beyond filtering of data for permissions, most rendering can be done
+efficiently client-side, using lazy-loading and lazy-hydration using Arches native data transfer format.
+
+The principal use-case of this was to support a [Hugo](https://gohugo.io) site for public data access
+that was cheaply scalable, database-less and static. Data can be exported nightly, and the static site
+rebuilt using Alizarin directly from standard Arches export dumps.
+
+## Goals
+
+Alizarin aims to:
+
+1. **Simplify Arches Development**: Provide an intuitive, developer-friendly interface to Arches' complex data models
+2. **Enable Modern Web Applications**: Support building reactive, performant front-end applications with Arches data
+3. **Maintain Flexibility**: Work with any Arches instance without requiring server-side modifications
+4. **Ensure Type Safety**: Leverage TypeScript to catch errors early and improve developer experience
+5. **Optimize Performance**: Minimize network requests and memory usage through intelligent caching and lazy loading
+6. **Allow a Range of Clients**: Make writing Arches clients within third-party stacks simple, consistent and efficient
+
+## Non-Goals
+
+Alizarin does **not** aim to:
+
+1. **Replace Arches**: Arches necessarily implements a range of complex logic that is necessary for safely designing and managing semantic graphs. To rebuild this would lose the benefits of Alizarin.
+2. **Support All Arches APIs**: Alizarin should only use the most basic read and write APIs, expecting minimal manipulation.
+3. **Run on Back-end Servers**: Alizarin should be useful for Node applications manipulating data, but Arches-like servers are not a goal. Bugs in doing so are likely to be valid Alizarin bugs, but missing features specific to this purpose are unlikely to be prioritized.
+4. **Always be JS**: Alizarin is a clean reimplementation of [AORM](https://github.com/flaxandteal/arches-orm/) and the architecture is more important than the code. Parts may be rewritten into Rust/WASM for speed.
+5. **Be Hand-Crafted Only**: The first version of Alizarin was written entirely by hand, but future versions will be co-authored with AI tools.
+6. **Be Read-Only**: Writing via architecturally clean APIs is a goal, secondary to read behaviour, but this requires future development and evolution of Arches APIs

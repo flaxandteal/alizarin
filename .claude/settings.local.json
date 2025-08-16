@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",
+      "Bash(rm:*)",
+      "Bash(timeout 45s npm test)",
+      "Bash(npm run lint)",
+      "Bash(npm test:*)",
+      "Bash(timeout 30s npm test)",
+      "Bash(grep:*)"
+    ],
+    "deny": []
+  }
+}

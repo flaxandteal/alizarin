@@ -1,0 +1,31 @@
+---
+title: Graph Manipulation
+description: Modifying graphs on-the-fly
+---
+
+## Modifying Graph Schemas
+
+```typescript
+import { GraphMutator } from 'alizarin';
+
+// Load existing graph
+const graph = await client.getGraph('Person');
+
+// Create mutator
+const mutator = new GraphMutator(graph);
+
+// Add a new string node
+mutator.addStringNode(
+  null, // parent node (null for root)
+  'nickname',
+  'Nickname',
+  'n', // cardinality
+  'http://www.w3.org/2000/01/rdf-schema#Literal',
+  'http://example.org/hasNickname',
+  'Informal name or nickname'
+);
+
+// Apply changes
+const modifiedGraph = mutator.apply();
+```
+
