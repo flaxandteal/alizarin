@@ -1,9 +1,9 @@
 import { assert, describe, beforeEach } from 'vitest';
 import fetchMock from '@fetch-mock/vitest';
-import { ArchesClientLocal } from "../js/client.ts";
-import { ResourceInstanceViewModel } from "../js/viewModels.ts";
-import { graphManager, staticStore } from "../js/graphManager.ts";
-import { RDM } from "../js/rdm.ts";
+import { ArchesClientLocal } from "../js/client";
+import { ResourceInstanceViewModel } from "../js/viewModels";
+import { graphManager, staticStore } from "../js/graphManager";
+import { RDM } from "../js/rdm";
 import { apiTest } from "./apiTest";
 
 
@@ -15,11 +15,11 @@ const archesClient = new ArchesClientLocal();
 graphManager.archesClient = archesClient;
 staticStore.archesClient = archesClient;
 RDM.archesClient = archesClient;
-await graphManager.initialize();
 
 describe("testing api", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     fetchMock.mockReset();
+    await graphManager.initialize();
   });
 
   apiTest(
@@ -31,7 +31,6 @@ describe("testing api", () => {
         fetchMock.once('*', JSON.stringify(response)),
       );
 
-      await graphManager.initialize();
       const Groups = await graphManager.get(Group);
 
       const groups: Group[] = await Groups.all();
@@ -59,7 +58,6 @@ describe("testing api", () => {
         fetchMock.once("*", JSON.stringify(response)),
       );
 
-      await graphManager.initialize();
       const Groups = await graphManager.get(Group);
       const groups = await Groups.all({ lazy: true });
       const name = await groups[0].basic_info[0].name;

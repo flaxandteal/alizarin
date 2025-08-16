@@ -1,11 +1,11 @@
 import { test } from "vitest";
-import GroupJSON from "./data/models/Group.json";
-import PersonJSON from "./data/models/Person.json";
-import ArchesPluginJSON from "./data/models/Arches Plugin.json";
+import * as GroupJSON from "./data/models/Group.json";
+import * as PersonJSON from "./data/models/Person.json";
+import * as ArchesPluginJSON from "./data/models/Arches Plugin.json";
 
-async function graphsResponse({ task }, use) {
+async function graphsResponse(_context: any, use: any) {
   // TODO: this sends more back than it should
-  const models = {};
+  const models: Record<string, any> = {};
   const Group = GroupJSON["graph"][0];
   const Person = PersonJSON["graph"][0];
   const ArchesPlugin = ArchesPluginJSON["graph"][0];
@@ -17,8 +17,8 @@ async function graphsResponse({ task }, use) {
   });
 }
 
-async function graphResponses({ task }, use) {
-  const models = {};
+async function graphResponses(_context: any, use: any) {
+  const models: Record<string, any> = {};
   const Group = GroupJSON["graph"][0];
   const Person = PersonJSON["graph"][0];
   const ArchesPlugin = ArchesPluginJSON["graph"][0];

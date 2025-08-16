@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ArchesClientRemote, ArchesClientRemoteStatic, ArchesClientLocal } from '../js/client';
-import { StaticGraph, StaticResource } from '../js/static-types';
 
 describe('Client Layer', () => {
   beforeEach(() => {
@@ -64,7 +63,7 @@ describe('Client Layer', () => {
         status: 404,
         statusText: 'Not Found',
         json: async () => { throw new Error('Not Found'); }
-      } as Response);
+      } as unknown as Response);
 
       const client = new ArchesClientRemote('https://test.arches.org');
       
@@ -122,7 +121,7 @@ describe('Client Layer', () => {
 
       // The implementation uses a different path structure
       expect(global.fetch).toHaveBeenCalledWith('/data/resource_models/static-graph.json');
-      expect(graph.graphid).toBe('static-graph');
+      expect(graph!.graphid).toBe('static-graph');
     });
 
     it('should load resource from static JSON file', async () => {
@@ -150,7 +149,7 @@ describe('Client Layer', () => {
         ok: false,
         status: 404,
         json: async () => { throw new Error('Not Found'); }
-      } as Response);
+      } as unknown as Response);
 
       const client = new ArchesClientRemoteStatic('/data');
       
