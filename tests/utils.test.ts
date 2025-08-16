@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { 
   slugify, 
   AttrPromise, 
@@ -142,7 +142,7 @@ describe('Utils', () => {
       const resolved = await promise;
       await new Promise(resolve => setTimeout(resolve, 0)); // Allow async set to complete
       
-      expect(resolved.name).toBe('Modified');
+      expect((resolved as any).name).toBe('Modified');
     });
 
     it('should handle method calls through proxy', async () => {
@@ -156,8 +156,8 @@ describe('Utils', () => {
       
       // Wait for the promise to resolve first, then access methods
       const resolved = await promise;
-      expect(resolved.getValue()).toBe(10);
-      expect(resolved.increment()).toBe(11);
+      expect((resolved as any).getValue()).toBe(10);
+      expect((resolved as any).increment()).toBe(11);
     });
 
     it('should handle non-existent properties gracefully', async () => {
@@ -188,8 +188,8 @@ describe('Utils', () => {
     it('should maintain promise chain functionality', async () => {
       const promise = new AttrPromise((resolve) => resolve(5));
       
-      const doubled = promise.then(val => val * 2);
-      const stringified = doubled.then(val => val.toString());
+      const doubled = promise.then((val: any) => val * 2);
+      const stringified = doubled.then((val: any) => val.toString());
       
       expect(await stringified).toBe('10');
     });
