@@ -16,7 +16,8 @@
   },
   "scripts": {
     "test": "vitest",
-    "lint": "eslint js --ext .ts"
+    "lint": "eslint js --ext .ts",
+    "dev": "vite serve ."
   },
   "devDependencies": {
     "@eslint/js": "^9.24.0",
