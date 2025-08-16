@@ -1,7 +1,7 @@
 import { assert, describe, beforeEach } from 'vitest';
 import fetchMock from '@fetch-mock/vitest';
-import { GraphMutator } from "../src/graphManager";
-import { StaticNode, StaticGraph } from "../src/static-types";
+import { GraphMutator } from "../js/graphManager";
+import { StaticNode, StaticGraph } from "../js/static-types";
 import { coreTest } from "./coreTest";
 
 describe("testing graph", () => {

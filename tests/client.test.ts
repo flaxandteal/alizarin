@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ArchesClientRemote, ArchesClientRemoteStatic, ArchesClientLocal } from '../src/client';
-import { StaticGraph, StaticResource } from '../src/static-types';
+import { ArchesClientRemote, ArchesClientRemoteStatic, ArchesClientLocal } from '../js/client';
+import { StaticGraph, StaticResource } from '../js/static-types';
 
 describe('Client Layer', () => {
   beforeEach(() => {

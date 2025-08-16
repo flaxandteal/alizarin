@@ -8,7 +8,7 @@ export default defineConfig({
     minify: false,
     sourcemap: true,
     lib: {
-      entry: resolve(__dirname, "src/main.ts"),
+      entry: resolve(__dirname, "js/main.ts"),
       name: "Alizarin",
       fileName: "alizarin",
     },

@@ -16,7 +16,7 @@
   },
   "scripts": {
     "test": "vitest",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint js --ext .ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.24.0",

@@ -1,5 +1,5 @@
 import { test } from "vitest";
-import { StaticGraph, StaticCollection, StaticConcept } from '../src/static-types';
+import { StaticGraph, StaticCollection, StaticConcept } from '../js/static-types';
 
 async function basicGraph({ test }, use) {
   const graph = StaticGraph.create({

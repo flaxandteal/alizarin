@@ -1,9 +1,9 @@
 import { assert, describe, beforeEach } from 'vitest';
 import fetchMock from '@fetch-mock/vitest';
-import { ArchesClientLocal } from "../src/client.ts";
-import { ResourceInstanceViewModel } from "../src/viewModels.ts";
-import { graphManager, staticStore } from "../src/graphManager.ts";
-import { RDM } from "../src/rdm.ts";
+import { ArchesClientLocal } from "../js/client.ts";
+import { ResourceInstanceViewModel } from "../js/viewModels.ts";
+import { graphManager, staticStore } from "../js/graphManager.ts";
+import { RDM } from "../js/rdm.ts";
 import { apiTest } from "./apiTest";
 
 

@@ -9,7 +9,7 @@ import {
   StaticTile,
   StaticValue,
   StaticGraphMeta
-} from '../src/static-types';
+} from '../js/static-types';
 
 describe('Static Types', () => {
   describe('StaticTranslatableString', () => {
