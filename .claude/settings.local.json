@@ -7,7 +7,9 @@
       "Bash(npm run lint)",
       "Bash(npm test:*)",
       "Bash(timeout 30s npm test)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx eslint tests:*)"
     ],
     "deny": []
   }

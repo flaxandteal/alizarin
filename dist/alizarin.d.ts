@@ -717,6 +717,9 @@ export declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     getNodegroupObjects(): Map<string, StaticNodegroup>;
     getRootNode(): StaticNode;
     fromStaticResource(resource: StaticResource, lazy?: boolean, pruneTiles?: boolean): Promise<RIVM>;
+    asTree(): {
+        [key: string]: any;
+    };
 }
 
 declare class SemanticViewModel implements IStringKeyedObject, IViewModel {
