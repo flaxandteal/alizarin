@@ -7,6 +7,7 @@ import * as utils from "./utils";
 import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
+import { run } from "./_wasm";
 
 const AlizarinModel = viewModels.ResourceInstanceViewModel;
 const setCurrentLanguage = utils.setCurrentLanguage;
@@ -29,4 +30,5 @@ export {
   GraphMutator,
   setCurrentLanguage,
   getCurrentLanguage,
+  run
 };

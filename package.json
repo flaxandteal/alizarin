@@ -15,7 +15,8 @@
     }
   },
   "scripts": {
-    "test": "vitest",
+    "test": "NODE_OPTIONS='--experimental-wasm-modules' vitest",
+    "test:ui": "NODE_OPTIONS='--experimental-wasm-modules' vitest --ui",
     "lint": "eslint js --ext .ts",
     "dev": "vite serve ."
   },
@@ -36,7 +37,6 @@
     "vite-plugin-wasm": "^3.5.0"
   },
   "dependencies": {
-    "alizarin-wasm": "file:./pkg",
     "bfj": "^9.1.2",
     "geojson": "^0.5.0",
     "uuid": "^11.1.0"

@@ -1,7 +1,7 @@
 import { test } from "vitest";
 import { StaticGraph, StaticCollection, StaticConcept } from '../js/static-types';
 
-async function basicGraph(_context: any, use: any) {
+async function basicGraph({}, use: any) {
   const graph = StaticGraph.create({
     author: "Author",
     description: "Graph description",
@@ -10,7 +10,7 @@ async function basicGraph(_context: any, use: any) {
   await use(graph);
 }
 
-async function basicCollection(_context: any, use: any) {
+async function basicCollection({}, use: any) {
   const graph = StaticCollection.fromConceptScheme({
     conceptScheme: StaticConcept.fromValue(
       null,

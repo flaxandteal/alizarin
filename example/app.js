@@ -1,5 +1,6 @@
 import Session from './session.js';
 import { initializeAlizarin } from './utils.js';
+console.log('init');
 import { graphManager, staticStore } from '../dist/alizarin';
 
 const { ref } = Vue;

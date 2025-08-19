@@ -1,7 +1,9 @@
-import { AlizarinModel, graphManager, staticStore, client, RDM } from '../dist/alizarin';
+import { AlizarinModel, graphManager, staticStore, client, RDM, run } from '../dist/alizarin';
 import htm from 'https://unpkg.com/htm@3.0.4/dist/htm.module.js?module';
 
 const html = htm.bind(Vue.h);
+
+await run();
 
 async function initializeAlizarin() {
   const archesClient = new client.ArchesClientRemoteStatic('', {
