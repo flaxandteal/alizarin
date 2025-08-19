@@ -8,8 +8,14 @@ export default defineConfig({
   plugins: [
     dts({ rollupTypes: true }),
     wasm(),
-    topLevelAwait()
+    topLevelAwait(),
   ],
+  optimizeDeps: {
+    exclude: ['./pkg', 'wasm'],
+  },
+  worker: {
+    format: 'es'
+  },
   build: {
     minify: false,
     sourcemap: true,
@@ -17,6 +23,7 @@ export default defineConfig({
       entry: resolve(__dirname, "js/main.ts"),
       name: "Alizarin",
       fileName: "alizarin",
+      formats: ['es']
     },
   },
 });

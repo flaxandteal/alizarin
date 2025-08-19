@@ -722,6 +722,8 @@ export declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     };
 }
 
+export declare function run(): Promise<void>;
+
 declare class SemanticViewModel implements IStringKeyedObject, IViewModel {
     [key: string | symbol]: any;
     _: IViewModel | Promise<IViewModel> | undefined;

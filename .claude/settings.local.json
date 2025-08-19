@@ -9,7 +9,11 @@
       "Bash(timeout 30s npm test)",
       "Bash(grep:*)",
       "Bash(npx tsc:*)",
-      "Bash(npx eslint tests:*)"
+      "Bash(npx eslint tests:*)",
+      "Bash(cargo check:*)",
+      "Bash(wasm-pack build:*)",
+      "Bash(node:*)",
+      "Bash(npm run:*)"
     ],
     "deny": []
   }
