@@ -1,4 +1,4 @@
-import { StaticGraphMeta, StaticGraph, StaticResource } from "./static-types";
+import { StaticGraphMeta, StaticGraph, StaticResource, StaticResourceSummary, StaticTile } from "./static-types";
 import { StaticCollection } from "./rdm";
 
 class GraphResult {
@@ -26,6 +26,14 @@ abstract class ArchesClient {
   abstract getResource(resourceId: string): Promise<StaticResource>;
 
   abstract getCollection(collectionId: string): Promise<StaticCollection>;
+
+  // New summary-based methods for performance optimization
+  abstract getResourceSummaries(
+    graphId: string,
+    limit: number,
+  ): Promise<StaticResourceSummary[]>;
+
+  abstract getResourceTiles(resourceId: string): Promise<StaticTile[]>;
 }
 
 class ArchesClientRemote extends ArchesClient {
@@ -70,6 +78,31 @@ class ArchesClientRemote extends ArchesClient {
       `${this.archesUrl}/resources?graph_uuid=${graphId}&format=arches-json&hide_empty_nodes=false&compact=false&limit=${limit}`,
     );
     return await response.json();
+  }
+
+  async getResourceSummaries(
+    graphId: string,
+    limit: number,
+  ): Promise<StaticResourceSummary[]> {
+    // For remote client, this would ideally be a separate endpoint
+    // For now, fall back to getting full resources and extracting summaries
+    const resources = await this.getResources(graphId, limit);
+    return resources.map(resource => new StaticResourceSummary({
+      resourceinstanceid: resource.resourceinstance.resourceinstanceid,
+      graph_id: resource.resourceinstance.graph_id,
+      name: resource.resourceinstance.name,
+      descriptors: resource.resourceinstance.descriptors,
+      metadata: resource.metadata || {},
+      publication_id: resource.resourceinstance.publication_id,
+      principaluser_id: resource.resourceinstance.principaluser_id,
+      legacyid: resource.resourceinstance.legacyid,
+      graph_publication_id: resource.resourceinstance.graph_publication_id
+    }));
+  }
+
+  async getResourceTiles(resourceId: string): Promise<StaticTile[]> {
+    const resource = await this.getResource(resourceId);
+    return resource.tiles || [];
   }
 }
 
@@ -176,6 +209,48 @@ class ArchesClientRemoteStatic extends ArchesClient {
       }
     }
     return resources;
+  }
+
+  async getResourceSummaries(
+    graphId: string,
+    limit: number,
+  ): Promise<StaticResourceSummary[]> {
+    const summaries = [];
+    for (const file of this.graphIdToResourcesFiles(graphId)) {
+      const source = `${this.archesUrl}/${file}`;
+      const response = await fetch(source);
+      const data = await response.json();
+      const resourceSet: StaticResource[] = data.business_data.resources;
+      
+      // Convert full resources to summaries (extract metadata only)
+      for (const resource of resourceSet) {
+        const summary = new StaticResourceSummary({
+          resourceinstanceid: resource.resourceinstance.resourceinstanceid,
+          graph_id: resource.resourceinstance.graph_id,
+          name: resource.resourceinstance.name,
+          descriptors: resource.resourceinstance.descriptors,
+          metadata: resource.metadata || {},
+          createdtime: resource.resourceinstance.createdtime,
+          lastmodified: resource.resourceinstance.lastmodified,
+          publication_id: resource.resourceinstance.publication_id,
+          principaluser_id: resource.resourceinstance.principaluser_id,
+          legacyid: resource.resourceinstance.legacyid,
+          graph_publication_id: resource.resourceinstance.graph_publication_id
+        });
+        summaries.push(summary);
+      }
+      
+      if (limit && summaries.length >= limit) {
+        return summaries.slice(0, limit);
+      }
+    }
+    return limit ? summaries.slice(0, limit) : summaries;
+  }
+
+  async getResourceTiles(resourceId: string): Promise<StaticTile[]> {
+    // For static client, we need to load the full resource to get tiles
+    const resource = await this.getResource(resourceId);
+    return resource.tiles || [];
   }
 }
 
@@ -316,6 +391,46 @@ class ArchesClientLocal extends ArchesClient {
       }
     }
     return resources;
+  }
+
+  async getResourceSummaries(
+    graphId: string,
+    limit: number,
+  ): Promise<StaticResourceSummary[]> {
+    const fs = await this.fs;
+    const summaries = [];
+    for (const file of this.graphIdToResourcesFiles(graphId)) {
+      const response = JSON.parse(await fs.promises.readFile(file, "utf8"));
+      const resourceSet: StaticResource[] = response.business_data.resources.filter(
+        (resource: StaticResource) => graphId === resource.resourceinstance.graph_id
+      );
+      
+      // Convert full resources to summaries (extract metadata only)
+      for (const resource of resourceSet) {
+        const summary = new StaticResourceSummary({
+          resourceinstanceid: resource.resourceinstance.resourceinstanceid,
+          graph_id: resource.resourceinstance.graph_id,
+          name: resource.resourceinstance.name,
+          descriptors: resource.resourceinstance.descriptors,
+          metadata: resource.metadata || {},
+          publication_id: resource.resourceinstance.publication_id,
+          principaluser_id: resource.resourceinstance.principaluser_id,
+          legacyid: resource.resourceinstance.legacyid,
+          graph_publication_id: resource.resourceinstance.graph_publication_id
+        });
+        summaries.push(summary);
+      }
+      
+      if (limit && summaries.length >= limit) {
+        return summaries.slice(0, limit);
+      }
+    }
+    return limit ? summaries.slice(0, limit) : summaries;
+  }
+
+  async getResourceTiles(resourceId: string): Promise<StaticTile[]> {
+    const resource = await this.getResource(resourceId);
+    return resource.tiles || [];
   }
 }
 

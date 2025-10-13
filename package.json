@@ -12,6 +12,10 @@
     ".": {
       "import": "./dist/alizarin.js",
       "require": "./dist/alizarin.umd.cjs"
+    },
+    "./validation": {
+      "import": "./dist/validation/index.js",
+      "types": "./dist/validation/index.d.ts"
     }
   },
   "scripts": {
@@ -20,7 +24,8 @@
     "test:watch": "NODE_OPTIONS='--experimental-wasm-modules' vitest",
     "test:ui": "NODE_OPTIONS='--experimental-wasm-modules' vitest --ui",
     "lint": "eslint js --ext .ts",
-    "dev": "vite serve ."
+    "dev": "NODE_OPTIONS='--experimental-wasm-modules' vite serve .",
+    "validate": "NODE_OPTIONS='--experimental-wasm-modules' node validate-graphs.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.24.0",
@@ -39,8 +44,11 @@
     "vitest-fetch-mock": "^0.4.2"
   },
   "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "bfj": "^9.1.2",
     "geojson": "^0.5.0",
+    "puppeteer": "^24.24.0",
     "uuid": "^11.1.0",
     "wasm-pack": "^0.13.1"
   }

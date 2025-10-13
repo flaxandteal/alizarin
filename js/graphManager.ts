@@ -14,6 +14,7 @@ import {
   StaticNode,
   StaticNodegroup,
   StaticResource,
+  StaticResourceSummary,
   StaticResourceDescriptors,
   StaticGraphMeta,
   IStaticDescriptorConfig
@@ -48,6 +49,7 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
   cache: {[tileId: string]: {[nodeId: string]: IStringKeyedObject}} | undefined;
   scopes?: string[];
   metadata?: {[key: string]: string};
+  private tilesLoaded: boolean = false;
 
   constructor(
     wkri: RIVM,
@@ -65,9 +67,28 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
     this.cache = resource ? resource.__cache : undefined;
     this.scopes = resource ? resource.__scopes : undefined;
     this.metadata = resource ? resource.metadata : undefined;
+    this.tilesLoaded = !!(resource && resource.__tilesLoaded);
     if (pruneTiles && this.resource) {
       this.pruneResourceTiles()
     }
+  }
+
+  async ensureTilesLoaded(): Promise<void> {
+    if (this.tilesLoaded || !this.resource) {
+      return;
+    }
+
+    if (!this.resource.__tilesLoaded || !this.resource.tiles || this.resource.tiles.length === 0) {
+      // Load tiles on-demand
+      const tiles = await staticStore.loadTiles(this.resource.resourceinstance.resourceinstanceid);
+      this.resource.tiles = tiles;
+      this.resource.__tilesLoaded = true;
+      
+      // Re-populate with full tile data
+      await this.populate(false); // non-lazy to process all tiles
+    }
+    
+    this.tilesLoaded = true;
   }
 
   pruneResourceTiles(): undefined {
@@ -366,6 +387,10 @@ class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrap
 
     let tiles = null;
     if (!lazy && this.resource) {
+      // Ensure tiles are loaded if we need them for non-lazy population
+      if (!this.resource.__tilesLoaded) {
+        await this.ensureTilesLoaded();
+      }
       tiles = this.resource.tiles;
       let impliedNodegroups = new Set<string>();
       for (const [ng] of nodegroupObjs) {
@@ -723,7 +748,7 @@ class GraphMutator {
         active: options.active === undefined ? true : options.active,
         cardid: cardId,
         component_id: cardComponent.id,
-        config: config || null,
+        config: config || undefined,
         constraints: options.constraints || [],
         cssclass: options.cssclass || null,
         description: options.description || null,
@@ -1138,6 +1163,34 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
 
   async* iterAll(params: { limit?: number; lazy?: boolean }): AsyncGenerator<RIVM> {
     yield* this.resourceGenerator(staticStore.loadAll(this.wkrm.graphId, params.limit), params.lazy);
+  }
+
+  // New summary-based methods for performance optimization
+  async* summaryGenerator(staticSummaries: AsyncIterable<StaticResourceSummary>, lazy: boolean = true): AsyncGenerator<RIVM> {
+    for await (const summary of staticSummaries) {
+      // Create lightweight resource from summary
+      const summaryResource = StaticResource.fromSummary(summary);
+      yield this.fromStaticResource(summaryResource, lazy, false); // lazy=true, pruneTiles=false
+    }
+  }
+
+  async* iterAllSummaries(params: { limit?: number }): AsyncGenerator<RIVM> {
+    yield* this.summaryGenerator(staticStore.loadAllSummaries(this.wkrm.graphId, params.limit), true);
+  }
+
+  async allSummaries(params: { limit?: number } | undefined = undefined): Promise<Array<RIVM>> {
+    const paramObj = params || { limit: undefined };
+    const promises = [];
+    for await (const resource of this.iterAllSummaries(paramObj)) {
+      promises.push(resource);
+    }
+    return Promise.all(promises);
+  }
+
+  async loadFullResource(id: string): Promise<RIVM> {
+    // Check if we have full resource or just summary, load full resource on-demand
+    const fullResource = await staticStore.ensureFullResource(id);
+    return this.fromStaticResource(fullResource, false, true); // non-lazy, prune tiles
   }
 
   async findStatic(id: string): Promise<StaticResource> {

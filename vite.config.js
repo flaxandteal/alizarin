@@ -20,10 +20,26 @@ export default defineConfig({
     minify: false,
     sourcemap: true,
     lib: {
-      entry: resolve(__dirname, "js/main.ts"),
+      entry: {
+        alizarin: resolve(__dirname, "js/main.ts"),
+        'validation/index': resolve(__dirname, "js/validation/index.ts"),
+      },
       name: "Alizarin",
-      fileName: "alizarin",
-      formats: ['es']
+      fileName: (format, entryName) => {
+        if (entryName.includes('validation')) {
+          return `${entryName}.js`;
+        }
+        return format === 'es' ? 'alizarin.js' : 'alizarin.umd.cjs';
+      },
+      formats: ['es'],
+    },
+    rollupOptions: {
+      external: [
+        'fs',
+        'path',
+        'ajv',
+        'ajv-formats',
+      ],
     },
   },
 });
