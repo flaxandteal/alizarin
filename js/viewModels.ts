@@ -875,7 +875,7 @@ class ConceptValueViewModel extends String implements IViewModel {
       meta: getMeta ? await getMeta(this) : undefined,
       id: value.id,
       value: value.value,
-      conceptId: value.__conceptId
+      conceptId: value.__conceptId ?? null
     });
   }
 

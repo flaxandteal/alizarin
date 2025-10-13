@@ -93,18 +93,6 @@ function createStaticGraph(props: {
       "sourcebranchpublication_id": null
     });
 
-    // Convert description and subtitle to plain JS for Rust deserialization
-    let descriptionForRust;
-    if (props.description) {
-      if (props.description instanceof StaticTranslatableString) {
-        descriptionForRust = props.description.toJSON();
-      } else {
-        descriptionForRust = props.description;
-      }
-    } else {
-      descriptionForRust = '';
-    }
-
     let subtitleForRust;
     if (props.subtitle) {
       if (props.subtitle instanceof StaticTranslatableString) {
@@ -124,17 +112,20 @@ function createStaticGraph(props: {
       config: props.config || {},
       deploymentdate: props.deploymentdate || null,
       deploymentfile: props.deploymentfile || null,
-      description: descriptionForRust,
+      description: props.description ? (
+        props.description instanceof StaticTranslatableString ?
+        props.description : new StaticTranslatableString(props.description)
+      ) : new StaticTranslatableString(''),
       edges: [],
       functions_x_graphs: [],
       graphid: graphid,
       iconclass: props.iconclass || '',
       is_editable: props.is_editable || null,
-      isresource: props.isresource !== undefined ? props.isresource : true,
+      isresource: props.isresource ?? false,
       jsonldcontext: props.jsonldcontext || null,
       name: nameForRust,
       nodegroups: [],
-      nodes: [root.copy()],
+      nodes: root ? [root.copy()] : [],
       ontology_id: props.ontology_id || null,
       publication: publication,
       relatable_resource_model_ids: props.relatable_resource_model_ids || [],
@@ -410,6 +401,8 @@ class StaticResourceMetadata {
   principaluser_id: number | null = null;
   legacyid: null | string = null;
   graph_publication_id: string | null = null;
+  createdtime?: string;
+  lastmodified?: string;
 
   constructor(jsonData: StaticResourceMetadata) {
     this.descriptors = jsonData.descriptors;
@@ -486,6 +479,48 @@ class StaticResourceReference {
   }
 }
 
+class StaticResourceSummary {
+  resourceinstanceid: string;
+  graph_id: string;
+  name: string;
+  descriptors: StaticResourceDescriptors;
+  metadata: {[key: string]: string};
+  createdtime?: string;
+  lastmodified?: string;
+  publication_id?: string | null;
+  principaluser_id?: number | null;
+  legacyid?: string | null;
+  graph_publication_id?: string | null;
+
+  constructor(jsonData: any) {
+    this.resourceinstanceid = jsonData.resourceinstanceid;
+    this.graph_id = jsonData.graph_id;
+    this.name = jsonData.name || '<Unnamed>';
+    this.descriptors = new StaticResourceDescriptors(jsonData.descriptors || {});
+    this.metadata = jsonData.metadata || {};
+    this.createdtime = jsonData.createdtime;
+    this.lastmodified = jsonData.lastmodified;
+    this.publication_id = jsonData.publication_id;
+    this.principaluser_id = jsonData.principaluser_id;
+    this.legacyid = jsonData.legacyid;
+    this.graph_publication_id = jsonData.graph_publication_id;
+  }
+
+  // Convert summary to full metadata object for compatibility
+  toMetadata(): StaticResourceMetadata {
+    return new StaticResourceMetadata({
+      descriptors: this.descriptors,
+      graph_id: this.graph_id,
+      name: this.name,
+      resourceinstanceid: this.resourceinstanceid,
+      publication_id: this.publication_id ?? null,
+      principaluser_id: this.principaluser_id ?? null,
+      legacyid: this.legacyid ?? null,
+      graph_publication_id: this.graph_publication_id ?? null
+    });
+  }
+}
+
 class StaticResource {
   resourceinstance: StaticResourceMetadata;
   tiles: Array<StaticTile> | null = null;
@@ -493,6 +528,7 @@ class StaticResource {
   __cache: {[tileId: string]: {[nodeId: string]: {[key: string]: string}}} | undefined = undefined;
   __source: string | undefined = undefined;
   __scopes: string[] | undefined = undefined;
+  __tilesLoaded: boolean = false; // Track if tiles have been loaded
 
   constructor(jsonData: StaticResource) {
     this.resourceinstance = new StaticResourceMetadata(
@@ -503,6 +539,20 @@ class StaticResource {
     this.metadata = jsonData.metadata || {};
     this.__cache = jsonData.__cache;
     this.__scopes = jsonData.__scopes;
+    this.__tilesLoaded = !!(jsonData.tiles && jsonData.tiles.length > 0);
+  }
+
+  // Create a resource from summary data (for lazy loading)
+  static fromSummary(summary: StaticResourceSummary): StaticResource {
+    return new StaticResource({
+      resourceinstance: summary.toMetadata(),
+      tiles: [], // Empty tiles initially
+      metadata: summary.metadata,
+      __cache: undefined,
+      __scopes: undefined,
+      __source: 'summary',
+      __tilesLoaded: false
+    } as StaticResource);
   }
 }
 
@@ -512,6 +562,7 @@ export {
   StaticGraph,
   createStaticGraph,
   StaticResource,
+  StaticResourceSummary,
   StaticResourceMetadata,
   StaticNode,
   StaticNodegroup,
