@@ -1,0 +1,16 @@
+{
+  "models": {
+    "12345678-1234-1234-1234-123456789abc": {
+      "id": "12345678-1234-1234-1234-123456789abc",
+      "name": {
+        "en": "Test Model"
+      },
+      "slug": "test-model",
+      "subtitle": {
+        "en": "Test subtitle"
+      },
+      "color": "#ff0000",
+      "iconclass": "fa fa-test"
+    }
+  }
+}
