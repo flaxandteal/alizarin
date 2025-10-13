@@ -1,0 +1,9 @@
+{
+  "models": {
+    "invalid-uuid": {
+      "id": "invalid-uuid",
+      "name": "Missing language wrapper",
+      "slug": "INVALID SLUG WITH SPACES"
+    }
+  }
+}

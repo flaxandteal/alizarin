@@ -64,7 +64,11 @@ class GraphLoadingValidator {
     __publicField(this, "results");
     __publicField(this, "basePath");
     this.basePath = basePath;
-    this.ajv = new Ajv({ allErrors: true, verbose: true });
+    this.ajv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false
+    });
     addFormats(this.ajv);
     this.validateGraphModel = this.ajv.compile(graphModelSchema);
     this.validateBusinessData = this.ajv.compile(businessDataSchema);

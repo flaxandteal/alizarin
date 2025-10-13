@@ -38,8 +38,12 @@ export class GraphLoadingValidator {
   constructor(basePath: string = '.') {
     this.basePath = basePath;
 
-    // Initialize AJV with format support
-    this.ajv = new Ajv({ allErrors: true, verbose: true });
+    // Initialize AJV with format support (strict mode off for cleaner output)
+    this.ajv = new Ajv({
+      allErrors: true,
+      verbose: true,
+      strict: false
+    });
     addFormats(this.ajv);
 
     // Compile validators

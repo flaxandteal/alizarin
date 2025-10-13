@@ -1,0 +1,23 @@
+{
+  "graph": [
+    {
+      "graphid": "invalid-uuid",
+      "name": {
+        "en": "Invalid Model"
+      },
+      "isresource": true,
+      "nodes": [
+        {
+          "nodeid": "12345678-1234-1234-1234-123456789001",
+          "name": "Root Node",
+          "datatype": "semantic",
+          "istopnode": true,
+          "nodegroup_id": "should-be-null",
+          "graph_id": "invalid-uuid"
+        }
+      ],
+      "nodegroups": [],
+      "edges": []
+    }
+  ]
+}
