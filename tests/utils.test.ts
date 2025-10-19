@@ -50,14 +50,23 @@ describe('Utils', () => {
     });
 
     it('should extract language code from locale', () => {
-      // Mock navigator.language
+      // Mock navigator.language using defineProperty for read-only properties
       const originalNavigator = global.navigator;
-      global.navigator = { language: 'en-US' } as any;
-      
+      Object.defineProperty(global, 'navigator', {
+        value: { language: 'en-US' },
+        writable: true,
+        configurable: true
+      });
+
       setCurrentLanguage(''); // Reset
       expect(getCurrentLanguage()).toBe('en');
-      
-      global.navigator = originalNavigator;
+
+      // Restore original navigator
+      Object.defineProperty(global, 'navigator', {
+        value: originalNavigator,
+        writable: true,
+        configurable: true
+      });
     });
   });
 

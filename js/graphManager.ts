@@ -34,12 +34,7 @@ class WKRM {
   meta: StaticGraphMeta;
 
   constructor(meta: StaticGraphMeta) {
-    let name: {[lang: string]: string} | string | undefined;
-    if (meta.name instanceof Object) {
-      name = meta.name[DEFAULT_LANGUAGE].toString();
-    } else {
-      name = meta.name;
-    }
+    const name = meta.name ? meta.name.toString() : undefined;
     this.modelName = name || "Unnamed";
     this.graphId = meta.graphid;
     this.modelClassName = (meta.slug || this.modelName)
@@ -735,8 +730,8 @@ class GraphMutator {
         options.instructions : new StaticTranslatableString(options.instructions)
     ));
     this.mutations.push((graph: StaticGraph) => {
-      graph.cards = graph.cards || [];
-      if (graph.cards.filter(card => card.nodegroup_id === nodegroup).length > 0) {
+      const cards = graph.cards || [];
+      if (cards.filter(card => card.nodegroup_id === nodegroup).length > 0) {
         throw Error(`This nodegroup, ${nodegroupId}, already has a card`);
       }
       const cardId = this._generateUuidv5(`card-ng-${nodegroupId}`);
@@ -759,7 +754,7 @@ class GraphMutator {
         sortorder: options.sortorder || null,
         visible: options.visible === undefined ? true : options.visible
       });
-      graph.cards.push(card);
+      graph.pushCard(card);
       return graph;
     });
   }
@@ -800,7 +795,7 @@ class GraphMutator {
         nodegroupid: nodegroupId,
         parentnodegroup_id: prnt.nodegroup_id
       });
-      graph.nodegroups.push(nodegroup);
+      graph.pushNodegroup(nodegroup);
       return graph;
     });
     if (this.autocreateCard) {
@@ -853,9 +848,9 @@ class GraphMutator {
       // FIXME: we assume we are not adding a root node, but nowhere do we say this.
       node.nodegroup_id = node.nodegroup_id !== '' ? node.nodegroup_id : prnt.nodegroup_id || '';
       const newNode = new StaticNode(node);
-      graph.nodes.push(newNode);
+      graph.pushNode(newNode);
       const edge = this._generateEdge(prnt.nodeid, nodeId, parentProperty);
-      graph.edges.push(edge);
+      graph.pushEdge(edge);
       return graph;
     });
 
@@ -908,8 +903,7 @@ class GraphMutator {
           visible: options.visible === undefined || options.visible,
           widget_id: widget.id
         });
-        graph.cards_x_nodes_x_widgets = graph.cards_x_nodes_x_widgets || [];
-        graph.cards_x_nodes_x_widgets.push(cardXNodeXWidget);
+        graph.pushCardXNodeXWidget(cardXNodeXWidget);
       } else if (!options.silentSkip) {
         throw Error(`Failed adding widget for ${nodeId} to card for ${node.nodegroup_id} on graph ${graph.graphid}, as no card for this nodegroup (yet?)`);
       }

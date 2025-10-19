@@ -1,5 +1,6 @@
 mod utils;
 pub mod graph;
+pub mod pseudos;
 
 use wasm_bindgen::prelude::*;
 

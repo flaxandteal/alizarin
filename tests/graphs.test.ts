@@ -1,10 +1,16 @@
-import { assert, describe, beforeEach } from 'vitest';
+import { assert, describe, beforeAll, beforeEach } from 'vitest';
 import fetchMock from '@fetch-mock/vitest';
 import { GraphMutator } from "../js/graphManager";
 import { StaticNode } from "../js/static-types";
 import { coreTest } from "./coreTest";
+import { initWasmForTests } from './wasm-init';
 
 describe("testing graph", () => {
+  beforeAll(async () => {
+    // Initialize WASM module for tests
+    await initWasmForTests();
+  });
+
   beforeEach(() => {
     fetchMock.mockReset();
   });
