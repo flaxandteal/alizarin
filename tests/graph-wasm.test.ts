@@ -69,13 +69,12 @@ describe('WASM Graph Module', () => {
         name: { en: 'Test Graph' },
         description: { en: 'A test graph' },
         relatable_resource_model_ids: [],
-        resource_2_resource_constraints: [],
-        extra_fields: {}
+        resource_2_resource_constraints: []
       };
 
       const graphMeta = new StaticGraphMeta(graphData);
       const json = graphMeta.toJSON();
-      
+
       expect(json).toBeDefined();
       expect(json.graphid).toBe('test-graph-123');
       expect(json.author).toBe('Test Author');
@@ -159,7 +158,7 @@ describe('WASM Graph Module', () => {
       const nodeData = createTestNode();
       const node = new StaticNode(nodeData);
       const json = node.toJSON();
-      
+
       expect(json).toBeDefined();
       expect(json.nodeid).toBe('node-123');
       expect(json.name).toBe('Test Node');
@@ -170,9 +169,9 @@ describe('WASM Graph Module', () => {
     it('should get and set config', () => {
       const node = new StaticNode(createTestNode());
       
-      // Get initial empty config
-      const initialConfig = node.getConfig();
-      expect(initialConfig).toEqual(new Map()); // Rust HashMap becomes JS Map
+      // Get initial empty config (using property getter, not method)
+      const initialConfig = node.config;
+      expect(initialConfig).toEqual({}); // Rust HashMap becomes JS object
       
       // Set new config
       const newConfig = {
@@ -183,9 +182,8 @@ describe('WASM Graph Module', () => {
       node.setConfig(newConfig);
       
       const retrievedConfig = node.getConfig();
-      // Convert Map back to object for comparison
-      const configObj = Object.fromEntries(retrievedConfig);
-      expect(configObj).toEqual(newConfig);
+      // Config is now returned as plain object, not Map
+      expect(retrievedConfig).toEqual(newConfig);
     });
 
     describe('compare', () => {

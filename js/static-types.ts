@@ -1,185 +1,24 @@
 import { v4 as uuidv4 } from 'uuid';
 import { generateUuidv5 } from './utils';
 import { getCurrentLanguage, slugify } from './utils';
-import { StaticGraphMeta, StaticNode } from './staticTypes/graph';
+import {
+  StaticGraphMeta,
+  StaticNode,
+  StaticTranslatableString,
+  StaticNodegroup,
+  StaticConstraint,
+  StaticCard,
+  StaticCardsXNodesXWidgets,
+  StaticFunctionsXGraphs,
+  StaticPublication,
+  StaticTile,
+  StaticGraph,
+  StaticEdge,
+} from '../pkg/wasm';
 
-class StaticTranslatableString extends String {
-  translations: Map<string, string>;
-  lang: string;
+// StaticEdge is now implemented in Rust and imported from ../pkg/wasm
 
-  constructor(
-    s: string | StaticTranslatableString,
-    lang: undefined | string = undefined,
-  ) {
-    let translations: Map<string, string>;
-    let finalLang: string;
-    if (s instanceof StaticTranslatableString) {
-      translations = new Map(s.translations);
-      if (lang === undefined) {
-        finalLang = s.lang;
-      } else {
-        finalLang = lang;
-      }
-    } else if (typeof s === "object") {
-      translations = new Map(Object.entries(s));
-      if (lang === undefined || !translations.has(lang)) {
-        const defaultLanguage = getCurrentLanguage();
-        if (!translations || translations.has(defaultLanguage)) {
-          finalLang = defaultLanguage;
-        } else {
-          finalLang = Object.keys(s)[0];
-        }
-      } else {
-        finalLang = lang;
-      }
-    } else {
-      translations = new Map();
-      finalLang = lang || getCurrentLanguage();
-      translations.set(finalLang, s);
-    }
-    s = translations.get(finalLang) || "";
-    super(s);
-    this.translations = translations;
-    this.lang = finalLang;
-  }
-
-  copy?() {
-    return new StaticTranslatableString(this, this.lang);
-  }
-
-  toString(): string {
-    const current = this.lang || getCurrentLanguage();
-    let asString;
-    if (this.translations.size) {
-      asString = this.translations.get(current) || this.translations.values().next().value
-    }
-    return `${asString}`;
-  }
-
-  toJSON(): {[key: string]: string} {
-    return Object.fromEntries(this.translations);
-  }
-}
-
-class StaticNodegroup {
-  cardinality: "1" | "n" | null;
-  legacygroupid: null;
-  nodegroupid: string;
-  parentnodegroup_id: string | null;
-
-  constructor(jsonData: StaticNodegroup) {
-    this.legacygroupid = jsonData.legacygroupid;
-    this.nodegroupid = jsonData.nodegroupid;
-    this.parentnodegroup_id = jsonData.parentnodegroup_id;
-    this.cardinality = jsonData.cardinality;
-  }
-
-  copy?(): StaticNodegroup {
-    return new StaticNodegroup(this);
-  }
-}
-
-class StaticConstraint {
-  card_id: string;
-  constraintid: string;
-  nodes: Array<string>;
-  uniquetoallinstances: boolean;
-
-  constructor(jsonData: StaticConstraint) {
-    this.card_id = jsonData.card_id;
-    this.constraintid = jsonData.constraintid;
-    this.nodes = jsonData.nodes;
-    this.uniquetoallinstances = jsonData.uniquetoallinstances;
-  }
-}
-
-class StaticCard {
-  active: boolean;
-  cardid: string;
-  component_id: string;
-  config?: object;
-  constraints: Array<StaticConstraint>;
-  cssclass: null | string;
-  description: string | null;
-  graph_id: string;
-  helpenabled: boolean;
-  helptext: StaticTranslatableString;
-  helptitle: StaticTranslatableString;
-  instructions: StaticTranslatableString;
-  is_editable: boolean;
-  name: StaticTranslatableString;
-  nodegroup_id: string;
-  sortorder: number | null;
-  visible: boolean;
-
-  constructor(jsonData: StaticCard) {
-    this.active = jsonData.active;
-    this.cardid = jsonData.cardid;
-    this.component_id = jsonData.component_id;
-    this.config = jsonData.config;
-    this.constraints = jsonData.constraints.map(
-      (constraint) => new StaticConstraint(constraint),
-    );
-    this.cssclass = jsonData.cssclass;
-    this.description = jsonData.description;
-    this.graph_id = jsonData.graph_id;
-    this.helpenabled = jsonData.helpenabled;
-    this.helptext = new StaticTranslatableString(jsonData.helptext);
-    this.helptitle = new StaticTranslatableString(jsonData.helptitle);
-    this.instructions = new StaticTranslatableString(jsonData.instructions);
-    this.is_editable = jsonData.is_editable;
-    this.name = new StaticTranslatableString(jsonData.name);
-    this.nodegroup_id = jsonData.nodegroup_id;
-    this.sortorder = jsonData.sortorder;
-    this.visible = jsonData.visible;
-  }
-}
-
-class StaticCardsXNodesXWidgets {
-  card_id: string;
-  config: object;
-  id: string;
-  label: StaticTranslatableString;
-  node_id: string;
-  sortorder: number;
-  visible: boolean;
-  widget_id: string;
-
-  constructor(jsonData: StaticCardsXNodesXWidgets) {
-    this.card_id = jsonData.card_id;
-    this.config = jsonData.config;
-    this.id = jsonData.id;
-    this.label = new StaticTranslatableString(jsonData.label);
-    this.node_id = jsonData.node_id;
-    this.sortorder = jsonData.sortorder;
-    this.visible = jsonData.visible;
-    this.widget_id = jsonData.widget_id;
-  }
-}
-
-class StaticEdge {
-  description: string | null;
-  domainnode_id: string;
-  edgeid: string;
-  graph_id: string;
-  name: null | string;
-  ontologyproperty: null | string = null;
-  rangenode_id: string;
-
-  constructor(jsonData: StaticEdge) {
-    this.description = jsonData.description;
-    this.domainnode_id = jsonData.domainnode_id;
-    this.edgeid = jsonData.edgeid;
-    this.graph_id = jsonData.graph_id;
-    this.name = jsonData.name;
-    this.rangenode_id = jsonData.rangenode_id;
-    this.ontologyproperty = jsonData.ontologyproperty;
-  }
-
-  copy?(): StaticEdge {
-    return new StaticEdge(this);
-  }
-}
+// StaticGraph is now implemented in Rust and imported from ../pkg/wasm
 
 interface IStaticDescriptorConfig {
   descriptor_types: {
@@ -188,153 +27,8 @@ interface IStaticDescriptorConfig {
   }[],
 };
 
-class StaticFunctionsXGraphs {
-  config: IStaticDescriptorConfig;
-  function_id: string;
-  graph_id: string;
-  id: string;
-
-  constructor(jsonData: StaticFunctionsXGraphs) {
-    this.config = jsonData.config;
-    this.function_id = jsonData.function_id;
-    this.graph_id = jsonData.graph_id;
-    this.id = jsonData.id;
-  }
-
-  copy(): StaticFunctionsXGraphs {
-    return new StaticFunctionsXGraphs(this);
-  }
-}
-
-class StaticPublication {
-  graph_id: string;
-  notes: null | string;
-  publicationid: string;
-  published_time: string;
-
-  constructor(jsonData: StaticPublication) {
-    this.graph_id = jsonData.graph_id;
-    this.notes = jsonData.notes;
-    this.publicationid = jsonData.publicationid;
-    this.published_time = jsonData.published_time;
-  }
-
-  copy?(): StaticPublication {
-    return new StaticPublication(this);
-  }
-}
-
-class StaticGraph {
-  author: string;
-  cards: Array<StaticCard> | null = null;
-  cards_x_nodes_x_widgets: Array<StaticCardsXNodesXWidgets> | null = null;
-  color: string | null;
-  config: object;
-  deploymentdate: null | string = null;
-  deploymentfile: null | string = null;
-  description: StaticTranslatableString;
-  edges: Array<StaticEdge>;
-  functions_x_graphs: Array<StaticFunctionsXGraphs> | null = null;
-  graphid: string;
-  iconclass: string;
-  is_editable: boolean | null = null;
-  isresource: boolean;
-  jsonldcontext: string | null = null;
-  name: StaticTranslatableString;
-  nodegroups: Array<StaticNodegroup>;
-  nodes: Array<StaticNode>;
-  ontology_id: string | null = null;
-  publication: StaticPublication | null = null;
-  relatable_resource_model_ids: Array<string>;
-  resource_2_resource_constraints: Array<any> | null = null;
-  root: StaticNode;
-  slug: string | null = null;
-  subtitle: StaticTranslatableString;
-  template_id: string;
-  version: string;
-
-  constructor(jsonData: StaticGraph) {
-    this.author = jsonData.author;
-    this.cards =
-      jsonData.cards && jsonData.cards.map((card) => new StaticCard(card));
-    this.cards_x_nodes_x_widgets =
-      jsonData.cards_x_nodes_x_widgets &&
-      jsonData.cards_x_nodes_x_widgets.map(
-        (card_x_node_x_widget) =>
-          new StaticCardsXNodesXWidgets(card_x_node_x_widget),
-      );
-    this.color = jsonData.color;
-    this.config = jsonData.config;
-    this.deploymentdate = jsonData.deploymentdate;
-    this.deploymentfile = jsonData.deploymentfile;
-    this.description = new StaticTranslatableString(jsonData.description);
-    this.edges = jsonData.edges.map((edge) => new StaticEdge(edge));
-    this.functions_x_graphs =
-      jsonData.functions_x_graphs &&
-      jsonData.functions_x_graphs.map(
-        (functions_x_graphs) => new StaticFunctionsXGraphs(functions_x_graphs),
-      );
-    this.graphid = jsonData.graphid;
-    this.iconclass = jsonData.iconclass;
-    this.is_editable = jsonData.is_editable;
-    this.isresource = jsonData.isresource;
-    this.jsonldcontext = jsonData.jsonldcontext;
-    this.name = new StaticTranslatableString(jsonData.name);
-    this.nodegroups = jsonData.nodegroups.map(
-      (nodegroup) => new StaticNodegroup(nodegroup),
-    );
-    // We should probably confirm that there is one node in nodes and it is
-    // equivalent to root.
-    this.nodes = jsonData.nodes.map((node) => new StaticNode(node));
-    this.ontology_id = jsonData.ontology_id;
-    this.publication =
-      jsonData.publication && new StaticPublication(jsonData.publication);
-    this.relatable_resource_model_ids = jsonData.relatable_resource_model_ids;
-    this.resource_2_resource_constraints =
-      jsonData.resource_2_resource_constraints;
-    this.root = jsonData.root;
-    this.slug = jsonData.slug;
-    this.subtitle = new StaticTranslatableString(jsonData.subtitle);
-    this.template_id = jsonData.template_id;
-    this.version = jsonData.version;
-  }
-
-  // TODO: complete deepcopy
-  copy?(): StaticGraph {
-    const newGraph = new StaticGraph(this);
-    Object.assign(newGraph, {
-      author: this.author,
-      cards: this.cards?.map(card => new StaticCard(card)) || [],
-      cards_x_nodes_x_widgets: this.cards_x_nodes_x_widgets?.map(cnw => new StaticCardsXNodesXWidgets(cnw)) || [],
-      color: this.color,
-      config: Object.assign({}, this.config), // TODO: deepcopy;
-      deploymentdate: this.deploymentdate,
-      deploymentfile: this.deploymentfile,
-      description: this.description.copy && this.description.copy() || this.description,
-      edges: this.edges.map(edge => edge.copy && edge.copy() || edge),
-      functions_x_graphs: this.functions_x_graphs?.map(fxg => fxg.copy()) || [],
-      graphid: this.graphid,
-      iconclass: this.iconclass,
-      is_editable: this.is_editable,
-      isresource: this.isresource,
-      jsonldcontext: this.jsonldcontext,
-      name: this.name.copy && this.name.copy() || this.name,
-      nodegroups: this.nodegroups?.map(ng => ng.copy && ng.copy() || ng),
-      nodes: this.nodes?.map(n => n.copy && n.copy() || n),
-      ontology_id: this.ontology_id,
-      publication: this.publication?.copy && this.publication.copy() || null,
-      relatable_resource_model_ids: [...this.relatable_resource_model_ids || []],
-      resource_2_resource_constraints: [...this.resource_2_resource_constraints || []],
-      root: this.root.copy && this.root.copy() || this.root,
-      slug: this.slug,
-      subtitle: this.subtitle.copy && this.subtitle.copy(),
-      template_id: this.template_id,
-      version: this.version
-    });
-    return newGraph;
-  }
-
-  static create(props: {
+// Factory function for creating StaticGraph instances (kept in TypeScript)
+function createStaticGraph(props: {
     author?: string,
     color?: string | null,
     config?: object,
@@ -363,11 +57,20 @@ class StaticGraph {
       published_time: (new Date()).toISOString()
     }) : null;
     // TODO: check name is not just string in upstream
-    const name = props.name ? (
-      props.name instanceof StaticTranslatableString ?
-      props.name : new StaticTranslatableString(props.name)
-    ) : new StaticTranslatableString('');
-    const alias = slugify(name);
+    // Convert name to plain JS object for Rust deserialization
+    let nameForRust;
+    if (props.name) {
+      if (props.name instanceof StaticTranslatableString) {
+        nameForRust = props.name.toJSON();
+      } else if (typeof props.name === 'string') {
+        nameForRust = props.name;
+      } else {
+        nameForRust = props.name;
+      }
+    } else {
+      nameForRust = '';
+    }
+    const alias = slugify(typeof nameForRust === 'string' ? nameForRust : JSON.stringify(nameForRust));
     const root = new StaticNode({
       "alias": alias,
       "config": {},
@@ -381,7 +84,7 @@ class StaticGraph {
       "isrequired": false,
       "issearchable": true,
       "istopnode": true,
-      "name": name.toString(),
+      "name": typeof nameForRust === 'string' ? nameForRust : (nameForRust.en || Object.values(nameForRust)[0] || ''),
       "nodegroup_id": null,
       "nodeid": graphid,
       "ontologyclass": props.ontology_id || null,
@@ -389,26 +92,47 @@ class StaticGraph {
       "sortorder": 0,
       "sourcebranchpublication_id": null
     });
+
+    // Convert description and subtitle to plain JS for Rust deserialization
+    let descriptionForRust;
+    if (props.description) {
+      if (props.description instanceof StaticTranslatableString) {
+        descriptionForRust = props.description.toJSON();
+      } else {
+        descriptionForRust = props.description;
+      }
+    } else {
+      descriptionForRust = '';
+    }
+
+    let subtitleForRust;
+    if (props.subtitle) {
+      if (props.subtitle instanceof StaticTranslatableString) {
+        subtitleForRust = props.subtitle.toJSON();
+      } else {
+        subtitleForRust = props.subtitle;
+      }
+    } else {
+      subtitleForRust = '';
+    }
+
     return new StaticGraph({
-      author: props.author,
+      author: props.author || '',
       cards: null,
       cards_x_nodes_x_widgets: null,
       color: props.color || null,
       config: props.config || {},
       deploymentdate: props.deploymentdate || null,
       deploymentfile: props.deploymentfile || null,
-      description: props.description ? (
-        props.description instanceof StaticTranslatableString ?
-        props.description : new StaticTranslatableString(props.description)
-      ) : null,
+      description: descriptionForRust,
       edges: [],
       functions_x_graphs: [],
       graphid: graphid,
       iconclass: props.iconclass || '',
       is_editable: props.is_editable || null,
-      isresource: props.isresource || null,
+      isresource: props.isresource !== undefined ? props.isresource : true,
       jsonldcontext: props.jsonldcontext || null,
-      name: name,
+      name: nameForRust,
       nodegroups: [],
       nodes: [root.copy()],
       ontology_id: props.ontology_id || null,
@@ -417,20 +141,14 @@ class StaticGraph {
       resource_2_resource_constraints: props.resource_2_resource_constraints || null,
       root: root,
       slug: props.slug || null,
-      subtitle: props.subtitle ? (
-        props.subtitle instanceof StaticTranslatableString ?
-        props.subtitle : new StaticTranslatableString(props.subtitle)
-      ) : new StaticTranslatableString(''),
+      subtitle: subtitleForRust,
       template_id: props.template_id || '',
       version: props.version || ''
     });
-  }
 }
 
 /// Resources
 //
-type StaticProvisionalEdit = any;
-
 class StaticValue {
   id: string;
   value: string;
@@ -664,39 +382,6 @@ class StaticCollection {
   }
 }
 
-class StaticTile {
-  data: Map<
-    string,
-    object | Map<string, any> | Array<any> | null | number | boolean | string
-  >;
-  nodegroup_id: string;
-  resourceinstance_id: string;
-  tileid: string | null;
-  parenttile_id: string | null = null;
-  provisionaledits: null | Array<StaticProvisionalEdit> = null;
-  sortorder: number | null = null;
-
-  constructor(jsonData: StaticTile) {
-    this.data = jsonData.data;
-    if (typeof this.data === 'object' && !(this.data instanceof Map)) {
-      this.data = new Map(Object.entries(this.data));
-    }
-    this.nodegroup_id = jsonData.nodegroup_id;
-    this.resourceinstance_id = jsonData.resourceinstance_id;
-    this.tileid = jsonData.tileid;
-    this.parenttile_id = jsonData.parenttile_id;
-    this.provisionaledits = jsonData.provisionaledits;
-    this.sortorder = jsonData.sortorder;
-  }
-
-  ensureId(): string {
-    if (!this.tileid) {
-      this.tileid = crypto.randomUUID();
-    }
-    return this.tileid;
-  }
-}
-
 class StaticResourceDescriptors {
   [key: string]: (string | undefined | (() => boolean));
   name?: string;
@@ -825,6 +510,7 @@ export {
   StaticValue,
   StaticTile,
   StaticGraph,
+  createStaticGraph,
   StaticResource,
   StaticResourceMetadata,
   StaticNode,
@@ -841,5 +527,6 @@ export {
   StaticResourceDescriptors,
   StaticTranslatableString,
   StaticConstraint,
+  StaticPublication,
   type IStaticDescriptorConfig
 };

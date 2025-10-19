@@ -1,10 +1,11 @@
-import { assert, describe, beforeEach } from 'vitest';
+import { assert, describe, beforeAll, beforeEach } from 'vitest';
 import fetchMock from '@fetch-mock/vitest';
 import { ArchesClientLocal } from "../js/client";
 import { ResourceInstanceViewModel } from "../js/viewModels";
 import { graphManager, staticStore } from "../js/graphManager";
 import { RDM } from "../js/rdm";
 import { apiTest } from "./apiTest";
+import { initWasmForTests } from './wasm-init';
 
 
 fetchMock.mockGlobal();
@@ -17,6 +18,11 @@ staticStore.archesClient = archesClient;
 RDM.archesClient = archesClient;
 
 describe("testing api", () => {
+  beforeAll(async () => {
+    // Initialize WASM module for tests
+    await initWasmForTests();
+  });
+
   beforeEach(async () => {
     fetchMock.mockReset();
     await graphManager.initialize();

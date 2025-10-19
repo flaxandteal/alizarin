@@ -2,6 +2,7 @@ import { StaticTile, StaticNode } from "./static-types";
 import { ISemantic, IViewModel, IPseudo, IRIVM, IModelWrapper } from "./interfaces";
 import { getViewModel } from "./viewModels";
 import { AttrPromise } from "./utils";
+import { PseudoNode } from "../pkg/wasm";
 
 class PseudoUnavailable implements IPseudo {
   parentNode: PseudoValue<any> | null = null;
@@ -42,31 +43,19 @@ class PseudoUnavailable implements IPseudo {
   }
 }
 
-const ITERABLE_DATATYPES = [
-  "concept-list",
-  "resource-instance-list",
-  "domain-value-list"
-];
+// PseudoNode is now implemented in Rust and imported from ../pkg/wasm
+// ITERABLE_DATATYPES constant is also defined in Rust (src/pseudos.rs)
 
-class PseudoValue<VM extends IViewModel> implements IPseudo {
-  node: StaticNode;
+class PseudoValue<VM extends IViewModel> extends PseudoNode implements IPseudo {
+  // Note: node, parentNode, datatype, childNodes, isOuter, isInner, inner are now in Rust PseudoNode base class
+
   tile: StaticTile | null;
   value: any;
   parent: IRIVM<any> | null;
-  parentNode: PseudoValue<any> | null;
   valueLoaded: boolean | undefined = false;
-  datatype: string | null = null;
   originalTile: StaticTile | null;
   accessed: boolean;
-  childNodes: Map<string, StaticNode>;
-  isOuter: boolean = false;
-  isInner: boolean = false;
-  inner: PseudoValue<ISemantic> | null = null;
   independent: boolean;
-
-  isIterable(): boolean {
-    return this.datatype !== null && ITERABLE_DATATYPES.includes(this.datatype);
-  }
 
   describeField() {
     let fieldName = this.node.name;
@@ -95,27 +84,16 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     childNodes: Map<string, StaticNode>,
     inner: boolean | PseudoValue<ISemantic>,
   ) {
-    this.node = node;
+    super(node, childNodes, inner);
     this.tile = tile;
     this.independent = tile === null;
     if (!parent) {
       throw Error("Must have a parent or parent class for a pseudo-node");
     }
     this.parent = parent;
-    this.parentNode = null;
-    this.childNodes = childNodes;
     this.value = value;
     this.accessed = false;
     this.originalTile = tile;
-    this.datatype = node.datatype;
-    if (inner instanceof PseudoValue) {
-      this.isOuter = true;
-      this.inner = inner;
-    }
-    if (inner === true) {
-      this.isInner = true;
-      this.datatype = 'semantic';
-    }
   }
 
   // TODO deepcopy
@@ -455,4 +433,4 @@ function makePseudoCls(
   return value;
 }
 
-export { PseudoValue, PseudoList, PseudoUnavailable, makePseudoCls };
+export { PseudoNode, PseudoValue, PseudoList, PseudoUnavailable, makePseudoCls };

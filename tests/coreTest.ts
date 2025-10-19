@@ -1,8 +1,8 @@
 import { test } from "vitest";
-import { StaticGraph, StaticCollection, StaticConcept } from '../js/static-types';
+import { createStaticGraph, StaticCollection, StaticConcept } from '../js/static-types';
 
 async function basicGraph({}, use: any) {
-  const graph = StaticGraph.create({
+  const graph = createStaticGraph({
     author: "Author",
     description: "Graph description",
     name: "Graph",
