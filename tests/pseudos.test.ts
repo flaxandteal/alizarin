@@ -53,7 +53,7 @@ describe('Pseudos', () => {
       const pseudo = new PseudoUnavailable(node);
 
       expect(pseudo.node).toBe(node);
-      expect(pseudo.parentNode).toBe(null);
+      expect(pseudo.parentValue).toBe(null);
       expect(pseudo.tile).toBe(null);
       expect(pseudo.isOuter).toBe(false);
     });
@@ -160,7 +160,6 @@ describe('Pseudos', () => {
     it('should create a PseudoValue with basic properties', () => {
       const pseudo = new PseudoValue(node, tile, null, parent, childNodes, false);
 
-      expect(pseudo.node).toBe(node);
       expect(pseudo.tile).toBe(tile);
       expect(pseudo.parent).toBe(parent);
       expect(pseudo.accessed).toBe(false);
@@ -361,7 +360,7 @@ describe('Pseudos', () => {
       it('should return simple placeholder for non-iterable node', () => {
         const pseudo = new PseudoValue(node, tile, null, parent, childNodes, false);
 
-        const placeholder = pseudo.getNodePlaceholder();
+        const placeholder = pseudo.node.getNodePlaceholder();
 
         expect(placeholder).toBe('.test_alias');
       });
@@ -375,7 +374,7 @@ describe('Pseudos', () => {
 
         const pseudo = new PseudoValue(iterableNode, tile, null, parent, childNodes, false);
 
-        const placeholder = pseudo.getNodePlaceholder();
+        const placeholder = pseudo.node.getNodePlaceholder();
 
         expect(placeholder).toBe('.iterable_alias[*]');
       });
@@ -394,9 +393,9 @@ describe('Pseudos', () => {
         } as any);
 
         const childPseudo = new PseudoValue(childNodeData, tile, null, parent, childNodes, false);
-        childPseudo.parentNode = parentPseudo;
+        childPseudo.parentValue = parentPseudo;
 
-        const placeholder = childPseudo.getNodePlaceholder();
+        const placeholder = childPseudo.node.getNodePlaceholder();
 
         expect(placeholder).toBe('..parent_aliaschild_alias');
       });
@@ -416,9 +415,9 @@ describe('Pseudos', () => {
         } as any);
 
         const childPseudo = new PseudoValue(childNodeData, tile, null, parent, childNodes, false);
-        childPseudo.parentNode = parentPseudo;
+        childPseudo.parentValue = parentPseudo;
 
-        const placeholder = childPseudo.getNodePlaceholder();
+        const placeholder = childPseudo.node.getNodePlaceholder();
 
         expect(placeholder).toBe('..parent_list[*]child_field');
       });
@@ -438,7 +437,7 @@ describe('Pseudos', () => {
         } as any);
 
         const parentPseudo = new PseudoValue(parentNodeData, tile, null, parent, childNodes, false);
-        parentPseudo.parentNode = grandparentPseudo;
+        parentPseudo.parentValue = grandparentPseudo;
 
         const childNodeData = new StaticNode({
           ...node.toJSON(),
@@ -446,9 +445,9 @@ describe('Pseudos', () => {
         } as any);
 
         const childPseudo = new PseudoValue(childNodeData, tile, null, parent, childNodes, false);
-        childPseudo.parentNode = parentPseudo;
+        childPseudo.parentValue = parentPseudo;
 
-        const placeholder = childPseudo.getNodePlaceholder();
+        const placeholder = childPseudo.node.getNodePlaceholder();
 
         expect(placeholder).toBe('...level1level2[*]level3');
       });
@@ -517,9 +516,9 @@ describe('Pseudos', () => {
 
         const pseudo = new PseudoValue(node, tile, null, parent, children, false);
 
-        expect(pseudo.childNodes).toBe(children);
-        expect(pseudo.childNodes.size).toBe(1);
-        expect(pseudo.childNodes.get('child-1')).toBe(childNode);
+        expect(pseudo.node.childNodes).toBe(children);
+        expect(pseudo.node.childNodes.size).toBe(1);
+        expect(pseudo.node.childNodes.get('child-1')).toBe(childNode);
       });
 
       it('should handle empty childNodes map', () => {
@@ -527,8 +526,8 @@ describe('Pseudos', () => {
 
         const pseudo = new PseudoValue(node, tile, null, parent, emptyChildren, false);
 
-        expect(pseudo.childNodes).toBe(emptyChildren);
-        expect(pseudo.childNodes.size).toBe(0);
+        expect(pseudo.node.childNodes).toBe(emptyChildren);
+        expect(pseudo.node.childNodes.size).toBe(0);
       });
     });
   });
@@ -834,7 +833,7 @@ describe('Pseudos', () => {
       const result = makePseudoCls(model, 'test_node', true, null, wkri);
 
       expect(result).toBeInstanceOf(PseudoValue);
-      expect((result as PseudoValue<any>).node).toBe(node);
+      expect((result as PseudoValue<any>).node.toJSON()).toStrictEqual(node.toJSON());
     });
 
     it('should create PseudoList for cardinality n collector node', () => {

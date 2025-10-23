@@ -600,32 +600,32 @@ impl StaticGraphMeta {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct StaticNode {
     #[serde(skip_serializing_if = "Option::is_none")]
-    alias: Option<String>,
+    pub(crate) alias: Option<String>,
     #[serde(default)]
-    config: HashMap<String, serde_json::Value>,
-    datatype: String,
+    pub(crate) config: HashMap<String, serde_json::Value>,
+    pub(crate) datatype: String,
     #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_string_or_object", default)]
-    description: Option<String>,
-    exportable: bool,
+    pub(crate) description: Option<String>,
+    pub(crate) exportable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    fieldname: Option<String>,
-    graph_id: String,
-    hascustomalias: bool,
-    is_collector: bool,
-    isrequired: bool,
-    issearchable: bool,
-    istopnode: bool,
-    name: String,
+    pub(crate) fieldname: Option<String>,
+    pub(crate) graph_id: String,
+    pub(crate) hascustomalias: bool,
+    pub(crate) is_collector: bool,
+    pub(crate) isrequired: bool,
+    pub(crate) issearchable: bool,
+    pub(crate) istopnode: bool,
+    pub(crate) name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    nodegroup_id: Option<String>,
-    nodeid: String,
+    pub(crate) nodegroup_id: Option<String>,
+    pub(crate) nodeid: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    ontologyclass: Option<String>,
+    pub(crate) ontologyclass: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    parentproperty: Option<String>,
-    sortorder: i32,
+    pub(crate) parentproperty: Option<String>,
+    pub(crate) sortorder: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    sourcebranchpublication_id: Option<String>,
+    pub(crate) sourcebranchpublication_id: Option<String>,
 }
 
 #[wasm_bindgen]
@@ -952,11 +952,11 @@ impl StaticNode {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct StaticNodegroup {
     #[serde(skip_serializing_if = "Option::is_none")]
-    cardinality: Option<String>, // "1" | "n" | null
-    legacygroupid: Option<String>, // Always null in practice
-    nodegroupid: String,
+    pub(crate) cardinality: Option<String>, // "1" | "n" | null
+    pub(crate) legacygroupid: Option<String>, // Always null in practice
+    pub(crate) nodegroupid: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    parentnodegroup_id: Option<String>,
+    pub(crate) parentnodegroup_id: Option<String>,
 }
 
 #[wasm_bindgen]
@@ -2110,14 +2110,14 @@ impl StaticNode {
 pub struct StaticEdge {
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
-    domainnode_id: String,
+    pub(crate) domainnode_id: String,
     edgeid: String,
     graph_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ontologyproperty: Option<String>,
-    rangenode_id: String,
+    pub(crate) rangenode_id: String,
 }
 
 #[wasm_bindgen]
@@ -2211,7 +2211,7 @@ pub struct StaticGraph {
     #[serde(skip_serializing_if = "Option::is_none")]
     deploymentfile: Option<String>,
     description: StaticTranslatableString,
-    edges: Vec<StaticEdge>,
+    pub(crate) edges: Vec<StaticEdge>,
     #[serde(skip_serializing_if = "Option::is_none")]
     functions_x_graphs: Option<Vec<StaticFunctionsXGraphs>>,
     graphid: String,
@@ -2222,8 +2222,8 @@ pub struct StaticGraph {
     #[serde(skip_serializing_if = "Option::is_none")]
     jsonldcontext: Option<String>,
     name: StaticTranslatableString,
-    nodegroups: Vec<StaticNodegroup>,
-    nodes: Vec<StaticNode>,
+    pub(crate) nodegroups: Vec<StaticNodegroup>,
+    pub(crate) nodes: Vec<StaticNode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ontology_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2494,5 +2494,142 @@ impl StaticGraph {
             .as_ref()?
             .get(alias)
             .and_then(|&idx| self.nodes.get(idx))
+    }
+}
+
+// WKRM - Well-Known Resource Model
+#[wasm_bindgen]
+#[derive(Clone, Debug)]
+pub struct WKRM {
+    model_name: String,
+    model_class_name: String,
+    graph_id: String,
+    meta: JsValue, // Store as JsValue to preserve object identity
+}
+
+#[wasm_bindgen]
+impl WKRM {
+    #[wasm_bindgen(constructor)]
+    pub fn new(meta: JsValue) -> Result<WKRM, JsValue> {
+        // Get the graphid
+        let graph_id = js_sys::Reflect::get(&meta, &JsValue::from_str("graphid"))
+            .ok()
+            .and_then(|v| v.as_string())
+            .unwrap_or_default();
+
+        // Get the name
+        let name_val = js_sys::Reflect::get(&meta, &JsValue::from_str("name"))
+            .ok()
+            .unwrap_or(JsValue::NULL);
+
+        let model_name = if !name_val.is_null() && !name_val.is_undefined() {
+            // Try to get as string (could be a StaticTranslatableString with toString method)
+            if let Some(name_str) = name_val.as_string() {
+                name_str
+            } else if let Ok(to_string_fn) = js_sys::Reflect::get(&name_val, &JsValue::from_str("toString")) {
+                if let Ok(func) = to_string_fn.dyn_into::<js_sys::Function>() {
+                    if let Ok(result) = func.call0(&name_val) {
+                        result.as_string().unwrap_or_else(|| "Unnamed".to_string())
+                    } else {
+                        "Unnamed".to_string()
+                    }
+                } else {
+                    "Unnamed".to_string()
+                }
+            } else {
+                "Unnamed".to_string()
+            }
+        } else {
+            "Unnamed".to_string()
+        };
+
+        // Get the slug
+        let slug_val = js_sys::Reflect::get(&meta, &JsValue::from_str("slug"))
+            .ok()
+            .and_then(|v| v.as_string());
+
+        // Convert slug or model_name to PascalCase for model_class_name
+        let base_name = slug_val.as_ref().unwrap_or(&model_name);
+        let model_class_name = Self::to_pascal_case(base_name);
+
+        Ok(WKRM {
+            model_name,
+            model_class_name,
+            graph_id,
+            meta,
+        })
+    }
+
+    // Convert a string with underscores, hyphens, or spaces to PascalCase
+    fn to_pascal_case(s: &str) -> String {
+        // Replace underscores and hyphens with spaces
+        let normalized = s.replace('_', " ").replace('-', " ");
+
+        // Split by whitespace and capitalize each word
+        let pascal: String = normalized
+            .split_whitespace()
+            .filter(|word| !word.is_empty())
+            .map(|word| {
+                let mut chars = word.chars();
+                match chars.next() {
+                    Some(first) => {
+                        // Capitalize first character, keep rest as-is (don't lowercase)
+                        first.to_uppercase().collect::<String>() + chars.as_str()
+                    }
+                    None => String::new(),
+                }
+            })
+            .collect();
+
+        // Ensure first character is uppercase
+        if pascal.is_empty() {
+            pascal
+        } else {
+            let mut chars = pascal.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        }
+    }
+
+    #[wasm_bindgen(getter = modelName)]
+    pub fn get_model_name(&self) -> String {
+        self.model_name.clone()
+    }
+
+    #[wasm_bindgen(setter = modelName)]
+    pub fn set_model_name(&mut self, value: String) {
+        self.model_name = value;
+    }
+
+    #[wasm_bindgen(getter = modelClassName)]
+    pub fn get_model_class_name(&self) -> String {
+        self.model_class_name.clone()
+    }
+
+    #[wasm_bindgen(setter = modelClassName)]
+    pub fn set_model_class_name(&mut self, value: String) {
+        self.model_class_name = value;
+    }
+
+    #[wasm_bindgen(getter = graphId)]
+    pub fn get_graph_id(&self) -> String {
+        self.graph_id.clone()
+    }
+
+    #[wasm_bindgen(setter = graphId)]
+    pub fn set_graph_id(&mut self, value: String) {
+        self.graph_id = value;
+    }
+
+    #[wasm_bindgen(getter = meta)]
+    pub fn get_meta(&self) -> JsValue {
+        self.meta.clone()
+    }
+
+    #[wasm_bindgen(setter = meta)]
+    pub fn set_meta(&mut self, value: JsValue) {
+        self.meta = value;
     }
 }

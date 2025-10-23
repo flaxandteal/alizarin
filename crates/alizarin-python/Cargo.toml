@@ -1,0 +1,18 @@
+[package]
+name = "alizarin-python"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "alizarin"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.20", features = ["extension-module"] }
+serde.workspace = true
+serde_json.workspace = true
+alizarin-core = { workspace = true }
+
+[dev-dependencies]
