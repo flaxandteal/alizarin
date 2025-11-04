@@ -5,7 +5,7 @@ import { AttrPromise } from "./utils";
 import { PseudoNode } from "../pkg/wasm";
 
 class PseudoUnavailable implements IPseudo {
-  parentNode: PseudoValue<any> | null = null;
+  parentValue: PseudoValue<any> | null = null;
   tile: null = null;
   node: StaticNode;
   isOuter: boolean = false;
@@ -46,16 +46,49 @@ class PseudoUnavailable implements IPseudo {
 // PseudoNode is now implemented in Rust and imported from ../pkg/wasm
 // ITERABLE_DATATYPES constant is also defined in Rust (src/pseudos.rs)
 
-class PseudoValue<VM extends IViewModel> extends PseudoNode implements IPseudo {
+class PseudoValue<VM extends IViewModel> implements IPseudo {
   // Note: node, parentNode, datatype, childNodes, isOuter, isInner, inner are now in Rust PseudoNode base class
 
+  node: PseudoNode;
   tile: StaticTile | null;
   value: any;
   parent: IRIVM<any> | null;
+  _parentValue: PseudoValue<any> | null = null;
   valueLoaded: boolean | undefined = false;
   originalTile: StaticTile | null;
   accessed: boolean;
   independent: boolean;
+  inner: PseudoValue<any> | null = null;
+
+  // Proxy getters to node properties
+  get datatype() {
+    return this.node.datatype;
+  }
+
+  get isInner() {
+    return this.node.isInner;
+  }
+
+  get isOuter() {
+    return this.node.isOuter;
+  }
+
+  get inner() {
+    return this.inner;
+  }
+
+  get parentValue() {
+    return this._parentValue;
+  }
+
+  set parentValue(newParentValue: PseudoValue) {
+    this.node.parentNode = newParentValue.node;
+    this._parentValue = newParentValue;
+  }
+
+  isIterable() {
+    return this.node.isIterable();
+  }
 
   describeField() {
     let fieldName = this.node.name;
@@ -77,23 +110,37 @@ class PseudoValue<VM extends IViewModel> extends PseudoNode implements IPseudo {
   }
 
   constructor(
-    node: StaticNode,
+    node: StaticNode | PseudoNode,
     tile: StaticTile | null,
     value: any,
-    parent: IRIVM<any> | null,
+    parent: IRIVM<any>,
     childNodes: Map<string, StaticNode>,
-    inner: boolean | PseudoValue<ISemantic>,
   ) {
-    super(node, childNodes, inner);
+    // Clone the node to avoid ownership transfer issues with WASM
     this.tile = tile;
     this.independent = tile === null;
     if (!parent) {
       throw Error("Must have a parent or parent class for a pseudo-node");
     }
+    if (node.constructor.name === 'StaticNode') {
+      this.node = parent.__.createPseudoNode(node.alias);
+    } else {
+      this.node = node;
+    }
     this.parent = parent;
     this.value = value;
     this.accessed = false;
     this.originalTile = tile;
+    if (node.isOuter) {
+      this.inner = new PseudoValue(
+        node.inner,
+        tile,
+        null,
+        parent,
+        childNodes,
+        true
+      )
+    }
   }
 
   // TODO deepcopy
@@ -216,13 +263,14 @@ class PseudoValue<VM extends IViewModel> extends PseudoNode implements IPseudo {
           data = outerData;
         }
       }
+      const childNodes: Map<string, StaticNode> = this.parent.__.getChildNodes(this.node.nodeid);
       const vm = getViewModel(
         this,
         this.tile,
         this.node,
         data,
         this.parent,
-        this.childNodes,
+        childNodes,
         this.isInner
       );
 
@@ -288,7 +336,7 @@ class PseudoValue<VM extends IViewModel> extends PseudoNode implements IPseudo {
 class PseudoList extends Array implements IPseudo {
   node: StaticNode | undefined = undefined;
   parent: IRIVM<any> | null | undefined = undefined;
-  parentNode: PseudoValue<any> | null = null;
+  parentValue: PseudoValue<any> | null = null;
   tile: StaticTile | undefined;
   parenttileId: string | undefined;
   ghostChildren: Set<PseudoValue<any>> | null = null;
@@ -381,13 +429,15 @@ class PseudoList extends Array implements IPseudo {
   }
 }
 
+// makePseudoClsForNode is now imported from WASM
+
 // Fix wkri type.
 function makePseudoCls(
   model: IModelWrapper<any>,
   key: string,
   single: boolean,
   tile: StaticTile | null = null,
-  wkri: any | null = null,
+  wkri: any,
 ): PseudoList | PseudoValue<any> | PseudoUnavailable {
   const nodeObjs = model.getNodeObjectsByAlias();
   const nodeObj = nodeObjs.get(key);

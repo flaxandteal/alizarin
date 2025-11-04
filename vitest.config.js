@@ -8,6 +8,7 @@ export default defineConfig({
   test: {
     globals: true,
     setupFiles: ["./tests/setupVitest.js"],
+    bail: 1, // Exit immediately on first test failure
     pool: "threads",
     poolOptions: {
       threads: {

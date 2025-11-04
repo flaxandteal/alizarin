@@ -19,7 +19,8 @@ import {
   IStaticDescriptorConfig
 } from "./static-types";
 import { makePseudoCls, PseudoList } from "./pseudos.ts";
-import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext, SemanticViewModel } from "./viewModels.ts";
+import { WKRM, WASMResourceModelWrapper } from "../pkg/wasm";
+import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { CheckPermission, GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
 import { } from "./nodeConfig.ts";
 import { generateUuidv5, AttrPromise } from "./utils";
@@ -27,24 +28,7 @@ import { generateUuidv5, AttrPromise } from "./utils";
 const MAX_GRAPH_DEPTH = 100;
 const DESCRIPTOR_FUNCTION_ID = "60000000-0000-0000-0000-000000000001";
 
-class WKRM {
-  modelName: string;
-  modelClassName: string;
-  graphId: string;
-  meta: StaticGraphMeta;
-
-  constructor(meta: StaticGraphMeta) {
-    const name = meta.name ? meta.name.toString() : undefined;
-    this.modelName = name || "Unnamed";
-    this.graphId = meta.graphid;
-    this.modelClassName = (meta.slug || this.modelName)
-      .replace(/[_-]/g, " ")
-      .replace(/\s(.)/g, (c: string) => c.toUpperCase())
-      .replace(/\s/g, "");
-    this.modelClassName = this.modelClassName[0].toUpperCase() + this.modelClassName.slice(1);
-    this.meta = meta;
-  }
-}
+// WKRM is now imported from WASM
 
 class ConfigurationOptions {
   graphs: Array<string> | null | boolean;
@@ -922,16 +906,65 @@ class GraphMutator {
   }
 }
 
-class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
-  wkrm: WKRM;
-  graph: StaticGraph;
+// WASMResourceModelWrapper is now imported from WASM
+
+class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWrapper {
   viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>;
   permittedNodegroups?: Map<string | null, boolean | CheckPermission>;
 
   constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>) {
-    this.wkrm = wkrm;
-    this.graph = graph;
+    super(wkrm, graph);
     this.viewModelClass = viewModelClass;
+  }
+
+  getRoot(): NodeViewModel {
+    const pseudoNode = this.createPseudoNode(null);
+    return new NodeViewModel(pseudoNode, this);
+  }
+
+  buildNodes() {
+    const graph = this.graph ?? graphManager.getGraph(this.wkrm.graphId);
+    return this.buildNodesForGraph(graph);
+  }
+
+  getNodeObjects(): Map<string, StaticNode> {
+    if (!this.nodes) {
+      this.buildNodes();
+    }
+    if (!this.nodes) {
+      throw Error("Could not build nodes");
+    }
+    return this.nodes;
+  }
+
+  getNodeObjectsByAlias(): Map<string, StaticNode> {
+    if (!this.nodesByAlias) {
+      this.buildNodes();
+    }
+    if (!this.nodesByAlias) {
+      throw Error("Could not build nodes");
+    }
+    return this.nodesByAlias;
+  }
+
+  getEdges(): Map<string, string[]> {
+    if (!this.edges) {
+      this.buildNodes();
+    }
+    if (!this.edges) {
+      throw Error("Could not build edges");
+    }
+    return this.edges;
+  }
+
+  getNodegroupObjects(): Map<string, StaticNodegroup> {
+    if (!this.nodegroups) {
+      this.buildNodes();
+    }
+    if (!this.nodegroups) {
+      throw Error("Could not build nodegroups");
+    }
+    return this.nodegroups;
   }
 
   // TODO: Switch to getBranches
@@ -974,8 +1007,10 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   }
 
   pruneGraph(keepFunctions?: string[]): undefined {
+    // Get the graph once to avoid multiple clones
+    const graph = this.graph;
     const allNodegroups = this.getNodegroupObjects();
-    const root = this.graph.root.nodeid;
+    const root = graph.root.nodeid;
     // Strictly, this ultimately also contains nodes, but not all allowed nodes - the key point is that
     // it has only and all nodegroups that we will keep.
     const allowedNodegroups = new Map([...allNodegroups.values()].filter((nodegroup: StaticNodegroup) => {
@@ -1023,18 +1058,21 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
       return (node.nodegroup_id && allowedNodegroups.get(node.nodegroup_id)) || node.nodeid === root;
     }).map((node: StaticNode) => node.nodeid));
 
-    this.graph.cards = (this.graph.cards || []).filter((card: StaticCard) => allowedNodegroups.get(card.nodegroup_id));
-    this.graph.cards_x_nodes_x_widgets = (this.graph.cards_x_nodes_x_widgets || []).filter((card: StaticCardsXNodesXWidgets) => allowedNodes.has(card.node_id));
-    this.graph.edges = (this.graph.edges || []).filter((edge: StaticEdge) => (edge.domainnode_id === root || allowedNodes.has(edge.domainnode_id)) && allowedNodes.has(edge.rangenode_id));
-    this.graph.nodegroups = (this.graph.nodegroups || []).filter((ng: StaticNodegroup) => allowedNodegroups.has(ng.nodegroupid));
-    this.graph.nodes = (this.graph.nodes || []).filter((node: StaticNode) => allowedNodes.has(node.nodeid));
+    graph.cards = (graph.cards || []).filter((card: StaticCard) => allowedNodegroups.get(card.nodegroup_id));
+    graph.cards_x_nodes_x_widgets = (graph.cards_x_nodes_x_widgets || []).filter((card: StaticCardsXNodesXWidgets) => allowedNodes.has(card.node_id));
+    graph.edges = (graph.edges || []).filter((edge: StaticEdge) => (edge.domainnode_id === root || allowedNodes.has(edge.domainnode_id)) && allowedNodes.has(edge.rangenode_id));
+    graph.nodegroups = (graph.nodegroups || []).filter((ng: StaticNodegroup) => allowedNodegroups.has(ng.nodegroupid));
+    graph.nodes = (graph.nodes || []).filter((node: StaticNode) => allowedNodes.has(node.nodeid));
 
     // At this point, every originally-allowed nodegroup has an allowed parent, up to the root.
-    if (Array.isArray(keepFunctions) && this.graph.functions_x_graphs) {
-      this.graph.functions_x_graphs = this.graph.functions_x_graphs.filter((fxg: StaticFunctionsXGraphs) => keepFunctions.includes(fxg.function_id));
+    if (Array.isArray(keepFunctions) && graph.functions_x_graphs) {
+      graph.functions_x_graphs = graph.functions_x_graphs.filter((fxg: StaticFunctionsXGraphs) => keepFunctions.includes(fxg.function_id));
     } else {
-      this.graph.functions_x_graphs = [];
+      graph.functions_x_graphs = [];
     }
+
+    // Persist the modified graph back to the WASM wrapper
+    this.graph = graph;
   }
 
   exportGraph(): StaticGraph {
@@ -1177,128 +1215,6 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
       null
     );
     return instance;
-  }
-
-  edges: Map<string, string[]> | undefined;
-  nodes: Map<string, StaticNode> | undefined;
-  nodegroups: Map<string, StaticNodegroup> | undefined;
-  nodesByAlias: Map<string, StaticNode> | undefined;
-
-  getChildNodes(nodeId: string): Map<string, StaticNode> {
-    const childNodes = new Map<string, StaticNode>();
-    const edges = this.getEdges().get(nodeId);
-    if (edges) {
-      for (const [, n] of this.getNodeObjects()) {
-        if (edges.includes(n.nodeid)) {
-          if (n.alias) {
-            childNodes.set(n.alias, n);
-          }
-        }
-      }
-    }
-    return childNodes;
-  }
-
-  buildNodes() {
-    if (this.nodes || this.nodegroups) {
-      throw Error("Cache should never try and rebuild nodes when non-empty");
-    }
-
-    this.edges = new Map<string, string[]>();
-    this.nodes = new Map<string, StaticNode>();
-    this.nodegroups = new Map<string, StaticNodegroup>();
-
-    const graph = this.graph ?? graphManager.getGraph(this.wkrm.graphId);
-    if (!graph) {
-      throw Error(`Could not find graph ${this.wkrm.graphId} for resource`);
-    }
-    const nodes = new Map(graph.nodes.map((node) => [node.nodeid, node]));
-    const nodegroups = new Map(
-      graph.nodes
-        .filter((node) => node.nodegroup_id)
-        .map((node) => [
-          node.nodegroup_id || "",
-          new StaticNodegroup({
-            cardinality: "n",
-            legacygroupid: null,
-            nodegroupid: node.nodegroup_id || "",
-            parentnodegroup_id: null,
-          }),
-        ]),
-    );
-    for (const nodegroup of graph.nodegroups) {
-      nodegroups.set(nodegroup.nodegroupid, nodegroup);
-    }
-
-    const edgePairs = graph.edges.map((edge) => [
-      edge.domainnode_id,
-      edge.rangenode_id,
-    ]);
-    const edges: Map<string, string[]> = edgePairs.reduce((edges, dr) => {
-      const range = edges.get(dr[0]) || [];
-      range.push(dr[1]);
-      edges.set(dr[0], range);
-      return edges;
-    }, new Map<string, string[]>());
-
-    this.nodes = nodes;
-    this.nodegroups = nodegroups;
-    this.edges = edges;
-    this.nodesByAlias = new Map(
-      [...nodes.values()].map((node) => [node.alias || "", node]),
-    );
-  }
-
-  getNodeObjectsByAlias(): Map<string, StaticNode> {
-    if (!this.nodesByAlias) {
-      this.buildNodes();
-    }
-    if (!this.nodesByAlias) {
-      throw Error("Could not build nodes");
-    }
-    return this.nodesByAlias;
-  }
-
-  getEdges(): Map<string, string[]> {
-    if (!this.edges) {
-      this.buildNodes();
-    }
-    if (!this.edges) {
-      throw Error("Could not build edges");
-    }
-    return this.edges;
-  }
-
-  getNodeObjects(): Map<string, StaticNode> {
-    if (!this.nodes) {
-      this.buildNodes();
-    }
-    if (!this.nodes) {
-      throw Error("Could not build nodes");
-    }
-    return this.nodes;
-  }
-
-  getNodegroupObjects(): Map<string, StaticNodegroup> {
-    if (!this.nodegroups) {
-      this.buildNodes();
-    }
-    if (!this.nodegroups) {
-      throw Error("Could not build nodegroups");
-    }
-    return this.nodegroups;
-  }
-
-  getRootNode(): StaticNode {
-    const nodes = this.getNodeObjects();
-    const rootNode = [...nodes.values()].find((n) => !n.nodegroup_id);
-    if (!rootNode) {
-      throw Error(
-        `COULD NOT FIND ROOT NODE FOR ${this.wkrm.modelClassName}. Does the graph ${this.graph.graphid} still exist?`,
-      );
-    }
-    rootNode.alias = rootNode.alias || '';
-    return rootNode;
   }
 
   fromStaticResource(
@@ -1518,4 +1434,4 @@ class GraphManager {
 const graphManager = new GraphManager(archesClient);
 viewContext.graphManager = graphManager;
 
-export { GraphManager, graphManager, ArchesClientRemote, staticStore, WKRM, ResourceModelWrapper, GraphMutator };
+export { GraphManager, graphManager, ArchesClientRemote, staticStore, WKRM, WASMResourceModelWrapper, ResourceModelWrapper, GraphMutator };

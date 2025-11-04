@@ -1,4 +1,8 @@
 use wasm_bindgen::prelude::*;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::rc::{Rc, Weak};
+use crate::graph::{WKRM, StaticGraph, StaticNode, StaticNodegroup, StaticEdge};
 
 // Constants for iterable datatypes
 const ITERABLE_DATATYPES: &[&str] = &[
@@ -11,61 +15,48 @@ const ITERABLE_DATATYPES: &[&str] = &[
 #[derive(Clone)]
 pub struct PseudoNode {
     // Store as StaticNode - node data is now private to Rust
-    node: crate::graph::StaticNode,
+    node: Arc<StaticNode>,
     // Must use JsValue for circular references (can't use PseudoNode due to recursion)
     parent_node: Option<JsValue>,
     // Store as JsValue (the original Map) to preserve reference
-    child_nodes: JsValue,
-    is_outer: bool,
+    pub(crate)
+    child_nodes: HashMap<String, Arc<StaticNode>>,
     is_inner: bool,
     // Must use JsValue for circular references (can't use PseudoNode due to recursion)
-    inner: Option<JsValue>,
+    inner: Option<Rc<PseudoNode>>,
 }
 
 #[wasm_bindgen]
 impl PseudoNode {
-    // JavaScript-exposed constructor
-    #[wasm_bindgen(constructor)]
-    pub fn new(
-        static_node: crate::graph::StaticNode,
-        child_nodes: JsValue,
-        inner: JsValue,
-    ) -> PseudoNode {
-        Self::new_from_static_node(static_node, child_nodes, inner)
-            .expect("Failed to create PseudoNode")
-    }
-
     // Internal constructor that takes StaticNode directly (for Rust use)
     pub(crate) fn new_from_static_node(
-        static_node: crate::graph::StaticNode,
-        child_nodes: JsValue,
-        inner: JsValue,
+        static_node: Arc<crate::graph::StaticNode>,
+        child_nodes: HashMap<String, Arc<StaticNode>>,
     ) -> Result<PseudoNode, JsValue> {
-        let mut is_outer = false;
-        let mut is_inner = false;
-        let mut inner_val: Option<JsValue> = None;
-
-        // Handle the inner parameter
-        if !inner.is_null() && !inner.is_undefined() {
-            // Check if it's a boolean true
-            if let Some(bool_val) = inner.as_bool() {
-                if bool_val {
-                    is_inner = true;
+        let is_semantic = static_node.datatype == "semantic";
+        let has_children = !child_nodes.is_empty();
+        let has_inner = has_children && !is_semantic;
+        let (inner, final_child_nodes) = if has_inner {
+            let inner = Rc::new({
+                PseudoNode {
+                    node: static_node.clone(),
+                    parent_node: None,
+                    child_nodes: child_nodes,
+                    is_inner: true,
+                    inner: None,
                 }
-            } else {
-                // It's a PseudoValue/PseudoNode instance
-                is_outer = true;
-                inner_val = Some(inner);
-            }
-        }
+            });
+            (Some(inner), HashMap::new()) // Why is this not just None in 2nd?
+        } else {
+            (None, child_nodes)
+        };
 
         Ok(PseudoNode {
             node: static_node,
             parent_node: None,
-            child_nodes,
-            is_outer,
-            is_inner,
-            inner: inner_val,
+            child_nodes: final_child_nodes,
+            is_inner: false,
+            inner,
         })
     }
 
@@ -160,6 +151,21 @@ impl PseudoNode {
         obj.into()
     }
 
+    #[wasm_bindgen(getter = size)]
+    pub fn get_size(&self) -> usize {
+        self.child_nodes.len()
+    }
+
+    #[wasm_bindgen(getter = childNodes)]
+    pub fn get_child_nodes(&self) -> JsValue {
+        let map = js_sys::Map::new();
+        for (key, value) in &self.child_nodes {
+            let node_obj = value.to_json();
+            map.set(&JsValue::from_str(key), &node_obj);
+        }
+        map.into()
+    }
+
     #[wasm_bindgen(getter = nodeid)]
     pub fn get_nodeid(&self) -> String {
         self.node.nodeid.clone()
@@ -169,7 +175,7 @@ impl PseudoNode {
     pub fn get_alias(&self) -> JsValue {
         match &self.node.alias {
             Some(s) => JsValue::from_str(s),
-            None => JsValue::NULL,
+            None => JsValue::from_str(""),
         }
     }
 
@@ -277,25 +283,6 @@ impl PseudoNode {
         obj.into()
     }
 
-    #[wasm_bindgen(setter = config)]
-    pub fn set_config(&mut self, value: JsValue) {
-        // Convert JavaScript object to HashMap
-        self.node.config.clear();
-
-        if value.is_object() && !value.is_null() {
-            let keys = js_sys::Object::keys(&value.clone().into());
-            for i in 0..keys.length() {
-                if let Some(key_str) = keys.get(i).as_string() {
-                    if let Ok(val) = js_sys::Reflect::get(&value, &JsValue::from_str(&key_str)) {
-                        if let Ok(rust_val) = serde_wasm_bindgen::from_value(val) {
-                            self.node.config.insert(key_str, rust_val);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     #[wasm_bindgen(getter = parentNode)]
     pub fn get_parent_node(&self) -> JsValue {
         self.parent_node.clone().unwrap_or(JsValue::NULL)
@@ -320,50 +307,22 @@ impl PseudoNode {
         }
     }
 
-    #[wasm_bindgen(getter = childNodes)]
-    pub fn get_child_nodes(&self) -> JsValue {
-        // Return the original Map to preserve reference
-        self.child_nodes.clone()
-    }
-
-    #[wasm_bindgen(setter = childNodes)]
-    pub fn set_child_nodes(&mut self, value: JsValue) {
-        // Store the Map as-is to preserve reference
-        self.child_nodes = value;
-    }
-
     #[wasm_bindgen(getter = isOuter)]
     pub fn get_is_outer(&self) -> bool {
-        self.is_outer
+        self.inner.is_some()
     }
 
-    #[wasm_bindgen(setter = isOuter)]
-    pub fn set_is_outer(&mut self, value: bool) {
-        self.is_outer = value;
+    #[wasm_bindgen(getter = inner)]
+    pub fn get_inner(&self) -> Result<PseudoNode, JsValue> {
+        match self.inner.as_ref() {
+            Some(inner) => Ok((**inner).clone()),
+            None => Err(JsValue::from_str("No inner node"))
+        }
     }
 
     #[wasm_bindgen(getter = isInner)]
     pub fn get_is_inner(&self) -> bool {
         self.is_inner
-    }
-
-    #[wasm_bindgen(setter = isInner)]
-    pub fn set_is_inner(&mut self, value: bool) {
-        self.is_inner = value;
-    }
-
-    #[wasm_bindgen(getter = inner)]
-    pub fn get_inner(&self) -> JsValue {
-        self.inner.clone().unwrap_or(JsValue::NULL)
-    }
-
-    #[wasm_bindgen(setter = inner)]
-    pub fn set_inner(&mut self, value: JsValue) {
-        if value.is_null() {
-            self.inner = None;
-        } else {
-            self.inner = Some(value);
-        }
     }
 
     #[wasm_bindgen(js_name = toJSON)]

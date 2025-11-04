@@ -130,14 +130,16 @@ class ArchesClientRemoteStatic extends ArchesClient {
     const response = await fetch(
       `${this.archesUrl}/${this.graphToGraphFile(graph)}`,
     );
-    return (await response.json()).graph[0];
+    const jsonText = await response.text();
+    return StaticGraph.fromJsonString(jsonText);
   }
 
   async getGraphByIdOnly(graphId: string): Promise<StaticGraph | null> {
     const response = await fetch(
       `${this.archesUrl}/${this.graphIdToGraphFile(graphId)}`,
     );
-    return (await response.json()).graph[0];
+    const jsonText = await response.text();
+    return StaticGraph.fromJsonString(jsonText);
   }
 
   async getResource(resourceId: string): Promise<StaticResource> {
@@ -233,11 +235,11 @@ class ArchesClientLocal extends ArchesClient {
     if (!graphFile) {
       return null;
     }
-    const response = await fs.promises.readFile(
+    const jsonText = await fs.promises.readFile(
       graphFile,
       "utf8",
     );
-    return await JSON.parse(response).graph[0];
+    return StaticGraph.fromJsonString(jsonText);
   }
 
   async getGraphByIdOnly(graphId: string): Promise<StaticGraph | null> {
@@ -246,11 +248,11 @@ class ArchesClientLocal extends ArchesClient {
     if (!graphFile) {
       return null;
     }
-    const response = await fs.promises.readFile(
+    const jsonText = await fs.promises.readFile(
       graphFile,
       "utf8",
     );
-    return await JSON.parse(response).graph[0];
+    return StaticGraph.fromJsonString(jsonText);
   }
 
   async getResource(resourceId: string): Promise<StaticResource> {

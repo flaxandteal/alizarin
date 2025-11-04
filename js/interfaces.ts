@@ -91,7 +91,7 @@ interface IReferenceDataManager {
 };
 
 interface IPseudo {
-  parentNode: IPseudo | null;
+  parentValue: IPseudo | null;
   getValue(): AttrPromise<IViewModel | null | Array<IViewModel>>;
   forJson(): {[key: string]: any} | {[key: string]: any}[] | string | number | boolean | null;
   isIterable(): boolean;
