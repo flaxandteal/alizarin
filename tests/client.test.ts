@@ -1,7 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 import { ArchesClientRemote, ArchesClientRemoteStatic, ArchesClientLocal } from '../js/client';
+import { initWasmForTests } from './wasm-init';
 
 describe('Client Layer', () => {
+  beforeAll(async () => {
+    await initWasmForTests();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = vi.fn();
@@ -104,7 +109,29 @@ describe('Client Layer', () => {
       const mockGraphResponse = {
         graph: [{
           graphid: 'static-graph',
-          name: 'Static Graph',
+          name: { en: 'Static Graph' },
+          author: 'Test Author',
+          description: { en: 'Test Description' },
+          subtitle: { en: 'Test Subtitle' },
+          iconclass: 'fa fa-test',
+          isresource: true,
+          version: 'v1',
+          template_id: 'test-template-id',
+          root: {
+            nodeid: 'root-node-id',
+            name: 'Root Node',
+            datatype: 'semantic',
+            graph_id: 'static-graph',
+            alias: 'root',
+            config: {},
+            exportable: false,
+            hascustomalias: false,
+            is_collector: false,
+            isrequired: false,
+            issearchable: true,
+            istopnode: true,
+            sortorder: 0
+          },
           nodes: [],
           edges: [],
           nodegroups: []
@@ -113,7 +140,8 @@ describe('Client Layer', () => {
 
       vi.mocked(global.fetch).mockResolvedValueOnce({
         ok: true,
-        json: async () => mockGraphResponse
+        json: async () => mockGraphResponse,
+        text: async () => JSON.stringify(mockGraphResponse)
       } as Response);
 
       const client = new ArchesClientRemoteStatic('/data');

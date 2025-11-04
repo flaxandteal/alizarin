@@ -12,9 +12,9 @@ pub struct ResourceModelWrapperCore {
 
     // Caches - these are built lazily
     edges: Option<HashMap<String, Vec<String>>>,
-    nodes: Option<HashMap<String, StaticNode>>,
-    nodegroups: Option<HashMap<String, StaticNodegroup>>,
-    nodes_by_alias: Option<HashMap<String, StaticNode>>,
+    nodes: Option<HashMap<String, Arc<StaticNode>>>,
+    nodegroups: Option<HashMap<String, Arc<StaticNodegroup>>>,
+    nodes_by_alias: Option<HashMap<String, Arc<StaticNode>>>,
 
     permitted_nodegroups: Option<HashMap<String, bool>>,
 }
@@ -32,17 +32,20 @@ impl ResourceModelWrapperCore {
         }
     }
 
-    pub fn get_root_node(&self) -> Result<StaticNode, String> {
-        // Access graph directly, no need for nodes cache to be built
-        for node in self.graph.nodes.iter() {
-            if node.nodegroup_id.is_none() ||
-               node.nodegroup_id.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
-                let mut root_node = node.clone();
-                // Ensure alias is set (to empty string if not present)
-                if root_node.alias.is_none() {
-                    root_node.alias = Some(String::new());
+    pub fn get_root_node(&mut self) -> Result<Arc<StaticNode>, String> {
+        // Ensure nodes cache is built
+        if self.nodes.is_none() {
+            self.build_nodes()?;
+        }
+
+        // Search through nodes cache to find root node
+        if let Some(ref nodes) = self.nodes {
+            for node in nodes.values() {
+                if node.nodegroup_id.is_none() ||
+                   node.nodegroup_id.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
+                    // Return Arc clone - cheap reference count increment
+                    return Ok(Arc::clone(node));
                 }
-                return Ok(root_node);
             }
         }
 
@@ -64,12 +67,19 @@ impl ResourceModelWrapperCore {
         }
 
         let mut edges_map: HashMap<String, Vec<String>> = HashMap::new();
-        let mut nodes_map: HashMap<String, StaticNode> = HashMap::new();
-        let mut nodegroups_map: HashMap<String, StaticNodegroup> = HashMap::new();
+        let mut nodes_map: HashMap<String, Arc<StaticNode>> = HashMap::new();
+        let mut nodegroups_map: HashMap<String, Arc<StaticNodegroup>> = HashMap::new();
 
         // Build nodes map
         for node in graph.nodes.iter() {
-            nodes_map.insert(node.nodeid.clone(), node.clone());
+            let mut node_copy = node.clone();
+            // Ensure root node (node without nodegroup_id) has alias set
+            if (node_copy.nodegroup_id.is_none() ||
+                node_copy.nodegroup_id.as_ref().map(|s| s.is_empty()).unwrap_or(false)) &&
+               node_copy.alias.is_none() {
+                node_copy.alias = Some(String::new());
+            }
+            nodes_map.insert(node_copy.nodeid.clone(), Arc::new(node_copy));
         }
 
         // Build nodegroups map from nodes with nodegroup_id
@@ -77,19 +87,19 @@ impl ResourceModelWrapperCore {
             if let Some(ref nodegroup_id) = node.nodegroup_id {
                 if !nodegroup_id.is_empty() && !nodegroups_map.contains_key(nodegroup_id) {
                     // Create a minimal StaticNodegroup
-                    nodegroups_map.insert(nodegroup_id.clone(), StaticNodegroup {
+                    nodegroups_map.insert(nodegroup_id.clone(), Arc::new(StaticNodegroup {
                         cardinality: Some("n".to_string()),
                         legacygroupid: None,
                         nodegroupid: nodegroup_id.clone(),
                         parentnodegroup_id: None,
-                    });
+                    }));
                 }
             }
         }
 
         // Merge with actual nodegroups from graph
         for nodegroup in graph.nodegroups.iter() {
-            nodegroups_map.insert(nodegroup.nodegroupid.clone(), nodegroup.clone());
+            nodegroups_map.insert(nodegroup.nodegroupid.clone(), Arc::new(nodegroup.clone()));
         }
 
         // Build edges map
@@ -101,11 +111,11 @@ impl ResourceModelWrapperCore {
         }
 
         // Build nodes by alias map
-        let mut nodes_by_alias_map: HashMap<String, StaticNode> = HashMap::new();
-        for node in nodes_map.values() {
+        let mut nodes_by_alias_map: HashMap<String, Arc<StaticNode>> = HashMap::new();
+        for (alias_key, node) in nodes_map.iter() {
             if let Some(ref alias) = node.alias {
                 if !alias.is_empty() {
-                    nodes_by_alias_map.insert(alias.clone(), node.clone());
+                    nodes_by_alias_map.insert(alias.clone(), Arc::clone(node));
                 }
             }
         }
@@ -118,11 +128,11 @@ impl ResourceModelWrapperCore {
         Ok(())
     }
 
-    pub fn get_child_nodes(&mut self, node_id: &str) -> Result<HashMap<String, StaticNode>, String> {
+    pub fn get_child_nodes(&mut self, node_id: &str) -> Result<HashMap<String, Arc<StaticNode>>, String> {
         if self.nodes.is_none() {
             self.build_nodes()?;
         }
-        let mut child_nodes: HashMap<String, StaticNode> = HashMap::new();
+        let mut child_nodes: HashMap<String, Arc<StaticNode>> = HashMap::new();
 
         if let Some(ref edges) = self.edges {
             if let Some(child_ids) = edges.get(node_id) {
@@ -131,7 +141,7 @@ impl ResourceModelWrapperCore {
                         if let Some(node) = nodes.get(child_id) {
                             if let Some(ref alias) = node.alias {
                                 if !alias.is_empty() {
-                                    child_nodes.insert(alias.clone(), node.clone());
+                                    child_nodes.insert(alias.clone(), Arc::clone(node));
                                 }
                             }
                         }
@@ -177,11 +187,11 @@ impl ResourceModelWrapperCore {
     }
 
     // Internal accessors for Rust code
-    pub fn get_nodes_by_alias_internal(&self) -> Option<&HashMap<String, StaticNode>> {
+    pub fn get_nodes_by_alias_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
         self.nodes_by_alias.as_ref()
     }
 
-    pub fn get_nodes_internal(&self) -> Option<&HashMap<String, StaticNode>> {
+    pub fn get_nodes_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
         self.nodes.as_ref()
     }
 
@@ -189,14 +199,14 @@ impl ResourceModelWrapperCore {
         self.edges.as_ref()
     }
 
-    pub fn get_node_objects(&mut self) -> Result<&HashMap<String, StaticNode>, String> {
+    pub fn get_node_objects(&mut self) -> Result<&HashMap<String, Arc<StaticNode>>, String> {
         if self.nodes.is_none() {
             self.build_nodes()?;
         }
         self.nodes.as_ref().ok_or_else(|| "Could not build nodes".to_string())
     }
 
-    pub fn get_node_objects_by_alias(&mut self) -> Result<&HashMap<String, StaticNode>, String> {
+    pub fn get_node_objects_by_alias(&mut self) -> Result<&HashMap<String, Arc<StaticNode>>, String> {
         if self.nodes_by_alias.is_none() {
             self.build_nodes()?;
         }
@@ -210,7 +220,7 @@ impl ResourceModelWrapperCore {
         self.edges.as_ref().ok_or_else(|| "Could not build edges".to_string())
     }
 
-    pub fn get_nodegroup_objects(&mut self) -> Result<&HashMap<String, StaticNodegroup>, String> {
+    pub fn get_nodegroup_objects(&mut self) -> Result<&HashMap<String, Arc<StaticNodegroup>>, String> {
         if self.nodegroups.is_none() {
             self.build_nodes()?;
         }
@@ -264,61 +274,74 @@ impl WASMResourceModelWrapper {
         }
     }
 
+    /// Create a root PseudoNode (no parent)
     #[wasm_bindgen(js_name = createPseudoNode)]
     pub fn create_pseudo_node(
         &mut self,
-        child_node: JsValue,
-        _node: JsValue,
-    ) -> Result<JsValue, JsValue> {
+        child_node: Option<String>
+    ) -> Result<PseudoNode, JsValue> {
+        self._create_pseudo_node(child_node, None)
+    }
+
+    /// Create a child PseudoNode by borrowing the parent (doesn't consume it)
+    #[wasm_bindgen(js_name = createPseudoNodeChild)]
+    pub fn create_pseudo_node_child(
+        &mut self,
+        child_node: String,
+        parent_pseudo: &PseudoNode
+    ) -> Result<PseudoNode, JsValue> {
+        self._create_pseudo_node(Some(child_node), Some(parent_pseudo))
+    }
+
+    fn _create_pseudo_node(
+        &mut self,
+        child_node: Option<String>,
+        parent_pseudo: Option<&PseudoNode>
+    ) -> Result<PseudoNode, JsValue> {
         // Ensure nodes cache is built
         if self.core.nodes.is_none() {
             self.core.build_nodes().map_err(|e| JsValue::from_str(&e))?;
         }
 
-        // Get the alias from childNode
-        let key = js_sys::Reflect::get(&child_node, &JsValue::from_str("alias"))?;
-        let key_str = key.as_string().ok_or_else(|| {
-            let nodeid = js_sys::Reflect::get(&child_node, &JsValue::from_str("nodeid"))
-                .ok()
-                .and_then(|v| v.as_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            JsValue::from_str(&format!("Cannot add a pseudo node with no alias {}", nodeid))
-        })?;
-
-        // Get the node by alias using internal Rust HashMap
-        let nodes_by_alias = self.get_nodes_by_alias_internal()
-            .ok_or_else(|| JsValue::from_str("Could not access nodes by alias"))?;
-
-        let node = nodes_by_alias.get(key_str.as_str())
-            .ok_or_else(|| JsValue::from_str(&format!("Could not find node with alias: {}", key_str)))?.clone();
-
-        // Check datatype
-        let datatype = &node.datatype;
-        let is_semantic = datatype == "semantic";
-        let child_nodes = self.get_child_nodes(&node.nodeid)?;
-
-        // Check if child_nodes Map has any entries
-        let child_nodes_map = child_nodes.dyn_ref::<js_sys::Map>()
-            .ok_or_else(|| JsValue::from_str("child_nodes is not a Map"))?;
-        let has_children = child_nodes_map.size() > 0;
-
-        // Determine inner value and final child nodes
-        let (inner, final_child_nodes) = if has_children && !is_semantic {
-            (JsValue::from(PseudoNode::new_from_static_node(node.copy(), child_nodes, JsValue::TRUE)?), js_sys::Map::new().into())
+        // Get the node (Arc<StaticNode>) either by alias or as root
+        let arc_node: Arc<StaticNode> = if let Some(parent) = parent_pseudo {
+            Arc::clone(parent.child_nodes.get(
+                child_node.ok_or_else(|| JsValue::from_str("Must have a child node name if passing a parent"))?.as_str()
+            ).ok_or_else(|| JsValue::from_str("This parent node does not have this child"))?)
         } else {
-            (JsValue::FALSE, child_nodes)
+            if let Some(key_str) = child_node {
+                // Get by alias - clone the Arc (cheap)
+                let nodes_by_alias = self.core.get_nodes_by_alias_internal()
+                    .ok_or_else(|| JsValue::from_str("Could not access nodes by alias"))?;
+                Arc::clone(
+                    nodes_by_alias.get(key_str.as_str())
+                        .ok_or_else(|| JsValue::from_str(&format!("Could not find node with alias: {}", key_str)))?
+                )
+            } else {
+                // Get root node - returns Arc<StaticNode>
+                self.core.get_root_node()
+                    .map_err(|e| JsValue::from_str(&format!("Could not find root node: {}", e)))?
+            }
         };
 
-        // Pass StaticNode directly to the internal constructor
-        let pseudo_node = PseudoNode::new_from_static_node(node, final_child_nodes, inner)?;
+        // Dereference Arc to get StaticNode for JavaScript
+        let node = (*arc_node).clone();
 
-        Ok(JsValue::from(pseudo_node))
+        // Check datatype
+        let child_nodes = self.core.get_child_nodes(&node.nodeid)?;
+
+        // Pass StaticNode directly to the internal constructor
+        let pseudo_node = PseudoNode::new_from_static_node(arc_node, child_nodes)?;
+
+        Ok(pseudo_node)
     }
 
 
     #[wasm_bindgen(js_name = getRootNode)]
-    pub fn get_root_node(&self) -> Result<StaticNode, JsValue> {
-        self.core.get_root_node().map_err(|e| JsValue::from_str(&e))
+    pub fn get_root_node(&mut self) -> Result<StaticNode, JsValue> {
+        let arc_node = self.core.get_root_node().map_err(|e| JsValue::from_str(&e))?;
+        // Dereference Arc to clone the StaticNode for JavaScript
+        Ok((*arc_node).clone())
     }
 
     #[wasm_bindgen(js_name = getNodeObjects)]
@@ -327,7 +350,7 @@ impl WASMResourceModelWrapper {
         // Convert HashMap to js_sys::Map
         let map = js_sys::Map::new();
         for (key, node) in nodes.iter() {
-            map.set(&JsValue::from_str(key), &JsValue::from(node.clone()));
+            map.set(&JsValue::from_str(key), &JsValue::from((**node).clone()));
         }
         Ok(map.into())
     }
@@ -338,7 +361,7 @@ impl WASMResourceModelWrapper {
         // Convert HashMap to js_sys::Map
         let map = js_sys::Map::new();
         for (key, node) in nodes_by_alias.iter() {
-            map.set(&JsValue::from_str(key), &JsValue::from(node.clone()));
+            map.set(&JsValue::from_str(key), &JsValue::from((**node).clone()));
         }
         Ok(map.into())
     }
@@ -348,7 +371,7 @@ impl WASMResourceModelWrapper {
         let child_nodes = self.core.get_child_nodes(node_id).map_err(|e| JsValue::from_str(&e))?;
         let map = js_sys::Map::new();
         for (alias, node) in child_nodes.iter() {
-            map.set(&JsValue::from_str(alias), &JsValue::from(node.clone()));
+            map.set(&JsValue::from_str(alias), &JsValue::from((**node).clone()));
         }
         Ok(map.into())
     }
@@ -374,7 +397,7 @@ impl WASMResourceModelWrapper {
         // Convert HashMap to js_sys::Map
         let map = js_sys::Map::new();
         for (key, nodegroup) in nodegroups.iter() {
-            map.set(&JsValue::from_str(key), &JsValue::from(nodegroup.clone()));
+            map.set(&JsValue::from_str(key), &JsValue::from((**nodegroup).clone()));
         }
         Ok(map.into())
     }
@@ -399,9 +422,14 @@ impl WASMResourceModelWrapper {
     pub fn set_permitted_nodegroups(&mut self, permissions: js_sys::Map) {
         let mut perms = HashMap::new();
 
-        let keys = js_sys::Object::keys(&permissions);
-        for i in 0..keys.length() {
-            let key = keys.get(i);
+        // Iterate over the Map using the keys() iterator
+        let keys_iter = permissions.keys();
+        loop {
+            let next = keys_iter.next().unwrap();
+            if next.done() {
+                break;
+            }
+            let key = next.value();
             if let Some(key_str) = key.as_string() {
                 let value = permissions.get(&key);
                 if let Some(bool_val) = value.as_bool() {
@@ -423,11 +451,11 @@ impl WASMResourceModelWrapper {
     }
 
     // Internal accessors for Rust code (not exposed to JavaScript)
-    pub(crate) fn get_nodes_by_alias_internal(&self) -> Option<&HashMap<String, StaticNode>> {
+    pub(crate) fn get_nodes_by_alias_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
         self.core.get_nodes_by_alias_internal()
     }
 
-    pub(crate) fn get_nodes_internal(&self) -> Option<&HashMap<String, StaticNode>> {
+    pub(crate) fn get_nodes_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
         self.core.get_nodes_internal()
     }
 

@@ -31,6 +31,8 @@ wasm-bindgen-test = "0.3.34"
 [profile.release]
 # Tell `rustc` to optimize for small code size.
 opt-level = "s"
+# Include debug symbols for better panic backtraces
+debug = true
 
 [dependencies.web-sys]
 version = "0.3.4"

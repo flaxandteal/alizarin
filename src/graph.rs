@@ -2264,6 +2264,28 @@ impl StaticGraph {
         cloned
     }
 
+    /// Parse JSON string with {graph: [StaticGraph]} structure
+    /// Returns the first graph from the array, or error if none found
+    #[wasm_bindgen(js_name = fromJsonString)]
+    pub fn from_json_string(json_str: &str) -> Result<StaticGraph, JsValue> {
+        // Helper struct to deserialize the wrapper
+        #[derive(Deserialize)]
+        struct GraphWrapper {
+            graph: Vec<StaticGraph>,
+        }
+
+        let wrapper: GraphWrapper = serde_json::from_str(json_str)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse JSON: {}", e)))?;
+
+        let mut graph = wrapper.graph
+            .into_iter()
+            .next()
+            .ok_or_else(|| JsValue::from_str("No graphs found in JSON"))?;
+
+        graph.build_indices();
+        Ok(graph)
+    }
+
     // Getters for key fields
     #[wasm_bindgen(getter = graphid)]
     pub fn get_graphid(&self) -> String {

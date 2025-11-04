@@ -312,51 +312,10 @@ test("WASMResourceModelWrapper > createPseudoNode > should create pseudo node", 
   const testNode = [...wrapper.nodes!.values()].find(n => n.alias === "test_field");
   assert.isDefined(testNode);
 
-  const pseudoNode = wrapper.createPseudoNode(testNode!, graph.root);
+  const pseudoNode = wrapper.createPseudoNode(testNode!.alias);
   assert.isDefined(pseudoNode);
   assert.isDefined(pseudoNode.node);
   assert.equal(pseudoNode.node.alias, "test_field");
-});
-
-test("WASMResourceModelWrapper > createPseudoNode > should error if node has no alias", () => {
-  const graph = createStaticGraph({
-    name: "Test Graph",
-    author: "Test Author",
-  });
-
-  const wrapper = new WASMResourceModelWrapper(
-    createTestWKRM(graph),
-    graph
-  );
-
-  wrapper.buildNodesForGraph(graph);
-
-  // Create a node without alias
-  const nodeWithoutAlias = new StaticNode({
-    nodeid: "test-node-id",
-    name: "Test Node",
-    datatype: "string",
-    ontologyclass: "http://www.w3.org/2000/01/rdf-schema#Literal",
-    nodegroup_id: null,
-    alias: null,
-    config: {},
-    description: "",
-    exportable: false,
-    fieldname: null,
-    graph_id: graph.graphid,
-    hascustomalias: false,
-    is_collector: false,
-    isrequired: false,
-    issearchable: false,
-    istopnode: false,
-    parentproperty: "",
-    sortorder: 0,
-    sourcebranchpublication_id: null
-  });
-
-  assert.throws(() => {
-    wrapper.createPseudoNode(nodeWithoutAlias, graph.root);
-  }, /Cannot add a pseudo node with no alias/);
 });
 
 // ============================================================================
