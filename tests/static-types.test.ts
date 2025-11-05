@@ -74,29 +74,44 @@ describe('Static Types', () => {
     it('should create graph metadata', () => {
       const metaData = {
         graphid: 'test-graph-123',
-        name: new StaticTranslatableString('Test Graph'),
+        name: { en: 'Test Graph' },  // Plain object, not StaticTranslatableString
         author: 'Test Author',
-        description: new StaticTranslatableString('Test Description'),
+        description: { en: 'Test Description' },  // Plain object
         isresource: true,
-        subtitle: new StaticTranslatableString(''),
+        cards: null,
+        cards_x_nodes_x_widgets: null,
+        color: null,
+        edges: null,  // Counts, not arrays
+        is_editable: null,
+        nodes: null,  // Counts, not arrays
+        nodegroups: null,  // Count, not array
         relatable_resource_model_ids: [],
+        slug: null,
+        subtitle: { en: '' },  // Plain object
+        template_id: '',
+        version: '',
+        config: {},
+        deploymentdate: null,
+        deploymentfile: null,
+        functions_x_graphs: null,
+        iconclass: '',
+        jsonldcontext: null,
+        ontology_id: null,
+        publication: null,
         resource_2_resource_constraints: []
       } as any;
+      const meta = new StaticGraphMeta(metaData);
 
-      // Serialize and deserialize to convert StaticTranslatableString to plain objects
-      const serializedData = JSON.parse(JSON.stringify(metaData));
-      const meta = new StaticGraphMeta(serializedData);
-      
       expect(meta.graphid).toBe('test-graph-123');
-      expect(meta.author).toBe('Test Author');
-      expect(meta.isresource).toBe(true);
+      expect(meta.getAuthor()).toBe('Test Author');
+      expect(meta.getIsResource()).toBe(true);
     });
 
     it('should handle minimal metadata', () => {
       const meta = new StaticGraphMeta({ graphid: 'minimal-graph' } as any);
-      
+
       expect(meta.graphid).toBe('minimal-graph');
-      expect(meta.author).toBeUndefined();
+      expect(meta.getAuthor()).toBeUndefined();
     });
   });
 
@@ -577,8 +592,6 @@ describe('Static Types', () => {
         // This would fail because constructor expects jsonData.resourceinstance
         new StaticResource({} as any);
       }).toThrow();
-      
-      console.warn('⚠️  StaticResource requires complex metadata structure - constructor needs proper resourceinstance data');
     });
 
     it('should be importable and defined', () => {
@@ -682,8 +695,6 @@ describe('Static Types', () => {
       expect(tile.tileid).toBe('complex-tile');
       expect(tile.nodegroup_id).toBe('main-nodegroup');
       expect(tile.resourceinstance_id).toBe('resource-123');
-      
-      console.warn('⚠️  StaticResource constructor requires complex metadata - tile creation works independently');
     });
   });
 

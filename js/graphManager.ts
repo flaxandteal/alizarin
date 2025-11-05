@@ -29,8 +29,6 @@ import { generateUuidv5, AttrPromise } from "./utils";
 const MAX_GRAPH_DEPTH = 100;
 const DESCRIPTOR_FUNCTION_ID = "60000000-0000-0000-0000-000000000001";
 
-// WKRM is now imported from WASM
-
 class ConfigurationOptions {
   graphs: Array<string> | null | boolean;
   eagerLoadGraphs: boolean = false;
@@ -828,9 +826,9 @@ class GraphMutator {
       alias: alias,
       config: config || {},
       datatype: datatype,
-      description: description || null,
+      description: description || undefined,
       exportable: options.exportable || false,
-      fieldname: options.fieldname || null,
+      fieldname: options.fieldname || undefined,
       graph_id: this.baseGraph.graphid,
       hascustomalias: options.hascustomalias || false,
       is_collector: options.is_collector || false,
@@ -843,7 +841,7 @@ class GraphMutator {
       parentproperty: parentProperty,
       sortorder: options.sortorder || 0,
       ontologyclass: ontologyClass,
-      sourcebranchpublication_id: null,
+      sourcebranchpublication_id: undefined,
     };
     if (cardinality === 'n' || parentAlias === null) {
       node.nodegroup_id = nodeId;

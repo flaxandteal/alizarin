@@ -7,7 +7,7 @@ import {
   GraphLoadingValidator,
   validateGraphLoading,
   type ValidationSummary
-} from '../src/validation/index';
+} from '../js/validation/index';
 
 // Mock console to suppress output during tests
 const mockConsole = () => {
