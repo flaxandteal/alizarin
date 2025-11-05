@@ -39,7 +39,7 @@ function createStaticGraph(props: {
     iconclass?: string,
     is_editable?: boolean | null,
     isresource?: boolean,
-    jsonldcontext?: string | null,
+    jsonldcontext?: string | {[key: string]: any} | null,
     name?: string | StaticTranslatableString,
     ontology_id?: string | null,
     relatable_resource_model_ids?: Array<string>,

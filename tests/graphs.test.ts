@@ -55,7 +55,7 @@ describe("testing graph", () => {
         outputGraph.nodes[1],
         {
           alias: 'test',
-          config: null,
+          config: {},  // Empty object
           datatype: 'string',
           description: 'Describe',
           exportable: true,
@@ -69,7 +69,7 @@ describe("testing graph", () => {
           parentproperty: 'http://www.cidoc-crm.org/cidoc-crm/P3_has_note',
           sortorder: 0,
           ontologyclass: 'http://www.w3.org/2000/01/rdf-schema#Literal',
-          sourcebranchpublication_id: null
+          sourcebranchpublication_id: undefined  // Changed from null to undefined (Rust None -> JS undefined)
         }
       ) === 1);
       assert(outputGraph.edges.length === 1);
@@ -138,7 +138,7 @@ describe("testing graph", () => {
           parentproperty: 'http://www.cidoc-crm.org/cidoc-crm/P3_has_note',
           sortorder: 0,
           ontologyclass: 'http://www.w3.org/2000/01/rdf-schema#Literal',
-          sourcebranchpublication_id: null
+          sourcebranchpublication_id: undefined  // Changed from null to undefined
         }
       ) === 1);
       assert(outputGraph.edges.length === 1);

@@ -7,7 +7,10 @@ import * as utils from "./utils";
 import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
-import { run } from "./_wasm";
+import { run, initWasm } from "./_wasm";
+
+// Initialize WASM module at startup using top-level await
+await initWasm();
 
 const AlizarinModel = viewModels.ResourceInstanceViewModel;
 const setCurrentLanguage = utils.setCurrentLanguage;

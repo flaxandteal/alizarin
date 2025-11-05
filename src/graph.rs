@@ -226,50 +226,52 @@ fn json_to_js_value(value: &serde_json::Value) -> JsValue {
 #[wasm_bindgen]
 #[derive(Serialize, Deserialize, Clone)]
 pub struct StaticGraphMeta {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     author: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_array_or_count", default)]
+    #[serde(default)]
     cards: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_array_or_count", default)]
+    #[serde(default)]
     cards_x_nodes_x_widgets: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     color: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     description: Option<StaticTranslatableString>,
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_array_or_count", default)]
+    #[serde(default)]
     edges: Option<u32>,
     #[serde(default)]
-    graphid: String,  // Can be empty if not provided, will be filled in by caller
-    #[serde(skip_serializing_if = "Option::is_none")]
+    graphid: String,
+    #[serde(default)]
     iconclass: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     is_editable: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     isresource: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    jsonldcontext: Option<serde_json::Value>,  // Can be string or object
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    jsonldcontext: Option<serde_json::Value>,  // Can be a string (URL) or an object (inline context)
+    #[serde(default)]
     name: Option<StaticTranslatableString>,
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_array_or_count", default)]
+    #[serde(default)]
     nodegroups: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_array_or_count", default)]
+    #[serde(default)]
     nodes: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     ontology_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    publication: Option<serde_json::Value>,  // Flexible type for publication data
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    publication: Option<HashMap<String, Option<String>>>,
+    #[serde(default)]
     relatable_resource_model_ids: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     resource_2_resource_constraints: Vec<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     root: Option<Box<StaticNode>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     slug: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     subtitle: Option<StaticTranslatableString>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     version: Option<String>,
+    #[serde(default)]
+    extra_fields: HashMap<String, serde_json::Value>,
 }
 
 #[wasm_bindgen]
@@ -626,6 +628,10 @@ pub struct StaticNode {
     pub(crate) sortorder: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) sourcebranchpublication_id: Option<String>,
+}
+
+fn default_datatype() -> String {
+    "string".to_string()
 }
 
 #[wasm_bindgen]

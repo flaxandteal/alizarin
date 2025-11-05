@@ -3,12 +3,16 @@ import { vi } from "vitest";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { setCurrentLanguage } from "../js/utils.ts";
+import { initWasm } from "../js/_wasm.ts";
 
 const fetchMocker = createFetchMock(vi);
 fetchMocker.enableMocks();
 
 // Set default language to 'en' for consistent test behavior regardless of system locale
 setCurrentLanguage('en');
+
+// Initialize WASM module before tests run
+await initWasm();
 
 // Mock fetch for WASM files in tests
 global.fetch = vi.fn((url) => {

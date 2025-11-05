@@ -179,10 +179,11 @@ describe('WASM Graph Module', () => {
         maxlength: 255,
         options: ['a', 'b', 'c']
       };
-      node.setConfig(newConfig);
       
-      const retrievedConfig = node.getConfig();
-      // Config is now returned as plain object, not Map
+      node.config = newConfig;
+
+      // Get config via property access
+      const retrievedConfig = node.config;
       expect(retrievedConfig).toEqual(newConfig);
     });
 

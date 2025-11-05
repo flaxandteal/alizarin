@@ -1,6 +1,14 @@
 {
   "models": {
-    "07883c9e-b25c-11e9-975a-a4d18cec433a": {"name": "Group"},
-    "22477f01-1a44-11e9-b0a9-000d3ab1e588": {"name": "Person"}
+    "07883c9e-b25c-11e9-975a-a4d18cec433a": {
+      "graphid": "07883c9e-b25c-11e9-975a-a4d18cec433a",
+      "name": {"en": "Group"},
+      "isresource": true
+    },
+    "22477f01-1a44-11e9-b0a9-000d3ab1e588": {
+      "graphid": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+      "name": {"en": "Person"},
+      "isresource": true
+    }
   }
 }
