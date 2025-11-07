@@ -1673,13 +1673,13 @@ where
 #[derive(Serialize, Deserialize, Clone)]
 pub struct StaticTile {
     #[serde(deserialize_with = "deserialize_tile_data", default)]
-    data: HashMap<String, serde_json::Value>,
-    nodegroup_id: String,
-    resourceinstance_id: String,
+    pub(crate) data: HashMap<String, serde_json::Value>,
+    pub(crate) nodegroup_id: String,
+    pub(crate) resourceinstance_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tileid: Option<String>,
+    pub(crate) tileid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    parenttile_id: Option<String>,
+    pub(crate) parenttile_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     provisionaledits: Option<Vec<serde_json::Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
