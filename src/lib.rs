@@ -2,6 +2,7 @@ mod utils;
 pub mod graph;
 pub mod pseudos;
 pub mod model_wrapper;
+pub mod instance_wrapper;
 
 use wasm_bindgen::prelude::*;
 
