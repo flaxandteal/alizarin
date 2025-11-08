@@ -1,14 +1,16 @@
 use wasm_bindgen::prelude::*;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use serde_json::Value as JsonValue;
 use crate::graph::{StaticTile, StaticNode};
+use crate::pseudo_value::{RustPseudoValue, RustPseudoList};
 use js_sys::{Array, Map as JsMap};
 use wasm_bindgen::JsCast;
 
 /// Recipe for creating a PseudoValue in JavaScript
 /// Contains all information needed to instantiate a Pseudo without holding full tile data
 #[wasm_bindgen]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PseudoRecipe {
     node_alias: String,
     tile_id: Option<String>,
@@ -46,23 +48,37 @@ impl PseudoRecipe {
 }
 
 /// Result from values_from_resource_nodegroup
-#[wasm_bindgen]
+/// PORT: Phase 3 - Now internally uses structured RustPseudoList
+/// Still exposes recipes to WASM for backward compatibility until Phase 4
 #[derive(Clone)]
 pub struct ValuesFromNodegroupResult {
-    recipes: Vec<PseudoRecipe>,
-    implied_nodegroups: Vec<String>,
+    /// Map of node alias → RustPseudoList (structured hierarchy - internal use)
+    pub values: HashMap<String, RustPseudoList>,
+    pub implied_nodegroups: Vec<String>,
 }
 
-#[wasm_bindgen]
 impl ValuesFromNodegroupResult {
-    #[wasm_bindgen(getter = recipes)]
-    pub fn recipes(&self) -> Vec<PseudoRecipe> {
-        self.recipes.clone()
-    }
+    /// Convert structured values back to recipes for WASM compatibility
+    /// TODO: Remove after Phase 4 (JS wrapper layer complete)
+    fn to_recipes(&self) -> Vec<PseudoRecipe> {
+        let mut recipes = Vec::new();
 
-    #[wasm_bindgen(getter = impliedNodegroups)]
-    pub fn implied_nodegroups(&self) -> Vec<String> {
-        self.implied_nodegroups.clone()
+        for (alias, pseudo_list) in &self.values {
+            // Each group in the list represents tiles
+            for group in &pseudo_list.groups {
+                for value in &group.values {
+                    recipes.push(PseudoRecipe {
+                        node_alias: alias.clone(),
+                        tile_id: value.tile.as_ref().and_then(|t| t.tileid.clone()),
+                        node_id: value.node.nodeid.clone(),
+                        is_collector: value.is_collector,
+                        sentinel_undefined: false,
+                    });
+                }
+            }
+        }
+
+        recipes
     }
 }
 
@@ -300,8 +316,9 @@ impl WASMResourceInstanceWrapper {
                 nodegroup_tiles.push(String::new());
             }
 
-            // Call values_from_resource_nodegroup (line 332)
-            let values_result = self.values_from_resource_nodegroup(
+            // Call values_from_resource_nodegroup_internal (line 332)
+            // PORT: Phase 3 - now returns structured values, convert to recipes for compatibility
+            let values_result = self.values_from_resource_nodegroup_internal(
                 all_values_js.clone(),
                 nodegroup_tiles,
                 nodegroup_id,
@@ -309,8 +326,10 @@ impl WASMResourceInstanceWrapper {
                 edges_js.clone(),
             )?;
 
-            // Collect all recipes from this nodegroup
-            all_recipes.extend(values_result.recipes);
+            // Convert structured values to recipes for backward compatibility
+            // TODO: Phase 3d - use values directly instead of converting
+            let recipes = values_result.to_recipes();
+            all_recipes.extend(recipes);
 
             // Collect implied nodegroups (lines 347-349)
             for ng in values_result.implied_nodegroups.iter() {
@@ -484,9 +503,8 @@ impl WASMResourceInstanceWrapper {
     }
 
     /// PORT: graphManager.ts lines 505-643
-    /// Returns recipes for creating PseudoValues and discovered implied nodegroups
-    #[wasm_bindgen(js_name = valuesFromResourceNodegroup)]
-    pub fn values_from_resource_nodegroup(
+    /// Internal implementation - returns structured RustPseudoList (Phase 3)
+    fn values_from_resource_nodegroup_internal(
         &self,
         existing_values_js: JsValue,  // Map<string, any>
         nodegroup_tile_ids: Vec<String>,  // Tile IDs for this nodegroup (nulls become None)
@@ -498,6 +516,12 @@ impl WASMResourceInstanceWrapper {
         let node_objs = self.deserialize_node_map(node_objs_js)?;
         let edges = self.deserialize_edges_map(edges_js)?;
         let existing_values = self.deserialize_existing_values(existing_values_js)?;
+
+        // PORT: Phase 3 - Convert nodes to Arc for sharing in RustPseudoValue structures
+        let node_objs_arc: HashMap<String, Arc<StaticNode>> = node_objs
+            .iter()
+            .map(|(k, v)| (k.clone(), Arc::new(v.clone())))
+            .collect();
 
         // Get tiles for this nodegroup
         let mut nodegroup_tiles: Vec<Option<&StaticTile>> = Vec::new();
@@ -691,10 +715,118 @@ impl WASMResourceInstanceWrapper {
             }
         }
 
+        // PORT: Phase 3 - Convert recipes to structured RustPseudoList hierarchy
+        // This conversion happens AFTER the TS algorithm (preserving all PORT line numbers above)
+        // The recipes are generated following js/graphManager.ts:1099-1230 exactly
+        // Now we convert those recipes into RustPseudoList structures
+        let values = self.recipes_to_pseudo_lists(
+            &recipes,
+            &node_objs_arc,
+            &edges,
+        );
+
         Ok(ValuesFromNodegroupResult {
-            recipes,
+            values,
             implied_nodegroups: implied_nodegroups.into_iter().collect(),
         })
+    }
+
+    /// Convert flat recipes to structured RustPseudoList hierarchy
+    /// PORT: Phase 3 new conversion layer - not in original TS (TS builds hierarchy in makePseudoCls)
+    /// This bridges the gap: Rust algorithm produces recipes (matching TS), then converts to hierarchy
+    fn recipes_to_pseudo_lists(
+        &self,
+        recipes: &[PseudoRecipe],
+        node_objs: &HashMap<String, Arc<StaticNode>>,
+        edges: &HashMap<String, Vec<String>>,
+    ) -> HashMap<String, RustPseudoList> {
+        // Group recipes by node alias
+        let mut recipes_by_alias: HashMap<String, Vec<&PseudoRecipe>> = HashMap::new();
+        for recipe in recipes {
+            recipes_by_alias
+                .entry(recipe.node_alias.clone())
+                .or_insert_with(Vec::new)
+                .push(recipe);
+        }
+
+        let mut values: HashMap<String, RustPseudoList> = HashMap::new();
+
+        for (alias, alias_recipes) in recipes_by_alias {
+            // Skip sentinel undefined entries
+            if alias_recipes.iter().all(|r| r.sentinel_undefined) {
+                continue;
+            }
+
+            // Find the node for this alias
+            if let Some(node) = node_objs.get(&alias_recipes[0].node_id) {
+                // Collect tiles for this node
+                let mut tiles: Vec<Option<Arc<StaticTile>>> = Vec::new();
+
+                for recipe in &alias_recipes {
+                    if recipe.sentinel_undefined {
+                        continue;
+                    }
+
+                    let tile = if let Some(ref tile_id) = recipe.tile_id {
+                        self.tiles.get(tile_id).map(|t| Arc::new(t.clone()))
+                    } else {
+                        None
+                    };
+                    tiles.push(tile);
+                }
+
+                // Create RustPseudoList from node and tiles
+                // PORT: Equivalent to js/pseudos.ts:452-461 makePseudoCls creating PseudoList
+                let pseudo_list = RustPseudoList::from_node_tiles(
+                    Arc::clone(node),
+                    tiles,
+                    edges,
+                );
+
+                values.insert(alias, pseudo_list);
+            }
+        }
+
+        values
+    }
+
+    /// WASM-exposed wrapper - returns recipes for backward compatibility
+    /// TODO: Remove after Phase 4 (JS uses RustPseudoList directly)
+    #[wasm_bindgen(js_name = valuesFromResourceNodegroup)]
+    pub fn values_from_resource_nodegroup(
+        &self,
+        existing_values_js: JsValue,
+        nodegroup_tile_ids: Vec<String>,
+        nodegroup_id: &str,
+        node_objs_js: JsValue,
+        edges_js: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        // Call internal version that returns structured values
+        let result = self.values_from_resource_nodegroup_internal(
+            existing_values_js,
+            nodegroup_tile_ids,
+            nodegroup_id,
+            node_objs_js,
+            edges_js,
+        )?;
+
+        // Convert back to recipes for backward compatibility
+        let recipes = result.to_recipes();
+
+        // Return as JS object with recipes and impliedNodegroups
+        let obj = js_sys::Object::new();
+        js_sys::Reflect::set(
+            &obj,
+            &JsValue::from_str("recipes"),
+            &serde_wasm_bindgen::to_value(&recipes)?,
+        )?;
+        js_sys::Reflect::set(
+            &obj,
+            &JsValue::from_str("impliedNodegroups"),
+            &serde_wasm_bindgen::to_value(&result.implied_nodegroups)?,
+        )?;
+
+        Ok(obj.into())
     }
 }
 
