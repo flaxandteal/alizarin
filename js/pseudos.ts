@@ -61,19 +61,44 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
   inner: PseudoValue<any> | null = null;
 
   // Proxy getters to node properties
+  // PORT: Line 64-66 (src/pseudo_value.rs:307-311 - datatype getter)
   get datatype() {
+    if (this.rustValue) {
+      return this.rustValue.datatype; // Phase 4b: Use Rust when available
+    }
     return this.node.datatype;
   }
 
+  // PORT: Line 68-70
   get isInner() {
     return this.node.isInner;
   }
 
+  // PORT: Line 72-74
   get isOuter() {
     return this.node.isOuter;
   }
 
+  // PORT: Line 76-78 (src/pseudo_value.rs:373-380 - inner getter)
   get inner() {
+    if (this.rustValue?.inner) {
+      // Phase 4b: Lazily wrap Rust inner if not yet wrapped
+      if (!this.inner) {
+        // Create JS PseudoValue wrapper for Rust inner
+        const innerNode = this.node.inner;
+        if (innerNode) {
+          this.inner = new PseudoValue(
+            innerNode,
+            this.tile,
+            null,
+            this.parent!,
+            new Map(),
+            this.rustValue.inner,
+            true
+          );
+        }
+      }
+    }
     return this.inner;
   }
 
@@ -161,15 +186,21 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
   // TODO deepcopy
   //
 
+  // PORT: Line 189-191
   getParentTileId() {
-    return this.tile ? this.tile.parenttile_id : null;
+    // Phase 4b: Get tile from Rust if available
+    // PORT: src/pseudo_value.rs:331-338 - tile getter
+    const tile = this.rustValue?.tile ?? this.tile;
+    return tile ? tile.parenttile_id : null;
   }
 
+  // PORT: Line 193-224
   async getTile(): Promise<[StaticTile | null, any[]]> {
     await this.updateValue();
 
     let relationships: Array<any> = [];
 
+    // PORT: Line 198-200
     if (this.inner) {
       [this.tile, relationships] = await this.inner.getTile();
     }
