@@ -109,28 +109,42 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     return fieldName;
   }
 
+  // Phase 4b: Optional Rust WASM backing
+  // PORT: Equivalent to WasmPseudoValue in src/pseudo_value.rs:300-381
+  rustValue?: any; // WasmPseudoValue from Rust
+
   constructor(
     node: StaticNode | PseudoNode,
     tile: StaticTile | null,
     value: any,
     parent: IRIVM<any>,
     childNodes: Map<string, StaticNode>,
+    rustValue?: any, // Phase 4b: Optional WasmPseudoValue from Rust
   ) {
-    // Clone the node to avoid ownership transfer issues with WASM
+    // Phase 4b: Store Rust backing if provided
+    // PORT: RustPseudoValue in src/pseudo_value.rs:5-37
+    this.rustValue = rustValue;
+
+    // PORT: Line 120 - tile assignment (src/pseudo_value.rs:11 - tile field)
     this.tile = tile;
+    // PORT: Line 121 - independent flag
     this.independent = tile === null;
+    // PORT: Line 122-124 - parent validation
     if (!parent) {
       throw Error("Must have a parent or parent class for a pseudo-node");
     }
+    // PORT: Line 125-129 - node initialization
     if (node.constructor.name === 'StaticNode') {
       this.node = parent.__.createPseudoNode(node.alias);
     } else {
       this.node = node;
     }
+    // PORT: Line 130-133 - basic field initialization
     this.parent = parent;
     this.value = value;
     this.accessed = false;
     this.originalTile = tile;
+    // PORT: Line 134-143 - inner/outer pattern (src/pseudo_value.rs:15 - inner field)
     if (node.isOuter) {
       this.inner = new PseudoValue(
         node.inner,
@@ -138,6 +152,7 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
         null,
         parent,
         childNodes,
+        rustValue?.inner, // Phase 4b: Pass Rust inner if available
         true
       )
     }
