@@ -1,6 +1,7 @@
 mod utils;
 pub mod graph;
 pub mod pseudos;
+pub mod pseudo_value;
 pub mod model_wrapper;
 pub mod instance_wrapper;
 

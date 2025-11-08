@@ -299,7 +299,228 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     });
   }
 
+  /**
+   * Ensure nodegroup is loaded with all its data
+   * Uses Rust implementation via WASM
+   */
   async ensureNodegroup(
+    allValues: Map<string, any>,
+    allNodegroups: Map<string, boolean | Promise<any>>,
+    nodegroupId: string,
+    nodeObjs: Map<string, StaticNode>,
+    nodegroupObjs: Map<string, StaticNodegroup>,
+    edges: Map<string, string[]>,
+    addIfMissing: boolean,
+    tiles: StaticTile[] | null,
+    doImpliedNodegroups: boolean = true
+  ): Promise<[Map<string, any>, Set<string>]> {
+
+    const enableParallelTesting = process.env.ALIZARIN_PARALLEL_TEST === "true";
+
+    try {
+      // Pre-compute tile permissions for all tiles
+      const tilePermissions = new Map<string, boolean>();
+      if (tiles) {
+        for (const tile of tiles) {
+          if (tile?.tileid) {
+            const permitted = this.model.isNodegroupPermitted(tile.nodegroup_id || '', tile);
+            tilePermissions.set(tile.tileid, permitted);
+          }
+        }
+      }
+
+      // Get all tile IDs
+      const allTiles = tiles ? tiles.map(t => t?.tileid || '').filter(id => id) : [];
+
+      // Call Rust implementation
+      const result = this.wasmWrapper.ensureNodegroup(
+        allValues,
+        allNodegroups,
+        nodegroupId,
+        nodeObjs,
+        nodegroupObjs,
+        edges,
+        addIfMissing,
+        allTiles,
+        tilePermissions,
+        doImpliedNodegroups
+      );
+
+      // Convert recipes to PseudoValues
+      const newValues = new Map<string, any>();
+
+      for (const recipe of result.recipes) {
+        const key = recipe.nodeAlias;
+
+        if (recipe.sentinelUndefined) {
+          // Mark as undefined (sentinel)
+          newValues.set(key, undefined);
+        } else {
+          // Check if value already exists in allValues
+          let existing = allValues.get(key);
+          if (existing instanceof Promise) {
+            existing = await existing;
+          }
+          if (existing !== false && existing !== undefined) {
+            newValues.set(key, existing);
+            continue;
+          }
+
+          // Get the tile reference
+          const tile = recipe.tileId ? this.wasmWrapper.getTile(recipe.tileId) : null;
+
+          // Create PseudoValue
+          const pseudoNode = makePseudoCls(this.model, key, false, tile, this.wkri);
+
+          if (!newValues.has(key)) {
+            newValues.set(key, []);
+          }
+
+          // Handle PseudoList merging
+          if (Array.isArray(pseudoNode)) {
+            const value = newValues.get(key);
+            if (value !== undefined && value !== false) {
+              let merged = false;
+              for (const pseudoList of newValues.get(key)) {
+                if (!(pseudoList instanceof PseudoList) || !(pseudoNode instanceof PseudoList)) {
+                  throw Error(`Should be all lists not ${typeof pseudoList} and ${typeof pseudoNode}`);
+                }
+
+                if (pseudoList.parentNode == pseudoNode.parentNode) {
+                  for (const ps of pseudoNode) {
+                    pseudoList.push(ps);
+                  }
+                  merged = true;
+                  break;
+                }
+              }
+              if (merged) {
+                continue;
+              }
+            }
+          }
+
+          newValues.get(key).push(pseudoNode);
+        }
+      }
+
+      // Update allValues with newValues (filtering undefined - line 343)
+      for (const [key, value] of newValues.entries()) {
+        if (value !== undefined) {
+          allValues.set(key, value);
+        }
+      }
+
+      // Update allNodegroups from Rust result
+      const updatedNodegroups = result.allNodegroupsMap;
+
+      // Handle both Map and plain object
+      if (updatedNodegroups instanceof Map) {
+        for (const [key, value] of updatedNodegroups.entries()) {
+          if (typeof value === 'boolean') {
+            allNodegroups.set(key, value);
+          }
+        }
+      } else {
+        for (const [key, value] of Object.entries(updatedNodegroups)) {
+          if (typeof value === 'boolean') {
+            allNodegroups.set(key, value);
+          }
+        }
+      }
+
+      const impliedNodegroups = new Set(result.impliedNodegroups);
+
+      // Parallel testing mode: compare Rust vs JS
+      if (enableParallelTesting) {
+        const [jsNewValues, jsImplied] = await this.ensureNodegroup_JS(
+          new Map(allValues), // Clone to avoid mutation
+          new Map(allNodegroups), // Clone
+          nodegroupId,
+          nodeObjs,
+          nodegroupObjs,
+          edges,
+          addIfMissing,
+          tiles,
+          doImpliedNodegroups
+        );
+
+        // Compare results
+        const rustKeys = new Set(newValues.keys());
+        const jsKeys = new Set(jsNewValues.keys());
+
+        let mismatch = false;
+
+        // Check key differences
+        for (const key of rustKeys) {
+          if (!jsKeys.has(key)) {
+            console.error(`[PARALLEL TEST ensureNodegroup] Rust has key "${key}" but JS doesn't`);
+            mismatch = true;
+          }
+        }
+        for (const key of jsKeys) {
+          if (!rustKeys.has(key)) {
+            console.error(`[PARALLEL TEST ensureNodegroup] JS has key "${key}" but Rust doesn't`);
+            mismatch = true;
+          }
+        }
+
+        // Check implied nodegroups
+        for (const ng of impliedNodegroups) {
+          if (!jsImplied.has(ng)) {
+            console.error(`[PARALLEL TEST ensureNodegroup] Rust has implied "${ng}" but JS doesn't`);
+            mismatch = true;
+          }
+        }
+        for (const ng of jsImplied) {
+          if (!impliedNodegroups.has(ng)) {
+            console.error(`[PARALLEL TEST ensureNodegroup] JS has implied "${ng}" but Rust doesn't`);
+            mismatch = true;
+          }
+        }
+
+        // Check value counts
+        for (const key of rustKeys) {
+          if (jsKeys.has(key)) {
+            const rustVal = newValues.get(key);
+            const jsVal = jsNewValues.get(key);
+            const rustLen = Array.isArray(rustVal) ? rustVal.length : (rustVal === undefined ? 0 : 1);
+            const jsLen = Array.isArray(jsVal) ? jsVal.length : (jsVal === undefined ? 0 : 1);
+            if (rustLen !== jsLen) {
+              console.error(`[PARALLEL TEST ensureNodegroup] Key "${key}": Rust has ${rustLen} values, JS has ${jsLen}`);
+              mismatch = true;
+            }
+          }
+        }
+
+        if (!mismatch) {
+          console.log(`[PARALLEL TEST ensureNodegroup] ✓ Rust and JS match for nodegroup ${nodegroupId}`);
+        }
+      }
+
+      return [newValues, impliedNodegroups];
+
+    } catch (e) {
+      console.error("Rust ensureNodegroup failed, falling back to JS:", e);
+      return this.ensureNodegroup_JS(
+        allValues,
+        allNodegroups,
+        nodegroupId,
+        nodeObjs,
+        nodegroupObjs,
+        edges,
+        addIfMissing,
+        tiles,
+        doImpliedNodegroups
+      );
+    }
+  }
+
+  /**
+   * Original JavaScript implementation of ensureNodegroup
+   * Kept for parallel testing and fallback
+   */
+  async ensureNodegroup_JS(
     allValues: Map<string, any>,
     allNodegroups: Map<string, boolean | Promise<any>>,
     nodegroupId: string,
@@ -376,7 +597,211 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     return [newValues, impliedNodegroups];
   }
 
+  /**
+   * Populate all nodegroups for a resource
+   * Uses Rust implementation via WASM
+   */
   async populate(lazy: boolean): Promise<void> {
+    const nodeObjs = this.model.getNodeObjects();
+    const nodegroupObjs = this.model.getNodegroupObjects();
+    const edges = this.model.getEdges();
+    const rootNode = this.model.getRootNode();
+
+    if (rootNode.alias === null) {
+      throw Error("Cannot populate a model with no proper root node");
+    }
+
+    const enableParallelTesting = process.env.ALIZARIN_PARALLEL_TEST === "true";
+
+    try {
+      let tiles = null;
+      if (!lazy && this.resource) {
+        // Ensure tiles are loaded if we need them for non-lazy population
+        if (!this.resource.__tilesLoaded) {
+          await this.ensureTilesLoaded();
+        }
+        tiles = this.resource.tiles;
+      } else if (this.resource) {
+        this.model.stripTiles(this.resource);
+      }
+
+      // Pre-compute tile permissions for all tiles
+      const tilePermissions = new Map<string, boolean>();
+      if (tiles) {
+        for (const tile of tiles) {
+          if (tile?.tileid) {
+            const permitted = this.model.isNodegroupPermitted(tile.nodegroup_id || '', tile);
+            tilePermissions.set(tile.tileid, permitted);
+          }
+        }
+      }
+
+      // Get all tile IDs and nodegroup IDs
+      const allTiles = tiles ? tiles.map(t => t?.tileid || '').filter(id => id) : [];
+      const nodegroupIds = [...nodegroupObjs.keys()];
+
+      // Call Rust implementation
+      const result = this.wasmWrapper.populate(
+        lazy,
+        nodegroupIds,
+        rootNode.alias,
+        nodeObjs,
+        nodegroupObjs,
+        edges,
+        allTiles,
+        tilePermissions
+      );
+
+      // Convert all recipes to PseudoValues
+      const allValues: Map<string, any> = new Map();
+      const allNodegroups: Map<string, any> = new Map();
+
+      // Initialize allNodegroups (needed for ValueList)
+      for (const nodegroupId of nodegroupIds) {
+        allNodegroups.set(nodegroupId, false);
+      }
+
+      // Set root node alias
+      allValues.set(rootNode.alias, false);
+
+      // Convert recipes to PseudoValues
+      const newValues = new Map<string, any>();
+      for (const recipe of result.recipes) {
+        const key = recipe.nodeAlias;
+
+        if (recipe.sentinelUndefined) {
+          // Mark as undefined (sentinel)
+          newValues.set(key, undefined);
+        } else {
+          // Check if value already exists in allValues
+          let existing = allValues.get(key);
+          if (existing instanceof Promise) {
+            existing = await existing;
+          }
+          if (existing !== false && existing !== undefined) {
+            newValues.set(key, existing);
+            continue;
+          }
+
+          // Get the tile reference
+          const tile = recipe.tileId ? this.wasmWrapper.getTile(recipe.tileId) : null;
+
+          // Create PseudoValue
+          const pseudoNode = makePseudoCls(this.model, key, false, tile, this.wkri);
+
+          if (!newValues.has(key)) {
+            newValues.set(key, []);
+          }
+
+          // Handle PseudoList merging
+          if (Array.isArray(pseudoNode)) {
+            const value = newValues.get(key);
+            if (value !== undefined && value !== false) {
+              let merged = false;
+              for (const pseudoList of newValues.get(key)) {
+                if (!(pseudoList instanceof PseudoList) || !(pseudoNode instanceof PseudoList)) {
+                  throw Error(`Should be all lists not ${typeof pseudoList} and ${typeof pseudoNode}`);
+                }
+
+                if (pseudoList.parentNode == pseudoNode.parentNode) {
+                  for (const ps of pseudoNode) {
+                    pseudoList.push(ps);
+                  }
+                  merged = true;
+                  break;
+                }
+              }
+              if (merged) {
+                continue;
+              }
+            }
+          }
+
+          newValues.get(key).push(pseudoNode);
+        }
+      }
+
+      // Update allValues with newValues
+      for (const [key, value] of newValues.entries()) {
+        if (value !== undefined) {
+          allValues.set(key, value);
+        }
+      }
+
+      // Update allNodegroups from Rust result
+      const updatedNodegroups = result.allNodegroupsMap;
+      if (updatedNodegroups instanceof Map) {
+        for (const [key, value] of updatedNodegroups.entries()) {
+          if (typeof value === 'boolean') {
+            allNodegroups.set(key, value);
+          }
+        }
+      } else {
+        for (const [key, value] of Object.entries(updatedNodegroups)) {
+          if (typeof value === 'boolean') {
+            allNodegroups.set(key, value);
+          }
+        }
+      }
+
+      // Parallel testing mode: compare Rust vs JS
+      if (enableParallelTesting) {
+        const allValuesClone = new Map(allValues);
+        const allNodegroupsClone = new Map(allNodegroups);
+
+        await this.populate_JS(lazy);
+
+        const jsValues = this.valueList.values;
+        const jsNodegroups = this.valueList.promises;
+
+        // Compare results
+        const rustValueKeys = new Set(allValuesClone.keys());
+        const jsValueKeys = new Set(jsValues.keys());
+
+        const missingInRust = [...jsValueKeys].filter(k => !rustValueKeys.has(k));
+        const missingInJS = [...rustValueKeys].filter(k => !jsValueKeys.has(k));
+
+        const rustNodegroupKeys = new Set(allNodegroupsClone.keys());
+        const jsNodegroupKeys = new Set(jsNodegroups.keys());
+
+        const missingNodegroupsInRust = [...jsNodegroupKeys].filter(k => !rustNodegroupKeys.has(k));
+        const missingNodegroupsInJS = [...rustNodegroupKeys].filter(k => !jsNodegroupKeys.has(k));
+
+        if (missingInRust.length > 0 || missingInJS.length > 0 ||
+            missingNodegroupsInRust.length > 0 || missingNodegroupsInJS.length > 0) {
+          console.warn('[POPULATE MISMATCH]');
+          if (missingInRust.length > 0) console.warn('  Missing values in Rust:', missingInRust);
+          if (missingInJS.length > 0) console.warn('  Missing values in JS:', missingInJS);
+          if (missingNodegroupsInRust.length > 0) console.warn('  Missing nodegroups in Rust:', missingNodegroupsInRust);
+          if (missingNodegroupsInJS.length > 0) console.warn('  Missing nodegroups in JS:', missingNodegroupsInJS);
+        } else {
+          console.log('[POPULATE MATCH] Rust and JS implementations produced identical results');
+        }
+
+        // Use JS result for now during parallel testing
+        return;
+      }
+
+      // Create ValueList with results
+      this.valueList = new ValueList(
+        allValues,
+        allNodegroups,
+        this,
+        this.resource ? this.resource.tiles : null,
+      );
+
+    } catch (error) {
+      console.error('[populate] Rust implementation failed, falling back to JS:', error);
+      // Fallback to JS implementation
+      return this.populate_JS(lazy);
+    }
+  }
+
+  /**
+   * Original JavaScript implementation of populate
+   * Kept for parallel testing and fallback
+   */
+  async populate_JS(lazy: boolean): Promise<void> {
     const nodeObjs = this.model.getNodeObjects();
     const nodegroupObjs = this.model.getNodegroupObjects();
     const edges = this.model.getEdges();

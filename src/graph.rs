@@ -1670,7 +1670,7 @@ where
 
 // StaticTile
 #[wasm_bindgen]
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StaticTile {
     #[serde(deserialize_with = "deserialize_tile_data", default)]
     pub(crate) data: HashMap<String, serde_json::Value>,
