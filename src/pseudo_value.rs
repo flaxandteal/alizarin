@@ -304,25 +304,46 @@ pub struct WasmPseudoValue {
 
 #[wasm_bindgen]
 impl WasmPseudoValue {
-    /// Get the node alias
+    /// PORT: js/pseudos.ts:64-66 - datatype getter
+    #[wasm_bindgen(getter, js_name = datatype)]
+    pub fn datatype(&self) -> String {
+        self.inner.node.datatype.clone()
+    }
+
+    /// PORT: js/pseudos.ts - nodeAlias property
     #[wasm_bindgen(getter, js_name = nodeAlias)]
     pub fn node_alias(&self) -> Option<String> {
         self.inner.node_alias().map(|s| s.to_string())
     }
 
-    /// Check if this value has a tile
+    /// PORT: js/pseudos.ts:52 - node.nodeid
+    #[wasm_bindgen(getter, js_name = nodeId)]
+    pub fn node_id(&self) -> String {
+        self.inner.node.nodeid.clone()
+    }
+
+    /// PORT: js/pseudos.ts - hasTile check
     #[wasm_bindgen(getter, js_name = hasTile)]
     pub fn has_tile(&self) -> bool {
         self.inner.has_tile()
     }
 
-    /// Get tile ID if present
+    /// PORT: js/pseudos.ts:53 - tile property
+    #[wasm_bindgen(getter, js_name = tile)]
+    pub fn tile(&self) -> JsValue {
+        match &self.inner.tile {
+            Some(tile) => serde_wasm_bindgen::to_value(tile.as_ref()).unwrap_or(JsValue::NULL),
+            None => JsValue::NULL,
+        }
+    }
+
+    /// PORT: js/pseudos.ts - tile.tileid access
     #[wasm_bindgen(getter, js_name = tileId)]
     pub fn tile_id(&self) -> Option<String> {
         self.inner.tile_id()
     }
 
-    /// Get the tile data as JSON string
+    /// PORT: js/pseudos.ts:54 - value property (tile data)
     #[wasm_bindgen(getter, js_name = tileData)]
     pub fn tile_data(&self) -> JsValue {
         match &self.inner.tile_data {
@@ -331,22 +352,31 @@ impl WasmPseudoValue {
         }
     }
 
-    /// Get number of child node IDs (metadata count)
+    /// PORT: js/pseudos.ts - child node IDs count (for lazy loading)
     #[wasm_bindgen(getter, js_name = childNodeIdsCount)]
     pub fn child_node_ids_count(&self) -> usize {
         self.inner.child_node_ids.len()
     }
 
-    /// Get child node ID by index
+    /// PORT: js/pseudos.ts - get child node ID by index
     #[wasm_bindgen(js_name = getChildNodeId)]
     pub fn get_child_node_id(&self, index: usize) -> Option<String> {
         self.inner.child_node_ids.get(index).cloned()
     }
 
-    /// Check if this is a collector
+    /// PORT: js/pseudos.ts - is_collector check
     #[wasm_bindgen(getter, js_name = isCollector)]
     pub fn is_collector(&self) -> bool {
         self.inner.is_collector
+    }
+
+    /// Get inner value (for outer/inner pattern)
+    /// PORT: js/pseudos.ts:61-62, 76-78 - inner property
+    #[wasm_bindgen(getter, js_name = inner)]
+    pub fn inner(&self) -> Option<WasmPseudoValue> {
+        self.inner.inner.as_ref().map(|inner| WasmPseudoValue {
+            inner: (**inner).clone(),
+        })
     }
 }
 
@@ -357,28 +387,69 @@ pub struct WasmPseudoList {
 
 #[wasm_bindgen]
 impl WasmPseudoList {
-    /// Get the node alias
+    /// PORT: js/pseudos.ts:337,398 - node property
     #[wasm_bindgen(getter, js_name = nodeAlias)]
     pub fn node_alias(&self) -> String {
         self.inner.node_alias.clone()
     }
 
-    /// Get number of groups
+    /// PORT: js/pseudos.ts:336 - PseudoList extends Array (groups count)
     #[wasm_bindgen(getter, js_name = groupCount)]
     pub fn group_count(&self) -> usize {
         self.inner.groups.len()
     }
 
-    /// Get total number of values across all groups
+    /// PORT: js/pseudos.ts:336 - total values across all groups (Array.length equivalent)
     #[wasm_bindgen(getter, js_name = totalValues)]
     pub fn total_values(&self) -> usize {
         self.inner.all_values().len()
     }
 
-    /// Check if loaded
+    /// PORT: js/pseudos.ts - loaded state check
     #[wasm_bindgen(getter, js_name = isLoaded)]
     pub fn is_loaded(&self) -> bool {
         self.inner.is_loaded
+    }
+
+    /// Get tile ID for a specific group
+    /// PORT: js/pseudos.ts:340,406 - tile property access
+    #[wasm_bindgen(js_name = getGroupTileId)]
+    pub fn get_group_tile_id(&self, group_index: usize) -> Option<String> {
+        self.inner.groups.get(group_index).and_then(|g| g.tile_id.clone())
+    }
+
+    /// Get number of values in a specific group
+    /// PORT: js/pseudos.ts:336 - Array length for group
+    #[wasm_bindgen(js_name = getGroupValueCount)]
+    pub fn get_group_value_count(&self, group_index: usize) -> usize {
+        self.inner.groups.get(group_index).map(|g| g.values.len()).unwrap_or(0)
+    }
+
+    /// Get a specific value from a specific group
+    /// PORT: js/pseudos.ts:336 - Array element access
+    #[wasm_bindgen(js_name = getValue)]
+    pub fn get_value(&self, group_index: usize, value_index: usize) -> Option<WasmPseudoValue> {
+        self.inner.groups
+            .get(group_index)
+            .and_then(|g| g.values.get(value_index))
+            .map(|v| WasmPseudoValue { inner: v.clone() })
+    }
+
+    /// Get all values from all groups as a flat array
+    /// PORT: js/pseudos.ts:350 - map over array elements
+    #[wasm_bindgen(js_name = getAllValues)]
+    pub fn get_all_values(&self) -> Vec<WasmPseudoValue> {
+        self.inner.all_values()
+            .into_iter()
+            .map(|v| WasmPseudoValue { inner: v.clone() })
+            .collect()
+    }
+
+    /// Check if iterable
+    /// PORT: js/pseudos.ts:345-347 - isIterable() method
+    #[wasm_bindgen(js_name = isIterable)]
+    pub fn is_iterable(&self) -> bool {
+        true
     }
 }
 
