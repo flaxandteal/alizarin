@@ -66,6 +66,58 @@ impl ValuesFromNodegroupResult {
     }
 }
 
+/// Result from ensure_nodegroup
+#[wasm_bindgen]
+pub struct EnsureNodegroupResult {
+    recipes: Vec<PseudoRecipe>,
+    implied_nodegroups: Vec<String>,
+    all_nodegroups_map: HashMap<String, serde_json::Value>,
+}
+
+#[wasm_bindgen]
+impl EnsureNodegroupResult {
+    #[wasm_bindgen(getter = recipes)]
+    pub fn recipes(&self) -> Vec<PseudoRecipe> {
+        self.recipes.clone()
+    }
+
+    #[wasm_bindgen(getter = impliedNodegroups)]
+    pub fn implied_nodegroups(&self) -> Vec<String> {
+        self.implied_nodegroups.clone()
+    }
+
+    #[wasm_bindgen(getter = allNodegroupsMap)]
+    pub fn all_nodegroups_map(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.all_nodegroups_map).unwrap_or(JsValue::NULL)
+    }
+}
+
+/// Result from populate
+#[wasm_bindgen]
+pub struct PopulateResult {
+    recipes: Vec<PseudoRecipe>,
+    all_values_map: HashMap<String, serde_json::Value>,
+    all_nodegroups_map: HashMap<String, serde_json::Value>,
+}
+
+#[wasm_bindgen]
+impl PopulateResult {
+    #[wasm_bindgen(getter = recipes)]
+    pub fn recipes(&self) -> Vec<PseudoRecipe> {
+        self.recipes.clone()
+    }
+
+    #[wasm_bindgen(getter = allValuesMap)]
+    pub fn all_values_map(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.all_values_map).unwrap_or(JsValue::NULL)
+    }
+
+    #[wasm_bindgen(getter = allNodegroupsMap)]
+    pub fn all_nodegroups_map(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.all_nodegroups_map).unwrap_or(JsValue::NULL)
+    }
+}
+
 /// Rust-side resource instance wrapper that owns tile data
 /// Manages tile storage, indexing, and provides query methods
 #[wasm_bindgen]
@@ -187,6 +239,249 @@ impl WASMResourceInstanceWrapper {
     // ========================================================================
     // Phase 2: Graph Traversal Helpers
     // ========================================================================
+
+    /// Complete ensureNodegroup implementation in Rust
+    /// PORT: graphManager.ts lines 302-377 (full ensureNodegroup function)
+    #[wasm_bindgen(js_name = ensureNodegroup)]
+    pub fn ensure_nodegroup(
+        &self,
+        all_values_js: JsValue,        // Map<string, any> - mutable
+        all_nodegroups_js: JsValue,    // Map<string, boolean | Promise> - mutable
+        nodegroup_id: &str,
+        node_objs_js: JsValue,         // Map<string, StaticNode>
+        nodegroup_objs_js: JsValue,    // Map<string, StaticNodegroup>
+        edges_js: JsValue,             // Map<string, string[]>
+        add_if_missing: bool,
+        all_tiles: Vec<String>,        // All tile IDs available
+        tile_permissions_js: JsValue,  // Map<tileId, boolean>
+        do_implied_nodegroups: bool,
+    ) -> Result<EnsureNodegroupResult, JsValue> {
+        use std::collections::{HashMap, HashSet};
+
+        // Deserialize all_nodegroups to check sentinel
+        let mut all_nodegroups: HashMap<String, serde_json::Value> = serde_wasm_bindgen::from_value(all_nodegroups_js.clone())
+            .map_err(|e| JsValue::from_str(&format!("Failed to deserialize all_nodegroups: {:?}", e)))?;
+
+        // Check sentinel state (line 314)
+        let sentinel = all_nodegroups.get(nodegroup_id);
+        let should_process = match sentinel {
+            Some(serde_json::Value::Bool(false)) => true,  // sentinel === false (force reload)
+            Some(serde_json::Value::Bool(true)) => false,  // sentinel === true (already loaded)
+            None => add_if_missing,                         // sentinel === undefined
+            _ => false,  // Promise or other - skip
+        };
+
+        let mut all_recipes: Vec<PseudoRecipe> = Vec::new();
+        let mut implied_nodegroups_set: HashSet<String> = HashSet::new();
+
+        if should_process {
+            // Delete old node values (lines 318-320)
+            let node_objs: HashMap<String, serde_json::Value> = serde_wasm_bindgen::from_value(node_objs_js.clone())
+                .map_err(|e| JsValue::from_str(&format!("Failed to deserialize node_objs: {:?}", e)))?;
+
+            let tile_permissions: HashMap<String, bool> = serde_wasm_bindgen::from_value(tile_permissions_js)
+                .map_err(|e| JsValue::from_str(&format!("Failed to deserialize tile_permissions: {:?}", e)))?;
+
+            // Filter tiles by nodegroup_id and permissions (lines 326-328)
+            let mut nodegroup_tiles: Vec<String> = Vec::new();
+            for tile_id in all_tiles.iter() {
+                if let Some(tile) = self.tiles.get(tile_id) {
+                    if tile.nodegroup_id == nodegroup_id {
+                        let permitted = tile_permissions.get(tile_id).copied().unwrap_or(true);
+                        if permitted {
+                            nodegroup_tiles.push(tile_id.clone());
+                        }
+                    }
+                }
+            }
+
+            // If no tiles and addIfMissing, use empty string to indicate null tile (lines 329-330)
+            if nodegroup_tiles.is_empty() && add_if_missing {
+                nodegroup_tiles.push(String::new());
+            }
+
+            // Call values_from_resource_nodegroup (line 332)
+            let values_result = self.values_from_resource_nodegroup(
+                all_values_js.clone(),
+                nodegroup_tiles,
+                nodegroup_id,
+                node_objs_js.clone(),
+                edges_js.clone(),
+            )?;
+
+            // Collect all recipes from this nodegroup
+            all_recipes.extend(values_result.recipes);
+
+            // Collect implied nodegroups (lines 347-349)
+            for ng in values_result.implied_nodegroups.iter() {
+                implied_nodegroups_set.insert(ng.clone());
+            }
+
+            // Mark nodegroup as loaded (line 350)
+            all_nodegroups.insert(nodegroup_id.to_string(), serde_json::Value::Bool(true));
+
+            // Recursive processing of implied nodegroups (lines 355-373)
+            if do_implied_nodegroups && !implied_nodegroups_set.is_empty() {
+                let implied_list: Vec<String> = implied_nodegroups_set.iter().cloned().collect();
+
+                for implied_ng in implied_list.iter() {
+                    // Recursive call (lines 358-368)
+                    let implied_result = self.ensure_nodegroup(
+                        all_values_js.clone(),
+                        serde_wasm_bindgen::to_value(&all_nodegroups)?,
+                        implied_ng,
+                        node_objs_js.clone(),
+                        nodegroup_objs_js.clone(),
+                        edges_js.clone(),
+                        true,  // addIfMissing = true for implied
+                        all_tiles.clone(),
+                        serde_wasm_bindgen::to_value(&tile_permissions)?,
+                        true,  // doImpliedNodegroups = true
+                    )?;
+
+                    // Merge implied recipes (lines 369-371)
+                    all_recipes.extend(implied_result.recipes());
+
+                    // Update all_nodegroups from recursive call
+                    let implied_nodegroups_map: HashMap<String, serde_json::Value> =
+                        serde_wasm_bindgen::from_value(implied_result.all_nodegroups_map())?;
+                    for (k, v) in implied_nodegroups_map.iter() {
+                        all_nodegroups.insert(k.clone(), v.clone());
+                    }
+                }
+
+                // Clear implied set after processing (line 373)
+                implied_nodegroups_set.clear();
+            }
+        }
+
+        Ok(EnsureNodegroupResult {
+            recipes: all_recipes,
+            implied_nodegroups: implied_nodegroups_set.into_iter().collect(),
+            all_nodegroups_map: all_nodegroups,
+        })
+    }
+
+    /// Complete populate implementation in Rust
+    /// PORT: graphManager.ts lines 600-688 (populate function)
+    /// Orchestrates loading all nodegroups for a resource
+    #[wasm_bindgen(js_name = populate)]
+    pub fn populate(
+        &self,
+        lazy: bool,
+        nodegroup_ids: Vec<String>,
+        root_node_alias: String,
+        node_objs_js: JsValue,
+        nodegroup_objs_js: JsValue,
+        edges_js: JsValue,
+        all_tiles: Vec<String>,
+        tile_permissions_js: JsValue,
+    ) -> Result<PopulateResult, JsValue> {
+        // Initialize state maps
+        let mut all_values: HashMap<String, serde_json::Value> = HashMap::new();
+        let mut all_nodegroups: HashMap<String, serde_json::Value> = HashMap::new();
+
+        // Initialize all nodegroups to false (line 610-612)
+        for nodegroup_id in nodegroup_ids.iter() {
+            all_nodegroups.insert(nodegroup_id.clone(), serde_json::Value::Bool(false));
+        }
+
+        // Set root node alias to false (line 626)
+        all_values.insert(root_node_alias.clone(), serde_json::Value::Bool(false));
+
+        let mut all_recipes = Vec::new();
+
+        // Non-lazy loading: process all nodegroups
+        if !lazy {
+            // Phase 1: Process all nodegroups with doImpliedNodegroups=false (lines 636-653)
+            let mut implied_nodegroups_set = HashSet::new();
+
+            for nodegroup_id in nodegroup_ids.iter() {
+                let result = self.ensure_nodegroup(
+                    serde_wasm_bindgen::to_value(&all_values)?,
+                    serde_wasm_bindgen::to_value(&all_nodegroups)?,
+                    nodegroup_id,
+                    node_objs_js.clone(),
+                    nodegroup_objs_js.clone(),
+                    edges_js.clone(),
+                    true,  // addIfMissing
+                    all_tiles.clone(),
+                    tile_permissions_js.clone(),
+                    false, // doImpliedNodegroups = false for phase 1
+                )?;
+
+                // Collect recipes
+                all_recipes.extend(result.recipes());
+
+                // Update all_values and all_nodegroups from result
+                let result_values: HashMap<String, serde_json::Value> =
+                    serde_wasm_bindgen::from_value(result.all_nodegroups_map())?;
+                for (k, v) in result_values.iter() {
+                    all_nodegroups.insert(k.clone(), v.clone());
+                }
+
+                // Collect implied nodegroups (lines 649-652)
+                for implied_ng in result.implied_nodegroups().iter() {
+                    if implied_ng != nodegroup_id {
+                        implied_nodegroups_set.insert(implied_ng.clone());
+                    }
+                }
+            }
+
+            // Phase 2: Process implied nodegroups iteratively (lines 655-677)
+            while !implied_nodegroups_set.is_empty() {
+                let current_implied: Vec<String> = implied_nodegroups_set.iter().cloned().collect();
+                implied_nodegroups_set.clear();
+
+                for nodegroup_id in current_implied.iter() {
+                    // Check sentinel state (lines 658-659)
+                    let current_value = all_nodegroups.get(nodegroup_id);
+                    let should_process = match current_value {
+                        Some(serde_json::Value::Bool(false)) => true,
+                        None => true,
+                        _ => false,
+                    };
+
+                    if should_process {
+                        let result = self.ensure_nodegroup(
+                            serde_wasm_bindgen::to_value(&all_values)?,
+                            serde_wasm_bindgen::to_value(&all_nodegroups)?,
+                            nodegroup_id,
+                            node_objs_js.clone(),
+                            nodegroup_objs_js.clone(),
+                            edges_js.clone(),
+                            true,  // addIfMissing
+                            all_tiles.clone(),
+                            tile_permissions_js.clone(),
+                            true,  // doImpliedNodegroups = true for phase 2
+                        )?;
+
+                        // Collect recipes
+                        all_recipes.extend(result.recipes());
+
+                        // Update all_nodegroups from result
+                        let result_values: HashMap<String, serde_json::Value> =
+                            serde_wasm_bindgen::from_value(result.all_nodegroups_map())?;
+                        for (k, v) in result_values.iter() {
+                            all_nodegroups.insert(k.clone(), v.clone());
+                        }
+
+                        // Collect new implied nodegroups (lines 671-673)
+                        for implied_ng in result.implied_nodegroups().iter() {
+                            implied_nodegroups_set.insert(implied_ng.clone());
+                        }
+                    }
+                }
+            }
+        }
+        // If lazy: just skip loading (lines 678-680 in JS - stripTiles happens in JS)
+
+        Ok(PopulateResult {
+            recipes: all_recipes,
+            all_values_map: all_values,
+            all_nodegroups_map: all_nodegroups,
+        })
+    }
 
     /// PORT: graphManager.ts lines 505-643
     /// Returns recipes for creating PseudoValues and discovered implied nodegroups
