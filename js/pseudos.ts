@@ -477,6 +477,7 @@ class PseudoList extends Array implements IPseudo {
 
 // makePseudoClsForNode is now imported from WASM
 
+// PORT: Lines 481-528 (with Phase 4b enhancements)
 // Fix wkri type.
 function makePseudoCls(
   model: IModelWrapper<any>,
@@ -484,16 +485,20 @@ function makePseudoCls(
   single: boolean,
   tile: StaticTile | null = null,
   wkri: any,
+  rustValue?: any, // Phase 4b: Optional WasmPseudoValue or WasmPseudoList from Rust
 ): PseudoList | PseudoValue<any> | PseudoUnavailable {
+  // PORT: Line 487-491
   const nodeObjs = model.getNodeObjectsByAlias();
   const nodeObj = nodeObjs.get(key);
   if (!nodeObj) {
     throw Error("Could not find node by alias");
   }
 
+  // PORT: Line 493-494
   const nodegroups = model.getNodegroupObjects();
   const nodegroup = nodegroups.get(nodeObj.nodegroup_id || "");
 
+  // PORT: Line 496-506
   let value = null;
   if (
     nodeObj.nodegroup_id &&
@@ -502,23 +507,43 @@ function makePseudoCls(
     nodegroup.cardinality == "n" &&
     !single
   ) {
+    // PORT: Line 504-505 - create PseudoList
     value = new PseudoList();
     value.initialize(nodeObj, wkri);
+    // Phase 4b: Store Rust backing on PseudoList if provided
+    if (rustValue) {
+      (value as any).rustValue = rustValue;
+    }
   }
+  // PORT: Line 507-525
   if (value === null || tile) {
     let nodeValue;
+    // PORT: Line 509
     const isPermitted = model.isNodegroupPermitted(nodeObj.nodegroup_id || '', tile, nodeObjs);
     if (isPermitted) {
+      // PORT: Line 511 - get child nodes
       const childNodes: Map<string, StaticNode> = model.getChildNodes(nodeObj.nodeid);
+      // PORT: Line 512-515 - inner/outer pattern
       let inner: boolean | PseudoValue<any> = false;
       if (childNodes && childNodes.size && nodeObj.datatype !== 'semantic') {
-        inner = new PseudoValue(nodeObj, tile, null, wkri, childNodes, true);
+        inner = new PseudoValue(nodeObj, tile, null, wkri, childNodes, rustValue?.inner, true);
       }
-      nodeValue = new PseudoValue(nodeObj, tile, null, wkri, inner !== false ? new Map() : childNodes, inner);
+      // PORT: Line 516 - create PseudoValue with Rust backing
+      // Phase 4b: Pass rustValue to PseudoValue constructor
+      nodeValue = new PseudoValue(
+        nodeObj,
+        tile,
+        null,
+        wkri,
+        inner !== false ? new Map() : childNodes,
+        rustValue, // Phase 4b: Pass Rust backing
+        inner
+      );
     } else {
+      // PORT: Line 517-519
       nodeValue = new PseudoUnavailable(nodeObj);
     }
-    // If we have a tile in a list, add it
+    // PORT: Line 520-524 - add to list if needed
     if (value) {
       value.push(nodeValue.getValue());
     } else {
@@ -526,6 +551,7 @@ function makePseudoCls(
     }
   }
 
+  // PORT: Line 528
   return value;
 }
 
