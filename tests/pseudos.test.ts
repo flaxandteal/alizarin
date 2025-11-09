@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
-import { PseudoUnavailable, PseudoValue, PseudoList, makePseudoCls } from '../js/pseudos';
+import { PseudoUnavailable, PseudoValue, PseudoList, makePseudoCls_JS } from '../js/pseudos';
 import { StaticNode, StaticTile, createStaticGraph, StaticGraph, StaticGraphMeta } from '../js/static-types';
 import { AttrPromise } from '../js/utils';
 import { initWasmForTests } from './wasm-init';
@@ -909,7 +909,7 @@ describe('Pseudos', () => {
     });
   });
 
-  describe('makePseudoCls', () => {
+  describe('makePseudoCls_JS (legacy JS-only implementation)', () => {
     let wrapper: WASMResourceModelWrapper;
     let wkri: any;
     let node: StaticNode;
@@ -956,12 +956,12 @@ describe('Pseudos', () => {
 
     it('should throw error when node alias not found', () => {
       expect(() => {
-        makePseudoCls(wrapper, 'nonexistent_node', true, null, wkri);
+        makePseudoCls_JS(wrapper, 'nonexistent_node', true, null, wkri);
       }).toThrow('Could not find node by alias');
     });
 
     it('should create PseudoValue for single cardinality node', () => {
-      const result = makePseudoCls(wrapper, 'test_node', true, null, wkri);
+      const result = makePseudoCls_JS(wrapper, 'test_node', true, null, wkri);
 
       expect(result).toBeInstanceOf(PseudoValue);
       expect((result as PseudoValue<any>).node.toJSON()).toStrictEqual(node.toJSON());
@@ -997,7 +997,7 @@ describe('Pseudos', () => {
         $: { model: testWrapper },
       };
 
-      const result = makePseudoCls(testWrapper, 'collector_node', false, null, testWkri);
+      const result = makePseudoCls_JS(testWrapper, 'collector_node', false, null, testWkri);
 
       expect(result).toBeInstanceOf(PseudoList);
       expect((result as PseudoList).node?.toJSON()).toStrictEqual(collectorNode.toJSON());
@@ -1032,7 +1032,7 @@ describe('Pseudos', () => {
         $: { model: testWrapper },
       };
 
-      const result = makePseudoCls(testWrapper, 'collector_node', true, null, testWkri);
+      const result = makePseudoCls_JS(testWrapper, 'collector_node', true, null, testWkri);
 
       expect(result).toBeInstanceOf(PseudoValue);
     });
@@ -1052,7 +1052,7 @@ describe('Pseudos', () => {
         $: { model: unpermittedWrapper },
       };
 
-      const result = makePseudoCls(unpermittedWrapper, 'test_node', true, null, testWkri);
+      const result = makePseudoCls_JS(unpermittedWrapper, 'test_node', true, null, testWkri);
 
       expect(result).toBeInstanceOf(PseudoUnavailable);
       expect((result as PseudoUnavailable).node.toJSON()).toStrictEqual(node.toJSON());
@@ -1098,7 +1098,7 @@ describe('Pseudos', () => {
         $: { model: testWrapper },
       };
 
-      const result = makePseudoCls(testWrapper, 'collector_node', false, tile, testWkri);
+      const result = makePseudoCls_JS(testWrapper, 'collector_node', false, tile, testWkri);
 
       expect(result).toBeInstanceOf(PseudoList);
       expect((result as PseudoList).length).toBe(1);
@@ -1149,7 +1149,7 @@ describe('Pseudos', () => {
         $: { model: testWrapper },
       };
 
-      const result = makePseudoCls(testWrapper, 'parent_node', true, null, testWkri);
+      const result = makePseudoCls_JS(testWrapper, 'parent_node', true, null, testWkri);
 
       expect(result).toBeInstanceOf(PseudoValue);
       const pseudoValue = result as PseudoValue<any>;
@@ -1201,7 +1201,7 @@ describe('Pseudos', () => {
         $: { model: testWrapper },
       };
 
-      const result = makePseudoCls(testWrapper, 'semantic_parent', true, null, testWkri);
+      const result = makePseudoCls_JS(testWrapper, 'semantic_parent', true, null, testWkri);
 
       expect(result).toBeInstanceOf(PseudoValue);
       const pseudoValue = result as PseudoValue<any>;

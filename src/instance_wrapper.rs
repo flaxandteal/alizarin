@@ -1,9 +1,9 @@
 use wasm_bindgen::prelude::*;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use serde_json::Value as JsonValue;
 use crate::graph::{StaticTile, StaticNode};
-use crate::pseudo_value::{RustPseudoValue, RustPseudoList};
+use crate::pseudo_value::{RustPseudoValue, RustPseudoList, RustPseudoGroup, WasmPseudoList, WasmPseudoValue};
 use js_sys::{Array, Map as JsMap};
 use wasm_bindgen::JsCast;
 
@@ -83,61 +83,95 @@ impl ValuesFromNodegroupResult {
 }
 
 /// Result from ensure_nodegroup
-#[wasm_bindgen]
+/// PORT: Phase 4c - Now returns structured RustPseudoList values directly
 pub struct EnsureNodegroupResult {
-    recipes: Vec<PseudoRecipe>,
-    implied_nodegroups: Vec<String>,
-    all_nodegroups_map: HashMap<String, serde_json::Value>,
+    /// Structured values by alias
+    /// PORT: Map of alias → RustPseudoList (js/graphManager.ts:350 - newValues Map)
+    pub values: HashMap<String, RustPseudoList>,
+    pub implied_nodegroups: Vec<String>,
+    pub all_nodegroups_map: HashMap<String, serde_json::Value>,
+}
+
+// WASM wrapper for EnsureNodegroupResult
+#[wasm_bindgen]
+pub struct WasmEnsureNodegroupResult {
+    inner: EnsureNodegroupResult,
 }
 
 #[wasm_bindgen]
-impl EnsureNodegroupResult {
-    #[wasm_bindgen(getter = recipes)]
-    pub fn recipes(&self) -> Vec<PseudoRecipe> {
-        self.recipes.clone()
+impl WasmEnsureNodegroupResult {
+    /// Get value aliases (keys)
+    /// PORT: js/graphManager.ts:352 - iterating over result.recipes
+    #[wasm_bindgen(js_name = getValueAliases)]
+    pub fn get_value_aliases(&self) -> Vec<String> {
+        self.inner.values.keys().cloned().collect()
     }
 
+    /// Get a structured value by alias
+    /// PORT: js/graphManager.ts:353 - recipe.nodeAlias lookup
+    #[wasm_bindgen(js_name = getValue)]
+    pub fn get_value(&self, alias: &str) -> Option<WasmPseudoList> {
+        self.inner.values.get(alias).map(|v| WasmPseudoList::from_rust(v.clone()))
+    }
+
+    /// PORT: js/graphManager.ts - impliedNodegroups access
     #[wasm_bindgen(getter = impliedNodegroups)]
     pub fn implied_nodegroups(&self) -> Vec<String> {
-        self.implied_nodegroups.clone()
+        self.inner.implied_nodegroups.clone()
     }
 
+    /// PORT: js/graphManager.ts - allNodegroupsMap access
     #[wasm_bindgen(getter = allNodegroupsMap)]
     pub fn all_nodegroups_map(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.all_nodegroups_map).unwrap_or(JsValue::NULL)
+        serde_wasm_bindgen::to_value(&self.inner.all_nodegroups_map).unwrap_or(JsValue::NULL)
     }
 }
 
-/// Result from populate
-#[wasm_bindgen]
+/// Internal result from populate with structured values
+/// PORT: Phase 4c - Matches js/graphManager.ts:724-729 (allValues, allNodegroups)
 pub struct PopulateResult {
-    recipes: Vec<PseudoRecipe>,
-    all_values_map: HashMap<String, serde_json::Value>,
-    all_nodegroups_map: HashMap<String, serde_json::Value>,
+    /// Map of alias → RustPseudoList
+    pub values: HashMap<String, RustPseudoList>,
+    pub all_values_map: HashMap<String, serde_json::Value>,
+    pub all_nodegroups_map: HashMap<String, serde_json::Value>,
+}
+
+/// WASM wrapper for PopulateResult
+/// PORT: Phase 4c - Exposes structured values to JavaScript
+#[wasm_bindgen]
+pub struct WasmPopulateResult {
+    inner: PopulateResult,
 }
 
 #[wasm_bindgen]
-impl PopulateResult {
-    #[wasm_bindgen(getter = recipes)]
-    pub fn recipes(&self) -> Vec<PseudoRecipe> {
-        self.recipes.clone()
+impl WasmPopulateResult {
+    /// PORT: js/graphManager.ts:669 - iterating over result to get aliases
+    #[wasm_bindgen(js_name = getValueAliases)]
+    pub fn get_value_aliases(&self) -> Vec<String> {
+        self.inner.values.keys().cloned().collect()
+    }
+
+    /// PORT: js/graphManager.ts:670 - accessing value by alias
+    #[wasm_bindgen(js_name = getValue)]
+    pub fn get_value(&self, alias: &str) -> Option<WasmPseudoList> {
+        self.inner.values.get(alias).map(|v| WasmPseudoList::from_rust(v.clone()))
     }
 
     #[wasm_bindgen(getter = allValuesMap)]
     pub fn all_values_map(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.all_values_map).unwrap_or(JsValue::NULL)
+        serde_wasm_bindgen::to_value(&self.inner.all_values_map).unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(getter = allNodegroupsMap)]
     pub fn all_nodegroups_map(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.all_nodegroups_map).unwrap_or(JsValue::NULL)
+        serde_wasm_bindgen::to_value(&self.inner.all_nodegroups_map).unwrap_or(JsValue::NULL)
     }
 }
 
 /// Rust-side resource instance wrapper that owns tile data
 /// Manages tile storage, indexing, and provides query methods
+/// Phase 4g: Added PseudoValue cache for parallel access
 #[wasm_bindgen]
-#[derive(Clone)]
 pub struct WASMResourceInstanceWrapper {
     // Core tile storage
     tiles: HashMap<String, StaticTile>,
@@ -145,8 +179,33 @@ pub struct WASMResourceInstanceWrapper {
     // Index: nodegroup_id -> list of tile_ids
     nodegroup_index: HashMap<String, Vec<String>>,
 
-    // Track which nodegroups have been loaded
-    loaded_nodegroups: HashMap<String, bool>,
+    // Track which nodegroups have been loaded/loading
+    // Phase 4g: Now uses Mutex for thread-safe parallel access
+    loaded_nodegroups: Arc<Mutex<HashMap<String, LoadState>>>,
+
+    // Phase 4g: Cache of PseudoValues (alias -> RustPseudoList)
+    // This allows Rust to own the authoritative data and TS to create lightweight wrappers
+    pseudo_cache: Arc<Mutex<HashMap<String, RustPseudoList>>>,
+}
+
+/// Phase 4g: Track loading state to prevent race conditions
+#[derive(Clone, Debug, PartialEq)]
+enum LoadState {
+    NotLoaded,
+    Loading,
+    Loaded,
+}
+
+// Manual Clone implementation since Arc<Mutex<>> is Clone but wasm_bindgen doesn't auto-derive
+impl Clone for WASMResourceInstanceWrapper {
+    fn clone(&self) -> Self {
+        WASMResourceInstanceWrapper {
+            tiles: self.tiles.clone(),
+            nodegroup_index: self.nodegroup_index.clone(),
+            loaded_nodegroups: Arc::clone(&self.loaded_nodegroups),
+            pseudo_cache: Arc::clone(&self.pseudo_cache),
+        }
+    }
 }
 
 #[wasm_bindgen]
@@ -157,7 +216,8 @@ impl WASMResourceInstanceWrapper {
         WASMResourceInstanceWrapper {
             tiles: HashMap::new(),
             nodegroup_index: HashMap::new(),
-            loaded_nodegroups: HashMap::new(),
+            loaded_nodegroups: Arc::new(Mutex::new(HashMap::new())),
+            pseudo_cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -229,15 +289,228 @@ impl WASMResourceInstanceWrapper {
     }
 
     /// Mark a nodegroup as loaded to prevent re-loading
+    /// Phase 4g: Now uses Mutex for thread-safe access
     #[wasm_bindgen(js_name = markNodegroupLoaded)]
-    pub fn mark_nodegroup_loaded(&mut self, nodegroup_id: String) {
-        self.loaded_nodegroups.insert(nodegroup_id, true);
+    pub fn mark_nodegroup_loaded(&self, nodegroup_id: String) {
+        if let Ok(mut loaded) = self.loaded_nodegroups.lock() {
+            loaded.insert(nodegroup_id, LoadState::Loaded);
+        }
+    }
+
+    /// Phase 4g: Check if a nodegroup is being loaded or already loaded
+    #[wasm_bindgen(js_name = isNodegroupLoadedOrLoading)]
+    pub fn is_nodegroup_loaded_or_loading(&self, nodegroup_id: &str) -> bool {
+        if let Ok(loaded) = self.loaded_nodegroups.lock() {
+            matches!(loaded.get(nodegroup_id), Some(LoadState::Loading) | Some(LoadState::Loaded))
+        } else {
+            false
+        }
+    }
+
+    /// Phase 4g: Try to atomically acquire loading lock for a nodegroup
+    /// Returns true if caller should proceed with loading, false if already being loaded
+    #[wasm_bindgen(js_name = tryAcquireNodegroupLock)]
+    pub fn try_acquire_nodegroup_lock(&self, nodegroup_id: String) -> bool {
+        if let Ok(mut loaded) = self.loaded_nodegroups.lock() {
+            match loaded.get(&nodegroup_id) {
+                Some(LoadState::Loading) | Some(LoadState::Loaded) => false,
+                _ => {
+                    loaded.insert(nodegroup_id, LoadState::Loading);
+                    true
+                }
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Phase 4g: Get cached PseudoValue from Rust cache
+    /// Returns WasmPseudoList if found, null otherwise
+    #[wasm_bindgen(js_name = getCachedPseudo)]
+    pub fn get_cached_pseudo(&self, alias: &str) -> Option<WasmPseudoList> {
+        if let Ok(cache) = self.pseudo_cache.lock() {
+            if let Some(pseudo_list) = cache.get(alias) {
+                // Convert RustPseudoList to WasmPseudoList
+                return Some(WasmPseudoList::from_rust(pseudo_list.clone()));
+            }
+        }
+        None
+    }
+
+    /// Phase 4g: Store WasmPseudoList in Rust cache
+    #[wasm_bindgen(js_name = cachePseudoList)]
+    pub fn cache_pseudo_list(&self, alias: String, wasm_list: WasmPseudoList) {
+        let rust_list = wasm_list.into_inner();
+        if let Ok(mut cache) = self.pseudo_cache.lock() {
+            cache.insert(alias, rust_list);
+        }
+    }
+
+    /// Phase 4g: Store single WasmPseudoValue as a list in Rust cache
+    #[wasm_bindgen(js_name = cachePseudoValue)]
+    pub fn cache_pseudo_value(&self, alias: String, wasm_value: WasmPseudoValue) {
+        let rust_value = wasm_value.into_inner();
+        let tile_id = rust_value.tile.as_ref().and_then(|t| t.tileid.clone());
+        let node_alias = alias.clone();  // Use the provided alias
+        let rust_list = RustPseudoList {
+            node_alias,
+            groups: vec![RustPseudoGroup {
+                tile_id,
+                values: vec![rust_value],
+            }],
+            is_loaded: true,
+        };
+        if let Ok(mut cache) = self.pseudo_cache.lock() {
+            cache.insert(alias, rust_list);
+        }
+    }
+
+    /// Phase 4g: Clear all cached PseudoValues
+    #[wasm_bindgen(js_name = clearPseudoCache)]
+    pub fn clear_pseudo_cache(&self) {
+        if let Ok(mut cache) = self.pseudo_cache.lock() {
+            cache.clear();
+        }
+    }
+
+    /// Create a PseudoValue or PseudoList from node metadata
+    /// PORT: js/pseudos.ts:497-594 makePseudoCls()
+    ///
+    /// This replaces the TS makePseudoCls logic, returning WasmPseudoValue or WasmPseudoList
+    /// that can be wrapped in TS PseudoValue/PseudoList wrappers.
+    ///
+    /// Parameters:
+    /// - alias: Node alias to create pseudo for
+    /// - tile_id: Optional tile ID (if node shares parent's tile)
+    /// - is_permitted: Whether nodegroup is permitted (precalculated in TS)
+    /// - node_objs_js: Map<string, StaticNode> from TS
+    /// - edges_js: Map<string, string[]> from TS
+    /// - is_single: Force single value (not a list)
+    #[wasm_bindgen(js_name = makePseudoValue)]
+    pub fn make_pseudo_value(
+        &self,
+        alias: &str,
+        tile_id: Option<String>,
+        is_permitted: bool,
+        node_objs_js: JsValue,
+        edges_js: JsValue,
+        is_single: bool,
+    ) -> Result<JsValue, JsValue> {
+        // PORT: js/pseudos.ts:506-510 - Get node by alias
+        let node_objs = self.deserialize_node_map(node_objs_js)?;
+        let node = node_objs.get(alias)
+            .ok_or_else(|| JsValue::from_str(&format!("Could not find node by alias: {}", alias)))?;
+
+        // PORT: js/pseudos.ts:518-532 - Check if this should be a PseudoList
+        let is_collector = node.is_collector;
+        // PORT: js/pseudos.ts:421 - handle missing nodegroup_id (root node case)
+        // If nodegroup_id is None or empty string, use empty string (root nodegroup)
+        let nodegroup_id = node.nodegroup_id.as_ref()
+            .map(|s| if s.is_empty() { "" } else { s.as_str() })
+            .unwrap_or("");
+
+        // Get nodegroup to check cardinality
+        // Note: In TS this comes from model.getNodegroupObjects()
+        // For now, assume is_collector + !is_single means it's a list
+        let should_be_list = is_collector && !is_single;
+
+        if should_be_list {
+            // PORT: js/pseudos.ts:536-562 - Create PseudoList with values from tiles
+            if !is_permitted {
+                // Return empty list for unpermitted nodegroup
+                let empty_list = RustPseudoList::new(alias.to_string());
+                let wasm_list = WasmPseudoList::from_rust(empty_list);
+                return Ok(wasm_list.into());
+            }
+
+            // Get all tiles for this nodegroup
+            let tile_ids = self.get_tile_ids_by_nodegroup(nodegroup_id);
+
+            // Deserialize edges for child lookup
+            let edges = self.deserialize_edges_map(edges_js)?;
+
+            // Create list of RustPseudoValues from each tile
+            let mut values = Vec::new();
+
+            for tid in tile_ids {
+                let tile = self.tiles.get(&tid);
+                if let Some(tile) = tile {
+                    // Get tile data for this node
+                    let tile_data = tile.data.get(&node.nodeid);
+
+                    // Get child node IDs from edges
+                    let child_ids = edges.get(&node.nodeid)
+                        .cloned()
+                        .unwrap_or_default();
+
+                    // Create RustPseudoValue for this tile
+                    let pseudo_value = RustPseudoValue::from_node_and_tile(
+                        Arc::new(node.clone()),
+                        Some(Arc::new(tile.clone())),
+                        tile_data.cloned(),
+                        child_ids,
+                    );
+
+                    values.push(pseudo_value);
+                }
+            }
+
+            let pseudo_list = RustPseudoList::from_values(alias.to_string(), values);
+            let wasm_list = WasmPseudoList::from_rust(pseudo_list);
+            Ok(wasm_list.into())
+        } else {
+            // PORT: js/pseudos.ts:563-590 - Create single PseudoValue
+            if !is_permitted {
+                // Return null/unavailable for unpermitted nodegroup
+                // TS will wrap this in PseudoUnavailable
+                return Ok(JsValue::NULL);
+            }
+
+            // Get the tile if provided
+            // NOTE: We do NOT search for tiles here - we trust the tile_id passed from TS
+            // The tile may be null, which means the value is "independent" and will be populated later
+            let tile = if let Some(tid) = tile_id {
+                self.tiles.get(&tid).cloned()
+            } else {
+                None
+            };
+
+            // Extract tile data if we have a tile
+            let tile_data = if let Some(ref t) = tile {
+                t.data.get(&node.nodeid).cloned()
+            } else {
+                None
+            };
+
+            // Get child node IDs from edges
+            let edges = self.deserialize_edges_map(edges_js)?;
+            let child_ids = edges.get(&node.nodeid)
+                .cloned()
+                .unwrap_or_default();
+
+            // Create RustPseudoValue
+            let pseudo_value = RustPseudoValue::from_node_and_tile(
+                Arc::new(node.clone()),
+                tile.map(Arc::new),
+                tile_data,
+                child_ids,
+            );
+
+            // Convert to WASM wrapper
+            let wasm_value = WasmPseudoValue::from_rust(pseudo_value);
+            Ok(wasm_value.into())
+        }
     }
 
     /// Check if a nodegroup has been loaded
+    /// Phase 4g: Updated to use Mutex
     #[wasm_bindgen(js_name = isNodegroupLoaded)]
     pub fn is_nodegroup_loaded(&self, nodegroup_id: &str) -> bool {
-        self.loaded_nodegroups.get(nodegroup_id).copied().unwrap_or(false)
+        if let Ok(loaded) = self.loaded_nodegroups.lock() {
+            matches!(loaded.get(nodegroup_id), Some(LoadState::Loaded))
+        } else {
+            false
+        }
     }
 
     /// Get count of tiles stored
@@ -258,6 +531,7 @@ impl WASMResourceInstanceWrapper {
 
     /// Complete ensureNodegroup implementation in Rust
     /// PORT: graphManager.ts lines 302-377 (full ensureNodegroup function)
+    /// PORT: Phase 4c - Now returns structured WasmEnsureNodegroupResult instead of recipes
     #[wasm_bindgen(js_name = ensureNodegroup)]
     pub fn ensure_nodegroup(
         &self,
@@ -269,9 +543,9 @@ impl WASMResourceInstanceWrapper {
         edges_js: JsValue,             // Map<string, string[]>
         add_if_missing: bool,
         all_tiles: Vec<String>,        // All tile IDs available
-        tile_permissions_js: JsValue,  // Map<tileId, boolean>
+        nodegroup_permissions_js: JsValue,  // Phase 4h: Map<nodegroupId, boolean>
         do_implied_nodegroups: bool,
-    ) -> Result<EnsureNodegroupResult, JsValue> {
+    ) -> Result<WasmEnsureNodegroupResult, JsValue> {
         use std::collections::{HashMap, HashSet};
 
         // Deserialize all_nodegroups to check sentinel
@@ -287,7 +561,9 @@ impl WASMResourceInstanceWrapper {
             _ => false,  // Promise or other - skip
         };
 
-        let mut all_recipes: Vec<PseudoRecipe> = Vec::new();
+        // PORT: Phase 4c - Changed from Vec<PseudoRecipe> to HashMap<String, RustPseudoList>
+        // PORT: js/graphManager.ts:350 - newValues is a Map<string, PseudoValue | PseudoList>
+        let mut all_values: HashMap<String, RustPseudoList> = HashMap::new();
         let mut implied_nodegroups_set: HashSet<String> = HashSet::new();
 
         if should_process {
@@ -295,15 +571,18 @@ impl WASMResourceInstanceWrapper {
             let node_objs: HashMap<String, serde_json::Value> = serde_wasm_bindgen::from_value(node_objs_js.clone())
                 .map_err(|e| JsValue::from_str(&format!("Failed to deserialize node_objs: {:?}", e)))?;
 
-            let tile_permissions: HashMap<String, bool> = serde_wasm_bindgen::from_value(tile_permissions_js)
-                .map_err(|e| JsValue::from_str(&format!("Failed to deserialize tile_permissions: {:?}", e)))?;
+            // Phase 4h: Deserialize nodegroup permissions and compute tile permissions internally
+            let nodegroup_permissions: HashMap<String, bool> = serde_wasm_bindgen::from_value(nodegroup_permissions_js.clone())
+                .map_err(|e| JsValue::from_str(&format!("Failed to deserialize nodegroup_permissions: {:?}", e)))?;
 
             // Filter tiles by nodegroup_id and permissions (lines 326-328)
+            // Phase 4h: Compute tile permission from nodegroup permission
             let mut nodegroup_tiles: Vec<String> = Vec::new();
             for tile_id in all_tiles.iter() {
                 if let Some(tile) = self.tiles.get(tile_id) {
                     if tile.nodegroup_id == nodegroup_id {
-                        let permitted = tile_permissions.get(tile_id).copied().unwrap_or(true);
+                        // Phase 4h: Look up permission by tile's nodegroup_id
+                        let permitted = nodegroup_permissions.get(&tile.nodegroup_id).copied().unwrap_or(true);
                         if permitted {
                             nodegroup_tiles.push(tile_id.clone());
                         }
@@ -317,7 +596,8 @@ impl WASMResourceInstanceWrapper {
             }
 
             // Call values_from_resource_nodegroup_internal (line 332)
-            // PORT: Phase 3 - now returns structured values, convert to recipes for compatibility
+            // PORT: Phase 4c - Use structured values directly (no recipe conversion)
+            // PORT: js/graphManager.ts:352 - iterating over result and adding to newValues
             let values_result = self.values_from_resource_nodegroup_internal(
                 all_values_js.clone(),
                 nodegroup_tiles,
@@ -326,10 +606,11 @@ impl WASMResourceInstanceWrapper {
                 edges_js.clone(),
             )?;
 
-            // Convert structured values to recipes for backward compatibility
-            // TODO: Phase 3d - use values directly instead of converting
-            let recipes = values_result.to_recipes();
-            all_recipes.extend(recipes);
+            // Merge structured values into all_values
+            // PORT: js/graphManager.ts:353-355 - newValues.set(recipe.nodeAlias, makePseudoCls(...))
+            for (alias, pseudo_list) in values_result.values {
+                all_values.insert(alias, pseudo_list);
+            }
 
             // Collect implied nodegroups (lines 347-349)
             for ng in values_result.implied_nodegroups.iter() {
@@ -354,12 +635,18 @@ impl WASMResourceInstanceWrapper {
                         edges_js.clone(),
                         true,  // addIfMissing = true for implied
                         all_tiles.clone(),
-                        serde_wasm_bindgen::to_value(&tile_permissions)?,
+                        nodegroup_permissions_js.clone(),  // Phase 4h
                         true,  // doImpliedNodegroups = true
                     )?;
 
-                    // Merge implied recipes (lines 369-371)
-                    all_recipes.extend(implied_result.recipes());
+                    // Merge implied values (lines 369-371)
+                    // PORT: Phase 4c - Merge RustPseudoList values instead of recipes
+                    // PORT: js/graphManager.ts:369-371 - merging newValues from recursive call
+                    for alias in implied_result.get_value_aliases() {
+                        if let Some(pseudo_list) = implied_result.get_value(&alias) {
+                            all_values.insert(alias, pseudo_list.into_inner());
+                        }
+                    }
 
                     // Update all_nodegroups from recursive call
                     let implied_nodegroups_map: HashMap<String, serde_json::Value> =
@@ -374,15 +661,20 @@ impl WASMResourceInstanceWrapper {
             }
         }
 
-        Ok(EnsureNodegroupResult {
-            recipes: all_recipes,
-            implied_nodegroups: implied_nodegroups_set.into_iter().collect(),
-            all_nodegroups_map: all_nodegroups,
+        // PORT: Phase 4c - Return structured values wrapped in WasmEnsureNodegroupResult
+        // PORT: js/graphManager.ts:377 - return { newValues, impliedNodegroups, ... }
+        Ok(WasmEnsureNodegroupResult {
+            inner: EnsureNodegroupResult {
+                values: all_values,
+                implied_nodegroups: implied_nodegroups_set.into_iter().collect(),
+                all_nodegroups_map: all_nodegroups,
+            }
         })
     }
 
     /// Complete populate implementation in Rust
     /// PORT: graphManager.ts lines 600-688 (populate function)
+    /// PORT: Phase 4c - Now returns WasmPopulateResult with structured values
     /// Orchestrates loading all nodegroups for a resource
     #[wasm_bindgen(js_name = populate)]
     pub fn populate(
@@ -394,8 +686,8 @@ impl WASMResourceInstanceWrapper {
         nodegroup_objs_js: JsValue,
         edges_js: JsValue,
         all_tiles: Vec<String>,
-        tile_permissions_js: JsValue,
-    ) -> Result<PopulateResult, JsValue> {
+        nodegroup_permissions_js: JsValue,  // Phase 4h: Map<nodegroupId, boolean>
+    ) -> Result<WasmPopulateResult, JsValue> {
         // Initialize state maps
         let mut all_values: HashMap<String, serde_json::Value> = HashMap::new();
         let mut all_nodegroups: HashMap<String, serde_json::Value> = HashMap::new();
@@ -408,7 +700,9 @@ impl WASMResourceInstanceWrapper {
         // Set root node alias to false (line 626)
         all_values.insert(root_node_alias.clone(), serde_json::Value::Bool(false));
 
-        let mut all_recipes = Vec::new();
+        // PORT: Phase 4c - Collect structured RustPseudoList values instead of recipes
+        // PORT: js/graphManager.ts:668 - newValues is a Map<string, PseudoValue | PseudoList>
+        let mut all_structured_values: HashMap<String, RustPseudoList> = HashMap::new();
 
         // Non-lazy loading: process all nodegroups
         if !lazy {
@@ -425,12 +719,18 @@ impl WASMResourceInstanceWrapper {
                     edges_js.clone(),
                     true,  // addIfMissing
                     all_tiles.clone(),
-                    tile_permissions_js.clone(),
+                    nodegroup_permissions_js.clone(),  // Phase 4h
                     false, // doImpliedNodegroups = false for phase 1
                 )?;
 
-                // Collect recipes
-                all_recipes.extend(result.recipes());
+                // Collect structured values
+                // PORT: Phase 4c - Merge RustPseudoList values from ensure_nodegroup result
+                // PORT: js/graphManager.ts:669-720 - Processing result.recipes becomes iterating values
+                for alias in result.get_value_aliases() {
+                    if let Some(pseudo_list) = result.get_value(&alias) {
+                        all_structured_values.insert(alias, pseudo_list.into_inner());
+                    }
+                }
 
                 // Update all_values and all_nodegroups from result
                 let result_values: HashMap<String, serde_json::Value> =
@@ -471,12 +771,17 @@ impl WASMResourceInstanceWrapper {
                             edges_js.clone(),
                             true,  // addIfMissing
                             all_tiles.clone(),
-                            tile_permissions_js.clone(),
+                            nodegroup_permissions_js.clone(),  // Phase 4h
                             true,  // doImpliedNodegroups = true for phase 2
                         )?;
 
-                        // Collect recipes
-                        all_recipes.extend(result.recipes());
+                        // Collect structured values
+                        // PORT: Phase 4c - Merge structured values from implied nodegroup
+                        for alias in result.get_value_aliases() {
+                            if let Some(pseudo_list) = result.get_value(&alias) {
+                                all_structured_values.insert(alias, pseudo_list.into_inner());
+                            }
+                        }
 
                         // Update all_nodegroups from result
                         let result_values: HashMap<String, serde_json::Value> =
@@ -495,10 +800,14 @@ impl WASMResourceInstanceWrapper {
         }
         // If lazy: just skip loading (lines 678-680 in JS - stripTiles happens in JS)
 
-        Ok(PopulateResult {
-            recipes: all_recipes,
-            all_values_map: all_values,
-            all_nodegroups_map: all_nodegroups,
+        // PORT: Phase 4c - Return structured values wrapped in WasmPopulateResult
+        // PORT: js/graphManager.ts:724-729 - returning allValues and allNodegroups
+        Ok(WasmPopulateResult {
+            inner: PopulateResult {
+                values: all_structured_values,
+                all_values_map: all_values,
+                all_nodegroups_map: all_nodegroups,
+            }
         })
     }
 

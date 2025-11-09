@@ -214,7 +214,8 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       throw Error("This semantic node is currently on an unloaded WKRI");
     }
 
-    const child = this.__parentWkri.$.addPseudo(childNode, this.__tile, this.__node);
+    const tile = (!childNode.is_collector && childNode.nodegroup_id === this.__node.nodegroup_id) ? this.__tile : null; // Does it share a tile
+    const child = this.__parentWkri.$.addPseudo(childNode, tile, this.__node);
     child.parentNode = this.__parentPseudo || null;
     return child;
   }
@@ -272,7 +273,8 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
 
     // TODO: Why not just use edges?
     const children: Map<string, any> = new Map();
-    for (const entry of [...parent.$.allEntries()]) {
+    const allEntries = [...parent.$.allEntries()];
+    for (const entry of allEntries) {
       const key = entry[0];
       let values = entry[1];
       if (values instanceof Promise) {

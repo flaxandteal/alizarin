@@ -332,7 +332,12 @@ impl WasmPseudoValue {
     #[wasm_bindgen(getter, js_name = tile)]
     pub fn tile(&self) -> JsValue {
         match &self.inner.tile {
-            Some(tile) => serde_wasm_bindgen::to_value(tile.as_ref()).unwrap_or(JsValue::NULL),
+            Some(tile) => {
+                // Return the StaticTile WASM object directly, not serialized
+                // This preserves the WASM bindings and getters (especially .data getter)
+                let static_tile = tile.as_ref().clone();
+                static_tile.into()
+            },
             None => JsValue::NULL,
         }
     }
@@ -377,6 +382,20 @@ impl WasmPseudoValue {
         self.inner.inner.as_ref().map(|inner| WasmPseudoValue {
             inner: (**inner).clone(),
         })
+    }
+}
+
+// Non-WASM methods for internal Rust use
+impl WasmPseudoValue {
+    /// Create a WasmPseudoValue from RustPseudoValue (for Rust-internal use)
+    pub fn from_rust(inner: RustPseudoValue) -> Self {
+        WasmPseudoValue { inner }
+    }
+
+    /// Get the inner RustPseudoValue (for Rust-internal use)
+    /// Phase 4g: Added for cache storage
+    pub fn into_inner(self) -> RustPseudoValue {
+        self.inner
     }
 }
 
@@ -450,6 +469,24 @@ impl WasmPseudoList {
     #[wasm_bindgen(js_name = isIterable)]
     pub fn is_iterable(&self) -> bool {
         true
+    }
+}
+
+// Non-WASM methods for internal Rust use
+impl WasmPseudoList {
+    /// Create a WasmPseudoList from RustPseudoList (for Rust-internal use)
+    pub fn from_rust(inner: RustPseudoList) -> Self {
+        WasmPseudoList { inner }
+    }
+
+    /// Get the inner RustPseudoList (for Rust-internal use)
+    pub fn into_inner(self) -> RustPseudoList {
+        self.inner
+    }
+
+    /// Get a reference to the inner RustPseudoList (for Rust-internal use)
+    pub fn inner_ref(&self) -> &RustPseudoList {
+        &self.inner
     }
 }
 

@@ -4,6 +4,7 @@ pub mod pseudos;
 pub mod pseudo_value;
 pub mod model_wrapper;
 pub mod instance_wrapper;
+pub mod json_conversion;
 
 use wasm_bindgen::prelude::*;
 

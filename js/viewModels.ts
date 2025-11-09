@@ -8,7 +8,7 @@ import {
   IRIVM,
   GetMeta,
 } from "./interfaces.ts";
-import { PseudoValue } from "./pseudos";
+import { PseudoValue, wrapRustPseudo } from "./pseudos";
 import { SemanticViewModel } from "./semantic";
 import { RDM } from "./rdm";
 import {
@@ -37,20 +37,17 @@ const viewContext = new ViewContext();
 class ValueList<T extends IRIVM<T>> {
   values: Map<string, any>;
   wrapper: IInstanceWrapper<T>;
-  tiles: StaticTile[] | null;
-  promises: Map<string, boolean | Promise<boolean | IViewModel>>;
+  // Phase 4k: Removed this.promises - Rust atomic locks handle concurrency
   writeLock: null | Promise<boolean | IViewModel>;
 
   constructor(
     values: Map<string, any>,
-    allNodegroups: Map<string, boolean>,
+    allNodegroups: Map<string, boolean>,  // No longer stored, kept for API compat
     wrapper: IInstanceWrapper<T>,
-    tiles: StaticTile[] | null,
   ) {
     this.values = values;
     this.wrapper = wrapper;
-    this.tiles = tiles;
-    this.promises = allNodegroups;
+    // Phase 4k: No longer store allNodegroups - Rust handles state
     this.writeLock = null;
   }
 
@@ -80,20 +77,24 @@ class ValueList<T extends IRIVM<T>> {
       throw Error(`This key ${key} has no corresponding node`);
     }
     const nodegroupId = node.nodegroup_id || '';
-    const promise = node ? await this.promises.get(nodegroupId) : false;
+
+    // Phase 4k: Rust atomic lock - eliminates race conditions
+    if (!this.wrapper.wasmWrapper) {
+      throw new Error("WASM wrapper not available - legacy path removed");
+    }
+    const shouldLoad = this.wrapper.wasmWrapper.tryAcquireNodegroupLock(nodegroupId);
+
     // When an unloaded node is found, the whole nodegroup is loaded.
-    // The promises member ensures that no other node in the nodegroup
+    // Phase 4k: Rust atomic locks ensure that no other node in the nodegroup
     // triggers the same nodegroup load. Note that there is _also_ the
-    // individual node promise, which allows any operation to wait for
-    // just that node to finish and resolve in to the approach pseudo
+    // individual node promise (in this.values), which allows any operation to wait for
+    // just that node to finish and resolve into the appropriate pseudo
     // even if `retrieve` is not used (e.g. allEntries).
     // _However_, this means that allEntries will not see a promise for
     // individual nodes in the nodegroup that are _not_ the first
     // requested, until the first requested resolves and updates the
     // values map for all nodes in the nodegroup.
-    if (promise === false) {
-      // FIXME: the evidence is that this is not successfully functioning as
-      // a resource-wide lock...
+    if (shouldLoad) {
       await this.writeLock;
       if (this.wrapper.resource) {
         // Will KeyError if we do not have it.
@@ -105,32 +106,63 @@ class ValueList<T extends IRIVM<T>> {
         }
         const values = new Map([...this.values.entries()]);
         const promise: Promise<IViewModel | boolean> = new Promise((resolve) => {
-           return this.wrapper
-            .ensureNodegroup(
+           // Phase 4k: Create temporary state Map for Rust recursion tracking
+           // Rust uses this to track which nodegroups have been processed in recursive calls
+           const nodegroupStateMap = new Map<string, boolean>();
+           nodegroupStateMap.set(nodegroupId, false);  // Mark as needs-loading
+
+           // Get permissions and tiles
+           const nodegroupPermissions = this.wrapper.model.getPermittedNodegroups();
+           const tiles = this.wrapper.resource ? this.wrapper.resource.tiles : null;
+           const allTiles = tiles ? tiles.map(t => t?.tileid || '').filter(id => id) : [];
+
+           const result = this.wrapper.wasmWrapper.ensureNodegroup(
               values,
-              this.promises,
+              nodegroupStateMap,  // Phase 4k: Temporary state Map for this call only
               nodegroupId,
               this.wrapper.model.getNodeObjects(),
               this.wrapper.model.getNodegroupObjects(),
               this.wrapper.model.getEdges(),
-              false,
-              this.tiles,
-              true
-            ).then(async ([ngValues]) => {
+              false,  // addIfMissing
+              allTiles,
+              nodegroupPermissions,
+              true  // doImpliedNodegroups
+            );
+
+           // Unpack result into Map
+           const ngValues = new Map<string, any>();
+           for (const alias of result.getValueAliases()) {
+             const rustValue = result.getValue(alias);
+             if (rustValue) {
+               if (!ngValues.has(alias)) {
+                 ngValues.set(alias, []);
+               }
+               ngValues.get(alias).push(rustValue);
+             }
+           }
+
+           return Promise.resolve().then(async () => {
               let original = false;
-              const processValue = (k: string, concreteValue: any) => {
+              // Phase 4i: ngValues now contains raw Rust values (WasmPseudoList)
+              // We need to wrap them when storing in this.values
+              const processValue = (k: string, rustValues: any) => {
+                // Phase 4i: Wrap each Rust value in the array
+                const wrappedValues = Array.isArray(rustValues)
+                  ? rustValues.map((rv: any) => wrapRustPseudo(rv, this.wrapper.wkri, this.wrapper.model))
+                  : rustValues;
+
                 if (key === k) {
                   // Other methods may be waiting on this specific
                   // value to resolve.
-                  original = concreteValue;
+                  original = wrappedValues;
                 }
                 // In theory, this should never happen when this.values[k] is
                 // not false, as the resource-wide write lock means that no other nodegroup
                 // can write. This _is_ happening however. In theory, once set, the
                 // value will be a list, so passed by reference, and so should not
                 // undo and changes that happened concurrently.
-                if (concreteValue !== false) {
-                  this.values.set(k, concreteValue);
+                if (wrappedValues !== false) {
+                  this.values.set(k, wrappedValues);
                 }
               }
               return Promise.all([...ngValues.entries()].map(([k, value]) => {
@@ -145,12 +177,15 @@ class ValueList<T extends IRIVM<T>> {
         });
         // No writes should happen until this is done
         this.writeLock = promise;
-        // No reads from this nodegroup should happen [legacy comment]
-        this.promises.set(nodegroupId, promise);
+
+        // Phase 4k: Removed TS promises Map update - Rust handles all state
+
         // Other readers are welcome to wait for this nodegroup's read
         this.values.set(key, promise);
         await promise;
-        this.promises.set(nodegroupId, true);
+
+        // Phase 4k: Rust handles state transition to Loaded
+        this.wrapper.wasmWrapper.markNodegroupLoaded(nodegroupId);
       } else {
         this.values.delete(key);
       }
