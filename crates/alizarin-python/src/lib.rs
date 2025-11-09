@@ -5,13 +5,13 @@
 /// - Tree format (nested JSON using node aliases as keys)
 
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
 use serde_json;
 
 // Import shared conversion logic from parent crate
-use alizarin::json_conversion::{tiles_to_tree, tree_to_tiles, ResourceData};
-use alizarin::graph::StaticGraph as AlizarinStaticGraph;
-use alizarin::graph::StaticTile as AlizarinStaticTile;
+// Use ::alizarin to refer to the external crate, not the pymodule
+use ::alizarin::json_conversion::{tiles_to_tree, tree_to_tiles, ResourceData};
+use ::alizarin::graph::StaticGraph as AlizarinStaticGraph;
+use ::alizarin::graph::StaticTile as AlizarinStaticTile;
 
 /// Convert tiled resource to nested JSON tree
 ///
