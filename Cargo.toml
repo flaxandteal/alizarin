@@ -1,5 +1,5 @@
 [package]
-name = "wasm"
+name = "alizarin"
 version = "0.1.0"
 authors = ["Phil Weir <phil.weir@flaxandteal.co.uk>"]
 edition = "2018"

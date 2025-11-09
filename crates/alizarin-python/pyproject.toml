@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "alizarin"
 version = "0.1.0"
-description = "Python bindings for Alizarin graph management library"
+description = "Python bindings for Alizarin tree conversion"
 requires-python = ">=3.7"
 classifiers = [
     "Programming Language :: Rust",
@@ -13,7 +13,9 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
 [tool.maturin]
-# "extension-module" tells pyo3 to skip Python symbol linking
-python-source = "python"
+# Pure Rust extension module, no Python source directory needed
 module-name = "alizarin"

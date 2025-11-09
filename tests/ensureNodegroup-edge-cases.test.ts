@@ -13,7 +13,7 @@
 
 import { describe, it, expect, assert, beforeAll, beforeEach } from 'vitest';
 import { ResourceModelWrapper, ResourceInstanceWrapper, GraphMutator, WKRM } from '../js/graphManager';
-import { StaticGraph, StaticNode, StaticNodegroup, StaticTile, StaticGraphMeta } from '../pkg/wasm';
+import { StaticGraph, StaticNode, StaticNodegroup, StaticTile, StaticGraphMeta } from '../pkg/alizarin';
 import { createStaticGraph } from '../js/static-types';
 import { initWasmForTests } from './wasm-init';
 

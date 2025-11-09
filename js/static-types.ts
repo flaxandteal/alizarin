@@ -14,7 +14,7 @@ import {
   StaticTile,
   StaticGraph,
   StaticEdge,
-} from '../pkg/wasm';
+} from '../pkg/alizarin';
 
 // StaticEdge is now implemented in Rust and imported from ../pkg/wasm
 

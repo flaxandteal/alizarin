@@ -11,7 +11,7 @@ export default defineConfig({
     topLevelAwait(),
   ],
   optimizeDeps: {
-    exclude: ['./pkg', 'wasm'],
+    exclude: ['./pkg', 'alizarin'],
   },
   worker: {
     format: 'es'

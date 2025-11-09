@@ -1872,6 +1872,23 @@ impl StaticTile {
     }
 }
 
+// Non-WASM methods for internal Rust use
+impl StaticTile {
+    /// Create a new empty tile for a nodegroup (internal Rust constructor)
+    /// Used by json_conversion module for tree_to_tiles
+    pub(crate) fn new_empty(nodegroup_id: String) -> Self {
+        StaticTile {
+            tileid: Some(uuid::Uuid::new_v4().to_string()),
+            nodegroup_id,
+            parenttile_id: None,
+            resourceinstance_id: String::new(),  // Empty string for now, will be set later
+            sortorder: None,
+            provisionaledits: None,
+            data: std::collections::HashMap::new(),
+        }
+    }
+}
+
 impl StaticNode {
     // Helper function for deep comparison of JSON values
     fn deep_compare_values(val_a: &serde_json::Value, val_b: &serde_json::Value) -> bool {
@@ -2539,6 +2556,10 @@ impl StaticGraph {
 
     pub(crate) fn root_node(&self) -> &StaticNode {
         &self.root
+    }
+
+    pub(crate) fn graph_id(&self) -> &str {
+        &self.graphid
     }
 }
 
