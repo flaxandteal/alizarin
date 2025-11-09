@@ -151,9 +151,15 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     this.rustValue = rustValue;
 
     // PORT: Line 120 - tile assignment (src/pseudo_value.rs:11 - tile field)
-    this.tile = tile;
+    // Phase 4d: Extract tile from Rust if not provided in JS
+    // PORT: src/pseudo_value.rs:306-312 - tile getter exposes Rust tile
+    if (tile === null && rustValue && rustValue.tile) {
+      this.tile = rustValue.tile;
+    } else {
+      this.tile = tile;
+    }
     // PORT: Line 121 - independent flag
-    this.independent = tile === null;
+    this.independent = this.tile === null;
     // PORT: Line 122-124 - parent validation
     if (!parent) {
       throw Error("Must have a parent or parent class for a pseudo-node");
@@ -166,14 +172,23 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     }
     // PORT: Line 130-133 - basic field initialization
     this.parent = parent;
-    this.value = value;
+    // Phase 4d: Extract tile_data from Rust if value not provided
+    // PORT: src/pseudo_value.rs:313-319 - tileData getter exposes Rust tile_data
+    if (value === null && rustValue && rustValue.tileData) {
+      this.value = rustValue.tileData;
+    } else {
+      this.value = value;
+    }
     this.accessed = false;
-    this.originalTile = tile;
+    this.originalTile = this.tile; // Use extracted tile
     // PORT: Line 134-143 - inner/outer pattern (src/pseudo_value.rs:15 - inner field)
     if (node.isOuter) {
+      // Phase 4d: Extract inner tile from Rust if available
+      // PORT: src/pseudo_value.rs:373-380 - inner getter exposes Rust inner
+      const innerTile = (rustValue?.inner?.tile) ?? this.tile;
       this.inner = new PseudoValue(
         node.inner,
-        tile,
+        innerTile, // Phase 4d: Use Rust inner tile
         null,
         parent,
         childNodes,
@@ -479,13 +494,20 @@ class PseudoList extends Array implements IPseudo {
 
 // PORT: Lines 481-528 (with Phase 4b enhancements)
 // Fix wkri type.
-function makePseudoCls(
+/**
+ * Legacy JavaScript-only implementation of makePseudoCls.
+ * Creates PseudoValue/PseudoList WITHOUT Rust backing.
+ *
+ * For Rust-backed values, use wrapRustPseudo() instead.
+ *
+ * @deprecated Use wrapRustPseudo for Rust-backed values
+ */
+function makePseudoCls_JS(
   model: IModelWrapper<any>,
   key: string,
   single: boolean,
   tile: StaticTile | null = null,
   wkri: any,
-  rustValue?: any, // Phase 4b: Optional WasmPseudoValue or WasmPseudoList from Rust
 ): PseudoList | PseudoValue<any> | PseudoUnavailable {
   // PORT: Line 487-491
   const nodeObjs = model.getNodeObjectsByAlias();
@@ -510,40 +532,30 @@ function makePseudoCls(
     // PORT: Line 504-505 - create PseudoList
     value = new PseudoList();
     value.initialize(nodeObj, wkri);
-    // Phase 4b: Store Rust backing on PseudoList if provided
-    if (rustValue) {
-      (value as any).rustValue = rustValue;
-    }
   }
+
   // PORT: Line 507-525
+  // JS-only path: create single value (no Rust backing)
   if (value === null || tile) {
     let nodeValue;
-    // PORT: Line 509
     const isPermitted = model.isNodegroupPermitted(nodeObj.nodegroup_id || '', tile, nodeObjs);
     if (isPermitted) {
-      // PORT: Line 511 - get child nodes
       const childNodes: Map<string, StaticNode> = model.getChildNodes(nodeObj.nodeid);
-      // PORT: Line 512-515 - inner/outer pattern
       let inner: boolean | PseudoValue<any> = false;
       if (childNodes && childNodes.size && nodeObj.datatype !== 'semantic') {
-        inner = new PseudoValue(nodeObj, tile, null, wkri, childNodes, rustValue?.inner, true);
+        inner = new PseudoValue(nodeObj, tile, null, wkri, childNodes, true);
       }
-      // PORT: Line 516 - create PseudoValue with Rust backing
-      // Phase 4b: Pass rustValue to PseudoValue constructor
       nodeValue = new PseudoValue(
         nodeObj,
         tile,
         null,
         wkri,
         inner !== false ? new Map() : childNodes,
-        rustValue, // Phase 4b: Pass Rust backing
         inner
       );
     } else {
-      // PORT: Line 517-519
       nodeValue = new PseudoUnavailable(nodeObj);
     }
-    // PORT: Line 520-524 - add to list if needed
     if (value) {
       value.push(nodeValue.getValue());
     } else {
@@ -555,4 +567,130 @@ function makePseudoCls(
   return value;
 }
 
-export { PseudoNode, PseudoValue, PseudoList, PseudoUnavailable, makePseudoCls };
+/**
+ * Thin wrapper to convert Rust WasmPseudoValue/WasmPseudoList to TS PseudoValue/PseudoList
+ * This is the ONLY place where Rust values should be wrapped in TS classes (besides populate/ensureNodegroup)
+ *
+ * @param rustValue - WasmPseudoValue or WasmPseudoList from Rust
+ * @param wkri - The WKRI wrapper
+ * @param model - The model wrapper (for getting nodes and child relationships)
+ * @returns PseudoValue, PseudoList, or PseudoUnavailable
+ */
+function wrapRustPseudo(
+  rustValue: any | null,
+  wkri: any,
+  model: any,
+): PseudoValue<any> | PseudoList | PseudoUnavailable {
+  // Handle null/unavailable case
+  if (rustValue === null || rustValue === undefined) {
+    // We don't have the node here, so return a generic unavailable
+    // The caller should handle this case
+    throw new Error("Cannot wrap null rustValue - caller should handle permissions");
+  }
+
+  // Check if it's a WasmPseudoList (has getAllValues method)
+  if (typeof rustValue.getAllValues === 'function') {
+    // It's a list - create PseudoList and populate with wrapped values
+    const nodeAlias = rustValue.nodeAlias;
+    const wasmValues = rustValue.getAllValues();
+
+    const list = new PseudoList();
+    // We need a dummy node to initialize - get it from the first value
+    if (wasmValues.length > 0) {
+      const firstValue = wasmValues[0];
+      const nodeId = firstValue.nodeId;
+      const nodeObjs = model.getNodeObjectsByAlias();
+      // Find node by nodeId
+      for (const [, node] of nodeObjs.entries()) {
+        if (node.nodeid === nodeId) {
+          list.initialize(node, wkri);
+          break;
+        }
+      }
+    }
+
+    // Wrap each WasmPseudoValue in a TS PseudoValue and add to list
+    for (const wasmValue of wasmValues) {
+      const nodeId = wasmValue.nodeId;
+      const nodeObjs = model.getNodeObjectsByAlias();
+
+      // Find the node object
+      let nodeObj = null;
+      for (const [, node] of nodeObjs.entries()) {
+        if (node.nodeid === nodeId) {
+          nodeObj = node;
+          break;
+        }
+      }
+
+      if (!nodeObj) {
+        throw new Error(`Node not found for nodeId: ${nodeId}`);
+      }
+
+      const childNodes = model.getChildNodes(nodeObj.nodeid);
+
+      // Handle inner/outer pattern
+      let inner: boolean | PseudoValue<any> = false;
+      if (childNodes && childNodes.size && nodeObj.datatype !== 'semantic') {
+        const innerWasm = wasmValue.inner;
+        if (innerWasm) {
+          inner = new PseudoValue(nodeObj, null, null, wkri, childNodes, innerWasm, true);
+        }
+      }
+
+      const pseudoValue = new PseudoValue(
+        nodeObj,
+        null, // tile extracted from wasmValue in constructor
+        null,
+        wkri,
+        inner !== false ? new Map() : childNodes,
+        wasmValue,
+        inner
+      );
+
+      list.push(pseudoValue.getValue());
+    }
+
+    return list;
+  } else {
+    // It's a single value - wrap in PseudoValue
+    const nodeId = rustValue.nodeId;
+    const nodeObjs = model.getNodeObjectsByAlias();
+
+    // Find the node object
+    let nodeObj = null;
+    for (const [, node] of nodeObjs.entries()) {
+      if (node.nodeid === nodeId) {
+        nodeObj = node;
+        break;
+      }
+    }
+
+    if (!nodeObj) {
+      throw new Error(`Node not found for nodeId: ${nodeId}`);
+    }
+
+    const childNodes = model.getChildNodes(nodeObj.nodeid);
+
+    // Handle inner/outer pattern
+    let inner: boolean | PseudoValue<any> = false;
+    if (childNodes && childNodes.size && nodeObj.datatype !== 'semantic') {
+      const innerWasm = rustValue.inner;
+      if (innerWasm) {
+        inner = new PseudoValue(nodeObj, null, null, wkri, childNodes, innerWasm, true);
+      }
+    }
+
+    return new PseudoValue(
+      nodeObj,
+      null, // tile extracted from rustValue in constructor
+      null,
+      wkri,
+      inner !== false ? new Map() : childNodes,
+      rustValue,
+      inner
+    );
+  }
+}
+
+export { PseudoNode, PseudoValue, PseudoList, PseudoUnavailable, makePseudoCls_JS, wrapRustPseudo };

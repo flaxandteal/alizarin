@@ -426,43 +426,7 @@ test("ResourceModelWrapper > setPermittedNodegroups > should accept node alias f
   assert.isFalse(wrapper.isNodegroupPermitted(semanticNode!.nodeid, null));
 });
 
-test("ResourceModelWrapper > isNodegroupPermitted > should support function-based permissions", () => {
-  const graph = createStaticGraph({
-    name: "Test Graph",
-    author: "Test Author",
-  });
-
-  const mutator = new GraphMutator(graph);
-  mutator.addStringNode(
-    null,
-    "field",
-    "Field",
-    "n",
-    "http://www.w3.org/2000/01/rdf-schema#Literal",
-    "http://www.cidoc-crm.org/cidoc-crm/P3_has_note"
-  );
-  const mutatedGraph = mutator.apply();
-
-  const wrapper = new ResourceModelWrapper(
-    createTestWKRM(graph),
-    mutatedGraph
-  );
-
-  const nodes = wrapper.getNodeObjects();
-  const fieldNode = [...nodes.values()].find(n => n.alias === "field");
-
-  const permissions = new Map<string | null, boolean | ((nodegroupId: string, tile: any, nodes: Map<string, StaticNode>) => boolean)>();
-  permissions.set("", true);
-
-  // Use a function that always returns false
-  permissions.set(fieldNode!.nodegroup_id || "", (nodegroupId, tile, nodes) => {
-    return false;
-  });
-
-  wrapper.setPermittedNodegroups(permissions);
-
-  assert.isFalse(wrapper.isNodegroupPermitted(fieldNode!.nodegroup_id || "", null));
-});
+// Phase 4h: Removed function-based permission test - now boolean-only
 
 test("ResourceModelWrapper > pruneGraph > should remove unpermitted nodes", () => {
   const graph = createStaticGraph({

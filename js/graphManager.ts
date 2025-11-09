@@ -19,7 +19,7 @@ import {
   StaticGraphMeta,
   IStaticDescriptorConfig
 } from "./static-types";
-import { makePseudoCls, PseudoList } from "./pseudos.ts";
+import { PseudoList, PseudoUnavailable, wrapRustPseudo, makePseudoCls_JS } from "./pseudos.ts";
 import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper } from "../pkg/wasm";
 import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { CheckPermission, GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
@@ -66,7 +66,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       this.model.stripTiles(resource);
     }
     this.resource = resource;
-    this.valueList = new ValueList(new Map<string, any>(), new Map<string, boolean>(), this, []);
+    this.valueList = new ValueList(new Map<string, any>(), new Map<string, boolean>(), this);
     this.cache = resource ? resource.__cache : undefined;
     this.scopes = resource ? resource.__scopes : undefined;
     this.metadata = resource ? resource.metadata : undefined;
@@ -204,17 +204,44 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     if (!key) {
       throw Error(`Cannot add a pseudo node with no alias ${childNode.nodeid}`);
     }
-    const child = makePseudoCls(
-      this.model,
-      key,
-      false,
-      (!childNode.is_collector && childNode.nodegroup_id === node.nodegroup_id) ? tile : null, // Does it share a tile
-      this.wkri,
-    );
 
-    const valueList: ValueList<any> = this.valueList;
-    valueList.setDefault(key, []).then((val: Array<any>) => val.push(child));
-    return child;
+    // Phase 4e: Call Rust to create the pseudo value, then wrap in TS class
+    try {
+      // Calculate permissions
+      const isPermitted = this.model.isNodegroupPermitted(
+        childNode.nodegroup_id || '',
+        tile,
+        this.model.getNodeObjectsByAlias()
+      );
+
+      // Call Rust makePseudoValue
+      const rustValue = this.wasmWrapper.makePseudoValue(
+        key,
+        tile?.tileid || null,
+        isPermitted,
+        this.model.getNodeObjectsByAlias(),
+        this.model.getEdges(),
+        false // is_single
+      );
+
+      // Handle unavailable case (Rust returns null for unpermitted)
+      if (rustValue === null || rustValue === undefined) {
+        const child = new PseudoUnavailable(childNode);
+        const valueList: ValueList<any> = this.valueList;
+        valueList.setDefault(key, []).then((val: Array<any>) => val.push(child));
+        return child;
+      }
+
+      // Wrap the Rust value in TS PseudoValue/PseudoList
+      const child = wrapRustPseudo(rustValue, this.wkri, this.model);
+
+      const valueList: ValueList<any> = this.valueList;
+      valueList.setDefault(key, []).then((val: Array<any>) => val.push(child));
+      return child;
+    } catch (e) {
+      console.error("Rust makePseudoValue failed:", e);
+      throw new Error(`Rust makePseudoValue failed: ${e}. This should not happen - check Rust implementation.`);
+    }
   }
 
   allEntries(): MapIterator<[string, Array<IPseudo> | false | null]> {
@@ -281,7 +308,17 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       } else if (nodeValues.length == 1) {
         value = nodeValues[0];
       } else {
-        value = makePseudoCls(this.model, alias, false, null, this.wkri);
+        // Fallback for empty resources - use Rust to create value with null tile
+        // This happens when ValueList.retrieve() skips ensureNodegroup (no wrapper.resource)
+        const rustValue = this.wasmWrapper.makePseudoValue(
+          alias,
+          null,  // tile_id
+          true,  // is_permitted
+          this.model.getNodeObjectsByAlias(),  // node_objs indexed by alias
+          this.model.getEdges(),
+          false  // is_single
+        );
+        value = wrapRustPseudo(rustValue, this.wkri, this.model);
         values.set(alias, [value]);
       }
       return value;
@@ -311,25 +348,17 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     nodegroupObjs: Map<string, StaticNodegroup>,
     edges: Map<string, string[]>,
     addIfMissing: boolean,
-    tiles: StaticTile[] | null,
     doImpliedNodegroups: boolean = true
   ): Promise<[Map<string, any>, Set<string>]> {
 
     const enableParallelTesting = process.env.ALIZARIN_PARALLEL_TEST === "true";
 
     try {
-      // Pre-compute tile permissions for all tiles
-      const tilePermissions = new Map<string, boolean>();
-      if (tiles) {
-        for (const tile of tiles) {
-          if (tile?.tileid) {
-            const permitted = this.model.isNodegroupPermitted(tile.nodegroup_id || '', tile);
-            tilePermissions.set(tile.tileid, permitted);
-          }
-        }
-      }
+      // Phase 4h: Pass nodegroup permissions to Rust - Rust will compute tile permissions
+      const nodegroupPermissions = this.model.getPermittedNodegroups();
 
-      // Get all tile IDs
+      // Phase 4h: Get tiles from resource instead of parameter - already loaded in WASM
+      const tiles = this.resource ? this.resource.tiles : null;
       const allTiles = tiles ? tiles.map(t => t?.tileid || '').filter(id => id) : [];
 
       // Call Rust implementation
@@ -342,66 +371,40 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         edges,
         addIfMissing,
         allTiles,
-        tilePermissions,
+        nodegroupPermissions,  // Phase 4h: Pass nodegroup permissions instead of tile permissions
         doImpliedNodegroups
       );
 
-      // Convert recipes to PseudoValues
+      // Phase 4i: Return raw Rust values instead of wrapping them
+      // Caller will handle wrapping when needed
       const newValues = new Map<string, any>();
 
-      for (const recipe of result.recipes) {
-        const key = recipe.nodeAlias;
+      for (const alias of result.getValueAliases()) {
+        const rustValue = result.getValue(alias);
 
-        if (recipe.sentinelUndefined) {
-          // Mark as undefined (sentinel)
-          newValues.set(key, undefined);
-        } else {
-          // Check if value already exists in allValues
-          let existing = allValues.get(key);
-          if (existing instanceof Promise) {
-            existing = await existing;
-          }
-          if (existing !== false && existing !== undefined) {
-            newValues.set(key, existing);
-            continue;
-          }
-
-          // Get the tile reference
-          const tile = recipe.tileId ? this.wasmWrapper.getTile(recipe.tileId) : null;
-
-          // Create PseudoValue
-          const pseudoNode = makePseudoCls(this.model, key, false, tile, this.wkri);
-
-          if (!newValues.has(key)) {
-            newValues.set(key, []);
-          }
-
-          // Handle PseudoList merging
-          if (Array.isArray(pseudoNode)) {
-            const value = newValues.get(key);
-            if (value !== undefined && value !== false) {
-              let merged = false;
-              for (const pseudoList of newValues.get(key)) {
-                if (!(pseudoList instanceof PseudoList) || !(pseudoNode instanceof PseudoList)) {
-                  throw Error(`Should be all lists not ${typeof pseudoList} and ${typeof pseudoNode}`);
-                }
-
-                if (pseudoList.parentNode == pseudoNode.parentNode) {
-                  for (const ps of pseudoNode) {
-                    pseudoList.push(ps);
-                  }
-                  merged = true;
-                  break;
-                }
-              }
-              if (merged) {
-                continue;
-              }
-            }
-          }
-
-          newValues.get(key).push(pseudoNode);
+        if (!rustValue) {
+          // Sentinel undefined case
+          newValues.set(alias, undefined);
+          continue;
         }
+
+        // Check if value already exists in allValues
+        let existing = allValues.get(alias);
+        if (existing instanceof Promise) {
+          existing = await existing;
+        }
+        if (existing !== false && existing !== undefined) {
+          newValues.set(alias, existing);
+          continue;
+        }
+
+        // Phase 4i: Store raw Rust value instead of wrapping
+        // The caller (ValueList or populate) will wrap when needed
+        if (!newValues.has(alias)) {
+          newValues.set(alias, []);
+        }
+
+        newValues.get(alias).push(rustValue);
       }
 
       // Update allValues with newValues (filtering undefined - line 343)
@@ -501,18 +504,9 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       return [newValues, impliedNodegroups];
 
     } catch (e) {
-      console.error("Rust ensureNodegroup failed, falling back to JS:", e);
-      return this.ensureNodegroup_JS(
-        allValues,
-        allNodegroups,
-        nodegroupId,
-        nodeObjs,
-        nodegroupObjs,
-        edges,
-        addIfMissing,
-        tiles,
-        doImpliedNodegroups
-      );
+      // PORT: Phase 4e-3 - Fail explicitly instead of silent fallback
+      console.error("Rust ensureNodegroup failed:", e);
+      throw new Error(`Rust ensureNodegroup failed: ${e}. Use ensureNodegroup_JS() explicitly if you want the JS implementation.`);
     }
   }
 
@@ -576,7 +570,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     if (doImpliedNodegroups) {
       for (const nodegroupId of [...impliedNodegroups]) {
         // TODO: why are we not keeping implied nodegroups?
-        const [impliedValues] = await this.ensureNodegroup(
+        const [impliedValues] = await this.ensureNodegroup_JS(
           allValues,
           allNodegroups,
           nodegroupId,
@@ -625,16 +619,8 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         this.model.stripTiles(this.resource);
       }
 
-      // Pre-compute tile permissions for all tiles
-      const tilePermissions = new Map<string, boolean>();
-      if (tiles) {
-        for (const tile of tiles) {
-          if (tile?.tileid) {
-            const permitted = this.model.isNodegroupPermitted(tile.nodegroup_id || '', tile);
-            tilePermissions.set(tile.tileid, permitted);
-          }
-        }
-      }
+      // Phase 4h: Pass nodegroup permissions to Rust - Rust will compute tile permissions
+      const nodegroupPermissions = this.model.getPermittedNodegroups();
 
       // Get all tile IDs and nodegroup IDs
       const allTiles = tiles ? tiles.map(t => t?.tileid || '').filter(id => id) : [];
@@ -649,7 +635,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         nodegroupObjs,
         edges,
         allTiles,
-        tilePermissions
+        nodegroupPermissions  // Phase 4h: Pass nodegroup permissions instead of tile permissions
       );
 
       // Convert all recipes to PseudoValues
@@ -664,61 +650,37 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // Set root node alias
       allValues.set(rootNode.alias, false);
 
-      // Convert recipes to PseudoValues
+      // PORT: Phase 4c - Use structured RustPseudoList values directly instead of recipes
+      // PORT: src/instance_wrapper.rs:563-569 - WasmPopulateResult with values HashMap
       const newValues = new Map<string, any>();
-      for (const recipe of result.recipes) {
-        const key = recipe.nodeAlias;
+      for (const alias of result.getValueAliases()) {
+        // PORT: Phase 4c - Get WasmPseudoList directly from Rust
+        // PORT: src/instance_wrapper.rs:156 - getValue returns Option<WasmPseudoList>
+        const rustValue = result.getValue(alias);
 
-        if (recipe.sentinelUndefined) {
-          // Mark as undefined (sentinel)
-          newValues.set(key, undefined);
-        } else {
-          // Check if value already exists in allValues
-          let existing = allValues.get(key);
-          if (existing instanceof Promise) {
-            existing = await existing;
-          }
-          if (existing !== false && existing !== undefined) {
-            newValues.set(key, existing);
-            continue;
-          }
-
-          // Get the tile reference
-          const tile = recipe.tileId ? this.wasmWrapper.getTile(recipe.tileId) : null;
-
-          // Create PseudoValue
-          const pseudoNode = makePseudoCls(this.model, key, false, tile, this.wkri);
-
-          if (!newValues.has(key)) {
-            newValues.set(key, []);
-          }
-
-          // Handle PseudoList merging
-          if (Array.isArray(pseudoNode)) {
-            const value = newValues.get(key);
-            if (value !== undefined && value !== false) {
-              let merged = false;
-              for (const pseudoList of newValues.get(key)) {
-                if (!(pseudoList instanceof PseudoList) || !(pseudoNode instanceof PseudoList)) {
-                  throw Error(`Should be all lists not ${typeof pseudoList} and ${typeof pseudoNode}`);
-                }
-
-                if (pseudoList.parentNode == pseudoNode.parentNode) {
-                  for (const ps of pseudoNode) {
-                    pseudoList.push(ps);
-                  }
-                  merged = true;
-                  break;
-                }
-              }
-              if (merged) {
-                continue;
-              }
-            }
-          }
-
-          newValues.get(key).push(pseudoNode);
+        if (!rustValue) {
+          // Sentinel undefined case
+          // PORT: src/instance_wrapper.rs:732 - sentinel_undefined flag
+          newValues.set(alias, undefined);
+          continue;
         }
+
+        // Check if value already exists in allValues
+        let existing = allValues.get(alias);
+        if (existing instanceof Promise) {
+          existing = await existing;
+        }
+        if (existing !== false && existing !== undefined) {
+          newValues.set(alias, existing);
+          continue;
+        }
+
+        // Phase 4i: Store raw Rust value instead of wrapping
+        if (!newValues.has(alias)) {
+          newValues.set(alias, []);
+        }
+
+        newValues.get(alias).push(rustValue);
       }
 
       // Update allValues with newValues
@@ -787,13 +749,12 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         allValues,
         allNodegroups,
         this,
-        this.resource ? this.resource.tiles : null,
       );
 
     } catch (error) {
-      console.error('[populate] Rust implementation failed, falling back to JS:', error);
-      // Fallback to JS implementation
-      return this.populate_JS(lazy);
+      // PORT: Phase 4e-3 - Fail explicitly instead of silent fallback
+      console.error('[populate] Rust implementation failed:', error);
+      throw new Error(`Rust populate failed: ${error}. Use populate_JS() explicitly if you want the JS implementation.`);
     }
   }
 
@@ -846,8 +807,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
           nodegroupObjs,
           edges,
           true, // RMV: check vs python
-          tiles,
-          false
+          false  // Phase 4h: tiles parameter removed
         );
 
         for (const impliedNodegroup of [...newImpliedNodegroups]) {
@@ -869,8 +829,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
               nodegroupObjs,
               edges,
               true,
-              tiles, // RMV different from Python
-              true
+              true  // Phase 4h: tiles parameter removed
             );
             for (const impliedNodegroup of [...newImpliedNodegroups]) {
               newImpliedNodegroups.add(impliedNodegroup);
@@ -887,7 +846,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       allValues,
       allNodegroups,
       this,
-      this.resource ? this.resource.tiles : null,
     );
   }
 
@@ -954,62 +912,62 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         edges
       );
 
-      // Convert recipes to PseudoValues
+      // PORT: Phase 4c - Use structured RustPseudoList values directly instead of recipes
       const allValues = new Map<string, any>();
 
-      for (const recipe of result.recipes) {
-        const key = recipe.nodeAlias;
+      for (const alias of result.getValueAliases()) {
+        // PORT: Phase 4c - Get WasmPseudoList directly from Rust
+        const rustValue = result.getValue(alias);
 
-        if (recipe.sentinelUndefined) {
-          // Mark as undefined (sentinel)
-          allValues.set(key, undefined);
-        } else {
-          // Check if value already exists in existingValues
-          let existing = existingValues.get(key);
-          if (existing instanceof Promise) {
-            existing = await existing;
-          }
-          if (existing !== false && existing !== undefined) {
-            allValues.set(key, existing);
-            continue;
-          }
+        if (!rustValue) {
+          // Sentinel undefined case
+          allValues.set(alias, undefined);
+          continue;
+        }
 
-          // Get the tile reference (returns StaticTile WASM object)
-          const tile = recipe.tileId ? this.wasmWrapper.getTile(recipe.tileId) : null;
+        // Check if value already exists in existingValues
+        let existing = existingValues.get(alias);
+        if (existing instanceof Promise) {
+          existing = await existing;
+        }
+        if (existing !== false && existing !== undefined) {
+          allValues.set(alias, existing);
+          continue;
+        }
 
-          // Create PseudoValue
-          const pseudoNode = makePseudoCls(this.model, key, false, tile, this.wkri);
+        // Create TS PseudoValue/PseudoList with Rust backing
+        // PORT: Phase 4e - Use wrapRustPseudo for cleaner wrapping of Rust values
+        const pseudoNode = wrapRustPseudo(rustValue, this.wkri, this.model);
 
-          if (!allValues.has(key)) {
-            allValues.set(key, []);
-          }
+        if (!allValues.has(alias)) {
+          allValues.set(alias, []);
+        }
 
-          // Handle PseudoList merging (lines 698-714 of JS implementation)
-          if (Array.isArray(pseudoNode)) {
-            const value = allValues.get(key);
-            if (value !== undefined && value !== false) {
-              let merged = false;
-              for (const pseudoList of allValues.get(key)) {
-                if (!(pseudoList instanceof PseudoList) || !(pseudoNode instanceof PseudoList)) {
-                  throw Error(`Should be all lists not ${typeof pseudoList} and ${typeof pseudoNode}`);
-                }
-
-                if (pseudoList.parentNode == pseudoNode.parentNode) {
-                  for (const ps of pseudoNode) {
-                    pseudoList.push(ps);
-                  }
-                  merged = true;
-                  break;
-                }
+        // Handle PseudoList merging
+        if (Array.isArray(pseudoNode)) {
+          const value = allValues.get(alias);
+          if (value !== undefined && value !== false) {
+            let merged = false;
+            for (const pseudoList of allValues.get(alias)) {
+              if (!(pseudoList instanceof PseudoList) || !(pseudoNode instanceof PseudoList)) {
+                throw Error(`Should be all lists not ${typeof pseudoList} and ${typeof pseudoNode}`);
               }
-              if (merged) {
-                continue;
+
+              if (pseudoList.parentNode == pseudoNode.parentNode) {
+                for (const ps of pseudoNode) {
+                  pseudoList.push(ps);
+                }
+                merged = true;
+                break;
               }
             }
+            if (merged) {
+              continue;
+            }
           }
-
-          allValues.get(key).push(pseudoNode);
         }
+
+        allValues.get(alias).push(pseudoNode);
       }
 
       const impliedNodegroups = new Set(result.impliedNodegroups);
@@ -1081,14 +1039,9 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       return [allValues, impliedNodegroups];
 
     } catch (e) {
-      console.error("Rust implementation failed, falling back to JS:", e);
-      return this.valuesFromResourceNodegroup_JS(
-        existingValues,
-        nodegroupTiles,
-        nodegroupId,
-        nodeObjs,
-        edges
-      );
+      // PORT: Phase 4e-3 - Fail explicitly instead of silent fallback
+      console.error("Rust valuesFromResourceNodegroup failed:", e);
+      throw new Error(`Rust valuesFromResourceNodegroup failed: ${e}. Use valuesFromResourceNodegroup_JS() explicitly if you want the JS implementation.`);
     }
   }
 
@@ -1133,7 +1086,8 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       if (!allValues.has(key)) {
         allValues.set(key, []);
       }
-      const pseudoNode = makePseudoCls(this.model, key, false, tile, this.wkri);
+      // Legacy JS implementation - used for parallel testing
+      const pseudoNode = makePseudoCls_JS(this.model, key, false, tile, this.wkri);
       // We shouldn't have to take care of this case, as it should already
       // be included below.
       // if tile.parenttile_id:
@@ -1548,7 +1502,8 @@ class GraphMutator {
 
 class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWrapper {
   viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>;
-  permittedNodegroups?: Map<string | null, boolean | CheckPermission>;
+  // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
+  permittedNodegroups?: Map<string | null, boolean>;
 
   constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>) {
     super(wkrm, graph);
@@ -1815,10 +1770,11 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     return this.fromStaticResource(rivm, lazy, pruneTiles);
   }
 
-  setPermittedNodegroups(permissions: Map<string | null, boolean | CheckPermission>) {
+  // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
+  setPermittedNodegroups(permissions: Map<string | null, boolean>) {
     const nodegroups = this.getNodegroupObjects();
     const nodes = this.getNodeObjectsByAlias();
-    this.permittedNodegroups = new Map([...permissions].map(([key, value]): [key: string | null, value: boolean | CheckPermission] => {
+    this.permittedNodegroups = new Map([...permissions].map(([key, value]): [key: string | null, value: boolean] => {
       const k = key || '';
       if (nodegroups.has(k) || k === '') {
         return [key, value];
@@ -1837,7 +1793,8 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
 
   // Defaults to visible, which helps reduce the risk of false sense of security
   // from front-end filtering masking the presence of data transferred to it.
-  getPermittedNodegroups(): Map<string | null, boolean | CheckPermission> {
+  // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
+  getPermittedNodegroups(): Map<string | null, boolean> {
     if (!this.permittedNodegroups) {
       const permissions = new Map([...this.getNodegroupObjects()].map(
         ([k, _]: [k: string, _: StaticNodegroup]) => [k, true]
@@ -1853,12 +1810,9 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     return permittedNodegroups;
   }
 
+  // Phase 4h: Simplified - no callback, just boolean lookup
   isNodegroupPermitted(nodegroupId: string, tile: StaticTile | null): boolean {
-    let permitted: boolean | CheckPermission | undefined = this.getPermittedNodegroups().get(nodegroupId);
-    if (permitted && typeof permitted == 'function') {
-      const nodes = this.getNodeObjectsByAlias();
-      permitted = permitted(nodegroupId, tile, nodes);
-    }
+    const permitted = this.getPermittedNodegroups().get(nodegroupId);
     if (!permitted) {
       return false;
     }

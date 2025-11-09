@@ -2523,6 +2523,23 @@ impl StaticGraph {
             .get(alias)
             .and_then(|&idx| self.nodes.get(idx))
     }
+
+    // Accessors for json_conversion module
+    pub(crate) fn nodes_slice(&self) -> &[StaticNode] {
+        &self.nodes
+    }
+
+    pub(crate) fn nodegroups_slice(&self) -> &[StaticNodegroup] {
+        &self.nodegroups
+    }
+
+    pub(crate) fn edges_slice(&self) -> &[StaticEdge] {
+        &self.edges
+    }
+
+    pub(crate) fn root_node(&self) -> &StaticNode {
+        &self.root
+    }
 }
 
 // WKRM - Well-Known Resource Model

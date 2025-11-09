@@ -23,7 +23,8 @@ interface IStringKeyedObject {
 }
 
 type GetMeta = ((vm: IViewModel) => IStringKeyedObject) | undefined;
-type CheckPermission = ((nodegroupId: string, tile: StaticTile | null, node: Map<string, StaticNode>) => boolean);
+// Phase 4h: Removed CheckPermission callback - permissions are now simple booleans checked in Rust
+// type CheckPermission = ((nodegroupId: string, tile: StaticTile | null, node: Map<string, StaticNode>) => boolean);
 
 interface IViewModel {
   _: IViewModel | undefined | Promise<IViewModel | null>;
@@ -52,7 +53,6 @@ interface IInstanceWrapper<T extends IRIVM<T>> {
     nodegroupObjs: Map<string, StaticNodegroup>,
     edges: Map<string, string[]>,
     addIfMissing: boolean,
-    tiles: StaticTile[] | null,
     doImpliedNodegroups: boolean
   ): Promise<[Map<string, any>, Set<string>]>;
   setOrmAttribute(key: string, value: any): Promise<void>;
@@ -76,7 +76,8 @@ interface IWKRM {
 
 interface IModelWrapper<T extends IRIVM<T>> {
   all(params: { limit?: number; lazy?: boolean } | undefined): Promise<Array<T>>;
-  getPermittedNodegroups(): Map<string | null, boolean | CheckPermission>;
+  // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
+  getPermittedNodegroups(): Map<string | null, boolean>;
   isNodegroupPermitted(nodegroupId: string, tile: StaticTile | null, nodes: Map<string, StaticNode>): boolean;
   getChildNodes(nodeId: string): Map<string, StaticNode>;
   getNodeObjectsByAlias(): Map<string, StaticNode>;
