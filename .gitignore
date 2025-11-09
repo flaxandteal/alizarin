@@ -28,3 +28,4 @@ Cargo.lock
 bin/
 pkg/
 wasm-pack.log
+.venv/

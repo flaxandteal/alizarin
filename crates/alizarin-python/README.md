@@ -4,7 +4,7 @@ Python bindings for Alizarin using PyO3, providing JSON serialization/deserializ
 
 ## Status
 
-**In Progress** - Core types implemented, JSON conversion functions stubbed out.
+**Complete** - Tree conversion functions fully implemented using shared Rust core logic.
 
 ## Goal
 
@@ -28,53 +28,16 @@ This mirrors the TypeScript `ResourceInstanceViewModel.forJson()` and inverse fu
 - `serde_json_to_py()` - Convert Rust JSON to Python objects
 - `py_to_serde_json()` - Convert Python objects to Rust JSON
 
-## To Implement
+## Implementation Notes
 
-### 1. Complete StaticGraphMeta
+The core tree conversion logic is implemented in shared Rust code (`src/json_conversion.rs`), which is exposed to Python via thin PyO3 bindings. This ensures identical behavior between Python and TypeScript/WASM interfaces.
 
-Currently only has basic fields. Needs:
-- `nodes: Vec<StaticNode>` - all nodes in the graph
-- `nodegroups: Vec<StaticNodegroup>` - all nodegroups
-- `edges: Vec<StaticEdge>` - parent-child relationships
-
-These are needed to understand the graph structure for JSON conversion.
-
-### 2. Implement `resource_to_json()`
-
-Currently returns placeholder. Should:
-
-1. Load all tiles from resource
-2. Group tiles by nodegroup_id
-3. For each nodegroup:
-   - Find corresponding node(s) via edges
-   - If cardinality='n', create array
-   - If cardinality='1', create single object
-4. Build nested structure following node aliases
-5. Convert tile data values to appropriate Python types (StaticTranslatableString, etc.)
-
-**Reference implementation**: TypeScript `ResourceInstanceViewModel.__forJsonCache()` in `js/viewModels.ts:396-420`
-
-### 3. Implement `json_to_resource()`
-
-Inverse of `resource_to_json()`. Should:
-
-1. Walk nested JSON structure
-2. For each field, find corresponding node by alias
-3. Determine nodegroup from node
-4. Create tile(s) for that nodegroup
-5. Populate tile.data with field values
-6. Return StaticResource with all tiles
-
-**Reference implementation**: TypeScript `ResourceInstanceViewModel.update()` (inverse operation)
-
-### 4. Add Graph Loading Helper
-
-```python
-def load_graph_model(json_file_or_dict):
-    """Load a complete graph model from JSON"""
-    # Parse graph JSON
-    # Return StaticGraphMeta with full node/nodegroup/edge data
-```
+Key implementation details:
+- Uses complete `StaticGraph` with nodes, nodegroups, and edges
+- Handles nodes without nodegroups (like root nodes)
+- Preserves cardinality ('1' vs 'n') when converting
+- Creates new tile IDs during tree → tiles conversion
+- Supports nested structures with parent-child relationships
 
 ## Usage Example
 
@@ -83,29 +46,48 @@ import json
 import alizarin
 
 # Load graph model
-with open('models/Group.json') as f:
+with open('tests/data/models/Group.json') as f:
     graph_data = json.load(f)
-    graph = alizarin.StaticGraphMeta(json.dumps(graph_data['graph'][0]))
+    graph_json = json.dumps(graph_data['graph'][0])
 
-# Load tiled resource
-with open('resources/my_group.json') as f:
-    resource_data = json.load(f)
-    resource = alizarin.StaticResource(json.dumps(resource_data))
+# Example tiles (tiled resource format)
+tiles = [{
+    'tileid': 'tile-001',
+    'nodegroup_id': '12707705-c05e-11e9-8177-a4d18cec433a',
+    'resourceinstance_id': 'resource-123',
+    'data': {
+        '127095f5-c05e-11e9-bb57-a4d18cec433a': {
+            'en': 'My Group Name',
+            'ga': 'Ainm Mo Ghrúpa'
+        }
+    }
+}]
 
-# Convert to nested JSON
-nested = alizarin.resource_to_json(resource, graph)
+# Convert tiles to nested JSON tree
+tree = alizarin.tiles_to_json_tree(
+    tiles_json=json.dumps(tiles),
+    resource_id='resource-123',
+    graph_id=graph_data['graph'][0]['graphid'],
+    graph_json=graph_json
+)
 
-# Access fields naturally
-print(nested['basic_info'][0]['name'])  # "Global Group"
-print(nested['basic_info'][0]['name'].lang('ga'))  # "Grúpa Domhanda"
+# Access fields in tree structure
+print(tree['basic_info'][0]['name'])  # {"en": "My Group Name", "ga": "Ainm Mo Ghrúpa"}
 
-# Modify and convert back
-nested['basic_info'][0]['name'] = {
+# Modify tree structure
+tree['basic_info'][0]['name'] = {
     'en': 'Updated Group',
     'ga': 'Grúpa Nuashonraithe'
 }
 
-updated_resource = alizarin.json_to_resource(nested, graph)
+# Convert back to tiles
+result = alizarin.json_tree_to_tiles(
+    tree_json=json.dumps(tree),
+    graph_json=graph_json
+)
+
+# Result has: resourceinstanceid, graph_id, tiles
+print(f"Created {len(result['tiles'])} tiles")
 ```
 
 ## Building
@@ -123,33 +105,28 @@ maturin build --release
 
 ## Testing
 
-Once implemented, tests should mirror the TypeScript test suite in `tests/resources.test.ts`.
+Tests are located in `tests/test_conversion.py` and verify the bindings work correctly.
 
-```python
-import pytest
-import alizarin
+```bash
+# Install with test dependencies
+cd crates/alizarin-python
+maturin develop
+pip install pytest
 
-def test_resource_to_json():
-    """Test converting tiled resource to JSON"""
-    # Load graph and resource
-    # Convert to JSON
-    # Assert structure matches expected
-    assert json_output['basic_info'][0]['name'] == "Global Group"
+# Run tests
+pytest tests/
 
-def test_json_to_resource():
-    """Test converting JSON to tiled resource"""
-    # Create JSON structure
-    # Convert to resource
-    # Assert tiles are created correctly
-
-def test_round_trip():
-    """Test JSON -> Resource -> JSON preserves data"""
-    # Load resource
-    # Convert to JSON
-    # Convert back to resource
-    # Convert to JSON again
-    # Assert both JSON outputs are identical
+# Or run directly
+python tests/test_conversion.py
 ```
+
+The test suite includes:
+- `test_tiles_to_tree_basic()` - Converts tiled resource to JSON tree
+- `test_tree_to_tiles_basic()` - Converts JSON tree to tiled resource
+- `test_roundtrip_preserves_data()` - Verifies tiles → tree → tiles preserves data
+- `test_invalid_json_handling()` - Verifies error handling for malformed JSON
+
+All tests use real data from `tests/data/models/Group.json`.
 
 ## Architecture
 
@@ -194,10 +171,10 @@ Python ← PyO3 ← Rust Core (same!)
 3. **Type Safety**: PyO3 ensures type correctness at compile time
 4. **Consistency**: Python and JavaScript get identical behavior
 
-## Next Steps
+## Potential Enhancements
 
-1. Expand StaticGraphMeta with nodes/nodegroups/edges
-2. Implement `resource_to_json()` using Rust logic from `instance_wrapper.rs`
-3. Implement `json_to_resource()` (inverse operation)
-4. Add pytest test suite mirroring JS tests
-5. Document edge cases (missing fields, validation, etc.)
+1. Add type stubs (`.pyi` files) for better IDE support
+2. Expose additional Rust types (StaticNode, StaticNodegroup, etc.) if needed
+3. Add validation functions to check tree/tile structure
+4. Optimize large dataset handling (streaming, batching)
+5. Add examples for common use cases (Django integration, data migration, etc.)

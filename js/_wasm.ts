@@ -1,5 +1,5 @@
-import init, { initSync, greet, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta } from "../pkg/wasm";
-import wasmURL from "../pkg/wasm_bg.wasm?url"
+import init, { initSync, greet, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta } from "../pkg/alizarin";
+import wasmURL from "../pkg/alizarin_bg.wasm?url"
 
 let wasmInitialized = false;
 
@@ -10,7 +10,7 @@ export async function initWasm() {
       try {
         const fs = await import('fs');
         const path = await import('path');
-        const wasmPath = path.join(process.cwd(), 'pkg', 'wasm_bg.wasm');
+        const wasmPath = path.join(process.cwd(), 'pkg', 'alizarin_bg.wasm');
         const wasmBuffer = fs.readFileSync(wasmPath);
         initSync({ module: wasmBuffer });
       } catch (error) {

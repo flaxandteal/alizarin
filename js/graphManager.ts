@@ -20,7 +20,7 @@ import {
   IStaticDescriptorConfig
 } from "./static-types";
 import { PseudoList, PseudoUnavailable, wrapRustPseudo, makePseudoCls_JS } from "./pseudos.ts";
-import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper } from "../pkg/wasm";
+import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper } from "../pkg/alizarin";
 import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { CheckPermission, GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
 import { } from "./nodeConfig.ts";

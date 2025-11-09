@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { StaticGraphMeta, StaticNode } from '../pkg/wasm';
+import { StaticGraphMeta, StaticNode } from '../pkg/alizarin';
 import { initWasmForTests } from './wasm-init';
 
 describe('WASM Graph Module', () => {

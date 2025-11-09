@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import init from '../pkg/wasm';
+import init from '../pkg/alizarin';
 
 // Custom WASM initialization for tests
 export async function initWasmForTests() {
