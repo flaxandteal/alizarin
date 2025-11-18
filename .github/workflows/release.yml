@@ -80,10 +80,19 @@ jobs:
       # temp: disable tests - name: Run tests
       # temp: disable tests   run: npm test
 
+      - name: Prepare package for npm
+        run: |
+          # Remove pkg/.gitignore created by wasm-pack so pkg/ contents are included in tarball
+          rm -f pkg/.gitignore
+          echo "Removed pkg/.gitignore to ensure WASM files are included in package"
+
       - name: Create tarball for npm installation
         run: |
           # Create a clean package tarball that npm can install
           npm pack
+          echo ""
+          echo "Tarball contents:"
+          tar -tzf alizarin-*.tgz | grep -E "(pkg/|dist/)" | head -20
 
       - name: Get version from tag or input
         id: get_version
