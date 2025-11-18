@@ -625,7 +625,8 @@ pub struct StaticNode {
     pub(crate) ontologyclass: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) parentproperty: Option<String>,
-    pub(crate) sortorder: i32,
+    #[serde(default)]
+    pub(crate) sortorder: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) sourcebranchpublication_id: Option<String>,
 }
@@ -683,7 +684,9 @@ impl StaticNode {
         if let Some(ref val) = self.parentproperty {
             obj.insert("parentproperty".to_string(), json!(val));
         }
-        obj.insert("sortorder".to_string(), json!(self.sortorder));
+        if let Some(val) = self.sortorder {
+            obj.insert("sortorder".to_string(), json!(val));
+        }
         if let Some(ref val) = self.sourcebranchpublication_id {
             obj.insert("sourcebranchpublication_id".to_string(), json!(val));
         }
@@ -853,12 +856,12 @@ impl StaticNode {
     }
 
     #[wasm_bindgen(getter = sortorder)]
-    pub fn get_sortorder(&self) -> i32 {
+    pub fn get_sortorder(&self) -> Option<i32> {
         self.sortorder
     }
 
     #[wasm_bindgen(setter = sortorder)]
-    pub fn set_sortorder(&mut self, value: i32) {
+    pub fn set_sortorder(&mut self, value: Option<i32>) {
         self.sortorder = value;
     }
 
@@ -1207,7 +1210,8 @@ pub struct StaticCardsXNodesXWidgets {
     id: String,
     label: StaticTranslatableString,
     node_id: String,
-    sortorder: i32,
+    #[serde(default)]
+    sortorder: Option<i32>,
     visible: bool,
     widget_id: String,
 }
@@ -1230,7 +1234,9 @@ impl StaticCardsXNodesXWidgets {
         obj.insert("id".to_string(), json!(self.id));
         obj.insert("label".to_string(), json!(self.label));
         obj.insert("node_id".to_string(), json!(self.node_id));
-        obj.insert("sortorder".to_string(), json!(self.sortorder));
+        if let Some(val) = self.sortorder {
+            obj.insert("sortorder".to_string(), json!(val));
+        }
         obj.insert("visible".to_string(), json!(self.visible));
         obj.insert("widget_id".to_string(), json!(self.widget_id));
 
@@ -1290,12 +1296,12 @@ impl StaticCardsXNodesXWidgets {
     }
 
     #[wasm_bindgen(getter = sortorder)]
-    pub fn get_sortorder(&self) -> i32 {
+    pub fn get_sortorder(&self) -> Option<i32> {
         self.sortorder
     }
 
     #[wasm_bindgen(setter = sortorder)]
-    pub fn set_sortorder(&mut self, value: i32) {
+    pub fn set_sortorder(&mut self, value: Option<i32>) {
         self.sortorder = value;
     }
 
@@ -2233,7 +2239,8 @@ pub struct StaticGraph {
     deploymentdate: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     deploymentfile: Option<String>,
-    description: StaticTranslatableString,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<StaticTranslatableString>,
     pub(crate) edges: Vec<StaticEdge>,
     #[serde(skip_serializing_if = "Option::is_none")]
     functions_x_graphs: Option<Vec<StaticFunctionsXGraphs>>,
@@ -2258,7 +2265,8 @@ pub struct StaticGraph {
     root: StaticNode,
     #[serde(skip_serializing_if = "Option::is_none")]
     slug: Option<String>,
-    subtitle: StaticTranslatableString,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    subtitle: Option<StaticTranslatableString>,
     template_id: String,
     version: String,
 
@@ -2275,7 +2283,27 @@ pub struct StaticGraph {
 impl StaticGraph {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticGraph, JsValue> {
-        let mut data: StaticGraph = serde_wasm_bindgen::from_value(json_data)?;
+        // Log the incoming data for debugging
+        web_sys::console::log_1(&"Deserializing StaticGraph with data:".into());
+        web_sys::console::log_1(&json_data);
+
+        let mut data: StaticGraph = serde_wasm_bindgen::from_value(json_data).map_err(|e| {
+            let error_string = e.to_string();
+
+            // Log detailed error information
+            web_sys::console::error_1(&"=== StaticGraph Deserialization Error ===".into());
+            web_sys::console::error_1(&format!("Error: {}", error_string).into());
+            web_sys::console::error_1(&format!("Debug: {:?}", e).into());
+
+            // Try to extract field name from error message
+            if error_string.contains("missing field") {
+                web_sys::console::error_1(&"^ This is a MISSING FIELD error".into());
+            } else if error_string.contains("invalid type") {
+                web_sys::console::error_1(&"^ This is an INVALID TYPE error".into());
+            }
+
+            JsValue::from_str(&format!("StaticGraph deserialization failed: {}", error_string))
+        })?;
         data.build_indices();
         Ok(data)
     }
@@ -2322,12 +2350,24 @@ impl StaticGraph {
 
     #[wasm_bindgen(getter = description)]
     pub fn get_description(&self) -> StaticTranslatableString {
-        self.description.clone()
+        match self.description {
+            Some(ref description) => description.clone(),
+            _ => StaticTranslatableString {
+                translations: HashMap::new(),
+                lang: String::new()
+            }
+        }
     }
 
     #[wasm_bindgen(getter = subtitle)]
     pub fn get_subtitle(&self) -> StaticTranslatableString {
-        self.subtitle.clone()
+        match self.subtitle {
+            Some(ref subtitle) => subtitle.clone(),
+            _ => StaticTranslatableString {
+                translations: HashMap::new(),
+                lang: String::new()
+            }
+        }
     }
 
     #[wasm_bindgen(getter = nodes)]
@@ -2697,5 +2737,314 @@ impl WKRM {
     #[wasm_bindgen(setter = meta)]
     pub fn set_meta(&mut self, value: JsValue) {
         self.meta = value;
+    }
+}
+
+// StaticResourceDescriptors - Descriptors for resource display
+#[wasm_bindgen]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StaticResourceDescriptors {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) map_popup: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) description: Option<String>,
+}
+
+#[wasm_bindgen]
+impl StaticResourceDescriptors {
+    #[wasm_bindgen(constructor)]
+    pub fn new(data: JsValue) -> Result<StaticResourceDescriptors, JsValue> {
+        serde_wasm_bindgen::from_value(data)
+            .map_err(|e| JsValue::from_str(&format!("Failed to deserialize StaticResourceDescriptors: {:?}", e)))
+    }
+
+    #[wasm_bindgen(js_name = isEmpty)]
+    pub fn is_empty(&self) -> bool {
+        self.name.is_none() && self.map_popup.is_none() && self.description.is_none()
+    }
+
+    #[wasm_bindgen(js_name = empty)]
+    pub fn empty() -> StaticResourceDescriptors {
+        StaticResourceDescriptors {
+            name: None,
+            map_popup: None,
+            description: None,
+        }
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn name(&self) -> Option<String> {
+        self.name.clone()
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_name(&mut self, value: Option<String>) {
+        self.name = value;
+    }
+
+    #[wasm_bindgen(getter = mapPopup)]
+    pub fn map_popup(&self) -> Option<String> {
+        self.map_popup.clone()
+    }
+
+    #[wasm_bindgen(setter = mapPopup)]
+    pub fn set_map_popup(&mut self, value: Option<String>) {
+        self.map_popup = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn description(&self) -> Option<String> {
+        self.description.clone()
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_description(&mut self, value: Option<String>) {
+        self.description = value;
+    }
+}
+
+// StaticResourceMetadata - Metadata about a resource instance
+#[wasm_bindgen]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StaticResourceMetadata {
+    pub(crate) descriptors: StaticResourceDescriptors,
+    pub(crate) graph_id: String,
+    pub(crate) name: String,
+    pub(crate) resourceinstanceid: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) publication_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) principaluser_id: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) legacyid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) graph_publication_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) createdtime: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) lastmodified: Option<String>,
+}
+
+#[wasm_bindgen]
+impl StaticResourceMetadata {
+    #[wasm_bindgen(constructor)]
+    pub fn new(data: JsValue) -> Result<StaticResourceMetadata, JsValue> {
+        serde_wasm_bindgen::from_value(data)
+            .map_err(|e| JsValue::from_str(&format!("Failed to deserialize StaticResourceMetadata: {:?}", e)))
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn descriptors(&self) -> StaticResourceDescriptors {
+        self.descriptors.clone()
+    }
+
+    #[wasm_bindgen(getter = graphId)]
+    pub fn graph_id(&self) -> String {
+        self.graph_id.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    #[wasm_bindgen(getter = resourceinstanceid)]
+    pub fn resourceinstanceid(&self) -> String {
+        self.resourceinstanceid.clone()
+    }
+
+    #[wasm_bindgen(getter = publicationId)]
+    pub fn publication_id(&self) -> Option<String> {
+        self.publication_id.clone()
+    }
+
+    #[wasm_bindgen(getter = principaluserId)]
+    pub fn principaluser_id(&self) -> Option<i32> {
+        self.principaluser_id
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn legacyid(&self) -> Option<String> {
+        self.legacyid.clone()
+    }
+
+    #[wasm_bindgen(getter = graphPublicationId)]
+    pub fn graph_publication_id(&self) -> Option<String> {
+        self.graph_publication_id.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn createdtime(&self) -> Option<String> {
+        self.createdtime.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn lastmodified(&self) -> Option<String> {
+        self.lastmodified.clone()
+    }
+}
+
+// StaticResourceSummary - Summary info for a resource (used for lazy loading)
+#[wasm_bindgen]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StaticResourceSummary {
+    pub(crate) resourceinstanceid: String,
+    pub(crate) graph_id: String,
+    pub(crate) name: String,
+    pub(crate) descriptors: StaticResourceDescriptors,
+    #[serde(default)]
+    pub(crate) metadata: HashMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) createdtime: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) lastmodified: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) publication_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) principaluser_id: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) legacyid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) graph_publication_id: Option<String>,
+}
+
+#[wasm_bindgen]
+impl StaticResourceSummary {
+    #[wasm_bindgen(constructor)]
+    pub fn new(data: JsValue) -> Result<StaticResourceSummary, JsValue> {
+        let mut summary: StaticResourceSummary = serde_wasm_bindgen::from_value(data)
+            .map_err(|e| JsValue::from_str(&format!("Failed to deserialize StaticResourceSummary: {:?}", e)))?;
+
+        // Default name to '<Unnamed>' if empty
+        if summary.name.is_empty() {
+            summary.name = "<Unnamed>".to_string();
+        }
+
+        Ok(summary)
+    }
+
+    #[wasm_bindgen(js_name = toMetadata)]
+    pub fn to_metadata(&self) -> StaticResourceMetadata {
+        StaticResourceMetadata {
+            descriptors: self.descriptors.clone(),
+            graph_id: self.graph_id.clone(),
+            name: self.name.clone(),
+            resourceinstanceid: self.resourceinstanceid.clone(),
+            publication_id: self.publication_id.clone(),
+            principaluser_id: self.principaluser_id,
+            legacyid: self.legacyid.clone(),
+            graph_publication_id: self.graph_publication_id.clone(),
+            createdtime: self.createdtime.clone(),
+            lastmodified: self.lastmodified.clone(),
+        }
+    }
+
+    #[wasm_bindgen(getter = resourceinstanceid)]
+    pub fn resourceinstanceid(&self) -> String {
+        self.resourceinstanceid.clone()
+    }
+
+    #[wasm_bindgen(getter = graphId)]
+    pub fn graph_id(&self) -> String {
+        self.graph_id.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn descriptors(&self) -> StaticResourceDescriptors {
+        self.descriptors.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn metadata(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.metadata).unwrap_or(JsValue::NULL)
+    }
+}
+
+// StaticResource - Complete resource data with tiles
+#[wasm_bindgen]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StaticResource {
+    pub(crate) resourceinstance: StaticResourceMetadata,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tiles: Option<Vec<StaticTile>>,
+    #[serde(default)]
+    pub(crate) metadata: HashMap<String, String>,
+
+    // Private fields for caching/tracking
+    #[serde(skip)]
+    #[wasm_bindgen(skip)]
+    __tiles_loaded: bool,
+}
+
+#[wasm_bindgen]
+impl StaticResource {
+    #[wasm_bindgen(constructor)]
+    pub fn new(data: JsValue) -> Result<StaticResource, JsValue> {
+        let mut resource: StaticResource = serde_wasm_bindgen::from_value(data)
+            .map_err(|e| JsValue::from_str(&format!("Failed to deserialize StaticResource: {:?}", e)))?;
+
+        // Set tiles loaded flag based on whether tiles exist and are non-empty
+        resource.__tiles_loaded = resource.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false);
+
+        Ok(resource)
+    }
+
+    #[wasm_bindgen(js_name = fromSummary)]
+    pub fn from_summary(summary: StaticResourceSummary) -> StaticResource {
+        StaticResource {
+            resourceinstance: summary.to_metadata(),
+            tiles: Some(Vec::new()),
+            metadata: summary.metadata,
+            __tiles_loaded: false,
+        }
+    }
+
+    #[wasm_bindgen(getter = resourceinstance)]
+    pub fn resourceinstance(&self) -> StaticResourceMetadata {
+        self.resourceinstance.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn tiles(&self) -> JsValue {
+        match &self.tiles {
+            Some(tiles) => serde_wasm_bindgen::to_value(tiles).unwrap_or(JsValue::NULL),
+            None => JsValue::NULL,
+        }
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_tiles(&mut self, value: JsValue) {
+        if value.is_null() || value.is_undefined() {
+            self.tiles = None;
+            self.__tiles_loaded = false;
+        } else {
+            match serde_wasm_bindgen::from_value(value) {
+                Ok(tiles) => {
+                    self.__tiles_loaded = true;
+                    self.tiles = Some(tiles);
+                }
+                Err(_) => {
+                    self.tiles = None;
+                    self.__tiles_loaded = false;
+                }
+            }
+        }
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn metadata(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.metadata).unwrap_or(JsValue::NULL)
+    }
+
+    #[wasm_bindgen(getter = tilesLoaded)]
+    pub fn tiles_loaded(&self) -> bool {
+        self.__tiles_loaded
     }
 }

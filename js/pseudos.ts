@@ -58,7 +58,7 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
   originalTile: StaticTile | null;
   accessed: boolean;
   independent: boolean;
-  inner: PseudoValue<any> | null = null;
+  private _inner: PseudoValue<any> | null = null;
 
   // Proxy getters to node properties
   // PORT: Line 64-66 (src/pseudo_value.rs:307-311 - datatype getter)
@@ -83,11 +83,11 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
   get inner() {
     if (this.rustValue?.inner) {
       // Phase 4b: Lazily wrap Rust inner if not yet wrapped
-      if (!this.inner) {
+      if (!this._inner) {
         // Create JS PseudoValue wrapper for Rust inner
         const innerNode = this.node.inner;
         if (innerNode) {
-          this.inner = new PseudoValue(
+          this._inner = new PseudoValue(
             innerNode,
             this.tile,
             null,
@@ -99,7 +99,7 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
         }
       }
     }
-    return this.inner;
+    return this._inner;
   }
 
   get parentValue() {
@@ -186,7 +186,7 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
       // Phase 4d: Extract inner tile from Rust if available
       // PORT: src/pseudo_value.rs:373-380 - inner getter exposes Rust inner
       const innerTile = (rustValue?.inner?.tile) ?? this.tile;
-      this.inner = new PseudoValue(
+      this._inner = new PseudoValue(
         node.inner,
         innerTile, // Phase 4d: Use Rust inner tile
         null,
@@ -331,7 +331,6 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
         this.node,
         data,
         this.parent,
-        childNodes,
         this.isInner
       );
 
@@ -599,29 +598,14 @@ function wrapRustPseudo(
     if (wasmValues.length > 0) {
       const firstValue = wasmValues[0];
       const nodeId = firstValue.nodeId;
-      const nodeObjs = model.getNodeObjectsByAlias();
-      // Find node by nodeId
-      for (const [, node] of nodeObjs.entries()) {
-        if (node.nodeid === nodeId) {
-          list.initialize(node, wkri);
-          break;
-        }
-      }
+      const node = model.getNodeObjectFromId(nodeId);
+      list.initialize(node, wkri);
     }
 
     // Wrap each WasmPseudoValue in a TS PseudoValue and add to list
     for (const wasmValue of wasmValues) {
       const nodeId = wasmValue.nodeId;
-      const nodeObjs = model.getNodeObjectsByAlias();
-
-      // Find the node object
-      let nodeObj = null;
-      for (const [, node] of nodeObjs.entries()) {
-        if (node.nodeid === nodeId) {
-          nodeObj = node;
-          break;
-        }
-      }
+      const nodeObj = model.getNodeObjectFromId(nodeId);
 
       if (!nodeObj) {
         throw new Error(`Node not found for nodeId: ${nodeId}`);

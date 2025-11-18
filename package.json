@@ -4,7 +4,8 @@
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "pkg"
   ],
   "main": "./dist/alizarin.umd.cjs",
   "module": "./dist/alizarin.js",
@@ -19,7 +20,12 @@
     }
   },
   "scripts": {
-    "build": "NODE_OPTIONS='--experimental-wasm-modules' vite build",
+    "build:wasm": "wasm-pack build --target web --out-dir pkg --release",
+    "build:wasm:dev": "wasm-pack build --target web --out-dir pkg --dev",
+    "build:js": "NODE_OPTIONS='--experimental-wasm-modules' vite build",
+    "build": "npm run build:wasm && npm run build:js",
+    "prebuild": "npm run build:wasm",
+    "prepublishOnly": "npm run build",
     "test": "NODE_OPTIONS='--experimental-wasm-modules' vitest --run",
     "test:watch": "NODE_OPTIONS='--experimental-wasm-modules' vitest",
     "test:ui": "NODE_OPTIONS='--experimental-wasm-modules' vitest --ui",

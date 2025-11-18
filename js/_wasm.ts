@@ -10,7 +10,11 @@ export async function initWasm() {
       try {
         const fs = await import('fs');
         const path = await import('path');
-        const wasmPath = path.join(process.cwd(), 'pkg', 'alizarin_bg.wasm');
+        const { fileURLToPath } = await import('url');
+
+        // Resolve relative to this module's location, not process.cwd()
+        const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+        const wasmPath = path.join(moduleDir, '../pkg', 'alizarin_bg.wasm');
         const wasmBuffer = fs.readFileSync(wasmPath);
         initSync({ module: wasmBuffer });
       } catch (error) {

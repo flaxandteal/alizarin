@@ -83,9 +83,6 @@ describe('ensureNodegroup - Edge Cases', () => {
       mockRIVM.id = "test-resource-id";
       mockRIVM.toString = () => "[TestResource:test-resource-id]";
 
-      const nodeObjs = model.getNodeObjects();
-      const nodegroupObjs = model.getNodegroupObjects();
-      const edges = model.getEdges();
       const rootNodeId = mutatedGraph.root.nodeid;
 
       const allValues = new Map();
@@ -95,12 +92,10 @@ describe('ensureNodegroup - Edge Cases', () => {
         allValues,
         allNodegroups,
         rootNodeId,
-        nodeObjs,
-        nodegroupObjs,
-        edges,
-        false,
-        [],
-        true
+        false, // addIfMissing
+        [], // allTiles
+        new Map(), // nodegroupPermissions
+        true // doImpliedNodegroups
       );
 
       // Should return empty - no processing happened
@@ -126,9 +121,6 @@ describe('ensureNodegroup - Edge Cases', () => {
       mockRIVM.id = "test-resource-id";
       mockRIVM.toString = () => "[TestResource:test-resource-id]";
 
-      const nodeObjs = model.getNodeObjects();
-      const nodegroupObjs = model.getNodegroupObjects();
-      const edges = model.getEdges();
       const rootNodeId = mutatedGraph.root.nodeid;
 
       const allValues = new Map();
@@ -138,12 +130,10 @@ describe('ensureNodegroup - Edge Cases', () => {
         allValues,
         allNodegroups,
         rootNodeId,
-        nodeObjs,
-        nodegroupObjs,
-        edges,
-        false,
-        [],
-        true
+        false, // addIfMissing
+        [], // allTiles
+        new Map(), // nodegroupPermissions
+        true // doImpliedNodegroups
       );
 
       // Should process and mark as loaded
@@ -169,9 +159,6 @@ describe('ensureNodegroup - Edge Cases', () => {
       mockRIVM.id = "test-resource-id";
       mockRIVM.toString = () => "[TestResource:test-resource-id]";
 
-      const nodeObjs = model.getNodeObjects();
-      const nodegroupObjs = model.getNodegroupObjects();
-      const edges = model.getEdges();
       const rootNodeId = mutatedGraph.root.nodeid;
 
       const allValues = new Map();
@@ -181,12 +168,10 @@ describe('ensureNodegroup - Edge Cases', () => {
         allValues,
         allNodegroups,
         rootNodeId,
-        nodeObjs,
-        nodegroupObjs,
-        edges,
-        true, // addIfMissing = true
-        [],
-        true
+        true, // addIfMissing
+        [], // allTiles
+        new Map(), // nodegroupPermissions
+        true // doImpliedNodegroups
       );
 
       // Should process and mark as loaded
@@ -210,9 +195,6 @@ describe('ensureNodegroup - Edge Cases', () => {
       mockRIVM.id = "test-resource-id";
       mockRIVM.toString = () => "[TestResource:test-resource-id]";
 
-      const nodeObjs = model.getNodeObjects();
-      const nodegroupObjs = model.getNodegroupObjects();
-      const edges = model.getEdges();
       const rootNodeId = mutatedGraph.root.nodeid;
 
       const allValues = new Map();
@@ -222,12 +204,10 @@ describe('ensureNodegroup - Edge Cases', () => {
         allValues,
         allNodegroups,
         rootNodeId,
-        nodeObjs,
-        nodegroupObjs,
-        edges,
-        false, // addIfMissing = false
-        [],
-        true
+        false, // addIfMissing
+        [], // allTiles
+        new Map(), // nodegroupPermissions
+        true // doImpliedNodegroups
       );
 
       // Should NOT process
@@ -305,9 +285,6 @@ describe('ensureNodegroup - Edge Cases', () => {
       mockRIVM.id = "test-resource-id";
       mockRIVM.toString = () => "[TestResource:test-resource-id]";
 
-      const nodeObjs = model.getNodeObjects();
-      const nodegroupObjs = model.getNodegroupObjects();
-      const edges = model.getEdges();
       const rootNodeId = mutatedGraph.root.nodeid;
 
       const allValues = new Map();
@@ -317,12 +294,10 @@ describe('ensureNodegroup - Edge Cases', () => {
         allValues,
         allNodegroups,
         rootNodeId,
-        nodeObjs,
-        nodegroupObjs,
-        edges,
-        true,
-        tiles,
-        false // doImpliedNodegroups = false
+        true, // addIfMissing
+        tiles, // allTiles
+        new Map(), // nodegroupPermissions
+        false // doImpliedNodegroups
       );
 
       // If there were implied nodegroups, they should be returned but not processed
@@ -355,9 +330,6 @@ describe('ensureNodegroup - Edge Cases', () => {
       mockRIVM.id = "test-resource-id";
       mockRIVM.toString = () => "[TestResource:test-resource-id]";
 
-      const nodeObjs = model.getNodeObjects();
-      const nodegroupObjs = model.getNodegroupObjects();
-      const edges = model.getEdges();
       const rootNodeId = mutatedGraph.root.nodeid;
 
       const allValues = new Map();
@@ -367,12 +339,10 @@ describe('ensureNodegroup - Edge Cases', () => {
         allValues,
         allNodegroups,
         rootNodeId,
-        nodeObjs,
-        nodegroupObjs,
-        edges,
-        true,
-        tiles,
-        true // doImpliedNodegroups = true
+        true, // addIfMissing
+        tiles, // allTiles
+        new Map(), // nodegroupPermissions
+        true // doImpliedNodegroups
       );
 
       // When doImpliedNodegroups is true, the returned set should be empty
@@ -397,9 +367,6 @@ describe('ensureNodegroup - Edge Cases', () => {
       mockRIVM.id = "test-resource-id";
       mockRIVM.toString = () => "[TestResource:test-resource-id]";
 
-      const nodeObjs = model.getNodeObjects();
-      const nodegroupObjs = model.getNodegroupObjects();
-      const edges = model.getEdges();
       const rootNodeId = mutatedGraph.root.nodeid;
 
       const allValues = new Map();
@@ -409,12 +376,10 @@ describe('ensureNodegroup - Edge Cases', () => {
         allValues,
         allNodegroups,
         rootNodeId,
-        nodeObjs,
-        nodegroupObjs,
-        edges,
-        true,
-        [],
-        true // doImpliedNodegroups = true - should clear the set
+        true, // addIfMissing
+        [], // allTiles
+        new Map(), // nodegroupPermissions
+        true // doImpliedNodegroups - should clear the set
       );
 
       // After processing with doImpliedNodegroups=true, set should be empty (line 373)

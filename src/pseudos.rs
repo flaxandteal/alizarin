@@ -115,7 +115,9 @@ impl PseudoNode {
         js_sys::Reflect::set(&obj, &"isrequired".into(), &self.node.isrequired.into()).ok();
         js_sys::Reflect::set(&obj, &"issearchable".into(), &self.node.issearchable.into()).ok();
         js_sys::Reflect::set(&obj, &"istopnode".into(), &self.node.istopnode.into()).ok();
-        js_sys::Reflect::set(&obj, &"sortorder".into(), &self.node.sortorder.into()).ok();
+        if let Some(sortorder) = self.node.sortorder {
+            js_sys::Reflect::set(&obj, &"sortorder".into(), &sortorder.into()).ok();
+        }
 
         // Handle Option fields
         if let Some(ref alias) = self.node.alias {
@@ -268,7 +270,7 @@ impl PseudoNode {
     }
 
     #[wasm_bindgen(getter = sortorder)]
-    pub fn get_sortorder(&self) -> i32 {
+    pub fn get_sortorder(&self) -> Option<i32> {
         self.node.sortorder
     }
 
