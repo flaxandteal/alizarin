@@ -4,6 +4,11 @@ js/
 tests/
 crates/
 
+# IMPORTANT: Force include pkg/ despite pkg/.gitignore
+# wasm-pack creates pkg/.gitignore with '*' which would exclude everything
+!pkg/
+!pkg/**
+
 # Config files
 .github/
 .vscode/
