@@ -20,14 +20,13 @@ import {
   IStaticDescriptorConfig
 } from "./static-types";
 import { PseudoList, PseudoUnavailable, wrapRustPseudo, makePseudoCls_JS } from "./pseudos.ts";
-import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper } from "../pkg/alizarin";
+import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper, newWASMResourceInstanceWrapperForResource, newWASMResourceInstanceWrapperForModel } from "../pkg/alizarin";
 import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { CheckPermission, GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
 import { } from "./nodeConfig.ts";
-import { generateUuidv5, AttrPromise } from "./utils";
+import { generateUuidv5, AttrPromise, buildResourceDescriptors } from "./utils";
 
 const MAX_GRAPH_DEPTH = 100;
-const DESCRIPTOR_FUNCTION_ID = "60000000-0000-0000-0000-000000000001";
 
 class ConfigurationOptions {
   graphs: Array<string> | null | boolean;
@@ -42,8 +41,8 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
   wkri: RIVM;
   model: ResourceModelWrapper<RIVM>;
   wasmWrapper: WASMResourceInstanceWrapper;
+  resource?: StaticResource;
 
-  resource: StaticResource | null | false ;
   valueList: ValueList<RIVM>;
   cache: {[tileId: string]: {[nodeId: string]: IStringKeyedObject}} | undefined;
   scopes?: string[];
@@ -60,25 +59,25 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     this.model = model;
 
     // Initialize WASM wrapper for tile management
-    this.wasmWrapper = new WASMResourceInstanceWrapper();
-
     if (resource) {
-      this.model.stripTiles(resource);
+      this.wasmWrapper = newWASMResourceInstanceWrapperForResource(resource);
+      this.resource = resource;
+    } else {
+      this.wasmWrapper = newWASMResourceInstanceWrapperForModel(model.wkrm.graphId);
     }
-    this.resource = resource;
+
     this.valueList = new ValueList(new Map<string, any>(), new Map<string, boolean>(), this);
     this.cache = resource ? resource.__cache : undefined;
     this.scopes = resource ? resource.__scopes : undefined;
     this.metadata = resource ? resource.metadata : undefined;
-    this.tilesLoaded = !!(resource && resource.__tilesLoaded);
-    if (pruneTiles && this.resource) {
+    if (pruneTiles && resource) {
       this.pruneResourceTiles()
     }
 
     // Load tiles into Rust if we have any
-    if (this.resource && this.resource.tiles && this.resource.tiles.length > 0) {
+    if (!this.wasmWrapper.tilesLoaded() && resource) {
       try {
-        this.wasmWrapper.loadTiles(this.resource.tiles);
+        this.wasmWrapper.loadTiles(resource.tiles);
       } catch (e) {
         console.error("Failed to load tiles into WASM:", e);
       }
@@ -86,15 +85,9 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
   }
 
   async ensureTilesLoaded(): Promise<void> {
-    if (this.tilesLoaded || !this.resource) {
-      return;
-    }
-
-    if (!this.resource.__tilesLoaded || !this.resource.tiles || this.resource.tiles.length === 0) {
+    if (!this.wasmWrapper.tilesLoaded()) {
       // Load tiles on-demand
-      const tiles = await staticStore.loadTiles(this.resource.resourceinstance.resourceinstanceid);
-      this.resource.tiles = tiles;
-      this.resource.__tilesLoaded = true;
+      const tiles = await staticStore.loadTiles(this.wasmWrapper.getResourceId());
 
       // Load tiles into Rust
       try {
@@ -106,18 +99,10 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // Re-populate with full tile data
       await this.populate(false); // non-lazy to process all tiles
     }
-
-    this.tilesLoaded = true;
   }
 
   pruneResourceTiles(): undefined {
-    if (!this.resource) {
-      console.warn("Trying to prune tiles for an empty resource", this.wkri.modelClassName);
-      return;
-    }
-    this.resource.tiles = (this.resource.tiles || []).filter((tile: StaticTile) => {
-      return this.model.isNodegroupPermitted(tile.nodegroup_id || '', tile);
-    });
+    this.wasmWrapper.pruneResourceTiles();
   }
 
   async loadNodes(aliases: Array<string>): Promise<void> {
@@ -127,75 +112,44 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
   }
 
   async getName(update: boolean = false) {
-    let resourceName = this.resource && this.resource.resourceinstance.name;
-    if (update || !resourceName) {
-      const descriptors = await this.getDescriptors(update);
-      resourceName = (descriptors && descriptors.name) || resourceName || '<Unnamed>';
-      if (this.resource && this.resource.resourceinstance) {
-        this.resource.resourceinstance.name = resourceName;
-      }
+    // If just reading cached data, use Rust implementation
+    if (!update) {
+      return this.wasmWrapper.getName();
+    }
+
+    // Otherwise build/update name using TypeScript logic
+    const descriptors = await this.getDescriptors(update);
+    const resourceName = (descriptors && descriptors.name) || '<Unnamed>';
+    if (this.resource && this.resource.resourceinstance) {
+      this.resource.resourceinstance.name = resourceName;
     }
     return resourceName;
   }
 
   async getDescriptors(update: boolean = false) {
-    let descriptors = this.resource && this.resource.resourceinstance.descriptors;
-    if (update || !descriptors || descriptors.isEmpty()) {
-      descriptors = new StaticResourceDescriptors();
-      let descriptorConfig: IStaticDescriptorConfig | undefined = undefined;
-      if (this.model.graph.functions_x_graphs) {
-        const descriptorNode = this.model.graph.functions_x_graphs.find(node => node.function_id === DESCRIPTOR_FUNCTION_ID);
-        if (descriptorNode) {
-          descriptorConfig = descriptorNode.config;
-        }
-      }
-      const nodes = this.model.getNodeObjects();
-      if (descriptorConfig) {
-        for (const [descriptor, config] of Object.entries(descriptorConfig.descriptor_types)) {
-          const semanticNode = nodes.get(config.nodegroup_id);
-          let description = config.string_template;
-          if (!description) {
-            continue;
-          }
-          let requestedNodes = description.match(/<[A-Za-z _-]*>/g) || [];
-          const relevantNodes = [...nodes.values()].filter(node => node.nodegroup_id === config.nodegroup_id && [...requestedNodes].includes(`<${node.name}>`)).map(node => [node.name, node.alias || '']);
-          let relevantValues: [string, string | undefined][] = [];
-          // First try and see if we can find all of these on one tile, for consistency.
-          if (semanticNode) {
-            let semanticValue = await (await this.valueList.retrieve(semanticNode.alias || ''))[0];
-            if (semanticValue instanceof PseudoList) {
-              semanticValue = await semanticValue[0];
-            } else if (semanticValue.inner) {
-              // TODO: Do we need to re-add the e.g. stringviewmodel as a <...> variable?
-              relevantValues.push([semanticNode.name || '', await semanticValue.getValue()]);
-              semanticValue = await semanticValue.inner.getValue();
-            } else {
-              semanticValue = await semanticValue.getValue();
-            }
-            if (semanticValue) {
-              relevantValues = [...relevantValues, ...await Promise.all(relevantNodes.filter(([_, alias]) => semanticValue.__has(alias)).map(([name, alias]) => semanticValue[alias].then((value: IViewModel) => [name, value])))];
-            }
-          }
-          if (relevantValues) {
-            description = relevantValues.reduce((desc, [name, value]) => value ? desc.replace(`<${name}>`, value) : desc, description);
-          }
-          requestedNodes = description.match(/<[A-Za-z _-]*>/g) || [];
-          if (requestedNodes.length) {
-            relevantValues = await Promise.all(relevantNodes.map(([name, alias]) => this.valueList.retrieve(alias).then((values: string[]): [string, string | undefined] => [name, values ? values[0] : undefined])));
-            if (relevantValues) {
-              description = relevantValues.reduce((desc, [name, value]) => value ? desc.replace(`<${name}>`, value) : desc, description);
-            }
-          }
-          descriptors[descriptor] = description;
-        }
+    // If just reading cached data, use Rust implementation
+    if (!update) {
+      const cachedDescriptors = this.wasmWrapper.getDescriptors();
+      if (cachedDescriptors && !cachedDescriptors.isEmpty()) {
+        return cachedDescriptors;
       }
     }
+
+    // Otherwise build descriptors using utility function
+    const descriptors = await buildResourceDescriptors(
+      this.model.graph,
+      this.model.getNodeObjects(),
+      this.valueList
+    );
+
+    // Cache the built descriptors
     if (this.resource && this.resource.resourceinstance) {
       this.resource.resourceinstance.descriptors = descriptors;
       if (descriptors.name) {
         this.resource.resourceinstance.descriptors.name = descriptors.name;
       }
     }
+
     return descriptors;
   }
 
@@ -219,8 +173,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         key,
         tile?.tileid || null,
         isPermitted,
-        this.model.getNodeObjectsByAlias(),
-        this.model.getEdges(),
         false // is_single
       );
 
@@ -278,16 +230,16 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
   getOrmAttribute(key: string): AttrPromise<IViewModel> {
     let promise: Promise<void>;
     if (this.resource === null) {
-      promise = this.model.findStatic(this.wkri.id).then(resource => {
-        this.resource = resource;
-      }).then(() => this.populate(true));
+      //promise = this.model.findStatic(this.wkri.id).then(resource => {
+      //  this.resource = resource;
+      //}).then(() => this.populate(true));
     } else {
       promise = new Promise((resolve) => { resolve(); });
     }
 
     // TODO remapping
     return new AttrPromise(resolve => {
-      promise.then(() => this.getRootViewModel()).then(root => resolve(root[key]));
+      return promise.then(() => this.getRootViewModel()).then(root => resolve(root[key]));
     });
   }
 
@@ -314,8 +266,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
           alias,
           null,  // tile_id
           true,  // is_permitted
-          this.model.getNodeObjectsByAlias(),  // node_objs indexed by alias
-          this.model.getEdges(),
           false  // is_single
         );
         value = wrapRustPseudo(rustValue, this.wkri, this.model);
@@ -344,9 +294,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     allValues: Map<string, any>,
     allNodegroups: Map<string, boolean | Promise<any>>,
     nodegroupId: string,
-    nodeObjs: Map<string, StaticNode>,
-    nodegroupObjs: Map<string, StaticNodegroup>,
-    edges: Map<string, string[]>,
     addIfMissing: boolean,
     doImpliedNodegroups: boolean = true
   ): Promise<[Map<string, any>, Set<string>]> {
@@ -357,18 +304,11 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // Phase 4h: Pass nodegroup permissions to Rust - Rust will compute tile permissions
       const nodegroupPermissions = this.model.getPermittedNodegroups();
 
-      // Phase 4h: Get tiles from resource instead of parameter - already loaded in WASM
-      const tiles = this.resource ? this.resource.tiles : null;
-      const allTiles = tiles ? tiles.map(t => t?.tileid || '').filter(id => id) : [];
-
       // Call Rust implementation
       const result = this.wasmWrapper.ensureNodegroup(
         allValues,
         allNodegroups,
         nodegroupId,
-        nodeObjs,
-        nodegroupObjs,
-        edges,
         addIfMissing,
         allTiles,
         nodegroupPermissions,  // Phase 4h: Pass nodegroup permissions instead of tile permissions
@@ -436,13 +376,13 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
 
       // Parallel testing mode: compare Rust vs JS
       if (enableParallelTesting) {
+        // Phase 4h: Get tiles from resource instead of parameter - already loaded in WASM
+        const tiles = this.resource ? this.resource.tiles : null;
+
         const [jsNewValues, jsImplied] = await this.ensureNodegroup_JS(
           new Map(allValues), // Clone to avoid mutation
           new Map(allNodegroups), // Clone
           nodegroupId,
-          nodeObjs,
-          nodegroupObjs,
-          edges,
           addIfMissing,
           tiles,
           doImpliedNodegroups
@@ -518,13 +458,13 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     allValues: Map<string, any>,
     allNodegroups: Map<string, boolean | Promise<any>>,
     nodegroupId: string,
-    nodeObjs: Map<string, StaticNode>,
-    nodegroupObjs: Map<string, StaticNodegroup>,
-    edges: Map<string, string[]>,
     addIfMissing: boolean,
     tiles: StaticTile[] | null,
     doImpliedNodegroups: boolean = true
   ): Promise<[Map<string, any>, Set<string>]> {
+    const nodeObjs = this.model.getNodeObjects();
+    const nodegroupObjs = this.model.getNodegroupObjects();
+    const edges = this.model.getEdges();
     const impliedNodegroups: Set<string> = new Set();
     const sentinel = allNodegroups.get(nodegroupId); // no action required if pending
     let newValues = new Map();
@@ -596,9 +536,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
    * Uses Rust implementation via WASM
    */
   async populate(lazy: boolean): Promise<void> {
-    const nodeObjs = this.model.getNodeObjects();
     const nodegroupObjs = this.model.getNodegroupObjects();
-    const edges = this.model.getEdges();
     const rootNode = this.model.getRootNode();
 
     if (rootNode.alias === null) {
@@ -606,37 +544,32 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     }
 
     const enableParallelTesting = process.env.ALIZARIN_PARALLEL_TEST === "true";
+    console.log(1, lazy);
 
     try {
-      let tiles = null;
       if (!lazy && this.resource) {
         // Ensure tiles are loaded if we need them for non-lazy population
         if (!this.resource.__tilesLoaded) {
           await this.ensureTilesLoaded();
         }
-        tiles = this.resource.tiles;
-      } else if (this.resource) {
-        this.model.stripTiles(this.resource);
       }
 
+    console.log(2);
       // Phase 4h: Pass nodegroup permissions to Rust - Rust will compute tile permissions
       const nodegroupPermissions = this.model.getPermittedNodegroups();
 
       // Get all tile IDs and nodegroup IDs
-      const allTiles = tiles ? tiles.map(t => t?.tileid || '').filter(id => id) : [];
       const nodegroupIds = [...nodegroupObjs.keys()];
 
+    console.log(3);
       // Call Rust implementation
       const result = this.wasmWrapper.populate(
         lazy,
         nodegroupIds,
         rootNode.alias,
-        nodeObjs,
-        nodegroupObjs,
-        edges,
-        allTiles,
         nodegroupPermissions  // Phase 4h: Pass nodegroup permissions instead of tile permissions
       );
+    console.log(4);
 
       // Convert all recipes to PseudoValues
       const allValues: Map<string, any> = new Map();
@@ -650,6 +583,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // Set root node alias
       allValues.set(rootNode.alias, false);
 
+    console.log(5);
       // PORT: Phase 4c - Use structured RustPseudoList values directly instead of recipes
       // PORT: src/instance_wrapper.rs:563-569 - WasmPopulateResult with values HashMap
       const newValues = new Map<string, any>();
@@ -682,6 +616,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
 
         newValues.get(alias).push(rustValue);
       }
+    console.log(6);
 
       // Update allValues with newValues
       for (const [key, value] of newValues.entries()) {
@@ -706,6 +641,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         }
       }
 
+    console.log(7);
       // Parallel testing mode: compare Rust vs JS
       if (enableParallelTesting) {
         const allValuesClone = new Map(allValues);
@@ -745,6 +681,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       }
 
       // Create ValueList with results
+    console.log(8);
       this.valueList = new ValueList(
         allValues,
         allNodegroups,
@@ -756,6 +693,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       console.error('[populate] Rust implementation failed:', error);
       throw new Error(`Rust populate failed: ${error}. Use populate_JS() explicitly if you want the JS implementation.`);
     }
+    console.log(9);
   }
 
   /**
@@ -763,9 +701,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
    * Kept for parallel testing and fallback
    */
   async populate_JS(lazy: boolean): Promise<void> {
-    const nodeObjs = this.model.getNodeObjects();
     const nodegroupObjs = this.model.getNodegroupObjects();
-    const edges = this.model.getEdges();
     // FIXME: this needs to be nodeObjs to ensure tiles
     // whose nodegroup node is in a different nodegroup
     // (e.g. children of designation_and_protection_timespan)
@@ -796,16 +732,12 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       if (!this.resource.__tilesLoaded) {
         await this.ensureTilesLoaded();
       }
-      tiles = this.resource.tiles;
       let impliedNodegroups = new Set<string>();
       for (const [ng] of nodegroupObjs) {
         const [_, newImpliedNodegroups] = await this.ensureNodegroup(
           allValues,
           allNodegroups,
           ng,
-          nodeObjs,
-          nodegroupObjs,
-          edges,
           true, // RMV: check vs python
           false  // Phase 4h: tiles parameter removed
         );
@@ -825,9 +757,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
               allValues,
               allNodegroups,
               nodegroupId,
-              nodeObjs,
-              nodegroupObjs,
-              edges,
               true,
               true  // Phase 4h: tiles parameter removed
             );
@@ -1511,7 +1440,8 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
   }
 
   getRoot(): NodeViewModel {
-    const pseudoNode = this.createPseudoNode(null);
+    const node = this.getRootNode();
+    const pseudoNode = this.createPseudoNode(node.alias);
     return new NodeViewModel(pseudoNode, this);
   }
 
@@ -1668,39 +1598,6 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     this.graph = graph;
   }
 
-  exportGraph(): StaticGraph {
-    const graph = this.graph;
-    return new StaticGraph({
-      author: graph.author,
-      cards: graph.cards,
-      cards_x_nodes_x_widgets: graph.cards_x_nodes_x_widgets,
-      color: graph.color,
-      config: graph.config,
-      deploymentdate: graph.deploymentdate,
-      deploymentfile: graph.deploymentfile,
-      description: graph.description,
-      edges: graph.edges,
-      functions_x_graphs: graph.functions_x_graphs,
-      graphid: graph.graphid,
-      iconclass: graph.iconclass,
-      is_editable: graph.is_editable,
-      isresource: graph.isresource,
-      jsonldcontext: graph.jsonldcontext,
-      name: graph.name,
-      nodegroups: graph.nodegroups,
-      nodes: graph.nodes,
-      ontology_id: graph.ontology_id,
-      publication: graph.publication,
-      relatable_resource_model_ids: graph.relatable_resource_model_ids,
-      resource_2_resource_constraints: graph.resource_2_resource_constraints,
-      root: graph.root,
-      slug: graph.slug,
-      subtitle: graph.subtitle,
-      template_id: graph.template_id,
-      version: graph.version,
-    });
-  }
-
   async all(params: { limit?: number; lazy?: boolean } | undefined = undefined): Promise<Array<RIVM>> {
     const paramObj = params || { limit: undefined, lazy: undefined };
     const promises = [];
@@ -1708,19 +1605,6 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
       promises.push(resource);
     }
     return Promise.all(promises);
-  }
-
-  stripTiles(resource: StaticResource) {
-    if (resource.tiles) {
-      const nodes = this.getNodeObjects();
-      resource.tiles = resource.tiles.filter(tile => {
-        const node = nodes.get(tile.nodegroup_id);
-        if (!node) {
-          throw Error(`Tile ${tile.tileid} has nodegroup ${tile.nodegroup_id} that is not on the model ${this.graph.graphid}`);
-        }
-        return this.isNodegroupPermitted(tile.nodegroup_id || '', tile);
-      });
-    }
   }
 
   async* resourceGenerator(staticResources: AsyncIterable<StaticResource, RIVM, unknown>, lazy: boolean=false, pruneTiles: boolean = true) {
@@ -1766,8 +1650,12 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
   }
 
   async find(id: string, lazy: boolean = true, pruneTiles: boolean = true): Promise<RIVM> {
+    console.log('in', id);
     const rivm = await this.findStatic(id);
-    return this.fromStaticResource(rivm, lazy, pruneTiles);
+    console.log('out', id);
+    const x = this.fromStaticResource(rivm, lazy, pruneTiles);
+    console.log('about', id);
+    return x;
   }
 
   // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
@@ -1776,6 +1664,10 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     const nodes = this.getNodeObjectsByAlias();
     this.permittedNodegroups = new Map([...permissions].map(([key, value]): [key: string | null, value: boolean] => {
       const k = key || '';
+      if (!(typeof value === "boolean")) {
+        console.error("For now, Rust cannot handle JS callbacks for permissions - setting to false for", key);
+        value = false;
+      }
       if (nodegroups.has(k) || k === '') {
         return [key, value];
       } else {
@@ -1843,17 +1735,22 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     pruneTiles: boolean = true
   ): Promise<RIVM> {
     // TODO: implement lazy
+    console.log('in2');
     const wkri: RIVM = this.makeInstance(
       resource.resourceinstance.resourceinstanceid,
       resource,
       pruneTiles
     );
+    console.log('out2');
 
     if (!wkri.$) {
       throw Error("Could not load resource from static definition");
     }
 
-    return wkri.$.populate(lazy).then(() => wkri);
+    console.log('ab');
+    const pop = wkri.$.populate(lazy).then(() => wkri);
+    console.log('about2');
+    return pop;
   }
 
   asTree(): {[key: string]: any} {

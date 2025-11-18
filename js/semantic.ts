@@ -5,7 +5,7 @@ import {
   IRIVM,
 } from "./interfaces.ts";
 import { AttrPromise } from "./utils";
-import { PseudoValue, PseudoList } from "./pseudos";
+import { PseudoValue, PseudoList, wrapRustPseudo } from "./pseudos";
 import {
   StaticTile,
   StaticNode,
@@ -31,7 +31,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
   __parentPseudo: PseudoValue<any> | undefined;
   __childValues: Map<string, any>;
   __parentWkri: IRIVM<any> | null;
-  __childNodes: Map<string, StaticNode>;
   __tile: StaticTile | null;
   __node: StaticNode;
 
@@ -41,7 +40,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
 
   constructor(
     parentWkri: IRIVM<any> | null,
-    childNodes: Map<string, StaticNode>,
     tile: StaticTile | null,
     node: StaticNode,
   ) {
@@ -49,7 +47,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     this.__parentWkri = parentWkri;
     this.__tile = tile;
     this.__node = node;
-    this.__childNodes = childNodes;
     return new Proxy(this, {
       set: (object, key, value) => {
         const k: string = typeof key === 'symbol' ? key.description || '' : key;
@@ -75,10 +72,11 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
           return object[k];
         }
         if (k == "length") {
-          return object.__childNodes.size;
+          throw Error("TODO");
         }
         return new AttrPromise((resolve) => {
-          object.__get(k).then(resolve);
+          const p = object.__get(k);
+          p.then(resolve);
         });
       },
     });
@@ -105,6 +103,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       return await v.forJson();
     };
     const entries = [...(await this.__getChildValues()).entries()];
+    console.log(entries, 'entries');
     return Object.fromEntries(await Promise.all(entries.map(async ([k, vl]) => {
         return [k, vl ? await _forJson(vl) : vl];
     })));
@@ -124,6 +123,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
   }
 
   async __set(key: string, value: any) {
+    throw Error("TODO");
   // async __set(key: string, value: any) {
     if (!this.__childNodes.has(key)) {
       throw Error(
@@ -137,10 +137,13 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
   }
 
   __has(key: string) {
-    return this.__childNodes.has(key);
+    const childNodes = this.__parentWkri.$.model.getChildNodes(this.__node.nodeid);
+
+    return childNodes.has(key);
   }
 
   async __getChildTypes() {
+    throw Error("TODO");
     const promises = [...this.__childNodes.keys()].map(async (key): Promise<[string, IPseudo]> => [
       key,
       await this.__getChildValue(key),
@@ -156,6 +159,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     }
     const children = [...items.entries()]
       .filter((entry) => {
+    throw Error("TODO");
         const child = this.__childNodes.get(entry[0]);
         if (!child) {
           throw Error("Child key is not in child nodes");
@@ -170,36 +174,52 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
   }
 
   async __getChildValue(key: string, setDefault: boolean = false): Promise<IPseudo> {
-    if (!this.__childNodes.has(key)) {
+    const parent = this.__parentWkri;
+    const tile = this.__tile;
+    const node = this.__node;
+    const childNodes = parent.$.model.getChildNodes(node.nodeid);
+
+    if (!childNodes.has(key)) {
       throw Error(
-        `Semantic node does not have this key: ${key} (${[...this.__childNodes.keys()]})`,
+        `Semantic node does not have this key: ${key} (${[...childNodes.keys()]})`,
       );
     }
 
-    let child;
-    if (!this.__childValues.has(key)) {
-      const children = await this.__getChildValues();
-      child = children.get(key) || null;
-
-      let set = true;
-      if (child === null) {
-        child = this.__makePseudo(key);
-        set = setDefault;
-      }
-      if (set) {
-        // This ensures that we do not set a default value in our
-        // local cache simply because the node is not loaded yet.
-        this.__childValues.set(key, child);
-      }
-      child.parentNode = this.__parentPseudo || null;
-    } else {
-      child = this.__childValues.get(key);
+    // Check cache first
+    if (this.__childValues.has(key)) {
+      return this.__childValues.get(key);
     }
+
+    // Call Rust to get the semantic child value
+    const rustValue = parent.$.wasmWrapper.getSemanticChildValue(
+      tile?.tileid || null,
+      node.nodeid,
+      node.nodegroup_id || null,
+      key
+    );
+
+    let child;
+    if (rustValue === null || rustValue === undefined) {
+      // Child not found - always create pseudo
+      child = this.__makePseudo(key);
+    } else {
+      // Wrap the Rust value
+      child = wrapRustPseudo(rustValue, parent, parent.$.model);
+    }
+
+    // Set parent node
+    child.parentNode = this.__parentPseudo || null;
+
+    // Cache the child
+    this.__childValues.set(key, child);
+
     return child;
   }
 
   __makePseudo(key: string): IPseudo {
-    const childNode = this.__childNodes.get(key);
+    const parent = this.__parentWkri;
+    const childNodes = parent.$.model.getChildNodes(this.__node.nodeid);
+    const childNode = childNodes.get(key);
 
     if (!childNode) {
       throw Error(`Child node key ${key} missing`);
@@ -225,9 +245,8 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     node: StaticNode,
     value: any,
     parent: IRIVM<any> | null,
-    childNodes: Map<string, StaticNode>,
   ): Promise<SemanticViewModel> {
-    const svm = new SemanticViewModel(parent, childNodes, tile, node);
+    const svm = new SemanticViewModel(parent, tile, node);
     if (value) {
       try {
         await svm.__update(value);
@@ -260,9 +279,9 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
 
   async __getChildValues(): Promise<Map<string, IPseudo>> {
     const parent = this.__parentWkri;
-    const childNodes = this.__childNodes;
     const tile = this.__tile;
     const node = this.__node;
+    const childNodes = parent.$.model.getChildNodes(node.nodeid)
     if (!parent || !parent.$) {
       return new Map();
     }
@@ -271,82 +290,107 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     // TODO check this does not go deeper than necessary.
     await parent.$.loadNodes([...childNodes.keys()]);
 
-    // TODO: Why not just use edges?
+    // Use Rust implementation to find which tiles contain semantic children
+    // PORT: Replaces lines 163-233 with Rust findSemanticChildren
+    const childAliases = [...childNodes.keys()];
+    console.log(childNodes, 'childNodes');
+    const matchingTiles: Map<string, string[]> = parent.$.wasmWrapper.findSemanticChildren(
+      tile?.tileid || null,
+      node.nodeid,
+      node.nodegroup_id || null,
+      []
+    );
+    console.log(matchingTiles, 'mt');
+
     const children: Map<string, any> = new Map();
     const allEntries = [...parent.$.allEntries()];
-    for (const entry of allEntries) {
-      const key = entry[0];
+
+    // Process results from Rust - for each child alias that has matching tiles
+    for (const [childAlias, tileIds] of matchingTiles.entries()) {
+      const childNode = childNodes.get(childAlias);
+      if (!childNode) {
+        throw Error("Missing child!");
+      }
+
+      // Get the PseudoValue(s) from allEntries
+      const entry = allEntries.find(e => e[0] === childAlias);
+      if (!entry) {
+        console.log(allEntries, childAlias, 'entry');
+        throw Error("Missing entry!");
+      }
+
       let values = entry[1];
       if (values instanceof Promise) {
         values = await values;
       }
+      console.log('values', values);
       if (values === false || values === null || values === undefined) {
         continue;
       }
-      const childNode = childNodes.get(key);
-      if (childNode) {
-        for (let value of values) {
+      console.log("tileids", tileIds);
+
+      // Filter values to only those matching the tileIds from Rust
+      const tileIdSet = new Set(tileIds);
+
+      for (let value of values) {
+        // It is possible that this value has already been requested, but the tile is in-flight.
+        value = await value;
+        console.log(value);
+        if (
+          value !== null &&
+          value.node &&
+          (!(value.parentNode) || value.parentNode === this.__parentPseudo)
+        ) {
+          if (!value.node) {
+            throw Error(`Node ${childNode.alias} (${childNode.nodeid}) is unavailable`);
+          }
+
+          // Check if this value's tile matches one of the tiles Rust identified
+          const valueTileId = value.tile?.tileid;
+          if (!valueTileId || !tileIdSet.has(valueTileId)) {
+            continue;
+          }
+
+          // Handle collector nodes (Branch 3 from Rust implementation)
           if (
-            value !== null &&
-            value.node &&
-            (!(value.parentNode) ||
-              value.parentNode === this.__parentPseudo)
+            node.nodegroup_id != value.node.nodegroup_id &&
+            childNode.is_collector
           ) {
-            // It is possible that this value has already
-            // been requested, but the tile is in-flight.
-            value = await value;
-            if (!value.node) {
-              throw Error(`Node ${childNode.alias} (${childNode.nodeid}) is unavailable`);
+            // This avoids list types that have their own tiles (like resource or concept lists)
+            // from appearing doubly-nested
+            const childValue = value instanceof PseudoList ? value : (value.isIterable() ? await value.getValue() : null);
+            let listValue: PseudoList | Array<any> | null;
+            if (childValue && Array.isArray(childValue)) {
+              listValue = childValue;
+            } else {
+              listValue = null;
             }
-            if (
-              // value.node.nodegroup_id == node.nodeid in all cases for first possibility?
-              (value.node.nodegroup_id != node.nodegroup_id && tile && value.tile && (!(value.tile.parenttile_id) || value.tile.parenttile_id == tile.tileid)) ||
-              (value.node.nodegroup_id == node.nodegroup_id &&
-                tile &&
-                value.tile == tile &&
-                !childNode.is_collector) //  # It shares a tile
-              // it feels like this should be necessary, but area_assignments->area_assignment fails with null parenttile_id
-              // (tile && value.tile && value.tile.parenttile_id == tile.tileid) ||
-              // (value.node.nodegroup_id == node.nodegroup_id &&
-              //   tile &&
-              //   value.tile == tile &&
-              //   !childNode.is_collector) //  # It shares a tile
-            ) {
-              children.set(key, value);
-            } else if (
-              node.nodegroup_id != value.node.nodegroup_id &&
-              childNode.is_collector // It does not share a tile
-            ) {
-              // This avoids list types that have their own tiles (like resource or concept lists)
-              // from appearing doubly-nested
-              const childValue = value instanceof PseudoList ? value : (value.isIterable() ? await value.getValue() : null);
-              let listValue: PseudoList | Array<any> | null;
-              if (childValue && Array.isArray(childValue)) {
-                listValue = childValue;
+            if (listValue !== null) {
+              if (children.has(childAlias)) {
+                children.get(childAlias).push(...listValue);
               } else {
-                listValue = null;
+                children.set(childAlias, listValue);
               }
-              if (listValue !== null) {
-                if (children.has(key)) {
-                  children.get(key).push(...listValue);
-                } else {
-                  children.set(key, listValue);
-                }
-              } else {
-                // In this case, we have a value, but the wrapper logic did not make it a PseudoList, so
-                // we should treat it as singular.
-                children.set(key, value);
-              }
+            } else {
+              // In this case, we have a value, but the wrapper logic did not make it a PseudoList, so
+              // we should treat it as singular.
+              children.set(childAlias, value);
             }
+          } else {
+            // Branch 1 and Branch 2 cases
+            children.set(childAlias, value);
           }
         }
       }
     }
+
+    // Set parent node for all children and cache
     for (const [key, value] of [...children.entries()]) {
       value.parentNode = this.__parentPseudo;
       this.__childValues.set(key, value);
     }
 
+    console.log(children);
     return children;
   }
 }

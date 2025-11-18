@@ -1,0 +1,58 @@
+# Source files (only ship built artifacts)
+src/
+js/
+tests/
+crates/
+
+# Config files
+.github/
+.vscode/
+*.config.js
+*.config.ts
+tsconfig.json
+vite.config.js
+.eslintrc*
+.prettierrc*
+
+# Build artifacts not needed by consumers
+target/
+dist-ssr/
+*.local
+wasm-pack.log
+
+# Development files
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+.env*
+.nenv
+
+# Documentation (keep README.md)
+docs/
+CLAUDE.md
+ARCHITECTURE.md
+PYTHON_JSON_ROADMAP.md
+RELEASING.md
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Git
+.git
+.gitignore
+.gitattributes

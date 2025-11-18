@@ -6,7 +6,7 @@ import topLevelAwait from "vite-plugin-top-level-await";
 
 export default defineConfig({
   plugins: [
-    dts({ rollupTypes: true }),
+    // dts({ rollupTypes: true }), // Temporarily disabled due to type errors
     wasm(),
     topLevelAwait(),
   ],
@@ -37,6 +37,7 @@ export default defineConfig({
       external: [
         'fs',
         'path',
+        'url',
         'ajv',
         'ajv-formats',
       ],

@@ -14,6 +14,10 @@ import {
   StaticTile,
   StaticGraph,
   StaticEdge,
+  StaticResourceDescriptors,
+  StaticResourceMetadata,
+  StaticResourceSummary,
+  StaticResource,
 } from '../pkg/alizarin';
 
 // StaticEdge is now implemented in Rust and imported from ../pkg/wasm
@@ -40,7 +44,7 @@ function createStaticGraph(props: {
     is_editable?: boolean | null,
     isresource?: boolean,
     jsonldcontext?: string | {[key: string]: any} | null,
-    name?: string | StaticTranslatableString,
+    name: string | StaticTranslatableString,
     ontology_id?: string | null,
     relatable_resource_model_ids?: Array<string>,
     resource_2_resource_constraints?: Array<any> | null,
@@ -59,16 +63,12 @@ function createStaticGraph(props: {
     // TODO: check name is not just string in upstream
     // Convert name to plain JS object for Rust deserialization
     let nameForRust;
-    if (props.name) {
-      if (props.name instanceof StaticTranslatableString) {
-        nameForRust = props.name.toJSON();
-      } else if (typeof props.name === 'string') {
-        nameForRust = props.name;
-      } else {
-        nameForRust = props.name;
-      }
+    if (props.name instanceof StaticTranslatableString) {
+      nameForRust = props.name.toJSON();
+    } else if (typeof props.name === 'string') {
+      nameForRust = props.name;
     } else {
-      nameForRust = '';
+      throw Error(`Name of graph must be string or StaticTranslatableString, not ${props.name}`);
     }
     const alias = slugify(typeof nameForRust === 'string' ? nameForRust : JSON.stringify(nameForRust));
     const root = new StaticNode({
@@ -373,55 +373,9 @@ class StaticCollection {
   }
 }
 
-class StaticResourceDescriptors {
-  [key: string]: (string | undefined | (() => boolean));
-  name?: string;
-  map_popup?: string;
-  description?: string;
+// StaticResourceDescriptors is now implemented in Rust and imported from ../pkg/alizarin
 
-  constructor(jsonData?: StaticResourceDescriptors) {
-    if (jsonData) {
-      this.name = jsonData.name;
-      this.map_popup = jsonData.map_popup;
-      this.description = jsonData.description;
-    }
-  }
-
-  isEmpty(): boolean {
-    return !(this.name || this.map_popup || this.description);
-  }
-}
-
-class StaticResourceMetadata {
-  descriptors: StaticResourceDescriptors;
-  graph_id: string;
-  name: string;
-  resourceinstanceid: string;
-  publication_id: string | null = null;
-  principaluser_id: number | null = null;
-  legacyid: null | string = null;
-  graph_publication_id: string | null = null;
-  createdtime?: string;
-  lastmodified?: string;
-
-  constructor(jsonData: StaticResourceMetadata) {
-    this.descriptors = jsonData.descriptors;
-    if (!(this.descriptors instanceof StaticResourceDescriptors)) {
-      if (jsonData.descriptors instanceof Map) {
-        this.descriptors = new StaticResourceDescriptors(Object.fromEntries(jsonData.descriptors.entries()));
-      } else {
-        this.descriptors = new StaticResourceDescriptors(this.descriptors);
-      }
-    }
-    this.graph_id = jsonData.graph_id;
-    this.name = jsonData.name;
-    this.resourceinstanceid = jsonData.resourceinstanceid;
-    this.publication_id = jsonData.publication_id;
-    this.principaluser_id = jsonData.principaluser_id;
-    this.legacyid = jsonData.legacyid;
-    this.graph_publication_id = jsonData.graph_publication_id;
-  }
-}
+// StaticResourceMetadata is now implemented in Rust and imported from ../pkg/alizarin
 
 class StaticDomainValue {
   id: string
@@ -479,82 +433,9 @@ class StaticResourceReference {
   }
 }
 
-class StaticResourceSummary {
-  resourceinstanceid: string;
-  graph_id: string;
-  name: string;
-  descriptors: StaticResourceDescriptors;
-  metadata: {[key: string]: string};
-  createdtime?: string;
-  lastmodified?: string;
-  publication_id?: string | null;
-  principaluser_id?: number | null;
-  legacyid?: string | null;
-  graph_publication_id?: string | null;
+// StaticResourceSummary is now implemented in Rust and imported from ../pkg/alizarin
 
-  constructor(jsonData: any) {
-    this.resourceinstanceid = jsonData.resourceinstanceid;
-    this.graph_id = jsonData.graph_id;
-    this.name = jsonData.name || '<Unnamed>';
-    this.descriptors = new StaticResourceDescriptors(jsonData.descriptors || {});
-    this.metadata = jsonData.metadata || {};
-    this.createdtime = jsonData.createdtime;
-    this.lastmodified = jsonData.lastmodified;
-    this.publication_id = jsonData.publication_id;
-    this.principaluser_id = jsonData.principaluser_id;
-    this.legacyid = jsonData.legacyid;
-    this.graph_publication_id = jsonData.graph_publication_id;
-  }
-
-  // Convert summary to full metadata object for compatibility
-  toMetadata(): StaticResourceMetadata {
-    return new StaticResourceMetadata({
-      descriptors: this.descriptors,
-      graph_id: this.graph_id,
-      name: this.name,
-      resourceinstanceid: this.resourceinstanceid,
-      publication_id: this.publication_id ?? null,
-      principaluser_id: this.principaluser_id ?? null,
-      legacyid: this.legacyid ?? null,
-      graph_publication_id: this.graph_publication_id ?? null
-    });
-  }
-}
-
-class StaticResource {
-  resourceinstance: StaticResourceMetadata;
-  tiles: Array<StaticTile> | null = null;
-  metadata: {[key: string]: string};
-  __cache: {[tileId: string]: {[nodeId: string]: {[key: string]: string}}} | undefined = undefined;
-  __source: string | undefined = undefined;
-  __scopes: string[] | undefined = undefined;
-  __tilesLoaded: boolean = false; // Track if tiles have been loaded
-
-  constructor(jsonData: StaticResource) {
-    this.resourceinstance = new StaticResourceMetadata(
-      jsonData.resourceinstance,
-    );
-    this.tiles =
-      jsonData.tiles && jsonData.tiles.map((tile) => new StaticTile(tile));
-    this.metadata = jsonData.metadata || {};
-    this.__cache = jsonData.__cache;
-    this.__scopes = jsonData.__scopes;
-    this.__tilesLoaded = !!(jsonData.tiles && jsonData.tiles.length > 0);
-  }
-
-  // Create a resource from summary data (for lazy loading)
-  static fromSummary(summary: StaticResourceSummary): StaticResource {
-    return new StaticResource({
-      resourceinstance: summary.toMetadata(),
-      tiles: [], // Empty tiles initially
-      metadata: summary.metadata,
-      __cache: undefined,
-      __scopes: undefined,
-      __source: 'summary',
-      __tilesLoaded: false
-    } as StaticResource);
-  }
-}
+// StaticResource is now implemented in Rust and imported from ../pkg/alizarin
 
 export {
   StaticValue,

@@ -69,7 +69,7 @@ class ValueList<T extends IRIVM<T>> {
     if (Array.isArray(result)) {
       return result;
     }
-    const node = this.wrapper.model.getNodeObjectsByAlias().get(key);
+    const node = this.wrapper.model.getNodeObjectFromAlias(key);
 
     result = await result;
 
@@ -80,7 +80,7 @@ class ValueList<T extends IRIVM<T>> {
 
     // Phase 4k: Rust atomic lock - eliminates race conditions
     if (!this.wrapper.wasmWrapper) {
-      throw new Error("WASM wrapper not available - legacy path removed");
+      throw new Error("WASM wrapper not available");
     }
     const shouldLoad = this.wrapper.wasmWrapper.tryAcquireNodegroupLock(nodegroupId);
 
@@ -98,7 +98,7 @@ class ValueList<T extends IRIVM<T>> {
       await this.writeLock;
       if (this.wrapper.resource) {
         // Will KeyError if we do not have it.
-        const node = this.wrapper.model.getNodeObjectsByAlias().get(key);
+        const node = this.wrapper.model.getNodeObjectFromAlias(key);
         if (node === undefined) {
           throw Error(
             "Tried to retrieve a node key that does not exist on this resource",
@@ -113,18 +113,12 @@ class ValueList<T extends IRIVM<T>> {
 
            // Get permissions and tiles
            const nodegroupPermissions = this.wrapper.model.getPermittedNodegroups();
-           const tiles = this.wrapper.resource ? this.wrapper.resource.tiles : null;
-           const allTiles = tiles ? tiles.map(t => t?.tileid || '').filter(id => id) : [];
 
            const result = this.wrapper.wasmWrapper.ensureNodegroup(
               values,
               nodegroupStateMap,  // Phase 4k: Temporary state Map for this call only
               nodegroupId,
-              this.wrapper.model.getNodeObjects(),
-              this.wrapper.model.getNodegroupObjects(),
-              this.wrapper.model.getEdges(),
               false,  // addIfMissing
-              allTiles,
               nodegroupPermissions,
               true  // doImpliedNodegroups
             );
@@ -137,11 +131,15 @@ class ValueList<T extends IRIVM<T>> {
                if (!ngValues.has(alias)) {
                  ngValues.set(alias, []);
                }
-               ngValues.get(alias).push(rustValue);
+               for (const rv of rustValue.getAllValues()) {
+                 ngValues.get(alias).push(rv);
+                }
              }
            }
 
+           console.log('alias', nodegroupId);
            return Promise.resolve().then(async () => {
+           console.log('alias2', nodegroupId);
               let original = false;
               // Phase 4i: ngValues now contains raw Rust values (WasmPseudoList)
               // We need to wrap them when storing in this.values
@@ -151,6 +149,7 @@ class ValueList<T extends IRIVM<T>> {
                   ? rustValues.map((rv: any) => wrapRustPseudo(rv, this.wrapper.wkri, this.wrapper.model))
                   : rustValues;
 
+           console.log('alias3', nodegroupId);
                 if (key === k) {
                   // Other methods may be waiting on this specific
                   // value to resolve.
@@ -165,12 +164,14 @@ class ValueList<T extends IRIVM<T>> {
                   this.values.set(k, wrappedValues);
                 }
               }
+           console.log('alias4', nodegroupId);
               return Promise.all([...ngValues.entries()].map(([k, value]) => {
                 if (value instanceof Promise) {
                   return value.then((concreteValue: any) => processValue(k, concreteValue));
                 }
                 processValue(k, value);
               })).then(() => {
+           console.log('aliasout', nodegroupId);
                 resolve(original);
               });
             });
@@ -455,6 +456,7 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
       }
       const root = await this.$.getRootViewModel();
       basic.root = await root.forJson();
+      console.log(root, 'root');
     }
     return basic;
   }
@@ -529,7 +531,8 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
               throw Error("Could not retrieve resource");
             }
           }
-          return object.$.getOrmAttribute(k).then((v) => {
+          const p = object.$.getOrmAttribute(k);
+          return p.then((v) => {
             return resolve(v);
           });
         });
@@ -570,6 +573,8 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
           }
         } else if (value instanceof Object && value.resourceId) {
           val = value.resourceId;
+        } else if (value instanceof Map && value.get("resourceId")) {
+          val = value.get("resourceId");
         } else if (value instanceof Array && value.length < 2 ) {
           if (value.length == 1) {
             return ResourceInstanceViewModel.__create(tile, node, value[0], cacheEntry);
@@ -1661,7 +1666,6 @@ async function getViewModel<RIVM extends IRIVM<RIVM>>(
   node: StaticNode,
   data: any,
   parent: IRIVM<RIVM> | null,
-  childNodes: Map<string, StaticNode>,
   isInner: boolean = false
 ): Promise<IViewModel | null> {
   let vm;
@@ -1690,7 +1694,6 @@ async function getViewModel<RIVM extends IRIVM<RIVM>>(
           node,
           data,
           parent,
-          childNodes,
         );
         break;
       case "domain-value":
