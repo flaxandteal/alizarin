@@ -137,9 +137,7 @@ class ValueList<T extends IRIVM<T>> {
              }
            }
 
-           console.log('alias', nodegroupId);
            return Promise.resolve().then(async () => {
-           console.log('alias2', nodegroupId);
               let original = false;
               // Phase 4i: ngValues now contains raw Rust values (WasmPseudoList)
               // We need to wrap them when storing in this.values
@@ -149,7 +147,6 @@ class ValueList<T extends IRIVM<T>> {
                   ? rustValues.map((rv: any) => wrapRustPseudo(rv, this.wrapper.wkri, this.wrapper.model))
                   : rustValues;
 
-           console.log('alias3', nodegroupId);
                 if (key === k) {
                   // Other methods may be waiting on this specific
                   // value to resolve.
@@ -164,14 +161,12 @@ class ValueList<T extends IRIVM<T>> {
                   this.values.set(k, wrappedValues);
                 }
               }
-           console.log('alias4', nodegroupId);
               return Promise.all([...ngValues.entries()].map(([k, value]) => {
                 if (value instanceof Promise) {
                   return value.then((concreteValue: any) => processValue(k, concreteValue));
                 }
                 processValue(k, value);
               })).then(() => {
-           console.log('aliasout', nodegroupId);
                 resolve(original);
               });
             });
@@ -456,7 +451,6 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
       }
       const root = await this.$.getRootViewModel();
       basic.root = await root.forJson();
-      console.log(root, 'root');
     }
     return basic;
   }

@@ -103,7 +103,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       return await v.forJson();
     };
     const entries = [...(await this.__getChildValues()).entries()];
-    console.log(entries, 'entries');
     return Object.fromEntries(await Promise.all(entries.map(async ([k, vl]) => {
         return [k, vl ? await _forJson(vl) : vl];
     })));
@@ -293,14 +292,12 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     // Use Rust implementation to find which tiles contain semantic children
     // PORT: Replaces lines 163-233 with Rust findSemanticChildren
     const childAliases = [...childNodes.keys()];
-    console.log(childNodes, 'childNodes');
     const matchingTiles: Map<string, string[]> = parent.$.wasmWrapper.findSemanticChildren(
       tile?.tileid || null,
       node.nodeid,
       node.nodegroup_id || null,
       []
     );
-    console.log(matchingTiles, 'mt');
 
     const children: Map<string, any> = new Map();
     const allEntries = [...parent.$.allEntries()];
@@ -315,7 +312,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       // Get the PseudoValue(s) from allEntries
       const entry = allEntries.find(e => e[0] === childAlias);
       if (!entry) {
-        console.log(allEntries, childAlias, 'entry');
         throw Error("Missing entry!");
       }
 
@@ -323,11 +319,9 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       if (values instanceof Promise) {
         values = await values;
       }
-      console.log('values', values);
       if (values === false || values === null || values === undefined) {
         continue;
       }
-      console.log("tileids", tileIds);
 
       // Filter values to only those matching the tileIds from Rust
       const tileIdSet = new Set(tileIds);
@@ -335,7 +329,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       for (let value of values) {
         // It is possible that this value has already been requested, but the tile is in-flight.
         value = await value;
-        console.log(value);
         if (
           value !== null &&
           value.node &&
@@ -390,7 +383,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       this.__childValues.set(key, value);
     }
 
-    console.log(children);
     return children;
   }
 }
