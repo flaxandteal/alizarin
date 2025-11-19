@@ -590,6 +590,7 @@ function wrapRustPseudo(
   // Check if it's a WasmPseudoList (has getAllValues method)
   if (typeof rustValue.getAllValues === 'function') {
     // It's a list - create PseudoList and populate with wrapped values
+    // STARTHERE
     const nodeAlias = rustValue.nodeAlias;
     const wasmValues = rustValue.getAllValues();
 

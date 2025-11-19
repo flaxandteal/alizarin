@@ -45,7 +45,6 @@ class StaticStore {
       await this.archesClient.getResources(graphId, limit || 0);
     for (const resourceJSON of resourcesJSON.values()) {
       const resource = new StaticResource(resourceJSON);
-      console.log(resource.resourceinstance.graph_id, 1);
       if (resource.resourceinstance.graph_id !== graphId) {
         continue;
       }

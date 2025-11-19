@@ -2284,14 +2284,10 @@ impl StaticGraph {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticGraph, JsValue> {
         // Log the incoming data for debugging
-        web_sys::console::log_1(&"Deserializing StaticGraph with data:".into());
-        web_sys::console::log_1(&json_data);
-
         let mut data: StaticGraph = serde_wasm_bindgen::from_value(json_data).map_err(|e| {
             let error_string = e.to_string();
 
             // Log detailed error information
-            web_sys::console::error_1(&"=== StaticGraph Deserialization Error ===".into());
             web_sys::console::error_1(&format!("Error: {}", error_string).into());
             web_sys::console::error_1(&format!("Debug: {:?}", e).into());
 
@@ -2996,7 +2992,6 @@ impl StaticResource {
         let mut resource: StaticResource = serde_wasm_bindgen::from_value(data)
             .map_err(|e| JsValue::from_str(&format!("Failed to deserialize StaticResource: {:?}", e)))?;
 
-            web_sys::console::error_1(&JsValue::from_str(&format!("{:?}", resource.resourceinstance.graph_id)));
         // Set tiles loaded flag based on whether tiles exist and are non-empty
         resource.__tiles_loaded = resource.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false);
 
