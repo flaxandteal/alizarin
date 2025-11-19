@@ -170,6 +170,10 @@ async function buildResourceDescriptors(
       // Handle PseudoList (which is an array)
       if (Array.isArray(semanticValue)) {
         semanticValue = await semanticValue[0];
+        // Extract value from the list element if it has getValue
+        if (semanticValue && typeof semanticValue.getValue === 'function') {
+          semanticValue = await semanticValue.getValue();
+        }
       } else if (semanticValue && semanticValue.inner) {
         // Handle nested value (e.g., StringViewModel)
         relevantValues.push([semanticNode.name || '', await semanticValue.getValue()]);
@@ -208,12 +212,18 @@ async function buildResourceDescriptors(
     // If so, try retrieving values individually
     if (requestedNodes.length) {
       relevantValues = await Promise.all(
-        relevantNodes.map(([name, alias]) =>
-          valueList.retrieve(alias).then(
-            (values: string[]): [string, string | undefined] =>
-              [name, values ? values[0] : undefined]
-          )
-        )
+        relevantNodes.map(async ([name, alias]) => {
+          const values = await valueList.retrieve(alias);
+          if (!values || values.length === 0) {
+            return [name, undefined] as [string, string | undefined];
+          }
+          // Extract the actual string value from the view model
+          const viewModel = values[0];
+          const value = viewModel && typeof viewModel.getValue === 'function'
+            ? await viewModel.getValue()
+            : viewModel;
+          return [name, typeof value === 'string' ? value : undefined] as [string, string | undefined];
+        })
       );
 
       if (relevantValues) {

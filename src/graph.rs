@@ -2840,7 +2840,7 @@ impl StaticResourceMetadata {
         self.descriptors.clone()
     }
 
-    #[wasm_bindgen(getter = graphId)]
+    #[wasm_bindgen(getter)]
     pub fn graph_id(&self) -> String {
         self.graph_id.clone()
     }
@@ -2855,12 +2855,12 @@ impl StaticResourceMetadata {
         self.resourceinstanceid.clone()
     }
 
-    #[wasm_bindgen(getter = publicationId)]
+    #[wasm_bindgen(getter)]
     pub fn publication_id(&self) -> Option<String> {
         self.publication_id.clone()
     }
 
-    #[wasm_bindgen(getter = principaluserId)]
+    #[wasm_bindgen(getter)]
     pub fn principaluser_id(&self) -> Option<i32> {
         self.principaluser_id
     }
@@ -2870,7 +2870,7 @@ impl StaticResourceMetadata {
         self.legacyid.clone()
     }
 
-    #[wasm_bindgen(getter = graphPublicationId)]
+    #[wasm_bindgen(getter)]
     pub fn graph_publication_id(&self) -> Option<String> {
         self.graph_publication_id.clone()
     }
@@ -2946,7 +2946,7 @@ impl StaticResourceSummary {
         self.resourceinstanceid.clone()
     }
 
-    #[wasm_bindgen(getter = graphId)]
+    #[wasm_bindgen(getter)]
     pub fn graph_id(&self) -> String {
         self.graph_id.clone()
     }
@@ -2977,6 +2977,12 @@ pub struct StaticResource {
     #[serde(default)]
     pub(crate) metadata: HashMap<String, String>,
 
+    // Optional JS-managed cache and scopes
+    #[serde(skip)]
+    pub(crate) __cache: Option<JsValue>,
+    #[serde(skip)]
+    pub(crate) __scopes: Option<JsValue>,
+
     // Private fields for caching/tracking
     #[serde(skip)]
     #[wasm_bindgen(skip)]
@@ -2990,6 +2996,7 @@ impl StaticResource {
         let mut resource: StaticResource = serde_wasm_bindgen::from_value(data)
             .map_err(|e| JsValue::from_str(&format!("Failed to deserialize StaticResource: {:?}", e)))?;
 
+            web_sys::console::error_1(&JsValue::from_str(&format!("{:?}", resource.resourceinstance.graph_id)));
         // Set tiles loaded flag based on whether tiles exist and are non-empty
         resource.__tiles_loaded = resource.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false);
 
@@ -3002,6 +3009,8 @@ impl StaticResource {
             resourceinstance: summary.to_metadata(),
             tiles: Some(Vec::new()),
             metadata: summary.metadata,
+            __cache: None,
+            __scopes: None,
             __tiles_loaded: false,
         }
     }
@@ -3043,8 +3052,56 @@ impl StaticResource {
         serde_wasm_bindgen::to_value(&self.metadata).unwrap_or(JsValue::NULL)
     }
 
+    #[wasm_bindgen(setter)]
+    pub fn set_metadata(&mut self, value: JsValue) {
+        if let Ok(metadata) = serde_wasm_bindgen::from_value(value) {
+            self.metadata = metadata;
+        }
+    }
+
+    #[wasm_bindgen(getter = __cache)]
+    pub fn get_cache(&self) -> JsValue {
+        self.__cache.clone().unwrap_or(JsValue::NULL)
+    }
+
+    #[wasm_bindgen(setter = __cache)]
+    pub fn set_cache(&mut self, value: JsValue) {
+        if value.is_null() || value.is_undefined() {
+            self.__cache = None;
+        } else {
+            self.__cache = Some(value);
+        }
+    }
+
+    #[wasm_bindgen(getter = __scopes)]
+    pub fn get_scopes(&self) -> JsValue {
+        self.__scopes.clone().unwrap_or(JsValue::NULL)
+    }
+
+    #[wasm_bindgen(setter = __scopes)]
+    pub fn set_scopes(&mut self, value: JsValue) {
+        if value.is_null() || value.is_undefined() {
+            self.__scopes = None;
+        } else {
+            self.__scopes = Some(value);
+        }
+    }
+
     #[wasm_bindgen(getter = tilesLoaded)]
     pub fn tiles_loaded(&self) -> bool {
         self.__tiles_loaded
+    }
+
+    #[wasm_bindgen(js_name = toJSON)]
+    pub fn to_json(&self) -> JsValue {
+        // Serialize using serde_json, then convert to plain JS object
+        // This automatically handles nested structs
+        match serde_json::to_value(self) {
+            Ok(json_value) => json_to_js_value(&json_value),
+            Err(e) => {
+                web_sys::console::error_1(&format!("Failed to serialize StaticResource: {}", e).into());
+                JsValue::NULL
+            }
+        }
     }
 }

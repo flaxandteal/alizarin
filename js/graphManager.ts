@@ -70,10 +70,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     this.cache = resource ? resource.__cache : undefined;
     this.scopes = resource ? resource.__scopes : undefined;
     this.metadata = resource ? resource.metadata : undefined;
-    if (pruneTiles && resource) {
-      this.pruneResourceTiles()
-    }
-
     // Load tiles into Rust if we have any
     if (!this.wasmWrapper.tilesLoaded() && resource) {
       try {
@@ -81,6 +77,10 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       } catch (e) {
         console.error("Failed to load tiles into WASM:", e);
       }
+    }
+
+    if (pruneTiles && resource) {
+      this.pruneResourceTiles()
     }
   }
 
@@ -544,7 +544,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     }
 
     const enableParallelTesting = process.env.ALIZARIN_PARALLEL_TEST === "true";
-    console.log(1, lazy);
 
     try {
       if (!lazy && this.resource) {
@@ -554,14 +553,12 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         }
       }
 
-    console.log(2);
       // Phase 4h: Pass nodegroup permissions to Rust - Rust will compute tile permissions
       const nodegroupPermissions = this.model.getPermittedNodegroups();
 
       // Get all tile IDs and nodegroup IDs
       const nodegroupIds = [...nodegroupObjs.keys()];
 
-    console.log(3);
       // Call Rust implementation
       const result = this.wasmWrapper.populate(
         lazy,
@@ -569,7 +566,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         rootNode.alias,
         nodegroupPermissions  // Phase 4h: Pass nodegroup permissions instead of tile permissions
       );
-    console.log(4);
 
       // Convert all recipes to PseudoValues
       const allValues: Map<string, any> = new Map();
@@ -583,7 +579,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // Set root node alias
       allValues.set(rootNode.alias, false);
 
-    console.log(5);
       // PORT: Phase 4c - Use structured RustPseudoList values directly instead of recipes
       // PORT: src/instance_wrapper.rs:563-569 - WasmPopulateResult with values HashMap
       const newValues = new Map<string, any>();
@@ -616,7 +611,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
 
         newValues.get(alias).push(rustValue);
       }
-    console.log(6);
 
       // Update allValues with newValues
       for (const [key, value] of newValues.entries()) {
@@ -641,7 +635,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         }
       }
 
-    console.log(7);
       // Parallel testing mode: compare Rust vs JS
       if (enableParallelTesting) {
         const allValuesClone = new Map(allValues);
@@ -681,7 +674,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       }
 
       // Create ValueList with results
-    console.log(8);
       this.valueList = new ValueList(
         allValues,
         allNodegroups,
@@ -693,7 +685,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       console.error('[populate] Rust implementation failed:', error);
       throw new Error(`Rust populate failed: ${error}. Use populate_JS() explicitly if you want the JS implementation.`);
     }
-    console.log(9);
   }
 
   /**
@@ -1650,11 +1641,8 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
   }
 
   async find(id: string, lazy: boolean = true, pruneTiles: boolean = true): Promise<RIVM> {
-    console.log('in', id);
     const rivm = await this.findStatic(id);
-    console.log('out', id);
     const x = this.fromStaticResource(rivm, lazy, pruneTiles);
-    console.log('about', id);
     return x;
   }
 
@@ -1735,21 +1723,17 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     pruneTiles: boolean = true
   ): Promise<RIVM> {
     // TODO: implement lazy
-    console.log('in2');
     const wkri: RIVM = this.makeInstance(
       resource.resourceinstance.resourceinstanceid,
       resource,
       pruneTiles
     );
-    console.log('out2');
 
     if (!wkri.$) {
       throw Error("Could not load resource from static definition");
     }
 
-    console.log('ab');
     const pop = wkri.$.populate(lazy).then(() => wkri);
-    console.log('about2');
     return pop;
   }
 
