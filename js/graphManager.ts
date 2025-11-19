@@ -29,12 +29,9 @@ import { generateUuidv5, AttrPromise, buildResourceDescriptors } from "./utils";
 const MAX_GRAPH_DEPTH = 100;
 
 class ConfigurationOptions {
-  graphs: Array<string> | null | boolean;
+  graphs: Array<string> | null | boolean = null;
   eagerLoadGraphs: boolean = false;
-
-  constructor() {
-    this.graphs = null;
-  }
+  defaultAllowAllNodegroups: boolean = false;
 }
 
 export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrapper<RIVM> {
@@ -1425,8 +1422,8 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
   // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
   permittedNodegroups?: Map<string | null, boolean>;
 
-  constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>) {
-    super(wkrm, graph);
+  constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow: boolean) {
+    super(wkrm, graph, defaultAllow);
     this.viewModelClass = viewModelClass;
   }
 
@@ -1521,6 +1518,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
   }
 
   pruneGraph(keepFunctions?: string[]): undefined {
+    // RMV DOES THESE NEED MOVED TO RUST?
     // Get the graph once to avoid multiple clones
     const graph = this.graph;
     const allNodegroups = this.getNodegroupObjects();
@@ -1779,6 +1777,7 @@ function makeResourceModelWrapper<T extends IRIVM<T>>(
   viewModelClass: ResourceInstanceViewModelConstructor<T> | undefined,
   wkrm: WKRM,
   graph: StaticGraph,
+  defaultAllow: boolean
 ): ResourceInstanceViewModelConstructor<T> {
   let vmc: ResourceInstanceViewModelConstructor<T>;
   if (!viewModelClass) {
@@ -1795,7 +1794,7 @@ function makeResourceModelWrapper<T extends IRIVM<T>>(
     vmc = viewModelClass;
   }
 
-  const wrapper = new ResourceModelWrapper<T>(wkrm, graph, vmc);
+  const wrapper = new ResourceModelWrapper<T>(wkrm, graph, vmc, defaultAllow);
   vmc.prototype.__ = wrapper;
   return vmc;
 }
@@ -1838,13 +1837,13 @@ class GraphManager {
       this.wkrms.set(wkrm.modelClassName, wkrm);
     });
     if (configurationOptions.eagerLoadGraphs) {
-      await Promise.all(graphs.map(([g]) => this.loadGraph(g)));
+      await Promise.all(graphs.map(([g]) => this.loadGraph(g, configurationOptions.defaultAllowAllNodegroups)));
     }
 
     this._initialized = true;
   }
 
-  async loadGraph<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string): Promise<ResourceModelWrapper<RIVM>> {
+  async loadGraph<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow: boolean=false): Promise<ResourceModelWrapper<RIVM>> {
     let modelClassName: string;
     if (typeof modelClass == 'string') {
       modelClassName = modelClass;
@@ -1876,17 +1875,17 @@ class GraphManager {
     let model: ResourceInstanceViewModelConstructor<RIVM>;
     if (typeof modelClass == 'string') {
       modelClassName = modelClass;
-      model = makeResourceModelWrapper<RIVM>(undefined, wkrm, graph);
+      model = makeResourceModelWrapper<RIVM>(undefined, wkrm, graph, defaultAllow);
     } else {
       modelClassName = modelClass.name;
-      model = makeResourceModelWrapper<RIVM>(modelClass, wkrm, graph);
+      model = makeResourceModelWrapper<RIVM>(modelClass, wkrm, graph, defaultAllow);
     }
 
     this.graphs.set(graph.graphid, model.prototype.__);
     return model.prototype.__;
   }
 
-  async get<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string): Promise<ResourceModelWrapper<RIVM>> {
+  async get<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow: boolean=false): Promise<ResourceModelWrapper<RIVM>> {
     let modelClassName: string;
     if (typeof modelClass == 'string') {
       modelClassName = modelClass;
@@ -1906,7 +1905,7 @@ class GraphManager {
 
     const wrapper = this.graphs.get(wkrm.graphId);
     if (wrapper === undefined) {
-      return this.loadGraph(modelClass);
+      return this.loadGraph(modelClass, defaultAllow);
     }
     return wrapper;
   }
@@ -1915,7 +1914,7 @@ class GraphManager {
     const rivm = await staticStore.loadOne(resourceId);
     let graph = this.graphs.get(rivm.resourceinstance.graph_id);
     if (!graph) {
-      graph = await this.loadGraph(rivm.resourceinstance.graph_id);
+      graph = await this.loadGraph(rivm.resourceinstance.graph_id, !pruneTiles);
       if (!graph) {
         throw Error(`Graph not found for resource ${resourceId}`);
       }

@@ -311,7 +311,7 @@ impl WASMResourceInstanceWrapper {
     }
 
     pub fn load_tiles(&mut self, tiles: Vec<StaticTile>) -> Result<(), JsValue> {
-        self.check_tiles(&tiles);
+        self.check_tiles(&tiles)?;
 
         if self.tiles.is_none() {
             self.tiles = Some(HashMap::new());
@@ -335,7 +335,7 @@ impl WASMResourceInstanceWrapper {
                 .push(tile_id.clone());
 
             // Store tile
-            tileStore.insert(tile_id, tile);
+            tileStore.insert(tile_id.clone(), tile);
         }
 
         Ok(())
@@ -1346,12 +1346,8 @@ impl WASMResourceInstanceWrapper {
             .as_ref()
             .ok_or_else(|| JsValue::from_str("Tiles not initialized"))?;
         for (tile_id, tile) in tiles.iter() {
-                web_sys::console::log_1(&format!("TILE:{:?}", tile_id).into());
             // Check each child alias we're looking for
             for (child_alias, child_node) in &child_nodes {
-                web_sys::console::log_1(&format!("NI:{:?}:{:?}", child_alias, child_node.nodeid).into());
-                web_sys::console::log_1(&format!("CA:{:?}", child_alias).into());
-
                 // Now check semantic parent-child relationship
                 // PORT: js/semantic.ts lines 296-340
                 if Self::matches_semantic_child(
@@ -1361,7 +1357,6 @@ impl WASMResourceInstanceWrapper {
                     tile,
                     &tile.nodegroup_id,
                 ) {
-                web_sys::console::log_1(&"MATCH".into());
                     results
                         .entry(child_alias.clone())
                         .or_insert_with(Vec::new)

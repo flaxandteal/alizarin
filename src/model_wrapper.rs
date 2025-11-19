@@ -28,10 +28,11 @@ pub struct ResourceModelWrapperCore {
     nodes_by_alias: Option<HashMap<String, Arc<StaticNode>>>,
 
     permitted_nodegroups: Option<HashMap<String, bool>>,
+    default_allow: bool
 }
 
 impl ResourceModelWrapperCore {
-    pub fn new(wkrm: WKRM, graph: Arc<StaticGraph>) -> Self {
+    pub fn new(wkrm: WKRM, graph: Arc<StaticGraph>, default_allow: bool) -> Self {
         ResourceModelWrapperCore {
             wkrm,
             graph,
@@ -40,6 +41,7 @@ impl ResourceModelWrapperCore {
             nodegroups: None,
             nodes_by_alias: None,
             permitted_nodegroups: None,
+            default_allow: default_allow
         }
     }
 
@@ -192,7 +194,11 @@ impl ResourceModelWrapperCore {
         if let Some(ref permissions) = self.permitted_nodegroups {
             return *permissions.get(nodegroup_id).unwrap_or(&false);
         }
-        false
+        self.default_allow
+    }
+
+    pub fn set_default_allow_all_nodegroups(&mut self, default_allow: bool) {
+        self.default_allow = default_allow;
     }
 
     pub fn set_permitted_nodegroups(&mut self, permissions: HashMap<String, bool>) {
@@ -313,11 +319,11 @@ impl WASMResourceModelWrapper {
 #[wasm_bindgen]
 impl WASMResourceModelWrapper {
     #[wasm_bindgen(constructor)]
-    pub fn new(wkrm: &WKRM, graph: &StaticGraph) -> WASMResourceModelWrapper {
+    pub fn new(wkrm: &WKRM, graph: &StaticGraph, default_allow: bool) -> WASMResourceModelWrapper {
         let graph_id = graph.get_graphid();
 
         // Create and register the core in the registry
-        let core = ResourceModelWrapperCore::new(wkrm.clone(), Arc::new(graph.copy()));
+        let core = ResourceModelWrapperCore::new(wkrm.clone(), Arc::new(graph.copy()), default_allow);
         MODEL_REGISTRY.with(|registry| {
             registry.borrow_mut().insert(graph_id.clone(), Arc::new(RefCell::new(core)));
         });
@@ -541,6 +547,11 @@ impl WASMResourceModelWrapper {
     #[wasm_bindgen(js_name = isNodegroupPermitted)]
     pub fn is_nodegroup_permitted(&self, nodegroup_id: &str, _tile: Option<StaticTile>) -> Result<bool, JsValue> {
         Ok(self.with_core(|core| core.is_nodegroup_permitted(nodegroup_id)))
+    }
+
+    #[wasm_bindgen(js_name = setDefaultAllowAllNodegroups)]
+    pub fn set_default_allow_all_nodegroups(&mut self, default_allow: bool) {
+        self.with_core_mut(|core| core.set_default_allow_all_nodegroups(default_allow));
     }
 
     #[wasm_bindgen(js_name = setPermittedNodegroups)]
