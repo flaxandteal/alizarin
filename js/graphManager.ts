@@ -24,7 +24,7 @@ import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper, newWASMRes
 import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { CheckPermission, GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
 import { } from "./nodeConfig.ts";
-import { generateUuidv5, AttrPromise, buildResourceDescriptors } from "./utils";
+import { generateUuidv5, AttrPromise, buildResourceDescriptors, serializeValuesMap } from "./utils";
 
 const MAX_GRAPH_DEPTH = 100;
 
@@ -289,7 +289,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
    */
   async ensureNodegroup(
     allValues: Map<string, any>,
-    allNodegroups: Map<string, boolean | Promise<any>>,
+    allNodegroups: Map<string, boolean>,
     nodegroupId: string,
     addIfMissing: boolean,
     doImpliedNodegroups: boolean = true
@@ -301,14 +301,18 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // Phase 4h: Pass nodegroup permissions to Rust - Rust will compute tile permissions
       const nodegroupPermissions = this.model.getPermittedNodegroups();
 
+      // Serialize maps for efficient Rust deserialization
+      const serializedValues = serializeValuesMap(allValues);
+      const serializedNodegroups = Object.fromEntries(allNodegroups);
+      const serializedPermissions = Object.fromEntries(nodegroupPermissions);
+
       // Call Rust implementation
       const result = this.wasmWrapper.ensureNodegroup(
-        allValues,
-        allNodegroups,
+        serializedValues,
+        serializedNodegroups,
         nodegroupId,
         addIfMissing,
-        allTiles,
-        nodegroupPermissions,  // Phase 4h: Pass nodegroup permissions instead of tile permissions
+        serializedPermissions,  // Phase 4h: Pass nodegroup permissions instead of tile permissions
         doImpliedNodegroups
       );
 
@@ -453,7 +457,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
    */
   async ensureNodegroup_JS(
     allValues: Map<string, any>,
-    allNodegroups: Map<string, boolean | Promise<any>>,
+    allNodegroups: Map<string, boolean>,
     nodegroupId: string,
     addIfMissing: boolean,
     tiles: StaticTile[] | null,
@@ -1420,7 +1424,7 @@ class GraphMutator {
 class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWrapper {
   viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>;
   // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
-  permittedNodegroups?: Map<string | null, boolean>;
+  permittedNodegroups?: Map<string, boolean>;
 
   constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow: boolean) {
     super(wkrm, graph, defaultAllow);
@@ -1645,23 +1649,23 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
   }
 
   // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
-  setPermittedNodegroups(permissions: Map<string | null, boolean>) {
+  setPermittedNodegroups(permissions: Map<string, boolean>) {
     const nodegroups = this.getNodegroupObjects();
     const nodes = this.getNodeObjectsByAlias();
-    this.permittedNodegroups = new Map([...permissions].map(([key, value]): [key: string | null, value: boolean] => {
-      const k = key || '';
+    this.permittedNodegroups = new Map([...permissions].map(([key, value]): [key: string, value: boolean] => {
+      const k = key ?? '';  // Convert null/undefined to empty string
       if (!(typeof value === "boolean")) {
         console.error("For now, Rust cannot handle JS callbacks for permissions - setting to false for", key);
         value = false;
       }
       if (nodegroups.has(k) || k === '') {
-        return [key, value];
+        return [k, value];  // Use normalized key (not original)
       } else {
         const node = nodes.get(k);
         if (node) {
           // The nodeid is the nodegroup ID of the children, but may not be the nodegroup ID of
           // the semantic node itself.
-          return [node.nodeid, value];
+          return [node.nodeid ?? '', value];  // Ensure nodeid is not null
         } else {
           throw Error(`Could not find ${key} in nodegroups for permissions`);
         }
@@ -1672,10 +1676,10 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
   // Defaults to visible, which helps reduce the risk of false sense of security
   // from front-end filtering masking the presence of data transferred to it.
   // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
-  getPermittedNodegroups(): Map<string | null, boolean> {
+  getPermittedNodegroups(): Map<string, boolean> {
     if (!this.permittedNodegroups) {
       const permissions = new Map([...this.getNodegroupObjects()].map(
-        ([k, _]: [k: string, _: StaticNodegroup]) => [k, true]
+        ([k, _]: [k: string, _: StaticNodegroup]) => [k ?? '', true]  // Ensure key is not null
       ));
       permissions.set("", true); // Have to have access to root node.
       this.setPermittedNodegroups(permissions);
@@ -1690,7 +1694,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
 
   // Phase 4h: Simplified - no callback, just boolean lookup
   isNodegroupPermitted(nodegroupId: string, tile: StaticTile | null): boolean {
-    const permitted = this.getPermittedNodegroups().get(nodegroupId);
+    const permitted = this.getPermittedNodegroups().get(nodegroupId ?? '');
     if (!permitted) {
       return false;
     }
@@ -1880,6 +1884,7 @@ class GraphManager {
       modelClassName = modelClass.name;
       model = makeResourceModelWrapper<RIVM>(modelClass, wkrm, graph, defaultAllow);
     }
+    console.log("Made resource model wrapper for", graph.graphid);
 
     this.graphs.set(graph.graphid, model.prototype.__);
     return model.prototype.__;

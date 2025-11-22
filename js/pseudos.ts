@@ -590,7 +590,6 @@ function wrapRustPseudo(
   // Check if it's a WasmPseudoList (has getAllValues method)
   if (typeof rustValue.getAllValues === 'function') {
     // It's a list - create PseudoList and populate with wrapped values
-    // STARTHERE
     const nodeAlias = rustValue.nodeAlias;
     const wasmValues = rustValue.getAllValues();
 
@@ -639,20 +638,10 @@ function wrapRustPseudo(
     return list;
   } else {
     // It's a single value - wrap in PseudoValue
-    const nodeId = rustValue.nodeId;
-    const nodeObjs = model.getNodeObjectsByAlias();
-
-    // Find the node object
-    let nodeObj = null;
-    for (const [, node] of nodeObjs.entries()) {
-      if (node.nodeid === nodeId) {
-        nodeObj = node;
-        break;
-      }
-    }
+    const nodeObj = model.getNodeObjectFromId(rustValue.nodeId);
 
     if (!nodeObj) {
-      throw new Error(`Node not found for nodeId: ${nodeId}`);
+      throw new Error(`Node not found for nodeId: ${rustValue.nodeId}`);
     }
 
     const childNodes = model.getChildNodes(nodeObj.nodeid);

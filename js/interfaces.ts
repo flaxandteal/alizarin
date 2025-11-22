@@ -47,7 +47,7 @@ interface IInstanceWrapper<T extends IRIVM<T>> {
   addPseudo(childNode: StaticNode, tile: StaticTile | null, node: StaticNode): IPseudo;
   ensureNodegroup(
     allValues: Map<string, any>,
-    allNodegroups: Map<string, boolean | Promise<any>>,
+    allNodegroups: Map<string, boolean>,
     nodegroupId: string | null,
     nodeObjs: Map<string, StaticNode>,
     nodegroupObjs: Map<string, StaticNodegroup>,

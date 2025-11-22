@@ -21,6 +21,7 @@ abstract class ArchesClient {
   abstract getResources(
     graphId: string,
     limit: number,
+    reloadIfSeen: boolean
   ): Promise<StaticResource[]>;
 
   abstract getResource(resourceId: string): Promise<StaticResource>;
@@ -73,6 +74,7 @@ class ArchesClientRemote extends ArchesClient {
   async getResources(
     graphId: string,
     limit: number,
+    reloadIfSeen: boolean
   ): Promise<StaticResource[]> {
     const response = await fetch(
       `${this.archesUrl}/resources?graph_uuid=${graphId}&format=arches-json&hide_empty_nodes=false&compact=false&limit=${limit}`,
@@ -86,7 +88,7 @@ class ArchesClientRemote extends ArchesClient {
   ): Promise<StaticResourceSummary[]> {
     // For remote client, this would ideally be a separate endpoint
     // For now, fall back to getting full resources and extracting summaries
-    const resources = await this.getResources(graphId, limit);
+    const resources = await this.getResources(graphId, limit, false);
     return resources.map(resource => new StaticResourceSummary({
       resourceinstanceid: resource.resourceinstance.resourceinstanceid,
       graph_id: resource.resourceinstance.graph_id,
@@ -111,7 +113,7 @@ class ArchesClientRemoteStatic extends ArchesClient {
   allGraphFile: () => string;
   graphToGraphFile?: (graph: StaticGraphMeta) => string;
   graphIdToGraphFile: (graphId: string) => string;
-  graphIdToResourcesFiles: (graphId: string) => string[];
+  graphIdToResourcesFiles: ((graphId: string) => string[]) | ((graphId: string) => Promise<string[]>);
   resourceIdToFile: (resourceId: string) => string;
   collectionIdToFile: (collectionId: string) => string;
 
@@ -128,7 +130,7 @@ class ArchesClientRemoteStatic extends ArchesClient {
       allGraphFile?: () => string,
       graphToGraphFile?: (graph: StaticGraphMeta) => string,
       graphIdToGraphFile?: (graphId: string) => string;
-      graphIdToResourcesFiles?: (graphId: string) => string[];
+      graphIdToResourcesFiles?: ((graphId: string) => string[]) | ((graphId: string) => Promise<string[]>);
       resourceIdToFile?: (resourceId: string) => string;
       collectionIdToFile?: (collectionId: string) => string;
     } = {},
@@ -194,9 +196,10 @@ class ArchesClientRemoteStatic extends ArchesClient {
   async getResources(
     graphId: string,
     limit: number,
+    reloadIfSeen: boolean
   ): Promise<StaticResource[]> {
     const resources = [];
-    for (const file of this.graphIdToResourcesFiles(graphId)) {
+    for await (const file of await this.graphIdToResourcesFiles(graphId)) {
       const source = `${this.archesUrl}/${file}`;
       const response = await fetch(source);
       const resourceSet: StaticResource[] = (await response.json()).business_data.resources;
@@ -216,7 +219,7 @@ class ArchesClientRemoteStatic extends ArchesClient {
     limit: number,
   ): Promise<StaticResourceSummary[]> {
     const summaries = [];
-    for (const file of this.graphIdToResourcesFiles(graphId)) {
+    for await (const file of await this.graphIdToResourcesFiles(graphId)) {
       const source = `${this.archesUrl}/${file}`;
       const response = await fetch(source);
       const data = await response.json();
@@ -259,9 +262,12 @@ class ArchesClientLocal extends ArchesClient {
   allGraphFile: () => string;
   graphToGraphFile?: (graph: StaticGraphMeta) => string;
   graphIdToGraphFile: (graphId: string) => string;
-  graphIdToResourcesFiles: (graphId: string) => string[];
+  graphIdToResourcesFiles: ((graphId: string) => string[]) | ((graphId: string) => Promise<string[]>);
   resourceIdToFile: (resourceId: string) => string;
   collectionIdToFile: (collectionId: string) => string;
+  // This allows reloading of files not searched for a given graphId
+  // i.e. only searching each file ONCE for a graphId.
+  __loadedFileCache: {[graphId: string]: string[]};
 
   constructor({
       allGraphFile,
@@ -274,7 +280,7 @@ class ArchesClientLocal extends ArchesClient {
       allGraphFile?: () => string,
       graphToGraphFile?: (graph: StaticGraphMeta) => string,
       graphIdToGraphFile?: (graphId: string) => string;
-      graphIdToResourcesFiles?: (graphId: string) => string[];
+      graphIdToResourcesFiles?: ((graphId: string) => string[]) | ((graphId: string) => Promise<string[]>);
       resourceIdToFile?: (resourceId: string) => string;
       collectionIdToFile?: (collectionId: string) => string;
     } = {}) {
@@ -296,6 +302,7 @@ class ArchesClientLocal extends ArchesClient {
     this.collectionIdToFile =
       collectionIdToFile ||
       ((collectionId: string) => `tests/definitions/collections/${collectionId}.json`);
+    this.__loadedFileCache = {};
   }
 
   async getGraphs(): Promise<GraphResult> {
@@ -355,10 +362,21 @@ class ArchesClientLocal extends ArchesClient {
   async getResources(
     graphId: string,
     limit: number | null,
+    reloadIfSeen: boolean
   ): Promise<StaticResource[]> {
     const fs = await this.fs;
     const resources = [];
-    for (const file of this.graphIdToResourcesFiles(graphId)) {
+    for await (const file of await this.graphIdToResourcesFiles(graphId)) {
+      if (this.__loadedFileCache[graphId] && this.__loadedFileCache[graphId].includes(file)) {
+        if (!reloadIfSeen) {
+          continue;
+        }
+      } else {
+        if (!this.__loadedFileCache[graphId]) {
+          this.__loadedFileCache[graphId] = [];
+        }
+        this.__loadedFileCache[graphId].push(file);
+      }
       const response = JSON.parse(await fs.promises.readFile(file, "utf8"));
       const source = file;
       // const read = fs.createReadStream(file, { encoding: "utf8" });
@@ -399,7 +417,7 @@ class ArchesClientLocal extends ArchesClient {
   ): Promise<StaticResourceSummary[]> {
     const fs = await this.fs;
     const summaries = [];
-    for (const file of this.graphIdToResourcesFiles(graphId)) {
+    for await (const file of await this.graphIdToResourcesFiles(graphId)) {
       const response = JSON.parse(await fs.promises.readFile(file, "utf8"));
       const resourceSet: StaticResource[] = response.business_data.resources.filter(
         (resource: StaticResource) => graphId === resource.resourceinstance.graph_id

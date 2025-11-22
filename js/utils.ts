@@ -242,4 +242,23 @@ async function buildResourceDescriptors(
   return descriptors;
 }
 
-export { slugify, AttrPromise, getCurrentLanguage, generateUuidv5, setCurrentLanguage, buildResourceDescriptors, DESCRIPTOR_FUNCTION_ID };
+/**
+ * Serialize a Map<string, any> to a simple object for passing to WASM
+ * Converts values to Option<bool>: Some(true)=truthy, Some(false)=false, None=undefined
+ * This avoids expensive JsValue iteration and type checking in Rust
+ */
+function serializeValuesMap(map: Map<string, any>): Record<string, boolean | null> {
+  const result: Record<string, boolean | null> = {};
+  for (const [key, value] of map.entries()) {
+    if (value === undefined) {
+      result[key] = null;  // None in Rust
+    } else if (value === false) {
+      result[key] = false;  // Some(false) in Rust
+    } else {
+      result[key] = true;  // Some(true) in Rust (any truthy value)
+    }
+  }
+  return result;
+}
+
+export { slugify, AttrPromise, getCurrentLanguage, generateUuidv5, setCurrentLanguage, buildResourceDescriptors, DESCRIPTOR_FUNCTION_ID, serializeValuesMap };
