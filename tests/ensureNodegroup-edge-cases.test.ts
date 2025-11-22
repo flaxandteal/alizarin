@@ -13,7 +13,7 @@
 
 import { describe, it, expect, assert, beforeAll, beforeEach } from 'vitest';
 import { ResourceModelWrapper, ResourceInstanceWrapper, GraphMutator, WKRM } from '../js/graphManager';
-import { StaticGraph, StaticNode, StaticNodegroup, StaticTile, StaticGraphMeta } from '../pkg/alizarin';
+import { StaticGraph, StaticNode, StaticNodegroup, StaticTile, StaticGraphMeta, StaticResource, StaticResourceMetadata, StaticResourceDescriptors } from '../pkg/alizarin';
 import { createStaticGraph } from '../js/static-types';
 import { initWasmForTests } from './wasm-init';
 
@@ -52,6 +52,23 @@ function createTestTile(nodegroupId: string, resourceInstanceId: string, data: a
   });
 }
 
+// Helper to create a test StaticResource
+function createTestResource(resourceInstanceId: string, graphId: string, tiles: StaticTile[] = []) {
+  const descriptors = StaticResourceDescriptors.empty();
+  const metadata = new StaticResourceMetadata({
+    descriptors,
+    graph_id: graphId,
+    name: "Test Resource",
+    resourceinstanceid: resourceInstanceId,
+  });
+
+  return new StaticResource({
+    resourceinstance: metadata,
+    tiles: tiles,
+    metadata: {},
+  });
+}
+
 // Helper to create a minimal mock RIVM for testing
 function createMockRIVM(wrapper: ResourceInstanceWrapper<any>, model: ResourceModelWrapper<any>) {
   const mockRIVM: any = {
@@ -75,9 +92,9 @@ describe('ensureNodegroup - Edge Cases', () => {
       const mutatedGraph = mutator.apply();
 
       const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph);
-      const resource = { tiles: [], resourceinstanceid: "test-resource", graph_id: mutatedGraph.graphid };
+      const resource = createTestResource("test-resource", mutatedGraph.graphid);
       const mockRIVM = {} as any; // Placeholder
-      const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource as any, false);
+      const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource, false);
       mockRIVM.$ = wrapper; // Set circular reference
       mockRIVM.__ = model;
       mockRIVM.id = "test-resource-id";
@@ -93,8 +110,6 @@ describe('ensureNodegroup - Edge Cases', () => {
         allNodegroups,
         rootNodeId,
         false, // addIfMissing
-        [], // allTiles
-        new Map(), // nodegroupPermissions
         true // doImpliedNodegroups
       );
 
@@ -113,9 +128,9 @@ describe('ensureNodegroup - Edge Cases', () => {
       const mutatedGraph = mutator.apply();
 
       const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph);
-      const resource = { tiles: [], resourceinstanceid: "test-resource", graph_id: mutatedGraph.graphid };
+      const resource = createTestResource("test-resource", mutatedGraph.graphid);
       const mockRIVM = {} as any; // Placeholder
-      const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource as any, false);
+      const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource, false);
       mockRIVM.$ = wrapper; // Set circular reference
       mockRIVM.__ = model;
       mockRIVM.id = "test-resource-id";
@@ -131,8 +146,6 @@ describe('ensureNodegroup - Edge Cases', () => {
         allNodegroups,
         rootNodeId,
         false, // addIfMissing
-        [], // allTiles
-        new Map(), // nodegroupPermissions
         true // doImpliedNodegroups
       );
 
@@ -151,9 +164,9 @@ describe('ensureNodegroup - Edge Cases', () => {
       const mutatedGraph = mutator.apply();
 
       const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph);
-      const resource = { tiles: [], resourceinstanceid: "test-resource", graph_id: mutatedGraph.graphid };
+      const resource = createTestResource("test-resource", mutatedGraph.graphid);
       const mockRIVM = {} as any; // Placeholder
-      const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource as any, false);
+      const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource, false);
       mockRIVM.$ = wrapper; // Set circular reference
       mockRIVM.__ = model;
       mockRIVM.id = "test-resource-id";
@@ -169,8 +182,6 @@ describe('ensureNodegroup - Edge Cases', () => {
         allNodegroups,
         rootNodeId,
         true, // addIfMissing
-        [], // allTiles
-        new Map(), // nodegroupPermissions
         true // doImpliedNodegroups
       );
 
@@ -187,9 +198,9 @@ describe('ensureNodegroup - Edge Cases', () => {
       const mutatedGraph = mutator.apply();
 
       const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph);
-      const resource = { tiles: [], resourceinstanceid: "test-resource", graph_id: mutatedGraph.graphid };
+      const resource = createTestResource("test-resource", mutatedGraph.graphid);
       const mockRIVM = {} as any; // Placeholder
-      const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource as any, false);
+      const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource, false);
       mockRIVM.$ = wrapper; // Set circular reference
       mockRIVM.__ = model;
       mockRIVM.id = "test-resource-id";
@@ -205,8 +216,6 @@ describe('ensureNodegroup - Edge Cases', () => {
         allNodegroups,
         rootNodeId,
         false, // addIfMissing
-        [], // allTiles
-        new Map(), // nodegroupPermissions
         true // doImpliedNodegroups
       );
 
@@ -277,9 +286,9 @@ describe('ensureNodegroup - Edge Cases', () => {
       // Create tiles that would imply a child nodegroup
       // (This is simplified - in reality the edge structure would create the implication)
       const tiles: StaticTile[] = [];
-      const resource = { tiles, resourceinstanceid: "test-resource", graph_id: mutatedGraph.graphid };
+      const resource = createTestResource("test-resource", mutatedGraph.graphid, tiles);
       const mockRIVM = {} as any;
-      const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource as any, false);
+      const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource, false);
       mockRIVM.$ = wrapper;
       mockRIVM.__ = model;
       mockRIVM.id = "test-resource-id";
@@ -295,8 +304,6 @@ describe('ensureNodegroup - Edge Cases', () => {
         allNodegroups,
         rootNodeId,
         true, // addIfMissing
-        tiles, // allTiles
-        new Map(), // nodegroupPermissions
         false // doImpliedNodegroups
       );
 
@@ -322,9 +329,9 @@ describe('ensureNodegroup - Edge Cases', () => {
 
       const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph);
       const tiles: StaticTile[] = [];
-      const resource = { tiles, resourceinstanceid: "test-resource", graph_id: mutatedGraph.graphid };
+      const resource = createTestResource("test-resource", mutatedGraph.graphid, tiles);
       const mockRIVM = {} as any;
-      const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource as any, false);
+      const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource, false);
       mockRIVM.$ = wrapper;
       mockRIVM.__ = model;
       mockRIVM.id = "test-resource-id";
@@ -340,8 +347,6 @@ describe('ensureNodegroup - Edge Cases', () => {
         allNodegroups,
         rootNodeId,
         true, // addIfMissing
-        tiles, // allTiles
-        new Map(), // nodegroupPermissions
         true // doImpliedNodegroups
       );
 
@@ -359,9 +364,9 @@ describe('ensureNodegroup - Edge Cases', () => {
       const mutatedGraph = mutator.apply();
 
       const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph);
-      const resource = { tiles: [], resourceinstanceid: "test-resource", graph_id: mutatedGraph.graphid };
+      const resource = createTestResource("test-resource", mutatedGraph.graphid);
       const mockRIVM = {} as any;
-      const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource as any, false);
+      const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource, false);
       mockRIVM.$ = wrapper;
       mockRIVM.__ = model;
       mockRIVM.id = "test-resource-id";
@@ -377,8 +382,6 @@ describe('ensureNodegroup - Edge Cases', () => {
         allNodegroups,
         rootNodeId,
         true, // addIfMissing
-        [], // allTiles
-        new Map(), // nodegroupPermissions
         true // doImpliedNodegroups - should clear the set
       );
 

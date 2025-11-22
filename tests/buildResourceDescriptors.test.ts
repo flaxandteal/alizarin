@@ -535,9 +535,8 @@ describe('buildResourceDescriptors', () => {
       // No semantic node in mockNodes, so valueList.retrieve will be called for individual nodes
       mockValueList.retrieve = vi.fn()
         .mockResolvedValueOnce([{
-          getValue: vi.fn().mockResolvedValue(null)
-        }])
-        .mockResolvedValueOnce(['Individual Value']);
+          getValue: vi.fn().mockResolvedValue('Individual Value')
+        }]);
 
       mockGraph = {
         functions_x_graphs: [
@@ -558,7 +557,7 @@ describe('buildResourceDescriptors', () => {
       const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
 
       expect(result.name).toBe('Individual Value');
-      expect(mockValueList.retrieve).toHaveBeenCalledTimes(2);
+      expect(mockValueList.retrieve).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -327,6 +327,7 @@ impl WASMResourceModelWrapper {
         MODEL_REGISTRY.with(|registry| {
             registry.borrow_mut().insert(graph_id.clone(), Arc::new(RefCell::new(core)));
         });
+        web_sys::console::debug_1(&format!("Added model to registry: {}", graph_id).into());
 
         // Return a lightweight wrapper that just holds the graph_id
         WASMResourceModelWrapper {

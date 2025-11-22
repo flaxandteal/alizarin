@@ -40,9 +40,21 @@ class StaticStore {
   async* loadAll(
     graphId: string,
     limit: number | undefined = undefined,
+    useCache: boolean = true
   ): AsyncIterable<StaticResource> {
+    let toFind: number = limit | -1;
+    if (useCache) {
+      for (const entry of this.cache.values()) {
+        if (entry instanceof StaticResource && entry.resourceinstance.graph_id === graphId) {
+          toFind -= 1;
+          yield entry;
+          if (toFind === 0) return;
+        }
+      }
+    }
+    toFind = toFind > 0 ? toFind : 0;
     const resourcesJSON: StaticResource[] =
-      await this.archesClient.getResources(graphId, limit || 0);
+      await this.archesClient.getResources(graphId, toFind, !useCache);
     for (const resourceJSON of resourcesJSON.values()) {
       const resource = new StaticResource(resourceJSON);
       if (resource.resourceinstance.graph_id !== graphId) {
