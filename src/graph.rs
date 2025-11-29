@@ -261,7 +261,7 @@ pub struct StaticGraphMeta {
     #[serde(default)]
     relatable_resource_model_ids: Vec<String>,
     #[serde(default)]
-    resource_2_resource_constraints: Vec<serde_json::Value>,
+    resource_2_resource_constraints: Option<Vec<serde_json::Value>>,
     #[serde(default)]
     root: Option<Box<StaticNode>>,
     #[serde(default)]
@@ -352,8 +352,10 @@ impl StaticGraphMeta {
         if !self.relatable_resource_model_ids.is_empty() {
             obj.insert("relatable_resource_model_ids".to_string(), json!(self.relatable_resource_model_ids));
         }
-        if !self.resource_2_resource_constraints.is_empty() {
-            obj.insert("resource_2_resource_constraints".to_string(), json!(self.resource_2_resource_constraints));
+        if let Some(r2rc) = self.resource_2_resource_constraints.as_ref() {
+            if  !r2rc.is_empty() {
+                obj.insert("resource_2_resource_constraints".to_string(), json!(r2rc));
+            }
         }
         if let Some(ref val) = self.root {
             obj.insert("root".to_string(), serde_json::to_value(val).unwrap_or(json!(null)));
@@ -606,8 +608,7 @@ pub struct StaticNode {
     #[serde(default)]
     pub(crate) config: HashMap<String, serde_json::Value>,
     pub(crate) datatype: String,
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_string_or_object", default)]
-    pub(crate) description: Option<String>,
+    pub(crate) description: Option<StaticTranslatableString>,
     pub(crate) exportable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) fieldname: Option<String>,
@@ -716,12 +717,12 @@ impl StaticNode {
     }
 
     #[wasm_bindgen(getter = description)]
-    pub fn get_description(&self) -> Option<String> {
+    pub fn get_description(&self) -> Option<StaticTranslatableString> {
         self.description.clone()
     }
 
     #[wasm_bindgen(setter = description)]
-    pub fn set_description(&mut self, value: Option<String>) {
+    pub fn set_description(&mut self, value: Option<StaticTranslatableString>) {
         self.description = value;
     }
 
@@ -1679,7 +1680,8 @@ where
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StaticTile {
     #[serde(deserialize_with = "deserialize_tile_data", default)]
-    pub(crate) data: HashMap<String, serde_json::Value>,
+    #[wasm_bindgen(skip)]
+    pub data: HashMap<String, serde_json::Value>,
     pub(crate) nodegroup_id: String,
     pub(crate) resourceinstance_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1954,7 +1956,12 @@ impl StaticNode {
         }
 
         if node_a.datatype != node_b.datatype { identical = false; }
-        if node_a.description != node_b.description { identical = false; }
+        if !Self::deep_compare_values(
+            &serde_json::to_value(&node_a.description).unwrap_or(json!({})),
+            &serde_json::to_value(&node_b.description).unwrap_or(json!({}))
+        ) {
+            identical = false;
+        }
         if node_a.exportable != node_b.exportable { identical = false; }
         if node_a.fieldname != node_b.fieldname { identical = false; }
         if node_a.hascustomalias != node_b.hascustomalias { identical = false; }
@@ -2226,7 +2233,7 @@ impl StaticEdge {
 #[wasm_bindgen]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StaticGraph {
-    author: String,
+    author: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     cards: Option<Vec<StaticCard>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2245,10 +2252,10 @@ pub struct StaticGraph {
     #[serde(skip_serializing_if = "Option::is_none")]
     functions_x_graphs: Option<Vec<StaticFunctionsXGraphs>>,
     graphid: String,
-    iconclass: String,
+    iconclass: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     is_editable: Option<bool>,
-    isresource: bool,
+    isresource: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     jsonldcontext: Option<String>,
     name: StaticTranslatableString,
@@ -2267,8 +2274,8 @@ pub struct StaticGraph {
     slug: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     subtitle: Option<StaticTranslatableString>,
-    template_id: String,
-    version: String,
+    template_id: Option<String>,
+    version: Option<String>,
 
     // Internal lookup tables (not serialized)
     #[serde(skip)]
@@ -2465,27 +2472,27 @@ impl StaticGraph {
     }
 
     #[wasm_bindgen(getter = isresource)]
-    pub fn get_isresource(&self) -> bool {
+    pub fn get_isresource(&self) -> Option<bool> {
         self.isresource
     }
 
     #[wasm_bindgen(getter = author)]
-    pub fn get_author(&self) -> String {
+    pub fn get_author(&self) -> Option<String> {
         self.author.clone()
     }
 
     #[wasm_bindgen(getter = iconclass)]
-    pub fn get_iconclass(&self) -> String {
+    pub fn get_iconclass(&self) -> Option<String> {
         self.iconclass.clone()
     }
 
     #[wasm_bindgen(getter = template_id)]
-    pub fn get_template_id(&self) -> String {
+    pub fn get_template_id(&self) -> Option<String> {
         self.template_id.clone()
     }
 
     #[wasm_bindgen(getter = version)]
-    pub fn get_version(&self) -> String {
+    pub fn get_version(&self) -> Option<String> {
         self.version.clone()
     }
 
@@ -2539,6 +2546,69 @@ impl StaticGraph {
         self.get_node_by_alias(alias)
             .map(|node| serde_wasm_bindgen::to_value(node).unwrap())
             .unwrap_or(JsValue::NULL)
+    }
+
+    #[wasm_bindgen(js_name = toJSON)]
+    pub fn to_json(&self) -> JsValue {
+        // Manual serialization to plain JS object using our helper
+        use serde_json::json;
+
+        let mut obj = serde_json::Map::new();
+
+        if let Some(ref val) = self.author {
+            obj.insert("author".to_string(), json!(val));
+        }
+        obj.insert("cards".to_string(), json!(self.cards));
+        obj.insert("cards_x_nodes_x_widgets".to_string(), json!(self.cards_x_nodes_x_widgets));
+        if let Some(ref val) = self.color {
+            obj.insert("color".to_string(), json!(val));
+        }
+        if let Some(ref val) = self.description {
+            obj.insert("description".to_string(), json!(val));
+        }
+        obj.insert("edges".to_string(), json!(self.edges));
+        obj.insert("graphid".to_string(), json!(self.graphid));
+        if let Some(ref val) = self.iconclass {
+            obj.insert("iconclass".to_string(), json!(val));
+        }
+        if let Some(val) = self.is_editable {
+            obj.insert("is_editable".to_string(), json!(val));
+        }
+        if let Some(val) = self.isresource {
+            obj.insert("isresource".to_string(), json!(val));
+        }
+        if let Some(ref val) = self.jsonldcontext {
+            obj.insert("jsonldcontext".to_string(), json!(val));
+        }
+        obj.insert("name".to_string(), json!(self.name));
+        obj.insert("nodegroups".to_string(), json!(self.nodegroups));
+        obj.insert("nodes".to_string(), json!(self.nodes));
+        if let Some(ref val) = self.ontology_id {
+            obj.insert("ontology_id".to_string(), json!(val));
+        }
+        if let Some(ref val) = self.publication {
+            obj.insert("publication".to_string(), json!(val));
+        }
+        if !self.relatable_resource_model_ids.is_empty() {
+            obj.insert("relatable_resource_model_ids".to_string(), json!(self.relatable_resource_model_ids));
+        }
+        if let Some(r2rc) = self.resource_2_resource_constraints.as_ref() {
+            if !r2rc.is_empty() {
+                obj.insert("resource_2_resource_constraints".to_string(), json!(Some(r2rc)));
+            }
+        }
+        obj.insert("root".to_string(), json!(self.root));
+        if let Some(ref val) = self.slug {
+            obj.insert("slug".to_string(), json!(val));
+        }
+        if let Some(ref val) = self.subtitle {
+            obj.insert("subtitle".to_string(), json!(val));
+        }
+        if let Some(ref val) = self.version {
+            obj.insert("version".to_string(), json!(val));
+        }
+
+        json_to_js_value(&serde_json::Value::Object(obj))
     }
 }
 
@@ -3002,7 +3072,7 @@ impl StaticResource {
     pub fn from_summary(summary: StaticResourceSummary) -> StaticResource {
         StaticResource {
             resourceinstance: summary.to_metadata(),
-            tiles: Some(Vec::new()),
+            tiles: None,  // Tiles not loaded yet - will be loaded on demand
             metadata: summary.metadata,
             __cache: None,
             __scopes: None,
@@ -3018,7 +3088,15 @@ impl StaticResource {
     #[wasm_bindgen(getter)]
     pub fn tiles(&self) -> JsValue {
         match &self.tiles {
-            Some(tiles) => serde_wasm_bindgen::to_value(tiles).unwrap_or(JsValue::NULL),
+            Some(tiles) => {
+                // Manually convert tiles to JS array to ensure getters are used
+                let js_array = js_sys::Array::new();
+                for tile in tiles {
+                    // Use the tile's toJSON method to properly serialize including data field
+                    js_array.push(&tile.to_json());
+                }
+                js_array.into()
+            }
             None => JsValue::NULL,
         }
     }

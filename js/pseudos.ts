@@ -126,9 +126,9 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
   describeFieldGroup() {
     let fieldName = this.node.name;
     if (this.parent && this.node.nodegroup_id && this.parent.$) {
-      const nodegroup = this.parent.$.model.getNodeObjects().get(this.node.nodegroup_id);
-      if (nodegroup && this.parent.__) {
-        fieldName = `${this.parent.__.wkrm.modelName} - ${nodegroup.name}`;
+      const nodegroupName = this.parent.$.model.getNodegroupName(this.node.nodegroup_id);
+      if (nodegroupName && this.parent.__) {
+        fieldName = `${this.parent.__.wkrm.modelName} - ${nodegroupName}`;
       }
     }
     return fieldName;
@@ -445,9 +445,9 @@ class PseudoList extends Array implements IPseudo {
 
     let fieldName = this.node.name;
     if (this.parent && this.node.nodegroup_id && this.parent.$) {
-      const nodegroup = this.parent.$.model.getNodeObjects().get(this.node.nodegroup_id);
-      if (nodegroup && this.parent.__) {
-        fieldName = `${this.parent.__.wkrm.modelName} - ${nodegroup.name}`;
+      const nodegroupName = this.parent.$.model.getNodegroupName(this.node.nodegroup_id);
+      if (nodegroupName && this.parent.__) {
+        fieldName = `${this.parent.__.wkrm.modelName} - ${nodegroupName}`;
       }
     }
     return `[${fieldName}]`;

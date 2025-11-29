@@ -712,6 +712,12 @@ describe('Pseudos', () => {
             getNodeObjects: () => new Map([
               ['ng-1', { name: 'Test Nodegroup' }],
             ]),
+            getNodegroupName: (id: string) => {
+              const nodes = new Map([
+                ['ng-1', { name: 'Test Nodegroup' }],
+              ]);
+              return nodes.get(id)?.name || '';
+            },
           },
         },
       };

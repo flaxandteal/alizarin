@@ -50,7 +50,8 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     wkri: RIVM,
     model: ResourceModelWrapper<RIVM>,
     resource: StaticResource | null | false, // False to disable dynamic resource-loading
-    pruneTiles: boolean = true
+    pruneTiles: boolean = true,
+    lazy: boolean = false
   ) {
     this.wkri = wkri;
     this.model = model;
@@ -67,8 +68,23 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     this.cache = resource ? resource.__cache : undefined;
     this.scopes = resource ? resource.__scopes : undefined;
     this.metadata = resource ? resource.metadata : undefined;
-    // Load tiles into Rust if we have any
-    if (!this.wasmWrapper.tilesLoaded() && resource) {
+
+    // Set lazy mode
+    this.wasmWrapper.setLazy(lazy);
+
+    // Set up tile loader callback
+    if (resource) {
+      // Create a tile loader that loads from staticStore API
+      const resourceId = resource.resourceinstance.resourceinstanceid;
+      this.wasmWrapper.setTileLoader((nodegroupId) => {
+        // If nodegroupId is null/undefined, load all tiles
+        // Otherwise load tiles for specific nodegroup
+        return staticStore.loadTiles(resourceId, nodegroupId);
+      });
+    }
+
+    // Load tiles into Rust if we have any (non-lazy mode)
+    if (!lazy && !this.wasmWrapper.tilesLoaded() && resource && resource.tiles && resource.tiles.length > 0) {
       try {
         this.wasmWrapper.loadTiles(resource.tiles);
       } catch (e) {
@@ -161,8 +177,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // Calculate permissions
       const isPermitted = this.model.isNodegroupPermitted(
         childNode.nodegroup_id || '',
-        tile,
-        this.model.getNodeObjectsByAlias()
+        tile
       );
 
       // Call Rust makePseudoValue
@@ -295,7 +310,20 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     doImpliedNodegroups: boolean = true
   ): Promise<[Map<string, any>, Set<string>]> {
 
-    const enableParallelTesting = process.env.ALIZARIN_PARALLEL_TEST === "true";
+    // Ensure tiles are loaded for this nodegroup if using lazy loading
+    if (this.wasmWrapper.getTileLoader() && !this.wasmWrapper.hasTilesForNodegroup(nodegroupId)) {
+      const loader = this.wasmWrapper.getTileLoader();
+      if (loader) {
+        try {
+          const tiles = await loader(nodegroupId);
+          this.wasmWrapper.loadTiles(tiles);
+          this.wasmWrapper.markNodegroupTilesLoaded(nodegroupId);
+        } catch (e) {
+          console.error(`Failed to load tiles for nodegroup ${nodegroupId}:`, e);
+          // Continue anyway - will work with empty tiles
+        }
+      }
+    }
 
     try {
       // Phase 4h: Pass nodegroup permissions to Rust - Rust will compute tile permissions
@@ -320,8 +348,10 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // Caller will handle wrapping when needed
       const newValues = new Map<string, any>();
 
-      for (const alias of result.getValueAliases()) {
-        const rustValue = result.getValue(alias);
+      // Get all values in a single boundary crossing instead of N+1 calls
+      const allRustValues = result.getAllValues();
+
+      for (const [alias, rustValue] of allRustValues.entries()) {
 
         if (!rustValue) {
           // Sentinel undefined case
@@ -376,160 +406,13 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       const impliedNodegroups = new Set(result.impliedNodegroups);
 
       // Parallel testing mode: compare Rust vs JS
-      if (enableParallelTesting) {
-        // Phase 4h: Get tiles from resource instead of parameter - already loaded in WASM
-        const tiles = this.resource ? this.resource.tiles : null;
-
-        const [jsNewValues, jsImplied] = await this.ensureNodegroup_JS(
-          new Map(allValues), // Clone to avoid mutation
-          new Map(allNodegroups), // Clone
-          nodegroupId,
-          addIfMissing,
-          tiles,
-          doImpliedNodegroups
-        );
-
-        // Compare results
-        const rustKeys = new Set(newValues.keys());
-        const jsKeys = new Set(jsNewValues.keys());
-
-        let mismatch = false;
-
-        // Check key differences
-        for (const key of rustKeys) {
-          if (!jsKeys.has(key)) {
-            console.error(`[PARALLEL TEST ensureNodegroup] Rust has key "${key}" but JS doesn't`);
-            mismatch = true;
-          }
-        }
-        for (const key of jsKeys) {
-          if (!rustKeys.has(key)) {
-            console.error(`[PARALLEL TEST ensureNodegroup] JS has key "${key}" but Rust doesn't`);
-            mismatch = true;
-          }
-        }
-
-        // Check implied nodegroups
-        for (const ng of impliedNodegroups) {
-          if (!jsImplied.has(ng)) {
-            console.error(`[PARALLEL TEST ensureNodegroup] Rust has implied "${ng}" but JS doesn't`);
-            mismatch = true;
-          }
-        }
-        for (const ng of jsImplied) {
-          if (!impliedNodegroups.has(ng)) {
-            console.error(`[PARALLEL TEST ensureNodegroup] JS has implied "${ng}" but Rust doesn't`);
-            mismatch = true;
-          }
-        }
-
-        // Check value counts
-        for (const key of rustKeys) {
-          if (jsKeys.has(key)) {
-            const rustVal = newValues.get(key);
-            const jsVal = jsNewValues.get(key);
-            const rustLen = Array.isArray(rustVal) ? rustVal.length : (rustVal === undefined ? 0 : 1);
-            const jsLen = Array.isArray(jsVal) ? jsVal.length : (jsVal === undefined ? 0 : 1);
-            if (rustLen !== jsLen) {
-              console.error(`[PARALLEL TEST ensureNodegroup] Key "${key}": Rust has ${rustLen} values, JS has ${jsLen}`);
-              mismatch = true;
-            }
-          }
-        }
-
-        if (!mismatch) {
-          console.log(`[PARALLEL TEST ensureNodegroup] ✓ Rust and JS match for nodegroup ${nodegroupId}`);
-        }
-      }
-
       return [newValues, impliedNodegroups];
 
     } catch (e) {
       // PORT: Phase 4e-3 - Fail explicitly instead of silent fallback
-      console.error("Rust ensureNodegroup failed:", e);
-      throw new Error(`Rust ensureNodegroup failed: ${e}. Use ensureNodegroup_JS() explicitly if you want the JS implementation.`);
+      console.error("ensureNodegroup failed:", e);
+      throw new Error(`ensureNodegroup failed: ${e}. `);
     }
-  }
-
-  /**
-   * Original JavaScript implementation of ensureNodegroup
-   * Kept for parallel testing and fallback
-   */
-  async ensureNodegroup_JS(
-    allValues: Map<string, any>,
-    allNodegroups: Map<string, boolean>,
-    nodegroupId: string,
-    addIfMissing: boolean,
-    tiles: StaticTile[] | null,
-    doImpliedNodegroups: boolean = true
-  ): Promise<[Map<string, any>, Set<string>]> {
-    const nodeObjs = this.model.getNodeObjects();
-    const nodegroupObjs = this.model.getNodegroupObjects();
-    const edges = this.model.getEdges();
-    const impliedNodegroups: Set<string> = new Set();
-    const sentinel = allNodegroups.get(nodegroupId); // no action required if pending
-    let newValues = new Map();
-
-    if (sentinel === false || (addIfMissing && sentinel === undefined)) {
-      [...nodeObjs.values()].filter((node: StaticNode) => {
-        return node.nodegroup_id === nodegroupId;
-      }).forEach((node: StaticNode) => allValues.delete(node.alias || ''));
-      let nodegroupTiles: (StaticTile | null)[];
-      if (tiles === null) {
-        nodegroupTiles = [];
-        console.error("Tiles must be provided and cannot be lazy-loaded yet");
-      } else {
-        nodegroupTiles = tiles.filter(
-          (tile) => tile.nodegroup_id == nodegroupId && this.model.isNodegroupPermitted(nodegroupId, tile)
-        );
-        if (nodegroupTiles.length == 0 && addIfMissing) {
-          nodegroupTiles = [null];
-        }
-        const rgValues = await this.valuesFromResourceNodegroup(
-          allValues,
-          nodegroupTiles,
-          nodegroupId,
-          nodeObjs,
-          edges,
-        );
-        newValues = rgValues[0];
-        const newImpliedNodegroups: Set<string> = rgValues[1];
-
-        [...newValues.entries()].forEach((entry) => {
-          if (entry[1] !== undefined) {
-            allValues.set(entry[0], entry[1]);
-          }
-        });
-        [...newImpliedNodegroups].forEach((v) => {
-          impliedNodegroups.add(v);
-        });
-        allNodegroups.set(nodegroupId, true);
-      }
-    }
-
-    // RMV double-check against Python logic
-    if (doImpliedNodegroups) {
-      for (const nodegroupId of [...impliedNodegroups]) {
-        // TODO: why are we not keeping implied nodegroups?
-        const [impliedValues] = await this.ensureNodegroup_JS(
-          allValues,
-          allNodegroups,
-          nodegroupId,
-          nodeObjs,
-          nodegroupObjs,
-          edges,
-          true,
-          tiles, // RMV different from Python
-          true
-        );
-        for (const [key, value] of impliedValues) {
-          newValues.set(key, value);
-        }
-      }
-      impliedNodegroups.clear();
-    }
-
-    return [newValues, impliedNodegroups];
   }
 
   /**
@@ -544,7 +427,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       throw Error("Cannot populate a model with no proper root node");
     }
 
-    const enableParallelTesting = process.env.ALIZARIN_PARALLEL_TEST === "true";
 
     try {
       if (!lazy && this.resource) {
@@ -583,10 +465,12 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // PORT: Phase 4c - Use structured RustPseudoList values directly instead of recipes
       // PORT: src/instance_wrapper.rs:563-569 - WasmPopulateResult with values HashMap
       const newValues = new Map<string, any>();
-      for (const alias of result.getValueAliases()) {
+      // Get all values in a single boundary crossing instead of N+1 calls
+      const allRustValues = result.getAllValues();
+
+      for (const [alias, rustValue] of allRustValues.entries()) {
         // PORT: Phase 4c - Get WasmPseudoList directly from Rust
         // PORT: src/instance_wrapper.rs:156 - getValue returns Option<WasmPseudoList>
-        const rustValue = result.getValue(alias);
 
         if (!rustValue) {
           // Sentinel undefined case
@@ -605,12 +489,10 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
           continue;
         }
 
-        // Phase 4i: Store raw Rust value instead of wrapping
-        if (!newValues.has(alias)) {
-          newValues.set(alias, []);
-        }
-
-        newValues.get(alias).push(rustValue);
+        // Wrap Rust value in JavaScript PseudoList/PseudoValue
+        // wrapRustPseudo returns a complete PseudoList with all values already inside
+        const wrappedValue = wrapRustPseudo(rustValue, this.wkri, this.model);
+        newValues.set(alias, wrappedValue);
       }
 
       // Update allValues with newValues
@@ -618,6 +500,11 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         if (value !== undefined) {
           allValues.set(key, value);
         }
+      }
+
+      // Root node doesn't have nodegroup data - set to empty array if still false
+      if (allValues.get(rootNode.alias) === false) {
+        allValues.set(rootNode.alias, []);
       }
 
       // Update allNodegroups from Rust result
@@ -636,44 +523,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         }
       }
 
-      // Parallel testing mode: compare Rust vs JS
-      if (enableParallelTesting) {
-        const allValuesClone = new Map(allValues);
-        const allNodegroupsClone = new Map(allNodegroups);
-
-        await this.populate_JS(lazy);
-
-        const jsValues = this.valueList.values;
-        const jsNodegroups = this.valueList.promises;
-
-        // Compare results
-        const rustValueKeys = new Set(allValuesClone.keys());
-        const jsValueKeys = new Set(jsValues.keys());
-
-        const missingInRust = [...jsValueKeys].filter(k => !rustValueKeys.has(k));
-        const missingInJS = [...rustValueKeys].filter(k => !jsValueKeys.has(k));
-
-        const rustNodegroupKeys = new Set(allNodegroupsClone.keys());
-        const jsNodegroupKeys = new Set(jsNodegroups.keys());
-
-        const missingNodegroupsInRust = [...jsNodegroupKeys].filter(k => !rustNodegroupKeys.has(k));
-        const missingNodegroupsInJS = [...rustNodegroupKeys].filter(k => !jsNodegroupKeys.has(k));
-
-        if (missingInRust.length > 0 || missingInJS.length > 0 ||
-            missingNodegroupsInRust.length > 0 || missingNodegroupsInJS.length > 0) {
-          console.warn('[POPULATE MISMATCH]');
-          if (missingInRust.length > 0) console.warn('  Missing values in Rust:', missingInRust);
-          if (missingInJS.length > 0) console.warn('  Missing values in JS:', missingInJS);
-          if (missingNodegroupsInRust.length > 0) console.warn('  Missing nodegroups in Rust:', missingNodegroupsInRust);
-          if (missingNodegroupsInJS.length > 0) console.warn('  Missing nodegroups in JS:', missingNodegroupsInJS);
-        } else {
-          console.log('[POPULATE MATCH] Rust and JS implementations produced identical results');
-        }
-
-        // Use JS result for now during parallel testing
-        return;
-      }
-
       // Create ValueList with results
       this.valueList = new ValueList(
         allValues,
@@ -684,90 +533,8 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     } catch (error) {
       // PORT: Phase 4e-3 - Fail explicitly instead of silent fallback
       console.error('[populate] Rust implementation failed:', error);
-      throw new Error(`Rust populate failed: ${error}. Use populate_JS() explicitly if you want the JS implementation.`);
+      throw new Error(`populate failed: ${error}`);
     }
-  }
-
-  /**
-   * Original JavaScript implementation of populate
-   * Kept for parallel testing and fallback
-   */
-  async populate_JS(lazy: boolean): Promise<void> {
-    const nodegroupObjs = this.model.getNodegroupObjects();
-    // FIXME: this needs to be nodeObjs to ensure tiles
-    // whose nodegroup node is in a different nodegroup
-    // (e.g. children of designation_and_protection_timespan)
-    // get loaded - however, just doing that drops performance
-    // by half or two-thirds, so a less wasteful approach is needed.
-    const allValues: Map<string, any> = new Map();
-    const allNodegroups: Map<string, any> = new Map([...nodegroupObjs.keys()].map((id: string) => {
-      return [id || "", false];
-    }));
-    //[...nodegroupObjs.keys()].map((id: string) => {
-    //  const node = nodeObjs.get(id);
-    //  if (!node) {
-    //    throw Error(`Could not find node for nodegroup ${id}`);
-    //  }
-    //  allValues.set(node.alias || "", false);
-    //});
-    const rootNode = this.model.getRootNode();
-
-    if (rootNode.alias === null) {
-      throw Error("Cannot populate a model with no proper root node");
-    }
-
-    allValues.set(rootNode.alias, false);
-
-    let tiles = null;
-    if (!lazy && this.resource) {
-      // Ensure tiles are loaded if we need them for non-lazy population
-      if (!this.resource.__tilesLoaded) {
-        await this.ensureTilesLoaded();
-      }
-      let impliedNodegroups = new Set<string>();
-      for (const [ng] of nodegroupObjs) {
-        const [_, newImpliedNodegroups] = await this.ensureNodegroup(
-          allValues,
-          allNodegroups,
-          ng,
-          true, // RMV: check vs python
-          false  // Phase 4h: tiles parameter removed
-        );
-
-        for (const impliedNodegroup of [...newImpliedNodegroups]) {
-          impliedNodegroups.add(impliedNodegroup);
-        }
-        impliedNodegroups.delete(ng);
-      }
-
-      while (impliedNodegroups.size) {
-        const newImpliedNodegroups = new Set<string>();
-        for (const nodegroupId of [...impliedNodegroups]) {
-          const currentValue = allNodegroups.get(nodegroupId);
-          if (currentValue === false || currentValue === undefined) {
-            const [_, newImpliedNodegroups] = await this.ensureNodegroup(
-              allValues,
-              allNodegroups,
-              nodegroupId,
-              true,
-              true  // Phase 4h: tiles parameter removed
-            );
-            for (const impliedNodegroup of [...newImpliedNodegroups]) {
-              newImpliedNodegroups.add(impliedNodegroup);
-            }
-          }
-        }
-        impliedNodegroups = newImpliedNodegroups;
-      }
-    } else if (this.resource) {
-      this.model.stripTiles(this.resource);
-    }
-
-    this.valueList = new ValueList(
-      allValues,
-      allNodegroups,
-      this,
-    );
   }
 
   async getValueCache(build: boolean = true, getMeta: GetMeta = undefined): Promise<{[tileId: string]: {[nodeId: string]: IStringKeyedObject}} | undefined> {
@@ -818,7 +585,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     edges: Map<string, string[]>,
   ): Promise<[Map<string, any>, Set<string>]> {
 
-    const enableParallelTesting = process.env.ALIZARIN_PARALLEL_TEST === "true";
 
     try {
       // Convert tiles to tile IDs for Rust
@@ -836,9 +602,11 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // PORT: Phase 4c - Use structured RustPseudoList values directly instead of recipes
       const allValues = new Map<string, any>();
 
-      for (const alias of result.getValueAliases()) {
+      // Get all values in a single boundary crossing instead of N+1 calls
+      const allRustValues = result.getAllValues();
+
+      for (const [alias, rustValue] of allRustValues.entries()) {
         // PORT: Phase 4c - Get WasmPseudoList directly from Rust
-        const rustValue = result.getValue(alias);
 
         if (!rustValue) {
           // Sentinel undefined case
@@ -893,222 +661,13 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
 
       const impliedNodegroups = new Set(result.impliedNodegroups);
 
-      // Parallel testing mode: compare Rust vs JS
-      if (enableParallelTesting) {
-        const [jsValues, jsImplied] = await this.valuesFromResourceNodegroup_JS(
-          existingValues,
-          nodegroupTiles,
-          nodegroupId,
-          nodeObjs,
-          edges
-        );
-
-        // Compare results
-        const rustKeys = new Set(allValues.keys());
-        const jsKeys = new Set(jsValues.keys());
-        const rustImpliedSet = new Set(result.impliedNodegroups);
-
-        let mismatch = false;
-
-        // Check key differences
-        for (const key of rustKeys) {
-          if (!jsKeys.has(key)) {
-            console.error(`[PARALLEL TEST] Rust has key "${key}" but JS doesn't`);
-            mismatch = true;
-          }
-        }
-        for (const key of jsKeys) {
-          if (!rustKeys.has(key)) {
-            console.error(`[PARALLEL TEST] JS has key "${key}" but Rust doesn't`);
-            mismatch = true;
-          }
-        }
-
-        // Check implied nodegroups
-        for (const ng of rustImpliedSet) {
-          if (!jsImplied.has(ng)) {
-            console.error(`[PARALLEL TEST] Rust has implied nodegroup "${ng}" but JS doesn't`);
-            mismatch = true;
-          }
-        }
-        for (const ng of jsImplied) {
-          if (!rustImpliedSet.has(ng)) {
-            console.error(`[PARALLEL TEST] JS has implied nodegroup "${ng}" but Rust doesn't`);
-            mismatch = true;
-          }
-        }
-
-        // Check value counts
-        for (const key of rustKeys) {
-          if (jsKeys.has(key)) {
-            const rustVal = allValues.get(key);
-            const jsVal = jsValues.get(key);
-            const rustLen = Array.isArray(rustVal) ? rustVal.length : (rustVal === undefined ? 0 : 1);
-            const jsLen = Array.isArray(jsVal) ? jsVal.length : (jsVal === undefined ? 0 : 1);
-            if (rustLen !== jsLen) {
-              console.error(`[PARALLEL TEST] Key "${key}": Rust has ${rustLen} values, JS has ${jsLen}`);
-              mismatch = true;
-            }
-          }
-        }
-
-        if (!mismatch) {
-          console.log(`[PARALLEL TEST] ✓ Rust and JS implementations match for nodegroup ${nodegroupId}`);
-        }
-      }
-
       return [allValues, impliedNodegroups];
 
     } catch (e) {
       // PORT: Phase 4e-3 - Fail explicitly instead of silent fallback
-      console.error("Rust valuesFromResourceNodegroup failed:", e);
-      throw new Error(`Rust valuesFromResourceNodegroup failed: ${e}. Use valuesFromResourceNodegroup_JS() explicitly if you want the JS implementation.`);
+      console.error("valuesFromResourceNodegroup failed:", e);
+      throw new Error(`valuesFromResourceNodegroup failed: ${e}`);
     }
-  }
-
-  /**
-   * Original JavaScript implementation of valuesFromResourceNodegroup
-   * Kept for parallel testing and fallback
-   */
-  async valuesFromResourceNodegroup_JS(
-    existingValues: Map<string, any>,
-    nodegroupTiles: (StaticTile | null)[],
-    nodegroupId: string,
-    nodeObjs: Map<string, StaticNode>,
-    edges: Map<string, string[]>,
-  ): Promise<[Map<string, any>, Set<string>]> {
-    const allValues = new Map<string, any>();
-
-    const impliedNodegroups = new Set<string>();
-    const impliedNodes: Map<string, [StaticNode, StaticTile]> = new Map();
-
-    const nodesUnseen = new Set(
-      [...nodeObjs.values()]
-        .filter((node) => node.nodegroup_id == nodegroupId)
-        .map((node) => node.alias),
-    );
-    const tileNodesSeen: Set<[string, string]> = new Set();
-    const _addPseudo = async (node: StaticNode, tile: StaticTile | null) => {
-      const key = node.alias || "";
-      nodesUnseen.delete(node.alias);
-      const tileid = tile && tile.tileid;
-      if (tileid) {
-        tileNodesSeen.add([node.nodeid, tileid]);
-      }
-      let existing = existingValues.get(key);
-      if (existing instanceof Promise) {
-        existing = await existing;
-      }
-      if (existing !== false && existing !== undefined) {
-        // This might be correct - confirm.
-        // console.warn(`Tried to load node twice: ${key} (${node.nodeid}<${node.nodegroup_id})`, nodegroupId);
-        allValues.set(key, existing);
-      }
-      if (!allValues.has(key)) {
-        allValues.set(key, []);
-      }
-      // Legacy JS implementation - used for parallel testing
-      const pseudoNode = makePseudoCls_JS(this.model, key, false, tile, this.wkri);
-      // We shouldn't have to take care of this case, as it should already
-      // be included below.
-      // if tile.parenttile_id:
-      for (const [domain, ranges] of edges) {
-        if (ranges.includes(node.nodeid)) {
-          const domainNode = nodeObjs.get(domain);
-          if (!domainNode) {
-            throw Error("Edge error in graph");
-          }
-          const toAdd = domainNode.nodegroup_id
-            ? domainNode.nodegroup_id
-            : '';
-          if (toAdd && toAdd !== nodegroupId) {
-            impliedNodegroups.add(toAdd);
-          }
-          if (domainNode.nodegroup_id && tile && domainNode.nodegroup_id === tile.nodegroup_id && domainNode.nodegroup_id !== domainNode.nodeid && tileid && !impliedNodes.has(domainNode.nodeid + tileid)) {
-            impliedNodes.set(domainNode.nodeid + tileid, [domainNode, tile]);
-          }
-          break;
-        }
-      }
-      if (Array.isArray(pseudoNode)) {
-        const value = allValues.get(key);
-        if (value !== undefined && value !== false) {
-          for (const pseudoList of allValues.get(key)) {
-            if (!(pseudoList instanceof PseudoList) || !(pseudoNode instanceof PseudoList)) {
-              throw Error(`Should be all lists not ${typeof pseudoList} and ${typeof pseudoNode}`);
-            }
-
-            if (pseudoList.parentNode == pseudoNode.parentNode) {
-              for (const ps of pseudoNode) {
-                pseudoList.push(ps);
-              }
-              return;
-            }
-          }
-        }
-      }
-      allValues.get(key).push(pseudoNode);
-    };
-
-    for (const tile of nodegroupTiles) {
-      const parentNode = nodeObjs.get(nodegroupId);
-      if (parentNode === undefined) {
-        continue;
-      }
-      if (!parentNode.nodegroup_id || parentNode.nodegroup_id == nodegroupId) {
-        await _addPseudo(parentNode, tile);
-      }
-
-      if (tile) {
-        const tileNodes = new Map();
-        for (const [key, value] of [...tile.data.entries()]) {
-          tileNodes.set(key, value);
-        }
-
-        // Semantic nodes in this tile should always have a pseudo-node
-        [...nodeObjs.values()].filter((node: StaticNode) => {
-          return node.nodegroup_id === nodegroupId && !tileNodes.get(node.nodeid) && node.datatype === 'semantic';
-        }).forEach((node: StaticNode) => tileNodes.set(node.nodeid, {}));
-
-        if (!tileNodes.has(tile.nodegroup_id)) {
-          tileNodes.set(tile.nodegroup_id, {});
-        }
-        for (const [nodeid, nodeValue] of [...tileNodes.entries()]) {
-          if (nodeid == nodegroupId) {
-            // RMV is this correct?
-            continue;
-          }
-          const node = nodeObjs.get(nodeid);
-          if (!node) {
-            throw Error(`Unknown node in nodegroup: ${nodeid} in ${nodegroupId}`);
-          }
-          if (nodeValue !== null) {
-            await _addPseudo(node, tile);
-          }
-        }
-      }
-    }
-    while (impliedNodes.size > 0) {
-      const value = impliedNodes.entries().next().value;
-      if (value) {
-        const [node, tile] = value[1];
-        // If nodeid!=nodegroup_id, then it has its own tile.
-        if (tile.tileid && !tileNodesSeen.has([node.nodeid, tile.tileid])) {
-          await _addPseudo(node, tile);
-        }
-        impliedNodes.delete(value[0]);
-      }
-    }
-    // Remove any "unloaded" sentinel values so we do not try and
-    // reload this nodegroup.
-    [...nodesUnseen.keys()].forEach((nodeUnseen) => {
-      // if (allValues.get(nodeUnseen) === false) { // TODO: work out why this is not necessary
-      if (nodeUnseen) {
-        allValues.set(nodeUnseen, undefined);
-      }
-      // }
-    });
-    return [allValues, impliedNodegroups];
   }
 }
 
@@ -1591,8 +1150,8 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     this.graph = graph;
   }
 
-  async all(params: { limit?: number; lazy?: boolean } | undefined = undefined): Promise<Array<RIVM>> {
-    const paramObj = params || { limit: undefined, lazy: undefined };
+  async all(params: { limit?: number; lazy?: boolean; pruneTiles?: boolean } | undefined = undefined): Promise<Array<RIVM>> {
+    const paramObj = params || { limit: undefined, lazy: undefined, pruneTiles: undefined };
     const promises = [];
     for await (const resource of this.iterAll(paramObj)) {
       promises.push(resource);
@@ -1606,8 +1165,9 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     }
   }
 
-  async* iterAll(params: { limit?: number; lazy?: boolean }): AsyncGenerator<RIVM> {
-    yield* this.resourceGenerator(staticStore.loadAll(this.wkrm.graphId, params.limit), params.lazy);
+  async* iterAll(params: { limit?: number; lazy?: boolean; pruneTiles?: boolean }): AsyncGenerator<RIVM> {
+    const pruneTiles = params.pruneTiles !== undefined ? params.pruneTiles : true;
+    yield* this.resourceGenerator(staticStore.loadAll(this.wkrm.graphId, params.limit), params.lazy, pruneTiles);
   }
 
   // New summary-based methods for performance optimization
@@ -1704,7 +1264,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     throw Error(`Ambiguous permission state: ${permitted} for nodegroup ${nodegroupId}`);
   }
 
-  makeInstance(id: string, resource: StaticResource | null, pruneTiles: boolean = true): RIVM {
+  makeInstance(id: string, resource: StaticResource | null, pruneTiles: boolean = true, lazy: boolean = false): RIVM {
     if (!this.viewModelClass) {
       throw Error(`Cannot instantiate without a viewModelClass in ${this.wkrm.modelClassName}`);
     }
@@ -1713,7 +1273,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
       id,
       this.viewModelClass.prototype.__,
       (rivm: RIVM) =>
-        new ResourceInstanceWrapper(rivm, this, resource, pruneTiles),
+        new ResourceInstanceWrapper(rivm, this, resource, pruneTiles, lazy),
       null
     );
     return instance;
@@ -1724,11 +1284,11 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     lazy: boolean = false,
     pruneTiles: boolean = true
   ): Promise<RIVM> {
-    // TODO: implement lazy
     const wkri: RIVM = this.makeInstance(
       resource.resourceinstance.resourceinstanceid,
       resource,
-      pruneTiles
+      pruneTiles,
+      lazy
     );
 
     if (!wkri.$) {
@@ -1836,6 +1396,9 @@ class GraphManager {
       }
     }
     graphs.forEach(([graphId, meta]: [string, StaticGraphMeta]) => {
+      if (!(meta instanceof StaticGraphMeta)) {
+        meta = new StaticGraphMeta(meta);
+      }
       meta.graphid = meta.graphid || graphId;
       const wkrm = new WKRM(meta);
       this.wkrms.set(wkrm.modelClassName, wkrm);

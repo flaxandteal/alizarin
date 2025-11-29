@@ -188,10 +188,9 @@ impl PseudoNode {
 
     #[wasm_bindgen(getter = description)]
     pub fn get_description(&self) -> JsValue {
-        match &self.node.description {
-            Some(s) => JsValue::from_str(s),
-            None => JsValue::NULL,
-        }
+        if let Some(description) = self.node.description.clone() {
+            description.to_json()
+        } else { JsValue::NULL }
     }
 
     #[wasm_bindgen(getter = graphId)]

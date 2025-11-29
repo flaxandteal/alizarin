@@ -9,12 +9,14 @@ import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
 import { run, initWasm } from "./_wasm";
 
-// Initialize WASM module at startup using top-level await
-await initWasm();
+// Initialize WASM module at startup
+// Note: This returns a promise that must be awaited before using WASM features
+const wasmReady = initWasm();
 
 const AlizarinModel = viewModels.ResourceInstanceViewModel;
 const setCurrentLanguage = utils.setCurrentLanguage;
 const getCurrentLanguage = utils.getCurrentLanguage;
+const slugify = utils.slugify;
 export {
   AlizarinModel,
   client,
@@ -22,6 +24,7 @@ export {
   GraphManager,
   staticTypes,
   utils,
+  slugify,
   viewModels,
   staticStore,
   RDM,
@@ -33,5 +36,7 @@ export {
   GraphMutator,
   setCurrentLanguage,
   getCurrentLanguage,
-  run
+  run,
+  initWasm,
+  wasmReady
 };

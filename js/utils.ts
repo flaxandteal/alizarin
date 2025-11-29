@@ -11,16 +11,46 @@ const UUID_NAMESPACE_COMPRESSION = uuidv5('compression', '1a79f1c8-9505-4bea-a18
 
 let currentLanguage: string | undefined;
 
-function slugify(original: any): string {
-    return `${original}`.replaceAll(/[^A-Za-z0-9_]/g, "").slice(0, SLUG_LENGTH);
-}
-
 function getCurrentLanguage(): string {
   return currentLanguage || ((typeof navigator != 'undefined' && navigator.language) || DEFAULT_LANGUAGE).slice(0, 2);
 }
 
 function setCurrentLanguage(lang: string) {
   currentLanguage = lang;
+}
+
+/**
+ * Slugify a string safely for use in file paths
+ * Removes/replaces dangerous characters and limits length
+ */
+function slugify(name: string, maxLength: number = 100, useUnderscoreForHyphen: boolean = false): string {
+  if (!name || typeof name !== 'string') {
+    throw new Error(`Invalid slug input: ${name}`);
+  }
+
+  // Remove or replace dangerous characters
+  let slug = name
+    .toLowerCase()
+    .trim()
+    // Replace spaces and underscores with hyphens
+    .replace(/[\s_]+/g, '-')
+    // Remove any character that isn't alphanumeric or hyphen
+    .replace(/[^a-z0-9-]/g, '')
+    // Remove consecutive hyphens
+    .replace(/-+/g, '-')
+    // Remove leading/trailing hyphens
+    .replace(/^-|-$/g, '')
+    // Limit length
+    .slice(0, maxLength);
+  if (useUnderscoreForHyphen) {
+    slug = slug.replace('-', '_');
+  }
+
+  if (!slug) {
+    throw new Error(`Slugification resulted in empty string for input: ${name}`);
+  }
+
+  return slug;
 }
 
 class AttrPromise<T> extends Promise<T> implements IStringKeyedObject {

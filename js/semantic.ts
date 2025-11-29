@@ -136,9 +136,8 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
   }
 
   __has(key: string) {
-    const childNodes = this.__parentWkri.$.model.getChildNodes(this.__node.nodeid);
-
-    return childNodes.has(key);
+    const childAliases = this.__parentWkri.$.model.getChildNodeAliases(this.__node.nodeid);
+    return childAliases.includes(key);
   }
 
   async __getChildTypes() {
@@ -176,11 +175,11 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     const parent = this.__parentWkri;
     const tile = this.__tile;
     const node = this.__node;
-    const childNodes = parent.$.model.getChildNodes(node.nodeid);
+    const childAliases = parent.$.model.getChildNodeAliases(node.nodeid);
 
-    if (!childNodes.has(key)) {
+    if (!childAliases.includes(key)) {
       throw Error(
-        `Semantic node does not have this key: ${key} (${[...childNodes.keys()]})`,
+        `Semantic node does not have this key: ${key} (${childAliases.join(', ')})`,
       );
     }
 
@@ -193,7 +192,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     const rustValue = parent.$.wasmWrapper.getSemanticChildValue(
       tile?.tileid || null,
       node.nodeid,
-      node.nodegroup_id || null,
+      node.nodegroup_id || "",
       key
     );
 
@@ -217,8 +216,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
 
   __makePseudo(key: string): IPseudo {
     const parent = this.__parentWkri;
-    const childNodes = parent.$.model.getChildNodes(this.__node.nodeid);
-    const childNode = childNodes.get(key);
+    const childNode = parent.$.model.getNodeObjectFromAlias(key);
 
     if (!childNode) {
       throw Error(`Child node key ${key} missing`);
@@ -280,22 +278,21 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     const parent = this.__parentWkri;
     const tile = this.__tile;
     const node = this.__node;
-    const childNodes = parent.$.model.getChildNodes(node.nodeid)
+    const childAliases = parent.$.model.getChildNodeAliases(node.nodeid);
     if (!parent || !parent.$) {
       return new Map();
     }
 
     // Ensure lazy-loading done.
     // TODO check this does not go deeper than necessary.
-    await parent.$.loadNodes([...childNodes.keys()]);
+    await parent.$.loadNodes(childAliases);
 
     // Use Rust implementation to find which tiles contain semantic children
     // PORT: Replaces lines 163-233 with Rust findSemanticChildren
-    const childAliases = [...childNodes.keys()];
     const matchingTiles: Map<string, string[]> = parent.$.wasmWrapper.findSemanticChildren(
       tile?.tileid || null,
       node.nodeid,
-      node.nodegroup_id || null,
+      node.nodegroup_id || "",
       []
     );
 
@@ -304,11 +301,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
 
     // Process results from Rust - for each child alias that has matching tiles
     for (const [childAlias, tileIds] of matchingTiles.entries()) {
-      const childNode = childNodes.get(childAlias);
-      if (!childNode) {
-        throw Error("Missing child!");
-      }
-
       // Get the PseudoValue(s) from allEntries
       const entry = allEntries.find(e => e[0] === childAlias);
       if (!entry) {

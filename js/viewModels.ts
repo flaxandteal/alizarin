@@ -66,7 +66,9 @@ class ValueList<T extends IRIVM<T>> {
 
   async retrieve(key: string, dflt: any = null, raiseError: boolean = false) {
     let result: any = this.values.get(key);
+    // console.log(`[ValueList.retrieve] key=${key}, initial result:`, result, "type:", typeof result);
     if (Array.isArray(result)) {
+      // console.log(`[ValueList.retrieve] returning array with length ${result.length}`);
       return result;
     }
     const node = this.wrapper.model.getNodeObjectFromAlias(key);
@@ -129,9 +131,11 @@ class ValueList<T extends IRIVM<T>> {
             );
 
            // Unpack result into Map
+           // Get all values in a single boundary crossing instead of N+1 calls
            const ngValues = new Map<string, any>();
-           for (const alias of result.getValueAliases()) {
-             const rustValue = result.getValue(alias);
+           const allRustValues = result.getAllValues();
+
+           for (const [alias, rustValue] of allRustValues.entries()) {
              if (rustValue) {
                if (!ngValues.has(alias)) {
                  ngValues.set(alias, []);
@@ -148,11 +152,9 @@ class ValueList<T extends IRIVM<T>> {
               // We need to wrap them when storing in this.values
               const processValue = (k: string, rustValues: any) => {
                 // Phase 4i: Wrap each Rust value in the array
-                console.log(1);
                 const wrappedValues = Array.isArray(rustValues)
                   ? rustValues.map((rv: any) => wrapRustPseudo(rv, this.wrapper.wkri, this.wrapper.model))
                   : rustValues;
-                console.log(2);
 
                 if (key === k) {
                   // Other methods may be waiting on this specific
@@ -167,13 +169,12 @@ class ValueList<T extends IRIVM<T>> {
                 if (wrappedValues !== false) {
                   this.values.set(k, wrappedValues);
                 }
-                console.log(3);
               }
               return Promise.all([...ngValues.entries()].map(([k, value]) => {
                 if (value instanceof Promise) {
                   return value.then((concreteValue: any) => processValue(k, concreteValue));
                 }
-                console.log(4);
+                // console.log(4);
                 processValue(k, value);
               })).then(() => {
                 resolve(original);
@@ -187,9 +188,9 @@ class ValueList<T extends IRIVM<T>> {
 
         // Other readers are welcome to wait for this nodegroup's read
         this.values.set(key, promise);
-                console.log(5);
+                // console.log(5);
         await promise;
-                console.log(6);
+                // console.log(6);
 
         // Phase 4k: Rust handles state transition to Loaded
         this.wrapper.wasmWrapper.markNodegroupLoaded(nodegroupId);
