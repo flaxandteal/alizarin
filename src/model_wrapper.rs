@@ -532,6 +532,51 @@ impl WASMResourceModelWrapper {
         })
     }
 
+    /// Get child node aliases for a given node ID
+    /// Returns array of alias strings instead of full node objects
+    #[wasm_bindgen(js_name = getChildNodeAliases)]
+    pub fn get_child_node_aliases(&self, node_id: &str) -> Result<Vec<String>, JsValue> {
+        self.with_core_mut(|core| {
+            let child_nodes = core.get_child_nodes(node_id).map_err(|e| JsValue::from_str(&e))?;
+            Ok(child_nodes.keys().cloned().collect())
+        })
+    }
+
+    /// Get nodegroup IDs
+    /// Returns array of IDs instead of full nodegroup objects
+    #[wasm_bindgen(js_name = getNodegroupIds)]
+    pub fn get_nodegroup_ids(&mut self) -> Result<Vec<String>, JsValue> {
+        self.with_core_mut(|core| {
+            let nodegroups = core.get_nodegroup_objects().map_err(|e| JsValue::from_str(&e))?;
+            Ok(nodegroups.keys().cloned().collect())
+        })
+    }
+
+    /// Get nodegroup name by ID
+    /// Returns just the name string instead of full node object
+    /// Note: nodegroup_id is actually a node ID (the root node of the nodegroup)
+    #[wasm_bindgen(js_name = getNodegroupName)]
+    pub fn get_nodegroup_name(&mut self, nodegroup_id: &str) -> Result<String, JsValue> {
+        self.with_core_mut(|core| {
+            let nodes = core.get_node_objects().map_err(|e| JsValue::from_str(&e))?;
+            let node = nodes.get(nodegroup_id)
+                .ok_or_else(|| JsValue::from_str(&format!("Node not found: {}", nodegroup_id)))?;
+            Ok((**node).name.clone())
+        })
+    }
+
+    /// Get node ID from alias
+    /// Returns just the node ID string instead of full node map
+    #[wasm_bindgen(js_name = getNodeIdFromAlias)]
+    pub fn get_node_id_from_alias(&mut self, alias: &str) -> Result<String, JsValue> {
+        self.with_core_mut(|core| {
+            let nodes_by_alias = core.get_node_objects_by_alias().map_err(|e| JsValue::from_str(&e))?;
+            let node = nodes_by_alias.get(alias)
+                .ok_or_else(|| JsValue::from_str(&format!("Node not found for alias: {}", alias)))?;
+            Ok(node.nodeid.clone())
+        })
+    }
+
     #[wasm_bindgen(js_name = getPermittedNodegroups)]
     pub fn get_permitted_nodegroups(&mut self) -> Result<JsValue, JsValue> {
         self.with_core_mut(|core| {
@@ -559,21 +604,14 @@ impl WASMResourceModelWrapper {
     pub fn set_permitted_nodegroups(&mut self, permissions: js_sys::Map) {
         let mut perms = HashMap::new();
 
-        // Iterate over the Map using the keys() iterator
-        let keys_iter = permissions.keys();
-        loop {
-            let next = keys_iter.next().unwrap();
-            if next.done() {
-                break;
-            }
-            let key = next.value();
+        // Use for_each callback to avoid iterator retention
+        permissions.for_each(&mut |value, key| {
             if let Some(key_str) = key.as_string() {
-                let value = permissions.get(&key);
                 if let Some(bool_val) = value.as_bool() {
                     perms.insert(key_str, bool_val);
                 }
             }
-        }
+        });
 
         self.with_core_mut(|core| core.set_permitted_nodegroups(perms));
     }

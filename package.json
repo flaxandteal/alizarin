@@ -9,6 +9,17 @@
   ],
   "main": "./dist/alizarin.umd.cjs",
   "module": "./dist/alizarin.js",
+  "browser": {
+    "fs": false,
+    "path": false,
+    "url": false,
+    "crypto": false,
+    "stream": false,
+    "util": false,
+    "events": false,
+    "buffer": false,
+    "os": false
+  },
   "exports": {
     ".": {
       "import": "./dist/alizarin.js",

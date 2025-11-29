@@ -78,7 +78,7 @@ interface IModelWrapper<T extends IRIVM<T>> {
   all(params: { limit?: number; lazy?: boolean } | undefined): Promise<Array<T>>;
   // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
   getPermittedNodegroups(): Map<string | null, boolean>;
-  isNodegroupPermitted(nodegroupId: string, tile: StaticTile | null, nodes: Map<string, StaticNode>): boolean;
+  isNodegroupPermitted(nodegroupId: string, tile: StaticTile | null): boolean;
   getChildNodes(nodeId: string): Map<string, StaticNode>;
   getNodeObjectsByAlias(): Map<string, StaticNode>;
   getNodeObjects(): Map<string, StaticNode>;

@@ -1,7 +1,7 @@
 /// Tests for findSemanticChildren implementation
 /// Ensures Rust logic exactly matches TypeScript semantic.ts lines 269-340
 use alizarin::graph::{StaticTile, StaticNode};
-use alizarin::instance_wrapper::WASMResourceInstanceWrapper;
+use alizarin::instance_wrapper::ResourceInstanceWrapperCore;
 use std::collections::HashMap;
 use serde_json::Value as JsonValue;
 use serde_json::json;
@@ -54,7 +54,7 @@ fn create_test_tile(
 }
 
 /// Wrapper function to call the actual implementation
-/// Uses WASMResourceInstanceWrapper::matches_semantic_child which has access to private fields
+/// Uses ResourceInstanceWrapperCore::matches_semantic_child which has access to private fields
 fn matches_semantic_child(
     parent_tile_id: Option<&String>,
     parent_nodegroup_id: Option<&String>,
@@ -62,11 +62,11 @@ fn matches_semantic_child(
     tile: Option<&StaticTile>,
     tile_nodegroup: &str,
 ) -> bool {
-    WASMResourceInstanceWrapper::matches_semantic_child(
+    ResourceInstanceWrapperCore::matches_semantic_child(
         parent_tile_id,
         parent_nodegroup_id,
         child_node,
-        tile,
+        tile.expect("tile must be Some in tests"),
         tile_nodegroup,
     )
 }

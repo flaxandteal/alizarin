@@ -42,8 +42,17 @@ class StaticStore {
     limit: number | undefined = undefined,
     useCache: boolean = true
   ): AsyncIterable<StaticResource> {
+    // IMPORTANT: When cacheMetadataOnly is true, this cache only stores metadata (StaticResourceMetadata),
+    // not full StaticResource objects. This means:
+    // 1. The cache check below (instanceof StaticResource) will never find cached entries
+    // 2. We rely entirely on the ArchesClient's file-level caching (via reloadIfSeen parameter)
+    // 3. We always pass reloadIfSeen=false so files aren't re-read, but StaticResources are reconstructed each time
+    // This is intentional for memory efficiency - we don't keep full resources in memory.
+
     let toFind: number = limit | -1;
-    if (useCache) {
+
+    // Only check in-memory cache if we're storing full StaticResource objects
+    if (useCache && !this.cacheMetadataOnly) {
       for (const entry of this.cache.values()) {
         if (entry instanceof StaticResource && entry.resourceinstance.graph_id === graphId) {
           toFind -= 1;
@@ -53,8 +62,13 @@ class StaticStore {
       }
     }
     toFind = toFind > 0 ? toFind : 0;
+
+    // When cacheMetadataOnly is true, we don't keep full StaticResources in memory,
+    // so we need to reload files to reconstruct them (reloadIfSeen=true).
+    // Otherwise respect the useCache parameter for file-level deduplication.
+    const reloadIfSeen = this.cacheMetadataOnly ? true : !useCache;
     const resourcesJSON: StaticResource[] =
-      await this.archesClient.getResources(graphId, toFind, !useCache);
+      await this.archesClient.getResources(graphId, toFind, reloadIfSeen);
     for (const resourceJSON of resourcesJSON.values()) {
       const resource = new StaticResource(resourceJSON);
       if (resource.resourceinstance.graph_id !== graphId) {
@@ -103,15 +117,25 @@ class StaticStore {
     }
   }
 
-  async loadTiles(id: string): Promise<StaticTile[]> {
+  async loadTiles(id: string, nodegroupId?: string | null): Promise<StaticTile[]> {
     // Check if we already have full resource with tiles
     const cached = this.cache.get(id);
     if (cached instanceof StaticResource && cached.__tilesLoaded) {
-      return cached.tiles || [];
+      const tiles = cached.tiles || [];
+      // Filter by nodegroup if specified
+      if (nodegroupId) {
+        return tiles.filter(tile => tile.nodegroup_id === nodegroupId);
+      }
+      return tiles;
     }
-    
+
     // Load tiles on-demand
-    return await this.archesClient.getResourceTiles(id);
+    const tiles = await this.archesClient.getResourceTiles(id);
+    // Filter by nodegroup if specified
+    if (nodegroupId) {
+      return tiles.filter(tile => tile.nodegroup_id === nodegroupId);
+    }
+    return tiles;
   }
 
   async ensureFullResource(id: string): Promise<StaticResource> {

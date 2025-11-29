@@ -8,6 +8,8 @@ export async function initWasm() {
     // In Node.js environment (tests), use synchronous init with file system
     if (typeof process !== 'undefined' && process.versions?.node) {
       try {
+        console.log('[alizarin] Initializing WASM in Node.js environment');
+        // Import Node modules only when in Node.js environment
         const fs = await import('fs');
         const path = await import('path');
         const { fileURLToPath } = await import('url');
@@ -17,13 +19,21 @@ export async function initWasm() {
         const wasmPath = path.join(moduleDir, '../pkg', 'alizarin_bg.wasm');
         const wasmBuffer = fs.readFileSync(wasmPath);
         initSync({ module: wasmBuffer });
+        console.log('[alizarin] WASM initialized successfully in Node.js');
       } catch (error) {
         console.error('Failed to initialize WASM in Node.js:', error);
         throw error;
       }
     } else {
       // In browser environment, use async init with fetch
-      await init(wasmURL);
+      console.log('[alizarin] Initializing WASM in browser environment', { init, wasmURL });
+      try {
+        await init(wasmURL);
+        console.log('[alizarin] WASM initialized successfully in browser');
+      } catch (error) {
+        console.error('[alizarin] Failed to initialize WASM in browser:', error);
+        throw error;
+      }
     }
     wasmInitialized = true;
   }

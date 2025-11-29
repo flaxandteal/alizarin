@@ -39,10 +39,18 @@ describe("testing api", () => {
 
       const Groups = await graphManager.get(Group);
 
-      const groups: Group[] = await Groups.all();
+      const groups: Group[] = await Groups.all({ pruneTiles: false });
 
       assert(groups[0].constructor.name === "Group");
-      const name = await groups[0].basic_info[0].name;
+      const basic_info = await groups[0].basic_info;
+      console.log("basic_info (awaited):", basic_info);
+      console.log("basic_info.length:", basic_info.length);
+      console.log("basic_info.constructor.name:", basic_info.constructor.name);
+      console.log("basic_info contents:", [...basic_info]);
+      const basic_info_0 = basic_info[0];
+      console.log("basic_info[0]:", basic_info_0);
+      const name = await basic_info_0.name;
+      console.log("name:", name);
       assert(name == "Global Group");
       assert(name.lang("ga") === "Grúpa Domhanda");
       const action = await groups[0].permissions[0].action[0];
@@ -50,7 +58,7 @@ describe("testing api", () => {
       assert(action !== "Reading");
 
       const GroupsByName = await graphManager.get("Group");
-      const groupsByName = await GroupsByName.all();
+      const groupsByName = await GroupsByName.all({ pruneTiles: false });
       assert(await groupsByName[0].basic_info[0].name == "Global Group");
     },
   );
@@ -65,7 +73,7 @@ describe("testing api", () => {
       );
 
       const Groups = await graphManager.get(Group);
-      const groups = await Groups.all({ lazy: true });
+      const groups = await Groups.all({ lazy: true, pruneTiles: false });
       const name = await groups[0].basic_info[0].name;
       assert(name == "Global Group");
       assert(name.lang("ga") === "Grúpa Domhanda");
