@@ -36,10 +36,11 @@ use darling::{FromDeriveInput, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, DeriveInput, Path, ItemStruct, Attribute, parse::Parse, parse::ParseStream, Token, punctuated::Punctuated, Ident, Visibility};
+use syn::{parse_macro_input, DeriveInput, Path, parse::Parse, parse::ParseStream, Token, Ident, Visibility};
 
 /// Configuration for a single field getter/setter
 #[derive(Debug, Clone, FromMeta)]
+#[allow(dead_code)]
 struct FieldConfig {
     /// Field name
     name: syn::Ident,
@@ -60,6 +61,7 @@ struct FieldConfig {
 /// Main derive macro attributes
 #[derive(Debug, FromDeriveInput)]
 #[darling(attributes(wasm_wrapper), supports(struct_unit))]
+#[allow(dead_code)]
 struct WasmWrapperArgs {
     ident: syn::Ident,
 
@@ -245,7 +247,7 @@ fn generate_wasm_methods(args: &WasmWrapperArgs, core_path: &Path) -> TokenStrea
 }
 
 /// Generate getter for a field
-fn generate_getter(name: &syn::Ident, field_name: &str) -> TokenStream2 {
+fn generate_getter(_name: &syn::Ident, field_name: &str) -> TokenStream2 {
     let field_ident = format_ident!("{}", field_name);
     let getter_name = format_ident!("get_{}", field_name);
     let js_name = field_name;
@@ -261,7 +263,7 @@ fn generate_getter(name: &syn::Ident, field_name: &str) -> TokenStream2 {
 }
 
 /// Generate setter for a field
-fn generate_setter(name: &syn::Ident, field_name: &str) -> TokenStream2 {
+fn generate_setter(_name: &syn::Ident, field_name: &str) -> TokenStream2 {
     let field_ident = format_ident!("{}", field_name);
     let setter_name = format_ident!("set_{}", field_name);
     let js_name = field_name;

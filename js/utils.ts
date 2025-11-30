@@ -1,7 +1,6 @@
 import { v5 as uuidv5 } from 'uuid';
-import { IStringKeyedObject, IViewModel } from "./interfaces";
+import { IStringKeyedObject, IViewModel, IInstanceWrapper, IRIVM } from "./interfaces";
 import type { StaticGraph, StaticNode, StaticResourceDescriptors, IStaticDescriptorConfig } from "./static-types";
-import type { ValueList } from "./viewModels";
 
 // TODO: make this customizable.
 const DEFAULT_LANGUAGE = "en";
@@ -139,7 +138,7 @@ const DESCRIPTOR_FUNCTION_ID = "60000000-0000-0000-0000-000000000001";
  *
  * @param graph - The graph definition containing descriptor configuration
  * @param nodes - Map of node IDs to node objects for value lookup
- * @param valueList - ValueList for retrieving node values from tiles
+ * @param wrapper - IInstanceWrapper for retrieving pseudo values from Rust
  * @returns Promise resolving to StaticResourceDescriptors with populated fields
  *
  * @example
@@ -150,7 +149,7 @@ const DESCRIPTOR_FUNCTION_ID = "60000000-0000-0000-0000-000000000001";
 async function buildResourceDescriptors(
   graph: StaticGraph,
   nodes: Map<string, StaticNode>,
-  valueList: ValueList<any>
+  wrapper: IInstanceWrapper<any>
 ): Promise<StaticResourceDescriptors> {
   // Import StaticResourceDescriptors here to avoid circular dependency
   const { StaticResourceDescriptors } = await import("./static-types");
@@ -196,7 +195,8 @@ async function buildResourceDescriptors(
 
     // First try to find all values on one tile for consistency
     if (semanticNode) {
-      let semanticValue = await (await valueList.retrieve(semanticNode.alias || ''))[0];
+      const retrieved = await wrapper.retrievePseudo(semanticNode.alias || '');
+      let semanticValue = retrieved ? await retrieved[0] : null;
 
       // Handle PseudoList (which is an array)
       if (Array.isArray(semanticValue)) {
@@ -244,7 +244,7 @@ async function buildResourceDescriptors(
     if (requestedNodes.length) {
       relevantValues = await Promise.all(
         relevantNodes.map(async ([name, alias]) => {
-          const values = await valueList.retrieve(alias);
+          const values = await wrapper.retrievePseudo(alias);
           if (!values || values.length === 0) {
             return [name, undefined] as [string, string | undefined];
           }

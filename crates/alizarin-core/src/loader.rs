@@ -3,10 +3,124 @@
 //! This module handles loading graphs and other data from the prebuild
 //! directory structure used by starches-builder.
 
-use crate::graph::{IndexedGraph, StaticGraph};
+use crate::graph::{IndexedGraph, StaticGraph, StaticResourceDescriptors, StaticResourceSummary};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+// ============================================================================
+// Business Data File Deserialization Types
+// ============================================================================
+
+/// Top-level wrapper for business_data JSON files
+#[derive(Debug, Deserialize)]
+struct BusinessDataFile {
+    business_data: BusinessDataContent,
+}
+
+/// Content of the business_data section
+#[derive(Debug, Deserialize)]
+struct BusinessDataContent {
+    #[serde(default)]
+    resources: Vec<BusinessDataResource>,
+}
+
+/// A single resource in the business_data file
+#[derive(Debug, Deserialize)]
+struct BusinessDataResource {
+    resourceinstance: BusinessDataResourceInstance,
+    #[serde(default)]
+    metadata: Option<HashMap<String, String>>,
+}
+
+/// The resourceinstance object within a resource
+#[derive(Debug, Deserialize)]
+struct BusinessDataResourceInstance {
+    resourceinstanceid: String,
+    graph_id: String,
+    name: String,
+    #[serde(default)]
+    descriptors: Option<LanguageNestedDescriptors>,
+    #[serde(default)]
+    createdtime: Option<String>,
+    #[serde(default)]
+    lastmodified: Option<String>,
+    #[serde(default)]
+    publication_id: Option<String>,
+    #[serde(default)]
+    principaluser_id: Option<i32>,
+    #[serde(default)]
+    legacyid: Option<String>,
+    #[serde(default)]
+    graph_publication_id: Option<String>,
+}
+
+/// Language-nested descriptors (e.g., { "en": { "name": "...", ... } })
+#[derive(Debug, Deserialize)]
+#[serde(transparent)]
+struct LanguageNestedDescriptors {
+    languages: HashMap<String, StaticResourceDescriptors>,
+}
+
+impl LanguageNestedDescriptors {
+    /// Get descriptors for the preferred language (default: "en")
+    fn get_for_lang(&self, lang: &str) -> Option<StaticResourceDescriptors> {
+        self.languages
+            .get(lang)
+            .or_else(|| self.languages.get("en"))
+            .or_else(|| self.languages.values().next())
+            .cloned()
+    }
+}
+
+impl BusinessDataResource {
+    /// Convert to StaticResourceSummary
+    fn to_summary(&self) -> StaticResourceSummary {
+        let ri = &self.resourceinstance;
+        StaticResourceSummary {
+            resourceinstanceid: ri.resourceinstanceid.clone(),
+            graph_id: ri.graph_id.clone(),
+            name: ri.name.clone(),
+            descriptors: ri.descriptors.as_ref().and_then(|d| d.get_for_lang("en")),
+            metadata: self.metadata.clone().unwrap_or_default(),
+            createdtime: ri.createdtime.clone(),
+            lastmodified: ri.lastmodified.clone(),
+            publication_id: ri.publication_id.clone(),
+            principaluser_id: ri.principaluser_id,
+            legacyid: ri.legacyid.clone(),
+            graph_publication_id: ri.graph_publication_id.clone(),
+        }
+    }
+}
+
+// ============================================================================
+// Fast Count Types (minimal deserialization for counting)
+// ============================================================================
+
+/// Minimal struct for fast counting - only deserializes what we need
+#[derive(Debug, Deserialize)]
+struct BusinessDataFileCount {
+    business_data: BusinessDataContentCount,
+}
+
+/// Count content - resources as raw values we just count
+#[derive(Debug, Deserialize)]
+struct BusinessDataContentCount {
+    #[serde(default)]
+    resources: Vec<BusinessDataResourceCount>,
+}
+
+/// Minimal resource - only deserialize graph_id for filtering
+#[derive(Debug, Deserialize)]
+struct BusinessDataResourceCount {
+    resourceinstance: BusinessDataResourceInstanceCount,
+}
+
+#[derive(Debug, Deserialize)]
+struct BusinessDataResourceInstanceCount {
+    graph_id: String,
+}
 
 /// Error type for loader operations
 #[derive(Debug)]
@@ -177,6 +291,239 @@ impl PrebuildLoader {
     /// Get the root path
     pub fn root_path(&self) -> &Path {
         &self.root_path
+    }
+
+    /// Find all business data JSON files (searches recursively)
+    pub fn find_business_data_files(&self, _graph_id: &str) -> Result<Vec<PathBuf>, LoaderError> {
+        let business_data_dir = self.root_path.join("business_data");
+        if !business_data_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut files = Vec::new();
+        self.collect_json_files(&business_data_dir, &mut files)?;
+        Ok(files)
+    }
+
+    /// Recursively collect all JSON files from a directory
+    fn collect_json_files(&self, dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), LoaderError> {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                self.collect_json_files(&path, files)?;
+            } else if path.extension().map(|e| e == "json").unwrap_or(false) {
+                files.push(path);
+            }
+        }
+        Ok(())
+    }
+
+    /// Load resource summaries from a single business data file
+    /// Uses typed deserialization for fast parsing
+    pub fn load_resource_summaries_from_file(
+        &self,
+        path: &Path,
+        graph_id: &str,
+    ) -> Result<Vec<StaticResourceSummary>, LoaderError> {
+        let content = fs::read_to_string(path)?;
+        let file: BusinessDataFile = serde_json::from_str(&content)?;
+
+        let summaries: Vec<StaticResourceSummary> = file
+            .business_data
+            .resources
+            .into_iter()
+            .filter(|r| r.resourceinstance.graph_id == graph_id)
+            .map(|r| r.to_summary())
+            .collect();
+
+        Ok(summaries)
+    }
+
+    /// Load resource summaries for a graph, with optional limit
+    /// Returns (summaries, has_more)
+    pub fn load_resource_summaries(
+        &self,
+        graph_id: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<(Vec<StaticResourceSummary>, bool), LoaderError> {
+        let files = self.find_business_data_files(graph_id)?;
+        let mut all_summaries = Vec::new();
+
+        for file in &files {
+            match self.load_resource_summaries_from_file(file, graph_id) {
+                Ok(summaries) => all_summaries.extend(summaries),
+                Err(e) => {
+                    eprintln!("Warning: Failed to load resources from {}: {}", file.display(), e);
+                }
+            }
+        }
+
+        // Apply offset and limit
+        let total = all_summaries.len();
+        let has_more = offset + limit < total;
+        let summaries: Vec<_> = all_summaries
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .collect();
+
+        Ok((summaries, has_more))
+    }
+
+    /// Get total count of resources for a graph (without loading all data)
+    pub fn count_resources_for_graph(&self, graph_id: &str) -> Result<usize, LoaderError> {
+        let files = self.find_business_data_files(graph_id)?;
+        let mut count = 0;
+
+        for file in &files {
+            count += self.fast_count_resources_in_file(file, graph_id)?;
+        }
+
+        Ok(count)
+    }
+
+    /// Fast count of resources in a single file (minimal deserialization)
+    pub fn fast_count_resources_in_file(&self, path: &Path, graph_id: &str) -> Result<usize, LoaderError> {
+        let content = fs::read_to_string(path)?;
+        let file_data: BusinessDataFileCount = serde_json::from_str(&content)?;
+
+        let count = file_data
+            .business_data
+            .resources
+            .iter()
+            .filter(|r| r.resourceinstance.graph_id == graph_id)
+            .count();
+
+        Ok(count)
+    }
+
+    /// Get file counts for per-file progress tracking
+    /// Returns Vec of (file_path, resource_count) for each file
+    pub fn get_business_data_file_counts(&self, graph_id: &str) -> Result<Vec<(PathBuf, usize)>, LoaderError> {
+        let files = self.find_business_data_files(graph_id)?;
+        let mut result = Vec::with_capacity(files.len());
+
+        for file in files {
+            let count = self.fast_count_resources_in_file(&file, graph_id)?;
+            if count > 0 {
+                result.push((file, count));
+            }
+        }
+
+        Ok(result)
+    }
+
+    // =========================================================================
+    // Preindex Loading Methods
+    // =========================================================================
+
+    /// Find all preindex .pi files (searches recursively)
+    pub fn find_preindex_files(&self, _graph_id: &str) -> Result<Vec<PathBuf>, LoaderError> {
+        let preindex_dir = self.root_path.join("preindex");
+        if !preindex_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut files = Vec::new();
+        self.collect_pi_files(&preindex_dir, &mut files)?;
+        Ok(files)
+    }
+
+    /// Recursively collect all .pi files from a directory
+    fn collect_pi_files(&self, dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), LoaderError> {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                self.collect_pi_files(&path, files)?;
+            } else if path.extension().map(|e| e == "pi").unwrap_or(false) {
+                files.push(path);
+            }
+        }
+        Ok(())
+    }
+
+    /// Load resource summaries from preindex .pi files
+    /// .pi files contain StaticResourceSummary objects directly (one per line or as JSON array)
+    pub fn load_preindex_summaries(
+        &self,
+        graph_id: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<(Vec<StaticResourceSummary>, bool), LoaderError> {
+        let files = self.find_preindex_files(graph_id)?;
+        let mut all_summaries = Vec::new();
+
+        for file in &files {
+            match self.load_preindex_file(file, graph_id) {
+                Ok(summaries) => all_summaries.extend(summaries),
+                Err(e) => {
+                    eprintln!("Warning: Failed to load preindex from {}: {}", file.display(), e);
+                }
+            }
+        }
+
+        // Apply offset and limit
+        let total = all_summaries.len();
+        let has_more = offset + limit < total;
+        let summaries: Vec<_> = all_summaries
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .collect();
+
+        Ok((summaries, has_more))
+    }
+
+    /// Load a single preindex file
+    fn load_preindex_file(
+        &self,
+        path: &Path,
+        graph_id: &str,
+    ) -> Result<Vec<StaticResourceSummary>, LoaderError> {
+        let content = fs::read_to_string(path)?;
+        let mut summaries = Vec::new();
+
+        // Try parsing as JSON array first
+        if let Ok(array) = serde_json::from_str::<Vec<StaticResourceSummary>>(&content) {
+            for summary in array {
+                if summary.graph_id == graph_id {
+                    summaries.push(summary);
+                }
+            }
+            return Ok(summaries);
+        }
+
+        // Try parsing as newline-delimited JSON (NDJSON)
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            if let Ok(summary) = serde_json::from_str::<StaticResourceSummary>(line) {
+                if summary.graph_id == graph_id {
+                    summaries.push(summary);
+                }
+            }
+        }
+
+        Ok(summaries)
+    }
+
+    /// Count resources in preindex files for a graph
+    pub fn count_preindex_resources_for_graph(&self, graph_id: &str) -> Result<usize, LoaderError> {
+        let files = self.find_preindex_files(graph_id)?;
+        let mut count = 0;
+
+        for file in &files {
+            if let Ok(summaries) = self.load_preindex_file(file, graph_id) {
+                count += summaries.len();
+            }
+        }
+
+        Ok(count)
     }
 }
 

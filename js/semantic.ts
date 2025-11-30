@@ -5,22 +5,12 @@ import {
   IRIVM,
 } from "./interfaces.ts";
 import { AttrPromise } from "./utils";
-import { PseudoValue, PseudoList, wrapRustPseudo } from "./pseudos";
+import { PseudoList, wrapRustPseudo } from "./pseudos";
+import type { PseudoValue } from "./pseudos";
 import {
   StaticTile,
   StaticNode,
 } from "./static-types";
-
-const TILE_LOADING_ERRORS = null; // "suppress" or "silence" TODO: enum
-
-function tileLoadingError(reason: string, exc: any) {
-  if (TILE_LOADING_ERRORS !== "silence") {
-    console.error(reason, exc);
-    if (TILE_LOADING_ERRORS !== "suppress") {
-      throw exc;
-    }
-  }
-}
 
 class SemanticViewModel implements IStringKeyedObject, IViewModel {
   [key: string | symbol]: any;
@@ -50,14 +40,12 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     return new Proxy(this, {
       set: (object, key, value) => {
         const k: string = typeof key === 'symbol' ? key.description || '' : key;
-        if (key in object) {
-          object[key] = value;
-        } else if (k.startsWith("__") || k in object) {
+        // Allow setting internal properties (starting with __)
+        if (k.startsWith("__") || key in object) {
           object[k] = value;
-        } else {
-          object.__set(k, value);
+          return true;
         }
-        return true;
+        throw Error(`Setting semantic values via proxy (key: ${String(key)}) is not supported`);
       },
       get: (object, key) => {
         const k: string = typeof key === 'symbol' ? key.description || '' : key;
@@ -108,31 +96,12 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     })));
   }
 
-  async __update(map: Map<string, any>) {
-    return Promise.all(
-      [...map.entries()].map(([k, v]) => {
-        this.__set(k, v);
-      }),
-    );
-  }
-
   async __get(key: string) {
     const childValue = await this.__getChildValue(key);
-    return childValue.getValue();
-  }
-
-  async __set(key: string, value: any) {
-    throw Error("TODO");
-  // async __set(key: string, value: any) {
-    if (!this.__childNodes.has(key)) {
-      throw Error(
-        `Semantic node does not have this key: ${key} (${[...this.__childNodes.keys()]})`,
-      );
+    if (!childValue) {
+      return null;
     }
-
-    throw Error(`Setting semantic keys (${key} = ${value}) is not implemented yet in Javascript`);
-    // const child = await this.__getChildValue(key, true);
-    // child.value = value;
+    return childValue.getValue();
   }
 
   __has(key: string) {
@@ -140,38 +109,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     return childAliases.includes(key);
   }
 
-  async __getChildTypes() {
-    throw Error("TODO");
-    const promises = [...this.__childNodes.keys()].map(async (key): Promise<[string, IPseudo]> => [
-      key,
-      await this.__getChildValue(key),
-    ]);
-    const entries: Array<[string, IPseudo]> = await Promise.all(promises);
-    return new Map<string, any>([...entries]);
-  }
-
-  async __getChildren(direct: null | boolean = null) {
-    const items = new Map<string, any>();
-    for (const [key, value] of [...(await this.__getChildValues()).entries()]) {
-      items.set(key, value);
-    }
-    const children = [...items.entries()]
-      .filter((entry) => {
-    throw Error("TODO");
-        const child = this.__childNodes.get(entry[0]);
-        if (!child) {
-          throw Error("Child key is not in child nodes");
-        }
-        return (
-          (direct === null || direct === !child.is_collector) &&
-          entry[1] !== null
-        );
-      })
-      .map((entry) => entry[1]);
-    return children;
-  }
-
-  async __getChildValue(key: string, setDefault: boolean = false): Promise<IPseudo> {
+  async __getChildValue(key: string): Promise<IPseudo> | null | undefined {
     const parent = this.__parentWkri;
     const tile = this.__tile;
     const node = this.__node;
@@ -189,6 +127,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     }
 
     // Call Rust to get the semantic child value (with lazy tile loading)
+    // Rust now always returns a WasmPseudoList (empty if no values found)
     const rustValue = await parent.$.wasmWrapper.retrieveSemanticChildValue(
       tile?.tileid || null,
       node.nodeid,
@@ -196,13 +135,11 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       key
     );
 
-    let child;
-    if (rustValue === null || rustValue === undefined) {
-      // Child not found - always create pseudo
-      child = this.__makePseudo(key);
-    } else {
-      // Wrap the Rust value
-      child = wrapRustPseudo(rustValue, parent, parent.$.model);
+    // Wrap the Rust value - Rust always returns something (possibly empty PseudoList)
+    const child = wrapRustPseudo(rustValue, parent, parent.$.model);
+
+    if (child === null || child === undefined) {
+      return child;
     }
 
     // Set parent node
@@ -214,63 +151,27 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     return child;
   }
 
-  __makePseudo(key: string): IPseudo {
-    const parent = this.__parentWkri;
-    const childNode = parent.$.model.getNodeObjectFromAlias(key);
-
-    if (!childNode) {
-      throw Error(`Child node key ${key} missing`);
-    }
-
-    if (!this.__parentWkri) {
-      throw Error("This semantic node is currently parentless (no WKRI)");
-    }
-
-    if (!this.__parentWkri.$) {
-      // Could autoretreive?
-      throw Error("This semantic node is currently on an unloaded WKRI");
-    }
-
-    const tile = (!childNode.is_collector && childNode.nodegroup_id === this.__node.nodegroup_id) ? this.__tile : null; // Does it share a tile
-    const child = this.__parentWkri.$.addPseudo(childNode, tile, this.__node);
-    child.parentNode = this.__parentPseudo || null;
-    return child;
-  }
-
   static async __create(
     tile: StaticTile,
     node: StaticNode,
-    value: any,
+    _value: any,
     parent: IRIVM<any> | null,
   ): Promise<SemanticViewModel> {
-    const svm = new SemanticViewModel(parent, tile, node);
-    if (value) {
-      try {
-        await svm.__update(value);
-      } catch (e) {
-        tileLoadingError(
-          `
-          Suppressed a tile loading error: ${e}: ${typeof e} (tile: ${tile}; node: ${node}) - ${value}
-        `,
-          e,
-        );
-      }
-    }
-    // await svm.__getChildren();
-    return svm;
+    // Note: value parameter is ignored - semantic nodes don't have direct values,
+    // their children are loaded lazily via __getChildValue
+    return new SemanticViewModel(parent, tile, node);
   }
 
-  async __asTileData() {
-    // Ensure all nodes have populated the tile
+  async __asTileData(): Promise<[null, any[]]> {
+    // Semantic nodes don't have direct tile values - only their children do.
+    // Collect relationships from all cached child values.
     const relationships: any[] = [];
-    for (const value of [...await this.__getChildren(true)]) {
-      // We do not use tile, because a child node will ignore its tile reference.
-      const [, subrelationships] = await value.getTile();
-      relationships.push(...subrelationships);
+    for (const [_, child] of this.__childValues.entries()) {
+      if (child && typeof child.getTile === 'function') {
+        const [, childRelationships] = await child.getTile();
+        relationships.push(...childRelationships);
+      }
     }
-    // This is none because the semantic type has no nodal value,
-    // only its children have nodal values, and the nodal value of this nodeid should
-    // not exist.
     return [null, relationships];
   }
 
@@ -318,6 +219,11 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       // Filter values to only those matching the tileIds from Rust
       const tileIdSet = new Set(tileIds);
 
+      const childNode = parent.$.model.getNodeObjectFromAlias(childAlias);
+      if (!childNode) {
+        throw Error(`Child node alias ${childAlias} not found in model`);
+      }
+
       for (let value of values) {
         // It is possible that this value has already been requested, but the tile is in-flight.
         value = await value;
@@ -326,10 +232,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
           value.node &&
           (!(value.parentNode) || value.parentNode === this.__parentPseudo)
         ) {
-          if (!value.node) {
-            throw Error(`Node ${childNode.alias} (${childNode.nodeid}) is unavailable`);
-          }
-
           // Check if this value's tile matches one of the tiles Rust identified
           const valueTileId = value.tile?.tileid;
           if (!valueTileId || !tileIdSet.has(valueTileId)) {

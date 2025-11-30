@@ -103,6 +103,7 @@ impl StaticTranslatableString {
 }
 
 // Helper to deserialize array or number as Option<u32> (count)
+#[allow(dead_code)]
 fn deserialize_array_or_count<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
 where
     D: Deserializer<'de>,
@@ -118,6 +119,7 @@ where
 }
 
 // Helper to deserialize string or object as Option<String>
+#[allow(dead_code)]
 fn deserialize_string_or_object<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: Deserializer<'de>,
@@ -530,6 +532,7 @@ wasm_wrapper! {
     }
 }
 
+#[allow(dead_code)]
 fn default_datatype() -> String {
     "string".to_string()
 }
@@ -1515,6 +1518,7 @@ impl StaticTile {
 impl StaticTile {
     /// Create a new empty tile for a nodegroup (internal Rust constructor)
     /// Used by json_conversion module for tree_to_tiles
+    #[allow(dead_code)]
     pub(crate) fn new_empty(nodegroup_id: String) -> Self {
         StaticTile(CoreStaticTile::new_empty(nodegroup_id))
     }
@@ -2213,6 +2217,7 @@ impl StaticGraph {
         self.0.root_node()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn graph_id(&self) -> &str {
         self.0.graph_id()
     }
@@ -2510,11 +2515,11 @@ impl StaticResource {
     pub fn tiles(&self) -> JsValue {
         match &self.0.tiles {
             Some(tiles) => {
-                // Manually convert tiles to JS array to ensure getters are used
+                // Return StaticTile WASM objects directly so that getters (like data -> Map) work
                 let js_array = js_sys::Array::new();
                 for tile in tiles {
                     let wrapper = StaticTile(tile.clone());
-                    js_array.push(&wrapper.to_json());
+                    js_array.push(&wrapper.into());
                 }
                 js_array.into()
             }

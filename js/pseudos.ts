@@ -277,15 +277,24 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
       return this._cachedValue;
     }
 
-    // Handle case where tile is null but has inner
+    // Handle case where tile is null but has inner - get tile first, then load
     if (!this._wasm.tile && this.inner) {
       this._cachedValue = new AttrPromise(async (resolve) => {
         const [innerTile] = await this.inner!.getTile();
-        resolve(this.updateValue(innerTile));
+        this._wasm.tile = innerTile;
+        // Call the real loading logic directly, bypassing the cache wrapper
+        const result = await this._updateValueReal();
+        resolve(result);
       }) as AttrPromise<VM>;
       return this._cachedValue;
     }
 
+    // Normal path - do the real work and cache it
+    this._cachedValue = this._updateValueReal();
+    return this._cachedValue;
+  }
+
+  private _updateValueReal(): AttrPromise<VM> {
     // Create tile if needed
     if (!this._wasm.tile) {
       const nodegroupId = this._wasm.nodegroupId || "";
@@ -354,11 +363,9 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
       return vm as VM | null;
     };
 
-    this._cachedValue = new AttrPromise((resolve) => {
+    return new AttrPromise((resolve) => {
       vmPromise.then((vm) => resolve(resolveAttr(vm)));
     }) as AttrPromise<VM>;
-
-    return this._cachedValue;
   }
 
   public getValue(): AttrPromise<VM | null> {
@@ -510,10 +517,10 @@ function wrapRustPseudo(
   rustValue: WasmPseudoValue | WasmPseudoList | null,
   wkri: IRIVM<any>,
   model: any,
-): PseudoValue<any> | PseudoList | PseudoUnavailable {
+): PseudoValue<any> | PseudoList | PseudoUnavailable | null | undefined {
   // Handle null/unavailable case
   if (rustValue === null || rustValue === undefined) {
-    throw new Error("Cannot wrap null rustValue - caller should handle permissions");
+    return rustValue === null ? null : undefined;
   }
 
   // Check if it's a WasmPseudoList (has getAllValues method)
@@ -531,6 +538,8 @@ function wrapRustPseudo(
     }
 
     // Wrap each WasmPseudoValue using static factory
+    // Push getValue() result (AttrPromise) - PseudoList contract expects
+    // IViewModel or Promise<IViewModel>, and AttrPromise allows property chaining
     for (const wasmValue of wasmValues) {
       const pseudoValue = PseudoValue.fromWasm(wasmValue, wkri);
       list.push(pseudoValue.getValue());

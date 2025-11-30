@@ -598,6 +598,49 @@ describe('Static Types', () => {
       expect(StaticResource).toBeDefined();
       expect(typeof StaticResource).toBe('function');
     });
+
+    it('should return tiles with Map data (regression test for tiles getter)', () => {
+      // This tests that StaticResource.tiles getter returns proper StaticTile WASM objects
+      // where tile.data is a Map, not a plain object (bug fix: was calling to_json() instead)
+      const resource = new StaticResource({
+        resourceinstance: {
+          resourceinstanceid: 'res-123',
+          graph_id: 'graph-456',
+          name: 'Test Resource',
+          descriptors: {},
+          legacyid: null,
+          graph_publication_id: null,
+          createdtime: null,
+          editedtime: null
+        },
+        tiles: [
+          {
+            tileid: 'tile-1',
+            nodegroup_id: 'ng-1',
+            resourceinstance_id: 'res-123',
+            data: {
+              'node-a': 'value-a',
+              'node-b': 42
+            },
+            parenttile_id: null,
+            provisionaledits: null,
+            sortorder: 0
+          }
+        ]
+      } as any);
+
+      const tiles = resource.tiles;
+      expect(tiles).toBeDefined();
+      expect(Array.isArray(tiles)).toBe(true);
+      expect(tiles.length).toBe(1);
+
+      const tile = tiles[0];
+      // The key assertion: tile.data should be a Map, not a plain object
+      expect(tile.data).toBeInstanceOf(Map);
+      expect(tile.data.get('node-a')).toBe('value-a');
+      expect(tile.data.get('node-b')).toBe(42);
+      expect(tile.data.has('node-a')).toBe(true);
+    });
   });
 
   describe('Integration', () => {

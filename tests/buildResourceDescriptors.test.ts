@@ -1,18 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { buildResourceDescriptors, DESCRIPTOR_FUNCTION_ID } from '../js/utils';
 import { StaticGraph, StaticNode, StaticResourceDescriptors, StaticFunctionsXGraphs } from '../js/static-types';
-import { ValueList } from '../js/viewModels';
 
 describe('buildResourceDescriptors', () => {
   let mockGraph: StaticGraph;
   let mockNodes: Map<string, StaticNode>;
-  let mockValueList: any;
+  let mockWrapper: any;
 
   beforeEach(() => {
     // Reset mocks before each test
     mockNodes = new Map();
-    mockValueList = {
-      retrieve: vi.fn()
+    mockWrapper = {
+      retrievePseudo: vi.fn()
     };
   });
 
@@ -22,7 +21,7 @@ describe('buildResourceDescriptors', () => {
         functions_x_graphs: undefined
       } as any;
 
-      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
+      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(result).toBeInstanceOf(StaticResourceDescriptors);
       expect(result.name).toBeUndefined();
@@ -39,7 +38,7 @@ describe('buildResourceDescriptors', () => {
         ]
       } as any;
 
-      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
+      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(result).toBeInstanceOf(StaticResourceDescriptors);
       expect(result.name).toBeUndefined();
@@ -57,7 +56,7 @@ describe('buildResourceDescriptors', () => {
         ]
       } as any;
 
-      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
+      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(result).toBeInstanceOf(StaticResourceDescriptors);
       expect(result.name).toBeUndefined();
@@ -92,7 +91,7 @@ describe('buildResourceDescriptors', () => {
         title: Promise.resolve('Test Resource')
       };
 
-      mockValueList.retrieve = vi.fn().mockResolvedValue([{
+      mockWrapper.retrievePseudo = vi.fn().mockResolvedValue([{
         getValue: vi.fn().mockResolvedValue(mockSemanticValue)
       }]);
 
@@ -112,7 +111,7 @@ describe('buildResourceDescriptors', () => {
         ]
       } as any;
 
-      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
+      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(result.name).toBe('Test Resource');
     });
@@ -153,7 +152,7 @@ describe('buildResourceDescriptors', () => {
         year: Promise.resolve('100 AD')
       };
 
-      mockValueList.retrieve = vi.fn().mockResolvedValue([{
+      mockWrapper.retrievePseudo = vi.fn().mockResolvedValue([{
         getValue: vi.fn().mockResolvedValue(mockSemanticValue)
       }]);
 
@@ -173,7 +172,7 @@ describe('buildResourceDescriptors', () => {
         ]
       } as any;
 
-      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
+      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(result.description).toBe('The Rome from 100 AD');
     });
@@ -203,7 +202,7 @@ describe('buildResourceDescriptors', () => {
 
       // Mock value retrieval with no semantic value found
       // and no individual value either (returns empty/undefined)
-      mockValueList.retrieve = vi.fn()
+      mockWrapper.retrievePseudo = vi.fn()
         .mockResolvedValueOnce([{
           getValue: vi.fn().mockResolvedValue(null)
         }])
@@ -225,7 +224,7 @@ describe('buildResourceDescriptors', () => {
         ]
       } as any;
 
-      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
+      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       // Placeholder should remain when value is missing
       expect(result.name).toBe('<Title> Resource');
@@ -267,7 +266,7 @@ describe('buildResourceDescriptors', () => {
         title: Promise.resolve('Rome')
       };
 
-      mockValueList.retrieve = vi.fn().mockResolvedValue([{
+      mockWrapper.retrievePseudo = vi.fn().mockResolvedValue([{
         getValue: vi.fn().mockResolvedValue(mockSemanticValue)
       }]);
 
@@ -287,7 +286,7 @@ describe('buildResourceDescriptors', () => {
         ]
       } as any;
 
-      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
+      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(result.name).toBe('Rome from <Year>');
     });
@@ -311,7 +310,7 @@ describe('buildResourceDescriptors', () => {
         ]
       } as any;
 
-      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
+      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(result.name).toBeUndefined();
     });
@@ -337,7 +336,7 @@ describe('buildResourceDescriptors', () => {
         ]
       } as any;
 
-      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
+      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(result.name).toBeUndefined();
       expect(result.description).toBeUndefined();
@@ -371,7 +370,7 @@ describe('buildResourceDescriptors', () => {
         title: Promise.resolve('Ancient Rome')
       };
 
-      mockValueList.retrieve = vi.fn().mockResolvedValue([{
+      mockWrapper.retrievePseudo = vi.fn().mockResolvedValue([{
         getValue: vi.fn().mockResolvedValue(mockSemanticValue)
       }]);
 
@@ -399,7 +398,7 @@ describe('buildResourceDescriptors', () => {
         ]
       } as any;
 
-      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
+      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(result.name).toBe('Ancient Rome');
       expect(result.description).toBe('Description of Ancient Rome');
@@ -445,7 +444,7 @@ describe('buildResourceDescriptors', () => {
       Object.setPrototypeOf(mockPseudoList, Array.prototype);
       (mockPseudoList as any).constructor = { name: 'PseudoList' };
 
-      mockValueList.retrieve = vi.fn().mockResolvedValue([mockPseudoList]);
+      mockWrapper.retrievePseudo = vi.fn().mockResolvedValue([mockPseudoList]);
 
       mockGraph = {
         functions_x_graphs: [
@@ -463,7 +462,7 @@ describe('buildResourceDescriptors', () => {
         ]
       } as any;
 
-      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
+      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       // Should handle PseudoList and extract value
       expect(result.name).toBe('From PseudoList');
@@ -494,7 +493,7 @@ describe('buildResourceDescriptors', () => {
         getValue: vi.fn().mockResolvedValue('Outer Value')
       };
 
-      mockValueList.retrieve = vi.fn().mockResolvedValue([outerValue]);
+      mockWrapper.retrievePseudo = vi.fn().mockResolvedValue([outerValue]);
 
       mockGraph = {
         functions_x_graphs: [
@@ -512,7 +511,7 @@ describe('buildResourceDescriptors', () => {
         ]
       } as any;
 
-      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
+      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(outerValue.getValue).toHaveBeenCalled();
       expect(outerValue.inner.getValue).toHaveBeenCalled();
@@ -533,7 +532,7 @@ describe('buildResourceDescriptors', () => {
       mockNodes.set('child-1', titleNode);
 
       // No semantic node in mockNodes, so valueList.retrieve will be called for individual nodes
-      mockValueList.retrieve = vi.fn()
+      mockWrapper.retrievePseudo = vi.fn()
         .mockResolvedValueOnce([{
           getValue: vi.fn().mockResolvedValue('Individual Value')
         }]);
@@ -554,10 +553,10 @@ describe('buildResourceDescriptors', () => {
         ]
       } as any;
 
-      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
+      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(result.name).toBe('Individual Value');
-      expect(mockValueList.retrieve).toHaveBeenCalledTimes(1);
+      expect(mockWrapper.retrievePseudo).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -579,7 +578,7 @@ describe('buildResourceDescriptors', () => {
         ]
       } as any;
 
-      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockValueList);
+      const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(result.name).toBe('Static Name');
     });

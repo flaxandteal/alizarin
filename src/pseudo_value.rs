@@ -98,6 +98,10 @@ pub struct RustPseudoList {
 
     /// Whether this list has been fully loaded
     pub is_loaded: bool,
+
+    /// Whether this should be unwrapped to a single value when returned
+    /// (cardinality-1 nodes store as list internally but return single value)
+    pub is_single: bool,
 }
 
 /// Result returned from nodegroup operations
@@ -303,12 +307,23 @@ impl RustPseudoValue {
 }
 
 impl RustPseudoList {
-    /// Create a new empty PseudoList
+    /// Create a new empty PseudoList (defaults to list, not single)
     pub fn new(node_alias: String) -> Self {
         RustPseudoList {
             node_alias,
             values: Vec::new(),
             is_loaded: false,
+            is_single: false,
+        }
+    }
+
+    /// Create a new empty PseudoList with explicit is_single flag
+    pub fn new_with_cardinality(node_alias: String, is_single: bool) -> Self {
+        RustPseudoList {
+            node_alias,
+            values: Vec::new(),
+            is_loaded: false,
+            is_single,
         }
     }
 
@@ -321,6 +336,17 @@ impl RustPseudoList {
             node_alias,
             values,
             is_loaded: true,
+            is_single: false,
+        }
+    }
+
+    /// Create from values with explicit is_single flag
+    pub fn from_values_with_cardinality(node_alias: String, values: Vec<RustPseudoValue>, is_single: bool) -> Self {
+        RustPseudoList {
+            node_alias,
+            values,
+            is_loaded: true,
+            is_single,
         }
     }
 
@@ -330,11 +356,14 @@ impl RustPseudoList {
     /// PORT: js/pseudos.ts:452-461 - collector node handling
     /// When a node is a collector (is_collector=true) with multiple tiles,
     /// group them into a PseudoList
+    ///
+    /// is_single: true if this should unwrap to a single value (cardinality-1 node)
     pub fn from_node_tiles(
         node: Arc<StaticNode>,
         tiles: Vec<Option<Arc<StaticTile>>>,
         edges: &std::collections::HashMap<String, Vec<String>>,
         parent: Option<JsValue>,
+        is_single: bool,
     ) -> Self {
         let mut values = Vec::new();
 
@@ -364,7 +393,7 @@ impl RustPseudoList {
             values.push(value);
         }
 
-        Self::from_values(node.alias.clone().unwrap_or_default(), values)
+        Self::from_values_with_cardinality(node.alias.clone().unwrap_or_default(), values, is_single)
     }
 
     /// Merge another PseudoList into this one
@@ -384,12 +413,47 @@ impl RustPseudoList {
     pub fn values_from_tile(&self, tile_id: Option<&str>) -> Vec<&RustPseudoValue> {
         self.values.iter()
             .filter(|v| {
-                if let Some(tile) = v.tile.as_ref() {
-                    return tile.tileid.as_deref() == tile_id
+                match (v.tile.as_ref(), tile_id) {
+                    // Both have tiles - compare tile IDs
+                    (Some(tile), Some(id)) => tile.tileid.as_deref() == Some(id),
+                    // Looking for values without a tile
+                    (None, None) => true,
+                    // Mismatch: one has tile, other doesn't
+                    _ => false,
                 }
-                false
             })
             .collect()
+    }
+
+    pub fn matching_entries(
+        &self,
+        parent_tile_id: Option<String>,
+        nodegroup_id: Option<String>
+    ) -> Vec<&RustPseudoValue> {
+        self.values.iter()
+            .filter(|v| {
+                if let Some(tile) = v.tile.as_ref() {
+                    if let Some(ng) = nodegroup_id.as_ref() {
+                        if &tile.nodegroup_id == ng {
+                            // If the value's tile is the same as the parent tile, it's a match
+                            // (values on the same tile as the parent semantic node)
+                            if tile.tileid == parent_tile_id {
+                                return true;
+                            }
+                            // If the value's tile has a parenttile_id matching the parent, it's a match
+                            // (values on child tiles of the parent semantic node's tile)
+                            if tile.parenttile_id.is_some() && tile.parenttile_id == parent_tile_id {
+                                return true;
+                            }
+                            // If no parent_tile_id provided and tile has no parenttile_id, it's a root match
+                            if parent_tile_id.is_none() && tile.parenttile_id.is_none() {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                false
+            }).collect()
     }
 }
 
@@ -987,7 +1051,7 @@ mod tests {
         let list = RustPseudoList::from_values("TestNode".to_string(), values);
 
         assert_eq!(list.node_alias, "TestNode");
-        assert_eq!(list.groups.len(), 2); // Two different tiles
+        assert_eq!(list.values.len(), 3); // Three total values (grouped by tile internally)
         assert_eq!(list.all_values().len(), 3); // Three total values
         assert!(list.is_loaded);
     }
@@ -1117,16 +1181,18 @@ mod tests {
 
         list1.merge(list2);
 
-        assert_eq!(list1.groups.len(), 2);
+        // After merge: 3 total values (1 from list1 for tile1, 2 from list2 for tile1 and tile2)
+        assert_eq!(list1.values.len(), 3);
 
-        let tile1_group = list1.groups.iter()
-            .find(|g| g.tile_id.as_deref() == Some("tile1"))
-            .unwrap();
-        assert_eq!(tile1_group.values.len(), 2);
+        // Count values per tile
+        let tile1_count = list1.values.iter()
+            .filter(|v| v.tile.as_ref().and_then(|t| t.tileid.as_deref()) == Some("tile1"))
+            .count();
+        assert_eq!(tile1_count, 2, "Should have 2 values for tile1");
 
-        let tile2_group = list1.groups.iter()
-            .find(|g| g.tile_id.as_deref() == Some("tile2"))
-            .unwrap();
-        assert_eq!(tile2_group.values.len(), 1);
+        let tile2_count = list1.values.iter()
+            .filter(|v| v.tile.as_ref().and_then(|t| t.tileid.as_deref()) == Some("tile2"))
+            .count();
+        assert_eq!(tile2_count, 1, "Should have 1 value for tile2");
     }
 }

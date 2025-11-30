@@ -13,6 +13,7 @@ vi.mock('../js/viewModels', () => ({
       __parentPseudo: pseudo,
       getChildren: () => [],
       getChildTypes: () => ({}),
+      __asTileData: () => [null, []], // Required for getTile() calls
     });
   }),
   viewContext: {},
@@ -364,6 +365,66 @@ describe('Pseudos', () => {
       // Inner's datatype should be 'semantic' (overridden by Rust)
       expect(pseudo.inner!.datatype).toBe('semantic');
       expect(pseudo.inner!.isInner).toBe(true);
+    });
+
+    it('should resolve getValue without infinite loop when outer has no tile (regression test)', async () => {
+      // REGRESSION TEST: When an outer PseudoValue has no tile but has an inner,
+      // getValue() should not create a circular promise reference.
+      // The bug was: updateValue() set _cachedValue to a promise that called
+      // updateValue() recursively, which returned the same _cachedValue promise,
+      // creating a circular reference that never resolved.
+      const testGraph = createStaticGraph({
+        name: "Test Graph",
+        author: "Test Author",
+      });
+
+      const testMutator = new GraphMutator(testGraph);
+      testMutator.addStringNode(
+        null,
+        "parent_node",
+        "Parent Node",
+        "n",
+        "http://www.w3.org/2000/01/rdf-schema#Literal",
+        "http://www.cidoc-crm.org/cidoc-crm/P3_has_note"
+      );
+      testMutator.addStringNode(
+        "parent_node",
+        "child_node",
+        "Child Node",
+        "n",
+        "http://www.w3.org/2000/01/rdf-schema#Literal",
+        "http://www.cidoc-crm.org/cidoc-crm/P3_has_note"
+      );
+      const mutatedGraph = testMutator.apply();
+      const testWrapper = createTestWrapper(mutatedGraph);
+
+      const parentNode = testWrapper.nodesByAlias!.get("parent_node")!;
+      const testParent = {
+        id: 'parent-1',
+        __: testWrapper,
+        $: { model: testWrapper },
+      };
+
+      // Create PseudoValue with null tile - this triggers the inner tile lookup path
+      const pseudo = PseudoValue.create(parentNode, null, null, testParent);
+
+      // Verify we have the inner/outer structure
+      expect(pseudo.isOuter).toBe(true);
+      expect(pseudo.inner).toBeDefined();
+
+      // This should resolve within a reasonable time, not hang forever
+      // The bug would cause this to never resolve (circular promise)
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('getValue() timed out - possible circular promise')), 1000)
+      );
+
+      const result = await Promise.race([
+        pseudo.getValue(),
+        timeoutPromise
+      ]);
+
+      // Should resolve to a value (the mock returns an object)
+      expect(result).toBeDefined();
     });
 
     it('should not create inner/outer for semantic nodes', () => {
