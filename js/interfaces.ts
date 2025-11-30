@@ -85,6 +85,9 @@ interface IModelWrapper<T extends IRIVM<T>> {
   getNodegroupObjects(): Map<string, StaticNodegroup>;
   getEdges(): Map<string, string[]>;
   wkrm: IWKRM;
+  // Phase 4: Methods for PseudoValue creation
+  getNodegroupName(nodegroupId: string): string;
+  createPseudoValue(alias: string | null | undefined, tile: any, parent: any): any;
 };
 
 interface IReferenceDataManager {

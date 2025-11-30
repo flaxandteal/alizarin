@@ -1,0 +1,28 @@
+[package]
+name = "alizarin-explorer"
+version = "0.1.0"
+authors = ["Phil Weir <phil.weir@flaxandteal.co.uk>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "TUI explorer for Alizarin/Arches data structures"
+
+[[bin]]
+name = "alizarin-explorer"
+path = "src/main.rs"
+
+[dependencies]
+# Core alizarin types and loader
+alizarin-core = { path = "../alizarin-core" }
+
+# TUI framework
+ratatui = "0.29"
+crossterm = "0.28"
+
+# CLI argument parsing
+clap = { version = "4.5", features = ["derive"] }
+
+# Error handling
+anyhow = "1.0"
+
+[dev-dependencies]
+tempfile = "3"

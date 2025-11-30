@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { StaticGraphMeta, StaticNode } from '../pkg/alizarin';
+import { StaticGraphMeta, StaticNode, StaticTranslatableString } from '../pkg/alizarin';
 import { initWasmForTests } from './wasm-init';
 
 describe('WASM Graph Module', () => {
@@ -126,10 +126,10 @@ describe('WASM Graph Module', () => {
       expect(node.alias).toBe('new_alias');
       
       // Test description
-      expect(node.description).toBe('Test node description');
-      node.description = 'New description';
-      expect(node.description).toBe('New description');
-      node.description = null;
+      expect(node.description.toString()).toBe('Test node description');
+      node.description = new StaticTranslatableString('New description');
+      expect(node.description.toString()).toBe('New description');
+      node.description = undefined;
       expect(node.description).toBeUndefined(); // Rust Option<String> with None becomes undefined
       
       // Test boolean properties

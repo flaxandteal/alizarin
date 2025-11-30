@@ -1,15 +1,37 @@
 use wasm_bindgen::prelude::*;
-use serde::{Serialize, Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
+use wasm_wrapper_derive::wasm_wrapper;
 
-// StaticTranslatableString - A string with translations
-#[wasm_bindgen]
-#[derive(Clone, Debug)]
-pub struct StaticTranslatableString {
-    translations: HashMap<String, String>,
-    lang: String,
+// Import core types
+use alizarin_core::StaticTranslatableString as CoreTranslatableString;
+use alizarin_core::StaticNodegroup as CoreStaticNodegroup;
+use alizarin_core::StaticEdge as CoreStaticEdge;
+use alizarin_core::StaticConstraint as CoreStaticConstraint;
+use alizarin_core::StaticPublication as CoreStaticPublication;
+use alizarin_core::StaticCardsXNodesXWidgets as CoreStaticCardsXNodesXWidgets;
+use alizarin_core::StaticFunctionsXGraphs as CoreStaticFunctionsXGraphs;
+use alizarin_core::StaticCard as CoreStaticCard;
+use alizarin_core::StaticTile as CoreStaticTile;
+use alizarin_core::StaticResourceSummary as CoreStaticResourceSummary;
+use alizarin_core::StaticResource as CoreStaticResource;
+
+// ============================================================================
+// StaticTranslatableString - WASM wrapper around core type
+// ============================================================================
+
+// Generate the base wrapper with Deref, From, Serialize, Deserialize, Default
+// but skip auto-generated constructor/toJSON/copy since we have custom ones
+wasm_wrapper! {
+    pub struct StaticTranslatableString wraps alizarin_core::StaticTranslatableString {
+        no_constructor,
+        no_to_json,
+        no_copy,
+        impl_default,
+    }
 }
 
+// Custom WASM methods for StaticTranslatableString
 #[wasm_bindgen]
 impl StaticTranslatableString {
     #[wasm_bindgen(constructor)]
@@ -17,51 +39,36 @@ impl StaticTranslatableString {
         let default_lang = lang.unwrap_or_else(|| "en".to_string());
 
         // Try to parse as object (translations map)
-        if let Ok(obj) = serde_wasm_bindgen::from_value::<HashMap<String, String>>(value.clone()) {
-            let current_lang = if obj.contains_key(&default_lang) {
-                default_lang
-            } else {
-                obj.keys().next().cloned().unwrap_or_else(|| "en".to_string())
-            };
-
-            return StaticTranslatableString {
-                translations: obj,
-                lang: current_lang,
-            };
+        if let Ok(translations) = serde_wasm_bindgen::from_value::<HashMap<String, String>>(value.clone()) {
+            return StaticTranslatableString(
+                CoreTranslatableString::from_translations(translations, Some(default_lang))
+            );
         }
 
         // Try as string
         if let Some(s) = value.as_string() {
             let mut translations = HashMap::new();
             translations.insert(default_lang.clone(), s);
-            return StaticTranslatableString {
-                translations,
-                lang: default_lang,
-            };
+            return StaticTranslatableString(
+                CoreTranslatableString::from_translations(translations, Some(default_lang))
+            );
         }
 
         // Empty string fallback
-        let mut translations = HashMap::new();
-        translations.insert(default_lang.clone(), String::new());
-        StaticTranslatableString {
-            translations,
-            lang: default_lang,
-        }
+        StaticTranslatableString(
+            CoreTranslatableString::from_string(String::new())
+        )
     }
 
     #[wasm_bindgen(js_name = toString)]
     pub fn to_string_js(&self) -> String {
-        self.translations.get(&self.lang)
-            .or_else(|| self.translations.values().next())
-            .cloned()
-            .unwrap_or_default()
+        self.0.to_string_default()
     }
 
     #[wasm_bindgen(js_name = toJSON)]
     pub fn to_json(&self) -> JsValue {
-        // Create a plain JS object (not a Map)
         let js_obj = js_sys::Object::new();
-        for (key, val) in &self.translations {
+        for (key, val) in &self.0.translations {
             js_sys::Reflect::set(
                 &js_obj,
                 &JsValue::from_str(key),
@@ -78,14 +85,13 @@ impl StaticTranslatableString {
 
     #[wasm_bindgen(getter = lang)]
     pub fn get_lang(&self) -> String {
-        self.lang.clone()
+        self.0.lang.clone()
     }
 
     #[wasm_bindgen(getter = translations)]
     pub fn get_translations(&self) -> JsValue {
-        // Create a plain JS object (not a Map)
         let js_obj = js_sys::Object::new();
-        for (key, val) in &self.translations {
+        for (key, val) in &self.0.translations {
             js_sys::Reflect::set(
                 &js_obj,
                 &JsValue::from_str(key),
@@ -93,59 +99,6 @@ impl StaticTranslatableString {
             ).ok();
         }
         js_obj.into()
-    }
-}
-
-// Custom serde implementation for StaticTranslatableString
-impl Serialize for StaticTranslatableString {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        self.translations.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for StaticTranslatableString {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        use serde_json::Value;
-        let value = Value::deserialize(deserializer)?;
-
-        match value {
-            Value::Object(map) => {
-                let translations: HashMap<String, String> = map
-                    .into_iter()
-                    .filter_map(|(k, v)| {
-                        v.as_str().map(|s| (k, s.to_string()))
-                    })
-                    .collect();
-
-                let lang = translations.keys().next()
-                    .cloned()
-                    .unwrap_or_else(|| "en".to_string());
-
-                Ok(StaticTranslatableString { translations, lang })
-            }
-            Value::String(s) => {
-                let mut translations = HashMap::new();
-                translations.insert("en".to_string(), s);
-                Ok(StaticTranslatableString {
-                    translations,
-                    lang: "en".to_string(),
-                })
-            }
-            _ => {
-                let mut translations = HashMap::new();
-                translations.insert("en".to_string(), String::new());
-                Ok(StaticTranslatableString {
-                    translations,
-                    lang: "en".to_string(),
-                })
-            }
-        }
     }
 }
 
@@ -223,55 +176,18 @@ fn json_to_js_value(value: &serde_json::Value) -> JsValue {
     }
 }
 
-#[wasm_bindgen]
-#[derive(Serialize, Deserialize, Clone)]
-pub struct StaticGraphMeta {
-    #[serde(default)]
-    author: Option<String>,
-    #[serde(default)]
-    cards: Option<u32>,
-    #[serde(default)]
-    cards_x_nodes_x_widgets: Option<u32>,
-    #[serde(default)]
-    color: Option<String>,
-    #[serde(default)]
-    description: Option<StaticTranslatableString>,
-    #[serde(default)]
-    edges: Option<u32>,
-    #[serde(default)]
-    graphid: String,
-    #[serde(default)]
-    iconclass: Option<String>,
-    #[serde(default)]
-    is_editable: Option<bool>,
-    #[serde(default)]
-    isresource: Option<bool>,
-    #[serde(default)]
-    jsonldcontext: Option<serde_json::Value>,  // Can be a string (URL) or an object (inline context)
-    #[serde(default)]
-    name: Option<StaticTranslatableString>,
-    #[serde(default)]
-    nodegroups: Option<u32>,
-    #[serde(default)]
-    nodes: Option<u32>,
-    #[serde(default)]
-    ontology_id: Option<String>,
-    #[serde(default)]
-    publication: Option<HashMap<String, Option<String>>>,
-    #[serde(default)]
-    relatable_resource_model_ids: Vec<String>,
-    #[serde(default)]
-    resource_2_resource_constraints: Option<Vec<serde_json::Value>>,
-    #[serde(default)]
-    root: Option<Box<StaticNode>>,
-    #[serde(default)]
-    slug: Option<String>,
-    #[serde(default)]
-    subtitle: Option<StaticTranslatableString>,
-    #[serde(default)]
-    version: Option<String>,
-    #[serde(default)]
-    extra_fields: HashMap<String, serde_json::Value>,
+// ============================================================================
+// StaticGraphMeta - WASM wrapper around core type
+// ============================================================================
+
+// Generate the base wrapper with Deref, From, Serialize, Deserialize
+// Custom methods needed for typed returns (StaticTranslatableString, StaticNode wrappers)
+wasm_wrapper! {
+    pub struct StaticGraphMeta wraps alizarin_core::StaticGraphMeta {
+        no_constructor,
+        no_to_json,
+        no_copy,
+    }
 }
 
 #[wasm_bindgen]
@@ -436,12 +352,12 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(getter = description)]
     pub fn get_description(&self) -> Option<StaticTranslatableString> {
-        self.description.clone()
+        self.0.description.clone().map(StaticTranslatableString::from)
     }
 
     #[wasm_bindgen(setter = description)]
     pub fn set_description(&mut self, value: Option<StaticTranslatableString>) {
-        self.description = value;
+        self.0.description = value.map(|v| v.0);
     }
 
     #[wasm_bindgen(js_name = getEdges)]
@@ -487,12 +403,12 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(getter = name)]
     pub fn get_name(&self) -> Option<StaticTranslatableString> {
-        self.name.clone()
+        self.0.name.clone().map(StaticTranslatableString::from)
     }
 
     #[wasm_bindgen(setter = name)]
     pub fn set_name(&mut self, value: Option<StaticTranslatableString>) {
-        self.name = value;
+        self.0.name = value.map(|v| v.0);
     }
 
     #[wasm_bindgen(js_name = getNodeGroups)]
@@ -560,12 +476,12 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(js_name = getRoot)]
     pub fn get_root(&self) -> Option<StaticNode> {
-        self.root.as_ref().map(|b| (**b).clone())
+        self.0.root.as_ref().map(|b| StaticNode::from((**b).clone()))
     }
 
     #[wasm_bindgen(js_name = setRoot)]
     pub fn set_root(&mut self, value: Option<StaticNode>) {
-        self.root = value.map(Box::new);
+        self.0.root = value.map(|v| Box::new(v.0));
     }
 
     #[wasm_bindgen(getter = slug)]
@@ -580,12 +496,12 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(getter = subtitle)]
     pub fn get_subtitle(&self) -> Option<StaticTranslatableString> {
-        self.subtitle.clone()
+        self.0.subtitle.clone().map(StaticTranslatableString::from)
     }
 
     #[wasm_bindgen(setter = subtitle)]
     pub fn set_subtitle(&mut self, value: Option<StaticTranslatableString>) {
-        self.subtitle = value;
+        self.0.subtitle = value.map(|v| v.0);
     }
 
     #[wasm_bindgen(js_name = getVersion)]
@@ -600,36 +516,18 @@ impl StaticGraphMeta {
 
 }
 
-#[wasm_bindgen]
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct StaticNode {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) alias: Option<String>,
-    #[serde(default)]
-    pub(crate) config: HashMap<String, serde_json::Value>,
-    pub(crate) datatype: String,
-    pub(crate) description: Option<StaticTranslatableString>,
-    pub(crate) exportable: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) fieldname: Option<String>,
-    pub(crate) graph_id: String,
-    pub(crate) hascustomalias: bool,
-    pub(crate) is_collector: bool,
-    pub(crate) isrequired: bool,
-    pub(crate) issearchable: bool,
-    pub(crate) istopnode: bool,
-    pub(crate) name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) nodegroup_id: Option<String>,
-    pub(crate) nodeid: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) ontologyclass: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) parentproperty: Option<String>,
-    #[serde(default)]
-    pub(crate) sortorder: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) sourcebranchpublication_id: Option<String>,
+// ============================================================================
+// StaticNode - WASM wrapper around core type
+// ============================================================================
+
+// Generate the base wrapper with Deref, From, Serialize, Deserialize
+// All methods are custom due to typed returns and custom toJSON
+wasm_wrapper! {
+    pub struct StaticNode wraps alizarin_core::StaticNode {
+        no_constructor,
+        no_to_json,
+        no_copy,
+    }
 }
 
 fn default_datatype() -> String {
@@ -713,22 +611,22 @@ impl StaticNode {
 
     #[wasm_bindgen(setter = datatype)]
     pub fn set_datatype(&mut self, value: String) {
-        self.datatype = value;
+        self.0.datatype = value;
     }
 
     #[wasm_bindgen(getter = description)]
     pub fn get_description(&self) -> Option<StaticTranslatableString> {
-        self.description.clone()
+        self.0.description.clone().map(StaticTranslatableString::from)
     }
 
     #[wasm_bindgen(setter = description)]
     pub fn set_description(&mut self, value: Option<StaticTranslatableString>) {
-        self.description = value;
+        self.0.description = value.map(|v| v.0);
     }
 
     #[wasm_bindgen(getter = exportable)]
     pub fn get_exportable(&self) -> bool {
-        self.exportable
+        self.0.exportable
     }
 
     #[wasm_bindgen(setter = exportable)]
@@ -957,24 +855,29 @@ impl StaticNode {
     }
 }
 
-// StaticNodegroup
-#[wasm_bindgen]
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct StaticNodegroup {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) cardinality: Option<String>, // "1" | "n" | null
-    pub(crate) legacygroupid: Option<String>, // Always null in practice
-    pub(crate) nodegroupid: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) parentnodegroup_id: Option<String>,
+// ============================================================================
+// StaticNodegroup - WASM wrapper around core type
+// ============================================================================
+
+// Generate the base wrapper. Custom methods needed for:
+// - toJSON: explicit null handling
+// - Typed getters (Option<String>, String) instead of JsValue
+// - legacygroupid always returns null
+// - parentnodegroup_id returns JsValue not Option<String>
+wasm_wrapper! {
+    pub struct StaticNodegroup wraps alizarin_core::StaticNodegroup {
+        no_constructor,
+        no_to_json,
+        no_copy,
+    }
 }
 
 #[wasm_bindgen]
 impl StaticNodegroup {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticNodegroup, JsValue> {
-        let data: StaticNodegroup = serde_wasm_bindgen::from_value(json_data)?;
-        Ok(data)
+        let data: CoreStaticNodegroup = serde_wasm_bindgen::from_value(json_data)?;
+        Ok(StaticNodegroup(data))
     }
 
     #[wasm_bindgen]
@@ -987,14 +890,14 @@ impl StaticNodegroup {
         use serde_json::json;
         let mut obj = serde_json::Map::new();
 
-        if let Some(ref val) = self.cardinality {
+        if let Some(ref val) = self.0.cardinality {
             obj.insert("cardinality".to_string(), json!(val));
         } else {
             obj.insert("cardinality".to_string(), json!(null));
         }
         obj.insert("legacygroupid".to_string(), json!(null));
-        obj.insert("nodegroupid".to_string(), json!(self.nodegroupid));
-        if let Some(ref val) = self.parentnodegroup_id {
+        obj.insert("nodegroupid".to_string(), json!(self.0.nodegroupid));
+        if let Some(ref val) = self.0.parentnodegroup_id {
             obj.insert("parentnodegroup_id".to_string(), json!(val));
         } else {
             obj.insert("parentnodegroup_id".to_string(), json!(null));
@@ -1005,12 +908,12 @@ impl StaticNodegroup {
 
     #[wasm_bindgen(getter = cardinality)]
     pub fn get_cardinality(&self) -> Option<String> {
-        self.cardinality.clone()
+        self.0.cardinality.clone()
     }
 
     #[wasm_bindgen(setter = cardinality)]
     pub fn set_cardinality(&mut self, value: Option<String>) {
-        self.cardinality = value;
+        self.0.cardinality = value;
     }
 
     #[wasm_bindgen(getter = legacygroupid)]
@@ -1020,17 +923,17 @@ impl StaticNodegroup {
 
     #[wasm_bindgen(getter = nodegroupid)]
     pub fn get_nodegroupid(&self) -> String {
-        self.nodegroupid.clone()
+        self.0.nodegroupid.clone()
     }
 
     #[wasm_bindgen(setter = nodegroupid)]
     pub fn set_nodegroupid(&mut self, value: String) {
-        self.nodegroupid = value;
+        self.0.nodegroupid = value;
     }
 
     #[wasm_bindgen(getter = parentnodegroup_id)]
     pub fn get_parentnodegroup_id(&self) -> JsValue {
-        match &self.parentnodegroup_id {
+        match &self.0.parentnodegroup_id {
             Some(val) => JsValue::from_str(val),
             None => JsValue::NULL,
         }
@@ -1038,101 +941,78 @@ impl StaticNodegroup {
 
     #[wasm_bindgen(setter = parentnodegroup_id)]
     pub fn set_parentnodegroup_id(&mut self, value: Option<String>) {
-        self.parentnodegroup_id = value;
+        self.0.parentnodegroup_id = value;
     }
 }
 
-// StaticConstraint
-#[wasm_bindgen]
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct StaticConstraint {
-    card_id: String,
-    constraintid: String,
-    nodes: Vec<String>,
-    uniquetoallinstances: bool,
+// ============================================================================
+// StaticConstraint - WASM wrapper around core type
+// ============================================================================
+
+wasm_wrapper! {
+    pub struct StaticConstraint wraps alizarin_core::StaticConstraint {
+        no_constructor,
+        no_to_json,
+        no_copy,
+        get set card_id,
+        get set constraintid,
+        get set uniquetoallinstances,
+    }
 }
 
 #[wasm_bindgen]
 impl StaticConstraint {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticConstraint, JsValue> {
-        let data: StaticConstraint = serde_wasm_bindgen::from_value(json_data)?;
-        Ok(data)
+        let data: CoreStaticConstraint = serde_wasm_bindgen::from_value(json_data)?;
+        Ok(StaticConstraint(data))
     }
 
     #[wasm_bindgen(js_name = toJSON)]
     pub fn to_json(&self) -> JsValue {
         use serde_json::json;
         let mut obj = serde_json::Map::new();
-
-        obj.insert("card_id".to_string(), json!(self.card_id));
-        obj.insert("constraintid".to_string(), json!(self.constraintid));
-        obj.insert("nodes".to_string(), json!(self.nodes));
-        obj.insert("uniquetoallinstances".to_string(), json!(self.uniquetoallinstances));
-
+        obj.insert("card_id".to_string(), json!(self.0.card_id));
+        obj.insert("constraintid".to_string(), json!(self.0.constraintid));
+        obj.insert("nodes".to_string(), json!(self.0.nodes));
+        obj.insert("uniquetoallinstances".to_string(), json!(self.0.uniquetoallinstances));
         json_to_js_value(&serde_json::Value::Object(obj))
-    }
-
-    #[wasm_bindgen(getter = card_id)]
-    pub fn get_card_id(&self) -> String {
-        self.card_id.clone()
-    }
-
-    #[wasm_bindgen(setter = card_id)]
-    pub fn set_card_id(&mut self, value: String) {
-        self.card_id = value;
-    }
-
-    #[wasm_bindgen(getter = constraintid)]
-    pub fn get_constraintid(&self) -> String {
-        self.constraintid.clone()
-    }
-
-    #[wasm_bindgen(setter = constraintid)]
-    pub fn set_constraintid(&mut self, value: String) {
-        self.constraintid = value;
     }
 
     #[wasm_bindgen(getter = nodes)]
     pub fn get_nodes(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.nodes).unwrap_or(JsValue::NULL)
+        serde_wasm_bindgen::to_value(&self.0.nodes).unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(setter = nodes)]
     pub fn set_nodes(&mut self, value: JsValue) {
         if let Ok(nodes) = serde_wasm_bindgen::from_value(value) {
-            self.nodes = nodes;
+            self.0.nodes = nodes;
         }
-    }
-
-    #[wasm_bindgen(getter = uniquetoallinstances)]
-    pub fn get_uniquetoallinstances(&self) -> bool {
-        self.uniquetoallinstances
-    }
-
-    #[wasm_bindgen(setter = uniquetoallinstances)]
-    pub fn set_uniquetoallinstances(&mut self, value: bool) {
-        self.uniquetoallinstances = value;
     }
 }
 
-// StaticPublication
-#[wasm_bindgen]
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct StaticPublication {
-    graph_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    notes: Option<String>,
-    publicationid: String,
-    published_time: String,
+// ============================================================================
+// StaticPublication - WASM wrapper around core type
+// ============================================================================
+
+wasm_wrapper! {
+    pub struct StaticPublication wraps alizarin_core::StaticPublication {
+        no_constructor,
+        no_to_json,
+        no_copy,
+        get set graph_id,
+        get set publicationid,
+        get set published_time,
+    }
 }
 
 #[wasm_bindgen]
 impl StaticPublication {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticPublication, JsValue> {
-        let data: StaticPublication = serde_wasm_bindgen::from_value(json_data)?;
-        Ok(data)
+        let data: CoreStaticPublication = serde_wasm_bindgen::from_value(json_data)?;
+        Ok(StaticPublication(data))
     }
 
     #[wasm_bindgen]
@@ -1144,32 +1024,20 @@ impl StaticPublication {
     pub fn to_json(&self) -> JsValue {
         use serde_json::json;
         let mut obj = serde_json::Map::new();
-
-        obj.insert("graph_id".to_string(), json!(self.graph_id));
-        if let Some(ref val) = self.notes {
+        obj.insert("graph_id".to_string(), json!(self.0.graph_id));
+        if let Some(ref val) = self.0.notes {
             obj.insert("notes".to_string(), json!(val));
         } else {
             obj.insert("notes".to_string(), json!(null));
         }
-        obj.insert("publicationid".to_string(), json!(self.publicationid));
-        obj.insert("published_time".to_string(), json!(self.published_time));
-
+        obj.insert("publicationid".to_string(), json!(self.0.publicationid));
+        obj.insert("published_time".to_string(), json!(self.0.published_time));
         json_to_js_value(&serde_json::Value::Object(obj))
-    }
-
-    #[wasm_bindgen(getter = graph_id)]
-    pub fn get_graph_id(&self) -> String {
-        self.graph_id.clone()
-    }
-
-    #[wasm_bindgen(setter = graph_id)]
-    pub fn set_graph_id(&mut self, value: String) {
-        self.graph_id = value;
     }
 
     #[wasm_bindgen(getter = notes)]
     pub fn get_notes(&self) -> JsValue {
-        match &self.notes {
+        match &self.0.notes {
             Some(val) => JsValue::from_str(val),
             None => JsValue::NULL,
         }
@@ -1177,173 +1045,97 @@ impl StaticPublication {
 
     #[wasm_bindgen(setter = notes)]
     pub fn set_notes(&mut self, value: Option<String>) {
-        self.notes = value;
-    }
-
-    #[wasm_bindgen(getter = publicationid)]
-    pub fn get_publicationid(&self) -> String {
-        self.publicationid.clone()
-    }
-
-    #[wasm_bindgen(setter = publicationid)]
-    pub fn set_publicationid(&mut self, value: String) {
-        self.publicationid = value;
-    }
-
-    #[wasm_bindgen(getter = published_time)]
-    pub fn get_published_time(&self) -> String {
-        self.published_time.clone()
-    }
-
-    #[wasm_bindgen(setter = published_time)]
-    pub fn set_published_time(&mut self, value: String) {
-        self.published_time = value;
+        self.0.notes = value;
     }
 }
 
-// StaticCardsXNodesXWidgets
-#[wasm_bindgen]
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct StaticCardsXNodesXWidgets {
-    card_id: String,
-    #[serde(default)]
-    config: serde_json::Value,
-    id: String,
-    label: StaticTranslatableString,
-    node_id: String,
-    #[serde(default)]
-    sortorder: Option<i32>,
-    visible: bool,
-    widget_id: String,
+// ============================================================================
+// StaticCardsXNodesXWidgets - WASM wrapper around core type
+// ============================================================================
+
+wasm_wrapper! {
+    pub struct StaticCardsXNodesXWidgets wraps alizarin_core::StaticCardsXNodesXWidgets {
+        no_constructor,
+        no_to_json,
+        no_copy,
+        get set card_id,
+        get set id,
+        get set node_id,
+        get set sortorder,
+        get set visible,
+        get set widget_id,
+    }
 }
 
 #[wasm_bindgen]
 impl StaticCardsXNodesXWidgets {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticCardsXNodesXWidgets, JsValue> {
-        let data: StaticCardsXNodesXWidgets = serde_wasm_bindgen::from_value(json_data)?;
-        Ok(data)
+        let data: CoreStaticCardsXNodesXWidgets = serde_wasm_bindgen::from_value(json_data)?;
+        Ok(StaticCardsXNodesXWidgets(data))
     }
 
     #[wasm_bindgen(js_name = toJSON)]
     pub fn to_json(&self) -> JsValue {
         use serde_json::json;
         let mut obj = serde_json::Map::new();
-
-        obj.insert("card_id".to_string(), json!(self.card_id));
-        obj.insert("config".to_string(), self.config.clone());
-        obj.insert("id".to_string(), json!(self.id));
-        obj.insert("label".to_string(), json!(self.label));
-        obj.insert("node_id".to_string(), json!(self.node_id));
-        if let Some(val) = self.sortorder {
+        obj.insert("card_id".to_string(), json!(self.0.card_id));
+        obj.insert("config".to_string(), self.0.config.clone());
+        obj.insert("id".to_string(), json!(self.0.id));
+        obj.insert("label".to_string(), json!(self.0.label));
+        obj.insert("node_id".to_string(), json!(self.0.node_id));
+        if let Some(val) = self.0.sortorder {
             obj.insert("sortorder".to_string(), json!(val));
         }
-        obj.insert("visible".to_string(), json!(self.visible));
-        obj.insert("widget_id".to_string(), json!(self.widget_id));
-
+        obj.insert("visible".to_string(), json!(self.0.visible));
+        obj.insert("widget_id".to_string(), json!(self.0.widget_id));
         json_to_js_value(&serde_json::Value::Object(obj))
-    }
-
-    #[wasm_bindgen(getter = card_id)]
-    pub fn get_card_id(&self) -> String {
-        self.card_id.clone()
-    }
-
-    #[wasm_bindgen(setter = card_id)]
-    pub fn set_card_id(&mut self, value: String) {
-        self.card_id = value;
     }
 
     #[wasm_bindgen(getter = config)]
     pub fn get_config(&self) -> JsValue {
-        json_to_js_value(&self.config)
+        json_to_js_value(&self.0.config)
     }
 
     #[wasm_bindgen(setter = config)]
     pub fn set_config(&mut self, value: JsValue) {
         if let Ok(config) = serde_wasm_bindgen::from_value(value) {
-            self.config = config;
+            self.0.config = config;
         }
-    }
-
-    #[wasm_bindgen(getter = id)]
-    pub fn get_id(&self) -> String {
-        self.id.clone()
-    }
-
-    #[wasm_bindgen(setter = id)]
-    pub fn set_id(&mut self, value: String) {
-        self.id = value;
     }
 
     #[wasm_bindgen(getter = label)]
     pub fn get_label(&self) -> StaticTranslatableString {
-        self.label.clone()
+        StaticTranslatableString::from(self.0.label.clone())
     }
 
     #[wasm_bindgen(setter = label)]
     pub fn set_label(&mut self, value: StaticTranslatableString) {
-        self.label = value;
-    }
-
-    #[wasm_bindgen(getter = node_id)]
-    pub fn get_node_id(&self) -> String {
-        self.node_id.clone()
-    }
-
-    #[wasm_bindgen(setter = node_id)]
-    pub fn set_node_id(&mut self, value: String) {
-        self.node_id = value;
-    }
-
-    #[wasm_bindgen(getter = sortorder)]
-    pub fn get_sortorder(&self) -> Option<i32> {
-        self.sortorder
-    }
-
-    #[wasm_bindgen(setter = sortorder)]
-    pub fn set_sortorder(&mut self, value: Option<i32>) {
-        self.sortorder = value;
-    }
-
-    #[wasm_bindgen(getter = visible)]
-    pub fn get_visible(&self) -> bool {
-        self.visible
-    }
-
-    #[wasm_bindgen(setter = visible)]
-    pub fn set_visible(&mut self, value: bool) {
-        self.visible = value;
-    }
-
-    #[wasm_bindgen(getter = widget_id)]
-    pub fn get_widget_id(&self) -> String {
-        self.widget_id.clone()
-    }
-
-    #[wasm_bindgen(setter = widget_id)]
-    pub fn set_widget_id(&mut self, value: String) {
-        self.widget_id = value;
+        self.0.label = value.0;
     }
 }
 
-// StaticFunctionsXGraphs
-#[wasm_bindgen]
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct StaticFunctionsXGraphs {
-    #[serde(default)]
-    config: serde_json::Value,
-    function_id: String,
-    graph_id: String,
-    id: String,
+// ============================================================================
+// StaticFunctionsXGraphs - WASM wrapper around core type
+// ============================================================================
+
+wasm_wrapper! {
+    pub struct StaticFunctionsXGraphs wraps alizarin_core::StaticFunctionsXGraphs {
+        no_constructor,
+        no_to_json,
+        no_copy,
+        get set function_id,
+        get set graph_id,
+        get set id,
+    }
 }
 
 #[wasm_bindgen]
 impl StaticFunctionsXGraphs {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticFunctionsXGraphs, JsValue> {
-        let data: StaticFunctionsXGraphs = serde_wasm_bindgen::from_value(json_data)?;
-        Ok(data)
+        let data: CoreStaticFunctionsXGraphs = serde_wasm_bindgen::from_value(json_data)?;
+        Ok(StaticFunctionsXGraphs(data))
     }
 
     #[wasm_bindgen]
@@ -1355,92 +1147,54 @@ impl StaticFunctionsXGraphs {
     pub fn to_json(&self) -> JsValue {
         use serde_json::json;
         let mut obj = serde_json::Map::new();
-
-        obj.insert("config".to_string(), json!(self.config));
-        obj.insert("function_id".to_string(), json!(self.function_id));
-        obj.insert("graph_id".to_string(), json!(self.graph_id));
-        obj.insert("id".to_string(), json!(self.id));
-
+        obj.insert("config".to_string(), json!(self.0.config));
+        obj.insert("function_id".to_string(), json!(self.0.function_id));
+        obj.insert("graph_id".to_string(), json!(self.0.graph_id));
+        obj.insert("id".to_string(), json!(self.0.id));
         json_to_js_value(&serde_json::Value::Object(obj))
     }
 
     #[wasm_bindgen(getter = config)]
     pub fn get_config(&self) -> JsValue {
-        json_to_js_value(&self.config)
+        json_to_js_value(&self.0.config)
     }
 
     #[wasm_bindgen(setter = config)]
     pub fn set_config(&mut self, value: JsValue) {
         if let Ok(config) = serde_wasm_bindgen::from_value(value) {
-            self.config = config;
+            self.0.config = config;
         }
-    }
-
-    #[wasm_bindgen(getter = function_id)]
-    pub fn get_function_id(&self) -> String {
-        self.function_id.clone()
-    }
-
-    #[wasm_bindgen(setter = function_id)]
-    pub fn set_function_id(&mut self, value: String) {
-        self.function_id = value;
-    }
-
-    #[wasm_bindgen(getter = graph_id)]
-    pub fn get_graph_id(&self) -> String {
-        self.graph_id.clone()
-    }
-
-    #[wasm_bindgen(setter = graph_id)]
-    pub fn set_graph_id(&mut self, value: String) {
-        self.graph_id = value;
-    }
-
-    #[wasm_bindgen(getter = id)]
-    pub fn get_id(&self) -> String {
-        self.id.clone()
-    }
-
-    #[wasm_bindgen(setter = id)]
-    pub fn set_id(&mut self, value: String) {
-        self.id = value;
     }
 }
 
-// StaticCard
-#[wasm_bindgen]
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct StaticCard {
-    active: bool,
-    cardid: String,
-    component_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    config: Option<serde_json::Value>,
-    #[serde(default)]
-    constraints: Vec<StaticConstraint>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    cssclass: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "deserialize_string_or_object", default)]
-    description: Option<String>,
-    graph_id: String,
-    helpenabled: bool,
-    helptext: StaticTranslatableString,
-    helptitle: StaticTranslatableString,
-    instructions: StaticTranslatableString,
-    is_editable: bool,
-    name: StaticTranslatableString,
-    nodegroup_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sortorder: Option<i32>,
-    visible: bool,
+// ============================================================================
+// StaticCard - WASM wrapper around core type
+// ============================================================================
+
+wasm_wrapper! {
+    pub struct StaticCard wraps alizarin_core::StaticCard {
+        no_constructor,
+        no_to_json,
+        no_copy,
+        get set active,
+        get set cardid,
+        get set component_id,
+        get set cssclass,
+        get set graph_id,
+        get set helpenabled,
+        get set is_editable,
+        get set nodegroup_id,
+        get set sortorder,
+        get set visible,
+    }
 }
 
 #[wasm_bindgen]
 impl StaticCard {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticCard, JsValue> {
-        let data: StaticCard = serde_wasm_bindgen::from_value(json_data)?;
-        Ok(data)
+        let data: CoreStaticCard = serde_wasm_bindgen::from_value(json_data)?;
+        Ok(StaticCard(data))
     }
 
     #[wasm_bindgen(js_name = toJSON)]
@@ -1448,267 +1202,144 @@ impl StaticCard {
         use serde_json::json;
         let mut obj = serde_json::Map::new();
 
-        obj.insert("active".to_string(), json!(self.active));
-        obj.insert("cardid".to_string(), json!(self.cardid));
-        obj.insert("component_id".to_string(), json!(self.component_id));
-        if let Some(ref val) = self.config {
+        obj.insert("active".to_string(), json!(self.0.active));
+        obj.insert("cardid".to_string(), json!(self.0.cardid));
+        obj.insert("component_id".to_string(), json!(self.0.component_id));
+        if let Some(ref val) = self.0.config {
             obj.insert("config".to_string(), val.clone());
         }
-        obj.insert("constraints".to_string(), json!(self.constraints));
-        if let Some(ref val) = self.cssclass {
+        obj.insert("constraints".to_string(), json!(self.0.constraints));
+        if let Some(ref val) = self.0.cssclass {
             obj.insert("cssclass".to_string(), json!(val));
         } else {
             obj.insert("cssclass".to_string(), json!(null));
         }
-        if let Some(ref val) = self.description {
+        if let Some(ref val) = self.0.description {
             obj.insert("description".to_string(), json!(val));
         } else {
             obj.insert("description".to_string(), json!(null));
         }
-        obj.insert("graph_id".to_string(), json!(self.graph_id));
-        obj.insert("helpenabled".to_string(), json!(self.helpenabled));
-        obj.insert("helptext".to_string(), json!(self.helptext));
-        obj.insert("helptitle".to_string(), json!(self.helptitle));
-        obj.insert("instructions".to_string(), json!(self.instructions));
-        obj.insert("is_editable".to_string(), json!(self.is_editable));
-        obj.insert("name".to_string(), json!(self.name));
-        obj.insert("nodegroup_id".to_string(), json!(self.nodegroup_id));
-        if let Some(val) = self.sortorder {
+        obj.insert("graph_id".to_string(), json!(self.0.graph_id));
+        obj.insert("helpenabled".to_string(), json!(self.0.helpenabled));
+        obj.insert("helptext".to_string(), json!(self.0.helptext));
+        obj.insert("helptitle".to_string(), json!(self.0.helptitle));
+        obj.insert("instructions".to_string(), json!(self.0.instructions));
+        obj.insert("is_editable".to_string(), json!(self.0.is_editable));
+        obj.insert("name".to_string(), json!(self.0.name));
+        obj.insert("nodegroup_id".to_string(), json!(self.0.nodegroup_id));
+        if let Some(val) = self.0.sortorder {
             obj.insert("sortorder".to_string(), json!(val));
         } else {
             obj.insert("sortorder".to_string(), json!(null));
         }
-        obj.insert("visible".to_string(), json!(self.visible));
+        obj.insert("visible".to_string(), json!(self.0.visible));
 
         json_to_js_value(&serde_json::Value::Object(obj))
     }
 
-    #[wasm_bindgen(getter = active)]
-    pub fn get_active(&self) -> bool {
-        self.active
-    }
-
-    #[wasm_bindgen(setter = active)]
-    pub fn set_active(&mut self, value: bool) {
-        self.active = value;
-    }
-
-    #[wasm_bindgen(getter = cardid)]
-    pub fn get_cardid(&self) -> String {
-        self.cardid.clone()
-    }
-
-    #[wasm_bindgen(setter = cardid)]
-    pub fn set_cardid(&mut self, value: String) {
-        self.cardid = value;
-    }
-
-    #[wasm_bindgen(getter = component_id)]
-    pub fn get_component_id(&self) -> String {
-        self.component_id.clone()
-    }
-
-    #[wasm_bindgen(setter = component_id)]
-    pub fn set_component_id(&mut self, value: String) {
-        self.component_id = value;
-    }
-
     #[wasm_bindgen(getter = config)]
     pub fn get_config(&self) -> JsValue {
-        self.config.as_ref().map(|c| json_to_js_value(c)).unwrap_or(JsValue::UNDEFINED)
+        self.0.config.as_ref().map(|c| json_to_js_value(c)).unwrap_or(JsValue::UNDEFINED)
     }
 
     #[wasm_bindgen(setter = config)]
     pub fn set_config(&mut self, value: JsValue) {
         if let Ok(config) = serde_wasm_bindgen::from_value(value) {
-            self.config = Some(config);
+            self.0.config = Some(config);
         }
     }
 
     #[wasm_bindgen(getter = constraints)]
     pub fn get_constraints(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.constraints).unwrap_or(JsValue::NULL)
+        serde_wasm_bindgen::to_value(&self.0.constraints).unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(setter = constraints)]
     pub fn set_constraints(&mut self, value: JsValue) {
         if let Ok(constraints) = serde_wasm_bindgen::from_value(value) {
-            self.constraints = constraints;
+            self.0.constraints = constraints;
         }
     }
 
-    #[wasm_bindgen(getter = cssclass)]
-    pub fn get_cssclass(&self) -> Option<String> {
-        self.cssclass.clone()
-    }
-
-    #[wasm_bindgen(setter = cssclass)]
-    pub fn set_cssclass(&mut self, value: Option<String>) {
-        self.cssclass = value;
-    }
-
     #[wasm_bindgen(getter = description)]
-    pub fn get_description(&self) -> Option<String> {
-        self.description.clone()
+    pub fn get_description(&self) -> Option<StaticTranslatableString> {
+        self.0.description.as_ref().map(|d| StaticTranslatableString::from(d.clone()))
     }
 
     #[wasm_bindgen(setter = description)]
-    pub fn set_description(&mut self, value: Option<String>) {
-        self.description = value;
-    }
-
-    #[wasm_bindgen(getter = graph_id)]
-    pub fn get_graph_id(&self) -> String {
-        self.graph_id.clone()
-    }
-
-    #[wasm_bindgen(setter = graph_id)]
-    pub fn set_graph_id(&mut self, value: String) {
-        self.graph_id = value;
-    }
-
-    #[wasm_bindgen(getter = helpenabled)]
-    pub fn get_helpenabled(&self) -> bool {
-        self.helpenabled
-    }
-
-    #[wasm_bindgen(setter = helpenabled)]
-    pub fn set_helpenabled(&mut self, value: bool) {
-        self.helpenabled = value;
+    pub fn set_description(&mut self, value: Option<StaticTranslatableString>) {
+        self.0.description = value.map(|v| v.0);
     }
 
     #[wasm_bindgen(getter = helptext)]
     pub fn get_helptext(&self) -> StaticTranslatableString {
-        self.helptext.clone()
+        StaticTranslatableString::from(self.0.helptext.clone())
     }
 
     #[wasm_bindgen(setter = helptext)]
     pub fn set_helptext(&mut self, value: StaticTranslatableString) {
-        self.helptext = value;
+        self.0.helptext = value.0;
     }
 
     #[wasm_bindgen(getter = helptitle)]
     pub fn get_helptitle(&self) -> StaticTranslatableString {
-        self.helptitle.clone()
+        StaticTranslatableString::from(self.0.helptitle.clone())
     }
 
     #[wasm_bindgen(setter = helptitle)]
     pub fn set_helptitle(&mut self, value: StaticTranslatableString) {
-        self.helptitle = value;
+        self.0.helptitle = value.0;
     }
 
     #[wasm_bindgen(getter = instructions)]
     pub fn get_instructions(&self) -> StaticTranslatableString {
-        self.instructions.clone()
+        StaticTranslatableString::from(self.0.instructions.clone())
     }
 
     #[wasm_bindgen(setter = instructions)]
     pub fn set_instructions(&mut self, value: StaticTranslatableString) {
-        self.instructions = value;
-    }
-
-    #[wasm_bindgen(getter = is_editable)]
-    pub fn get_is_editable(&self) -> bool {
-        self.is_editable
-    }
-
-    #[wasm_bindgen(setter = is_editable)]
-    pub fn set_is_editable(&mut self, value: bool) {
-        self.is_editable = value;
+        self.0.instructions = value.0;
     }
 
     #[wasm_bindgen(getter = name)]
     pub fn get_name(&self) -> StaticTranslatableString {
-        self.name.clone()
+        StaticTranslatableString::from(self.0.name.clone())
     }
 
     #[wasm_bindgen(setter = name)]
     pub fn set_name(&mut self, value: StaticTranslatableString) {
-        self.name = value;
-    }
-
-    #[wasm_bindgen(getter = nodegroup_id)]
-    pub fn get_nodegroup_id(&self) -> String {
-        self.nodegroup_id.clone()
-    }
-
-    #[wasm_bindgen(setter = nodegroup_id)]
-    pub fn set_nodegroup_id(&mut self, value: String) {
-        self.nodegroup_id = value;
-    }
-
-    #[wasm_bindgen(getter = sortorder)]
-    pub fn get_sortorder(&self) -> Option<i32> {
-        self.sortorder
-    }
-
-    #[wasm_bindgen(setter = sortorder)]
-    pub fn set_sortorder(&mut self, value: Option<i32>) {
-        self.sortorder = value;
-    }
-
-    #[wasm_bindgen(getter = visible)]
-    pub fn get_visible(&self) -> bool {
-        self.visible
-    }
-
-    #[wasm_bindgen(setter = visible)]
-    pub fn set_visible(&mut self, value: bool) {
-        self.visible = value;
+        self.0.name = value.0;
     }
 }
 
-// Custom deserializer for tile data - converts object to HashMap
-fn deserialize_tile_data<'de, D>(deserializer: D) -> Result<HashMap<String, serde_json::Value>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    use serde_json::Value;
-    let value = Value::deserialize(deserializer)?;
-
-    match value {
-        Value::Object(map) => {
-            Ok(map.into_iter().collect())
-        }
-        Value::Null => Ok(HashMap::new()),
-        _ => Ok(HashMap::new()),
+// StaticTile - wrapper around core type with custom data handling
+wasm_wrapper! {
+    pub struct StaticTile wraps alizarin_core::StaticTile {
+        no_constructor,
+        no_to_json,
+        no_copy,
     }
-}
-
-// StaticTile
-#[wasm_bindgen]
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StaticTile {
-    #[serde(deserialize_with = "deserialize_tile_data", default)]
-    #[wasm_bindgen(skip)]
-    pub data: HashMap<String, serde_json::Value>,
-    pub(crate) nodegroup_id: String,
-    pub(crate) resourceinstance_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) tileid: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) parenttile_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    provisionaledits: Option<Vec<serde_json::Value>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    sortorder: Option<i32>,
 }
 
 #[wasm_bindgen]
 impl StaticTile {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticTile, JsValue> {
-        let data: StaticTile = serde_wasm_bindgen::from_value(json_data)?;
-        Ok(data)
+        let data: CoreStaticTile = serde_wasm_bindgen::from_value(json_data)?;
+        Ok(StaticTile(data))
+    }
+
+    pub fn copy(&self) -> StaticTile {
+        StaticTile(self.0.clone())
     }
 
     #[wasm_bindgen(js_name = ensureId)]
     pub fn ensure_id(&mut self) -> String {
-        if self.tileid.is_none() {
+        if self.0.tileid.is_none() {
             // Generate a UUID
-            self.tileid = Some(uuid::Uuid::new_v4().to_string());
+            self.0.tileid = Some(uuid::Uuid::new_v4().to_string());
         }
-        self.tileid.clone().unwrap()
+        self.0.tileid.clone().unwrap()
     }
 
     #[wasm_bindgen(js_name = toJSON)]
@@ -1718,31 +1349,31 @@ impl StaticTile {
 
         // Convert HashMap to plain object for data field
         let data_obj: serde_json::Map<String, serde_json::Value> =
-            self.data.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            self.0.data.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         obj.insert("data".to_string(), json!(data_obj));
 
-        obj.insert("nodegroup_id".to_string(), json!(self.nodegroup_id));
-        obj.insert("resourceinstance_id".to_string(), json!(self.resourceinstance_id));
+        obj.insert("nodegroup_id".to_string(), json!(self.0.nodegroup_id));
+        obj.insert("resourceinstance_id".to_string(), json!(self.0.resourceinstance_id));
 
-        if let Some(ref val) = self.tileid {
+        if let Some(ref val) = self.0.tileid {
             obj.insert("tileid".to_string(), json!(val));
         } else {
             obj.insert("tileid".to_string(), json!(null));
         }
 
-        if let Some(ref val) = self.parenttile_id {
+        if let Some(ref val) = self.0.parenttile_id {
             obj.insert("parenttile_id".to_string(), json!(val));
         } else {
             obj.insert("parenttile_id".to_string(), json!(null));
         }
 
-        if let Some(ref val) = self.provisionaledits {
+        if let Some(ref val) = self.0.provisionaledits {
             obj.insert("provisionaledits".to_string(), json!(val));
         } else {
             obj.insert("provisionaledits".to_string(), json!(null));
         }
 
-        if let Some(val) = self.sortorder {
+        if let Some(val) = self.0.sortorder {
             obj.insert("sortorder".to_string(), json!(val));
         } else {
             obj.insert("sortorder".to_string(), json!(null));
@@ -1755,7 +1386,7 @@ impl StaticTile {
     pub fn get_data(&self) -> JsValue {
         // Return as a JavaScript Map
         let js_map = js_sys::Map::new();
-        for (key, val) in &self.data {
+        for (key, val) in &self.0.data {
             js_map.set(&JsValue::from_str(key), &json_to_js_value(val));
         }
         js_map.into()
@@ -1777,36 +1408,36 @@ impl StaticTile {
                         }
                     }
                 });
-                self.data = new_data;
+                self.0.data = new_data;
             } else if let Ok(obj_data) = serde_wasm_bindgen::from_value::<HashMap<String, serde_json::Value>>(value) {
-                self.data = obj_data;
+                self.0.data = obj_data;
             }
         }
     }
 
     #[wasm_bindgen(getter = nodegroup_id)]
     pub fn get_nodegroup_id(&self) -> String {
-        self.nodegroup_id.clone()
+        self.0.nodegroup_id.clone()
     }
 
     #[wasm_bindgen(setter = nodegroup_id)]
     pub fn set_nodegroup_id(&mut self, value: String) {
-        self.nodegroup_id = value;
+        self.0.nodegroup_id = value;
     }
 
     #[wasm_bindgen(getter = resourceinstance_id)]
     pub fn get_resourceinstance_id(&self) -> String {
-        self.resourceinstance_id.clone()
+        self.0.resourceinstance_id.clone()
     }
 
     #[wasm_bindgen(setter = resourceinstance_id)]
     pub fn set_resourceinstance_id(&mut self, value: String) {
-        self.resourceinstance_id = value;
+        self.0.resourceinstance_id = value;
     }
 
     #[wasm_bindgen(getter = tileid)]
     pub fn get_tileid(&self) -> JsValue {
-        match &self.tileid {
+        match &self.0.tileid {
             Some(val) => JsValue::from_str(val),
             None => JsValue::NULL,
         }
@@ -1815,15 +1446,15 @@ impl StaticTile {
     #[wasm_bindgen(setter = tileid)]
     pub fn set_tileid(&mut self, value: JsValue) {
         if value.is_null() {
-            self.tileid = None;
+            self.0.tileid = None;
         } else if let Some(s) = value.as_string() {
-            self.tileid = Some(s);
+            self.0.tileid = Some(s);
         }
     }
 
     #[wasm_bindgen(getter = parenttile_id)]
     pub fn get_parenttile_id(&self) -> JsValue {
-        match &self.parenttile_id {
+        match &self.0.parenttile_id {
             Some(val) => JsValue::from_str(val),
             None => JsValue::NULL,
         }
@@ -1832,15 +1463,15 @@ impl StaticTile {
     #[wasm_bindgen(setter = parenttile_id)]
     pub fn set_parenttile_id(&mut self, value: JsValue) {
         if value.is_null() {
-            self.parenttile_id = None;
+            self.0.parenttile_id = None;
         } else if let Some(s) = value.as_string() {
-            self.parenttile_id = Some(s);
+            self.0.parenttile_id = Some(s);
         }
     }
 
     #[wasm_bindgen(getter = provisionaledits)]
     pub fn get_provisionaledits(&self) -> JsValue {
-        match &self.provisionaledits {
+        match &self.0.provisionaledits {
             Some(val) => {
                 // Convert Vec<serde_json::Value> to plain JS array with plain objects
                 let js_array = js_sys::Array::new();
@@ -1856,15 +1487,15 @@ impl StaticTile {
     #[wasm_bindgen(setter = provisionaledits)]
     pub fn set_provisionaledits(&mut self, value: JsValue) {
         if value.is_null() {
-            self.provisionaledits = None;
+            self.0.provisionaledits = None;
         } else if let Ok(edits) = serde_wasm_bindgen::from_value(value) {
-            self.provisionaledits = Some(edits);
+            self.0.provisionaledits = Some(edits);
         }
     }
 
     #[wasm_bindgen(getter = sortorder)]
     pub fn get_sortorder(&self) -> JsValue {
-        match self.sortorder {
+        match self.0.sortorder {
             Some(val) => JsValue::from_f64(val as f64),
             None => JsValue::NULL,
         }
@@ -1873,9 +1504,9 @@ impl StaticTile {
     #[wasm_bindgen(setter = sortorder)]
     pub fn set_sortorder(&mut self, value: JsValue) {
         if value.is_null() {
-            self.sortorder = None;
+            self.0.sortorder = None;
         } else if let Some(n) = value.as_f64() {
-            self.sortorder = Some(n as i32);
+            self.0.sortorder = Some(n as i32);
         }
     }
 }
@@ -1885,15 +1516,7 @@ impl StaticTile {
     /// Create a new empty tile for a nodegroup (internal Rust constructor)
     /// Used by json_conversion module for tree_to_tiles
     pub(crate) fn new_empty(nodegroup_id: String) -> Self {
-        StaticTile {
-            tileid: Some(uuid::Uuid::new_v4().to_string()),
-            nodegroup_id,
-            parenttile_id: None,
-            resourceinstance_id: String::new(),  // Empty string for now, will be set later
-            sortorder: None,
-            provisionaledits: None,
-            data: std::collections::HashMap::new(),
-        }
+        StaticTile(CoreStaticTile::new_empty(nodegroup_id))
     }
 }
 
@@ -2140,28 +1763,27 @@ impl StaticNode {
     }
 }
 
-// StaticEdge - Represents an edge in the graph
-#[wasm_bindgen]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StaticEdge {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
-    pub(crate) domainnode_id: String,
-    edgeid: String,
-    graph_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    ontologyproperty: Option<String>,
-    pub(crate) rangenode_id: String,
+// ============================================================================
+// StaticEdge - WASM wrapper around core type
+// ============================================================================
+
+// Generate the base wrapper. Custom methods needed for:
+// - toJSON: only includes optional fields if present
+// - Typed getters (Option<String>, String) instead of JsValue
+wasm_wrapper! {
+    pub struct StaticEdge wraps alizarin_core::StaticEdge {
+        no_constructor,
+        no_to_json,
+        no_copy,
+    }
 }
 
 #[wasm_bindgen]
 impl StaticEdge {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticEdge, JsValue> {
-        let data: StaticEdge = serde_wasm_bindgen::from_value(json_data)?;
-        Ok(data)
+        let data: CoreStaticEdge = serde_wasm_bindgen::from_value(json_data)?;
+        Ok(StaticEdge(data))
     }
 
     #[wasm_bindgen]
@@ -2175,19 +1797,19 @@ impl StaticEdge {
 
         let mut obj = serde_json::Map::new();
 
-        if let Some(ref val) = self.description {
+        if let Some(ref val) = self.0.description {
             obj.insert("description".to_string(), json!(val));
         }
-        obj.insert("domainnode_id".to_string(), json!(self.domainnode_id));
-        obj.insert("edgeid".to_string(), json!(self.edgeid));
-        obj.insert("graph_id".to_string(), json!(self.graph_id));
-        if let Some(ref val) = self.name {
+        obj.insert("domainnode_id".to_string(), json!(self.0.domainnode_id));
+        obj.insert("edgeid".to_string(), json!(self.0.edgeid));
+        obj.insert("graph_id".to_string(), json!(self.0.graph_id));
+        if let Some(ref val) = self.0.name {
             obj.insert("name".to_string(), json!(val));
         }
-        if let Some(ref val) = self.ontologyproperty {
+        if let Some(ref val) = self.0.ontologyproperty {
             obj.insert("ontologyproperty".to_string(), json!(val));
         }
-        obj.insert("rangenode_id".to_string(), json!(self.rangenode_id));
+        obj.insert("rangenode_id".to_string(), json!(self.0.rangenode_id));
 
         json_to_js_value(&serde_json::Value::Object(obj))
     }
@@ -2195,103 +1817,69 @@ impl StaticEdge {
     // Getters
     #[wasm_bindgen(getter = description)]
     pub fn get_description(&self) -> Option<String> {
-        self.description.clone()
+        self.0.description.clone()
     }
 
     #[wasm_bindgen(getter = domainnode_id)]
     pub fn get_domainnode_id(&self) -> String {
-        self.domainnode_id.clone()
+        self.0.domainnode_id.clone()
     }
 
     #[wasm_bindgen(getter = edgeid)]
     pub fn get_edgeid(&self) -> String {
-        self.edgeid.clone()
+        self.0.edgeid.clone()
     }
 
     #[wasm_bindgen(getter = graph_id)]
     pub fn get_graph_id(&self) -> String {
-        self.graph_id.clone()
+        self.0.graph_id.clone()
     }
 
     #[wasm_bindgen(getter = name)]
     pub fn get_name(&self) -> Option<String> {
-        self.name.clone()
+        self.0.name.clone()
     }
 
     #[wasm_bindgen(getter = ontologyproperty)]
     pub fn get_ontologyproperty(&self) -> Option<String> {
-        self.ontologyproperty.clone()
+        self.0.ontologyproperty.clone()
     }
 
     #[wasm_bindgen(getter = rangenode_id)]
     pub fn get_rangenode_id(&self) -> String {
-        self.rangenode_id.clone()
+        self.0.rangenode_id.clone()
     }
 }
 
-// StaticGraph - The main graph structure
-#[wasm_bindgen]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StaticGraph {
-    author: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    cards: Option<Vec<StaticCard>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    cards_x_nodes_x_widgets: Option<Vec<StaticCardsXNodesXWidgets>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    color: Option<String>,
-    #[serde(default)]
-    config: serde_json::Value,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    deploymentdate: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    deploymentfile: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<StaticTranslatableString>,
-    pub(crate) edges: Vec<StaticEdge>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    functions_x_graphs: Option<Vec<StaticFunctionsXGraphs>>,
-    graphid: String,
-    iconclass: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    is_editable: Option<bool>,
-    isresource: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    jsonldcontext: Option<String>,
-    name: StaticTranslatableString,
-    pub(crate) nodegroups: Vec<StaticNodegroup>,
-    pub(crate) nodes: Vec<StaticNode>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    ontology_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    publication: Option<StaticPublication>,
-    #[serde(default)]
-    relatable_resource_model_ids: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    resource_2_resource_constraints: Option<Vec<serde_json::Value>>,
-    root: StaticNode,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    slug: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    subtitle: Option<StaticTranslatableString>,
-    template_id: Option<String>,
-    version: Option<String>,
+// StaticGraph - The main graph structure (wraps core type)
+use alizarin_core::StaticGraph as CoreStaticGraph;
 
-    // Internal lookup tables (not serialized)
-    #[serde(skip)]
-    #[wasm_bindgen(skip)]
-    node_by_id: Option<HashMap<String, usize>>,
-    #[serde(skip)]
-    #[wasm_bindgen(skip)]
-    node_by_alias: Option<HashMap<String, usize>>,
+wasm_wrapper! {
+    pub struct StaticGraph wraps alizarin_core::StaticGraph {
+        no_constructor,
+        no_to_json,
+        no_copy,
+        // Note: Most getters defined manually in impl block below to wrap types properly
+        get slug,
+        get is_editable,
+        get color,
+        get ontology_id,
+        get deploymentdate,
+        get deploymentfile,
+        get jsonldcontext,
+        get config,
+        get relatable_resource_model_ids,
+        get resource_2_resource_constraints,
+    }
 }
+
 
 #[wasm_bindgen]
 impl StaticGraph {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticGraph, JsValue> {
         // Log the incoming data for debugging
-        let mut data: StaticGraph = serde_wasm_bindgen::from_value(json_data).map_err(|e| {
+        let mut data: CoreStaticGraph = serde_wasm_bindgen::from_value(json_data).map_err(|e| {
             let error_string = e.to_string();
 
             // Log detailed error information
@@ -2308,14 +1896,14 @@ impl StaticGraph {
             JsValue::from_str(&format!("StaticGraph deserialization failed: {}", error_string))
         })?;
         data.build_indices();
-        Ok(data)
+        Ok(StaticGraph(data))
     }
 
     #[wasm_bindgen]
     pub fn copy(&self) -> StaticGraph {
-        let mut cloned = self.clone();
+        let mut cloned = self.0.clone();
         cloned.build_indices();
-        cloned
+        StaticGraph(cloned)
     }
 
     /// Parse JSON string with {graph: [StaticGraph]} structure
@@ -2325,7 +1913,7 @@ impl StaticGraph {
         // Helper struct to deserialize the wrapper
         #[derive(Deserialize)]
         struct GraphWrapper {
-            graph: Vec<StaticGraph>,
+            graph: Vec<CoreStaticGraph>,
         }
 
         let wrapper: GraphWrapper = serde_json::from_str(json_str)
@@ -2337,39 +1925,33 @@ impl StaticGraph {
             .ok_or_else(|| JsValue::from_str("No graphs found in JSON"))?;
 
         graph.build_indices();
-        Ok(graph)
+        Ok(StaticGraph(graph))
     }
 
     // Getters for key fields
     #[wasm_bindgen(getter = graphid)]
     pub fn get_graphid(&self) -> String {
-        self.graphid.clone()
+        self.0.graphid.clone()
     }
 
     #[wasm_bindgen(getter = name)]
     pub fn get_name(&self) -> StaticTranslatableString {
-        self.name.clone()
+        StaticTranslatableString(self.0.name.clone())
     }
 
     #[wasm_bindgen(getter = description)]
     pub fn get_description(&self) -> StaticTranslatableString {
-        match self.description {
-            Some(ref description) => description.clone(),
-            _ => StaticTranslatableString {
-                translations: HashMap::new(),
-                lang: String::new()
-            }
+        match self.0.description {
+            Some(ref description) => StaticTranslatableString(description.clone()),
+            _ => StaticTranslatableString::default()
         }
     }
 
     #[wasm_bindgen(getter = subtitle)]
     pub fn get_subtitle(&self) -> StaticTranslatableString {
-        match self.subtitle {
-            Some(ref subtitle) => subtitle.clone(),
-            _ => StaticTranslatableString {
-                translations: HashMap::new(),
-                lang: String::new()
-            }
+        match self.0.subtitle {
+            Some(ref subtitle) => StaticTranslatableString(subtitle.clone()),
+            _ => StaticTranslatableString::default()
         }
     }
 
@@ -2378,8 +1960,8 @@ impl StaticGraph {
         // Return an array of StaticNode WASM instances, not plain JS objects
         // This preserves the getters/setters on each node
         let array = js_sys::Array::new();
-        for node in &self.nodes {
-            array.push(&JsValue::from(node.clone()));
+        for node in &self.0.nodes {
+            array.push(&JsValue::from(StaticNode(node.clone())));
         }
         array
     }
@@ -2387,16 +1969,16 @@ impl StaticGraph {
     #[wasm_bindgen(setter = nodes)]
     pub fn set_nodes(&mut self, value: JsValue) {
         if let Ok(nodes) = serde_wasm_bindgen::from_value(value) {
-            self.nodes = nodes;
-            self.build_indices();
+            self.0.nodes = nodes;
+            self.0.build_indices();
         }
     }
 
     #[wasm_bindgen(getter = edges)]
     pub fn get_edges(&self) -> js_sys::Array {
         let array = js_sys::Array::new();
-        for edge in &self.edges {
-            array.push(&JsValue::from(edge.clone()));
+        for edge in &self.0.edges {
+            array.push(&JsValue::from(StaticEdge(edge.clone())));
         }
         array
     }
@@ -2404,15 +1986,15 @@ impl StaticGraph {
     #[wasm_bindgen(setter = edges)]
     pub fn set_edges(&mut self, value: JsValue) {
         if let Ok(edges) = serde_wasm_bindgen::from_value(value) {
-            self.edges = edges;
+            self.0.edges = edges;
         }
     }
 
     #[wasm_bindgen(getter = nodegroups)]
     pub fn get_nodegroups(&self) -> js_sys::Array {
         let array = js_sys::Array::new();
-        for nodegroup in &self.nodegroups {
-            array.push(&JsValue::from(nodegroup.clone()));
+        for nodegroup in &self.0.nodegroups {
+            array.push(&JsValue::from(StaticNodegroup(nodegroup.clone())));
         }
         array
     }
@@ -2420,17 +2002,17 @@ impl StaticGraph {
     #[wasm_bindgen(setter = nodegroups)]
     pub fn set_nodegroups(&mut self, value: JsValue) {
         if let Ok(nodegroups) = serde_wasm_bindgen::from_value(value) {
-            self.nodegroups = nodegroups;
+            self.0.nodegroups = nodegroups;
         }
     }
 
     #[wasm_bindgen(getter = cards)]
     pub fn get_cards(&self) -> JsValue {
-        match &self.cards {
+        match &self.0.cards {
             Some(cards) => {
                 let array = js_sys::Array::new();
-                for card in cards {
-                    array.push(&JsValue::from(card.clone()));
+                for card in cards.iter() {
+                    array.push(&JsValue::from(StaticCard(card.clone())));
                 }
                 JsValue::from(array)
             }
@@ -2440,18 +2022,18 @@ impl StaticGraph {
 
     #[wasm_bindgen(setter = cards)]
     pub fn set_cards(&mut self, value: JsValue) {
-        if let Ok(cards) = serde_wasm_bindgen::from_value(value) {
-            self.cards = cards;
+        if let Ok(cards) = serde_wasm_bindgen::from_value::<Option<Vec<alizarin_core::StaticCard>>>(value) {
+            self.0.cards = cards;
         }
     }
 
     #[wasm_bindgen(getter = cards_x_nodes_x_widgets)]
     pub fn get_cards_x_nodes_x_widgets(&self) -> JsValue {
-        match &self.cards_x_nodes_x_widgets {
+        match &self.0.cards_x_nodes_x_widgets {
             Some(cxnxws) => {
                 let array = js_sys::Array::new();
-                for cxnxw in cxnxws {
-                    array.push(&JsValue::from(cxnxw.clone()));
+                for cxnxw in cxnxws.iter() {
+                    array.push(&JsValue::from(StaticCardsXNodesXWidgets(cxnxw.clone())));
                 }
                 JsValue::from(array)
             }
@@ -2461,90 +2043,90 @@ impl StaticGraph {
 
     #[wasm_bindgen(setter = cards_x_nodes_x_widgets)]
     pub fn set_cards_x_nodes_x_widgets(&mut self, value: JsValue) {
-        if let Ok(cards_x_nodes_x_widgets) = serde_wasm_bindgen::from_value(value) {
-            self.cards_x_nodes_x_widgets = cards_x_nodes_x_widgets;
+        if let Ok(cards_x_nodes_x_widgets) = serde_wasm_bindgen::from_value::<Option<Vec<alizarin_core::StaticCardsXNodesXWidgets>>>(value) {
+            self.0.cards_x_nodes_x_widgets = cards_x_nodes_x_widgets;
         }
     }
 
     #[wasm_bindgen(getter = root)]
     pub fn get_root(&self) -> StaticNode {
-        self.root.clone()
+        StaticNode(self.0.root.clone())
     }
 
     #[wasm_bindgen(getter = isresource)]
     pub fn get_isresource(&self) -> Option<bool> {
-        self.isresource
+        self.0.isresource
     }
 
     #[wasm_bindgen(getter = author)]
     pub fn get_author(&self) -> Option<String> {
-        self.author.clone()
+        self.0.author.clone()
     }
 
     #[wasm_bindgen(getter = iconclass)]
     pub fn get_iconclass(&self) -> Option<String> {
-        self.iconclass.clone()
+        self.0.iconclass.clone()
     }
 
     #[wasm_bindgen(getter = template_id)]
     pub fn get_template_id(&self) -> Option<String> {
-        self.template_id.clone()
+        self.0.template_id.clone()
     }
 
     #[wasm_bindgen(getter = version)]
     pub fn get_version(&self) -> Option<String> {
-        self.version.clone()
+        self.0.version.clone()
     }
 
     // Helper methods for modifying collections
     #[wasm_bindgen(js_name = pushNode)]
     pub fn push_node(&mut self, node: StaticNode) {
-        self.nodes.push(node);
-        self.build_indices();
+        self.0.nodes.push(node.0);
+        self.0.build_indices();
     }
 
     #[wasm_bindgen(js_name = pushEdge)]
     pub fn push_edge(&mut self, edge: StaticEdge) {
-        self.edges.push(edge);
+        self.0.edges.push(edge.0);
     }
 
     #[wasm_bindgen(js_name = pushNodegroup)]
     pub fn push_nodegroup(&mut self, nodegroup: StaticNodegroup) {
-        self.nodegroups.push(nodegroup);
+        self.0.nodegroups.push(nodegroup.0);
     }
 
     #[wasm_bindgen(js_name = pushCard)]
     pub fn push_card(&mut self, card: StaticCard) {
-        if self.cards.is_none() {
-            self.cards = Some(Vec::new());
+        if self.0.cards.is_none() {
+            self.0.cards = Some(Vec::new());
         }
-        if let Some(ref mut cards) = self.cards {
-            cards.push(card);
+        if let Some(ref mut cards) = self.0.cards {
+            cards.push(card.0);
         }
     }
 
     #[wasm_bindgen(js_name = pushCardXNodeXWidget)]
     pub fn push_card_x_node_x_widget(&mut self, cxnxw: StaticCardsXNodesXWidgets) {
-        if self.cards_x_nodes_x_widgets.is_none() {
-            self.cards_x_nodes_x_widgets = Some(Vec::new());
+        if self.0.cards_x_nodes_x_widgets.is_none() {
+            self.0.cards_x_nodes_x_widgets = Some(Vec::new());
         }
-        if let Some(ref mut cxnxws) = self.cards_x_nodes_x_widgets {
-            cxnxws.push(cxnxw);
+        if let Some(ref mut cxnxws) = self.0.cards_x_nodes_x_widgets {
+            cxnxws.push(cxnxw.0);
         }
     }
 
     // JS-facing lookup methods
     #[wasm_bindgen(js_name = getNodeById)]
     pub fn get_node_by_id_js(&self, id: &str) -> JsValue {
-        self.get_node_by_id(id)
-            .map(|node| serde_wasm_bindgen::to_value(node).unwrap())
+        self.0.get_node_by_id(id)
+            .map(|node| JsValue::from(StaticNode(node.clone())))
             .unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(js_name = getNodeByAlias)]
     pub fn get_node_by_alias_js(&self, alias: &str) -> JsValue {
-        self.get_node_by_alias(alias)
-            .map(|node| serde_wasm_bindgen::to_value(node).unwrap())
+        self.0.get_node_by_alias(alias)
+            .map(|node| JsValue::from(StaticNode(node.clone())))
             .unwrap_or(JsValue::NULL)
     }
 
@@ -2612,60 +2194,27 @@ impl StaticGraph {
     }
 }
 
-// Rust-internal methods (not exposed to JS)
+// Rust-internal methods (not exposed to JS) - delegate to core
 impl StaticGraph {
-    fn build_indices(&mut self) {
-        let mut node_by_id = HashMap::new();
-        let mut node_by_alias = HashMap::new();
-
-        for (idx, node) in self.nodes.iter().enumerate() {
-            node_by_id.insert(node.get_nodeid(), idx);
-            if let Some(alias) = node.get_alias() {
-                node_by_alias.insert(alias, idx);
-            }
-        }
-
-        self.node_by_id = Some(node_by_id);
-        self.node_by_alias = Some(node_by_alias);
+    // Accessors for json_conversion module - return core types
+    pub(crate) fn nodes_slice(&self) -> &[alizarin_core::StaticNode] {
+        self.0.nodes_slice()
     }
 
-    pub(crate) fn get_node_by_index(&self, idx: usize) -> Option<&StaticNode> {
-        self.nodes.get(idx)
+    pub(crate) fn nodegroups_slice(&self) -> &[alizarin_core::StaticNodegroup] {
+        self.0.nodegroups_slice()
     }
 
-    pub(crate) fn get_node_by_id(&self, id: &str) -> Option<&StaticNode> {
-        self.node_by_id
-            .as_ref()?
-            .get(id)
-            .and_then(|&idx| self.nodes.get(idx))
+    pub(crate) fn edges_slice(&self) -> &[alizarin_core::StaticEdge] {
+        self.0.edges_slice()
     }
 
-    pub(crate) fn get_node_by_alias(&self, alias: &str) -> Option<&StaticNode> {
-        self.node_by_alias
-            .as_ref()?
-            .get(alias)
-            .and_then(|&idx| self.nodes.get(idx))
-    }
-
-    // Accessors for json_conversion module
-    pub(crate) fn nodes_slice(&self) -> &[StaticNode] {
-        &self.nodes
-    }
-
-    pub(crate) fn nodegroups_slice(&self) -> &[StaticNodegroup] {
-        &self.nodegroups
-    }
-
-    pub(crate) fn edges_slice(&self) -> &[StaticEdge] {
-        &self.edges
-    }
-
-    pub(crate) fn root_node(&self) -> &StaticNode {
-        &self.root
+    pub(crate) fn root_node(&self) -> &alizarin_core::StaticNode {
+        self.0.root_node()
     }
 
     pub(crate) fn graph_id(&self) -> &str {
-        &self.graphid
+        self.0.graph_id()
     }
 }
 
@@ -2676,52 +2225,51 @@ pub struct WKRM {
     model_name: String,
     model_class_name: String,
     graph_id: String,
-    meta: JsValue, // Store as JsValue to preserve object identity
+    meta: alizarin_core::StaticGraphMeta, // Store deserialized core type
 }
 
 #[wasm_bindgen]
 impl WKRM {
     #[wasm_bindgen(constructor)]
-    pub fn new(meta: JsValue) -> Result<WKRM, JsValue> {
-        // Get the graphid
-        let graph_id = js_sys::Reflect::get(&meta, &JsValue::from_str("graphid"))
-            .ok()
-            .and_then(|v| v.as_string())
-            .unwrap_or_default();
-
-        // Get the name
-        let name_val = js_sys::Reflect::get(&meta, &JsValue::from_str("name"))
-            .ok()
-            .unwrap_or(JsValue::NULL);
-
-        let model_name = if !name_val.is_null() && !name_val.is_undefined() {
-            // Try to get as string (could be a StaticTranslatableString with toString method)
-            if let Some(name_str) = name_val.as_string() {
-                name_str
-            } else if let Ok(to_string_fn) = js_sys::Reflect::get(&name_val, &JsValue::from_str("toString")) {
-                if let Ok(func) = to_string_fn.dyn_into::<js_sys::Function>() {
-                    if let Ok(result) = func.call0(&name_val) {
-                        result.as_string().unwrap_or_else(|| "Unnamed".to_string())
+    pub fn new(meta_js: JsValue) -> Result<WKRM, JsValue> {
+        // Check if this is a WASM wrapper object (has __wbg_ptr field)
+        // If so, call toJSON() to get a plain object we can deserialize
+        let value_to_deserialize = if let Ok(ptr) = js_sys::Reflect::get(&meta_js, &JsValue::from_str("__wbg_ptr")) {
+            if !ptr.is_undefined() && !ptr.is_null() {
+                // This is a WASM wrapper, call toJSON() to get a plain object
+                if let Ok(to_json_fn) = js_sys::Reflect::get(&meta_js, &JsValue::from_str("toJSON")) {
+                    if to_json_fn.is_function() {
+                        let func = js_sys::Function::from(to_json_fn);
+                        func.call0(&meta_js).unwrap_or(meta_js.clone())
                     } else {
-                        "Unnamed".to_string()
+                        meta_js.clone()
                     }
                 } else {
-                    "Unnamed".to_string()
+                    meta_js.clone()
                 }
             } else {
-                "Unnamed".to_string()
+                meta_js.clone()
             }
         } else {
-            "Unnamed".to_string()
+            meta_js.clone()
         };
 
-        // Get the slug
-        let slug_val = js_sys::Reflect::get(&meta, &JsValue::from_str("slug"))
-            .ok()
-            .and_then(|v| v.as_string());
+        let meta: alizarin_core::StaticGraphMeta = serde_wasm_bindgen::from_value(value_to_deserialize).map_err(|e| {
+            let error_msg = format!("Failed to deserialize StaticGraphMeta for WKRM: {:?}", e);
+            web_sys::console::error_1(&error_msg.clone().into());
+            JsValue::from_str(&error_msg)
+        })?;
 
-        // Convert slug or model_name to PascalCase for model_class_name
-        let base_name = slug_val.as_ref().unwrap_or(&model_name);
+        let graph_id = meta.graphid.clone();
+
+        // Get the model name from the name field
+        let model_name = meta.name
+            .as_ref()
+            .map(|n| n.to_string_default())
+            .unwrap_or_else(|| "Unnamed".to_string());
+
+        // Get the slug for model_class_name, or fall back to model_name
+        let base_name = meta.slug.as_ref().unwrap_or(&model_name);
         let model_class_name = Self::to_pascal_case(base_name);
 
         Ok(WKRM {
@@ -2796,191 +2344,89 @@ impl WKRM {
     }
 
     #[wasm_bindgen(getter = meta)]
-    pub fn get_meta(&self) -> JsValue {
-        self.meta.clone()
+    pub fn get_meta(&self) -> StaticGraphMeta {
+        StaticGraphMeta(self.meta.clone())
     }
 
     #[wasm_bindgen(setter = meta)]
     pub fn set_meta(&mut self, value: JsValue) {
-        self.meta = value;
+        if let Ok(meta) = serde_wasm_bindgen::from_value::<alizarin_core::StaticGraphMeta>(value) {
+            self.meta = meta;
+        }
     }
 }
 
 // StaticResourceDescriptors - Descriptors for resource display
-#[wasm_bindgen]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StaticResourceDescriptors {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) map_popup: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) description: Option<String>,
+wasm_wrapper! {
+    pub struct StaticResourceDescriptors wraps alizarin_core::StaticResourceDescriptors {
+        get set name,
+        get set description,
+    }
 }
 
 #[wasm_bindgen]
 impl StaticResourceDescriptors {
-    #[wasm_bindgen(constructor)]
-    pub fn new(data: JsValue) -> Result<StaticResourceDescriptors, JsValue> {
-        serde_wasm_bindgen::from_value(data)
-            .map_err(|e| JsValue::from_str(&format!("Failed to deserialize StaticResourceDescriptors: {:?}", e)))
-    }
-
     #[wasm_bindgen(js_name = isEmpty)]
     pub fn is_empty(&self) -> bool {
-        self.name.is_none() && self.map_popup.is_none() && self.description.is_none()
+        self.0.is_empty()
     }
 
     #[wasm_bindgen(js_name = empty)]
     pub fn empty() -> StaticResourceDescriptors {
-        StaticResourceDescriptors {
-            name: None,
-            map_popup: None,
-            description: None,
-        }
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn name(&self) -> Option<String> {
-        self.name.clone()
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_name(&mut self, value: Option<String>) {
-        self.name = value;
+        StaticResourceDescriptors(alizarin_core::StaticResourceDescriptors::empty())
     }
 
     #[wasm_bindgen(getter = mapPopup)]
     pub fn map_popup(&self) -> Option<String> {
-        self.map_popup.clone()
+        self.0.map_popup.clone()
     }
 
     #[wasm_bindgen(setter = mapPopup)]
     pub fn set_map_popup(&mut self, value: Option<String>) {
-        self.map_popup = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn description(&self) -> Option<String> {
-        self.description.clone()
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_description(&mut self, value: Option<String>) {
-        self.description = value;
+        self.0.map_popup = value;
     }
 }
 
 // StaticResourceMetadata - Metadata about a resource instance
-#[wasm_bindgen]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StaticResourceMetadata {
-    pub(crate) descriptors: StaticResourceDescriptors,
-    pub(crate) graph_id: String,
-    pub(crate) name: String,
-    pub(crate) resourceinstanceid: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) publication_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) principaluser_id: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) legacyid: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) graph_publication_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) createdtime: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) lastmodified: Option<String>,
+wasm_wrapper! {
+    pub struct StaticResourceMetadata wraps alizarin_core::StaticResourceMetadata {
+        get graph_id,
+        get name,
+        get resourceinstanceid,
+        get publication_id,
+        get principaluser_id,
+        get legacyid,
+        get graph_publication_id,
+        get createdtime,
+        get lastmodified,
+    }
 }
 
 #[wasm_bindgen]
 impl StaticResourceMetadata {
-    #[wasm_bindgen(constructor)]
-    pub fn new(data: JsValue) -> Result<StaticResourceMetadata, JsValue> {
-        serde_wasm_bindgen::from_value(data)
-            .map_err(|e| JsValue::from_str(&format!("Failed to deserialize StaticResourceMetadata: {:?}", e)))
-    }
-
     #[wasm_bindgen(getter)]
     pub fn descriptors(&self) -> StaticResourceDescriptors {
-        self.descriptors.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn graph_id(&self) -> String {
-        self.graph_id.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn name(&self) -> String {
-        self.name.clone()
-    }
-
-    #[wasm_bindgen(getter = resourceinstanceid)]
-    pub fn resourceinstanceid(&self) -> String {
-        self.resourceinstanceid.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn publication_id(&self) -> Option<String> {
-        self.publication_id.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn principaluser_id(&self) -> Option<i32> {
-        self.principaluser_id
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn legacyid(&self) -> Option<String> {
-        self.legacyid.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn graph_publication_id(&self) -> Option<String> {
-        self.graph_publication_id.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn createdtime(&self) -> Option<String> {
-        self.createdtime.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn lastmodified(&self) -> Option<String> {
-        self.lastmodified.clone()
+        StaticResourceDescriptors(self.0.descriptors.clone())
     }
 }
 
 // StaticResourceSummary - Summary info for a resource (used for lazy loading)
-#[wasm_bindgen]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StaticResourceSummary {
-    pub(crate) resourceinstanceid: String,
-    pub(crate) graph_id: String,
-    pub(crate) name: String,
-    pub(crate) descriptors: StaticResourceDescriptors,
-    #[serde(default)]
-    pub(crate) metadata: HashMap<String, String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) createdtime: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) lastmodified: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) publication_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) principaluser_id: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) legacyid: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) graph_publication_id: Option<String>,
+wasm_wrapper! {
+    pub struct StaticResourceSummary wraps alizarin_core::StaticResourceSummary {
+        no_constructor,
+        no_to_json,
+        no_copy,
+        get resourceinstanceid,
+        get graph_id,
+        get name,
+    }
 }
 
 #[wasm_bindgen]
 impl StaticResourceSummary {
     #[wasm_bindgen(constructor)]
     pub fn new(data: JsValue) -> Result<StaticResourceSummary, JsValue> {
-        let mut summary: StaticResourceSummary = serde_wasm_bindgen::from_value(data)
+        let mut summary: CoreStaticResourceSummary = serde_wasm_bindgen::from_value(data)
             .map_err(|e| JsValue::from_str(&format!("Failed to deserialize StaticResourceSummary: {:?}", e)))?;
 
         // Default name to '<Unnamed>' if empty
@@ -2988,112 +2434,87 @@ impl StaticResourceSummary {
             summary.name = "<Unnamed>".to_string();
         }
 
-        Ok(summary)
+        Ok(StaticResourceSummary(summary))
+    }
+
+    pub fn copy(&self) -> StaticResourceSummary {
+        StaticResourceSummary(self.0.clone())
+    }
+
+    #[wasm_bindgen(js_name = toJSON)]
+    pub fn to_json(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.0).unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(js_name = toMetadata)]
     pub fn to_metadata(&self) -> StaticResourceMetadata {
-        StaticResourceMetadata {
-            descriptors: self.descriptors.clone(),
-            graph_id: self.graph_id.clone(),
-            name: self.name.clone(),
-            resourceinstanceid: self.resourceinstanceid.clone(),
-            publication_id: self.publication_id.clone(),
-            principaluser_id: self.principaluser_id,
-            legacyid: self.legacyid.clone(),
-            graph_publication_id: self.graph_publication_id.clone(),
-            createdtime: self.createdtime.clone(),
-            lastmodified: self.lastmodified.clone(),
-        }
-    }
-
-    #[wasm_bindgen(getter = resourceinstanceid)]
-    pub fn resourceinstanceid(&self) -> String {
-        self.resourceinstanceid.clone()
+        StaticResourceMetadata(self.0.to_metadata())
     }
 
     #[wasm_bindgen(getter)]
-    pub fn graph_id(&self) -> String {
-        self.graph_id.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn name(&self) -> String {
-        self.name.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn descriptors(&self) -> StaticResourceDescriptors {
-        self.descriptors.clone()
+    pub fn descriptors(&self) -> Option<StaticResourceDescriptors> {
+        self.0.descriptors.clone().map(StaticResourceDescriptors)
     }
 
     #[wasm_bindgen(getter)]
     pub fn metadata(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.metadata).unwrap_or(JsValue::NULL)
+        serde_wasm_bindgen::to_value(&self.0.metadata).unwrap_or(JsValue::NULL)
     }
 }
 
 // StaticResource - Complete resource data with tiles
-#[wasm_bindgen]
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StaticResource {
-    pub(crate) resourceinstance: StaticResourceMetadata,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) tiles: Option<Vec<StaticTile>>,
-    #[serde(default)]
-    pub(crate) metadata: HashMap<String, String>,
-
-    // Optional JS-managed cache and scopes
-    #[serde(skip)]
-    pub(crate) __cache: Option<JsValue>,
-    #[serde(skip)]
-    pub(crate) __scopes: Option<JsValue>,
-
-    // Private fields for caching/tracking
-    #[serde(skip)]
-    #[wasm_bindgen(skip)]
-    __tiles_loaded: bool,
+wasm_wrapper! {
+    pub struct StaticResource wraps alizarin_core::StaticResource {
+        no_constructor,
+        no_to_json,
+        no_copy,
+    }
 }
 
 #[wasm_bindgen]
 impl StaticResource {
     #[wasm_bindgen(constructor)]
     pub fn new(data: JsValue) -> Result<StaticResource, JsValue> {
-        let mut resource: StaticResource = serde_wasm_bindgen::from_value(data)
+        let mut core: CoreStaticResource = serde_wasm_bindgen::from_value(data)
             .map_err(|e| JsValue::from_str(&format!("Failed to deserialize StaticResource: {:?}", e)))?;
 
         // Set tiles loaded flag based on whether tiles exist and are non-empty
-        resource.__tiles_loaded = resource.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false);
+        core.tiles_loaded = Some(core.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false));
 
-        Ok(resource)
+        Ok(StaticResource(core))
+    }
+
+    pub fn copy(&self) -> StaticResource {
+        StaticResource(self.0.clone())
     }
 
     #[wasm_bindgen(js_name = fromSummary)]
-    pub fn from_summary(summary: StaticResourceSummary) -> StaticResource {
-        StaticResource {
-            resourceinstance: summary.to_metadata(),
-            tiles: None,  // Tiles not loaded yet - will be loaded on demand
-            metadata: summary.metadata,
-            __cache: None,
-            __scopes: None,
-            __tiles_loaded: false,
-        }
+    pub fn from_summary(summary: &StaticResourceSummary) -> StaticResource {
+        let core = CoreStaticResource {
+            resourceinstance: summary.0.to_metadata(),
+            tiles: None,
+            metadata: summary.0.metadata.clone(),
+            cache: None,
+            scopes: None,
+            tiles_loaded: Some(false),
+        };
+        StaticResource(core)
     }
 
     #[wasm_bindgen(getter = resourceinstance)]
     pub fn resourceinstance(&self) -> StaticResourceMetadata {
-        self.resourceinstance.clone()
+        StaticResourceMetadata(self.0.resourceinstance.clone())
     }
 
     #[wasm_bindgen(getter)]
     pub fn tiles(&self) -> JsValue {
-        match &self.tiles {
+        match &self.0.tiles {
             Some(tiles) => {
                 // Manually convert tiles to JS array to ensure getters are used
                 let js_array = js_sys::Array::new();
                 for tile in tiles {
-                    // Use the tile's toJSON method to properly serialize including data field
-                    js_array.push(&tile.to_json());
+                    let wrapper = StaticTile(tile.clone());
+                    js_array.push(&wrapper.to_json());
                 }
                 js_array.into()
             }
@@ -3104,17 +2525,17 @@ impl StaticResource {
     #[wasm_bindgen(setter)]
     pub fn set_tiles(&mut self, value: JsValue) {
         if value.is_null() || value.is_undefined() {
-            self.tiles = None;
-            self.__tiles_loaded = false;
+            self.0.tiles = None;
+            self.0.tiles_loaded = Some(false);
         } else {
-            match serde_wasm_bindgen::from_value(value) {
+            match serde_wasm_bindgen::from_value::<Vec<alizarin_core::StaticTile>>(value) {
                 Ok(tiles) => {
-                    self.__tiles_loaded = true;
-                    self.tiles = Some(tiles);
+                    self.0.tiles_loaded = Some(true);
+                    self.0.tiles = Some(tiles);
                 }
                 Err(_) => {
-                    self.tiles = None;
-                    self.__tiles_loaded = false;
+                    self.0.tiles = None;
+                    self.0.tiles_loaded = Some(false);
                 }
             }
         }
@@ -3122,54 +2543,59 @@ impl StaticResource {
 
     #[wasm_bindgen(getter)]
     pub fn metadata(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.metadata).unwrap_or(JsValue::NULL)
+        serde_wasm_bindgen::to_value(&self.0.metadata).unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(setter)]
     pub fn set_metadata(&mut self, value: JsValue) {
         if let Ok(metadata) = serde_wasm_bindgen::from_value(value) {
-            self.metadata = metadata;
+            self.0.metadata = metadata;
         }
     }
 
     #[wasm_bindgen(getter = __cache)]
     pub fn get_cache(&self) -> JsValue {
-        self.__cache.clone().unwrap_or(JsValue::NULL)
+        match &self.0.cache {
+            Some(json) => json_to_js_value(json),
+            None => JsValue::NULL,
+        }
     }
 
     #[wasm_bindgen(setter = __cache)]
     pub fn set_cache(&mut self, value: JsValue) {
         if value.is_null() || value.is_undefined() {
-            self.__cache = None;
+            self.0.cache = None;
         } else {
-            self.__cache = Some(value);
+            self.0.cache = serde_wasm_bindgen::from_value(value).ok();
         }
     }
 
     #[wasm_bindgen(getter = __scopes)]
     pub fn get_scopes(&self) -> JsValue {
-        self.__scopes.clone().unwrap_or(JsValue::NULL)
+        match &self.0.scopes {
+            Some(json) => json_to_js_value(json),
+            None => JsValue::NULL,
+        }
     }
 
     #[wasm_bindgen(setter = __scopes)]
     pub fn set_scopes(&mut self, value: JsValue) {
         if value.is_null() || value.is_undefined() {
-            self.__scopes = None;
+            self.0.scopes = None;
         } else {
-            self.__scopes = Some(value);
+            self.0.scopes = serde_wasm_bindgen::from_value(value).ok();
         }
     }
 
     #[wasm_bindgen(getter = tilesLoaded)]
     pub fn tiles_loaded(&self) -> bool {
-        self.__tiles_loaded
+        self.0.tiles_loaded.unwrap_or(false)
     }
 
     #[wasm_bindgen(js_name = toJSON)]
     pub fn to_json(&self) -> JsValue {
         // Serialize using serde_json, then convert to plain JS object
-        // This automatically handles nested structs
-        match serde_json::to_value(self) {
+        match serde_json::to_value(&self.0) {
             Ok(json_value) => json_to_js_value(&json_value),
             Err(e) => {
                 web_sys::console::error_1(&format!("Failed to serialize StaticResource: {}", e).into());

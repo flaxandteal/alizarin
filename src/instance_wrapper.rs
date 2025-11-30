@@ -1,87 +1,114 @@
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::JsFuture;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::cell::RefCell;
 use serde_json::Value as JsonValue;
-use crate::graph::{StaticResource, StaticResourceMetadata, StaticResourceDescriptors, StaticTile, StaticNode};
-use crate::pseudo_value::{RustPseudoValue, RustPseudoList, RustPseudoGroup, WasmPseudoList, WasmPseudoValue};
+use crate::graph::{StaticResource, StaticResourceMetadata, StaticResourceDescriptors};
+// WASM wrapper type aliases for return types
+use crate::graph::StaticTile as WasmStaticTile;
+use crate::graph::StaticNode as WasmStaticNode;
+// Core types for internal storage (avoid WASM wrapper overhead)
+use alizarin_core::StaticResourceMetadata as CoreStaticResourceMetadata;
+use alizarin_core::StaticResourceDescriptors as CoreStaticResourceDescriptors;
+use alizarin_core::StaticTile as CoreStaticTile;
+use alizarin_core::StaticTile;
+use alizarin_core::StaticNode;
+use crate::pseudo_value::{RustPseudoValue, RustPseudoList, WasmPseudoList, WasmPseudoValue};
 use crate::model_wrapper::{WASMResourceModelWrapper};
 use js_sys::{Array, Map as JsMap};
 use wasm_bindgen::JsCast;
-use web_sys::console;
+// ============================================================================
+// Error types for semantic child value retrieval
+// ============================================================================
 
-/// Recipe for creating a PseudoValue in JavaScript
-/// Contains all information needed to instantiate a Pseudo without holding full tile data
-#[wasm_bindgen]
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct PseudoRecipe {
-    node_alias: String,
-    tile_id: Option<String>,
-    node_id: String,
-    is_collector: bool,
-    sentinel_undefined: bool,
+/// Error type for get_semantic_child_value operations
+#[derive(Debug, Clone)]
+pub enum SemanticChildError {
+    /// Tiles for the required nodegroup have not been loaded yet
+    TilesNotLoaded { nodegroup_id: String },
+    /// Child node not found
+    ChildNotFound { alias: String },
+    /// Tiles storage not initialized
+    TilesNotInitialized,
+    /// Model not initialized
+    ModelNotInitialized(String),
+    /// Other error
+    Other(String),
 }
 
-#[wasm_bindgen]
-impl PseudoRecipe {
-    #[wasm_bindgen(getter = nodeAlias)]
-    pub fn node_alias(&self) -> String {
-        self.node_alias.clone()
+impl std::fmt::Display for SemanticChildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SemanticChildError::TilesNotLoaded { nodegroup_id } => {
+                write!(f, "Tiles not loaded for nodegroup: {}", nodegroup_id)
+            }
+            SemanticChildError::ChildNotFound { alias } => {
+                write!(f, "Child node not found: {}", alias)
+            }
+            SemanticChildError::TilesNotInitialized => {
+                write!(f, "Tiles not initialized")
+            }
+            SemanticChildError::ModelNotInitialized(msg) => {
+                write!(f, "Model not initialized: {}", msg)
+            }
+            SemanticChildError::Other(msg) => {
+                write!(f, "{}", msg)
+            }
+        }
     }
+}
 
-    #[wasm_bindgen(getter = tileId)]
-    pub fn tile_id(&self) -> Option<String> {
-        self.tile_id.clone()
-    }
+impl std::error::Error for SemanticChildError {}
 
-    #[wasm_bindgen(getter = nodeId)]
-    pub fn node_id(&self) -> String {
-        self.node_id.clone()
+impl From<String> for SemanticChildError {
+    fn from(s: String) -> Self {
+        SemanticChildError::Other(s)
     }
+}
 
-    #[wasm_bindgen(getter = isCollector)]
-    pub fn is_collector(&self) -> bool {
-        self.is_collector
-    }
-
-    #[wasm_bindgen(getter = sentinelUndefined)]
-    pub fn sentinel_undefined(&self) -> bool {
-        self.sentinel_undefined
-    }
+/// Result of get_semantic_child_value - either values or an indication that none exist
+#[derive(Debug)]
+pub enum SemanticChildResult {
+    /// A list of pseudo values (for collectors or multiple matches)
+    List(RustPseudoList),
+    /// A single pseudo value
+    Single(RustPseudoValue),
+    /// No matching values found (not an error, just empty)
+    Empty,
 }
 
 /// Result from values_from_resource_nodegroup
-/// PORT: Phase 3 - Now internally uses structured RustPseudoList
-/// Still exposes recipes to WASM for backward compatibility until Phase 4
+/// Contains structured RustPseudoList values directly (no recipe intermediate)
 #[derive(Clone)]
 pub struct ValuesFromNodegroupResult {
-    /// Map of node alias → RustPseudoList (structured hierarchy - internal use)
+    /// Map of node alias → RustPseudoList (structured hierarchy)
     pub values: HashMap<String, RustPseudoList>,
     pub implied_nodegroups: Vec<String>,
 }
 
-impl ValuesFromNodegroupResult {
-    /// Convert structured values back to recipes for WASM compatibility
-    /// TODO: Remove after Phase 4 (JS wrapper layer complete)
-    fn to_recipes(&self) -> Vec<PseudoRecipe> {
-        let mut recipes = Vec::new();
+/// WASM wrapper for ValuesFromNodegroupResult
+#[wasm_bindgen]
+pub struct WasmValuesFromNodegroupResult {
+    inner: ValuesFromNodegroupResult,
+}
 
-        for (alias, pseudo_list) in &self.values {
-            // Each group in the list represents tiles
-            for group in &pseudo_list.groups {
-                for value in &group.values {
-                    recipes.push(PseudoRecipe {
-                        node_alias: alias.clone(),
-                        tile_id: value.tile.as_ref().and_then(|t| t.tileid.clone()),
-                        node_id: value.node.nodeid.clone(),
-                        is_collector: value.is_collector,
-                        sentinel_undefined: false,
-                    });
-                }
-            }
+#[wasm_bindgen]
+impl WasmValuesFromNodegroupResult {
+    /// Get all values as a Map in a single boundary crossing
+    #[wasm_bindgen(js_name = getAllValues)]
+    pub fn get_all_values(&self) -> JsValue {
+        let js_map = js_sys::Map::new();
+        for (alias, rust_list) in &self.inner.values {
+            let wasm_list = WasmPseudoList::from_rust(rust_list.clone());
+            js_map.set(&JsValue::from_str(alias), &wasm_list.into());
         }
+        js_map.into()
+    }
 
-        recipes
+    #[wasm_bindgen(getter = impliedNodegroups)]
+    pub fn implied_nodegroups(&self) -> Vec<String> {
+        self.inner.implied_nodegroups.clone()
     }
 }
 
@@ -203,10 +230,10 @@ pub struct ResourceInstanceWrapperCore {
     pub(crate) graph_id: String,
 
     // Resource ID
-    pub(crate) resource_instance: Option<StaticResourceMetadata>,
+    pub(crate) resource_instance: Option<CoreStaticResourceMetadata>,
 
     // Core tile storage
-    pub(crate) tiles: Option<HashMap<String, StaticTile>>,
+    pub(crate) tiles: Option<HashMap<String, CoreStaticTile>>,
 
     // Index: nodegroup_id -> list of tile_ids
     pub(crate) nodegroup_index: HashMap<String, Vec<String>>,
@@ -296,8 +323,9 @@ impl ResourceInstanceWrapperCore {
 
     /// Create a new core from resource
     pub fn new_from_resource(resource: &StaticResource) -> Self {
-        let mut core = Self::new_from_graph_id(resource.resourceinstance.graph_id.clone());
-        core.resource_instance = Some(resource.resourceinstance.clone());
+        // Access the inner core type through Deref
+        let mut core = Self::new_from_graph_id(resource.0.resourceinstance.graph_id.clone());
+        core.resource_instance = Some(resource.0.resourceinstance.clone());
         core
     }
 
@@ -339,14 +367,19 @@ impl ResourceInstanceWrapperCore {
     /// This implements the exact logic from __getChildValues to determine if a value
     /// should be included as a child of a semantic node.
     ///
+    /// We do not use edges, as this checks directly saving an access to the model.
+    ///
     /// Note: This is public to allow test access
     pub fn matches_semantic_child(
         parent_tile_id: Option<&String>,
-        parent_nodegroup_id: Option<&String>,
+        parent_node_id: &str,
         child_node: &StaticNode,
         tile: &StaticTile,
-        tile_nodegroup: &str,
     ) -> bool {
+        // TODO: double check this addition
+        if tile.nodegroup_id != *child_node.nodegroup_id.as_ref().unwrap_or(&"".into()) {
+            return false;
+        }
         // We do not have a child value, unless there is a value, or the whole tile is the
         // (semantic) value.
         // RMV: double check for any other case
@@ -356,7 +389,7 @@ impl ResourceInstanceWrapperCore {
 
         // PORT: js/semantic.ts lines 311-315
         // Branch 1: Different nodegroup + correct parent tile relationship
-        if Some(tile_nodegroup) != parent_nodegroup_id.map(|s| s.as_str()) {
+        if tile.nodegroup_id != parent_node_id {
             if let (t, Some(parent_tid)) = (tile, parent_tile_id) {
                 // Check if tile.parenttile_id is null or equals parent_tid
                 // PORT: Line 311 - (!(value.tile.parenttile_id) || value.tile.parenttile_id == tile.tileid)
@@ -371,7 +404,7 @@ impl ResourceInstanceWrapperCore {
 
         // PORT: js/semantic.ts lines 312-315
         // Branch 2: Same nodegroup + shared tile + not collector
-        if Some(tile_nodegroup) == parent_nodegroup_id.map(|s| s.as_str()) {
+        if tile.nodegroup_id == parent_node_id {
             if let (t, Some(parent_tid)) = (tile, parent_tile_id) {
                 // Check if this tile IS the parent tile and child is not a collector
                 // PORT: Line 314 - value.tile == tile && !childNode.is_collector
@@ -384,12 +417,130 @@ impl ResourceInstanceWrapperCore {
         // PORT: js/semantic.ts lines 324-327
         // Branch 3: Different nodegroup + is_collector
         // This handles collector nodes that don't share tiles with their parent
-        if Some(tile_nodegroup) != parent_nodegroup_id.map(|s| s.as_str())
+        if tile.nodegroup_id != parent_node_id
             && child_node.is_collector {
             return true;
         }
 
         false
+    }
+
+    /// Pure Rust implementation of get_semantic_child_value
+    /// Returns semantic child values for a given parent node and child alias.
+    ///
+    /// Parameters:
+    /// - parent_tile_id: The tileid of the parent semantic node (or None)
+    /// - parent_node_id: The nodeid of the parent semantic node
+    /// - parent_nodegroup_id: The nodegroup_id of the parent node (or None)
+    /// - child_alias: The alias of the specific child to retrieve
+    /// - loaded_tile_nodegroups: Set of nodegroups that have tiles loaded (None = non-lazy mode, all loaded)
+    ///
+    /// Returns: SemanticChildResult or SemanticChildError
+    pub fn get_semantic_child_value(
+        &self,
+        parent_tile_id: Option<&String>,
+        parent_node_id: &str,
+        parent_nodegroup_id: Option<&String>,
+        child_alias: &str,
+        loaded_tile_nodegroups: Option<&HashSet<String>>,
+    ) -> Result<SemanticChildResult, SemanticChildError> {
+        // Get child nodes for this parent (needs mutable access for lazy init)
+        let child_nodes = self.with_model_core_mut(|core| {
+            core.get_child_nodes(parent_node_id)
+                .map_err(|e| SemanticChildError::ModelNotInitialized(e))
+                .map(|map| map.clone())
+        })?;
+
+        // Get edges for creating PseudoValues
+        // let edges = self.with_model_core(|core| {
+        //     core.get_edges_internal()
+        //         .ok_or_else(|| SemanticChildError::ModelNotInitialized("Model edges not initialized".to_string()))
+        //         .map(|map| map.clone())
+        // })?;
+
+        // Get the specific child node we're looking for (core type)
+        let child_node = child_nodes.get(child_alias)
+            .ok_or_else(|| SemanticChildError::ChildNotFound { alias: child_alias.to_string() })?
+            .clone();
+
+        // Check if tiles are loaded for this child's nodegroup (lazy mode check)
+        if let Some(loaded_nodegroups) = loaded_tile_nodegroups {
+            if let Some(ref child_nodegroup_id) = child_node.nodegroup_id {
+                if !loaded_nodegroups.contains(child_nodegroup_id) {
+                    return Err(SemanticChildError::TilesNotLoaded {
+                        nodegroup_id: child_nodegroup_id.clone()
+                    });
+                }
+            }
+        }
+
+        // Get tiles (must be initialized)
+        let tiles = self.tiles
+            .as_ref()
+            .ok_or(SemanticChildError::TilesNotInitialized)?;
+
+        // Find all tiles that contain this child node with the correct semantic relationship
+        let mut matching_tile_ids: Vec<String> = Vec::new();
+
+        for (tile_id, tile) in tiles.iter() {
+            // Check if tile has data for this child node
+            // if !tile.data.contains_key(&child_node.nodeid) {
+            //     continue;
+            // }
+
+            // Check semantic parent-child relationship
+            if Self::matches_semantic_child(
+                parent_tile_id,
+                parent_node_id,
+                &*child_node,
+                tile,
+            ) {
+                matching_tile_ids.push(tile_id.clone());
+            }
+        }
+
+        // If no matching tiles, return Empty (not an error)
+        if matching_tile_ids.is_empty() {
+            return Ok(SemanticChildResult::Empty);
+        }
+
+        // Get edges for creating PseudoValues
+        let edges = self.with_model_core(|core| {
+            core.get_edges_internal()
+                .ok_or_else(|| SemanticChildError::ModelNotInitialized("Model edges not initialized".to_string()))
+                .map(|map| map.clone())
+        })?;
+
+        // Create PseudoValues from the matching tiles
+        let mut values = Vec::new();
+        for tile_id in &matching_tile_ids {
+            let tile = tiles.get(tile_id)
+                .ok_or_else(|| SemanticChildError::Other("Tile not found".to_string()))?;
+
+            let tile_data = tile.data.get(&child_node.nodeid);
+            let child_ids = edges.get(&child_node.nodeid).cloned().unwrap_or_default();
+
+            let pseudo_value = RustPseudoValue::from_node_and_tile(
+                Arc::clone(&child_node),
+                Some(Arc::new(tile.clone())),
+                tile_data.cloned(),
+                child_ids,
+            );
+
+            values.push(pseudo_value);
+        }
+
+        // Create PseudoList or single value based on is_collector and number of values
+        if child_node.is_collector || values.len() > 1 {
+            // Return as PseudoList
+            let pseudo_list = RustPseudoList::from_values(child_alias.to_string(), values);
+            Ok(SemanticChildResult::List(pseudo_list))
+        } else if values.len() == 1 {
+            // Return single value
+            Ok(SemanticChildResult::Single(values.into_iter().next().unwrap()))
+        } else {
+            Ok(SemanticChildResult::Empty)
+        }
     }
 }
 
@@ -408,6 +559,56 @@ impl WASMResourceInstanceWrapper {
         F: FnOnce(&mut crate::model_wrapper::ResourceModelWrapperCore) -> Result<R, JsValue>,
     {
         self.core.with_model_core_mut(f)
+    }
+
+    fn check_tiles(&mut self, tiles: &Vec<StaticTile>) -> Result<(), JsValue> {
+        self.with_model_core_mut(|core| {
+            let nodegroups = core.get_nodegroup_objects().map_err(|e| JsValue::from_str(&e))?;
+            for tile in tiles {
+                nodegroups.get(&tile.nodegroup_id)
+                    .ok_or_else(|| JsValue::from_str(&format!("Tile {:?} has nodegroup not on model: nodegroup {}", tile.tileid, tile.nodegroup_id)))?;
+            }
+            Ok(())
+        })
+    }
+
+    pub fn load_tiles(&mut self, tiles: Vec<StaticTile>) -> Result<(), JsValue> {
+        self.check_tiles(&tiles)?;
+
+        if self.core.tiles.is_none() {
+            self.core.tiles = Some(HashMap::new());
+        }
+        let tile_store = self.core.tiles.as_mut().unwrap();
+
+        // In non-lazy mode, clear existing data (replacing all tiles)
+        // In lazy mode, append tiles (incremental loading)
+        if !self.lazy {
+            tile_store.clear();
+            self.core.nodegroup_index.clear();
+        }
+
+        // Store tiles and build index
+        for mut tile in tiles {
+            // Ensure tile has an ID
+            let tile_id = tile.ensure_id();
+            let nodegroup_id = tile.nodegroup_id.clone();
+
+            // Add to nodegroup index
+            self.core.nodegroup_index
+                .entry(nodegroup_id.clone())
+                .or_insert_with(Vec::new)
+                .push(tile_id.clone());
+
+            // In lazy mode, mark this nodegroup as having tiles loaded
+            if self.lazy {
+                self.loaded_tile_nodegroups.insert(nodegroup_id);
+            }
+
+            // Store tile
+            tile_store.insert(tile_id.clone(), tile);
+        }
+
+        Ok(())
     }
 }
 
@@ -493,17 +694,6 @@ impl WASMResourceInstanceWrapper {
         self.loaded_tile_nodegroups.insert(nodegroup_id);
     }
 
-    fn check_tiles(&mut self, tiles: &Vec<StaticTile>) -> Result<(), JsValue> {
-        self.with_model_core_mut(|core| {
-            let nodegroups = core.get_nodegroup_objects().map_err(|e| JsValue::from_str(&e))?;
-            for tile in tiles {
-                nodegroups.get(&tile.nodegroup_id)
-                    .ok_or_else(|| JsValue::from_str(&format!("Tile {:?} has nodegroup not on model: nodegroup {}", tile.tileid, tile.nodegroup_id)))?;
-            }
-            Ok(())
-        })
-    }
-
     /// Load tiles from JavaScript into Rust storage
     /// This is called during ResourceInstanceWrapper construction
     #[wasm_bindgen(js_name = loadTiles)]
@@ -512,37 +702,6 @@ impl WASMResourceInstanceWrapper {
         let tiles: Vec<StaticTile> = serde_wasm_bindgen::from_value(tiles_js)
             .map_err(|e| JsValue::from_str(&format!("Failed to deserialize tiles: {:?}", e)))?;
         self.load_tiles(tiles)
-    }
-
-    pub fn load_tiles(&mut self, tiles: Vec<StaticTile>) -> Result<(), JsValue> {
-        self.check_tiles(&tiles)?;
-
-        if self.core.tiles.is_none() {
-            self.core.tiles = Some(HashMap::new());
-        }
-        let tileStore = self.core.tiles.as_mut().unwrap();
-
-        // Clear existing data
-        tileStore.clear();
-        self.core.nodegroup_index.clear();
-
-        // Store tiles and build index
-        for mut tile in tiles {
-            // Ensure tile has an ID
-            let tile_id = tile.ensure_id();
-            let nodegroup_id = tile.nodegroup_id.clone();
-
-            // Add to nodegroup index
-            self.core.nodegroup_index
-                .entry(nodegroup_id)
-                .or_insert_with(Vec::new)
-                .push(tile_id.clone());
-
-            // Store tile
-            tileStore.insert(tile_id.clone(), tile);
-        }
-
-        Ok(())
     }
 
     #[wasm_bindgen(js_name = getResourceId)]
@@ -578,7 +737,7 @@ impl WASMResourceInstanceWrapper {
     pub fn get_descriptors(&self) -> Option<StaticResourceDescriptors> {
         self.core.resource_instance
             .as_ref()
-            .map(|r| r.descriptors.clone())
+            .map(|r| StaticResourceDescriptors(r.descriptors.clone()))
     }
 
     /// Get tile IDs for a specific nodegroup
@@ -594,12 +753,13 @@ impl WASMResourceInstanceWrapper {
     /// Get full tile data by tile ID
     /// Returns StaticTile WASM object or error if not found
     #[wasm_bindgen(js_name = getTile)]
-    pub fn get_tile(&self, tile_id: &str) -> Result<StaticTile, JsValue> {
+    pub fn get_tile(&self, tile_id: &str) -> Result<WasmStaticTile, JsValue> {
         self.core.tiles
             .as_ref()
             .ok_or_else(|| JsValue::from_str(&format!("No tiles loaded: {}", tile_id)))?
             .get(tile_id)
             .cloned()
+            .map(WasmStaticTile)
             .ok_or_else(|| JsValue::from_str(&format!("Tile not found: {}", tile_id)))
     }
 
@@ -704,10 +864,7 @@ impl WASMResourceInstanceWrapper {
         let node_alias = alias.clone();  // Use the provided alias
         let rust_list = RustPseudoList {
             node_alias,
-            groups: vec![RustPseudoGroup {
-                tile_id,
-                values: vec![rust_value],
-            }],
+            values: vec![rust_value],
             is_loaded: true,
         };
         if let Ok(mut cache) = self.core.pseudo_cache.lock() {
@@ -759,7 +916,8 @@ impl WASMResourceInstanceWrapper {
                 .map(|map| map.clone())
         })?;
         let node = node_objs.get(alias)
-            .ok_or_else(|| JsValue::from_str(&format!("Could not find node by alias: {}", alias)))?;
+            .ok_or_else(|| JsValue::from_str(&format!("Could not find node by alias: {}", alias)))?
+            .clone();
 
         // PORT: js/pseudos.ts:518-532 - Check if this should be a PseudoList
         let is_collector = node.is_collector;
@@ -820,7 +978,7 @@ impl WASMResourceInstanceWrapper {
 
                     // Create RustPseudoValue for this tile
                     let pseudo_value = RustPseudoValue::from_node_and_tile(
-                        Arc::clone(node),
+                        Arc::clone(&node),
                         Some(Arc::new(tile.clone())),
                         tile_data.cloned(),
                         child_ids,
@@ -869,7 +1027,7 @@ impl WASMResourceInstanceWrapper {
 
             // Create RustPseudoValue
             let pseudo_value = RustPseudoValue::from_node_and_tile(
-                Arc::clone(node),
+                Arc::clone(&node),
                 tile.map(Arc::new),
                 tile_data,
                 child_ids,
@@ -1190,17 +1348,14 @@ impl WASMResourceInstanceWrapper {
     }
 
     /// PORT: graphManager.ts lines 505-643
-    /// Internal implementation - returns structured RustPseudoList (Phase 3)
-    /// Gets node_objs and edges from model core directly
+    /// Simplified implementation - builds RustPseudoList directly without recipe intermediate
     fn values_from_resource_nodegroup_internal(
         &self,
-        existing_values: HashMap<String, Option<bool>>,  // Pre-serialized: Some(true)=truthy, Some(false)=false, None=undefined
-        nodegroup_tile_ids: Vec<String>,  // Tile IDs for this nodegroup (nulls become None)
+        existing_values: HashMap<String, Option<bool>>,
+        nodegroup_tile_ids: Vec<String>,
         nodegroup_id: &str,
     ) -> Result<ValuesFromNodegroupResult, JsValue> {
-        // Use model's internal nodes directly instead of deserializing from JS
-
-        // Ensure nodes are built (only if not already built)
+        // Ensure nodes are built
         self.with_model_core_mut(|core| {
             if core.get_nodes_internal().is_none() {
                 core.build_nodes().ok();
@@ -1208,228 +1363,79 @@ impl WASMResourceInstanceWrapper {
             Ok(())
         })?;
 
-        let node_objs_arc = self.with_model_core(|core| {
+        let node_objs_wasm = self.with_model_core(|core| {
             core.get_nodes_internal()
                 .ok_or_else(|| JsValue::from_str("Model nodes not initialized"))
                 .map(|map| map.clone())
         })?;
 
-        let edges_arc = self.with_model_core(|core| {
+        let edges = self.with_model_core(|core| {
             core.get_edges_internal()
                 .ok_or_else(|| JsValue::from_str("Model edges not initialized"))
                 .map(|map| map.clone())
         })?;
 
-        // Get tiles for this nodegroup
-        let mut nodegroup_tiles: Vec<Option<&StaticTile>> = Vec::new();
-
-        // If tiles aren't loaded, treat all as None
-        if let Some(tiles) = self.core.tiles.as_ref() {
-            for tile_id in &nodegroup_tile_ids {
-                if tile_id.is_empty() {
-                    nodegroup_tiles.push(None); // null tile
-                } else {
-                    let tile = tiles.get(tile_id);
-                    nodegroup_tiles.push(tile);
-                }
-            }
-        } else {
-            // No tiles loaded - all are None
-            for _ in &nodegroup_tile_ids {
-                nodegroup_tiles.push(None);
-            }
-        }
-
-        // PORT: Line 514
+        let mut values: HashMap<String, RustPseudoList> = HashMap::new();
         let mut implied_nodegroups: HashSet<String> = HashSet::new();
-        // PORT: Line 515
-        let mut implied_nodes: HashMap<String, (StaticNode, String)> = HashMap::new(); // key = nodeid+tileid, value = (node, tileid)
 
-        // PORT: Lines 517-521 - Track unseen nodes
-        let mut nodes_unseen: HashSet<String> = node_objs_arc
-            .values()
-            .filter(|node| node.nodegroup_id.as_deref() == Some(nodegroup_id))
-            .filter_map(|node| node.alias.clone())
-            .collect();
-
-        // PORT: Line 522 - Track seen tile-node pairs
-        let mut tile_nodes_seen: HashSet<(String, String)> = HashSet::new(); // (nodeid, tileid)
-
-        let mut recipes: Vec<PseudoRecipe> = Vec::new();
-
-        // Helper to add a pseudo recipe
-        // PORT: Lines 523-582
-        let mut add_pseudo = |node: &StaticNode, tile: Option<&StaticTile>| {
-            let key = node.alias.clone().unwrap_or_default();
-
-            // PORT: Line 525
-            nodes_unseen.remove(&key);
-
-            // PORT: Lines 526-528
-            let tileid: Option<String> = tile.and_then(|t| t.tileid.clone());
-            if let Some(ref tid) = tileid {
-                tile_nodes_seen.insert((node.nodeid.clone(), tid.clone()));
-            }
-
-            // PORT: Lines 530-537 - Check if already exists
-            if let Some(existing) = existing_values.get(&key) {
-                if matches!(existing, Some(true)) {
-                    // Already loaded (truthy value exists), skip
-                    return;
-                }
-            }
-
-            // PORT: Lines 546-563 - Discover implied nodegroups and nodes
-            for (domain, ranges) in edges_arc.iter() {
-                if ranges.contains(&node.nodeid) {
-                    if let Some(domain_node) = node_objs_arc.get(domain) {
-                        // PORT: Lines 552-557 - Implied nodegroup
-                        if let Some(ref ng_id) = domain_node.nodegroup_id {
-                            if !ng_id.is_empty() && ng_id != nodegroup_id {
-                                implied_nodegroups.insert(ng_id.clone());
-                            }
-                        }
-
-                        // PORT: Lines 558-560 - Implied node (shares tile)
-                        if let (Some(ref domain_ng), Some(tile), Some(ref tid)) =
-                            (&domain_node.nodegroup_id, tile, &tileid) {
-                            if domain_ng == &tile.nodegroup_id
-                                && domain_ng != &domain_node.nodeid
-                                && !implied_nodes.contains_key(&format!("{}{}", domain_node.nodeid, tid)) {
-                                implied_nodes.insert(
-                                    format!("{}{}", domain_node.nodeid, tid),
-                                    ((**domain_node).clone(), tid.clone())
-                                );
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
-
-            // PORT: Lines 542, 581 - Add the recipe
-            recipes.push(PseudoRecipe {
-                node_alias: key,
-                tile_id: tileid,
-                node_id: node.nodeid.clone(),
-                is_collector: node.is_collector,
-                sentinel_undefined: false,
-            });
+        // Collect tiles for this nodegroup
+        let tiles_store = match self.core.tiles.as_ref() {
+            Some(t) => t,
+            None => return Ok(ValuesFromNodegroupResult {
+                values: HashMap::new(),
+                implied_nodegroups: Vec::new(),
+            }),
         };
 
-        // PORT: Lines 584-621 - Main loop over tiles
-        for tile_opt in nodegroup_tiles {
-            // PORT: Lines 585-591 - Add parent node
-            if let Some(parent_node) = node_objs_arc.get(nodegroup_id) {
-                if parent_node.nodegroup_id.as_deref().unwrap_or("") == ""
-                    || parent_node.nodegroup_id.as_deref() == Some(nodegroup_id) {
-                    add_pseudo(&**parent_node, tile_opt);
-                }
-            }
+        // Build a map of alias -> (core node, tiles)
+        let mut alias_tiles: HashMap<String, (Arc<StaticNode>, Vec<Option<Arc<StaticTile>>>)> = HashMap::new();
 
-            // PORT: Lines 593-620 - Process tile data
-            if let Some(tile) = tile_opt {
-                // PORT: Lines 594-597 - Get tile nodes
-                let mut tile_nodes: HashMap<String, JsonValue> = HashMap::new();
-                for (key, value) in &tile.data {
-                    tile_nodes.insert(key.clone(), value.clone());
-                }
+        for tile_id in &nodegroup_tile_ids {
+            let tile = if tile_id.is_empty() {
+                None
+            } else {
+                tiles_store.get(tile_id).map(|t| Arc::new(t.clone()))
+            };
 
-                // PORT: Lines 599-602 - Add semantic nodes without data
-                for node in node_objs_arc.values() {
-                    if node.nodegroup_id.as_deref() == Some(nodegroup_id)
-                        && !tile_nodes.contains_key(&node.nodeid)
-                        && node.datatype == "semantic" {
-                        tile_nodes.insert(node.nodeid.clone(), JsonValue::Object(serde_json::Map::new()));
-                    }
-                }
-
-                // PORT: Lines 604-606 - Ensure nodegroup_id is in tile_nodes
-                if !tile_nodes.contains_key(&tile.nodegroup_id) {
-                    tile_nodes.insert(tile.nodegroup_id.clone(), JsonValue::Object(serde_json::Map::new()));
-                }
-
-                // PORT: Lines 607-620 - Add pseudo for each tile node
-                for (nodeid, node_value) in tile_nodes {
-                    // PORT: Lines 608-611 - Skip nodegroup node
-                    if nodeid == nodegroup_id {
+            // Find nodes in this nodegroup
+            for (nodeid, node_wasm) in node_objs_wasm.iter() {
+                if node_wasm.nodegroup_id.as_deref() == Some(nodegroup_id) {
+                    let alias = node_wasm.alias.clone().unwrap_or_default();
+                    if alias.is_empty() {
                         continue;
                     }
 
-                    if let Some(node) = node_objs_arc.get(&nodeid) {
-                        // PORT: Line 616 - Only add if value is not null
-                        if !node_value.is_null() {
-                            add_pseudo(&**node, Some(tile));
+                    // Skip if already exists as truthy
+                    if let Some(Some(true)) = existing_values.get(&alias) {
+                        continue;
+                    }
+
+                    let entry = alias_tiles.entry(alias.clone()).or_insert_with(|| {
+                        (Arc::clone(node_wasm), Vec::new())
+                    });
+                    entry.1.push(tile.clone());
+
+                    // Check for implied nodegroups via edges
+                    for (domain, ranges) in edges.iter() {
+                        if ranges.contains(&node_wasm.nodeid) {
+                            if let Some(domain_node) = node_objs_wasm.get(domain) {
+                                if let Some(ref ng_id) = domain_node.nodegroup_id {
+                                    if !ng_id.is_empty() && ng_id != nodegroup_id {
+                                        implied_nodegroups.insert(ng_id.clone());
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
 
-        // PORT: Lines 622-632 - Process implied nodes
-        // Note: Can't use add_pseudo closure due to borrow checker, inline the logic
-        while !implied_nodes.is_empty() {
-            let key = implied_nodes.keys().next().unwrap().clone();
-            let (node, tileid) = implied_nodes.remove(&key).unwrap();
-
-            // PORT: Line 627 - Only add if not seen
-            if !tile_nodes_seen.contains(&(node.nodeid.clone(), tileid.clone())) {
-                let tile = self.core.tiles.as_ref().and_then(|tiles| tiles.get(&tileid));
-
-                // Inline add_pseudo logic
-                let key = node.alias.clone().unwrap_or_default();
-                nodes_unseen.remove(&key);
-
-                // tileid is already a String here (from the tuple), not Option
-                tile_nodes_seen.insert((node.nodeid.clone(), tileid.clone()));
-
-                // Check if already exists
-                if let Some(existing) = existing_values.get(&key) {
-                    if matches!(existing, Some(false) | None) {
-                        // Can add (false or undefined)
-                        recipes.push(PseudoRecipe {
-                            node_alias: key.clone(),
-                            tile_id: Some(tileid.clone()),
-                            node_id: node.nodeid.clone(),
-                            is_collector: node.is_collector,
-                            sentinel_undefined: false,
-                        });
-                    }
-                } else {
-                    // Not exists, add
-                    recipes.push(PseudoRecipe {
-                        node_alias: key,
-                        tile_id: Some(tileid),
-                        node_id: node.nodeid.clone(),
-                        is_collector: node.is_collector,
-                        sentinel_undefined: false,
-                    });
-                }
-            }
+        // Convert to RustPseudoList
+        for (alias, (node, tiles)) in alias_tiles {
+            let pseudo_list = RustPseudoList::from_node_tiles(node, tiles, &edges, None);
+            values.insert(alias, pseudo_list);
         }
-
-        // PORT: Lines 635-641 - Mark unseen nodes as undefined (sentinel)
-        for node_unseen in nodes_unseen {
-            if !node_unseen.is_empty() {
-                recipes.push(PseudoRecipe {
-                    node_alias: node_unseen,
-                    tile_id: None,
-                    node_id: String::new(),
-                    is_collector: false,
-                    sentinel_undefined: true,  // Special flag for undefined sentinel
-                });
-            }
-        }
-
-        // PORT: Phase 3 - Convert recipes to structured RustPseudoList hierarchy
-        // This conversion happens AFTER the TS algorithm (preserving all PORT line numbers above)
-        // The recipes are generated following js/graphManager.ts:1099-1230 exactly
-        // Now we convert those recipes into RustPseudoList structures
-        let values = self.recipes_to_pseudo_lists(
-            &recipes,
-            &node_objs_arc,
-            &edges_arc,
-        );
 
         Ok(ValuesFromNodegroupResult {
             values,
@@ -1437,84 +1443,17 @@ impl WASMResourceInstanceWrapper {
         })
     }
 
-    /// Convert flat recipes to structured RustPseudoList hierarchy
-    /// PORT: Phase 3 new conversion layer - not in original TS (TS builds hierarchy in makePseudoCls)
-    /// This bridges the gap: Rust algorithm produces recipes (matching TS), then converts to hierarchy
-    fn recipes_to_pseudo_lists(
-        &self,
-        recipes: &[PseudoRecipe],
-        node_objs: &HashMap<String, Arc<StaticNode>>,
-        edges: &HashMap<String, Vec<String>>,
-    ) -> HashMap<String, RustPseudoList> {
-        // Group recipes by node alias
-        let mut recipes_by_alias: HashMap<String, Vec<&PseudoRecipe>> = HashMap::new();
-        for recipe in recipes {
-            recipes_by_alias
-                .entry(recipe.node_alias.clone())
-                .or_insert_with(Vec::new)
-                .push(recipe);
-        }
-
-        let mut values: HashMap<String, RustPseudoList> = HashMap::new();
-
-        let resource_tiles = match self.core.tiles.as_ref() {
-            Some(tiles) => tiles,
-            None => {
-                // TODO: check - this might be different if there is pushing None?
-                return HashMap::new()
-            }
-        };
-        for (alias, alias_recipes) in recipes_by_alias {
-            // Skip sentinel undefined entries
-            if alias_recipes.iter().all(|r| r.sentinel_undefined) {
-                continue;
-            }
-
-            // Find the node for this alias
-            if let Some(node) = node_objs.get(&alias_recipes[0].node_id) {
-                // Collect tiles for this node
-                let mut tiles: Vec<Option<Arc<StaticTile>>> = Vec::new();
-
-                for recipe in &alias_recipes {
-                    if recipe.sentinel_undefined {
-                        continue;
-                    }
-
-                    let tile = if let Some(ref tile_id) = recipe.tile_id {
-                        resource_tiles.get(tile_id).map(|t| Arc::new(t.clone()))
-                    } else {
-                        None
-                    };
-                    tiles.push(tile);
-                }
-
-                // Create RustPseudoList from node and tiles
-                // PORT: Equivalent to js/pseudos.ts:452-461 makePseudoCls creating PseudoList
-                let pseudo_list = RustPseudoList::from_node_tiles(
-                    Arc::clone(node),
-                    tiles,
-                    edges,
-                );
-
-                values.insert(alias, pseudo_list);
-            }
-        }
-
-        values
-    }
-
-    /// WASM-exposed wrapper - returns recipes for backward compatibility
-    /// TODO: Remove after Phase 4 (JS uses RustPseudoList directly)
+    /// WASM-exposed wrapper - returns structured values
     #[wasm_bindgen(js_name = valuesFromResourceNodegroup)]
     pub fn values_from_resource_nodegroup(
         &self,
         existing_values_js: JsValue,
         nodegroup_tile_ids: Vec<String>,
         nodegroup_id: &str,
-        node_objs_js: JsValue,
-        edges_js: JsValue,
-    ) -> Result<JsValue, JsValue> {
-        // Deserialize existing_values from JS (pre-serialized by TS)
+        _node_objs_js: JsValue,  // No longer needed - we use model directly
+        _edges_js: JsValue,      // No longer needed - we use model directly
+    ) -> Result<WasmValuesFromNodegroupResult, JsValue> {
+        // Deserialize existing_values from JS
         let existing_values: HashMap<String, Option<bool>> = serde_wasm_bindgen::from_value(existing_values_js)
             .map_err(|e| JsValue::from_str(&format!("Failed to deserialize existing_values: {:?}", e)))?;
 
@@ -1525,23 +1464,7 @@ impl WASMResourceInstanceWrapper {
             nodegroup_id,
         )?;
 
-        // Convert back to recipes for backward compatibility
-        let recipes = result.to_recipes();
-
-        // Return as JS object with recipes and impliedNodegroups
-        let obj = js_sys::Object::new();
-        js_sys::Reflect::set(
-            &obj,
-            &JsValue::from_str("recipes"),
-            &serde_wasm_bindgen::to_value(&recipes)?,
-        )?;
-        js_sys::Reflect::set(
-            &obj,
-            &JsValue::from_str("impliedNodegroups"),
-            &serde_wasm_bindgen::to_value(&result.implied_nodegroups)?,
-        )?;
-
-        Ok(obj.into())
+        Ok(WasmValuesFromNodegroupResult { inner: result })
     }
 
     /// Find semantic children for a parent semantic node
@@ -1592,10 +1515,9 @@ impl WASMResourceInstanceWrapper {
                 // PORT: js/semantic.ts lines 296-340
                 if ResourceInstanceWrapperCore::matches_semantic_child(
                     parent_tile_id.as_ref(),
-                    parent_nodegroup_id.as_ref(),
+                    parent_node_id.as_ref(),
                     &**child_node,
                     tile,
-                    &tile.nodegroup_id,
                 ) {
                     results
                         .entry(child_alias.clone())
@@ -1621,95 +1543,161 @@ impl WASMResourceInstanceWrapper {
     /// - child_alias: The alias of the specific child to retrieve
     ///
     /// Returns: WasmPseudoValue or WasmPseudoList, or null if not found
+    /// Throws an error if tiles are not loaded for the child's nodegroup (in lazy mode)
     #[wasm_bindgen(js_name = getSemanticChildValue)]
-    pub fn get_semantic_child_value(
+    pub fn get_semantic_child_value_wasm(
         &self,
         parent_tile_id: Option<String>,
         parent_node_id: String,
         parent_nodegroup_id: Option<String>,
         child_alias: String,
     ) -> Result<JsValue, JsValue> {
-        // Get child nodes for this parent
-        let child_nodes = self.with_model_core_mut(|core| {
-            core.get_child_nodes(&parent_node_id.as_str())
-                .map_err(|e| JsValue::from_str(&e))
-                .map(|map| map.clone())
-        })?;
-
-        // Get the specific child node we're looking for
-        let child_node = child_nodes.get(&child_alias)
-            .ok_or_else(|| JsValue::from_str(&format!("Child node not found: {}", child_alias)))?;
-
-        // Find all tiles that contain this child node with the correct semantic relationship
-        let mut matching_tile_ids: Vec<String> = Vec::new();
-
-        let tiles = self.core.tiles
-            .as_ref()
-            .ok_or_else(|| JsValue::from_str("Tiles not initialized"))?;
-
-        for (tile_id, tile) in tiles.iter() {
-            // Check if tile has data for this child node
-            if !tile.data.contains_key(&child_node.nodeid) {
-                continue;
-            }
-
-            // Check semantic parent-child relationship
-            if ResourceInstanceWrapperCore::matches_semantic_child(
-                parent_tile_id.as_ref(),
-                parent_nodegroup_id.as_ref(),
-                &**child_node,
-                tile,
-                &tile.nodegroup_id,
-            ) {
-                matching_tile_ids.push(tile_id.clone());
-            }
-        }
-
-        // If no matching tiles, return null
-        if matching_tile_ids.is_empty() {
-            return Ok(JsValue::NULL);
-        }
-
-        // Get edges for creating PseudoValues
-        let edges = self.with_model_core(|core| {
-            core.get_edges_internal()
-                .ok_or_else(|| JsValue::from_str("Model edges not initialized"))
-                .map(|map| map.clone())
-        })?;
-
-        // Create PseudoValues from the matching tiles
-        let mut values = Vec::new();
-        let tiles = self.core.tiles
-            .as_ref()
-            .ok_or_else(|| JsValue::from_str("Tiles not initialized"))?;
-        for tile_id in &matching_tile_ids {
-            let tile = tiles.get(tile_id).ok_or_else(|| JsValue::from_str("Tile not found"))?;
-
-            let tile_data = tile.data.get(&child_node.nodeid);
-            let child_ids = edges.get(&child_node.nodeid).cloned().unwrap_or_default();
-
-            let pseudo_value = RustPseudoValue::from_node_and_tile(
-                Arc::clone(child_node),
-                Some(Arc::new(tile.clone())),
-                tile_data.cloned(),
-                child_ids,
-            );
-
-            values.push(pseudo_value);
-        }
-
-        // Create PseudoList or single value based on is_collector and number of values
-        if child_node.is_collector || values.len() > 1 {
-            // Return as PseudoList
-            let pseudo_list = RustPseudoList::from_values(child_alias, values);
-            let wasm_list = WasmPseudoList::from_rust(pseudo_list);
-            Ok(wasm_list.into())
-        } else if values.len() == 1 {
-            // Return single value
-            let wasm_value = WasmPseudoValue::from_rust(values.into_iter().next().unwrap());
-            Ok(wasm_value.into())
+        // Determine loaded nodegroups for lazy mode check
+        let loaded_nodegroups = if self.lazy {
+            Some(&self.loaded_tile_nodegroups)
         } else {
-            Ok(JsValue::NULL)
+            None
+        };
+
+        // Call core implementation
+        let result = self.core.get_semantic_child_value(
+            parent_tile_id.as_ref(),
+            &parent_node_id,
+            parent_nodegroup_id.as_ref(),
+            &child_alias,
+            loaded_nodegroups,
+        );
+
+        // Convert result to JsValue
+        match result {
+            Ok(SemanticChildResult::List(pseudo_list)) => {
+                let wasm_list = WasmPseudoList::from_rust(pseudo_list);
+                Ok(wasm_list.into())
+            }
+            Ok(SemanticChildResult::Single(pseudo_value)) => {
+                let wasm_value = WasmPseudoValue::from_rust(pseudo_value);
+                Ok(wasm_value.into())
+            }
+            Ok(SemanticChildResult::Empty) => {
+                Ok(JsValue::NULL)
+            }
+            Err(SemanticChildError::TilesNotLoaded { nodegroup_id }) => {
+                // Return a specific error that JS can catch and handle
+                Err(JsValue::from_str(&format!("TILES_NOT_LOADED:{}", nodegroup_id)))
+            }
+            Err(e) => {
+                Err(JsValue::from_str(&e.to_string()))
+            }
+        }
+    }
+
+    /// Async version of getSemanticChildValue that handles lazy tile loading
+    ///
+    /// If tiles are not loaded for the child's nodegroup, this method will:
+    /// 1. Call the tile loader to fetch tiles for that nodegroup
+    /// 2. Load the tiles into Rust storage
+    /// 3. Mark the nodegroup as loaded
+    /// 4. Retry getting the semantic child value
+    ///
+    /// Returns: WasmPseudoValue or WasmPseudoList, or null if not found
+    #[wasm_bindgen(js_name = retrieveSemanticChildValue)]
+    pub async fn retrieve_semantic_child_value(
+        &mut self,
+        parent_tile_id: Option<String>,
+        parent_node_id: String,
+        parent_nodegroup_id: Option<String>,
+        child_alias: String,
+    ) -> Result<JsValue, JsValue> {
+        // Determine loaded nodegroups for lazy mode check
+        let loaded_nodegroups = if self.lazy {
+            Some(&self.loaded_tile_nodegroups)
+        } else {
+            None
+        };
+
+        // First attempt - call core implementation
+        let result = self.core.get_semantic_child_value(
+            parent_tile_id.as_ref(),
+            &parent_node_id,
+            parent_nodegroup_id.as_ref(),
+            &child_alias,
+            loaded_nodegroups,
+        );
+
+        // Check if we need to load tiles
+        match result {
+            Err(SemanticChildError::TilesNotLoaded { nodegroup_id }) => {
+                // Need to load tiles for this nodegroup
+                let loader = self.tile_loader.clone()
+                    .ok_or_else(|| JsValue::from_str("No tile loader set for lazy loading"))?;
+
+                // Call the tile loader with the nodegroup ID (or null for all tiles)
+                let nodegroup_js = if self.lazy {
+                    JsValue::from_str(&nodegroup_id)
+                } else {
+                    JsValue::NULL
+                };
+
+                let promise = loader.call1(&JsValue::NULL, &nodegroup_js)
+                    .map_err(|e| JsValue::from_str(&format!("Failed to call tile loader: {:?}", e)))?;
+
+                // Await the promise
+                let tiles_js = JsFuture::from(js_sys::Promise::from(promise)).await
+                    .map_err(|e| JsValue::from_str(&format!("Tile loader failed: {:?}", e)))?;
+
+                // Load the tiles into Rust storage
+                self.load_tiles_js(tiles_js)?;
+
+                // Mark the nodegroup as loaded
+                self.mark_nodegroup_tiles_loaded(nodegroup_id.clone());
+
+                // Retry with updated loaded_tile_nodegroups
+                let loaded_nodegroups = if self.lazy {
+                    Some(&self.loaded_tile_nodegroups)
+                } else {
+                    None
+                };
+
+                let retry_result = self.core.get_semantic_child_value(
+                    parent_tile_id.as_ref(),
+                    &parent_node_id,
+                    parent_nodegroup_id.as_ref(),
+                    &child_alias,
+                    loaded_nodegroups,
+                );
+
+                // Convert retry result to JsValue
+                match retry_result {
+                    Ok(SemanticChildResult::List(pseudo_list)) => {
+                        let wasm_list = WasmPseudoList::from_rust(pseudo_list);
+                        Ok(wasm_list.into())
+                    }
+                    Ok(SemanticChildResult::Single(pseudo_value)) => {
+                        let wasm_value = WasmPseudoValue::from_rust(pseudo_value);
+                        Ok(wasm_value.into())
+                    }
+                    Ok(SemanticChildResult::Empty) => {
+                        Ok(JsValue::NULL)
+                    }
+                    Err(e) => {
+                        Err(JsValue::from_str(&e.to_string()))
+                    }
+                }
+            }
+            Ok(SemanticChildResult::List(pseudo_list)) => {
+                let wasm_list = WasmPseudoList::from_rust(pseudo_list);
+                Ok(wasm_list.into())
+            }
+            Ok(SemanticChildResult::Single(pseudo_value)) => {
+                let wasm_value = WasmPseudoValue::from_rust(pseudo_value);
+                Ok(wasm_value.into())
+            }
+            Ok(SemanticChildResult::Empty) => {
+                Ok(JsValue::NULL)
+            }
+            Err(e) => {
+                Err(JsValue::from_str(&e.to_string()))
+            }
         }
     }
 }

@@ -19,7 +19,7 @@ import {
   StaticGraphMeta,
   IStaticDescriptorConfig
 } from "./static-types";
-import { PseudoList, PseudoUnavailable, wrapRustPseudo, makePseudoCls_JS } from "./pseudos.ts";
+import { PseudoList, PseudoUnavailable, wrapRustPseudo } from "./pseudos.ts";
 import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper, newWASMResourceInstanceWrapperForResource, newWASMResourceInstanceWrapperForModel } from "../pkg/alizarin";
 import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { CheckPermission, GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
@@ -79,12 +79,14 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       this.wasmWrapper.setTileLoader((nodegroupId) => {
         // If nodegroupId is null/undefined, load all tiles
         // Otherwise load tiles for specific nodegroup
-        return staticStore.loadTiles(resourceId, nodegroupId);
+        const tiles = staticStore.loadTiles(resourceId, nodegroupId);
+        return tiles;
       });
     }
 
-    // Load tiles into Rust if we have any (non-lazy mode)
-    if (!lazy && !this.wasmWrapper.tilesLoaded() && resource && resource.tiles && resource.tiles.length > 0) {
+    // Load tiles into Rust if we have any - regardless of lazy mode,
+    // if tiles are already present we should use them
+    if (!this.wasmWrapper.tilesLoaded() && resource && resource.tiles && resource.tiles.length > 0) {
       try {
         this.wasmWrapper.loadTiles(resource.tiles);
       } catch (e) {
@@ -431,7 +433,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     try {
       if (!lazy && this.resource) {
         // Ensure tiles are loaded if we need them for non-lazy population
-        if (!this.resource.__tilesLoaded) {
+        if (!this.resource.tiles) {
           await this.ensureTilesLoaded();
         }
       }
@@ -1366,6 +1368,8 @@ function makeResourceModelWrapper<T extends IRIVM<T>>(
 class GraphManager {
   _initialized: boolean = false;
   archesClient: ArchesClient;
+  // These are hydrated graphs - for metadata-only versions
+  // of graphs, using wkrms[*].meta
   graphs: Map<string, ResourceModelWrapper<any>>;
   wkrms: Map<string, WKRM>;
 

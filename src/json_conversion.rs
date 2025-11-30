@@ -16,7 +16,9 @@
 use std::collections::HashMap;
 use serde_json::{Value, Map};
 use serde::{Serialize, Deserialize};
-use crate::graph::{StaticGraph, StaticTile, StaticNode, StaticNodegroup, StaticEdge};
+use crate::graph::StaticGraph;
+// Use core types for internal processing
+use alizarin_core::{StaticTile, StaticNode, StaticNodegroup, StaticEdge};
 
 /// Container for resource data (no StaticResource type exists in graph.rs)
 ///

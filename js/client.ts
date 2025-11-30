@@ -6,7 +6,11 @@ class GraphResult {
 
   constructor(jsonData: GraphResult) {
     this.models = Object.fromEntries(
-      Object.entries(jsonData.models).map(([k, v]) => [k, new StaticGraphMeta(v)])
+      Object.entries(jsonData.models).map(([k, v]) => {
+        // Inject graphid from the key if not present in the value
+        const data = { graphid: k, ...v };
+        return [k, new StaticGraphMeta(data)];
+      })
     );
   }
 }
@@ -206,7 +210,7 @@ class ArchesClientRemoteStatic extends ArchesClient {
     for await (const file of files) {
       const source = `${this.archesUrl}/${file}`;
       const response = await fetch(source);
-      const resourceSet: StaticResource[] = (await response.json()).business_data.resources;
+      const resourceSet: StaticResource[] = (await response.json()).business_data.resources.map(resource => new StaticResource(resource));
       for (const resource of resourceSet) {
         resource.__source = source;
       }
@@ -358,10 +362,13 @@ class ArchesClientLocal extends ArchesClient {
       source,
       "utf8",
     );
-    return JSON.parse(response).then((resource: StaticResource) => {
-      resource.__source = source;
-      return resource;
-    });
+    const resource: StaticResource[] = JSON.parse(response)
+      .business_data
+      .resources
+      .filter(resource => resource.resourceinstance.resourceinstanceid === resourceId)
+      .map(resource => new StaticResource(resource))[0];
+    resource.__source = source;
+    return resource;
   }
 
   async getCollection(collectionId: string): Promise<StaticCollection> {

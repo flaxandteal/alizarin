@@ -25,7 +25,7 @@ function setCurrentLanguage(lang: string) {
  */
 function slugify(name: string, maxLength: number = 100, useUnderscoreForHyphen: boolean = false): string {
   if (!name || typeof name !== 'string') {
-    throw new Error(`Invalid slug input: ${name}`);
+    name = `${name}`;
   }
 
   // Remove or replace dangerous characters
@@ -46,10 +46,11 @@ function slugify(name: string, maxLength: number = 100, useUnderscoreForHyphen: 
     slug = slug.replace('-', '_');
   }
 
-  if (!slug) {
+  if (name && !slug) {
     throw new Error(`Slugification resulted in empty string for input: ${name}`);
   }
 
+  slug = slug.substr(0, SLUG_LENGTH);
   return slug;
 }
 
