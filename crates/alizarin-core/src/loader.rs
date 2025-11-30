@@ -3,11 +3,14 @@
 //! This module handles loading graphs and other data from the prebuild
 //! directory structure used by starches-builder.
 
-use crate::graph::{IndexedGraph, StaticGraph, StaticResourceDescriptors, StaticResourceSummary};
+use crate::graph::{IndexedGraph, StaticGraph, StaticResource, StaticResourceDescriptors, StaticResourceMetadata, StaticResourceSummary, StaticTile};
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::Sender;
 
 // ============================================================================
 // Business Data File Deserialization Types
@@ -120,6 +123,84 @@ struct BusinessDataResourceCount {
 #[derive(Debug, Deserialize)]
 struct BusinessDataResourceInstanceCount {
     graph_id: String,
+}
+
+// ============================================================================
+// Full Resource Loading Types
+// ============================================================================
+
+/// Full business data file with complete resource data including tiles
+#[derive(Debug, Deserialize)]
+struct BusinessDataFileFull {
+    business_data: BusinessDataContentFull,
+}
+
+#[derive(Debug, Deserialize)]
+struct BusinessDataContentFull {
+    #[serde(default)]
+    resources: Vec<BusinessDataResourceFull>,
+}
+
+/// Full resource with tiles
+#[derive(Debug, Deserialize)]
+struct BusinessDataResourceFull {
+    resourceinstance: BusinessDataResourceInstanceFull,
+    #[serde(default)]
+    tiles: Option<Vec<StaticTile>>,
+    #[serde(default)]
+    metadata: Option<HashMap<String, String>>,
+}
+
+/// Full resource instance for loading
+#[derive(Debug, Deserialize)]
+struct BusinessDataResourceInstanceFull {
+    resourceinstanceid: String,
+    graph_id: String,
+    name: String,
+    #[serde(default)]
+    descriptors: Option<LanguageNestedDescriptors>,
+    #[serde(default)]
+    createdtime: Option<String>,
+    #[serde(default)]
+    lastmodified: Option<String>,
+    #[serde(default)]
+    publication_id: Option<String>,
+    #[serde(default)]
+    principaluser_id: Option<i32>,
+    #[serde(default)]
+    legacyid: Option<String>,
+    #[serde(default)]
+    graph_publication_id: Option<String>,
+}
+
+impl BusinessDataResourceFull {
+    /// Convert to StaticResource
+    fn to_static_resource(&self) -> StaticResource {
+        let ri = &self.resourceinstance;
+        let descriptors = ri.descriptors.as_ref()
+            .and_then(|d| d.get_for_lang("en"))
+            .unwrap_or_default();
+
+        StaticResource {
+            resourceinstance: StaticResourceMetadata {
+                resourceinstanceid: ri.resourceinstanceid.clone(),
+                graph_id: ri.graph_id.clone(),
+                name: ri.name.clone(),
+                descriptors,
+                createdtime: ri.createdtime.clone(),
+                lastmodified: ri.lastmodified.clone(),
+                publication_id: ri.publication_id.clone(),
+                principaluser_id: ri.principaluser_id,
+                legacyid: ri.legacyid.clone(),
+                graph_publication_id: ri.graph_publication_id.clone(),
+            },
+            tiles: self.tiles.clone(),
+            metadata: self.metadata.clone().unwrap_or_default(),
+            cache: None,
+            scopes: None,
+            tiles_loaded: Some(true),
+        }
+    }
 }
 
 /// Error type for loader operations
@@ -413,6 +494,120 @@ impl PrebuildLoader {
         }
 
         Ok(result)
+    }
+
+    /// Load a full StaticResource by its resourceinstanceid
+    /// Searches through all business_data files to find the resource
+    pub fn load_full_resource(&self, resource_id: &str, graph_id: &str) -> Result<StaticResource, LoaderError> {
+        let files = self.find_business_data_files(graph_id)?;
+
+        for file in &files {
+            let content = fs::read_to_string(file)?;
+            let file_data: BusinessDataFileFull = serde_json::from_str(&content)?;
+
+            for resource in file_data.business_data.resources {
+                if resource.resourceinstance.resourceinstanceid == resource_id {
+                    return Ok(resource.to_static_resource());
+                }
+            }
+        }
+
+        Err(LoaderError::NotFound(format!(
+            "Resource {} not found in graph {}",
+            resource_id, graph_id
+        )))
+    }
+
+    // =========================================================================
+    // Parallel Loading Methods (requires "parallel" feature)
+    // =========================================================================
+
+    /// Load resources from multiple files in parallel, sending batches via channel.
+    /// Falls back to sequential loading if "parallel" feature is not enabled.
+    ///
+    /// The callback is called for each file's results as they complete.
+    /// Returns total count of resources loaded.
+    #[cfg(feature = "parallel")]
+    pub fn load_resources_parallel(
+        &self,
+        files: &[(PathBuf, usize)],
+        graph_id: &str,
+        tx: &Sender<Vec<StaticResourceSummary>>,
+    ) -> Result<usize, LoaderError> {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let total_loaded = AtomicUsize::new(0);
+        let graph_id = graph_id.to_string();
+
+        // Process files in parallel using rayon
+        files.par_iter().for_each(|(file_path, _count)| {
+            if let Ok(summaries) = self.load_resource_summaries_from_file(file_path, &graph_id) {
+                if !summaries.is_empty() {
+                    total_loaded.fetch_add(summaries.len(), Ordering::Relaxed);
+                    let _ = tx.send(summaries);
+                }
+            }
+        });
+
+        Ok(total_loaded.load(Ordering::Relaxed))
+    }
+
+    /// Sequential fallback when parallel feature is not enabled
+    #[cfg(not(feature = "parallel"))]
+    pub fn load_resources_parallel(
+        &self,
+        files: &[(PathBuf, usize)],
+        graph_id: &str,
+        tx: &Sender<Vec<StaticResourceSummary>>,
+    ) -> Result<usize, LoaderError> {
+        let mut total_loaded = 0;
+
+        for (file_path, _count) in files {
+            if let Ok(summaries) = self.load_resource_summaries_from_file(file_path, graph_id) {
+                if !summaries.is_empty() {
+                    total_loaded += summaries.len();
+                    let _ = tx.send(summaries);
+                }
+            }
+        }
+
+        Ok(total_loaded)
+    }
+
+    /// Count resources in files in parallel (for initial count phase)
+    #[cfg(feature = "parallel")]
+    pub fn count_resources_parallel(
+        &self,
+        files: &[PathBuf],
+        graph_id: &str,
+    ) -> Vec<(PathBuf, usize)> {
+        files
+            .par_iter()
+            .filter_map(|file| {
+                match self.fast_count_resources_in_file(file, graph_id) {
+                    Ok(count) if count > 0 => Some((file.clone(), count)),
+                    _ => None,
+                }
+            })
+            .collect()
+    }
+
+    /// Sequential fallback for counting
+    #[cfg(not(feature = "parallel"))]
+    pub fn count_resources_parallel(
+        &self,
+        files: &[PathBuf],
+        graph_id: &str,
+    ) -> Vec<(PathBuf, usize)> {
+        files
+            .iter()
+            .filter_map(|file| {
+                match self.fast_count_resources_in_file(file, graph_id) {
+                    Ok(count) if count > 0 => Some((file.clone(), count)),
+                    _ => None,
+                }
+            })
+            .collect()
     }
 
     // =========================================================================

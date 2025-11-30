@@ -158,6 +158,10 @@ class StaticValue {
     }
   }
 
+  toJSON() {
+    return {id: this.id, value: this.value};
+  }
+
   toString() {
     return this.value;
   }
