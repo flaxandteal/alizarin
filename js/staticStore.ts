@@ -67,9 +67,12 @@ class StaticStore {
     // so we need to reload files to reconstruct them (reloadIfSeen=true).
     // Otherwise respect the useCache parameter for file-level deduplication.
     const reloadIfSeen = this.cacheMetadataOnly ? true : !useCache;
-    const resourcesJSON: StaticResource[] =
+    const resourcesJSON: (StaticResource | StaticResourceSummary)[] =
       await this.archesClient.getResources(graphId, toFind, reloadIfSeen);
-    for (const resourceJSON of resourcesJSON.values()) {
+    for (let resourceJSON of resourcesJSON.values()) {
+      if (!(resourceJSON instanceof StaticResource) && resourceJSON.resourceinstanceid) {
+        resourceJSON = await this.archesClient.getResource(resourceJSON.resourceinstanceid);
+      }
       const resource = new StaticResource(resourceJSON);
       if (resource.resourceinstance.graph_id !== graphId) {
         continue;
@@ -118,10 +121,10 @@ class StaticStore {
   }
 
   async loadTiles(id: string, nodegroupId?: string | null): Promise<StaticTile[]> {
-    // Check if we already have full resource with tiles
+    // Check if we already have full resource with tiles in cache
     const cached = this.cache.get(id);
-    if (cached instanceof StaticResource && cached.__tilesLoaded) {
-      const tiles = cached.tiles || [];
+    if (cached instanceof StaticResource && cached.tiles) {
+      const tiles = cached.tiles;
       // Filter by nodegroup if specified
       if (nodegroupId) {
         return tiles.filter(tile => tile.nodegroup_id === nodegroupId);
@@ -140,19 +143,18 @@ class StaticStore {
 
   async ensureFullResource(id: string): Promise<StaticResource> {
     const cached = this.cache.get(id);
-    
-    if (cached instanceof StaticResource && cached.__tilesLoaded) {
+
+    if (cached instanceof StaticResource && cached.tiles) {
       return cached;
     }
-    
+
     if (cached instanceof StaticResourceSummary) {
       // We have summary, need to load full resource
       const fullResource = await this.loadOne(id);
-      fullResource.__tilesLoaded = true;
       this.cache.set(id, fullResource);
       return fullResource;
     }
-    
+
     // Load full resource
     return await this.loadOne(id);
   }

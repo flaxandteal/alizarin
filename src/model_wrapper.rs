@@ -1,6 +1,15 @@
 use wasm_bindgen::prelude::*;
 use crate::pseudos::PseudoNode;
-use crate::graph::{WKRM, StaticTile, StaticGraph, StaticNode, StaticNodegroup, StaticEdge};
+use crate::pseudo_value::{RustPseudoValue, WasmPseudoValue};
+use crate::graph::WKRM;
+// WASM wrapper types for external interfaces
+use crate::graph::StaticGraph as WasmStaticGraph;
+use crate::graph::StaticNode as WasmStaticNode;
+use crate::graph::StaticNodegroup as WasmStaticNodegroup;
+use crate::graph::StaticEdge as WasmStaticEdge;
+use crate::graph::StaticTile as WasmStaticTile;
+// Use core types for internal storage
+use alizarin_core::{StaticGraph, StaticTile, StaticNode, StaticNodegroup, StaticEdge};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::cell::RefCell;
@@ -16,12 +25,13 @@ thread_local! {
 }
 
 // Core struct without WASM bindings - contains all the logic
+// Uses core types internally for platform independence
 #[derive(Clone)]
 pub struct ResourceModelWrapperCore {
     wkrm: WKRM,
-    graph: Arc<StaticGraph>,
+    graph: Arc<StaticGraph>,  // Core StaticGraph
 
-    // Caches - these are built lazily
+    // Caches - these are built lazily (all core types)
     edges: Option<HashMap<String, Vec<String>>>,
     nodes: Option<HashMap<String, Arc<StaticNode>>>,
     nodegroups: Option<HashMap<String, Arc<StaticNodegroup>>>,
@@ -65,7 +75,7 @@ impl ResourceModelWrapperCore {
         Err(format!(
             "COULD NOT FIND ROOT NODE FOR {}. Does the graph {} still exist?",
             self.wkrm.get_model_class_name(),
-            self.graph.get_graphid()
+            self.graph.graph_id()
         ))
     }
 
@@ -319,15 +329,16 @@ impl WASMResourceModelWrapper {
 #[wasm_bindgen]
 impl WASMResourceModelWrapper {
     #[wasm_bindgen(constructor)]
-    pub fn new(wkrm: &WKRM, graph: &StaticGraph, default_allow: bool) -> WASMResourceModelWrapper {
-        let graph_id = graph.get_graphid();
+    pub fn new(wkrm: &WKRM, graph: &WasmStaticGraph, default_allow: bool) -> WASMResourceModelWrapper {
+        // Extract core graph from WASM wrapper
+        let core_graph = graph.0.clone();
+        let graph_id = core_graph.graph_id().to_string();
 
         // Create and register the core in the registry
-        let core = ResourceModelWrapperCore::new(wkrm.clone(), Arc::new(graph.copy()), default_allow);
+        let core = ResourceModelWrapperCore::new(wkrm.clone(), Arc::new(core_graph), default_allow);
         MODEL_REGISTRY.with(|registry| {
             registry.borrow_mut().insert(graph_id.clone(), Arc::new(RefCell::new(core)));
         });
-        web_sys::console::debug_1(&format!("Added model to registry: {}", graph_id).into());
 
         // Return a lightweight wrapper that just holds the graph_id
         WASMResourceModelWrapper {
@@ -398,9 +409,10 @@ impl WASMResourceModelWrapper {
 
         // Get the node (Arc<StaticNode>) either by alias or as root
         let arc_node: Arc<StaticNode> = if let Some(parent) = parent_pseudo {
+            let child_node_id: Option<String> = child_node.clone();
             Arc::clone(parent.child_nodes.get(
                 child_node.ok_or_else(|| JsValue::from_str("Must have a child node name if passing a parent"))?.as_str()
-            ).ok_or_else(|| JsValue::from_str("This parent node does not have this child"))?)
+            ).ok_or_else(|| JsValue::from_str(format!("This parent node does not have this child: {:?} {:?}", parent.get_nodeid(), child_node_id).as_str()))?)
         } else {
             if let Some(key_str) = child_node {
                 // Get by alias - clone the Arc (cheap)
@@ -433,13 +445,87 @@ impl WASMResourceModelWrapper {
         Ok(pseudo_node)
     }
 
+    /// Create a WasmPseudoValue - the new unified pseudo type that includes runtime state
+    /// This will eventually replace createPseudoNode
+    #[wasm_bindgen(js_name = createPseudoValue)]
+    pub fn create_pseudo_value(
+        &mut self,
+        alias: Option<String>,
+        tile: JsValue,
+        parent: JsValue,
+    ) -> Result<WasmPseudoValue, JsValue> {
+        // Ensure nodes cache is built
+        self.with_core_mut(|core| {
+            if core.nodes.is_none() {
+                core.build_nodes().map_err(|e| JsValue::from_str(&e))
+            } else {
+                Ok(())
+            }
+        })?;
+
+        // Get the node by alias or as root
+        let arc_node: Arc<StaticNode> = if let Some(key_str) = alias {
+            self.with_core(|core| {
+                let nodes_by_alias = core.get_nodes_by_alias_internal()
+                    .ok_or_else(|| JsValue::from_str("Could not access nodes by alias"))?;
+                Ok::<Arc<StaticNode>, JsValue>(Arc::clone(
+                    nodes_by_alias.get(key_str.as_str())
+                        .ok_or_else(|| JsValue::from_str(&format!("Could not find node with alias: {}", key_str)))?
+                ))
+            })?
+        } else {
+            self.with_core_mut(|core| {
+                core.get_root_node()
+                    .map_err(|e| JsValue::from_str(&format!("Could not find root node: {}", e)))
+            })?
+        };
+
+        // Get child node IDs
+        let child_node_ids: Vec<String> = self.with_core_mut(|core| {
+            let child_nodes = core.get_child_nodes(&arc_node.nodeid)?;
+            Ok::<Vec<String>, JsValue>(child_nodes.keys().cloned().collect())
+        })?;
+
+        // Parse tile if provided
+        let tile_arc: Option<Arc<StaticTile>> = if tile.is_null() || tile.is_undefined() {
+            None
+        } else {
+            serde_wasm_bindgen::from_value::<StaticTile>(tile)
+                .ok()
+                .map(Arc::new)
+        };
+
+        // Extract tile data for this node
+        let tile_data = tile_arc.as_ref()
+            .and_then(|t| t.data.get(&arc_node.nodeid))
+            .cloned();
+
+        // Parse parent if provided
+        let parent_opt = if parent.is_null() || parent.is_undefined() {
+            None
+        } else {
+            Some(parent)
+        };
+
+        // Create the RustPseudoValue with proper inner/outer handling
+        let rust_value = RustPseudoValue::new(
+            arc_node,
+            tile_arc,
+            tile_data,
+            parent_opt,
+            child_node_ids,
+            false, // not inner
+        );
+
+        Ok(WasmPseudoValue::from_rust(rust_value))
+    }
 
     #[wasm_bindgen(js_name = getRootNode)]
-    pub fn get_root_node(&mut self) -> Result<StaticNode, JsValue> {
+    pub fn get_root_node(&mut self) -> Result<WasmStaticNode, JsValue> {
         self.with_core_mut(|core| {
             let arc_node = core.get_root_node().map_err(|e| JsValue::from_str(&e))?;
-            // Dereference Arc to clone the StaticNode for JavaScript
-            Ok((*arc_node).clone())
+            // Dereference Arc to clone the StaticNode, wrap for JavaScript
+            Ok(WasmStaticNode((*arc_node).clone()))
         })
     }
 
@@ -447,10 +533,10 @@ impl WASMResourceModelWrapper {
     pub fn get_node_objects(&mut self) -> Result<JsValue, JsValue> {
         self.with_core_mut(|core| {
             let nodes = core.get_node_objects().map_err(|e| JsValue::from_str(&e))?;
-            // Convert HashMap to js_sys::Map
+            // Convert HashMap to js_sys::Map, wrapping core nodes in WASM wrappers
             let map = js_sys::Map::new();
             for (key, node) in nodes.iter() {
-                map.set(&JsValue::from_str(key), &JsValue::from((**node).clone()));
+                map.set(&JsValue::from_str(key), &JsValue::from(WasmStaticNode((**node).clone())));
             }
             Ok(map.into())
         })
@@ -460,32 +546,32 @@ impl WASMResourceModelWrapper {
     pub fn get_node_objects_by_alias(&mut self) -> Result<JsValue, JsValue> {
         self.with_core_mut(|core| {
             let nodes_by_alias = core.get_node_objects_by_alias().map_err(|e| JsValue::from_str(&e))?;
-            // Convert HashMap to js_sys::Map
+            // Convert HashMap to js_sys::Map, wrapping core nodes in WASM wrappers
             let map = js_sys::Map::new();
             for (key, node) in nodes_by_alias.iter() {
-                map.set(&JsValue::from_str(key), &JsValue::from((**node).clone()));
+                map.set(&JsValue::from_str(key), &JsValue::from(WasmStaticNode((**node).clone())));
             }
             Ok(map.into())
         })
     }
 
     #[wasm_bindgen(js_name = getNodeObjectFromAlias)]
-    pub fn get_node_object_from_alias(&mut self, alias: &str) -> Result<StaticNode, JsValue> {
+    pub fn get_node_object_from_alias(&mut self, alias: &str) -> Result<WasmStaticNode, JsValue> {
         self.with_core_mut(|core| {
             let nodes_by_alias = core.get_node_objects_by_alias().map_err(|e| JsValue::from_str(&e))?;
             let node = nodes_by_alias.get(alias)
                 .ok_or_else(|| JsValue::from_str(&format!("Node not found in model: {}", alias)))?;
-            Ok((**node).clone())
+            Ok(WasmStaticNode((**node).clone()))
         })
     }
 
     #[wasm_bindgen(js_name = getNodeObjectFromId)]
-    pub fn get_node_object_from_id(&mut self, id: &str) -> Result<StaticNode, JsValue> {
+    pub fn get_node_object_from_id(&mut self, id: &str) -> Result<WasmStaticNode, JsValue> {
         self.with_core_mut(|core| {
             let nodes = core.get_node_objects().map_err(|e| JsValue::from_str(&e))?;
             let node = nodes.get(id)
                 .expect(&format!("Node not found in model: {}", id));
-            Ok((**node).clone())
+            Ok(WasmStaticNode((**node).clone()))
         })
     }
 
@@ -496,7 +582,7 @@ impl WASMResourceModelWrapper {
             let child_nodes = core.get_child_nodes(&node_id).map_err(|e| JsValue::from_str(&e))?;
             let map = js_sys::Map::new();
             for (alias, node) in child_nodes.iter() {
-                map.set(&JsValue::from_str(alias), &JsValue::from((**node).clone()));
+                map.set(&JsValue::from_str(alias), &JsValue::from(WasmStaticNode((**node).clone())));
             }
             Ok(map.into())
         })
@@ -523,10 +609,10 @@ impl WASMResourceModelWrapper {
     pub fn get_nodegroup_objects(&mut self) -> Result<JsValue, JsValue> {
         self.with_core_mut(|core| {
             let nodegroups = core.get_nodegroup_objects().map_err(|e| JsValue::from_str(&e))?;
-            // Convert HashMap to js_sys::Map
+            // Convert HashMap to js_sys::Map, wrapping in WASM types
             let map = js_sys::Map::new();
             for (key, nodegroup) in nodegroups.iter() {
-                map.set(&JsValue::from_str(key), &JsValue::from((**nodegroup).clone()));
+                map.set(&JsValue::from_str(key), &JsValue::from(WasmStaticNodegroup((**nodegroup).clone())));
             }
             Ok(map.into())
         })
@@ -591,7 +677,7 @@ impl WASMResourceModelWrapper {
     }
 
     #[wasm_bindgen(js_name = isNodegroupPermitted)]
-    pub fn is_nodegroup_permitted(&self, nodegroup_id: &str, _tile: Option<StaticTile>) -> Result<bool, JsValue> {
+    pub fn is_nodegroup_permitted(&self, nodegroup_id: &str, _tile: Option<WasmStaticTile>) -> Result<bool, JsValue> {
         Ok(self.with_core(|core| core.is_nodegroup_permitted(nodegroup_id)))
     }
 
@@ -621,8 +707,8 @@ impl WASMResourceModelWrapper {
     }
 
     #[wasm_bindgen(js_name = buildNodesForGraph)]
-    pub fn build_nodes_for_graph(&mut self, graph: &StaticGraph) -> Result<(), JsValue> {
-        let graph = graph.clone();
+    pub fn build_nodes_for_graph(&mut self, graph: &WasmStaticGraph) -> Result<(), JsValue> {
+        let graph = graph.0.clone();
         self.with_core_mut(|core| core.build_nodes_for_graph(&graph).map_err(|e| JsValue::from_str(&e)))
     }
 
@@ -643,20 +729,26 @@ impl WASMResourceModelWrapper {
         panic!("get_edges_internal called - refactor needed to use registry directly")
     }
 
-    // Graph modification methods
+    // Graph modification methods - accept WASM wrappers, extract core types
     #[wasm_bindgen(js_name = setGraphNodes)]
-    pub fn set_graph_nodes(&mut self, nodes: Vec<StaticNode>) {
-        self.with_core_mut(|core| core.set_graph_nodes(nodes));
+    pub fn set_graph_nodes(&mut self, nodes: JsValue) {
+        if let Ok(wasm_nodes) = serde_wasm_bindgen::from_value::<Vec<alizarin_core::StaticNode>>(nodes) {
+            self.with_core_mut(|core| core.set_graph_nodes(wasm_nodes));
+        }
     }
 
     #[wasm_bindgen(js_name = setGraphEdges)]
-    pub fn set_graph_edges(&mut self, edges: Vec<StaticEdge>) {
-        self.with_core_mut(|core| core.set_graph_edges(edges));
+    pub fn set_graph_edges(&mut self, edges: JsValue) {
+        if let Ok(wasm_edges) = serde_wasm_bindgen::from_value::<Vec<alizarin_core::StaticEdge>>(edges) {
+            self.with_core_mut(|core| core.set_graph_edges(wasm_edges));
+        }
     }
 
     #[wasm_bindgen(js_name = setGraphNodegroups)]
-    pub fn set_graph_nodegroups(&mut self, nodegroups: Vec<StaticNodegroup>) {
-        self.with_core_mut(|core| core.set_graph_nodegroups(nodegroups));
+    pub fn set_graph_nodegroups(&mut self, nodegroups: JsValue) {
+        if let Ok(wasm_nodegroups) = serde_wasm_bindgen::from_value::<Vec<alizarin_core::StaticNodegroup>>(nodegroups) {
+            self.with_core_mut(|core| core.set_graph_nodegroups(wasm_nodegroups));
+        }
     }
 
     // Getters
@@ -666,13 +758,13 @@ impl WASMResourceModelWrapper {
     }
 
     #[wasm_bindgen(getter = graph)]
-    pub fn get_graph(&self) -> StaticGraph {
-        self.with_core(|core| core.get_graph().clone())
+    pub fn get_graph(&self) -> WasmStaticGraph {
+        self.with_core(|core| WasmStaticGraph(core.get_graph().clone()))
     }
 
     #[wasm_bindgen(setter = graph)]
-    pub fn set_graph(&mut self, graph: StaticGraph) {
-        self.with_core_mut(|core| core.set_graph(graph));
+    pub fn set_graph(&mut self, graph: WasmStaticGraph) {
+        self.with_core_mut(|core| core.set_graph(graph.0));
     }
 
     #[wasm_bindgen(getter = edges)]

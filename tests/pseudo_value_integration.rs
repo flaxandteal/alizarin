@@ -14,8 +14,8 @@
  * 7. Empty child cases
  */
 
-use wasm::pseudo_value::{RustPseudoValue, RustPseudoList};
-use wasm::graph::{StaticNode, StaticTile};
+use alizarin::pseudo_value::{RustPseudoValue, RustPseudoList};
+use alizarin_core::{StaticNode, StaticTile};
 use std::sync::Arc;
 use std::collections::HashMap;
 use serde_json::json;
@@ -208,6 +208,7 @@ mod tests {
             collector_node.clone(),
             vec![Some(tile1.clone()), Some(tile2.clone())],
             &edges,
+            None, // parent JsValue
         );
 
         // Verify list has two groups (one per tile)
@@ -233,6 +234,7 @@ mod tests {
             node.clone(),
             vec![Some(tile1.clone())],
             &edges,
+            None, // parent JsValue
         );
 
         // Create second list also with tile1
@@ -240,6 +242,7 @@ mod tests {
             node.clone(),
             vec![Some(tile1.clone())],
             &edges,
+            None, // parent JsValue
         );
 
         let mut merged = list1;
@@ -297,11 +300,15 @@ mod tests {
         let child_value = parent_value.get_child_by_alias("child", &node_objs, &edges).unwrap();
 
         // PORT: Child should have its child IDs populated
-        assert_eq!(child_value.child_node_ids.len(), 1);
-        assert_eq!(child_value.child_node_ids[0], "grandchild-id");
+        // For non-semantic nodes with children, an inner is created and children go through inner
+        // The outer's child_node_ids will be empty, inner's will have the children
+        assert!(child_value.inner.is_some(), "Non-semantic node with children should have inner");
+        let inner = child_value.inner.as_ref().unwrap();
+        assert_eq!(inner.child_node_ids.len(), 1);
+        assert_eq!(inner.child_node_ids[0], "grandchild-id");
 
-        // Can lazily get grandchild from child
-        let grandchild_value = child_value.get_child_by_alias("grandchild", &node_objs, &edges);
+        // Can lazily get grandchild from child's inner
+        let grandchild_value = inner.get_child_by_alias("grandchild", &node_objs, &edges);
         assert!(grandchild_value.is_some());
     }
 

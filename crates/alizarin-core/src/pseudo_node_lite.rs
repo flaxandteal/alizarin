@@ -53,15 +53,17 @@ pub fn build_placeholder(
     alias: Option<&str>,
     is_iterable: bool,
 ) -> String {
-    let mut placeholder = String::from(".");
+    let mut placeholder = if let Some(parent) = parent_placeholder {
+        // Start with parent placeholder (which already has leading dot)
+        parent.to_string()
+    } else {
+        // No parent, start fresh
+        String::new()
+    };
 
-    // Add parent placeholder if exists
-    if let Some(parent) = parent_placeholder {
-        placeholder.push_str(parent);
-    }
-
-    // Add this node's alias
+    // Add this node's alias with leading dot
     if let Some(alias) = alias {
+        placeholder.push('.');
         placeholder.push_str(alias);
     }
 

@@ -57,7 +57,7 @@ describe("testing graph", () => {
           alias: 'test',
           config: {},  // Empty object
           datatype: 'string',
-          description: 'Describe',
+          description: { en: 'Describe' },
           exportable: true,
           fieldname: 'TestDescription',
           hascustomalias: false,
@@ -126,7 +126,7 @@ describe("testing graph", () => {
             rdmCollection: 'f63b1a5d-75af-565b-a78f-c710ee6ea2fd',
           },
           datatype: 'concept',
-          description: 'Describe',
+          description: { en: 'Describe' },
           exportable: true,
           fieldname: 'TestDescription',
           hascustomalias: false,

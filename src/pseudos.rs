@@ -1,8 +1,10 @@
 use wasm_bindgen::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::rc::{Rc, Weak};
-use crate::graph::{WKRM, StaticGraph, StaticNode, StaticNodegroup, StaticEdge};
+use std::rc::Rc;
+use serde::Serialize;
+// Use core types for internal storage
+use alizarin_core::{StaticNode, StaticNodegroup, StaticEdge};
 
 // Constants for iterable datatypes
 const ITERABLE_DATATYPES: &[&str] = &[
@@ -30,7 +32,7 @@ pub struct PseudoNode {
 impl PseudoNode {
     // Internal constructor that takes StaticNode directly (for Rust use)
     pub(crate) fn new_from_static_node(
-        static_node: Arc<crate::graph::StaticNode>,
+        static_node: Arc<StaticNode>,
         child_nodes: HashMap<String, Arc<StaticNode>>,
     ) -> Result<PseudoNode, JsValue> {
         let is_semantic = static_node.datatype == "semantic";
@@ -124,7 +126,9 @@ impl PseudoNode {
             js_sys::Reflect::set(&obj, &"alias".into(), &alias.clone().into()).ok();
         }
         if let Some(ref description) = self.node.description {
-            js_sys::Reflect::set(&obj, &"description".into(), &description.clone().into()).ok();
+            // Convert core type to WASM wrapper for JS serialization
+            let wasm_desc = crate::graph::StaticTranslatableString(description.clone());
+            js_sys::Reflect::set(&obj, &"description".into(), &wasm_desc.to_json()).ok();
         }
         if let Some(ref ontologyclass) = self.node.ontologyclass {
             js_sys::Reflect::set(&obj, &"ontologyclass".into(), &ontologyclass.clone().into()).ok();
@@ -158,11 +162,24 @@ impl PseudoNode {
         self.child_nodes.len()
     }
 
+    #[wasm_bindgen(getter = childNodeAliases)]
+    pub fn get_child_node_aliases(&self) -> JsValue {
+        let map = js_sys::Array::new();
+        for (key, value) in &self.child_nodes {
+            let node_obj = value.to_json();
+            map.push(&JsValue::from_str(key));
+        }
+        map.into()
+    }
+
     #[wasm_bindgen(getter = childNodes)]
     pub fn get_child_nodes(&self) -> JsValue {
         let map = js_sys::Map::new();
+        // Create a serializer that uses plain objects instead of Maps
+        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         for (key, value) in &self.child_nodes {
-            let node_obj = value.to_json();
+            // Serialize the StaticNode directly (not via to_json()) with object serializer
+            let node_obj = value.serialize(&serializer).unwrap_or(JsValue::NULL);
             map.set(&JsValue::from_str(key), &node_obj);
         }
         map.into()
@@ -188,8 +205,8 @@ impl PseudoNode {
 
     #[wasm_bindgen(getter = description)]
     pub fn get_description(&self) -> JsValue {
-        if let Some(description) = self.node.description.clone() {
-            description.to_json()
+        if let Some(ref description) = self.node.description {
+            serde_wasm_bindgen::to_value(&description.to_json()).unwrap_or(JsValue::NULL)
         } else { JsValue::NULL }
     }
 
@@ -328,6 +345,6 @@ impl PseudoNode {
 
     #[wasm_bindgen(js_name = toJSON)]
     pub fn to_json(&self) -> JsValue {
-        self.node.to_json()
+        serde_wasm_bindgen::to_value(&self.node.to_json()).unwrap_or(JsValue::NULL)
     }
 }

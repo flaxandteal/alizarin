@@ -813,7 +813,7 @@ describe('Static Types', () => {
         config: { option1: true, option2: 'value' },
         constraints: [],
         cssclass: 'custom-card-class',
-        description: 'Test card description',
+        description: { en: 'Test card description' },
         graph_id: 'graph-789',
         helpenabled: true,
         helptext: { en: 'Help text' },
@@ -832,7 +832,7 @@ describe('Static Types', () => {
       expect(card.config).toEqual({ option1: true, option2: 'value' });
       expect(card.constraints).toEqual([]);
       expect(card.cssclass).toBe('custom-card-class');
-      expect(card.description).toBe('Test card description');
+      expect(card.description?.toString()).toBe('Test card description');
       expect(card.graph_id).toBe('graph-789');
       expect(card.helpenabled).toBe(true);
       expect(card.helptext.toString()).toBe('Help text');

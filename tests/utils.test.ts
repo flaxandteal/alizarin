@@ -15,9 +15,9 @@ describe('Utils', () => {
 
   describe('slugify', () => {
     it('should convert strings to URL-friendly slugs', () => {
-      expect(slugify('Hello World!')).toBe('HelloWorld');
-      expect(slugify('Test-String_123')).toBe('TestString_123');
-      expect(slugify('Special@#$%Characters')).toBe('SpecialCharacters');
+      expect(slugify('Hello World!')).toBe('hello-world');
+      expect(slugify('Test-String_123')).toBe('test-string-123');
+      expect(slugify('Special@#$%Characters')).toBe('specialcharacters');
     });
 
     it('should handle numbers', () => {

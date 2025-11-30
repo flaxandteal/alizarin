@@ -1,24 +1,28 @@
 use std::sync::Arc;
+use std::cell::RefCell;
+use std::rc::Rc;
 use wasm_bindgen::prelude::*;
-use crate::graph::{StaticNode, StaticTile};
+// Use core types for internal storage (no WASM wrapper overhead)
+use alizarin_core::{StaticNode, StaticTile};
+// WASM wrapper types for API boundary
+use crate::graph::StaticTile as WasmStaticTile;
+use crate::graph::StaticNode as WasmStaticNode;
 
-/// RustPseudoValue: Structured hierarchy representation
-/// Replaces the flat "recipe" pattern with nested children
+/// RustPseudoValue: Full pseudo-value implementation in Rust
+/// Owns all state - JS only provides ViewModel factory callback
 ///
 /// PORT: Combines logic from:
 /// - js/pseudos.ts: PseudoValue class (constructor lines 112-144)
 /// - js/graphManager.ts: makePseudoCls hierarchy construction
+/// - src/pseudos.rs: PseudoNode (now merged here)
+///
+/// Note: Cannot derive Debug due to JsValue fields
 #[derive(Clone, Debug)]
 pub struct RustPseudoValue {
+    // ============ Schema/Structure (from old PseudoNode) ============
+
     /// The graph node this value represents
     pub node: Arc<StaticNode>,
-
-    /// Optional tile containing the data
-    pub tile: Option<Arc<StaticTile>>,
-
-    /// Raw tile data (unparsed, as serde_json::Value)
-    /// ViewModels in JS/Python will parse this
-    pub tile_data: Option<serde_json::Value>,
 
     /// Child node IDs (metadata) - NOT instantiated children!
     /// PORT: js/pseudos.ts line 117 - childNodes: Map<string, StaticNode>
@@ -28,12 +32,57 @@ pub struct RustPseudoValue {
     /// Whether this is a collector node (has multiple tiles)
     pub is_collector: bool,
 
-    /// Optional parent index for navigation
-    pub parent_index: Option<usize>,
-
     /// Inner value for outer/inner pattern (semantic nodes)
     /// PORT: js/pseudos.ts lines 134-143, 467-470
     pub inner: Option<Box<RustPseudoValue>>,
+
+    /// Whether this IS the inner (datatype overridden to "semantic")
+    /// PORT: js/pseudos.ts:107 - if (inner === true) { this.isInner = true; this.datatype = 'semantic'; }
+    pub is_inner: bool,
+
+    // ============ Runtime State (from old JS PseudoValue) ============
+
+    /// Optional tile containing the data
+    /// PORT: js/pseudos.ts:53 - tile: StaticTile | null
+    pub tile: Option<Arc<StaticTile>>,
+
+    /// Raw tile data (unparsed, as serde_json::Value)
+    /// ViewModels in JS/Python will parse this
+    /// PORT: js/pseudos.ts - extracted from tile.data.get(node.nodeid)
+    pub tile_data: Option<serde_json::Value>,
+
+    /// The loaded ViewModel (opaque JsValue - Rust doesn't inspect it)
+    /// PORT: js/pseudos.ts:54 - value: any
+    pub value: Option<JsValue>,
+
+    /// Parent IRIVM reference (opaque JsValue)
+    /// PORT: js/pseudos.ts:55 - parent: IRIVM<any> | null
+    pub parent: Option<JsValue>,
+
+    /// Parent PseudoValue reference (for getNodePlaceholder traversal)
+    /// PORT: js/pseudos.ts:56 - parentNode: PseudoValue<any> | null
+    /// Using weak reference to avoid cycles
+    pub parent_value: Option<Rc<RefCell<RustPseudoValue>>>,
+
+    /// Whether value has been loaded
+    /// PORT: js/pseudos.ts:57 - valueLoaded: boolean | undefined = false
+    /// None = not started, Some(false) = loading, Some(true) = loaded
+    pub value_loaded: Option<bool>,
+
+    /// Whether this value has been accessed
+    /// PORT: js/pseudos.ts:59 - accessed: boolean
+    pub accessed: bool,
+
+    /// Whether this tile is independent (not inherited from parent)
+    /// PORT: js/pseudos.ts:60 - independent: boolean (tile === null at construction)
+    pub independent: bool,
+
+    /// Original tile reference (before any modifications)
+    /// PORT: js/pseudos.ts:58 - originalTile: StaticTile | null
+    pub original_tile: Option<Arc<StaticTile>>,
+
+    /// Optional parent index for navigation (legacy, may remove)
+    pub parent_index: Option<usize>,
 }
 
 /// RustPseudoList: Represents a list of values grouped by tiles
@@ -45,25 +94,15 @@ pub struct RustPseudoList {
     pub node_alias: String,
 
     /// Grouped values by tile
-    pub groups: Vec<RustPseudoGroup>,
+    pub values: Vec<RustPseudoValue>,
 
     /// Whether this list has been fully loaded
     pub is_loaded: bool,
 }
 
-/// RustPseudoGroup: A group of values from the same tile
-#[derive(Clone, Debug)]
-pub struct RustPseudoGroup {
-    /// Optional tile ID
-    pub tile_id: Option<String>,
-
-    /// Values in this group
-    pub values: Vec<RustPseudoValue>,
-}
-
 /// Result returned from nodegroup operations
 /// Contains structured hierarchy instead of flat recipes
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct NodegroupResult {
     /// Structured values with full hierarchy
     pub values: Vec<RustPseudoValue>,
@@ -83,14 +122,101 @@ impl RustPseudoValue {
         tile_data: Option<serde_json::Value>,
         child_node_ids: Vec<String>,
     ) -> Self {
+        let independent = tile.is_none();
         RustPseudoValue {
+            // Schema/structure
             node,
-            tile,
-            tile_data,
             child_node_ids,
             is_collector: false,
-            parent_index: None,
             inner: None,
+            is_inner: false,
+            // Runtime state
+            tile: tile.clone(),
+            tile_data,
+            value: None,
+            parent: None,
+            parent_value: None,
+            value_loaded: Some(false),
+            accessed: false,
+            independent,
+            original_tile: tile,
+            parent_index: None,
+        }
+    }
+
+    /// Create a new RustPseudoValue with full configuration
+    ///
+    /// PORT: js/pseudos.ts PseudoValue constructor with inner/outer handling
+    pub fn new(
+        node: Arc<StaticNode>,
+        tile: Option<Arc<StaticTile>>,
+        tile_data: Option<serde_json::Value>,
+        parent: Option<JsValue>,
+        child_node_ids: Vec<String>,
+        is_inner: bool,
+    ) -> Self {
+        let independent = tile.is_none();
+
+        // PORT: js/pseudos.ts:467-470 - create inner if has children and not semantic
+        let has_children = !child_node_ids.is_empty();
+        let is_semantic = node.datatype == "semantic";
+        let should_have_inner = has_children && !is_semantic && !is_inner;
+
+        let inner = if should_have_inner {
+            // Create inner PseudoValue with same node but marked as inner
+            Some(Box::new(RustPseudoValue {
+                node: node.clone(),
+                child_node_ids: child_node_ids.clone(),
+                is_collector: node.is_collector,
+                inner: None,
+                is_inner: true,  // This IS the inner
+                tile: tile.clone(),
+                tile_data: None,  // Inner doesn't get tile_data directly
+                value: None,
+                parent: parent.clone(),
+                parent_value: None,
+                value_loaded: Some(false),
+                accessed: false,
+                independent,
+                original_tile: tile.clone(),
+                parent_index: None,
+            }))
+        } else {
+            None
+        };
+
+        RustPseudoValue {
+            node,
+            // Outer gets empty child_node_ids if it has inner (children go through inner)
+            child_node_ids: if inner.is_some() { vec![] } else { child_node_ids },
+            is_collector: false,
+            inner,
+            is_inner,
+            tile: tile.clone(),
+            tile_data,
+            value: None,
+            parent,
+            parent_value: None,
+            value_loaded: Some(false),
+            accessed: false,
+            independent,
+            original_tile: tile,
+            parent_index: None,
+        }
+    }
+
+    /// Check if this is an outer node (has inner)
+    pub fn is_outer(&self) -> bool {
+        self.inner.is_some()
+    }
+
+    /// Get effective datatype (overridden to "semantic" for inner nodes)
+    /// PORT: js/pseudos.ts:64-70 - datatype getter
+    pub fn datatype(&self) -> &str {
+        if self.is_inner {
+            "semantic"
+        } else {
+            &self.node.datatype
         }
     }
 
@@ -144,16 +270,15 @@ impl RustPseudoValue {
                         .unwrap_or_default();
 
                     // PORT: js/pseudos.ts:471 - new PseudoValue(nodeObj, tile, null, wkri, childNodes, inner)
-                    // Create child value (lazy - no recursion, just store metadata!)
-                    return Some(RustPseudoValue {
-                        node: Arc::clone(child_node),
-                        tile: self.tile.clone(), // PORT: js/pseudos.ts:120 - inherit tile
-                        tile_data: child_tile_data,
-                        child_node_ids: child_child_ids, // Metadata for next level
-                        is_collector: child_node.is_collector,
-                        parent_index: None,
-                        inner: None, // TODO: PORT js/pseudos.ts:467-470 inner/outer pattern
-                    });
+                    // Create child value using new() which handles inner/outer pattern
+                    return Some(RustPseudoValue::new(
+                        Arc::clone(child_node),
+                        self.tile.clone(), // PORT: js/pseudos.ts:120 - inherit tile
+                        child_tile_data,
+                        self.parent.clone(), // Inherit parent
+                        child_child_ids,
+                        false, // Not inner (new() will create inner if needed)
+                    ));
                 }
             }
         }
@@ -182,7 +307,7 @@ impl RustPseudoList {
     pub fn new(node_alias: String) -> Self {
         RustPseudoList {
             node_alias,
-            groups: Vec::new(),
+            values: Vec::new(),
             is_loaded: false,
         }
     }
@@ -192,23 +317,9 @@ impl RustPseudoList {
     /// PORT: js/pseudos.ts PseudoList grouping logic
     /// PORT: js/graphManager.ts lines 987-1011 - PseudoList merging
     pub fn from_values(node_alias: String, values: Vec<RustPseudoValue>) -> Self {
-        let mut groups_map: std::collections::HashMap<Option<String>, Vec<RustPseudoValue>> =
-            std::collections::HashMap::new();
-
-        // Group values by tile_id
-        for value in values {
-            let tile_id = value.tile_id();
-            groups_map.entry(tile_id.clone()).or_insert_with(Vec::new).push(value);
-        }
-
-        // Convert to groups
-        let groups: Vec<RustPseudoGroup> = groups_map.into_iter()
-            .map(|(tile_id, values)| RustPseudoGroup { tile_id, values })
-            .collect();
-
         RustPseudoList {
             node_alias,
-            groups,
+            values,
             is_loaded: true,
         }
     }
@@ -223,6 +334,7 @@ impl RustPseudoList {
         node: Arc<StaticNode>,
         tiles: Vec<Option<Arc<StaticTile>>>,
         edges: &std::collections::HashMap<String, Vec<String>>,
+        parent: Option<JsValue>,
     ) -> Self {
         let mut values = Vec::new();
 
@@ -238,15 +350,16 @@ impl RustPseudoList {
                 .cloned();
 
             // PORT: js/pseudos.ts:471 - create PseudoValue with childNodes metadata
-            let value = RustPseudoValue {
-                node: Arc::clone(&node),
-                tile: tile_opt,
+            // Use new() which handles inner/outer pattern
+            let mut value = RustPseudoValue::new(
+                Arc::clone(&node),
+                tile_opt,
                 tile_data,
-                child_node_ids: child_node_ids.clone(), // Same metadata for all
-                is_collector: node.is_collector,
-                parent_index: None,
-                inner: None,
-            };
+                parent.clone(),
+                child_node_ids.clone(),
+                false,
+            );
+            value.is_collector = node.is_collector;
 
             values.push(value);
         }
@@ -258,85 +371,72 @@ impl RustPseudoList {
     ///
     /// PORT: js/graphManager.ts lines 992-1003 - merging logic
     pub fn merge(&mut self, mut other: RustPseudoList) {
-        // Merge groups
-        for mut other_group in other.groups.drain(..) {
-            // Check if we already have a group for this tile
-            let tile_id = other_group.tile_id.clone();
-            let mut found_match = false;
-
-            for existing_group in &mut self.groups {
-                if existing_group.tile_id == tile_id {
-                    // Merge values - drain from other_group to avoid move issues
-                    existing_group.values.extend(other_group.values.drain(..));
-                    found_match = true;
-                    break;
-                }
-            }
-
-            if !found_match {
-                // Add as new group (other_group.values is still valid if we didn't drain it)
-                self.groups.push(other_group);
-            }
-        }
+        self.values.extend(other.values.drain(..));
     }
 
-    /// Get all values across all groups
+    /// Get all values across
     pub fn all_values(&self) -> Vec<&RustPseudoValue> {
-        self.groups.iter()
-            .flat_map(|g| g.values.iter())
+        self.values.iter()
             .collect()
     }
 
     /// Get values from a specific tile
     pub fn values_from_tile(&self, tile_id: Option<&str>) -> Vec<&RustPseudoValue> {
-        self.groups.iter()
-            .filter(|g| g.tile_id.as_deref() == tile_id)
-            .flat_map(|g| g.values.iter())
+        self.values.iter()
+            .filter(|v| {
+                if let Some(tile) = v.tile.as_ref() {
+                    return tile.tileid.as_deref() == tile_id
+                }
+                false
+            })
             .collect()
     }
 }
 
 // WASM bindings for JavaScript interop
+#[derive(Debug)]
 #[wasm_bindgen]
 pub struct WasmPseudoValue {
-    inner: RustPseudoValue,
+    inner: RefCell<RustPseudoValue>,
 }
 
 #[wasm_bindgen]
 impl WasmPseudoValue {
-    /// PORT: js/pseudos.ts:64-66 - datatype getter
+    /// PORT: js/pseudos.ts:64-66 - datatype getter (respects isInner override)
     #[wasm_bindgen(getter, js_name = datatype)]
     pub fn datatype(&self) -> String {
-        self.inner.node.datatype.clone()
+        self.inner.borrow().datatype().to_string()
     }
 
     /// PORT: js/pseudos.ts - nodeAlias property
     #[wasm_bindgen(getter, js_name = nodeAlias)]
     pub fn node_alias(&self) -> Option<String> {
-        self.inner.node_alias().map(|s| s.to_string())
+        self.inner.borrow().node_alias().map(|s| s.to_string())
     }
 
     /// PORT: js/pseudos.ts:52 - node.nodeid
     #[wasm_bindgen(getter, js_name = nodeId)]
     pub fn node_id(&self) -> String {
-        self.inner.node.nodeid.clone()
+        self.inner.borrow().node.nodeid.clone()
     }
 
     /// PORT: js/pseudos.ts - hasTile check
     #[wasm_bindgen(getter, js_name = hasTile)]
     pub fn has_tile(&self) -> bool {
-        self.inner.has_tile()
+        self.inner.borrow().has_tile()
     }
 
     /// PORT: js/pseudos.ts:53 - tile property
     #[wasm_bindgen(getter, js_name = tile)]
     pub fn tile(&self) -> JsValue {
-        match &self.inner.tile {
+        match &self.inner.borrow().tile {
             Some(tile) => {
                 // Return the StaticTile WASM object directly, not serialized
                 // This preserves the WASM bindings and getters (especially .data getter)
-                let static_tile = tile.as_ref().clone();
-                static_tile.into()
+                // Convert from core type to WASM wrapper type
+                let core_tile = tile.as_ref().clone();
+                let wasm_tile = WasmStaticTile::from(core_tile);
+                wasm_tile.into()
             },
             None => JsValue::NULL,
         }
@@ -345,13 +445,13 @@ impl WasmPseudoValue {
     /// PORT: js/pseudos.ts - tile.tileid access
     #[wasm_bindgen(getter, js_name = tileId)]
     pub fn tile_id(&self) -> Option<String> {
-        self.inner.tile_id()
+        self.inner.borrow().tile_id()
     }
 
     /// PORT: js/pseudos.ts:54 - value property (tile data)
     #[wasm_bindgen(getter, js_name = tileData)]
     pub fn tile_data(&self) -> JsValue {
-        match &self.inner.tile_data {
+        match &self.inner.borrow().tile_data {
             Some(data) => serde_wasm_bindgen::to_value(data).unwrap_or(JsValue::NULL),
             None => JsValue::NULL,
         }
@@ -360,28 +460,357 @@ impl WasmPseudoValue {
     /// PORT: js/pseudos.ts - child node IDs count (for lazy loading)
     #[wasm_bindgen(getter, js_name = childNodeIdsCount)]
     pub fn child_node_ids_count(&self) -> usize {
-        self.inner.child_node_ids.len()
+        self.inner.borrow().child_node_ids.len()
     }
 
     /// PORT: js/pseudos.ts - get child node ID by index
     #[wasm_bindgen(js_name = getChildNodeId)]
     pub fn get_child_node_id(&self, index: usize) -> Option<String> {
-        self.inner.child_node_ids.get(index).cloned()
+        self.inner.borrow().child_node_ids.get(index).cloned()
     }
 
     /// PORT: js/pseudos.ts - is_collector check
     #[wasm_bindgen(getter, js_name = isCollector)]
     pub fn is_collector(&self) -> bool {
-        self.inner.is_collector
+        self.inner.borrow().is_collector
     }
 
     /// Get inner value (for outer/inner pattern)
     /// PORT: js/pseudos.ts:61-62, 76-78 - inner property
     #[wasm_bindgen(getter, js_name = inner)]
-    pub fn inner(&self) -> Option<WasmPseudoValue> {
-        self.inner.inner.as_ref().map(|inner| WasmPseudoValue {
-            inner: (**inner).clone(),
+    pub fn get_inner(&self) -> Option<WasmPseudoValue> {
+        self.inner.borrow().inner.as_ref().map(|inner| WasmPseudoValue {
+            inner: RefCell::new((**inner).clone()),
         })
+    }
+
+    /// PORT: js/pseudos.ts:72-74 - isOuter getter
+    #[wasm_bindgen(getter, js_name = isOuter)]
+    pub fn is_outer(&self) -> bool {
+        self.inner.borrow().is_outer()
+    }
+
+    /// PORT: js/pseudos.ts:73-75 - isInner getter
+    #[wasm_bindgen(getter, js_name = isInner)]
+    pub fn is_inner(&self) -> bool {
+        self.inner.borrow().is_inner
+    }
+
+    /// PORT: js/pseudos.ts:57 - valueLoaded getter
+    #[wasm_bindgen(getter, js_name = valueLoaded)]
+    pub fn value_loaded(&self) -> JsValue {
+        match self.inner.borrow().value_loaded {
+            None => JsValue::UNDEFINED,
+            Some(false) => JsValue::FALSE,
+            Some(true) => JsValue::TRUE,
+        }
+    }
+
+    /// PORT: js/pseudos.ts:59 - accessed getter
+    #[wasm_bindgen(getter, js_name = accessed)]
+    pub fn accessed(&self) -> bool {
+        self.inner.borrow().accessed
+    }
+
+    /// PORT: js/pseudos.ts:60 - independent getter
+    #[wasm_bindgen(getter, js_name = independent)]
+    pub fn independent(&self) -> bool {
+        self.inner.borrow().independent
+    }
+
+    /// PORT: js/pseudos.ts:54 - value getter (the loaded ViewModel)
+    #[wasm_bindgen(getter, js_name = value)]
+    pub fn value(&self) -> JsValue {
+        self.inner.borrow().value.clone().unwrap_or(JsValue::NULL)
+    }
+
+    /// PORT: js/pseudos.ts:55 - parent getter
+    #[wasm_bindgen(getter, js_name = parent)]
+    pub fn parent(&self) -> JsValue {
+        self.inner.borrow().parent.clone().unwrap_or(JsValue::NULL)
+    }
+
+    /// PORT: js/pseudos.ts:55 - parent setter
+    #[wasm_bindgen(setter, js_name = parent)]
+    pub fn set_parent(&self, parent: JsValue) {
+        self.inner.borrow_mut().parent = if parent.is_null() || parent.is_undefined() {
+            None
+        } else {
+            Some(parent)
+        };
+    }
+
+    /// PORT: js/pseudos.ts:267-356 - updateValue method
+    /// This is the core method that loads the ViewModel via callback
+    ///
+    /// get_view_model callback signature:
+    ///   (pseudo: WasmPseudoValue, tile: StaticTile|null, node: StaticNode, data: any, isInner: bool) -> Promise<ViewModel>
+    #[wasm_bindgen(js_name = updateValue)]
+    pub fn update_value(&self, get_view_model: &js_sys::Function) -> Result<JsValue, JsValue> {
+        let mut inner = self.inner.borrow_mut();
+
+        // PORT: js/pseudos.ts:271 - if (tile) { this.tile = tile; }
+        // Tile update is handled by setTile method if needed
+
+        // PORT: js/pseudos.ts:272-274 - mark as accessed
+        inner.accessed = true;
+        if let Some(ref mut inner_val) = inner.inner {
+            inner_val.accessed = true;
+        }
+
+        // PORT: js/pseudos.ts:275-284 - handle case where tile is null
+        // If no tile and has inner, delegate to inner's getTile
+        // This is complex async logic - for now, require tile to be set
+
+        // PORT: js/pseudos.ts:302-314 - check if already loaded
+        if inner.value_loaded == Some(true) {
+            return Ok(inner.value.clone().unwrap_or(JsValue::NULL));
+        }
+
+        // PORT: js/pseudos.ts:302 - mark as loading
+        inner.value_loaded = None; // undefined in JS = loading
+
+        // PORT: js/pseudos.ts:304-314 - extract data from tile
+        let data = if inner.value.is_some() {
+            // Use existing value
+            inner.value.clone().unwrap_or(JsValue::NULL)
+        } else if let (Some(tile), false) = (&inner.tile, inner.datatype() == "semantic") {
+            // Get data from tile.data[nodeid]
+            tile.data.get(&inner.node.nodeid)
+                .map(|d| serde_wasm_bindgen::to_value(d).unwrap_or(JsValue::NULL))
+                .unwrap_or(JsValue::NULL)
+        } else {
+            JsValue::NULL
+        };
+
+        // PORT: js/pseudos.ts:316-329 - handle outer/inner data splitting
+        // For outer nodes with inner, check if data has "_" key for outer portion
+        // This is handled in JS for now as it's complex object manipulation
+
+        // Prepare arguments for callback
+        let tile_js = match &inner.tile {
+            Some(t) => {
+                let wasm_tile = WasmStaticTile::from(t.as_ref().clone());
+                JsValue::from(wasm_tile)
+            },
+            None => JsValue::NULL,
+        };
+
+        let node_js = inner.node.to_json();
+        let node_js = serde_wasm_bindgen::to_value(&node_js).unwrap_or(JsValue::NULL);
+
+        let is_inner_js = JsValue::from(inner.is_inner);
+
+        // Drop borrow before async call
+        drop(inner);
+
+        // PORT: js/pseudos.ts:330-337 - call getViewModel
+        // Returns a Promise that resolves to the ViewModel
+        // Note: We pass tile, node, data, isInner - the JS caller already has 'this'
+        let vm_promise = get_view_model.call4(
+            &JsValue::NULL,
+            &tile_js,      // tile
+            &node_js,      // node
+            &data,         // data
+            &is_inner_js,  // isInner
+        ).map_err(|e| e)?;
+
+        // Store the promise as the value (JS will await it)
+        self.inner.borrow_mut().value = Some(vm_promise.clone());
+
+        Ok(vm_promise)
+    }
+
+    /// PORT: js/pseudos.ts:358-360 - getValue method
+    /// Returns the value (or triggers updateValue if needed)
+    #[wasm_bindgen(js_name = getValue)]
+    pub fn get_value(&self, get_view_model: &js_sys::Function) -> Result<JsValue, JsValue> {
+        self.update_value(get_view_model)
+    }
+
+    /// PORT: js/pseudos.ts:260-265 - clear method
+    #[wasm_bindgen(js_name = clear)]
+    pub fn clear(&self) {
+        let mut inner = self.inner.borrow_mut();
+        inner.value = None;
+        inner.value_loaded = Some(false);
+        // Also clear from tile.data if present
+        // This would need mutable tile access, which is complex
+    }
+
+    /// Set the tile (for cases where tile changes)
+    #[wasm_bindgen(setter, js_name = tile)]
+    pub fn set_tile(&self, tile: JsValue) {
+        if tile.is_null() || tile.is_undefined() {
+            self.inner.borrow_mut().tile = None;
+        } else {
+            // Convert JsValue to StaticTile via serde deserialization
+            if let Ok(core_tile) = serde_wasm_bindgen::from_value::<alizarin_core::StaticTile>(tile) {
+                self.inner.borrow_mut().tile = Some(Arc::new(core_tile));
+            }
+        }
+    }
+
+    /// PORT: js/pseudos.ts node getter - return node as WASM StaticNode wrapper
+    #[wasm_bindgen(getter, js_name = node)]
+    pub fn node(&self) -> WasmStaticNode {
+        let inner = self.inner.borrow();
+        // Clone the core node and wrap it in the WASM wrapper type
+        let core_node: StaticNode = (*inner.node).clone();
+        core_node.into()
+    }
+
+    /// Get the node's name
+    #[wasm_bindgen(getter, js_name = name)]
+    pub fn name(&self) -> String {
+        self.inner.borrow().node.name.clone()
+    }
+
+    /// Get the node's nodegroup_id
+    #[wasm_bindgen(getter, js_name = nodegroupId)]
+    pub fn nodegroup_id(&self) -> JsValue {
+        match &self.inner.borrow().node.nodegroup_id {
+            Some(id) => JsValue::from_str(id),
+            None => JsValue::NULL,
+        }
+    }
+
+    // ============ PseudoNode compatibility methods ============
+    // These mirror the PseudoNode API so WasmPseudoValue can replace it
+
+    /// Check if this node's datatype is iterable
+    /// PORT: PseudoNode.isIterable()
+    #[wasm_bindgen(js_name = isIterable)]
+    pub fn is_iterable(&self) -> bool {
+        const ITERABLE_DATATYPES: &[&str] = &[
+            "concept-list",
+            "resource-instance-list",
+            "domain-value-list"
+        ];
+        ITERABLE_DATATYPES.contains(&self.inner.borrow().node.datatype.as_str())
+    }
+
+    /// Get number of child nodes
+    /// PORT: PseudoNode.size
+    #[wasm_bindgen(getter, js_name = size)]
+    pub fn size(&self) -> usize {
+        self.inner.borrow().child_node_ids.len()
+    }
+
+    /// Get child node aliases as an array
+    /// PORT: PseudoNode.childNodeAliases
+    #[wasm_bindgen(getter, js_name = childNodeAliases)]
+    pub fn child_node_aliases(&self) -> js_sys::Array {
+        let arr = js_sys::Array::new();
+        // child_node_ids contains node IDs, not aliases
+        // We would need access to the node map to get aliases
+        // For now, return the IDs (caller may need to look up aliases)
+        for id in &self.inner.borrow().child_node_ids {
+            arr.push(&JsValue::from_str(id));
+        }
+        arr
+    }
+
+    /// Get the node's alias
+    /// PORT: PseudoNode.alias
+    #[wasm_bindgen(getter, js_name = alias)]
+    pub fn alias(&self) -> JsValue {
+        match &self.inner.borrow().node.alias {
+            Some(s) => JsValue::from_str(s),
+            None => JsValue::from_str(""),
+        }
+    }
+
+    /// Get the node's exportable flag
+    #[wasm_bindgen(getter, js_name = exportable)]
+    pub fn exportable(&self) -> bool {
+        self.inner.borrow().node.exportable
+    }
+
+    /// Get the node's isrequired flag
+    #[wasm_bindgen(getter, js_name = isrequired)]
+    pub fn isrequired(&self) -> bool {
+        self.inner.borrow().node.isrequired
+    }
+
+    /// Get the node's issearchable flag
+    #[wasm_bindgen(getter, js_name = issearchable)]
+    pub fn issearchable(&self) -> bool {
+        self.inner.borrow().node.issearchable
+    }
+
+    /// Get the node's istopnode flag
+    #[wasm_bindgen(getter, js_name = istopnode)]
+    pub fn istopnode(&self) -> bool {
+        self.inner.borrow().node.istopnode
+    }
+
+    /// Get the node's sortorder
+    #[wasm_bindgen(getter, js_name = sortorder)]
+    pub fn sortorder(&self) -> JsValue {
+        match self.inner.borrow().node.sortorder {
+            Some(n) => JsValue::from(n),
+            None => JsValue::NULL,
+        }
+    }
+
+    /// Get the node's config as a JS object
+    #[wasm_bindgen(getter, js_name = config)]
+    pub fn config(&self) -> JsValue {
+        let obj = js_sys::Object::new();
+        for (key, value) in &self.inner.borrow().node.config {
+            let js_value = serde_wasm_bindgen::to_value(value).unwrap_or(JsValue::NULL);
+            js_sys::Reflect::set(&obj, &JsValue::from_str(key), &js_value).ok();
+        }
+        obj.into()
+    }
+
+    /// Get the node's ontologyclass
+    #[wasm_bindgen(getter, js_name = ontologyclass)]
+    pub fn ontologyclass(&self) -> JsValue {
+        match &self.inner.borrow().node.ontologyclass {
+            Some(s) => JsValue::from_str(s),
+            None => JsValue::NULL,
+        }
+    }
+
+    /// Get the node's fieldname
+    #[wasm_bindgen(getter, js_name = fieldname)]
+    pub fn fieldname(&self) -> JsValue {
+        match &self.inner.borrow().node.fieldname {
+            Some(s) => JsValue::from_str(s),
+            None => JsValue::NULL,
+        }
+    }
+
+    /// Get the node's parentproperty
+    #[wasm_bindgen(getter, js_name = parentproperty)]
+    pub fn parentproperty(&self) -> JsValue {
+        match &self.inner.borrow().node.parentproperty {
+            Some(s) => JsValue::from_str(s),
+            None => JsValue::NULL,
+        }
+    }
+
+    /// Get the node's graph_id
+    #[wasm_bindgen(getter, js_name = graphId)]
+    pub fn graph_id(&self) -> String {
+        self.inner.borrow().node.graph_id.clone()
+    }
+
+    /// Get the node's description
+    #[wasm_bindgen(getter, js_name = description)]
+    pub fn description(&self) -> JsValue {
+        match &self.inner.borrow().node.description {
+            Some(desc) => serde_wasm_bindgen::to_value(&desc.to_json()).unwrap_or(JsValue::NULL),
+            None => JsValue::NULL,
+        }
+    }
+
+    /// Get the node's hascustomalias flag
+    #[wasm_bindgen(getter, js_name = hascustomalias)]
+    pub fn hascustomalias(&self) -> bool {
+        self.inner.borrow().node.hascustomalias
     }
 }
 
@@ -389,16 +818,17 @@ impl WasmPseudoValue {
 impl WasmPseudoValue {
     /// Create a WasmPseudoValue from RustPseudoValue (for Rust-internal use)
     pub fn from_rust(inner: RustPseudoValue) -> Self {
-        WasmPseudoValue { inner }
+        WasmPseudoValue { inner: RefCell::new(inner) }
     }
 
     /// Get the inner RustPseudoValue (for Rust-internal use)
     /// Phase 4g: Added for cache storage
     pub fn into_inner(self) -> RustPseudoValue {
-        self.inner
+        self.inner.into_inner()
     }
 }
 
+#[derive(Debug)]
 #[wasm_bindgen]
 pub struct WasmPseudoList {
     inner: RustPseudoList,
@@ -410,12 +840,6 @@ impl WasmPseudoList {
     #[wasm_bindgen(getter, js_name = nodeAlias)]
     pub fn node_alias(&self) -> String {
         self.inner.node_alias.clone()
-    }
-
-    /// PORT: js/pseudos.ts:336 - PseudoList extends Array (groups count)
-    #[wasm_bindgen(getter, js_name = groupCount)]
-    pub fn group_count(&self) -> usize {
-        self.inner.groups.len()
     }
 
     /// PORT: js/pseudos.ts:336 - total values across all groups (Array.length equivalent)
@@ -430,28 +854,13 @@ impl WasmPseudoList {
         self.inner.is_loaded
     }
 
-    /// Get tile ID for a specific group
-    /// PORT: js/pseudos.ts:340,406 - tile property access
-    #[wasm_bindgen(js_name = getGroupTileId)]
-    pub fn get_group_tile_id(&self, group_index: usize) -> Option<String> {
-        self.inner.groups.get(group_index).and_then(|g| g.tile_id.clone())
-    }
-
-    /// Get number of values in a specific group
-    /// PORT: js/pseudos.ts:336 - Array length for group
-    #[wasm_bindgen(js_name = getGroupValueCount)]
-    pub fn get_group_value_count(&self, group_index: usize) -> usize {
-        self.inner.groups.get(group_index).map(|g| g.values.len()).unwrap_or(0)
-    }
-
-    /// Get a specific value from a specific group
+    /// Get a specific value
     /// PORT: js/pseudos.ts:336 - Array element access
     #[wasm_bindgen(js_name = getValue)]
-    pub fn get_value(&self, group_index: usize, value_index: usize) -> Option<WasmPseudoValue> {
-        self.inner.groups
-            .get(group_index)
-            .and_then(|g| g.values.get(value_index))
-            .map(|v| WasmPseudoValue { inner: v.clone() })
+    pub fn get_value(&self, value_index: usize) -> Option<WasmPseudoValue> {
+        self.inner.values
+            .get(value_index)
+            .map(|v| WasmPseudoValue::from_rust(v.clone()))
     }
 
     /// Get all values from all groups as a flat array
@@ -460,7 +869,7 @@ impl WasmPseudoList {
     pub fn get_all_values(&self) -> Vec<WasmPseudoValue> {
         self.inner.all_values()
             .into_iter()
-            .map(|v| WasmPseudoValue { inner: v.clone() })
+            .map(|v| WasmPseudoValue::from_rust(v.clone()))
             .collect()
     }
 
@@ -507,9 +916,7 @@ impl WasmNodegroupResult {
     #[wasm_bindgen(js_name = getValue)]
     pub fn get_value(&self, index: usize) -> Option<WasmPseudoValue> {
         self.inner.values.get(index).map(|v| {
-            WasmPseudoValue {
-                inner: v.clone(),
-            }
+            WasmPseudoValue::from_rust(v.clone())
         })
     }
 

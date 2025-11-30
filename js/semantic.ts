@@ -188,11 +188,11 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       return this.__childValues.get(key);
     }
 
-    // Call Rust to get the semantic child value
-    const rustValue = parent.$.wasmWrapper.getSemanticChildValue(
+    // Call Rust to get the semantic child value (with lazy tile loading)
+    const rustValue = await parent.$.wasmWrapper.retrieveSemanticChildValue(
       tile?.tileid || null,
       node.nodeid,
-      node.nodegroup_id || "",
+      node.nodegroup_id || null,
       key
     );
 

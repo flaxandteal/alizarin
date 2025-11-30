@@ -5,6 +5,13 @@ pub mod pseudo_value;
 pub mod model_wrapper;
 pub mod instance_wrapper;
 pub mod json_conversion;
+pub mod wasm_wrappers;
+
+// Re-export core types for native Rust consumers
+// These are the platform-agnostic types without WASM bindings
+pub mod core {
+    pub use alizarin_core::*;
+}
 
 use wasm_bindgen::prelude::*;
 

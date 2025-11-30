@@ -41,7 +41,7 @@ describe("testing api", () => {
 
       const groups: Group[] = await Groups.all({ pruneTiles: false });
 
-      assert(groups[0].constructor.name === "Group");
+      assert(groups[0].constructor.name.toString() === "Group");
       const basic_info = await groups[0].basic_info;
       console.log("basic_info (awaited):", basic_info);
       console.log("basic_info.length:", basic_info.length);
@@ -51,15 +51,15 @@ describe("testing api", () => {
       console.log("basic_info[0]:", basic_info_0);
       const name = await basic_info_0.name;
       console.log("name:", name);
-      assert(name == "Global Group");
+      assert(name.toString() == "Global Group");
       assert(name.lang("ga") === "Grúpa Domhanda");
+      console.log(await groups[0].permissions[0].action.__parentPseudo.node.node.nodeid, await groups[0].permissions[0].action.__parentPseudo.tile.data, 'PERMSS');
       const action = await groups[0].permissions[0].action[0];
-      assert(action == "Reading");
-      assert(action !== "Reading");
+      assert(action.toString() == "Reading");
 
       const GroupsByName = await graphManager.get("Group");
       const groupsByName = await GroupsByName.all({ pruneTiles: false });
-      assert(await groupsByName[0].basic_info[0].name == "Global Group");
+      assert((await groupsByName[0].basic_info[0].name).toString() == "Global Group");
     },
   );
 
@@ -74,12 +74,29 @@ describe("testing api", () => {
 
       const Groups = await graphManager.get(Group);
       const groups = await Groups.all({ lazy: true, pruneTiles: false });
-      const name = await groups[0].basic_info[0].name;
-      assert(name == "Global Group");
-      assert(name.lang("ga") === "Grúpa Domhanda");
+      console.log(groups[0]);
+      console.log("groups[0].$?.resource:", groups[0].$?.resource);
+      console.log("groups[0].$?.resource?.tiles?.length:", groups[0].$?.resource?.tiles?.length);
+      console.log("wasmWrapper.tilesLoaded():", groups[0].$?.wasmWrapper?.tilesLoaded());
+      const root = await groups[0].$.getRoot();
+      console.log("root:", root);
+      console.log("root.tile:", root?.tile);
+      const basic_info = await groups[0].basic_info;
+      console.log("basic_info:", basic_info);
+      console.log(basic_info);
+      console.log("basic_info.length:", basic_info?.length);
+      if (basic_info?.length > 0) {
+        const basic_info_0 = await basic_info[0];
+        const name = await basic_info_0.name;
+        console.log("name:", name);
+        assert(name.toString() == "Global Group");
+        assert(name.lang("ga") === "Grúpa Domhanda");
+      } else {
+        throw new Error("basic_info is empty!");
+      }
+      console.log(await groups[0].permissions);
       const action = await groups[0].permissions[0].action[0];
-      assert(action == "Reading");
-      assert(action !== "Reading");
+      assert(action.toString() == "Reading");
     },
   );
 });

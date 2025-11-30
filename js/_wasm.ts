@@ -1,7 +1,49 @@
-import init, { initSync, greet, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta } from "../pkg/alizarin";
+import init, { initSync, greet, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString } from "../pkg/alizarin";
 import wasmURL from "../pkg/alizarin_bg.wasm?url"
 
 let wasmInitialized = false;
+
+/**
+ * Patch a WASM class prototype to delegate unknown String methods to toString().
+ * This allows `sts.trim()`, `sts.toUpperCase()`, etc. to work transparently.
+ */
+function patchStringLikePrototype(proto: object): void {
+  const stringProto = String.prototype as Record<string, unknown>;
+  const protoRecord = proto as Record<string, unknown>;
+
+  for (const method of Object.getOwnPropertyNames(stringProto)) {
+    if (typeof stringProto[method] === 'function' && !(method in protoRecord) && method !== 'constructor') {
+      protoRecord[method] = function(this: { toString(): string }, ...args: unknown[]) {
+        const str = this.toString();
+        return (str as Record<string, unknown>)[method] instanceof Function
+          ? ((str as Record<string, (...a: unknown[]) => unknown>)[method])(...args)
+          : (str as Record<string, unknown>)[method];
+      };
+    }
+  }
+
+  // Add .length property
+  Object.defineProperty(proto, 'length', {
+    get(this: { toString(): string }) { return this.toString().length; },
+    configurable: true,
+  });
+
+  // Add valueOf for coercion (template literals, concatenation)
+  if (!('valueOf' in protoRecord)) {
+    protoRecord['valueOf'] = function(this: { toString(): string }) {
+      return this.toString();
+    };
+  }
+}
+
+/**
+ * Apply prototype patches to WASM string-like classes.
+ * Called once after WASM initialization.
+ */
+function applyPrototypePatches(): void {
+  // Patch StaticTranslatableString to behave like a String
+  patchStringLikePrototype(StaticTranslatableString.prototype);
+}
 
 export async function initWasm() {
   if (!wasmInitialized) {
@@ -35,6 +77,10 @@ export async function initWasm() {
         throw error;
       }
     }
+
+    // Apply prototype patches after WASM is initialized
+    applyPrototypePatches();
+
     wasmInitialized = true;
   }
 }

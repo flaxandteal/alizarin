@@ -782,6 +782,8 @@ class DomainValueListViewModel extends Array implements IViewModel {
             tile.data.set(nodeid, ids);
           });
         });
+      } else {
+        value = [];
       }
     } else {
       value = [];

@@ -70,6 +70,19 @@
             "resourceinstance_id": "d2368123-9628-49a2-b3dd-78ac6ee3e911",
             "sortorder": 0,
             "tileid": "98e7a90d-b1dc-49f6-8919-9434785e86ff"
+          },
+          {
+            "data": {
+              "7cb692b2-7072-11ee-bb7a-0242ac140008": [
+                "e3a6493e-5df4-4ad4-a699-ade7ccf01917"
+              ]
+            },
+            "nodegroup_id": "ae2039a4-7070-11ee-bb7a-0242ac140008",
+            "tileid": "5f95bf95-3682-4bd5-957d-ee643389f117",
+            "parenttile_id": null,
+            "provisionaledits": null,
+            "sortorder": 0,
+            "resourceinstance_id": "460c69bb-bccc-4f71-b276-edaac6ff6ee5"
           }
         ]
       }
