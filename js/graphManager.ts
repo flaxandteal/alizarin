@@ -46,6 +46,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
   scopes?: string[];
   metadata?: {[key: string]: string};
   private tilesLoaded: boolean = false;
+  private pruneTiles: boolean = true;
 
   constructor(
     wkri: RIVM,
@@ -56,6 +57,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
   ) {
     this.wkri = wkri;
     this.model = model;
+    this.pruneTiles = pruneTiles;
 
     // Initialize WASM wrapper for tile management
     if (resource) {
@@ -197,12 +199,9 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       return this.wasmWrapper.getName();
     }
 
-    // Otherwise build/update name using TypeScript logic
+    // Otherwise build/update name
     const descriptors = await this.getDescriptors(update);
     const resourceName = (descriptors && descriptors.name) || '<Unnamed>';
-    if (this.resource && this.resource.resourceinstance) {
-      this.resource.resourceinstance.name = resourceName;
-    }
     return resourceName;
   }
 
@@ -1010,9 +1009,11 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
   viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>;
   // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
   permittedNodegroups?: Map<string, boolean>;
+  pruneTiles: boolean = true;
 
   constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow: boolean) {
     super(wkrm, graph, defaultAllow);
+    this.pruneTiles = !defaultAllow;
     this.viewModelClass = viewModelClass;
   }
 
@@ -1107,77 +1108,20 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
   }
 
   pruneGraph(keepFunctions?: string[]): undefined {
-    // RMV DOES THESE NEED MOVED TO RUST?
-    // Get the graph once to avoid multiple clones
-    const graph = this.graph;
-    const allNodegroups = this.getNodegroupObjects();
-    const root = graph.root.nodeid;
-    // Strictly, this ultimately also contains nodes, but not all allowed nodes - the key point is that
-    // it has only and all nodegroups that we will keep.
-    const allowedNodegroups = new Map([...allNodegroups.values()].filter((nodegroup: StaticNodegroup) => {
-      return this.isNodegroupPermitted(nodegroup.nodegroupid || '', null);
-    }).map((nodegroup: StaticNodegroup) => [nodegroup.nodegroupid, nodegroup.nodegroupid === null || nodegroup.nodegroupid === '' || nodegroup.nodegroupid === root]));
-    const backedges: Map<string, string> = new Map();
-    for (const [d, rs] of this.getEdges()) {
-      for (const r of rs) {
-        if (backedges.has(r)) {
-          throw Error(`Graph is malformed, node ${r} has multiple parents, ${backedges.get(r)} and ${d} at least`);
-        }
-        backedges.set(r, d);
-      }
+    // Call Rust implementation via WASM wrapper
+    // Rust handles all graph filtering logic based on permitted nodegroups
+    super.pruneGraph(keepFunctions);
+  }
+
+  getPruneTiles(pruneTiles?: boolean) {
+    if (pruneTiles === undefined) {
+      pruneTiles = this.pruneTiles;
     }
-
-    let loops = 0;
-    // This is not a fast approach, but it's simple enough. Optimize if needed.
-    allowedNodegroups.set(root, true);
-    while (loops < MAX_GRAPH_DEPTH) {
-      const unrooted = [...allowedNodegroups.entries()].filter(([_, rooted]: [string, boolean]) => !rooted);
-      if (unrooted.length === 0) {
-        break;
-      }
-      for (const [ng] of unrooted) {
-        if (ng === root) {
-          continue;
-        }
-        const next = backedges.get(ng);
-        if (!next) {
-          throw Error(`Graph does not have a parent for ${ng}`);
-        }
-        allowedNodegroups.set(ng, true);
-        if (!allowedNodegroups.has(next)) {
-          allowedNodegroups.set(next, false);
-        }
-      }
-      loops += 1;
-    }
-
-    if (loops >= MAX_GRAPH_DEPTH) {
-      throw Error("Hit edge traversal limit when pruning, is the graph well-formed without cycles?")
-    }
-
-    const allowedNodes = new Set([...this.getNodeObjects().values()].filter((node: StaticNode) => {
-      return (node.nodegroup_id && allowedNodegroups.get(node.nodegroup_id)) || node.nodeid === root;
-    }).map((node: StaticNode) => node.nodeid));
-
-    graph.cards = (graph.cards || []).filter((card: StaticCard) => allowedNodegroups.get(card.nodegroup_id));
-    graph.cards_x_nodes_x_widgets = (graph.cards_x_nodes_x_widgets || []).filter((card: StaticCardsXNodesXWidgets) => allowedNodes.has(card.node_id));
-    graph.edges = (graph.edges || []).filter((edge: StaticEdge) => (edge.domainnode_id === root || allowedNodes.has(edge.domainnode_id)) && allowedNodes.has(edge.rangenode_id));
-    graph.nodegroups = (graph.nodegroups || []).filter((ng: StaticNodegroup) => allowedNodegroups.has(ng.nodegroupid));
-    graph.nodes = (graph.nodes || []).filter((node: StaticNode) => allowedNodes.has(node.nodeid));
-
-    // At this point, every originally-allowed nodegroup has an allowed parent, up to the root.
-    if (Array.isArray(keepFunctions) && graph.functions_x_graphs) {
-      graph.functions_x_graphs = graph.functions_x_graphs.filter((fxg: StaticFunctionsXGraphs) => keepFunctions.includes(fxg.function_id));
-    } else {
-      graph.functions_x_graphs = [];
-    }
-
-    // Persist the modified graph back to the WASM wrapper
-    this.graph = graph;
+    return pruneTiles;
   }
 
   async all(params: { limit?: number; lazy?: boolean; pruneTiles?: boolean } | undefined = undefined): Promise<Array<RIVM>> {
-    const paramObj = params || { limit: undefined, lazy: undefined, pruneTiles: undefined };
+    const paramObj = params || { limit: undefined, lazy: undefined, pruneTiles: this.getPruneTiles(params?.pruneTiles) };
     const promises = [];
     for await (const resource of this.iterAll(paramObj)) {
       promises.push(resource);
@@ -1185,15 +1129,14 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     return Promise.all(promises);
   }
 
-  async* resourceGenerator(staticResources: AsyncIterable<StaticResource, RIVM, unknown>, lazy: boolean=false, pruneTiles: boolean = true) {
+  async* resourceGenerator(staticResources: AsyncIterable<StaticResource, RIVM, unknown>, lazy: boolean=false, pruneTiles?: boolean) {
     for await (const staticResource of staticResources) {
       yield this.fromStaticResource(staticResource, lazy, pruneTiles);
     }
   }
 
   async* iterAll(params: { limit?: number; lazy?: boolean; pruneTiles?: boolean }): AsyncGenerator<RIVM> {
-    const pruneTiles = params.pruneTiles !== undefined ? params.pruneTiles : true;
-    yield* this.resourceGenerator(staticStore.loadAll(this.wkrm.graphId, params.limit), params.lazy, pruneTiles);
+    yield* this.resourceGenerator(staticStore.loadAll(this.wkrm.graphId, params.limit), params.lazy, params.pruneTiles);
   }
 
   // New summary-based methods for performance optimization
@@ -1228,7 +1171,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     return await staticStore.loadOne(id);
   }
 
-  async find(id: string, lazy: boolean = true, pruneTiles: boolean = true): Promise<RIVM> {
+  async find(id: string, lazy: boolean = true, pruneTiles?: boolean): Promise<RIVM> {
     const rivm = await this.findStatic(id);
     const x = this.fromStaticResource(rivm, lazy, pruneTiles);
     return x;
@@ -1290,7 +1233,8 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     throw Error(`Ambiguous permission state: ${permitted} for nodegroup ${nodegroupId}`);
   }
 
-  makeInstance(id: string, resource: StaticResource | null, pruneTiles: boolean = true, lazy: boolean = false): RIVM {
+  makeInstance(id: string, resource: StaticResource | null, pruneTiles?: boolean, lazy: boolean = false): RIVM {
+    pruneTiles = this.getPruneTiles(pruneTiles);
     if (!this.viewModelClass) {
       throw Error(`Cannot instantiate without a viewModelClass in ${this.wkrm.modelClassName}`);
     }
@@ -1308,7 +1252,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
   fromStaticResource(
     resource: StaticResource,
     lazy: boolean = false,
-    pruneTiles: boolean = true
+    pruneTiles?: boolean
   ): Promise<RIVM> {
     const wkri: RIVM = this.makeInstance(
       resource.resourceinstance.resourceinstanceid,
@@ -1396,11 +1340,19 @@ class GraphManager {
   // of graphs, using wkrms[*].meta
   graphs: Map<string, ResourceModelWrapper<any>>;
   wkrms: Map<string, WKRM>;
+  defaultAllow: boolean = false;
 
   constructor(archesClient: ArchesClient) {
     this.archesClient = archesClient;
     this.graphs = new Map<string, ResourceModelWrapper<any>>();
     this.wkrms = new Map<string, WKRM>();
+  }
+
+  getPruneTiles(pruneTiles?: boolean) {
+    if (pruneTiles === undefined) {
+      pruneTiles = !this.defaultAllow;
+    }
+    return pruneTiles;
   }
 
   async initialize(configurationOptions: ConfigurationOptions | undefined = undefined) {
@@ -1411,6 +1363,7 @@ class GraphManager {
       configurationOptions = new ConfigurationOptions();
     }
     const graphJsons: GraphResult = await this.archesClient.getGraphs();
+    this.defaultAllow = configurationOptions.defaultAllowAllNodegroups;
 
     let graphs: Array<[string, StaticGraphMeta]> = Object.entries(graphJsons["models"]);
     const allowedGraphs = configurationOptions.graphs;
@@ -1506,7 +1459,10 @@ class GraphManager {
     return wrapper;
   }
 
-  async getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean = true, pruneTiles: boolean = true): Promise<T> {
+  async getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean = true, pruneTiles?: boolean): Promise<T> {
+    if (pruneTiles === undefined) {
+    }
+    pruneTiles = this.getPruneTiles(pruneTiles);
     const rivm = await staticStore.loadOne(resourceId);
     let graph = this.graphs.get(rivm.resourceinstance.graph_id);
     if (!graph) {

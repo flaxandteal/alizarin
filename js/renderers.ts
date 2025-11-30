@@ -12,6 +12,7 @@ abstract class BaseRenderer {
       throw Error("Cannot render unloaded asset - do you want to await asset.retrieve()?");
     }
     const root = await (await asset.$.getRootViewModel());
+    console.log('rendering', root, root.constructor.name);
     return this.renderValue(root, 0);
   }
 
@@ -27,32 +28,44 @@ abstract class BaseRenderer {
   abstract renderNumber(value: number | NumberViewModel, _depth: number): Promise<any>;
   abstract renderUrl(value: UrlViewModel, _depth: number): Promise<any>;
 
+  // Helper to check if value is instance of a class (handles Proxies)
+  private isInstance(value: any, className: string): boolean {
+    const isInstance = value?.constructor?.name === className ||
+           value?.constructor?.name?.includes(className);
+    console.log(value, className, isInstance);
+    return isInstance;
+  }
+
   async renderValue(value: any, depth: number): Promise<any> {
+    if (value === null) {
+      return null;
+    }
     let newValue;
     if (value instanceof Promise) {
       value = await value;
     }
-    if (value instanceof DomainValueViewModel) {
+    console.log(value, typeof value);
+    if (this.isInstance(value, 'DomainValueViewModel')) {
       newValue = this.renderDomainValue(value, depth);
-    } else if (value instanceof DateViewModel) {
+    } else if (this.isInstance(value, 'DateViewModel')) {
       newValue = this.renderDate(value, depth);
-    } else if (value instanceof ConceptValueViewModel) {
+    } else if (this.isInstance(value, 'ConceptValueViewModel')) {
       newValue = this.renderConceptValue(value, depth);
-    } else if (value instanceof ResourceInstanceViewModel) {
+    } else if (this.isInstance(value, 'ResourceInstanceViewModel')) {
       newValue = this.renderResourceReference(value, depth);
-    } else if (value instanceof SemanticViewModel) {
+    } else if (this.isInstance(value, 'SemanticViewModel')) {
       newValue = this.renderSemantic(value, depth);
     } else if (value instanceof Array) {
       newValue = this.renderArray(value, depth);
-    } else if (value instanceof StringViewModel || value instanceof NonLocalizedStringViewModel || typeof value === 'string') {
+    } else if (this.isInstance(value, 'StringViewModel') || this.isInstance(value, 'NonLocalizedStringViewModel') || typeof value === 'string') {
       newValue = this.renderString(value, depth);
-    } else if (value instanceof BooleanViewModel) {
+    } else if (this.isInstance(value, 'BooleanViewModel')) {
       newValue = this.renderBoolean(value, depth);
-    } else if (value instanceof NumberViewModel) {
+    } else if (this.isInstance(value, 'NumberViewModel')) {
       newValue = this.renderNumber(value, depth);
-    } else if (value instanceof GeoJSONViewModel) {
+    } else if (this.isInstance(value, 'GeoJSONViewModel')) {
       newValue = this.renderBlock(await value.forJson(), depth);
-    } else if (value instanceof UrlViewModel) {
+    } else if (this.isInstance(value, 'UrlViewModel')) {
       newValue = this.renderUrl(await value, depth);
     } else if (value instanceof Object) {
       newValue = this.renderBlock(value, depth);
@@ -101,6 +114,7 @@ class Renderer extends BaseRenderer {
   }
 
   renderBlock(block: {[key: string]: string} | {[key: string]: string}[], depth: number): any {
+    console.log(block);
     const renderedBlock: {[key: string]: any} = {};
     const promises: Promise<void>[] = [];
     for (const [key, value] of Object.entries(block)) {
@@ -210,8 +224,11 @@ class MarkdownRenderer extends Renderer {
 
 class FlatMarkdownRenderer extends MarkdownRenderer {
   override async renderSemantic(vm: SemanticViewModel, depth: number): Promise<any> {
-    const children = [...(await vm.__getChildValues()).entries()].map(([_, v]) => [v.node.alias, v.node]);
-    const nodes = Object.fromEntries(await Promise.all(children));
+    // Get child aliases and their node metadata
+    const childAliases = vm.__parentWkri.$.model.getChildNodeAliases(vm.__node.nodeid);
+    const nodes = Object.fromEntries(
+      childAliases.map(alias => [alias, vm.__parentWkri.$.model.getNodeObjectFromAlias(alias)])
+    );
     return super.renderSemantic(vm, depth).then(async block => {
       const text = [
         `* <span class='node-type'>${vm.__node.name}</span> &rarr;`,

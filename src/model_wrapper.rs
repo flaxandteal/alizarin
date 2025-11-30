@@ -284,6 +284,159 @@ impl ResourceModelWrapperCore {
     pub fn set_graph(&mut self, graph: StaticGraph) {
         self.graph = Arc::new(graph);
     }
+
+    /// Prune graph to only include permitted nodegroups and their dependencies
+    /// Filters nodes, edges, cards, nodegroups, and functions based on permissions
+    /// Returns error if graph is malformed or has cycles
+    pub fn prune_graph(&mut self, keep_functions: Option<Vec<String>>) -> Result<(), String> {
+        const MAX_GRAPH_DEPTH: usize = 100;
+
+        // Ensure nodes are built
+        if self.nodes.is_none() || self.nodegroups.is_none() || self.edges.is_none() {
+            self.build_nodes()?;
+        }
+
+        // Get root node first (requires mutable borrow)
+        let root_node = self.get_root_node()?;
+        let root = root_node.nodeid.clone();
+
+        // Now we can borrow nodegroups immutably
+        let all_nodegroups = self.nodegroups.as_ref().ok_or("Nodegroups not built")?;
+
+        // Build allowed_nodegroups map: nodegroup_id -> is_rooted
+        // Filter to only permitted nodegroups
+        let mut allowed_nodegroups: HashMap<String, bool> = all_nodegroups
+            .iter()
+            .filter(|(ng_id, _)| self.is_nodegroup_permitted(ng_id))
+            .map(|(ng_id, _)| {
+                let is_root = ng_id.is_empty() || *ng_id == root;
+                (ng_id.clone(), is_root)
+            })
+            .collect();
+
+        // Build backedges map (child -> parent)
+        let edges = self.edges.as_ref().ok_or("Edges not built")?;
+        let mut backedges: HashMap<String, String> = HashMap::new();
+        for (domain, ranges) in edges.iter() {
+            for range in ranges {
+                if backedges.contains_key(range) {
+                    return Err(format!(
+                        "Graph is malformed, node {} has multiple parents, {} and {} at least",
+                        range,
+                        backedges.get(range).unwrap(),
+                        domain
+                    ));
+                }
+                backedges.insert(range.clone(), domain.clone());
+            }
+        }
+
+        // Mark root as rooted
+        allowed_nodegroups.insert(root.clone(), true);
+
+        // Iteratively ensure all kept nodegroups have path to root
+        let mut loops = 0;
+        while loops < MAX_GRAPH_DEPTH {
+            let unrooted: Vec<String> = allowed_nodegroups
+                .iter()
+                .filter(|(_, &rooted)| !rooted)
+                .map(|(ng, _)| ng.clone())
+                .collect();
+
+            if unrooted.is_empty() {
+                break;
+            }
+
+            for ng in unrooted {
+                if ng == root {
+                    continue;
+                }
+
+                let next = backedges.get(&ng)
+                    .ok_or_else(|| format!("Graph does not have a parent for {}", ng))?;
+
+                allowed_nodegroups.insert(ng.clone(), true);
+                if !allowed_nodegroups.contains_key(next) {
+                    allowed_nodegroups.insert(next.clone(), false);
+                }
+            }
+
+            loops += 1;
+        }
+
+        if loops >= MAX_GRAPH_DEPTH {
+            return Err("Hit edge traversal limit when pruning, is the graph well-formed without cycles?".to_string());
+        }
+
+        // Build set of allowed node IDs
+        let nodes = self.nodes.as_ref().ok_or("Nodes not built")?;
+        let allowed_nodes: std::collections::HashSet<String> = nodes
+            .values()
+            .filter(|node| {
+                node.nodegroup_id.as_ref()
+                    .and_then(|ng_id| allowed_nodegroups.get(ng_id))
+                    .copied()
+                    .unwrap_or(false)
+                    || node.nodeid == root
+            })
+            .map(|node| node.nodeid.clone())
+            .collect();
+
+        // Filter graph components
+        let mut graph = (*self.graph).clone();
+
+        // Filter cards (Option<Vec<StaticCard>>)
+        graph.cards = graph.cards.map(|cards| {
+            cards.into_iter()
+                .filter(|card| allowed_nodegroups.get(&card.nodegroup_id).copied().unwrap_or(false))
+                .collect()
+        });
+
+        // Filter cards_x_nodes_x_widgets (Option<Vec<StaticCardsXNodesXWidgets>>)
+        graph.cards_x_nodes_x_widgets = graph.cards_x_nodes_x_widgets.map(|cxnxws| {
+            cxnxws.into_iter()
+                .filter(|cxnxw| allowed_nodes.contains(&cxnxw.node_id))
+                .collect()
+        });
+
+        // Filter edges
+        graph.edges = graph.edges.into_iter()
+            .filter(|edge| {
+                (edge.domainnode_id == root || allowed_nodes.contains(&edge.domainnode_id))
+                    && allowed_nodes.contains(&edge.rangenode_id)
+            })
+            .collect();
+
+        // Filter nodegroups
+        graph.nodegroups = graph.nodegroups.into_iter()
+            .filter(|ng| allowed_nodegroups.contains_key(&ng.nodegroupid))
+            .collect();
+
+        // Filter nodes
+        graph.nodes = graph.nodes.into_iter()
+            .filter(|node| allowed_nodes.contains(&node.nodeid))
+            .collect();
+
+        // Filter functions_x_graphs (Option<Vec<StaticFunctionsXGraphs>>)
+        if let Some(keep_fns) = keep_functions {
+            graph.functions_x_graphs = graph.functions_x_graphs.map(|fxgs| {
+                fxgs.into_iter()
+                    .filter(|fxg| keep_fns.contains(&fxg.function_id))
+                    .collect()
+            });
+        } else {
+            graph.functions_x_graphs = Some(Vec::new());
+        }
+
+        // Update the graph and clear caches to force rebuild
+        self.graph = Arc::new(graph);
+        self.nodes = None;
+        self.edges = None;
+        self.nodegroups = None;
+        self.nodes_by_alias = None;
+
+        Ok(())
+    }
 }
 
 // WASM wrapper - lightweight reference that borrows from registry
@@ -787,5 +940,15 @@ impl WASMResourceModelWrapper {
     #[wasm_bindgen(getter = nodesByAlias)]
     pub fn get_nodes_by_alias_prop(&mut self) -> JsValue {
         self.get_node_objects_by_alias().unwrap_or(JsValue::UNDEFINED)
+    }
+
+    /// Prune graph to only include permitted nodegroups and their dependencies
+    /// Filters nodes, edges, cards, nodegroups, and functions based on permissions
+    #[wasm_bindgen(js_name = pruneGraph)]
+    pub fn prune_graph(&mut self, keep_functions: Option<Vec<String>>) -> Result<(), JsValue> {
+        self.with_core_mut(|core| {
+            core.prune_graph(keep_functions)
+                .map_err(|e| JsValue::from_str(&e))
+        })
     }
 }
