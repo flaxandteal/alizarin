@@ -21,7 +21,7 @@ import {
 } from "./static-types";
 import { PseudoList, PseudoUnavailable, wrapRustPseudo } from "./pseudos.ts";
 import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper, newWASMResourceInstanceWrapperForResource, newWASMResourceInstanceWrapperForModel } from "../pkg/alizarin";
-import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
+import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { CheckPermission, GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
 import { } from "./nodeConfig.ts";
 import { generateUuidv5, AttrPromise, buildResourceDescriptors, serializeValuesMap } from "./utils";
@@ -40,7 +40,8 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
   wasmWrapper: WASMResourceInstanceWrapper;
   resource?: StaticResource;
 
-  valueList: ValueList<RIVM>;
+  // Local cache for wrapped pseudo values (replaces ValueList)
+  private _pseudoCache: Map<string, any> = new Map();
   cache: {[tileId: string]: {[nodeId: string]: IStringKeyedObject}} | undefined;
   scopes?: string[];
   metadata?: {[key: string]: string};
@@ -64,7 +65,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       this.wasmWrapper = newWASMResourceInstanceWrapperForModel(model.wkrm.graphId);
     }
 
-    this.valueList = new ValueList(new Map<string, any>(), new Map<string, boolean>(), this);
+    this._pseudoCache = new Map();
     this.cache = resource ? resource.__cache : undefined;
     this.scopes = resource ? resource.__scopes : undefined;
     this.metadata = resource ? resource.metadata : undefined;
@@ -88,29 +89,39 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     // if tiles are already present we should use them
     if (!this.wasmWrapper.tilesLoaded() && resource && resource.tiles && resource.tiles.length > 0) {
       try {
-        this.wasmWrapper.loadTiles(resource.tiles);
+        // Use loadTilesWasm for WASM StaticTile objects (from resource.tiles getter)
+        console.log('[DEBUG] About to call loadTilesWasm with', resource.tiles.length, 'tiles');
+        console.log('[DEBUG] First tile:', resource.tiles[0]);
+        console.log('[DEBUG] First tile type:', resource.tiles[0]?.constructor?.name);
+        this.wasmWrapper.loadTilesWasm(resource.tiles);
+        console.log('[DEBUG] After loadTilesWasm, tile count:', this.wasmWrapper.getTileCount());
       } catch (e) {
         console.error("Failed to load tiles into WASM:", e);
       }
     }
 
     if (pruneTiles && resource) {
+      console.log('[pruneResourceTiles]', 0, this.wasmWrapper.getTileCount());
       this.pruneResourceTiles()
+      console.log('[pruneResourceTiles]', 1, this.wasmWrapper.getTileCount());
     }
   }
 
   async ensureTilesLoaded(): Promise<void> {
     if (!this.wasmWrapper.tilesLoaded()) {
       // Load tiles on-demand
+      console.log('[ensureTilesLoaded]', 1);
       const tiles = await staticStore.loadTiles(this.wasmWrapper.getResourceId());
 
-      // Load tiles into Rust
+      console.log('[ensureTilesLoaded]', 2, tiles.length);
+      // Load tiles into Rust (WASM objects from resource.tiles getter)
       try {
-        this.wasmWrapper.loadTiles(tiles);
+        this.wasmWrapper.loadTilesWasm(tiles);
       } catch (e) {
         console.error("Failed to load tiles into WASM:", e);
       }
 
+      console.log('[ensureTilesLoaded]', 3, tiles.length);
       // Re-populate with full tile data
       await this.populate(false); // non-lazy to process all tiles
     }
@@ -120,9 +131,63 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     this.wasmWrapper.pruneResourceTiles();
   }
 
+  // Direct Rust delegation methods (replaces ValueList)
+
+  /**
+   * Retrieve pseudo value by alias - queries Rust's pseudo_cache
+   * Replaces ValueList.retrieve
+   */
+  async retrievePseudo(key: string, dflt: any = null, raiseError: boolean = false): Promise<Array<IPseudo> | null> {
+    // Check local cache first (for wrapped values)
+    let result: any = this._pseudoCache.get(key);
+    if (result instanceof Promise) {
+      result = await result;
+    }
+    if (Array.isArray(result) && result.length > 0) {
+      return result;
+    }
+
+    // Query Rust's pseudo_cache
+    const rustValue = this.wasmWrapper.getCachedPseudo(key);
+
+    if (rustValue) {
+      // Wrap the Rust value and cache locally
+      const wrappedValue = wrapRustPseudo(rustValue, this.wkri, this.model);
+      // Store as array for consistency
+      const wrappedArray = [wrappedValue];
+      this._pseudoCache.set(key, wrappedArray);
+      return wrappedArray;
+    }
+
+    // Not found in cache
+    if (raiseError) {
+      throw Error(`Unset key ${key}`);
+    }
+    return dflt;
+  }
+
+  async hasPseudo(key: string): Promise<boolean> {
+    const value = await this.retrievePseudo(key, null, false);
+    return value !== null && value !== undefined;
+  }
+
+  setPseudo(key: string, value: any): void {
+    this._pseudoCache.set(key, value);
+  }
+
+  async setDefaultPseudo(key: string, value: any): Promise<any> {
+    const existingValue = await this.retrievePseudo(key, null, false);
+    if (existingValue !== null) {
+      return existingValue;
+    }
+    // Value not found, set the default
+    this._pseudoCache.set(key, value);
+    return value;
+  }
+
   async loadNodes(aliases: Array<string>): Promise<void> {
     for (const key of aliases) {
-      await this.valueList.retrieve(key);
+      await this.retrievePseudo(key);
     }
   }
 
@@ -150,20 +215,9 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       }
     }
 
-    // Otherwise build descriptors using utility function
-    const descriptors = await buildResourceDescriptors(
-      this.model.graph,
-      this.model.getNodeObjects(),
-      this.valueList
-    );
-
-    // Cache the built descriptors
-    if (this.resource && this.resource.resourceinstance) {
-      this.resource.resourceinstance.descriptors = descriptors;
-      if (descriptors.name) {
-        this.resource.resourceinstance.descriptors.name = descriptors.name;
-      }
-    }
+    // Compute descriptors using Rust implementation (platform-independent)
+    // Rust computes from tiles and returns fresh descriptors - no need to cache in TS
+    const descriptors = this.wasmWrapper.computeDescriptors();
 
     return descriptors;
   }
@@ -193,17 +247,42 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // Handle unavailable case (Rust returns null for unpermitted)
       if (rustValue === null || rustValue === undefined) {
         const child = new PseudoUnavailable(childNode);
-        const valueList: ValueList<any> = this.valueList;
-        valueList.setDefault(key, []).then((val: Array<any>) => val.push(child));
+        this.setDefaultPseudo(key, []).then((val: Array<any>) => val.push(child));
         return child;
       }
 
       // Wrap the Rust value in TS PseudoValue/PseudoList
       const child = wrapRustPseudo(rustValue, this.wkri, this.model);
 
-      const valueList: ValueList<any> = this.valueList;
-      valueList.setDefault(key, []).then((val: Array<any>) => val.push(child));
+      // Phase 4k: Don't use setDefault - it triggers retrieve which may already have
+      // created values from Rust. Instead, directly get/set the value.
+      this.setDefaultPseudo(key, []).then((val: Array<any>) => val.push(child));
       return child;
+
+      // if (existingValue === undefined || existingValue === false) {
+      //   // No existing value - create a new array
+      //   valueList.values.set(key, [child]);
+      // } else if (Array.isArray(existingValue)) {
+      //   // Already an array (PseudoList or plain) - push to it
+      //   // But check if child is already present (by checking tile ID to avoid duplicates)
+      //   const childTileId = child.tile?.tileid;
+      //   const alreadyPresent = childTileId && existingValue.some((v: any) => v.tile?.tileid === childTileId);
+      //   if (!alreadyPresent) {
+      //     existingValue.push(child);
+      //   }
+      // } else if (existingValue instanceof Promise) {
+      //   // Value is still loading - wait and then push
+      //   existingValue.then((val: any) => {
+      //     if (Array.isArray(val)) {
+      //       const childTileId = child.tile?.tileid;
+      //       const alreadyPresent = childTileId && val.some((v: any) => v.tile?.tileid === childTileId);
+      //       if (!alreadyPresent) {
+      //         val.push(child);
+      //       }
+      //     }
+      //   });
+      // }
+      // return child;
     } catch (e) {
       console.error("Rust makePseudoValue failed:", e);
       throw new Error(`Rust makePseudoValue failed: ${e}. This should not happen - check Rust implementation.`);
@@ -211,7 +290,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
   }
 
   allEntries(): MapIterator<[string, Array<IPseudo> | false | null]> {
-    return this.valueList.values.entries()
+    return this._pseudoCache.entries()
   }
 
   async keys() {
@@ -258,35 +337,39 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
   }
 
   async getRoot(): Promise<IPseudo | undefined> {
-    const values = this.valueList;
     const node = this.model.getRootNode();
-    if (node) {
-      let value;
-      const alias = node.alias;
-      if (!(typeof alias == 'string')) {
-        throw Error(`Alias missing for node ${node.nodeid}`);
-      }
-      await values.setDefault(alias, []);
-      const nodeValues = await values.get(alias);
-
-      if (nodeValues.length > 1) {
-        throw Error("Cannot have multiple root tiles");
-      } else if (nodeValues.length == 1) {
-        value = nodeValues[0];
-      } else {
-        // Fallback for empty resources - use Rust to create value with null tile
-        // This happens when ValueList.retrieve() skips ensureNodegroup (no wrapper.resource)
-        const rustValue = this.wasmWrapper.makePseudoValue(
-          alias,
-          null,  // tile_id
-          true,  // is_permitted
-          false  // is_single
-        );
-        value = wrapRustPseudo(rustValue, this.wkri, this.model);
-        values.set(alias, [value]);
-      }
-      return value;
+    if (!node) {
+      return undefined;
     }
+
+    const alias = node.alias;
+    if (!(typeof alias == 'string')) {
+      throw Error(`Alias missing for node ${node.nodeid}`);
+    }
+
+    // Query Rust cache first
+    const cachedValue = this.wasmWrapper.getCachedPseudo(alias);
+    if (cachedValue) {
+      const wrappedValue = wrapRustPseudo(cachedValue, this.wkri, this.model);
+      // PseudoList - get first element
+      if (Array.isArray(wrappedValue) || wrappedValue instanceof PseudoList) {
+        if (wrappedValue.length > 1) {
+          throw Error("Cannot have multiple root tiles");
+        }
+        return wrappedValue.length === 1 ? wrappedValue[0] : undefined;
+      }
+      return wrappedValue;
+    }
+
+    // Not in cache - create a new pseudo value for empty resource
+    const rustValue = this.wasmWrapper.makePseudoValue(
+      alias,
+      null,  // tile_id
+      true,  // is_permitted
+      false  // is_single
+    );
+    const value = wrapRustPseudo(rustValue, this.wkri, this.model);
+    return value;
   }
 
   setOrmAttribute(key: string, value: any) {
@@ -318,7 +401,8 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       if (loader) {
         try {
           const tiles = await loader(nodegroupId);
-          this.wasmWrapper.loadTiles(tiles);
+          // Tiles from loader come from resource.tiles getter (WASM objects)
+          this.wasmWrapper.loadTilesWasm(tiles);
           this.wasmWrapper.markNodegroupTilesLoaded(nodegroupId);
         } catch (e) {
           console.error(`Failed to load tiles for nodegroup ${nodegroupId}:`, e);
@@ -419,7 +503,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
 
   /**
    * Populate all nodegroups for a resource
-   * Uses Rust implementation via WASM
+   * Uses Rust implementation via WASM - Rust caches all values internally
    */
   async populate(lazy: boolean): Promise<void> {
     const nodegroupObjs = this.model.getNodegroupObjects();
@@ -429,11 +513,11 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       throw Error("Cannot populate a model with no proper root node");
     }
 
-
     try {
       if (!lazy && this.resource) {
         // Ensure tiles are loaded if we need them for non-lazy population
         if (!this.resource.tiles) {
+          console.log('[populate]', 0, this.resource.tiles?.length);
           await this.ensureTilesLoaded();
         }
       }
@@ -441,75 +525,20 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // Phase 4h: Pass nodegroup permissions to Rust - Rust will compute tile permissions
       const nodegroupPermissions = this.model.getPermittedNodegroups();
 
-      // Get all tile IDs and nodegroup IDs
+      // Get all nodegroup IDs
       const nodegroupIds = [...nodegroupObjs.keys()];
 
-      // Call Rust implementation
+      // Call Rust implementation - Rust stores values in its pseudo_cache
+      console.log('[populate]', 1, this.resource.tiles?.length, lazy, this.wasmWrapper.getTileCount());
       const result = this.wasmWrapper.populate(
         lazy,
         nodegroupIds,
         rootNode.alias,
-        nodegroupPermissions  // Phase 4h: Pass nodegroup permissions instead of tile permissions
+        nodegroupPermissions
       );
 
-      // Convert all recipes to PseudoValues
-      const allValues: Map<string, any> = new Map();
-      const allNodegroups: Map<string, any> = new Map();
-
-      // Initialize allNodegroups (needed for ValueList)
-      for (const nodegroupId of nodegroupIds) {
-        allNodegroups.set(nodegroupId, false);
-      }
-
-      // Set root node alias
-      allValues.set(rootNode.alias, false);
-
-      // PORT: Phase 4c - Use structured RustPseudoList values directly instead of recipes
-      // PORT: src/instance_wrapper.rs:563-569 - WasmPopulateResult with values HashMap
-      const newValues = new Map<string, any>();
-      // Get all values in a single boundary crossing instead of N+1 calls
-      const allRustValues = result.getAllValues();
-
-      for (const [alias, rustValue] of allRustValues.entries()) {
-        // PORT: Phase 4c - Get WasmPseudoList directly from Rust
-        // PORT: src/instance_wrapper.rs:156 - getValue returns Option<WasmPseudoList>
-
-        if (!rustValue) {
-          // Sentinel undefined case
-          // PORT: src/instance_wrapper.rs:732 - sentinel_undefined flag
-          newValues.set(alias, undefined);
-          continue;
-        }
-
-        // Check if value already exists in allValues
-        let existing = allValues.get(alias);
-        if (existing instanceof Promise) {
-          existing = await existing;
-        }
-        if (existing !== false && existing !== undefined) {
-          newValues.set(alias, existing);
-          continue;
-        }
-
-        // Wrap Rust value in JavaScript PseudoList/PseudoValue
-        // wrapRustPseudo returns a complete PseudoList with all values already inside
-        const wrappedValue = wrapRustPseudo(rustValue, this.wkri, this.model);
-        newValues.set(alias, wrappedValue);
-      }
-
-      // Update allValues with newValues
-      for (const [key, value] of newValues.entries()) {
-        if (value !== undefined) {
-          allValues.set(key, value);
-        }
-      }
-
-      // Root node doesn't have nodegroup data - set to empty array if still false
-      if (allValues.get(rootNode.alias) === false) {
-        allValues.set(rootNode.alias, []);
-      }
-
-      // Update allNodegroups from Rust result
+      // Initialize allNodegroups from Rust result
+      const allNodegroups: Map<string, boolean> = new Map();
       const updatedNodegroups = result.allNodegroupsMap;
       if (updatedNodegroups instanceof Map) {
         for (const [key, value] of updatedNodegroups.entries()) {
@@ -520,20 +549,15 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       } else {
         for (const [key, value] of Object.entries(updatedNodegroups)) {
           if (typeof value === 'boolean') {
-            allNodegroups.set(key, value);
+            allNodegroups.set(key, value as boolean);
           }
         }
       }
 
-      // Create ValueList with results
-      this.valueList = new ValueList(
-        allValues,
-        allNodegroups,
-        this,
-      );
+      // Clear local cache - Rust is now the source of truth
+      this._pseudoCache = new Map();
 
     } catch (error) {
-      // PORT: Phase 4e-3 - Fail explicitly instead of silent fallback
       console.error('[populate] Rust implementation failed:', error);
       throw new Error(`populate failed: ${error}`);
     }
@@ -548,7 +572,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
 
   async buildValueCache(getMeta: GetMeta): Promise<{[tileId: string]: {[nodeId: string]: IStringKeyedObject}}> {
     const cacheByTile: {[tileId: string]: {[nodeId: string]: IStringKeyedObject}} = {};
-    for (let pseudos of this.valueList.values.values()) {
+    for (let pseudos of this._pseudoCache.values()) {
       pseudos = await pseudos;
       if (pseudos) {
         await Promise.all(pseudos.map(async (pseudo: IPseudo) => {

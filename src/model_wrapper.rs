@@ -6,7 +6,6 @@ use crate::graph::WKRM;
 use crate::graph::StaticGraph as WasmStaticGraph;
 use crate::graph::StaticNode as WasmStaticNode;
 use crate::graph::StaticNodegroup as WasmStaticNodegroup;
-use crate::graph::StaticEdge as WasmStaticEdge;
 use crate::graph::StaticTile as WasmStaticTile;
 // Use core types for internal storage
 use alizarin_core::{StaticGraph, StaticTile, StaticNode, StaticNodegroup, StaticEdge};
@@ -715,16 +714,19 @@ impl WASMResourceModelWrapper {
     // Internal accessors for Rust code (not exposed to JavaScript)
     // These can't use with_core because they return references, so we need a different approach
     // We'll make these methods panic if called on an unregistered model (shouldn't happen in practice)
+    #[allow(dead_code)]
     pub(crate) fn get_nodes_by_alias_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
         // Cannot return references from with_core closure - would need different design
         // For now, panic - this should not be called on unregistered models
         panic!("get_nodes_by_alias_internal called - refactor needed to use registry directly")
     }
 
+    #[allow(dead_code)]
     pub(crate) fn get_nodes_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
         panic!("get_nodes_internal called - refactor needed to use registry directly")
     }
 
+    #[allow(dead_code)]
     pub(crate) fn get_edges_internal(&self) -> Option<&HashMap<String, Vec<String>>> {
         panic!("get_edges_internal called - refactor needed to use registry directly")
     }

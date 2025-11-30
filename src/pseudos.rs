@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::rc::Rc;
 use serde::Serialize;
 // Use core types for internal storage
-use alizarin_core::{StaticNode, StaticNodegroup, StaticEdge};
+use alizarin_core::StaticNode;
 
 // Constants for iterable datatypes
 const ITERABLE_DATATYPES: &[&str] = &[
@@ -165,8 +165,7 @@ impl PseudoNode {
     #[wasm_bindgen(getter = childNodeAliases)]
     pub fn get_child_node_aliases(&self) -> JsValue {
         let map = js_sys::Array::new();
-        for (key, value) in &self.child_nodes {
-            let node_obj = value.to_json();
+        for (key, _value) in &self.child_nodes {
             map.push(&JsValue::from_str(key));
         }
         map.into()

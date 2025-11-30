@@ -209,6 +209,7 @@ mod tests {
             vec![Some(tile1.clone()), Some(tile2.clone())],
             &edges,
             None, // parent JsValue
+            false, // is_single - collectors can have multiple values
         );
 
         // Verify list has two groups (one per tile)
@@ -235,6 +236,7 @@ mod tests {
             vec![Some(tile1.clone())],
             &edges,
             None, // parent JsValue
+            false, // is_single
         );
 
         // Create second list also with tile1
@@ -243,15 +245,21 @@ mod tests {
             vec![Some(tile1.clone())],
             &edges,
             None, // parent JsValue
+            false, // is_single
         );
 
         let mut merged = list1;
         merged.merge(list2);
 
         // PORT: js/graphManager.ts:992-1003 - should merge values from same tile
-        // Should have 1 group (same tile), but 2 values merged
-        assert_eq!(merged.groups.len(), 1);
-        assert_eq!(merged.groups[0].values.len(), 2);
+        // Should have 2 values merged (both from tile1)
+        assert_eq!(merged.values.len(), 2);
+
+        // Both values should be from the same tile
+        let tile_ids: Vec<_> = merged.values.iter()
+            .map(|v| v.tile.as_ref().and_then(|t| t.tileid.as_deref()))
+            .collect();
+        assert!(tile_ids.iter().all(|t| *t == Some("tile1")));
     }
 
     /// PORT: tests/ensureNodegroup-edge-cases.test.ts "should use [null] when no tiles match and addIfMissing is true"

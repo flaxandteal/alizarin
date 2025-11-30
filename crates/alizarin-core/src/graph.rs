@@ -528,6 +528,153 @@ impl IndexedGraph {
             .as_ref()
             .and_then(|id| self.nodegroups_by_id.get(id))
     }
+
+    /// Build resource descriptors from tiles using graph configuration
+    ///
+    /// This replaces the TypeScript buildResourceDescriptors function, making
+    /// descriptor computation completely platform-independent.
+    ///
+    /// # Arguments
+    /// * `tiles` - The resource tiles containing data values
+    ///
+    /// # Returns
+    /// Populated StaticResourceDescriptors with name, description, map_popup fields
+    pub fn build_descriptors(&self, tiles: &[StaticTile]) -> StaticResourceDescriptors {
+        // Get descriptor config from graph
+        let config = match self.get_descriptor_config() {
+            Some(c) => c,
+            None => return StaticResourceDescriptors::default(),
+        };
+
+        let mut descriptors = StaticResourceDescriptors::default();
+
+        // Process each descriptor type (name, description, map_popup)
+        for (descriptor_type, type_config) in &config.descriptor_types {
+            let mut template = type_config.string_template.clone();
+
+            // Extract placeholders from template (e.g., <Node Name>)
+            let placeholders = Self::extract_placeholders(&template);
+            if placeholders.is_empty() {
+                continue;
+            }
+
+            // Find tiles for this nodegroup
+            let relevant_tiles: Vec<&StaticTile> = tiles
+                .iter()
+                .filter(|t| t.nodegroup_id == type_config.nodegroup_id)
+                .collect();
+
+            if relevant_tiles.is_empty() {
+                continue;
+            }
+
+            // Replace each placeholder with actual value from tiles
+            for placeholder in &placeholders {
+                // Remove < > from placeholder to get node name
+                let node_name = placeholder.trim_start_matches('<').trim_end_matches('>');
+
+                // Find node by name in this nodegroup
+                if let Some(node) = self.find_node_by_name_in_nodegroup(node_name, &type_config.nodegroup_id) {
+                    // Extract value from tiles
+                    if let Some(value) = Self::extract_value_from_tiles(&relevant_tiles, &node.nodeid) {
+                        template = template.replace(placeholder, &value);
+                    }
+                }
+            }
+
+            // Assign to appropriate descriptor field
+            match descriptor_type.as_str() {
+                "name" => descriptors.name = Some(template),
+                "description" => descriptors.description = Some(template),
+                "map_popup" => descriptors.map_popup = Some(template),
+                _ => {} // Unknown descriptor type, ignore
+            }
+        }
+
+        descriptors
+    }
+
+    /// Extract descriptor config from graph.functions_x_graphs
+    fn get_descriptor_config(&self) -> Option<DescriptorConfig> {
+        let functions_x_graphs = self.graph.functions_x_graphs.as_ref()?;
+
+        for func in functions_x_graphs {
+            if func.function_id == DESCRIPTOR_FUNCTION_ID {
+                // Parse config as DescriptorConfig
+                return serde_json::from_value(func.config.clone()).ok();
+            }
+        }
+        None
+    }
+
+    /// Extract placeholders from template using regex pattern
+    /// Finds patterns like <Node Name> in the template string
+    fn extract_placeholders(template: &str) -> Vec<String> {
+        // Pattern matches: <[A-Za-z _-]+>
+        // For now, use a simple manual parser to avoid regex dependency
+        let mut placeholders = Vec::new();
+        let mut in_placeholder = false;
+        let mut current = String::new();
+
+        for ch in template.chars() {
+            if ch == '<' {
+                in_placeholder = true;
+                current.clear();
+                current.push(ch);
+            } else if ch == '>' && in_placeholder {
+                current.push(ch);
+                placeholders.push(current.clone());
+                in_placeholder = false;
+                current.clear();
+            } else if in_placeholder {
+                current.push(ch);
+            }
+        }
+
+        placeholders
+    }
+
+    /// Find node by name within a specific nodegroup
+    fn find_node_by_name_in_nodegroup(&self, name: &str, nodegroup_id: &str) -> Option<&StaticNode> {
+        self.nodes_by_id
+            .values()
+            .find(|node| {
+                node.name == name &&
+                node.nodegroup_id.as_ref().map(|id| id == nodegroup_id).unwrap_or(false)
+            })
+    }
+
+    /// Extract value from tiles for a given node ID
+    fn extract_value_from_tiles(tiles: &[&StaticTile], node_id: &str) -> Option<String> {
+        for tile in tiles {
+            if let Some(value) = tile.data.get(node_id) {
+                if let Some(extracted) = Self::extract_string_from_json(value) {
+                    return Some(extracted);
+                }
+            }
+        }
+        None
+    }
+
+    /// Extract string value from JSON, handling language-nested objects
+    /// Handles both simple strings and language objects like {"en": "value"}
+    fn extract_string_from_json(value: &serde_json::Value) -> Option<String> {
+        match value {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Object(map) => {
+                // Try to get language-specific value (e.g., {"en": "value"})
+                map.get("en")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| {
+                        // Fallback to first available language
+                        map.values()
+                            .find_map(|v| v.as_str())
+                    })
+                    .map(|s| s.to_string())
+            }
+            _ => None,
+        }
+    }
 }
 
 // ============================================================================
@@ -778,6 +925,26 @@ impl StaticResourceDescriptors {
     pub fn empty() -> Self {
         Self::default()
     }
+}
+
+// ============================================================================
+// Descriptor Configuration
+// ============================================================================
+
+/// Descriptor function UUID (from Arches)
+pub const DESCRIPTOR_FUNCTION_ID: &str = "60000000-0000-0000-0000-000000000001";
+
+/// Configuration for a single descriptor type (name, description, map_popup)
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DescriptorTypeConfig {
+    pub nodegroup_id: String,
+    pub string_template: String,
+}
+
+/// Complete descriptor configuration from functions_x_graphs
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DescriptorConfig {
+    pub descriptor_types: HashMap<String, DescriptorTypeConfig>,
 }
 
 // ============================================================================

@@ -61,6 +61,11 @@ interface IInstanceWrapper<T extends IRIVM<T>> {
   getRoot(): Promise<IPseudo | undefined>;
   getRootViewModel(): Promise<IStringKeyedObject>;
   populate(lazy: boolean): Promise<void>;
+  // Direct Rust delegation methods (replaces ValueList)
+  retrievePseudo(key: string, dflt?: any, raiseError?: boolean): Promise<Array<IPseudo> | null>;
+  hasPseudo(key: string): Promise<boolean>;
+  setPseudo(key: string, value: any): void;
+  setDefaultPseudo(key: string, value: any): Promise<any>;
 };
 
 

@@ -8,7 +8,7 @@ import {
   IRIVM,
   GetMeta,
 } from "./interfaces.ts";
-import { PseudoValue, wrapRustPseudo } from "./pseudos";
+import { PseudoValue, PseudoList, wrapRustPseudo } from "./pseudos";
 import { SemanticViewModel } from "./semantic";
 import { RDM } from "./rdm";
 import {
@@ -24,7 +24,7 @@ import {
   StaticResource,
   StaticResourceReference
 } from "./static-types";
-import { AttrPromise, serializeValuesMap } from "./utils";
+import { AttrPromise } from "./utils";
 import { nodeConfigManager } from './nodeConfig';
 
 const DEFAULT_LANGUAGE = "en";
@@ -34,188 +34,7 @@ class ViewContext {
 };
 const viewContext = new ViewContext();
 
-class ValueList<T extends IRIVM<T>> {
-  values: Map<string, any>;
-  wrapper: IInstanceWrapper<T>;
-  // Phase 4k: Removed this.promises - Rust atomic locks handle concurrency
-  writeLock: null | Promise<boolean | IViewModel>;
-
-  constructor(
-    values: Map<string, any>,
-    allNodegroups: Map<string, boolean>,  // No longer stored, kept for API compat
-    wrapper: IInstanceWrapper<T>,
-  ) {
-    this.values = values;
-    this.wrapper = wrapper;
-    // Phase 4k: No longer store allNodegroups - Rust handles state
-    this.writeLock = null;
-  }
-
-  async get(key: string) {
-    return this.retrieve(key, this.values.get(key), true);
-  }
-
-  set(key: string, value: any) {
-    this.values.set(key, value);
-  }
-
-  async has(key: string) {
-    await this.retrieve(key, null);
-    return this.values.has(key);
-  }
-
-  async retrieve(key: string, dflt: any = null, raiseError: boolean = false) {
-    let result: any = this.values.get(key);
-    // console.log(`[ValueList.retrieve] key=${key}, initial result:`, result, "type:", typeof result);
-    if (Array.isArray(result)) {
-      // console.log(`[ValueList.retrieve] returning array with length ${result.length}`);
-      return result;
-    }
-    const node = this.wrapper.model.getNodeObjectFromAlias(key);
-
-    result = await result;
-
-    if (!node) {
-      throw Error(`This key ${key} has no corresponding node`);
-    }
-    const nodegroupId = node.nodegroup_id || '';
-
-    // Phase 4k: Rust atomic lock - eliminates race conditions
-    if (!this.wrapper.wasmWrapper) {
-      throw new Error("WASM wrapper not available");
-    }
-    const shouldLoad = this.wrapper.wasmWrapper.tryAcquireNodegroupLock(nodegroupId);
-
-    // When an unloaded node is found, the whole nodegroup is loaded.
-    // Phase 4k: Rust atomic locks ensure that no other node in the nodegroup
-    // triggers the same nodegroup load. Note that there is _also_ the
-    // individual node promise (in this.values), which allows any operation to wait for
-    // just that node to finish and resolve into the appropriate pseudo
-    // even if `retrieve` is not used (e.g. allEntries).
-    // _However_, this means that allEntries will not see a promise for
-    // individual nodes in the nodegroup that are _not_ the first
-    // requested, until the first requested resolves and updates the
-    // values map for all nodes in the nodegroup.
-    if (shouldLoad) {
-      await this.writeLock;
-      if (this.wrapper.resource) {
-        // Will KeyError if we do not have it.
-        const node = this.wrapper.model.getNodeObjectFromAlias(key);
-        if (node === undefined) {
-          throw Error(
-            "Tried to retrieve a node key that does not exist on this resource",
-          );
-        }
-        const values = new Map([...this.values.entries()]);
-        const promise: Promise<IViewModel | boolean> = new Promise((resolve) => {
-           // Phase 4k: Create temporary state Map for Rust recursion tracking
-           // Rust uses this to track which nodegroups have been processed in recursive calls
-           const nodegroupStateMap = new Map<string, boolean>();
-           nodegroupStateMap.set(nodegroupId, false);  // Mark as needs-loading
-
-           // Get permissions and tiles
-           const nodegroupPermissions = this.wrapper.model.getPermittedNodegroups();
-
-           // Serialize maps for efficient Rust deserialization
-           const serializedValues = serializeValuesMap(values);
-           const serializedNodegroups = Object.fromEntries(nodegroupStateMap);
-           const serializedPermissions = Object.fromEntries(nodegroupPermissions);
-
-           const result = this.wrapper.wasmWrapper.ensureNodegroup(
-              serializedValues,
-              serializedNodegroups,  // Phase 4k: Temporary state Map for this call only
-              nodegroupId,
-              false,  // addIfMissing
-              serializedPermissions,
-              true  // doImpliedNodegroups
-            );
-
-           // Unpack result into Map
-           // Get all values in a single boundary crossing instead of N+1 calls
-           const ngValues = new Map<string, any>();
-           const allRustValues = result.getAllValues();
-
-           for (const [alias, rustValue] of allRustValues.entries()) {
-             if (rustValue) {
-               if (!ngValues.has(alias)) {
-                 ngValues.set(alias, []);
-               }
-               for (const rv of rustValue.getAllValues()) {
-                 ngValues.get(alias).push(rv);
-                }
-             }
-           }
-
-           return Promise.resolve().then(async () => {
-              let original = false;
-              // Phase 4i: ngValues now contains raw Rust values (WasmPseudoList)
-              // We need to wrap them when storing in this.values
-              const processValue = (k: string, rustValues: any) => {
-                // Phase 4i: Wrap each Rust value in the array
-                const wrappedValues = Array.isArray(rustValues)
-                  ? rustValues.map((rv: any) => wrapRustPseudo(rv, this.wrapper.wkri, this.wrapper.model))
-                  : rustValues;
-
-                if (key === k) {
-                  // Other methods may be waiting on this specific
-                  // value to resolve.
-                  original = wrappedValues;
-                }
-                // In theory, this should never happen when this.values[k] is
-                // not false, as the resource-wide write lock means that no other nodegroup
-                // can write. This _is_ happening however. In theory, once set, the
-                // value will be a list, so passed by reference, and so should not
-                // undo and changes that happened concurrently.
-                if (wrappedValues !== false) {
-                  this.values.set(k, wrappedValues);
-                }
-              }
-              return Promise.all([...ngValues.entries()].map(([k, value]) => {
-                if (value instanceof Promise) {
-                  return value.then((concreteValue: any) => processValue(k, concreteValue));
-                }
-                // console.log(4);
-                processValue(k, value);
-              })).then(() => {
-                resolve(original);
-              });
-            });
-        });
-        // No writes should happen until this is done
-        this.writeLock = promise;
-
-        // Phase 4k: Removed TS promises Map update - Rust handles all state
-
-        // Other readers are welcome to wait for this nodegroup's read
-        this.values.set(key, promise);
-                // console.log(5);
-        await promise;
-                // console.log(6);
-
-        // Phase 4k: Rust handles state transition to Loaded
-        this.wrapper.wasmWrapper.markNodegroupLoaded(nodegroupId);
-      } else {
-        this.values.delete(key);
-      }
-      result = await this.values.get(key);
-    }
-    result = await result;
-    if (result === undefined || result === false) {
-      if (raiseError) {
-        throw Error(`Unset key ${key}`);
-      } else {
-        return dflt;
-      }
-    }
-    return result;
-  }
-
-  async setDefault(key: string, value: any) {
-    const newValue = await this.retrieve(key, value, false);
-    this.values.set(key, newValue);
-    return newValue;
-  }
-}
+// ValueList has been removed - use IInstanceWrapper.retrievePseudo() instead
 
 class ConceptListCacheEntry implements IStringKeyedObject {
   [key: string]: any;
@@ -1797,4 +1616,4 @@ async function getViewModel<RIVM extends IRIVM<RIVM>>(
   return vm;
 }
 
-export { ResourceInstanceCacheEntry, DEFAULT_LANGUAGE, ResourceInstanceViewModel, ValueList, getViewModel, DomainValueViewModel, SemanticViewModel, StringViewModel, DateViewModel, GeoJSONViewModel, ConceptValueViewModel, viewContext, NonLocalizedStringViewModel, CUSTOM_DATATYPES, BooleanViewModel, NumberViewModel, UrlViewModel, NodeViewModel };
+export { ResourceInstanceCacheEntry, DEFAULT_LANGUAGE, ResourceInstanceViewModel, getViewModel, DomainValueViewModel, SemanticViewModel, StringViewModel, DateViewModel, GeoJSONViewModel, ConceptValueViewModel, viewContext, NonLocalizedStringViewModel, CUSTOM_DATATYPES, BooleanViewModel, NumberViewModel, UrlViewModel, NodeViewModel };
