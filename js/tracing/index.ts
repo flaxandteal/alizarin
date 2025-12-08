@@ -162,11 +162,14 @@ export class Span {
 
   recordException(error: Error): this {
     if (!this.ended) {
+      // Using OpenTelemetry semantic convention attribute names
+      /* eslint-disable @typescript-eslint/naming-convention */
       this.addEvent('exception', {
         'exception.type': error.name,
         'exception.message': error.message,
         'exception.stacktrace': error.stack,
       });
+      /* eslint-enable @typescript-eslint/naming-convention */
       this.setStatus('error', error.message);
     }
     return this;
@@ -597,7 +600,7 @@ export async function timed<T>(
   tracer?: Tracer
 ): Promise<T> {
   const t = tracer ?? getTracer('alizarin');
-  return t.startActiveSpan(name, async (span) => {
+  return t.startActiveSpan(name, async (_span) => {
     const result = await fn();
     return result;
   });

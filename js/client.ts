@@ -78,7 +78,7 @@ class ArchesClientRemote extends ArchesClient {
   async getResources(
     graphId: string,
     limit: number,
-    reloadIfSeen: boolean
+    _reloadIfSeen: boolean
   ): Promise<StaticResource[]> {
     const response = await fetch(
       `${this.archesUrl}/resources?graph_uuid=${graphId}&format=arches-json&hide_empty_nodes=false&compact=false&limit=${limit}`,
@@ -200,7 +200,7 @@ class ArchesClientRemoteStatic extends ArchesClient {
   async getResources(
     graphId: string,
     limit: number,
-    reloadIfSeen: boolean
+    _reloadIfSeen: boolean
   ): Promise<StaticResource[]> {
     const resources = [];
     const result = this.graphIdToResourcesFiles(graphId);

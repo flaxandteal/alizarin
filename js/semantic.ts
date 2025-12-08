@@ -5,7 +5,7 @@ import {
   IRIVM,
 } from "./interfaces.ts";
 import { AttrPromise } from "./utils";
-import { PseudoList, wrapRustPseudo } from "./pseudos";
+import { wrapRustPseudo } from "./pseudos";
 import type { PseudoValue } from "./pseudos";
 import {
   StaticTile,

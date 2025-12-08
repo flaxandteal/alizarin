@@ -8,7 +8,7 @@ import {
   IRIVM,
   GetMeta,
 } from "./interfaces.ts";
-import { PseudoValue, PseudoList, wrapRustPseudo } from "./pseudos";
+import { PseudoValue } from "./pseudos";
 import { SemanticViewModel } from "./semantic";
 import { RDM } from "./rdm";
 import {

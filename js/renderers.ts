@@ -1,6 +1,6 @@
 import { staticStore } from "./staticStore.ts"
 import { PseudoList } from "./pseudos.ts"
-import { UrlViewModel, DateViewModel, ResourceInstanceViewModel, DomainValueViewModel, ConceptValueViewModel, NonLocalizedStringViewModel, StringViewModel, SemanticViewModel, GeoJSONViewModel, BooleanViewModel, NumberViewModel } from './viewModels';
+import { UrlViewModel, DateViewModel, ResourceInstanceViewModel, DomainValueViewModel, ConceptValueViewModel, NonLocalizedStringViewModel, StringViewModel, SemanticViewModel, BooleanViewModel, NumberViewModel } from './viewModels';
 
 class Cleanable extends String {
   __clean: string | undefined

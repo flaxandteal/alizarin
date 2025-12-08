@@ -1,5 +1,5 @@
 import { v5 as uuidv5 } from 'uuid';
-import { IStringKeyedObject, IViewModel, IInstanceWrapper, IRIVM } from "./interfaces";
+import { IStringKeyedObject, IViewModel, IInstanceWrapper } from "./interfaces";
 import type { StaticGraph, StaticNode, StaticResourceDescriptors, IStaticDescriptorConfig } from "./static-types";
 
 // TODO: make this customizable.

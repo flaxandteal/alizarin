@@ -8,25 +8,20 @@ import {
   StaticCard,
   StaticEdge,
   StaticCardsXNodesXWidgets,
-  StaticFunctionsXGraphs,
   StaticTile,
   StaticGraph,
   StaticNode,
   StaticNodegroup,
   StaticResource,
   StaticResourceSummary,
-  StaticResourceDescriptors,
-  StaticGraphMeta,
-  IStaticDescriptorConfig
+  StaticGraphMeta
 } from "./static-types";
 import { PseudoValue, PseudoList, PseudoUnavailable, wrapRustPseudo } from "./pseudos.ts";
 import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper, newWASMResourceInstanceWrapperForResource, newWASMResourceInstanceWrapperForModel } from "../pkg/alizarin";
-import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
-import { CheckPermission, GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
+import { ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
+import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
 import { } from "./nodeConfig.ts";
-import { generateUuidv5, AttrPromise, buildResourceDescriptors, serializeValuesMap } from "./utils";
-
-const MAX_GRAPH_DEPTH = 100;
+import { generateUuidv5, AttrPromise, serializeValuesMap } from "./utils";
 
 // ============================================================================
 // JS-side timing for WASM boundary crossings
@@ -269,7 +264,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     return descriptors;
   }
 
-  addPseudo(childNode: StaticNode, tile: StaticTile | null, node: StaticNode): IPseudo {
+  addPseudo(childNode: StaticNode, tile: StaticTile | null): IPseudo {
     const key = childNode.alias;
     if (!key) {
       throw Error(`Cannot add a pseudo node with no alias ${childNode.nodeid}`);
@@ -574,7 +569,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       const nodegroupIds = [...nodegroupObjs.keys()];
 
       // Call Rust implementation - Rust stores values in its pseudo_cache
-      let t0 = performance.now();
+      const t0 = performance.now();
       const result = this.wasmWrapper.populate(
         lazy,
         nodegroupIds,
@@ -1272,7 +1267,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
   }
 
   // Phase 4h: Simplified - no callback, just boolean lookup
-  isNodegroupPermitted(nodegroupId: string, tile: StaticTile | null): boolean {
+  isNodegroupPermitted(nodegroupId: string, _tile: StaticTile | null): boolean {
     const permitted = this.getPermittedNodegroups().get(nodegroupId ?? '');
     if (!permitted) {
       return false;
@@ -1514,8 +1509,6 @@ class GraphManager {
   }
 
   async getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean = true, pruneTiles?: boolean): Promise<T> {
-    if (pruneTiles === undefined) {
-    }
     pruneTiles = this.getPruneTiles(pruneTiles);
     const rivm = await staticStore.loadOne(resourceId);
     let graph = this.graphs.get(rivm.resourceinstance.graph_id);

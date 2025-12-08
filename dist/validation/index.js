@@ -1071,6 +1071,7 @@ class GraphLoadingValidator {
                 break;
               }
             } catch (error) {
+              this.reportError("graphLoadingTests", graphId, `Business data file parse error: ${error.message}`);
             }
           }
           this.reportSuccess("graphLoadingTests", graphId);
