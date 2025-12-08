@@ -8,6 +8,15 @@ import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
 import { run, initWasm } from "./_wasm";
+import { resetTimingStats, getTimingStats, logTimingStats } from "./semantic";
+import * as tracing from "./tracing";
+
+// Version injected at build time by Vite
+declare const __ALIZARIN_VERSION__: string;
+export const version: string = __ALIZARIN_VERSION__;
+
+// Register alizarin JS timing getter for unified tracing
+tracing.registerAlizarinTimingGetter(getTimingStats);
 
 // Initialize WASM module at startup
 // Note: This returns a promise that must be awaited before using WASM features
@@ -38,5 +47,11 @@ export {
   getCurrentLanguage,
   run,
   initWasm,
-  wasmReady
+  wasmReady,
+  // Legacy timing (deprecated - use tracing instead)
+  resetTimingStats,
+  getTimingStats,
+  logTimingStats,
+  // New unified tracing
+  tracing,
 };

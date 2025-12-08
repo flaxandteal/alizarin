@@ -359,6 +359,8 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
         if (this.isOuter && this.inner) {
           (vm as any)._ = this.inner.getValue();
         }
+        // Sync tile data to Rust for toTiles()/toResource()
+        this.syncTileData(vm);
       }
       return vm as VM | null;
     };
@@ -366,6 +368,32 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     return new AttrPromise((resolve) => {
       vmPromise.then((vm) => resolve(resolveAttr(vm)));
     }) as AttrPromise<VM>;
+  }
+
+  /**
+   * Sync the ViewModel's tile data to Rust.
+   * Called after VM creation/resolution so toTiles()/toResource() can serialize.
+   */
+  private syncTileData(vm: IViewModel | null): void {
+    if (vm === null) {
+      this._wasm.setTileData(null);
+      return;
+    }
+
+    // Check if the VM has __asTileData method
+    if (typeof (vm as any).__asTileData === 'function') {
+      const tileData = (vm as any).__asTileData();
+      if (tileData instanceof Promise) {
+        // Handle async __asTileData
+        tileData.then((data: any) => {
+          this._wasm.setTileData(data);
+        }).catch((e: Error) => {
+          console.warn("syncTileData: failed to get tile data", e);
+        });
+      } else {
+        this._wasm.setTileData(tileData);
+      }
+    }
   }
 
   public getValue(): AttrPromise<VM | null> {
@@ -416,6 +444,8 @@ class PseudoList extends Array implements IPseudo {
   parenttileId: string | undefined;
   ghostChildren: Set<PseudoValue<any>> | null = null;
   isOuter: boolean = false;
+  /** Whether this list represents a cardinality-1 node (should unwrap to single value in forJson) */
+  isSingle: boolean = false;
 
   isIterable(): boolean {
     return true;
@@ -483,7 +513,7 @@ class PseudoList extends Array implements IPseudo {
     this.ghostChildren = new Set();
   }
 
-  async forJson(): Promise<{[key: string]: any}[]> {
+  async forJson(): Promise<{[key: string]: any}[] | {[key: string]: any} | null> {
     const array: {[key: string]: any}[] = Array.from(
       (await this.sorted()).map(
         async (entry: Promise<IViewModel> | IViewModel) => {
@@ -492,7 +522,13 @@ class PseudoList extends Array implements IPseudo {
         }
       )
     );
-    return Promise.all(array);
+    const resolved = await Promise.all(array);
+
+    // If this is a cardinality-1 node, unwrap to single value
+    if (this.isSingle) {
+      return resolved.length > 0 ? resolved[0] : null;
+    }
+    return resolved;
   }
 
   getValue(): AttrPromise<PseudoList> {
@@ -536,6 +572,9 @@ function wrapRustPseudo(
       const node = model.getNodeObjectFromId(nodeId);
       list.initialize(node, wkri);
     }
+
+    // Copy isSingle flag from WASM list (cardinality-1 nodes should unwrap to single value)
+    list.isSingle = wasmList.isSingle;
 
     // Wrap each WasmPseudoValue using static factory
     // Push getValue() result (AttrPromise) - PseudoList contract expects

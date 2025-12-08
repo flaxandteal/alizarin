@@ -18,7 +18,7 @@ pub use graph::{
     // Additional Static* types
     StaticConstraint, StaticPublication, StaticCardsXNodesXWidgets, StaticFunctionsXGraphs,
     StaticCard, StaticTile, StaticResourceDescriptors, StaticResourceMetadata,
-    StaticResourceSummary, StaticResource,
+    StaticResourceSummary, StaticResourceReference, StaticResource,
 };
 
 // Loader

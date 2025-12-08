@@ -1,4 +1,5 @@
-import init, { initSync, greet, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString } from "../pkg/alizarin";
+import init, { initSync, greet, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString, getRscvTimings } from "../pkg/alizarin";
+import { registerRustTimingGetter } from "./tracing";
 import wasmURL from "../pkg/alizarin_bg.wasm?url"
 
 let wasmInitialized = false;
@@ -80,6 +81,9 @@ export async function initWasm() {
 
     // Apply prototype patches after WASM is initialized
     applyPrototypePatches();
+
+    // Register Rust timing getter for unified tracing
+    registerRustTimingGetter(getRscvTimings);
 
     wasmInitialized = true;
   }

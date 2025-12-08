@@ -19,7 +19,7 @@ import {
   StaticGraphMeta,
   IStaticDescriptorConfig
 } from "./static-types";
-import { PseudoList, PseudoUnavailable, wrapRustPseudo } from "./pseudos.ts";
+import { PseudoValue, PseudoList, PseudoUnavailable, wrapRustPseudo } from "./pseudos.ts";
 import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper, newWASMResourceInstanceWrapperForResource, newWASMResourceInstanceWrapperForModel } from "../pkg/alizarin";
 import { DEFAULT_LANGUAGE, ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { CheckPermission, GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
@@ -27,6 +27,45 @@ import { } from "./nodeConfig.ts";
 import { generateUuidv5, AttrPromise, buildResourceDescriptors, serializeValuesMap } from "./utils";
 
 const MAX_GRAPH_DEPTH = 100;
+
+// ============================================================================
+// JS-side timing for WASM boundary crossings
+// ============================================================================
+interface TimingStats {
+  count: number;
+  totalMs: number;
+  minMs: number;
+  maxMs: number;
+}
+
+const wasmTimings: Map<string, TimingStats> = new Map();
+
+function recordWasmTiming(label: string, ms: number) {
+  let stats = wasmTimings.get(label);
+  if (!stats) {
+    stats = { count: 0, totalMs: 0, minMs: Infinity, maxMs: -Infinity };
+    wasmTimings.set(label, stats);
+  }
+  stats.count++;
+  stats.totalMs += ms;
+  stats.minMs = Math.min(stats.minMs, ms);
+  stats.maxMs = Math.max(stats.maxMs, ms);
+}
+
+export function printWasmTimings() {
+  console.log("=== JS-side WASM Timing Summary ===");
+  const entries = [...wasmTimings.entries()].sort((a, b) => b[1].totalMs - a[1].totalMs);
+  for (const [label, stats] of entries) {
+    const avgMs = stats.count > 0 ? stats.totalMs / stats.count : 0;
+    console.log(
+      `${label}: count=${stats.count}, total=${stats.totalMs.toFixed(2)}ms, avg=${avgMs.toFixed(2)}ms, min=${stats.minMs.toFixed(2)}ms, max=${stats.maxMs.toFixed(2)}ms`
+    );
+  }
+}
+
+export function clearWasmTimings() {
+  wasmTimings.clear();
+}
 
 class ConfigurationOptions {
   graphs: Array<string> | null | boolean = null;
@@ -53,18 +92,23 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     model: ResourceModelWrapper<RIVM>,
     resource: StaticResource | null | false, // False to disable dynamic resource-loading
     pruneTiles: boolean = true,
-    lazy: boolean = false
+    lazy: boolean = false,
+    assumeTilesComprehensiveForNodegroup: boolean = true
   ) {
+    const constructorStart = performance.now();
     this.wkri = wkri;
     this.model = model;
     this.pruneTiles = pruneTiles;
 
     // Initialize WASM wrapper for tile management
+    let t0 = performance.now();
     if (resource) {
       this.wasmWrapper = newWASMResourceInstanceWrapperForResource(resource);
       this.resource = resource;
+      recordWasmTiming("newWASMResourceInstanceWrapperForResource", performance.now() - t0);
     } else {
       this.wasmWrapper = newWASMResourceInstanceWrapperForModel(model.wkrm.graphId);
+      recordWasmTiming("newWASMResourceInstanceWrapperForModel", performance.now() - t0);
     }
 
     this._pseudoCache = new Map();
@@ -73,57 +117,61 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     this.metadata = resource ? resource.metadata : undefined;
 
     // Set lazy mode
+    t0 = performance.now();
     this.wasmWrapper.setLazy(lazy);
+    recordWasmTiming("setLazy", performance.now() - t0);
 
     // Set up tile loader callback
     if (resource) {
       // Create a tile loader that loads from staticStore API
       const resourceId = resource.resourceinstance.resourceinstanceid;
+      t0 = performance.now();
       this.wasmWrapper.setTileLoader((nodegroupId) => {
         // If nodegroupId is null/undefined, load all tiles
         // Otherwise load tiles for specific nodegroup
         const tiles = staticStore.loadTiles(resourceId, nodegroupId);
         return tiles;
       });
+      recordWasmTiming("setTileLoader", performance.now() - t0);
     }
 
     // Load tiles into Rust if we have any - regardless of lazy mode,
     // if tiles are already present we should use them
-    if (!this.wasmWrapper.tilesLoaded() && resource && resource.tiles && resource.tiles.length > 0) {
+    t0 = performance.now();
+    const tilesLoaded = this.wasmWrapper.tilesLoaded();
+    recordWasmTiming("tilesLoaded (constructor)", performance.now() - t0);
+
+    if (!tilesLoaded && resource && resource.tiles && resource.tiles.length > 0) {
       try {
         // Use loadTilesWasm for WASM StaticTile objects (from resource.tiles getter)
-        console.log('[DEBUG] About to call loadTilesWasm with', resource.tiles.length, 'tiles');
-        console.log('[DEBUG] First tile:', resource.tiles[0]);
-        console.log('[DEBUG] First tile type:', resource.tiles[0]?.constructor?.name);
-        this.wasmWrapper.loadTilesWasm(resource.tiles);
-        console.log('[DEBUG] After loadTilesWasm, tile count:', this.wasmWrapper.getTileCount());
+        t0 = performance.now();
+        this.wasmWrapper.loadTilesWasm(resource.tiles, assumeTilesComprehensiveForNodegroup);
+        recordWasmTiming("loadTilesWasm", performance.now() - t0);
       } catch (e) {
         console.error("Failed to load tiles into WASM:", e);
       }
     }
 
     if (pruneTiles && resource) {
-      console.log('[pruneResourceTiles]', 0, this.wasmWrapper.getTileCount());
-      this.pruneResourceTiles()
-      console.log('[pruneResourceTiles]', 1, this.wasmWrapper.getTileCount());
+      t0 = performance.now();
+      this.pruneResourceTiles();
+      recordWasmTiming("pruneResourceTiles", performance.now() - t0);
     }
+    recordWasmTiming("constructor total", performance.now() - constructorStart);
   }
 
   async ensureTilesLoaded(): Promise<void> {
     if (!this.wasmWrapper.tilesLoaded()) {
       // Load tiles on-demand
-      console.log('[ensureTilesLoaded]', 1);
       const tiles = await staticStore.loadTiles(this.wasmWrapper.getResourceId());
 
-      console.log('[ensureTilesLoaded]', 2, tiles.length);
       // Load tiles into Rust (WASM objects from resource.tiles getter)
       try {
-        this.wasmWrapper.loadTilesWasm(tiles);
+        this.wasmWrapper.loadTilesWasm(tiles, true);
       } catch (e) {
         console.error("Failed to load tiles into WASM:", e);
       }
 
-      console.log('[ensureTilesLoaded]', 3, tiles.length);
       // Re-populate with full tile data
       await this.populate(false); // non-lazy to process all tiles
     }
@@ -346,18 +394,11 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       throw Error(`Alias missing for node ${node.nodeid}`);
     }
 
-    // Query Rust cache first
-    const cachedValue = this.wasmWrapper.getCachedPseudo(alias);
-    if (cachedValue) {
-      const wrappedValue = wrapRustPseudo(cachedValue, this.wkri, this.model);
-      // PseudoList - get first element
-      if (Array.isArray(wrappedValue) || wrappedValue instanceof PseudoList) {
-        if (wrappedValue.length > 1) {
-          throw Error("Cannot have multiple root tiles");
-        }
-        return wrappedValue.length === 1 ? wrappedValue[0] : undefined;
-      }
-      return wrappedValue;
+    // Try to get root pseudo directly from cache (returns WasmPseudoValue, not list)
+    const rootPseudo = this.wasmWrapper.getRootPseudo();
+    if (rootPseudo) {
+      // Wrap as PseudoValue directly (not via wrapRustPseudo which creates lists)
+      return PseudoValue.fromWasm(rootPseudo, this.wkri);
     }
 
     // Not in cache - create a new pseudo value for empty resource
@@ -401,8 +442,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         try {
           const tiles = await loader(nodegroupId);
           // Tiles from loader come from resource.tiles getter (WASM objects)
-          this.wasmWrapper.loadTilesWasm(tiles);
-          this.wasmWrapper.markNodegroupTilesLoaded(nodegroupId);
+          this.wasmWrapper.loadTilesWasm(tiles, true);
         } catch (e) {
           console.error(`Failed to load tiles for nodegroup ${nodegroupId}:`, e);
           // Continue anyway - will work with empty tiles
@@ -505,6 +545,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
    * Uses Rust implementation via WASM - Rust caches all values internally
    */
   async populate(lazy: boolean): Promise<void> {
+    const populateStart = performance.now();
     const nodegroupObjs = this.model.getNodegroupObjects();
     const rootNode = this.model.getRootNode();
 
@@ -513,11 +554,16 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     }
 
     try {
-      if (!lazy && this.resource) {
-        // Ensure tiles are loaded if we need them for non-lazy population
-        if (!this.resource.tiles) {
-          console.log('[populate]', 0, this.resource.tiles?.length);
+      if (!lazy) {
+        // Ensure tiles are loaded in Rust if we need them for non-lazy population.
+        // Use tilesLoaded() to check Rust state, not this.resource.tiles (JS state).
+        let t0 = performance.now();
+        const loaded = this.wasmWrapper.tilesLoaded();
+        recordWasmTiming("tilesLoaded (populate)", performance.now() - t0);
+        if (!loaded) {
+          t0 = performance.now();
           await this.ensureTilesLoaded();
+          recordWasmTiming("ensureTilesLoaded", performance.now() - t0);
         }
       }
 
@@ -528,13 +574,14 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       const nodegroupIds = [...nodegroupObjs.keys()];
 
       // Call Rust implementation - Rust stores values in its pseudo_cache
-      console.log('[populate]', 1, this.resource.tiles?.length, lazy, this.wasmWrapper.getTileCount());
+      let t0 = performance.now();
       const result = this.wasmWrapper.populate(
         lazy,
         nodegroupIds,
         rootNode.alias,
         nodegroupPermissions
       );
+      recordWasmTiming("populate (WASM)", performance.now() - t0);
 
       // Initialize allNodegroups from Rust result
       const allNodegroups: Map<string, boolean> = new Map();
@@ -556,6 +603,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // Clear local cache - Rust is now the source of truth
       this._pseudoCache = new Map();
 
+      recordWasmTiming("populate total", performance.now() - populateStart);
     } catch (error) {
       console.error('[populate] Rust implementation failed:', error);
       throw new Error(`populate failed: ${error}`);
@@ -1200,6 +1248,8 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
         }
       }
     }));
+    // Also propagate to WASM for pruneGraph to work correctly
+    super.setPermittedNodegroups(this.permittedNodegroups);
   }
 
   // Defaults to visible, which helps reduce the risk of false sense of security
@@ -1254,18 +1304,23 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     lazy: boolean = false,
     pruneTiles?: boolean
   ): Promise<RIVM> {
+    const start = performance.now();
     const wkri: RIVM = this.makeInstance(
       resource.resourceinstance.resourceinstanceid,
       resource,
       pruneTiles,
       lazy
     );
+    recordWasmTiming("makeInstance", performance.now() - start);
 
     if (!wkri.$) {
       throw Error("Could not load resource from static definition");
     }
 
-    const pop = wkri.$.populate(lazy).then(() => wkri);
+    const pop = wkri.$.populate(lazy).then(() => {
+      recordWasmTiming("fromStaticResource total", performance.now() - start);
+      return wkri;
+    });
     return pop;
   }
 
@@ -1428,7 +1483,6 @@ class GraphManager {
       modelClassName = modelClass.name;
       model = makeResourceModelWrapper<RIVM>(modelClass, wkrm, graph, defaultAllow);
     }
-    console.log("Made resource model wrapper for", graph.graphid);
 
     this.graphs.set(graph.graphid, model.prototype.__);
     return model.prototype.__;

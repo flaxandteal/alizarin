@@ -91,7 +91,7 @@ describe('ensureNodegroup - Edge Cases', () => {
         "http://www.cidoc-crm.org/cidoc-crm/P3_has_note");
       const mutatedGraph = mutator.apply();
 
-      const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph);
+      const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph, undefined, true);
       const resource = createTestResource("test-resource", mutatedGraph.graphid);
       const mockRIVM = {} as any; // Placeholder
       const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource, false);
@@ -127,7 +127,7 @@ describe('ensureNodegroup - Edge Cases', () => {
         "http://www.cidoc-crm.org/cidoc-crm/P3_has_note");
       const mutatedGraph = mutator.apply();
 
-      const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph);
+      const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph, undefined, true);
       const resource = createTestResource("test-resource", mutatedGraph.graphid);
       const mockRIVM = {} as any; // Placeholder
       const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource, false);
@@ -163,7 +163,7 @@ describe('ensureNodegroup - Edge Cases', () => {
         "http://www.cidoc-crm.org/cidoc-crm/P3_has_note");
       const mutatedGraph = mutator.apply();
 
-      const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph);
+      const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph, undefined, true);
       const resource = createTestResource("test-resource", mutatedGraph.graphid);
       const mockRIVM = {} as any; // Placeholder
       const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource, false);
@@ -197,7 +197,7 @@ describe('ensureNodegroup - Edge Cases', () => {
         "http://www.cidoc-crm.org/cidoc-crm/P3_has_note");
       const mutatedGraph = mutator.apply();
 
-      const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph);
+      const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph, undefined, true);
       const resource = createTestResource("test-resource", mutatedGraph.graphid);
       const mockRIVM = {} as any; // Placeholder
       const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource, false);
@@ -281,7 +281,7 @@ describe('ensureNodegroup - Edge Cases', () => {
         "http://www.cidoc-crm.org/cidoc-crm/P3_has_note");
       const mutatedGraph = mutator.apply();
 
-      const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph);
+      const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph, undefined, true);
 
       // Create tiles that would imply a child nodegroup
       // (This is simplified - in reality the edge structure would create the implication)
@@ -327,7 +327,7 @@ describe('ensureNodegroup - Edge Cases', () => {
         "http://www.cidoc-crm.org/cidoc-crm/P3_has_note");
       const mutatedGraph = mutator.apply();
 
-      const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph);
+      const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph, undefined, true);
       const tiles: StaticTile[] = [];
       const resource = createTestResource("test-resource", mutatedGraph.graphid, tiles);
       const mockRIVM = {} as any;
@@ -363,7 +363,7 @@ describe('ensureNodegroup - Edge Cases', () => {
         "http://www.cidoc-crm.org/cidoc-crm/P3_has_note");
       const mutatedGraph = mutator.apply();
 
-      const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph);
+      const model = new ResourceModelWrapper(createTestWKRM(mutatedGraph), mutatedGraph, undefined, true);
       const resource = createTestResource("test-resource", mutatedGraph.graphid);
       const mockRIVM = {} as any;
       const wrapper = new ResourceInstanceWrapper(mockRIVM, model, resource, false);

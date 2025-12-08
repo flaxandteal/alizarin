@@ -243,36 +243,7 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
   }
 
   async forJson(cascade: boolean=false) {
-    let jsonData: StaticResourceReference;
-    if (!cascade && this.__cacheEntry) {
-      jsonData = {
-        type: this.__cacheEntry.type,
-        graphId: this.__cacheEntry.graphId,
-        id: this.__cacheEntry.id,
-        title: this.__cacheEntry.title || undefined,
-        meta: this.__cacheEntry.meta || undefined,
-        root: null
-      };
-    } else if (this.__) {
-      jsonData = {
-        type: this.__.wkrm.modelClassName,
-        graphId: this.__.wkrm.graphId,
-        id: this.id,
-        title: undefined,
-        meta: undefined,
-        root: null
-      };
-    } else {
-      jsonData = {
-        type: "(unknown)",
-        graphId: "",
-        id: this.id,
-        title: undefined,
-        meta: undefined,
-        root: null
-      };
-    }
-    const basic = new StaticResourceReference(jsonData);
+    let rootJson = null;
     if (cascade) {
       if (!this.$) {
         await this.retrieve();
@@ -280,10 +251,45 @@ class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeye
           throw Error("Could not retrieve resource");
         }
       }
-      const root = await this.$.getRootViewModel();
-      basic.root = await root.forJson();
+      // Ensure all nodegroups are populated before serialization.
+      // populate() skips nodegroups that are already loaded, so this is efficient
+      // even if some data has already been accessed.
+      await this.$.populate(false);
+      // Use Rust-side toJson() for efficient traversal (single WASM boundary crossing)
+      // instead of the JS forJson() which makes 98+ WASM calls per resource
+      rootJson = this.$.wasmWrapper.toJson();
     }
-    return basic;
+
+    // Return plain JS object instead of WASM StaticResourceReference
+    // to avoid serialization issues with deeply nested root data
+    if (!cascade && this.__cacheEntry) {
+      return {
+        type: this.__cacheEntry.type,
+        graphId: this.__cacheEntry.graphId,
+        id: this.__cacheEntry.id,
+        title: this.__cacheEntry.title || undefined,
+        meta: this.__cacheEntry.meta || undefined,
+        root: rootJson
+      };
+    } else if (this.__) {
+      return {
+        type: this.__.wkrm.modelClassName,
+        graphId: this.__.wkrm.graphId,
+        id: this.id,
+        title: undefined,
+        meta: undefined,
+        root: rootJson
+      };
+    } else {
+      return {
+        type: "(unknown)",
+        graphId: "",
+        id: this.id,
+        title: undefined,
+        meta: undefined,
+        root: rootJson
+      };
+    }
   }
 
   async retrieve(): Promise<[IInstanceWrapper<RIVM>, IModelWrapper<RIVM>]> {

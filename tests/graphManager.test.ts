@@ -43,7 +43,9 @@ test("ResourceModelWrapper > buildNodes > should cache nodes, edges, and nodegro
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    undefined,
+    true
   );
 
   // Initially caches should be empty
@@ -69,7 +71,9 @@ test("ResourceModelWrapper > getNodeObjects > should build nodes if not cached",
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    graph
+    graph,
+    undefined,
+    true
   );
 
   const nodes = wrapper.getNodeObjects();
@@ -98,7 +102,9 @@ test("ResourceModelWrapper > getEdges > should return edge map", () => {
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    undefined,
+    true
   );
 
   const edges = wrapper.getEdges();
@@ -129,7 +135,9 @@ test("ResourceModelWrapper > getChildNodes > should return child nodes", () => {
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    undefined,
+    true
   );
 
   const childNodes = wrapper.getChildNodes(mutatedGraph.root.nodeid);
@@ -146,7 +154,9 @@ test("ResourceModelWrapper > getRootNode > should return root node", () => {
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    graph
+    graph,
+    undefined,
+    true
   );
 
   const rootNode = wrapper.getRootNode();
@@ -192,7 +202,9 @@ test("ResourceModelWrapper > getCollections > should return unique collection ID
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    undefined,
+    true
   );
 
   const collections = wrapper.getCollections();
@@ -238,7 +250,9 @@ test("ResourceModelWrapper > getCollections > should filter by accessible when s
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    undefined,
+    true
   );
 
   // Get nodegroup IDs
@@ -310,7 +324,9 @@ test("ResourceModelWrapper > getBranchPublicationIds > should return unique bran
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    undefined,
+    true
   );
 
   const branchPubIds = wrapper.getBranchPublicationIds();
@@ -338,7 +354,9 @@ test("ResourceModelWrapper > getPermittedNodegroups > should default to all perm
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    undefined,
+    true
   );
 
   const permissions = wrapper.getPermittedNodegroups();
@@ -367,7 +385,9 @@ test("ResourceModelWrapper > setPermittedNodegroups > should set permissions by 
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    undefined,
+    true
   );
 
   const nodes = wrapper.getNodeObjects();
@@ -409,7 +429,9 @@ test("ResourceModelWrapper > setPermittedNodegroups > should accept node alias f
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    undefined,
+    true
   );
 
   // Set permission using node alias instead of nodegroup ID
@@ -455,7 +477,9 @@ test("ResourceModelWrapper > pruneGraph > should remove unpermitted nodes", () =
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    undefined,
+    true
   );
 
   const nodes = wrapper.getNodeObjects();
@@ -506,7 +530,9 @@ test("ResourceModelWrapper > pruneGraph > should preserve parent nodes of permit
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    undefined,
+    true
   );
 
   const nodes = wrapper.getNodeObjects();
@@ -556,7 +582,9 @@ test("ResourceModelWrapper > getRoot > should allow navigation through NodeViewM
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    graph
+    graph,
+    undefined,
+    true
   );
 
   // Get root NodeViewModel
@@ -585,7 +613,9 @@ test("ResourceModelWrapper > NodeViewModel > should allow access to node propert
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),
-    graph
+    graph,
+    undefined,
+    true
   );
 
   // Get root NodeViewModel

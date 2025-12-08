@@ -34,7 +34,8 @@ test("WASMResourceModelWrapper > constructor > should initialize with wkrm and g
 
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    graph
+    graph,
+    true
   );
 
   assert.isDefined(wrapper);
@@ -62,7 +63,8 @@ test("WASMResourceModelWrapper > buildNodesForGraph > should populate all caches
 
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    true
   );
 
   // Initially caches should be empty
@@ -111,7 +113,8 @@ test("WASMResourceModelWrapper > buildNodesForGraph > should build edges correct
 
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    true
   );
 
   wrapper.buildNodesForGraph(mutatedGraph);
@@ -141,7 +144,8 @@ test("WASMResourceModelWrapper > buildNodesForGraph > should create nodesByAlias
 
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    true
   );
 
   wrapper.buildNodesForGraph(mutatedGraph);
@@ -162,7 +166,8 @@ test("WASMResourceModelWrapper > buildNodesForGraph > should error when trying t
 
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    graph
+    graph,
+    true
   );
 
   wrapper.buildNodesForGraph(graph);
@@ -196,7 +201,8 @@ test("WASMResourceModelWrapper > getNodeObjects > should return all nodes", () =
 
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    true
   );
 
   wrapper.buildNodesForGraph(mutatedGraph);
@@ -219,7 +225,8 @@ test("WASMResourceModelWrapper > getRootNode > should return root node", () => {
 
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    graph
+    graph,
+    true
   );
 
   wrapper.buildNodesForGraph(graph);
@@ -242,7 +249,8 @@ test("WASMResourceModelWrapper > getRootNode > should ensure alias is set", () =
 
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    graph
+    graph,
+    true
   );
 
   wrapper.buildNodesForGraph(graph);
@@ -267,7 +275,8 @@ test.skip("WASMResourceModelWrapper > getRootNode > should throw if no root foun
 
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    graph
+    graph,
+    true
   );
 
   wrapper.buildNodesForGraph(graph);
@@ -304,7 +313,8 @@ test("WASMResourceModelWrapper > createPseudoNode > should create pseudo node", 
 
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    mutatedGraph
+    mutatedGraph,
+    true
   );
 
   wrapper.buildNodesForGraph(mutatedGraph);
@@ -328,7 +338,8 @@ test("WASMResourceModelWrapper > Group model > should build nodes correctly", ()
 
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    graph
+    graph,
+    true
   );
 
   wrapper.buildNodesForGraph(graph);
@@ -354,7 +365,8 @@ test("WASMResourceModelWrapper > Group model > should get root node correctly", 
 
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    graph
+    graph,
+    true
   );
 
   wrapper.buildNodesForGraph(graph);
@@ -377,7 +389,8 @@ test("WASMResourceModelWrapper > should handle graph with no edges", () => {
 
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    graph
+    graph,
+    true
   );
 
   wrapper.buildNodesForGraph(graph);
@@ -396,7 +409,8 @@ test("WASMResourceModelWrapper > should handle nodes without nodegroups", () => 
 
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    graph
+    graph,
+    true
   );
 
   wrapper.buildNodesForGraph(graph);

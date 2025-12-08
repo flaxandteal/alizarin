@@ -6,6 +6,7 @@ pub mod model_wrapper;
 pub mod instance_wrapper;
 pub mod json_conversion;
 pub mod wasm_wrappers;
+pub mod tracing;
 
 // Re-export core types for native Rust consumers
 // These are the platform-agnostic types without WASM bindings

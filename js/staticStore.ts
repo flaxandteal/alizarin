@@ -96,9 +96,8 @@ class StaticStore {
     const resourceJSON: StaticResource =
       await this.archesClient.getResource(id);
     const resource = new StaticResource(resourceJSON);
-    if (this.cacheMetadataOnly) {
-      this.cache.set(id, this.cacheMetadataOnly ? resource.resourceinstance : resource);
-    }
+    // Cache based on cacheMetadataOnly setting
+    this.cache.set(id, this.cacheMetadataOnly ? resource.resourceinstance : resource);
     return resource;
   }
 

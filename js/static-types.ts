@@ -17,6 +17,7 @@ import {
   StaticResourceDescriptors,
   StaticResourceMetadata,
   StaticResourceSummary,
+  StaticResourceReference,
   StaticResource,
 } from '../pkg/alizarin';
 
@@ -417,25 +418,7 @@ class StaticDomainValue {
   }
 }
 
-class StaticResourceReference {
-  id: string;
-  type: string | undefined;
-  graphId: string;
-  title: string | undefined;
-  root: any | undefined;
-  meta?: {[key: string]: any};
-
-  constructor(jsonData: StaticResourceReference) {
-    this.id = jsonData.id;
-    this.type = jsonData.type;
-    this.graphId = jsonData.graphId;
-    this.root = jsonData.root;
-    this.title = jsonData.title;
-    if (jsonData.meta) {
-      this.meta = jsonData.meta;
-    }
-  }
-}
+// StaticResourceReference is now implemented in Rust and imported from ../pkg/alizarin
 
 // StaticResourceSummary is now implemented in Rust and imported from ../pkg/alizarin
 
