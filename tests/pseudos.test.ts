@@ -36,7 +36,8 @@ function createTestWKRM(graph: StaticGraph): WKRM {
 function createTestWrapper(graph: StaticGraph): WASMResourceModelWrapper {
   const wrapper = new WASMResourceModelWrapper(
     createTestWKRM(graph),
-    graph
+    graph,
+    true
   );
   wrapper.buildNodesForGraph(graph);
 
@@ -996,7 +997,7 @@ describe('Pseudos', () => {
       graph = mutator.apply();
 
       // Create ResourceModelWrapper (extends WASM wrapper)
-      wrapper = new ResourceModelWrapper(createTestWKRM(graph), graph);
+      wrapper = new ResourceModelWrapper(createTestWKRM(graph), graph, undefined, true);
       wrapper.buildNodesForGraph(graph);
 
       // Mark all nodegroups as permitted for testing
@@ -1045,7 +1046,7 @@ describe('Pseudos', () => {
       );
 
       const testGraphWithCollector = mutator.apply();
-      const testWrapper = new ResourceModelWrapper(createTestWKRM(testGraphWithCollector), testGraphWithCollector);
+      const testWrapper = new ResourceModelWrapper(createTestWKRM(testGraphWithCollector), testGraphWithCollector, undefined, true);
       testWrapper.buildNodesForGraph(testGraphWithCollector);
 
       const nodegroups = testWrapper.getNodegroupObjects();
@@ -1082,7 +1083,7 @@ describe('Pseudos', () => {
       );
 
       const testGraphWithCollector = mutator.apply();
-      const testWrapper = new ResourceModelWrapper(createTestWKRM(testGraphWithCollector), testGraphWithCollector);
+      const testWrapper = new ResourceModelWrapper(createTestWKRM(testGraphWithCollector), testGraphWithCollector, undefined, true);
       testWrapper.buildNodesForGraph(testGraphWithCollector);
 
       const nodegroups = testWrapper.getNodegroupObjects();
@@ -1103,7 +1104,9 @@ describe('Pseudos', () => {
       // Create a wrapper without setting permissions (permissions default to false)
       const unpermittedWrapper = new ResourceModelWrapper(
         createTestWKRM(graph),
-        graph
+        graph,
+        undefined,
+        false  // default_allow = false, so permissions default to not permitted
       );
       unpermittedWrapper.buildNodesForGraph(graph);
       // Note: We intentionally don't call setPermittedNodegroups, so permissions default to false
@@ -1136,7 +1139,7 @@ describe('Pseudos', () => {
       );
 
       const testGraphWithCollector = mutator.apply();
-      const testWrapper = new ResourceModelWrapper(createTestWKRM(testGraphWithCollector), testGraphWithCollector);
+      const testWrapper = new ResourceModelWrapper(createTestWKRM(testGraphWithCollector), testGraphWithCollector, undefined, true);
       testWrapper.buildNodesForGraph(testGraphWithCollector);
 
       const nodegroups = testWrapper.getNodegroupObjects();

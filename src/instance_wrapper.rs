@@ -4,6 +4,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::cell::RefCell;
 use crate::graph::{StaticResource, StaticResourceDescriptors};
+
+// Use the new unified tracing infrastructure
+use crate::tracing::record_timing;
 // WASM wrapper type aliases for return types
 use crate::graph::StaticTile as WasmStaticTile;
 // Core types for internal storage (avoid WASM wrapper overhead)
@@ -11,7 +14,8 @@ use alizarin_core::StaticResourceMetadata as CoreStaticResourceMetadata;
 use alizarin_core::StaticTile as CoreStaticTile;
 use alizarin_core::StaticTile;
 use alizarin_core::StaticNode;
-use crate::pseudo_value::{RustPseudoValue, RustPseudoList, WasmPseudoList, WasmPseudoValue};
+use alizarin_core::StaticNodegroup;
+use crate::pseudo_value::{RustPseudoValue, RustPseudoList, WasmPseudoList, WasmPseudoValue, VisitorContext};
 use crate::model_wrapper::{WASMResourceModelWrapper};
 use js_sys::{Array, Map as JsMap};
 use wasm_bindgen::JsCast;
@@ -242,6 +246,14 @@ pub struct ResourceInstanceWrapperCore {
     // Phase 4g: Cache of PseudoValues (alias -> RustPseudoList)
     // This allows Rust to own the authoritative data and bindings to create lightweight wrappers
     pub(crate) pseudo_cache: Arc<Mutex<HashMap<String, RustPseudoList>>>,
+
+    // Cached Arc references to model indices - avoids cloning on every nodegroup access
+    // These are populated once on first access and shared across all calls
+    pub(crate) cached_nodes: Option<Arc<HashMap<String, Arc<StaticNode>>>>,
+    pub(crate) cached_edges: Option<Arc<HashMap<String, Vec<String>>>>,
+    pub(crate) cached_reverse_edges: Option<Arc<HashMap<String, Vec<String>>>>,
+    pub(crate) cached_nodes_by_nodegroup: Option<Arc<HashMap<String, Vec<Arc<StaticNode>>>>>,
+    pub(crate) cached_nodegroups: Option<Arc<HashMap<String, Arc<StaticNodegroup>>>>,
 }
 
 /// Rust-side WASM resource instance wrapper
@@ -259,9 +271,6 @@ pub struct WASMResourceInstanceWrapper {
     /// Signature: (nodegroup_id: Option<string>) => Promise<StaticTile[]>
     /// None = load all tiles, Some(id) = load tiles for specific nodegroup
     tile_loader: RefCell<Option<js_sys::Function>>,
-    /// Track which nodegroups have had tiles loaded (for lazy loading)
-    /// Wrapped in RefCell for interior mutability in async context
-    loaded_tile_nodegroups: RefCell<HashSet<String>>,
     /// Whether this instance uses lazy tile loading
     lazy: RefCell<bool>,
 }
@@ -278,16 +287,27 @@ pub(crate) enum LoadState {
 impl ResourceInstanceWrapperCore {
     /// Create a new core from graph ID
     pub fn new_from_graph_id(graph_id: String) -> Self {
-        // Ensure nodes are built before using the model (only if not already built)
-        crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
-            if let Some(core_arc) = registry.borrow().get(&graph_id) {
-                let mut core = core_arc.borrow_mut();
-                // Only build if not already built
-                if core.get_nodes_internal().is_none() {
-                    core.build_nodes().ok();
+        // Ensure nodes are built and cache Arc refs to model indices
+        let (cached_nodes, cached_edges, cached_reverse_edges, cached_nodes_by_nodegroup, cached_nodegroups) =
+            crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
+                if let Some(core_arc) = registry.borrow().get(&graph_id) {
+                    let mut core = core_arc.borrow_mut();
+                    // Only build if not already built
+                    if core.get_nodes_internal().is_none() {
+                        core.build_nodes().ok();
+                    }
+                    // Get Arc refs to all indices (cheap refcount increment)
+                    (
+                        core.get_nodes_arc(),
+                        core.get_edges_arc(),
+                        core.get_reverse_edges_arc(),
+                        core.get_nodes_by_nodegroup_arc(),
+                        core.get_nodegroups_arc(),
+                    )
+                } else {
+                    (None, None, None, None, None)
                 }
-            }
-        });
+            });
 
         ResourceInstanceWrapperCore {
             graph_id,
@@ -296,6 +316,11 @@ impl ResourceInstanceWrapperCore {
             nodegroup_index: HashMap::new(),
             loaded_nodegroups: Arc::new(Mutex::new(HashMap::new())),
             pseudo_cache: Arc::new(Mutex::new(HashMap::new())),
+            cached_nodes,
+            cached_edges,
+            cached_reverse_edges,
+            cached_nodes_by_nodegroup,
+            cached_nodegroups,
         }
     }
 
@@ -411,7 +436,7 @@ impl ResourceInstanceWrapperCore {
     /// - parent_node_id: The nodeid of the parent semantic node
     /// - parent_nodegroup_id: The nodegroup_id of the parent node (or None)
     /// - child_alias: The alias of the specific child to retrieve
-    /// - loaded_tile_nodegroups: Set of nodegroups that have tiles loaded (None = non-lazy mode, all loaded)
+    /// - loaded_nodegroups: Set of nodegroups that have been loaded (None = non-lazy mode, all loaded)
     ///
     /// Returns: SemanticChildResult or SemanticChildError
     pub fn get_semantic_child_value(
@@ -420,16 +445,8 @@ impl ResourceInstanceWrapperCore {
         parent_node_id: &str,
         _parent_nodegroup_id: Option<&String>,
         child_alias: &str,
-        loaded_tile_nodegroups: Option<&HashSet<String>>,
+        loaded_nodegroups: Option<&HashSet<String>>,
     ) -> Result<SemanticChildResult, SemanticChildError> {
-        // DEBUG: Log when looking for geometry specifically
-        if child_alias == "geometry" || child_alias == "location_data" {
-            web_sys::console::log_1(&format!(
-                "[get_semantic_child_value] Looking for '{}' from parent_node='{}', parent_tile={:?}",
-                child_alias, parent_node_id, parent_tile_id
-            ).into());
-        }
-
         // Get child nodes for this parent (needs mutable access for lazy init)
         let child_nodes = self.with_model_core_mut(|core| {
             core.get_child_nodes(parent_node_id)
@@ -450,9 +467,9 @@ impl ResourceInstanceWrapperCore {
             .clone();
 
         // Check if tiles are loaded for this child's nodegroup (lazy mode check)
-        if let Some(loaded_nodegroups) = loaded_tile_nodegroups {
+        if let Some(loaded_ngs) = loaded_nodegroups {
             if let Some(ref child_nodegroup_id) = child_node.nodegroup_id {
-                if !loaded_nodegroups.contains(child_nodegroup_id) {
+                if !loaded_ngs.contains(child_nodegroup_id) {
                     return Err(SemanticChildError::TilesNotLoaded {
                         nodegroup_id: child_nodegroup_id.clone()
                     });
@@ -466,47 +483,32 @@ impl ResourceInstanceWrapperCore {
             .ok_or(SemanticChildError::TilesNotInitialized)?;
 
         // Find all tiles that contain this child node with the correct semantic relationship
+        // Use nodegroup_index for O(1) lookup instead of O(n) tile scan
         let mut matching_tile_ids: Vec<String> = Vec::new();
 
-        // DEBUG: Log tiles being checked for geometry
-        if child_alias == "geometry" {
-            web_sys::console::log_1(&format!(
-                "[get_semantic_child_value] Checking {} tiles for '{}', child_nodegroup={:?}",
-                tiles.len(), child_alias, child_node.nodegroup_id
-            ).into());
-        }
+        // Get candidate tile IDs from the nodegroup index
+        let candidate_tile_ids: Vec<String> = if let Some(ref child_nodegroup_id) = child_node.nodegroup_id {
+            self.nodegroup_index
+                .get(child_nodegroup_id)
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            // No nodegroup_id on child node - fall back to scanning all tiles
+            tiles.keys().cloned().collect()
+        };
 
-        for (tile_id, tile) in tiles.iter() {
-            // Check if tile has data for this child node
-            // if !tile.data.contains_key(&child_node.nodeid) {
-            //     continue;
-            // }
-
-            // DEBUG: Log each tile check for geometry
-            if child_alias == "geometry" && tile.nodegroup_id == child_node.nodegroup_id.clone().unwrap_or_default() {
-                web_sys::console::log_1(&format!(
-                    "[get_semantic_child_value] Checking tile '{}' (ng={}, parenttile={:?})",
-                    tile_id, tile.nodegroup_id, tile.parenttile_id
-                ).into());
+        for tile_id in candidate_tile_ids {
+            if let Some(tile) = tiles.get(&tile_id) {
+                // Check semantic parent-child relationship
+                if Self::matches_semantic_child(
+                    parent_tile_id,
+                    parent_node_id,
+                    &*child_node,
+                    tile,
+                ) {
+                    matching_tile_ids.push(tile_id);
+                }
             }
-
-            // Check semantic parent-child relationship
-            if Self::matches_semantic_child(
-                parent_tile_id,
-                parent_node_id,
-                &*child_node,
-                tile,
-            ) {
-                matching_tile_ids.push(tile_id.clone());
-            }
-        }
-
-        // DEBUG: Log result for geometry
-        if child_alias == "geometry" {
-            web_sys::console::log_1(&format!(
-                "[get_semantic_child_value] Found {} matching tiles for '{}'",
-                matching_tile_ids.len(), child_alias
-            ).into());
         }
 
         // If no matching tiles, return Empty (not an error)
@@ -514,11 +516,25 @@ impl ResourceInstanceWrapperCore {
             return Ok(SemanticChildResult::Empty);
         }
 
-        // Get edges for creating PseudoValues
+        // Get edges and nodegroups for creating PseudoValues
         let edges = self.with_model_core(|core| {
             core.get_edges_internal()
                 .ok_or_else(|| SemanticChildError::ModelNotInitialized("Model edges not initialized".to_string()))
                 .map(|map| map.clone())
+        })?;
+
+        // Determine if this is a cardinality-1 node (should return single value, not list)
+        // A node is cardinality-1 if its nodegroup has cardinality "1"
+        let is_cardinality_one = self.with_model_core::<_, _, SemanticChildError>(|core| {
+            if let Some(nodegroup_id) = &child_node.nodegroup_id {
+                if let Some(nodegroups) = core.get_nodegroups_internal() {
+                    if let Some(nodegroup) = nodegroups.get(nodegroup_id) {
+                        return Ok(nodegroup.cardinality.as_deref() == Some("1"));
+                    }
+                }
+            }
+            // Default to false (treat as cardinality-n) if we can't determine
+            Ok(false)
         })?;
 
         // Create PseudoValues from the matching tiles
@@ -542,8 +558,12 @@ impl ResourceInstanceWrapperCore {
 
         // Create PseudoList or single value based on is_collector and number of values
         if child_node.is_collector || values.len() > 1 {
-            // Return as PseudoList
-            let pseudo_list = RustPseudoList::from_values(child_alias.to_string(), values);
+            // Return as PseudoList, with is_single set based on cardinality
+            let pseudo_list = RustPseudoList::from_values_with_cardinality(
+                child_alias.to_string(),
+                values,
+                is_cardinality_one,
+            );
             Ok(SemanticChildResult::List(pseudo_list))
         } else if values.len() == 1 {
             // Return single value
@@ -582,17 +602,17 @@ impl WASMResourceInstanceWrapper {
         })
     }
 
-    pub fn load_tiles(&self, tiles: Vec<StaticTile>) -> Result<(), JsValue> {
-        self.load_tiles_internal(tiles, false)
+    pub fn load_tiles(&self, tiles: Vec<StaticTile>, assume_tiles_comprehensive_for_nodegroup: bool) -> Result<(), JsValue> {
+        self.load_tiles_internal(tiles, false, assume_tiles_comprehensive_for_nodegroup)
     }
 
     /// Append tiles without clearing existing ones
     /// Used by lazy loading callbacks to add tiles incrementally
-    pub fn append_tiles(&self, tiles: Vec<StaticTile>) -> Result<(), JsValue> {
-        self.load_tiles_internal(tiles, true)
+    pub fn append_tiles(&self, tiles: Vec<StaticTile>, assume_tiles_comprehensive_for_nodegroup: bool) -> Result<(), JsValue> {
+        self.load_tiles_internal(tiles, true, assume_tiles_comprehensive_for_nodegroup)
     }
 
-    fn load_tiles_internal(&self, tiles: Vec<StaticTile>, append: bool) -> Result<(), JsValue> {
+    fn load_tiles_internal(&self, tiles: Vec<StaticTile>, append: bool, assume_tiles_comprehensive_for_nodegroup: bool) -> Result<(), JsValue> {
         self.check_tiles(&tiles)?;
 
         let lazy = *self.lazy.borrow();
@@ -622,17 +642,30 @@ impl WASMResourceInstanceWrapper {
                     .or_insert_with(Vec::new)
                     .push(tile_id.clone());
 
-                // In lazy mode, mark this nodegroup as having tiles loaded
-                // (done outside borrow_mut to avoid nested borrows)
-                if lazy {
-                    // We need to collect nodegroup_ids to add after the core borrow is done
-                    // Actually, loaded_tile_nodegroups is a separate RefCell, so this is fine
-                    self.loaded_tile_nodegroups.borrow_mut().insert(nodegroup_id);
+                // Mark this nodegroup as loaded in loaded_nodegroups
+                // This consolidates tile tracking with nodegroup processing state
+                if let Ok(mut loaded) = core.loaded_nodegroups.lock() {
+                    loaded.insert(nodegroup_id, LoadState::Loaded);
                 }
 
                 // Store tile
                 core.tiles.as_mut().unwrap().insert(tile_id.clone(), tile);
             }
+        }
+
+        // If assume_tiles_comprehensive_for_nodegroup is true, mark ALL model nodegroups as loaded
+        // This handles the case where some nodegroups have no tiles for this resource
+        if assume_tiles_comprehensive_for_nodegroup {
+            self.with_model_core_mut(|model_core| {
+                if let Some(nodegroups) = model_core.get_nodegroups_internal() {
+                    if let Ok(mut loaded) = self.core.borrow().loaded_nodegroups.lock() {
+                        for nodegroup_id in nodegroups.keys() {
+                            loaded.entry(nodegroup_id.clone()).or_insert(LoadState::Loaded);
+                        }
+                    }
+                }
+                Ok(())
+            })?;
         }
 
         Ok(())
@@ -645,7 +678,6 @@ impl WASMResourceInstanceWrapper {
         WASMResourceInstanceWrapper {
             core: RefCell::new(ResourceInstanceWrapperCore::new_from_graph_id(graph_id)),
             tile_loader: RefCell::new(None),
-            loaded_tile_nodegroups: RefCell::new(HashSet::new()),
             lazy: RefCell::new(false),
         }
     }
@@ -661,7 +693,6 @@ impl WASMResourceInstanceWrapper {
         WASMResourceInstanceWrapper {
             core: RefCell::new(ResourceInstanceWrapperCore::new_from_resource(resource)),
             tile_loader: RefCell::new(None),
-            loaded_tile_nodegroups: RefCell::new(HashSet::new()),
             lazy: RefCell::new(false),
         }
     }
@@ -678,7 +709,9 @@ impl WASMResourceInstanceWrapper {
 
     #[wasm_bindgen(js_name = tilesLoaded)]
     pub fn tiles_loaded(&self) -> bool {
-        self.core.borrow().tiles.is_some()
+        // Check if tiles exist AND have actual content (not just initialized but empty)
+        // In lazy mode, tiles HashMap is initialized empty, so we need to check for actual content
+        self.core.borrow().tiles.as_ref().map_or(false, |t| !t.is_empty())
     }
 
     /// Set a callback function for lazy-loading tiles
@@ -706,20 +739,20 @@ impl WASMResourceInstanceWrapper {
     }
 
     /// Check if tiles have been loaded for a specific nodegroup
+    /// In non-lazy mode, returns true if tiles exist
+    /// In lazy mode, checks if nodegroup has been processed (which includes tile loading)
     #[wasm_bindgen(js_name = hasTilesForNodegroup)]
     pub fn has_tiles_for_nodegroup(&self, nodegroup_id: String) -> bool {
         if !*self.lazy.borrow() {
             // Non-lazy mode: if tiles exist, we have all tiles
             return self.core.borrow().tiles.is_some();
         }
-        // Lazy mode: check if this specific nodegroup has been loaded
-        self.loaded_tile_nodegroups.borrow().contains(&nodegroup_id)
-    }
-
-    /// Mark a nodegroup as having its tiles loaded
-    #[wasm_bindgen(js_name = markNodegroupTilesLoaded)]
-    pub fn mark_nodegroup_tiles_loaded(&self, nodegroup_id: String) {
-        self.loaded_tile_nodegroups.borrow_mut().insert(nodegroup_id);
+        // Lazy mode: check if this specific nodegroup has been loaded via loaded_nodegroups
+        if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
+            matches!(loaded.get(&nodegroup_id), Some(LoadState::Loaded))
+        } else {
+            false
+        }
     }
 
     /// Load tiles from plain JS objects (JSON deserialization)
@@ -728,19 +761,19 @@ impl WASMResourceInstanceWrapper {
     pub fn load_tiles_js(&self, tiles_js: JsValue) -> Result<(), JsValue> {
         let tiles: Vec<StaticTile> = serde_wasm_bindgen::from_value(tiles_js)
             .map_err(|e| JsValue::from_str(&format!("Failed to deserialize tiles: {:?}", e)))?;
-        self.load_tiles(tiles)
+        self.load_tiles(tiles, true)
     }
 
     /// Load tiles from WASM StaticTile objects directly (no serialization overhead)
     /// Use this when passing tiles between Rust/WASM contexts
     #[wasm_bindgen(js_name = loadTilesWasm)]
-    pub fn load_tiles_wasm(&self, tiles: Vec<WasmStaticTile>) -> Result<(), JsValue> {
+    pub fn load_tiles_wasm(&self, tiles: Vec<WasmStaticTile>, assume_tiles_comprehensive_for_nodegroup: Option<bool>) -> Result<(), JsValue> {
         // Extract inner CoreStaticTile from each WASM wrapper
         let core_tiles: Vec<StaticTile> = tiles.into_iter()
             .map(|wasm_tile| wasm_tile.0)
             .collect();
 
-        self.load_tiles(core_tiles)
+        self.load_tiles(core_tiles, assume_tiles_comprehensive_for_nodegroup.unwrap_or(true))
     }
 
     #[wasm_bindgen(js_name = getResourceId)]
@@ -861,15 +894,6 @@ impl WASMResourceInstanceWrapper {
         }
     }
 
-    /// Mark a nodegroup as loaded to prevent re-loading
-    /// Phase 4g: Now uses Mutex for thread-safe access
-    #[wasm_bindgen(js_name = markNodegroupLoaded)]
-    pub fn mark_nodegroup_loaded(&self, nodegroup_id: String) {
-        if let Ok(mut loaded) = self.core.borrow().loaded_nodegroups.lock() {
-            loaded.insert(nodegroup_id, LoadState::Loaded);
-        }
-    }
-
     /// Phase 4g: Check if a nodegroup is being loaded or already loaded
     #[wasm_bindgen(js_name = isNodegroupLoadedOrLoading)]
     pub fn is_nodegroup_loaded_or_loading(&self, nodegroup_id: &str) -> bool {
@@ -958,6 +982,329 @@ impl WASMResourceInstanceWrapper {
         if let Ok(mut cache) = self.core.borrow().pseudo_cache.lock() {
             cache.clear();
         }
+    }
+
+    /// Get the root pseudo value from the cache.
+    ///
+    /// Returns the first (and should be only) value from the root pseudo list.
+    /// The root is stored in cache with its alias from the graph model.
+    ///
+    /// PORT: js/graphManager.ts:330-364 getRoot()
+    #[wasm_bindgen(js_name = getRootPseudo)]
+    pub fn get_root_pseudo(&self) -> Option<WasmPseudoValue> {
+        // Get root node to find its alias
+        let root_node = self.with_model_core_mut(|core| {
+            Ok(core.get_root_node().ok())
+        }).ok()??;
+
+        let root_alias = root_node.alias.clone().unwrap_or_default();
+
+        // Need to hold borrow long enough for the lock
+        let core_ref = self.core.borrow();
+        let cache = core_ref.pseudo_cache.lock().ok()?;
+
+        // Look up root by its actual alias
+        let root_list = cache.get(&root_alias)?;
+
+        // Return the first value (root should have exactly one)
+        // PORT: js/graphManager.ts:346-350 - if list, get first element
+        if root_list.values.len() > 1 {
+            web_sys::console::warn_1(&"Multiple root tiles found - returning first".into());
+        }
+
+        root_list.values.first().map(|v| WasmPseudoValue::from_rust(v.clone()))
+    }
+
+    /// Convert the entire resource to JSON using Rust-side traversal.
+    ///
+    /// Check that all tiles have been loaded before serialization.
+    /// Returns an error if any nodegroups are not in Loaded state.
+    fn check_tiles_loaded(&self, method_name: &str) -> Result<(), JsValue> {
+        let core_ref = self.core.borrow();
+        let loaded_nodegroups = core_ref.loaded_nodegroups.lock()
+            .map_err(|e| JsValue::from_str(&format!("Failed to lock loaded_nodegroups: {}", e)))?;
+
+        if loaded_nodegroups.is_empty() {
+            return Err(JsValue::from_str(&format!(
+                "{}() called but no tiles have been loaded. \
+                 Call populate() or ensure tiles are loaded before serialization.",
+                method_name
+            )));
+        }
+
+        // Check for nodegroups that have tiles but aren't loaded
+        let unloaded: Vec<String> = loaded_nodegroups.iter()
+            .filter(|(_, state)| **state != LoadState::Loaded)
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        if !unloaded.is_empty() {
+            return Err(JsValue::from_str(&format!(
+                "{}() called but {} nodegroup(s) have not been loaded: {}. \
+                 Ensure all tiles are loaded before serialization.",
+                method_name,
+                unloaded.len(),
+                unloaded.iter().take(3).cloned().collect::<Vec<_>>().join(", ")
+            )));
+        }
+
+        Ok(())
+    }
+
+    /// This replaces the JS `forJson()` method that makes 98+ WASM boundary
+    /// crossings per resource. By doing the traversal entirely in Rust,
+    /// we only cross the boundary once.
+    ///
+    /// Prerequisites: `populate()` must have been called to fill the pseudo_cache.
+    /// Fails with an error if tiles have not been loaded.
+    #[wasm_bindgen(js_name = toJson)]
+    pub fn to_json(&self) -> Result<JsValue, JsValue> {
+        let start = js_sys::Date::now();
+
+        // Get root node from model to find its alias
+        let root_node = self.with_model_core_mut(|core| {
+            core.get_root_node().map_err(|e| JsValue::from_str(&e))
+        })?;
+
+        let root_alias = root_node.alias.clone().unwrap_or_default();
+
+        // Ensure nodes_by_alias and edges are built
+        self.with_model_core_mut(|core| {
+            if core.get_nodes_by_alias_internal().is_none() {
+                core.build_nodes().map_err(|e| JsValue::from_str(&e))?;
+            }
+            Ok(())
+        })?;
+
+        let (nodes_by_alias, edges) = self.with_model_core(|core| {
+            let nodes = core.get_nodes_by_alias_internal()
+                .ok_or_else(|| JsValue::from_str("nodes_by_alias not built"))?
+                .clone();
+            let edges = core.get_edges_internal()
+                .ok_or_else(|| JsValue::from_str("edges not built"))?
+                .clone();
+            Ok((nodes, edges))
+        })?;
+
+        // Check that all tiles have been loaded - fail fast if not
+        self.check_tiles_loaded("toJson")?;
+
+        // Get the pseudo_cache (populated by populate())
+        let core_ref = self.core.borrow();
+        let cache = core_ref.pseudo_cache.lock()
+            .map_err(|e| JsValue::from_str(&format!("Failed to lock pseudo_cache: {}", e)))?;
+
+        // Build visitor context
+        let ctx = VisitorContext {
+            pseudo_cache: &cache,
+            nodes_by_alias: &nodes_by_alias,
+            edges: &edges,
+            depth: 0,
+            max_depth: 50, // Reasonable limit to prevent infinite recursion
+        };
+
+        // Look up the root pseudo from cache (created in populate())
+        let root_list = cache.get(&root_alias)
+            .ok_or_else(|| JsValue::from_str(&format!(
+                "Root pseudo not found in cache for alias '{}' - was populate() called?",
+                root_alias
+            )))?;
+
+        // Use the root list's to_json - the root is a semantic node, so it traverses children
+        let json = root_list.to_json(&ctx);
+
+        // Convert serde_json::Value to JSON string, then parse to JS object
+        // Note: Using JSON.parse is more reliable than serde_wasm_bindgen::to_value
+        // which can return empty objects in some cases
+        let json_string = serde_json::to_string(&json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize JSON: {}", e)))?;
+
+        let result = js_sys::JSON::parse(&json_string)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse JSON: {:?}", e)))?;
+
+        let end = js_sys::Date::now();
+        record_timing("toJson (Rust)", end - start);
+
+        Ok(result)
+    }
+
+    /// Convert the pseudo cache to a list of StaticTiles.
+    ///
+    /// Traverses the cache using the same visitor pattern as toJson(),
+    /// but collects tile data into StaticTile structures.
+    ///
+    /// Returns an array of StaticTile objects ready for serialization.
+    #[wasm_bindgen(js_name = toTiles)]
+    pub fn to_tiles(&self) -> Result<JsValue, JsValue> {
+        use crate::pseudo_value::{TileBuilder, TileBuilderContext};
+
+        let start = js_sys::Date::now();
+
+        // Get root node from model
+        let root_node = self.with_model_core_mut(|core| {
+            core.get_root_node().map_err(|e| JsValue::from_str(&e))
+        })?;
+
+        let root_alias = root_node.alias.clone().unwrap_or_default();
+
+        // Check that all tiles have been loaded - fail fast if not
+        self.check_tiles_loaded("toTiles")?;
+
+        // Get resource instance ID
+        let resource_id = self.core.borrow().resource_instance
+            .as_ref()
+            .map(|r| r.resourceinstanceid.clone())
+            .unwrap_or_default();
+
+        // Get nodes and edges
+        let nodes_by_alias = self.with_model_core(|core| {
+            core.get_nodes_by_alias_internal()
+                .ok_or_else(|| JsValue::from_str("Model nodes not initialized"))
+                .map(|map| map.clone())
+        })?;
+
+        let edges = self.with_model_core(|core| {
+            core.get_edges_internal()
+                .ok_or_else(|| JsValue::from_str("Model edges not initialized"))
+                .map(|map| map.clone())
+        })?;
+
+        // Get the pseudo cache
+        let core_ref = self.core.borrow();
+        let cache = core_ref.pseudo_cache.lock()
+            .map_err(|e| JsValue::from_str(&format!("Failed to lock pseudo_cache: {}", e)))?;
+
+        // Build context for tile collection
+        let ctx = TileBuilderContext {
+            pseudo_cache: &cache,
+            nodes_by_alias: &nodes_by_alias,
+            edges: &edges,
+            resourceinstance_id: resource_id,
+            depth: 0,
+            max_depth: 50,
+        };
+
+        // Get root from cache
+        let root_list = cache.get(&root_alias)
+            .ok_or_else(|| JsValue::from_str(&format!(
+                "Root pseudo not found in cache for alias '{}' - was populate() called?",
+                root_alias
+            )))?;
+
+        // Collect tiles from the tree
+        let mut tiles: std::collections::HashMap<String, TileBuilder> = std::collections::HashMap::new();
+        root_list.collect_tiles(&ctx, &mut tiles);
+
+        // Convert to StaticTiles and serialize
+        let static_tiles: Vec<alizarin_core::StaticTile> = tiles.values()
+            .map(|builder| builder.to_static_tile())
+            .collect();
+
+        // Convert to JSON string then parse to JS (same pattern as toJson)
+        let json_string = serde_json::to_string(&static_tiles)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize tiles: {}", e)))?;
+
+        let result = js_sys::JSON::parse(&json_string)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse tiles JSON: {:?}", e)))?;
+
+        let end = js_sys::Date::now();
+        record_timing("toTiles (Rust)", end - start);
+
+        Ok(result)
+    }
+
+    /// Convert the instance to a complete StaticResource.
+    ///
+    /// Combines the resource metadata with tiles built from the pseudo cache.
+    /// This is the inverse of loading a resource - it produces a serializable
+    /// StaticResource that can be sent to an API for saving.
+    ///
+    /// Returns a StaticResource object ready for serialization.
+    #[wasm_bindgen(js_name = toResource)]
+    pub fn to_resource(&self) -> Result<JsValue, JsValue> {
+        use crate::pseudo_value::{TileBuilder, TileBuilderContext};
+
+        let start = js_sys::Date::now();
+
+        // Check that all tiles have been loaded - fail fast if not
+        self.check_tiles_loaded("toResource")?;
+
+        // Get the original resource metadata
+        let resource_metadata = self.core.borrow().resource_instance.clone()
+            .ok_or_else(|| JsValue::from_str("No resource metadata available"))?;
+
+        // Get root node from model
+        let root_node = self.with_model_core_mut(|core| {
+            core.get_root_node().map_err(|e| JsValue::from_str(&e))
+        })?;
+
+        let root_alias = root_node.alias.clone().unwrap_or_default();
+
+        // Get nodes and edges
+        let nodes_by_alias = self.with_model_core(|core| {
+            core.get_nodes_by_alias_internal()
+                .ok_or_else(|| JsValue::from_str("Model nodes not initialized"))
+                .map(|map| map.clone())
+        })?;
+
+        let edges = self.with_model_core(|core| {
+            core.get_edges_internal()
+                .ok_or_else(|| JsValue::from_str("Model edges not initialized"))
+                .map(|map| map.clone())
+        })?;
+
+        // Get the pseudo cache
+        let core_ref = self.core.borrow();
+        let cache = core_ref.pseudo_cache.lock()
+            .map_err(|e| JsValue::from_str(&format!("Failed to lock pseudo_cache: {}", e)))?;
+
+        // Build context for tile collection
+        let ctx = TileBuilderContext {
+            pseudo_cache: &cache,
+            nodes_by_alias: &nodes_by_alias,
+            edges: &edges,
+            resourceinstance_id: resource_metadata.resourceinstanceid.clone(),
+            depth: 0,
+            max_depth: 50,
+        };
+
+        // Get root from cache
+        let root_list = cache.get(&root_alias)
+            .ok_or_else(|| JsValue::from_str(&format!(
+                "Root pseudo not found in cache for alias '{}' - was populate() called?",
+                root_alias
+            )))?;
+
+        // Collect tiles from the tree
+        let mut tiles_map: std::collections::HashMap<String, TileBuilder> = std::collections::HashMap::new();
+        root_list.collect_tiles(&ctx, &mut tiles_map);
+
+        // Convert to StaticTiles
+        let tiles: Vec<alizarin_core::StaticTile> = tiles_map.values()
+            .map(|builder| builder.to_static_tile())
+            .collect();
+
+        // Build the complete resource
+        let output_resource = alizarin_core::StaticResource {
+            resourceinstance: resource_metadata.clone(),
+            tiles: Some(tiles),
+            metadata: std::collections::HashMap::new(), // No metadata stored in wrapper
+            cache: None, // Don't include internal cache in output
+            scopes: None, // Don't include scopes in output
+            tiles_loaded: Some(true),
+        };
+
+        // Convert to JSON string then parse to JS
+        let json_string = serde_json::to_string(&output_resource)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize resource: {}", e)))?;
+
+        let result = js_sys::JSON::parse(&json_string)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse resource JSON: {:?}", e)))?;
+
+        let end = js_sys::Date::now();
+        record_timing("toResource (Rust)", end - start);
+
+        Ok(result)
     }
 
     /// Create a PseudoValue or PseudoList from node metadata
@@ -1168,6 +1515,7 @@ impl WASMResourceInstanceWrapper {
         do_implied_nodegroups: bool,
     ) -> Result<EnsureNodegroupResult, JsValue> {
         use std::collections::{HashMap, HashSet};
+        let fn_start = js_sys::Date::now();
 
         // Check sentinel state (line 314)
         let sentinel = all_nodegroups.get(nodegroup_id);
@@ -1185,6 +1533,7 @@ impl WASMResourceInstanceWrapper {
         if should_process {
             // Filter tiles by nodegroup_id and permissions (lines 326-328)
             // Phase 4h: Compute tile permission from nodegroup permission
+            let t0 = js_sys::Date::now();
             let mut nodegroup_tiles: Vec<String> = Vec::new();
 
             // If tiles aren't loaded, treat as empty (will trigger tile loading callback if set)
@@ -1199,6 +1548,7 @@ impl WASMResourceInstanceWrapper {
                     }
                 }
             }
+            record_timing("eng: filter tiles", js_sys::Date::now() - t0);
 
             // If no tiles and addIfMissing, use empty string to indicate null tile (lines 329-330)
             if nodegroup_tiles.is_empty() && add_if_missing {
@@ -1208,11 +1558,13 @@ impl WASMResourceInstanceWrapper {
             // Call values_from_resource_nodegroup_internal (line 332)
             // PORT: Phase 4c - Use structured values directly (no recipe conversion)
             // PORT: js/graphManager.ts:352 - iterating over result and adding to newValues
+            let t1 = js_sys::Date::now();
             let values_result = self.values_from_resource_nodegroup_internal(
                 all_values_map.clone(),
                 nodegroup_tiles,
                 nodegroup_id,
             )?;
+            record_timing("eng: values_from_resource_nodegroup_internal", js_sys::Date::now() - t1);
 
             // Merge structured values into all_values
             // PORT: js/graphManager.ts:353-355 - newValues.set(recipe.nodeAlias, makePseudoCls(...))
@@ -1260,6 +1612,7 @@ impl WASMResourceInstanceWrapper {
         }
 
         // Return structured result
+        record_timing("eng: total", js_sys::Date::now() - fn_start);
         Ok(EnsureNodegroupResult {
             values: all_values,
             implied_nodegroups: implied_nodegroups_set.into_iter().collect(),
@@ -1317,6 +1670,9 @@ impl WASMResourceInstanceWrapper {
     /// PORT: graphManager.ts lines 600-688 (populate function)
     /// PORT: Phase 4c - Now returns WasmPopulateResult with structured values
     /// Orchestrates loading all nodegroups for a resource
+    ///
+    /// Optimization: Skips nodegroups that are already loaded (tracked in loaded_nodegroups).
+    /// Preserves existing pseudo_cache entries for already-loaded nodegroups.
     #[wasm_bindgen(js_name = populate)]
     pub fn populate(
         &self,
@@ -1325,17 +1681,54 @@ impl WASMResourceInstanceWrapper {
         root_node_alias: String,
         nodegroup_permissions_js: JsValue,  // Phase 4h: Map<nodegroupId, boolean>
     ) -> Result<WasmPopulateResult, JsValue> {
+        let populate_start = js_sys::Date::now();
+
         // Phase 4h: Deserialize nodegroup permissions once
+        let t0 = js_sys::Date::now();
         let nodegroup_permissions: HashMap<String, bool> = serde_wasm_bindgen::from_value(nodegroup_permissions_js)
             .map_err(|e| JsValue::from_str(&format!("Failed to deserialize nodegroup_permissions: {:?}", e)))?;
+        record_timing("populate: deserialize permissions", js_sys::Date::now() - t0);
+
+        // Check if pseudo_cache has been populated (not just tiles loaded).
+        // This is the true indicator that populate() has run before.
+        // loaded_nodegroups tracks tile loading, but pseudo_cache tracks populate().
+        let cache_populated = if let Ok(cache) = self.core.borrow().pseudo_cache.lock() {
+            // Cache is "populated" if it has more than just the root node
+            // (The root is added at the end of populate, so 2+ entries means real data)
+            cache.len() > 1
+        } else {
+            false
+        };
+
+        // Only use optimization if cache was actually populated previously
+        let already_loaded: HashSet<String> = if cache_populated {
+            if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
+                loaded.iter()
+                    .filter(|(_, state)| **state == LoadState::Loaded)
+                    .map(|(id, _)| id.clone())
+                    .collect()
+            } else {
+                HashSet::new()
+            }
+        } else {
+            // First time populate() is called - process all nodegroups
+            HashSet::new()
+        };
+
+        // Filter nodegroup_ids to only those not already loaded
+        let nodegroups_to_process: Vec<String> = nodegroup_ids.iter()
+            .filter(|id| !already_loaded.contains(*id))
+            .cloned()
+            .collect();
 
         // Initialize state maps
         let mut all_values: HashMap<String, Option<bool>> = HashMap::new();
         let mut all_nodegroups: HashMap<String, bool> = HashMap::new();
 
-        // Initialize all nodegroups to false (line 610-612)
+        // Initialize all nodegroups - already loaded ones start as true, others as false
         for nodegroup_id in nodegroup_ids.iter() {
-            all_nodegroups.insert(nodegroup_id.clone(), false);
+            let is_loaded = already_loaded.contains(nodegroup_id);
+            all_nodegroups.insert(nodegroup_id.clone(), is_loaded);
         }
 
         // Set root node alias to false (line 626)
@@ -1343,14 +1736,25 @@ impl WASMResourceInstanceWrapper {
 
         // PORT: Phase 4c - Collect structured RustPseudoList values instead of recipes
         // PORT: js/graphManager.ts:668 - newValues is a Map<string, PseudoValue | PseudoList>
-        let mut all_structured_values: HashMap<String, RustPseudoList> = HashMap::new();
+        // Start with existing cache entries for already-loaded nodegroups
+        let mut all_structured_values: HashMap<String, RustPseudoList> = if !already_loaded.is_empty() {
+            if let Ok(cache) = self.core.borrow().pseudo_cache.lock() {
+                cache.clone()
+            } else {
+                HashMap::new()
+            }
+        } else {
+            HashMap::new()
+        };
 
-        // Non-lazy loading: process all nodegroups
+        // Non-lazy loading: process all nodegroups (only those not already loaded)
+        let t1 = js_sys::Date::now();
+        let mut ensure_nodegroup_count = 0;
         if !lazy {
             // Phase 1: Process all nodegroups with doImpliedNodegroups=false (lines 636-653)
             let mut implied_nodegroups_set = HashSet::new();
 
-            for nodegroup_id in nodegroup_ids.iter() {
+            for nodegroup_id in nodegroups_to_process.iter() {
                 let result = self.ensure_nodegroup_internal(
                     &all_values,
                     &mut all_nodegroups,
@@ -1359,6 +1763,7 @@ impl WASMResourceInstanceWrapper {
                     &nodegroup_permissions,
                     false, // TODO RMV: doImpliedNodegroups = false for phase 1
                 )?;
+                ensure_nodegroup_count += 1;
 
                 // Collect structured values
                 // PORT: Phase 4c - Merge RustPseudoList values from ensure_nodegroup result
@@ -1400,6 +1805,7 @@ impl WASMResourceInstanceWrapper {
                             &nodegroup_permissions,
                             true,  // doImpliedNodegroups = true for phase 2
                         )?;
+                        ensure_nodegroup_count += 1;
 
                         // Collect structured values
                         // PORT: Phase 4c - Merge structured values from implied nodegroup
@@ -1417,17 +1823,57 @@ impl WASMResourceInstanceWrapper {
                 }
             }
         }
+        record_timing("populate: ensure_nodegroup_internal loop", js_sys::Date::now() - t1);
         // If lazy: just skip loading (lines 678-680 in JS - stripTiles happens in JS)
 
+        // Create root pseudo value (root node has no tile, but we need it in cache for toJson)
+        // Get root node and create a semantic pseudo value for it
+        let root_node = self.with_model_core_mut(|core| {
+            core.get_root_node().map_err(|e| JsValue::from_str(&e))
+        })?;
+
+        let edges = self.with_model_core(|core| {
+            core.get_edges_internal()
+                .ok_or_else(|| JsValue::from_str("Model edges not initialized"))
+                .map(|map| map.clone())
+        })?;
+
+        // Get child node IDs for the root
+        let child_node_ids = edges.get(&root_node.nodeid)
+            .map(|ids| ids.clone())
+            .unwrap_or_default();
+
+        // Create root pseudo value with no tile (using from_node_and_tile for proper initialization)
+        let root_pseudo = RustPseudoValue::from_node_and_tile(
+            root_node,
+            None,  // root has no tile
+            None,  // root has no tile_data
+            child_node_ids,
+        );
+
+        // Create root pseudo list (single value, semantic node)
+        let root_list = RustPseudoList {
+            node_alias: root_node_alias.clone(),
+            values: vec![root_pseudo],
+            is_loaded: true,
+            is_single: true,
+        };
+
+        // Add root to structured values
+        all_structured_values.insert(root_node_alias.clone(), root_list);
+
         // Store all values in Rust's pseudo_cache so TS can query them later
+        let t2 = js_sys::Date::now();
         if let Ok(mut cache) = self.core.borrow().pseudo_cache.lock() {
             for (alias, pseudo_list) in all_structured_values.iter() {
                 cache.insert(alias.clone(), pseudo_list.clone());
             }
         }
+        record_timing("populate: store in pseudo_cache", js_sys::Date::now() - t2);
 
         // PORT: Phase 4c - Return structured values wrapped in WasmPopulateResult
         // PORT: js/graphManager.ts:724-729 - returning allValues and allNodegroups
+        record_timing("populate: total (Rust)", js_sys::Date::now() - populate_start);
         Ok(WasmPopulateResult {
             inner: PopulateResult {
                 values: all_structured_values,
@@ -1445,25 +1891,20 @@ impl WASMResourceInstanceWrapper {
         nodegroup_tile_ids: Vec<String>,
         nodegroup_id: &str,
     ) -> Result<ValuesFromNodegroupResult, JsValue> {
-        // Ensure nodes are built
-        self.with_model_core_mut(|core| {
-            if core.get_nodes_internal().is_none() {
-                core.build_nodes().ok();
-            }
-            Ok(())
-        })?;
+        let fn_start = js_sys::Date::now();
 
-        let node_objs_wasm = self.with_model_core(|core| {
-            core.get_nodes_internal()
-                .ok_or_else(|| JsValue::from_str("Model nodes not initialized"))
-                .map(|map| map.clone())
-        })?;
-
-        let edges = self.with_model_core(|core| {
-            core.get_edges_internal()
-                .ok_or_else(|| JsValue::from_str("Model edges not initialized"))
-                .map(|map| map.clone())
-        })?;
+        // Use cached Arc refs from instance (no cloning needed - just Arc::clone which is cheap)
+        let t0 = js_sys::Date::now();
+        let core_ref = self.core.borrow();
+        let node_objs_wasm = core_ref.cached_nodes.as_ref()
+            .ok_or_else(|| JsValue::from_str("Model nodes not cached"))?;
+        let edges = core_ref.cached_edges.as_ref()
+            .ok_or_else(|| JsValue::from_str("Model edges not cached"))?;
+        let reverse_edges = core_ref.cached_reverse_edges.as_ref()
+            .ok_or_else(|| JsValue::from_str("Model reverse edges not cached"))?;
+        let nodes_by_nodegroup = core_ref.cached_nodes_by_nodegroup.as_ref()
+            .ok_or_else(|| JsValue::from_str("Model nodes-by-nodegroup not cached"))?;
+        record_timing("vfrn: get cached indices", js_sys::Date::now() - t0);
 
         let mut values: HashMap<String, RustPseudoList> = HashMap::new();
         let mut implied_nodegroups: HashSet<String> = HashSet::new();
@@ -1474,10 +1915,7 @@ impl WASMResourceInstanceWrapper {
         // Track which (nodeid, tileid) combinations we've already processed
         let mut tile_nodes_seen: HashSet<(String, String)> = HashSet::new();
 
-        // Store the borrow so it lives long enough for the entire function
-        let core_ref = self.core.borrow();
-
-        // Collect tiles for this nodegroup
+        // Collect tiles for this nodegroup (core_ref already borrowed above)
         let tiles_store = match core_ref.tiles.as_ref() {
             Some(t) => t,
             None => {
@@ -1514,6 +1952,10 @@ impl WASMResourceInstanceWrapper {
             entry.1.push(tile.clone());
         };
 
+        let t1 = js_sys::Date::now();
+        // Get nodes for this nodegroup directly from index (O(1) vs O(all_nodes))
+        let nodegroup_nodes = nodes_by_nodegroup.get(nodegroup_id);
+
         for tile_id in &nodegroup_tile_ids {
             let tile = if tile_id.is_empty() {
                 None
@@ -1522,17 +1964,20 @@ impl WASMResourceInstanceWrapper {
             };
             let tile_nodegroup_id = tile.as_ref().map(|t| t.nodegroup_id.clone());
 
-            // Find nodes in this nodegroup
-            for (_nodeid, node_wasm) in node_objs_wasm.iter() {
-                if node_wasm.nodegroup_id.as_deref() == Some(nodegroup_id) {
+            // Iterate only nodes in this nodegroup (using pre-built index)
+            if let Some(nodes_in_ng) = nodegroup_nodes {
+                for node_wasm in nodes_in_ng.iter() {
                     // Add pseudo for this node
+                    let t1b = js_sys::Date::now();
                     add_to_alias_tiles(node_wasm, tile.clone(), if tile_id.is_empty() { None } else { Some(tile_id) });
+                    record_timing("vfrn: add_to_alias_tiles", js_sys::Date::now() - t1b);
 
-                    // Check for implied nodegroups AND implied nodes via edges
+                    // Use reverse_edges for O(1) parent lookup instead of O(edges) scan
                     // PORT: lines 523-540 of old TS
-                    for (domain, ranges) in edges.iter() {
-                        if ranges.contains(&node_wasm.nodeid) {
-                            if let Some(domain_node) = node_objs_wasm.get(domain) {
+                    if let Some(parent_ids) = reverse_edges.get(&node_wasm.nodeid) {
+                        // Only process first parent (like TS "break" behavior)
+                        if let Some(parent_id) = parent_ids.first() {
+                            if let Some(domain_node) = node_objs_wasm.get(parent_id) {
                                 if let Some(ref domain_ng_id) = domain_node.nodegroup_id {
                                     // Check for implied nodegroups (different nodegroup)
                                     if !domain_ng_id.is_empty() && domain_ng_id != nodegroup_id {
@@ -1557,16 +2002,17 @@ impl WASMResourceInstanceWrapper {
                                     }
                                 }
                             }
-                            break; // Only process first matching edge (like TS)
                         }
                     }
                 }
             }
         }
+        record_timing("vfrn: tile+node loop (O(tiles*nodes_in_ng))", js_sys::Date::now() - t1);
 
         // PORT: Process implied nodes (lines 599-609)
         // These are parent semantic nodes that share the same tile
         // Note: We inline the add_to_alias_tiles logic here to avoid borrow checker issues
+        let t2 = js_sys::Date::now();
         for (_key, (node, tile)) in implied_nodes.iter() {
             let tile_id = tile.tileid.as_ref();
             // Only add if we haven't seen this (nodeid, tileid) combination yet
@@ -1589,20 +2035,22 @@ impl WASMResourceInstanceWrapper {
                 }
             }
         }
+        record_timing("vfrn: implied nodes loop", js_sys::Date::now() - t2);
 
-        // Get nodegroups for cardinality check
-        let nodegroups = self.with_model_core_mut(|core| {
-            Ok(core.get_nodegroup_objects().map(|ngs| ngs.clone()).ok())
-        }).ok().flatten();
+        // Get nodegroups for cardinality check (use cached ref - no cloning)
+        let t3 = js_sys::Date::now();
+        let nodegroups = core_ref.cached_nodegroups.as_ref();
+        record_timing("vfrn: get nodegroups (cached)", js_sys::Date::now() - t3);
 
         // Convert to RustPseudoList
+        let t4 = js_sys::Date::now();
         for (alias, (node, tiles)) in alias_tiles {
 
             // Determine if this should be single (cardinality-1) based on nodegroup
             let is_single = if node.is_collector {
                 // Collector nodes are lists only if nodegroup has cardinality 'n'
                 if let Some(ref ng_id) = node.nodegroup_id {
-                    if let Some(ref ngs) = nodegroups {
+                    if let Some(ngs) = nodegroups {
                         if let Some(ng) = ngs.get(ng_id) {
                             ng.cardinality.as_deref() != Some("n")
                         } else {
@@ -1618,10 +2066,14 @@ impl WASMResourceInstanceWrapper {
                 true // Non-collector nodes are always single
             };
 
+            let t4b = js_sys::Date::now();
             let pseudo_list = RustPseudoList::from_node_tiles(node, tiles, &edges, None, is_single);
+            record_timing("vfrn: from_node_tiles", js_sys::Date::now() - t4b);
             values.insert(alias, pseudo_list);
         }
+        record_timing("vfrn: convert to RustPseudoList", js_sys::Date::now() - t4);
 
+        record_timing("vfrn: total", js_sys::Date::now() - fn_start);
         Ok(ValuesFromNodegroupResult {
             values,
             implied_nodegroups: implied_nodegroups.into_iter().collect(),
@@ -1741,10 +2193,17 @@ impl WASMResourceInstanceWrapper {
         child_alias: String,
     ) -> Result<JsValue, JsValue> {
         // Determine loaded nodegroups for lazy mode check
-        // Clone the HashSet to avoid holding borrow across the call
+        // Extract loaded nodegroup IDs from loaded_nodegroups state
         let is_lazy = *self.lazy.borrow();
-        let loaded_nodegroups_snapshot = if is_lazy {
-            Some(self.loaded_tile_nodegroups.borrow().clone())
+        let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
+            if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
+                Some(loaded.iter()
+                    .filter(|(_, state)| **state == LoadState::Loaded)
+                    .map(|(id, _)| id.clone())
+                    .collect())
+            } else {
+                Some(HashSet::new())
+            }
         } else {
             None
         };
@@ -1849,10 +2308,17 @@ impl WASMResourceInstanceWrapper {
         }
 
         // Determine loaded nodegroups for lazy mode check
-        // Phase 4h: Clone to avoid holding borrow across await point
+        // Extract loaded nodegroup IDs from loaded_nodegroups state
         let is_lazy = *self.lazy.borrow();
-        let loaded_nodegroups_snapshot = if is_lazy {
-            Some(self.loaded_tile_nodegroups.borrow().clone())
+        let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
+            if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
+                Some(loaded.iter()
+                    .filter(|(_, state)| **state == LoadState::Loaded)
+                    .map(|(id, _)| id.clone())
+                    .collect())
+            } else {
+                Some(HashSet::new())
+            }
         } else {
             None
         };
@@ -1869,7 +2335,10 @@ impl WASMResourceInstanceWrapper {
         // Check if we need to load tiles
         match result {
             Err(SemanticChildError::TilesNotLoaded { nodegroup_id }) => {
+                let block_start = js_sys::Date::now();
+
                 // Need to load tiles for this nodegroup
+                let t0 = js_sys::Date::now();
                 let loader = self.tile_loader.borrow().clone()
                     .ok_or_else(|| JsValue::from_str("No tile loader set for lazy loading"))?;
 
@@ -1882,55 +2351,85 @@ impl WASMResourceInstanceWrapper {
 
                 let promise = loader.call1(&JsValue::NULL, &nodegroup_js)
                     .map_err(|e| JsValue::from_str(&format!("Failed to call tile loader: {:?}", e)))?;
+                record_timing("loader_call", js_sys::Date::now() - t0);
 
                 // Await the promise
+                let t1 = js_sys::Date::now();
                 let tiles_js = JsFuture::from(js_sys::Promise::from(promise)).await
                     .map_err(|e| JsValue::from_str(&format!("Tile loader failed: {:?}", e)))?;
+                record_timing("loader_await", js_sys::Date::now() - t1);
 
                 // Convert JS array of WASM StaticTile wrappers to Vec<CoreStaticTile>
-                // The tiles are WASM wrapper objects, so we call their toJSON method to get serializable data
+                // Fast path: if tiles are WASM StaticTile objects, extract inner directly
+                // Slow path: deserialize from JSON for plain objects
+                let t2 = js_sys::Date::now();
                 let tiles_array = js_sys::Array::from(&tiles_js);
                 let mut core_tiles: Vec<StaticTile> = Vec::new();
 
                 for i in 0..tiles_array.length() {
                     let tile_js = tiles_array.get(i);
 
-                    // Try to call toJSON method on the tile (works for WASM wrappers)
-                    let to_json_fn = js_sys::Reflect::get(&tile_js, &JsValue::from_str("toJSON"))
-                        .ok()
-                        .filter(|v| v.is_function());
+                    // Fast path disabled - FromWasmAbi::from_abi takes ownership of the pointer
+                    // which causes double-free when the JS object is also dropped.
+                    // TODO: Implement proper cloning or use RefFromWasmAbi for borrowing.
+                    // if let Some(wasm_tile) = WasmStaticTile::try_from_js(tile_js.clone()) {
+                    //     core_tiles.push(wasm_tile.into_inner());
+                    //     continue;
+                    // }
 
-                    let json_value = if let Some(func) = to_json_fn {
-                        let func: js_sys::Function = func.dyn_into().unwrap();
-                        func.call0(&tile_js).ok()
-                    } else {
-                        None
-                    };
-
-                    let tile_to_deserialize = json_value.as_ref().unwrap_or(&tile_js);
-
-                    if let Ok(tile) = serde_wasm_bindgen::from_value::<StaticTile>(tile_to_deserialize.clone()) {
+                    // Slow path: try direct deserialization
+                    if let Ok(tile) = serde_wasm_bindgen::from_value::<StaticTile>(tile_js.clone()) {
                         core_tiles.push(tile);
                     } else {
+                        // Fallback: try toJSON() if direct deserialization fails
+                        let to_json_fn = js_sys::Reflect::get(&tile_js, &JsValue::from_str("toJSON"))
+                            .ok()
+                            .filter(|v| v.is_function());
+
+                        if let Some(func) = to_json_fn {
+                            let func: js_sys::Function = func.dyn_into().unwrap();
+                            if let Ok(json_value) = func.call0(&tile_js) {
+                                if let Ok(tile) = serde_wasm_bindgen::from_value::<StaticTile>(json_value) {
+                                    core_tiles.push(tile);
+                                    continue;
+                                }
+                            }
+                        }
                         web_sys::console::log_1(&format!("[retrieve_semantic_children] Warning: could not convert tile {} to CoreStaticTile", i).into());
                     }
                 }
+                record_timing("tile_conversion", js_sys::Date::now() - t2);
 
                 // Use append_tiles to add these tiles without clearing existing ones
-                self.append_tiles(core_tiles)?;
+                let t3 = js_sys::Date::now();
+                self.append_tiles(core_tiles, true)?;
+                record_timing("append_tiles", js_sys::Date::now() - t3);
 
-                // Mark the nodegroup as loaded
-                self.mark_nodegroup_tiles_loaded(nodegroup_id.clone());
+                // Mark this nodegroup as loaded even if no tiles were returned
+                let t4 = js_sys::Date::now();
+                if let Ok(mut loaded) = self.core.borrow().loaded_nodegroups.lock() {
+                    loaded.insert(nodegroup_id.clone(), LoadState::Loaded);
+                }
+                record_timing("mark_loaded", js_sys::Date::now() - t4);
 
-                // Retry with updated loaded_tile_nodegroups
-                // Clone the HashSet to avoid holding borrow across the call
+                // Retry with updated loaded_nodegroups
+                let t5 = js_sys::Date::now();
                 let is_lazy = *self.lazy.borrow();
-                let loaded_nodegroups_snapshot = if is_lazy {
-                    Some(self.loaded_tile_nodegroups.borrow().clone())
+                let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
+                    if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
+                        Some(loaded.iter()
+                            .filter(|(_, state)| **state == LoadState::Loaded)
+                            .map(|(id, _)| id.clone())
+                            .collect())
+                    } else {
+                        Some(HashSet::new())
+                    }
                 } else {
                     None
                 };
+                record_timing("snapshot_rebuild", js_sys::Date::now() - t5);
 
+                let t6 = js_sys::Date::now();
                 let retry_result = self.core.borrow().get_semantic_child_value(
                     parent_tile_id.as_ref(),
                     &parent_node_id,
@@ -1938,6 +2437,9 @@ impl WASMResourceInstanceWrapper {
                     &child_alias,
                     loaded_nodegroups_snapshot.as_ref(),
                 );
+                record_timing("retry_get_semantic_child", js_sys::Date::now() - t6);
+
+                record_timing("tiles_not_loaded_block_total", js_sys::Date::now() - block_start);
 
                 // Convert retry result to JsValue
                 match retry_result {

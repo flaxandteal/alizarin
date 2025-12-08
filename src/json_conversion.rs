@@ -58,10 +58,6 @@ pub struct ResourceData {
 pub fn tiles_to_tree(resource: &ResourceData, graph: &StaticGraph) -> Result<Value, String> {
     let mut result = Map::new();
 
-    // Add basic resource metadata
-    result.insert("resourceinstanceid".to_string(), Value::String(resource.resourceinstanceid.clone()));
-    result.insert("graph_id".to_string(), Value::String(resource.graph_id.clone()));
-
     // Build lookup maps (same as populate())
     let nodes_by_id = build_node_lookup(graph.nodes_slice());
     let nodegroups_by_id = build_nodegroup_lookup(graph.nodegroups_slice());
@@ -97,23 +93,22 @@ pub fn tiles_to_tree(resource: &ResourceData, graph: &StaticGraph) -> Result<Val
 /// # Arguments
 /// * `json` - Nested JSON tree structure
 /// * `graph` - Complete graph model with nodes/nodegroups/edges
+/// * `resource_id` - Resource instance ID for the output
+/// * `graph_id` - Graph ID for the output
 ///
 /// # Returns
 /// ResourceData with flat tiles created from tree
-pub fn tree_to_tiles(json: &Value, graph: &StaticGraph) -> Result<ResourceData, String> {
+pub fn tree_to_tiles(
+    json: &Value,
+    graph: &StaticGraph,
+    resource_id: &str,
+    graph_id: &str,
+) -> Result<ResourceData, String> {
     let obj = json.as_object()
         .ok_or_else(|| "JSON must be an object".to_string())?;
 
-    // Extract resource metadata
-    let resource_id = obj.get("resourceinstanceid")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing resourceinstanceid".to_string())?
-        .to_string();
-
-    let graph_id = obj.get("graph_id")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "Missing graph_id".to_string())?
-        .to_string();
+    let resource_id = resource_id.to_string();
+    let graph_id = graph_id.to_string();
 
     // Build lookup maps
     let nodes_by_alias = build_node_alias_lookup(graph.nodes_slice());
@@ -227,27 +222,34 @@ fn process_node_recursive(
         .filter(|t| &t.nodegroup_id == nodegroup_id)
         .collect();
 
-    // Determine if this is a list (cardinality='n') or single value
-    // PORT: instance_wrapper.rs:415 - checking is_collector for list determination
-    let is_list = nodegroup.cardinality.as_ref()
-        .map(|c| c == "n")
-        .unwrap_or(false);
+    // Determine if this should be unwrapped to single value:
+    // - cardinality != 'n' (single cardinality node), OR
+    // - only one tile exists (JS/WASM also unwraps single items, see pseudo_value.rs:607,678)
+    let is_single = nodegroup.cardinality.as_ref()
+        .map(|c| c != "n")
+        .unwrap_or(true)
+        || nodegroup_tiles.len() == 1;
 
-    if is_list {
-        // Create array of values (one per tile)
-        // PORT: instance_wrapper.rs:427-456 - iterating over tiles to create PseudoValue list
-        let mut array = Vec::new();
-        for tile in nodegroup_tiles {
-            let tile_value = process_tile(node, tile, nodes_by_id, nodegroups_by_id, edges, tiles)?;
-            array.push(tile_value);
-        }
-        result.insert(alias.to_string(), Value::Array(array));
-    } else {
+    if is_single {
         // Single value (take first tile if exists)
-        // PORT: instance_wrapper.rs:462-501 - creating single PseudoValue
+        // PORT: pseudo_value.rs:641-646 - single value returned directly
         if let Some(tile) = nodegroup_tiles.first() {
             let value = process_tile(node, tile, nodes_by_id, nodegroups_by_id, edges, tiles)?;
             result.insert(alias.to_string(), value);
+        }
+    } else {
+        // Multiple values - create array (one per tile)
+        // PORT: pseudo_value.rs:650-658 - multiple values as array
+        let mut array = Vec::new();
+        for tile in &nodegroup_tiles {
+            let tile_value = process_tile(node, tile, nodes_by_id, nodegroups_by_id, edges, tiles)?;
+            // Filter out nulls (matching pseudo_value.rs:652)
+            if !tile_value.is_null() {
+                array.push(tile_value);
+            }
+        }
+        if !array.is_empty() {
+            result.insert(alias.to_string(), Value::Array(array));
         }
     }
 
@@ -255,6 +257,11 @@ fn process_node_recursive(
 }
 
 /// Process a single tile and its child nodes
+///
+/// Returns the value for this node. The structure depends on:
+/// - Leaf nodes (no children): Return the raw tile data directly
+/// - Semantic nodes (has children): Return an object with child aliases as keys
+/// - Outer nodes (has value AND children): Return object with _value plus children
 fn process_tile(
     node: &StaticNode,
     tile: &StaticTile,
@@ -263,23 +270,28 @@ fn process_tile(
     edges: &HashMap<String, Vec<String>>,
     all_tiles: &[StaticTile],
 ) -> Result<Value, String> {
-    let mut obj = Map::new();
+    // Check if this node has children
+    let has_children = edges.get(&node.nodeid)
+        .map(|ids| !ids.is_empty())
+        .unwrap_or(false);
 
-    // Extract value from tile data for this specific node
-    if let Some(value) = tile.data.get(&node.nodeid) {
-        // Only add _value if it's not null/empty
-        if !value.is_null() {
-            obj.insert("_value".to_string(), value.clone());
-        }
+    // Get the node's own value from tile data
+    let own_value = tile.data.get(&node.nodeid).cloned();
+
+    // Leaf node (no children) - return value directly
+    // This matches pseudo_value.rs:515-520 - leaf nodes return tile_data directly
+    if !has_children {
+        return Ok(own_value.unwrap_or(Value::Null));
     }
 
+    // Node has children - build object with child values
+    let mut obj = Map::new();
+
     // Recursively process child nodes
-    // This reuses the traversal pattern from instance_wrapper.rs:885-911 (discovering implied nodes via edges)
     if let Some(child_ids) = edges.get(&node.nodeid) {
         for child_id in child_ids {
             if let Some(child_node) = nodes_by_id.get(child_id) {
                 // For each child, process it recursively
-                // This mirrors the hierarchy walk in values_from_resource_nodegroup_internal
                 process_node_recursive(
                     child_node,
                     nodes_by_id,
@@ -289,6 +301,15 @@ fn process_tile(
                     &mut obj,
                 )?;
             }
+        }
+    }
+
+    // If this node has both a value AND children ("outer" node pattern),
+    // include the value under _value key
+    // This matches pseudo_value.rs:523-547 - outer_to_json
+    if let Some(value) = own_value {
+        if !value.is_null() {
+            obj.insert("_value".to_string(), value);
         }
     }
 
@@ -525,18 +546,12 @@ mod tests {
         let tree = tiles_to_tree(&resource, &graph)
             .expect("tiles_to_tree failed");
 
-        // Verify metadata
-        assert_eq!(
-            tree["resourceinstanceid"].as_str(),
-            Some("test-resource-123")
-        );
-        assert_eq!(
-            tree["graph_id"].as_str(),
-            Some(graph.graph_id())
-        );
-
-        // Verify basic structure exists
+        // Verify basic structure exists (no metadata in output - just content)
         assert!(tree.is_object(), "Result should be an object");
+
+        // Verify no metadata keys present (matching JS behavior)
+        assert!(tree.get("resourceinstanceid").is_none(), "Should not include resourceinstanceid");
+        assert!(tree.get("graph_id").is_none(), "Should not include graph_id");
 
         println!("Tree structure: {}", serde_json::to_string_pretty(&tree).unwrap());
     }
@@ -545,18 +560,19 @@ mod tests {
     fn test_tree_to_tiles_basic() {
         let graph = load_group_graph();
 
-        // Create a simple tree structure
+        // Create a simple tree structure (no metadata, just content)
         let tree = serde_json::json!({
-            "resourceinstanceid": "test-resource-456",
-            "graph_id": graph.graph_id(),
             "basic_info": [{
                 "name": {"en": "JSON Test Group", "ga": "Grúpa Tástála JSON"},
                 "description": "Created from JSON tree"
             }]
         });
 
+        let resource_id = "test-resource-456";
+        let graph_id = graph.graph_id();
+
         // Convert tree to tiles
-        let resource = tree_to_tiles(&tree, &graph)
+        let resource = tree_to_tiles(&tree, &graph, resource_id, &graph_id)
             .expect("tree_to_tiles failed");
 
         // Verify metadata
@@ -585,8 +601,12 @@ mod tests {
 
         println!("Intermediate tree: {}", serde_json::to_string_pretty(&tree).unwrap());
 
-        let roundtrip_resource = tree_to_tiles(&tree, &graph)
-            .expect("tree_to_tiles failed");
+        let roundtrip_resource = tree_to_tiles(
+            &tree,
+            &graph,
+            &original_resource.resourceinstanceid,
+            &original_resource.graph_id,
+        ).expect("tree_to_tiles failed");
 
         // Verify metadata preserved
         assert_eq!(

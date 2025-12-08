@@ -14,6 +14,7 @@ use alizarin_core::StaticFunctionsXGraphs as CoreStaticFunctionsXGraphs;
 use alizarin_core::StaticCard as CoreStaticCard;
 use alizarin_core::StaticTile as CoreStaticTile;
 use alizarin_core::StaticResourceSummary as CoreStaticResourceSummary;
+use alizarin_core::StaticResourceReference as CoreStaticResourceReference;
 use alizarin_core::StaticResource as CoreStaticResource;
 
 // ============================================================================
@@ -1324,6 +1325,41 @@ wasm_wrapper! {
     }
 }
 
+// Rust-only methods (not exposed to JS)
+impl StaticTile {
+    /// Get a reference to the inner core type (for Rust-side access)
+    pub fn inner(&self) -> &CoreStaticTile {
+        &self.0
+    }
+
+    /// Consume and return the inner core type (for Rust-side access)
+    pub fn into_inner(self) -> CoreStaticTile {
+        self.0
+    }
+
+    /// Try to extract a StaticTile from a JsValue
+    /// Returns None if the value is not a valid StaticTile wrapper
+    pub fn try_from_js(val: JsValue) -> Option<StaticTile> {
+        // Check if this is a StaticTile by looking for __wbg_ptr
+        // This is how wasm_bindgen identifies its own structs
+        if js_sys::Reflect::has(&val, &JsValue::from_str("__wbg_ptr")).unwrap_or(false) {
+            // Try to interpret as StaticTile - this is safe if the check passed
+            // and the object was created by our WASM module
+            use wasm_bindgen::convert::FromWasmAbi;
+            let ptr = js_sys::Reflect::get(&val, &JsValue::from_str("__wbg_ptr"))
+                .ok()?
+                .as_f64()? as u32;
+            if ptr == 0 {
+                return None;
+            }
+            // SAFETY: We've verified this is a WASM-created object with valid pointer
+            Some(unsafe { StaticTile::from_abi(ptr) })
+        } else {
+            None
+        }
+    }
+}
+
 #[wasm_bindgen]
 impl StaticTile {
     #[wasm_bindgen(constructor)]
@@ -1334,6 +1370,15 @@ impl StaticTile {
 
     pub fn copy(&self) -> StaticTile {
         StaticTile(self.0.clone())
+    }
+
+    /// Extract the inner core type, consuming the wrapper
+    /// This avoids serialization overhead when transferring between WASM contexts
+    #[wasm_bindgen(js_name = intoCore)]
+    pub fn into_core(self) -> JsValue {
+        // Return self as JsValue - caller can use unchecked access
+        // This is a marker that the object is a valid StaticTile
+        JsValue::from(self)
     }
 
     #[wasm_bindgen(js_name = ensureId)]
@@ -2464,6 +2509,60 @@ impl StaticResourceSummary {
     #[wasm_bindgen(getter)]
     pub fn metadata(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&self.0.metadata).unwrap_or(JsValue::NULL)
+    }
+}
+
+// StaticResourceReference - Reference to a resource instance (for resource-instance datatype)
+wasm_wrapper! {
+    pub struct StaticResourceReference wraps alizarin_core::StaticResourceReference {
+        no_constructor,
+        no_to_json,
+        no_copy,
+        get id,
+        get graph_id,
+    }
+}
+
+#[wasm_bindgen]
+impl StaticResourceReference {
+    #[wasm_bindgen(constructor)]
+    pub fn new(data: JsValue) -> Result<StaticResourceReference, JsValue> {
+        let reference: CoreStaticResourceReference = serde_wasm_bindgen::from_value(data)
+            .map_err(|e| JsValue::from_str(&format!("Failed to deserialize StaticResourceReference: {:?}", e)))?;
+        Ok(StaticResourceReference(reference))
+    }
+
+    pub fn copy(&self) -> StaticResourceReference {
+        StaticResourceReference(self.0.clone())
+    }
+
+    #[wasm_bindgen(js_name = toJSON)]
+    pub fn to_json(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.0).unwrap_or(JsValue::NULL)
+    }
+
+    #[wasm_bindgen(getter = type)]
+    pub fn resource_type(&self) -> Option<String> {
+        self.0.resource_type.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn title(&self) -> Option<String> {
+        self.0.title.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn root(&self) -> JsValue {
+        self.0.root.as_ref()
+            .and_then(|r| serde_wasm_bindgen::to_value(r).ok())
+            .unwrap_or(JsValue::NULL)
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn meta(&self) -> JsValue {
+        self.0.meta.as_ref()
+            .and_then(|m| serde_wasm_bindgen::to_value(m).ok())
+            .unwrap_or(JsValue::NULL)
     }
 }
 

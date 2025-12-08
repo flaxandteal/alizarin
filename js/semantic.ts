@@ -12,6 +12,39 @@ import {
   StaticNode,
 } from "./static-types";
 
+// Aggregated timing stats for profiling
+const timingStats = {
+  wasmCalls: 0,
+  wasmTotalMs: 0,
+  wrapCalls: 0,
+  wrapTotalMs: 0,
+  forJsonCalls: 0,
+  forJsonTotalMs: 0,
+};
+
+export function resetTimingStats() {
+  timingStats.wasmCalls = 0;
+  timingStats.wasmTotalMs = 0;
+  timingStats.wrapCalls = 0;
+  timingStats.wrapTotalMs = 0;
+  timingStats.forJsonCalls = 0;
+  timingStats.forJsonTotalMs = 0;
+}
+
+export function getTimingStats() {
+  return {
+    ...timingStats,
+    wasmAvgMs: timingStats.wasmCalls > 0 ? timingStats.wasmTotalMs / timingStats.wasmCalls : 0,
+    wrapAvgMs: timingStats.wrapCalls > 0 ? timingStats.wrapTotalMs / timingStats.wrapCalls : 0,
+    forJsonAvgMs: timingStats.forJsonCalls > 0 ? timingStats.forJsonTotalMs / timingStats.forJsonCalls : 0,
+  };
+}
+
+export function logTimingStats(label: string = '') {
+  const stats = getTimingStats();
+  console.log(`[timing-stats] ${label} wasm: ${stats.wasmCalls} calls, ${stats.wasmTotalMs.toFixed(1)}ms total (${stats.wasmAvgMs.toFixed(2)}ms avg) | wrap: ${stats.wrapCalls} calls, ${stats.wrapTotalMs.toFixed(1)}ms total | forJson: ${stats.forJsonCalls} calls, ${stats.forJsonTotalMs.toFixed(1)}ms total`);
+}
+
 class SemanticViewModel implements IStringKeyedObject, IViewModel {
   [key: string | symbol]: any;
   _: IViewModel | Promise<IViewModel> | undefined = undefined;
@@ -92,30 +125,21 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
   }
 
   async forJson() {
+    const t0 = performance.now();
     if (!this.__parentWkri || !this.__parentWkri.$) {
       return {};
     }
     const childAliases = this.__parentWkri.$.model.getChildNodeAliases(this.__node.nodeid);
-    // DEBUG: Log childAliases for location_data node
-    if (this.__node.alias === "location_data" || childAliases.includes("geometry")) {
-      console.log(`[SVM.forJson] node=${this.__node.alias}(${this.__node.nodeid}), childAliases=${childAliases.join(',')}`);
-    }
     const entries = await Promise.all(childAliases.map(async (alias) => {
       const child = await this.__getChildValue(alias);
       if (!child) {
-        // DEBUG
-        if (alias === "geometry" || alias === "location_data") {
-          console.log(`[SVM.forJson] __getChildValue('${alias}') returned null/falsy`);
-        }
         return null;
       }
       const value = await child.forJson();
-      // DEBUG
-      if (alias === "geometry" || alias === "location_data") {
-        console.log(`[SVM.forJson] '${alias}' forJson() =`, value);
-      }
       return [alias, value];
     }));
+    timingStats.forJsonCalls++;
+    timingStats.forJsonTotalMs += performance.now() - t0;
     return Object.fromEntries(entries.filter(e => e !== null));
   }
 
@@ -138,11 +162,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     const node = this.__node;
     const childAliases = parent.$.model.getChildNodeAliases(node.nodeid);
 
-    // DEBUG: Log for location_data/geometry
-    if (key === "geometry" || key === "location_data") {
-      console.log(`[SVM.__getChildValue] key='${key}', tile=${tile?.tileid}, node=${node.nodeid}, childAliases=${childAliases.join(',')}`);
-    }
-
     if (!childAliases.includes(key)) {
       throw Error(
         `Semantic node does not have this key: ${key} (${childAliases.join(', ')})`,
@@ -151,31 +170,26 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
 
     // Check cache first
     if (this.__childValues.has(key)) {
-      if (key === "geometry" || key === "location_data") {
-        console.log(`[SVM.__getChildValue] '${key}' found in cache`);
-      }
       return this.__childValues.get(key);
-    }
-
-    if (key === "geometry" || key === "location_data") {
-      console.log(`[SVM.__getChildValue] '${key}' not in cache, calling retrieveSemanticChildValue`);
     }
 
     // Call Rust to get the semantic child value (with lazy tile loading)
     // Rust now always returns a WasmPseudoList (empty if no values found)
+    const t0 = performance.now();
     const rustValue = await parent.$.wasmWrapper.retrieveSemanticChildValue(
       tile?.tileid || null,
       node.nodeid,
       node.nodegroup_id || null,
       key
     );
-
-    if (key === "geometry" || key === "location_data") {
-      console.log(`[SVM.__getChildValue] '${key}' rustValue=`, rustValue, 'length=', rustValue?.length);
-    }
+    timingStats.wasmCalls++;
+    timingStats.wasmTotalMs += performance.now() - t0;
 
     // Wrap the Rust value - Rust always returns something (possibly empty PseudoList)
+    const t1 = performance.now();
     const child = wrapRustPseudo(rustValue, parent, parent.$.model);
+    timingStats.wrapCalls++;
+    timingStats.wrapTotalMs += performance.now() - t1;
 
     if (child === null || child === undefined) {
       return child;

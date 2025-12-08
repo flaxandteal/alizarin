@@ -430,7 +430,7 @@ impl RustPseudoList {
         parent_tile_id: Option<String>,
         nodegroup_id: Option<String>
     ) -> Vec<&RustPseudoValue> {
-        self.values.iter()
+        let result: Vec<&RustPseudoValue> = self.values.iter()
             .filter(|v| {
                 if let Some(tile) = v.tile.as_ref() {
                     if let Some(ng) = nodegroup_id.as_ref() {
@@ -453,7 +453,446 @@ impl RustPseudoList {
                     }
                 }
                 false
-            }).collect()
+            }).collect();
+
+        result
+    }
+}
+
+// ============================================================================
+// Visitor pattern for JSON serialization
+// ============================================================================
+
+use std::collections::HashMap;
+
+/// Context passed to visitors during traversal
+pub struct VisitorContext<'a> {
+    /// The pseudo_cache from the instance wrapper (alias -> RustPseudoList)
+    pub pseudo_cache: &'a HashMap<String, RustPseudoList>,
+    /// Node alias to node mapping from the model
+    pub nodes_by_alias: &'a HashMap<String, Arc<StaticNode>>,
+    /// Node edges from the model (parent_nodeid -> child_nodeids)
+    pub edges: &'a HashMap<String, Vec<String>>,
+    /// Current traversal depth (for preventing infinite recursion)
+    pub depth: usize,
+    /// Maximum depth
+    pub max_depth: usize,
+}
+
+impl RustPseudoValue {
+    /// Convert this pseudo value to JSON, recursively visiting children for semantic nodes.
+    ///
+    /// This is the Rust-side implementation of forJson() that avoids WASM boundary crossings.
+    ///
+    /// Handles the inner/outer pattern:
+    /// - Outer nodes (non-semantic with children): Have tile_data as value, inner holds children
+    /// - Inner nodes: Synthetic semantic nodes that give structure to outer's children
+    /// - Pure semantic nodes: No tile_data, only children
+    /// - Leaf nodes: Just tile_data, no children
+    pub fn to_json(&self, ctx: &VisitorContext) -> serde_json::Value {
+        if ctx.depth > ctx.max_depth {
+            return serde_json::Value::Null;
+        }
+
+        // Handle outer nodes with inner (non-semantic with children)
+        // The outer has the value, the inner has the children structure
+        if self.is_outer() {
+            return self.outer_to_json(ctx);
+        }
+
+        // Handle inner nodes (synthetic semantic) - traverse children
+        if self.is_inner {
+            return self.semantic_to_json(ctx);
+        }
+
+        let datatype = self.datatype();
+
+        // Pure semantic nodes - traverse children
+        if datatype == "semantic" {
+            return self.semantic_to_json(ctx);
+        }
+
+        // Leaf nodes - return tile_data
+        if let Some(ref data) = self.tile_data {
+            return data.clone();
+        }
+
+        serde_json::Value::Null
+    }
+
+    /// Convert an outer node to JSON
+    /// Outer nodes have their own value (tile_data) PLUS children via their inner
+    fn outer_to_json(&self, ctx: &VisitorContext) -> serde_json::Value {
+        // Get the outer's own value
+        let own_value = self.tile_data.clone().unwrap_or(serde_json::Value::Null);
+
+        // If there's an inner, get children from it
+        if let Some(ref inner) = self.inner {
+            let children_json = inner.semantic_to_json(ctx);
+
+            // If children is an object, merge with own value
+            // The convention is to put own value under special key or return structured
+            if let serde_json::Value::Object(mut children_map) = children_json {
+                // Insert own value - using the datatype or "_value" as key
+                // This matches how the JS ViewModels serialize
+                if !own_value.is_null() {
+                    children_map.insert("_value".to_string(), own_value);
+                }
+                return serde_json::Value::Object(children_map);
+            }
+        }
+
+        // No inner or no children - just return own value
+        own_value
+    }
+
+    /// Convert a semantic node (or inner node) to JSON by finding and visiting its children
+    fn semantic_to_json(&self, ctx: &VisitorContext) -> serde_json::Value {
+        let mut obj = serde_json::Map::new();
+
+        // Get the tile ID for this semantic node (used to find matching children)
+        let parent_tile_id = self.tile.as_ref().and_then(|t| t.tileid.clone());
+
+        // Get child node IDs from the edges map
+        let child_node_ids = match ctx.edges.get(&self.node.nodeid) {
+            Some(ids) => ids,
+            None => {
+                return serde_json::Value::Object(obj);
+            }
+        };
+
+        // For each child node, find matching values in the pseudo_cache
+        for child_node_id in child_node_ids {
+            // Find the child node to get its alias and nodegroup_id
+            let child_node = ctx.nodes_by_alias.values()
+                .find(|n| &n.nodeid == child_node_id);
+
+            let child_node = match child_node {
+                Some(n) => n,
+                None => continue,
+            };
+
+            let child_alias = match &child_node.alias {
+                Some(alias) if !alias.is_empty() => alias,
+                _ => continue,
+            };
+
+            // Look up the pseudo list for this child alias
+            let pseudo_list = match ctx.pseudo_cache.get(child_alias) {
+                Some(list) => list,
+                None => continue,
+            };
+
+            // Find values that match based on tile relationship
+            let matching_values = pseudo_list.matching_entries(
+                parent_tile_id.clone(),
+                child_node.nodegroup_id.clone(),
+            );
+
+            if matching_values.is_empty() {
+                continue;
+            }
+
+            // Create child context with incremented depth
+            let child_ctx = VisitorContext {
+                pseudo_cache: ctx.pseudo_cache,
+                nodes_by_alias: ctx.nodes_by_alias,
+                edges: ctx.edges,
+                depth: ctx.depth + 1,
+                max_depth: ctx.max_depth,
+            };
+
+            // If single value (cardinality 1), serialize directly
+            // If multiple values (cardinality n / collector), serialize as array
+            if pseudo_list.is_single || matching_values.len() == 1 {
+                if let Some(first_value) = matching_values.first() {
+                    let json_value = first_value.to_json(&child_ctx);
+                    if !json_value.is_null() {
+                        obj.insert(child_alias.clone(), json_value);
+                    }
+                }
+            } else {
+                // Multiple values - create array
+                let arr: Vec<serde_json::Value> = matching_values.iter()
+                    .map(|v| v.to_json(&child_ctx))
+                    .filter(|v| !v.is_null())
+                    .collect();
+
+                if !arr.is_empty() {
+                    obj.insert(child_alias.clone(), serde_json::Value::Array(arr));
+                }
+            }
+        }
+
+        serde_json::Value::Object(obj)
+    }
+}
+
+impl RustPseudoList {
+    /// Convert this pseudo list to JSON
+    ///
+    /// For single-cardinality nodes, returns the single value's JSON.
+    /// For multi-cardinality (collector) nodes, returns an array.
+    pub fn to_json(&self, ctx: &VisitorContext) -> serde_json::Value {
+        if self.values.is_empty() {
+            return serde_json::Value::Null;
+        }
+
+        if self.is_single {
+            // Single value
+            if let Some(first) = self.values.first() {
+                return first.to_json(ctx);
+            }
+            return serde_json::Value::Null;
+        }
+
+        // Multiple values - array
+        let arr: Vec<serde_json::Value> = self.values.iter()
+            .map(|v| v.to_json(ctx))
+            .filter(|v| !v.is_null())
+            .collect();
+
+        if arr.is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::Array(arr)
+        }
+    }
+
+    /// Convert to JSON starting from root (no parent tile filter)
+    pub fn to_json_from_root(&self, ctx: &VisitorContext) -> serde_json::Value {
+        // For root-level, we want values where tile has no parenttile_id
+        let root_values: Vec<&RustPseudoValue> = self.values.iter()
+            .filter(|v| {
+                match v.tile.as_ref() {
+                    Some(tile) => tile.parenttile_id.is_none(),
+                    None => true,
+                }
+            })
+            .collect();
+
+        if root_values.is_empty() {
+            return serde_json::Value::Null;
+        }
+
+        if self.is_single || root_values.len() == 1 {
+            if let Some(first) = root_values.first() {
+                return first.to_json(ctx);
+            }
+            return serde_json::Value::Null;
+        }
+
+        // Multiple values - array
+        let arr: Vec<serde_json::Value> = root_values.iter()
+            .map(|v| v.to_json(ctx))
+            .filter(|v| !v.is_null())
+            .collect();
+
+        if arr.is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::Array(arr)
+        }
+    }
+}
+
+// ============================================================================
+// Tile Builder - Visitor pattern for building StaticTiles from pseudo cache
+// ============================================================================
+
+/// A tile being built - accumulates data from multiple leaf nodes that share the same tile
+#[derive(Debug, Clone)]
+pub struct TileBuilder {
+    pub tileid: Option<String>,
+    pub nodegroup_id: String,
+    pub parenttile_id: Option<String>,
+    pub resourceinstance_id: String,
+    pub sortorder: Option<i32>,
+    pub data: HashMap<String, serde_json::Value>,
+}
+
+impl TileBuilder {
+    /// Create a new tile builder from a RustPseudoValue's tile
+    pub fn from_pseudo(pseudo: &RustPseudoValue, resourceinstance_id: &str) -> Option<Self> {
+        let tile = pseudo.tile.as_ref()?;
+        Some(TileBuilder {
+            tileid: tile.tileid.clone(),
+            nodegroup_id: tile.nodegroup_id.clone(),
+            parenttile_id: tile.parenttile_id.clone(),
+            resourceinstance_id: resourceinstance_id.to_string(),
+            sortorder: tile.sortorder,
+            data: HashMap::new(),
+        })
+    }
+
+    /// Create from a StaticTile reference
+    pub fn from_tile(tile: &alizarin_core::StaticTile) -> Self {
+        TileBuilder {
+            tileid: tile.tileid.clone(),
+            nodegroup_id: tile.nodegroup_id.clone(),
+            parenttile_id: tile.parenttile_id.clone(),
+            resourceinstance_id: tile.resourceinstance_id.clone(),
+            sortorder: tile.sortorder,
+            data: HashMap::new(),
+        }
+    }
+
+    /// Convert to a StaticTile
+    pub fn to_static_tile(&self) -> alizarin_core::StaticTile {
+        alizarin_core::StaticTile {
+            tileid: self.tileid.clone(),
+            nodegroup_id: self.nodegroup_id.clone(),
+            parenttile_id: self.parenttile_id.clone(),
+            resourceinstance_id: self.resourceinstance_id.clone(),
+            sortorder: self.sortorder,
+            provisionaledits: None,
+            data: self.data.clone(),
+        }
+    }
+
+    /// Get a unique key for this tile (tileid if exists, or generated from nodegroup + sortorder)
+    pub fn key(&self) -> String {
+        self.tileid.clone().unwrap_or_else(|| {
+            format!("new_{}_{}", self.nodegroup_id, self.sortorder.unwrap_or(0))
+        })
+    }
+}
+
+/// Context for tile building traversal
+pub struct TileBuilderContext<'a> {
+    /// The pseudo_cache from the instance wrapper (alias -> RustPseudoList)
+    pub pseudo_cache: &'a HashMap<String, RustPseudoList>,
+    /// Node alias to node mapping from the model
+    pub nodes_by_alias: &'a HashMap<String, Arc<StaticNode>>,
+    /// Node edges from the model (parent_nodeid -> child_nodeids)
+    pub edges: &'a HashMap<String, Vec<String>>,
+    /// Resource instance ID for new tiles
+    pub resourceinstance_id: String,
+    /// Current traversal depth
+    pub depth: usize,
+    /// Maximum depth
+    pub max_depth: usize,
+}
+
+impl RustPseudoValue {
+    /// Collect tile data from this pseudo value and its children.
+    ///
+    /// For leaf nodes: adds tile_data to the appropriate tile
+    /// For semantic nodes: recursively collects from children
+    ///
+    /// The tiles map is keyed by tile key (tileid or generated key for new tiles)
+    pub fn collect_tiles(
+        &self,
+        ctx: &TileBuilderContext,
+        tiles: &mut HashMap<String, TileBuilder>,
+    ) {
+        if ctx.depth > ctx.max_depth {
+            return;
+        }
+
+        // If this pseudo has a tile, ensure it exists in the map
+        if let Some(ref tile) = self.tile {
+            let tile_key = tile.tileid.clone().unwrap_or_else(|| {
+                format!("new_{}_{}", tile.nodegroup_id, tile.sortorder.unwrap_or(0))
+            });
+
+            if !tiles.contains_key(&tile_key) {
+                tiles.insert(tile_key.clone(), TileBuilder::from_tile(tile));
+            }
+
+            // For leaf nodes with tile_data, add to the tile's data map
+            let datatype = self.datatype();
+            if datatype != "semantic" && !self.is_inner {
+                if let Some(ref data) = self.tile_data {
+                    if let Some(tile_builder) = tiles.get_mut(&tile_key) {
+                        tile_builder.data.insert(self.node.nodeid.clone(), data.clone());
+                    }
+                }
+            }
+        }
+
+        // For semantic nodes and inner nodes, collect from children
+        if self.datatype() == "semantic" || self.is_inner {
+            self.collect_children_tiles(ctx, tiles);
+        }
+
+        // For outer nodes, also collect from inner
+        if let Some(ref inner) = self.inner {
+            let child_ctx = TileBuilderContext {
+                pseudo_cache: ctx.pseudo_cache,
+                nodes_by_alias: ctx.nodes_by_alias,
+                edges: ctx.edges,
+                resourceinstance_id: ctx.resourceinstance_id.clone(),
+                depth: ctx.depth + 1,
+                max_depth: ctx.max_depth,
+            };
+            inner.collect_tiles(&child_ctx, tiles);
+        }
+    }
+
+    /// Collect tiles from children of a semantic node
+    fn collect_children_tiles(
+        &self,
+        ctx: &TileBuilderContext,
+        tiles: &mut HashMap<String, TileBuilder>,
+    ) {
+        let parent_tile_id = self.tile.as_ref().and_then(|t| t.tileid.clone());
+
+        let child_node_ids = match ctx.edges.get(&self.node.nodeid) {
+            Some(ids) => ids,
+            None => return,
+        };
+
+        for child_node_id in child_node_ids {
+            let child_node = ctx.nodes_by_alias.values()
+                .find(|n| &n.nodeid == child_node_id);
+
+            let child_node = match child_node {
+                Some(n) => n,
+                None => continue,
+            };
+
+            let child_alias = match &child_node.alias {
+                Some(alias) if !alias.is_empty() => alias,
+                _ => continue,
+            };
+
+            let pseudo_list = match ctx.pseudo_cache.get(child_alias) {
+                Some(list) => list,
+                None => continue,
+            };
+
+            let matching_values = pseudo_list.matching_entries(
+                parent_tile_id.clone(),
+                child_node.nodegroup_id.clone(),
+            );
+
+            let child_ctx = TileBuilderContext {
+                pseudo_cache: ctx.pseudo_cache,
+                nodes_by_alias: ctx.nodes_by_alias,
+                edges: ctx.edges,
+                resourceinstance_id: ctx.resourceinstance_id.clone(),
+                depth: ctx.depth + 1,
+                max_depth: ctx.max_depth,
+            };
+
+            for value in matching_values {
+                value.collect_tiles(&child_ctx, tiles);
+            }
+        }
+    }
+}
+
+impl RustPseudoList {
+    /// Collect tiles from all values in this list
+    pub fn collect_tiles(
+        &self,
+        ctx: &TileBuilderContext,
+        tiles: &mut HashMap<String, TileBuilder>,
+    ) {
+        for value in &self.values {
+            value.collect_tiles(ctx, tiles);
+        }
     }
 }
 
@@ -715,6 +1154,51 @@ impl WasmPseudoValue {
         }
     }
 
+    /// Set the tile data for this pseudo value.
+    /// ViewModels should call this when their value changes so that
+    /// Rust can serialize tiles without calling back to JS.
+    ///
+    /// The value should be the result of __asTileData() - the serializable
+    /// form ready for the tile's data map.
+    #[wasm_bindgen(js_name = setTileData)]
+    pub fn set_tile_data(&self, value: JsValue) {
+        let mut inner = self.inner.borrow_mut();
+        if value.is_null() || value.is_undefined() {
+            inner.tile_data = None;
+        } else {
+            // Convert JsValue to serde_json::Value for storage
+            match serde_wasm_bindgen::from_value::<serde_json::Value>(value) {
+                Ok(json_value) => {
+                    inner.tile_data = Some(json_value);
+                }
+                Err(e) => {
+                    web_sys::console::warn_1(
+                        &format!("setTileData: failed to convert value: {:?}", e).into()
+                    );
+                }
+            }
+        }
+    }
+
+    /// Get the current tile data (for debugging/inspection)
+    #[wasm_bindgen(getter, js_name = tileDataJson)]
+    pub fn tile_data_json(&self) -> JsValue {
+        let inner = self.inner.borrow();
+        match &inner.tile_data {
+            Some(data) => {
+                let json_str = serde_json::to_string(data).unwrap_or_default();
+                js_sys::JSON::parse(&json_str).unwrap_or(JsValue::NULL)
+            }
+            None => JsValue::NULL,
+        }
+    }
+
+    /// Check if this pseudo has tile data set
+    #[wasm_bindgen(js_name = hasTileData)]
+    pub fn has_tile_data(&self) -> bool {
+        self.inner.borrow().tile_data.is_some()
+    }
+
     /// PORT: js/pseudos.ts node getter - return node as WASM StaticNode wrapper
     #[wasm_bindgen(getter, js_name = node)]
     pub fn node(&self) -> WasmStaticNode {
@@ -916,6 +1400,12 @@ impl WasmPseudoList {
     #[wasm_bindgen(getter, js_name = isLoaded)]
     pub fn is_loaded(&self) -> bool {
         self.inner.is_loaded
+    }
+
+    /// Whether this list represents a cardinality-1 node (should unwrap to single value)
+    #[wasm_bindgen(getter, js_name = isSingle)]
+    pub fn is_single(&self) -> bool {
+        self.inner.is_single
     }
 
     /// Get a specific value

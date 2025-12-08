@@ -51,4 +51,7 @@ features = [
   'HtmlElement',
   'Node',
   'Window',
+  'Performance',
+  'PerformanceMark',
+  'PerformanceMeasure',
 ]

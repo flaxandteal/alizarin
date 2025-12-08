@@ -321,8 +321,16 @@ pub struct GraphWrapper {
 }
 
 impl StaticGraph {
-    /// Load a graph from a JSON string with {graph: [...]} wrapper
+    /// Load a graph from a JSON string
+    /// Handles both direct graph objects and wrapped format: {"graph": [...]}
     pub fn from_json_string(json_str: &str) -> Result<StaticGraph, String> {
+        // Try parsing as a direct StaticGraph first
+        if let Ok(mut graph) = serde_json::from_str::<StaticGraph>(json_str) {
+            graph.build_indices();
+            return Ok(graph);
+        }
+
+        // Fall back to wrapped format {graph: [...]}
         let wrapper: GraphWrapper =
             serde_json::from_str(json_str).map_err(|e| format!("Failed to parse JSON: {}", e))?;
         let mut graph = wrapper
@@ -1015,6 +1023,79 @@ impl StaticResourceSummary {
             createdtime: self.createdtime.clone(),
             lastmodified: self.lastmodified.clone(),
         }
+    }
+}
+
+// ============================================================================
+// StaticResourceReference
+// ============================================================================
+
+/// Reference to another resource instance (for resource-instance datatype)
+///
+/// Used in ResourceInstanceViewModel to represent relationships between resources.
+/// Can include the full resource tree if cascade is enabled.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StaticResourceReference {
+    /// Resource instance ID
+    pub id: String,
+    /// Graph ID for the resource model
+    #[serde(rename = "graphId")]
+    pub graph_id: String,
+    /// Resource model type/name (optional)
+    #[serde(skip_serializing_if = "Option::is_none", rename = "type")]
+    pub resource_type: Option<String>,
+    /// Display title for the resource (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Full resource tree data (when cascaded, optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub root: Option<serde_json::Value>,
+    /// Additional metadata (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta: Option<HashMap<String, serde_json::Value>>,
+}
+
+impl StaticResourceReference {
+    /// Create a minimal resource reference with just ID and graph ID
+    pub fn new(id: String, graph_id: String) -> Self {
+        StaticResourceReference {
+            id,
+            graph_id,
+            resource_type: None,
+            title: None,
+            root: None,
+            meta: None,
+        }
+    }
+
+    /// Create a reference with type information
+    pub fn with_type(id: String, graph_id: String, resource_type: String) -> Self {
+        StaticResourceReference {
+            id,
+            graph_id,
+            resource_type: Some(resource_type),
+            title: None,
+            root: None,
+            meta: None,
+        }
+    }
+
+    /// Add title to reference (builder pattern)
+    pub fn with_title(mut self, title: String) -> Self {
+        self.title = Some(title);
+        self
+    }
+
+    /// Add metadata to reference (builder pattern)
+    pub fn with_meta(mut self, meta: HashMap<String, serde_json::Value>) -> Self {
+        self.meta = Some(meta);
+        self
+    }
+
+    /// Add root data to reference for cascaded loading (builder pattern)
+    pub fn with_root(mut self, root: serde_json::Value) -> Self {
+        self.root = Some(root);
+        self
     }
 }
 

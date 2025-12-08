@@ -31,10 +31,17 @@ pub struct ResourceModelWrapperCore {
     graph: Arc<StaticGraph>,  // Core StaticGraph
 
     // Caches - these are built lazily (all core types)
-    edges: Option<HashMap<String, Vec<String>>>,
-    nodes: Option<HashMap<String, Arc<StaticNode>>>,
-    nodegroups: Option<HashMap<String, Arc<StaticNodegroup>>>,
-    nodes_by_alias: Option<HashMap<String, Arc<StaticNode>>>,
+    // Wrapped in Arc for cheap sharing with instance wrappers (avoids cloning on every access)
+    edges: Option<Arc<HashMap<String, Vec<String>>>>,
+    nodes: Option<Arc<HashMap<String, Arc<StaticNode>>>>,
+    nodegroups: Option<Arc<HashMap<String, Arc<StaticNodegroup>>>>,
+    nodes_by_alias: Option<Arc<HashMap<String, Arc<StaticNode>>>>,
+    // Reverse edge index: child_node_id -> list of parent_node_ids
+    // Built alongside edges in build_nodes() for O(1) parent lookups
+    reverse_edges: Option<Arc<HashMap<String, Vec<String>>>>,
+    // Nodes grouped by nodegroup_id for efficient per-nodegroup iteration
+    // Key: nodegroup_id, Value: list of nodes in that nodegroup
+    nodes_by_nodegroup: Option<Arc<HashMap<String, Vec<Arc<StaticNode>>>>>,
 
     permitted_nodegroups: Option<HashMap<String, bool>>,
     default_allow: bool
@@ -49,6 +56,8 @@ impl ResourceModelWrapperCore {
             nodes: None,
             nodegroups: None,
             nodes_by_alias: None,
+            reverse_edges: None,
+            nodes_by_nodegroup: None,
             permitted_nodegroups: None,
             default_allow: default_allow
         }
@@ -89,8 +98,10 @@ impl ResourceModelWrapperCore {
         }
 
         let mut edges_map: HashMap<String, Vec<String>> = HashMap::new();
+        let mut reverse_edges_map: HashMap<String, Vec<String>> = HashMap::new();
         let mut nodes_map: HashMap<String, Arc<StaticNode>> = HashMap::new();
         let mut nodegroups_map: HashMap<String, Arc<StaticNodegroup>> = HashMap::new();
+        let mut nodes_by_nodegroup_map: HashMap<String, Vec<Arc<StaticNode>>> = HashMap::new();
 
         // Build nodes map
         for node in graph.nodes.iter() {
@@ -101,7 +112,15 @@ impl ResourceModelWrapperCore {
                node_copy.alias.is_none() {
                 node_copy.alias = Some(String::new());
             }
-            nodes_map.insert(node_copy.nodeid.clone(), Arc::new(node_copy));
+            let node_arc = Arc::new(node_copy);
+            nodes_map.insert(node_arc.nodeid.clone(), Arc::clone(&node_arc));
+
+            // Build nodes-by-nodegroup index
+            let ng_id = node_arc.nodegroup_id.clone().unwrap_or_default();
+            nodes_by_nodegroup_map
+                .entry(ng_id)
+                .or_insert_with(Vec::new)
+                .push(node_arc);
         }
 
         // Build nodegroups map from nodes with nodegroup_id
@@ -124,12 +143,18 @@ impl ResourceModelWrapperCore {
             nodegroups_map.insert(nodegroup.nodegroupid.clone(), Arc::new(nodegroup.clone()));
         }
 
-        // Build edges map
+        // Build edges map AND reverse edges map in single pass
         for edge in graph.edges.iter() {
+            // Forward: parent -> children
             edges_map
                 .entry(edge.domainnode_id.clone())
                 .or_insert_with(Vec::new)
                 .push(edge.rangenode_id.clone());
+            // Reverse: child -> parents (for O(1) parent lookups)
+            reverse_edges_map
+                .entry(edge.rangenode_id.clone())
+                .or_insert_with(Vec::new)
+                .push(edge.domainnode_id.clone());
         }
 
         // Build nodes by alias map
@@ -144,10 +169,12 @@ impl ResourceModelWrapperCore {
             nodes_by_alias_map.insert(String::new(), Arc::clone(node));
         }
 
-        self.nodes = Some(nodes_map);
-        self.nodegroups = Some(nodegroups_map);
-        self.edges = Some(edges_map);
-        self.nodes_by_alias = Some(nodes_by_alias_map);
+        self.nodes = Some(Arc::new(nodes_map));
+        self.nodegroups = Some(Arc::new(nodegroups_map));
+        self.edges = Some(Arc::new(edges_map));
+        self.reverse_edges = Some(Arc::new(reverse_edges_map));
+        self.nodes_by_alias = Some(Arc::new(nodes_by_alias_map));
+        self.nodes_by_nodegroup = Some(Arc::new(nodes_by_nodegroup_map));
 
         Ok(())
     }
@@ -216,43 +243,82 @@ impl ResourceModelWrapperCore {
 
     // Internal accessors for Rust code
     pub fn get_nodes_by_alias_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
-        self.nodes_by_alias.as_ref()
+        self.nodes_by_alias.as_ref().map(|arc| arc.as_ref())
     }
 
     pub fn get_nodes_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
-        self.nodes.as_ref()
+        self.nodes.as_ref().map(|arc| arc.as_ref())
     }
 
     pub fn get_edges_internal(&self) -> Option<&HashMap<String, Vec<String>>> {
-        self.edges.as_ref()
+        self.edges.as_ref().map(|arc| arc.as_ref())
+    }
+
+    /// Get reverse edges (child_id -> parent_ids) for O(1) parent lookups
+    pub fn get_reverse_edges_internal(&self) -> Option<&HashMap<String, Vec<String>>> {
+        self.reverse_edges.as_ref().map(|arc| arc.as_ref())
+    }
+
+    /// Get nodes grouped by nodegroup_id for efficient per-nodegroup iteration
+    pub fn get_nodes_by_nodegroup_internal(&self) -> Option<&HashMap<String, Vec<Arc<StaticNode>>>> {
+        self.nodes_by_nodegroup.as_ref().map(|arc| arc.as_ref())
+    }
+
+    pub fn get_nodegroups_internal(&self) -> Option<&HashMap<String, Arc<StaticNodegroup>>> {
+        self.nodegroups.as_ref().map(|arc| arc.as_ref())
+    }
+
+    /// Get Arc-wrapped nodes for cheap sharing (just increments refcount)
+    pub fn get_nodes_arc(&self) -> Option<Arc<HashMap<String, Arc<StaticNode>>>> {
+        self.nodes.as_ref().map(Arc::clone)
+    }
+
+    /// Get Arc-wrapped edges for cheap sharing
+    pub fn get_edges_arc(&self) -> Option<Arc<HashMap<String, Vec<String>>>> {
+        self.edges.as_ref().map(Arc::clone)
+    }
+
+    /// Get Arc-wrapped reverse edges for cheap sharing
+    pub fn get_reverse_edges_arc(&self) -> Option<Arc<HashMap<String, Vec<String>>>> {
+        self.reverse_edges.as_ref().map(Arc::clone)
+    }
+
+    /// Get Arc-wrapped nodes-by-nodegroup for cheap sharing
+    pub fn get_nodes_by_nodegroup_arc(&self) -> Option<Arc<HashMap<String, Vec<Arc<StaticNode>>>>> {
+        self.nodes_by_nodegroup.as_ref().map(Arc::clone)
+    }
+
+    /// Get Arc-wrapped nodegroups for cheap sharing
+    pub fn get_nodegroups_arc(&self) -> Option<Arc<HashMap<String, Arc<StaticNodegroup>>>> {
+        self.nodegroups.as_ref().map(Arc::clone)
     }
 
     pub fn get_node_objects(&mut self) -> Result<&HashMap<String, Arc<StaticNode>>, String> {
         if self.nodes.is_none() {
             self.build_nodes()?;
         }
-        self.nodes.as_ref().ok_or_else(|| "Could not build nodes".to_string())
+        self.nodes.as_ref().map(|arc| arc.as_ref()).ok_or_else(|| "Could not build nodes".to_string())
     }
 
     pub fn get_node_objects_by_alias(&mut self) -> Result<&HashMap<String, Arc<StaticNode>>, String> {
         if self.nodes_by_alias.is_none() {
             self.build_nodes()?;
         }
-        self.nodes_by_alias.as_ref().ok_or_else(|| "Could not build nodes".to_string())
+        self.nodes_by_alias.as_ref().map(|arc| arc.as_ref()).ok_or_else(|| "Could not build nodes".to_string())
     }
 
     pub fn get_edges(&mut self) -> Result<&HashMap<String, Vec<String>>, String> {
         if self.edges.is_none() {
             self.build_nodes()?;
         }
-        self.edges.as_ref().ok_or_else(|| "Could not build edges".to_string())
+        self.edges.as_ref().map(|arc| arc.as_ref()).ok_or_else(|| "Could not build edges".to_string())
     }
 
     pub fn get_nodegroup_objects(&mut self) -> Result<&HashMap<String, Arc<StaticNodegroup>>, String> {
         if self.nodegroups.is_none() {
             self.build_nodes()?;
         }
-        self.nodegroups.as_ref().ok_or_else(|| "Could not build nodegroups".to_string())
+        self.nodegroups.as_ref().map(|arc| arc.as_ref()).ok_or_else(|| "Could not build nodegroups".to_string())
     }
 
     pub fn set_graph_nodes(&mut self, nodes: Vec<StaticNode>) {

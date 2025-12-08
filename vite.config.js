@@ -3,8 +3,12 @@ import { resolve } from "path";
 import { defineConfig } from "vite";
 import dts from 'vite-plugin-dts';
 import topLevelAwait from "vite-plugin-top-level-await";
+import pkg from './package.json' with { type: 'json' };
 
 export default defineConfig({
+  define: {
+    __ALIZARIN_VERSION__: JSON.stringify(pkg.version),
+  },
   plugins: [
     // dts({ rollupTypes: true }), // Temporarily disabled due to type errors
     wasm(),

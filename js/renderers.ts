@@ -12,7 +12,6 @@ abstract class BaseRenderer {
       throw Error("Cannot render unloaded asset - do you want to await asset.retrieve()?");
     }
     const root = await (await asset.$.getRootViewModel());
-    console.log('rendering', root, root.constructor.name);
     return this.renderValue(root, 0);
   }
 
@@ -32,7 +31,6 @@ abstract class BaseRenderer {
   private isInstance(value: any, className: string): boolean {
     const isInstance = value?.constructor?.name === className ||
            value?.constructor?.name?.includes(className);
-    console.log(value, className, isInstance);
     return isInstance;
   }
 
@@ -44,7 +42,6 @@ abstract class BaseRenderer {
     if (value instanceof Promise) {
       value = await value;
     }
-    console.log(value, typeof value);
     if (this.isInstance(value, 'DomainValueViewModel')) {
       newValue = this.renderDomainValue(value, depth);
     } else if (this.isInstance(value, 'DateViewModel')) {
@@ -114,7 +111,6 @@ class Renderer extends BaseRenderer {
   }
 
   renderBlock(block: {[key: string]: string} | {[key: string]: string}[], depth: number): any {
-    console.log(block);
     const renderedBlock: {[key: string]: any} = {};
     const promises: Promise<void>[] = [];
     for (const [key, value] of Object.entries(block)) {
