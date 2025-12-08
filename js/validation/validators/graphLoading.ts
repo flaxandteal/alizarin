@@ -276,6 +276,7 @@ export class GraphLoadingValidator {
               }
             } catch (error) {
               // Skip invalid files
+              this.reportError('graphLoadingTests', graphId, `Business data file parse error: ${(error as Error).message}`);
             }
           }
 

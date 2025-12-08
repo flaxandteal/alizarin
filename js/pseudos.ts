@@ -1,5 +1,5 @@
 import { StaticTile, StaticNode } from "./static-types";
-import { ISemantic, IViewModel, IPseudo, IRIVM, IModelWrapper } from "./interfaces";
+import { ISemantic, IViewModel, IPseudo, IRIVM } from "./interfaces";
 import { getViewModel } from "./viewModels";
 import { AttrPromise } from "./utils";
 import { PseudoNode, WasmPseudoValue, WasmPseudoList } from '../pkg/alizarin';

@@ -1749,7 +1749,6 @@ impl WASMResourceInstanceWrapper {
 
         // Non-lazy loading: process all nodegroups (only those not already loaded)
         let t1 = js_sys::Date::now();
-        let mut ensure_nodegroup_count = 0;
         if !lazy {
             // Phase 1: Process all nodegroups with doImpliedNodegroups=false (lines 636-653)
             let mut implied_nodegroups_set = HashSet::new();
