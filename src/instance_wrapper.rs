@@ -1762,7 +1762,6 @@ impl WASMResourceInstanceWrapper {
                     &nodegroup_permissions,
                     false, // TODO RMV: doImpliedNodegroups = false for phase 1
                 )?;
-                ensure_nodegroup_count += 1;
 
                 // Collect structured values
                 // PORT: Phase 4c - Merge RustPseudoList values from ensure_nodegroup result
@@ -1804,7 +1803,6 @@ impl WASMResourceInstanceWrapper {
                             &nodegroup_permissions,
                             true,  // doImpliedNodegroups = true for phase 2
                         )?;
-                        ensure_nodegroup_count += 1;
 
                         // Collect structured values
                         // PORT: Phase 4c - Merge structured values from implied nodegroup
