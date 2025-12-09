@@ -1,21 +1,44 @@
-//! Unified tracing infrastructure for Alizarin WASM
+//! Unified tracing infrastructure for Alizarin
 //!
-//! This module provides performance tracing that integrates with the browser's
-//! Performance API (performance.mark/measure), which can then be collected
-//! by the JS-side tracing infrastructure.
+//! This module provides performance tracing that works in both WASM (browser)
+//! and native Rust contexts.
 //!
-//! The approach uses the W3C Performance API as common ground between
-//! Rust/WASM and JavaScript, avoiding the complexity of full OpenTelemetry
-//! in WASM while maintaining semantic compatibility.
+//! In WASM: Integrates with the browser's Performance API (performance.now())
+//! In Native: Uses std::time::Instant for high-resolution timing
+//!
+//! For hot loops, use `record_timing_sampled` which only measures every Nth call
+//! to reduce the overhead of crossing the JS boundary in WASM.
 
-use wasm_bindgen::prelude::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
 // ============================================================================
-// Performance API bindings
+// Platform-agnostic time source
 // ============================================================================
 
+/// Get current time in milliseconds (platform-agnostic)
+#[cfg(target_arch = "wasm32")]
+pub fn now_ms() -> f64 {
+    now()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn now_ms() -> f64 {
+    use std::time::Instant;
+    thread_local! {
+        static START: Instant = Instant::now();
+    }
+    START.with(|start| start.elapsed().as_secs_f64() * 1000.0)
+}
+
+// ============================================================================
+// Performance API bindings (WASM only)
+// ============================================================================
+
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = performance)]
@@ -39,6 +62,16 @@ extern "C" {
     #[wasm_bindgen(js_namespace = performance)]
     fn now() -> f64;
 }
+
+// Stub implementations for non-WASM targets
+#[cfg(not(target_arch = "wasm32"))]
+fn mark(_name: &str) {}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn clear_marks(_name: &str) {}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn measure_with_options(_name: &str, _options: &()) {}
 
 // ============================================================================
 // Span implementation
@@ -66,7 +99,7 @@ pub enum SpanValue {
 impl Span {
     /// Create a new span and mark its start time
     pub fn new(name: &str) -> Self {
-        let start_mark = format!("alizarin:{}:start:{}", name, now() as u64);
+        let start_mark = format!("alizarin:{}:start:{}", name, now_ms() as u64);
         mark(&start_mark);
 
         Self {
@@ -101,14 +134,26 @@ impl Span {
         self
     }
 
-    /// End the span and record the measurement
+    /// End the span and record the measurement (native version - just clears marks)
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn end(&mut self) {
+        if self.ended {
+            return;
+        }
+        self.ended = true;
+        // In native mode, we don't have the Performance API, so just clean up
+        clear_marks(&self.start_mark);
+    }
+
+    /// End the span and record the measurement (WASM version - uses Performance API)
+    #[cfg(target_arch = "wasm32")]
     pub fn end(&mut self) {
         if self.ended {
             return;
         }
         self.ended = true;
 
-        let end_mark = format!("alizarin:{}:end:{}", self.name, now() as u64);
+        let end_mark = format!("alizarin:{}:end:{}", self.name, now_ms() as u64);
         mark(&end_mark);
 
         // Create measure with detail containing attributes
@@ -209,31 +254,118 @@ thread_local! {
 }
 
 /// Record a timing measurement (legacy compatibility)
+///
+/// Note: This only stores in the internal LEGACY_TIMINGS map, which can be
+/// retrieved via getRscvTimings(). We intentionally don't emit Performance API
+/// measures here because record_timing is called thousands of times during ETL,
+/// and the Performance API overhead would cause significant slowdown.
 pub fn record_timing(label: &'static str, ms: f64) {
     LEGACY_TIMINGS.with(|timings| {
         timings.borrow_mut().entry(label).or_default().record(ms);
     });
-
-    // Also emit as a Performance measure for the new system
-    // Note: This creates a measure without marks, using duration directly
-    let measure_name = format!("alizarin:{}", label);
-    let options = js_sys::Object::new();
-
-    // Use current time minus duration as start
-    let end_time = now();
-    let start_time = end_time - ms;
-
-    js_sys::Reflect::set(&options, &"start".into(), &start_time.into()).ok();
-    js_sys::Reflect::set(&options, &"end".into(), &end_time.into()).ok();
-
-    let detail = js_sys::Object::new();
-    js_sys::Reflect::set(&detail, &"source".into(), &"legacy".into()).ok();
-    js_sys::Reflect::set(&options, &"detail".into(), &detail).ok();
-
-    measure_with_options(&measure_name, &options);
 }
 
-/// Print timing summary (legacy compatibility)
+// ============================================================================
+// Sampled timing for hot loops
+// ============================================================================
+// In hot loops, calling now_ms() on every iteration is expensive because it
+// crosses the JS/WASM boundary. Instead, we sample every Nth call and
+// extrapolate the timing.
+
+/// Default sample rate: measure every 100th call
+pub const DEFAULT_SAMPLE_RATE: u32 = 100;
+
+thread_local! {
+    static SAMPLE_COUNTERS: RefCell<HashMap<&'static str, u32>> = RefCell::new(HashMap::new());
+}
+
+/// Record timing with sampling - only measures every Nth call to reduce overhead.
+///
+/// The timing is extrapolated: if we measure 1ms on a sampled call, we record
+/// sample_rate * 1ms as the total for those calls.
+///
+/// Returns true if this call was sampled (caller should measure), false otherwise.
+#[inline]
+pub fn should_sample(label: &'static str, sample_rate: u32) -> bool {
+    SAMPLE_COUNTERS.with(|counters| {
+        let mut counters = counters.borrow_mut();
+        let counter = counters.entry(label).or_insert(0);
+        *counter += 1;
+        if *counter >= sample_rate {
+            *counter = 0;
+            true
+        } else {
+            false
+        }
+    })
+}
+
+/// Record a sampled timing measurement.
+///
+/// Use with `should_sample()`:
+/// ```ignore
+/// let do_sample = should_sample("my_label", 100);
+/// let t0 = if do_sample { now_ms() } else { 0.0 };
+/// // ... do work ...
+/// if do_sample {
+///     record_timing_sampled("my_label", now_ms() - t0, 100);
+/// }
+/// ```
+///
+/// This records count=sample_rate and total_ms=ms*sample_rate to extrapolate
+/// the timing across all calls.
+pub fn record_timing_sampled(label: &'static str, ms: f64, sample_rate: u32) {
+    LEGACY_TIMINGS.with(|timings| {
+        let mut timings = timings.borrow_mut();
+        let stats = timings.entry(label).or_default();
+        // Record the extrapolated count and total
+        stats.count += sample_rate;
+        stats.total_ms += ms * sample_rate as f64;
+        // For min/max, we use the actual sampled value (not extrapolated)
+        if stats.count == sample_rate {
+            stats.min_ms = ms;
+            stats.max_ms = ms;
+        } else {
+            stats.min_ms = stats.min_ms.min(ms);
+            stats.max_ms = stats.max_ms.max(ms);
+        }
+    });
+}
+
+/// Print timing summary (native Rust version)
+#[cfg(not(target_arch = "wasm32"))]
+pub fn print_rscv_timings() {
+    LEGACY_TIMINGS.with(|timings| {
+        let timings = timings.borrow();
+        println!("=== RSCV Timing Summary ===");
+        let mut entries: Vec<_> = timings.iter().collect();
+        entries.sort_by(|a, b| b.1.total_ms.partial_cmp(&a.1.total_ms).unwrap());
+        for (label, stats) in entries {
+            println!(
+                "{}: count={}, total={:.2}ms, avg={:.2}ms, min={:.2}ms, max={:.2}ms",
+                label, stats.count, stats.total_ms, stats.avg_ms(), stats.min_ms, stats.max_ms
+            );
+        }
+    });
+}
+
+/// Clear timing stats (native Rust version)
+#[cfg(not(target_arch = "wasm32"))]
+pub fn clear_rscv_timings() {
+    LEGACY_TIMINGS.with(|timings| {
+        timings.borrow_mut().clear();
+    });
+}
+
+// ============================================================================
+// WASM-exposed tracing API
+// ============================================================================
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::wasm_bindgen;
+
+/// Print timing summary (WASM version)
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = printRscvTimings)]
 pub fn print_rscv_timings() {
     LEGACY_TIMINGS.with(|timings| {
@@ -250,7 +382,8 @@ pub fn print_rscv_timings() {
     });
 }
 
-/// Clear timing stats (legacy compatibility)
+/// Clear timing stats (WASM version)
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = clearRscvTimings)]
 pub fn clear_rscv_timings() {
     LEGACY_TIMINGS.with(|timings| {
@@ -260,6 +393,7 @@ pub fn clear_rscv_timings() {
 
 /// Get timing stats as a JS Map for integration with the JS tracing system
 /// Returns Map<string, {count: number, totalMs: number, minMs: number, maxMs: number, avgMs: number}>
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = getRscvTimings)]
 pub fn get_rscv_timings() -> JsValue {
     LEGACY_TIMINGS.with(|timings| {
@@ -281,16 +415,14 @@ pub fn get_rscv_timings() -> JsValue {
     })
 }
 
-// ============================================================================
-// WASM-exposed tracing API
-// ============================================================================
-
 /// WASM-exposed span handle for use from JavaScript
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub struct WasmSpan {
     inner: Option<Span>,
 }
 
+#[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 impl WasmSpan {
     #[wasm_bindgen(constructor)]

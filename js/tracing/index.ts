@@ -613,6 +613,7 @@ export async function timed<T>(
 // These will be set by the main module when WASM is available
 let _getRscvTimings: (() => Map<string, any>) | null = null;
 let _getAlizarinTimingStats: (() => any) | null = null;
+let _getWasmTimings: (() => Map<string, any>) | null = null;
 
 /**
  * Register the Rust timing getter (called from main.ts after WASM init)
@@ -626,6 +627,13 @@ export function registerRustTimingGetter(getter: () => Map<string, any>): void {
  */
 export function registerAlizarinTimingGetter(getter: () => any): void {
   _getAlizarinTimingStats = getter;
+}
+
+/**
+ * Register the detailed WASM timing getter (called from main.ts)
+ */
+export function registerWasmTimingGetter(getter: () => Map<string, any>): void {
+  _getWasmTimings = getter;
 }
 
 /**
@@ -694,6 +702,27 @@ export function collectAllTimings(exporter: SummaryExporter): void {
       }
     } catch (e) {
       console.warn('Failed to collect alizarin JS timings:', e);
+    }
+  }
+
+  // Collect detailed JS WASM timings (from graphManager.ts recordWasmTiming)
+  if (_getWasmTimings) {
+    try {
+      const wasmTimings = _getWasmTimings();
+      if (wasmTimings && wasmTimings.size > 0) {
+        const wasmStats: Record<string, { count: number; totalMs: number; minMs: number; maxMs: number }> = {};
+        wasmTimings.forEach((value: any, key: string) => {
+          wasmStats[key] = {
+            count: value.count || 0,
+            totalMs: value.totalMs || 0,
+            minMs: value.minMs || 0,
+            maxMs: value.maxMs || 0,
+          };
+        });
+        exporter.mergeStats(wasmStats, 'js: ');
+      }
+    } catch (e) {
+      console.warn('Failed to collect detailed WASM timings:', e);
     }
   }
 }
