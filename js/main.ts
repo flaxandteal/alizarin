@@ -1,7 +1,7 @@
 import * as client from "./client";
 import * as interfaces from "./interfaces";
 import { RDM } from "./rdm";
-import { ResourceModelWrapper, WKRM, graphManager, staticStore, GraphManager, GraphMutator } from "./graphManager";
+import { ResourceModelWrapper, WKRM, graphManager, staticStore, GraphManager, GraphMutator, getWasmTimings } from "./graphManager";
 import * as staticTypes from "./static-types";
 import * as utils from "./utils";
 import * as viewModels from "./viewModels";
@@ -17,6 +17,8 @@ export const version: string = __ALIZARIN_VERSION__;
 
 // Register alizarin JS timing getter for unified tracing
 tracing.registerAlizarinTimingGetter(getTimingStats);
+// Register detailed WASM timing getter
+tracing.registerWasmTimingGetter(getWasmTimings);
 
 // Initialize WASM module at startup
 // Note: This returns a promise that must be awaited before using WASM features

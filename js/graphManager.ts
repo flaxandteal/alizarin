@@ -62,6 +62,11 @@ export function clearWasmTimings() {
   wasmTimings.clear();
 }
 
+// Get raw wasmTimings Map for integration with tracing infrastructure
+export function getWasmTimings(): Map<string, TimingStats> {
+  return wasmTimings;
+}
+
 class ConfigurationOptions {
   graphs: Array<string> | null | boolean = null;
   eagerLoadGraphs: boolean = false;
@@ -562,19 +567,16 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         }
       }
 
-      // Phase 4h: Pass nodegroup permissions to Rust - Rust will compute tile permissions
-      const nodegroupPermissions = this.model.getPermittedNodegroups();
-
       // Get all nodegroup IDs
       const nodegroupIds = [...nodegroupObjs.keys()];
 
       // Call Rust implementation - Rust stores values in its pseudo_cache
+      // Permissions are read directly from the model in Rust (set via setPermittedNodegroups)
       const t0 = performance.now();
       const result = this.wasmWrapper.populate(
         lazy,
         nodegroupIds,
-        rootNode.alias,
-        nodegroupPermissions
+        rootNode.alias
       );
       recordWasmTiming("populate (WASM)", performance.now() - t0);
 

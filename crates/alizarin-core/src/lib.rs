@@ -7,6 +7,7 @@
 /// - Other languages via C FFI
 
 pub mod graph;
+pub mod interner;
 pub mod loader;
 pub mod pseudo_node;
 pub mod pseudo_node_lite;
@@ -27,3 +28,8 @@ pub use loader::{LoaderError, PrebuildInfo, PrebuildLoader};
 // PseudoNode types
 pub use pseudo_node::{NodeLike, PseudoNodeBuilder, PseudoNodeCore};
 pub use pseudo_node_lite::{build_placeholder, PseudoNodeState};
+
+// Interner types
+pub use interner::{InternedId, Interner, InternerExt};
+#[cfg(feature = "multi-threaded")]
+pub use interner::ThreadSafeInterner;
