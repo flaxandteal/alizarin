@@ -80,18 +80,23 @@ jobs:
             ext/js/@alizarin/clm/dist/
             ext/js/@alizarin/clm/package.json
 
-  # Python extensions (depends on main Python build)
+  # Python extensions
   python-extensions:
-    name: Python Extensions
-    runs-on: ubuntu-latest
+    name: Python Extensions (${{ matrix.os }} / py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ['3.11', '3.12']
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -136,5 +141,5 @@ jobs:
       - name: Upload alizarin-clm wheel
         uses: actions/upload-artifact@v4
         with:
-          name: alizarin-clm-python
+          name: alizarin-clm-python-${{ matrix.os }}-py${{ matrix.python-version }}
           path: ext/python/alizarin-clm/target/wheels/*.whl
