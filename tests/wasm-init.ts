@@ -1,12 +1,8 @@
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import init from '../pkg/alizarin';
+import { initWasm } from '../js/_wasm';
 
 // Custom WASM initialization for tests
+// This uses the same initialization path as the main code to ensure
+// the wasmInitialized flag is set properly and prevent duplicate initialization
 export async function initWasmForTests() {
-  const wasmPath = join(process.cwd(), 'pkg', 'alizarin_bg.wasm');
-  const wasmBuffer = readFileSync(wasmPath);
-
-  // Initialize with the new API to avoid deprecation warning
-  await init({ module_or_path: wasmBuffer });
+  await initWasm();
 }

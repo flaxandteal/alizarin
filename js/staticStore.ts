@@ -93,9 +93,8 @@ class StaticStore {
       }
     }
 
-    const resourceJSON: StaticResource =
-      await this.archesClient.getResource(id);
-    const resource = new StaticResource(resourceJSON);
+    // getResource now returns a proper StaticResource directly (using fast JSON string path)
+    const resource: StaticResource = await this.archesClient.getResource(id);
     // Cache based on cacheMetadataOnly setting
     this.cache.set(id, this.cacheMetadataOnly ? resource.resourceinstance : resource);
     return resource;
@@ -122,13 +121,14 @@ class StaticStore {
   async loadTiles(id: string, nodegroupId?: string | null): Promise<StaticTile[]> {
     // Check if we already have full resource with tiles in cache
     const cached = this.cache.get(id);
-    if (cached instanceof StaticResource && cached.tiles) {
-      const tiles = cached.tiles;
+    // Cache tiles to avoid multiple expensive getter calls (each creates N WASM wrappers)
+    const cachedTiles = cached instanceof StaticResource ? cached.tiles : null;
+    if (cachedTiles && cachedTiles.length > 0) {
       // Filter by nodegroup if specified
       if (nodegroupId) {
-        return tiles.filter(tile => tile.nodegroup_id === nodegroupId);
+        return cachedTiles.filter(tile => tile.nodegroup_id === nodegroupId);
       }
-      return tiles;
+      return cachedTiles;
     }
 
     // Load tiles on-demand
@@ -143,7 +143,8 @@ class StaticStore {
   async ensureFullResource(id: string): Promise<StaticResource> {
     const cached = this.cache.get(id);
 
-    if (cached instanceof StaticResource && cached.tiles) {
+    // Check tiles existence without creating new WASM wrappers (use tilesLoaded flag)
+    if (cached instanceof StaticResource && cached.tilesLoaded) {
       return cached;
     }
 

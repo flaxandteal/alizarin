@@ -1,6 +1,6 @@
 //! Application state and logic
 
-use alizarin_core::{IndexedGraph, PrebuildInfo, PrebuildLoader, StaticNode, StaticNodegroup, StaticResourceSummary};
+use alizarin_core::{IndexedGraph, PrebuildInfo, PrebuildLoader, StaticNode, StaticNodegroup, StaticResource, StaticResourceSummary, StaticTile};
 use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
@@ -61,6 +61,8 @@ pub enum BusinessDataView {
     GraphList,
     /// Resource list for selected graph
     ResourceList,
+    /// Full resource detail view with tile tree
+    ResourceDetail,
 }
 
 /// Data source for business data
@@ -100,6 +102,35 @@ pub enum LoaderMessage {
     Done,
     /// An error occurred
     Error(String),
+}
+
+/// A node in the tile tree view
+#[derive(Debug, Clone)]
+pub struct TileTreeNode {
+    /// Unique ID for this tree node
+    pub id: String,
+    /// Display name (from graph node alias/name)
+    pub name: String,
+    /// The node ID from the graph (for looking up datatype, etc.)
+    pub node_id: Option<String>,
+    /// The tile ID if this represents a tile
+    pub tile_id: Option<String>,
+    /// The nodegroup ID
+    pub nodegroup_id: Option<String>,
+    /// The data value as JSON
+    pub value: Option<serde_json::Value>,
+    /// Depth in tree
+    pub depth: usize,
+    /// Whether this node is expanded
+    pub expanded: bool,
+    /// Whether this node has children
+    pub has_children: bool,
+    /// Datatype from graph node
+    pub datatype: Option<String>,
+    /// Whether this node matches the current search
+    pub matches_search: bool,
+    /// Whether this node is visible in search (match or ancestor of match)
+    pub visible_in_search: bool,
 }
 
 /// A node in the tree view with expansion state
@@ -167,6 +198,21 @@ pub struct App {
     pub bd_counting_resources: usize, // resources found during counting
     pub bd_has_more: bool,
 
+    // Resource detail view state
+    pub bd_current_resource: Option<StaticResource>,
+    pub bd_tile_tree: Vec<TileTreeNode>,
+    pub bd_tile_selected: usize,
+    pub bd_tile_scroll_offset: usize,
+    pub bd_resource_scroll_offset: usize,
+    pub bd_resource_loading: bool,
+    /// Track which tile IDs are expanded (by tile_id)
+    bd_tile_expanded: std::collections::HashSet<String>,
+    // Tile tree search state
+    pub bd_tile_search_mode: bool,
+    pub bd_tile_search_query: String,
+    pub bd_tile_search_error: Option<String>,
+    pub bd_tile_search_case_sensitive: bool,
+
     // Background loader
     bd_loader_rx: Option<Receiver<LoaderMessage>>,
     #[allow(dead_code)]
@@ -211,6 +257,17 @@ impl App {
             bd_counting_files: 0,
             bd_counting_resources: 0,
             bd_has_more: false,
+            bd_current_resource: None,
+            bd_tile_tree: Vec::new(),
+            bd_tile_selected: 0,
+            bd_tile_scroll_offset: 0,
+            bd_resource_scroll_offset: 0,
+            bd_resource_loading: false,
+            bd_tile_expanded: std::collections::HashSet::new(),
+            bd_tile_search_mode: false,
+            bd_tile_search_query: String::new(),
+            bd_tile_search_error: None,
+            bd_tile_search_case_sensitive: false,
             bd_loader_rx: None,
             bd_loader_handle: None,
         };
@@ -283,6 +340,11 @@ impl App {
                     };
                     self.bd_resource_selected = (self.bd_resource_selected + 1).min(max_idx);
                 }
+                BusinessDataView::ResourceDetail => {
+                    if !self.bd_tile_tree.is_empty() {
+                        self.bd_tile_selected = (self.bd_tile_selected + 1).min(self.bd_tile_tree.len() - 1);
+                    }
+                }
             },
             _ => {}
         }
@@ -313,6 +375,82 @@ impl App {
                         self.bd_resource_selected -= 1;
                     }
                 }
+                BusinessDataView::ResourceDetail => {
+                    if self.bd_tile_selected > 0 {
+                        self.bd_tile_selected -= 1;
+                    }
+                }
+            },
+            _ => {}
+        }
+    }
+
+    /// Page down - move 10 items at a time
+    pub fn on_page_down(&mut self) {
+        const PAGE_SIZE: usize = 10;
+        match self.current_tab {
+            Tab::Graphs => match self.graphs_view {
+                GraphsView::List => {
+                    if !self.graphs.is_empty() {
+                        self.graph_list_selected =
+                            (self.graph_list_selected + PAGE_SIZE).min(self.graphs.len() - 1);
+                    }
+                }
+                GraphsView::Tree => {
+                    if !self.tree_nodes.is_empty() {
+                        self.tree_selected =
+                            (self.tree_selected + PAGE_SIZE).min(self.tree_nodes.len() - 1);
+                    }
+                }
+            },
+            Tab::BusinessData => match self.bd_view {
+                BusinessDataView::GraphList => {
+                    if !self.graphs.is_empty() {
+                        self.bd_graph_selected =
+                            (self.bd_graph_selected + PAGE_SIZE).min(self.graphs.len() - 1);
+                    }
+                }
+                BusinessDataView::ResourceList => {
+                    let max_idx = if self.bd_resources_filtered.is_empty() && self.bd_search_query.is_empty() {
+                        self.bd_resources.len().saturating_sub(1)
+                    } else {
+                        self.bd_resources_filtered.len().saturating_sub(1)
+                    };
+                    self.bd_resource_selected = (self.bd_resource_selected + PAGE_SIZE).min(max_idx);
+                }
+                BusinessDataView::ResourceDetail => {
+                    if !self.bd_tile_tree.is_empty() {
+                        self.bd_tile_selected =
+                            (self.bd_tile_selected + PAGE_SIZE).min(self.bd_tile_tree.len() - 1);
+                    }
+                }
+            },
+            _ => {}
+        }
+    }
+
+    /// Page up - move 10 items at a time
+    pub fn on_page_up(&mut self) {
+        const PAGE_SIZE: usize = 10;
+        match self.current_tab {
+            Tab::Graphs => match self.graphs_view {
+                GraphsView::List => {
+                    self.graph_list_selected = self.graph_list_selected.saturating_sub(PAGE_SIZE);
+                }
+                GraphsView::Tree => {
+                    self.tree_selected = self.tree_selected.saturating_sub(PAGE_SIZE);
+                }
+            },
+            Tab::BusinessData => match self.bd_view {
+                BusinessDataView::GraphList => {
+                    self.bd_graph_selected = self.bd_graph_selected.saturating_sub(PAGE_SIZE);
+                }
+                BusinessDataView::ResourceList => {
+                    self.bd_resource_selected = self.bd_resource_selected.saturating_sub(PAGE_SIZE);
+                }
+                BusinessDataView::ResourceDetail => {
+                    self.bd_tile_selected = self.bd_tile_selected.saturating_sub(PAGE_SIZE);
+                }
             },
             _ => {}
         }
@@ -321,12 +459,16 @@ impl App {
     pub fn on_right(&mut self) {
         if self.current_tab == Tab::Graphs && self.graphs_view == GraphsView::Tree {
             self.expand_selected_node();
+        } else if self.current_tab == Tab::BusinessData && self.bd_view == BusinessDataView::ResourceDetail {
+            self.bd_expand_tile();
         }
     }
 
     pub fn on_left(&mut self) {
         if self.current_tab == Tab::Graphs && self.graphs_view == GraphsView::Tree {
             self.collapse_selected_node();
+        } else if self.current_tab == Tab::BusinessData && self.bd_view == BusinessDataView::ResourceDetail {
+            self.bd_collapse_tile();
         }
     }
 
@@ -337,9 +479,15 @@ impl App {
                     self.enter_tree_view();
                 }
             }
-            Tab::BusinessData => {
-                if self.bd_view == BusinessDataView::GraphList {
+            Tab::BusinessData => match self.bd_view {
+                BusinessDataView::GraphList => {
                     self.bd_enter_resource_list();
+                }
+                BusinessDataView::ResourceList => {
+                    self.bd_enter_resource_detail();
+                }
+                BusinessDataView::ResourceDetail => {
+                    self.bd_toggle_tile_expand();
                 }
             }
             _ => {}
@@ -356,6 +504,10 @@ impl App {
             Tab::BusinessData => {
                 if self.bd_search_mode {
                     self.bd_exit_search_mode();
+                } else if self.bd_view == BusinessDataView::ResourceDetail {
+                    self.bd_view = BusinessDataView::ResourceList;
+                    self.bd_current_resource = None;
+                    self.bd_tile_tree.clear();
                 } else if self.bd_view == BusinessDataView::ResourceList {
                     self.bd_view = BusinessDataView::GraphList;
                 }
@@ -834,40 +986,38 @@ impl App {
                         }
                     };
 
-                    // Fast count pass with progress updates
-                    let mut file_counts = Vec::with_capacity(files.len());
-                    let mut running_total = 0usize;
-                    for (i, file) in files.iter().enumerate() {
-                        match loader.fast_count_resources_in_file(file, &graph_id) {
-                            Ok(count) => {
-                                if count > 0 {
-                                    file_counts.push((file.clone(), count));
-                                    running_total += count;
-                                }
-                                let _ = tx.send(LoaderMessage::CountingProgress(i + 1, running_total));
-                            }
-                            Err(_) => continue,
-                        }
-                    }
+                    // Count resources in parallel
+                    let _ = tx.send(LoaderMessage::CountingProgress(0, 0));
+                    let file_counts = loader.count_resources_parallel(&files, &graph_id);
+                    let total_count: usize = file_counts.iter().map(|(_, c)| c).sum();
 
                     // Send total count
-                    let _ = tx.send(LoaderMessage::TotalCount(running_total));
+                    let _ = tx.send(LoaderMessage::TotalCount(total_count));
 
-                    // Load each file fully and send resources
-                    for (file_path, _count) in file_counts {
-                        match loader.load_resource_summaries_from_file(&file_path, &graph_id) {
-                            Ok(summaries) => {
-                                if !summaries.is_empty() {
-                                    if tx.send(LoaderMessage::ResourceBatch(summaries)).is_err() {
-                                        return;
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                let _ = tx.send(LoaderMessage::Error(e.to_string()));
-                            }
+                    // Create a channel for receiving batches from parallel loading
+                    let (batch_tx, batch_rx) = std::sync::mpsc::channel();
+
+                    // Spawn parallel loading in a separate thread so we can forward results
+                    let loader_clone = Arc::clone(&loader);
+                    let graph_id_clone = graph_id.clone();
+                    let file_counts_clone = file_counts.clone();
+                    let load_thread = thread::spawn(move || {
+                        let _ = loader_clone.load_resources_parallel(
+                            &file_counts_clone,
+                            &graph_id_clone,
+                            &batch_tx,
+                        );
+                    });
+
+                    // Forward batches to main channel
+                    for summaries in batch_rx {
+                        if tx.send(LoaderMessage::ResourceBatch(summaries)).is_err() {
+                            break;
                         }
                     }
+
+                    // Wait for loading to complete
+                    let _ = load_thread.join();
                 }
                 BusinessDataSource::Preindex => {
                     // Preindex: use existing batch approach
@@ -1091,5 +1241,563 @@ impl App {
             let graph_id = self.graphs[self.bd_graph_selected].graph.graphid.clone();
             self.bd_start_background_load(graph_id);
         }
+    }
+
+    // =========================================================================
+    // Resource Detail View Methods
+    // =========================================================================
+
+    /// Enter the resource detail view for the selected resource
+    fn bd_enter_resource_detail(&mut self) {
+        // Get IDs we need before any borrows
+        let resource_id = match self.bd_selected_resource() {
+            Some(r) => r.resourceinstanceid.clone(),
+            None => return,
+        };
+
+        let graph_id = match self.graphs.get(self.bd_graph_selected) {
+            Some(g) => g.graph.graphid.clone(),
+            None => return,
+        };
+
+        self.bd_resource_loading = true;
+        self.bd_view = BusinessDataView::ResourceDetail;
+        self.bd_tile_expanded.clear();  // Reset expansion state for new resource
+
+        // Load the full resource
+        match self.loader.load_full_resource(&resource_id, &graph_id) {
+            Ok(resource) => {
+                self.bd_current_resource = Some(resource);
+                self.bd_build_tile_tree();
+                self.bd_resource_loading = false;
+            }
+            Err(e) => {
+                eprintln!("Failed to load resource: {}", e);
+                self.bd_resource_loading = false;
+            }
+        }
+    }
+
+    /// Build the tile tree from the current resource
+    fn bd_build_tile_tree(&mut self) {
+        self.bd_tile_tree.clear();
+        self.bd_tile_selected = 0;
+
+        // Clone what we need to avoid borrow conflicts
+        let tiles = match &self.bd_current_resource {
+            Some(r) => match &r.tiles {
+                Some(t) => t.clone(),
+                None => return,
+            },
+            None => return,
+        };
+
+        let graph_idx = self.bd_graph_selected;
+
+        // Build a map of parenttile_id -> children for hierarchy
+        let mut children_by_parent: std::collections::HashMap<Option<String>, Vec<StaticTile>> =
+            std::collections::HashMap::new();
+
+        for tile in &tiles {
+            children_by_parent
+                .entry(tile.parenttile_id.clone())
+                .or_default()
+                .push(tile.clone());
+        }
+
+        // Start with root tiles (no parent)
+        let root_tiles = children_by_parent.get(&None).cloned().unwrap_or_default();
+
+        // Sort by sortorder
+        let mut sorted_roots: Vec<_> = root_tiles;
+        sorted_roots.sort_by_key(|t| t.sortorder.unwrap_or(0));
+
+        // Build tree nodes - root tiles start expanded
+        // Add root tile IDs to expanded set so rebuild works correctly
+        for tile in &sorted_roots {
+            if let Some(ref tile_id) = tile.tileid {
+                self.bd_tile_expanded.insert(tile_id.clone());
+            }
+        }
+
+        let mut tree_nodes = Vec::new();
+        for tile in &sorted_roots {
+            Self::collect_tile_tree_nodes(
+                tile,
+                &self.graphs.get(graph_idx),
+                &children_by_parent,
+                0,
+                true,
+                &mut tree_nodes,
+            );
+        }
+
+        self.bd_tile_tree = tree_nodes;
+    }
+
+    /// Collect tile tree nodes recursively (static method to avoid borrow issues)
+    fn collect_tile_tree_nodes(
+        tile: &StaticTile,
+        graph: &Option<&IndexedGraph>,
+        children_by_parent: &std::collections::HashMap<Option<String>, Vec<StaticTile>>,
+        depth: usize,
+        expanded: bool,
+        nodes: &mut Vec<TileTreeNode>,
+    ) {
+        let graph = match graph {
+            Some(g) => g,
+            None => return,
+        };
+
+        // Get nodegroup info
+        let nodegroup_name = graph.graph.nodes.iter()
+            .find(|n| n.nodegroup_id.as_ref() == Some(&tile.nodegroup_id) && n.is_collector)
+            .map(|n| n.alias.clone().unwrap_or_else(|| n.name.clone()))
+            .unwrap_or_else(|| tile.nodegroup_id.clone());
+
+        let tile_id = tile.tileid.clone();
+        let has_child_tiles = tile_id.as_ref()
+            .map(|id| children_by_parent.contains_key(&Some(id.clone())))
+            .unwrap_or(false);
+
+        // Add the tile node
+        nodes.push(TileTreeNode {
+            id: format!("tile_{}", tile_id.as_deref().unwrap_or("unknown")),
+            name: nodegroup_name,
+            node_id: None,
+            tile_id: tile_id.clone(),
+            nodegroup_id: Some(tile.nodegroup_id.clone()),
+            value: None,
+            depth,
+            expanded,
+            has_children: has_child_tiles || !tile.data.is_empty(),
+            datatype: None,
+            matches_search: false,
+            visible_in_search: true,
+        });
+
+        // Add data values as children if expanded
+        if expanded {
+            for (node_id, value) in &tile.data {
+                let node = graph.nodes_by_id.get(node_id);
+                let node_name = node
+                    .map(|n| n.alias.clone().unwrap_or_else(|| n.name.clone()))
+                    .unwrap_or_else(|| node_id.clone());
+                let datatype = node.map(|n| n.datatype.clone());
+
+                nodes.push(TileTreeNode {
+                    id: format!("data_{}_{}", tile_id.as_deref().unwrap_or("unknown"), node_id),
+                    name: node_name,
+                    node_id: Some(node_id.clone()),
+                    tile_id: tile_id.clone(),
+                    nodegroup_id: Some(tile.nodegroup_id.clone()),
+                    value: Some(value.clone()),
+                    depth: depth + 1,
+                    expanded: false,
+                    has_children: false,
+                    datatype,
+                    matches_search: false,
+                    visible_in_search: true,
+                });
+            }
+
+            // Add child tiles recursively
+            if let Some(tile_id) = &tile_id {
+                if let Some(child_tiles) = children_by_parent.get(&Some(tile_id.clone())) {
+                    let mut sorted_children: Vec<_> = child_tiles.clone();
+                    sorted_children.sort_by_key(|t| t.sortorder.unwrap_or(0));
+                    for child in &sorted_children {
+                        Self::collect_tile_tree_nodes(child, &Some(graph), children_by_parent, depth + 1, false, nodes);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Collect tile tree nodes with explicit expansion state tracking
+    fn collect_tile_tree_nodes_with_expanded(
+        tile: &StaticTile,
+        graph: &Option<&IndexedGraph>,
+        children_by_parent: &std::collections::HashMap<Option<String>, Vec<StaticTile>>,
+        expanded_set: &std::collections::HashSet<String>,
+        depth: usize,
+        nodes: &mut Vec<TileTreeNode>,
+    ) {
+        let graph = match graph {
+            Some(g) => g,
+            None => return,
+        };
+
+        // Get nodegroup info
+        let nodegroup_name = graph.graph.nodes.iter()
+            .find(|n| n.nodegroup_id.as_ref() == Some(&tile.nodegroup_id) && n.is_collector)
+            .map(|n| n.alias.clone().unwrap_or_else(|| n.name.clone()))
+            .unwrap_or_else(|| tile.nodegroup_id.clone());
+
+        let tile_id = tile.tileid.clone();
+        let has_child_tiles = tile_id.as_ref()
+            .map(|id| children_by_parent.contains_key(&Some(id.clone())))
+            .unwrap_or(false);
+
+        // Check if this tile is expanded
+        let is_expanded = tile_id.as_ref()
+            .map(|id| expanded_set.contains(id))
+            .unwrap_or(false);
+
+        // Add the tile node
+        nodes.push(TileTreeNode {
+            id: format!("tile_{}", tile_id.as_deref().unwrap_or("unknown")),
+            name: nodegroup_name,
+            node_id: None,
+            tile_id: tile_id.clone(),
+            nodegroup_id: Some(tile.nodegroup_id.clone()),
+            value: None,
+            depth,
+            expanded: is_expanded,
+            has_children: has_child_tiles || !tile.data.is_empty(),
+            datatype: None,
+            matches_search: false,
+            visible_in_search: true,
+        });
+
+        // Add data values as children if expanded
+        if is_expanded {
+            for (node_id, value) in &tile.data {
+                let node = graph.nodes_by_id.get(node_id);
+                let node_name = node
+                    .map(|n| n.alias.clone().unwrap_or_else(|| n.name.clone()))
+                    .unwrap_or_else(|| node_id.clone());
+                let datatype = node.map(|n| n.datatype.clone());
+
+                nodes.push(TileTreeNode {
+                    id: format!("data_{}_{}", tile_id.as_deref().unwrap_or("unknown"), node_id),
+                    name: node_name,
+                    node_id: Some(node_id.clone()),
+                    tile_id: tile_id.clone(),
+                    nodegroup_id: Some(tile.nodegroup_id.clone()),
+                    value: Some(value.clone()),
+                    depth: depth + 1,
+                    expanded: false,
+                    has_children: false,
+                    datatype,
+                    matches_search: false,
+                    visible_in_search: true,
+                });
+            }
+
+            // Add child tiles recursively
+            if let Some(tile_id) = &tile_id {
+                if let Some(child_tiles) = children_by_parent.get(&Some(tile_id.clone())) {
+                    let mut sorted_children: Vec<_> = child_tiles.clone();
+                    sorted_children.sort_by_key(|t| t.sortorder.unwrap_or(0));
+                    for child in &sorted_children {
+                        Self::collect_tile_tree_nodes_with_expanded(child, &Some(graph), children_by_parent, expanded_set, depth + 1, nodes);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Toggle expansion of the selected tile tree node
+    fn bd_toggle_tile_expand(&mut self) {
+        if self.bd_tile_selected >= self.bd_tile_tree.len() {
+            return;
+        }
+
+        let node = &self.bd_tile_tree[self.bd_tile_selected];
+        if !node.has_children {
+            return;
+        }
+
+        // Get the tile_id to toggle
+        if let Some(ref tile_id) = node.tile_id {
+            if self.bd_tile_expanded.contains(tile_id) {
+                self.bd_tile_expanded.remove(tile_id);
+            } else {
+                self.bd_tile_expanded.insert(tile_id.clone());
+            }
+        }
+
+        // Rebuild the tree with new expansion state
+        let selected_pos = self.bd_tile_selected;
+        self.bd_rebuild_tile_tree();
+        // Try to keep selection near where it was
+        self.bd_tile_selected = selected_pos.min(self.bd_tile_tree.len().saturating_sub(1));
+    }
+
+    /// Expand the selected tile
+    fn bd_expand_tile(&mut self) {
+        if self.bd_tile_selected >= self.bd_tile_tree.len() {
+            return;
+        }
+
+        let node = &self.bd_tile_tree[self.bd_tile_selected];
+        if !node.has_children || node.expanded {
+            return;
+        }
+
+        if let Some(ref tile_id) = node.tile_id {
+            self.bd_tile_expanded.insert(tile_id.clone());
+            let selected_pos = self.bd_tile_selected;
+            self.bd_rebuild_tile_tree();
+            self.bd_tile_selected = selected_pos.min(self.bd_tile_tree.len().saturating_sub(1));
+        }
+    }
+
+    /// Collapse the selected tile
+    fn bd_collapse_tile(&mut self) {
+        if self.bd_tile_selected >= self.bd_tile_tree.len() {
+            return;
+        }
+
+        let node = &self.bd_tile_tree[self.bd_tile_selected];
+        if !node.expanded {
+            return;
+        }
+
+        if let Some(ref tile_id) = node.tile_id {
+            self.bd_tile_expanded.remove(tile_id);
+            let selected_pos = self.bd_tile_selected;
+            self.bd_rebuild_tile_tree();
+            self.bd_tile_selected = selected_pos.min(self.bd_tile_tree.len().saturating_sub(1));
+        }
+    }
+
+    /// Rebuild tile tree preserving expansion state
+    fn bd_rebuild_tile_tree(&mut self) {
+        // Clone what we need to avoid borrow conflicts
+        let tiles = match &self.bd_current_resource {
+            Some(r) => match &r.tiles {
+                Some(t) => t.clone(),
+                None => return,
+            },
+            None => return,
+        };
+
+        let graph_idx = self.bd_graph_selected;
+        let expanded_set = self.bd_tile_expanded.clone();
+
+        // Build a map of parenttile_id -> children for hierarchy
+        let mut children_by_parent: std::collections::HashMap<Option<String>, Vec<StaticTile>> =
+            std::collections::HashMap::new();
+
+        for tile in &tiles {
+            children_by_parent
+                .entry(tile.parenttile_id.clone())
+                .or_default()
+                .push(tile.clone());
+        }
+
+        // Start with root tiles (no parent)
+        let root_tiles = children_by_parent.get(&None).cloned().unwrap_or_default();
+
+        // Sort by sortorder
+        let mut sorted_roots: Vec<_> = root_tiles;
+        sorted_roots.sort_by_key(|t| t.sortorder.unwrap_or(0));
+
+        // Build tree nodes
+        let mut tree_nodes = Vec::new();
+        for tile in &sorted_roots {
+            Self::collect_tile_tree_nodes_with_expanded(
+                tile,
+                &self.graphs.get(graph_idx),
+                &children_by_parent,
+                &expanded_set,
+                0,
+                &mut tree_nodes,
+            );
+        }
+
+        self.bd_tile_tree = tree_nodes;
+    }
+
+    /// Get the currently selected tile tree node
+    pub fn bd_selected_tile_node(&self) -> Option<&TileTreeNode> {
+        self.bd_tile_tree.get(self.bd_tile_selected)
+    }
+
+    /// Get unique nodegroup IDs from the tile tree (for color mapping)
+    pub fn bd_tile_visible_nodegroup_ids(&self) -> Vec<String> {
+        let mut seen = std::collections::HashSet::new();
+        let mut result = Vec::new();
+
+        for node in &self.bd_tile_tree {
+            if let Some(ref ng_id) = node.nodegroup_id {
+                if seen.insert(ng_id.clone()) {
+                    result.push(ng_id.clone());
+                }
+            }
+        }
+
+        result
+    }
+
+    // ===== Tile Tree Search Functions =====
+
+    /// Enter tile tree search mode
+    pub fn bd_tile_enter_search_mode(&mut self) {
+        if self.bd_tile_search_mode {
+            return;
+        }
+        self.bd_tile_search_mode = true;
+        self.bd_tile_search_query.clear();
+        self.bd_tile_search_error = None;
+
+        // Reset search state on all nodes
+        for node in &mut self.bd_tile_tree {
+            node.matches_search = false;
+            node.visible_in_search = true;
+        }
+    }
+
+    /// Exit tile tree search mode and clear search
+    pub fn bd_tile_exit_search_mode(&mut self) {
+        if !self.bd_tile_search_mode {
+            return;
+        }
+        self.bd_tile_search_mode = false;
+        self.bd_tile_search_query.clear();
+        self.bd_tile_search_error = None;
+
+        // Reset all nodes to visible
+        for node in &mut self.bd_tile_tree {
+            node.matches_search = false;
+            node.visible_in_search = true;
+        }
+    }
+
+    /// Handle search input character for tile tree
+    pub fn bd_tile_search_input(&mut self, c: char) {
+        self.bd_tile_search_query.push(c);
+        self.bd_tile_apply_search_filter();
+    }
+
+    /// Handle backspace in tile tree search
+    pub fn bd_tile_search_backspace(&mut self) {
+        self.bd_tile_search_query.pop();
+        self.bd_tile_apply_search_filter();
+    }
+
+    /// Toggle case sensitivity for tile tree search
+    pub fn bd_tile_search_toggle_case(&mut self) {
+        self.bd_tile_search_case_sensitive = !self.bd_tile_search_case_sensitive;
+        self.bd_tile_apply_search_filter();
+    }
+
+    /// Apply search filter to tile tree nodes
+    pub fn bd_tile_apply_search_filter(&mut self) {
+        // Reset all nodes
+        for node in &mut self.bd_tile_tree {
+            node.matches_search = false;
+            node.visible_in_search = false;
+        }
+
+        if self.bd_tile_search_query.is_empty() {
+            // No search - show all nodes
+            for node in &mut self.bd_tile_tree {
+                node.visible_in_search = true;
+            }
+            self.bd_tile_search_error = None;
+            return;
+        }
+
+        // Try to compile regex
+        let regex = match regex::RegexBuilder::new(&self.bd_tile_search_query)
+            .case_insensitive(!self.bd_tile_search_case_sensitive)
+            .build()
+        {
+            Ok(r) => {
+                self.bd_tile_search_error = None;
+                r
+            }
+            Err(e) => {
+                self.bd_tile_search_error = Some(format!("Invalid regex: {}", e));
+                // Show all nodes on error
+                for node in &mut self.bd_tile_tree {
+                    node.visible_in_search = true;
+                }
+                return;
+            }
+        };
+
+        // Find matching nodes - search in name and datatype
+        let mut matching_indices: Vec<usize> = Vec::new();
+        for (i, node) in self.bd_tile_tree.iter().enumerate() {
+            let datatype = node.datatype.as_deref().unwrap_or("");
+            let search_text = format!("{} {}", node.name, datatype);
+            if regex.is_match(&search_text) {
+                matching_indices.push(i);
+            }
+        }
+
+        // Mark matching nodes
+        for &i in &matching_indices {
+            self.bd_tile_tree[i].matches_search = true;
+            self.bd_tile_tree[i].visible_in_search = true;
+        }
+
+        // Mark ancestors of matching nodes as visible
+        for &match_idx in &matching_indices {
+            let match_depth = self.bd_tile_tree[match_idx].depth;
+            let mut current_depth = match_depth;
+
+            // Walk backwards to find ancestors
+            for i in (0..match_idx).rev() {
+                let node_depth = self.bd_tile_tree[i].depth;
+                if node_depth < current_depth {
+                    self.bd_tile_tree[i].visible_in_search = true;
+                    current_depth = node_depth;
+                    if node_depth == 0 {
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Select first matching node if any
+        if let Some(&first_match) = matching_indices.first() {
+            self.bd_tile_selected = first_match;
+        }
+    }
+
+    /// Move to next tile tree search match
+    pub fn bd_tile_search_next(&mut self) {
+        let current = self.bd_tile_selected;
+        for i in (current + 1)..self.bd_tile_tree.len() {
+            if self.bd_tile_tree[i].matches_search {
+                self.bd_tile_selected = i;
+                return;
+            }
+        }
+        // Wrap around
+        for i in 0..current {
+            if self.bd_tile_tree[i].matches_search {
+                self.bd_tile_selected = i;
+                return;
+            }
+        }
+    }
+
+    /// Move to previous tile tree search match
+    pub fn bd_tile_search_prev(&mut self) {
+        let current = self.bd_tile_selected;
+        for i in (0..current).rev() {
+            if self.bd_tile_tree[i].matches_search {
+                self.bd_tile_selected = i;
+                return;
+            }
+        }
+        // Wrap around
+        for i in (current + 1..self.bd_tile_tree.len()).rev() {
+            if self.bd_tile_tree[i].matches_search {
+                self.bd_tile_selected = i;
+                return;
+            }
+        }
+    }
+
+    /// Get count of tile tree search matches
+    pub fn bd_tile_search_match_count(&self) -> usize {
+        self.bd_tile_tree.iter().filter(|n| n.matches_search).count()
     }
 }

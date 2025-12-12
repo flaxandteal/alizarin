@@ -1,0 +1,38 @@
+{
+  "id": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
+  "prefLabels": {
+    "en": {"id": "collection-name-en", "value": "My Controlled List"}
+  },
+  "concepts": {
+    "6280abed-e2c3-4396-83e0-ef1a1e1d534b": {
+      "id": "6280abed-e2c3-4396-83e0-ef1a1e1d534b",
+      "prefLabels": {
+        "en": {"id": "item1-label-en", "value": "Item 1"}
+      },
+      "source": "http://localhost:8000/plugins/controlled-list-manager/item/6280abed-e2c3-4396-83e0-ef1a1e1d534b",
+      "sortOrder": 0,
+      "children": [
+        {
+          "id": "6672d187-dfc3-4424-8c63-7a3b377b4159",
+          "prefLabels": {
+            "en": {"id": "item1-1-label-en", "value": "Item 1>1"}
+          },
+          "source": "http://localhost:8000/plugins/controlled-list-manager/item/6672d187-dfc3-4424-8c63-7a3b377b4159",
+          "sortOrder": 0,
+          "children": null
+        }
+      ]
+    },
+    "25694e0f-636c-4d71-871e-72a717738200": {
+      "id": "25694e0f-636c-4d71-871e-72a717738200",
+      "prefLabels": {
+        "en": {"id": "item2-label-en", "value": "Item 2"}
+      },
+      "source": "http://localhost:8000/plugins/controlled-list-manager/item/25694e0f-636c-4d71-871e-72a717738200",
+      "sortOrder": 1,
+      "children": null
+    }
+  },
+  "__allConcepts": {},
+  "__values": {}
+}

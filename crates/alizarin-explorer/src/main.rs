@@ -113,12 +113,42 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut A
                             KeyCode::Char(c) => app.bd_search_input(c),
                             _ => {}
                         }
+                    }
+                    // Handle tile tree search mode input
+                    else if app.bd_tile_search_mode {
+                        match key.code {
+                            KeyCode::Esc => app.bd_tile_exit_search_mode(),
+                            KeyCode::Enter => {
+                                // Exit search mode but keep filter
+                                app.bd_tile_search_mode = false;
+                            }
+                            KeyCode::Backspace => app.bd_tile_search_backspace(),
+                            KeyCode::Char('i') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                app.bd_tile_search_toggle_case();
+                            }
+                            KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                app.bd_tile_search_next();
+                            }
+                            KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                app.bd_tile_search_prev();
+                            }
+                            KeyCode::Down => app.bd_tile_search_next(),
+                            KeyCode::Up => app.bd_tile_search_prev(),
+                            KeyCode::Char(c) => app.bd_tile_search_input(c),
+                            _ => {}
+                        }
                     } else {
                         // Normal mode
                         match key.code {
                             KeyCode::Char('q') => return Ok(()),
+                            KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                app.on_page_down();
+                            }
+                            KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                app.on_page_up();
+                            }
                             KeyCode::Char('/') => {
-                                // Enter search mode in tree view or business data resource list
+                                // Enter search mode in tree view, business data resource list, or tile tree
                                 if app.current_tab == app::Tab::Graphs
                                     && app.graphs_view == app::GraphsView::Tree
                                 {
@@ -127,6 +157,10 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut A
                                     && app.bd_view == app::BusinessDataView::ResourceList
                                 {
                                     app.bd_enter_search_mode();
+                                } else if app.current_tab == app::Tab::BusinessData
+                                    && app.bd_view == app::BusinessDataView::ResourceDetail
+                                {
+                                    app.bd_tile_enter_search_mode();
                                 }
                             }
                             KeyCode::Char('s') => {
@@ -143,8 +177,26 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut A
                             KeyCode::Left | KeyCode::Char('h') => app.on_left(),
                             KeyCode::Enter => app.on_enter(),
                             KeyCode::Esc => app.on_escape(),
-                            KeyCode::Char('n') => app.search_next(),
-                            KeyCode::Char('N') => app.search_prev(),
+                            KeyCode::Char('n') => {
+                                // Context-aware next match
+                                if app.current_tab == app::Tab::BusinessData
+                                    && app.bd_view == app::BusinessDataView::ResourceDetail
+                                {
+                                    app.bd_tile_search_next();
+                                } else {
+                                    app.search_next();
+                                }
+                            }
+                            KeyCode::Char('N') => {
+                                // Context-aware prev match
+                                if app.current_tab == app::Tab::BusinessData
+                                    && app.bd_view == app::BusinessDataView::ResourceDetail
+                                {
+                                    app.bd_tile_search_prev();
+                                } else {
+                                    app.search_prev();
+                                }
+                            }
                             _ => {}
                         }
                     }

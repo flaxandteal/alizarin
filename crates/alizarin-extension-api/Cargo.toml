@@ -1,0 +1,12 @@
+[package]
+name = "alizarin-extension-api"
+version = "0.2.1-alpha.5"
+edition = "2021"
+description = "C ABI types for Alizarin extensions"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[lib]
+crate-type = ["lib"]

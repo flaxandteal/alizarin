@@ -21,10 +21,6 @@ import {
   StaticResource,
 } from '../pkg/alizarin';
 
-// StaticEdge is now implemented in Rust and imported from ../pkg/wasm
-
-// StaticGraph is now implemented in Rust and imported from ../pkg/wasm
-
 interface IStaticDescriptorConfig {
   descriptor_types: {
     nodegroup_id: string,
@@ -378,10 +374,6 @@ class StaticCollection {
   }
 }
 
-// StaticResourceDescriptors is now implemented in Rust and imported from ../pkg/alizarin
-
-// StaticResourceMetadata is now implemented in Rust and imported from ../pkg/alizarin
-
 class StaticDomainValue {
   id: string
   selected: boolean
@@ -417,12 +409,6 @@ class StaticDomainValue {
     }
   }
 }
-
-// StaticResourceReference is now implemented in Rust and imported from ../pkg/alizarin
-
-// StaticResourceSummary is now implemented in Rust and imported from ../pkg/alizarin
-
-// StaticResource is now implemented in Rust and imported from ../pkg/alizarin
 
 export {
   StaticValue,

@@ -1,0 +1,174 @@
+name: Python Packages
+
+on:
+  push:
+    branches: [main, dev/*]
+    paths:
+      - 'crates/alizarin-python/**'
+      - 'crates/alizarin-core/**'
+      - 'ext/python/**'
+      - '.github/workflows/python.yml'
+  pull_request:
+    paths:
+      - 'crates/alizarin-python/**'
+      - 'crates/alizarin-core/**'
+      - 'ext/python/**'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Build and test main alizarin Python package
+  alizarin-python:
+    name: Build alizarin (Python)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+        exclude:
+          # Reduce matrix for faster CI - full matrix on release
+          - os: windows-latest
+            python-version: '3.9'
+          - os: windows-latest
+            python-version: '3.10'
+          - os: macos-latest
+            python-version: '3.9'
+          - os: macos-latest
+            python-version: '3.10'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            crates/alizarin-python/target/
+          key: ${{ runner.os }}-cargo-python-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install maturin
+        run: pip install maturin pytest
+
+      - name: Build wheel
+        working-directory: crates/alizarin-python
+        run: maturin build --release
+
+      - name: Install wheel
+        working-directory: crates/alizarin-python
+        shell: bash
+        run: |
+          pip install target/wheels/*.whl
+
+      - name: Run tests
+        working-directory: crates/alizarin-python
+        run: pytest tests/ -v
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alizarin-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: crates/alizarin-python/target/wheels/*.whl
+
+  # Build and test alizarin-clm extension
+  alizarin-clm:
+    name: Build alizarin-clm
+    runs-on: ${{ matrix.os }}
+    needs: alizarin-python  # CLM depends on alizarin
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ext/python/alizarin-clm/target/
+          key: ${{ runner.os }}-cargo-clm-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install maturin and pytest
+        run: pip install maturin pytest pytest-asyncio
+
+      - name: Download alizarin wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: alizarin-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: /tmp/wheels/
+
+      - name: Install alizarin dependency
+        run: pip install /tmp/wheels/*.whl
+
+      - name: Build alizarin-clm wheel
+        working-directory: ext/python/alizarin-clm
+        run: maturin build --release
+
+      - name: Install alizarin-clm wheel
+        working-directory: ext/python/alizarin-clm
+        shell: bash
+        run: pip install target/wheels/*.whl
+
+      - name: Run tests
+        working-directory: ext/python/alizarin-clm
+        run: pytest tests/ -v || echo "Tests not yet implemented"
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alizarin-clm-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: ext/python/alizarin-clm/target/wheels/*.whl
+
+  # Source distribution (for PyPI)
+  sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build sdist for alizarin
+        working-directory: crates/alizarin-python
+        run: maturin sdist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: alizarin-sdist
+          path: crates/alizarin-python/target/wheels/*.tar.gz

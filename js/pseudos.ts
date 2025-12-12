@@ -43,9 +43,6 @@ class PseudoUnavailable implements IPseudo {
   }
 }
 
-// PseudoNode is now implemented in Rust and imported from ../pkg/wasm
-// ITERABLE_DATATYPES constant is also defined in Rust (src/pseudos.rs)
-
 /**
  * PseudoValue - Thin JS wrapper around WasmPseudoValue from Rust
  *
@@ -71,17 +68,44 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
   // JS-specific: cached loaded value (AttrPromise wrapping VM)
   private _cachedValue: AttrPromise<VM> | null = null;
 
-  // Proxy getters to Rust
+  // JS-cached snapshot of commonly-used properties (avoids repeated WASM boundary crossings)
+  private _snapshot: {
+    datatype: string;
+    nodeId: string;
+    name: string;
+    alias?: string;
+    nodegroupId?: string;
+    sortorder?: number;
+    isOuter: boolean;
+    isInner: boolean;
+    isCollector: boolean;
+    accessed: boolean;
+    independent: boolean;
+    hasTile: boolean;
+    tileData?: any;
+    tileId?: string;
+    valueLoaded?: boolean;
+  } | null = null;
+
+  // Get snapshot (cached after first access)
+  private getSnapshot() {
+    if (!this._snapshot) {
+      this._snapshot = this._wasm.toSnapshot();
+    }
+    return this._snapshot;
+  }
+
+  // Proxy getters - use cached snapshot where possible
   get datatype(): string {
-    return this._wasm.datatype;
+    return this.getSnapshot().datatype;
   }
 
   get isInner(): boolean {
-    return this._wasm.isInner;
+    return this.getSnapshot().isInner;
   }
 
   get isOuter(): boolean {
-    return this._wasm.isOuter;
+    return this.getSnapshot().isOuter;
   }
 
   get tile(): StaticTile | null {
@@ -90,6 +114,8 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
 
   set tile(t: StaticTile | null) {
     this._wasm.tile = t;
+    // Invalidate snapshot when tile changes
+    this._snapshot = null;
   }
 
   get value(): any {
@@ -97,17 +123,17 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
   }
 
   get valueLoaded(): boolean | undefined {
-    const v = this._wasm.valueLoaded;
+    const v = this.getSnapshot().valueLoaded;
     if (v === undefined) return undefined;
     return v;
   }
 
   get accessed(): boolean {
-    return this._wasm.accessed;
+    return this.getSnapshot().accessed;
   }
 
   get independent(): boolean {
-    return this._wasm.independent;
+    return this.getSnapshot().independent;
   }
 
   get originalTile(): StaticTile | null {
@@ -122,12 +148,12 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
   }
 
   get nodeid(): string {
-    return this._wasm.nodeId;
+    return this.getSnapshot().nodeId;
   }
 
   // Inner/outer pattern
   get inner(): PseudoValue<any> | null {
-    if (this._wasm.isOuter && !this._inner) {
+    if (this.getSnapshot().isOuter && !this._inner) {
       const wasmInner = this._wasm.inner;
       if (wasmInner) {
         this._inner = PseudoValue.fromWasm(wasmInner, this.parent!);
@@ -295,10 +321,13 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
   }
 
   private _updateValueReal(): AttrPromise<VM> {
+    // Get snapshot once - avoids multiple WASM boundary crossings
+    const snapshot = this.getSnapshot();
+
     // Create tile if needed
     if (!this._wasm.tile) {
-      const nodegroupId = this._wasm.nodegroupId || "";
-      const sortorder = this._wasm.sortorder;
+      const nodegroupId = snapshot.nodegroupId || "";
+      const sortorder = snapshot.sortorder;
       this._wasm.tile = new StaticTile({
         nodegroup_id: nodegroupId,
         tileid: null,
@@ -311,20 +340,22 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
       });
     }
 
-    // Get data - check tile first, then tileData from Rust
+    // Get data - check tile first, then tileData from snapshot
     let data: any;
     const currentTile = this._wasm.tile;
-    const nodeid = this._wasm.nodeId;
+    const nodeid = snapshot.nodeId;
 
     if (
       currentTile &&
       currentTile.data !== null &&
       currentTile.data.has(nodeid) &&
-      this.datatype !== 'semantic'
+      snapshot.datatype !== 'semantic'
     ) {
       data = currentTile.data.get(nodeid);
     } else {
-      data = this._wasm.tileData;
+      // Use null if tileData is undefined (snapshot only includes tileData when present)
+      // ViewModels expect null for "no data", not undefined
+      data = snapshot.tileData ?? null;
     }
 
     // Handle outer/inner data splitting
@@ -531,7 +562,18 @@ class PseudoList extends Array implements IPseudo {
     return resolved;
   }
 
-  getValue(): AttrPromise<PseudoList> {
+  getValue(): AttrPromise<PseudoList | IViewModel | null> {
+    // For cardinality-1 nodes (isSingle=true), unwrap to single value
+    // This matches the behavior of the async retrieve path which returns
+    // WasmPseudoValue (not WasmPseudoList) for is_single=true nodes
+    if (this.isSingle) {
+      if (this.length > 0) {
+        // The list contains AttrPromise<IViewModel> items, return the first one
+        return this[0] as AttrPromise<IViewModel>;
+      } else {
+        return new AttrPromise(resolve => resolve(null));
+      }
+    }
     return new AttrPromise(resolve => resolve(this));
   }
 
@@ -542,7 +584,7 @@ class PseudoList extends Array implements IPseudo {
 
 /**
  * Thin wrapper to convert Rust WasmPseudoValue/WasmPseudoList to TS PseudoValue/PseudoList
- * This is the ONLY place where Rust values should be wrapped in TS classes (besides populate/ensureNodegroup)
+ * This is the ONLY place where Rust values should be wrapped in TS classes
  *
  * @param rustValue - WasmPseudoValue or WasmPseudoList from Rust
  * @param wkri - The WKRI wrapper (parent IRIVM)

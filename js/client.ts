@@ -64,7 +64,8 @@ class ArchesClientRemote extends ArchesClient {
     const response = await fetch(
       `${this.archesUrl}/graphs/${graphId}?format=arches-json&gen=`,
     );
-    return await response.json();
+    const jsonText = await response.text();
+    return StaticGraph.fromJsonString(jsonText);
   }
 
   async getResource(resourceId: string): Promise<StaticResource> {
@@ -184,10 +185,10 @@ class ArchesClientRemoteStatic extends ArchesClient {
   async getResource(resourceId: string): Promise<StaticResource> {
     const source = `${this.archesUrl}/${this.resourceIdToFile(resourceId)}`;
     const response = await fetch(source);
-    return response.json().then((response: StaticResource) => {
-      response.__source = source;
-      return response;
-    });
+    const jsonText = await response.text();
+    const resource = StaticResource.fromJsonString(jsonText);
+    resource.__source = source;
+    return resource;
   }
 
   async getCollection(collectionId: string): Promise<StaticCollection> {
@@ -202,7 +203,7 @@ class ArchesClientRemoteStatic extends ArchesClient {
     limit: number,
     _reloadIfSeen: boolean
   ): Promise<StaticResource[]> {
-    const resources = [];
+    const resources: StaticResource[] = [];
     const result = this.graphIdToResourcesFiles(graphId);
     const files = (typeof result[Symbol.asyncIterator] === 'function' || typeof result[Symbol.iterator] === 'function')
       ? result
@@ -210,7 +211,9 @@ class ArchesClientRemoteStatic extends ArchesClient {
     for await (const file of files) {
       const source = `${this.archesUrl}/${file}`;
       const response = await fetch(source);
-      const resourceSet: StaticResource[] = (await response.json()).business_data.resources.map(resource => new StaticResource(resource));
+      // Use bulk parsing in Rust - single JSON string copy, parses all resources at once
+      const jsonText = await response.text();
+      const resourceSet: StaticResource[] = StaticResource.fromBusinessDataJsonString(jsonText);
       for (const resource of resourceSet) {
         resource.__source = source;
       }
@@ -226,7 +229,7 @@ class ArchesClientRemoteStatic extends ArchesClient {
     graphId: string,
     limit: number,
   ): Promise<StaticResourceSummary[]> {
-    const summaries = [];
+    const summaries: StaticResourceSummary[] = [];
     const result = this.graphIdToResourcesFiles(graphId);
     const files = (typeof result[Symbol.asyncIterator] === 'function' || typeof result[Symbol.iterator] === 'function')
       ? result
@@ -234,27 +237,11 @@ class ArchesClientRemoteStatic extends ArchesClient {
     for await (const file of files) {
       const source = `${this.archesUrl}/${file}`;
       const response = await fetch(source);
-      const data = await response.json();
-      const resourceSet: StaticResource[] = data.business_data.resources;
-      
-      // Convert full resources to summaries (extract metadata only)
-      for (const resource of resourceSet) {
-        const summary = new StaticResourceSummary({
-          resourceinstanceid: resource.resourceinstance.resourceinstanceid,
-          graph_id: resource.resourceinstance.graph_id,
-          name: resource.resourceinstance.name,
-          descriptors: resource.resourceinstance.descriptors,
-          metadata: resource.metadata || {},
-          createdtime: resource.resourceinstance.createdtime,
-          lastmodified: resource.resourceinstance.lastmodified,
-          publication_id: resource.resourceinstance.publication_id,
-          principaluser_id: resource.resourceinstance.principaluser_id,
-          legacyid: resource.resourceinstance.legacyid,
-          graph_publication_id: resource.resourceinstance.graph_publication_id
-        });
-        summaries.push(summary);
-      }
-      
+      // Use bulk parsing in Rust - parses entire file, extracts only summary fields
+      const jsonText = await response.text();
+      const summarySet: StaticResourceSummary[] = StaticResourceSummary.summariesFromBusinessDataJsonString(jsonText);
+      summaries.push(...summarySet);
+
       if (limit && summaries.length >= limit) {
         return summaries.slice(0, limit);
       }

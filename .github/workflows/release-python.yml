@@ -1,0 +1,232 @@
+name: Release Python Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.2.1)'
+        required: true
+        type: string
+      publish_pypi:
+        description: 'Publish to PyPI'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Build wheels for multiple platforms
+  build-wheels:
+    name: Build wheels (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install maturin
+        run: pip install maturin
+
+      # Build for multiple Python versions using maturin
+      - name: Build wheels (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: crates/alizarin-python
+          target: x86_64
+          args: --release --out dist
+          manylinux: auto
+
+      - name: Build wheels (macOS/Windows)
+        if: matrix.os != 'ubuntu-latest'
+        working-directory: crates/alizarin-python
+        run: |
+          maturin build --release --out dist
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: crates/alizarin-python/dist/*.whl
+
+  # Build source distribution
+  build-sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build sdist
+        working-directory: crates/alizarin-python
+        run: maturin sdist --out dist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: crates/alizarin-python/dist/*.tar.gz
+
+  # Build extension wheels
+  build-extensions:
+    name: Build extension wheels
+    runs-on: ubuntu-latest
+    needs: build-wheels
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install maturin
+        run: pip install maturin
+
+      # Download and install alizarin wheel first
+      - name: Download alizarin wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: wheels-ubuntu-latest
+          path: /tmp/wheels/
+
+      - name: Install alizarin
+        run: pip install /tmp/wheels/*.whl
+
+      # Build alizarin-clm
+      - name: Build alizarin-clm wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: ext/python/alizarin-clm
+          target: x86_64
+          args: --release --out dist
+          manylinux: auto
+
+      - name: Upload alizarin-clm wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-clm
+          path: ext/python/alizarin-clm/dist/*.whl
+
+  # Create GitHub release with all artifacts
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-wheels, build-sdist, build-extensions]
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Organize artifacts
+        run: |
+          mkdir -p release/
+          find artifacts/ -name "*.whl" -exec cp {} release/ \;
+          find artifacts/ -name "*.tar.gz" -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            VERSION=${GITHUB_REF#refs/tags/v}
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: Python v${{ steps.get_version.outputs.version }}
+          draft: false
+          prerelease: ${{ contains(steps.get_version.outputs.version, 'alpha') || contains(steps.get_version.outputs.version, 'beta') }}
+          files: release/*
+          body: |
+            ## Python Packages
+
+            ### alizarin
+            Core Python bindings for Alizarin.
+
+            ```bash
+            pip install alizarin
+            ```
+
+            ### alizarin-clm
+            CLM (Controlled List Manager) extension.
+
+            ```bash
+            pip install alizarin-clm
+            ```
+
+            ## Installation from Release
+
+            Download the appropriate wheel for your platform and Python version:
+
+            ```bash
+            pip install alizarin-${{ steps.get_version.outputs.version }}-cp311-cp311-manylinux_2_17_x86_64.whl
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publish to PyPI (optional, requires PYPI_TOKEN secret)
+  publish-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [build-wheels, build-sdist]
+    if: github.event.inputs.publish_pypi == 'true' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, 'alpha') && !contains(github.ref, 'beta'))
+    environment: pypi
+
+    steps:
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: dist/
+          merge-multiple: true
+
+      - name: Download sdist
+        uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}
+          skip-existing: true

@@ -7,6 +7,9 @@ pub mod instance_wrapper;
 pub mod json_conversion;
 pub mod wasm_wrappers;
 pub mod tracing;
+pub mod skos;
+pub mod node_config_wasm;
+pub mod type_coercion_wasm;
 
 // Re-export core types for native Rust consumers
 // These are the platform-agnostic types without WASM bindings
@@ -20,9 +23,9 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen(start)]
 fn main() -> Result<(), JsValue> {
     // Set panic hook for better error messages in development
-    #[cfg(feature = "console_error_panic_hook")]
+    // Always enabled to help debug WASM panics
     console_error_panic_hook::set_once();
-    
+
     Ok(())
 }
 
