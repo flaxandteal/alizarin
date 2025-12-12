@@ -121,7 +121,7 @@ jobs:
       - name: Download alizarin wheels
         uses: actions/download-artifact@v4
         with:
-          name: wheels-ubuntu-latest
+          name: wheels-ubuntu-latest-py3.11
           path: /tmp/wheels/
 
       - name: Install alizarin
