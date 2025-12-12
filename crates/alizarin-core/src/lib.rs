@@ -9,8 +9,10 @@
 pub mod graph;
 pub mod interner;
 pub mod loader;
+pub mod node_config;
 pub mod pseudo_node;
 pub mod pseudo_node_lite;
+pub mod type_coercion;
 
 // Graph types
 pub use graph::{
@@ -33,3 +35,27 @@ pub use pseudo_node_lite::{build_placeholder, PseudoNodeState};
 pub use interner::{InternedId, Interner, InternerExt};
 #[cfg(feature = "multi-threaded")]
 pub use interner::ThreadSafeInterner;
+
+// Node config types
+pub use node_config::{
+    NodeConfig, NodeConfigBoolean, NodeConfigConcept, NodeConfigDomain, NodeConfigManager,
+    NodeConfigReference, StaticDomainValue,
+};
+
+// Type coercion
+pub use type_coercion::{
+    // Phase 1: Simple scalars
+    coerce_date, coerce_edtf, coerce_non_localized_string, coerce_number,
+    // Phase 2: Dict types
+    coerce_geojson, coerce_string, coerce_url,
+    // Phase 3: Config-dependent types
+    coerce_boolean, coerce_domain_value, coerce_domain_value_list,
+    // Phase 4: RDM-dependent types
+    coerce_concept_value, coerce_concept_list,
+    // Phase 5: Format normalization
+    coerce_resource_instance, coerce_resource_instance_list,
+    // Dispatcher and result
+    coerce_value, CoercionResult,
+    // Language configuration
+    get_current_language, set_current_language, DEFAULT_LANGUAGE,
+};

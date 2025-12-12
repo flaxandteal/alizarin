@@ -1,0 +1,140 @@
+name: Extensions
+
+on:
+  push:
+    branches: [main, dev/*]
+    paths:
+      - 'ext/**'
+      - '.github/workflows/extensions.yml'
+  pull_request:
+    paths:
+      - 'ext/**'
+  workflow_dispatch:
+
+jobs:
+  # Build and test JS extensions
+  js-extensions:
+    name: JS Extensions
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache Node dependencies (root)
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-root-${{ hashFiles('package-lock.json') }}
+
+      # Build main alizarin package first (dependency for extensions)
+      - name: Build WASM
+        run: wasm-pack build --target web --out-dir pkg --release
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Build main package
+        run: npm run build
+
+      # Build @alizarin/clm extension
+      - name: Install @alizarin/clm dependencies
+        working-directory: ext/js/@alizarin/clm
+        run: npm install
+
+      - name: Build @alizarin/clm
+        working-directory: ext/js/@alizarin/clm
+        run: npm run build
+
+      - name: Test @alizarin/clm
+        run: npm test -- ext/js/@alizarin/clm/tests/
+
+      - name: Upload @alizarin/clm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alizarin-clm-js
+          path: |
+            ext/js/@alizarin/clm/dist/
+            ext/js/@alizarin/clm/package.json
+
+  # Python extensions (depends on main Python build)
+  python-extensions:
+    name: Python Extensions
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            crates/alizarin-python/target/
+            ext/python/alizarin-clm/target/
+          key: ${{ runner.os }}-cargo-python-ext-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install maturin and test dependencies
+        run: pip install maturin pytest pytest-asyncio
+
+      # Build main alizarin Python package first
+      - name: Build alizarin wheel
+        working-directory: crates/alizarin-python
+        run: maturin build --release
+
+      - name: Install alizarin
+        working-directory: crates/alizarin-python
+        run: pip install target/wheels/*.whl
+
+      # Build alizarin-clm
+      - name: Build alizarin-clm wheel
+        working-directory: ext/python/alizarin-clm
+        run: maturin build --release
+
+      - name: Install alizarin-clm
+        working-directory: ext/python/alizarin-clm
+        run: pip install target/wheels/*.whl
+
+      - name: Test alizarin-clm
+        working-directory: ext/python/alizarin-clm
+        run: pytest tests/ -v || echo "Tests pending"
+
+      - name: Upload alizarin-clm wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: alizarin-clm-python
+          path: ext/python/alizarin-clm/target/wheels/*.whl

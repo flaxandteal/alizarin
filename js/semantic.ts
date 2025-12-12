@@ -18,8 +18,6 @@ const timingStats = {
   wasmTotalMs: 0,
   wrapCalls: 0,
   wrapTotalMs: 0,
-  forJsonCalls: 0,
-  forJsonTotalMs: 0,
 };
 
 export function resetTimingStats() {
@@ -27,8 +25,6 @@ export function resetTimingStats() {
   timingStats.wasmTotalMs = 0;
   timingStats.wrapCalls = 0;
   timingStats.wrapTotalMs = 0;
-  timingStats.forJsonCalls = 0;
-  timingStats.forJsonTotalMs = 0;
 }
 
 export function getTimingStats() {
@@ -36,13 +32,12 @@ export function getTimingStats() {
     ...timingStats,
     wasmAvgMs: timingStats.wasmCalls > 0 ? timingStats.wasmTotalMs / timingStats.wasmCalls : 0,
     wrapAvgMs: timingStats.wrapCalls > 0 ? timingStats.wrapTotalMs / timingStats.wrapCalls : 0,
-    forJsonAvgMs: timingStats.forJsonCalls > 0 ? timingStats.forJsonTotalMs / timingStats.forJsonCalls : 0,
   };
 }
 
 export function logTimingStats(label: string = '') {
   const stats = getTimingStats();
-  console.log(`[timing-stats] ${label} wasm: ${stats.wasmCalls} calls, ${stats.wasmTotalMs.toFixed(1)}ms total (${stats.wasmAvgMs.toFixed(2)}ms avg) | wrap: ${stats.wrapCalls} calls, ${stats.wrapTotalMs.toFixed(1)}ms total | forJson: ${stats.forJsonCalls} calls, ${stats.forJsonTotalMs.toFixed(1)}ms total`);
+  console.log(`[timing-stats] ${label} wasm: ${stats.wasmCalls} calls, ${stats.wasmTotalMs.toFixed(1)}ms total (${stats.wasmAvgMs.toFixed(2)}ms avg) | wrap: ${stats.wrapCalls} calls, ${stats.wrapTotalMs.toFixed(1)}ms total`);
 }
 
 class SemanticViewModel implements IStringKeyedObject, IViewModel {
@@ -112,35 +107,77 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     if (!this.__parentWkri || !this.__parentWkri.$) {
       return {};
     }
-    const childAliases = this.__parentWkri.$.model.getChildNodeAliases(this.__node.nodeid);
-    const entries = await Promise.all(childAliases.map(async (alias) => {
-      const child = await this.__getChildValue(alias);
-      if (!child) {
-        return null;
-      }
-      const value = await child.getValue();
-      return [alias, value];
-    }));
-    return Object.fromEntries(entries.filter(e => e !== null));
-  }
 
-  async forJson() {
+    const wasmWrapper = this.__parentWkri.$.wasmWrapper;
+    const model = this.__parentWkri.$.model;
+
+    // Step 1: Check which nodegroups need tiles loaded (sync call)
     const t0 = performance.now();
-    if (!this.__parentWkri || !this.__parentWkri.$) {
-      return {};
-    }
-    const childAliases = this.__parentWkri.$.model.getChildNodeAliases(this.__node.nodeid);
-    const entries = await Promise.all(childAliases.map(async (alias) => {
-      const child = await this.__getChildValue(alias);
-      if (!child) {
-        return null;
+    const missingNodegroups = wasmWrapper.getMissingNodegroupsForChildren(this.__node.nodeid);
+    timingStats.wasmCalls++;
+    timingStats.wasmTotalMs += performance.now() - t0;
+
+    // Step 2: Load any missing tiles (async - the only async part)
+    if (missingNodegroups.length > 0) {
+      const tileLoader = wasmWrapper.getTileLoader();
+      if (tileLoader) {
+        // Load tiles for each missing nodegroup
+        for (const nodegroupId of missingNodegroups) {
+          const t1 = performance.now();
+          const tiles = await tileLoader(nodegroupId);
+          timingStats.wasmTotalMs += performance.now() - t1;
+          if (tiles && tiles.length > 0) {
+            const t2 = performance.now();
+            wasmWrapper.appendTiles(tiles);
+            timingStats.wasmCalls++;
+            timingStats.wasmTotalMs += performance.now() - t2;
+          }
+        }
       }
-      const value = await child.forJson();
-      return [alias, value];
-    }));
-    timingStats.forJsonCalls++;
-    timingStats.forJsonTotalMs += performance.now() - t0;
-    return Object.fromEntries(entries.filter(e => e !== null));
+    }
+
+    // Step 3: Get all child values in a single sync batch call (no async boundary crossings)
+    const t3 = performance.now();
+    const childValuesMap: Map<string, any> = wasmWrapper.getAllSemanticChildValues(
+      this.__tile?.tileid || null,
+      this.__node.nodeid,
+      this.__node.nodegroup_id || null,
+    );
+    timingStats.wasmCalls++;
+    timingStats.wasmTotalMs += performance.now() - t3;
+
+    // Step 4: Wrap all values and build result object
+    // Use Promise.all to batch all getValue() calls - reduces promise callback overhead
+    const t4 = performance.now();
+    const wrappedChildren: Array<[string, any]> = [];
+    for (const [alias, rustValue] of childValuesMap.entries()) {
+      if (rustValue === null || rustValue === undefined) {
+        continue;
+      }
+      const child = wrapRustPseudo(rustValue, this.__parentWkri, model);
+      timingStats.wrapCalls++;
+      if (child === null || child === undefined) {
+        continue;
+      }
+      child.parentNode = this.__parentPseudo || null;
+      // Cache the wrapped child for future use
+      this.__childValues.set(alias, child);
+      wrappedChildren.push([alias, child]);
+    }
+
+    // Batch all getValue() calls with Promise.all instead of sequential awaits
+    const valuePromises = wrappedChildren.map(([alias, child]) =>
+      child.getValue().then((value: any) => [alias, value] as [string, any])
+    );
+    const resolvedValues = await Promise.all(valuePromises);
+
+    const result: Record<string, any> = {};
+    for (const [alias, value] of resolvedValues) {
+      result[alias] = value;
+    }
+    timingStats.wrapTotalMs += performance.now() - t4;
+
+    return result;
   }
 
   async __get(key: string) {
@@ -160,6 +197,7 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     const parent = this.__parentWkri;
     const tile = this.__tile;
     const node = this.__node;
+    const wasmWrapper = parent.$.wasmWrapper;
     const childAliases = parent.$.model.getChildNodeAliases(node.nodeid);
 
     if (!childAliases.includes(key)) {
@@ -173,23 +211,56 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       return this.__childValues.get(key);
     }
 
-    // Call Rust to get the semantic child value (with lazy tile loading)
-    // Rust now always returns a WasmPseudoList (empty if no values found)
+    // Try sync path first (avoids async boundary crossing overhead)
+    let rustValue: any;
     const t0 = performance.now();
-    const rustValue = await parent.$.wasmWrapper.retrieveSemanticChildValue(
-      tile?.tileid || null,
-      node.nodeid,
-      node.nodegroup_id || null,
-      key
-    );
-    timingStats.wasmCalls++;
-    timingStats.wasmTotalMs += performance.now() - t0;
+    try {
+      // Sync call - returns immediately if tiles loaded, throws if not
+      rustValue = wasmWrapper.getSemanticChildValue(
+        tile?.tileid || null,
+        node.nodeid,
+        node.nodegroup_id || null,
+        key
+      );
+      timingStats.wasmCalls++;
+      timingStats.wasmTotalMs += performance.now() - t0;
+    } catch (e: any) {
+      const errorStr = e?.message || String(e);
+      if (errorStr.startsWith('TILES_NOT_LOADED:')) {
+        // Tiles not loaded - load them and retry
+        const nodegroupId = errorStr.split(':')[1].split(' ')[0]; // Extract nodegroup ID
+        const tileLoader = wasmWrapper.getTileLoader();
+        if (tileLoader) {
+          const t1 = performance.now();
+          const tiles = await tileLoader(nodegroupId);
+          timingStats.wasmTotalMs += performance.now() - t1;
+          if (tiles && tiles.length > 0) {
+            const t2 = performance.now();
+            wasmWrapper.appendTiles(tiles);
+            timingStats.wasmCalls++;
+            timingStats.wasmTotalMs += performance.now() - t2;
+          }
+        }
+        // Retry sync call after loading tiles
+        const t3 = performance.now();
+        rustValue = wasmWrapper.getSemanticChildValue(
+          tile?.tileid || null,
+          node.nodeid,
+          node.nodegroup_id || null,
+          key
+        );
+        timingStats.wasmCalls++;
+        timingStats.wasmTotalMs += performance.now() - t3;
+      } else {
+        throw e; // Re-throw non-tile-loading errors
+      }
+    }
 
     // Wrap the Rust value - Rust always returns something (possibly empty PseudoList)
-    const t1 = performance.now();
+    const t4 = performance.now();
     const child = wrapRustPseudo(rustValue, parent, parent.$.model);
     timingStats.wrapCalls++;
-    timingStats.wrapTotalMs += performance.now() - t1;
+    timingStats.wrapTotalMs += performance.now() - t4;
 
     if (child === null || child === undefined) {
       return child;

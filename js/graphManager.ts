@@ -23,49 +23,9 @@ import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewMod
 import { } from "./nodeConfig.ts";
 import { generateUuidv5, AttrPromise, serializeValuesMap } from "./utils";
 
-// ============================================================================
-// JS-side timing for WASM boundary crossings
-// ============================================================================
-interface TimingStats {
-  count: number;
-  totalMs: number;
-  minMs: number;
-  maxMs: number;
-}
-
-const wasmTimings: Map<string, TimingStats> = new Map();
-
-function recordWasmTiming(label: string, ms: number) {
-  let stats = wasmTimings.get(label);
-  if (!stats) {
-    stats = { count: 0, totalMs: 0, minMs: Infinity, maxMs: -Infinity };
-    wasmTimings.set(label, stats);
-  }
-  stats.count++;
-  stats.totalMs += ms;
-  stats.minMs = Math.min(stats.minMs, ms);
-  stats.maxMs = Math.max(stats.maxMs, ms);
-}
-
-export function printWasmTimings() {
-  console.log("=== JS-side WASM Timing Summary ===");
-  const entries = [...wasmTimings.entries()].sort((a, b) => b[1].totalMs - a[1].totalMs);
-  for (const [label, stats] of entries) {
-    const avgMs = stats.count > 0 ? stats.totalMs / stats.count : 0;
-    console.log(
-      `${label}: count=${stats.count}, total=${stats.totalMs.toFixed(2)}ms, avg=${avgMs.toFixed(2)}ms, min=${stats.minMs.toFixed(2)}ms, max=${stats.maxMs.toFixed(2)}ms`
-    );
-  }
-}
-
-export function clearWasmTimings() {
-  wasmTimings.clear();
-}
-
-// Get raw wasmTimings Map for integration with tracing infrastructure
-export function getWasmTimings(): Map<string, TimingStats> {
-  return wasmTimings;
-}
+// Import and re-export timing functions from dedicated module (avoids circular imports)
+import { recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings } from './wasmTiming';
+export { recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings };
 
 class ConfigurationOptions {
   graphs: Array<string> | null | boolean = null;
@@ -141,12 +101,12 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     const tilesLoaded = this.wasmWrapper.tilesLoaded();
     recordWasmTiming("tilesLoaded (constructor)", performance.now() - t0);
 
-    if (!tilesLoaded && resource && resource.tiles && resource.tiles.length > 0) {
+    // Use loadTilesFromResource to avoid expensive tiles getter (which creates N WASM wrappers)
+    if (!tilesLoaded && resource && resource.tilesLoaded) {
       try {
-        // Use loadTilesWasm for WASM StaticTile objects (from resource.tiles getter)
         t0 = performance.now();
-        this.wasmWrapper.loadTilesWasm(resource.tiles, assumeTilesComprehensiveForNodegroup);
-        recordWasmTiming("loadTilesWasm", performance.now() - t0);
+        this.wasmWrapper.loadTilesFromResource(resource, assumeTilesComprehensiveForNodegroup);
+        recordWasmTiming("loadTilesFromResource", performance.now() - t0);
       } catch (e) {
         console.error("Failed to load tiles into WASM:", e);
       }
@@ -162,14 +122,19 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
 
   async ensureTilesLoaded(): Promise<void> {
     if (!this.wasmWrapper.tilesLoaded()) {
-      // Load tiles on-demand
-      const tiles = await staticStore.loadTiles(this.wasmWrapper.getResourceId());
+      const resourceId = this.wasmWrapper.getResourceId();
 
-      // Load tiles into Rust (WASM objects from resource.tiles getter)
-      try {
-        this.wasmWrapper.loadTilesWasm(tiles, true);
-      } catch (e) {
-        console.error("Failed to load tiles into WASM:", e);
+      // Try to load directly from full resource (avoids expensive tiles getter)
+      const fullResource = await staticStore.ensureFullResource(resourceId);
+      if (fullResource && fullResource.tilesLoaded) {
+        try {
+          this.wasmWrapper.loadTilesFromResource(fullResource, true);
+        } catch (e) {
+          console.error("Failed to load tiles from resource:", e);
+          // Fallback to loading tiles through getter (slower but works)
+          const tiles = fullResource.tiles || [];
+          this.wasmWrapper.loadTilesWasm(tiles, true);
+        }
       }
 
       // Re-populate with full tile data
@@ -424,123 +389,6 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
   }
 
   /**
-   * Ensure nodegroup is loaded with all its data
-   * Uses Rust implementation via WASM
-   */
-  async ensureNodegroup(
-    allValues: Map<string, any>,
-    allNodegroups: Map<string, boolean>,
-    nodegroupId: string,
-    addIfMissing: boolean,
-    doImpliedNodegroups: boolean = true
-  ): Promise<[Map<string, any>, Set<string>]> {
-
-    // Ensure tiles are loaded for this nodegroup if using lazy loading
-    if (this.wasmWrapper.getTileLoader() && !this.wasmWrapper.hasTilesForNodegroup(nodegroupId)) {
-      const loader = this.wasmWrapper.getTileLoader();
-      if (loader) {
-        try {
-          const tiles = await loader(nodegroupId);
-          // Tiles from loader come from resource.tiles getter (WASM objects)
-          this.wasmWrapper.loadTilesWasm(tiles, true);
-        } catch (e) {
-          console.error(`Failed to load tiles for nodegroup ${nodegroupId}:`, e);
-          // Continue anyway - will work with empty tiles
-        }
-      }
-    }
-
-    try {
-      // Phase 4h: Pass nodegroup permissions to Rust - Rust will compute tile permissions
-      const nodegroupPermissions = this.model.getPermittedNodegroups();
-
-      // Serialize maps for efficient Rust deserialization
-      const serializedValues = serializeValuesMap(allValues);
-      const serializedNodegroups = Object.fromEntries(allNodegroups);
-      const serializedPermissions = Object.fromEntries(nodegroupPermissions);
-
-      // Call Rust implementation
-      const result = this.wasmWrapper.ensureNodegroup(
-        serializedValues,
-        serializedNodegroups,
-        nodegroupId,
-        addIfMissing,
-        serializedPermissions,  // Phase 4h: Pass nodegroup permissions instead of tile permissions
-        doImpliedNodegroups
-      );
-
-      // Phase 4i: Return raw Rust values instead of wrapping them
-      // Caller will handle wrapping when needed
-      const newValues = new Map<string, any>();
-
-      // Get all values in a single boundary crossing instead of N+1 calls
-      const allRustValues = result.getAllValues();
-
-      for (const [alias, rustValue] of allRustValues.entries()) {
-
-        if (!rustValue) {
-          // Sentinel undefined case
-          newValues.set(alias, undefined);
-          continue;
-        }
-
-        // Check if value already exists in allValues
-        let existing = allValues.get(alias);
-        if (existing instanceof Promise) {
-          existing = await existing;
-        }
-        if (existing !== false && existing !== undefined) {
-          newValues.set(alias, existing);
-          continue;
-        }
-
-        // Phase 4i: Store raw Rust value instead of wrapping
-        // The caller (ValueList or populate) will wrap when needed
-        if (!newValues.has(alias)) {
-          newValues.set(alias, []);
-        }
-
-        newValues.get(alias).push(rustValue);
-      }
-
-      // Update allValues with newValues (filtering undefined - line 343)
-      for (const [key, value] of newValues.entries()) {
-        if (value !== undefined) {
-          allValues.set(key, value);
-        }
-      }
-
-      // Update allNodegroups from Rust result
-      const updatedNodegroups = result.allNodegroupsMap;
-
-      // Handle both Map and plain object
-      if (updatedNodegroups instanceof Map) {
-        for (const [key, value] of updatedNodegroups.entries()) {
-          if (typeof value === 'boolean') {
-            allNodegroups.set(key, value);
-          }
-        }
-      } else {
-        for (const [key, value] of Object.entries(updatedNodegroups)) {
-          if (typeof value === 'boolean') {
-            allNodegroups.set(key, value);
-          }
-        }
-      }
-
-      const impliedNodegroups = new Set(result.impliedNodegroups);
-
-      // Parallel testing mode: compare Rust vs JS
-      return [newValues, impliedNodegroups];
-
-    } catch (e) {
-      // PORT: Phase 4e-3 - Fail explicitly instead of silent fallback
-      console.error("ensureNodegroup failed:", e);
-      throw new Error(`ensureNodegroup failed: ${e}. `);
-    }
-  }
-
-  /**
    * Populate all nodegroups for a resource
    * Uses Rust implementation via WASM - Rust caches all values internally
    */
@@ -644,100 +492,22 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
   }
 
   /**
-   * Graph traversal helper that creates PseudoValues from nodegroup tiles
-   * Uses Rust implementation via WASM
+   * Release WASM memory held by this wrapper.
+   * Call this after extracting data from a resource to free memory when processing many resources.
+   * This clears tiles, pseudo cache, and other internal state.
    */
-  async valuesFromResourceNodegroup(
-    existingValues: Map<string, any>,
-    nodegroupTiles: (StaticTile | null)[],
-    nodegroupId: string,
-    nodeObjs: Map<string, StaticNode>,
-    edges: Map<string, string[]>,
-  ): Promise<[Map<string, any>, Set<string>]> {
+  release(): void {
+    // Clear JS-side caches
+    this._pseudoCache.clear();
+    this.cache = undefined;
+    this.scopes = undefined;
+    this.metadata = undefined;
 
+    // Release WASM-side memory
+    this.wasmWrapper.release();
 
-    try {
-      // Convert tiles to tile IDs for Rust
-      const tileIds = nodegroupTiles.map(tile => tile?.tileid || "");
-
-      // Call Rust implementation
-      const result = this.wasmWrapper.valuesFromResourceNodegroup(
-        existingValues,
-        tileIds,
-        nodegroupId,
-        nodeObjs,
-        edges
-      );
-
-      // PORT: Phase 4c - Use structured RustPseudoList values directly instead of recipes
-      const allValues = new Map<string, any>();
-
-      // Get all values in a single boundary crossing instead of N+1 calls
-      const allRustValues = result.getAllValues();
-
-      for (const [alias, rustValue] of allRustValues.entries()) {
-        // PORT: Phase 4c - Get WasmPseudoList directly from Rust
-
-        if (!rustValue) {
-          // Sentinel undefined case
-          allValues.set(alias, undefined);
-          continue;
-        }
-
-        // Check if value already exists in existingValues
-        let existing = existingValues.get(alias);
-        if (existing instanceof Promise) {
-          existing = await existing;
-        }
-        if (existing !== false && existing !== undefined) {
-          allValues.set(alias, existing);
-          continue;
-        }
-
-        // Create TS PseudoValue/PseudoList with Rust backing
-        // PORT: Phase 4e - Use wrapRustPseudo for cleaner wrapping of Rust values
-        const pseudoNode = wrapRustPseudo(rustValue, this.wkri, this.model);
-
-        if (!allValues.has(alias)) {
-          allValues.set(alias, []);
-        }
-
-        // Handle PseudoList merging
-        if (Array.isArray(pseudoNode)) {
-          const value = allValues.get(alias);
-          if (value !== undefined && value !== false) {
-            let merged = false;
-            for (const pseudoList of allValues.get(alias)) {
-              if (!(pseudoList instanceof PseudoList) || !(pseudoNode instanceof PseudoList)) {
-                throw Error(`Should be all lists not ${typeof pseudoList} and ${typeof pseudoNode}`);
-              }
-
-              if (pseudoList.parentNode == pseudoNode.parentNode) {
-                for (const ps of pseudoNode) {
-                  pseudoList.push(ps);
-                }
-                merged = true;
-                break;
-              }
-            }
-            if (merged) {
-              continue;
-            }
-          }
-        }
-
-        allValues.get(alias).push(pseudoNode);
-      }
-
-      const impliedNodegroups = new Set(result.impliedNodegroups);
-
-      return [allValues, impliedNodegroups];
-
-    } catch (e) {
-      // PORT: Phase 4e-3 - Fail explicitly instead of silent fallback
-      console.error("valuesFromResourceNodegroup failed:", e);
-      throw new Error(`valuesFromResourceNodegroup failed: ${e}`);
-    }
+    // Clear resource reference to allow GC
+    this.resource = undefined;
   }
 }
 
@@ -1465,12 +1235,10 @@ class GraphManager {
       return wrapper;
     }
 
-    const bodyJson = await this.archesClient.getGraph(wkrm.meta);
-    if (!bodyJson) {
+    const graph = await this.archesClient.getGraph(wkrm.meta);
+    if (!graph) {
       throw Error(`Could not load graph ${wkrm.graphId}`);
     }
-
-    const graph = new StaticGraph(bodyJson);
 
     let model: ResourceInstanceViewModelConstructor<RIVM>;
     if (typeof modelClass == 'string') {

@@ -149,14 +149,18 @@ describe('Client Layer', () => {
 
     it('should load resource from static JSON file', async () => {
       const mockResource = {
-        resourceinstanceid: 'static-resource',
-        graph_id: 'static-graph',
+        resourceinstance: {
+          resourceinstanceid: 'static-resource',
+          graph_id: 'static-graph',
+          name: 'Test Resource',
+          descriptors: {}
+        },
         tiles: []
       };
 
       vi.mocked(global.fetch).mockResolvedValueOnce({
         ok: true,
-        json: async () => mockResource
+        text: async () => JSON.stringify(mockResource)
       } as Response);
 
       const client = new ArchesClientRemoteStatic('/data');
@@ -164,7 +168,8 @@ describe('Client Layer', () => {
 
       // The actual implementation uses business_data, not resources
       expect(global.fetch).toHaveBeenCalledWith('/data/business_data/static-resource.json');
-      expect(resource).toEqual(mockResource);
+      // Now returns a StaticResource WASM object
+      expect(resource.resourceinstance.resourceinstanceid).toBe('static-resource');
     });
 
     it('should handle missing static files', async () => {

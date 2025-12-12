@@ -1,0 +1,38 @@
+{
+  "name": "@alizarin/clm",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Alizarin ViewModel for the Reference datatype for the Controlled List Manager",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "cd ../../../.. && npm test -- ext/js/@alizarin/clm/tests/clm.test.ts"
+  },
+  "dependencies": {
+    "detect-libc": "^2.1.2",
+    "fdir": "^6.5.0",
+    "lightningcss": "^1.30.2",
+    "lightningcss-linux-x64-gnu": "^1.30.2",
+    "lightningcss-linux-x64-musl": "^1.30.2",
+    "nanoid": "^3.3.11",
+    "picocolors": "^1.1.1",
+    "picomatch": "^4.0.3",
+    "postcss": "^8.5.6",
+    "rolldown": "^1.0.0-beta.50",
+    "source-map-js": "^1.2.1",
+    "tinyglobby": "^0.2.15"
+  },
+  "devDependencies": {
+    "alizarin": "file:../../../..",
+    "typescript": "~5.9.3",
+    "vite": "npm:rolldown-vite@7.2.5"
+  },
+  "overrides": {
+    "vite": "npm:rolldown-vite@7.2.5"
+  }
+}

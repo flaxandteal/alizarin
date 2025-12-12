@@ -1360,6 +1360,64 @@ impl WasmPseudoValue {
     pub fn hascustomalias(&self) -> bool {
         self.inner.borrow().node.hascustomalias
     }
+
+    /// Get all commonly-used properties in a single boundary crossing.
+    /// This avoids the overhead of multiple individual property getters.
+    /// Returns a plain JS object with all properties cached on the JS side.
+    #[wasm_bindgen(js_name = toSnapshot)]
+    pub fn to_snapshot(&self) -> JsValue {
+        let inner = self.inner.borrow();
+        let mut map = serde_json::Map::new();
+
+        // Core identity
+        map.insert("datatype".to_string(), serde_json::Value::String(inner.datatype().to_string()));
+        map.insert("nodeId".to_string(), serde_json::Value::String(inner.node.nodeid.clone()));
+        map.insert("name".to_string(), serde_json::Value::String(inner.node.name.clone()));
+
+        // Node alias
+        if let Some(ref alias) = inner.node.alias {
+            map.insert("alias".to_string(), serde_json::Value::String(alias.clone()));
+        }
+
+        // Nodegroup ID
+        if let Some(ref ng_id) = inner.node.nodegroup_id {
+            map.insert("nodegroupId".to_string(), serde_json::Value::String(ng_id.clone()));
+        }
+
+        // Sortorder
+        if let Some(so) = inner.node.sortorder {
+            map.insert("sortorder".to_string(), serde_json::Value::Number(so.into()));
+        }
+
+        // Flags
+        map.insert("isOuter".to_string(), serde_json::Value::Bool(inner.is_outer()));
+        map.insert("isInner".to_string(), serde_json::Value::Bool(inner.is_inner));
+        map.insert("isCollector".to_string(), serde_json::Value::Bool(inner.is_collector));
+        map.insert("accessed".to_string(), serde_json::Value::Bool(inner.accessed));
+        map.insert("independent".to_string(), serde_json::Value::Bool(inner.independent));
+        map.insert("hasTile".to_string(), serde_json::Value::Bool(inner.has_tile()));
+
+        // Tile data
+        if let Some(ref tile_data) = inner.tile_data {
+            if let Ok(json_val) = serde_json::to_value(tile_data) {
+                map.insert("tileData".to_string(), json_val);
+            }
+        }
+
+        // Tile ID
+        if let Some(tile_id) = inner.tile_id() {
+            map.insert("tileId".to_string(), serde_json::Value::String(tile_id));
+        }
+
+        // Value loaded state
+        if let Some(vl) = inner.value_loaded {
+            map.insert("valueLoaded".to_string(), serde_json::Value::Bool(vl));
+        }
+
+        // Convert to JS via JSON parse (single crossing)
+        let json_string = serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or_default();
+        js_sys::JSON::parse(&json_string).unwrap_or(JsValue::NULL)
+    }
 }
 
 // Non-WASM methods for internal Rust use

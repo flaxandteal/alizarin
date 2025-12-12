@@ -14,8 +14,11 @@ import {
   StaticCard,
   StaticCardsXNodesXWidgets,
   StaticFunctionsXGraphs,
-  StaticPublication
+  StaticPublication,
+  StaticCollection,
+  StaticConcept
 } from '../js/static-types';
+import { CollectionMutator } from '../js/collectionMutator';
 import { initWasmForTests } from './wasm-init';
 
 describe('Static Types', () => {
@@ -1194,6 +1197,551 @@ describe('Static Types', () => {
         });
 
         expect(pub.published_time).toBe(timestamp);
+      });
+    });
+  });
+
+  describe('CollectionMutator', () => {
+    describe('createEmpty', () => {
+      it('should create an empty collection with a string name', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const collection = mutator.getCollection();
+
+        expect(collection).toBeDefined();
+        expect(collection.id).toBeDefined();
+        expect(collection.toString()).toBe('Test Collection');
+        expect(Object.keys(collection.concepts)).toHaveLength(0);
+      });
+
+      it('should create an empty collection with multilingual name', () => {
+        const mutator = CollectionMutator.createEmpty({
+          en: 'Test Collection',
+          fr: 'Collection de test',
+          de: 'Testsammlung'
+        });
+        const collection = mutator.getCollection();
+
+        expect(collection).toBeDefined();
+        expect(Object.keys(collection.prefLabels)).toHaveLength(3);
+        expect(collection.prefLabels.en.value).toBe('Test Collection');
+        expect(collection.prefLabels.fr.value).toBe('Collection de test');
+        expect(collection.prefLabels.de.value).toBe('Testsammlung');
+      });
+
+      it('should use provided collection ID', () => {
+        const customId = 'custom-collection-id-123';
+        const mutator = CollectionMutator.createEmpty('Named Collection', customId);
+        const collection = mutator.getCollection();
+
+        expect(collection.id).toBe(customId);
+      });
+    });
+
+    describe('addConcept', () => {
+      it('should add a top-level concept with string label', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const result = mutator.addConcept({ label: 'First Concept' });
+
+        expect(result.concept).toBeDefined();
+        expect(result.id).toBeDefined();
+        expect(result.concept.toString()).toBe('First Concept');
+
+        const collection = mutator.getCollection();
+        expect(Object.keys(collection.concepts)).toHaveLength(1);
+        expect(collection.concepts[result.id]).toBe(result.concept);
+      });
+
+      it('should add a concept with multilingual labels', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const result = mutator.addConcept({
+          label: {
+            en: 'English Label',
+            fr: 'Étiquette française',
+            es: 'Etiqueta española'
+          }
+        });
+
+        expect(result.concept.prefLabels.en.value).toBe('English Label');
+        expect(result.concept.prefLabels.fr.value).toBe('Étiquette française');
+        expect(result.concept.prefLabels.es.value).toBe('Etiqueta española');
+      });
+
+      it('should add a concept with source and sortOrder', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const result = mutator.addConcept({
+          label: 'Concept with metadata',
+          source: 'http://example.org/concept/1',
+          sortOrder: 5
+        });
+
+        expect(result.concept.source).toBe('http://example.org/concept/1');
+        expect(result.concept.sortOrder).toBe(5);
+      });
+
+      it('should add a concept with explicit ID', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const customId = 'my-custom-concept-id';
+        const result = mutator.addConcept({
+          label: 'Custom ID Concept',
+          id: customId
+        });
+
+        expect(result.id).toBe(customId);
+        expect(result.concept.id).toBe(customId);
+      });
+
+      it('should index concepts in __allConcepts', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const result = mutator.addConcept({ label: 'Indexed Concept' });
+
+        const collection = mutator.getCollection();
+        expect(collection.__allConcepts[result.id]).toBe(result.concept);
+      });
+
+      it('should index values in __values', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const result = mutator.addConcept({ label: 'Concept with Value' });
+
+        const collection = mutator.getCollection();
+        const valueIds = Object.keys(collection.__values);
+        expect(valueIds.length).toBeGreaterThan(0);
+
+        // At least one value should reference this concept's label
+        const values = Object.values(collection.__values);
+        const hasConceptValue = values.some(v => v.value === 'Concept with Value');
+        expect(hasConceptValue).toBe(true);
+      });
+    });
+
+    describe('addChildConcept', () => {
+      it('should add a child concept under a parent', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const parent = mutator.addConcept({ label: 'Parent' });
+        const child = mutator.addChildConcept(parent.id, { label: 'Child' });
+
+        expect(child.concept).toBeDefined();
+        expect(parent.concept.children).toHaveLength(1);
+        expect(parent.concept.children![0]).toBe(child.concept);
+      });
+
+      it('should throw when parent does not exist', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+
+        expect(() => {
+          mutator.addChildConcept('non-existent-parent', { label: 'Orphan' });
+        }).toThrow('Parent concept with ID non-existent-parent not found');
+      });
+
+      it('should add multiple children and sort by sortOrder', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const parent = mutator.addConcept({ label: 'Parent' });
+
+        mutator.addChildConcept(parent.id, { label: 'Third', sortOrder: 3 });
+        mutator.addChildConcept(parent.id, { label: 'First', sortOrder: 1 });
+        mutator.addChildConcept(parent.id, { label: 'Second', sortOrder: 2 });
+
+        expect(parent.concept.children).toHaveLength(3);
+        expect(parent.concept.children![0].toString()).toBe('First');
+        expect(parent.concept.children![1].toString()).toBe('Second');
+        expect(parent.concept.children![2].toString()).toBe('Third');
+      });
+
+      it('should index child concepts in __allConcepts', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const parent = mutator.addConcept({ label: 'Parent' });
+        const child = mutator.addChildConcept(parent.id, { label: 'Child' });
+
+        const collection = mutator.getCollection();
+        expect(collection.__allConcepts[parent.id]).toBeDefined();
+        expect(collection.__allConcepts[child.id]).toBeDefined();
+      });
+    });
+
+    describe('addConcepts (bulk)', () => {
+      it('should add multiple top-level concepts', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const results = mutator.addConcepts([
+          { label: 'Concept A' },
+          { label: 'Concept B' },
+          { label: 'Concept C' }
+        ]);
+
+        expect(results).toHaveLength(3);
+        const collection = mutator.getCollection();
+        expect(Object.keys(collection.concepts)).toHaveLength(3);
+      });
+
+      it('should add nested concepts with children', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const results = mutator.addConcepts([
+          {
+            label: 'Parent 1',
+            children: [
+              { label: 'Child 1.1' },
+              { label: 'Child 1.2' }
+            ]
+          },
+          {
+            label: 'Parent 2',
+            children: [
+              {
+                label: 'Child 2.1',
+                children: [
+                  { label: 'Grandchild 2.1.1' }
+                ]
+              }
+            ]
+          }
+        ]);
+
+        // 2 parents + 2 children of parent 1 + 1 child of parent 2 + 1 grandchild = 6
+        expect(results).toHaveLength(6);
+
+        const collection = mutator.getCollection();
+        // Only 2 top-level concepts
+        expect(Object.keys(collection.concepts)).toHaveLength(2);
+
+        // Check nested structure
+        const parent1 = Object.values(collection.concepts).find(c => c.toString() === 'Parent 1');
+        expect(parent1?.children).toHaveLength(2);
+
+        const parent2 = Object.values(collection.concepts).find(c => c.toString() === 'Parent 2');
+        expect(parent2?.children).toHaveLength(1);
+        expect(parent2?.children![0].children).toHaveLength(1);
+        expect(parent2?.children![0].children![0].toString()).toBe('Grandchild 2.1.1');
+      });
+
+      it('should add concepts under a specified parent', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const parent = mutator.addConcept({ label: 'Root' });
+
+        mutator.addConcepts([
+          { label: 'Branch A' },
+          { label: 'Branch B' }
+        ], parent.id);
+
+        expect(parent.concept.children).toHaveLength(2);
+      });
+    });
+
+    describe('removeConcept', () => {
+      it('should remove a top-level concept', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const concept = mutator.addConcept({ label: 'To Remove' });
+
+        const result = mutator.removeConcept(concept.id);
+
+        expect(result).toBe(true);
+        const collection = mutator.getCollection();
+        expect(Object.keys(collection.concepts)).toHaveLength(0);
+        expect(collection.__allConcepts[concept.id]).toBeUndefined();
+      });
+
+      it('should remove a child concept', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const parent = mutator.addConcept({ label: 'Parent' });
+        const child = mutator.addChildConcept(parent.id, { label: 'Child' });
+
+        const result = mutator.removeConcept(child.id);
+
+        expect(result).toBe(true);
+        expect(parent.concept.children).toBe(null);
+
+        const collection = mutator.getCollection();
+        expect(collection.__allConcepts[child.id]).toBeUndefined();
+      });
+
+      it('should remove a deeply nested concept', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const grandparent = mutator.addConcept({ label: 'Grandparent' });
+        const parent = mutator.addChildConcept(grandparent.id, { label: 'Parent' });
+        const child = mutator.addChildConcept(parent.id, { label: 'Child' });
+
+        const result = mutator.removeConcept(child.id);
+
+        expect(result).toBe(true);
+        expect(parent.concept.children).toBe(null);
+      });
+
+      it('should return false when concept not found', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+
+        const result = mutator.removeConcept('non-existent-id');
+
+        expect(result).toBe(false);
+      });
+
+      it('should remove all children when removing a parent', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const parent = mutator.addConcept({ label: 'Parent' });
+        const child1 = mutator.addChildConcept(parent.id, { label: 'Child 1' });
+        const child2 = mutator.addChildConcept(parent.id, { label: 'Child 2' });
+
+        mutator.removeConcept(parent.id);
+
+        const collection = mutator.getCollection();
+        expect(collection.__allConcepts[parent.id]).toBeUndefined();
+        expect(collection.__allConcepts[child1.id]).toBeUndefined();
+        expect(collection.__allConcepts[child2.id]).toBeUndefined();
+      });
+    });
+
+    describe('moveConcept', () => {
+      it('should move a concept to top level', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const parent = mutator.addConcept({ label: 'Parent' });
+        const child = mutator.addChildConcept(parent.id, { label: 'Child' });
+
+        const result = mutator.moveConcept(child.id, null);
+
+        expect(result).toBe(true);
+        expect(parent.concept.children).toBe(null);
+
+        const collection = mutator.getCollection();
+        expect(Object.keys(collection.concepts)).toHaveLength(2);
+        expect(collection.concepts[child.id]).toBeDefined();
+      });
+
+      it('should move a concept to a new parent', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const oldParent = mutator.addConcept({ label: 'Old Parent' });
+        const newParent = mutator.addConcept({ label: 'New Parent' });
+        const child = mutator.addChildConcept(oldParent.id, { label: 'Child' });
+
+        const result = mutator.moveConcept(child.id, newParent.id);
+
+        expect(result).toBe(true);
+        expect(oldParent.concept.children).toBe(null);
+        expect(newParent.concept.children).toHaveLength(1);
+        expect(newParent.concept.children![0].toString()).toBe('Child');
+      });
+
+      it('should return false when concept not found', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+
+        const result = mutator.moveConcept('non-existent', null);
+
+        expect(result).toBe(false);
+      });
+
+      it('should move from top level to a parent', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const topLevel = mutator.addConcept({ label: 'Top Level' });
+        const newParent = mutator.addConcept({ label: 'New Parent' });
+
+        const result = mutator.moveConcept(topLevel.id, newParent.id);
+
+        expect(result).toBe(true);
+        const collection = mutator.getCollection();
+        expect(Object.keys(collection.concepts)).toHaveLength(1); // Only newParent at top
+        expect(newParent.concept.children).toHaveLength(1);
+      });
+    });
+
+    describe('updateConcept', () => {
+      it('should update concept label (string)', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const concept = mutator.addConcept({ label: 'Original Label' });
+
+        const result = mutator.updateConcept(concept.id, { label: 'Updated Label' });
+
+        expect(result).toBe(true);
+        expect(concept.concept.toString()).toBe('Updated Label');
+      });
+
+      it('should update concept label (multilingual)', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const concept = mutator.addConcept({ label: 'Original' });
+
+        mutator.updateConcept(concept.id, {
+          label: { en: 'English', fr: 'Français' }
+        });
+
+        expect(concept.concept.prefLabels.en.value).toBe('English');
+        expect(concept.concept.prefLabels.fr.value).toBe('Français');
+      });
+
+      it('should update concept source', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const concept = mutator.addConcept({ label: 'Concept' });
+
+        mutator.updateConcept(concept.id, { source: 'http://new-source.org' });
+
+        expect(concept.concept.source).toBe('http://new-source.org');
+      });
+
+      it('should update concept sortOrder', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const concept = mutator.addConcept({ label: 'Concept', sortOrder: 1 });
+
+        mutator.updateConcept(concept.id, { sortOrder: 99 });
+
+        expect(concept.concept.sortOrder).toBe(99);
+      });
+
+      it('should return false when concept not found', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+
+        const result = mutator.updateConcept('non-existent', { label: 'Wont work' });
+
+        expect(result).toBe(false);
+      });
+
+      it('should re-index values after label update', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const concept = mutator.addConcept({ label: 'Original Value' });
+
+        const collection = mutator.getCollection();
+        const originalValueIds = Object.keys(collection.__values);
+
+        mutator.updateConcept(concept.id, { label: 'New Value' });
+
+        // Old values should be removed, new ones added
+        const newValueIds = Object.keys(collection.__values);
+        const hasNewValue = Object.values(collection.__values).some(v => v.value === 'New Value');
+        const hasOldValue = Object.values(collection.__values).some(v => v.value === 'Original Value');
+
+        expect(hasNewValue).toBe(true);
+        expect(hasOldValue).toBe(false);
+      });
+    });
+
+    describe('getConcept', () => {
+      it('should get a top-level concept by ID', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const added = mutator.addConcept({ label: 'Find Me' });
+
+        const found = mutator.getConcept(added.id);
+
+        expect(found).toBe(added.concept);
+      });
+
+      it('should get a nested concept by ID', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const parent = mutator.addConcept({ label: 'Parent' });
+        const child = mutator.addChildConcept(parent.id, { label: 'Child' });
+
+        const found = mutator.getConcept(child.id);
+
+        expect(found).toBe(child.concept);
+      });
+
+      it('should return null for non-existent ID', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+
+        const found = mutator.getConcept('does-not-exist');
+
+        expect(found).toBe(null);
+      });
+    });
+
+    describe('getAllConceptIds', () => {
+      it('should return all concept IDs including nested', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const parent = mutator.addConcept({ label: 'Parent' });
+        const child1 = mutator.addChildConcept(parent.id, { label: 'Child 1' });
+        const child2 = mutator.addChildConcept(parent.id, { label: 'Child 2' });
+        const grandchild = mutator.addChildConcept(child1.id, { label: 'Grandchild' });
+
+        const ids = mutator.getAllConceptIds();
+
+        expect(ids).toHaveLength(4);
+        expect(ids).toContain(parent.id);
+        expect(ids).toContain(child1.id);
+        expect(ids).toContain(child2.id);
+        expect(ids).toContain(grandchild.id);
+      });
+
+      it('should return empty array for empty collection', () => {
+        const mutator = CollectionMutator.createEmpty('Empty Collection');
+
+        const ids = mutator.getAllConceptIds();
+
+        expect(ids).toHaveLength(0);
+      });
+    });
+
+    describe('getConceptPath', () => {
+      it('should return path for top-level concept', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const concept = mutator.addConcept({ label: 'Top Level' });
+
+        const path = mutator.getConceptPath(concept.id);
+
+        expect(path).toEqual([concept.id]);
+      });
+
+      it('should return path for nested concept', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+        const grandparent = mutator.addConcept({ label: 'Grandparent' });
+        const parent = mutator.addChildConcept(grandparent.id, { label: 'Parent' });
+        const child = mutator.addChildConcept(parent.id, { label: 'Child' });
+
+        const path = mutator.getConceptPath(child.id);
+
+        expect(path).toEqual([grandparent.id, parent.id, child.id]);
+      });
+
+      it('should return null for non-existent concept', () => {
+        const mutator = CollectionMutator.createEmpty('Test Collection');
+
+        const path = mutator.getConceptPath('does-not-exist');
+
+        expect(path).toBe(null);
+      });
+    });
+
+    describe('integration with StaticCollection', () => {
+      it('should produce a valid StaticCollection that can be used normally', () => {
+        const mutator = CollectionMutator.createEmpty('Integrated Collection');
+        mutator.addConcepts([
+          {
+            label: { en: 'Category A', fr: 'Catégorie A' },
+            children: [
+              { label: { en: 'Item A1', fr: 'Article A1' } },
+              { label: { en: 'Item A2', fr: 'Article A2' } }
+            ]
+          },
+          {
+            label: { en: 'Category B', fr: 'Catégorie B' }
+          }
+        ]);
+
+        const collection = mutator.getCollection();
+
+        // Should be a valid StaticCollection
+        expect(collection).toBeInstanceOf(StaticCollection);
+
+        // Should be able to find concept by value
+        const foundConcept = collection.getConceptByValue?.('Item A1');
+        expect(foundConcept).toBeDefined();
+        // Note: foundConcept.toString() calls getPrefLabel which gets current language
+        // The underlying prefLabel value should be 'Item A1'
+        expect(foundConcept?.prefLabels.en.value).toBe('Item A1');
+
+        // Should be able to get value by ID
+        const valueId = Object.keys(collection.__values)[0];
+        const value = collection.getConceptValue?.(valueId);
+        expect(value).toBeDefined();
+      });
+
+      it('should work with StaticCollection created externally', () => {
+        // Create a collection using StaticCollection.create
+        const collection = StaticCollection.create({
+          name: 'External Collection',
+          concepts: [
+            StaticConcept.fromValue(null, 'Existing Concept')
+          ]
+        });
+
+        // Wrap in mutator
+        const mutator = new CollectionMutator(collection);
+
+        // Should be able to add more concepts
+        const newConcept = mutator.addConcept({ label: 'New Concept' });
+
+        expect(Object.keys(collection.concepts)).toHaveLength(2);
+        expect(mutator.getConcept(newConcept.id)).toBeDefined();
       });
     });
   });

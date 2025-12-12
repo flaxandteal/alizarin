@@ -2487,6 +2487,89 @@ impl StaticResourceSummary {
         Ok(StaticResourceSummary(summary))
     }
 
+    /// Parse summary from JSON string - faster than constructor with JS object
+    #[wasm_bindgen(js_name = fromJsonString)]
+    pub fn from_json_string(json_str: &str) -> Result<StaticResourceSummary, JsValue> {
+        let mut summary: CoreStaticResourceSummary = serde_json::from_str(json_str)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse summary JSON: {}", e)))?;
+
+        if summary.name.is_empty() {
+            summary.name = "<Unnamed>".to_string();
+        }
+
+        Ok(StaticResourceSummary(summary))
+    }
+
+    /// Extract summaries from a JSON string containing business_data with full resources
+    /// This parses all resources but only keeps the summary fields, avoiding full tile parsing
+    #[wasm_bindgen(js_name = summariesFromBusinessDataJsonString)]
+    pub fn summaries_from_business_data_json_string(json_str: &str) -> Result<Vec<StaticResourceSummary>, JsValue> {
+        // Use serde_json::Value for partial parsing - we only need resourceinstance fields
+        let value: serde_json::Value = serde_json::from_str(json_str)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse business_data JSON: {}", e)))?;
+
+        let resources = value
+            .get("business_data")
+            .and_then(|bd| bd.get("resources"))
+            .and_then(|r| r.as_array())
+            .ok_or_else(|| JsValue::from_str("Invalid business_data structure"))?;
+
+        let summaries: Result<Vec<StaticResourceSummary>, JsValue> = resources
+            .iter()
+            .map(|resource| {
+                let ri = resource.get("resourceinstance")
+                    .ok_or_else(|| JsValue::from_str("Missing resourceinstance"))?;
+                let metadata = resource.get("metadata");
+
+                let mut summary = CoreStaticResourceSummary {
+                    resourceinstanceid: ri.get("resourceinstanceid")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    graph_id: ri.get("graph_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    name: ri.get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    descriptors: ri.get("descriptors")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok()),
+                    metadata: metadata
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default(),
+                    createdtime: ri.get("createdtime")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    lastmodified: ri.get("lastmodified")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    publication_id: ri.get("publication_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    principaluser_id: ri.get("principaluser_id")
+                        .and_then(|v| v.as_i64())
+                        .map(|n| n as i32),
+                    legacyid: ri.get("legacyid")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    graph_publication_id: ri.get("graph_publication_id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                };
+
+                if summary.name.is_empty() {
+                    summary.name = "<Unnamed>".to_string();
+                }
+
+                Ok(StaticResourceSummary(summary))
+            })
+            .collect();
+
+        summaries
+    }
+
     pub fn copy(&self) -> StaticResourceSummary {
         StaticResourceSummary(self.0.clone())
     }
@@ -2590,6 +2673,46 @@ impl StaticResource {
 
     pub fn copy(&self) -> StaticResource {
         StaticResource(self.0.clone())
+    }
+
+    /// Parse resource from JSON string - faster than constructor with JS object
+    /// because it avoids multiple string copies across WASM boundary
+    #[wasm_bindgen(js_name = fromJsonString)]
+    pub fn from_json_string(json_str: &str) -> Result<StaticResource, JsValue> {
+        let mut core: CoreStaticResource = serde_json::from_str(json_str)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse resource JSON: {}", e)))?;
+
+        // Set tiles loaded flag based on whether tiles exist and are non-empty
+        core.tiles_loaded = Some(core.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false));
+
+        Ok(StaticResource(core))
+    }
+
+    /// Parse multiple resources from a JSON string containing a business_data wrapper
+    /// This is much faster than parsing each resource individually
+    #[wasm_bindgen(js_name = fromBusinessDataJsonString)]
+    pub fn from_business_data_json_string(json_str: &str) -> Result<Vec<StaticResource>, JsValue> {
+        #[derive(serde::Deserialize)]
+        struct BusinessDataWrapper {
+            business_data: BusinessData,
+        }
+        #[derive(serde::Deserialize)]
+        struct BusinessData {
+            resources: Vec<CoreStaticResource>,
+        }
+
+        let wrapper: BusinessDataWrapper = serde_json::from_str(json_str)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse business_data JSON: {}", e)))?;
+
+        let resources: Vec<StaticResource> = wrapper.business_data.resources
+            .into_iter()
+            .map(|mut core| {
+                core.tiles_loaded = Some(core.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false));
+                StaticResource(core)
+            })
+            .collect();
+
+        Ok(resources)
     }
 
     #[wasm_bindgen(js_name = fromSummary)]

@@ -687,15 +687,6 @@ export function collectAllTimings(exporter: SummaryExporter): void {
             maxMs: jsTimings.wrapTotalMs / jsTimings.wrapCalls,
           };
         }
-        if (jsTimings.forJsonCalls > 0) {
-          jsStats['forJson calls'] = {
-            count: jsTimings.forJsonCalls,
-            totalMs: jsTimings.forJsonTotalMs,
-            minMs: jsTimings.forJsonTotalMs / jsTimings.forJsonCalls,
-            maxMs: jsTimings.forJsonTotalMs / jsTimings.forJsonCalls,
-          };
-        }
-
         if (Object.keys(jsStats).length > 0) {
           exporter.mergeStats(jsStats, 'alizarin: ');
         }

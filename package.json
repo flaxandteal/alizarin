@@ -1,6 +1,6 @@
 {
   "name": "alizarin",
-  "version": "0.2.1-alpha.3",
+  "version": "0.2.1-alpha.5",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "files": [
@@ -42,7 +42,9 @@
     "test:ui": "NODE_OPTIONS='--experimental-wasm-modules' vitest --ui",
     "lint": "eslint js --ext .ts",
     "dev": "NODE_OPTIONS='--experimental-wasm-modules' vite serve .",
-    "validate": "NODE_OPTIONS='--experimental-wasm-modules' node validate-graphs.mjs"
+    "validate": "NODE_OPTIONS='--experimental-wasm-modules' node validate-graphs.mjs",
+    "version:sync": "./scripts/sync-version.sh",
+    "version:set": "./scripts/sync-version.sh"
   },
   "devDependencies": {
     "@eslint/js": "^9.24.0",

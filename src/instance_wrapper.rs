@@ -15,8 +15,6 @@ use alizarin_core::StaticTile as CoreStaticTile;
 use alizarin_core::StaticTile;
 use alizarin_core::StaticNode;
 use alizarin_core::StaticNodegroup;
-// String interner for efficient UUID handling
-use alizarin_core::{InternedId, Interner, InternerExt};
 use crate::pseudo_value::{RustPseudoValue, RustPseudoList, WasmPseudoList, WasmPseudoValue, VisitorContext};
 use crate::model_wrapper::{WASMResourceModelWrapper};
 use js_sys::{Array, Map as JsMap};
@@ -257,9 +255,6 @@ pub struct ResourceInstanceWrapperCore {
     pub(crate) cached_nodes_by_nodegroup: Option<Arc<HashMap<String, Vec<Arc<StaticNode>>>>>,
     pub(crate) cached_nodegroups: Option<Arc<HashMap<String, Arc<StaticNodegroup>>>>,
 
-    // String interner for efficient UUID handling in hot paths
-    // Maps UUID strings to integer IDs for faster HashMap lookups
-    pub(crate) interner: RefCell<Interner>,
 }
 
 /// Rust-side WASM resource instance wrapper
@@ -327,7 +322,6 @@ impl ResourceInstanceWrapperCore {
             cached_reverse_edges,
             cached_nodes_by_nodegroup,
             cached_nodegroups,
-            interner: RefCell::new(Interner::default()),
         }
     }
 
@@ -771,6 +765,16 @@ impl WASMResourceInstanceWrapper {
         self.load_tiles(tiles, true)
     }
 
+    /// Append tiles from plain JS objects (JSON deserialization)
+    /// Use this for incremental loading (e.g., loading tiles for specific nodegroups)
+    /// Unlike loadTiles, this adds to existing tiles without clearing them
+    #[wasm_bindgen(js_name = appendTiles)]
+    pub fn append_tiles_js(&self, tiles_js: JsValue) -> Result<(), JsValue> {
+        let tiles: Vec<StaticTile> = serde_wasm_bindgen::from_value(tiles_js)
+            .map_err(|e| JsValue::from_str(&format!("Failed to deserialize tiles: {:?}", e)))?;
+        self.append_tiles(tiles, true)
+    }
+
     /// Load tiles from WASM StaticTile objects directly (no serialization overhead)
     /// Use this when passing tiles between Rust/WASM contexts
     #[wasm_bindgen(js_name = loadTilesWasm)]
@@ -781,6 +785,19 @@ impl WASMResourceInstanceWrapper {
             .collect();
 
         self.load_tiles(core_tiles, assume_tiles_comprehensive_for_nodegroup.unwrap_or(true))
+    }
+
+    /// Load tiles directly from a StaticResource without going through JS
+    /// This avoids the expensive tiles getter that creates N WASM wrapper objects
+    #[wasm_bindgen(js_name = loadTilesFromResource)]
+    pub fn load_tiles_from_resource(&self, resource: &crate::graph::StaticResource, assume_tiles_comprehensive_for_nodegroup: Option<bool>) -> Result<(), JsValue> {
+        // Access tiles directly from the Rust struct without creating wrappers
+        if let Some(tiles) = &resource.0.tiles {
+            let core_tiles: Vec<StaticTile> = tiles.clone();
+            self.load_tiles(core_tiles, assume_tiles_comprehensive_for_nodegroup.unwrap_or(true))
+        } else {
+            Ok(()) // No tiles to load
+        }
     }
 
     #[wasm_bindgen(js_name = getResourceId)]
@@ -853,6 +870,7 @@ impl WASMResourceInstanceWrapper {
 
         // Compute descriptors using the Rust implementation
         let descriptors = indexed_graph.build_descriptors(&tiles_vec);
+        web_sys::console::error_1(&format!("Descriptors: {:?}", descriptors).into());
 
         // Wrap in WASM type and return
         Ok(StaticResourceDescriptors(descriptors))
@@ -989,6 +1007,35 @@ impl WASMResourceInstanceWrapper {
         if let Ok(mut cache) = self.core.borrow().pseudo_cache.lock() {
             cache.clear();
         }
+    }
+
+    /// Release all memory held by this instance.
+    /// Call this when you're done with an instance to free WASM memory.
+    /// After calling this, the instance should not be used.
+    #[wasm_bindgen(js_name = release)]
+    pub fn release(&self) {
+        // Clear tiles
+        {
+            let mut core = self.core.borrow_mut();
+            if let Some(ref mut tiles) = core.tiles {
+                tiles.clear();
+            }
+            core.tiles = None;
+            core.nodegroup_index.clear();
+        }
+
+        // Clear pseudo cache
+        if let Ok(mut cache) = self.core.borrow().pseudo_cache.lock() {
+            cache.clear();
+        }
+
+        // Clear loaded nodegroups tracking
+        if let Ok(mut loaded) = self.core.borrow().loaded_nodegroups.lock() {
+            loaded.clear();
+        }
+
+        // Clear tile loader callback
+        *self.tile_loader.borrow_mut() = None;
     }
 
     /// Get the root pseudo value from the cache.
@@ -1912,15 +1959,11 @@ impl WASMResourceInstanceWrapper {
         let mut values: HashMap<String, RustPseudoList> = HashMap::new();
         let mut implied_nodegroups: HashSet<String> = HashSet::new();
 
-        // Borrow interner for efficient UUID key lookups
-        // Using interned 32-bit IDs instead of 36-char UUID strings is ~2x faster for HashMap ops
-        let mut interner = core_ref.interner.borrow_mut();
-
         // PORT: impliedNodes - parent nodes in same nodegroup that need pseudo values
-        // Key: (nodeid, tileid) as interned IDs for faster HashMap operations
-        let mut implied_nodes: HashMap<(InternedId, InternedId), (Arc<StaticNode>, Arc<StaticTile>)> = HashMap::new();
+        // Key: (nodeid, tileid) tuple
+        let mut implied_nodes: HashMap<(String, String), (Arc<StaticNode>, Arc<StaticTile>)> = HashMap::new();
         // Track which (nodeid, tileid) combinations we've already processed
-        let mut tile_nodes_seen: HashSet<(InternedId, InternedId)> = HashSet::new();
+        let mut tile_nodes_seen: HashSet<(String, String)> = HashSet::new();
 
         // Collect tiles for this nodegroup (core_ref already borrowed above)
         let tiles_store = match core_ref.tiles.as_ref() {
@@ -1937,18 +1980,15 @@ impl WASMResourceInstanceWrapper {
         let mut alias_tiles: HashMap<String, (Arc<StaticNode>, Vec<Option<Arc<StaticTile>>>)> = HashMap::new();
 
         // Helper to add a pseudo for a node
-        // Captures interner mutably for efficient UUID→InternedId conversion
-        let mut add_to_alias_tiles = |node: &Arc<StaticNode>, tile: Option<Arc<StaticTile>>, tile_id: Option<&String>, interner: &mut Interner| {
+        let mut add_to_alias_tiles = |node: &Arc<StaticNode>, tile: Option<Arc<StaticTile>>, tile_id: Option<&String>| {
             let alias = node.alias.clone().unwrap_or_default();
             if alias.is_empty() {
                 return;
             }
 
-            // Track that we've seen this (nodeid, tileid) combination using interned IDs
+            // Track that we've seen this (nodeid, tileid) combination
             if let Some(tid) = tile_id {
-                let node_id_interned = interner.intern_str(&node.nodeid);
-                let tile_id_interned = interner.intern_str(tid);
-                tile_nodes_seen.insert((node_id_interned, tile_id_interned));
+                tile_nodes_seen.insert((node.nodeid.clone(), tid.clone()));
             }
 
             // Skip if already exists as truthy
@@ -1980,7 +2020,7 @@ impl WASMResourceInstanceWrapper {
                     // Add pseudo for this node (sampled timing to reduce overhead)
                     let do_sample = should_sample("vfrn: add_to_alias_tiles", DEFAULT_SAMPLE_RATE);
                     let t1b = if do_sample { now_ms() } else { 0.0 };
-                    add_to_alias_tiles(node_wasm, tile.clone(), if tile_id.is_empty() { None } else { Some(tile_id) }, &mut interner);
+                    add_to_alias_tiles(node_wasm, tile.clone(), if tile_id.is_empty() { None } else { Some(tile_id) });
                     if do_sample {
                         record_timing_sampled("vfrn: add_to_alias_tiles", now_ms() - t1b, DEFAULT_SAMPLE_RATE);
                     }
@@ -2008,10 +2048,7 @@ impl WASMResourceInstanceWrapper {
                                         if domain_ng_id == tile_ng_id &&
                                            domain_ng_id != &domain_node.nodeid &&
                                            !tile_id.is_empty() {
-                                            // Use interned IDs for faster HashMap operations
-                                            let node_id_interned = interner.intern_str(&domain_node.nodeid);
-                                            let tile_id_interned = interner.intern_str(tile_id);
-                                            let key = (node_id_interned, tile_id_interned);
+                                            let key = (domain_node.nodeid.clone(), tile_id.clone());
                                             if !implied_nodes.contains_key(&key) {
                                                 if let Some(t) = tile.as_ref() {
                                                     implied_nodes.insert(key, (Arc::clone(domain_node), Arc::clone(t)));
@@ -2040,15 +2077,13 @@ impl WASMResourceInstanceWrapper {
             let tile_id = tile.tileid.as_ref();
             // Only add if we haven't seen this (nodeid, tileid) combination yet
             if let Some(tid) = tile_id {
-                // Use interned IDs for efficient HashSet lookup
-                let node_id_interned = interner.intern_str(&node.nodeid);
-                let tile_id_interned = interner.intern_str(tid);
-                if !tile_nodes_seen.contains(&(node_id_interned, tile_id_interned)) {
+                let key = (node.nodeid.clone(), tid.clone());
+                if !tile_nodes_seen.contains(&key) {
                     // Inline add_to_alias_tiles logic
                     let alias = node.alias.clone().unwrap_or_default();
                     if !alias.is_empty() {
                         // Track that we've seen this (nodeid, tileid) combination
-                        tile_nodes_seen.insert((node_id_interned, tile_id_interned));
+                        tile_nodes_seen.insert(key);
 
                         // Skip if already exists as truthy
                         if existing_values.get(&alias) != Some(&Some(true)) {
@@ -2506,6 +2541,141 @@ impl WASMResourceInstanceWrapper {
                 Err(JsValue::from_str(&e.to_string()))
             }
         }
+    }
+
+    /// Check which nodegroups need tiles loaded for all children of a parent node.
+    /// Returns an array of nodegroup IDs that need loading, or empty array if all loaded.
+    ///
+    /// This enables JS to proactively load tiles before calling the sync batch endpoint,
+    /// eliminating async boundary crossings in the hot path.
+    ///
+    /// Parameters:
+    /// - parent_node_id: The nodeid of the parent semantic node
+    ///
+    /// Returns: Array of nodegroup_id strings that need tiles loaded
+    #[wasm_bindgen(js_name = getMissingNodegroupsForChildren)]
+    pub fn get_missing_nodegroups_for_children(
+        &self,
+        parent_node_id: String,
+    ) -> Result<Vec<String>, JsValue> {
+        // In non-lazy mode, all tiles are assumed loaded
+        if !*self.lazy.borrow() {
+            return Ok(Vec::new());
+        }
+
+        // Get loaded nodegroups snapshot
+        let loaded_nodegroups: HashSet<String> = if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
+            loaded.iter()
+                .filter(|(_, state)| **state == LoadState::Loaded)
+                .map(|(id, _)| id.clone())
+                .collect()
+        } else {
+            HashSet::new()
+        };
+
+        // Get child nodes for this parent
+        let child_nodes = self.with_model_core_mut(|core| {
+            core.get_child_nodes(&parent_node_id)
+                .map_err(|e| JsValue::from_str(&e))
+                .map(|map| map.clone())
+        })?;
+
+        // Collect missing nodegroups
+        let mut missing: Vec<String> = Vec::new();
+        for (_, child_node) in &child_nodes {
+            if let Some(ref nodegroup_id) = child_node.nodegroup_id {
+                if !loaded_nodegroups.contains(nodegroup_id) && !missing.contains(nodegroup_id) {
+                    missing.push(nodegroup_id.clone());
+                }
+            }
+        }
+
+        Ok(missing)
+    }
+
+    /// Sync batch endpoint: get all semantic child values for a parent node at once.
+    ///
+    /// IMPORTANT: This is a SYNC method. JS must ensure all required tiles are loaded
+    /// before calling this (use getMissingNodegroupsForChildren to check first).
+    ///
+    /// Returns a JS Map<string, WasmPseudoValue | WasmPseudoList | null> keyed by child alias.
+    ///
+    /// Parameters:
+    /// - parent_tile_id: The tileid of the parent semantic node (or null)
+    /// - parent_node_id: The nodeid of the parent semantic node
+    /// - parent_nodegroup_id: The nodegroup_id of the parent node (or null)
+    ///
+    /// Returns: JS Map of alias -> value/list/null
+    /// Throws an error if tiles are not loaded for any child's nodegroup
+    #[wasm_bindgen(js_name = getAllSemanticChildValues)]
+    pub fn get_all_semantic_child_values(
+        &self,
+        parent_tile_id: Option<String>,
+        parent_node_id: String,
+        parent_nodegroup_id: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        // Determine loaded nodegroups for lazy mode check
+        let is_lazy = *self.lazy.borrow();
+        let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
+            if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
+                Some(loaded.iter()
+                    .filter(|(_, state)| **state == LoadState::Loaded)
+                    .map(|(id, _)| id.clone())
+                    .collect())
+            } else {
+                Some(HashSet::new())
+            }
+        } else {
+            None
+        };
+
+        // Get all child aliases for this parent
+        let child_nodes = self.with_model_core_mut(|core| {
+            core.get_child_nodes(&parent_node_id)
+                .map_err(|e| JsValue::from_str(&e))
+                .map(|map| map.clone())
+        })?;
+
+        // Create JS Map for results
+        let result_map = JsMap::new();
+
+        // Get each child value and add to map
+        for (child_alias, _) in &child_nodes {
+            let result = self.core.borrow().get_semantic_child_value(
+                parent_tile_id.as_ref(),
+                &parent_node_id,
+                parent_nodegroup_id.as_ref(),
+                child_alias,
+                loaded_nodegroups_snapshot.as_ref(),
+            );
+
+            let js_value = match result {
+                Ok(SemanticChildResult::List(pseudo_list)) => {
+                    let wasm_list = WasmPseudoList::from_rust(pseudo_list);
+                    wasm_list.into()
+                }
+                Ok(SemanticChildResult::Single(pseudo_value)) => {
+                    let wasm_value = WasmPseudoValue::from_rust(pseudo_value);
+                    wasm_value.into()
+                }
+                Ok(SemanticChildResult::Empty) => {
+                    JsValue::NULL
+                }
+                Err(SemanticChildError::TilesNotLoaded { nodegroup_id }) => {
+                    return Err(JsValue::from_str(&format!(
+                        "TILES_NOT_LOADED:{} (for alias {}). Call getMissingNodegroupsForChildren first.",
+                        nodegroup_id, child_alias
+                    )));
+                }
+                Err(e) => {
+                    return Err(JsValue::from_str(&e.to_string()));
+                }
+            };
+
+            result_map.set(&JsValue::from_str(child_alias), &js_value);
+        }
+
+        Ok(result_map.into())
     }
 }
 

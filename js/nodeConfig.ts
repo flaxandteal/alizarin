@@ -1,100 +1,220 @@
+/**
+ * Node configuration management.
+ *
+ * TypeScript wrappers around the Rust/WASM NodeConfigManager.
+ * Config parsing and storage is done in Rust, shared with Python bindings.
+ */
+
 import { INodeConfig } from './interfaces';
-import { StaticNode, StaticDomainValue } from './static-types';
+import { StaticNode, StaticDomainValue, StaticGraph } from './static-types';
+import {
+  WasmNodeConfigManager,
+  WasmNodeConfigBoolean,
+  WasmNodeConfigConcept,
+  WasmNodeConfigDomain,
+  WasmNodeConfigReference,
+  WasmStaticDomainValue,
+} from '../pkg/alizarin';
 
-interface IStaticNodeConfigDomain {
-  i18n_config: {[key: string]: string}
-  options: StaticDomainValue[];
-};
+// =============================================================================
+// Config Type Adapters
+// =============================================================================
 
-interface IStaticNodeConfigBoolean {
-  i18n_properties: string[]
-  falseLabel: {[key: string]: string}
-  trueLabel: {[key: string]: string}
-};
+class StaticNodeConfigBoolean implements INodeConfig {
+  private _wasm: WasmNodeConfigBoolean;
 
-interface IStaticNodeConfigConcept {
-  rdmCollection: string
-};
+  constructor(wasmConfig: WasmNodeConfigBoolean) {
+    this._wasm = wasmConfig;
+  }
 
-class StaticNodeConfigBoolean implements IStaticNodeConfigBoolean, INodeConfig {
-  i18n_properties: string[]
-  falseLabel: {[key: string]: string}
-  trueLabel: {[key: string]: string}
+  get i18n_properties(): string[] {
+    return [];
+  }
 
-  constructor(jsonData: IStaticNodeConfigBoolean) {
-    this.i18n_properties = jsonData.i18n_properties;
-    this.falseLabel = jsonData.falseLabel;
-    this.trueLabel = jsonData.trueLabel;
+  get falseLabel(): {[key: string]: string} {
+    return this._wasm.falseLabel as {[key: string]: string};
+  }
+
+  get trueLabel(): {[key: string]: string} {
+    return this._wasm.trueLabel as {[key: string]: string};
+  }
+
+  getLabel(value: boolean, language: string): string | undefined {
+    return this._wasm.getLabel(value, language) ?? undefined;
   }
 }
 
-class StaticNodeConfigConcept implements IStaticNodeConfigConcept, INodeConfig {
-  rdmCollection: string;
+class StaticNodeConfigConcept implements INodeConfig {
+  private _wasm: WasmNodeConfigConcept;
 
-  constructor(jsonData: IStaticNodeConfigConcept) {
-    this.rdmCollection = jsonData.rdmCollection;
+  constructor(wasmConfig: WasmNodeConfigConcept) {
+    this._wasm = wasmConfig;
+  }
+
+  get rdmCollection(): string {
+    return this._wasm.rdmCollection;
   }
 }
 
-class StaticNodeConfigDomain implements IStaticNodeConfigDomain, INodeConfig {
-  i18n_config: {[key: string]: string}
-  options: StaticDomainValue[];
+class StaticNodeConfigReference implements INodeConfig {
+  private _wasm: WasmNodeConfigReference;
 
-  getSelected() {
-    return this.options.find(option => option.selected);
+  constructor(wasmConfig: WasmNodeConfigReference) {
+    this._wasm = wasmConfig;
   }
 
-  valueFromId(id: string) {
-    return this.options.find(option => option.id == id);
+  get controlledList(): string {
+    return this._wasm.controlledList;
   }
 
-  constructor(jsonData: IStaticNodeConfigDomain) {
-    this.i18n_config = jsonData.i18n_config;
-    this.options = jsonData.options;
-    if (this.options) {
-      this.options = this.options.map(sdv => {
-        if (!(sdv instanceof StaticDomainValue)) {
-          return new StaticDomainValue(sdv);
-        }
-        return sdv;
-      });
+  get rdmCollection(): string {
+    return this._wasm.rdmCollection;
+  }
+
+  get multiValue(): boolean {
+    return this._wasm.multiValue;
+  }
+
+  getCollectionId(): string | undefined {
+    return this._wasm.getCollectionId() ?? undefined;
+  }
+}
+
+class StaticNodeConfigDomain implements INodeConfig {
+  private _wasm: WasmNodeConfigDomain;
+  private _optionsCache: StaticDomainValue[] | null = null;
+
+  constructor(wasmConfig: WasmNodeConfigDomain) {
+    this._wasm = wasmConfig;
+  }
+
+  get i18n_config(): {[key: string]: string} {
+    return {};
+  }
+
+  get options(): StaticDomainValue[] {
+    if (!this._optionsCache) {
+      this._optionsCache = this._wasm.options.map((opt: WasmStaticDomainValue) =>
+        new StaticDomainValue({
+          id: opt.id,
+          selected: opt.selected,
+          text: opt.text as {[key: string]: string},
+        })
+      );
     }
+    return this._optionsCache;
+  }
+
+  getSelected(): StaticDomainValue | undefined {
+    const wasmSelected = this._wasm.getSelected();
+    if (!wasmSelected) return undefined;
+    return new StaticDomainValue({
+      id: wasmSelected.id,
+      selected: wasmSelected.selected,
+      text: wasmSelected.text as {[key: string]: string},
+    });
+  }
+
+  valueFromId(id: string): StaticDomainValue | undefined {
+    const wasmValue = this._wasm.valueFromId(id);
+    if (!wasmValue) return undefined;
+    return new StaticDomainValue({
+      id: wasmValue.id,
+      selected: wasmValue.selected,
+      text: wasmValue.text as {[key: string]: string},
+    });
   }
 }
+
+// =============================================================================
+// Node Config Manager
+// =============================================================================
+
+type NodeConfigType = StaticNodeConfigBoolean | StaticNodeConfigConcept |
+                      StaticNodeConfigDomain | StaticNodeConfigReference;
 
 class NodeConfigManager {
-  static _cache: Map<string, INodeConfig | null>
-  cache: Map<string, INodeConfig | null>
+  // Lazy initialization - WASM manager created on first use (after WASM is ready)
+  private _wasmManager: WasmNodeConfigManager | null = null;
+  private _cache = new Map<string, NodeConfigType | null>();
+  private _graphsLoaded = new Set<string>();
 
-  constructor(cache: Map<string, INodeConfig | null> | undefined = undefined) {
-    if (!cache) {
-      cache = NodeConfigManager._cache || new Map();
+  private getWasmManager(): WasmNodeConfigManager {
+    if (!this._wasmManager) {
+      this._wasmManager = new WasmNodeConfigManager();
     }
-    this.cache = cache;
+    return this._wasmManager;
   }
 
-  retrieve(node: StaticNode) {
-    if (this.cache.has(node.nodeid)) {
-      return this.cache.get(node.nodeid);
+  loadFromGraph(graph: StaticGraph): void {
+    const graphId = graph.graphid;
+    if (this._graphsLoaded.has(graphId)) return;
+
+    this.getWasmManager().fromGraphJson(JSON.stringify(graph));
+    this._graphsLoaded.add(graphId);
+  }
+
+  retrieve(node: StaticNode): NodeConfigType | null {
+    const { nodeid, datatype } = node;
+
+    if (this._cache.has(nodeid)) {
+      return this._cache.get(nodeid) ?? null;
     }
-    let nodeConfig = null;
-    switch (node.datatype) {
-      case "boolean":
-        // @ts-expect-error node.config is not typed
-        nodeConfig = new StaticNodeConfigBoolean(node.config);
-        break;
-      case "domain-value-list":
-      case "domain-value":
-        // @ts-expect-error node.config is not typed
-        nodeConfig = new StaticNodeConfigDomain(node.config);
-        break;
+
+    const config = this.getWasmManager().hasConfig(nodeid)
+      ? this.getConfigFromWasm(nodeid, datatype)
+      : null;
+
+    this._cache.set(nodeid, config);
+    return config;
+  }
+
+  private getConfigFromWasm(nodeid: string, datatype: string): NodeConfigType | null {
+    const wasmManager = this.getWasmManager();
+    switch (datatype) {
+      case 'boolean': {
+        const wasm = wasmManager.getBoolean(nodeid);
+        return wasm ? new StaticNodeConfigBoolean(wasm) : null;
+      }
+      case 'domain-value':
+      case 'domain-value-list': {
+        const wasm = wasmManager.getDomain(nodeid);
+        return wasm ? new StaticNodeConfigDomain(wasm) : null;
+      }
+      case 'concept':
+      case 'concept-list': {
+        const wasm = wasmManager.getConcept(nodeid);
+        return wasm ? new StaticNodeConfigConcept(wasm) : null;
+      }
+      case 'reference': {
+        const wasm = wasmManager.getReference(nodeid);
+        return wasm ? new StaticNodeConfigReference(wasm) : null;
+      }
       default:
-    };
-    this.cache.set(node.nodeid, nodeConfig);
-    return nodeConfig;
+        return null;
+    }
   }
-};
+
+  clear(): void {
+    this._cache.clear();
+    this._graphsLoaded.clear();
+    if (this._wasmManager) {
+      this._wasmManager.clear();
+    }
+  }
+
+  hasGraph(graphId: string): boolean {
+    return this._graphsLoaded.has(graphId);
+  }
+}
 
 const nodeConfigManager = new NodeConfigManager();
 
-export { nodeConfigManager, StaticNodeConfigDomain, StaticNodeConfigBoolean, StaticNodeConfigConcept };
+export {
+  nodeConfigManager,
+  StaticNodeConfigDomain,
+  StaticNodeConfigBoolean,
+  StaticNodeConfigConcept,
+  StaticNodeConfigReference,
+  NodeConfigManager,
+};
