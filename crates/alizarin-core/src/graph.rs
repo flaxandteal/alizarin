@@ -7,6 +7,7 @@
 
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 // ============================================================================
 // StaticTranslatableString
@@ -312,6 +313,15 @@ pub struct StaticGraph {
     node_by_id: Option<HashMap<String, usize>>,
     #[serde(skip)]
     node_by_alias: Option<HashMap<String, usize>>,
+    #[serde(skip)]
+    edges_map: Option<HashMap<String, Vec<String>>>,
+    #[serde(skip)]
+    nodes_by_nodegroup: Option<HashMap<String, Vec<usize>>>,
+    #[serde(skip)]
+    nodegroup_by_id: Option<HashMap<String, usize>>,
+    // Arc-wrapped node caches for pseudo_value infrastructure (avoids cloning on every conversion)
+    #[serde(skip)]
+    nodes_by_alias_arc: Option<HashMap<String, Arc<StaticNode>>>,
 }
 
 /// Wrapper for loading from JSON files with {graph: [...]} structure
@@ -346,6 +356,7 @@ impl StaticGraph {
     pub fn build_indices(&mut self) {
         let mut node_by_id = HashMap::new();
         let mut node_by_alias = HashMap::new();
+        let mut nodes_by_nodegroup: HashMap<String, Vec<usize>> = HashMap::new();
 
         for (idx, node) in self.nodes.iter().enumerate() {
             node_by_id.insert(node.nodeid.clone(), idx);
@@ -354,10 +365,43 @@ impl StaticGraph {
                     node_by_alias.insert(alias.clone(), idx);
                 }
             }
+            if let Some(ref ng_id) = node.nodegroup_id {
+                if !ng_id.is_empty() {
+                    nodes_by_nodegroup
+                        .entry(ng_id.clone())
+                        .or_default()
+                        .push(idx);
+                }
+            }
         }
+
+        // Build edges map (parent_nodeid -> child_nodeids)
+        let mut edges_map: HashMap<String, Vec<String>> = HashMap::new();
+        for edge in &self.edges {
+            edges_map
+                .entry(edge.domainnode_id.clone())
+                .or_default()
+                .push(edge.rangenode_id.clone());
+        }
+
+        // Build nodegroup index
+        let mut nodegroup_by_id = HashMap::new();
+        for (idx, ng) in self.nodegroups.iter().enumerate() {
+            nodegroup_by_id.insert(ng.nodegroupid.clone(), idx);
+        }
+
+        // Build Arc-wrapped nodes_by_alias for pseudo_value infrastructure
+        let nodes_by_alias_arc: HashMap<String, Arc<StaticNode>> = self.nodes
+            .iter()
+            .filter_map(|n| n.alias.as_ref().filter(|a| !a.is_empty()).map(|a| (a.clone(), Arc::new(n.clone()))))
+            .collect();
 
         self.node_by_id = Some(node_by_id);
         self.node_by_alias = Some(node_by_alias);
+        self.edges_map = Some(edges_map);
+        self.nodes_by_nodegroup = Some(nodes_by_nodegroup);
+        self.nodegroup_by_id = Some(nodegroup_by_id);
+        self.nodes_by_alias_arc = Some(nodes_by_alias_arc);
     }
 
     /// Get the root node
@@ -427,6 +471,59 @@ impl StaticGraph {
     /// Get graph ID
     pub fn graph_id(&self) -> &str {
         &self.graphid
+    }
+
+    /// Get edges map (parent_nodeid -> child_nodeids)
+    /// Returns None if indices haven't been built
+    pub fn edges_map(&self) -> Option<&HashMap<String, Vec<String>>> {
+        self.edges_map.as_ref()
+    }
+
+    /// Get child node IDs for a given node
+    pub fn get_child_ids(&self, node_id: &str) -> Option<&Vec<String>> {
+        self.edges_map.as_ref()?.get(node_id)
+    }
+
+    /// Get nodes by nodegroup (nodegroup_id -> node indices)
+    /// Returns None if indices haven't been built
+    pub fn nodes_by_nodegroup(&self) -> Option<&HashMap<String, Vec<usize>>> {
+        self.nodes_by_nodegroup.as_ref()
+    }
+
+    /// Get nodes in a specific nodegroup
+    pub fn get_nodes_in_nodegroup(&self, nodegroup_id: &str) -> Vec<&StaticNode> {
+        self.nodes_by_nodegroup
+            .as_ref()
+            .and_then(|map| map.get(nodegroup_id))
+            .map(|indices| {
+                indices
+                    .iter()
+                    .filter_map(|&idx| self.nodes.get(idx))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Get nodegroup by ID
+    pub fn get_nodegroup_by_id(&self, nodegroup_id: &str) -> Option<&StaticNodegroup> {
+        self.nodegroup_by_id
+            .as_ref()?
+            .get(nodegroup_id)
+            .and_then(|&idx| self.nodegroups.get(idx))
+    }
+
+    /// Get Arc-wrapped nodes by alias map (for pseudo_value infrastructure)
+    /// Returns None if indices haven't been built
+    pub fn nodes_by_alias_arc(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
+        self.nodes_by_alias_arc.as_ref()
+    }
+
+    /// Get Arc-wrapped node by alias
+    pub fn get_node_arc_by_alias(&self, alias: &str) -> Option<Arc<StaticNode>> {
+        self.nodes_by_alias_arc
+            .as_ref()?
+            .get(alias)
+            .cloned()
     }
 }
 
@@ -856,7 +953,8 @@ pub struct StaticCard {
     pub helptext: StaticTranslatableString,
     pub helptitle: StaticTranslatableString,
     pub instructions: StaticTranslatableString,
-    pub is_editable: bool,
+    #[serde(default)]
+    pub is_editable: Option<bool>,
     pub name: StaticTranslatableString,
     pub nodegroup_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]

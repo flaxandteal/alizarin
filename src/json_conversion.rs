@@ -14,11 +14,15 @@
 /// - Future language bindings
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use serde_json::{Value, Map};
 use serde::{Serialize, Deserialize};
 use crate::graph::StaticGraph;
+use crate::pseudo_value::{RustPseudoValue, RustPseudoList, TileBuilder, TileBuilderContext, VisitorContext};
 // Use core types for internal processing
-use alizarin_core::{StaticTile, StaticNode, StaticNodegroup, StaticEdge};
+use alizarin_core::{StaticTile, StaticNode};
+// Type coercion for converting input values to tile data format
+use alizarin_core::type_coercion::coerce_value;
 
 /// Container for resource data (no StaticResource type exists in graph.rs)
 ///
@@ -39,15 +43,11 @@ pub struct ResourceData {
 /// - Input: Flat list of tiles grouped by nodegroup_id
 /// - Output: Nested JSON tree using node aliases as keys
 ///
-/// **Implementation approach**:
-/// Uses the same traversal patterns as instance_wrapper.rs:populate()
-/// but builds JSON directly instead of RustPseudoList (which is designed for lazy loading).
+/// **Implementation approach** (unified with pseudo_value.rs):
+/// 1. Build pseudo_cache from tiles (same pattern as instance_wrapper.rs:populate())
+/// 2. Use RustPseudoValue.to_json() for traversal (handles parent-child filtering via matching_entries())
 ///
-/// The traversal reuses these patterns from instance_wrapper.rs:
-/// - Finding tiles by nodegroup_id (line 427)
-/// - Grouping nodes by nodegroup (line 853-856)
-/// - Walking edges to discover children (line 885-911)
-/// - Determining list vs single based on cardinality (line 415)
+/// This ensures consistent behavior with the WASM/JS toJson() method.
 ///
 /// # Arguments
 /// * `resource` - Resource with flat tiles
@@ -56,25 +56,138 @@ pub struct ResourceData {
 /// # Returns
 /// Nested JSON tree representing the resource hierarchy
 pub fn tiles_to_tree(resource: &ResourceData, graph: &StaticGraph) -> Result<Value, String> {
-    let mut result = Map::new();
+    // Use cached indices from graph
+    let nodes_by_alias = graph.nodes_by_alias_arc()
+        .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
 
-    // Build lookup maps (same as populate())
-    let nodes_by_id = build_node_lookup(graph.nodes_slice());
-    let nodegroups_by_id = build_nodegroup_lookup(graph.nodegroups_slice());
-    let edges = build_edge_map(graph.edges_slice());
+    // Use cached edges map from graph
+    let edges = graph.edges_map()
+        .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
 
-    // Start from root and recursively build JSON tree
-    let root = graph.root_node();
-    process_node_recursive(
-        &root,
-        &nodes_by_id,
-        &nodegroups_by_id,
-        &edges,
+    // Build pseudo_cache from tiles (same pattern as instance_wrapper.rs)
+    let pseudo_cache = build_pseudo_cache_from_tiles(
         &resource.tiles,
-        &mut result,
-    )?;
+        &nodes_by_alias,
+        graph,
+        edges,
+    );
 
-    Ok(Value::Object(result))
+    // Create root pseudo value (root has no tile)
+    let root = graph.root_node();
+    let root_alias = root.alias.clone().unwrap_or_default();
+
+    let child_node_ids = graph.get_child_ids(&root.nodeid)
+        .cloned()
+        .unwrap_or_default();
+
+    let root_pseudo = RustPseudoValue::from_node_and_tile(
+        Arc::new(root.clone()),
+        None,  // root has no tile
+        None,  // root has no tile_data
+        child_node_ids,
+    );
+
+    // Create root pseudo list
+    let root_list = RustPseudoList::from_values_with_cardinality(
+        root_alias.clone(),
+        vec![root_pseudo],
+        true,  // root is single
+    );
+
+    // Add root to pseudo_cache
+    let mut full_cache = pseudo_cache;
+    full_cache.insert(root_alias.clone(), root_list.clone());
+
+    // Build visitor context
+    let ctx = VisitorContext {
+        pseudo_cache: &full_cache,
+        nodes_by_alias: &nodes_by_alias,
+        edges: &edges,
+        depth: 0,
+        max_depth: 50,
+    };
+
+    // Use to_json() which handles parent-child filtering properly
+    if let Some(root_value) = root_list.values.first() {
+        Ok(root_value.to_json(&ctx))
+    } else {
+        Ok(Value::Object(Map::new()))
+    }
+}
+
+/// Build pseudo_cache from tiles
+///
+/// This mirrors the logic in instance_wrapper.rs:values_from_resource_nodegroup_internal
+/// to build RustPseudoList entries for each node alias found in the tiles.
+fn build_pseudo_cache_from_tiles(
+    tiles: &[StaticTile],
+    nodes_by_alias: &HashMap<String, Arc<StaticNode>>,
+    graph: &StaticGraph,
+    edges: &HashMap<String, Vec<String>>,
+) -> HashMap<String, RustPseudoList> {
+    let mut pseudo_cache: HashMap<String, RustPseudoList> = HashMap::new();
+
+    // Process each tile
+    for tile in tiles {
+        let tile_arc = Arc::new(tile.clone());
+
+        // Use cached nodes_by_nodegroup from graph
+        let nodes_in_ng = graph.get_nodes_in_nodegroup(&tile.nodegroup_id);
+
+        for node in nodes_in_ng {
+            let alias = match &node.alias {
+                Some(a) if !a.is_empty() => a.clone(),
+                _ => continue,
+            };
+
+            // Get child node IDs for this node (use cached edges)
+            let child_node_ids = edges.get(&node.nodeid)
+                .cloned()
+                .unwrap_or_default();
+
+            // Extract tile data for this node
+            let tile_data = tile.data.get(&node.nodeid).cloned();
+
+            // Create pseudo value (need Arc wrapper for pseudo_value infrastructure)
+            let node_arc = nodes_by_alias.get(&alias)
+                .map(Arc::clone)
+                .unwrap_or_else(|| Arc::new(node.clone()));
+
+            let pv = RustPseudoValue::from_node_and_tile(
+                node_arc,
+                Some(Arc::clone(&tile_arc)),
+                tile_data,
+                child_node_ids,
+            );
+
+            // Determine cardinality using cached nodegroup lookup
+            let is_single = node.nodegroup_id.as_ref()
+                .and_then(|ng_id| graph.get_nodegroup_by_id(ng_id))
+                .map(|ng| ng.cardinality.as_ref().map(|c| c != "n").unwrap_or(true))
+                .unwrap_or(true);
+
+            // Add to or merge with existing pseudo list
+            pseudo_cache
+                .entry(alias.clone())
+                .and_modify(|existing| {
+                    let new_list = RustPseudoList::from_values_with_cardinality(
+                        alias.clone(),
+                        vec![pv.clone()],
+                        is_single,
+                    );
+                    existing.merge(new_list);
+                })
+                .or_insert_with(|| {
+                    RustPseudoList::from_values_with_cardinality(
+                        alias.clone(),
+                        vec![pv],
+                        is_single,
+                    )
+                });
+        }
+    }
+
+    pseudo_cache
 }
 
 /// Convert nested tree structure to tiled resource format
@@ -83,12 +196,10 @@ pub fn tiles_to_tree(resource: &ResourceData, graph: &StaticGraph) -> Result<Val
 /// - Input: Nested JSON tree using node aliases as keys
 /// - Output: Flat list of tiles grouped by nodegroup_id
 ///
-/// **Algorithm**:
-/// 1. Walk JSON tree recursively
-/// 2. For each node alias, look up the node and its nodegroup
-/// 3. Create or update tiles by nodegroup_id
-/// 4. Populate tile.data[node_id] with values from JSON tree
-/// 5. Handle arrays (cardinality='n') by creating multiple tiles
+/// **Algorithm** (unified with pseudo_value.rs):
+/// 1. Build RustPseudoValue tree from JSON (with coerced tile_data)
+/// 2. Build pseudo_cache (HashMap<alias, RustPseudoList>)
+/// 3. Use collect_tiles() to generate tiles (same as instance_wrapper)
 ///
 /// # Arguments
 /// * `json` - Nested JSON tree structure
@@ -110,31 +221,64 @@ pub fn tree_to_tiles(
     let resource_id = resource_id.to_string();
     let graph_id = graph_id.to_string();
 
-    // Build lookup maps
-    let nodes_by_alias = build_node_alias_lookup(graph.nodes_slice());
-    let edges = build_edge_map(graph.edges_slice());
+    // Use cached indices from graph
+    let nodes_by_alias = graph.nodes_by_alias_arc()
+        .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
+    let edges = graph.edges_map()
+        .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
 
-    // Track tiles by nodegroup_id
-    // Each nodegroup can have multiple tiles (if cardinality='n')
-    let mut tiles_by_nodegroup: HashMap<String, Vec<StaticTile>> = HashMap::new();
+    // Build pseudo_cache from JSON tree
+    let mut pseudo_cache: HashMap<String, RustPseudoList> = HashMap::new();
+    let mut tile_counter: u32 = 0;
 
-    // Start from root and recursively process JSON tree
+    // Start from root and recursively build pseudo values
     let root = graph.root_node();
-    process_json_node(
+    build_pseudo_values_from_json(
         obj,
-        &root,
+        &Arc::new(root.clone()),
         &nodes_by_alias,
-        &edges,
+        graph,
+        edges,
         &resource_id,
-        None, // parent_tile (root has no parent)
-        &mut tiles_by_nodegroup,
+        None, // parent_tile (root has no parent tile)
+        &mut pseudo_cache,
+        &mut tile_counter,
     )?;
 
-    // Flatten tiles from map to vec
-    let mut all_tiles = Vec::new();
-    for (_nodegroup_id, nodegroup_tiles) in tiles_by_nodegroup {
-        all_tiles.extend(nodegroup_tiles);
+    // Build TileBuilderContext for collect_tiles
+    let ctx = TileBuilderContext {
+        pseudo_cache: &pseudo_cache,
+        nodes_by_alias: &nodes_by_alias,
+        edges: &edges,
+        resourceinstance_id: resource_id.clone(),
+        depth: 0,
+        max_depth: 100,
+    };
+
+    // Collect tiles from the pseudo cache
+    let mut tiles_map: HashMap<String, TileBuilder> = HashMap::new();
+
+    // Process root's children through the pseudo_cache
+    if let Some(child_ids) = edges.get(&root.nodeid) {
+        for child_id in child_ids {
+            // Find child node
+            let child_node = nodes_by_alias.values()
+                .find(|n| n.nodeid == *child_id);
+
+            if let Some(child_node) = child_node {
+                if let Some(alias) = &child_node.alias {
+                    if let Some(pseudo_list) = pseudo_cache.get(alias) {
+                        pseudo_list.collect_tiles(&ctx, &mut tiles_map);
+                    }
+                }
+            }
+        }
     }
+
+    // Convert TileBuilders to StaticTiles
+    let all_tiles: Vec<StaticTile> = tiles_map.values()
+        .map(|builder| builder.to_static_tile())
+        .collect();
 
     // Create resource with collected tiles
     Ok(ResourceData {
@@ -145,199 +289,24 @@ pub fn tree_to_tiles(
 }
 
 // ============================================================================
-// Helper functions for tiles_to_tree (eager graph traversal → JSON)
+// Helper functions for tree_to_tiles (JSON → pseudo values → tiles)
 // ============================================================================
 
-/// Recursively process a node and its children, building the JSON structure
+/// Build RustPseudoValue tree from JSON and populate pseudo_cache
 ///
-/// This mirrors the hierarchy discovery in instance_wrapper.rs:values_from_resource_nodegroup_internal
-/// but walks the graph structure (not tiles) to build JSON output.
-///
-/// Key pattern reused from instance_wrapper.rs:
-/// - Lines 851-856: Nodes grouped by nodegroup_id
-/// - Lines 885-911: Edge traversal to discover child nodes
-/// - Lines 924-970: Processing tiles to find node data
-fn process_node_recursive(
-    node: &StaticNode,
-    nodes_by_id: &HashMap<String, &StaticNode>,
-    nodegroups_by_id: &HashMap<String, &StaticNodegroup>,
-    edges: &HashMap<String, Vec<String>>, // parent_id -> [child_ids]
-    tiles: &[StaticTile],
-    result: &mut Map<String, Value>,
-) -> Result<(), String> {
-    // Get node alias (this becomes the JSON key)
-    // PORT: Similar to instance_wrapper.rs:866 - using node.alias as key
-    let alias = match node.alias.as_ref() {
-        Some(a) => a,
-        None => {
-            // Root node might not have alias, skip it and process children
-            if let Some(child_ids) = edges.get(&node.nodeid) {
-                for child_id in child_ids {
-                    if let Some(child_node) = nodes_by_id.get(child_id) {
-                        process_node_recursive(
-                            child_node,
-                            nodes_by_id,
-                            nodegroups_by_id,
-                            edges,
-                            tiles,
-                            result,
-                        )?;
-                    }
-                }
-            }
-            return Ok(());
-        }
-    };
-
-    // Find nodegroup for this node
-    // PORT: instance_wrapper.rs:853-856 - filtering nodes by nodegroup_id
-    let nodegroup_id = match node.nodegroup_id.as_ref() {
-        Some(id) if !id.is_empty() => id,
-        _ => {
-            // Node without nodegroup (like root), skip but process children
-            if let Some(child_ids) = edges.get(&node.nodeid) {
-                for child_id in child_ids {
-                    if let Some(child_node) = nodes_by_id.get(child_id) {
-                        process_node_recursive(
-                            child_node,
-                            nodes_by_id,
-                            nodegroups_by_id,
-                            edges,
-                            tiles,
-                            result,
-                        )?;
-                    }
-                }
-            }
-            return Ok(());
-        }
-    };
-
-    let nodegroup = nodegroups_by_id.get(nodegroup_id)
-        .ok_or_else(|| format!("Nodegroup {} not found", nodegroup_id))?;
-
-    // Find tiles for this nodegroup
-    // PORT: instance_wrapper.rs:427 - get_tile_ids_by_nodegroup pattern
-    let nodegroup_tiles: Vec<&StaticTile> = tiles.iter()
-        .filter(|t| &t.nodegroup_id == nodegroup_id)
-        .collect();
-
-    // Determine if this should be unwrapped to single value:
-    // - cardinality != 'n' (single cardinality node), OR
-    // - only one tile exists (JS/WASM also unwraps single items, see pseudo_value.rs:607,678)
-    let is_single = nodegroup.cardinality.as_ref()
-        .map(|c| c != "n")
-        .unwrap_or(true)
-        || nodegroup_tiles.len() == 1;
-
-    if is_single {
-        // Single value (take first tile if exists)
-        // PORT: pseudo_value.rs:641-646 - single value returned directly
-        if let Some(tile) = nodegroup_tiles.first() {
-            let value = process_tile(node, tile, nodes_by_id, nodegroups_by_id, edges, tiles)?;
-            result.insert(alias.to_string(), value);
-        }
-    } else {
-        // Multiple values - create array (one per tile)
-        // PORT: pseudo_value.rs:650-658 - multiple values as array
-        let mut array = Vec::new();
-        for tile in &nodegroup_tiles {
-            let tile_value = process_tile(node, tile, nodes_by_id, nodegroups_by_id, edges, tiles)?;
-            // Filter out nulls (matching pseudo_value.rs:652)
-            if !tile_value.is_null() {
-                array.push(tile_value);
-            }
-        }
-        if !array.is_empty() {
-            result.insert(alias.to_string(), Value::Array(array));
-        }
-    }
-
-    Ok(())
-}
-
-/// Process a single tile and its child nodes
-///
-/// Returns the value for this node. The structure depends on:
-/// - Leaf nodes (no children): Return the raw tile data directly
-/// - Semantic nodes (has children): Return an object with child aliases as keys
-/// - Outer nodes (has value AND children): Return object with _value plus children
-fn process_tile(
-    node: &StaticNode,
-    tile: &StaticTile,
-    nodes_by_id: &HashMap<String, &StaticNode>,
-    nodegroups_by_id: &HashMap<String, &StaticNodegroup>,
-    edges: &HashMap<String, Vec<String>>,
-    all_tiles: &[StaticTile],
-) -> Result<Value, String> {
-    // Check if this node has children
-    let has_children = edges.get(&node.nodeid)
-        .map(|ids| !ids.is_empty())
-        .unwrap_or(false);
-
-    // Get the node's own value from tile data
-    let own_value = tile.data.get(&node.nodeid).cloned();
-
-    // Leaf node (no children) - return value directly
-    // This matches pseudo_value.rs:515-520 - leaf nodes return tile_data directly
-    if !has_children {
-        return Ok(own_value.unwrap_or(Value::Null));
-    }
-
-    // Node has children - build object with child values
-    let mut obj = Map::new();
-
-    // Recursively process child nodes
-    if let Some(child_ids) = edges.get(&node.nodeid) {
-        for child_id in child_ids {
-            if let Some(child_node) = nodes_by_id.get(child_id) {
-                // For each child, process it recursively
-                process_node_recursive(
-                    child_node,
-                    nodes_by_id,
-                    nodegroups_by_id,
-                    edges,
-                    all_tiles,
-                    &mut obj,
-                )?;
-            }
-        }
-    }
-
-    // If this node has both a value AND children ("outer" node pattern),
-    // include the value under _value key
-    // This matches pseudo_value.rs:523-547 - outer_to_json
-    if let Some(value) = own_value {
-        if !value.is_null() {
-            obj.insert("_value".to_string(), value);
-        }
-    }
-
-    Ok(Value::Object(obj))
-}
-
-// ============================================================================
-// Helper functions for tree_to_tiles (JSON tree → tiles)
-// ============================================================================
-
-/// Recursively process JSON tree and create/populate tiles
-///
-/// Algorithm:
-/// 1. For each key in JSON object (these are node aliases)
-/// 2. Look up the node by alias
-/// 3. Get the node's nodegroup_id
-/// 4. If value is array (cardinality='n'), create multiple tiles
-/// 5. If value is object, create single tile
-/// 6. Extract _value field and store in tile.data[node_id]
-/// 7. Recursively process nested children
-fn process_json_node(
+/// This creates the same structure that instance_wrapper.rs builds from tiles,
+/// but starting from JSON input. The pseudo_cache can then be used with
+/// collect_tiles() to generate the final tile data.
+fn build_pseudo_values_from_json(
     json_obj: &Map<String, Value>,
-    current_node: &StaticNode,
-    nodes_by_alias: &HashMap<String, &StaticNode>,
+    current_node: &Arc<StaticNode>,
+    nodes_by_alias: &HashMap<String, Arc<StaticNode>>,
+    graph: &StaticGraph,
     edges: &HashMap<String, Vec<String>>,
     resource_id: &str,
-    parent_tile: Option<&StaticTile>,
-    tiles_by_nodegroup: &mut HashMap<String, Vec<StaticTile>>,
+    parent_tile: Option<Arc<StaticTile>>,  // Pass parent's tile to share when same nodegroup
+    pseudo_cache: &mut HashMap<String, RustPseudoList>,
+    tile_counter: &mut u32,
 ) -> Result<(), String> {
     // Get child node IDs for current node
     let child_ids = edges.get(&current_node.nodeid)
@@ -346,125 +315,250 @@ fn process_json_node(
 
     // Process each child
     for child_id in child_ids {
-        // Find child node
+        // Find child node by ID
         let child_node = nodes_by_alias.values()
-            .find(|n| n.nodeid == child_id)
-            .ok_or_else(|| format!("Child node {} not found", child_id))?;
+            .find(|n| n.nodeid == child_id);
 
-        let child_alias = child_node.alias.as_ref()
-            .ok_or_else(|| format!("Child node {} has no alias", child_id))?;
+        let child_node = match child_node {
+            Some(n) => Arc::clone(n),
+            None => continue,
+        };
+
+        let child_alias = match &child_node.alias {
+            Some(a) if !a.is_empty() => a.clone(),
+            _ => continue,
+        };
 
         // Look for this alias in JSON
-        if let Some(json_value) = json_obj.get(child_alias) {
-            let nodegroup_id = child_node.nodegroup_id.as_ref()
-                .ok_or_else(|| format!("Node {} has no nodegroup_id", child_id))?;
+        let json_value = match json_obj.get(&child_alias) {
+            Some(v) => v,
+            None => continue,
+        };
 
-            // Handle array (cardinality='n') vs single value
-            if json_value.is_array() {
-                let array = json_value.as_array().unwrap();
-                for item in array {
+        let nodegroup_id = child_node.nodegroup_id.as_ref()
+            .ok_or_else(|| format!("Node {} has no nodegroup_id", child_id))?;
+
+        // Get nodegroup for cardinality check (use cached lookup)
+        let is_single = graph.get_nodegroup_by_id(nodegroup_id)
+            .map(|ng| ng.cardinality.as_ref().map(|c| c != "n").unwrap_or(true))
+            .unwrap_or(true);
+
+        // Get node config for coercion
+        let config_value = if child_node.config.is_empty() {
+            None
+        } else {
+            Some(serde_json::Value::Object(
+                child_node.config.iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect()
+            ))
+        };
+
+        // Get child's child IDs for the pseudo value
+        let child_child_ids = edges.get(&child_node.nodeid)
+            .cloned()
+            .unwrap_or_default();
+
+        // Check if child shares nodegroup with parent - if so, share the tile
+        let shares_nodegroup = parent_tile.as_ref()
+            .map(|pt| pt.nodegroup_id == *nodegroup_id)
+            .unwrap_or(false);
+
+        // Process based on JSON value type
+        // Key insight: If the child node has no children in the graph, treat JSON objects as leaf values
+        // (e.g., i18n objects like {"en": "Test"} should be treated as leaf data, not nested structure)
+        let has_graph_children = !child_child_ids.is_empty();
+        let mut values: Vec<RustPseudoValue> = Vec::new();
+
+        if json_value.is_array() {
+            // Array - create multiple pseudo values (cardinality='n')
+            let array = json_value.as_array().unwrap();
+            for item in array {
+                if has_graph_children {
                     if let Some(item_obj) = item.as_object() {
-                        // Create new tile for this array item
-                        let mut tile = StaticTile::new_empty(nodegroup_id.clone());
-
-                        // Extract _value if present
-                        if let Some(value) = item_obj.get("_value") {
-                            tile.data.insert(child_node.nodeid.clone(), value.clone());
-                        }
-
-                        // Recursively process nested children
-                        process_json_node(
+                        let (pv, tile) = create_pseudo_value_from_json(
                             item_obj,
-                            child_node,
+                            &child_node,
+                            &child_child_ids,
+                            nodegroup_id,
+                            &config_value,
+                            resource_id,
+                            if shares_nodegroup { parent_tile.clone() } else { None },
+                            tile_counter,
+                        );
+
+                        values.push(pv);
+
+                        // Recursively process children with this tile
+                        build_pseudo_values_from_json(
+                            item_obj,
+                            &child_node,
                             nodes_by_alias,
+                            graph,
                             edges,
                             resource_id,
-                            Some(&tile),
-                            tiles_by_nodegroup,
+                            Some(tile),
+                            pseudo_cache,
+                            tile_counter,
                         )?;
-
-                        // Add tile to collection
-                        tiles_by_nodegroup
-                            .entry(nodegroup_id.clone())
-                            .or_insert_with(Vec::new)
-                            .push(tile);
-                    }
-                }
-            } else if let Some(item_obj) = json_value.as_object() {
-                // Single value - create or update tile
-                let mut tile = if let Some(parent) = parent_tile {
-                    // If same nodegroup as parent, update parent's tile
-                    if child_node.nodegroup_id == current_node.nodegroup_id {
-                        parent.clone()
-                    } else {
-                        // Different nodegroup, create new tile
-                        StaticTile::new_empty(nodegroup_id.clone())
                     }
                 } else {
-                    // No parent, create new tile
-                    StaticTile::new_empty(nodegroup_id.clone())
-                };
-
-                // Extract _value if present
-                if let Some(value) = item_obj.get("_value") {
-                    tile.data.insert(child_node.nodeid.clone(), value.clone());
-                }
-
-                // Recursively process nested children
-                process_json_node(
-                    item_obj,
-                    child_node,
-                    nodes_by_alias,
-                    edges,
-                    resource_id,
-                    Some(&tile),
-                    tiles_by_nodegroup,
-                )?;
-
-                // Add tile to collection (avoid duplicates if updating parent)
-                if child_node.nodegroup_id != current_node.nodegroup_id {
-                    tiles_by_nodegroup
-                        .entry(nodegroup_id.clone())
-                        .or_insert_with(Vec::new)
-                        .push(tile);
+                    // Leaf array item
+                    let (pv, _tile) = create_pseudo_value_from_leaf(
+                        item,
+                        &child_node,
+                        &child_child_ids,
+                        nodegroup_id,
+                        &config_value,
+                        resource_id,
+                        if shares_nodegroup { parent_tile.clone() } else { None },
+                        tile_counter,
+                    );
+                    values.push(pv);
                 }
             }
+        } else if has_graph_children && json_value.is_object() {
+            // Object with nested children in the graph
+            let item_obj = json_value.as_object().unwrap();
+            let (pv, tile) = create_pseudo_value_from_json(
+                item_obj,
+                &child_node,
+                &child_child_ids,
+                nodegroup_id,
+                &config_value,
+                resource_id,
+                if shares_nodegroup { parent_tile.clone() } else { None },
+                tile_counter,
+            );
+
+            values.push(pv);
+
+            // Recursively process children
+            build_pseudo_values_from_json(
+                item_obj,
+                &child_node,
+                nodes_by_alias,
+                graph,
+                edges,
+                resource_id,
+                Some(tile),
+                pseudo_cache,
+                tile_counter,
+            )?;
+        } else {
+            // Leaf value (string, number, bool, null, or object that should be treated as leaf)
+            let (pv, _tile) = create_pseudo_value_from_leaf(
+                json_value,
+                &child_node,
+                &child_child_ids,
+                nodegroup_id,
+                &config_value,
+                resource_id,
+                if shares_nodegroup { parent_tile.clone() } else { None },
+                tile_counter,
+            );
+            values.push(pv);
+        }
+
+        // Add to pseudo_cache
+        if !values.is_empty() {
+            let list = RustPseudoList::from_values_with_cardinality(
+                child_alias.clone(),
+                values,
+                is_single,
+            );
+
+            pseudo_cache.entry(child_alias)
+                .and_modify(|existing| existing.merge(list.clone()))
+                .or_insert(list);
         }
     }
 
     Ok(())
 }
 
-// ============================================================================
-// Lookup table builders
-// ============================================================================
+/// Create a RustPseudoValue from a JSON object (semantic or outer node)
+/// Returns both the pseudo value and the tile (which may be shared with children)
+fn create_pseudo_value_from_json(
+    json_obj: &Map<String, Value>,
+    node: &Arc<StaticNode>,
+    child_node_ids: &[String],
+    nodegroup_id: &str,
+    config: &Option<Value>,
+    resource_id: &str,
+    shared_tile: Option<Arc<StaticTile>>,  // Use this tile if provided (same nodegroup as parent)
+    tile_counter: &mut u32,
+) -> (RustPseudoValue, Arc<StaticTile>) {
+    // Use shared tile or create new one
+    let tile = shared_tile.unwrap_or_else(|| {
+        *tile_counter += 1;
+        let tile_id = format!("new_tile_{}", tile_counter);
 
-fn build_node_lookup(nodes: &[StaticNode]) -> HashMap<String, &StaticNode> {
-    nodes.iter()
-        .map(|n| (n.nodeid.clone(), n))
-        .collect()
+        let mut new_tile = StaticTile::new_empty(nodegroup_id.to_string());
+        new_tile.tileid = Some(tile_id);
+        new_tile.resourceinstance_id = resource_id.to_string();
+        Arc::new(new_tile)
+    });
+
+    // Extract and coerce _value if present (for outer nodes)
+    let tile_data = json_obj.get("_value").map(|value| {
+        let coerced = coerce_value(&node.datatype, value, config.as_ref());
+        if !coerced.is_null() && coerced.error.is_none() {
+            coerced.tile_data
+        } else {
+            Value::Null
+        }
+    }).filter(|v| !v.is_null());
+
+    let pv = RustPseudoValue::from_node_and_tile(
+        Arc::clone(node),
+        Some(Arc::clone(&tile)),
+        tile_data,
+        child_node_ids.to_vec(),
+    );
+
+    (pv, tile)
 }
 
-fn build_node_alias_lookup(nodes: &[StaticNode]) -> HashMap<String, &StaticNode> {
-    nodes.iter()
-        .filter_map(|n| n.alias.as_ref().map(|a| (a.clone(), n)))
-        .collect()
-}
+/// Create a RustPseudoValue from a leaf JSON value (string, number, etc.)
+/// Returns both the pseudo value and the tile (which may be shared with parent)
+fn create_pseudo_value_from_leaf(
+    json_value: &Value,
+    node: &Arc<StaticNode>,
+    child_node_ids: &[String],
+    nodegroup_id: &str,
+    config: &Option<Value>,
+    resource_id: &str,
+    shared_tile: Option<Arc<StaticTile>>,  // Use this tile if provided (same nodegroup as parent)
+    tile_counter: &mut u32,
+) -> (RustPseudoValue, Arc<StaticTile>) {
+    // Use shared tile or create new one
+    let tile = shared_tile.unwrap_or_else(|| {
+        *tile_counter += 1;
+        let tile_id = format!("new_tile_{}", tile_counter);
 
-fn build_nodegroup_lookup(nodegroups: &[StaticNodegroup]) -> HashMap<String, &StaticNodegroup> {
-    nodegroups.iter()
-        .map(|ng| (ng.nodegroupid.clone(), ng))
-        .collect()
-}
+        let mut new_tile = StaticTile::new_empty(nodegroup_id.to_string());
+        new_tile.tileid = Some(tile_id);
+        new_tile.resourceinstance_id = resource_id.to_string();
+        Arc::new(new_tile)
+    });
 
-fn build_edge_map(edges: &[StaticEdge]) -> HashMap<String, Vec<String>> {
-    let mut map: HashMap<String, Vec<String>> = HashMap::new();
-    for edge in edges {
-        map.entry(edge.domainnode_id.clone())
-            .or_insert_with(Vec::new)
-            .push(edge.rangenode_id.clone());
-    }
-    map
+    // Coerce the leaf value
+    let coerced = coerce_value(&node.datatype, json_value, config.as_ref());
+    let tile_data = if !coerced.is_null() && coerced.error.is_none() {
+        Some(coerced.tile_data)
+    } else {
+        None
+    };
+
+    let pv = RustPseudoValue::from_node_and_tile(
+        Arc::clone(node),
+        Some(Arc::clone(&tile)),
+        tile_data,
+        child_node_ids.to_vec(),
+    );
+
+    (pv, tile)
 }
 
 #[cfg(test)]
@@ -482,9 +576,13 @@ mod tests {
         // Extract graph[0]
         let graph_data = json["graph"][0].clone();
 
-        // Deserialize to StaticGraph
-        serde_json::from_value(graph_data)
-            .expect("Failed to deserialize StaticGraph")
+        // Deserialize to core type and build indices
+        let mut core_graph: alizarin_core::StaticGraph = serde_json::from_value(graph_data)
+            .expect("Failed to deserialize StaticGraph");
+        core_graph.build_indices();
+
+        // Wrap in WASM wrapper (using Into/From conversion)
+        StaticGraph::from(core_graph)
     }
 
     /// Create a simple test resource with tiles
@@ -653,9 +751,10 @@ mod tests {
     }
 
     #[test]
-    fn test_build_edge_map() {
+    fn test_cached_edge_map() {
         let graph = load_group_graph();
-        let edges = build_edge_map(graph.edges_slice());
+        let edges = graph.edges_map()
+            .expect("Graph indices should be built");
 
         // Should have entries for nodes with children
         assert!(!edges.is_empty(), "Graph should have edges");
@@ -666,5 +765,9 @@ mod tests {
             edges.contains_key(root_id),
             "Root node should have children"
         );
+
+        // Test get_child_ids helper
+        let children = graph.get_child_ids(root_id);
+        assert!(children.is_some(), "Root should have children via get_child_ids");
     }
 }

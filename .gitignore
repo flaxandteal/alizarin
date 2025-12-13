@@ -29,3 +29,6 @@ bin/
 pkg/
 wasm-pack.log
 .venv/
+tmp/
+__pycache__/
+*.so
