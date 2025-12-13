@@ -21,6 +21,8 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 tiles_to_json_tree: Optional[Any] = None
 json_tree_to_tiles: Optional[Any] = None
+batch_trees_to_tiles: Optional[Any] = None
+batch_tiles_to_trees: Optional[Any] = None
 _alizarin_rust: Optional[Any] = None
 
 try:
@@ -28,6 +30,8 @@ try:
     from . import alizarin as _alizarin_rust
     tiles_to_json_tree = _alizarin_rust.tiles_to_json_tree
     json_tree_to_tiles = _alizarin_rust.json_tree_to_tiles
+    batch_trees_to_tiles = _alizarin_rust.batch_trees_to_tiles
+    batch_tiles_to_trees = _alizarin_rust.batch_tiles_to_trees
 except (ImportError, AttributeError):
     # Rust module not yet compiled - functions will remain None
     pass
@@ -344,6 +348,8 @@ __all__ = [
     # Core Rust functions
     "tiles_to_json_tree",
     "json_tree_to_tiles",
+    "batch_trees_to_tiles",
+    "batch_tiles_to_trees",
     "resource_to_json",
     "json_to_resource",
     # Rust-backed wrappers

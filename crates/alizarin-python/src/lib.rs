@@ -14,6 +14,7 @@ mod node_config;
 mod rdm_cache;
 mod type_coercion;
 use pyo3::types::PyCapsule;
+use rayon::prelude::*;
 use serde_json;
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
@@ -196,23 +197,30 @@ fn tiles_to_json_tree(
 ///     resource_id: Resource instance ID
 ///     graph_id: Graph ID
 ///     graph_json: Graph model as JSON string
+///     from_camel: If True, convert keys from camelCase to snake_case before resolving
 ///
 /// Returns:
 ///     Dict with 'resourceinstanceid', 'graph_id', and 'tiles'
 #[pyfunction]
-#[pyo3(signature = (tree_json, resource_id, graph_id, graph_json))]
+#[pyo3(signature = (tree_json, resource_id, graph_id, graph_json, from_camel=false))]
 fn json_tree_to_tiles(
     py: Python,
     tree_json: String,
     resource_id: String,
     graph_id: String,
     graph_json: String,
+    from_camel: bool,
 ) -> PyResult<PyObject> {
     // Parse tree from JSON
-    let tree: serde_json::Value = serde_json::from_str(&tree_json)
+    let mut tree: serde_json::Value = serde_json::from_str(&tree_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
             format!("Failed to parse tree: {}", e)
         ))?;
+
+    // Convert keys from camelCase to snake_case if requested
+    if from_camel {
+        tree = transform_keys_to_snake(tree);
+    }
 
     // Parse graph from JSON
     let graph: AlizarinStaticGraph = serde_json::from_str(&graph_json)
@@ -235,6 +243,265 @@ fn json_tree_to_tiles(
     let py_dict = json_module.call_method1("loads", (result_json,))?;
 
     Ok(py_dict.to_object(py))
+}
+
+/// Batch convert multiple JSON trees to tiles in parallel
+///
+/// This is much more efficient than calling json_tree_to_tiles in a loop because:
+/// 1. The graph is parsed only once
+/// 2. Trees are processed in parallel using Rayon
+///
+/// Args:
+///     trees_json: JSON array of trees as string
+///     graph_json: Graph model as JSON string
+///     from_camel: If True, convert keys from camelCase to snake_case
+///
+/// Returns:
+///     JSON array of converted resources (with resourceinstanceid, graph_id, tiles)
+#[pyfunction]
+#[pyo3(signature = (trees_json, graph_json, from_camel=false))]
+fn batch_trees_to_tiles(
+    py: Python,
+    trees_json: String,
+    graph_json: String,
+    from_camel: bool,
+) -> PyResult<PyObject> {
+    // Parse all trees from JSON array
+    let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to parse trees array: {}", e)
+        ))?;
+
+    // Parse graph once (this is the expensive operation we want to avoid repeating)
+    // Use core type's from_json_string which calls build_indices(), then wrap
+    let core_graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to parse graph: {}", e)
+        ))?;
+    let graph = AlizarinStaticGraph::from(core_graph);
+
+    // Get graph_id for all resources
+    let graph_id = graph.graph_id().to_string();
+
+    // Process trees in parallel using Rayon
+    let results: Vec<Result<serde_json::Value, String>> = trees
+        .into_par_iter()
+        .map(|mut tree| {
+            // Convert keys from camelCase if requested
+            if from_camel {
+                tree = transform_keys_to_snake(tree);
+            }
+
+            // Extract or generate resource ID
+            let resource_id = tree.get("resourceinstanceid")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+            // Convert tree to tiles
+            let resource_data = tree_to_tiles(&tree, &graph, &resource_id, &graph_id)
+                .map_err(|e| e)?;
+
+            // Serialize result
+            serde_json::to_value(&resource_data)
+                .map_err(|e| format!("Failed to serialize result: {}", e))
+        })
+        .collect();
+
+    // Separate successes and errors
+    let mut successes = Vec::new();
+    let mut errors = Vec::new();
+
+    for (i, result) in results.into_iter().enumerate() {
+        match result {
+            Ok(value) => successes.push(value),
+            Err(e) => errors.push(format!("Tree {}: {}", i, e)),
+        }
+    }
+
+    // If there were errors, include them in the response
+    let output = if errors.is_empty() {
+        serde_json::json!({
+            "success": true,
+            "results": successes,
+            "count": successes.len()
+        })
+    } else {
+        serde_json::json!({
+            "success": false,
+            "results": successes,
+            "count": successes.len(),
+            "errors": errors,
+            "error_count": errors.len()
+        })
+    };
+
+    // Convert to Python dict
+    let output_json = serde_json::to_string(&output)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to serialize output: {}", e)
+        ))?;
+
+    let json_module = py.import("json")?;
+    let py_dict = json_module.call_method1("loads", (output_json,))?;
+
+    Ok(py_dict.to_object(py))
+}
+
+/// Batch convert multiple tiled resources to JSON trees in parallel
+///
+/// Args:
+///     resources_json: JSON array of resources (with tiles) as string
+///     graph_json: Graph model as JSON string
+///
+/// Returns:
+///     JSON array of nested tree structures
+#[pyfunction]
+#[pyo3(signature = (resources_json, graph_json))]
+fn batch_tiles_to_trees(
+    py: Python,
+    resources_json: String,
+    graph_json: String,
+) -> PyResult<PyObject> {
+    // Parse all resources from JSON array
+    let resources: Vec<serde_json::Value> = serde_json::from_str(&resources_json)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to parse resources array: {}", e)
+        ))?;
+
+    // Parse graph once (use core type's from_json_string which calls build_indices())
+    let core_graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to parse graph: {}", e)
+        ))?;
+    let graph = AlizarinStaticGraph::from(core_graph);
+
+    let graph_id = graph.graph_id().to_string();
+
+    // Process resources in parallel using Rayon
+    let results: Vec<Result<serde_json::Value, String>> = resources
+        .into_par_iter()
+        .map(|resource| {
+            // Extract resource metadata
+            let resource_id = resource.get("resourceinstanceid")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+            // Parse tiles
+            let tiles: Vec<AlizarinStaticTile> = resource.get("tiles")
+                .map(|t| serde_json::from_value(t.clone()))
+                .transpose()
+                .map_err(|e| format!("Failed to parse tiles: {}", e))?
+                .unwrap_or_default();
+
+            // Create ResourceData
+            let resource_data = ResourceData {
+                resourceinstanceid: resource_id.clone(),
+                graph_id: graph_id.clone(),
+                tiles,
+            };
+
+            // Convert to tree
+            let mut tree = tiles_to_tree(&resource_data, &graph)
+                .map_err(|e| e)?;
+
+            // Add metadata to tree
+            if let serde_json::Value::Object(ref mut map) = tree {
+                map.insert("resourceinstanceid".to_string(), serde_json::Value::String(resource_id));
+                map.insert("graph_id".to_string(), serde_json::Value::String(graph_id.clone()));
+            }
+
+            Ok(tree)
+        })
+        .collect();
+
+    // Separate successes and errors
+    let mut successes = Vec::new();
+    let mut errors = Vec::new();
+
+    for (i, result) in results.into_iter().enumerate() {
+        match result {
+            Ok(value) => successes.push(value),
+            Err(e) => errors.push(format!("Resource {}: {}", i, e)),
+        }
+    }
+
+    // Build output
+    let output = if errors.is_empty() {
+        serde_json::json!({
+            "success": true,
+            "results": successes,
+            "count": successes.len()
+        })
+    } else {
+        serde_json::json!({
+            "success": false,
+            "results": successes,
+            "count": successes.len(),
+            "errors": errors,
+            "error_count": errors.len()
+        })
+    };
+
+    // Convert to Python dict
+    let output_json = serde_json::to_string(&output)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to serialize output: {}", e)
+        ))?;
+
+    let json_module = py.import("json")?;
+    let py_dict = json_module.call_method1("loads", (output_json,))?;
+
+    Ok(py_dict.to_object(py))
+}
+
+/// Convert a camelCase string to snake_case
+fn camel_to_snake(s: &str) -> String {
+    let mut result = String::with_capacity(s.len() + 10);
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c.is_uppercase() {
+            // Don't add underscore at the start
+            if !result.is_empty() {
+                // Check if we're in an acronym (current is upper, next is upper or end)
+                let next_is_upper_or_end = chars.peek().map(|n| n.is_uppercase()).unwrap_or(true);
+                let prev_was_upper = result.chars().last().map(|p| p.is_uppercase()).unwrap_or(false);
+
+                // Add underscore if:
+                // - Previous was lowercase, or
+                // - We're at the end of an acronym (next is lowercase)
+                if !prev_was_upper || !next_is_upper_or_end {
+                    result.push('_');
+                }
+            }
+            result.push(c.to_lowercase().next().unwrap());
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
+}
+
+/// Recursively convert all keys in a JSON value from camelCase to snake_case
+fn transform_keys_to_snake(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut new_map = serde_json::Map::new();
+            for (key, val) in map {
+                let new_key = camel_to_snake(&key);
+                let new_val = transform_keys_to_snake(val);
+                new_map.insert(new_key, new_val);
+            }
+            serde_json::Value::Object(new_map)
+        }
+        serde_json::Value::Array(arr) => {
+            serde_json::Value::Array(arr.into_iter().map(transform_keys_to_snake).collect())
+        }
+        other => other,
+    }
 }
 
 /// Python wrapper for ResourceModelWrapperCore
@@ -494,6 +761,10 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(tiles_to_json_tree, m)?)?;
     m.add_function(wrap_pyfunction!(json_tree_to_tiles, m)?)?;
 
+    // Batch conversion functions (parallel processing with Rayon)
+    m.add_function(wrap_pyfunction!(batch_trees_to_tiles, m)?)?;
+    m.add_function(wrap_pyfunction!(batch_tiles_to_trees, m)?)?;
+
     // Wrapper classes
     m.add_class::<PyResourceModelWrapper>()?;
 
@@ -515,4 +786,61 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     type_coercion::register_module(m)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_camel_to_snake_simple() {
+        assert_eq!(camel_to_snake("camelCase"), "camel_case");
+        assert_eq!(camel_to_snake("firstName"), "first_name");
+        assert_eq!(camel_to_snake("lastName"), "last_name");
+    }
+
+    #[test]
+    fn test_camel_to_snake_already_snake() {
+        assert_eq!(camel_to_snake("snake_case"), "snake_case");
+        assert_eq!(camel_to_snake("first_name"), "first_name");
+    }
+
+    #[test]
+    fn test_camel_to_snake_single_word() {
+        assert_eq!(camel_to_snake("name"), "name");
+        assert_eq!(camel_to_snake("Name"), "name");
+    }
+
+    #[test]
+    fn test_camel_to_snake_mixed() {
+        // Note: The current implementation treats each uppercase letter as a word boundary
+        // This is correct for standard camelCase used in JSON keys
+        assert_eq!(camel_to_snake("graphId"), "graph_id");
+        assert_eq!(camel_to_snake("resourceInstanceId"), "resource_instance_id");
+        assert_eq!(camel_to_snake("nodeGroupId"), "node_group_id");
+    }
+
+    #[test]
+    fn test_transform_keys_nested() {
+        let input = serde_json::json!({
+            "firstName": "John",
+            "lastName": "Doe",
+            "contactInfo": {
+                "emailAddress": "john@example.com",
+                "phoneNumber": "123-456"
+            },
+            "addresses": [
+                {"streetName": "Main St", "zipCode": "12345"}
+            ]
+        });
+
+        let result = transform_keys_to_snake(input);
+
+        assert_eq!(result["first_name"], "John");
+        assert_eq!(result["last_name"], "Doe");
+        assert_eq!(result["contact_info"]["email_address"], "john@example.com");
+        assert_eq!(result["contact_info"]["phone_number"], "123-456");
+        assert_eq!(result["addresses"][0]["street_name"], "Main St");
+        assert_eq!(result["addresses"][0]["zip_code"], "12345");
+    }
 }

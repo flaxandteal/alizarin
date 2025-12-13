@@ -18,5 +18,6 @@ alizarin = { path = "../.." }
 alizarin-core = { path = "../alizarin-core" }
 alizarin-extension-api = { path = "../alizarin-extension-api" }
 lazy_static = "1.4"
+rayon = "1.10"
 
 [dev-dependencies]

@@ -16,9 +16,15 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: Implementation :: CPython",
 ]
+dependencies = [
+    "click>=8.0",
+]
 
 [project.optional-dependencies]
 test = ["pytest>=7.0"]
+
+[project.scripts]
+alizarin = "alizarin.cli:main"
 
 [tool.maturin]
 # Mixed Rust/Python module - include Python source directory

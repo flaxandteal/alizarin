@@ -236,7 +236,7 @@ class StaticCard:
     component_id: str
     name: Union[str, Dict[str, str]]
     visible: bool
-    is_editable: bool = True
+    is_editable: Optional[bool] = None
     config: Optional[Dict[str, Any]] = None
     constraints: List[StaticConstraint] = field(default_factory=list)
     cssclass: Optional[str] = None

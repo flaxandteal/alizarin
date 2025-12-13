@@ -2250,12 +2250,9 @@ impl StaticGraph {
         self.0.nodes_slice()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn nodegroups_slice(&self) -> &[alizarin_core::StaticNodegroup] {
         self.0.nodegroups_slice()
-    }
-
-    pub(crate) fn edges_slice(&self) -> &[alizarin_core::StaticEdge] {
-        self.0.edges_slice()
     }
 
     pub(crate) fn root_node(&self) -> &alizarin_core::StaticNode {
@@ -2265,6 +2262,37 @@ impl StaticGraph {
     #[allow(dead_code)]
     pub(crate) fn graph_id(&self) -> &str {
         self.0.graph_id()
+    }
+
+    /// Build the internal lookup indices (for use after deserialization)
+    pub(crate) fn build_indices(&mut self) {
+        self.0.build_indices()
+    }
+
+    /// Get cached edges map (parent_nodeid -> child_nodeids)
+    pub(crate) fn edges_map(&self) -> Option<&std::collections::HashMap<String, Vec<String>>> {
+        self.0.edges_map()
+    }
+
+    /// Get child node IDs for a given node
+    #[allow(dead_code)]
+    pub(crate) fn get_child_ids(&self, node_id: &str) -> Option<&Vec<String>> {
+        self.0.get_child_ids(node_id)
+    }
+
+    /// Get nodegroup by ID
+    pub(crate) fn get_nodegroup_by_id(&self, nodegroup_id: &str) -> Option<&alizarin_core::StaticNodegroup> {
+        self.0.get_nodegroup_by_id(nodegroup_id)
+    }
+
+    /// Get nodes in a specific nodegroup
+    pub(crate) fn get_nodes_in_nodegroup(&self, nodegroup_id: &str) -> Vec<&alizarin_core::StaticNode> {
+        self.0.get_nodes_in_nodegroup(nodegroup_id)
+    }
+
+    /// Get Arc-wrapped nodes by alias map (for pseudo_value infrastructure)
+    pub(crate) fn nodes_by_alias_arc(&self) -> Option<&std::collections::HashMap<String, std::sync::Arc<alizarin_core::StaticNode>>> {
+        self.0.nodes_by_alias_arc()
     }
 }
 
