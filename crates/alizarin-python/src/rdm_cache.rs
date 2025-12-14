@@ -8,8 +8,83 @@
 /// Pattern: Python fetches collections asynchronously, Rust looks them up synchronously.
 
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::RwLock;
+use uuid::Uuid;
+
+// SKOS parser from main alizarin crate
+use alizarin::skos::{parse_skos_to_collections, SkosCollection};
+
+// For get_current_language
+use alizarin_core::type_coercion::get_current_language;
+
+// =============================================================================
+// Global RDM Cache Singleton
+// =============================================================================
+
+lazy_static::lazy_static! {
+    /// Global RDM cache singleton for automatic label resolution
+    static ref GLOBAL_RDM_CACHE: RwLock<Option<RdmCache>> = RwLock::new(None);
+}
+
+/// Set the global RDM cache for automatic label resolution.
+///
+/// Once set, functions like `json_tree_to_tiles` will automatically
+/// resolve label strings to UUIDs using this cache.
+///
+/// Example:
+///     cache = RustRdmCache()
+///     cache.add_collection(my_collection)
+///     set_global_rdm_cache(cache)
+///
+///     # Now json_tree_to_tiles will auto-resolve labels
+///     result = json_tree_to_tiles(tree_json, ...)
+#[pyfunction]
+pub fn set_global_rdm_cache(cache: RdmCache) {
+    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
+        *guard = Some(cache);
+    }
+}
+
+/// Get a clone of the global RDM cache, if set.
+#[pyfunction]
+pub fn get_global_rdm_cache() -> Option<RdmCache> {
+    GLOBAL_RDM_CACHE
+        .read()
+        .ok()
+        .and_then(|guard| guard.clone())
+}
+
+/// Clear the global RDM cache.
+#[pyfunction]
+pub fn clear_global_rdm_cache() {
+    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
+        *guard = None;
+    }
+}
+
+/// Check if a global RDM cache is set.
+#[pyfunction]
+pub fn has_global_rdm_cache() -> bool {
+    GLOBAL_RDM_CACHE
+        .read()
+        .ok()
+        .map(|guard| guard.is_some())
+        .unwrap_or(false)
+}
+
+/// Internal: Get reference to global cache for Rust-side operations
+pub fn with_global_rdm_cache<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&RdmCache) -> R,
+{
+    GLOBAL_RDM_CACHE
+        .read()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(f))
+}
 
 // =============================================================================
 // Concept Types
@@ -53,6 +128,48 @@ impl RdmConcept {
             narrower: vec![],
             scope_note: HashMap::new(),
         }
+    }
+
+    /// Create a concept from an ID and a label.
+    ///
+    /// The label can be either:
+    /// - A string: will be stored under the current language (from get_current_language)
+    /// - A dict {lang: label}: will be stored as pref_labels for each language
+    ///
+    /// For auto-generating IDs, use `RustRdmCollection.add_from_label()` instead.
+    ///
+    /// Example:
+    ///     concept = RustRdmConcept.from_label("uuid-1", "Category A")
+    ///     concept = RustRdmConcept.from_label("uuid-1", {"en": "Category A", "de": "Kategorie A"})
+    #[staticmethod]
+    fn from_label(py: Python, id: String, label: PyObject) -> PyResult<Self> {
+        let pref_label = if let Ok(s) = label.extract::<String>(py) {
+            let lang = get_current_language();
+            let mut map = HashMap::new();
+            map.insert(lang, s);
+            map
+        } else if let Ok(dict) = label.downcast::<PyDict>(py) {
+            let mut map = HashMap::new();
+            for (key, value) in dict.iter() {
+                let lang: String = key.extract()?;
+                let label_str: String = value.extract()?;
+                map.insert(lang, label_str);
+            }
+            map
+        } else {
+            return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                "label must be a string or dict of {language: label}"
+            ));
+        };
+
+        Ok(Self {
+            id,
+            pref_label,
+            alt_labels: HashMap::new(),
+            broader: vec![],
+            narrower: vec![],
+            scope_note: HashMap::new(),
+        })
     }
 
     #[getter]
@@ -116,11 +233,17 @@ impl RdmConcept {
 pub struct RdmCollection {
     /// Collection ID (URI or UUID)
     pub id: String,
+    /// Collection name (optional, for display)
+    name: Option<String>,
     /// Concepts indexed by their ID
     concepts: HashMap<String, RdmConcept>,
     /// Top-level concepts (no broader)
     top_concepts: Vec<String>,
 }
+
+/// Namespace UUID for generating collection IDs from names
+/// Derived from the project's base namespace: uuid5("1a79f1c8-9505-4bea-a18e-28a053f725ca", "collection")
+const COLLECTION_NAMESPACE: &str = "a8e5f3b2-7c41-5d8a-9f12-3b4c5d6e7f8a";
 
 #[pymethods]
 impl RdmCollection {
@@ -128,14 +251,60 @@ impl RdmCollection {
     fn new(id: String) -> Self {
         Self {
             id,
+            name: None,
             concepts: HashMap::new(),
             top_concepts: vec![],
         }
     }
 
+    /// Create a collection from a name and list of labels.
+    ///
+    /// Args:
+    ///     name: The collection name (also used to generate ID if not provided)
+    ///     labels: List of concept labels (strings only - IDs are auto-generated)
+    ///     id: Optional explicit collection ID. If not provided, generates uuid5 from name.
+    ///
+    /// Example:
+    ///     # Auto-generate collection ID from name, concept IDs from labels
+    ///     collection = RustRdmCollection.from_labels("Categories", ["Cat A", "Cat B", "Cat C"])
+    ///
+    ///     # Explicit collection ID
+    ///     collection = RustRdmCollection.from_labels("Categories", ["Cat A", "Cat B"], id="my-uuid")
+    #[staticmethod]
+    #[pyo3(signature = (name, labels, id=None))]
+    fn from_labels(py: Python, name: String, labels: Vec<PyObject>, id: Option<String>) -> PyResult<Self> {
+        // Generate or use provided collection ID
+        let collection_id = match id {
+            Some(explicit_id) => explicit_id,
+            None => {
+                let namespace = Uuid::parse_str(COLLECTION_NAMESPACE).unwrap();
+                Uuid::new_v5(&namespace, name.as_bytes()).to_string()
+            }
+        };
+
+        let mut collection = Self {
+            id: collection_id,
+            name: Some(name),
+            concepts: HashMap::new(),
+            top_concepts: vec![],
+        };
+
+        // Add each label as a concept
+        for label in labels {
+            collection.add_from_label(py, label, None)?;
+        }
+
+        Ok(collection)
+    }
+
     #[getter]
     fn id(&self) -> &str {
         &self.id
+    }
+
+    #[getter]
+    fn name(&self) -> Option<&str> {
+        self.name.as_deref()
     }
 
     /// Add a concept to the collection
@@ -145,6 +314,79 @@ impl RdmCollection {
             self.top_concepts.push(id.clone());
         }
         self.concepts.insert(id, concept);
+    }
+
+    /// Add a concept from a label, optionally auto-generating the ID.
+    ///
+    /// The label can be either:
+    /// - A string: stored under the current language, ID generated from uuid5(collection_id, label)
+    /// - A dict {lang: label}: stored as pref_labels for each language (requires explicit id)
+    ///
+    /// Returns the generated/provided concept ID.
+    ///
+    /// Example:
+    ///     collection = RustRdmCollection("550e8400-e29b-41d4-a716-446655440000")
+    ///
+    ///     # Auto-generate ID from label
+    ///     id1 = collection.add_from_label("Category A")
+    ///
+    ///     # Explicit ID
+    ///     id2 = collection.add_from_label("Category B", id="my-uuid")
+    ///
+    ///     # Multi-language requires explicit ID
+    ///     id3 = collection.add_from_label({"en": "Category C", "de": "Kategorie C"}, id="my-uuid-2")
+    #[pyo3(signature = (label, id=None))]
+    fn add_from_label(&mut self, py: Python, label: PyObject, id: Option<String>) -> PyResult<String> {
+        // Extract label and determine if it's a string or dict
+        let (pref_label, label_string) = if let Ok(s) = label.extract::<String>(py) {
+            let lang = get_current_language();
+            let mut map = HashMap::new();
+            map.insert(lang, s.clone());
+            (map, Some(s))
+        } else if let Ok(dict) = label.downcast::<PyDict>(py) {
+            let mut map = HashMap::new();
+            for (key, value) in dict.iter() {
+                let lang: String = key.extract()?;
+                let label_str: String = value.extract()?;
+                map.insert(lang, label_str);
+            }
+            (map, None)
+        } else {
+            return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                "label must be a string or dict of {language: label}"
+            ));
+        };
+
+        // Determine the concept ID
+        let concept_id = match (id, label_string) {
+            (Some(explicit_id), _) => explicit_id,
+            (None, Some(label_str)) => {
+                // Parse collection ID as UUID namespace
+                let namespace = Uuid::parse_str(&self.id).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        format!("collection id must be a valid UUID for auto-generation: {}", e)
+                    )
+                })?;
+                Uuid::new_v5(&namespace, label_str.as_bytes()).to_string()
+            }
+            (None, None) => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "id is required when label is a dict (cannot auto-generate from multiple languages)"
+                ));
+            }
+        };
+
+        let concept = RdmConcept {
+            id: concept_id.clone(),
+            pref_label,
+            alt_labels: HashMap::new(),
+            broader: vec![],
+            narrower: vec![],
+            scope_note: HashMap::new(),
+        };
+
+        self.add_concept(concept);
+        Ok(concept_id)
     }
 
     /// Look up a concept by ID
@@ -198,6 +440,60 @@ impl RdmCollection {
             .cloned()
             .collect()
     }
+
+    /// Find a concept by exact label match (case-insensitive)
+    ///
+    /// Searches pref_label and alt_labels across all languages.
+    /// Returns None if no match or multiple matches (ambiguous).
+    fn find_by_label(&self, label: &str) -> Option<RdmConcept> {
+        let label_lower = label.to_lowercase();
+        let matches: Vec<_> = self.concepts.values()
+            .filter(|c| {
+                // Check pref_label in any language
+                for pref in c.pref_label.values() {
+                    if pref.to_lowercase() == label_lower {
+                        return true;
+                    }
+                }
+                // Check alt_labels in any language
+                for alts in c.alt_labels.values() {
+                    if alts.iter().any(|l| l.to_lowercase() == label_lower) {
+                        return true;
+                    }
+                }
+                false
+            })
+            .cloned()
+            .collect();
+
+        // Only return if exactly one match (unambiguous)
+        if matches.len() == 1 {
+            Some(matches.into_iter().next().unwrap())
+        } else {
+            None
+        }
+    }
+
+    /// Find a concept by exact label match, returning all matches
+    fn find_all_by_label(&self, label: &str) -> Vec<RdmConcept> {
+        let label_lower = label.to_lowercase();
+        self.concepts.values()
+            .filter(|c| {
+                for pref in c.pref_label.values() {
+                    if pref.to_lowercase() == label_lower {
+                        return true;
+                    }
+                }
+                for alts in c.alt_labels.values() {
+                    if alts.iter().any(|l| l.to_lowercase() == label_lower) {
+                        return true;
+                    }
+                }
+                false
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 impl RdmCollection {
@@ -222,6 +518,7 @@ impl RdmCollection {
 ///
 /// Python fetches collections asynchronously and adds them to the cache.
 /// Rust looks up concepts synchronously during coercion.
+#[derive(Clone, Default)]
 #[pyclass(name = "RustRdmCache")]
 pub struct RdmCache {
     /// Collections indexed by collection ID
@@ -255,6 +552,34 @@ impl RdmCache {
         self.collections.insert(collection.id.clone(), collection);
     }
 
+    /// Add collection(s) from SKOS RDF/XML
+    ///
+    /// Parses SKOS XML and adds the concept schemes as collections.
+    ///
+    /// Args:
+    ///     xml_content: SKOS RDF/XML as string
+    ///     base_uri: Base URI for resolving relative URIs
+    ///
+    /// Returns:
+    ///     List of collection IDs that were added
+    fn add_from_skos_xml(&mut self, xml_content: &str, base_uri: &str) -> PyResult<Vec<String>> {
+        let skos_collections = parse_skos_to_collections(xml_content, base_uri)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                format!("Failed to parse SKOS XML: {}", e)
+            ))?;
+
+        let mut added_ids = Vec::new();
+
+        for skos_coll in skos_collections {
+            let rdm_collection = Self::skos_to_rdm_collection(&skos_coll);
+            let id = rdm_collection.id.clone();
+            self.collections.insert(id.clone(), rdm_collection);
+            added_ids.push(id);
+        }
+
+        Ok(added_ids)
+    }
+
     /// Get a collection by ID
     fn get_collection(&self, collection_id: &str) -> Option<RdmCollection> {
         self.collections.get(collection_id).cloned()
@@ -279,6 +604,22 @@ impl RdmCache {
         self.collections.get(collection_id)
             .map(|c| c.has_concept(concept_id))
             .unwrap_or(false)
+    }
+
+    /// Look up a concept by label in a specific collection
+    ///
+    /// Returns the concept if exactly one match is found.
+    /// Returns None if no match or ambiguous (multiple matches).
+    fn lookup_by_label(&self, collection_id: &str, label: &str) -> Option<RdmConcept> {
+        self.collections.get(collection_id)
+            .and_then(|c| c.find_by_label(label))
+    }
+
+    /// Look up a concept by label, returning all matches
+    fn lookup_all_by_label(&self, collection_id: &str, label: &str) -> Vec<RdmConcept> {
+        self.collections.get(collection_id)
+            .map(|c| c.find_all_by_label(label))
+            .unwrap_or_default()
     }
 
     /// Get all cached collection IDs
@@ -320,6 +661,85 @@ impl RdmCache {
     pub fn get(&self, collection_id: &str) -> Option<&RdmCollection> {
         self.collections.get(collection_id)
     }
+
+    /// Convert SKOS collection to RDM collection
+    fn skos_to_rdm_collection(skos: &SkosCollection) -> RdmCollection {
+        let mut rdm = RdmCollection::new(skos.id.clone());
+
+        // Convert all concepts from the SKOS collection
+        for (concept_id, skos_concept) in &skos.all_concepts {
+            let mut pref_label = HashMap::new();
+            for (lang, value) in &skos_concept.pref_labels {
+                pref_label.insert(lang.clone(), value.value.clone());
+            }
+
+            // Find children (narrower concepts)
+            let narrower: Vec<String> = skos.all_concepts.values()
+                .filter(|c| {
+                    // Check if this concept has the current concept as broader
+                    // We don't have broader info directly, so we skip for now
+                    false
+                })
+                .map(|c| c.id.clone())
+                .collect();
+
+            let rdm_concept = RdmConcept {
+                id: concept_id.clone(),
+                pref_label,
+                alt_labels: HashMap::new(), // SKOS altLabels not in current structure
+                broader: vec![], // Would need to extract from hierarchy
+                narrower,
+                scope_note: HashMap::new(),
+            };
+
+            rdm.add_concept(rdm_concept);
+        }
+
+        rdm
+    }
+
+    /// Look up a concept by label in a specific collection (Rust API)
+    ///
+    /// The collection_id comes from the node's config.rdmCollection
+    pub fn find_concept_by_label(&self, collection_id: &str, label: &str) -> Option<RdmConcept> {
+        self.get(collection_id)?.find_by_label_rust(label)
+    }
+
+    /// Look up a concept by label, returning all matches (Rust API)
+    pub fn find_all_concepts_by_label(&self, collection_id: &str, label: &str) -> Vec<RdmConcept> {
+        self.get(collection_id)
+            .map(|c| c.find_all_by_label_rust(label))
+            .unwrap_or_default()
+    }
+}
+
+impl RdmCollection {
+    /// Find by label - Rust API (exact case-insensitive match)
+    fn find_by_label_rust(&self, label: &str) -> Option<RdmConcept> {
+        let label_lower = label.to_lowercase();
+        let matches: Vec<_> = self.concepts.values()
+            .filter(|c| {
+                c.pref_label.values().any(|p| p.to_lowercase() == label_lower) ||
+                c.alt_labels.values().any(|alts| alts.iter().any(|l| l.to_lowercase() == label_lower))
+            })
+            .cloned()
+            .collect();
+
+        // Only return if exactly one match (unambiguous)
+        if matches.len() == 1 { matches.into_iter().next() } else { None }
+    }
+
+    /// Find all by label - Rust API
+    fn find_all_by_label_rust(&self, label: &str) -> Vec<RdmConcept> {
+        let label_lower = label.to_lowercase();
+        self.concepts.values()
+            .filter(|c| {
+                c.pref_label.values().any(|p| p.to_lowercase() == label_lower) ||
+                c.alt_labels.values().any(|alts| alts.iter().any(|l| l.to_lowercase() == label_lower))
+            })
+            .cloned()
+            .collect()
+    }
 }
 
 // =============================================================================
@@ -331,5 +751,12 @@ pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_class::<RdmConcept>()?;
     m.add_class::<RdmCollection>()?;
     m.add_class::<RdmCache>()?;
+
+    // Global RDM cache singleton functions
+    m.add_function(wrap_pyfunction!(set_global_rdm_cache, m)?)?;
+    m.add_function(wrap_pyfunction!(get_global_rdm_cache, m)?)?;
+    m.add_function(wrap_pyfunction!(clear_global_rdm_cache, m)?)?;
+    m.add_function(wrap_pyfunction!(has_global_rdm_cache, m)?)?;
+
     Ok(())
 }

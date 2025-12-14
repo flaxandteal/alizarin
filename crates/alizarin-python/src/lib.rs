@@ -116,7 +116,7 @@ fn coerce_with_extension(
 
 // Import shared conversion logic from parent crate
 // Use ::alizarin to refer to the external crate, not the pymodule
-use ::alizarin::json_conversion::{tiles_to_tree, tree_to_tiles, ResourceData};
+use ::alizarin::json_conversion::{tiles_to_tree, tree_to_tiles, tree_to_tiles_strict, ResourceData};
 // Import graph wrapper types (for json_conversion graph parameter)
 use ::alizarin::graph::StaticGraph as AlizarinStaticGraph;
 // Import core types (for ResourceData tiles and matching logic)
@@ -153,11 +153,12 @@ fn tiles_to_json_tree(
             format!("Failed to parse tiles: {}", e)
         ))?;
 
-    // Parse graph from JSON
-    let graph: AlizarinStaticGraph = serde_json::from_str(&graph_json)
+    // Parse graph from JSON (uses from_json_string which calls build_indices)
+    let core_graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
             format!("Failed to parse graph: {}", e)
         ))?;
+    let graph = AlizarinStaticGraph::from(core_graph);
 
     // Create ResourceData
     let resource_data = ResourceData {
@@ -198,11 +199,15 @@ fn tiles_to_json_tree(
 ///     graph_id: Graph ID
 ///     graph_json: Graph model as JSON string
 ///     from_camel: If True, convert keys from camelCase to snake_case before resolving
+///     strict: If True, raise an error for any validation failures or unparseable data
 ///
 /// Returns:
 ///     Dict with 'resourceinstanceid', 'graph_id', and 'tiles'
+///
+/// If a global RDM cache is set (via set_global_rdm_cache), label strings
+/// will automatically be resolved to UUIDs before conversion.
 #[pyfunction]
-#[pyo3(signature = (tree_json, resource_id, graph_id, graph_json, from_camel=false))]
+#[pyo3(signature = (tree_json, resource_id, graph_id, graph_json, from_camel=false, strict=false, rdm_cache=None))]
 fn json_tree_to_tiles(
     py: Python,
     tree_json: String,
@@ -210,6 +215,8 @@ fn json_tree_to_tiles(
     graph_id: String,
     graph_json: String,
     from_camel: bool,
+    strict: bool,
+    rdm_cache: Option<&rdm_cache::RdmCache>,
 ) -> PyResult<PyObject> {
     // Parse tree from JSON
     let mut tree: serde_json::Value = serde_json::from_str(&tree_json)
@@ -222,15 +229,30 @@ fn json_tree_to_tiles(
         tree = transform_keys_to_snake(tree);
     }
 
-    // Parse graph from JSON
-    let graph: AlizarinStaticGraph = serde_json::from_str(&graph_json)
+    // Parse graph from JSON (uses from_json_string which calls build_indices)
+    let core_graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
             format!("Failed to parse graph: {}", e)
         ))?;
 
-    // Call shared Rust conversion function
-    let resource_data = tree_to_tiles(&tree, &graph, &resource_id, &graph_id)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+    // Resolve labels to UUIDs if an RDM cache is available
+    // Use explicit cache if provided, otherwise try global cache
+    // Must happen before converting core_graph to wrapper (which moves it)
+    let global_cache = rdm_cache::get_global_rdm_cache();
+    let cache_to_use: Option<&rdm_cache::RdmCache> = rdm_cache.or(global_cache.as_ref());
+
+    if let Some(cache) = cache_to_use {
+        resolve_labels_in_value(&mut tree, &core_graph, cache, strict)?;
+    }
+
+    let graph = AlizarinStaticGraph::from(core_graph);
+
+    // Call shared Rust conversion function (strict or non-strict)
+    let resource_data = if strict {
+        tree_to_tiles_strict(&tree, &graph, &resource_id, &graph_id)
+    } else {
+        tree_to_tiles(&tree, &graph, &resource_id, &graph_id)
+    }.map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
 
     // Convert to Python dict
     let result_json = serde_json::to_string(&resource_data)
@@ -245,168 +267,131 @@ fn json_tree_to_tiles(
     Ok(py_dict.to_object(py))
 }
 
+/// Helper to build batch result output and convert to Python
+fn batch_result_to_python(
+    py: Python,
+    results: Vec<Result<serde_json::Value, String>>,
+    strict: bool,
+) -> PyResult<PyObject> {
+    if strict {
+        // In strict mode, fail on first error
+        let successes: Result<Vec<_>, _> = results.into_iter().collect();
+        let successes = successes.map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Strict mode error: {}", e))
+        })?;
+
+        let output = serde_json::json!({
+            "success": true,
+            "results": successes,
+            "count": successes.len()
+        });
+
+        let json_module = py.import("json")?;
+        let py_dict = json_module.call_method1("loads", (serde_json::to_string(&output).unwrap(),))?;
+        return Ok(py_dict.to_object(py));
+    }
+
+    // Non-strict: separate successes and errors
+    let (successes, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
+    let successes: Vec<_> = successes.into_iter().map(Result::unwrap).collect();
+    let errors: Vec<_> = errors.into_iter().map(|e| e.unwrap_err()).collect();
+
+    let output = if errors.is_empty() {
+        serde_json::json!({ "success": true, "results": successes, "count": successes.len() })
+    } else {
+        serde_json::json!({
+            "success": false, "results": successes, "count": successes.len(),
+            "errors": errors, "error_count": errors.len()
+        })
+    };
+
+    let json_module = py.import("json")?;
+    let py_dict = json_module.call_method1("loads", (serde_json::to_string(&output).unwrap(),))?;
+    Ok(py_dict.to_object(py))
+}
+
 /// Batch convert multiple JSON trees to tiles in parallel
-///
-/// This is much more efficient than calling json_tree_to_tiles in a loop because:
-/// 1. The graph is parsed only once
-/// 2. Trees are processed in parallel using Rayon
-///
-/// Args:
-///     trees_json: JSON array of trees as string
-///     graph_json: Graph model as JSON string
-///     from_camel: If True, convert keys from camelCase to snake_case
-///
-/// Returns:
-///     JSON array of converted resources (with resourceinstanceid, graph_id, tiles)
 #[pyfunction]
-#[pyo3(signature = (trees_json, graph_json, from_camel=false))]
+#[pyo3(signature = (trees_json, graph_json, from_camel=false, strict=false))]
 fn batch_trees_to_tiles(
     py: Python,
     trees_json: String,
     graph_json: String,
     from_camel: bool,
+    strict: bool,
 ) -> PyResult<PyObject> {
-    // Parse all trees from JSON array
     let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse trees array: {}", e)
-        ))?;
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e)))?;
 
-    // Parse graph once (this is the expensive operation we want to avoid repeating)
-    // Use core type's from_json_string which calls build_indices(), then wrap
     let core_graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse graph: {}", e)
-        ))?;
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse graph: {}", e)))?;
     let graph = AlizarinStaticGraph::from(core_graph);
-
-    // Get graph_id for all resources
     let graph_id = graph.graph_id().to_string();
 
-    // Process trees in parallel using Rayon
     let results: Vec<Result<serde_json::Value, String>> = trees
         .into_par_iter()
-        .map(|mut tree| {
-            // Convert keys from camelCase if requested
-            if from_camel {
-                tree = transform_keys_to_snake(tree);
-            }
+        .enumerate()
+        .map(|(i, mut tree)| {
+            if from_camel { tree = transform_keys_to_snake(tree); }
 
-            // Extract or generate resource ID
             let resource_id = tree.get("resourceinstanceid")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
+                .and_then(|v| v.as_str()).map(String::from)
                 .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-            // Convert tree to tiles
-            let resource_data = tree_to_tiles(&tree, &graph, &resource_id, &graph_id)
-                .map_err(|e| e)?;
+            let resource_data = if strict {
+                tree_to_tiles_strict(&tree, &graph, &resource_id, &graph_id)
+            } else {
+                tree_to_tiles(&tree, &graph, &resource_id, &graph_id)
+            }.map_err(|e| format!("Tree {}: {}", i, e))?;
 
-            // Serialize result
             serde_json::to_value(&resource_data)
-                .map_err(|e| format!("Failed to serialize result: {}", e))
+                .map_err(|e| format!("Tree {}: Failed to serialize: {}", i, e))
         })
         .collect();
 
-    // Separate successes and errors
-    let mut successes = Vec::new();
-    let mut errors = Vec::new();
-
-    for (i, result) in results.into_iter().enumerate() {
-        match result {
-            Ok(value) => successes.push(value),
-            Err(e) => errors.push(format!("Tree {}: {}", i, e)),
-        }
-    }
-
-    // If there were errors, include them in the response
-    let output = if errors.is_empty() {
-        serde_json::json!({
-            "success": true,
-            "results": successes,
-            "count": successes.len()
-        })
-    } else {
-        serde_json::json!({
-            "success": false,
-            "results": successes,
-            "count": successes.len(),
-            "errors": errors,
-            "error_count": errors.len()
-        })
-    };
-
-    // Convert to Python dict
-    let output_json = serde_json::to_string(&output)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to serialize output: {}", e)
-        ))?;
-
-    let json_module = py.import("json")?;
-    let py_dict = json_module.call_method1("loads", (output_json,))?;
-
-    Ok(py_dict.to_object(py))
+    batch_result_to_python(py, results, strict)
 }
 
 /// Batch convert multiple tiled resources to JSON trees in parallel
-///
-/// Args:
-///     resources_json: JSON array of resources (with tiles) as string
-///     graph_json: Graph model as JSON string
-///
-/// Returns:
-///     JSON array of nested tree structures
 #[pyfunction]
-#[pyo3(signature = (resources_json, graph_json))]
+#[pyo3(signature = (resources_json, graph_json, strict=false))]
 fn batch_tiles_to_trees(
     py: Python,
     resources_json: String,
     graph_json: String,
+    strict: bool,
 ) -> PyResult<PyObject> {
-    // Parse all resources from JSON array
     let resources: Vec<serde_json::Value> = serde_json::from_str(&resources_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse resources array: {}", e)
-        ))?;
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse resources: {}", e)))?;
 
-    // Parse graph once (use core type's from_json_string which calls build_indices())
     let core_graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse graph: {}", e)
-        ))?;
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse graph: {}", e)))?;
     let graph = AlizarinStaticGraph::from(core_graph);
-
     let graph_id = graph.graph_id().to_string();
 
-    // Process resources in parallel using Rayon
     let results: Vec<Result<serde_json::Value, String>> = resources
         .into_par_iter()
-        .map(|resource| {
-            // Extract resource metadata
+        .enumerate()
+        .map(|(i, resource)| {
             let resource_id = resource.get("resourceinstanceid")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
+                .and_then(|v| v.as_str()).map(String::from)
                 .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-            // Parse tiles
             let tiles: Vec<AlizarinStaticTile> = resource.get("tiles")
                 .map(|t| serde_json::from_value(t.clone()))
                 .transpose()
-                .map_err(|e| format!("Failed to parse tiles: {}", e))?
+                .map_err(|e| format!("Resource {}: Failed to parse tiles: {}", i, e))?
                 .unwrap_or_default();
 
-            // Create ResourceData
             let resource_data = ResourceData {
                 resourceinstanceid: resource_id.clone(),
                 graph_id: graph_id.clone(),
                 tiles,
             };
 
-            // Convert to tree
             let mut tree = tiles_to_tree(&resource_data, &graph)
-                .map_err(|e| e)?;
+                .map_err(|e| format!("Resource {}: {}", i, e))?;
 
-            // Add metadata to tree
             if let serde_json::Value::Object(ref mut map) = tree {
                 map.insert("resourceinstanceid".to_string(), serde_json::Value::String(resource_id));
                 map.insert("graph_id".to_string(), serde_json::Value::String(graph_id.clone()));
@@ -416,44 +401,7 @@ fn batch_tiles_to_trees(
         })
         .collect();
 
-    // Separate successes and errors
-    let mut successes = Vec::new();
-    let mut errors = Vec::new();
-
-    for (i, result) in results.into_iter().enumerate() {
-        match result {
-            Ok(value) => successes.push(value),
-            Err(e) => errors.push(format!("Resource {}: {}", i, e)),
-        }
-    }
-
-    // Build output
-    let output = if errors.is_empty() {
-        serde_json::json!({
-            "success": true,
-            "results": successes,
-            "count": successes.len()
-        })
-    } else {
-        serde_json::json!({
-            "success": false,
-            "results": successes,
-            "count": successes.len(),
-            "errors": errors,
-            "error_count": errors.len()
-        })
-    };
-
-    // Convert to Python dict
-    let output_json = serde_json::to_string(&output)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to serialize output: {}", e)
-        ))?;
-
-    let json_module = py.import("json")?;
-    let py_dict = json_module.call_method1("loads", (output_json,))?;
-
-    Ok(py_dict.to_object(py))
+    batch_result_to_python(py, results, strict)
 }
 
 /// Convert a camelCase string to snake_case
@@ -746,6 +694,150 @@ fn json_string_to_resource(
     Ok(PyStaticResource { inner: resource })
 }
 
+/// Check if a string looks like a UUID
+fn is_uuid_format(s: &str) -> bool {
+    let uuid_pattern = regex::Regex::new(
+        r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    ).unwrap();
+    uuid_pattern.is_match(s)
+}
+
+/// Internal helper: resolve labels in a mutable JSON value using graph and cache
+fn resolve_labels_in_value(
+    tree: &mut serde_json::Value,
+    graph: &AlizarinCoreStaticGraph,
+    rdm_cache: &rdm_cache::RdmCache,
+    strict: bool,
+) -> PyResult<()> {
+    // Build a mapping of alias → (datatype, rdmCollection)
+    let mut alias_to_config: HashMap<String, (String, Option<String>)> = HashMap::new();
+    for node in &graph.nodes {
+        if let Some(alias) = &node.alias {
+            let rdm_collection = node.config.get("rdmCollection")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            alias_to_config.insert(alias.clone(), (node.datatype.clone(), rdm_collection));
+        }
+    }
+
+    // Recursively resolve labels
+    fn resolve_value_recursive(
+        value: &mut serde_json::Value,
+        alias: Option<&str>,
+        alias_to_config: &HashMap<String, (String, Option<String>)>,
+        rdm_cache: &rdm_cache::RdmCache,
+        strict: bool,
+        errors: &mut Vec<String>,
+    ) {
+        match value {
+            serde_json::Value::Object(obj) => {
+                // Check for _value wrapper
+                if let Some(inner) = obj.get_mut("_value") {
+                    resolve_value_recursive(inner, alias, alias_to_config, rdm_cache, strict, errors);
+                    return;
+                }
+
+                // Process each field
+                let keys: Vec<String> = obj.keys().cloned().collect();
+                for key in keys {
+                    if let Some(field_value) = obj.get_mut(&key) {
+                        resolve_value_recursive(field_value, Some(&key), alias_to_config, rdm_cache, strict, errors);
+                    }
+                }
+            }
+            serde_json::Value::Array(arr) => {
+                for item in arr.iter_mut() {
+                    resolve_value_recursive(item, alias, alias_to_config, rdm_cache, strict, errors);
+                }
+            }
+            serde_json::Value::String(s) => {
+                // Check if this alias is a concept field with an RDM collection
+                if let Some(alias_str) = alias {
+                    if let Some((datatype, Some(collection_id))) = alias_to_config.get(alias_str) {
+                        if (datatype == "concept" || datatype == "concept-list") && !is_uuid_format(s) {
+                            // Try to resolve the label
+                            if let Some(concept) = rdm_cache.find_concept_by_label(collection_id, s) {
+                                *value = serde_json::Value::String(concept.id.clone());
+                            } else if strict {
+                                let matches = rdm_cache.find_all_concepts_by_label(collection_id, s);
+                                if matches.len() > 1 {
+                                    errors.push(format!(
+                                        "Ambiguous label '{}' in collection '{}' matches {} concepts",
+                                        s, collection_id, matches.len()
+                                    ));
+                                } else {
+                                    errors.push(format!(
+                                        "Label '{}' not found in collection '{}'",
+                                        s, collection_id
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut errors = Vec::new();
+    resolve_value_recursive(tree, None, &alias_to_config, rdm_cache, strict, &mut errors);
+
+    if !errors.is_empty() {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to resolve labels:\n  {}", errors.join("\n  "))
+        ));
+    }
+
+    Ok(())
+}
+
+/// Resolve labels to UUIDs in a JSON tree using an RDM cache
+///
+/// This pre-processes a tree by looking up label strings in the appropriate
+/// RDM collection (based on node config) and replacing them with UUIDs.
+///
+/// Args:
+///     tree_json: The input tree as JSON string
+///     graph_json: The graph model as JSON string
+///     rdm_cache: The RDM cache containing collections (optional, uses global if not provided)
+///     strict: If true, fail on unresolved labels; if false, leave them as-is
+///
+/// Returns:
+///     The tree with labels resolved to UUIDs (as JSON string)
+#[pyfunction]
+#[pyo3(signature = (tree_json, graph_json, rdm_cache=None, strict = false))]
+fn resolve_labels_in_tree(
+    tree_json: String,
+    graph_json: String,
+    rdm_cache: Option<&rdm_cache::RdmCache>,
+    strict: bool,
+) -> PyResult<String> {
+    // Parse tree and graph
+    let mut tree: serde_json::Value = serde_json::from_str(&tree_json)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to parse tree: {}", e)
+        ))?;
+
+    let graph: AlizarinCoreStaticGraph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to parse graph: {}", e)
+        ))?;
+
+    // Use explicit cache or fall back to global
+    let global_cache = rdm_cache::get_global_rdm_cache();
+    let cache_to_use: Option<&rdm_cache::RdmCache> = rdm_cache.or(global_cache.as_ref());
+
+    if let Some(cache) = cache_to_use {
+        resolve_labels_in_value(&mut tree, &graph, cache, strict)?;
+    }
+
+    serde_json::to_string(&tree)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to serialize result: {}", e)
+        ))
+}
+
 /// Python module definition
 #[pymodule]
 fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -764,6 +856,9 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     // Batch conversion functions (parallel processing with Rayon)
     m.add_function(wrap_pyfunction!(batch_trees_to_tiles, m)?)?;
     m.add_function(wrap_pyfunction!(batch_tiles_to_trees, m)?)?;
+
+    // Label resolution (resolve concept labels to UUIDs before conversion)
+    m.add_function(wrap_pyfunction!(resolve_labels_in_tree, m)?)?;
 
     // Wrapper classes
     m.add_class::<PyResourceModelWrapper>()?;

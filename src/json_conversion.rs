@@ -215,6 +215,26 @@ pub fn tree_to_tiles(
     resource_id: &str,
     graph_id: &str,
 ) -> Result<ResourceData, String> {
+    tree_to_tiles_internal(json, graph, resource_id, graph_id, false)
+}
+
+/// Convert with strict validation (fails on unknown fields)
+pub fn tree_to_tiles_strict(
+    json: &Value,
+    graph: &StaticGraph,
+    resource_id: &str,
+    graph_id: &str,
+) -> Result<ResourceData, String> {
+    tree_to_tiles_internal(json, graph, resource_id, graph_id, true)
+}
+
+fn tree_to_tiles_internal(
+    json: &Value,
+    graph: &StaticGraph,
+    resource_id: &str,
+    graph_id: &str,
+    strict: bool,
+) -> Result<ResourceData, String> {
     let obj = json.as_object()
         .ok_or_else(|| "JSON must be an object".to_string())?;
 
@@ -226,6 +246,16 @@ pub fn tree_to_tiles(
         .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
     let edges = graph.edges_map()
         .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
+
+    // In strict mode, validate that all top-level keys are known aliases or metadata fields
+    if strict {
+        let known_metadata = ["resourceinstanceid", "graph_id", "legacyid"];
+        for key in obj.keys() {
+            if !known_metadata.contains(&key.as_str()) && !nodes_by_alias.contains_key(key) {
+                return Err(format!("Unknown field '{}' not found in graph aliases", key));
+            }
+        }
+    }
 
     // Build pseudo_cache from JSON tree
     let mut pseudo_cache: HashMap<String, RustPseudoList> = HashMap::new();
@@ -243,6 +273,7 @@ pub fn tree_to_tiles(
         None, // parent_tile (root has no parent tile)
         &mut pseudo_cache,
         &mut tile_counter,
+        strict,
     )?;
 
     // Build TileBuilderContext for collect_tiles
@@ -307,6 +338,7 @@ fn build_pseudo_values_from_json(
     parent_tile: Option<Arc<StaticTile>>,  // Pass parent's tile to share when same nodegroup
     pseudo_cache: &mut HashMap<String, RustPseudoList>,
     tile_counter: &mut u32,
+    strict: bool,
 ) -> Result<(), String> {
     // Get child node IDs for current node
     let child_ids = edges.get(&current_node.nodeid)
@@ -370,12 +402,34 @@ fn build_pseudo_values_from_json(
         let has_graph_children = !child_child_ids.is_empty();
         let mut values: Vec<RustPseudoValue> = Vec::new();
 
+        // Build set of valid child aliases for strict mode validation
+        let valid_child_aliases: std::collections::HashSet<&str> = if strict && has_graph_children {
+            child_child_ids.iter()
+                .filter_map(|id| nodes_by_alias.values().find(|n| n.nodeid == *id))
+                .filter_map(|n| n.alias.as_deref())
+                .collect()
+        } else {
+            std::collections::HashSet::new()
+        };
+
         if json_value.is_array() {
             // Array - create multiple pseudo values (cardinality='n')
             let array = json_value.as_array().unwrap();
             for item in array {
                 if has_graph_children {
                     if let Some(item_obj) = item.as_object() {
+                        // Strict validation: check all keys in nested object
+                        if strict {
+                            for key in item_obj.keys() {
+                                if !valid_child_aliases.contains(key.as_str()) {
+                                    return Err(format!(
+                                        "Unknown field '{}' in '{}' - valid fields: {:?}",
+                                        key, child_alias, valid_child_aliases
+                                    ));
+                                }
+                            }
+                        }
+
                         let (pv, tile) = create_pseudo_value_from_json(
                             item_obj,
                             &child_node,
@@ -400,6 +454,7 @@ fn build_pseudo_values_from_json(
                             Some(tile),
                             pseudo_cache,
                             tile_counter,
+                            strict,
                         )?;
                     }
                 } else {
@@ -420,6 +475,19 @@ fn build_pseudo_values_from_json(
         } else if has_graph_children && json_value.is_object() {
             // Object with nested children in the graph
             let item_obj = json_value.as_object().unwrap();
+
+            // Strict validation: check all keys in nested object
+            if strict {
+                for key in item_obj.keys() {
+                    if !valid_child_aliases.contains(key.as_str()) {
+                        return Err(format!(
+                            "Unknown field '{}' in '{}' - valid fields: {:?}",
+                            key, child_alias, valid_child_aliases
+                        ));
+                    }
+                }
+            }
+
             let (pv, tile) = create_pseudo_value_from_json(
                 item_obj,
                 &child_node,
@@ -444,6 +512,7 @@ fn build_pseudo_values_from_json(
                 Some(tile),
                 pseudo_cache,
                 tile_counter,
+                strict,
             )?;
         } else {
             // Leaf value (string, number, bool, null, or object that should be treated as leaf)
@@ -543,8 +612,14 @@ fn create_pseudo_value_from_leaf(
         Arc::new(new_tile)
     });
 
+    // Unwrap _value if present (for consistency with create_pseudo_value_from_json)
+    let value_to_coerce = json_value
+        .as_object()
+        .and_then(|obj| obj.get("_value"))
+        .unwrap_or(json_value);
+
     // Coerce the leaf value
-    let coerced = coerce_value(&node.datatype, json_value, config.as_ref());
+    let coerced = coerce_value(&node.datatype, value_to_coerce, config.as_ref());
     let tile_data = if !coerced.is_null() && coerced.error.is_none() {
         Some(coerced.tile_data)
     } else {
@@ -769,5 +844,103 @@ mod tests {
         // Test get_child_ids helper
         let children = graph.get_child_ids(root_id);
         assert!(children.is_some(), "Root should have children via get_child_ids");
+    }
+
+    #[test]
+    fn test_strict_mode_rejects_unknown_top_level_field() {
+        let graph = load_group_graph();
+
+        // Tree with an unknown top-level field
+        let tree = serde_json::json!({
+            "basic_info": [{
+                "name": {"en": "Test"}
+            }],
+            "unknown_field_xyz": "This should fail in strict mode"
+        });
+
+        let resource_id = "test-resource";
+        let graph_id = graph.graph_id();
+
+        // Non-strict mode should succeed
+        let result = tree_to_tiles(&tree, &graph, resource_id, &graph_id);
+        assert!(result.is_ok(), "Non-strict mode should allow unknown fields");
+
+        // Strict mode should fail
+        let result = tree_to_tiles_strict(&tree, &graph, resource_id, &graph_id);
+        assert!(result.is_err(), "Strict mode should reject unknown top-level field");
+        let error = result.unwrap_err();
+        assert!(error.contains("unknown_field_xyz"), "Error should mention the unknown field: {}", error);
+    }
+
+    #[test]
+    fn test_strict_mode_rejects_unknown_nested_field() {
+        let graph = load_group_graph();
+
+        // Tree with an unknown nested field inside basic_info
+        let tree = serde_json::json!({
+            "basic_info": [{
+                "name": {"en": "Test"},
+                "not_a_real_field": "This should fail"
+            }]
+        });
+
+        let resource_id = "test-resource";
+        let graph_id = graph.graph_id();
+
+        // Non-strict mode should succeed
+        let result = tree_to_tiles(&tree, &graph, resource_id, &graph_id);
+        assert!(result.is_ok(), "Non-strict mode should allow unknown nested fields");
+
+        // Strict mode should fail
+        let result = tree_to_tiles_strict(&tree, &graph, resource_id, &graph_id);
+        assert!(result.is_err(), "Strict mode should reject unknown nested field");
+        let error = result.unwrap_err();
+        assert!(error.contains("not_a_real_field"), "Error should mention the unknown field: {}", error);
+    }
+
+    #[test]
+    fn test_strict_mode_allows_valid_fields() {
+        let graph = load_group_graph();
+
+        // Tree with only valid fields
+        // Note: basic_info has children: name, image, source
+        // description is under statement, not basic_info
+        let tree = serde_json::json!({
+            "basic_info": [{
+                "name": {"en": "Test Group"}
+            }],
+            "statement": [{
+                "description": {"en": "Valid description"}
+            }]
+        });
+
+        let resource_id = "test-resource";
+        let graph_id = graph.graph_id();
+
+        // Strict mode should succeed with valid fields
+        let result = tree_to_tiles_strict(&tree, &graph, resource_id, &graph_id);
+        assert!(result.is_ok(), "Strict mode should accept valid fields: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_strict_mode_allows_metadata_fields() {
+        let graph = load_group_graph();
+
+        // Tree with metadata fields (resourceinstanceid, graph_id, legacyid)
+        let tree = serde_json::json!({
+            "resourceinstanceid": "my-resource-id",
+            "graph_id": "my-graph-id",
+            "legacyid": "legacy-123",
+            "basic_info": [{
+                "name": {"en": "Test"}
+            }]
+        });
+
+        let resource_id = "test-resource";
+        let graph_id = graph.graph_id();
+
+        // Strict mode should allow metadata fields
+        let result = tree_to_tiles_strict(&tree, &graph, resource_id, &graph_id);
+        assert!(result.is_ok(), "Strict mode should allow metadata fields: {:?}", result.err());
     }
 }

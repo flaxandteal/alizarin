@@ -2434,6 +2434,34 @@ impl WKRM {
     }
 }
 
+// Non-WASM impl block for WKRM - works on all platforms
+impl WKRM {
+    /// Create WKRM from StaticGraphMeta (works on all platforms, not just WASM)
+    pub fn from_meta(meta: alizarin_core::StaticGraphMeta) -> WKRM {
+        let graph_id = meta.graphid.clone();
+
+        let model_name = meta.name
+            .as_ref()
+            .map(|n| n.to_string_default())
+            .unwrap_or_else(|| "Unnamed".to_string());
+
+        let base_name = meta.slug.as_ref().unwrap_or(&model_name);
+        let model_class_name = Self::to_pascal_case(base_name);
+
+        WKRM {
+            model_name,
+            model_class_name,
+            graph_id,
+            meta,
+        }
+    }
+
+    /// Get the inner StaticGraphMeta (for non-WASM use)
+    pub fn meta(&self) -> &alizarin_core::StaticGraphMeta {
+        &self.meta
+    }
+}
+
 // StaticResourceDescriptors - Descriptors for resource display
 wasm_wrapper! {
     pub struct StaticResourceDescriptors wraps alizarin_core::StaticResourceDescriptors {

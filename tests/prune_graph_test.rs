@@ -3,7 +3,6 @@ use alizarin::graph::WKRM;
 use alizarin_core::{StaticGraph, StaticNode, StaticEdge, StaticNodegroup, StaticCard, StaticGraphMeta, StaticTranslatableString};
 use std::sync::Arc;
 use std::collections::HashMap;
-use serde_wasm_bindgen;
 
 #[test]
 fn test_prune_graph_filters_unpermitted_nodegroups() {
@@ -192,8 +191,7 @@ fn test_prune_graph_filters_unpermitted_nodegroups() {
         extra_fields: HashMap::new(),
     };
 
-    let meta_js = serde_wasm_bindgen::to_value(&meta).unwrap();
-    let wkrm = WKRM::new(meta_js).unwrap();
+    let wkrm = WKRM::from_meta(meta);
 
     let mut wrapper = ResourceModelWrapperCore::new(wkrm, Arc::new(graph), false);
 
