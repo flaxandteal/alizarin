@@ -59,13 +59,20 @@ def cli():
     default=False,
     help='Convert keys from camelCase to snake_case before resolving with graph.'
 )
+@click.option(
+    '--strict',
+    is_flag=True,
+    default=False,
+    help='Fail immediately on any conversion error instead of collecting errors.'
+)
 def convert(
     graph: Path,
     input: Path,
     output: Path,
     graph_id: Optional[str],
     pretty: bool,
-    from_camel: bool
+    from_camel: bool,
+    strict: bool
 ):
     """
     Convert JSON trees to Arches tile data.
@@ -130,7 +137,8 @@ def convert(
         batch_result = batch_trees_to_tiles(
             trees_json=trees_json,
             graph_json=graph_json,
-            from_camel=from_camel
+            from_camel=from_camel,
+            strict=strict
         )
 
         results = batch_result.get('results', [])
@@ -192,11 +200,18 @@ def convert(
     default=True,
     help='Pretty-print output JSON (default: pretty).'
 )
+@click.option(
+    '--strict',
+    is_flag=True,
+    default=False,
+    help='Fail immediately on any conversion error instead of collecting errors.'
+)
 def to_trees(
     graph: Path,
     input: Path,
     output: Path,
-    pretty: bool
+    pretty: bool,
+    strict: bool
 ):
     """
     Convert Arches tile data to JSON trees.
@@ -253,7 +268,8 @@ def to_trees(
         resources_json = json.dumps(resources)
         batch_result = batch_tiles_to_trees(
             resources_json=resources_json,
-            graph_json=graph_json
+            graph_json=graph_json,
+            strict=strict
         )
 
         results = batch_result.get('results', [])
