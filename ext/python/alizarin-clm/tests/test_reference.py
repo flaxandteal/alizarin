@@ -1487,6 +1487,284 @@ class TestLabelResolutionIntegration:
             assert get_global_rdm_cache() is None
 
 
+class TestCLMReferenceResolution:
+    """
+    Integration tests for CLM's resolve_reference_labels function.
+
+    These tests demonstrate the CLM extension handling its own label resolution
+    for 'reference' nodes with 'controlledList' config, independent of core.
+    """
+
+    @pytest.fixture
+    def reference_graph_json(self):
+        """Load Person graph which has reference nodes."""
+        graph_path = TEST_DATA_DIR / "graphs" / "resource_models" / "Person.json"
+        with open(graph_path) as f:
+            data = json.load(f)
+        return json.dumps(data)
+
+    @pytest.fixture
+    def reference_collection(self):
+        """Create a test collection matching the Person graph's controlledList."""
+        from alizarin.alizarin import RustRdmCollection, RustRdmCache, set_current_language
+
+        set_current_language("en")
+
+        # Person graph uses this collection ID for its 'test' reference node
+        collection_id = "2730d609-3a8d-49dc-bf51-6ac34e80294a"
+
+        collection = RustRdmCollection.from_labels(
+            "Test Categories",
+            ["Category A", "Category B", "Category C"],
+            id=collection_id
+        )
+
+        cache = RustRdmCache()
+        cache.add_collection(collection)
+
+        return cache, collection
+
+    @pytest.mark.asyncio
+    async def test_resolve_reference_labels_with_explicit_cache(
+        self, reference_graph_json, reference_collection
+    ):
+        """
+        Test CLM's resolve_reference_labels with an explicit cache parameter.
+
+        Demonstrates the extension handling its own label resolution.
+        """
+        from alizarin_clm import resolve_reference_labels
+
+        cache, collection = reference_collection
+
+        # Tree with label string for reference field
+        tree = {"test": ["Category A"]}
+        tree_json = json.dumps(tree)
+
+        # Resolve using explicit cache
+        resolved_json = await resolve_reference_labels(
+            tree_json=tree_json,
+            graph_json=reference_graph_json,
+            rdm_cache=cache,
+            strict=False,
+        )
+
+        resolved = json.loads(resolved_json)
+
+        # Label should be resolved to UUID
+        concept_a = collection.find_by_label("Category A")
+        assert resolved["test"][0] == concept_a.id
+
+    @pytest.mark.asyncio
+    async def test_resolve_reference_labels_with_global_cache(
+        self, reference_graph_json, reference_collection
+    ):
+        """
+        Test CLM's resolve_reference_labels using the global RDM cache.
+
+        Demonstrates the extension using the global singleton.
+        """
+        from alizarin.alizarin import (
+            set_global_rdm_cache,
+            clear_global_rdm_cache,
+        )
+        from alizarin_clm import resolve_reference_labels
+
+        cache, collection = reference_collection
+
+        try:
+            # Set up global cache
+            set_global_rdm_cache(cache)
+
+            # Tree with label strings
+            tree = {"test": ["Category B", "Category C"]}
+            tree_json = json.dumps(tree)
+
+            # Resolve WITHOUT passing cache - uses global
+            resolved_json = await resolve_reference_labels(
+                tree_json=tree_json,
+                graph_json=reference_graph_json,
+                # Note: no rdm_cache parameter
+            )
+
+            resolved = json.loads(resolved_json)
+
+            # Labels should be resolved to UUIDs
+            concept_b = collection.find_by_label("Category B")
+            concept_c = collection.find_by_label("Category C")
+            assert resolved["test"][0] == concept_b.id
+            assert resolved["test"][1] == concept_c.id
+
+        finally:
+            clear_global_rdm_cache()
+
+    @pytest.mark.asyncio
+    async def test_resolve_reference_labels_strict_mode(
+        self, reference_graph_json, reference_collection
+    ):
+        """
+        Test strict mode raises error for unknown labels.
+        """
+        from alizarin_clm import resolve_reference_labels
+
+        cache, _ = reference_collection
+
+        # Tree with unknown label
+        tree = {"test": ["Unknown Category"]}
+        tree_json = json.dumps(tree)
+
+        with pytest.raises(ValueError) as exc_info:
+            await resolve_reference_labels(
+                tree_json=tree_json,
+                graph_json=reference_graph_json,
+                rdm_cache=cache,
+                strict=True,
+            )
+
+        assert "Unknown Category" in str(exc_info.value)
+        assert "not found" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_resolve_reference_labels_uuid_passthrough(
+        self, reference_graph_json, reference_collection
+    ):
+        """
+        Test that existing UUIDs pass through unchanged.
+        """
+        from alizarin_clm import resolve_reference_labels
+
+        cache, collection = reference_collection
+        concept_a = collection.find_by_label("Category A")
+
+        # Tree with UUID (already resolved)
+        tree = {"test": [concept_a.id]}
+        tree_json = json.dumps(tree)
+
+        resolved_json = await resolve_reference_labels(
+            tree_json=tree_json,
+            graph_json=reference_graph_json,
+            rdm_cache=cache,
+        )
+
+        resolved = json.loads(resolved_json)
+
+        # UUID should pass through unchanged
+        assert resolved["test"][0] == concept_a.id
+
+    @pytest.mark.asyncio
+    async def test_clm_resolution_then_core_conversion(
+        self, reference_graph_json, reference_collection
+    ):
+        """
+        End-to-end test: CLM resolves labels, then core converts to tiles.
+
+        This demonstrates the extension pre-processing pattern:
+        1. CLM resolves reference labels
+        2. Core json_tree_to_tiles handles the rest
+        """
+        from alizarin.alizarin import json_tree_to_tiles
+        from alizarin_clm import resolve_reference_labels
+
+        cache, collection = reference_collection
+
+        # Tree with plain strings
+        tree = {
+            "name": ["Test Person"],
+            "test": ["Category A"],
+        }
+        tree_json = json.dumps(tree)
+
+        # Step 1: CLM resolves reference labels
+        resolved_json = await resolve_reference_labels(
+            tree_json=tree_json,
+            graph_json=reference_graph_json,
+            rdm_cache=cache,
+        )
+
+        # Verify resolution happened
+        resolved = json.loads(resolved_json)
+        concept_a = collection.find_by_label("Category A")
+        assert resolved["test"][0] == concept_a.id
+
+        # Step 2: Core converts to tiles
+        graph_data = json.loads(reference_graph_json)
+        graph_id = graph_data["graph"][0]["graphid"]
+
+        result = json_tree_to_tiles(
+            tree_json=resolved_json,
+            resource_id="test-resource-123",
+            graph_id=graph_id,
+            graph_json=reference_graph_json,
+        )
+
+        # Verify tiles were created
+        assert result is not None
+        assert "tiles" in result
+
+    @pytest.mark.asyncio
+    async def test_lazy_loading_with_loader(self, reference_graph_json):
+        """
+        Test lazy loading: cache fetches collection on-demand via loader.
+
+        This demonstrates the efficient pattern where only needed collections
+        are loaded from the API.
+        """
+        from alizarin.alizarin import RustRdmCache, RustRdmCollection, set_current_language
+        from alizarin_clm import resolve_reference_labels
+
+        set_current_language("en")
+
+        # Track which collections were requested
+        loaded_collections: list[str] = []
+
+        # Async loader that creates collection on demand
+        async def my_loader(collection_id: str):
+            loaded_collections.append(collection_id)
+
+            # Simulate API response - in real usage this would be an HTTP call
+            if collection_id == "2730d609-3a8d-49dc-bf51-6ac34e80294a":
+                return RustRdmCollection.from_labels(
+                    "Test Categories",
+                    ["Category A", "Category B", "Category C"],
+                    id=collection_id
+                )
+            return None
+
+        # Create cache with loader - no collections pre-loaded
+        cache = RustRdmCache(loader=my_loader)
+        assert len(cache) == 0  # Empty!
+
+        # Tree that references the collection
+        tree = {"test": ["Category A"]}
+        tree_json = json.dumps(tree)
+
+        # Resolve - this should trigger lazy loading
+        resolved_json = await resolve_reference_labels(
+            tree_json=tree_json,
+            graph_json=reference_graph_json,
+            rdm_cache=cache,
+        )
+
+        # Verify loader was called
+        assert "2730d609-3a8d-49dc-bf51-6ac34e80294a" in loaded_collections
+
+        # Verify collection is now cached
+        assert len(cache) == 1
+
+        # Verify resolution worked
+        resolved = json.loads(resolved_json)
+        assert resolved["test"][0] != "Category A"  # Should be UUID now
+
+        # Second call should NOT trigger loader again
+        loaded_collections.clear()
+        await resolve_reference_labels(
+            tree_json=tree_json,
+            graph_json=reference_graph_json,
+            rdm_cache=cache,
+        )
+        assert len(loaded_collections) == 0  # No new loads
+
+
 class TestPhase0Integration:
     """
     Integration tests for Phase 0 components working together.

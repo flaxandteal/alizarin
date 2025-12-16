@@ -195,6 +195,10 @@ class StaticConcept {
     for (const [lang, value] of Object.entries(this.prefLabels)) {
       if (!(value instanceof StaticValue)) {
         this.prefLabels[lang] = new StaticValue(value, this);
+      } else {
+        // Set backlink even if already a StaticValue
+        value.__concept = this;
+        value.__conceptId = this.id;
       }
     }
     this.source = jsonData.source;
@@ -226,11 +230,12 @@ class StaticConcept {
   static fromValue(conceptScheme: StaticConcept | null, value: string | StaticValue | { [lang: string]: StaticValue }, children?: (string | StaticValue | StaticConcept)[], config: {baseLanguage?: string, source?: string | null, sortOrder?: number | null} = {}): StaticConcept {
     // TODO make sure that children are in the same concept scheme so that deterministic IDs are preserved.
     let lang = config?.baseLanguage || getCurrentLanguage();
-    let tmpValue;
-    let prefLabels: { [lang: string]: StaticValue };
+    let tmpValue: string;
+    let prefLabels: { [lang: string]: StaticValue } | null = null;
+
     if (typeof value === 'string') {
       tmpValue = value;
-      prefLabels = {[lang]: new StaticValue({id: '', value: tmpValue})};
+      // prefLabels will be created after we have the concept ID
     } else if (value instanceof StaticValue) {
       tmpValue = value.value;
       prefLabels = {[lang]: value};
@@ -246,16 +251,28 @@ class StaticConcept {
       tmpValue = firstValue[1].value;
       prefLabels = value;
     }
+
     const conceptId = generateUuidv5(
       ['concept'],
       `${conceptScheme?.id || '(none)'}/${tmpValue}`
     );
+
+    // Create prefLabels with proper value ID if not already set
+    if (prefLabels === null) {
+      const valueId = generateUuidv5(
+        ['value'],
+        `${conceptId}/prefLabel/${tmpValue}/${lang}`
+      );
+      prefLabels = {[lang]: new StaticValue({id: valueId, value: tmpValue})};
+    }
+
     const childConcepts = (children || []).map(child => {
       if (!(child instanceof StaticConcept)) {
-        return StaticConcept.fromValue(conceptScheme, value, [], {baseLanguage: config.baseLanguage});
+        return StaticConcept.fromValue(conceptScheme, child, [], {baseLanguage: config.baseLanguage});
       }
       return child;
     });
+
     return new StaticConcept({
       id: conceptId,
       prefLabels,
@@ -281,6 +298,7 @@ class StaticCollection {
   }): StaticCollection {
     const collectionName = props.name ?? props.conceptScheme.toString();
     return StaticCollection.create({
+      collectionid: props.collectionid,
       name: collectionName,
       concepts: props.conceptScheme.children || []
     })

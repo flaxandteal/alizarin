@@ -8,10 +8,12 @@
 
 pub mod graph;
 pub mod interner;
+pub mod json_conversion;
+pub mod label_resolution;
 pub mod loader;
 pub mod node_config;
-pub mod pseudo_node;
-pub mod pseudo_node_lite;
+pub mod pseudo_value_core;
+pub mod skos;
 pub mod type_coercion;
 
 // Graph types
@@ -26,10 +28,6 @@ pub use graph::{
 
 // Loader
 pub use loader::{LoaderError, PrebuildInfo, PrebuildLoader};
-
-// PseudoNode types
-pub use pseudo_node::{NodeLike, PseudoNodeBuilder, PseudoNodeCore};
-pub use pseudo_node_lite::{build_placeholder, PseudoNodeState};
 
 // Interner types
 pub use interner::{InternedId, Interner, InternerExt};
@@ -58,4 +56,22 @@ pub use type_coercion::{
     coerce_value, CoercionResult,
     // Language configuration
     get_current_language, set_current_language, DEFAULT_LANGUAGE,
+};
+
+// Label resolution
+pub use label_resolution::{
+    build_alias_to_collection_map, find_needed_collections, is_valid_uuid,
+    resolve_labels, resolve_labels_full, ConceptLookup, LabelResolutionConfig,
+    LabelResolutionError, DEFAULT_CONFIG_KEYS, DEFAULT_RESOLVABLE_DATATYPES,
+};
+
+// JSON conversion (tiles <-> tree)
+pub use json_conversion::{
+    tiles_to_tree, tree_to_tiles, tree_to_tiles_strict, ResourceData,
+};
+
+// Pseudo value core types (for JSON conversion)
+pub use pseudo_value_core::{
+    matches_semantic_child, PseudoListCore, PseudoValueCore,
+    TileBuilder, TileBuilderContext, VisitorContext,
 };

@@ -14,11 +14,17 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 use uuid::Uuid;
 
-// SKOS parser from main alizarin crate
-use alizarin::skos::{parse_skos_to_collections, SkosCollection};
+// SKOS parser from core crate
+use alizarin_core::skos::{parse_skos_to_collections, SkosCollection};
 
 // For get_current_language
 use alizarin_core::type_coercion::get_current_language;
+
+// Label resolution from core
+use alizarin_core::label_resolution::{
+    self, build_alias_to_collection_map, find_needed_collections,
+    ConceptLookup, LabelResolutionConfig,
+};
 
 // =============================================================================
 // Global RDM Cache Singleton
@@ -518,20 +524,60 @@ impl RdmCollection {
 ///
 /// Python fetches collections asynchronously and adds them to the cache.
 /// Rust looks up concepts synchronously during coercion.
+///
+/// Supports lazy loading via an async loader callback:
+///     async def my_loader(collection_id: str) -> RustRdmCollection | None:
+///         return await fetch_from_api(collection_id)
+///
+///     cache = RustRdmCache(loader=my_loader)
+///     await cache.ensure_collection("collection-id")  # Loads if not cached
 #[derive(Clone, Default)]
 #[pyclass(name = "RustRdmCache")]
 pub struct RdmCache {
     /// Collections indexed by collection ID
     collections: HashMap<String, RdmCollection>,
+    /// Optional async loader for lazy loading (stored as Python object)
+    #[pyo3(get, set)]
+    loader: Option<PyObject>,
 }
 
 #[pymethods]
 impl RdmCache {
     #[new]
-    fn new() -> Self {
+    #[pyo3(signature = (loader=None))]
+    fn new(loader: Option<PyObject>) -> Self {
         Self {
             collections: HashMap::new(),
+            loader,
         }
+    }
+
+    /// Check if collection needs loading and return it for async loading if so.
+    ///
+    /// This is designed to be used with Python async/await:
+    ///
+    ///     if coro := cache.fetch_if_missing(collection_id):
+    ///         collection = await coro
+    ///         if collection:
+    ///             cache.add_collection(collection)
+    ///
+    /// Returns None if already cached or no loader set.
+    /// Returns the loader coroutine if loading is needed.
+    fn fetch_if_missing(&self, py: Python, collection_id: &str) -> PyResult<Option<PyObject>> {
+        // Already cached?
+        if self.collections.contains_key(collection_id) {
+            return Ok(None);
+        }
+
+        // No loader?
+        let loader = match &self.loader {
+            Some(l) => l,
+            None => return Ok(None),
+        };
+
+        // Call loader with collection_id - returns a coroutine
+        let coro = loader.call1(py, (collection_id,))?;
+        Ok(Some(coro))
     }
 
     /// Add a collection from JSON
@@ -743,6 +789,128 @@ impl RdmCollection {
 }
 
 // =============================================================================
+// ConceptLookup Implementation
+// =============================================================================
+
+/// Implement the ConceptLookup trait for RdmCache
+impl ConceptLookup for RdmCache {
+    fn lookup_by_label(&self, collection_id: &str, label: &str) -> Option<String> {
+        self.find_concept_by_label(collection_id, label)
+            .map(|c| c.id)
+    }
+}
+
+// =============================================================================
+// Label Resolution Functions
+// =============================================================================
+
+/// Resolve label strings to UUIDs in a JSON tree.
+///
+/// This is the core label resolution function that can be called from Python.
+/// It uses the centralized Rust implementation shared with WASM.
+///
+/// Args:
+///     tree_json: JSON string of the tree to process
+///     graph_json: JSON string of the graph definition
+///     cache: RdmCache instance with collections loaded
+///     resolvable_datatypes: List of datatypes to resolve (default: concept, concept-list, reference)
+///     config_keys: List of config keys to check for collection IDs (default: rdmCollection, controlledList)
+///     strict: If True, raise errors for unresolved labels
+///
+/// Returns:
+///     Tuple of (resolved_json, needed_collection_ids)
+#[pyfunction]
+#[pyo3(signature = (tree_json, graph_json, cache, resolvable_datatypes=None, config_keys=None, strict=false))]
+pub fn resolve_labels(
+    tree_json: &str,
+    graph_json: &str,
+    cache: &RdmCache,
+    resolvable_datatypes: Option<Vec<String>>,
+    config_keys: Option<Vec<String>>,
+    strict: bool,
+) -> PyResult<(String, Vec<String>)> {
+    let config = LabelResolutionConfig {
+        resolvable_datatypes: resolvable_datatypes.unwrap_or_else(|| {
+            label_resolution::DEFAULT_RESOLVABLE_DATATYPES
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        }),
+        config_keys: config_keys.unwrap_or_else(|| {
+            label_resolution::DEFAULT_CONFIG_KEYS
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        }),
+        strict,
+    };
+
+    let (resolved_json, needed_collections) =
+        label_resolution::resolve_labels_full(tree_json, graph_json, cache, &config)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.message))?;
+
+    Ok((resolved_json, needed_collections.into_iter().collect()))
+}
+
+/// Get the list of collection IDs needed for a tree (without resolving).
+///
+/// This is useful for pre-fetching collections before resolution.
+///
+/// Args:
+///     tree_json: JSON string of the tree to scan
+///     graph_json: JSON string of the graph definition
+///     resolvable_datatypes: List of datatypes to resolve (default: concept, concept-list, reference)
+///     config_keys: List of config keys to check for collection IDs (default: rdmCollection, controlledList)
+///
+/// Returns:
+///     List of collection IDs that need to be loaded
+#[pyfunction]
+#[pyo3(signature = (tree_json, graph_json, resolvable_datatypes=None, config_keys=None))]
+pub fn get_needed_collections(
+    tree_json: &str,
+    graph_json: &str,
+    resolvable_datatypes: Option<Vec<String>>,
+    config_keys: Option<Vec<String>>,
+) -> PyResult<Vec<String>> {
+    let config = LabelResolutionConfig {
+        resolvable_datatypes: resolvable_datatypes.unwrap_or_else(|| {
+            label_resolution::DEFAULT_RESOLVABLE_DATATYPES
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        }),
+        config_keys: config_keys.unwrap_or_else(|| {
+            label_resolution::DEFAULT_CONFIG_KEYS
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        }),
+        strict: false,
+    };
+
+    // Parse inputs
+    let tree: serde_json::Value = serde_json::from_str(tree_json)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid tree JSON: {}", e)))?;
+
+    let graph: serde_json::Value = serde_json::from_str(graph_json)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid graph JSON: {}", e)))?;
+
+    // Build alias -> collection mapping
+    let alias_to_collection = build_alias_to_collection_map(&graph, &config);
+
+    // Find needed collections
+    let needed = find_needed_collections(&tree, &alias_to_collection);
+
+    Ok(needed.into_iter().collect())
+}
+
+/// Check if a string is a valid UUID.
+#[pyfunction]
+pub fn is_valid_uuid(s: &str) -> bool {
+    label_resolution::is_valid_uuid(s)
+}
+
+// =============================================================================
 // Module Registration
 // =============================================================================
 
@@ -757,6 +925,11 @@ pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_global_rdm_cache, m)?)?;
     m.add_function(wrap_pyfunction!(clear_global_rdm_cache, m)?)?;
     m.add_function(wrap_pyfunction!(has_global_rdm_cache, m)?)?;
+
+    // Label resolution functions
+    m.add_function(wrap_pyfunction!(resolve_labels, m)?)?;
+    m.add_function(wrap_pyfunction!(get_needed_collections, m)?)?;
+    m.add_function(wrap_pyfunction!(is_valid_uuid, m)?)?;
 
     Ok(())
 }
