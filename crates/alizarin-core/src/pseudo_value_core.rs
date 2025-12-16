@@ -407,22 +407,9 @@ impl PseudoListCore {
     ) -> Vec<&PseudoValueCore> {
         self.values.iter()
             .filter(|v| {
-                if let Some(tile) = v.tile.as_ref() {
-                    if let Some(ng) = nodegroup_id.as_ref() {
-                        if &tile.nodegroup_id == ng {
-                            if tile.tileid == parent_tile_id {
-                                return true;
-                            }
-                            if tile.parenttile_id.is_some() && tile.parenttile_id == parent_tile_id {
-                                return true;
-                            }
-                            if parent_tile_id.is_none() && tile.parenttile_id.is_none() {
-                                return true;
-                            }
-                        }
-                    }
-                }
-                false
+                v.tile.as_ref()
+                    .map(|tile| matches_tile_filter(tile, parent_tile_id.as_ref(), nodegroup_id.as_ref()))
+                    .unwrap_or(false)
             })
             .collect()
     }
@@ -487,6 +474,41 @@ impl TileBuilder {
         tile.data = self.data.clone();
         tile
     }
+}
+
+/// Check if a tile matches the parent tile filter for matching_entries
+///
+/// This predicate is used by `matching_entries` in both WASM and Core
+/// to filter tiles based on their relationship to a parent tile.
+///
+/// Returns true if:
+/// 1. Tile's nodegroup matches the expected nodegroup AND
+/// 2. One of:
+///    - Tile's tileid equals parent_tile_id (same tile)
+///    - Tile's parenttile_id equals parent_tile_id (child tile)
+///    - Both parent_tile_id and tile's parenttile_id are None (root level)
+pub fn matches_tile_filter(
+    tile: &StaticTile,
+    parent_tile_id: Option<&String>,
+    nodegroup_id: Option<&String>,
+) -> bool {
+    if let Some(ng) = nodegroup_id {
+        if &tile.nodegroup_id == ng {
+            // Tile's tileid equals parent_tile_id (same tile)
+            if tile.tileid.as_ref() == parent_tile_id {
+                return true;
+            }
+            // Tile's parenttile_id equals parent_tile_id (child tile)
+            if tile.parenttile_id.is_some() && tile.parenttile_id.as_ref() == parent_tile_id {
+                return true;
+            }
+            // Both are None (root level)
+            if parent_tile_id.is_none() && tile.parenttile_id.is_none() {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Check if a tile/node matches as a semantic child

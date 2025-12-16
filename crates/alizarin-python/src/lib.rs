@@ -10,10 +10,10 @@
 
 use pyo3::prelude::*;
 
-mod node_config;
-mod pseudo_value;
-mod rdm_cache;
-mod type_coercion;
+mod node_config_py;
+mod pseudo_value_py;
+mod rdm_cache_py;
+mod type_coercion_py;
 use pyo3::types::PyCapsule;
 use rayon::prelude::*;
 use serde_json;
@@ -250,7 +250,7 @@ fn json_tree_to_tiles(
     graph_json: String,
     from_camel: bool,
     strict: bool,
-    rdm_cache: Option<&rdm_cache::RdmCache>,
+    rdm_cache: Option<&rdm_cache_py::RdmCache>,
 ) -> PyResult<PyObject> {
     // Parse tree from JSON
     let mut tree: serde_json::Value = serde_json::from_str(&tree_json)
@@ -271,8 +271,8 @@ fn json_tree_to_tiles(
 
     // Resolve labels to UUIDs if an RDM cache is available
     // Use explicit cache if provided, otherwise try global cache
-    let global_cache = rdm_cache::get_global_rdm_cache();
-    let cache_to_use: Option<&rdm_cache::RdmCache> = rdm_cache.or(global_cache.as_ref());
+    let global_cache = rdm_cache_py::get_global_rdm_cache();
+    let cache_to_use: Option<&rdm_cache_py::RdmCache> = rdm_cache.or(global_cache.as_ref());
 
     if let Some(cache) = cache_to_use {
         let alias_map = build_alias_to_collection_from_graph(&graph);
@@ -731,7 +731,7 @@ fn json_string_to_resource(
 fn resolve_labels_in_tree(
     tree_json: String,
     graph_json: String,
-    rdm_cache: Option<&rdm_cache::RdmCache>,
+    rdm_cache: Option<&rdm_cache_py::RdmCache>,
     strict: bool,
 ) -> PyResult<String> {
     // Parse tree and graph
@@ -746,8 +746,8 @@ fn resolve_labels_in_tree(
         ))?;
 
     // Use explicit cache or fall back to global
-    let global_cache = rdm_cache::get_global_rdm_cache();
-    let cache_to_use: Option<&rdm_cache::RdmCache> = rdm_cache.or(global_cache.as_ref());
+    let global_cache = rdm_cache_py::get_global_rdm_cache();
+    let cache_to_use: Option<&rdm_cache_py::RdmCache> = rdm_cache.or(global_cache.as_ref());
 
     let resolved_tree = if let Some(cache) = cache_to_use {
         let alias_map = build_alias_to_collection_from_graph(&graph);
@@ -797,16 +797,16 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(coerce_with_extension, m)?)?;
 
     // Node configuration management (Phase 0 of type coercion)
-    node_config::register_module(m)?;
+    node_config_py::register_module(m)?;
 
     // RDM cache for concept collections (Phase 0 of type coercion)
-    rdm_cache::register_module(m)?;
+    rdm_cache_py::register_module(m)?;
 
     // Type coercion functions (Phase 1: simple scalars)
-    type_coercion::register_module(m)?;
+    type_coercion_py::register_module(m)?;
 
     // Rust-backed pseudo values (single source of truth for matching_entries)
-    pseudo_value::register_module(m)?;
+    pseudo_value_py::register_module(m)?;
 
     Ok(())
 }

@@ -5,6 +5,8 @@ import {
   coerceString,
   coerceDate,
   coerceConceptValue,
+  coerceDomainValue,
+  coerceDomainValueList,
   coerceResourceInstance,
   coerceResourceInstanceList,
   WasmCoercionResult
@@ -319,6 +321,172 @@ describe('Type Coercion Integration Tests', () => {
 
       expect(result.isNull).toBe(true);
       expect(result.isError).toBe(false);
+    });
+  });
+
+  describe('Domain Value coercion', () => {
+    const validUuid = '550e8400-e29b-41d4-a716-446655440000';
+    const validUuid2 = '660e8400-e29b-41d4-a716-446655440001';
+
+    // Config with domain options
+    const domainConfig = {
+      options: [
+        { id: validUuid, text: { en: 'Option 1' }, selected: false },
+        { id: validUuid2, text: { en: 'Option 2' }, selected: false }
+      ]
+    };
+
+    describe('domain-value coercion', () => {
+      it('should coerce a valid UUID without config', () => {
+        const result = coerceValue('domain-value', validUuid, null);
+
+        expect(result.isError).toBe(false);
+        expect(mapToObject(result.tileData)).toEqual(validUuid);
+      });
+
+      it('should coerce a valid UUID with config and resolve display value', () => {
+        const result = coerceValue('domain-value', validUuid, domainConfig);
+
+        expect(result.isError).toBe(false);
+        expect(mapToObject(result.tileData)).toEqual(validUuid);
+        // Display value should be the resolved domain option
+        const displayVal = mapToObject(result.displayValue);
+        expect(displayVal.id).toEqual(validUuid);
+        expect(displayVal.text).toEqual({ en: 'Option 1' });
+      });
+
+      it('should error on UUID not found in config', () => {
+        const unknownUuid = '770e8400-e29b-41d4-a716-446655440002';
+        const result = coerceValue('domain-value', unknownUuid, domainConfig);
+
+        expect(result.isError).toBe(true);
+        expect(result.error).toContain('not found');
+      });
+
+      it('should coerce domain value object by extracting id', () => {
+        const input = { id: validUuid, text: { en: 'Already resolved' } };
+        const result = coerceValue('domain-value', input, null);
+
+        expect(result.isError).toBe(false);
+        expect(mapToObject(result.tileData)).toEqual(validUuid);
+      });
+
+      it('should handle null input', () => {
+        const result = coerceValue('domain-value', null, domainConfig);
+
+        expect(result.isNull).toBe(true);
+        expect(result.isError).toBe(false);
+      });
+
+      it('should handle empty string as null', () => {
+        const result = coerceValue('domain-value', '', domainConfig);
+
+        expect(result.isNull).toBe(true);
+        expect(result.isError).toBe(false);
+      });
+
+      it('should error on invalid UUID format', () => {
+        const result = coerceValue('domain-value', 'not-a-uuid', null);
+
+        expect(result.isError).toBe(true);
+        expect(result.error).toContain('UUID');
+      });
+
+      it('should error on number input', () => {
+        const result = coerceValue('domain-value', 12345, null);
+
+        expect(result.isError).toBe(true);
+      });
+    });
+
+    describe('domain-value-list coercion', () => {
+      it('should coerce an array of UUIDs', () => {
+        const result = coerceValue('domain-value-list', [validUuid, validUuid2], null);
+
+        expect(result.isError).toBe(false);
+        expect(mapToObject(result.tileData)).toEqual([validUuid, validUuid2]);
+      });
+
+      it('should coerce an array of UUIDs with config', () => {
+        const result = coerceValue('domain-value-list', [validUuid, validUuid2], domainConfig);
+
+        expect(result.isError).toBe(false);
+        expect(mapToObject(result.tileData)).toEqual([validUuid, validUuid2]);
+        // Display values should be resolved
+        const displayVals = mapToObject(result.displayValue);
+        expect(displayVals).toHaveLength(2);
+        expect(displayVals[0].id).toEqual(validUuid);
+        expect(displayVals[1].id).toEqual(validUuid2);
+      });
+
+      it('should handle empty array', () => {
+        const result = coerceValue('domain-value-list', [], null);
+
+        expect(result.isError).toBe(false);
+        expect(mapToObject(result.tileData)).toEqual([]);
+      });
+
+      it('should handle null input', () => {
+        const result = coerceValue('domain-value-list', null, domainConfig);
+
+        expect(result.isNull).toBe(true);
+        expect(result.isError).toBe(false);
+      });
+
+      it('should error on invalid UUID in array', () => {
+        const result = coerceValue('domain-value-list', [validUuid, 'not-a-uuid'], null);
+
+        expect(result.isError).toBe(true);
+      });
+
+      it('should error on single UUID (requires array)', () => {
+        const result = coerceValue('domain-value-list', validUuid, null);
+
+        expect(result.isError).toBe(true);
+      });
+
+      it('should coerce array of domain value objects', () => {
+        const input = [
+          { id: validUuid, text: { en: 'Option 1' } },
+          { id: validUuid2, text: { en: 'Option 2' } }
+        ];
+        const result = coerceValue('domain-value-list', input, null);
+
+        expect(result.isError).toBe(false);
+        expect(mapToObject(result.tileData)).toEqual([validUuid, validUuid2]);
+      });
+    });
+
+    describe('direct coercion functions', () => {
+      it('should use coerceDomainValue directly', () => {
+        const result = coerceDomainValue(validUuid, null);
+
+        expect(result.isError).toBe(false);
+        expect(mapToObject(result.tileData)).toEqual(validUuid);
+      });
+
+      it('should use coerceDomainValue with config', () => {
+        const result = coerceDomainValue(validUuid, domainConfig);
+
+        expect(result.isError).toBe(false);
+        const displayVal = mapToObject(result.displayValue);
+        expect(displayVal.text).toEqual({ en: 'Option 1' });
+      });
+
+      it('should use coerceDomainValueList directly', () => {
+        const result = coerceDomainValueList([validUuid, validUuid2], null);
+
+        expect(result.isError).toBe(false);
+        expect(mapToObject(result.tileData)).toEqual([validUuid, validUuid2]);
+      });
+
+      it('should use coerceDomainValueList with config', () => {
+        const result = coerceDomainValueList([validUuid], domainConfig);
+
+        expect(result.isError).toBe(false);
+        const displayVals = mapToObject(result.displayValue);
+        expect(displayVals[0].text).toEqual({ en: 'Option 1' });
+      });
     });
   });
 
