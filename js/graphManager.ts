@@ -20,7 +20,7 @@ import { PseudoValue, PseudoList, PseudoUnavailable, wrapRustPseudo } from "./ps
 import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper, newWASMResourceInstanceWrapperForResource, newWASMResourceInstanceWrapperForModel } from "../pkg/alizarin";
 import { ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
-import { } from "./nodeConfig.ts";
+import { nodeConfigManager } from "./nodeConfig.ts";
 import { generateUuidv5, AttrPromise, serializeValuesMap } from "./utils";
 
 // Import and re-export timing functions from dedicated module (avoids circular imports)
@@ -1239,6 +1239,9 @@ class GraphManager {
     if (!graph) {
       throw Error(`Could not load graph ${wkrm.graphId}`);
     }
+
+    // Load node configs (domain values, booleans, etc.) for this graph
+    nodeConfigManager.loadFromGraph(graph);
 
     let model: ResourceInstanceViewModelConstructor<RIVM>;
     if (typeof modelClass == 'string') {

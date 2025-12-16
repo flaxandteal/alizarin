@@ -72,6 +72,6 @@ pub use json_conversion::{
 
 // Pseudo value core types (for JSON conversion)
 pub use pseudo_value_core::{
-    matches_semantic_child, PseudoListCore, PseudoValueCore,
+    matches_semantic_child, matches_tile_filter, PseudoListCore, PseudoValueCore,
     TileBuilder, TileBuilderContext, VisitorContext,
 };

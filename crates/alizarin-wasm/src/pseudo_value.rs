@@ -41,11 +41,6 @@ pub(crate) struct PseudoValueInner {
     /// PORT: js/pseudos.ts:55 - parent: IRIVM<any> | null
     pub parent: Option<JsValue>,
 
-    /// Parent PseudoValue reference (for getNodePlaceholder traversal)
-    /// PORT: js/pseudos.ts:56 - parentNode: PseudoValue<any> | null
-    /// Using weak reference to avoid cycles
-    pub parent_value: Option<Rc<RefCell<PseudoValueInner>>>,
-
     /// Whether value has been loaded
     /// PORT: js/pseudos.ts:57 - valueLoaded: boolean | undefined = false
     /// None = not started, Some(false) = loading, Some(true) = loaded
@@ -54,9 +49,6 @@ pub(crate) struct PseudoValueInner {
     /// Whether this value has been accessed
     /// PORT: js/pseudos.ts:59 - accessed: boolean
     pub accessed: bool,
-
-    /// Optional parent index for navigation (legacy, may remove)
-    pub parent_index: Option<usize>,
 }
 
 // ============ Convenience accessors for core fields ============
@@ -188,10 +180,8 @@ impl PseudoValueInner {
             inner: None,
             value: None,
             parent: None,
-            parent_value: None,
             value_loaded: Some(false),
             accessed: false,
-            parent_index: None,
         }
     }
 
@@ -231,10 +221,8 @@ impl PseudoValueInner {
                 inner: None,
                 value: None,
                 parent: parent.clone(),
-                parent_value: None,
                 value_loaded: Some(false),
                 accessed: false,
-                parent_index: None,
             }))
         } else {
             None
@@ -258,10 +246,8 @@ impl PseudoValueInner {
             inner,
             value: None,
             parent,
-            parent_value: None,
             value_loaded: Some(false),
             accessed: false,
-            parent_index: None,
         }
     }
 
@@ -369,16 +355,6 @@ impl PseudoListInner {
         }
     }
 
-    /// Create a new empty PseudoList with explicit is_single flag
-    pub fn new_with_cardinality(node_alias: String, is_single: bool) -> Self {
-        PseudoListInner {
-            node_alias,
-            values: Vec::new(),
-            is_loaded: false,
-            is_single,
-        }
-    }
-
     /// Group values by their tiles
     ///
     /// PORT: js/pseudos.ts PseudoList grouping logic
@@ -482,32 +458,14 @@ impl PseudoListInner {
         parent_tile_id: Option<String>,
         nodegroup_id: Option<String>
     ) -> Vec<&PseudoValueInner> {
-        let result: Vec<&PseudoValueInner> = self.values.iter()
+        use alizarin_core::matches_tile_filter;
+        self.values.iter()
             .filter(|v| {
-                if let Some(tile) = v.core.tile.as_ref() {
-                    if let Some(ng) = nodegroup_id.as_ref() {
-                        if &tile.nodegroup_id == ng {
-                            // If the value's tile is the same as the parent tile, it's a match
-                            // (values on the same tile as the parent semantic node)
-                            if tile.tileid == parent_tile_id {
-                                return true;
-                            }
-                            // If the value's tile has a parenttile_id matching the parent, it's a match
-                            // (values on child tiles of the parent semantic node's tile)
-                            if tile.parenttile_id.is_some() && tile.parenttile_id == parent_tile_id {
-                                return true;
-                            }
-                            // If no parent_tile_id provided and tile has no parenttile_id, it's a root match
-                            if parent_tile_id.is_none() && tile.parenttile_id.is_none() {
-                                return true;
-                            }
-                        }
-                    }
-                }
-                false
-            }).collect();
-
-        result
+                v.core.tile.as_ref()
+                    .map(|tile| matches_tile_filter(tile, parent_tile_id.as_ref(), nodegroup_id.as_ref()))
+                    .unwrap_or(false)
+            })
+            .collect()
     }
 }
 
@@ -710,42 +668,6 @@ impl PseudoListInner {
             serde_json::Value::Array(arr)
         }
     }
-
-    /// Convert to JSON starting from root (no parent tile filter)
-    pub fn to_json_from_root(&self, ctx: &VisitorContext) -> serde_json::Value {
-        // For root-level, we want values where tile has no parenttile_id
-        let root_values: Vec<&PseudoValueInner> = self.values.iter()
-            .filter(|v| {
-                match v.core.tile.as_ref() {
-                    Some(tile) => tile.parenttile_id.is_none(),
-                    None => true,
-                }
-            })
-            .collect();
-
-        if root_values.is_empty() {
-            return serde_json::Value::Null;
-        }
-
-        if self.is_single || root_values.len() == 1 {
-            if let Some(first) = root_values.first() {
-                return first.to_json(ctx);
-            }
-            return serde_json::Value::Null;
-        }
-
-        // Multiple values - array
-        let arr: Vec<serde_json::Value> = root_values.iter()
-            .map(|v| v.to_json(ctx))
-            .filter(|v| !v.is_null())
-            .collect();
-
-        if arr.is_empty() {
-            serde_json::Value::Null
-        } else {
-            serde_json::Value::Array(arr)
-        }
-    }
 }
 
 // ============================================================================
@@ -764,19 +686,6 @@ pub(crate) struct TileBuilder {
 }
 
 impl TileBuilder {
-    /// Create a new tile builder from a PseudoValueInner's tile
-    pub fn from_pseudo(pseudo: &PseudoValueInner, resourceinstance_id: &str) -> Option<Self> {
-        let tile = pseudo.core.tile.as_ref()?;
-        Some(TileBuilder {
-            tileid: tile.tileid.clone(),
-            nodegroup_id: tile.nodegroup_id.clone(),
-            parenttile_id: tile.parenttile_id.clone(),
-            resourceinstance_id: resourceinstance_id.to_string(),
-            sortorder: tile.sortorder,
-            data: HashMap::new(),
-        })
-    }
-
     /// Create from a StaticTile reference
     pub fn from_tile(tile: &alizarin_core::StaticTile) -> Self {
         TileBuilder {
@@ -800,13 +709,6 @@ impl TileBuilder {
             provisionaledits: None,
             data: self.data.clone(),
         }
-    }
-
-    /// Get a unique key for this tile (tileid if exists, or generated from nodegroup + sortorder)
-    pub fn key(&self) -> String {
-        self.tileid.clone().unwrap_or_else(|| {
-            format!("new_{}_{}", self.nodegroup_id, self.sortorder.unwrap_or(0))
-        })
     }
 }
 
@@ -1555,11 +1457,6 @@ impl PseudoList {
     /// Get the inner PseudoListInner (for Rust-internal use)
     pub(crate) fn into_inner(self) -> PseudoListInner {
         self.inner
-    }
-
-    /// Get a reference to the inner PseudoListInner (for Rust-internal use)
-    pub(crate) fn inner_ref(&self) -> &PseudoListInner {
-        &self.inner
     }
 }
 

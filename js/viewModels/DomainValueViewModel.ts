@@ -59,7 +59,13 @@ export class DomainValueViewModel extends String implements IViewModel {
           ) {
             const config = nodeConfigManager.retrieve(node);
             if (!config || !(config instanceof StaticNodeConfigDomain)) {
-              throw new Error(`Cannot form domain value for ${node.nodeid} without config`);
+              const graphLoaded = nodeConfigManager.hasGraph(node.graph_id);
+              const configType = config ? 'non-domain config' : 'no config';
+              throw new Error(
+                `Cannot form domain value for ${node.nodeid} (${node.alias || 'no alias'}): ` +
+                `${configType}. Graph ${node.graph_id} loaded: ${graphLoaded}. ` +
+                `Ensure nodeConfigManager.loadFromGraph(graph) is called before creating ViewModels.`
+              );
             }
             val = config.valueFromId(value) || null;
           } else {
