@@ -1,6 +1,6 @@
 import * as client from "./client";
 import * as interfaces from "./interfaces";
-import { RDM } from "./rdm";
+import { RDM, ResolveLabelsOptions } from "./rdm";
 import { ResourceModelWrapper, WKRM, graphManager, staticStore, GraphManager, GraphMutator, getWasmTimings } from "./graphManager";
 import * as staticTypes from "./static-types";
 import { CollectionMutator } from "./collectionMutator";
@@ -32,6 +32,7 @@ const getCurrentLanguage = utils.getCurrentLanguage;
 const slugify = utils.slugify;
 export type {
   IStringKeyedObject,
+  ResolveLabelsOptions,
 };
 export {
   AlizarinModel,

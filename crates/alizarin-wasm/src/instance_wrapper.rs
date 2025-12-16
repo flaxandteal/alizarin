@@ -15,7 +15,7 @@ use alizarin_core::StaticTile as CoreStaticTile;
 use alizarin_core::StaticTile;
 use alizarin_core::StaticNode;
 use alizarin_core::StaticNodegroup;
-use crate::pseudo_value::{RustPseudoValue, RustPseudoList, WasmPseudoList, WasmPseudoValue, VisitorContext};
+use crate::pseudo_value::{PseudoValueInner, PseudoListInner, PseudoList, PseudoValue, VisitorContext};
 use crate::model_wrapper::{WASMResourceModelWrapper};
 use js_sys::{Array, Map as JsMap};
 use wasm_bindgen::JsCast;
@@ -70,21 +70,21 @@ impl From<String> for SemanticChildError {
 
 /// Result of get_semantic_child_value - either values or an indication that none exist
 #[derive(Debug)]
-pub enum SemanticChildResult {
+pub(crate) enum SemanticChildResult {
     /// A list of pseudo values (for collectors or multiple matches)
-    List(RustPseudoList),
+    List(PseudoListInner),
     /// A single pseudo value
-    Single(RustPseudoValue),
+    Single(PseudoValueInner),
     /// No matching values found (not an error, just empty)
     Empty,
 }
 
 /// Result from values_from_resource_nodegroup
-/// Contains structured RustPseudoList values directly (no recipe intermediate)
+/// Contains structured PseudoListInner values directly (no recipe intermediate)
 #[derive(Clone)]
-pub struct ValuesFromNodegroupResult {
-    /// Map of node alias → RustPseudoList (structured hierarchy)
-    pub values: HashMap<String, RustPseudoList>,
+pub(crate) struct ValuesFromNodegroupResult {
+    /// Map of node alias → PseudoListInner (structured hierarchy)
+    pub values: HashMap<String, PseudoListInner>,
     pub implied_nodegroups: Vec<String>,
 }
 
@@ -101,7 +101,7 @@ impl WasmValuesFromNodegroupResult {
     pub fn get_all_values(&self) -> JsValue {
         let js_map = js_sys::Map::new();
         for (alias, rust_list) in &self.inner.values {
-            let wasm_list = WasmPseudoList::from_rust(rust_list.clone());
+            let wasm_list = PseudoList::from_rust(rust_list.clone());
             js_map.set(&JsValue::from_str(alias), &wasm_list.into());
         }
         js_map.into()
@@ -114,11 +114,11 @@ impl WasmValuesFromNodegroupResult {
 }
 
 /// Result from ensure_nodegroup
-/// PORT: Phase 4c - Now returns structured RustPseudoList values directly
-pub struct EnsureNodegroupResult {
+/// PORT: Phase 4c - Now returns structured PseudoListInner values directly
+pub(crate) struct EnsureNodegroupResult {
     /// Structured values by alias
-    /// PORT: Map of alias → RustPseudoList (js/graphManager.ts:350 - newValues Map)
-    pub values: HashMap<String, RustPseudoList>,
+    /// PORT: Map of alias → PseudoListInner (js/graphManager.ts:350 - newValues Map)
+    pub values: HashMap<String, PseudoListInner>,
     pub implied_nodegroups: Vec<String>,
     pub all_nodegroups_map: HashMap<String, bool>,
 }
@@ -141,8 +141,8 @@ impl WasmEnsureNodegroupResult {
     /// Get a structured value by alias
     /// PORT: js/graphManager.ts:353 - recipe.nodeAlias lookup
     #[wasm_bindgen(js_name = getValue)]
-    pub fn get_value(&self, alias: &str) -> Option<WasmPseudoList> {
-        self.inner.values.get(alias).map(|v| WasmPseudoList::from_rust(v.clone()))
+    pub fn get_value(&self, alias: &str) -> Option<PseudoList> {
+        self.inner.values.get(alias).map(|v| PseudoList::from_rust(v.clone()))
     }
 
     /// Get all values as a Map in a single boundary crossing
@@ -151,7 +151,7 @@ impl WasmEnsureNodegroupResult {
     pub fn get_all_values(&self) -> JsValue {
         let js_map = js_sys::Map::new();
         for (alias, rust_list) in &self.inner.values {
-            let wasm_list = WasmPseudoList::from_rust(rust_list.clone());
+            let wasm_list = PseudoList::from_rust(rust_list.clone());
             js_map.set(&JsValue::from_str(alias), &wasm_list.into());
         }
         js_map.into()
@@ -172,9 +172,9 @@ impl WasmEnsureNodegroupResult {
 
 /// Internal result from populate with structured values
 /// PORT: Phase 4c - Matches js/graphManager.ts:724-729 (allValues, allNodegroups)
-pub struct PopulateResult {
-    /// Map of alias → RustPseudoList
-    pub values: HashMap<String, RustPseudoList>,
+pub(crate) struct PopulateResult {
+    /// Map of alias → PseudoListInner
+    pub values: HashMap<String, PseudoListInner>,
     pub all_values_map: HashMap<String, Option<bool>>,
     pub all_nodegroups_map: HashMap<String, bool>,
 }
@@ -196,8 +196,8 @@ impl WasmPopulateResult {
 
     /// PORT: js/graphManager.ts:670 - accessing value by alias
     #[wasm_bindgen(js_name = getValue)]
-    pub fn get_value(&self, alias: &str) -> Option<WasmPseudoList> {
-        self.inner.values.get(alias).map(|v| WasmPseudoList::from_rust(v.clone()))
+    pub fn get_value(&self, alias: &str) -> Option<PseudoList> {
+        self.inner.values.get(alias).map(|v| PseudoList::from_rust(v.clone()))
     }
 
     /// Get all values as a Map in a single boundary crossing
@@ -206,7 +206,7 @@ impl WasmPopulateResult {
     pub fn get_all_values(&self) -> JsValue {
         let js_map = js_sys::Map::new();
         for (alias, rust_list) in &self.inner.values {
-            let wasm_list = WasmPseudoList::from_rust(rust_list.clone());
+            let wasm_list = PseudoList::from_rust(rust_list.clone());
             js_map.set(&JsValue::from_str(alias), &wasm_list.into());
         }
         js_map.into()
@@ -243,9 +243,9 @@ pub struct ResourceInstanceWrapperCore {
     // Phase 4g: Now uses Mutex for thread-safe parallel access
     pub(crate) loaded_nodegroups: Arc<Mutex<HashMap<String, LoadState>>>,
 
-    // Phase 4g: Cache of PseudoValues (alias -> RustPseudoList)
+    // Phase 4g: Cache of PseudoValues (alias -> PseudoListInner)
     // This allows Rust to own the authoritative data and bindings to create lightweight wrappers
-    pub(crate) pseudo_cache: Arc<Mutex<HashMap<String, RustPseudoList>>>,
+    pub(crate) pseudo_cache: Arc<Mutex<HashMap<String, PseudoListInner>>>,
 
     // Cached Arc references to model indices - avoids cloning on every nodegroup access
     // These are populated once on first access and shared across all calls
@@ -440,7 +440,7 @@ impl ResourceInstanceWrapperCore {
     /// - loaded_nodegroups: Set of nodegroups that have been loaded (None = non-lazy mode, all loaded)
     ///
     /// Returns: SemanticChildResult or SemanticChildError
-    pub fn get_semantic_child_value(
+    pub(crate) fn get_semantic_child_value(
         &self,
         parent_tile_id: Option<&String>,
         parent_node_id: &str,
@@ -547,7 +547,7 @@ impl ResourceInstanceWrapperCore {
             let tile_data = tile.data.get(&child_node.nodeid);
             let child_ids = edges.get(&child_node.nodeid).cloned().unwrap_or_default();
 
-            let pseudo_value = RustPseudoValue::from_node_and_tile(
+            let pseudo_value = PseudoValueInner::from_node_and_tile(
                 Arc::clone(&child_node),
                 Some(Arc::new(tile.clone())),
                 tile_data.cloned(),
@@ -560,7 +560,7 @@ impl ResourceInstanceWrapperCore {
         // Create PseudoList or single value based on is_collector and number of values
         if child_node.is_collector || values.len() > 1 {
             // Return as PseudoList, with is_single set based on cardinality
-            let pseudo_list = RustPseudoList::from_values_with_cardinality(
+            let pseudo_list = PseudoListInner::from_values_with_cardinality(
                 child_alias.to_string(),
                 values,
                 is_cardinality_one,
@@ -947,21 +947,21 @@ impl WASMResourceInstanceWrapper {
     }
 
     /// Phase 4g: Get cached PseudoValue from Rust cache
-    /// Returns WasmPseudoList if found, null otherwise
+    /// Returns PseudoList if found, null otherwise
     #[wasm_bindgen(js_name = getCachedPseudo)]
-    pub fn get_cached_pseudo(&self, alias: &str) -> Option<WasmPseudoList> {
+    pub fn get_cached_pseudo(&self, alias: &str) -> Option<PseudoList> {
         if let Ok(cache) = self.core.borrow().pseudo_cache.lock() {
             if let Some(pseudo_list) = cache.get(alias) {
-                // Convert RustPseudoList to WasmPseudoList
-                return Some(WasmPseudoList::from_rust(pseudo_list.clone()));
+                // Convert PseudoListInner to PseudoList
+                return Some(PseudoList::from_rust(pseudo_list.clone()));
             }
         }
         None
     }
 
-    /// Phase 4g: Store WasmPseudoList in Rust cache
+    /// Phase 4g: Store PseudoList in Rust cache
     #[wasm_bindgen(js_name = cachePseudoList)]
-    pub fn cache_pseudo_list(&self, alias: String, wasm_list: WasmPseudoList) {
+    pub fn cache_pseudo_list(&self, alias: String, wasm_list: PseudoList) {
         let rust_list = wasm_list.into_inner();
         if let Ok(mut cache) = self.core.borrow().pseudo_cache.lock() {
             cache.insert(alias, rust_list);
@@ -985,12 +985,12 @@ impl WASMResourceInstanceWrapper {
         Ok(())
     }
 
-    /// Phase 4g: Store single WasmPseudoValue as a list in Rust cache
+    /// Phase 4g: Store single PseudoValue as a list in Rust cache
     #[wasm_bindgen(js_name = cachePseudoValue)]
-    pub fn cache_pseudo_value(&self, alias: String, wasm_value: WasmPseudoValue) {
+    pub fn cache_pseudo_value(&self, alias: String, wasm_value: PseudoValue) {
         let rust_value = wasm_value.into_inner();
         let node_alias = alias.clone();  // Use the provided alias
-        let rust_list = RustPseudoList {
+        let rust_list = PseudoListInner {
             node_alias,
             values: vec![rust_value],
             is_loaded: true,
@@ -1045,7 +1045,7 @@ impl WASMResourceInstanceWrapper {
     ///
     /// PORT: js/graphManager.ts:330-364 getRoot()
     #[wasm_bindgen(js_name = getRootPseudo)]
-    pub fn get_root_pseudo(&self) -> Option<WasmPseudoValue> {
+    pub fn get_root_pseudo(&self) -> Option<PseudoValue> {
         // Get root node to find its alias
         let root_node = self.with_model_core_mut(|core| {
             Ok(core.get_root_node().ok())
@@ -1066,7 +1066,7 @@ impl WASMResourceInstanceWrapper {
             web_sys::console::warn_1(&"Multiple root tiles found - returning first".into());
         }
 
-        root_list.values.first().map(|v| WasmPseudoValue::from_rust(v.clone()))
+        root_list.values.first().map(|v| PseudoValue::from_rust(v.clone()))
     }
 
     /// Convert the entire resource to JSON using Rust-side traversal.
@@ -1364,7 +1364,7 @@ impl WASMResourceInstanceWrapper {
     /// Create a PseudoValue or PseudoList from node metadata
     /// PORT: js/pseudos.ts:497-594 makePseudoCls()
     ///
-    /// This replaces the TS makePseudoCls logic, returning WasmPseudoValue or WasmPseudoList
+    /// This replaces the TS makePseudoCls logic, returning PseudoValue or PseudoList
     /// that can be wrapped in TS PseudoValue/PseudoList wrappers.
     ///
     /// Parameters:
@@ -1419,8 +1419,8 @@ impl WASMResourceInstanceWrapper {
         // If tiles aren't loaded, return empty pseudo
         let Some(tiles) = core_ref.tiles.as_ref() else {
             if should_be_list {
-                let empty_list = RustPseudoList::new(alias.to_string());
-                let wasm_list = WasmPseudoList::from_rust(empty_list);
+                let empty_list = PseudoListInner::new(alias.to_string());
+                let wasm_list = PseudoList::from_rust(empty_list);
                 return Ok(wasm_list.into());
             } else {
                 return Ok(JsValue::null());
@@ -1431,8 +1431,8 @@ impl WASMResourceInstanceWrapper {
             // PORT: js/pseudos.ts:536-562 - Create PseudoList with values from tiles
             if !is_permitted {
                 // Return empty list for unpermitted nodegroup
-                let empty_list = RustPseudoList::new(alias.to_string());
-                let wasm_list = WasmPseudoList::from_rust(empty_list);
+                let empty_list = PseudoListInner::new(alias.to_string());
+                let wasm_list = PseudoList::from_rust(empty_list);
                 return Ok(wasm_list.into());
             }
 
@@ -1446,7 +1446,7 @@ impl WASMResourceInstanceWrapper {
                     .map(|map| map.clone())
             })?;
 
-            // Create list of RustPseudoValues from each tile
+            // Create list of PseudoValueInners from each tile
             let mut values = Vec::new();
 
             for tid in tile_ids {
@@ -1460,8 +1460,8 @@ impl WASMResourceInstanceWrapper {
                         .cloned()
                         .unwrap_or_default();
 
-                    // Create RustPseudoValue for this tile
-                    let pseudo_value = RustPseudoValue::from_node_and_tile(
+                    // Create PseudoValueInner for this tile
+                    let pseudo_value = PseudoValueInner::from_node_and_tile(
                         Arc::clone(&node),
                         Some(Arc::new(tile.clone())),
                         tile_data.cloned(),
@@ -1472,8 +1472,8 @@ impl WASMResourceInstanceWrapper {
                 }
             }
 
-            let pseudo_list = RustPseudoList::from_values(alias.to_string(), values);
-            let wasm_list = WasmPseudoList::from_rust(pseudo_list);
+            let pseudo_list = PseudoListInner::from_values(alias.to_string(), values);
+            let wasm_list = PseudoList::from_rust(pseudo_list);
             Ok(wasm_list.into())
         } else {
             // PORT: js/pseudos.ts:563-590 - Create single PseudoValue
@@ -1509,8 +1509,8 @@ impl WASMResourceInstanceWrapper {
                 .cloned()
                 .unwrap_or_default();
 
-            // Create RustPseudoValue
-            let pseudo_value = RustPseudoValue::from_node_and_tile(
+            // Create PseudoValueInner
+            let pseudo_value = PseudoValueInner::from_node_and_tile(
                 Arc::clone(&node),
                 tile.map(Arc::new),
                 tile_data,
@@ -1518,7 +1518,7 @@ impl WASMResourceInstanceWrapper {
             );
 
             // Convert to WASM wrapper
-            let wasm_value = WasmPseudoValue::from_rust(pseudo_value);
+            let wasm_value = PseudoValue::from_rust(pseudo_value);
             Ok(wasm_value.into())
         }
     }
@@ -1579,9 +1579,9 @@ impl WASMResourceInstanceWrapper {
             None => add_if_missing,      // sentinel === undefined (key doesn't exist)
         };
 
-        // PORT: Phase 4c - Changed from Vec<PseudoRecipe> to HashMap<String, RustPseudoList>
+        // PORT: Phase 4c - Changed from Vec<PseudoRecipe> to HashMap<String, PseudoListInner>
         // PORT: js/graphManager.ts:350 - newValues is a Map<string, PseudoValue | PseudoList>
-        let mut all_values: HashMap<String, RustPseudoList> = HashMap::new();
+        let mut all_values: HashMap<String, PseudoListInner> = HashMap::new();
         let mut implied_nodegroups_set: HashSet<String> = HashSet::new();
 
         if should_process {
@@ -1650,7 +1650,7 @@ impl WASMResourceInstanceWrapper {
                     )?;
 
                     // Merge implied values (lines 369-371)
-                    // PORT: Phase 4c - Merge RustPseudoList values instead of recipes
+                    // PORT: Phase 4c - Merge PseudoListInner values instead of recipes
                     // PORT: js/graphManager.ts:369-371 - merging newValues from recursive call
                     for (alias, pseudo_list) in implied_result.values {
                         all_values.insert(alias, pseudo_list);
@@ -1789,10 +1789,10 @@ impl WASMResourceInstanceWrapper {
         // Set root node alias to false (line 626)
         all_values.insert(root_node_alias.clone(), Some(false));
 
-        // PORT: Phase 4c - Collect structured RustPseudoList values instead of recipes
+        // PORT: Phase 4c - Collect structured PseudoListInner values instead of recipes
         // PORT: js/graphManager.ts:668 - newValues is a Map<string, PseudoValue | PseudoList>
         // Start with existing cache entries for already-loaded nodegroups
-        let mut all_structured_values: HashMap<String, RustPseudoList> = if !already_loaded.is_empty() {
+        let mut all_structured_values: HashMap<String, PseudoListInner> = if !already_loaded.is_empty() {
             if let Ok(cache) = self.core.borrow().pseudo_cache.lock() {
                 cache.clone()
             } else {
@@ -1819,7 +1819,7 @@ impl WASMResourceInstanceWrapper {
                 )?;
 
                 // Collect structured values
-                // PORT: Phase 4c - Merge RustPseudoList values from ensure_nodegroup result
+                // PORT: Phase 4c - Merge PseudoListInner values from ensure_nodegroup result
                 // PORT: js/graphManager.ts:669-720 - Processing result.recipes becomes iterating values
                 for (alias, pseudo_list) in result.values {
                     all_structured_values.insert(alias, pseudo_list);
@@ -1896,7 +1896,7 @@ impl WASMResourceInstanceWrapper {
             .unwrap_or_default();
 
         // Create root pseudo value with no tile (using from_node_and_tile for proper initialization)
-        let root_pseudo = RustPseudoValue::from_node_and_tile(
+        let root_pseudo = PseudoValueInner::from_node_and_tile(
             root_node,
             None,  // root has no tile
             None,  // root has no tile_data
@@ -1904,7 +1904,7 @@ impl WASMResourceInstanceWrapper {
         );
 
         // Create root pseudo list (single value, semantic node)
-        let root_list = RustPseudoList {
+        let root_list = PseudoListInner {
             node_alias: root_node_alias.clone(),
             values: vec![root_pseudo],
             is_loaded: true,
@@ -1936,7 +1936,7 @@ impl WASMResourceInstanceWrapper {
     }
 
     /// PORT: graphManager.ts lines 505-643
-    /// Simplified implementation - builds RustPseudoList directly without recipe intermediate
+    /// Simplified implementation - builds PseudoListInner directly without recipe intermediate
     fn values_from_resource_nodegroup_internal(
         &self,
         existing_values: HashMap<String, Option<bool>>,
@@ -1956,7 +1956,7 @@ impl WASMResourceInstanceWrapper {
         let nodes_by_nodegroup = core_ref.cached_nodes_by_nodegroup.as_ref()
             .ok_or_else(|| JsValue::from_str("Model nodes-by-nodegroup not cached"))?;
 
-        let mut values: HashMap<String, RustPseudoList> = HashMap::new();
+        let mut values: HashMap<String, PseudoListInner> = HashMap::new();
         let mut implied_nodegroups: HashSet<String> = HashSet::new();
 
         // PORT: impliedNodes - parent nodes in same nodegroup that need pseudo values
@@ -2103,7 +2103,7 @@ impl WASMResourceInstanceWrapper {
         let nodegroups = core_ref.cached_nodegroups.as_ref();
         record_timing("vfrn: get nodegroups (cached)", now_ms() - t3);
 
-        // Convert to RustPseudoList
+        // Convert to PseudoListInner
         let t4 = now_ms();
         for (alias, (node, tiles)) in alias_tiles {
 
@@ -2130,13 +2130,13 @@ impl WASMResourceInstanceWrapper {
             // Sampled timing for from_node_tiles (hot loop)
             let do_sample = should_sample("vfrn: from_node_tiles", DEFAULT_SAMPLE_RATE);
             let t4b = if do_sample { now_ms() } else { 0.0 };
-            let pseudo_list = RustPseudoList::from_node_tiles(node, tiles, &edges, None, is_single);
+            let pseudo_list = PseudoListInner::from_node_tiles(node, tiles, &edges, None, is_single);
             if do_sample {
                 record_timing_sampled("vfrn: from_node_tiles", now_ms() - t4b, DEFAULT_SAMPLE_RATE);
             }
             values.insert(alias, pseudo_list);
         }
-        record_timing("vfrn: convert to RustPseudoList", now_ms() - t4);
+        record_timing("vfrn: convert to PseudoListInner", now_ms() - t4);
 
         record_timing("vfrn: total", now_ms() - fn_start);
         Ok(ValuesFromNodegroupResult {
@@ -2247,7 +2247,7 @@ impl WASMResourceInstanceWrapper {
     /// - parent_nodegroup_id: The nodegroup_id of the parent node (or null)
     /// - child_alias: The alias of the specific child to retrieve
     ///
-    /// Returns: WasmPseudoValue or WasmPseudoList, or null if not found
+    /// Returns: PseudoValue or PseudoList, or null if not found
     /// Throws an error if tiles are not loaded for the child's nodegroup (in lazy mode)
     #[wasm_bindgen(js_name = getSemanticChildValue)]
     pub fn get_semantic_child_value_wasm(
@@ -2285,11 +2285,11 @@ impl WASMResourceInstanceWrapper {
         // Convert result to JsValue
         match result {
             Ok(SemanticChildResult::List(pseudo_list)) => {
-                let wasm_list = WasmPseudoList::from_rust(pseudo_list);
+                let wasm_list = PseudoList::from_rust(pseudo_list);
                 Ok(wasm_list.into())
             }
             Ok(SemanticChildResult::Single(pseudo_value)) => {
-                let wasm_value = WasmPseudoValue::from_rust(pseudo_value);
+                let wasm_value = PseudoValue::from_rust(pseudo_value);
                 Ok(wasm_value.into())
             }
             Ok(SemanticChildResult::Empty) => {
@@ -2313,7 +2313,7 @@ impl WASMResourceInstanceWrapper {
     /// 3. Mark the nodegroup as loaded
     /// 4. Retry getting the semantic child value
     ///
-    /// Returns: WasmPseudoValue or WasmPseudoList, or null if not found
+    /// Returns: PseudoValue or PseudoList, or null if not found
     ///
     /// Phase 4h: Changed from &mut self to &self using RefCell interior mutability.
     /// This prevents deadlocks when multiple async operations run concurrently on
@@ -2330,7 +2330,7 @@ impl WASMResourceInstanceWrapper {
         // First check pseudo_cache - after populate() values are stored there
         if let Ok(cache) = self.core.borrow().pseudo_cache.lock() {
             if let Some(pseudo_list) = cache.get(&child_alias) {
-                // TODO: inefficient and cacheable on RustPseudoList
+                // TODO: inefficient and cacheable on PseudoListInner
                 let nodegroup_id = self.with_model_core_mut(|core| {
                     Ok(core.get_nodes_by_alias_internal()
                         .ok_or_else(|| JsValue::from_str(&format!("Failed to get nodes {:?}", child_alias)))?
@@ -2353,20 +2353,20 @@ impl WASMResourceInstanceWrapper {
                     }
                     // Return single value (first element) if present
                     if let Some(first_value) = matching_entries.first() {
-                        let wasm_value = WasmPseudoValue::from_rust((*first_value).clone());
+                        let wasm_value = PseudoValue::from_rust((*first_value).clone());
                         return Ok(wasm_value.into());
                     } else {
                         return Ok(JsValue::NULL);
                     }
                 } else {
-                    // Return as list - convert Vec<&RustPseudoValue> to RustPseudoList
-                    let cloned_values: Vec<RustPseudoValue> = matching_entries.iter().map(|v| (*v).clone()).collect();
-                    let result_list = RustPseudoList::from_values_with_cardinality(
+                    // Return as list - convert Vec<&PseudoValueInner> to PseudoListInner
+                    let cloned_values: Vec<PseudoValueInner> = matching_entries.iter().map(|v| (*v).clone()).collect();
+                    let result_list = PseudoListInner::from_values_with_cardinality(
                         child_alias.clone(),
                         cloned_values,
                         pseudo_list.is_single
                     );
-                    let wasm_list = WasmPseudoList::from_rust(result_list);
+                    let wasm_list = PseudoList::from_rust(result_list);
                     return Ok(wasm_list.into());
                 }
             }
@@ -2509,11 +2509,11 @@ impl WASMResourceInstanceWrapper {
                 // Convert retry result to JsValue
                 match retry_result {
                     Ok(SemanticChildResult::List(pseudo_list)) => {
-                        let wasm_list = WasmPseudoList::from_rust(pseudo_list);
+                        let wasm_list = PseudoList::from_rust(pseudo_list);
                         Ok(wasm_list.into())
                     }
                     Ok(SemanticChildResult::Single(pseudo_value)) => {
-                        let wasm_value = WasmPseudoValue::from_rust(pseudo_value);
+                        let wasm_value = PseudoValue::from_rust(pseudo_value);
                         Ok(wasm_value.into())
                     }
                     Ok(SemanticChildResult::Empty) => {
@@ -2526,11 +2526,11 @@ impl WASMResourceInstanceWrapper {
                 }
             }
             Ok(SemanticChildResult::List(pseudo_list)) => {
-                let wasm_list = WasmPseudoList::from_rust(pseudo_list);
+                let wasm_list = PseudoList::from_rust(pseudo_list);
                 Ok(wasm_list.into())
             }
             Ok(SemanticChildResult::Single(pseudo_value)) => {
-                let wasm_value = WasmPseudoValue::from_rust(pseudo_value);
+                let wasm_value = PseudoValue::from_rust(pseudo_value);
                 Ok(wasm_value.into())
             }
             Ok(SemanticChildResult::Empty) => {
@@ -2598,7 +2598,7 @@ impl WASMResourceInstanceWrapper {
     /// IMPORTANT: This is a SYNC method. JS must ensure all required tiles are loaded
     /// before calling this (use getMissingNodegroupsForChildren to check first).
     ///
-    /// Returns a JS Map<string, WasmPseudoValue | WasmPseudoList | null> keyed by child alias.
+    /// Returns a JS Map<string, PseudoValue | PseudoList | null> keyed by child alias.
     ///
     /// Parameters:
     /// - parent_tile_id: The tileid of the parent semantic node (or null)
@@ -2651,11 +2651,11 @@ impl WASMResourceInstanceWrapper {
 
             let js_value = match result {
                 Ok(SemanticChildResult::List(pseudo_list)) => {
-                    let wasm_list = WasmPseudoList::from_rust(pseudo_list);
+                    let wasm_list = PseudoList::from_rust(pseudo_list);
                     wasm_list.into()
                 }
                 Ok(SemanticChildResult::Single(pseudo_value)) => {
-                    let wasm_value = WasmPseudoValue::from_rust(pseudo_value);
+                    let wasm_value = PseudoValue::from_rust(pseudo_value);
                     wasm_value.into()
                 }
                 Ok(SemanticChildResult::Empty) => {

@@ -1,6 +1,6 @@
 {
   "name": "alizarin",
-  "version": "0.2.1-alpha.5",
+  "version": "0.2.1-alpha.6",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "files": [
@@ -31,8 +31,8 @@
     }
   },
   "scripts": {
-    "build:wasm": "wasm-pack build --target web --out-dir pkg --release",
-    "build:wasm:dev": "wasm-pack build --target web --out-dir pkg --dev",
+    "build:wasm": "wasm-pack build crates/alizarin-wasm --target web --out-dir ../../pkg --release",
+    "build:wasm:dev": "wasm-pack build crates/alizarin-wasm --target web --out-dir ../../pkg --dev",
     "build:js": "NODE_OPTIONS='--experimental-wasm-modules' vite build",
     "build": "npm run build:wasm && npm run build:js",
     "prebuild": "npm run build:wasm",

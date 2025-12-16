@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::RwLock;
 
+use crate::label_resolution::is_valid_uuid;
+
 // =============================================================================
 // Language configuration (mirrors JS getCurrentLanguage/setCurrentLanguage)
 // =============================================================================
@@ -307,24 +309,22 @@ fn normalize_date_string(s: &str) -> Result<String, String> {
 /// If input is a plain string, wraps it in the current language key.
 /// If input is already a dict, passes through with validation.
 pub fn coerce_string(value: &Value, language: Option<&str>) -> CoercionResult {
-    let lang = language.unwrap_or_else(|| {
-        // Can't return owned String from closure that expects &str
-        // So we use a static approach
-        Box::leak(get_current_language().into_boxed_str())
-    });
+    let lang: String = language
+        .map(|s| s.to_string())
+        .unwrap_or_else(get_current_language);
 
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
         Value::String(s) if s.is_empty() => {
             // Empty string -> empty object for that language
             let mut obj = serde_json::Map::new();
-            obj.insert(lang.to_string(), Value::String(String::new()));
+            obj.insert(lang.clone(), Value::String(String::new()));
             CoercionResult::success_same(Value::Object(obj))
         }
         Value::String(s) => {
             // Plain string -> wrap in language key
             let mut obj = serde_json::Map::new();
-            obj.insert(lang.to_string(), Value::String(s.clone()));
+            obj.insert(lang, Value::String(s.clone()));
             CoercionResult::success_same(Value::Object(obj))
         }
         Value::Object(obj) => {
@@ -522,7 +522,7 @@ pub fn coerce_domain_value(value: &Value, config: Option<&Value>) -> CoercionRes
         }
         Value::String(uuid) => {
             // Validate UUID format (basic check)
-            if !is_uuid_format(uuid) {
+            if !is_valid_uuid(uuid) {
                 return CoercionResult::error(format!(
                     "Domain value must be a UUID, got '{}'",
                     uuid
@@ -618,28 +618,6 @@ pub fn coerce_domain_value_list(value: &Value, config: Option<&Value>) -> Coerci
     }
 }
 
-/// Check if a string looks like a UUID
-fn is_uuid_format(s: &str) -> bool {
-    // Simple UUID format check: 8-4-4-4-12 hex chars
-    if s.len() != 36 {
-        return false;
-    }
-    let parts: Vec<&str> = s.split('-').collect();
-    if parts.len() != 5 {
-        return false;
-    }
-    let expected_lens = [8, 4, 4, 4, 12];
-    for (part, expected) in parts.iter().zip(expected_lens.iter()) {
-        if part.len() != *expected {
-            return false;
-        }
-        if !part.chars().all(|c| c.is_ascii_hexdigit()) {
-            return false;
-        }
-    }
-    true
-}
-
 // =============================================================================
 // Phase 4: RDM-dependent types (ConceptValue, ConceptList)
 // These require RDM collection lookup for full resolution (async in JS)
@@ -662,7 +640,7 @@ pub fn coerce_concept_value(value: &Value, _config: Option<&Value>) -> CoercionR
         }
         Value::String(uuid) => {
             // Validate UUID format
-            if !is_uuid_format(uuid) {
+            if !is_valid_uuid(uuid) {
                 return CoercionResult::error(format!(
                     "Concept value must be a UUID, got '{}'",
                     uuid
@@ -689,7 +667,7 @@ pub fn coerce_concept_value(value: &Value, _config: Option<&Value>) -> CoercionR
                 }
 
                 // It's a StaticValue-like object - extract the ID
-                if !is_uuid_format(id) {
+                if !is_valid_uuid(id) {
                     return CoercionResult::error(format!(
                         "Concept value ID must be a UUID, got '{}'",
                         id
@@ -779,7 +757,7 @@ pub fn coerce_resource_instance(value: &Value, _config: Option<&Value>) -> Coerc
         }
         Value::String(uuid) => {
             // Validate UUID format
-            if !is_uuid_format(uuid) {
+            if !is_valid_uuid(uuid) {
                 return CoercionResult::error(format!(
                     "Resource instance must be a UUID, got '{}'",
                     uuid
@@ -794,7 +772,7 @@ pub fn coerce_resource_instance(value: &Value, _config: Option<&Value>) -> Coerc
         Value::Object(obj) => {
             // Object with resourceId field
             if let Some(resource_id) = obj.get("resourceId").and_then(|r| r.as_str()) {
-                if !is_uuid_format(resource_id) {
+                if !is_valid_uuid(resource_id) {
                     return CoercionResult::error(format!(
                         "Resource instance resourceId must be a UUID, got '{}'",
                         resource_id
@@ -851,7 +829,7 @@ pub fn coerce_resource_instance_list(value: &Value, _config: Option<&Value>) -> 
             for (i, item) in arr.iter().enumerate() {
                 match item {
                     Value::String(uuid) if !uuid.is_empty() => {
-                        if !is_uuid_format(uuid) {
+                        if !is_valid_uuid(uuid) {
                             errors.push(format!("[{}]: invalid UUID '{}'", i, uuid));
                         } else {
                             tile_data.push(serde_json::json!({"resourceId": uuid}));
@@ -860,7 +838,7 @@ pub fn coerce_resource_instance_list(value: &Value, _config: Option<&Value>) -> 
                     }
                     Value::Object(obj) => {
                         if let Some(resource_id) = obj.get("resourceId").and_then(|r| r.as_str()) {
-                            if !is_uuid_format(resource_id) {
+                            if !is_valid_uuid(resource_id) {
                                 errors.push(format!("[{}]: invalid resourceId UUID '{}'", i, resource_id));
                             } else {
                                 tile_data.push(serde_json::json!({"resourceId": resource_id}));
@@ -1481,24 +1459,6 @@ mod tests {
     fn test_coerce_value_domain_value_list() {
         let result = coerce_value("domain-value-list", &json!(["550e8400-e29b-41d4-a716-446655440000"]), None);
         assert!(!result.is_error());
-    }
-
-    // UUID format tests
-    #[test]
-    fn test_is_uuid_format_valid() {
-        assert!(is_uuid_format("550e8400-e29b-41d4-a716-446655440000"));
-        assert!(is_uuid_format("00000000-0000-0000-0000-000000000000"));
-        assert!(is_uuid_format("ffffffff-ffff-ffff-ffff-ffffffffffff"));
-    }
-
-    #[test]
-    fn test_is_uuid_format_invalid() {
-        assert!(!is_uuid_format(""));
-        assert!(!is_uuid_format("not-a-uuid"));
-        assert!(!is_uuid_format("550e8400e29b41d4a716446655440000")); // no dashes
-        assert!(!is_uuid_format("550e8400-e29b-41d4-a716-44665544000")); // too short
-        assert!(!is_uuid_format("550e8400-e29b-41d4-a716-4466554400000")); // too long
-        assert!(!is_uuid_format("550e8400-e29b-41d4-a716-44665544000g")); // invalid char
     }
 
     // Phase 4: ConceptValue tests

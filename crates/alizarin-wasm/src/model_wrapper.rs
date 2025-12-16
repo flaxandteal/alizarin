@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 use crate::pseudos::PseudoNode;
-use crate::pseudo_value::{RustPseudoValue, WasmPseudoValue};
+use crate::pseudo_value::{PseudoValueInner, PseudoValue};
 use crate::graph::WKRM;
 // WASM wrapper types for external interfaces
 use crate::graph::StaticGraph as WasmStaticGraph;
@@ -663,7 +663,7 @@ impl WASMResourceModelWrapper {
         Ok(pseudo_node)
     }
 
-    /// Create a WasmPseudoValue - the new unified pseudo type that includes runtime state
+    /// Create a PseudoValue - the new unified pseudo type that includes runtime state
     /// This will eventually replace createPseudoNode
     #[wasm_bindgen(js_name = createPseudoValue)]
     pub fn create_pseudo_value(
@@ -671,7 +671,7 @@ impl WASMResourceModelWrapper {
         alias: Option<String>,
         tile: JsValue,
         parent: JsValue,
-    ) -> Result<WasmPseudoValue, JsValue> {
+    ) -> Result<PseudoValue, JsValue> {
         // Ensure nodes cache is built
         self.with_core_mut(|core| {
             if core.nodes.is_none() {
@@ -725,8 +725,8 @@ impl WASMResourceModelWrapper {
             Some(parent)
         };
 
-        // Create the RustPseudoValue with proper inner/outer handling
-        let rust_value = RustPseudoValue::new(
+        // Create the PseudoValueInner with proper inner/outer handling
+        let rust_value = PseudoValueInner::new(
             arc_node,
             tile_arc,
             tile_data,
@@ -735,7 +735,7 @@ impl WASMResourceModelWrapper {
             false, // not inner
         );
 
-        Ok(WasmPseudoValue::from_rust(rust_value))
+        Ok(PseudoValue::from_rust(rust_value))
     }
 
     #[wasm_bindgen(js_name = getRootNode)]

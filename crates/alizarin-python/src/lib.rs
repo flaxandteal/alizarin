@@ -11,6 +11,7 @@
 use pyo3::prelude::*;
 
 mod node_config;
+mod pseudo_value;
 mod rdm_cache;
 mod type_coercion;
 use pyo3::types::PyCapsule;
@@ -114,19 +115,53 @@ fn coerce_with_extension(
     }
 }
 
-// Import shared conversion logic from parent crate
-// Use ::alizarin to refer to the external crate, not the pymodule
-use ::alizarin::json_conversion::{tiles_to_tree, tree_to_tiles, tree_to_tiles_strict, ResourceData};
-// Import graph wrapper types (for json_conversion graph parameter)
-use ::alizarin::graph::StaticGraph as AlizarinStaticGraph;
-// Import core types (for ResourceData tiles and matching logic)
-use ::alizarin::core::{
+// Import core types and functions directly (no WASM dependency needed)
+use alizarin_core::{
+    // JSON conversion
+    tiles_to_tree, tree_to_tiles, tree_to_tiles_strict, ResourceData,
+    // Graph types
     StaticTile as AlizarinStaticTile,
     StaticNode as AlizarinStaticNode,
     StaticResource as AlizarinStaticResource,
     StaticGraph as AlizarinCoreStaticGraph,
+    StaticResourceMetadata, StaticResourceDescriptors,
+    // Label resolution
+    resolve_labels as core_resolve_labels,
+    DEFAULT_RESOLVABLE_DATATYPES,
+    DEFAULT_CONFIG_KEYS,
+    // Semantic child matching
+    matches_semantic_child as core_matches_semantic_child,
 };
-use ::alizarin::instance_wrapper::ResourceInstanceWrapperCore as AlizarinInstanceWrapperCore;
+
+/// Build alias-to-collection mapping directly from StaticGraph.
+///
+/// This is more efficient than serializing to JSON and using build_alias_to_collection_map.
+fn build_alias_to_collection_from_graph(
+    graph: &AlizarinCoreStaticGraph,
+) -> HashMap<String, String> {
+    use std::collections::HashSet;
+
+    let resolvable_set: HashSet<&str> = DEFAULT_RESOLVABLE_DATATYPES
+        .iter()
+        .copied()
+        .collect();
+
+    let mut alias_to_collection = HashMap::new();
+    for node in &graph.nodes {
+        if let Some(alias) = &node.alias {
+            if !resolvable_set.contains(node.datatype.as_str()) {
+                continue;
+            }
+            for key in DEFAULT_CONFIG_KEYS {
+                if let Some(collection_id) = node.config.get(*key).and_then(|v| v.as_str()) {
+                    alias_to_collection.insert(alias.clone(), collection_id.to_string());
+                    break;
+                }
+            }
+        }
+    }
+    alias_to_collection
+}
 
 /// Convert tiled resource to nested JSON tree
 ///
@@ -154,11 +189,10 @@ fn tiles_to_json_tree(
         ))?;
 
     // Parse graph from JSON (uses from_json_string which calls build_indices)
-    let core_graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
+    let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
             format!("Failed to parse graph: {}", e)
         ))?;
-    let graph = AlizarinStaticGraph::from(core_graph);
 
     // Create ResourceData
     let resource_data = ResourceData {
@@ -230,22 +264,21 @@ fn json_tree_to_tiles(
     }
 
     // Parse graph from JSON (uses from_json_string which calls build_indices)
-    let core_graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
+    let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
             format!("Failed to parse graph: {}", e)
         ))?;
 
     // Resolve labels to UUIDs if an RDM cache is available
     // Use explicit cache if provided, otherwise try global cache
-    // Must happen before converting core_graph to wrapper (which moves it)
     let global_cache = rdm_cache::get_global_rdm_cache();
     let cache_to_use: Option<&rdm_cache::RdmCache> = rdm_cache.or(global_cache.as_ref());
 
     if let Some(cache) = cache_to_use {
-        resolve_labels_in_value(&mut tree, &core_graph, cache, strict)?;
+        let alias_map = build_alias_to_collection_from_graph(&graph);
+        tree = core_resolve_labels(tree, &alias_map, cache, strict)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.message))?;
     }
-
-    let graph = AlizarinStaticGraph::from(core_graph);
 
     // Call shared Rust conversion function (strict or non-strict)
     let resource_data = if strict {
@@ -323,9 +356,8 @@ fn batch_trees_to_tiles(
     let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e)))?;
 
-    let core_graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
+    let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse graph: {}", e)))?;
-    let graph = AlizarinStaticGraph::from(core_graph);
     let graph_id = graph.graph_id().to_string();
 
     let results: Vec<Result<serde_json::Value, String>> = trees
@@ -364,9 +396,8 @@ fn batch_tiles_to_trees(
     let resources: Vec<serde_json::Value> = serde_json::from_str(&resources_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse resources: {}", e)))?;
 
-    let core_graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
+    let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse graph: {}", e)))?;
-    let graph = AlizarinStaticGraph::from(core_graph);
     let graph_id = graph.graph_id().to_string();
 
     let results: Vec<Result<serde_json::Value, String>> = resources
@@ -457,7 +488,7 @@ fn transform_keys_to_snake(value: serde_json::Value) -> serde_json::Value {
 /// Provides graph pruning and permission checking
 #[pyclass]
 struct PyResourceModelWrapper {
-    graph: Arc<AlizarinStaticGraph>,
+    graph: Arc<AlizarinCoreStaticGraph>,
     permitted_nodegroups: HashMap<String, bool>,
 }
 
@@ -465,7 +496,7 @@ struct PyResourceModelWrapper {
 impl PyResourceModelWrapper {
     #[new]
     fn new(graph_json: String) -> PyResult<Self> {
-        let graph: AlizarinStaticGraph = serde_json::from_str(&graph_json)
+        let graph: AlizarinCoreStaticGraph = serde_json::from_str(&graph_json)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 format!("Failed to parse graph: {}", e)
             ))?;
@@ -518,7 +549,7 @@ fn matches_semantic_child(
             format!("Failed to parse tile: {}", e)
         ))?;
 
-    Ok(AlizarinInstanceWrapperCore::matches_semantic_child(
+    Ok(core_matches_semantic_child(
         parent_tile_id.as_ref(),
         &parent_node_id,
         &child_node,
@@ -627,14 +658,8 @@ fn resource_to_json_string(resource: &PyStaticResource, graph: &PyStaticGraph) -
         tiles: tiles.clone(),
     };
 
-    // Convert core graph to wrapper graph for json_conversion
-    let wrapper_graph: AlizarinStaticGraph = serde_json::from_str(&serde_json::to_string(&graph.inner).unwrap())
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to convert graph: {}", e)
-        ))?;
-
     // Call shared Rust conversion function
-    let json_tree = tiles_to_tree(&resource_data, &wrapper_graph)
+    let json_tree = tiles_to_tree(&resource_data, &graph.inner)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
 
     // Return as JSON string
@@ -660,23 +685,17 @@ fn json_string_to_resource(
     // Get graph_id from the graph
     let graph_id = graph.inner.graphid.clone();
 
-    // Convert core graph to wrapper graph for json_conversion
-    let wrapper_graph: AlizarinStaticGraph = serde_json::from_str(&serde_json::to_string(&graph.inner).unwrap())
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to convert graph: {}", e)
-        ))?;
-
     // Call shared Rust conversion function
-    let resource_data = tree_to_tiles(&tree, &wrapper_graph, &resource_id, &graph_id)
+    let resource_data = tree_to_tiles(&tree, &graph.inner, &resource_id, &graph_id)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
 
     // Create StaticResource from ResourceData
     let resource = AlizarinStaticResource {
-        resourceinstance: ::alizarin::core::StaticResourceMetadata {
+        resourceinstance: StaticResourceMetadata {
             resourceinstanceid: resource_data.resourceinstanceid.clone(),
             graph_id: resource_data.graph_id.clone(),
             name: String::new(),
-            descriptors: ::alizarin::core::StaticResourceDescriptors::default(),
+            descriptors: StaticResourceDescriptors::default(),
             publication_id: None,
             principaluser_id: None,
             legacyid: None,
@@ -692,104 +711,6 @@ fn json_string_to_resource(
     };
 
     Ok(PyStaticResource { inner: resource })
-}
-
-/// Check if a string looks like a UUID
-fn is_uuid_format(s: &str) -> bool {
-    let uuid_pattern = regex::Regex::new(
-        r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-    ).unwrap();
-    uuid_pattern.is_match(s)
-}
-
-/// Internal helper: resolve labels in a mutable JSON value using graph and cache
-fn resolve_labels_in_value(
-    tree: &mut serde_json::Value,
-    graph: &AlizarinCoreStaticGraph,
-    rdm_cache: &rdm_cache::RdmCache,
-    strict: bool,
-) -> PyResult<()> {
-    // Build a mapping of alias → (datatype, rdmCollection)
-    let mut alias_to_config: HashMap<String, (String, Option<String>)> = HashMap::new();
-    for node in &graph.nodes {
-        if let Some(alias) = &node.alias {
-            let rdm_collection = node.config.get("rdmCollection")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            alias_to_config.insert(alias.clone(), (node.datatype.clone(), rdm_collection));
-        }
-    }
-
-    // Recursively resolve labels
-    fn resolve_value_recursive(
-        value: &mut serde_json::Value,
-        alias: Option<&str>,
-        alias_to_config: &HashMap<String, (String, Option<String>)>,
-        rdm_cache: &rdm_cache::RdmCache,
-        strict: bool,
-        errors: &mut Vec<String>,
-    ) {
-        match value {
-            serde_json::Value::Object(obj) => {
-                // Check for _value wrapper
-                if let Some(inner) = obj.get_mut("_value") {
-                    resolve_value_recursive(inner, alias, alias_to_config, rdm_cache, strict, errors);
-                    return;
-                }
-
-                // Process each field
-                let keys: Vec<String> = obj.keys().cloned().collect();
-                for key in keys {
-                    if let Some(field_value) = obj.get_mut(&key) {
-                        resolve_value_recursive(field_value, Some(&key), alias_to_config, rdm_cache, strict, errors);
-                    }
-                }
-            }
-            serde_json::Value::Array(arr) => {
-                for item in arr.iter_mut() {
-                    resolve_value_recursive(item, alias, alias_to_config, rdm_cache, strict, errors);
-                }
-            }
-            serde_json::Value::String(s) => {
-                // Check if this alias is a concept field with an RDM collection
-                if let Some(alias_str) = alias {
-                    if let Some((datatype, Some(collection_id))) = alias_to_config.get(alias_str) {
-                        if (datatype == "concept" || datatype == "concept-list") && !is_uuid_format(s) {
-                            // Try to resolve the label
-                            if let Some(concept) = rdm_cache.find_concept_by_label(collection_id, s) {
-                                *value = serde_json::Value::String(concept.id.clone());
-                            } else if strict {
-                                let matches = rdm_cache.find_all_concepts_by_label(collection_id, s);
-                                if matches.len() > 1 {
-                                    errors.push(format!(
-                                        "Ambiguous label '{}' in collection '{}' matches {} concepts",
-                                        s, collection_id, matches.len()
-                                    ));
-                                } else {
-                                    errors.push(format!(
-                                        "Label '{}' not found in collection '{}'",
-                                        s, collection_id
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    let mut errors = Vec::new();
-    resolve_value_recursive(tree, None, &alias_to_config, rdm_cache, strict, &mut errors);
-
-    if !errors.is_empty() {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to resolve labels:\n  {}", errors.join("\n  "))
-        ));
-    }
-
-    Ok(())
 }
 
 /// Resolve labels to UUIDs in a JSON tree using an RDM cache
@@ -814,7 +735,7 @@ fn resolve_labels_in_tree(
     strict: bool,
 ) -> PyResult<String> {
     // Parse tree and graph
-    let mut tree: serde_json::Value = serde_json::from_str(&tree_json)
+    let tree: serde_json::Value = serde_json::from_str(&tree_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
             format!("Failed to parse tree: {}", e)
         ))?;
@@ -828,11 +749,15 @@ fn resolve_labels_in_tree(
     let global_cache = rdm_cache::get_global_rdm_cache();
     let cache_to_use: Option<&rdm_cache::RdmCache> = rdm_cache.or(global_cache.as_ref());
 
-    if let Some(cache) = cache_to_use {
-        resolve_labels_in_value(&mut tree, &graph, cache, strict)?;
-    }
+    let resolved_tree = if let Some(cache) = cache_to_use {
+        let alias_map = build_alias_to_collection_from_graph(&graph);
+        core_resolve_labels(tree, &alias_map, cache, strict)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.message))?
+    } else {
+        tree
+    };
 
-    serde_json::to_string(&tree)
+    serde_json::to_string(&resolved_tree)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
             format!("Failed to serialize result: {}", e)
         ))
@@ -879,6 +804,9 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
 
     // Type coercion functions (Phase 1: simple scalars)
     type_coercion::register_module(m)?;
+
+    // Rust-backed pseudo values (single source of truth for matching_entries)
+    pseudo_value::register_module(m)?;
 
     Ok(())
 }
