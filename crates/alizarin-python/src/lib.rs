@@ -394,15 +394,28 @@ fn batch_trees_to_tiles(
         .map(|(i, mut tree)| {
             if from_camel { tree = transform_keys_to_snake(tree); }
 
-            let resource_id = tree.get("resourceinstanceid")
-                .and_then(|v| v.as_str()).map(String::from)
-                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            // Add graph_id to tree if not present
+            if let serde_json::Value::Object(ref mut map) = tree {
+                if !map.contains_key("graph_id") {
+                    map.insert("graph_id".to_string(), serde_json::Value::String(graph_id.clone()));
+                }
+            }
 
-            let resource_data = if strict {
-                tree_to_tiles_strict(&tree, &graph, &resource_id, &graph_id)
+            let business_data = if strict {
+                tree_to_tiles_strict(&tree, &graph)
             } else {
-                tree_to_tiles(&tree, &graph, &resource_id, &graph_id)
+                tree_to_tiles(&tree, &graph)
             }.map_err(|e| format!("Tree {}: {}", i, e))?;
+
+            // Extract first resource and convert to legacy format
+            let resource = business_data.business_data.resources.into_iter().next()
+                .ok_or_else(|| format!("Tree {}: No resources returned", i))?;
+
+            let resource_data = ResourceData {
+                resourceinstanceid: resource.resourceinstance.resourceinstanceid,
+                graph_id: resource.resourceinstance.graph_id,
+                tiles: resource.tiles.unwrap_or_default(),
+            };
 
             serde_json::to_value(&resource_data)
                 .map_err(|e| format!("Tree {}: Failed to serialize: {}", i, e))
@@ -442,14 +455,26 @@ fn batch_tiles_to_trees(
                 .map_err(|e| format!("Resource {}: Failed to parse tiles: {}", i, e))?
                 .unwrap_or_default();
 
+            // Create ResourceData and convert to StaticResource for the new API
             let resource_data = ResourceData {
                 resourceinstanceid: resource_id.clone(),
                 graph_id: graph_id.clone(),
                 tiles,
             };
+            let static_resource = resource_data.to_static_resource(&graph);
 
-            let mut tree = tiles_to_tree(&resource_data, &graph)
+            // Convert to JSON Value for tiles_to_tree
+            let input_json = serde_json::to_value(&static_resource)
+                .map_err(|e| format!("Resource {}: Failed to serialize: {}", i, e))?;
+
+            // Call tiles_to_tree (returns array)
+            let json_tree_array = tiles_to_tree(&input_json, &graph)
                 .map_err(|e| format!("Resource {}: {}", i, e))?;
+
+            // Extract first element and add metadata
+            let mut tree = json_tree_array.as_array()
+                .and_then(|arr| arr.first().cloned())
+                .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
             if let serde_json::Value::Object(ref mut map) = tree {
                 map.insert("resourceinstanceid".to_string(), serde_json::Value::String(resource_id));
