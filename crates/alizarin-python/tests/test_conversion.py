@@ -102,7 +102,7 @@ def test_tiles_to_tree_basic():
 
 
 def test_tree_to_tiles_basic():
-    """Test converting tree structure to tiles"""
+    """Test converting tree structure to tiles - returns StaticResource format"""
     graph_data = load_test_data()
 
     # Create a simple tree structure (no metadata, just content)
@@ -127,15 +127,21 @@ def test_tree_to_tiles_basic():
         graph_json=graph_json
     )
 
-    # Verify result structure
+    # Verify result is StaticResource format with resourceinstance
     assert isinstance(result, dict), "Result should be a dictionary"
-    assert result['resourceinstanceid'] == 'test-resource-456'
-    assert result['graph_id'] == graph_data['graphid']
-    assert 'tiles' in result
+    assert 'resourceinstance' in result, "Result should have resourceinstance"
+    assert 'tiles' in result, "Result should have tiles"
+
+    ri = result['resourceinstance']
+    assert ri['resourceinstanceid'] == 'test-resource-456'
+    assert ri['graph_id'] == graph_data['graphid']
+    assert 'descriptors' in ri, "resourceinstance should have descriptors"
+
     assert isinstance(result['tiles'], list)
     assert len(result['tiles']) > 0, "Should have created at least one tile"
 
     print(f"Created {len(result['tiles'])} tiles")
+    print(f"Descriptors: {ri.get('descriptors', {})}")
     for tile in result['tiles']:
         print(f"  Tile {tile.get('tileid', '(no id)')} "
               f"has {len(tile.get('data', {}))} data entries")
@@ -159,7 +165,7 @@ def test_roundtrip_preserves_data():
 
     print(f"Intermediate tree: {json.dumps(tree, indent=2)}")
 
-    # tree -> tiles
+    # tree -> tiles (returns StaticResource format)
     tree_json = json.dumps(tree)
     result = alizarin.json_tree_to_tiles(
         tree_json=tree_json,
@@ -168,9 +174,11 @@ def test_roundtrip_preserves_data():
         graph_json=graph_json
     )
 
-    # Verify metadata preserved
-    assert result['resourceinstanceid'] == 'test-resource-123'
-    assert result['graph_id'] == graph_data['graphid']
+    # Verify metadata preserved (now in resourceinstance)
+    assert 'resourceinstance' in result
+    ri = result['resourceinstance']
+    assert ri['resourceinstanceid'] == 'test-resource-123'
+    assert ri['graph_id'] == graph_data['graphid']
 
     # Verify we have tiles
     roundtrip_tiles = result['tiles']
@@ -212,6 +220,104 @@ def test_invalid_json_handling():
         )
 
 
+def test_batch_trees_to_tiles():
+    """Test batch conversion of trees to tiles - returns StaticResource format"""
+    graph_data = load_test_data()
+
+    # Create multiple tree structures
+    trees = [
+        {
+            'basic_info': [{
+                'name': {'en': 'Resource One'},
+                'description': 'First resource'
+            }]
+        },
+        {
+            'basic_info': [{
+                'name': {'en': 'Resource Two'},
+                'description': 'Second resource'
+            }]
+        }
+    ]
+
+    trees_json = json.dumps(trees)
+    graph_json = json.dumps(graph_data)
+
+    # Call batch conversion
+    result = alizarin.batch_trees_to_tiles(
+        trees_json=trees_json,
+        graph_json=graph_json
+    )
+
+    # Verify result structure
+    assert isinstance(result, dict), "Result should be a dictionary"
+    assert 'results' in result, "Result should have 'results' key"
+    assert len(result['results']) == 2, "Should have 2 resources"
+
+    for i, resource in enumerate(result['results']):
+        # Each resource should be in StaticResource format
+        assert 'resourceinstance' in resource, f"Resource {i} should have resourceinstance"
+        assert 'tiles' in resource, f"Resource {i} should have tiles"
+
+        ri = resource['resourceinstance']
+        assert 'resourceinstanceid' in ri, f"Resource {i} should have resourceinstanceid"
+        assert 'graph_id' in ri, f"Resource {i} should have graph_id"
+        assert 'descriptors' in ri, f"Resource {i} should have descriptors"
+        assert isinstance(resource['tiles'], list), f"Resource {i} tiles should be a list"
+
+        print(f"Resource {i}: {ri['resourceinstanceid']}")
+        print(f"  Descriptors: {ri.get('descriptors', {})}")
+        print(f"  Tiles: {len(resource['tiles'])}")
+
+
+def test_batch_tiles_to_trees():
+    """Test batch conversion of tiles to trees"""
+    graph_data = load_test_data()
+    graph_json = json.dumps(graph_data)
+
+    # Create resources in StaticResource format
+    resources = [
+        {
+            'resourceinstance': {
+                'resourceinstanceid': 'batch-resource-1',
+                'graph_id': graph_data['graphid'],
+                'name': 'Batch Resource 1',
+                'descriptors': {}
+            },
+            'tiles': create_test_tiles(graph_data)
+        },
+        {
+            'resourceinstance': {
+                'resourceinstanceid': 'batch-resource-2',
+                'graph_id': graph_data['graphid'],
+                'name': 'Batch Resource 2',
+                'descriptors': {}
+            },
+            'tiles': create_test_tiles(graph_data)
+        }
+    ]
+
+    resources_json = json.dumps(resources)
+
+    # Call batch conversion
+    result = alizarin.batch_tiles_to_trees(
+        resources_json=resources_json,
+        graph_json=graph_json
+    )
+
+    # Verify result structure
+    assert isinstance(result, dict), "Result should be a dictionary"
+    assert 'results' in result, "Result should have 'results' key"
+    assert len(result['results']) == 2, "Should have 2 trees"
+
+    for i, tree in enumerate(result['results']):
+        # Tree format has resourceinstanceid at root level
+        assert 'resourceinstanceid' in tree, f"Tree {i} should have resourceinstanceid"
+        assert 'graph_id' in tree, f"Tree {i} should have graph_id"
+
+        print(f"Tree {i}: {tree['resourceinstanceid']}")
+
+
 if __name__ == '__main__':
     # Run tests when executed directly
     print("Running tiles_to_tree test...")
@@ -220,6 +326,10 @@ if __name__ == '__main__':
     test_tree_to_tiles_basic()
     print("\nRunning roundtrip test...")
     test_roundtrip_preserves_data()
+    print("\nRunning batch_trees_to_tiles test...")
+    test_batch_trees_to_tiles()
+    print("\nRunning batch_tiles_to_trees test...")
+    test_batch_tiles_to_trees()
     print("\nRunning invalid JSON test...")
     test_invalid_json_handling()
     print("\nAll tests passed!")
