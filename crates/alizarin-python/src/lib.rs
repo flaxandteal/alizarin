@@ -118,7 +118,7 @@ fn coerce_with_extension(
 // Import core types and functions directly (no WASM dependency needed)
 use alizarin_core::{
     // JSON conversion
-    tiles_to_tree, tree_to_tiles, tree_to_tiles_strict, ResourceData,
+    tiles_to_tree, tree_to_tiles, tree_to_tiles_strict, ResourceData, BusinessDataWrapper,
     // Graph types
     StaticTile as AlizarinStaticTile,
     StaticNode as AlizarinStaticNode,
@@ -194,22 +194,34 @@ fn tiles_to_json_tree(
             format!("Failed to parse graph: {}", e)
         ))?;
 
-    // Create ResourceData
+    // Create ResourceData and convert to StaticResource for the new API
     let resource_data = ResourceData {
         resourceinstanceid: resource_id,
         graph_id,
         tiles,
     };
+    let static_resource = resource_data.to_static_resource(&graph);
 
-    // Call shared Rust conversion function
-    let json_tree = tiles_to_tree(&resource_data, &graph)
+    // Convert to JSON Value for tiles_to_tree
+    let input_json = serde_json::to_value(&static_resource)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to serialize resource: {}", e)
+        ))?;
+
+    // Call shared Rust conversion function (returns array)
+    let json_tree_array = tiles_to_tree(&input_json, &graph)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+
+    // Extract first element (single resource case)
+    let json_tree = json_tree_array.as_array()
+        .and_then(|arr| arr.first().cloned())
+        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
     // Wrap tree with metadata for consistency with json_tree_to_tiles
     let mut result = json_tree.clone();
     if let serde_json::Value::Object(ref mut map) = result {
-        map.insert("resourceinstanceid".to_string(), serde_json::Value::String(resource_data.resourceinstanceid));
-        map.insert("graph_id".to_string(), serde_json::Value::String(resource_data.graph_id));
+        map.insert("resourceinstanceid".to_string(), serde_json::Value::String(static_resource.resourceinstance.resourceinstanceid.clone()));
+        map.insert("graph_id".to_string(), serde_json::Value::String(static_resource.resourceinstance.graph_id.clone()));
     }
 
     // Convert to Python dict
@@ -280,12 +292,28 @@ fn json_tree_to_tiles(
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.message))?;
     }
 
+    // Add resourceinstanceid and graph_id to tree for new API
+    if let serde_json::Value::Object(ref mut map) = tree {
+        map.insert("resourceinstanceid".to_string(), serde_json::Value::String(resource_id.clone()));
+        map.insert("graph_id".to_string(), serde_json::Value::String(graph_id.clone()));
+    }
+
     // Call shared Rust conversion function (strict or non-strict)
-    let resource_data = if strict {
-        tree_to_tiles_strict(&tree, &graph, &resource_id, &graph_id)
+    let business_data = if strict {
+        tree_to_tiles_strict(&tree, &graph)
     } else {
-        tree_to_tiles(&tree, &graph, &resource_id, &graph_id)
+        tree_to_tiles(&tree, &graph)
     }.map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+
+    // Extract first resource and convert to legacy ResourceData format for backwards compatibility
+    let resource = business_data.business_data.resources.into_iter().next()
+        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("No resources returned"))?;
+
+    let resource_data = ResourceData {
+        resourceinstanceid: resource.resourceinstance.resourceinstanceid,
+        graph_id: resource.resourceinstance.graph_id,
+        tiles: resource.tiles.unwrap_or_default(),
+    };
 
     // Convert to Python dict
     let result_json = serde_json::to_string(&resource_data)
@@ -647,20 +675,20 @@ impl PyStaticResource {
 /// Convert resource to nested JSON string (convenience function)
 #[pyfunction]
 fn resource_to_json_string(resource: &PyStaticResource, graph: &PyStaticGraph) -> PyResult<String> {
-    // Extract tiles from resource
-    let tiles = resource.inner.tiles.as_ref()
-        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("Resource has no tiles"))?;
+    // Convert resource to JSON Value for the new API
+    let input_json = serde_json::to_value(&resource.inner)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to serialize resource: {}", e)
+        ))?;
 
-    // Create ResourceData
-    let resource_data = ResourceData {
-        resourceinstanceid: resource.inner.resourceinstance.resourceinstanceid.clone(),
-        graph_id: resource.inner.resourceinstance.graph_id.clone(),
-        tiles: tiles.clone(),
-    };
-
-    // Call shared Rust conversion function
-    let json_tree = tiles_to_tree(&resource_data, &graph.inner)
+    // Call shared Rust conversion function (returns array)
+    let json_tree_array = tiles_to_tree(&input_json, &graph.inner)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+
+    // Extract first element (single resource case)
+    let json_tree = json_tree_array.as_array()
+        .and_then(|arr| arr.first().cloned())
+        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
     // Return as JSON string
     serde_json::to_string(&json_tree)
@@ -677,7 +705,7 @@ fn json_string_to_resource(
     graph: &PyStaticGraph,
 ) -> PyResult<PyStaticResource> {
     // Parse as JSON value
-    let tree: serde_json::Value = serde_json::from_str(&json_str)
+    let mut tree: serde_json::Value = serde_json::from_str(&json_str)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
             format!("Failed to parse JSON: {}", e)
         ))?;
@@ -685,30 +713,19 @@ fn json_string_to_resource(
     // Get graph_id from the graph
     let graph_id = graph.inner.graphid.clone();
 
+    // Add resourceinstanceid and graph_id to tree for new API
+    if let serde_json::Value::Object(ref mut map) = tree {
+        map.insert("resourceinstanceid".to_string(), serde_json::Value::String(resource_id));
+        map.insert("graph_id".to_string(), serde_json::Value::String(graph_id));
+    }
+
     // Call shared Rust conversion function
-    let resource_data = tree_to_tiles(&tree, &graph.inner, &resource_id, &graph_id)
+    let business_data = tree_to_tiles(&tree, &graph.inner)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
 
-    // Create StaticResource from ResourceData
-    let resource = AlizarinStaticResource {
-        resourceinstance: StaticResourceMetadata {
-            resourceinstanceid: resource_data.resourceinstanceid.clone(),
-            graph_id: resource_data.graph_id.clone(),
-            name: String::new(),
-            descriptors: StaticResourceDescriptors::default(),
-            publication_id: None,
-            principaluser_id: None,
-            legacyid: None,
-            graph_publication_id: None,
-            createdtime: None,
-            lastmodified: None,
-        },
-        tiles: Some(resource_data.tiles),
-        metadata: HashMap::new(),
-        cache: None,
-        scopes: None,
-        tiles_loaded: Some(true),
-    };
+    // Extract first resource
+    let resource = business_data.business_data.resources.into_iter().next()
+        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("No resources returned"))?;
 
     Ok(PyStaticResource { inner: resource })
 }
