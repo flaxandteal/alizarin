@@ -1,26 +1,39 @@
 /// Hierarchical tree conversion for resources
 ///
 /// This module provides bidirectional conversion between:
-/// - **Tiled format**: Flat list of tiles grouped by nodegroup (Arches native format)
-/// - **Tree format**: Nested hierarchical JSON using node aliases as keys (developer-friendly)
+/// - **Tiled format**: `{"business_data": {"resources": [StaticResource, ...]}}` (Arches export format)
+/// - **Tree format**: Array of nested hierarchical JSON using node aliases as keys `[{...}, {...}]`
 ///
 /// These are NOT simple serialization functions - they perform structural transformation:
-/// - `tiles_to_tree()`: Flat tiles → Nested hierarchy
-/// - `tree_to_tiles()`: Nested hierarchy → Flat tiles
+/// - `tiles_to_tree()`: Tiled resources → Array of nested tree objects
+/// - `tree_to_tiles()`: Array of nested tree objects → Tiled resources with business_data wrapper
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use serde_json::{Value, Map};
 use serde::{Serialize, Deserialize};
 
-use crate::graph::StaticGraph;
+use crate::graph::{StaticGraph, IndexedGraph};
 use crate::pseudo_value_core::{
     PseudoValueCore, PseudoListCore, TileBuilder, TileBuilderContext, VisitorContext,
 };
 use crate::{StaticTile, StaticNode};
+use crate::graph::{StaticResource, StaticResourceMetadata, StaticResourceDescriptors};
 use crate::type_coercion::coerce_value;
 
-/// Container for resource data
+/// Wrapper for business data import/export format
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BusinessDataWrapper {
+    pub business_data: BusinessData,
+}
+
+/// Business data containing resources
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BusinessData {
+    pub resources: Vec<StaticResource>,
+}
+
+/// Legacy container for resource data (kept for backwards compatibility)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceData {
     pub resourceinstanceid: String,
@@ -28,12 +41,67 @@ pub struct ResourceData {
     pub tiles: Vec<StaticTile>,
 }
 
-/// Convert tiled resource format to nested tree structure
+impl ResourceData {
+    /// Convert to StaticResource with descriptors
+    pub fn to_static_resource(&self, graph: &StaticGraph) -> StaticResource {
+        let indexed = IndexedGraph::new(graph.clone());
+        let descriptors = indexed.build_descriptors(&self.tiles);
+
+        // Use name from descriptors, or fallback to resourceinstanceid
+        let name = descriptors.name.clone()
+            .unwrap_or_else(|| self.resourceinstanceid.clone());
+
+        StaticResource {
+            resourceinstance: StaticResourceMetadata {
+                descriptors,
+                graph_id: self.graph_id.clone(),
+                name,
+                resourceinstanceid: self.resourceinstanceid.clone(),
+                publication_id: None,
+                principaluser_id: None,
+                legacyid: None,
+                graph_publication_id: None,
+                createdtime: None,
+                lastmodified: None,
+            },
+            tiles: Some(self.tiles.clone()),
+            metadata: HashMap::new(),
+            cache: None,
+            scopes: None,
+            tiles_loaded: Some(true),
+        }
+    }
+}
+
+/// Convert tiled resources to nested tree array
 ///
 /// **Structural transformation** (not just serialization):
-/// - Input: Flat list of tiles grouped by nodegroup_id
-/// - Output: Nested JSON tree using node aliases as keys
-pub fn tiles_to_tree(resource: &ResourceData, graph: &StaticGraph) -> Result<Value, String> {
+/// - Input: `{"business_data": {"resources": [StaticResource, ...]}}` OR single StaticResource
+/// - Output: Array of nested JSON tree objects `[{...}, {...}]`
+///
+/// Each resource tree uses node aliases as keys.
+pub fn tiles_to_tree(input: &Value, graph: &StaticGraph) -> Result<Value, String> {
+    let resources = extract_resources(input)?;
+
+    let mut tree_resources = Vec::new();
+
+    for resource in resources {
+        let tiles = resource.tiles.as_ref()
+            .ok_or_else(|| "Resource has no tiles".to_string())?;
+
+        let tree = resource_tiles_to_tree(tiles, &resource.resourceinstance, graph)?;
+        tree_resources.push(tree);
+    }
+
+    Ok(Value::Array(tree_resources))
+}
+
+/// Convert a single resource's tiles to tree format
+fn resource_tiles_to_tree(
+    tiles: &[StaticTile],
+    metadata: &StaticResourceMetadata,
+    graph: &StaticGraph,
+) -> Result<Value, String> {
     let nodes_by_alias = graph.nodes_by_alias_arc()
         .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
 
@@ -42,7 +110,7 @@ pub fn tiles_to_tree(resource: &ResourceData, graph: &StaticGraph) -> Result<Val
 
     // Build pseudo_cache from tiles
     let pseudo_cache = build_pseudo_cache_from_tiles(
-        &resource.tiles,
+        tiles,
         &nodes_by_alias,
         graph,
         edges,
@@ -80,11 +148,53 @@ pub fn tiles_to_tree(resource: &ResourceData, graph: &StaticGraph) -> Result<Val
         max_depth: 50,
     };
 
-    if let Some(root_value) = root_list.values.first() {
-        Ok(root_value.to_json(&ctx))
+    let mut tree = if let Some(root_value) = root_list.values.first() {
+        root_value.to_json(&ctx)
     } else {
-        Ok(Value::Object(Map::new()))
+        Value::Object(Map::new())
+    };
+
+    // Add metadata to tree
+    if let Some(obj) = tree.as_object_mut() {
+        obj.insert("resourceinstanceid".to_string(), Value::String(metadata.resourceinstanceid.clone()));
+        obj.insert("graph_id".to_string(), Value::String(metadata.graph_id.clone()));
+        if let Some(ref name) = metadata.descriptors.name {
+            obj.insert("_name".to_string(), Value::String(name.clone()));
+        }
+        if let Some(ref desc) = metadata.descriptors.description {
+            obj.insert("_description".to_string(), Value::String(desc.clone()));
+        }
+        if let Some(ref legacyid) = metadata.legacyid {
+            obj.insert("legacyid".to_string(), Value::String(legacyid.clone()));
+        }
     }
+
+    Ok(tree)
+}
+
+/// Extract resources from input (handles both wrapper format and single resource)
+fn extract_resources(input: &Value) -> Result<Vec<StaticResource>, String> {
+    // Try business_data wrapper format first
+    if let Some(bd) = input.get("business_data") {
+        if let Some(resources) = bd.get("resources") {
+            if let Some(arr) = resources.as_array() {
+                let mut result = Vec::new();
+                for r in arr {
+                    let resource: StaticResource = serde_json::from_value(r.clone())
+                        .map_err(|e| format!("Failed to parse resource: {}", e))?;
+                    result.push(resource);
+                }
+                return Ok(result);
+            }
+        }
+    }
+
+    // Try single StaticResource
+    if let Ok(resource) = serde_json::from_value::<StaticResource>(input.clone()) {
+        return Ok(vec![resource]);
+    }
+
+    Err("Input must be BusinessDataWrapper or StaticResource".to_string())
 }
 
 /// Build pseudo_cache from tiles
@@ -152,38 +262,85 @@ fn build_pseudo_cache_from_tiles(
     pseudo_cache
 }
 
-/// Convert nested tree structure to tiled resource format
+/// Convert nested tree array to tiled resource format with business_data wrapper
+///
+/// **Structural transformation**:
+/// - Input: Array of nested tree objects `[{...}, {...}]` OR single tree object `{...}`
+/// - Output: `{"business_data": {"resources": [StaticResource, ...]}}`
+///
+/// Descriptors are calculated automatically from tiles.
 pub fn tree_to_tiles(
     json: &Value,
     graph: &StaticGraph,
-    resource_id: &str,
-    graph_id: &str,
-) -> Result<ResourceData, String> {
-    tree_to_tiles_internal(json, graph, resource_id, graph_id, false)
+) -> Result<BusinessDataWrapper, String> {
+    tree_to_tiles_internal(json, graph, false)
 }
 
 /// Convert with strict validation (fails on unknown fields)
 pub fn tree_to_tiles_strict(
     json: &Value,
     graph: &StaticGraph,
-    resource_id: &str,
-    graph_id: &str,
-) -> Result<ResourceData, String> {
-    tree_to_tiles_internal(json, graph, resource_id, graph_id, true)
+) -> Result<BusinessDataWrapper, String> {
+    tree_to_tiles_internal(json, graph, true)
 }
 
 fn tree_to_tiles_internal(
     json: &Value,
     graph: &StaticGraph,
-    resource_id: &str,
-    graph_id: &str,
     strict: bool,
-) -> Result<ResourceData, String> {
+) -> Result<BusinessDataWrapper, String> {
+    let trees = extract_tree_resources(json)?;
+
+    let mut resources = Vec::new();
+
+    for tree in trees {
+        let resource = single_tree_to_resource(&tree, graph, strict)?;
+        resources.push(resource);
+    }
+
+    Ok(BusinessDataWrapper {
+        business_data: BusinessData { resources },
+    })
+}
+
+/// Extract tree resources from input (array or single object)
+fn extract_tree_resources(json: &Value) -> Result<Vec<Value>, String> {
+    // Array of tree objects
+    if let Some(arr) = json.as_array() {
+        return Ok(arr.clone());
+    }
+
+    // Single tree object
+    if json.is_object() {
+        return Ok(vec![json.clone()]);
+    }
+
+    Err("Input must be array of tree objects or single tree object".to_string())
+}
+
+/// Convert a single tree to StaticResource
+fn single_tree_to_resource(
+    json: &Value,
+    graph: &StaticGraph,
+    strict: bool,
+) -> Result<StaticResource, String> {
     let obj = json.as_object()
         .ok_or_else(|| "JSON must be an object".to_string())?;
 
-    let resource_id = resource_id.to_string();
-    let graph_id = graph_id.to_string();
+    // Extract metadata from tree
+    let resource_id = obj.get("resourceinstanceid")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+    let graph_id = obj.get("graph_id")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| graph.graphid.clone());
+
+    let legacyid = obj.get("legacyid")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     let nodes_by_alias = graph.nodes_by_alias_arc()
         .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
@@ -191,8 +348,8 @@ fn tree_to_tiles_internal(
         .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
 
     // Strict mode validation
+    let known_metadata = ["resourceinstanceid", "graph_id", "legacyid", "_name", "_description", "_map_popup"];
     if strict {
-        let known_metadata = ["resourceinstanceid", "graph_id", "legacyid"];
         for key in obj.keys() {
             if !known_metadata.contains(&key.as_str()) && !nodes_by_alias.contains_key(key) {
                 return Err(format!("Unknown field '{}' not found in graph aliases", key));
@@ -243,14 +400,36 @@ fn tree_to_tiles_internal(
         }
     }
 
-    let all_tiles: Vec<StaticTile> = tiles_map.values()
+    let tiles: Vec<StaticTile> = tiles_map.values()
         .map(|builder| builder.to_static_tile())
         .collect();
 
-    Ok(ResourceData {
-        resourceinstanceid: resource_id,
-        graph_id,
-        tiles: all_tiles,
+    // Calculate descriptors from tiles
+    let indexed = IndexedGraph::new(graph.clone());
+    let descriptors = indexed.build_descriptors(&tiles);
+
+    // Use name from descriptors, or fallback to resourceinstanceid
+    let name = descriptors.name.clone()
+        .unwrap_or_else(|| resource_id.clone());
+
+    Ok(StaticResource {
+        resourceinstance: StaticResourceMetadata {
+            descriptors,
+            graph_id,
+            name,
+            resourceinstanceid: resource_id,
+            publication_id: None,
+            principaluser_id: None,
+            legacyid,
+            graph_publication_id: None,
+            createdtime: None,
+            lastmodified: None,
+        },
+        tiles: Some(tiles),
+        metadata: HashMap::new(),
+        cache: None,
+        scopes: None,
+        tiles_loaded: Some(true),
     })
 }
 
@@ -562,13 +741,13 @@ mod tests {
         core_graph
     }
 
-    fn create_test_resource(graph: &StaticGraph) -> ResourceData {
+    fn create_test_business_data(graph: &StaticGraph) -> BusinessDataWrapper {
         let mut tiles = Vec::new();
 
-        let basic_info_ng = graph.nodegroups
+        let basic_info_ng = graph.nodegroups_slice()
             .iter()
             .find(|ng| {
-                graph.nodes
+                graph.nodes_slice()
                     .iter()
                     .any(|n| n.alias.as_deref() == Some("basic_info")
                           && n.nodegroup_id.as_ref() == Some(&ng.nodegroupid))
@@ -577,8 +756,9 @@ mod tests {
 
         let mut tile = StaticTile::new_empty(basic_info_ng.nodegroupid.clone());
         tile.resourceinstance_id = "test-resource-123".to_string();
+        tile.tileid = Some("test-tile-1".to_string());
 
-        if let Some(name_node) = graph.nodes
+        if let Some(name_node) = graph.nodes_slice()
             .iter()
             .find(|n| n.alias.as_deref() == Some("name")) {
             tile.data.insert(
@@ -587,7 +767,7 @@ mod tests {
             );
         }
 
-        if let Some(desc_node) = graph.nodes
+        if let Some(desc_node) = graph.nodes_slice()
             .iter()
             .find(|n| n.alias.as_deref() == Some("description")) {
             tile.data.insert(
@@ -598,45 +778,128 @@ mod tests {
 
         tiles.push(tile);
 
-        ResourceData {
-            resourceinstanceid: "test-resource-123".to_string(),
-            graph_id: graph.graphid.clone(),
-            tiles,
+        // Calculate descriptors
+        let indexed = IndexedGraph::new(graph.clone());
+        let descriptors = indexed.build_descriptors(&tiles);
+        let name = descriptors.name.clone().unwrap_or_else(|| "test-resource-123".to_string());
+
+        BusinessDataWrapper {
+            business_data: BusinessData {
+                resources: vec![StaticResource {
+                    resourceinstance: StaticResourceMetadata {
+                        descriptors,
+                        graph_id: graph.graphid.clone(),
+                        name,
+                        resourceinstanceid: "test-resource-123".to_string(),
+                        publication_id: None,
+                        principaluser_id: None,
+                        legacyid: None,
+                        graph_publication_id: None,
+                        createdtime: None,
+                        lastmodified: None,
+                    },
+                    tiles: Some(tiles),
+                    metadata: HashMap::new(),
+                    cache: None,
+                    scopes: None,
+                    tiles_loaded: Some(true),
+                }],
+            },
         }
     }
 
     #[test]
     fn test_tiles_to_tree_basic() {
         let graph = load_group_graph();
-        let resource = create_test_resource(&graph);
+        let business_data = create_test_business_data(&graph);
 
-        let tree = tiles_to_tree(&resource, &graph)
+        let input = serde_json::to_value(&business_data).unwrap();
+        let tree = tiles_to_tree(&input, &graph)
             .expect("tiles_to_tree failed");
 
-        assert!(tree.is_object(), "Result should be an object");
-        assert!(tree.get("resourceinstanceid").is_none(), "Should not include resourceinstanceid");
-        assert!(tree.get("graph_id").is_none(), "Should not include graph_id");
+        assert!(tree.is_array(), "Result should be an array");
+
+        let resources = tree.as_array().unwrap();
+        assert_eq!(resources.len(), 1, "Should have one resource");
+
+        let resource_tree = &resources[0];
+        assert!(resource_tree.get("resourceinstanceid").is_some(), "Should include resourceinstanceid");
+        assert!(resource_tree.get("graph_id").is_some(), "Should include graph_id");
     }
 
     #[test]
-    fn test_tree_to_tiles_basic() {
+    fn test_tree_to_tiles_array() {
         let graph = load_group_graph();
 
-        let tree = serde_json::json!({
+        // Input: array of tree objects
+        let trees = serde_json::json!([{
+            "resourceinstanceid": "test-resource-456",
+            "graph_id": graph.graphid,
             "basic_info": [{
                 "name": {"en": "JSON Test Group", "ga": "Grúpa Tástála JSON"},
                 "description": "Created from JSON tree"
             }]
-        });
+        }]);
 
-        let resource_id = "test-resource-456";
-        let graph_id = &graph.graphid;
-
-        let resource = tree_to_tiles(&tree, &graph, resource_id, graph_id)
+        let result = tree_to_tiles(&trees, &graph)
             .expect("tree_to_tiles failed");
 
-        assert_eq!(resource.resourceinstanceid, "test-resource-456");
-        assert_eq!(resource.graph_id, graph.graphid);
-        assert!(!resource.tiles.is_empty(), "Should have created tiles");
+        assert_eq!(result.business_data.resources.len(), 1);
+        let resource = &result.business_data.resources[0];
+        assert_eq!(resource.resourceinstance.resourceinstanceid, "test-resource-456");
+        assert_eq!(resource.resourceinstance.graph_id, graph.graphid);
+        assert!(resource.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false), "Should have created tiles");
+    }
+
+    #[test]
+    fn test_tree_to_tiles_single_object() {
+        let graph = load_group_graph();
+
+        // Input: single tree object (no array wrapper)
+        let tree = serde_json::json!({
+            "resourceinstanceid": "test-resource-789",
+            "graph_id": graph.graphid,
+            "basic_info": [{
+                "name": {"en": "Single Resource Test"},
+                "description": "Testing single resource input"
+            }]
+        });
+
+        let result = tree_to_tiles(&tree, &graph)
+            .expect("tree_to_tiles failed");
+
+        assert_eq!(result.business_data.resources.len(), 1);
+        let resource = &result.business_data.resources[0];
+        assert_eq!(resource.resourceinstance.resourceinstanceid, "test-resource-789");
+    }
+
+    #[test]
+    fn test_round_trip() {
+        let graph = load_group_graph();
+
+        // Create initial tree array
+        let initial_trees = serde_json::json!([{
+            "resourceinstanceid": "round-trip-test",
+            "graph_id": graph.graphid,
+            "basic_info": [{
+                "name": {"en": "Round Trip Test", "ga": "Tástáil Timpeall"},
+                "description": "Testing round trip conversion"
+            }]
+        }]);
+
+        // Convert to tiles (business_data format)
+        let tiles_result = tree_to_tiles(&initial_trees, &graph)
+            .expect("tree_to_tiles failed");
+
+        // Convert back to tree array
+        let tiles_json = serde_json::to_value(&tiles_result).unwrap();
+        let tree_result = tiles_to_tree(&tiles_json, &graph)
+            .expect("tiles_to_tree failed");
+
+        // Verify structure
+        assert!(tree_result.is_array());
+        let resources = tree_result.as_array().unwrap();
+        assert_eq!(resources.len(), 1);
+        assert_eq!(resources[0]["resourceinstanceid"], "round-trip-test");
     }
 }
