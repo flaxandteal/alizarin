@@ -33,43 +33,38 @@ pub struct BusinessData {
     pub resources: Vec<StaticResource>,
 }
 
-/// Legacy container for resource data (kept for backwards compatibility)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResourceData {
-    pub resourceinstanceid: String,
-    pub graph_id: String,
-    pub tiles: Vec<StaticTile>,
-}
+/// Create a StaticResource from basic components with computed descriptors
+pub fn create_static_resource(
+    resourceinstanceid: String,
+    graph_id: String,
+    tiles: Vec<StaticTile>,
+    graph: &StaticGraph,
+) -> StaticResource {
+    let indexed = IndexedGraph::new(graph.clone());
+    let descriptors = indexed.build_descriptors(&tiles);
 
-impl ResourceData {
-    /// Convert to StaticResource with descriptors
-    pub fn to_static_resource(&self, graph: &StaticGraph) -> StaticResource {
-        let indexed = IndexedGraph::new(graph.clone());
-        let descriptors = indexed.build_descriptors(&self.tiles);
+    // Use name from descriptors, or fallback to resourceinstanceid
+    let name = descriptors.name.clone()
+        .unwrap_or_else(|| resourceinstanceid.clone());
 
-        // Use name from descriptors, or fallback to resourceinstanceid
-        let name = descriptors.name.clone()
-            .unwrap_or_else(|| self.resourceinstanceid.clone());
-
-        StaticResource {
-            resourceinstance: StaticResourceMetadata {
-                descriptors,
-                graph_id: self.graph_id.clone(),
-                name,
-                resourceinstanceid: self.resourceinstanceid.clone(),
-                publication_id: None,
-                principaluser_id: None,
-                legacyid: None,
-                graph_publication_id: None,
-                createdtime: None,
-                lastmodified: None,
-            },
-            tiles: Some(self.tiles.clone()),
-            metadata: HashMap::new(),
-            cache: None,
-            scopes: None,
-            tiles_loaded: Some(true),
-        }
+    StaticResource {
+        resourceinstance: StaticResourceMetadata {
+            descriptors,
+            graph_id,
+            name,
+            resourceinstanceid,
+            publication_id: None,
+            principaluser_id: None,
+            legacyid: None,
+            graph_publication_id: None,
+            createdtime: None,
+            lastmodified: None,
+        },
+        tiles: Some(tiles),
+        metadata: HashMap::new(),
+        cache: None,
+        scopes: None,
+        tiles_loaded: Some(true),
     }
 }
 

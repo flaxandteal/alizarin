@@ -68,7 +68,7 @@ pub use label_resolution::{
 // JSON conversion (tiles <-> tree)
 pub use json_conversion::{
     tiles_to_tree, tree_to_tiles, tree_to_tiles_strict,
-    BusinessData, BusinessDataWrapper, ResourceData,
+    BusinessData, BusinessDataWrapper, create_static_resource,
 };
 
 // Pseudo value core types (for JSON conversion)

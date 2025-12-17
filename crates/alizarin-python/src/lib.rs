@@ -118,7 +118,7 @@ fn coerce_with_extension(
 // Import core types and functions directly (no WASM dependency needed)
 use alizarin_core::{
     // JSON conversion
-    tiles_to_tree, tree_to_tiles, tree_to_tiles_strict, ResourceData, BusinessDataWrapper,
+    tiles_to_tree, tree_to_tiles, tree_to_tiles_strict, create_static_resource, BusinessDataWrapper,
     // Graph types
     StaticTile as AlizarinStaticTile,
     StaticNode as AlizarinStaticNode,
@@ -194,13 +194,8 @@ fn tiles_to_json_tree(
             format!("Failed to parse graph: {}", e)
         ))?;
 
-    // Create ResourceData and convert to StaticResource for the new API
-    let resource_data = ResourceData {
-        resourceinstanceid: resource_id,
-        graph_id,
-        tiles,
-    };
-    let static_resource = resource_data.to_static_resource(&graph);
+    // Create StaticResource with computed descriptors
+    let static_resource = create_static_resource(resource_id, graph_id, tiles, &graph);
 
     // Convert to JSON Value for tiles_to_tree
     let input_json = serde_json::to_value(&static_resource)
@@ -455,12 +450,12 @@ fn batch_tiles_to_trees(
                     .map_err(|e| format!("Resource {}: Failed to parse tiles: {}", i, e))?
                     .unwrap_or_default();
 
-                let resource_data = ResourceData {
-                    resourceinstanceid: resource_id.clone(),
-                    graph_id: graph_id.clone(),
+                let static_resource = create_static_resource(
+                    resource_id.clone(),
+                    graph_id.clone(),
                     tiles,
-                };
-                let static_resource = resource_data.to_static_resource(&graph);
+                    &graph,
+                );
 
                 serde_json::to_value(&static_resource)
                     .map_err(|e| format!("Resource {}: Failed to serialize: {}", i, e))?
