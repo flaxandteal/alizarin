@@ -818,6 +818,7 @@ mod tests {
         assert_eq!(resources.len(), 1, "Should have one resource");
 
         let resource_tree = &resources[0];
+        // Tree format has resourceinstanceid and graph_id at root level (not nested in resourceinstance)
         assert!(resource_tree.get("resourceinstanceid").is_some(), "Should include resourceinstanceid");
         assert!(resource_tree.get("graph_id").is_some(), "Should include graph_id");
     }
