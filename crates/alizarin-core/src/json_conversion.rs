@@ -18,7 +18,7 @@ use crate::pseudo_value_core::{
     PseudoValueCore, PseudoListCore, TileBuilder, TileBuilderContext, VisitorContext,
 };
 use crate::{StaticTile, StaticNode};
-use crate::graph::{StaticResource, StaticResourceMetadata, StaticResourceDescriptors};
+use crate::graph::{StaticResource, StaticResourceMetadata};
 use crate::type_coercion::coerce_value;
 
 /// Wrapper for business data import/export format
