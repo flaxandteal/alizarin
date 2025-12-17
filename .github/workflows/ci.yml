@@ -69,7 +69,8 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
 
       - name: Build WASM
-        run: wasm-pack build --target web --out-dir pkg --dev
+        working-directory: crates/alizarin-wasm
+        run: wasm-pack build --target web --out-dir ../../pkg --dev
 
       - name: Use Node
         uses: actions/setup-node@v4
