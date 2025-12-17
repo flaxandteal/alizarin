@@ -898,4 +898,36 @@ mod tests {
         assert_eq!(resources.len(), 1);
         assert_eq!(resources[0]["resourceinstanceid"], "round-trip-test");
     }
+
+    #[test]
+    fn test_tree_to_tiles_serialization_format() {
+        let graph = load_group_graph();
+
+        let tree = serde_json::json!({
+            "resourceinstanceid": "test-serialize",
+            "graph_id": graph.graphid,
+            "basic_info": [{
+                "name": {"en": "Serialize Test"}
+            }]
+        });
+
+        let result = tree_to_tiles(&tree, &graph)
+            .expect("tree_to_tiles failed");
+
+        // Extract first resource
+        let resource = &result.business_data.resources[0];
+
+        // Serialize to JSON to see the format
+        let json = serde_json::to_string_pretty(resource).unwrap();
+        println!("Serialized StaticResource:\n{}", json);
+
+        // Parse back and check structure
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // Check that resourceinstance is nested (not flattened)
+        assert!(parsed.get("resourceinstance").is_some(),
+            "Expected nested 'resourceinstance', got: {}", json);
+        assert!(parsed.get("resourceinstanceid").is_none(),
+            "Should NOT have 'resourceinstanceid' at root level, got: {}", json);
+    }
 }

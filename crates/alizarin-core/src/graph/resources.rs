@@ -156,3 +156,38 @@ pub struct StaticResource {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub tiles_loaded: Option<bool>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_static_resource_serialization() {
+        let resource = StaticResource {
+            resourceinstance: StaticResourceMetadata {
+                descriptors: StaticResourceDescriptors::default(),
+                graph_id: "test-graph".to_string(),
+                name: "Test".to_string(),
+                resourceinstanceid: "test-id".to_string(),
+                publication_id: None,
+                principaluser_id: None,
+                legacyid: None,
+                graph_publication_id: None,
+                createdtime: None,
+                lastmodified: None,
+            },
+            tiles: Some(vec![]),
+            metadata: HashMap::new(),
+            cache: None,
+            scopes: None,
+            tiles_loaded: None,
+        };
+        
+        let json = serde_json::to_string_pretty(&resource).unwrap();
+        println!("StaticResource JSON:\n{}", json);
+        
+        // Check that resourceinstance is nested
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(value.get("resourceinstance").is_some(), "Should have nested resourceinstance");
+    }
+}
