@@ -57,7 +57,7 @@ jobs:
       - name: Build WASM
         working-directory: crates/alizarin-wasm
         run: |
-          wasm-pack build --target web --out-dir ../../pkg --release
+          wasm-pack build --target web --out-dir ../../pkg --out-name alizarin --release
           echo "WASM build complete. Contents of pkg/:"
           ls -lh ../../pkg/
 

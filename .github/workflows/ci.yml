@@ -70,7 +70,7 @@ jobs:
 
       - name: Build WASM
         working-directory: crates/alizarin-wasm
-        run: wasm-pack build --target web --out-dir ../../pkg --dev
+        run: wasm-pack build --target web --out-dir ../../pkg --out-name alizarin --dev
 
       - name: Use Node
         uses: actions/setup-node@v4
