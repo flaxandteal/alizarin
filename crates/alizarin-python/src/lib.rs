@@ -300,12 +300,8 @@ fn json_tree_to_tiles(
         tree_to_tiles(&tree, &graph)
     }.map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
 
-    // Extract first resource (full StaticResource with resourceinstance metadata)
-    let resource = business_data.business_data.resources.into_iter().next()
-        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("No resources returned"))?;
-
-    // Convert to Python dict
-    let result_json = serde_json::to_string(&resource)
+    // Return full BusinessDataWrapper structure: {business_data: {resources: [...]}}
+    let result_json = serde_json::to_string(&business_data)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
             format!("Failed to serialize result: {}", e)
         ))?;

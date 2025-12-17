@@ -102,7 +102,7 @@ def test_tiles_to_tree_basic():
 
 
 def test_tree_to_tiles_basic():
-    """Test converting tree structure to tiles - returns StaticResource format"""
+    """Test converting tree structure to tiles - returns BusinessDataWrapper format"""
     graph_data = load_test_data()
 
     # Create a simple tree structure (no metadata, just content)
@@ -127,22 +127,29 @@ def test_tree_to_tiles_basic():
         graph_json=graph_json
     )
 
-    # Verify result is StaticResource format with resourceinstance
+    # Verify result is BusinessDataWrapper format
     assert isinstance(result, dict), "Result should be a dictionary"
-    assert 'resourceinstance' in result, "Result should have resourceinstance"
-    assert 'tiles' in result, "Result should have tiles"
+    assert 'business_data' in result, "Result should have business_data"
+    assert 'resources' in result['business_data'], "business_data should have resources"
 
-    ri = result['resourceinstance']
+    resources = result['business_data']['resources']
+    assert len(resources) == 1, "Should have one resource"
+
+    resource = resources[0]
+    assert 'resourceinstance' in resource, "Resource should have resourceinstance"
+    assert 'tiles' in resource, "Resource should have tiles"
+
+    ri = resource['resourceinstance']
     assert ri['resourceinstanceid'] == 'test-resource-456'
     assert ri['graph_id'] == graph_data['graphid']
     assert 'descriptors' in ri, "resourceinstance should have descriptors"
 
-    assert isinstance(result['tiles'], list)
-    assert len(result['tiles']) > 0, "Should have created at least one tile"
+    assert isinstance(resource['tiles'], list)
+    assert len(resource['tiles']) > 0, "Should have created at least one tile"
 
-    print(f"Created {len(result['tiles'])} tiles")
+    print(f"Created {len(resource['tiles'])} tiles")
     print(f"Descriptors: {ri.get('descriptors', {})}")
-    for tile in result['tiles']:
+    for tile in resource['tiles']:
         print(f"  Tile {tile.get('tileid', '(no id)')} "
               f"has {len(tile.get('data', {}))} data entries")
 
@@ -165,7 +172,7 @@ def test_roundtrip_preserves_data():
 
     print(f"Intermediate tree: {json.dumps(tree, indent=2)}")
 
-    # tree -> tiles (returns StaticResource format)
+    # tree -> tiles (returns BusinessDataWrapper format)
     tree_json = json.dumps(tree)
     result = alizarin.json_tree_to_tiles(
         tree_json=tree_json,
@@ -174,14 +181,20 @@ def test_roundtrip_preserves_data():
         graph_json=graph_json
     )
 
-    # Verify metadata preserved (now in resourceinstance)
-    assert 'resourceinstance' in result
-    ri = result['resourceinstance']
+    # Verify BusinessDataWrapper structure
+    assert 'business_data' in result
+    assert 'resources' in result['business_data']
+    resources = result['business_data']['resources']
+    assert len(resources) == 1
+
+    resource = resources[0]
+    assert 'resourceinstance' in resource
+    ri = resource['resourceinstance']
     assert ri['resourceinstanceid'] == 'test-resource-123'
     assert ri['graph_id'] == graph_data['graphid']
 
     # Verify we have tiles
-    roundtrip_tiles = result['tiles']
+    roundtrip_tiles = resource['tiles']
     assert len(roundtrip_tiles) >= len(original_tiles), \
         f"Roundtrip should have at least as many tiles as original " \
         f"(found {len(roundtrip_tiles)}, original had {len(original_tiles)})"
