@@ -305,18 +305,12 @@ fn json_tree_to_tiles(
         tree_to_tiles(&tree, &graph)
     }.map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
 
-    // Extract first resource and convert to legacy ResourceData format for backwards compatibility
+    // Extract first resource (full StaticResource with resourceinstance metadata)
     let resource = business_data.business_data.resources.into_iter().next()
         .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("No resources returned"))?;
 
-    let resource_data = ResourceData {
-        resourceinstanceid: resource.resourceinstance.resourceinstanceid,
-        graph_id: resource.resourceinstance.graph_id,
-        tiles: resource.tiles.unwrap_or_default(),
-    };
-
     // Convert to Python dict
-    let result_json = serde_json::to_string(&resource_data)
+    let result_json = serde_json::to_string(&resource)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
             format!("Failed to serialize result: {}", e)
         ))?;
@@ -407,17 +401,11 @@ fn batch_trees_to_tiles(
                 tree_to_tiles(&tree, &graph)
             }.map_err(|e| format!("Tree {}: {}", i, e))?;
 
-            // Extract first resource and convert to legacy format
+            // Extract first resource (full StaticResource with resourceinstance metadata)
             let resource = business_data.business_data.resources.into_iter().next()
                 .ok_or_else(|| format!("Tree {}: No resources returned", i))?;
 
-            let resource_data = ResourceData {
-                resourceinstanceid: resource.resourceinstance.resourceinstanceid,
-                graph_id: resource.resourceinstance.graph_id,
-                tiles: resource.tiles.unwrap_or_default(),
-            };
-
-            serde_json::to_value(&resource_data)
+            serde_json::to_value(&resource)
                 .map_err(|e| format!("Tree {}: Failed to serialize: {}", i, e))
         })
         .collect();
@@ -445,27 +433,38 @@ fn batch_tiles_to_trees(
         .into_par_iter()
         .enumerate()
         .map(|(i, resource)| {
-            let resource_id = resource.get("resourceinstanceid")
-                .and_then(|v| v.as_str()).map(String::from)
+            // Extract resource_id from either format:
+            // - New format: resource.resourceinstance.resourceinstanceid
+            // - Old format: resource.resourceinstanceid
+            let resource_id = resource.get("resourceinstance")
+                .and_then(|ri| ri.get("resourceinstanceid"))
+                .or_else(|| resource.get("resourceinstanceid"))
+                .and_then(|v| v.as_str())
+                .map(String::from)
                 .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-            let tiles: Vec<AlizarinStaticTile> = resource.get("tiles")
-                .map(|t| serde_json::from_value(t.clone()))
-                .transpose()
-                .map_err(|e| format!("Resource {}: Failed to parse tiles: {}", i, e))?
-                .unwrap_or_default();
+            // Check if input is already in StaticResource format (has resourceinstance)
+            let input_json = if resource.get("resourceinstance").is_some() {
+                // Already in StaticResource format, use directly
+                resource.clone()
+            } else {
+                // Old format - convert to StaticResource
+                let tiles: Vec<AlizarinStaticTile> = resource.get("tiles")
+                    .map(|t| serde_json::from_value(t.clone()))
+                    .transpose()
+                    .map_err(|e| format!("Resource {}: Failed to parse tiles: {}", i, e))?
+                    .unwrap_or_default();
 
-            // Create ResourceData and convert to StaticResource for the new API
-            let resource_data = ResourceData {
-                resourceinstanceid: resource_id.clone(),
-                graph_id: graph_id.clone(),
-                tiles,
+                let resource_data = ResourceData {
+                    resourceinstanceid: resource_id.clone(),
+                    graph_id: graph_id.clone(),
+                    tiles,
+                };
+                let static_resource = resource_data.to_static_resource(&graph);
+
+                serde_json::to_value(&static_resource)
+                    .map_err(|e| format!("Resource {}: Failed to serialize: {}", i, e))?
             };
-            let static_resource = resource_data.to_static_resource(&graph);
-
-            // Convert to JSON Value for tiles_to_tree
-            let input_json = serde_json::to_value(&static_resource)
-                .map_err(|e| format!("Resource {}: Failed to serialize: {}", i, e))?;
 
             // Call tiles_to_tree (returns array)
             let json_tree_array = tiles_to_tree(&input_json, &graph)
