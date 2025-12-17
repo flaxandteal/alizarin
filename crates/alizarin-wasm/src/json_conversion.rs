@@ -6,34 +6,36 @@ use serde_json::Value;
 use crate::graph::StaticGraph;
 
 // Re-export core types
-pub use alizarin_core::json_conversion::ResourceData;
+pub use alizarin_core::json_conversion::{ResourceData, BusinessDataWrapper, BusinessData};
 
 /// Convert tiled resource format to nested tree structure
 ///
 /// Wrapper around core function that accepts WASM StaticGraph wrapper.
-pub fn tiles_to_tree(resource: &ResourceData, graph: &StaticGraph) -> Result<Value, String> {
+///
+/// Input: `{"business_data": {"resources": [StaticResource, ...]}}` OR single StaticResource
+/// Output: Array of nested JSON tree objects `[{...}, {...}]`
+pub fn tiles_to_tree(input: &Value, graph: &StaticGraph) -> Result<Value, String> {
     // StaticGraph Derefs to CoreStaticGraph
-    alizarin_core::tiles_to_tree(resource, &**graph)
+    alizarin_core::tiles_to_tree(input, &**graph)
 }
 
 /// Convert nested tree structure to tiled resource format
+///
+/// Input: Array of nested tree objects `[{...}, {...}]` OR single tree object `{...}`
+/// Output: `{"business_data": {"resources": [StaticResource, ...]}}`
 pub fn tree_to_tiles(
     json: &Value,
     graph: &StaticGraph,
-    resource_id: &str,
-    graph_id: &str,
-) -> Result<ResourceData, String> {
-    alizarin_core::tree_to_tiles(json, &**graph, resource_id, graph_id)
+) -> Result<BusinessDataWrapper, String> {
+    alizarin_core::tree_to_tiles(json, &**graph)
 }
 
 /// Convert with strict validation (fails on unknown fields)
 pub fn tree_to_tiles_strict(
     json: &Value,
     graph: &StaticGraph,
-    resource_id: &str,
-    graph_id: &str,
-) -> Result<ResourceData, String> {
-    alizarin_core::tree_to_tiles_strict(json, &**graph, resource_id, graph_id)
+) -> Result<BusinessDataWrapper, String> {
+    alizarin_core::tree_to_tiles_strict(json, &**graph)
 }
 
 #[cfg(test)]
@@ -42,7 +44,6 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use alizarin_core::StaticGraph as CoreStaticGraph;
-    use alizarin_core::StaticTile;
 
     fn load_group_graph() -> StaticGraph {
         // Use workspace root for test data
@@ -65,7 +66,8 @@ mod tests {
         StaticGraph::from(core_graph)
     }
 
-    fn create_test_resource(graph: &StaticGraph) -> ResourceData {
+    fn create_test_business_data(graph: &StaticGraph) -> Value {
+        use alizarin_core::StaticTile;
         let mut tiles = Vec::new();
 
         let basic_info_ng = graph.nodegroups_slice()
@@ -101,44 +103,53 @@ mod tests {
 
         tiles.push(tile);
 
-        ResourceData {
-            resourceinstanceid: "test-resource-123".to_string(),
-            graph_id: graph.graph_id().to_string(),
-            tiles,
-        }
+        // Return in business_data format
+        serde_json::json!({
+            "business_data": {
+                "resources": [{
+                    "resourceinstance": {
+                        "resourceinstanceid": "test-resource-123",
+                        "graph_id": graph.graph_id(),
+                        "name": "Test Group",
+                        "descriptors": {}
+                    },
+                    "tiles": tiles
+                }]
+            }
+        })
     }
 
     #[test]
     fn test_tiles_to_tree_basic() {
         let graph = load_group_graph();
-        let resource = create_test_resource(&graph);
+        let input = create_test_business_data(&graph);
 
-        let tree = tiles_to_tree(&resource, &graph)
+        let tree = tiles_to_tree(&input, &graph)
             .expect("tiles_to_tree failed");
 
-        assert!(tree.is_object(), "Result should be an object");
-        assert!(tree.get("resourceinstanceid").is_none(), "Should not include resourceinstanceid");
-        assert!(tree.get("graph_id").is_none(), "Should not include graph_id");
+        assert!(tree.is_array(), "Result should be an array");
+        let arr = tree.as_array().unwrap();
+        assert!(!arr.is_empty(), "Array should not be empty");
+        assert!(arr[0].is_object(), "First element should be an object");
     }
 
     #[test]
     fn test_tree_to_tiles_basic() {
         let graph = load_group_graph();
 
-        let tree = serde_json::json!({
+        let tree = serde_json::json!([{
             "basic_info": [{
                 "name": {"en": "JSON Test Group", "ga": "Grúpa Tástála JSON"},
                 "description": "Created from JSON tree"
             }]
-        });
+        }]);
 
-        let resource_id = "test-resource-456";
-        let graph_id = graph.graph_id();
-
-        let resource = tree_to_tiles(&tree, &graph, resource_id, &graph_id)
+        let result = tree_to_tiles(&tree, &graph)
             .expect("tree_to_tiles failed");
 
-        assert_eq!(resource.resourceinstanceid, "test-resource-456");
-        assert!(!resource.tiles.is_empty(), "Should have created tiles");
+        assert!(!result.business_data.resources.is_empty(), "Should have created resources");
+        let resource = &result.business_data.resources[0];
+        assert!(resource.tiles.is_some(), "Resource should have tiles");
+        assert!(!resource.tiles.as_ref().unwrap().is_empty(), "Should have created tiles");
     }
 }

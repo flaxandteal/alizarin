@@ -55,10 +55,11 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
 
       - name: Build WASM
+        working-directory: crates/alizarin-wasm
         run: |
-          wasm-pack build --target web --out-dir pkg --release
+          wasm-pack build --target web --out-dir ../../pkg --release
           echo "WASM build complete. Contents of pkg/:"
-          ls -lh pkg/
+          ls -lh ../../pkg/
 
       - name: Install Node dependencies
         run: npm ci
