@@ -108,7 +108,7 @@ pub enum LoaderMessage {
 #[derive(Debug, Clone)]
 pub struct TileTreeNode {
     /// Unique ID for this tree node
-    pub id: String,
+    pub _id: String,
     /// Display name (from graph node alias/name)
     pub name: String,
     /// The node ID from the graph (for looking up datatype, etc.)
@@ -203,7 +203,7 @@ pub struct App {
     pub bd_tile_tree: Vec<TileTreeNode>,
     pub bd_tile_selected: usize,
     pub bd_tile_scroll_offset: usize,
-    pub bd_resource_scroll_offset: usize,
+    pub _bd_resource_scroll_offset: usize,
     pub bd_resource_loading: bool,
     /// Track which tile IDs are expanded (by tile_id)
     bd_tile_expanded: std::collections::HashSet<String>,
@@ -261,7 +261,7 @@ impl App {
             bd_tile_tree: Vec::new(),
             bd_tile_selected: 0,
             bd_tile_scroll_offset: 0,
-            bd_resource_scroll_offset: 0,
+            _bd_resource_scroll_offset: 0,
             bd_resource_loading: false,
             bd_tile_expanded: std::collections::HashSet::new(),
             bd_tile_search_mode: false,

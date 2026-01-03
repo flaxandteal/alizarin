@@ -1,21 +1,34 @@
 /// RDM (Reference Data Manager) Cache for concept collections.
 ///
-/// This module provides:
-/// - RdmConcept: A concept value from a collection
-/// - RdmCollection: A collection of concepts
-/// - RdmCache: Cache for storing fetched collections
+/// This module provides Python bindings that wrap core types from alizarin-core:
+/// - RdmConcept: A concept value from a collection (wraps core::RdmConcept)
+/// - RdmCollection: A collection of concepts (wraps core::RdmCollection)
+/// - RdmCache: Cache for storing fetched collections (wraps core::RdmCache)
 ///
-/// Pattern: Python fetches collections asynchronously, Rust looks them up synchronously.
+/// Python-specific features:
+/// - Async loader callback for lazy loading
+/// - Global singleton for automatic label resolution
+/// - SKOS RDF/XML parsing
+/// - UUID generation from labels
 
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
 use uuid::Uuid;
 
-// SKOS parser from core crate
-use alizarin_core::skos::{parse_skos_to_collections, SkosCollection};
+// Core types from alizarin-core
+use alizarin_core::rdm_cache::{
+    RdmCache as CoreRdmCache,
+    RdmCollection as CoreRdmCollection,
+    RdmConcept as CoreRdmConcept,
+};
+
+// SKOS parser and serializer from core crate
+use alizarin_core::skos::{
+    parse_skos_to_collections, collection_to_skos_xml,
+    SkosCollection, SkosConcept, SkosValue,
+};
 
 // For get_current_language
 use alizarin_core::type_coercion::get_current_language;
@@ -81,45 +94,34 @@ pub fn has_global_rdm_cache() -> bool {
         .unwrap_or(false)
 }
 
-/// Internal: Get reference to global cache for Rust-side operations
-pub fn with_global_rdm_cache<F, R>(f: F) -> Option<R>
-where
-    F: FnOnce(&RdmCache) -> R,
-{
-    GLOBAL_RDM_CACHE
-        .read()
-        .ok()
-        .and_then(|guard| guard.as_ref().map(f))
-}
-
 // =============================================================================
 // Concept Types
 // =============================================================================
 
 /// A concept value from an RDM collection.
 ///
-/// Matches the structure returned by RDM APIs.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// Wraps core::RdmConcept with Python bindings.
+#[derive(Clone, Debug)]
 #[pyclass(name = "RustRdmConcept")]
 pub struct RdmConcept {
-    /// Concept ID (URI or UUID)
-    #[serde(default)]
-    pub id: String,
-    /// Preferred labels by language code
-    #[serde(default, rename = "prefLabel")]
-    pub pref_label: HashMap<String, String>,
-    /// Alternative labels by language code
-    #[serde(default, rename = "altLabels")]
-    pub alt_labels: HashMap<String, Vec<String>>,
-    /// Broader concepts (parent IDs)
-    #[serde(default)]
-    pub broader: Vec<String>,
-    /// Narrower concepts (child IDs)
-    #[serde(default)]
-    pub narrower: Vec<String>,
-    /// Scope notes by language
-    #[serde(default, rename = "scopeNote")]
-    pub scope_note: HashMap<String, String>,
+    inner: CoreRdmConcept,
+}
+
+impl RdmConcept {
+    /// Create from core concept
+    pub fn from_core(inner: CoreRdmConcept) -> Self {
+        Self { inner }
+    }
+
+    /// Get the inner core concept
+    pub fn inner(&self) -> &CoreRdmConcept {
+        &self.inner
+    }
+
+    /// Convert to core concept (consuming)
+    pub fn into_inner(self) -> CoreRdmConcept {
+        self.inner
+    }
 }
 
 #[pymethods]
@@ -127,12 +129,14 @@ impl RdmConcept {
     #[new]
     fn new(id: String, pref_label: HashMap<String, String>) -> Self {
         Self {
-            id,
-            pref_label,
-            alt_labels: HashMap::new(),
-            broader: vec![],
-            narrower: vec![],
-            scope_note: HashMap::new(),
+            inner: CoreRdmConcept {
+                id,
+                pref_label,
+                alt_labels: HashMap::new(),
+                broader: vec![],
+                narrower: vec![],
+                scope_note: HashMap::new(),
+            },
         }
     }
 
@@ -169,59 +173,58 @@ impl RdmConcept {
         };
 
         Ok(Self {
-            id,
-            pref_label,
-            alt_labels: HashMap::new(),
-            broader: vec![],
-            narrower: vec![],
-            scope_note: HashMap::new(),
+            inner: CoreRdmConcept {
+                id,
+                pref_label,
+                alt_labels: HashMap::new(),
+                broader: vec![],
+                narrower: vec![],
+                scope_note: HashMap::new(),
+            },
         })
     }
 
     #[getter]
     fn id(&self) -> &str {
-        &self.id
+        &self.inner.id
     }
 
     #[getter]
     fn pref_label(&self) -> HashMap<String, String> {
-        self.pref_label.clone()
+        self.inner.pref_label.clone()
     }
 
     #[getter]
     fn alt_labels(&self) -> HashMap<String, Vec<String>> {
-        self.alt_labels.clone()
+        self.inner.alt_labels.clone()
     }
 
     #[getter]
     fn broader(&self) -> Vec<String> {
-        self.broader.clone()
+        self.inner.broader.clone()
     }
 
     #[getter]
     fn narrower(&self) -> Vec<String> {
-        self.narrower.clone()
+        self.inner.narrower.clone()
     }
 
     /// Get preferred label for a language
     fn get_label(&self, language: &str) -> Option<String> {
-        self.pref_label.get(language)
-            .or_else(|| self.pref_label.get("en"))
-            .or_else(|| self.pref_label.values().next())
-            .cloned()
+        self.inner.get_label(language)
     }
 
     fn __str__(&self) -> String {
-        self.get_label("en").unwrap_or_default()
+        self.inner.get_label("en").unwrap_or_default()
     }
 
     fn __repr__(&self) -> String {
-        format!("RustRdmConcept(id={}, labels={:?})", self.id, self.pref_label)
+        format!("RustRdmConcept(id={}, labels={:?})", self.inner.id, self.inner.pref_label)
     }
 
     /// Convert to Python dict
     fn to_dict(&self, py: Python) -> PyResult<PyObject> {
-        let json_str = serde_json::to_string(self)
+        let json_str = serde_json::to_string(&self.inner)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
         let json_module = py.import("json")?;
         let py_dict = json_module.call_method1("loads", (json_str,))?;
@@ -234,17 +237,35 @@ impl RdmConcept {
 // =============================================================================
 
 /// A collection of concepts from RDM.
+///
+/// Wraps core::RdmCollection with Python-specific features like
+/// UUID generation from labels.
 #[derive(Clone, Debug, Default)]
 #[pyclass(name = "RustRdmCollection")]
 pub struct RdmCollection {
-    /// Collection ID (URI or UUID)
-    pub id: String,
-    /// Collection name (optional, for display)
-    name: Option<String>,
-    /// Concepts indexed by their ID
-    concepts: HashMap<String, RdmConcept>,
-    /// Top-level concepts (no broader)
-    top_concepts: Vec<String>,
+    inner: CoreRdmCollection,
+}
+
+impl RdmCollection {
+    /// Create from core collection
+    pub fn from_core(inner: CoreRdmCollection) -> Self {
+        Self { inner }
+    }
+
+    /// Get the inner core collection
+    pub fn inner(&self) -> &CoreRdmCollection {
+        &self.inner
+    }
+
+    /// Get mutable inner core collection
+    pub fn inner_mut(&mut self) -> &mut CoreRdmCollection {
+        &mut self.inner
+    }
+
+    /// Convert to core collection (consuming)
+    pub fn into_inner(self) -> CoreRdmCollection {
+        self.inner
+    }
 }
 
 /// Namespace UUID for generating collection IDs from names
@@ -256,10 +277,7 @@ impl RdmCollection {
     #[new]
     fn new(id: String) -> Self {
         Self {
-            id,
-            name: None,
-            concepts: HashMap::new(),
-            top_concepts: vec![],
+            inner: CoreRdmCollection::new(id),
         }
     }
 
@@ -289,10 +307,7 @@ impl RdmCollection {
         };
 
         let mut collection = Self {
-            id: collection_id,
-            name: Some(name),
-            concepts: HashMap::new(),
-            top_concepts: vec![],
+            inner: CoreRdmCollection::with_name(collection_id, name),
         };
 
         // Add each label as a concept
@@ -305,21 +320,17 @@ impl RdmCollection {
 
     #[getter]
     fn id(&self) -> &str {
-        &self.id
+        &self.inner.id
     }
 
     #[getter]
     fn name(&self) -> Option<&str> {
-        self.name.as_deref()
+        self.inner.name.as_deref()
     }
 
     /// Add a concept to the collection
     fn add_concept(&mut self, concept: RdmConcept) {
-        let id = concept.id.clone();
-        if concept.broader.is_empty() {
-            self.top_concepts.push(id.clone());
-        }
-        self.concepts.insert(id, concept);
+        self.inner.add_concept(concept.into_inner());
     }
 
     /// Add a concept from a label, optionally auto-generating the ID.
@@ -368,7 +379,7 @@ impl RdmCollection {
             (Some(explicit_id), _) => explicit_id,
             (None, Some(label_str)) => {
                 // Parse collection ID as UUID namespace
-                let namespace = Uuid::parse_str(&self.id).map_err(|e| {
+                let namespace = Uuid::parse_str(&self.inner.id).map_err(|e| {
                     PyErr::new::<pyo3::exceptions::PyValueError, _>(
                         format!("collection id must be a valid UUID for auto-generation: {}", e)
                     )
@@ -382,7 +393,7 @@ impl RdmCollection {
             }
         };
 
-        let concept = RdmConcept {
+        let concept = CoreRdmConcept {
             id: concept_id.clone(),
             pref_label,
             alt_labels: HashMap::new(),
@@ -391,59 +402,45 @@ impl RdmCollection {
             scope_note: HashMap::new(),
         };
 
-        self.add_concept(concept);
+        self.inner.add_concept(concept);
         Ok(concept_id)
     }
 
     /// Look up a concept by ID
     fn get_concept(&self, concept_id: &str) -> Option<RdmConcept> {
-        self.concepts.get(concept_id).cloned()
+        self.inner.get_concept(concept_id).cloned().map(RdmConcept::from_core)
     }
 
     /// Check if concept exists in collection
     fn has_concept(&self, concept_id: &str) -> bool {
-        self.concepts.contains_key(concept_id)
+        self.inner.has_concept(concept_id)
     }
 
     /// Get all concept IDs
     fn get_concept_ids(&self) -> Vec<String> {
-        self.concepts.keys().cloned().collect()
+        self.inner.get_concept_ids().into_iter().cloned().collect()
     }
 
     /// Get top-level concepts
     fn get_top_concepts(&self) -> Vec<RdmConcept> {
-        self.top_concepts.iter()
-            .filter_map(|id| self.concepts.get(id).cloned())
+        self.inner.get_top_concepts()
+            .into_iter()
+            .cloned()
+            .map(RdmConcept::from_core)
             .collect()
     }
 
     /// Get number of concepts
     fn __len__(&self) -> usize {
-        self.concepts.len()
+        self.inner.len()
     }
 
     /// Search concepts by label (case-insensitive prefix match)
     fn search(&self, query: &str, language: Option<&str>) -> Vec<RdmConcept> {
-        let lang = language.unwrap_or("en");
-        let query_lower = query.to_lowercase();
-
-        self.concepts.values()
-            .filter(|c| {
-                // Check pref_label
-                if let Some(label) = c.pref_label.get(lang) {
-                    if label.to_lowercase().starts_with(&query_lower) {
-                        return true;
-                    }
-                }
-                // Check alt_labels
-                if let Some(alts) = c.alt_labels.get(lang) {
-                    if alts.iter().any(|l| l.to_lowercase().starts_with(&query_lower)) {
-                        return true;
-                    }
-                }
-                false
-            })
+        self.inner.search(query, language)
+            .into_iter()
             .cloned()
+            .map(RdmConcept::from_core)
             .collect()
     }
 
@@ -452,68 +449,168 @@ impl RdmCollection {
     /// Searches pref_label and alt_labels across all languages.
     /// Returns None if no match or multiple matches (ambiguous).
     fn find_by_label(&self, label: &str) -> Option<RdmConcept> {
-        let label_lower = label.to_lowercase();
-        let matches: Vec<_> = self.concepts.values()
-            .filter(|c| {
-                // Check pref_label in any language
-                for pref in c.pref_label.values() {
-                    if pref.to_lowercase() == label_lower {
-                        return true;
-                    }
-                }
-                // Check alt_labels in any language
-                for alts in c.alt_labels.values() {
-                    if alts.iter().any(|l| l.to_lowercase() == label_lower) {
-                        return true;
-                    }
-                }
-                false
-            })
-            .cloned()
-            .collect();
-
-        // Only return if exactly one match (unambiguous)
-        if matches.len() == 1 {
-            Some(matches.into_iter().next().unwrap())
-        } else {
-            None
-        }
+        self.inner.find_by_label(label).cloned().map(RdmConcept::from_core)
     }
 
     /// Find a concept by exact label match, returning all matches
     fn find_all_by_label(&self, label: &str) -> Vec<RdmConcept> {
-        let label_lower = label.to_lowercase();
-        self.concepts.values()
-            .filter(|c| {
-                for pref in c.pref_label.values() {
-                    if pref.to_lowercase() == label_lower {
-                        return true;
-                    }
-                }
-                for alts in c.alt_labels.values() {
-                    if alts.iter().any(|l| l.to_lowercase() == label_lower) {
-                        return true;
-                    }
-                }
-                false
-            })
+        self.inner.find_all_by_label(label)
+            .into_iter()
             .cloned()
+            .map(RdmConcept::from_core)
             .collect()
+    }
+
+    /// Serialize this collection to SKOS RDF/XML format.
+    ///
+    /// This calls the core serialization function and returns the XML string
+    /// for Python to write to a file or send over the network.
+    ///
+    /// Args:
+    ///     base_uri: Base URI for the SKOS resources (e.g., "http://example.org/")
+    ///
+    /// Returns:
+    ///     SKOS RDF/XML as a string
+    ///
+    /// Example:
+    ///     collection = RustRdmCollection.from_labels("Test", ["A", "B", "C"])
+    ///     xml = collection.to_skos_xml("http://example.org/")
+    ///     with open("output.xml", "w") as f:
+    ///         f.write(xml)
+    fn to_skos_xml(&self, base_uri: &str) -> PyResult<String> {
+        // Convert RdmCollection to SkosCollection
+        let skos_collection = rdm_to_skos_collection(&self.inner);
+
+        // Serialize to XML using core function
+        Ok(collection_to_skos_xml(&skos_collection, base_uri))
     }
 }
 
-impl RdmCollection {
-    /// Build from JSON array of concepts (internal method)
-    pub fn from_concepts_json(id: String, json_str: &str) -> Result<Self, String> {
-        let concepts: Vec<RdmConcept> = serde_json::from_str(json_str)
-            .map_err(|e| format!("Failed to parse concepts: {}", e))?;
+// =============================================================================
+// RDM ↔ SKOS Conversion
+// =============================================================================
 
-        let mut collection = Self::new(id);
-        for concept in concepts {
-            collection.add_concept(concept);
-        }
-        Ok(collection)
+/// Generate a value ID for SKOS format
+fn generate_skos_value_id(concept_id: &str, lang: &str, value: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    format!("{}/{}/{}", concept_id, lang, value).hash(&mut hasher);
+    let hash = hasher.finish();
+
+    format!(
+        "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
+        (hash >> 32) as u32,
+        ((hash >> 16) & 0xFFFF) as u16,
+        (hash & 0xFFFF) as u16,
+        ((hash >> 48) & 0xFFFF) as u16,
+        hash & 0xFFFFFFFFFFFF
+    )
+}
+
+/// Convert RdmCollection to SkosCollection for serialization
+fn rdm_to_skos_collection(rdm: &CoreRdmCollection) -> SkosCollection {
+    // Build collection pref_labels
+    let mut collection_pref_labels = HashMap::new();
+    if let Some(ref name) = rdm.name {
+        collection_pref_labels.insert(
+            "en".to_string(),
+            SkosValue {
+                id: generate_skos_value_id(&rdm.id, "en", name),
+                value: name.clone(),
+            },
+        );
     }
+
+    // Convert all concepts (flat list first) - using public API
+    let mut all_skos_concepts: HashMap<String, SkosConcept> = HashMap::new();
+    let mut all_narrower_ids: HashSet<String> = HashSet::new();
+
+    for concept_id in rdm.get_concept_ids() {
+        if let Some(rdm_concept) = rdm.get_concept(concept_id) {
+            // Convert pref_labels to SkosValue format
+            let mut pref_labels = HashMap::new();
+            for (lang, label) in &rdm_concept.pref_label {
+                pref_labels.insert(
+                    lang.clone(),
+                    SkosValue {
+                        id: generate_skos_value_id(concept_id, lang, label),
+                        value: label.clone(),
+                    },
+                );
+            }
+
+            let skos_concept = SkosConcept {
+                id: concept_id.clone(),
+                uri: None,  // No URI in RDM format
+                pref_labels,
+                source: Some(concept_id.clone()),
+                sort_order: None,  // No sort order in RDM format
+                children: None,  // Will be built hierarchically later
+            };
+
+            all_skos_concepts.insert(concept_id.clone(), skos_concept);
+
+            // Collect all narrower IDs
+            all_narrower_ids.extend(rdm_concept.narrower.iter().cloned());
+        }
+    }
+
+    // Build hierarchy - find top-level concepts (those not in anyone's narrower list)
+    let mut top_level_concepts: HashMap<String, SkosConcept> = HashMap::new();
+
+    for concept_id in rdm.get_concept_ids() {
+        if !all_narrower_ids.contains(concept_id) {
+            // This is a top-level concept
+            if let Some(concept_with_children) = build_concept_tree(
+                concept_id,
+                &all_skos_concepts,
+                rdm,
+            ) {
+                top_level_concepts.insert(concept_id.clone(), concept_with_children);
+            }
+        }
+    }
+
+    // If no hierarchy, just use all concepts as top-level
+    if top_level_concepts.is_empty() {
+        top_level_concepts = all_skos_concepts.clone();
+    }
+
+    SkosCollection {
+        id: rdm.id.clone(),
+        pref_labels: collection_pref_labels,
+        concepts: top_level_concepts,
+        all_concepts: all_skos_concepts,
+        values: HashMap::new(),
+    }
+}
+
+/// Build a concept tree recursively from RDM narrower relationships
+fn build_concept_tree(
+    concept_id: &str,
+    all_concepts: &HashMap<String, SkosConcept>,
+    rdm_collection: &CoreRdmCollection,
+) -> Option<SkosConcept> {
+    let mut concept = all_concepts.get(concept_id)?.clone();
+
+    // Get narrower concepts from RDM using public API
+    if let Some(rdm_concept) = rdm_collection.get_concept(concept_id) {
+        if !rdm_concept.narrower.is_empty() {
+            let mut children = Vec::new();
+            for child_id in &rdm_concept.narrower {
+                if let Some(child) = build_concept_tree(child_id, all_concepts, rdm_collection) {
+                    children.push(child);
+                }
+            }
+            if !children.is_empty() {
+                concept.children = Some(children);
+            }
+        }
+    }
+
+    Some(concept)
 }
 
 // =============================================================================
@@ -521,6 +618,10 @@ impl RdmCollection {
 // =============================================================================
 
 /// Cache for RDM concept collections.
+///
+/// Wraps core::RdmCache with Python-specific features:
+/// - Async loader callback for lazy loading
+/// - SKOS RDF/XML parsing
 ///
 /// Python fetches collections asynchronously and adds them to the cache.
 /// Rust looks up concepts synchronously during coercion.
@@ -534,11 +635,78 @@ impl RdmCollection {
 #[derive(Clone, Default)]
 #[pyclass(name = "RustRdmCache")]
 pub struct RdmCache {
-    /// Collections indexed by collection ID
-    collections: HashMap<String, RdmCollection>,
+    inner: CoreRdmCache,
     /// Optional async loader for lazy loading (stored as Python object)
     #[pyo3(get, set)]
     loader: Option<PyObject>,
+}
+
+impl RdmCache {
+    /// Get the inner core cache
+    pub fn inner(&self) -> &CoreRdmCache {
+        &self.inner
+    }
+
+    /// Get mutable inner core cache
+    pub fn inner_mut(&mut self) -> &mut CoreRdmCache {
+        &mut self.inner
+    }
+
+    /// Convert SKOS collection to RDM collection
+    fn skos_to_rdm_collection(skos: &SkosCollection) -> CoreRdmCollection {
+        let mut rdm = CoreRdmCollection::with_name(
+            skos.id.clone(),
+            skos.pref_labels.get("en").map(|v| v.value.clone()).unwrap_or_else(|| skos.id.clone())
+        );
+
+        // Recursive function to add a concept and its children
+        fn add_concept_recursive(rdm: &mut CoreRdmCollection, skos_concept: &SkosConcept) {
+            let mut pref_label = HashMap::new();
+            for (lang, value) in &skos_concept.pref_labels {
+                pref_label.insert(lang.clone(), value.value.clone());
+            }
+
+            // Extract narrower IDs from children
+            let narrower: Vec<String> = skos_concept.children
+                .as_ref()
+                .map(|children| children.iter().map(|c| c.id.clone()).collect())
+                .unwrap_or_default();
+
+            let rdm_concept = CoreRdmConcept {
+                id: skos_concept.id.clone(),
+                pref_label,
+                alt_labels: HashMap::new(),
+                broader: vec![],
+                narrower,
+                scope_note: HashMap::new(),
+            };
+
+            rdm.add_concept(rdm_concept);
+
+            // Recursively add children
+            if let Some(ref children) = skos_concept.children {
+                for child in children {
+                    add_concept_recursive(rdm, child);
+                }
+            }
+        }
+
+        // Add all top-level concepts (and their children recursively)
+        for skos_concept in skos.concepts.values() {
+            add_concept_recursive(&mut rdm, skos_concept);
+        }
+
+        // Also add from all_concepts if not already added (fallback for flat structures)
+        if rdm.len() == 0 && !skos.all_concepts.is_empty() {
+            for skos_concept in skos.all_concepts.values() {
+                if !rdm.has_concept(&skos_concept.id) {
+                    add_concept_recursive(&mut rdm, skos_concept);
+                }
+            }
+        }
+
+        rdm
+    }
 }
 
 #[pymethods]
@@ -547,7 +715,7 @@ impl RdmCache {
     #[pyo3(signature = (loader=None))]
     fn new(loader: Option<PyObject>) -> Self {
         Self {
-            collections: HashMap::new(),
+            inner: CoreRdmCache::new(),
             loader,
         }
     }
@@ -565,7 +733,7 @@ impl RdmCache {
     /// Returns the loader coroutine if loading is needed.
     fn fetch_if_missing(&self, py: Python, collection_id: &str) -> PyResult<Option<PyObject>> {
         // Already cached?
-        if self.collections.contains_key(collection_id) {
+        if self.inner.has_collection(collection_id) {
             return Ok(None);
         }
 
@@ -586,16 +754,13 @@ impl RdmCache {
     ///     collection_id: The collection identifier
     ///     concepts_json: JSON array of concepts
     fn add_collection_from_json(&mut self, collection_id: &str, concepts_json: &str) -> PyResult<()> {
-        let collection = RdmCollection::from_concepts_json(collection_id.to_string(), concepts_json)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
-
-        self.collections.insert(collection_id.to_string(), collection);
-        Ok(())
+        self.inner.add_collection_from_json(collection_id, concepts_json)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))
     }
 
     /// Add a pre-built collection
     fn add_collection(&mut self, collection: RdmCollection) {
-        self.collections.insert(collection.id.clone(), collection);
+        self.inner.add_collection(collection.into_inner());
     }
 
     /// Add collection(s) from SKOS RDF/XML
@@ -619,7 +784,7 @@ impl RdmCache {
         for skos_coll in skos_collections {
             let rdm_collection = Self::skos_to_rdm_collection(&skos_coll);
             let id = rdm_collection.id.clone();
-            self.collections.insert(id.clone(), rdm_collection);
+            self.inner.add_collection(rdm_collection);
             added_ids.push(id);
         }
 
@@ -628,12 +793,12 @@ impl RdmCache {
 
     /// Get a collection by ID
     fn get_collection(&self, collection_id: &str) -> Option<RdmCollection> {
-        self.collections.get(collection_id).cloned()
+        self.inner.get_collection(collection_id).cloned().map(RdmCollection::from_core)
     }
 
     /// Check if collection is cached
     fn has_collection(&self, collection_id: &str) -> bool {
-        self.collections.contains_key(collection_id)
+        self.inner.has_collection(collection_id)
     }
 
     /// Look up a concept directly
@@ -641,15 +806,14 @@ impl RdmCache {
     /// This is the main lookup method for coercion:
     /// given a collection ID and concept ID, return the concept.
     fn lookup_concept(&self, collection_id: &str, concept_id: &str) -> Option<RdmConcept> {
-        self.collections.get(collection_id)
-            .and_then(|c| c.get_concept(concept_id))
+        self.inner.lookup_concept(collection_id, concept_id)
+            .cloned()
+            .map(RdmConcept::from_core)
     }
 
     /// Validate that a concept exists in a collection
     fn validate_concept(&self, collection_id: &str, concept_id: &str) -> bool {
-        self.collections.get(collection_id)
-            .map(|c| c.has_concept(concept_id))
-            .unwrap_or(false)
+        self.inner.validate_concept(collection_id, concept_id)
     }
 
     /// Look up a concept by label in a specific collection
@@ -657,133 +821,45 @@ impl RdmCache {
     /// Returns the concept if exactly one match is found.
     /// Returns None if no match or ambiguous (multiple matches).
     fn lookup_by_label(&self, collection_id: &str, label: &str) -> Option<RdmConcept> {
-        self.collections.get(collection_id)
-            .and_then(|c| c.find_by_label(label))
+        self.inner.lookup_by_label(collection_id, label)
+            .cloned()
+            .map(RdmConcept::from_core)
     }
 
     /// Look up a concept by label, returning all matches
     fn lookup_all_by_label(&self, collection_id: &str, label: &str) -> Vec<RdmConcept> {
-        self.collections.get(collection_id)
-            .map(|c| c.find_all_by_label(label))
-            .unwrap_or_default()
+        self.inner.lookup_all_by_label(collection_id, label)
+            .into_iter()
+            .cloned()
+            .map(RdmConcept::from_core)
+            .collect()
     }
 
     /// Get all cached collection IDs
     fn get_collection_ids(&self) -> Vec<String> {
-        self.collections.keys().cloned().collect()
+        self.inner.get_collection_ids()
     }
 
     /// Clear all cached collections
     fn clear(&mut self) {
-        self.collections.clear();
+        self.inner.clear();
     }
 
     /// Clear a specific collection
     fn clear_collection(&mut self, collection_id: &str) {
-        self.collections.remove(collection_id);
+        self.inner.remove_collection(collection_id);
     }
 
     /// Get number of cached collections
     fn __len__(&self) -> usize {
-        self.collections.len()
+        self.inner.len()
     }
 
     /// Search across all collections (for autocomplete)
     fn search_all(&self, query: &str, language: Option<&str>) -> Vec<(String, RdmConcept)> {
-        let lang = language.unwrap_or("en");
-
-        self.collections.iter()
-            .flat_map(|(coll_id, collection)| {
-                collection.search(query, Some(lang))
-                    .into_iter()
-                    .map(|c| (coll_id.clone(), c))
-            })
-            .collect()
-    }
-}
-
-impl RdmCache {
-    /// Get reference for Rust-side lookup
-    pub fn get(&self, collection_id: &str) -> Option<&RdmCollection> {
-        self.collections.get(collection_id)
-    }
-
-    /// Convert SKOS collection to RDM collection
-    fn skos_to_rdm_collection(skos: &SkosCollection) -> RdmCollection {
-        let mut rdm = RdmCollection::new(skos.id.clone());
-
-        // Convert all concepts from the SKOS collection
-        for (concept_id, skos_concept) in &skos.all_concepts {
-            let mut pref_label = HashMap::new();
-            for (lang, value) in &skos_concept.pref_labels {
-                pref_label.insert(lang.clone(), value.value.clone());
-            }
-
-            // Find children (narrower concepts)
-            let narrower: Vec<String> = skos.all_concepts.values()
-                .filter(|c| {
-                    // Check if this concept has the current concept as broader
-                    // We don't have broader info directly, so we skip for now
-                    false
-                })
-                .map(|c| c.id.clone())
-                .collect();
-
-            let rdm_concept = RdmConcept {
-                id: concept_id.clone(),
-                pref_label,
-                alt_labels: HashMap::new(), // SKOS altLabels not in current structure
-                broader: vec![], // Would need to extract from hierarchy
-                narrower,
-                scope_note: HashMap::new(),
-            };
-
-            rdm.add_concept(rdm_concept);
-        }
-
-        rdm
-    }
-
-    /// Look up a concept by label in a specific collection (Rust API)
-    ///
-    /// The collection_id comes from the node's config.rdmCollection
-    pub fn find_concept_by_label(&self, collection_id: &str, label: &str) -> Option<RdmConcept> {
-        self.get(collection_id)?.find_by_label_rust(label)
-    }
-
-    /// Look up a concept by label, returning all matches (Rust API)
-    pub fn find_all_concepts_by_label(&self, collection_id: &str, label: &str) -> Vec<RdmConcept> {
-        self.get(collection_id)
-            .map(|c| c.find_all_by_label_rust(label))
-            .unwrap_or_default()
-    }
-}
-
-impl RdmCollection {
-    /// Find by label - Rust API (exact case-insensitive match)
-    fn find_by_label_rust(&self, label: &str) -> Option<RdmConcept> {
-        let label_lower = label.to_lowercase();
-        let matches: Vec<_> = self.concepts.values()
-            .filter(|c| {
-                c.pref_label.values().any(|p| p.to_lowercase() == label_lower) ||
-                c.alt_labels.values().any(|alts| alts.iter().any(|l| l.to_lowercase() == label_lower))
-            })
-            .cloned()
-            .collect();
-
-        // Only return if exactly one match (unambiguous)
-        if matches.len() == 1 { matches.into_iter().next() } else { None }
-    }
-
-    /// Find all by label - Rust API
-    fn find_all_by_label_rust(&self, label: &str) -> Vec<RdmConcept> {
-        let label_lower = label.to_lowercase();
-        self.concepts.values()
-            .filter(|c| {
-                c.pref_label.values().any(|p| p.to_lowercase() == label_lower) ||
-                c.alt_labels.values().any(|alts| alts.iter().any(|l| l.to_lowercase() == label_lower))
-            })
-            .cloned()
+        self.inner.search_all(query, language)
+            .into_iter()
+            .map(|(coll_id, concept)| (coll_id.to_string(), RdmConcept::from_core(concept.clone())))
             .collect()
     }
 }
@@ -795,8 +871,8 @@ impl RdmCollection {
 /// Implement the ConceptLookup trait for RdmCache
 impl ConceptLookup for RdmCache {
     fn lookup_by_label(&self, collection_id: &str, label: &str) -> Option<String> {
-        self.find_concept_by_label(collection_id, label)
-            .map(|c| c.id)
+        self.inner.lookup_by_label(collection_id, label)
+            .map(|c| c.id.clone())
     }
 }
 
@@ -845,8 +921,9 @@ pub fn resolve_labels(
         strict,
     };
 
+    // Use the inner core cache for label resolution
     let (resolved_json, needed_collections) =
-        label_resolution::resolve_labels_full(tree_json, graph_json, cache, &config)
+        label_resolution::resolve_labels_full(tree_json, graph_json, cache.inner(), &config)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.message))?;
 
     Ok((resolved_json, needed_collections.into_iter().collect()))

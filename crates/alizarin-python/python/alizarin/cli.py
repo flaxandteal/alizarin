@@ -141,16 +141,16 @@ def convert(
             strict=strict
         )
 
-        results = batch_result.get('results', [])
+        # batch_trees_to_tiles returns {business_data: {resources: [...]}, errors: [...]}
+        resources = batch_result.get('business_data', {}).get('resources', [])
         errors = batch_result.get('errors', [])
-        error_count = batch_result.get('error_count', 0)
 
     except Exception as e:
         click.echo(f"Error during batch conversion: {e}", err=True)
         sys.exit(1)
 
     # Report results
-    click.echo(f"\nConverted {len(results)} trees successfully.")
+    click.echo(f"\nConverted {len(resources)} trees successfully.")
 
     if errors:
         click.echo(f"Failed to convert {len(errors)} trees:", err=True)
@@ -159,13 +159,15 @@ def convert(
         if len(errors) > 5:
             click.echo(f"  ... and {len(errors) - 5} more errors", err=True)
 
-    # Write output
+    # Write just the business_data portion (strip errors metadata)
+    output_data = {k: v for k, v in batch_result.items() if k not in ('errors', 'error_count')}
+
     try:
         with open(output, 'w', encoding='utf-8') as f:
             if pretty:
-                json.dump(results, f, indent=2, ensure_ascii=False)
+                json.dump(output_data, f, indent=2, ensure_ascii=False)
             else:
-                json.dump(results, f, ensure_ascii=False)
+                json.dump(output_data, f, ensure_ascii=False)
         click.echo(f"Output written to {output}")
     except IOError as e:
         click.echo(f"Error writing output file: {e}", err=True)

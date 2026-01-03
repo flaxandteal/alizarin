@@ -322,6 +322,8 @@ from .node_config import (
 register_type_handler = None
 has_type_handler = None
 coerce_with_extension = None
+has_display_renderer = None
+render_display_with_extension = None
 
 try:
     from . import alizarin as _alizarin_rust
@@ -329,8 +331,26 @@ try:
         register_type_handler = _alizarin_rust.register_type_handler
         has_type_handler = _alizarin_rust.has_type_handler
         coerce_with_extension = _alizarin_rust.coerce_with_extension
+        has_display_renderer = _alizarin_rust.has_display_renderer
+        render_display_with_extension = _alizarin_rust.render_display_with_extension
 except (ImportError, AttributeError):
     pass
+
+# =============================================================================
+# RDM (Reference Data Manager) Cache
+# =============================================================================
+
+from . import alizarin as _alizarin_rust
+RustRdmConcept = _alizarin_rust.RustRdmConcept
+RustRdmCollection = _alizarin_rust.RustRdmCollection
+RustRdmCache = _alizarin_rust.RustRdmCache
+set_global_rdm_cache = _alizarin_rust.set_global_rdm_cache
+get_global_rdm_cache = _alizarin_rust.get_global_rdm_cache
+clear_global_rdm_cache = _alizarin_rust.clear_global_rdm_cache
+has_global_rdm_cache = _alizarin_rust.has_global_rdm_cache
+resolve_labels = _alizarin_rust.resolve_labels
+get_needed_collections = _alizarin_rust.get_needed_collections
+is_valid_uuid = _alizarin_rust.is_valid_uuid
 
 # =============================================================================
 # Version
@@ -445,4 +465,17 @@ __all__ = [
     "register_type_handler",
     "has_type_handler",
     "coerce_with_extension",
+    "has_display_renderer",
+    "render_display_with_extension",
+    # RDM Cache
+    "RustRdmConcept",
+    "RustRdmCollection",
+    "RustRdmCache",
+    "set_global_rdm_cache",
+    "get_global_rdm_cache",
+    "clear_global_rdm_cache",
+    "has_global_rdm_cache",
+    "resolve_labels",
+    "get_needed_collections",
+    "is_valid_uuid",
 ]

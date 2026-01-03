@@ -15,7 +15,11 @@ use alizarin_core::StaticTile as CoreStaticTile;
 use alizarin_core::StaticTile;
 use alizarin_core::StaticNode;
 use alizarin_core::StaticNodegroup;
-use crate::pseudo_value::{PseudoValueInner, PseudoListInner, PseudoList, PseudoValue, VisitorContext};
+use crate::pseudo_value::{PseudoValueInner, PseudoListInner, PseudoList, PseudoValue, VisitorContext, DisplayVisitorContext};
+use crate::rdm_cache_wasm::WasmRdmCache;
+use crate::node_config_wasm::WasmNodeConfigManager;
+use alizarin_core::rdm_cache::RdmCache;
+use alizarin_core::node_config::NodeConfigManager;
 use crate::model_wrapper::{WASMResourceModelWrapper};
 use js_sys::{Array, Map as JsMap};
 use wasm_bindgen::JsCast;
@@ -1178,6 +1182,123 @@ impl WASMResourceInstanceWrapper {
 
         let end = now_ms();
         record_timing("toJson (Rust)", end - start);
+
+        Ok(result)
+    }
+
+    /// Convert the pseudo cache to display JSON with resolved labels.
+    ///
+    /// Unlike `toJson()` which returns tile_data (UUIDs) for domain values and concepts,
+    /// this method resolves UUIDs to display labels:
+    /// - domain-value: looks up label from node config
+    /// - concept/concept-list: looks up label from RDM cache
+    /// - reference (CLM): extracts display string from StaticReference
+    /// - boolean: looks up true/false labels from node config
+    /// - Other types: returns tile_data as-is
+    ///
+    /// Prerequisites: `populate()` must have been called to fill the pseudo_cache.
+    ///
+    /// @param rdmCache - WasmRdmCache for concept label lookups
+    /// @param nodeConfigManager - WasmNodeConfigManager for domain value lookups
+    /// @param language - Language code for labels (defaults to "en")
+    #[wasm_bindgen(js_name = toDisplayJson)]
+    pub fn to_display_json(
+        &self,
+        rdm_cache: &WasmRdmCache,
+        node_config_manager: &WasmNodeConfigManager,
+        language: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        self.to_display_json_impl(Some(rdm_cache.inner()), Some(node_config_manager.inner()), language)
+    }
+
+    /// Convert the pseudo cache to display JSON without RDM/config lookups.
+    ///
+    /// Same as toDisplayJson but without the RDM cache and node config manager.
+    /// This is useful when you don't have reference data loaded and just want
+    /// the basic JSON output (UUIDs won't be resolved to labels).
+    #[wasm_bindgen(js_name = toDisplayJsonSimple)]
+    pub fn to_display_json_simple(
+        &self,
+        language: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        self.to_display_json_impl(None, None, language)
+    }
+
+    /// Internal implementation for toDisplayJson variants
+    fn to_display_json_impl(
+        &self,
+        rdm_cache: Option<&RdmCache>,
+        node_config_manager: Option<&NodeConfigManager>,
+        language: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        let start = now_ms();
+
+        // Get root node from model to find its alias
+        let root_node = self.with_model_core_mut(|core| {
+            core.get_root_node().map_err(|e| JsValue::from_str(&e))
+        })?;
+
+        let root_alias = root_node.alias.clone().unwrap_or_default();
+
+        // Ensure nodes_by_alias and edges are built
+        self.with_model_core_mut(|core| {
+            if core.get_nodes_by_alias_internal().is_none() {
+                core.build_nodes().map_err(|e| JsValue::from_str(&e))?;
+            }
+            Ok(())
+        })?;
+
+        let (nodes_by_alias, edges) = self.with_model_core(|core| {
+            let nodes = core.get_nodes_by_alias_internal()
+                .ok_or_else(|| JsValue::from_str("nodes_by_alias not built"))?
+                .clone();
+            let edges = core.get_edges_internal()
+                .ok_or_else(|| JsValue::from_str("edges not built"))?
+                .clone();
+            Ok((nodes, edges))
+        })?;
+
+        // Check that all tiles have been loaded - fail fast if not
+        self.check_tiles_loaded("toDisplayJson")?;
+
+        // Get the pseudo_cache (populated by populate())
+        let core_ref = self.core.borrow();
+        let cache = core_ref.pseudo_cache.lock()
+            .map_err(|e| JsValue::from_str(&format!("Failed to lock pseudo_cache: {}", e)))?;
+
+        let lang = language.unwrap_or_else(|| "en".to_string());
+
+        // Build display visitor context
+        let ctx = DisplayVisitorContext {
+            pseudo_cache: &cache,
+            nodes_by_alias: &nodes_by_alias,
+            edges: &edges,
+            rdm_cache,
+            node_config_manager,
+            language: &lang,
+            depth: 0,
+            max_depth: 50,
+        };
+
+        // Look up the root pseudo from cache (created in populate())
+        let root_list = cache.get(&root_alias)
+            .ok_or_else(|| JsValue::from_str(&format!(
+                "Root pseudo not found in cache for alias '{}' - was populate() called?",
+                root_alias
+            )))?;
+
+        // Use the root list's to_display_json - the root is a semantic node, so it traverses children
+        let json = root_list.to_display_json(&ctx);
+
+        // Convert serde_json::Value to JSON string, then parse to JS object
+        let json_string = serde_json::to_string(&json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize JSON: {}", e)))?;
+
+        let result = js_sys::JSON::parse(&json_string)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse JSON: {:?}", e)))?;
+
+        let end = now_ms();
+        record_timing("toDisplayJson (Rust)", end - start);
 
         Ok(result)
     }

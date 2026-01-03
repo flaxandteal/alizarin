@@ -20,7 +20,10 @@ use serde_json;
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
 
-use alizarin_extension_api::{TypeHandlerInfo, CoerceFn, FreeFn};
+use alizarin_extension_api::{
+    TypeHandlerInfo, CoerceFn, FreeFn,
+    RenderDisplayFn, FreeDisplayFn,
+};
 
 lazy_static::lazy_static! {
     /// Global registry of extension type handlers
@@ -32,6 +35,9 @@ lazy_static::lazy_static! {
 struct RegisteredHandler {
     coerce_fn: CoerceFn,
     free_fn: FreeFn,
+    /// Optional display renderer (for toDisplayJson support)
+    render_display_fn: Option<RenderDisplayFn>,
+    free_display_fn: Option<FreeDisplayFn>,
 }
 
 /// Register a type handler from a PyCapsule
@@ -49,12 +55,20 @@ fn register_type_handler(capsule: &PyCapsule) -> PyResult<()> {
             std::slice::from_raw_parts(info.type_name_ptr, info.type_name_len)
         ).to_string();
 
+        let has_display = info.render_display_fn.is_some();
+
         TYPE_HANDLERS.write().unwrap().insert(type_name.clone(), RegisteredHandler {
             coerce_fn: info.coerce_fn,
             free_fn: info.free_fn,
+            render_display_fn: info.render_display_fn,
+            free_display_fn: info.free_display_fn,
         });
 
-        println!("Registered type handler for: {}", type_name);
+        if has_display {
+            println!("Registered type handler for: {} (with display renderer)", type_name);
+        } else {
+            println!("Registered type handler for: {}", type_name);
+        }
     }
 
     Ok(())
@@ -115,16 +129,74 @@ fn coerce_with_extension(
     }
 }
 
+/// Check if a type handler has display rendering support
+#[pyfunction]
+fn has_display_renderer(type_name: &str) -> bool {
+    TYPE_HANDLERS.read().unwrap()
+        .get(type_name)
+        .map(|h| h.render_display_fn.is_some())
+        .unwrap_or(false)
+}
+
+/// Render a resolved value to a display string using a registered extension handler
+///
+/// Returns the display string or raises an error.
+/// Raises KeyError if no handler is registered or handler doesn't support display rendering.
+#[pyfunction]
+fn render_display_with_extension(
+    type_name: &str,
+    resolved_json: &str,
+    lang: &str,
+) -> PyResult<String> {
+    let handlers = TYPE_HANDLERS.read().unwrap();
+
+    if let Some(handler) = handlers.get(type_name) {
+        if let (Some(render_fn), Some(free_fn)) = (handler.render_display_fn, handler.free_display_fn) {
+            unsafe {
+                let result = render_fn(
+                    resolved_json.as_ptr(),
+                    resolved_json.len(),
+                    lang.as_ptr(),
+                    lang.len(),
+                );
+
+                if result.error_ptr.is_null() {
+                    let display = std::str::from_utf8_unchecked(
+                        std::slice::from_raw_parts(result.display_ptr, result.display_len)
+                    ).to_string();
+
+                    free_fn(result);
+                    Ok(display)
+                } else {
+                    let error = std::str::from_utf8_unchecked(
+                        std::slice::from_raw_parts(result.error_ptr, result.error_len)
+                    ).to_string();
+
+                    free_fn(result);
+                    Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(error))
+                }
+            }
+        } else {
+            Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(
+                format!("Handler for type '{}' does not support display rendering", type_name)
+            ))
+        }
+    } else {
+        Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(
+            format!("No handler registered for type: {}", type_name)
+        ))
+    }
+}
+
 // Import core types and functions directly (no WASM dependency needed)
 use alizarin_core::{
     // JSON conversion
-    tiles_to_tree, tree_to_tiles, tree_to_tiles_strict, create_static_resource, BusinessDataWrapper,
+    tiles_to_tree, tree_to_tiles, tree_to_tiles_strict, create_static_resource,
     // Graph types
     StaticTile as AlizarinStaticTile,
     StaticNode as AlizarinStaticNode,
     StaticResource as AlizarinStaticResource,
     StaticGraph as AlizarinCoreStaticGraph,
-    StaticResourceMetadata, StaticResourceDescriptors,
     // Label resolution
     resolve_labels as core_resolve_labels,
     DEFAULT_RESOLVABLE_DATATYPES,
@@ -313,50 +385,8 @@ fn json_tree_to_tiles(
     Ok(py_dict.to_object(py))
 }
 
-/// Helper to build batch result output and convert to Python
-fn batch_result_to_python(
-    py: Python,
-    results: Vec<Result<serde_json::Value, String>>,
-    strict: bool,
-) -> PyResult<PyObject> {
-    if strict {
-        // In strict mode, fail on first error
-        let successes: Result<Vec<_>, _> = results.into_iter().collect();
-        let successes = successes.map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Strict mode error: {}", e))
-        })?;
-
-        let output = serde_json::json!({
-            "success": true,
-            "results": successes,
-            "count": successes.len()
-        });
-
-        let json_module = py.import("json")?;
-        let py_dict = json_module.call_method1("loads", (serde_json::to_string(&output).unwrap(),))?;
-        return Ok(py_dict.to_object(py));
-    }
-
-    // Non-strict: separate successes and errors
-    let (successes, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
-    let successes: Vec<_> = successes.into_iter().map(Result::unwrap).collect();
-    let errors: Vec<_> = errors.into_iter().map(|e| e.unwrap_err()).collect();
-
-    let output = if errors.is_empty() {
-        serde_json::json!({ "success": true, "results": successes, "count": successes.len() })
-    } else {
-        serde_json::json!({
-            "success": false, "results": successes, "count": successes.len(),
-            "errors": errors, "error_count": errors.len()
-        })
-    };
-
-    let json_module = py.import("json")?;
-    let py_dict = json_module.call_method1("loads", (serde_json::to_string(&output).unwrap(),))?;
-    Ok(py_dict.to_object(py))
-}
-
 /// Batch convert multiple JSON trees to tiles in parallel
+/// Returns BusinessDataWrapper format: {business_data: {resources: [...]}, errors: [...]}
 #[pyfunction]
 #[pyo3(signature = (trees_json, graph_json, from_camel=false, strict=false))]
 fn batch_trees_to_tiles(
@@ -401,7 +431,30 @@ fn batch_trees_to_tiles(
         })
         .collect();
 
-    batch_result_to_python(py, results, strict)
+    // Separate successes and errors
+    let (successes, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
+    let resources: Vec<_> = successes.into_iter().map(Result::unwrap).collect();
+    let errors: Vec<_> = errors.into_iter().map(|e| e.unwrap_err()).collect();
+
+    // In strict mode, fail if any errors
+    if strict && !errors.is_empty() {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Strict mode error: {}", errors[0])
+        ));
+    }
+
+    // Return BusinessDataWrapper format with errors alongside
+    let output = serde_json::json!({
+        "business_data": {
+            "resources": resources
+        },
+        "errors": errors,
+        "error_count": errors.len()
+    });
+
+    let json_module = py.import("json")?;
+    let py_dict = json_module.call_method1("loads", (serde_json::to_string(&output).unwrap(),))?;
+    Ok(py_dict.to_object(py))
 }
 
 /// Batch convert multiple tiled resources to JSON trees in parallel
@@ -475,7 +528,42 @@ fn batch_tiles_to_trees(
         })
         .collect();
 
-    batch_result_to_python(py, results, strict)
+    // Handle results based on strict mode
+    if strict {
+        // In strict mode, fail on first error
+        let successes: Result<Vec<_>, _> = results.into_iter().collect();
+        let successes = successes.map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Strict mode error: {}", e))
+        })?;
+
+        let output = serde_json::json!({
+            "success": true,
+            "results": successes,
+            "count": successes.len()
+        });
+
+        let json_module = py.import("json")?;
+        let py_dict = json_module.call_method1("loads", (serde_json::to_string(&output).unwrap(),))?;
+        return Ok(py_dict.to_object(py));
+    }
+
+    // Non-strict: separate successes and errors
+    let (successes, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
+    let successes: Vec<_> = successes.into_iter().map(Result::unwrap).collect();
+    let errors: Vec<_> = errors.into_iter().map(|e| e.unwrap_err()).collect();
+
+    let output = if errors.is_empty() {
+        serde_json::json!({ "success": true, "results": successes, "count": successes.len() })
+    } else {
+        serde_json::json!({
+            "success": false, "results": successes, "count": successes.len(),
+            "errors": errors, "error_count": errors.len()
+        })
+    };
+
+    let json_module = py.import("json")?;
+    let py_dict = json_module.call_method1("loads", (serde_json::to_string(&output).unwrap(),))?;
+    Ok(py_dict.to_object(py))
 }
 
 /// Convert a camelCase string to snake_case
@@ -827,6 +915,8 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(register_type_handler, m)?)?;
     m.add_function(wrap_pyfunction!(has_type_handler, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_with_extension, m)?)?;
+    m.add_function(wrap_pyfunction!(has_display_renderer, m)?)?;
+    m.add_function(wrap_pyfunction!(render_display_with_extension, m)?)?;
 
     // Node configuration management (Phase 0 of type coercion)
     node_config_py::register_module(m)?;
