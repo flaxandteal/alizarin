@@ -5,12 +5,14 @@ pub mod pseudo_value;
 pub mod model_wrapper;
 pub mod instance_wrapper;
 pub mod json_conversion;
+pub mod batch_conversion;
 pub mod wasm_wrappers;
 pub mod tracing;
 pub mod skos_wasm;
 pub mod node_config_wasm;
 pub mod type_coercion_wasm;
 pub mod label_resolution_wasm;
+pub mod rdm_cache_wasm;
 
 // Re-export core types for native Rust consumers
 // These are the platform-agnostic types without WASM bindings

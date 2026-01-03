@@ -234,7 +234,7 @@ def test_invalid_json_handling():
 
 
 def test_batch_trees_to_tiles():
-    """Test batch conversion of trees to tiles - returns StaticResource format"""
+    """Test batch conversion of trees to tiles - returns BusinessDataWrapper format"""
     graph_data = load_test_data()
 
     # Create multiple tree structures
@@ -262,12 +262,15 @@ def test_batch_trees_to_tiles():
         graph_json=graph_json
     )
 
-    # Verify result structure
+    # Verify result structure - BusinessDataWrapper format
     assert isinstance(result, dict), "Result should be a dictionary"
-    assert 'results' in result, "Result should have 'results' key"
-    assert len(result['results']) == 2, "Should have 2 resources"
+    assert 'business_data' in result, "Result should have 'business_data' key"
+    assert 'resources' in result['business_data'], "business_data should have 'resources'"
 
-    for i, resource in enumerate(result['results']):
+    resources = result['business_data']['resources']
+    assert len(resources) == 2, "Should have 2 resources"
+
+    for i, resource in enumerate(resources):
         # Each resource should be in StaticResource format
         assert 'resourceinstance' in resource, f"Resource {i} should have resourceinstance"
         assert 'tiles' in resource, f"Resource {i} should have tiles"

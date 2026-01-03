@@ -266,28 +266,4 @@ class FlatMarkdownRenderer extends MarkdownRenderer {
   }
 }
 
-class JsonRenderer extends Renderer {
-  async renderDate(value: DateViewModel, _depth: number): Promise<any> {
-    return value.forJson();
-  }
-
-  async renderBoolean(value: boolean | BooleanViewModel, _depth: number): Promise<any> {
-    return typeof value === "boolean" ? value : value.forJson();
-  }
-
-  async renderConceptValue(value: ConceptValueViewModel, _depth: number): Promise<any> {
-    return value.forJson();
-  }
-
-  async renderDomainValue(value: DomainValueViewModel, _depth: number): Promise<any> {
-    return value.forJson();
-  }
-
-  async renderResourceReference(value: ResourceInstanceViewModel<any>, _depth: number): Promise<any> {
-    // TODO: decide if this makes sense: await value.retrieve();
-    const val = value.forJson();
-    return val;
-  }
-}
-
-export { MarkdownRenderer, JsonRenderer, Cleanable, FlatMarkdownRenderer };
+export { MarkdownRenderer, Cleanable, FlatMarkdownRenderer };

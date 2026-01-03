@@ -346,3 +346,14 @@ impl Default for WasmNodeConfigManager {
         Self::new()
     }
 }
+
+// =============================================================================
+// Internal API for use by instance_wrapper
+// =============================================================================
+
+impl WasmNodeConfigManager {
+    /// Get the inner CoreNodeConfigManager (for internal use)
+    pub(crate) fn inner(&self) -> &CoreNodeConfigManager {
+        &self.inner
+    }
+}

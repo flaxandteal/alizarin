@@ -13,6 +13,7 @@ pub mod label_resolution;
 pub mod loader;
 pub mod node_config;
 pub mod pseudo_value_core;
+pub mod rdm_cache;
 pub mod skos;
 pub mod type_coercion;
 
@@ -76,3 +77,6 @@ pub use pseudo_value_core::{
     matches_semantic_child, matches_tile_filter, PseudoListCore, PseudoValueCore,
     TileBuilder, TileBuilderContext, VisitorContext,
 };
+
+// RDM cache types
+pub use rdm_cache::{RdmCache, RdmCollection, RdmConcept};

@@ -10,7 +10,9 @@ use serde_json::{json, Value};
 use std::ffi::{c_void, CString};
 
 use alizarin_extension_api::{
-    alizarin_free_coerce_result, CoerceFn, CoerceResult, FreeFn, TypeHandlerInfo,
+    alizarin_free_coerce_result, alizarin_free_render_display_result,
+    CoerceFn, CoerceResult, FreeFn, TypeHandlerInfo,
+    RenderDisplayFn, RenderDisplayResult, FreeDisplayFn,
 };
 
 // =============================================================================
@@ -188,6 +190,61 @@ unsafe extern "C" fn coerce_reference(
     }
 }
 
+/// C ABI display render function for reference type
+///
+/// Takes a resolved StaticReference JSON and returns the display string
+/// for the specified language.
+unsafe extern "C" fn render_reference_display(
+    resolved_ptr: *const u8,
+    resolved_len: usize,
+    lang_ptr: *const u8,
+    lang_len: usize,
+) -> RenderDisplayResult {
+    // Parse resolved JSON
+    let resolved_slice = std::slice::from_raw_parts(resolved_ptr, resolved_len);
+    let resolved_str = match std::str::from_utf8(resolved_slice) {
+        Ok(s) => s,
+        Err(e) => return RenderDisplayResult::error(format!("Invalid UTF-8 in resolved: {}", e)),
+    };
+
+    // Parse language
+    let lang_slice = std::slice::from_raw_parts(lang_ptr, lang_len);
+    let lang = std::str::from_utf8(lang_slice).ok();
+
+    // Handle arrays of references
+    let resolved: Value = match serde_json::from_str(resolved_str) {
+        Ok(v) => v,
+        Err(e) => return RenderDisplayResult::error(format!("Invalid JSON: {}", e)),
+    };
+
+    match &resolved {
+        // Single reference object
+        Value::Object(_) => {
+            let reference: StaticReference = match serde_json::from_value(resolved.clone()) {
+                Ok(r) => r,
+                Err(e) => return RenderDisplayResult::error(format!("Invalid reference: {}", e)),
+            };
+            RenderDisplayResult::success(reference.to_display_string(lang))
+        }
+
+        // Array of references - join with ", "
+        Value::Array(arr) => {
+            let mut displays = Vec::new();
+            for item in arr {
+                match serde_json::from_value::<StaticReference>(item.clone()) {
+                    Ok(reference) => displays.push(reference.to_display_string(lang)),
+                    Err(_) => continue, // Skip invalid items
+                }
+            }
+            RenderDisplayResult::success(displays.join(", "))
+        }
+
+        Value::Null => RenderDisplayResult::success(String::new()),
+
+        _ => RenderDisplayResult::error(format!("Unexpected resolved type: {:?}", resolved)),
+    }
+}
+
 // =============================================================================
 // Python Module
 // =============================================================================
@@ -200,6 +257,8 @@ static mut HANDLER_INFO: Option<TypeHandlerInfo> = None;
 static INIT: Once = Once::new();
 
 /// Get the type handler capsule for registration with alizarin
+///
+/// This handler includes display rendering support for toDisplayJson().
 #[pyfunction]
 fn get_reference_handler_capsule(py: Python<'_>) -> PyResult<Py<PyCapsule>> {
     static TYPE_NAME: &[u8] = b"reference";
@@ -212,6 +271,8 @@ fn get_reference_handler_capsule(py: Python<'_>) -> PyResult<Py<PyCapsule>> {
                 type_name_len: TYPE_NAME.len(),
                 coerce_fn: coerce_reference as CoerceFn,
                 free_fn: alizarin_free_coerce_result as FreeFn,
+                render_display_fn: Some(render_reference_display as RenderDisplayFn),
+                free_display_fn: Some(alizarin_free_render_display_result as FreeDisplayFn),
                 user_data: std::ptr::null_mut(),
             });
         }
@@ -310,5 +371,70 @@ mod tests {
         assert_eq!(reference.to_display_string(Some("en")), "English Label");
         assert_eq!(reference.to_display_string(Some("es")), "Etiqueta Española");
         assert_eq!(reference.to_display_string(None), "English Label"); // default to en
+    }
+
+    #[test]
+    fn test_render_reference_display() {
+        let reference_json = r#"{
+            "labels": [{
+                "id": "1",
+                "language_id": "en",
+                "list_item_id": "item-1",
+                "value": "Test Label",
+                "valuetype_id": "prefLabel"
+            }],
+            "list_id": "list-1",
+            "uri": "http://example.com"
+        }"#;
+
+        unsafe {
+            let result = render_reference_display(
+                reference_json.as_ptr(),
+                reference_json.len(),
+                "en".as_ptr(),
+                2,
+            );
+
+            assert!(!result.is_error());
+            let display = std::str::from_utf8(
+                std::slice::from_raw_parts(result.display_ptr, result.display_len)
+            ).unwrap();
+            assert_eq!(display, "Test Label");
+
+            alizarin_free_render_display_result(result);
+        }
+    }
+
+    #[test]
+    fn test_render_reference_display_array() {
+        let references_json = r#"[
+            {
+                "labels": [{"id": "1", "language_id": "en", "list_item_id": "item-1", "value": "Label A", "valuetype_id": "prefLabel"}],
+                "list_id": "list-1",
+                "uri": "http://example.com/a"
+            },
+            {
+                "labels": [{"id": "2", "language_id": "en", "list_item_id": "item-2", "value": "Label B", "valuetype_id": "prefLabel"}],
+                "list_id": "list-1",
+                "uri": "http://example.com/b"
+            }
+        ]"#;
+
+        unsafe {
+            let result = render_reference_display(
+                references_json.as_ptr(),
+                references_json.len(),
+                "en".as_ptr(),
+                2,
+            );
+
+            assert!(!result.is_error());
+            let display = std::str::from_utf8(
+                std::slice::from_raw_parts(result.display_ptr, result.display_len)
+            ).unwrap();
+            assert_eq!(display, "Label A, Label B");
+
+            alizarin_free_render_display_result(result);
+        }
     }
 }
