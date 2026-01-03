@@ -408,11 +408,16 @@ class TestFullRustIntegration:
             graph_json=person_graph_json
         )
 
-        # Verify the result structure
-        assert result["resourceinstanceid"] == resource_id
-        assert result["graph_id"] == graph_id
-        assert "tiles" in result
-        assert len(result["tiles"]) > 0
+        # Verify the result structure - new BusinessDataWrapper format
+        assert 'business_data' in result
+        resources = result['business_data']['resources']
+        assert len(resources) == 1
+
+        resource = resources[0]
+        assert resource["resourceinstance"]["resourceinstanceid"] == resource_id
+        assert resource["resourceinstance"]["graph_id"] == graph_id
+        assert "tiles" in resource
+        assert len(resource["tiles"]) > 0
 
         # Find the tile with reference data
         reference_node_id = None
@@ -425,7 +430,7 @@ class TestFullRustIntegration:
 
         # Find tile containing reference data
         reference_tile = None
-        for tile in result["tiles"]:
+        for tile in resource["tiles"]:
             if reference_node_id in tile.get("data", {}):
                 reference_tile = tile
                 break
@@ -436,7 +441,7 @@ class TestFullRustIntegration:
         ref_data = reference_tile["data"][reference_node_id]
         assert ref_data is not None
 
-        print(f"Created {len(result['tiles'])} tiles")
+        print(f"Created {len(resource['tiles'])} tiles")
         print(f"Reference data in tile: {json.dumps(ref_data, indent=2)}")
 
     def test_full_rust_pipeline_json_to_tiles_to_coercion(self, person_graph_json, person_graph_data):
@@ -512,7 +517,12 @@ class TestFullRustIntegration:
             graph_json=person_graph_json
         )
 
-        assert len(result["tiles"]) > 0
+        # Extract resource from BusinessDataWrapper format
+        assert 'business_data' in result
+        resources = result['business_data']['resources']
+        assert len(resources) == 1
+        resource = resources[0]
+        assert len(resource["tiles"]) > 0
 
         # Step 3: Find reference data in tiles
         reference_node_id = None
@@ -525,7 +535,7 @@ class TestFullRustIntegration:
 
         # Find ALL tiles with reference data (each array item creates a separate tile)
         ref_tiles = []
-        for tile in result["tiles"]:
+        for tile in resource["tiles"]:
             if reference_node_id and reference_node_id in tile.get("data", {}):
                 ref_data = tile["data"][reference_node_id]
                 if ref_data is not None:
@@ -563,7 +573,7 @@ class TestFullRustIntegration:
             "Category A should preserve Spanish label"
 
         print("Full Rust pipeline completed successfully:")
-        print(f"  - Converted JSON tree to {len(result['tiles'])} tiles")
+        print(f"  - Converted JSON tree to {len(resource['tiles'])} tiles")
         print(f"  - Coerced {len(coerced_results)} reference values via Rust extension")
 
     def test_rust_coercion_in_roundtrip(self, person_graph_json, person_graph_data):
@@ -606,11 +616,14 @@ class TestFullRustIntegration:
             graph_json=person_graph_json
         )
 
-        assert len(tiles_result["tiles"]) > 0
+        # Extract tiles from BusinessDataWrapper format
+        assert 'business_data' in tiles_result
+        tiles_resource = tiles_result['business_data']['resources'][0]
+        assert len(tiles_resource["tiles"]) > 0
 
         # Step 2: tiles → tree (Rust)
         tree_result = alizarin.tiles_to_json_tree(
-            tiles_json=json.dumps(tiles_result["tiles"]),
+            tiles_json=json.dumps(tiles_resource["tiles"]),
             resource_id=resource_id,
             graph_id=graph_id,
             graph_json=person_graph_json
@@ -619,15 +632,17 @@ class TestFullRustIntegration:
         assert "person" in tree_result or len(tree_result) > 0
 
         # Step 3: tree → tiles again (Rust)
-        final_tiles = alizarin.json_tree_to_tiles(
+        final_result = alizarin.json_tree_to_tiles(
             tree_json=json.dumps(tree_result),
             resource_id=resource_id,
             graph_id=graph_id,
             graph_json=person_graph_json
         )
 
-        # Verify we still have tiles
-        assert len(final_tiles["tiles"]) > 0
+        # Extract tiles from final result
+        assert 'business_data' in final_result
+        final_resource = final_result['business_data']['resources'][0]
+        assert len(final_resource["tiles"]) > 0
 
         # Find reference node
         ref_node_id = None
@@ -640,12 +655,12 @@ class TestFullRustIntegration:
         original_ref_data = None
         final_ref_data = None
 
-        for tile in tiles_result["tiles"]:
+        for tile in tiles_resource["tiles"]:
             if ref_node_id and ref_node_id in tile.get("data", {}):
                 original_ref_data = tile["data"][ref_node_id]
                 break
 
-        for tile in final_tiles["tiles"]:
+        for tile in final_resource["tiles"]:
             if ref_node_id and ref_node_id in tile.get("data", {}):
                 final_ref_data = tile["data"][ref_node_id]
                 break
@@ -1476,10 +1491,13 @@ class TestLabelResolutionIntegration:
                 # NOTE: rdm_cache is NOT passed - global cache should be used
             )
 
-            # Step 6: Verify result
+            # Step 6: Verify result - BusinessDataWrapper format
             assert result is not None
-            assert "tiles" in result
-            assert result["resourceinstanceid"] == resource_id
+            assert 'business_data' in result
+            resources = result['business_data']['resources']
+            assert len(resources) == 1
+            assert resources[0]["resourceinstance"]["resourceinstanceid"] == resource_id
+            assert "tiles" in resources[0]
 
         finally:
             # Clean up global state
@@ -1697,9 +1715,12 @@ class TestCLMReferenceResolution:
             graph_json=reference_graph_json,
         )
 
-        # Verify tiles were created
+        # Verify tiles were created - BusinessDataWrapper format
         assert result is not None
-        assert "tiles" in result
+        assert 'business_data' in result
+        resources = result['business_data']['resources']
+        assert len(resources) == 1
+        assert "tiles" in resources[0]
 
     @pytest.mark.asyncio
     async def test_lazy_loading_with_loader(self, reference_graph_json):

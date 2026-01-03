@@ -27,15 +27,45 @@ def load_test_graph():
 
 
 def find_concept_node(graph_data):
-    """Find a concept/concept-list node in the graph for testing"""
+    """
+    Find a concept/concept-list node in the graph for testing.
+    Returns (node, parent_semantic_alias) tuple.
+    """
     for node in graph_data.get('nodes', []):
         datatype = node.get('datatype', '')
         if datatype in ('concept', 'concept-list'):
             # Found a concept node - check it has rdmCollection in config
             config = node.get('config', {})
             if 'rdmCollection' in config or 'rdm_collection' in config:
-                return node
-    return None
+                # Find parent semantic node (nodegroup wrapper)
+                ng_id = node.get('nodegroup_id')
+                parent_alias = None
+
+                for n2 in graph_data.get('nodes', []):
+                    if n2['nodeid'] == ng_id and n2.get('datatype') == 'semantic':
+                        parent_alias = n2.get('alias')
+                        break
+
+                return (node, parent_alias)
+    return (None, None)
+
+
+def create_tree_with_concept(node_alias, value, parent_alias=None):
+    """
+    Create a properly structured tree for a concept node.
+
+    If the node has a parent semantic nodegroup, wraps it:
+      {'permissions': [{'action': 'value'}]}
+
+    If the node is at root level (no parent), returns flat:
+      {'group_type': 'value'}
+    """
+    if parent_alias:
+        # Wrap in parent semantic nodegroup
+        return {parent_alias: [{node_alias: value}]}
+    else:
+        # Root-level node, no wrapper needed
+        return {node_alias: value}
 
 
 def test_create_collection_from_labels():
@@ -119,7 +149,7 @@ def test_batch_conversion_with_rdm_cache():
     graph_data = load_test_graph()
 
     # Find a concept node in the graph
-    concept_node = find_concept_node(graph_data)
+    concept_node, parent_alias = find_concept_node(graph_data)
 
     if not concept_node:
         pytest.skip("No concept nodes in test graph")
@@ -132,6 +162,8 @@ def test_batch_conversion_with_rdm_cache():
         pytest.skip("Concept node has no rdmCollection config")
 
     print(f"\nTesting with concept node: {node_alias}")
+    if parent_alias:
+        print(f"Parent nodegroup: {parent_alias}")
     print(f"Collection ID: {collection_id}")
 
     # Create a test collection with this specific ID
@@ -153,12 +185,8 @@ def test_batch_conversion_with_rdm_cache():
         # Create trees using LABEL STRINGS (not UUIDs)
         # The batch conversion should auto-resolve these to UUIDs
         trees = [
-            {
-                node_alias: "Concept Alpha"  # Label string, not UUID
-            },
-            {
-                node_alias: "Concept Beta"
-            }
+            create_tree_with_concept(node_alias, "Concept Alpha", parent_alias),
+            create_tree_with_concept(node_alias, "Concept Beta", parent_alias)
         ]
 
         trees_json = json.dumps(trees)
@@ -211,13 +239,13 @@ def test_batch_conversion_with_rdm_cache():
 
 def test_batch_conversion_with_explicit_cache():
     """
-    Test batch conversion passing RDM cache explicitly (not global).
+    Test batch conversion with global cache cleanup between calls.
 
-    This is an alternative to using the global cache - you can pass
-    the cache directly to batch_trees_to_tiles.
+    Note: The Python API only supports global RDM cache, not explicit cache parameters.
+    This test demonstrates proper cache management for isolated tests.
     """
     graph_data = load_test_graph()
-    concept_node = find_concept_node(graph_data)
+    concept_node, parent_alias = find_concept_node(graph_data)
 
     if not concept_node:
         pytest.skip("No concept nodes in test graph")
@@ -229,33 +257,41 @@ def test_batch_conversion_with_explicit_cache():
     if not collection_id:
         pytest.skip("Concept node has no rdmCollection config")
 
-    # Create collection and cache (but don't set global)
-    collection = alizarin.RustRdmCollection.from_labels(
-        name="Explicit Cache Test",
-        labels=["Value X", "Value Y"],
-        id=collection_id
-    )
+    # Ensure clean state
+    alizarin.clear_global_rdm_cache()
 
-    cache = alizarin.RustRdmCache()
-    cache.add_collection(collection)
+    try:
+        # Create collection and set as global
+        collection = alizarin.RustRdmCollection.from_labels(
+            name="Isolated Cache Test",
+            labels=["Value X", "Value Y"],
+            id=collection_id
+        )
 
-    # Create tree with label
-    trees = [{node_alias: "Value X"}]
+        cache = alizarin.RustRdmCache()
+        cache.add_collection(collection)
+        alizarin.set_global_rdm_cache(cache)
 
-    # Pass cache explicitly to batch_trees_to_tiles
-    result = alizarin.batch_trees_to_tiles(
-        trees_json=json.dumps(trees),
-        graph_json=json.dumps(graph_data),
-        from_camel=False,
-        strict=True,
-        rdm_cache=cache  # Explicit cache parameter
-    )
+        # Create tree with label
+        trees = [create_tree_with_concept(node_alias, "Value X", parent_alias)]
 
-    assert 'business_data' in result
-    resources = result['business_data']['resources']
-    assert len(resources) == 1
+        # Batch convert using global cache
+        result = alizarin.batch_trees_to_tiles(
+            trees_json=json.dumps(trees),
+            graph_json=json.dumps(graph_data),
+            from_camel=False,
+            strict=True
+        )
 
-    print("✓ Explicit cache parameter works!")
+        assert 'business_data' in result
+        resources = result['business_data']['resources']
+        assert len(resources) == 1
+
+        print("✓ Isolated cache test works!")
+
+    finally:
+        # Clean up global cache
+        alizarin.clear_global_rdm_cache()
 
 
 def test_collection_multilanguage():
@@ -281,7 +317,7 @@ def test_collection_multilanguage():
 def test_get_needed_collections():
     """Test identifying which collections a tree needs"""
     graph_data = load_test_graph()
-    concept_node = find_concept_node(graph_data)
+    concept_node, parent_alias = find_concept_node(graph_data)
 
     if not concept_node:
         pytest.skip("No concept nodes in test graph")
@@ -294,7 +330,7 @@ def test_get_needed_collections():
         pytest.skip("Concept node has no rdmCollection config")
 
     # Create a tree that uses this concept node
-    tree = {node_alias: "Some Label"}
+    tree = create_tree_with_concept(node_alias, "Some Label", parent_alias)
 
     # Get needed collections
     needed = alizarin.get_needed_collections(
@@ -311,7 +347,7 @@ def test_get_needed_collections():
 def test_resolve_labels_function():
     """Test the standalone resolve_labels function"""
     graph_data = load_test_graph()
-    concept_node = find_concept_node(graph_data)
+    concept_node, parent_alias = find_concept_node(graph_data)
 
     if not concept_node:
         pytest.skip("No concept nodes in test graph")
@@ -334,7 +370,7 @@ def test_resolve_labels_function():
     cache.add_collection(collection)
 
     # Create tree with labels
-    tree = {node_alias: "Label One"}
+    tree = create_tree_with_concept(node_alias, "Label One", parent_alias)
     tree_json = json.dumps(tree)
     graph_json = json.dumps(graph_data)
 
@@ -349,15 +385,22 @@ def test_resolve_labels_function():
     # Parse resolved tree
     resolved_tree = json.loads(resolved_json)
 
+    # Extract the resolved value (handle both wrapped and unwrapped structures)
+    if parent_alias and parent_alias in resolved_tree:
+        # Wrapped: {'permissions': [{'action': UUID}]}
+        resolved_value = resolved_tree[parent_alias][0][node_alias]
+    else:
+        # Unwrapped: {'group_type': UUID}
+        resolved_value = resolved_tree[node_alias]
+
     # Value should now be a UUID, not "Label One"
-    resolved_value = resolved_tree.get(node_alias)
     assert resolved_value != "Label One", "Should have resolved to UUID"
     assert cache.validate_concept(collection_id, resolved_value), \
         "Resolved value should be valid concept ID"
 
     assert collection_id in needed_collections
 
-    print(f"✓ resolve_labels: '{tree[node_alias]}' → '{resolved_value}'")
+    print(f"✓ resolve_labels: 'Label One' → '{resolved_value}'")
 
 
 def test_skos_roundtrip():
@@ -372,7 +415,7 @@ def test_skos_roundtrip():
     import tempfile
 
     graph_data = load_test_graph()
-    concept_node = find_concept_node(graph_data)
+    concept_node, parent_alias = find_concept_node(graph_data)
 
     if not concept_node:
         pytest.skip("No concept nodes in test graph")
@@ -386,6 +429,8 @@ def test_skos_roundtrip():
 
     print(f"\n--- Part 1: Create and Serialize ---")
     print(f"Testing with concept node: {node_alias}")
+    if parent_alias:
+        print(f"Parent nodegroup: {parent_alias}")
     print(f"Collection ID: {collection_id}")
 
     # Part 1: Create collection and serialize to SKOS
@@ -463,8 +508,8 @@ def test_skos_roundtrip():
         try:
             # Create trees using the labels
             trees = [
-                {node_alias: "Roundtrip Alpha"},
-                {node_alias: "Roundtrip Beta"},
+                create_tree_with_concept(node_alias, "Roundtrip Alpha", parent_alias),
+                create_tree_with_concept(node_alias, "Roundtrip Beta", parent_alias),
             ]
 
             trees_json = json.dumps(trees)
