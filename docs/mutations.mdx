@@ -1,0 +1,422 @@
+---
+title: Graph Mutations
+description: Programmatically modify Arches graph schemas
+---
+
+Alizarin provides a powerful mutation API for programmatically creating and modifying Arches graph schemas. Mutations can add nodes, cards, widgets, and more - or delete and update existing elements.
+
+## Overview
+
+Mutations are applied via JSON requests:
+
+```python
+import alizarin
+
+mutation_request = {
+    "mutations": [
+        {
+            "AddNode": {
+                "parent_alias": "root",
+                "alias": "person_name",
+                "name": "Name",
+                "cardinality": "1",
+                "datatype": "string",
+                "ontology_class": "E41_Appellation",
+                "parent_property": "P1_is_identified_by",
+                "options": {}
+            }
+        }
+    ],
+    "options": {
+        "autocreate_card": True,
+        "autocreate_widget": True
+    }
+}
+
+result_json = alizarin.apply_mutations_from_json(
+    graph_json,
+    json.dumps(mutation_request)
+)
+```
+
+## Request Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `autocreate_card` | boolean | `true` | Automatically create a card for new nodegroups |
+| `autocreate_widget` | boolean | `true` | Automatically create widgets for new data nodes |
+
+## Mutation Types
+
+### AddNode
+
+Add a new node to the graph.
+
+```json
+{
+    "AddNode": {
+        "parent_alias": "root",
+        "alias": "my_node",
+        "name": "My Node",
+        "cardinality": "1",
+        "datatype": "string",
+        "ontology_class": "E41_Appellation",
+        "parent_property": "P1_is_identified_by",
+        "description": "Optional description",
+        "config": {},
+        "options": {
+            "exportable": true,
+            "issearchable": true
+        }
+    }
+}
+```
+
+**Required fields:**
+- `alias` - Unique identifier for the node
+- `name` - Display name
+- `cardinality` - `"1"` (single) or `"n"` (multiple)
+- `datatype` - Node type: `semantic`, `string`, `number`, `date`, `boolean`, `concept`, `concept-list`, `resource-instance`, `resource-instance-list`, `reference`, etc.
+- `ontology_class` - CRM class (e.g., `E41_Appellation`)
+- `parent_property` - CRM property connecting to parent (e.g., `P1_is_identified_by`)
+
+**Optional fields:**
+- `parent_alias` - Parent node alias (defaults to root if not specified)
+- `description` - Node description
+- `config` - Datatype-specific configuration (e.g., `{"controlledList": "uuid"}` for references)
+- `options` - Node options (see below)
+
+**Node Options:**
+| Option | Type | Description |
+|--------|------|-------------|
+| `exportable` | boolean | Include in exports |
+| `fieldname` | string | Override field name |
+| `hascustomalias` | boolean | Has custom alias |
+| `is_collector` | boolean | Is a collector node |
+| `isrequired` | boolean | Required field |
+| `issearchable` | boolean | Include in search |
+| `istopnode` | boolean | Is root node |
+| `sortorder` | integer | Display order |
+
+### AddNodegroup
+
+Add a nodegroup (container for nodes with same cardinality).
+
+```json
+{
+    "AddNodegroup": {
+        "parent_alias": "parent_node",
+        "nodegroup_id": "uuid-here",
+        "cardinality": "n"
+    }
+}
+```
+
+### AddEdge
+
+Add an edge between nodes.
+
+```json
+{
+    "AddEdge": {
+        "from_node_id": "source-node-id",
+        "to_node_id": "target-node-id",
+        "ontology_property": "P2_has_type",
+        "name": "Optional edge name",
+        "description": "Optional description"
+    }
+}
+```
+
+### AddCard
+
+Add a card for a nodegroup.
+
+```json
+{
+    "AddCard": {
+        "nodegroup_id": "nodegroup-uuid",
+        "name": {"en": "Card Name"},
+        "component_id": "optional-component-id",
+        "config": {},
+        "options": {
+            "active": true,
+            "helpenabled": true,
+            "helptext": {"en": "Help text here"}
+        }
+    }
+}
+```
+
+### AddWidgetToCard
+
+Add a widget to a card.
+
+```json
+{
+    "AddWidgetToCard": {
+        "node_id": "node-uuid",
+        "widget_id": "widget-uuid",
+        "label": "Field Label",
+        "config": {},
+        "sortorder": 1,
+        "visible": true
+    }
+}
+```
+
+### AddSubgraph
+
+Add an entire branch/subgraph to the graph.
+
+```json
+{
+    "AddSubgraph": {
+        "subgraph": { /* StaticGraph JSON */ },
+        "target_node_id": "parent-node-uuid",
+        "ontology_property": "P2_has_type",
+        "alias_suffix": "_branch1"
+    }
+}
+```
+
+### UpdateSubgraph
+
+Update a previously-added subgraph to match a new version.
+
+```json
+{
+    "UpdateSubgraph": {
+        "subgraph": { /* Updated StaticGraph JSON */ },
+        "target_node_id": "parent-node-uuid",
+        "ontology_property": "P2_has_type",
+        "alias_suffix": "_branch1",
+        "remove_orphaned": false
+    }
+}
+```
+
+**Warning:** Setting `remove_orphaned: true` may orphan resource instance data.
+
+### UpdateNode
+
+Update node properties (cannot change datatype).
+
+```json
+{
+    "UpdateNode": {
+        "node_id": "node_alias_or_uuid",
+        "name": "New Name",
+        "ontology_class": "E55_Type",
+        "description": "Updated description",
+        "config": {"key": "value"},
+        "options": {
+            "issearchable": true
+        }
+    }
+}
+```
+
+All fields except `node_id` are optional - only provided fields are updated.
+
+### ChangeNodeType
+
+Change a node's datatype (creates new nodegroup if needed).
+
+```json
+{
+    "ChangeNodeType": {
+        "node_id": "node_alias_or_uuid",
+        "datatype": "concept-list",
+        "name": "Optional new name",
+        "ontology_class": "Optional new class",
+        "config": {"collection": "uuid"}
+    }
+}
+```
+
+### RenameNode
+
+Rename a node's alias and/or display name.
+
+```json
+{
+    "RenameNode": {
+        "node_id": "old_alias",
+        "alias": "new_alias",
+        "name": "New Display Name",
+        "description": "Updated description"
+    }
+}
+```
+
+### ConceptChangeCollection
+
+Change a concept node's collection reference.
+
+```json
+{
+    "ConceptChangeCollection": {
+        "node_id": "concept_node_alias",
+        "collection_id": "new-collection-uuid"
+    }
+}
+```
+
+### DeleteNode
+
+Delete a node and its associated edges/widgets.
+
+```json
+{
+    "DeleteNode": {
+        "node_id": "node_alias_or_uuid"
+    }
+}
+```
+
+**Warning:** Cannot delete the root node.
+
+### DeleteNodegroup
+
+Delete a nodegroup and cascade to all child nodes.
+
+```json
+{
+    "DeleteNodegroup": {
+        "nodegroup_id": "nodegroup-uuid"
+    }
+}
+```
+
+**Cascades:**
+- All nodes in the nodegroup
+- All child nodegroups (recursively)
+- All edges referencing deleted nodes
+- All cards_x_nodes_x_widgets entries
+- All cards for deleted nodegroups
+
+### DeleteCard
+
+Delete a card and its widget mappings.
+
+```json
+{
+    "DeleteCard": {
+        "card_id": "card-uuid"
+    }
+}
+```
+
+### DeleteWidget
+
+Delete a widget mapping (cards_x_nodes_x_widgets entry).
+
+```json
+{
+    "DeleteWidget": {
+        "widget_mapping_id": "mapping-uuid"
+    }
+}
+```
+
+### DeleteFunction
+
+Delete a function mapping (functions_x_graphs entry).
+
+```json
+{
+    "DeleteFunction": {
+        "function_mapping_id": "mapping-uuid"
+    }
+}
+```
+
+## Extension Mutations
+
+Extensions can register custom mutations. For example, CLM provides:
+
+### clm.reference_change_collection
+
+Change a reference node's controlled list collection.
+
+```json
+{
+    "Extension": {
+        "name": "clm.reference_change_collection",
+        "params": {
+            "node_id": "reference_node_alias",
+            "collection_id": "new-collection-uuid",
+            "config_key": "controlledList"
+        },
+        "compliance": "AlwaysCompliant"
+    }
+}
+```
+
+**Parameters:**
+- `node_id` - Node alias or UUID (must be `reference` or `reference-list` type)
+- `collection_id` - New collection UUID
+- `config_key` - Config key to update (default: `controlledList`, alternative: `rdmCollection`)
+
+**Usage with extensions:**
+
+```python
+import alizarin
+import alizarin_clm  # Registers the extension mutation
+
+# Apply extension mutation
+result = alizarin.apply_mutations_with_extensions(
+    graph_json,
+    mutations_json
+)
+```
+
+## Compliance Levels
+
+Mutations have compliance levels indicating when they're valid:
+
+| Level | Description |
+|-------|-------------|
+| `AlwaysCompliant` | Valid for both branches and published models |
+| `BranchCompliant` | Valid for branches only (e.g., adding nodes) |
+| `ModelCompliant` | Valid for published models only |
+| `NonCompliant` | Never compliant (internal use) |
+
+## Python API
+
+```python
+import alizarin
+
+# Basic mutations (no extensions)
+result = alizarin.apply_mutations_from_json(graph_json, mutations_json)
+
+# With extension support
+result = alizarin.apply_mutations_with_extensions(graph_json, mutations_json)
+
+# Get mutation schema documentation
+schema = alizarin.get_mutation_schema()
+
+# Generate deterministic UUIDs
+uuid = alizarin.generate_uuid_v5("node", "my_alias", graph_id)
+```
+
+## Registering Custom Extensions
+
+```python
+def my_handler(graph_json: str, params_json: str) -> str:
+    """Custom mutation handler."""
+    import json
+    graph = json.loads(graph_json)
+    params = json.loads(params_json)
+
+    # Modify graph based on params...
+
+    return json.dumps(graph)
+
+alizarin.register_extension_mutation(
+    "myext.custom_mutation",
+    my_handler,
+    "AlwaysCompliant"  # or "BranchCompliant", "ModelCompliant"
+)
+```
