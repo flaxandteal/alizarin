@@ -713,6 +713,163 @@ class TestEndToEndWorkflow:
         print(f"Successfully created tiles with updated collection: {new_collection_id}")
         print(f"Reference data in tile: {json.dumps(ref_data, indent=2)[:200]}...")
 
+    def test_full_workflow_with_collection_creation(self, person_graph):
+        """
+        Complete end-to-end test demonstrating:
+        1. Create a new collection from test values
+        2. Change a node's collection to use the new collection
+        3. Use label resolution to convert human-readable labels to UUIDs
+        4. Convert JSON tree to tiles
+        5. Verify the full pipeline works
+
+        This simulates the real-world workflow where:
+        - An admin creates a new controlled vocabulary
+        - Updates a graph to use that vocabulary
+        - Users submit data using human-readable labels
+        - The system resolves labels and stores as UUIDs
+        """
+        import alizarin
+        import alizarin_clm  # noqa: F401
+
+        if alizarin.json_tree_to_tiles is None:
+            pytest.skip("json_tree_to_tiles not available")
+
+        if not hasattr(alizarin, "register_extension_mutation"):
+            pytest.skip("Extension mutation API not available")
+
+        from alizarin import (
+            RustRdmCollection,
+            RustRdmCache,
+            set_global_rdm_cache,
+            clear_global_rdm_cache,
+        )
+
+        try:
+            # Step 1: Create a new collection from test values
+            test_labels = [
+                "Archaeologist",
+                "Historian",
+                "Conservator",
+                "Curator",
+                "Researcher",
+            ]
+
+            new_collection = RustRdmCollection.from_labels(
+                name="Person Roles",
+                labels=test_labels,
+            )
+
+            new_collection_id = new_collection.id
+            print(f"Created collection with ID: {new_collection_id}")
+            print(f"Collection has {len(new_collection)} concepts")
+
+            # Verify all labels are in the collection
+            for label in test_labels:
+                concept = new_collection.find_by_label(label)
+                assert concept is not None, f"Label '{label}' should be in collection"
+                print(f"  - '{label}' -> {concept.id}")
+
+            # Step 2: Set up the global RDM cache with our collection
+            cache = RustRdmCache()
+            cache.add_collection(new_collection)
+            set_global_rdm_cache(cache)
+
+            # Step 3: Change the 'test' node's collection to our new collection
+            change_mutation = {
+                "mutations": [
+                    {
+                        "Extension": {
+                            "name": "clm.reference_change_collection",
+                            "params": {
+                                "node_id": "test",
+                                "collection_id": new_collection_id
+                            },
+                            "compliance": "AlwaysCompliant"
+                        }
+                    }
+                ],
+                "options": {}
+            }
+
+            graph_json = json.dumps(person_graph)
+
+            updated_graph_json = alizarin.apply_mutations_with_extensions(
+                graph_json,
+                json.dumps(change_mutation),
+            )
+
+            updated_graph = json.loads(updated_graph_json)
+
+            # Verify collection was updated
+            test_node = next(
+                n for n in updated_graph["nodes"]
+                if n.get("alias") == "test"
+            )
+            assert test_node["config"]["controlledList"] == new_collection_id
+
+            # Step 4: Create business data using human-readable label
+            # (this is what a user would submit)
+            # Note: The 'test' node has cardinality "1", so we use a single value
+            person_tree = {
+                "test": {"_value": "Archaeologist"},  # Label, not UUID
+            }
+
+            tree_json = json.dumps(person_tree)
+            resource_id = "test-person-with-roles"
+            graph_id = updated_graph["graphid"]
+
+            # Step 5: Convert to tiles - labels should be resolved to UUIDs
+            result = alizarin.json_tree_to_tiles(
+                tree_json=tree_json,
+                resource_id=resource_id,
+                graph_id=graph_id,
+                graph_json=updated_graph_json,
+            )
+
+            # Step 6: Verify the result
+            assert "business_data" in result
+            resources = result["business_data"]["resources"]
+            assert len(resources) == 1
+
+            resource = resources[0]
+            assert resource["resourceinstance"]["resourceinstanceid"] == resource_id
+
+            # Find the tile with our reference data
+            ref_node_id = test_node["nodeid"]
+            ref_tile = None
+            for tile in resource["tiles"]:
+                if ref_node_id in tile.get("data", {}):
+                    ref_tile = tile
+                    break
+
+            assert ref_tile is not None, "Should find tile with reference data"
+
+            # Verify the reference data contains resolved UUIDs
+            ref_data = ref_tile["data"][ref_node_id]
+            assert ref_data is not None
+
+            # The label should have been resolved to UUID from our collection
+            archaeologist_concept = new_collection.find_by_label("Archaeologist")
+
+            print(f"\nResolved reference data:")
+            print(f"  Expected Archaeologist UUID: {archaeologist_concept.id}")
+            print(f"  Actual tile data: {json.dumps(ref_data, indent=2)[:500]}")
+
+            # Verify the UUID is present in the tile data
+            ref_data_str = json.dumps(ref_data)
+            assert archaeologist_concept.id in ref_data_str, \
+                f"Archaeologist UUID {archaeologist_concept.id} should be in tile data: {ref_data_str}"
+
+            print("\n✓ Full workflow completed successfully!")
+            print(f"  - Created collection '{new_collection_id}' with {len(test_labels)} items")
+            print(f"  - Updated node 'test' to use new collection")
+            print(f"  - Resolved label 'Archaeologist' -> UUID {archaeologist_concept.id}")
+            print(f"  - Generated {len(resource['tiles'])} tiles")
+
+        finally:
+            # Clean up global cache
+            clear_global_rdm_cache()
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

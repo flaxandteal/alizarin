@@ -21,7 +21,7 @@ def load_person_graph():
     """Load Person graph model"""
     test_data_path = os.path.join(
         os.path.dirname(__file__),
-        'data/models/Person.json'
+        'data/graphs/resource_models/Person.json'
     )
 
     with open(test_data_path) as f:
