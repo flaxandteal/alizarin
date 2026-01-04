@@ -278,9 +278,90 @@ def _register_python_handler() -> None:
         print(f"Warning: Could not register CLM Python handler: {e}")
 
 
+def _reference_change_collection_handler(graph_json: str, params_json: str) -> str:
+    """
+    Mutation handler for clm.reference_change_collection.
+
+    Changes the collection (controlledList/rdmCollection) for a reference node.
+
+    Args:
+        graph_json: The graph as JSON string
+        params_json: Mutation parameters as JSON string
+            - node_id: Node ID or alias to modify
+            - collection_id: New collection ID
+            - config_key: Config key to update (default: "controlledList")
+
+    Returns:
+        Modified graph as JSON string
+    """
+    import json
+
+    graph = json.loads(graph_json)
+    params = json.loads(params_json)
+
+    node_id = params["node_id"]
+    collection_id = params["collection_id"]
+    config_key = params.get("config_key", "controlledList")
+
+    # Find node by ID or alias
+    target_node = None
+    for node in graph["nodes"]:
+        if node.get("nodeid") == node_id or node.get("alias") == node_id:
+            target_node = node
+            break
+
+    if target_node is None:
+        raise ValueError(f"Node not found: {node_id}")
+
+    # Validate it's a reference type
+    if target_node["datatype"] not in ("reference", "reference-list"):
+        raise ValueError(
+            f"Node {node_id} is not a reference type: {target_node['datatype']}"
+        )
+
+    # Update config
+    if "config" not in target_node or target_node["config"] is None:
+        target_node["config"] = {}
+    target_node["config"][config_key] = collection_id
+
+    return json.dumps(graph)
+
+
+def _register_mutation_handler() -> bool:
+    """
+    Register the CLM extension mutation handler with alizarin.
+
+    Returns True if successful, False if mutation API not available.
+    """
+    try:
+        import alizarin
+
+        if not hasattr(alizarin, 'register_extension_mutation'):
+            return False
+        if alizarin.register_extension_mutation is None:
+            return False
+
+        # Only register if not already registered
+        if hasattr(alizarin, 'has_extension_mutation') and alizarin.has_extension_mutation("clm.reference_change_collection"):
+            return True
+
+        alizarin.register_extension_mutation(
+            "clm.reference_change_collection",
+            _reference_change_collection_handler,
+            "AlwaysCompliant",
+        )
+        return True
+    except ImportError:
+        return False
+    except Exception as e:
+        print(f"Warning: Failed to register CLM mutation handler: {e}")
+        return False
+
+
 # Auto-register on import
 _rust_available = _register_rust_handler()
 _register_python_handler()
+_mutation_available = _register_mutation_handler()
 
 
 __all__ = [
