@@ -2,11 +2,19 @@
 //!
 //! This extension provides the "reference" datatype handler for Controlled List Manager
 //! integration. It handles coercion of reference values to tile data format.
+//!
+//! ## Mutations
+//!
+//! When the `mutations` feature is enabled, this crate also provides:
+//! - `ReferenceChangeCollectionHandler` - mutation to change a reference node's collection
 
+#[cfg(feature = "pyo3-ext")]
 use pyo3::prelude::*;
+#[cfg(feature = "pyo3-ext")]
 use pyo3::types::PyCapsule;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+#[cfg(feature = "pyo3-ext")]
 use std::ffi::{c_void, CString};
 
 use alizarin_extension_api::{
@@ -14,6 +22,10 @@ use alizarin_extension_api::{
     CoerceFn, CoerceResult, FreeFn, TypeHandlerInfo,
     RenderDisplayFn, RenderDisplayResult, FreeDisplayFn,
 };
+
+// Re-export mutation types when feature is enabled
+#[cfg(feature = "mutations")]
+pub mod mutations;
 
 // =============================================================================
 // Static Reference Types
@@ -249,63 +261,70 @@ unsafe extern "C" fn render_reference_display(
 // Python Module
 // =============================================================================
 
-use std::sync::Once;
+#[cfg(feature = "pyo3-ext")]
+mod python_module {
+    use super::*;
+    use pyo3::prelude::*;
+    use pyo3::types::PyCapsule;
+    use std::ffi::{c_void, CString};
+    use std::sync::Once;
 
-/// Static storage for the TypeHandlerInfo
-/// This must be static because the capsule needs a stable pointer
-static mut HANDLER_INFO: Option<TypeHandlerInfo> = None;
-static INIT: Once = Once::new();
+    /// Static storage for the TypeHandlerInfo
+    /// This must be static because the capsule needs a stable pointer
+    static mut HANDLER_INFO: Option<TypeHandlerInfo> = None;
+    static INIT: Once = Once::new();
 
-/// Get the type handler capsule for registration with alizarin
-///
-/// This handler includes display rendering support for toDisplayJson().
-#[pyfunction]
-fn get_reference_handler_capsule(py: Python<'_>) -> PyResult<Py<PyCapsule>> {
-    static TYPE_NAME: &[u8] = b"reference";
+    /// Get the type handler capsule for registration with alizarin
+    ///
+    /// This handler includes display rendering support for toDisplayJson().
+    #[pyfunction]
+    pub fn get_reference_handler_capsule(py: Python<'_>) -> PyResult<Py<PyCapsule>> {
+        static TYPE_NAME: &[u8] = b"reference";
 
-    // Initialize the static handler info once
-    INIT.call_once(|| {
+        // Initialize the static handler info once
+        INIT.call_once(|| {
+            unsafe {
+                HANDLER_INFO = Some(TypeHandlerInfo {
+                    type_name_ptr: TYPE_NAME.as_ptr(),
+                    type_name_len: TYPE_NAME.len(),
+                    coerce_fn: coerce_reference as CoerceFn,
+                    free_fn: alizarin_free_coerce_result as FreeFn,
+                    render_display_fn: Some(render_reference_display as RenderDisplayFn),
+                    free_display_fn: Some(alizarin_free_render_display_result as FreeDisplayFn),
+                    user_data: std::ptr::null_mut(),
+                });
+            }
+        });
+
+        // Get pointer to the static handler info
+        let ptr = unsafe { HANDLER_INFO.as_ref().unwrap() as *const TypeHandlerInfo };
+
+        // Note: The capsule name must be a C string (null-terminated)
+        let name = CString::new("alizarin_clm.reference_handler").unwrap();
+
+        // Create capsule using unsafe raw pointer approach
+        // PyCapsule::new expects something that implements Send, so we use the raw FFI
         unsafe {
-            HANDLER_INFO = Some(TypeHandlerInfo {
-                type_name_ptr: TYPE_NAME.as_ptr(),
-                type_name_len: TYPE_NAME.len(),
-                coerce_fn: coerce_reference as CoerceFn,
-                free_fn: alizarin_free_coerce_result as FreeFn,
-                render_display_fn: Some(render_reference_display as RenderDisplayFn),
-                free_display_fn: Some(alizarin_free_render_display_result as FreeDisplayFn),
-                user_data: std::ptr::null_mut(),
-            });
+            let capsule = pyo3::ffi::PyCapsule_New(
+                ptr as *mut c_void,
+                name.as_ptr(),
+                None,
+            );
+
+            if capsule.is_null() {
+                return Err(PyErr::fetch(py));
+            }
+
+            Ok(Py::from_owned_ptr(py, capsule))
         }
-    });
-
-    // Get pointer to the static handler info
-    let ptr = unsafe { HANDLER_INFO.as_ref().unwrap() as *const TypeHandlerInfo };
-
-    // Note: The capsule name must be a C string (null-terminated)
-    let name = CString::new("alizarin_clm.reference_handler").unwrap();
-
-    // Create capsule using unsafe raw pointer approach
-    // PyCapsule::new expects something that implements Send, so we use the raw FFI
-    unsafe {
-        let capsule = pyo3::ffi::PyCapsule_New(
-            ptr as *mut c_void,
-            name.as_ptr(),
-            None,
-        );
-
-        if capsule.is_null() {
-            return Err(PyErr::fetch(py));
-        }
-
-        Ok(Py::from_owned_ptr(py, capsule))
     }
-}
 
-/// Python module definition
-#[pymodule]
-fn _rust(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(get_reference_handler_capsule, m)?)?;
-    Ok(())
+    /// Python module definition
+    #[pymodule]
+    pub fn _rust(_py: Python, m: &PyModule) -> PyResult<()> {
+        m.add_function(wrap_pyfunction!(get_reference_handler_capsule, m)?)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

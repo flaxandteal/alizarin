@@ -63,6 +63,33 @@ pub struct StaticGraph {
     pub publication: Option<serde_json::Value>,
     #[serde(default)]
     pub resource_2_resource_constraints: Option<Vec<serde_json::Value>>,
+
+    // Arches-HER 2.0+ fields (backwards-compatible with older formats)
+    /// Source identifier for import/export tracking
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_identifier_id: Option<String>,
+    /// Whether graph is active
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_active: Option<bool>,
+    /// Whether graph has unpublished changes
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub has_unpublished_changes: Option<bool>,
+    /// Whether copy is immutable
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_copy_immutable: Option<bool>,
+    /// Resource instance lifecycle configuration
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_instance_lifecycle: Option<serde_json::Value>,
+    /// Spatial views configuration
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spatial_views: Option<serde_json::Value>,
+    /// Group permissions
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_permissions: Option<serde_json::Value>,
+    /// User permissions
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_permissions: Option<serde_json::Value>,
+
     // UI-specific fields
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cards: Option<Vec<StaticCard>>,
@@ -281,6 +308,86 @@ impl StaticGraph {
             .as_ref()?
             .get(alias)
             .cloned()
+    }
+
+    // =========================================================================
+    // Mutation Methods (for GraphMutator)
+    // =========================================================================
+
+    /// Create a deep clone of the graph with fresh indices
+    pub fn deep_clone(&self) -> Self {
+        let mut cloned = self.clone();
+        cloned.build_indices();
+        cloned
+    }
+
+    /// Push a new node to the graph
+    ///
+    /// Note: You must call `build_indices()` after all mutations to rebuild lookup tables.
+    pub fn push_node(&mut self, node: StaticNode) {
+        self.nodes.push(node);
+        // Invalidate indices - caller should rebuild after all mutations
+        self.node_by_id = None;
+        self.node_by_alias = None;
+        self.nodes_by_nodegroup = None;
+        self.nodes_by_alias_arc = None;
+    }
+
+    /// Push a new edge to the graph
+    pub fn push_edge(&mut self, edge: StaticEdge) {
+        self.edges.push(edge);
+        self.edges_map = None;
+    }
+
+    /// Push a new nodegroup to the graph
+    pub fn push_nodegroup(&mut self, nodegroup: StaticNodegroup) {
+        self.nodegroups.push(nodegroup);
+        self.nodegroup_by_id = None;
+    }
+
+    /// Push a new card to the graph
+    pub fn push_card(&mut self, card: StaticCard) {
+        if self.cards.is_none() {
+            self.cards = Some(Vec::new());
+        }
+        if let Some(ref mut cards) = self.cards {
+            cards.push(card);
+        }
+    }
+
+    /// Push a new cards_x_nodes_x_widgets entry
+    pub fn push_card_x_node_x_widget(&mut self, cxnxw: StaticCardsXNodesXWidgets) {
+        if self.cards_x_nodes_x_widgets.is_none() {
+            self.cards_x_nodes_x_widgets = Some(Vec::new());
+        }
+        if let Some(ref mut cxnxw_list) = self.cards_x_nodes_x_widgets {
+            cxnxw_list.push(cxnxw);
+        }
+    }
+
+    /// Get cards slice (for mutation checks)
+    pub fn cards_slice(&self) -> &[StaticCard] {
+        self.cards.as_deref().unwrap_or(&[])
+    }
+
+    /// Get cards_x_nodes_x_widgets slice
+    pub fn cards_x_nodes_x_widgets_slice(&self) -> &[StaticCardsXNodesXWidgets] {
+        self.cards_x_nodes_x_widgets.as_deref().unwrap_or(&[])
+    }
+
+    /// Find a card by nodegroup_id
+    pub fn find_card_by_nodegroup(&self, nodegroup_id: &str) -> Option<&StaticCard> {
+        self.cards.as_ref()?.iter().find(|c| c.nodegroup_id == nodegroup_id)
+    }
+
+    /// Find a node by alias (without requiring indices to be built)
+    pub fn find_node_by_alias(&self, alias: &str) -> Option<&StaticNode> {
+        // Try indexed lookup first
+        if let Some(node) = self.get_node_by_alias(alias) {
+            return Some(node);
+        }
+        // Fall back to linear search
+        self.nodes.iter().find(|n| n.alias.as_deref() == Some(alias))
     }
 }
 

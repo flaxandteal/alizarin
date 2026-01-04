@@ -57,7 +57,7 @@ impl StaticTranslatableString {
 
         // Empty string fallback
         StaticTranslatableString(
-            CoreTranslatableString::from_string(String::new())
+            CoreTranslatableString::from_string("")
         )
     }
 

@@ -26,11 +26,19 @@ impl StaticTranslatableString {
     }
 
     /// Create from a simple string (assumes English)
-    pub fn from_string(s: String) -> Self {
+    pub fn from_string(s: &str) -> Self {
         let mut translations = HashMap::new();
-        translations.insert("en".to_string(), s);
+        translations.insert("en".to_string(), s.to_string());
         StaticTranslatableString {
             translations,
+            lang: "en".to_string(),
+        }
+    }
+
+    /// Create an empty translatable string
+    pub fn empty() -> Self {
+        StaticTranslatableString {
+            translations: HashMap::new(),
             lang: "en".to_string(),
         }
     }

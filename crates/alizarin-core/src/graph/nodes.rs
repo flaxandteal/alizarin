@@ -41,6 +41,13 @@ pub struct StaticNode {
     pub istopnode: bool,
     #[serde(default)]
     pub sourcebranchpublication_id: Option<String>,
+    // Arches-HER 2.0+ fields
+    /// Source identifier for import/export tracking
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_identifier_id: Option<String>,
+    /// Whether node is immutable
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_immutable: Option<bool>,
 }
 
 impl StaticNode {
@@ -79,6 +86,10 @@ pub struct StaticNodegroup {
     pub parentnodegroup_id: Option<String>,
     #[serde(default)]
     pub legacygroupid: Option<String>,
+    // Arches-HER 2.0+ fields
+    /// Reference to the grouping/semantic node for this nodegroup
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grouping_node_id: Option<String>,
 }
 
 impl StaticNodegroup {
@@ -103,6 +114,10 @@ pub struct StaticEdge {
     pub ontologyproperty: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
+    // Arches-HER 2.0+ fields
+    /// Source identifier for import/export tracking
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_identifier_id: Option<String>,
 }
 
 impl StaticEdge {
@@ -138,6 +153,8 @@ mod tests {
             issearchable: false,
             istopnode: true,
             sourcebranchpublication_id: None,
+            source_identifier_id: None,
+            is_immutable: None,
         };
         assert!(node.is_root());
     }

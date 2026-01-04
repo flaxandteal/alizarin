@@ -725,10 +725,76 @@ impl PrebuildLoader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::graph::StaticGraph;
+    use std::path::PathBuf;
 
     #[test]
     fn test_loader_not_found() {
         let result = PrebuildLoader::new("/nonexistent/path");
         assert!(matches!(result, Err(LoaderError::NotFound(_))));
+    }
+
+    #[test]
+    fn test_parse_coral_format_json() {
+        // Test parsing JSON without the new Arches-HER 2.0+ fields
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let test_path = PathBuf::from(manifest_dir)
+            .parent().unwrap()
+            .parent().unwrap()
+            .join("tests/data/models/Person.json");
+
+        let content = std::fs::read_to_string(&test_path)
+            .expect("Failed to read test JSON file");
+
+        let data: serde_json::Value = serde_json::from_str(&content)
+            .expect("Failed to parse JSON");
+
+        let graph_json = &data["graph"][0];
+
+        // Verify the old format doesn't have the new fields
+        assert!(graph_json.get("source_identifier_id").is_none() ||
+                graph_json["source_identifier_id"].is_null());
+
+        // Parse as StaticGraph - this should succeed with defaults for missing fields
+        let graph: StaticGraph = serde_json::from_value(graph_json.clone())
+            .expect("Failed to parse StaticGraph from Coral format");
+
+        assert!(!graph.graphid.is_empty());
+        assert!(graph.source_identifier_id.is_none()); // Defaults to None
+        assert!(graph.is_active.is_none()); // Defaults to None
+        assert!(!graph.nodes.is_empty());
+    }
+
+    #[test]
+    fn test_parse_arches_her_format_json() {
+        // Test parsing JSON with the new Arches-HER 2.0+ fields
+        let json = r#"{
+            "graphid": "test-graph-id",
+            "name": {"en": "Test Graph"},
+            "nodes": [],
+            "edges": [],
+            "nodegroups": [],
+            "cards": [],
+            "cards_x_nodes_x_widgets": [],
+            "functions_x_graphs": [],
+            "root": {
+                "nodeid": "root-node-id",
+                "name": "Root Node",
+                "datatype": "semantic",
+                "graph_id": "test-graph-id"
+            },
+            "source_identifier_id": "some-source-id",
+            "is_active": true,
+            "has_unpublished_changes": false,
+            "is_copy_immutable": false
+        }"#;
+
+        let graph: StaticGraph = serde_json::from_str(json)
+            .expect("Failed to parse StaticGraph with Arches-HER fields");
+
+        assert_eq!(graph.graphid, "test-graph-id");
+        assert_eq!(graph.source_identifier_id, Some("some-source-id".to_string()));
+        assert_eq!(graph.is_active, Some(true));
+        assert_eq!(graph.has_unpublished_changes, Some(false));
     }
 }

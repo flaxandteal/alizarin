@@ -133,6 +133,7 @@ impl ResourceModelWrapperCore {
                         legacygroupid: None,
                         nodegroupid: nodegroup_id.clone(),
                         parentnodegroup_id: None,
+                        grouping_node_id: None,
                     }));
                 }
             }
