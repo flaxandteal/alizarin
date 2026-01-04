@@ -7,6 +7,7 @@
 /// - Other languages via C FFI
 
 pub mod graph;
+pub mod graph_mutator;
 pub mod interner;
 pub mod json_conversion;
 pub mod label_resolution;
@@ -80,3 +81,25 @@ pub use pseudo_value_core::{
 
 // RDM cache types
 pub use rdm_cache::{RdmCache, RdmCollection, RdmConcept};
+
+// Graph mutator types (builder pattern for graph construction)
+pub use graph_mutator::{
+    // Builder and options
+    GraphMutator, MutatorOptions,
+    // Mutation types (Command pattern)
+    GraphMutation, AddNodeParams, AddNodegroupParams, AddEdgeParams,
+    AddCardParams, AddWidgetParams, NodeOptions, CardOptions,
+    // Extension mutations
+    ExtensionMutationParams, ExtensionMutationHandler, ExtensionMutationRegistry,
+    MutationCompliance,
+    // JSON-based mutation API
+    MutationRequest, MutationRequestOptions,
+    apply_mutations_from_json, apply_mutations, mutations_to_json, get_mutation_schema,
+    // Extension-aware mutation API
+    apply_mutations_with_extensions, apply_mutations_from_json_with_extensions,
+    // Widget types
+    Widget, CardComponent, default_card_component,
+    get_default_widget_for_datatype, WIDGETS, DEFAULT_CARD_COMPONENT_ID,
+    // Utilities
+    Cardinality, MutationError, generate_uuid_v5,
+};

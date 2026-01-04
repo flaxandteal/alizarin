@@ -35,6 +35,10 @@ pub struct StaticCardsXNodesXWidgets {
     pub sortorder: Option<i32>,
     pub visible: bool,
     pub widget_id: String,
+    // Arches-HER 2.0+ fields
+    /// Source identifier for import/export tracking
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_identifier_id: Option<String>,
 }
 
 /// Mapping between functions and graphs
@@ -73,4 +77,8 @@ pub struct StaticCard {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sortorder: Option<i32>,
     pub visible: bool,
+    // Arches-HER 2.0+ fields
+    /// Source identifier for import/export tracking
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_identifier_id: Option<String>,
 }

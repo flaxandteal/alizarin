@@ -337,6 +337,19 @@ except (ImportError, AttributeError):
     pass
 
 # =============================================================================
+# Graph Mutation API (JSON-based mutations)
+# =============================================================================
+
+from . import alizarin as _alizarin_rust
+apply_mutations_from_json = _alizarin_rust.apply_mutations_from_json
+apply_mutations_with_extensions = _alizarin_rust.apply_mutations_with_extensions
+register_extension_mutation = _alizarin_rust.register_extension_mutation
+has_extension_mutation = _alizarin_rust.has_extension_mutation
+list_extension_mutations = _alizarin_rust.list_extension_mutations
+generate_uuid_v5 = _alizarin_rust.generate_uuid_v5
+get_mutation_schema = _alizarin_rust.get_mutation_schema
+
+# =============================================================================
 # RDM (Reference Data Manager) Cache
 # =============================================================================
 
@@ -478,4 +491,12 @@ __all__ = [
     "resolve_labels",
     "get_needed_collections",
     "is_valid_uuid",
+    # Graph Mutation API
+    "apply_mutations_from_json",
+    "apply_mutations_with_extensions",
+    "register_extension_mutation",
+    "has_extension_mutation",
+    "list_extension_mutations",
+    "generate_uuid_v5",
+    "get_mutation_schema",
 ]

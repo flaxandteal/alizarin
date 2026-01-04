@@ -1,10 +1,10 @@
 //! Alizarin Extension API
 //!
 //! This crate defines the C ABI types and function signatures for Alizarin extensions.
-//! Extensions can implement custom datatype handlers that are called directly from Rust
-//! without crossing the Python/WASM boundary at runtime.
+//! Extensions can implement custom datatype handlers and graph mutations that are called
+//! directly from Rust without crossing the Python/WASM boundary at runtime.
 //!
-//! # Usage
+//! # Type Coercion Handlers
 //!
 //! Extensions implement coercion handlers and register them via PyCapsule at import time.
 //! The handlers are then called directly from Rust during tile processing.
@@ -13,6 +13,12 @@
 //!
 //! Extensions can optionally implement a display renderer to convert resolved values
 //! to human-readable strings. This is used by `toDisplayJson()` for export/indexing.
+//!
+//! # Custom Mutations
+//!
+//! Extensions can define custom graph mutations (e.g., `clm.reference_change_collection`)
+//! that integrate with the graph mutator system. Use `MutationHandlerInfo` to register
+//! mutation handlers that receive graph and params as JSON and return a mutated graph.
 
 use std::ffi::c_void;
 
@@ -305,6 +311,161 @@ pub unsafe extern "C" fn alizarin_free_coerce_result(result: CoerceResult) {
     }
 }
 
+// =============================================================================
+// Extension Mutation API
+// =============================================================================
+
+/// Result of a mutation operation
+///
+/// All pointers are owned by the extension and must be freed via `free_mutation_fn`.
+#[repr(C)]
+pub struct MutationResult {
+    /// Success flag
+    pub success: bool,
+
+    /// Error message (null if success)
+    pub error_ptr: *mut u8,
+    pub error_len: usize,
+}
+
+impl MutationResult {
+    /// Create a successful result
+    pub fn success() -> Self {
+        MutationResult {
+            success: true,
+            error_ptr: std::ptr::null_mut(),
+            error_len: 0,
+        }
+    }
+
+    /// Create an error result
+    pub fn error(message: String) -> Self {
+        let bytes = message.into_bytes();
+        let len = bytes.len();
+        let ptr = Box::into_raw(bytes.into_boxed_slice()) as *mut u8;
+
+        MutationResult {
+            success: false,
+            error_ptr: ptr,
+            error_len: len,
+        }
+    }
+
+    /// Check if this result is an error
+    pub fn is_error(&self) -> bool {
+        !self.success
+    }
+}
+
+/// Compliance level for mutations (must match alizarin-core's MutationCompliance)
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MutationComplianceLevel {
+    /// Valid for both branches and resource models
+    AlwaysCompliant = 0,
+    /// Valid only for branches (isresource=false)
+    BranchCompliant = 1,
+    /// Valid only for resource models (isresource=true)
+    ModelCompliant = 2,
+    /// Not compliant with standard workflows
+    NonCompliant = 3,
+}
+
+/// Function signature for mutation handlers
+///
+/// # Arguments
+/// * `graph_ptr` - JSON string of the graph to mutate
+/// * `graph_len` - Length of graph JSON
+/// * `params_ptr` - JSON string of mutation parameters
+/// * `params_len` - Length of params JSON
+/// * `output_ptr` - Output pointer for mutated graph JSON (caller allocates)
+/// * `output_len` - Output pointer for mutated graph JSON length
+///
+/// # Returns
+/// * `MutationResult` - Success or error
+///
+/// # Note
+/// The handler receives the graph as JSON, applies the mutation, and writes
+/// the mutated graph JSON back via output_ptr. The caller is responsible for
+/// freeing the output.
+pub type MutationHandlerFn = unsafe extern "C" fn(
+    graph_ptr: *const u8,
+    graph_len: usize,
+    params_ptr: *const u8,
+    params_len: usize,
+    output_ptr: *mut *mut u8,
+    output_len: *mut usize,
+) -> MutationResult;
+
+/// Function signature for freeing MutationResult
+pub type FreeMutationResultFn = unsafe extern "C" fn(result: MutationResult);
+
+/// Function signature for freeing mutation output
+pub type FreeMutationOutputFn = unsafe extern "C" fn(ptr: *mut u8, len: usize);
+
+/// Mutation handler registration info passed via PyCapsule
+#[repr(C)]
+pub struct MutationHandlerInfo {
+    /// Mutation name (e.g., "clm.reference_change_collection")
+    pub mutation_name_ptr: *const u8,
+    pub mutation_name_len: usize,
+
+    /// Handler function (required)
+    pub handler_fn: MutationHandlerFn,
+
+    /// Free function for MutationResult (required)
+    pub free_result_fn: FreeMutationResultFn,
+
+    /// Free function for mutation output (required)
+    pub free_output_fn: FreeMutationOutputFn,
+
+    /// Default compliance level for this mutation
+    pub compliance: MutationComplianceLevel,
+
+    /// Opaque data pointer (for extension use)
+    pub user_data: *mut c_void,
+}
+
+impl MutationHandlerInfo {
+    /// Create a new mutation handler info
+    pub fn new(
+        mutation_name: &'static str,
+        handler_fn: MutationHandlerFn,
+        free_result_fn: FreeMutationResultFn,
+        free_output_fn: FreeMutationOutputFn,
+        compliance: MutationComplianceLevel,
+    ) -> Self {
+        MutationHandlerInfo {
+            mutation_name_ptr: mutation_name.as_ptr(),
+            mutation_name_len: mutation_name.len(),
+            handler_fn,
+            free_result_fn,
+            free_output_fn,
+            compliance,
+            user_data: std::ptr::null_mut(),
+        }
+    }
+}
+
+/// Standard free function for MutationResult
+#[no_mangle]
+pub unsafe extern "C" fn alizarin_free_mutation_result(result: MutationResult) {
+    if !result.error_ptr.is_null() {
+        let _ = Box::from_raw(std::slice::from_raw_parts_mut(
+            result.error_ptr,
+            result.error_len,
+        ));
+    }
+}
+
+/// Standard free function for mutation output
+#[no_mangle]
+pub unsafe extern "C" fn alizarin_free_mutation_output(ptr: *mut u8, len: usize) {
+    if !ptr.is_null() {
+        let _ = Box::from_raw(std::slice::from_raw_parts_mut(ptr, len));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,5 +493,32 @@ mod tests {
 
         // Clean up
         unsafe { alizarin_free_coerce_result(result) };
+    }
+
+    #[test]
+    fn test_mutation_result_success() {
+        let result = MutationResult::success();
+        assert!(!result.is_error());
+        assert!(result.success);
+        assert!(result.error_ptr.is_null());
+    }
+
+    #[test]
+    fn test_mutation_result_error() {
+        let result = MutationResult::error("Mutation failed".to_string());
+        assert!(result.is_error());
+        assert!(!result.success);
+        assert!(!result.error_ptr.is_null());
+
+        // Clean up
+        unsafe { alizarin_free_mutation_result(result) };
+    }
+
+    #[test]
+    fn test_mutation_compliance_levels() {
+        assert_eq!(MutationComplianceLevel::AlwaysCompliant as u8, 0);
+        assert_eq!(MutationComplianceLevel::BranchCompliant as u8, 1);
+        assert_eq!(MutationComplianceLevel::ModelCompliant as u8, 2);
+        assert_eq!(MutationComplianceLevel::NonCompliant as u8, 3);
     }
 }

@@ -242,8 +242,8 @@ Arches → Tiles → Layer 1 (Rust) → Layer 2 (Python objects) → Layer 3 (JS
 
 6. **Renderers**
    - `MarkdownRenderer`
-   - `JsonRenderer`
    - `FlatMarkdownRenderer`
+   - Note: JSON rendering is handled by `toDisplayJson` in core
 
 ### Low Priority
 

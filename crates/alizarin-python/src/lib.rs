@@ -10,6 +10,7 @@
 
 use pyo3::prelude::*;
 
+mod graph_mutator_py;
 mod node_config_py;
 mod pseudo_value_py;
 mod rdm_cache_py;
@@ -929,6 +930,9 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
 
     // Rust-backed pseudo values (single source of truth for matching_entries)
     pseudo_value_py::register_module(m)?;
+
+    // Graph mutation API (JSON-based)
+    graph_mutator_py::register_module(m)?;
 
     Ok(())
 }
