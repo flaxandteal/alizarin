@@ -453,9 +453,10 @@ fn batch_trees_to_tiles(
         "error_count": errors.len()
     });
 
-    let json_module = py.import("json")?;
-    let py_dict = json_module.call_method1("loads", (serde_json::to_string(&output).unwrap(),))?;
-    Ok(py_dict.to_object(py))
+    pythonize::pythonize(py, &output)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to convert to Python: {}", e)
+        ))
 }
 
 /// Batch convert multiple tiled resources to JSON trees in parallel
@@ -543,9 +544,10 @@ fn batch_tiles_to_trees(
             "count": successes.len()
         });
 
-        let json_module = py.import("json")?;
-        let py_dict = json_module.call_method1("loads", (serde_json::to_string(&output).unwrap(),))?;
-        return Ok(py_dict.to_object(py));
+        return pythonize::pythonize(py, &output)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                format!("Failed to convert to Python: {}", e)
+            ));
     }
 
     // Non-strict: separate successes and errors
@@ -562,9 +564,10 @@ fn batch_tiles_to_trees(
         })
     };
 
-    let json_module = py.import("json")?;
-    let py_dict = json_module.call_method1("loads", (serde_json::to_string(&output).unwrap(),))?;
-    Ok(py_dict.to_object(py))
+    pythonize::pythonize(py, &output)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to convert to Python: {}", e)
+        ))
 }
 
 /// Convert a camelCase string to snake_case
