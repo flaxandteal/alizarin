@@ -19,5 +19,6 @@ alizarin-extension-api = { path = "../alizarin-extension-api" }
 lazy_static = "1.4"
 rayon = "1.10"
 regex = "1.10"
+pythonize = "0.21"
 
 [dev-dependencies]
