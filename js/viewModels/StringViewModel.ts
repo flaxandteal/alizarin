@@ -33,7 +33,7 @@ export class StringViewModel extends String implements IViewModel {
   }
 
   forJson(): string {
-    return `${this}`;
+    return this.toString();
   }
 
   lang(language: string) {
