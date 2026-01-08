@@ -67,6 +67,22 @@ jobs:
       - name: Build TypeScript/JavaScript bundle
         run: npm run build
 
+      # Build @alizarin/clm extension
+      - name: Install @alizarin/clm dependencies
+        working-directory: ext/js/@alizarin/clm
+        run: npm install
+
+      - name: Build @alizarin/clm
+        working-directory: ext/js/@alizarin/clm
+        run: npm run build
+
+      - name: Create @alizarin/clm tarball
+        working-directory: ext/js/@alizarin/clm
+        run: |
+          npm pack
+          # Move to root so it's found by the release upload
+          mv alizarin-clm-*.tgz ../../../../
+
       - name: Verify build artifacts
         run: |
           echo "Checking dist directory:"
@@ -74,6 +90,12 @@ jobs:
           echo ""
           echo "Checking pkg directory:"
           ls -lh pkg/
+          echo ""
+          echo "Checking @alizarin/clm dist directory:"
+          ls -lh ext/js/@alizarin/clm/dist/
+          echo ""
+          echo "Checking tarballs in root:"
+          ls -lh *.tgz || echo "No tarballs yet"
           echo ""
           echo "Checking package.json files array includes required directories"
           cat package.json | grep -A 5 '"files"'
@@ -129,12 +151,31 @@ jobs:
             npm install https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/alizarin-${{ steps.get_version.outputs.version }}.tgz
             ```
 
+            ### @alizarin/clm (CLM Extension)
+
+            To use CLM display serializers (for reference/concept datatypes), install the extension:
+
+            ```bash
+            npm install https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/alizarin-clm-0.1.0.tgz
+            ```
+
+            Then import it to register the display serializers:
+
+            ```typescript
+            import '@alizarin/clm';
+            ```
+
             ## What's Included
 
+            **alizarin:**
             - Pre-built WASM binary (`pkg/`)
             - Bundled JavaScript/TypeScript distribution (`dist/`)
             - Type definitions
             - Source maps
+
+            **@alizarin/clm:**
+            - Display serializers for CLM reference datatypes
+            - Auto-registers when imported
 
             ## Changes
 
