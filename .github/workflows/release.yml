@@ -156,7 +156,7 @@ jobs:
             To use CLM display serializers (for reference/concept datatypes), install the extension:
 
             ```bash
-            npm install https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/alizarin-clm-0.1.0.tgz
+            npm install https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/alizarin-clm-${{ steps.get_version.outputs.version }}.tgz
             ```
 
             Then import it to register the display serializers:

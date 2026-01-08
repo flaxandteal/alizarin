@@ -67,5 +67,19 @@ for py_init in "$ROOT_DIR"/python/*/alizarin/__init__.py "$ROOT_DIR"/crates/aliz
     fi
 done
 
+# Update @alizarin/clm extension package.json (version and peerDependencies)
+CLM_PKG="$ROOT_DIR/ext/js/@alizarin/clm/package.json"
+if [ -f "$CLM_PKG" ]; then
+    node -e "
+        const fs = require('fs');
+        const pkg = JSON.parse(fs.readFileSync('$CLM_PKG', 'utf8'));
+        pkg.version = '$VERSION';
+        pkg.peerDependencies = pkg.peerDependencies || {};
+        pkg.peerDependencies.alizarin = '$VERSION';
+        fs.writeFileSync('$CLM_PKG', JSON.stringify(pkg, null, 2) + '\n');
+    "
+    echo "  ✓ ext/js/@alizarin/clm/package.json (version + peerDependencies)"
+fi
+
 echo ""
 echo "Version synced to $VERSION"
