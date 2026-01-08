@@ -2244,53 +2244,61 @@ impl StaticGraph {
 }
 
 // Rust-internal methods (not exposed to JS) - delegate to core
+// Many of these are used only in tests
 impl StaticGraph {
     // Accessors for json_conversion module - return core types
+    #[allow(dead_code)] // Used in tests
     pub(crate) fn nodes_slice(&self) -> &[alizarin_core::StaticNode] {
         self.0.nodes_slice()
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Used in tests
     pub(crate) fn nodegroups_slice(&self) -> &[alizarin_core::StaticNodegroup] {
         self.0.nodegroups_slice()
     }
 
+    #[allow(dead_code)] // Available for internal use
     pub(crate) fn root_node(&self) -> &alizarin_core::StaticNode {
         self.0.root_node()
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Used in tests
     pub(crate) fn graph_id(&self) -> &str {
         self.0.graph_id()
     }
 
     /// Build the internal lookup indices (for use after deserialization)
+    #[allow(dead_code)] // Used internally via self.0.build_indices()
     pub(crate) fn build_indices(&mut self) {
         self.0.build_indices()
     }
 
     /// Get cached edges map (parent_nodeid -> child_nodeids)
+    #[allow(dead_code)] // Available for internal use
     pub(crate) fn edges_map(&self) -> Option<&std::collections::HashMap<String, Vec<String>>> {
         self.0.edges_map()
     }
 
     /// Get child node IDs for a given node
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Available for internal use
     pub(crate) fn get_child_ids(&self, node_id: &str) -> Option<&Vec<String>> {
         self.0.get_child_ids(node_id)
     }
 
     /// Get nodegroup by ID
+    #[allow(dead_code)] // Available for internal use
     pub(crate) fn get_nodegroup_by_id(&self, nodegroup_id: &str) -> Option<&alizarin_core::StaticNodegroup> {
         self.0.get_nodegroup_by_id(nodegroup_id)
     }
 
     /// Get nodes in a specific nodegroup
+    #[allow(dead_code)] // Available for internal use
     pub(crate) fn get_nodes_in_nodegroup(&self, nodegroup_id: &str) -> Vec<&alizarin_core::StaticNode> {
         self.0.get_nodes_in_nodegroup(nodegroup_id)
     }
 
     /// Get Arc-wrapped nodes by alias map (for pseudo_value infrastructure)
+    #[allow(dead_code)] // Available for internal use
     pub(crate) fn nodes_by_alias_arc(&self) -> Option<&std::collections::HashMap<String, std::sync::Arc<alizarin_core::StaticNode>>> {
         self.0.nodes_by_alias_arc()
     }

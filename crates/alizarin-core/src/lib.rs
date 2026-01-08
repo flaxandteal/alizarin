@@ -27,6 +27,8 @@ pub use graph::{
     StaticConstraint, StaticPublication, StaticCardsXNodesXWidgets, StaticFunctionsXGraphs,
     StaticCard, StaticTile, StaticResourceDescriptors, StaticResourceMetadata,
     StaticResourceSummary, StaticResourceReference, StaticResource,
+    // Resource merging
+    MergeResult, BatchMergeResult, merge_resources, batch_merge_resources,
 };
 
 // Loader
@@ -89,6 +91,7 @@ pub use label_resolution::{
 // JSON conversion (tiles <-> tree)
 pub use json_conversion::{
     tiles_to_tree, tree_to_tiles, tree_to_tiles_strict,
+    tree_to_tiles_with_id_key, tree_to_tiles_strict_with_id_key,
     BusinessData, BusinessDataWrapper, create_static_resource,
 };
 

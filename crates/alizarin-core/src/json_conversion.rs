@@ -20,6 +20,7 @@ use crate::pseudo_value_core::{
 use crate::{StaticTile, StaticNode};
 use crate::graph::{StaticResource, StaticResourceMetadata};
 use crate::type_coercion::coerce_value;
+use crate::graph_mutator::generate_uuid_v5;
 
 /// Wrapper for business data import/export format
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,13 +192,23 @@ fn extract_resources(input: &Value) -> Result<Vec<StaticResource>, String> {
 }
 
 /// Build pseudo_cache from tiles
+///
+/// This also creates synthetic entries for parent semantic collector nodes
+/// when their child nodegroups have tiles but the parent nodegroup doesn't.
 fn build_pseudo_cache_from_tiles(
     tiles: &[StaticTile],
     nodes_by_alias: &HashMap<String, Arc<StaticNode>>,
     graph: &StaticGraph,
     edges: &HashMap<String, Vec<String>>,
 ) -> HashMap<String, PseudoListCore> {
+    use std::collections::HashSet;
+
     let mut pseudo_cache: HashMap<String, PseudoListCore> = HashMap::new();
+
+    // Track which nodegroups have tiles
+    let nodegroups_with_tiles: HashSet<&str> = tiles.iter()
+        .map(|t| t.nodegroup_id.as_str())
+        .collect();
 
     for tile in tiles {
         let tile_arc = Arc::new(tile.clone());
@@ -250,6 +261,86 @@ fn build_pseudo_cache_from_tiles(
                     )
                 });
         }
+
+        // Create synthetic entries for parent semantic collector nodes
+        // Walk up the parentnodegroup_id chain and create entries for
+        // semantic collectors that don't have their own tiles
+        let mut current_ng_id = Some(tile.nodegroup_id.clone());
+
+        while let Some(ng_id) = current_ng_id {
+            let nodegroup = match graph.get_nodegroup_by_id(&ng_id) {
+                Some(ng) => ng,
+                None => break,
+            };
+
+            // Get parent nodegroup
+            let parent_ng_id = match &nodegroup.parentnodegroup_id {
+                Some(pid) => pid.clone(),
+                None => break, // No parent, we're done
+            };
+
+            // Check if parent nodegroup already has tiles
+            if nodegroups_with_tiles.contains(parent_ng_id.as_str()) {
+                // Parent has tiles, skip up to grandparent
+                current_ng_id = Some(parent_ng_id);
+                continue;
+            }
+
+            // Check if we already created an entry for the parent
+            let parent_nodegroup = match graph.get_nodegroup_by_id(&parent_ng_id) {
+                Some(ng) => ng,
+                None => break,
+            };
+
+            // Find the grouping/semantic node for the parent nodegroup
+            // This is the node that acts as the semantic collector
+            let grouping_node_id = parent_nodegroup.grouping_node_id.as_ref()
+                .unwrap_or(&parent_ng_id); // Fallback to nodegroup_id if not set
+
+            // Find the semantic collector node
+            let semantic_node = graph.nodes_slice()
+                .iter()
+                .find(|n| n.nodeid == *grouping_node_id);
+
+            if let Some(semantic_node) = semantic_node {
+                if let Some(ref alias) = semantic_node.alias {
+                    if !alias.is_empty() && !pseudo_cache.contains_key(alias) {
+                        // Create a synthetic pseudo value for this semantic collector
+                        let child_node_ids = edges.get(&semantic_node.nodeid)
+                            .cloned()
+                            .unwrap_or_default();
+
+                        let node_arc = nodes_by_alias.get(alias)
+                            .map(Arc::clone)
+                            .unwrap_or_else(|| Arc::new(semantic_node.clone()));
+
+                        // Create with no tile - this is a synthetic entry
+                        let pv = PseudoValueCore::from_node_and_tile(
+                            node_arc,
+                            None, // No tile for synthetic collectors
+                            None, // No tile data
+                            child_node_ids,
+                        );
+
+                        let is_single = parent_nodegroup.cardinality.as_ref()
+                            .map(|c| c != "n")
+                            .unwrap_or(true);
+
+                        pseudo_cache.insert(
+                            alias.clone(),
+                            PseudoListCore::from_values_with_cardinality(
+                                alias.clone(),
+                                vec![pv],
+                                is_single,
+                            )
+                        );
+                    }
+                }
+            }
+
+            // Continue up to grandparent
+            current_ng_id = Some(parent_ng_id);
+        }
     }
 
     pseudo_cache
@@ -266,7 +357,7 @@ pub fn tree_to_tiles(
     json: &Value,
     graph: &StaticGraph,
 ) -> Result<BusinessDataWrapper, String> {
-    tree_to_tiles_internal(json, graph, false)
+    tree_to_tiles_internal(json, graph, false, None)
 }
 
 /// Convert with strict validation (fails on unknown fields)
@@ -274,20 +365,48 @@ pub fn tree_to_tiles_strict(
     json: &Value,
     graph: &StaticGraph,
 ) -> Result<BusinessDataWrapper, String> {
-    tree_to_tiles_internal(json, graph, true)
+    tree_to_tiles_internal(json, graph, true, None)
+}
+
+/// Convert tree to tiles with optional deterministic ID generation
+///
+/// When `id_key` is provided and the tree does not contain a `resourceinstanceid`,
+/// a deterministic UUID v5 will be generated using the key and graph ID as namespace.
+/// This enables consistent IDs across multiple runs with the same input.
+///
+/// # Arguments
+/// * `json` - Tree structure to convert
+/// * `graph` - Graph definition
+/// * `id_key` - Optional key for deterministic UUID v5 generation
+pub fn tree_to_tiles_with_id_key(
+    json: &Value,
+    graph: &StaticGraph,
+    id_key: Option<&str>,
+) -> Result<BusinessDataWrapper, String> {
+    tree_to_tiles_internal(json, graph, false, id_key)
+}
+
+/// Convert with strict validation and optional deterministic ID
+pub fn tree_to_tiles_strict_with_id_key(
+    json: &Value,
+    graph: &StaticGraph,
+    id_key: Option<&str>,
+) -> Result<BusinessDataWrapper, String> {
+    tree_to_tiles_internal(json, graph, true, id_key)
 }
 
 fn tree_to_tiles_internal(
     json: &Value,
     graph: &StaticGraph,
     strict: bool,
+    id_key: Option<&str>,
 ) -> Result<BusinessDataWrapper, String> {
     let trees = extract_tree_resources(json)?;
 
     let mut resources = Vec::new();
 
     for tree in trees {
-        let resource = single_tree_to_resource(&tree, graph, strict)?;
+        let resource = single_tree_to_resource(&tree, graph, strict, id_key)?;
         resources.push(resource);
     }
 
@@ -316,14 +435,22 @@ fn single_tree_to_resource(
     json: &Value,
     graph: &StaticGraph,
     strict: bool,
+    id_key: Option<&str>,
 ) -> Result<StaticResource, String> {
     let obj = json.as_object()
         .ok_or_else(|| "JSON must be an object".to_string())?;
 
     // Extract metadata from tree
+    // Priority: explicit resourceinstanceid > id_key (UUID v5) > random UUID v4
     let resource_id = obj.get("resourceinstanceid")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
+        .or_else(|| {
+            // If id_key provided, generate deterministic UUID v5
+            id_key.map(|key| {
+                generate_uuid_v5(("resource", Some(&graph.graphid)), key)
+            })
+        })
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     let graph_id = obj.get("graph_id")
@@ -351,7 +478,6 @@ fn single_tree_to_resource(
     }
 
     let mut pseudo_cache: HashMap<String, PseudoListCore> = HashMap::new();
-    let mut tile_counter: u32 = 0;
 
     let root = graph.root_node();
     build_pseudo_values_from_json(
@@ -363,7 +489,6 @@ fn single_tree_to_resource(
         &resource_id,
         None,
         &mut pseudo_cache,
-        &mut tile_counter,
         strict,
     )?;
 
@@ -436,7 +561,6 @@ fn build_pseudo_values_from_json(
     resource_id: &str,
     parent_tile: Option<Arc<StaticTile>>,
     pseudo_cache: &mut HashMap<String, PseudoListCore>,
-    tile_counter: &mut u32,
     strict: bool,
 ) -> Result<(), String> {
     let child_ids = edges.get(&current_node.nodeid)
@@ -523,7 +647,6 @@ fn build_pseudo_values_from_json(
                             &config_value,
                             resource_id,
                             if shares_nodegroup { parent_tile.clone() } else { None },
-                            tile_counter,
                         );
 
                         values.push(pv);
@@ -537,7 +660,6 @@ fn build_pseudo_values_from_json(
                             resource_id,
                             Some(tile),
                             pseudo_cache,
-                            tile_counter,
                             strict,
                         )?;
                     }
@@ -550,7 +672,6 @@ fn build_pseudo_values_from_json(
                         &config_value,
                         resource_id,
                         if shares_nodegroup { parent_tile.clone() } else { None },
-                        tile_counter,
                     );
                     values.push(pv);
                 }
@@ -577,7 +698,6 @@ fn build_pseudo_values_from_json(
                 &config_value,
                 resource_id,
                 if shares_nodegroup { parent_tile.clone() } else { None },
-                tile_counter,
             );
 
             values.push(pv);
@@ -591,7 +711,6 @@ fn build_pseudo_values_from_json(
                 resource_id,
                 Some(tile),
                 pseudo_cache,
-                tile_counter,
                 strict,
             )?;
         } else {
@@ -603,7 +722,6 @@ fn build_pseudo_values_from_json(
                 &config_value,
                 resource_id,
                 if shares_nodegroup { parent_tile.clone() } else { None },
-                tile_counter,
             );
             values.push(pv);
         }
@@ -633,11 +751,9 @@ fn create_pseudo_value_from_json(
     config: &Option<Value>,
     resource_id: &str,
     shared_tile: Option<Arc<StaticTile>>,
-    tile_counter: &mut u32,
 ) -> (PseudoValueCore, Arc<StaticTile>) {
     let tile = shared_tile.unwrap_or_else(|| {
-        *tile_counter += 1;
-        let tile_id = format!("new_tile_{}", tile_counter);
+        let tile_id = uuid::Uuid::new_v4().to_string();
 
         let mut new_tile = StaticTile::new_empty(nodegroup_id.to_string());
         new_tile.tileid = Some(tile_id);
@@ -673,11 +789,9 @@ fn create_pseudo_value_from_leaf(
     config: &Option<Value>,
     resource_id: &str,
     shared_tile: Option<Arc<StaticTile>>,
-    tile_counter: &mut u32,
 ) -> (PseudoValueCore, Arc<StaticTile>) {
     let tile = shared_tile.unwrap_or_else(|| {
-        *tile_counter += 1;
-        let tile_id = format!("new_tile_{}", tile_counter);
+        let tile_id = uuid::Uuid::new_v4().to_string();
 
         let mut new_tile = StaticTile::new_empty(nodegroup_id.to_string());
         new_tile.tileid = Some(tile_id);
@@ -927,5 +1041,207 @@ mod tests {
             "Expected nested 'resourceinstance', got: {}", json);
         assert!(parsed.get("resourceinstanceid").is_none(),
             "Should NOT have 'resourceinstanceid' at root level, got: {}", json);
+    }
+
+    /// Test that parent semantic collectors appear in output even when
+    /// only child nodegroups have tiles (like location_data -> Geometry)
+    #[test]
+    fn test_parent_semantic_collector_without_tile() {
+        // Create graph from JSON - simpler than constructing manually
+        let graph_json = serde_json::json!({
+            "graphid": "test-graph",
+            "name": {"en": "Test Graph"},
+            "root": {
+                "nodeid": "root-id",
+                "name": "Heritage Item",
+                "alias": "heritage_item",
+                "datatype": "semantic",
+                "graph_id": "test-graph",
+                "istopnode": true
+            },
+            "nodes": [
+                {
+                    "nodeid": "root-id",
+                    "name": "Heritage Item",
+                    "alias": "heritage_item",
+                    "datatype": "semantic",
+                    "graph_id": "test-graph",
+                    "istopnode": true
+                },
+                {
+                    "nodeid": "location-data-id",
+                    "name": "Location Data",
+                    "alias": "location_data",
+                    "datatype": "semantic",
+                    "nodegroup_id": "parent-ng",
+                    "graph_id": "test-graph",
+                    "is_collector": true
+                },
+                {
+                    "nodeid": "geometry-id",
+                    "name": "Geometry",
+                    "alias": "geometry",
+                    "datatype": "semantic",
+                    "nodegroup_id": "child-ng",
+                    "graph_id": "test-graph"
+                },
+                {
+                    "nodeid": "geospatial-id",
+                    "name": "Geospatial Coordinates",
+                    "alias": "geospatial_coordinates",
+                    "datatype": "geojson-feature-collection",
+                    "nodegroup_id": "child-ng",
+                    "graph_id": "test-graph"
+                }
+            ],
+            "nodegroups": [
+                {
+                    "nodegroupid": "parent-ng",
+                    "cardinality": "1",
+                    "grouping_node_id": "location-data-id"
+                },
+                {
+                    "nodegroupid": "child-ng",
+                    "cardinality": "1",
+                    "parentnodegroup_id": "parent-ng",
+                    "grouping_node_id": "geometry-id"
+                }
+            ],
+            "edges": [
+                {"edgeid": "edge-1", "domainnode_id": "root-id", "rangenode_id": "location-data-id"},
+                {"edgeid": "edge-2", "domainnode_id": "location-data-id", "rangenode_id": "geometry-id"},
+                {"edgeid": "edge-3", "domainnode_id": "geometry-id", "rangenode_id": "geospatial-id"}
+            ]
+        });
+
+        let mut graph: StaticGraph = serde_json::from_value(graph_json)
+            .expect("Failed to deserialize graph");
+        graph.build_indices();
+
+        // Create a tile ONLY for the child nodegroup (child-ng), not for parent-ng
+        let mut tile = StaticTile::new_empty("child-ng".to_string());
+        tile.resourceinstance_id = "test-resource".to_string();
+        tile.tileid = Some("tile-1".to_string());
+        tile.data.insert(
+            "geospatial-id".to_string(),
+            serde_json::json!({
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [151.84, -26.54]
+                }
+            })
+        );
+
+        let business_data = serde_json::json!({
+            "business_data": {
+                "resources": [{
+                    "resourceinstance": {
+                        "resourceinstanceid": "test-resource",
+                        "graph_id": "test-graph",
+                        "name": "Test Resource",
+                        "descriptors": {}
+                    },
+                    "tiles": [tile]
+                }]
+            }
+        });
+
+        // Debug: check what nodes are in the child nodegroup
+        let nodes_in_child_ng = graph.get_nodes_in_nodegroup("child-ng");
+        println!("Nodes in child-ng: {:?}", nodes_in_child_ng.iter().map(|n| &n.alias).collect::<Vec<_>>());
+
+        // Debug: check edges
+        let edges = graph.edges_map().unwrap();
+        println!("Edges: {:?}", edges);
+
+        // Debug: check nodes_by_alias
+        let nodes_by_alias = graph.nodes_by_alias_arc().unwrap();
+        println!("Nodes by alias: {:?}", nodes_by_alias.keys().collect::<Vec<_>>());
+
+        let tree = tiles_to_tree(&business_data, &graph)
+            .expect("tiles_to_tree failed");
+
+        println!("Tree output:\n{}", serde_json::to_string_pretty(&tree).unwrap());
+
+        let resources = tree.as_array().expect("Should be array");
+        assert_eq!(resources.len(), 1);
+
+        let resource = &resources[0];
+
+        // The key test: location_data should appear even though it has no tile
+        assert!(
+            resource.get("location_data").is_some(),
+            "location_data should appear in output even without its own tile. Got: {}",
+            serde_json::to_string_pretty(resource).unwrap()
+        );
+
+        // And geometry should be nested under it
+        let location_data = resource.get("location_data").unwrap();
+        assert!(
+            location_data.get("geometry").is_some(),
+            "geometry should be nested under location_data. Got: {}",
+            serde_json::to_string_pretty(location_data).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_tree_to_tiles_with_id_key_deterministic() {
+        let graph = load_group_graph();
+
+        // Tree without resourceinstanceid
+        let tree = serde_json::json!({
+            "basic_info": [{
+                "name": {"en": "Test"},
+                "description": "Test description"
+            }]
+        });
+
+        // Same id_key should produce same resourceinstanceid
+        let result1 = tree_to_tiles_with_id_key(&tree, &graph, Some("my-unique-key"))
+            .expect("First conversion failed");
+        let result2 = tree_to_tiles_with_id_key(&tree, &graph, Some("my-unique-key"))
+            .expect("Second conversion failed");
+
+        let id1 = &result1.business_data.resources[0].resourceinstance.resourceinstanceid;
+        let id2 = &result2.business_data.resources[0].resourceinstance.resourceinstanceid;
+
+        assert_eq!(id1, id2, "Same id_key should produce same resourceinstanceid");
+
+        // Different id_key should produce different resourceinstanceid
+        let result3 = tree_to_tiles_with_id_key(&tree, &graph, Some("different-key"))
+            .expect("Third conversion failed");
+        let id3 = &result3.business_data.resources[0].resourceinstance.resourceinstanceid;
+
+        assert_ne!(id1, id3, "Different id_key should produce different resourceinstanceid");
+
+        // No id_key should produce random UUID (different each time is probabilistic)
+        let result4 = tree_to_tiles_with_id_key(&tree, &graph, None)
+            .expect("Fourth conversion failed");
+        let id4 = &result4.business_data.resources[0].resourceinstance.resourceinstanceid;
+
+        // Just verify it's a valid UUID format
+        assert!(uuid::Uuid::parse_str(id4).is_ok(), "Should be valid UUID");
+    }
+
+    #[test]
+    fn test_tree_to_tiles_explicit_id_takes_precedence() {
+        let graph = load_group_graph();
+
+        // Tree WITH explicit resourceinstanceid
+        let tree = serde_json::json!({
+            "resourceinstanceid": "explicit-id-123",
+            "basic_info": [{
+                "name": {"en": "Test"},
+                "description": "Test description"
+            }]
+        });
+
+        // id_key should be ignored when resourceinstanceid is present
+        let result = tree_to_tiles_with_id_key(&tree, &graph, Some("ignored-key"))
+            .expect("Conversion failed");
+        let id = &result.business_data.resources[0].resourceinstance.resourceinstanceid;
+
+        assert_eq!(id, "explicit-id-123", "Explicit resourceinstanceid should take precedence");
     }
 }

@@ -70,9 +70,6 @@ fn mark(_name: &str) {}
 #[cfg(not(target_arch = "wasm32"))]
 fn clear_marks(_name: &str) {}
 
-#[cfg(not(target_arch = "wasm32"))]
-fn measure_with_options(_name: &str, _options: &()) {}
-
 // ============================================================================
 // Span implementation
 // ============================================================================
@@ -82,6 +79,7 @@ fn measure_with_options(_name: &str, _options: &()) {}
 /// When dropped, the span automatically records a performance.measure()
 /// that can be collected by the JS tracing infrastructure.
 pub struct Span {
+    #[allow(dead_code)] // Used in WASM builds only
     name: String,
     start_mark: String,
     attributes: HashMap<String, SpanValue>,

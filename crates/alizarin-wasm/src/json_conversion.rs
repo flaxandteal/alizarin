@@ -6,7 +6,8 @@ use serde_json::Value;
 use crate::graph::StaticGraph;
 
 // Re-export core types
-pub use alizarin_core::json_conversion::{BusinessDataWrapper, BusinessData, create_static_resource};
+pub use alizarin_core::json_conversion::{BusinessData, create_static_resource};
+use alizarin_core::json_conversion::BusinessDataWrapper;
 
 /// Convert tiled resource format to nested tree structure
 ///

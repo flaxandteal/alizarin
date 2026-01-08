@@ -31,7 +31,7 @@ pub use nodes::{StaticNode, StaticNodegroup, StaticEdge};
 pub use tile::StaticTile;
 pub use cards::{StaticCard, StaticConstraint, StaticPublication, StaticCardsXNodesXWidgets, StaticFunctionsXGraphs};
 pub use descriptors::{StaticResourceDescriptors, DescriptorConfig, DescriptorTypeConfig, DESCRIPTOR_FUNCTION_ID};
-pub use resources::{StaticResource, StaticResourceMetadata, StaticResourceSummary, StaticResourceReference};
+pub use resources::{StaticResource, StaticResourceMetadata, StaticResourceSummary, StaticResourceReference, MergeResult, BatchMergeResult, merge_resources, batch_merge_resources};
 pub use meta::StaticGraphMeta;
 pub use static_graph::{StaticGraph, IndexedGraph, GraphWrapper};
 

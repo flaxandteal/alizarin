@@ -1,4 +1,4 @@
-import init, { initSync, greet, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString, getRscvTimings, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerDisplaySerializer, hasDisplaySerializer, unregisterDisplaySerializer, getRegisteredDisplaySerializers } from "../pkg/alizarin";
+import init, { initSync, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString, getRscvTimings, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerDisplaySerializer, hasDisplaySerializer, unregisterDisplaySerializer, getRegisteredDisplaySerializers } from "../pkg/alizarin";
 import { registerRustTimingGetter } from "./tracing";
 import wasmURL from "../pkg/alizarin_bg.wasm?url"
 
@@ -51,7 +51,7 @@ export async function initWasm() {
     // Check if WASM is already available (initialized by another module instance)
     try {
       // Try to use a WASM export to see if it's already initialized
-      greet();
+      new StaticTranslatableString('test');
       console.log('[alizarin] WASM already available from another module instance');
       wasmInitialized = true;
       return;
@@ -141,11 +141,6 @@ export async function initWasm() {
 
     wasmInitialized = true;
   }
-}
-
-export async function run() {
-  await initWasm();
-  greet();
 }
 
 // Re-export WASM types for use in the rest of the codebase

@@ -34,6 +34,3 @@ fn main() -> Result<(), JsValue> {
     Ok(())
 }
 
-#[wasm_bindgen]
-pub fn greet() {
-}

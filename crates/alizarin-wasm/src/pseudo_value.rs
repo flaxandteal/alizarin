@@ -6,7 +6,7 @@ use alizarin_core::{StaticNode, StaticTile, PseudoValueCore};
 use alizarin_core::node_config::NodeConfigManager;
 use alizarin_core::rdm_cache::RdmCache;
 use alizarin_core::type_serialization::{
-    serialize_value, SerializationOptions, SerializationContext, SerializationMode,
+    serialize_value, SerializationOptions, SerializationContext,
 };
 // WASM wrapper types for API boundary
 use crate::graph::StaticTile as WasmStaticTile;
@@ -56,6 +56,8 @@ pub(crate) struct PseudoValueInner {
 }
 
 // ============ Convenience accessors for core fields ============
+// These are primarily used in tests
+#[allow(dead_code)]
 impl PseudoValueInner {
     /// The graph node this value represents
     #[inline]
@@ -123,11 +125,6 @@ impl PseudoValueInner {
         self.core.independent
     }
 
-    /// Original tile reference (before any modifications)
-    #[inline]
-    pub fn original_tile(&self) -> &Option<Arc<StaticTile>> {
-        &self.core.original_tile
-    }
 }
 
 /// Internal pseudo-list data structure.
@@ -266,72 +263,6 @@ impl PseudoValueInner {
         self.core.datatype()
     }
 
-    /// Populate child node IDs from edges (metadata only, not instantiated)
-    ///
-    /// PORT: js/pseudos.ts:466 - const childNodes: Map<string, StaticNode> = model.getChildNodes(nodeObj.nodeid);
-    /// This ONLY stores the IDs, children are created lazily when accessed
-    pub fn populate_child_ids(
-        &mut self,
-        edges: &std::collections::HashMap<String, Vec<String>>,
-    ) {
-        // PORT: js/model_wrapper.rs get_child_nodes() - uses edges map
-        if let Some(child_ids) = edges.get(&self.core.node.nodeid) {
-            self.core.child_node_ids = child_ids.clone();
-        }
-    }
-
-    /// Get a child node by creating a PseudoValue for it on-demand
-    ///
-    /// PORT: Called when JS SemanticViewModel Proxy intercepts property access
-    /// PORT: js/semantic.ts:783-824 - _getChild() method
-    /// PORT: js/pseudos.ts:466-471 - child creation logic in makePseudoCls
-    pub fn get_child_by_alias(
-        &self,
-        alias: &str,
-        node_objs: &std::collections::HashMap<String, Arc<StaticNode>>,
-        edges: &std::collections::HashMap<String, Vec<String>>,
-    ) -> Option<PseudoValueInner> {
-        // PORT: js/semantic.ts:807 - rustChild = this.rust.getChildByAlias(alias)
-        // Find child node with matching alias
-        for child_id in &self.core.child_node_ids {
-            if let Some(child_node) = node_objs.get(child_id) {
-                // PORT: Check alias matches
-                if child_node.alias.as_deref() == Some(alias) {
-                    // PORT: Skip if different nodegroup (maintains nodegroup boundaries)
-                    // This prevents loading across nodegroup boundaries
-                    if child_node.nodegroup_id != self.core.node.nodegroup_id {
-                        continue;
-                    }
-
-                    // PORT: js/pseudos.ts:120,133 - tile inheritance from parent
-                    // Extract tile data for this child from parent's tile
-                    let child_tile_data = self.core.tile.as_ref()
-                        .and_then(|t| t.data.get(&child_node.nodeid))
-                        .cloned();
-
-                    // PORT: js/pseudos.ts:466 - get childNodes for the new child
-                    // Get child's child node IDs (for next level of lazy loading)
-                    let child_child_ids = edges.get(&child_node.nodeid)
-                        .cloned()
-                        .unwrap_or_default();
-
-                    // PORT: js/pseudos.ts:471 - new PseudoValue(nodeObj, tile, null, wkri, childNodes, inner)
-                    // Create child value using new() which handles inner/outer pattern
-                    return Some(PseudoValueInner::new(
-                        Arc::clone(child_node),
-                        self.core.tile.clone(), // PORT: js/pseudos.ts:120 - inherit tile
-                        child_tile_data,
-                        self.parent.clone(), // Inherit parent
-                        child_child_ids,
-                        false, // Not inner (new() will create inner if needed)
-                    ));
-                }
-            }
-        }
-
-        None
-    }
-
     /// Get the node alias
     pub fn node_alias(&self) -> Option<&str> {
         self.core.node_alias()
@@ -428,32 +359,9 @@ impl PseudoListInner {
         Self::from_values_with_cardinality(node.alias.clone().unwrap_or_default(), values, is_single)
     }
 
-    /// Merge another PseudoList into this one
-    ///
-    /// PORT: js/graphManager.ts lines 992-1003 - merging logic
-    pub fn merge(&mut self, mut other: PseudoListInner) {
-        self.values.extend(other.values.drain(..));
-    }
-
     /// Get all values across
     pub fn all_values(&self) -> Vec<&PseudoValueInner> {
         self.values.iter()
-            .collect()
-    }
-
-    /// Get values from a specific tile
-    pub fn values_from_tile(&self, tile_id: Option<&str>) -> Vec<&PseudoValueInner> {
-        self.values.iter()
-            .filter(|v| {
-                match (v.core.tile.as_ref(), tile_id) {
-                    // Both have tiles - compare tile IDs
-                    (Some(tile), Some(id)) => tile.tileid.as_deref() == Some(id),
-                    // Looking for values without a tile
-                    (None, None) => true,
-                    // Mismatch: one has tile, other doesn't
-                    _ => false,
-                }
-            })
             .collect()
     }
 
@@ -465,9 +373,12 @@ impl PseudoListInner {
         use alizarin_core::matches_tile_filter;
         self.values.iter()
             .filter(|v| {
-                v.core.tile.as_ref()
-                    .map(|tile| matches_tile_filter(tile, parent_tile_id.as_ref(), nodegroup_id.as_ref()))
-                    .unwrap_or(false)
+                match v.core.tile.as_ref() {
+                    Some(tile) => matches_tile_filter(tile, parent_tile_id.as_ref(), nodegroup_id.as_ref()),
+                    // Synthetic entries (no tile) match when at root level
+                    // These are created for parent semantic collectors that don't have their own tiles
+                    None => parent_tile_id.is_none(),
+                }
             })
             .collect()
     }
@@ -515,24 +426,6 @@ impl<'a> VisitorContext<'a> {
         }
     }
 
-    /// Create a VisitorContext for display mode
-    pub fn display(
-        pseudo_cache: &'a HashMap<String, PseudoListInner>,
-        nodes_by_alias: &'a HashMap<String, Arc<StaticNode>>,
-        edges: &'a HashMap<String, Vec<String>>,
-        language: &str,
-    ) -> Self {
-        VisitorContext {
-            pseudo_cache,
-            nodes_by_alias,
-            edges,
-            depth: 0,
-            max_depth: 50,
-            serialization_options: SerializationOptions::display(language),
-            serialization_context: SerializationContext::empty(),
-        }
-    }
-
     /// Create a child context with incremented depth
     pub fn child(&self) -> Self {
         VisitorContext {
@@ -544,11 +437,6 @@ impl<'a> VisitorContext<'a> {
             serialization_options: self.serialization_options.clone(),
             serialization_context: SerializationContext::empty(),
         }
-    }
-
-    /// Check if we're in display mode
-    pub fn is_display(&self) -> bool {
-        self.serialization_options.mode == SerializationMode::Display
     }
 }
 
@@ -1989,143 +1877,4 @@ mod tests {
         assert!(list.is_loaded);
     }
 
-    #[test]
-    fn test_pseudo_list_tile_filtering() {
-        let node = create_test_node("TestNode");
-        let tile1 = create_test_tile("tile1");
-
-        let values = vec![
-            PseudoValueInner::from_node_and_tile(node.clone(), Some(tile1.clone()), None, vec![]),
-            PseudoValueInner::from_node_and_tile(node.clone(), Some(tile1.clone()), None, vec![]),
-            PseudoValueInner::from_node_and_tile(node.clone(), None, None, vec![]),
-        ];
-
-        let list = PseudoListInner::from_values("TestNode".to_string(), values);
-
-        let tile1_values = list.values_from_tile(Some("tile1"));
-        assert_eq!(tile1_values.len(), 2);
-
-        let null_tile_values = list.values_from_tile(None);
-        assert_eq!(null_tile_values.len(), 1);
-    }
-
-    #[test]
-    fn test_populate_child_ids() {
-        use std::collections::HashMap;
-
-        let parent_node = create_test_node("ParentNode");
-        let child1 = create_test_node("Child1");
-        let child2 = create_test_node("Child2");
-
-        let mut edges = HashMap::new();
-        edges.insert(parent_node.nodeid.clone(), vec![child1.nodeid.clone(), child2.nodeid.clone()]);
-
-        let mut parent_value = PseudoValueInner::from_node_and_tile(
-            parent_node.clone(),
-            None,
-            None,
-            vec![],
-        );
-
-        parent_value.populate_child_ids(&edges);
-
-        assert_eq!(parent_value.child_node_ids().len(), 2);
-    }
-
-    #[test]
-    fn test_get_child_by_alias() {
-        use std::collections::HashMap;
-
-        let parent_node = create_test_node("ParentNode");
-        let child_node = create_test_node("ChildNode");
-
-        let mut node_objs = HashMap::new();
-        node_objs.insert(parent_node.nodeid.clone(), parent_node.clone());
-        node_objs.insert(child_node.nodeid.clone(), child_node.clone());
-
-        let mut edges = HashMap::new();
-        edges.insert(parent_node.nodeid.clone(), vec![child_node.nodeid.clone()]);
-
-        let parent_value = PseudoValueInner::from_node_and_tile(
-            parent_node.clone(),
-            None,
-            None,
-            vec![child_node.nodeid.clone()],
-        );
-
-        let child_opt = parent_value.get_child_by_alias("ChildNode", &node_objs, &edges);
-
-        assert!(child_opt.is_some());
-        let child = child_opt.unwrap();
-        assert_eq!(child.node_alias(), Some("ChildNode"));
-    }
-
-    #[test]
-    fn test_get_child_with_tile_data() {
-        use std::collections::HashMap;
-
-        let parent_node = create_test_node("ParentNode");
-        let child_node = create_test_node("ChildNode");
-
-        let mut tile = create_test_tile("test-tile");
-        let tile_mut = Arc::make_mut(&mut tile);
-        tile_mut.data.insert(
-            child_node.nodeid.clone(),
-            serde_json::json!({"value": "child_data"})
-        );
-
-        let mut node_objs = HashMap::new();
-        node_objs.insert(parent_node.nodeid.clone(), parent_node.clone());
-        node_objs.insert(child_node.nodeid.clone(), child_node.clone());
-
-        let mut edges = HashMap::new();
-        edges.insert(parent_node.nodeid.clone(), vec![child_node.nodeid.clone()]);
-
-        let parent_value = PseudoValueInner::from_node_and_tile(
-            parent_node.clone(),
-            Some(tile.clone()),
-            None,
-            vec![child_node.nodeid.clone()],
-        );
-
-        let child = parent_value.get_child_by_alias("ChildNode", &node_objs, &edges).unwrap();
-
-        assert!(child.tile_data().is_some());
-        let child_data = child.tile_data().as_ref().unwrap();
-        assert_eq!(child_data["value"], "child_data");
-    }
-
-    #[test]
-    fn test_pseudo_list_merge() {
-        let node = create_test_node("TestNode");
-        let tile1 = create_test_tile("tile1");
-        let tile2 = create_test_tile("tile2");
-
-        let values1 = vec![
-            PseudoValueInner::from_node_and_tile(node.clone(), Some(tile1.clone()), None, vec![]),
-        ];
-        let mut list1 = PseudoListInner::from_values("TestNode".to_string(), values1);
-
-        let values2 = vec![
-            PseudoValueInner::from_node_and_tile(node.clone(), Some(tile1.clone()), None, vec![]),
-            PseudoValueInner::from_node_and_tile(node.clone(), Some(tile2.clone()), None, vec![]),
-        ];
-        let list2 = PseudoListInner::from_values("TestNode".to_string(), values2);
-
-        list1.merge(list2);
-
-        // After merge: 3 total values (1 from list1 for tile1, 2 from list2 for tile1 and tile2)
-        assert_eq!(list1.values.len(), 3);
-
-        // Count values per tile
-        let tile1_count = list1.values.iter()
-            .filter(|v| v.tile().as_ref().and_then(|t| t.tileid.as_deref()) == Some("tile1"))
-            .count();
-        assert_eq!(tile1_count, 2, "Should have 2 values for tile1");
-
-        let tile2_count = list1.values.iter()
-            .filter(|v| v.tile().as_ref().and_then(|t| t.tileid.as_deref()) == Some("tile2"))
-            .count();
-        assert_eq!(tile2_count, 1, "Should have 1 value for tile2");
-    }
 }

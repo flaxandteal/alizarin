@@ -477,6 +477,11 @@ impl PseudoListCore {
     }
 
     /// Get matching entries based on tile relationship
+    ///
+    /// Entries match if:
+    /// 1. They have a tile that passes the tile filter, OR
+    /// 2. They have no tile (synthetic entries) and parent_tile_id is None
+    ///    (root-level match for synthetic parent collectors)
     pub fn matching_entries(
         &self,
         parent_tile_id: Option<String>,
@@ -484,9 +489,12 @@ impl PseudoListCore {
     ) -> Vec<&PseudoValueCore> {
         self.values.iter()
             .filter(|v| {
-                v.tile.as_ref()
-                    .map(|tile| matches_tile_filter(tile, parent_tile_id.as_ref(), nodegroup_id.as_ref()))
-                    .unwrap_or(false)
+                match v.tile.as_ref() {
+                    Some(tile) => matches_tile_filter(tile, parent_tile_id.as_ref(), nodegroup_id.as_ref()),
+                    // Synthetic entries (no tile) match when at root level
+                    // These are created for parent semantic collectors that don't have their own tiles
+                    None => parent_tile_id.is_none(),
+                }
             })
             .collect()
     }
@@ -564,6 +572,7 @@ impl TileBuilder {
 ///    - Tile's tileid equals parent_tile_id (same tile)
 ///    - Tile's parenttile_id equals parent_tile_id (child tile)
 ///    - Both parent_tile_id and tile's parenttile_id are None (root level)
+///    - Tile's parenttile_id is None and parent_tile_id is Some (fallback for data without parenttile_id)
 pub fn matches_tile_filter(
     tile: &StaticTile,
     parent_tile_id: Option<&String>,
@@ -581,6 +590,12 @@ pub fn matches_tile_filter(
             }
             // Both are None (root level)
             if parent_tile_id.is_none() && tile.parenttile_id.is_none() {
+                return true;
+            }
+            // Fallback: If tile has no parenttile_id but is in the correct nodegroup,
+            // allow matching. This handles business data that doesn't set parenttile_id
+            // on child tiles. The nodegroup match ensures we're in the right semantic context.
+            if tile.parenttile_id.is_none() && parent_tile_id.is_some() {
                 return true;
             }
         }
