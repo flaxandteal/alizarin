@@ -1,4 +1,4 @@
-import init, { initSync, greet, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString, getRscvTimings, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml } from "../pkg/alizarin";
+import init, { initSync, greet, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString, getRscvTimings, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerDisplaySerializer, hasDisplaySerializer, unregisterDisplaySerializer, getRegisteredDisplaySerializers } from "../pkg/alizarin";
 import { registerRustTimingGetter } from "./tracing";
 import wasmURL from "../pkg/alizarin_bg.wasm?url"
 
@@ -153,3 +153,6 @@ export { WasmStaticNode, WasmStaticGraphMeta };
 
 // Re-export SKOS parsing and serialization functions
 export { parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml };
+
+// Re-export display serializer extension registry functions
+export { registerDisplaySerializer, hasDisplaySerializer, unregisterDisplaySerializer, getRegisteredDisplaySerializers };

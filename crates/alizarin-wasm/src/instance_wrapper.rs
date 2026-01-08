@@ -1152,14 +1152,8 @@ impl WASMResourceInstanceWrapper {
         let cache = core_ref.pseudo_cache.lock()
             .map_err(|e| JsValue::from_str(&format!("Failed to lock pseudo_cache: {}", e)))?;
 
-        // Build visitor context
-        let ctx = VisitorContext {
-            pseudo_cache: &cache,
-            nodes_by_alias: &nodes_by_alias,
-            edges: &edges,
-            depth: 0,
-            max_depth: 50, // Reasonable limit to prevent infinite recursion
-        };
+        // Build visitor context with default tile_data serialization
+        let ctx = VisitorContext::new(&cache, &nodes_by_alias, &edges);
 
         // Look up the root pseudo from cache (created in populate())
         let root_list = cache.get(&root_alias)
@@ -1268,6 +1262,9 @@ impl WASMResourceInstanceWrapper {
 
         let lang = language.unwrap_or_else(|| "en".to_string());
 
+        // Build display registry from any JS-registered serializers
+        let registry = crate::extension_registry::build_display_registry();
+
         // Build display visitor context
         let ctx = DisplayVisitorContext {
             pseudo_cache: &cache,
@@ -1278,6 +1275,7 @@ impl WASMResourceInstanceWrapper {
             language: &lang,
             depth: 0,
             max_depth: 50,
+            display_registry: Some(&registry),
         };
 
         // Look up the root pseudo from cache (created in populate())

@@ -10,6 +10,9 @@ use std::collections::HashMap;
 use serde_json::{Value, Map};
 
 use crate::{StaticNode, StaticTile};
+use crate::type_serialization::{
+    serialize_value, SerializationOptions, SerializationContext, SerializationMode,
+};
 
 /// Core pseudo value without platform-specific fields
 ///
@@ -75,6 +78,65 @@ pub struct VisitorContext<'a> {
     pub depth: usize,
     /// Maximum depth
     pub max_depth: usize,
+    /// Serialization options (controls output format)
+    pub serialization_options: SerializationOptions,
+    /// Serialization context (resolvers for display mode)
+    pub serialization_context: SerializationContext<'a>,
+}
+
+impl<'a> VisitorContext<'a> {
+    /// Create a new VisitorContext with default tile_data serialization
+    pub fn new(
+        pseudo_cache: &'a HashMap<String, PseudoListCore>,
+        nodes_by_alias: &'a HashMap<String, Arc<StaticNode>>,
+        edges: &'a HashMap<String, Vec<String>>,
+    ) -> Self {
+        VisitorContext {
+            pseudo_cache,
+            nodes_by_alias,
+            edges,
+            depth: 0,
+            max_depth: 50,
+            serialization_options: SerializationOptions::tile_data(),
+            serialization_context: SerializationContext::empty(),
+        }
+    }
+
+    /// Create a VisitorContext for display mode
+    pub fn display(
+        pseudo_cache: &'a HashMap<String, PseudoListCore>,
+        nodes_by_alias: &'a HashMap<String, Arc<StaticNode>>,
+        edges: &'a HashMap<String, Vec<String>>,
+        language: &str,
+    ) -> Self {
+        VisitorContext {
+            pseudo_cache,
+            nodes_by_alias,
+            edges,
+            depth: 0,
+            max_depth: 50,
+            serialization_options: SerializationOptions::display(language),
+            serialization_context: SerializationContext::empty(),
+        }
+    }
+
+    /// Create a child context with incremented depth
+    pub fn child(&self) -> Self {
+        VisitorContext {
+            pseudo_cache: self.pseudo_cache,
+            nodes_by_alias: self.nodes_by_alias,
+            edges: self.edges,
+            depth: self.depth + 1,
+            max_depth: self.max_depth,
+            serialization_options: self.serialization_options.clone(),
+            serialization_context: SerializationContext::empty(), // Can't borrow resolvers
+        }
+    }
+
+    /// Check if we're in display mode
+    pub fn is_display(&self) -> bool {
+        self.serialization_options.mode == SerializationMode::Display
+    }
 }
 
 /// A tile being built - accumulates data from multiple leaf nodes
@@ -150,6 +212,10 @@ impl PseudoValueCore {
     }
 
     /// Convert this pseudo value to JSON
+    ///
+    /// Uses the serialization options in the context to determine output format:
+    /// - TileData mode: returns raw tile_data (UUIDs, language maps)
+    /// - Display mode: resolves UUIDs to labels, extracts display strings
     pub fn to_json(&self, ctx: &VisitorContext) -> Value {
         if ctx.depth > ctx.max_depth {
             return Value::Null;
@@ -172,9 +238,15 @@ impl PseudoValueCore {
             return self.semantic_to_json(ctx);
         }
 
-        // Leaf nodes - return tile_data
+        // Leaf nodes - serialize through type_serialization module
         if let Some(ref data) = self.tile_data {
-            return data.clone();
+            let result = serialize_value(
+                datatype,
+                data,
+                &ctx.serialization_options,
+                Some(&ctx.serialization_context),
+            );
+            return result.unwrap_or(Value::Null);
         }
 
         Value::Null
@@ -182,7 +254,18 @@ impl PseudoValueCore {
 
     /// Convert an outer node to JSON
     fn outer_to_json(&self, ctx: &VisitorContext) -> Value {
-        let own_value = self.tile_data.clone().unwrap_or(Value::Null);
+        // Serialize the outer node's own value through type_serialization
+        let own_value = if let Some(ref data) = self.tile_data {
+            let result = serialize_value(
+                self.datatype(),
+                data,
+                &ctx.serialization_options,
+                Some(&ctx.serialization_context),
+            );
+            result.unwrap_or(Value::Null)
+        } else {
+            Value::Null
+        };
 
         if let Some(ref inner) = self.inner {
             let children_json = inner.semantic_to_json(ctx);
@@ -237,13 +320,7 @@ impl PseudoValueCore {
                 continue;
             }
 
-            let child_ctx = VisitorContext {
-                pseudo_cache: ctx.pseudo_cache,
-                nodes_by_alias: ctx.nodes_by_alias,
-                edges: ctx.edges,
-                depth: ctx.depth + 1,
-                max_depth: ctx.max_depth,
-            };
+            let child_ctx = ctx.child();
 
             if pseudo_list.is_single || matching_values.len() == 1 {
                 if let Some(first_value) = matching_values.first() {

@@ -135,13 +135,11 @@ fn resource_tiles_to_tree(
     let mut full_cache = pseudo_cache;
     full_cache.insert(root_alias.clone(), root_list.clone());
 
-    let ctx = VisitorContext {
-        pseudo_cache: &full_cache,
-        nodes_by_alias: &nodes_by_alias,
-        edges: &edges,
-        depth: 0,
-        max_depth: 50,
-    };
+    let ctx = VisitorContext::new(
+        &full_cache,
+        &nodes_by_alias,
+        &edges,
+    );
 
     let mut tree = if let Some(root_value) = root_list.values.first() {
         root_value.to_json(&ctx)

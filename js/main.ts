@@ -8,7 +8,7 @@ import * as utils from "./utils";
 import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
-import { run, initWasm, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml } from "./_wasm";
+import { run, initWasm, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerDisplaySerializer, hasDisplaySerializer, unregisterDisplaySerializer, getRegisteredDisplaySerializers } from "./_wasm";
 import { resetTimingStats, getTimingStats, logTimingStats } from "./semantic";
 import * as tracing from "./tracing";
 import { IStringKeyedObject } from "./interfaces";
@@ -69,4 +69,9 @@ export {
   collectionsToSkosXml,
   // Collection mutator
   CollectionMutator,
+  // Extension registry for display serializers
+  registerDisplaySerializer,
+  hasDisplaySerializer,
+  unregisterDisplaySerializer,
+  getRegisteredDisplaySerializers,
 };
