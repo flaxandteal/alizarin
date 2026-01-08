@@ -8,7 +8,7 @@ import * as utils from "./utils";
 import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
-import { run, initWasm, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerDisplaySerializer, hasDisplaySerializer, unregisterDisplaySerializer, getRegisteredDisplaySerializers } from "./_wasm";
+import { initWasm, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerDisplaySerializer, hasDisplaySerializer, unregisterDisplaySerializer, getRegisteredDisplaySerializers } from "./_wasm";
 import { resetTimingStats, getTimingStats, logTimingStats } from "./semantic";
 import * as tracing from "./tracing";
 import { IStringKeyedObject } from "./interfaces";
@@ -53,7 +53,6 @@ export {
   GraphMutator,
   setCurrentLanguage,
   getCurrentLanguage,
-  run,
   initWasm,
   wasmReady,
   // Legacy timing (deprecated - use tracing instead)
