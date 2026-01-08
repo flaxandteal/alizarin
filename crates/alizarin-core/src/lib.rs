@@ -17,6 +17,7 @@ pub mod pseudo_value_core;
 pub mod rdm_cache;
 pub mod skos;
 pub mod type_coercion;
+pub mod type_serialization;
 
 // Graph types
 pub use graph::{
@@ -58,6 +59,24 @@ pub use type_coercion::{
     coerce_value, CoercionResult,
     // Language configuration
     get_current_language, set_current_language, DEFAULT_LANGUAGE,
+};
+
+// Type serialization (output formatting)
+pub use type_serialization::{
+    // Options and result
+    SerializationMode, SerializationOptions, SerializationResult, SerializationContext,
+    // Dispatcher functions
+    serialize_value, serialize_tile_data, serialize_display,
+    // Individual serializers
+    serialize_string, serialize_url, serialize_geojson, serialize_non_localized_string,
+    serialize_number, serialize_date, serialize_edtf,
+    serialize_boolean, serialize_domain_value, serialize_domain_value_list,
+    serialize_concept, serialize_concept_list,
+    serialize_resource_instance, serialize_resource_instance_list,
+    // Resolver types
+    DomainValueResolver, ConceptResolver,
+    // Extension support
+    ExtensionDisplaySerializer, DisplaySerializerRegistry,
 };
 
 // Label resolution

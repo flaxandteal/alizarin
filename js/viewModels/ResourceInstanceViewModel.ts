@@ -120,6 +120,72 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
     }
   }
 
+  /**
+   * Get JSON representation with display-friendly values.
+   *
+   * Unlike forJson() which returns tile data format (language maps, StaticReference objects),
+   * this returns human-readable strings using registered display serializers.
+   *
+   * Use this for ETL/export/indexing where you want display strings instead of structured data.
+   *
+   * @param cascade - If true, ensures the resource is fully populated before serializing
+   * @param language - Language code for display strings (defaults to current language)
+   * @returns JSON with display-friendly values
+   */
+  async forDisplayJson(cascade: boolean=false, language?: string) {
+    const forJsonStart = performance.now();
+    let rootJson = null;
+    if (cascade) {
+      let t0 = performance.now();
+      if (!this.$) {
+        await this.retrieve();
+        if (!this.$) {
+          throw new Error("Could not retrieve resource");
+        }
+      }
+      recordWasmTiming("forDisplayJson: retrieve check", performance.now() - t0);
+
+      t0 = performance.now();
+      await this.$.populate(false);
+      recordWasmTiming("forDisplayJson: populate", performance.now() - t0);
+
+      t0 = performance.now();
+      const lang = language || DEFAULT_LANGUAGE;
+      rootJson = this.$.wasmWrapper.toDisplayJsonSimple(lang);
+      recordWasmTiming("forDisplayJson: toDisplayJsonSimple", performance.now() - t0);
+    }
+    recordWasmTiming("forDisplayJson total (viewModels)", performance.now() - forJsonStart);
+
+    if (!cascade && this.__cacheEntry) {
+      return {
+        type: this.__cacheEntry.type,
+        graphId: this.__cacheEntry.graphId,
+        id: this.__cacheEntry.id,
+        title: this.__cacheEntry.title || undefined,
+        meta: this.__cacheEntry.meta || undefined,
+        root: rootJson
+      };
+    } else if (this.__) {
+      return {
+        type: this.__.wkrm.modelClassName,
+        graphId: this.__.wkrm.graphId,
+        id: this.id,
+        title: undefined,
+        meta: undefined,
+        root: rootJson
+      };
+    } else {
+      return {
+        type: "(unknown)",
+        graphId: "",
+        id: this.id,
+        title: undefined,
+        meta: undefined,
+        root: rootJson
+      };
+    }
+  }
+
   async retrieve(): Promise<[IInstanceWrapper<RIVM>, IModelWrapper<RIVM>]> {
     let iw: IInstanceWrapper<RIVM>;
     let mw: IModelWrapper<RIVM>;

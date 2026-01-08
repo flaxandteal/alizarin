@@ -28,6 +28,102 @@ use alizarin_extension_api::{
 pub mod mutations;
 
 // =============================================================================
+// Display Serializer (requires alizarin-core)
+// =============================================================================
+
+#[cfg(feature = "mutations")]
+mod display_serializer {
+    use super::{StaticReference, Value};
+    use alizarin_core::{
+        ExtensionDisplaySerializer, SerializationOptions, SerializationResult,
+        DisplaySerializerRegistry,
+    };
+    use std::sync::Arc;
+
+    /// Display serializer for CLM reference type.
+    ///
+    /// This implements `ExtensionDisplaySerializer` from alizarin-core
+    /// to provide display mode serialization for the `reference` datatype.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use alizarin_clm::display_serializer::create_clm_display_registry;
+    /// use alizarin_core::SerializationContext;
+    ///
+    /// let registry = create_clm_display_registry();
+    /// let ctx = SerializationContext::with_registry(&registry);
+    /// ```
+    pub struct ReferenceDisplaySerializer;
+
+    impl ExtensionDisplaySerializer for ReferenceDisplaySerializer {
+        fn serialize_display(
+            &self,
+            tile_data: &Value,
+            options: &SerializationOptions,
+        ) -> SerializationResult {
+            let lang = Some(options.language.as_str());
+
+            match tile_data {
+                Value::Null => SerializationResult::success(Value::Null),
+
+                // Array of references - join with ", "
+                Value::Array(arr) => {
+                    let displays: Vec<String> = arr
+                        .iter()
+                        .filter_map(|item| {
+                            serde_json::from_value::<StaticReference>(item.clone())
+                                .ok()
+                                .map(|r| r.to_display_string(lang))
+                        })
+                        .collect();
+
+                    if displays.is_empty() {
+                        return SerializationResult::success(Value::Null);
+                    }
+                    SerializationResult::success(Value::String(displays.join(", ")))
+                }
+
+                // Single reference object
+                Value::Object(_) => {
+                    match serde_json::from_value::<StaticReference>(tile_data.clone()) {
+                        Ok(reference) => {
+                            SerializationResult::success(Value::String(reference.to_display_string(lang)))
+                        }
+                        Err(_) => {
+                            // Not a StaticReference format - pass through
+                            SerializationResult::success(tile_data.clone())
+                        }
+                    }
+                }
+
+                // Pass through other types
+                _ => SerializationResult::success(tile_data.clone()),
+            }
+        }
+
+        fn description(&self) -> &str {
+            "Display serializer for CLM reference type (StaticReference format)"
+        }
+    }
+
+    /// Create a DisplaySerializerRegistry with CLM serializers.
+    ///
+    /// Registers display serializers for:
+    /// - `reference` - Single CLM reference
+    /// - `reference-list` - Array of CLM references
+    pub fn create_clm_display_registry() -> DisplaySerializerRegistry {
+        let mut registry = DisplaySerializerRegistry::new();
+        registry.register("reference", Arc::new(ReferenceDisplaySerializer));
+        registry.register("reference-list", Arc::new(ReferenceDisplaySerializer));
+        registry
+    }
+}
+
+#[cfg(feature = "mutations")]
+pub use display_serializer::{ReferenceDisplaySerializer, create_clm_display_registry};
+
+// =============================================================================
 // Static Reference Types
 // =============================================================================
 

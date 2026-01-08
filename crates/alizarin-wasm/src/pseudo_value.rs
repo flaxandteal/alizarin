@@ -5,6 +5,9 @@ use wasm_bindgen::prelude::*;
 use alizarin_core::{StaticNode, StaticTile, PseudoValueCore};
 use alizarin_core::node_config::NodeConfigManager;
 use alizarin_core::rdm_cache::RdmCache;
+use alizarin_core::type_serialization::{
+    serialize_value, SerializationOptions, SerializationContext, SerializationMode,
+};
 // WASM wrapper types for API boundary
 use crate::graph::StaticTile as WasmStaticTile;
 use crate::graph::StaticNode as WasmStaticNode;
@@ -488,6 +491,65 @@ pub(crate) struct VisitorContext<'a> {
     pub depth: usize,
     /// Maximum depth
     pub max_depth: usize,
+    /// Serialization options (controls output format)
+    pub serialization_options: SerializationOptions,
+    /// Serialization context (resolvers for display mode)
+    pub serialization_context: SerializationContext<'a>,
+}
+
+impl<'a> VisitorContext<'a> {
+    /// Create a new VisitorContext with default tile_data serialization
+    pub fn new(
+        pseudo_cache: &'a HashMap<String, PseudoListInner>,
+        nodes_by_alias: &'a HashMap<String, Arc<StaticNode>>,
+        edges: &'a HashMap<String, Vec<String>>,
+    ) -> Self {
+        VisitorContext {
+            pseudo_cache,
+            nodes_by_alias,
+            edges,
+            depth: 0,
+            max_depth: 50,
+            serialization_options: SerializationOptions::tile_data(),
+            serialization_context: SerializationContext::empty(),
+        }
+    }
+
+    /// Create a VisitorContext for display mode
+    pub fn display(
+        pseudo_cache: &'a HashMap<String, PseudoListInner>,
+        nodes_by_alias: &'a HashMap<String, Arc<StaticNode>>,
+        edges: &'a HashMap<String, Vec<String>>,
+        language: &str,
+    ) -> Self {
+        VisitorContext {
+            pseudo_cache,
+            nodes_by_alias,
+            edges,
+            depth: 0,
+            max_depth: 50,
+            serialization_options: SerializationOptions::display(language),
+            serialization_context: SerializationContext::empty(),
+        }
+    }
+
+    /// Create a child context with incremented depth
+    pub fn child(&self) -> Self {
+        VisitorContext {
+            pseudo_cache: self.pseudo_cache,
+            nodes_by_alias: self.nodes_by_alias,
+            edges: self.edges,
+            depth: self.depth + 1,
+            max_depth: self.max_depth,
+            serialization_options: self.serialization_options.clone(),
+            serialization_context: SerializationContext::empty(),
+        }
+    }
+
+    /// Check if we're in display mode
+    pub fn is_display(&self) -> bool {
+        self.serialization_options.mode == SerializationMode::Display
+    }
 }
 
 impl PseudoValueInner {
@@ -500,6 +562,11 @@ impl PseudoValueInner {
     /// - Inner nodes: Synthetic semantic nodes that give structure to outer's children
     /// - Pure semantic nodes: No tile_data, only children
     /// - Leaf nodes: Just tile_data, no children
+    /// Convert this pseudo value to JSON using the type_serialization module.
+    ///
+    /// Uses the serialization options in the context to determine output format:
+    /// - TileData mode: returns raw tile_data (UUIDs, language maps)
+    /// - Display mode: resolves UUIDs to labels, extracts display strings
     pub fn to_json(&self, ctx: &VisitorContext) -> serde_json::Value {
         if ctx.depth > ctx.max_depth {
             return serde_json::Value::Null;
@@ -523,9 +590,15 @@ impl PseudoValueInner {
             return self.semantic_to_json(ctx);
         }
 
-        // Leaf nodes - return tile_data
+        // Leaf nodes - serialize through type_serialization module
         if let Some(ref data) = self.core.tile_data {
-            return data.clone();
+            let result = serialize_value(
+                datatype,
+                data,
+                &ctx.serialization_options,
+                Some(&ctx.serialization_context),
+            );
+            return result.unwrap_or(serde_json::Value::Null);
         }
 
         serde_json::Value::Null
@@ -534,8 +607,18 @@ impl PseudoValueInner {
     /// Convert an outer node to JSON
     /// Outer nodes have their own value (tile_data) PLUS children via their inner
     fn outer_to_json(&self, ctx: &VisitorContext) -> serde_json::Value {
-        // Get the outer's own value
-        let own_value = self.core.tile_data.clone().unwrap_or(serde_json::Value::Null);
+        // Serialize the outer node's own value through type_serialization
+        let own_value = if let Some(ref data) = self.core.tile_data {
+            let result = serialize_value(
+                self.datatype(),
+                data,
+                &ctx.serialization_options,
+                Some(&ctx.serialization_context),
+            );
+            result.unwrap_or(serde_json::Value::Null)
+        } else {
+            serde_json::Value::Null
+        };
 
         // If there's an inner, get children from it
         if let Some(ref inner) = self.inner {
@@ -605,13 +688,7 @@ impl PseudoValueInner {
             }
 
             // Create child context with incremented depth
-            let child_ctx = VisitorContext {
-                pseudo_cache: ctx.pseudo_cache,
-                nodes_by_alias: ctx.nodes_by_alias,
-                edges: ctx.edges,
-                depth: ctx.depth + 1,
-                max_depth: ctx.max_depth,
-            };
+            let child_ctx = ctx.child();
 
             // If single value (cardinality 1), serialize directly
             // If multiple values (cardinality n / collector), serialize as array
@@ -696,6 +773,8 @@ pub(crate) struct DisplayVisitorContext<'a> {
     pub depth: usize,
     /// Maximum depth
     pub max_depth: usize,
+    /// Extension display serializer registry for custom datatypes
+    pub display_registry: Option<&'a alizarin_core::DisplaySerializerRegistry>,
 }
 
 impl PseudoValueInner {
@@ -740,6 +819,17 @@ impl PseudoValueInner {
             None => return serde_json::Value::Null,
         };
 
+        // Check extension registry first for custom datatypes
+        if let Some(registry) = ctx.display_registry {
+            if let Some(serializer) = registry.get(datatype) {
+                let options = alizarin_core::SerializationOptions::display(ctx.language);
+                let result = serializer.serialize_display(tile_data, &options);
+                if !result.is_error() {
+                    return result.value;
+                }
+            }
+        }
+
         match datatype {
             // Domain value - lookup from node config
             "domain-value" => {
@@ -759,11 +849,6 @@ impl PseudoValueInner {
             // Concept list - lookup each from RDM cache
             "concept-list" => {
                 self.resolve_concept_list(ctx, tile_data)
-            }
-
-            // Reference (CLM) - extract display from StaticReference
-            "reference" => {
-                self.resolve_reference_value(ctx, tile_data)
             }
 
             // Boolean with labels
@@ -863,57 +948,6 @@ impl PseudoValueInner {
         serde_json::Value::Array(resolved)
     }
 
-    /// Resolve a CLM reference to its display string
-    ///
-    /// The tile_data for reference type is a StaticReference object with labels array.
-    /// We extract the display string based on language preference.
-    fn resolve_reference_value(&self, ctx: &DisplayVisitorContext, tile_data: &serde_json::Value) -> serde_json::Value {
-        // Handle arrays of references
-        if let Some(arr) = tile_data.as_array() {
-            let displays: Vec<String> = arr.iter()
-                .filter_map(|item| self.extract_reference_display(ctx, item))
-                .collect();
-            if displays.is_empty() {
-                return tile_data.clone();
-            }
-            return serde_json::Value::String(displays.join(", "));
-        }
-
-        // Handle single reference
-        if let Some(display) = self.extract_reference_display(ctx, tile_data) {
-            return serde_json::Value::String(display);
-        }
-
-        tile_data.clone()
-    }
-
-    /// Extract display string from a StaticReference object
-    fn extract_reference_display(&self, ctx: &DisplayVisitorContext, value: &serde_json::Value) -> Option<String> {
-        let obj = value.as_object()?;
-        let labels = obj.get("labels")?.as_array()?;
-
-        if labels.len() == 1 {
-            return labels[0].get("value")?.as_str().map(|s| s.to_string());
-        }
-
-        // Find prefLabel for requested language
-        let mut pref_label: Option<&str> = None;
-        for label in labels {
-            let valuetype = label.get("valuetype_id")?.as_str()?;
-            if valuetype == "prefLabel" {
-                let value = label.get("value")?.as_str()?;
-                let lang = label.get("language_id")?.as_str()?;
-
-                if lang == ctx.language {
-                    return Some(value.to_string());
-                }
-                pref_label = Some(value);
-            }
-        }
-
-        pref_label.map(|s| s.to_string())
-    }
-
     /// Resolve a boolean value to its display label
     fn resolve_boolean_value(&self, ctx: &DisplayVisitorContext, tile_data: &serde_json::Value) -> serde_json::Value {
         let bool_value = match tile_data.as_bool() {
@@ -1000,6 +1034,7 @@ impl PseudoValueInner {
                 language: ctx.language,
                 depth: ctx.depth + 1,
                 max_depth: ctx.max_depth,
+                display_registry: ctx.display_registry,
             };
 
             if pseudo_list.is_single || matching_values.len() == 1 {

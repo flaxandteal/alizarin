@@ -14,6 +14,7 @@ pub mod type_coercion_wasm;
 pub mod label_resolution_wasm;
 pub mod rdm_cache_wasm;
 pub mod graph_mutator_wasm;
+pub mod extension_registry;
 
 // Re-export core types for native Rust consumers
 // These are the platform-agnostic types without WASM bindings
