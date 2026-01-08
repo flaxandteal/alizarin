@@ -23,6 +23,9 @@ tiles_to_json_tree: Optional[Any] = None
 json_tree_to_tiles: Optional[Any] = None
 batch_trees_to_tiles: Optional[Any] = None
 batch_tiles_to_trees: Optional[Any] = None
+merge_resources: Optional[Any] = None
+batch_merge_resources: Optional[Any] = None
+TreeToTilesIterator: Optional[Any] = None
 _alizarin_rust: Optional[Any] = None
 
 try:
@@ -32,6 +35,9 @@ try:
     json_tree_to_tiles = _alizarin_rust.json_tree_to_tiles
     batch_trees_to_tiles = _alizarin_rust.batch_trees_to_tiles
     batch_tiles_to_trees = _alizarin_rust.batch_tiles_to_trees
+    merge_resources = _alizarin_rust.merge_resources
+    batch_merge_resources = _alizarin_rust.batch_merge_resources
+    TreeToTilesIterator = _alizarin_rust.TreeToTilesIterator
 except (ImportError, AttributeError):
     # Rust module not yet compiled - functions will remain None
     pass
@@ -383,6 +389,9 @@ __all__ = [
     "json_tree_to_tiles",
     "batch_trees_to_tiles",
     "batch_tiles_to_trees",
+    "merge_resources",
+    "batch_merge_resources",
+    "TreeToTilesIterator",
     "resource_to_json",
     "json_to_resource",
     # Rust-backed wrappers

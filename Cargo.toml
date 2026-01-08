@@ -9,6 +9,7 @@ members = [
 ]
 exclude = [
     "ext/python/alizarin-clm",
+    "ext/python/alizarin-filelist",
 ]
 resolver = "2"
 

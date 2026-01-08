@@ -437,54 +437,19 @@ class PseudoList(List[PseudoValue[VM]], Generic[VM]):
         Returns:
             List of matching PseudoValue objects
         """
-        # If we have a Rust backing, use it (single source of truth)
-        if self._rust is not None:
-            rust_matches = self._rust.matching_entries(parent_tile_id, nodegroup_id)
-            # Wrap the results
-            return [
-                PseudoValue.from_rust(rv, parent_wkri=self._parent_wkri, model=self._parent_model)
-                for rv in rust_matches
-            ]
+        # Rust is the single source of truth for matching_entries
+        if self._rust is None:
+            raise RuntimeError(
+                "matching_entries requires Rust backing. "
+                "PseudoList must be created via from_rust() or have a valid _rust attribute."
+            )
 
-        # Fallback to Python filtering if no Rust backing
-        # (for backwards compatibility during transition)
-        matches: List[PseudoValue[VM]] = []
-
-        for value in self:
-            if not isinstance(value, PseudoValue):
-                continue
-
-            # Skip if no tile
-            if value.tile is None:
-                continue
-
-            # Check nodegroup match
-            if nodegroup_id is not None:
-                if value.tile.nodegroup_id != nodegroup_id:
-                    continue
-
-            # Check tile context
-            if parent_tile_id is None:
-                # Root level - only match tiles without parents
-                if value.tile.parenttile_id is not None:
-                    continue
-            else:
-                # Must match parent tile context
-                tile_id = value.tile.tileid
-                parent_id = value.tile.parenttile_id
-
-                if tile_id == parent_tile_id:
-                    matches.append(value)
-                    continue
-                elif parent_id == parent_tile_id:
-                    matches.append(value)
-                    continue
-                else:
-                    continue
-
-            matches.append(value)
-
-        return matches
+        rust_matches = self._rust.matching_entries(parent_tile_id, nodegroup_id)
+        # Wrap the results
+        return [
+            PseudoValue.from_rust(rv, parent_wkri=self._parent_wkri, model=self._parent_model)
+            for rv in rust_matches
+        ]
 
     async def sorted(self) -> List[Any]:
         """

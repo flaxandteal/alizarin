@@ -192,7 +192,10 @@ fn render_display_with_extension(
 // Import core types and functions directly (no WASM dependency needed)
 use alizarin_core::{
     // JSON conversion
-    tiles_to_tree, tree_to_tiles, tree_to_tiles_strict, create_static_resource,
+    tiles_to_tree, tree_to_tiles, create_static_resource,
+    tree_to_tiles_with_id_key, tree_to_tiles_strict_with_id_key,
+    merge_resources as core_merge_resources,
+    batch_merge_resources as core_batch_merge_resources,
     // Graph types
     StaticTile as AlizarinStaticTile,
     StaticNode as AlizarinStaticNode,
@@ -320,8 +323,11 @@ fn tiles_to_json_tree(
 ///
 /// If a global RDM cache is set (via set_global_rdm_cache), label strings
 /// will automatically be resolved to UUIDs before conversion.
+///
+/// If id_key is provided and the tree does not contain a resourceinstanceid,
+/// a deterministic UUID v5 will be generated using the key and graph ID.
 #[pyfunction]
-#[pyo3(signature = (tree_json, resource_id, graph_id, graph_json, from_camel=false, strict=false, rdm_cache=None))]
+#[pyo3(signature = (tree_json, resource_id, graph_id, graph_json, from_camel=false, strict=false, rdm_cache=None, id_key=None))]
 fn json_tree_to_tiles(
     py: Python,
     tree_json: String,
@@ -331,6 +337,7 @@ fn json_tree_to_tiles(
     from_camel: bool,
     strict: bool,
     rdm_cache: Option<&rdm_cache_py::RdmCache>,
+    id_key: Option<String>,
 ) -> PyResult<PyObject> {
     // Parse tree from JSON
     let mut tree: serde_json::Value = serde_json::from_str(&tree_json)
@@ -366,11 +373,12 @@ fn json_tree_to_tiles(
         map.insert("graph_id".to_string(), serde_json::Value::String(graph_id.clone()));
     }
 
-    // Call shared Rust conversion function (strict or non-strict)
+    // Call shared Rust conversion function (strict or non-strict, with optional id_key)
+    let id_key_ref = id_key.as_deref();
     let business_data = if strict {
-        tree_to_tiles_strict(&tree, &graph)
+        tree_to_tiles_strict_with_id_key(&tree, &graph, id_key_ref)
     } else {
-        tree_to_tiles(&tree, &graph)
+        tree_to_tiles_with_id_key(&tree, &graph, id_key_ref)
     }.map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
 
     // Return full BusinessDataWrapper structure: {business_data: {resources: [...]}}
@@ -388,17 +396,30 @@ fn json_tree_to_tiles(
 
 /// Batch convert multiple JSON trees to tiles in parallel
 /// Returns BusinessDataWrapper format: {business_data: {resources: [...]}, errors: [...]}
+///
+/// If id_keys is provided (list of strings, one per tree), deterministic UUID v5s
+/// will be generated for trees that don't have resourceinstanceids.
 #[pyfunction]
-#[pyo3(signature = (trees_json, graph_json, from_camel=false, strict=false))]
+#[pyo3(signature = (trees_json, graph_json, from_camel=false, strict=false, id_keys=None))]
 fn batch_trees_to_tiles(
     py: Python,
     trees_json: String,
     graph_json: String,
     from_camel: bool,
     strict: bool,
+    id_keys: Option<Vec<String>>,
 ) -> PyResult<PyObject> {
     let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e)))?;
+
+    // Validate id_keys length if provided
+    if let Some(ref keys) = id_keys {
+        if keys.len() != trees.len() {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                format!("id_keys length ({}) must match trees length ({})", keys.len(), trees.len())
+            ));
+        }
+    }
 
     let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse graph: {}", e)))?;
@@ -417,10 +438,13 @@ fn batch_trees_to_tiles(
                 }
             }
 
+            // Get id_key for this tree (if id_keys array provided)
+            let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
+
             let business_data = if strict {
-                tree_to_tiles_strict(&tree, &graph)
+                tree_to_tiles_strict_with_id_key(&tree, &graph, id_key_ref)
             } else {
-                tree_to_tiles(&tree, &graph)
+                tree_to_tiles_with_id_key(&tree, &graph, id_key_ref)
             }.map_err(|e| format!("Tree {}: {}", i, e))?;
 
             // Extract first resource (full StaticResource with resourceinstance metadata)
@@ -457,6 +481,160 @@ fn batch_trees_to_tiles(
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
             format!("Failed to convert to Python: {}", e)
         ))
+}
+
+/// Iterator that processes trees to tiles one at a time (low memory)
+///
+/// Usage:
+///     iter = TreeToTilesIterator(tree_strings, graph_json, from_camel=True)
+///     for result in iter:
+///         # result is {"resource": {...}, "error": None} or {"resource": None, "error": "..."}
+///         if result["resource"]:
+///             process(result["resource"])
+#[pyclass]
+struct TreeToTilesIterator {
+    trees: Vec<String>,
+    graph: AlizarinCoreStaticGraph,
+    graph_id: String,
+    from_camel: bool,
+    strict: bool,
+    id_keys: Option<Vec<String>>,
+    index: usize,
+}
+
+#[pymethods]
+impl TreeToTilesIterator {
+    #[new]
+    #[pyo3(signature = (tree_strings, graph_json, from_camel=false, strict=false, id_keys=None))]
+    fn new(
+        tree_strings: Vec<String>,
+        graph_json: String,
+        from_camel: bool,
+        strict: bool,
+        id_keys: Option<Vec<String>>,
+    ) -> PyResult<Self> {
+        let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                format!("Failed to parse graph: {}", e)
+            ))?;
+
+        // Validate id_keys length if provided
+        if let Some(ref keys) = id_keys {
+            if keys.len() != tree_strings.len() {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    format!("id_keys length ({}) must match trees length ({})", keys.len(), tree_strings.len())
+                ));
+            }
+        }
+
+        let graph_id = graph.graph_id().to_string();
+
+        Ok(TreeToTilesIterator {
+            trees: tree_strings,
+            graph,
+            graph_id,
+            from_camel,
+            strict,
+            id_keys,
+            index: 0,
+        })
+    }
+
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<PyObject>> {
+        if self.index >= self.trees.len() {
+            return Ok(None);
+        }
+
+        let tree_str = &self.trees[self.index];
+        let id_key = self.id_keys.as_ref().map(|keys| keys[self.index].as_str());
+        let i = self.index;
+        self.index += 1;
+
+        // Parse tree
+        let tree_result: Result<serde_json::Value, _> = serde_json::from_str(tree_str);
+        let mut tree = match tree_result {
+            Ok(t) => t,
+            Err(e) => {
+                let output = serde_json::json!({
+                    "resource": null,
+                    "error": format!("Tree {}: Failed to parse: {}", i, e),
+                    "index": i
+                });
+                return pythonize::pythonize(py, &output)
+                    .map(Some)
+                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()));
+            }
+        };
+
+        // Transform keys if requested
+        if self.from_camel {
+            tree = transform_keys_to_snake(tree);
+        }
+
+        // Add graph_id to tree if not present
+        if let serde_json::Value::Object(ref mut map) = tree {
+            if !map.contains_key("graph_id") {
+                map.insert("graph_id".to_string(), serde_json::Value::String(self.graph_id.clone()));
+            }
+        }
+
+        // Convert tree to tiles
+        let result = if self.strict {
+            tree_to_tiles_strict_with_id_key(&tree, &self.graph, id_key)
+        } else {
+            tree_to_tiles_with_id_key(&tree, &self.graph, id_key)
+        };
+
+        let output = match result {
+            Ok(business_data) => {
+                if let Some(resource) = business_data.business_data.resources.into_iter().next() {
+                    serde_json::json!({
+                        "resource": resource,
+                        "error": null,
+                        "index": i
+                    })
+                } else {
+                    serde_json::json!({
+                        "resource": null,
+                        "error": format!("Tree {}: No resources returned", i),
+                        "index": i
+                    })
+                }
+            }
+            Err(e) => {
+                serde_json::json!({
+                    "resource": null,
+                    "error": format!("Tree {}: {}", i, e),
+                    "index": i
+                })
+            }
+        };
+
+        pythonize::pythonize(py, &output)
+            .map(Some)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    }
+
+    /// Get remaining count
+    fn __len__(&self) -> usize {
+        self.trees.len() - self.index
+    }
+
+    /// Total number of trees
+    #[getter]
+    fn total(&self) -> usize {
+        self.trees.len()
+    }
+
+    /// Current index
+    #[getter]
+    fn current_index(&self) -> usize {
+        self.index
+    }
 }
 
 /// Batch convert multiple tiled resources to JSON trees in parallel
@@ -887,6 +1065,128 @@ fn resolve_labels_in_tree(
         ))
 }
 
+/// Merge multiple resources with the same resourceinstanceid into one
+///
+/// Concatenates tiles from all resources, detecting and warning about duplicate tileids.
+/// All resources must have the same resourceinstanceid.
+///
+/// Args:
+///     resources_json: JSON string containing array of StaticResource objects
+///
+/// Returns:
+///     Dict with 'resource' (merged StaticResource) and 'warnings' (list of duplicate warnings)
+#[pyfunction]
+#[pyo3(signature = (resources_json,))]
+fn merge_resources(
+    py: Python,
+    resources_json: String,
+) -> PyResult<PyObject> {
+    let resources: Vec<AlizarinStaticResource> = serde_json::from_str(&resources_json)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to parse resources: {}", e)
+        ))?;
+
+    match core_merge_resources(resources) {
+        Ok(result) => {
+            let output = serde_json::json!({
+                "resource": result.resource,
+                "warnings": result.warnings
+            });
+            pythonize::pythonize(py, &output)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    format!("Failed to convert to Python: {}", e)
+                ))
+        }
+        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e))
+    }
+}
+
+/// Batch merge resources from multiple JSON strings
+///
+/// Takes an array of JSON strings. Each string can be:
+/// - An array of StaticResource objects: [{...}, {...}]
+/// - A single StaticResource object: {resourceinstance: {...}, tiles: [...]}
+/// - A BusinessDataWrapper: {business_data: {resources: [...]}}
+///
+/// Groups all resources by resourceinstanceid and merges each group.
+///
+/// Args:
+///     batches_json: List of JSON strings containing resources in any supported format
+///
+/// Returns:
+///     Dict with 'resources' (list of merged StaticResources) and 'warnings' (list of warnings)
+#[pyfunction]
+#[pyo3(signature = (batches_json,))]
+fn batch_merge_resources(
+    py: Python,
+    batches_json: Vec<String>,
+) -> PyResult<PyObject> {
+    // Parse each batch string into Vec<StaticResource>
+    let mut resource_batches: Vec<Vec<AlizarinStaticResource>> = Vec::new();
+    for (i, batch_str) in batches_json.iter().enumerate() {
+        // Try to parse as JSON value first to determine format
+        let value: serde_json::Value = serde_json::from_str(batch_str)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                format!("Failed to parse batch {}: {}", i, e)
+            ))?;
+
+        let batch: Vec<AlizarinStaticResource> = match &value {
+            // Array of resources
+            serde_json::Value::Array(_) => {
+                serde_json::from_value(value)
+                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        format!("Batch {}: Failed to parse as resource array: {}", i, e)
+                    ))?
+            }
+            // Object - could be BusinessDataWrapper or single resource
+            serde_json::Value::Object(map) => {
+                if let Some(bd) = map.get("business_data") {
+                    // BusinessDataWrapper format
+                    if let Some(resources) = bd.get("resources") {
+                        serde_json::from_value(resources.clone())
+                            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                                format!("Batch {}: Failed to parse business_data.resources: {}", i, e)
+                            ))?
+                    } else {
+                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                            format!("Batch {}: business_data missing 'resources' field", i)
+                        ));
+                    }
+                } else if map.contains_key("resourceinstance") {
+                    // Single StaticResource
+                    let resource: AlizarinStaticResource = serde_json::from_value(value)
+                        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                            format!("Batch {}: Failed to parse as single resource: {}", i, e)
+                        ))?;
+                    vec![resource]
+                } else {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        format!("Batch {}: Unrecognized format - expected array, BusinessDataWrapper, or StaticResource", i)
+                    ));
+                }
+            }
+            _ => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    format!("Batch {}: Expected array or object, got {:?}", i, value)
+                ));
+            }
+        };
+
+        resource_batches.push(batch);
+    }
+
+    let result = core_batch_merge_resources(resource_batches);
+
+    let output = serde_json::json!({
+        "resources": result.resources,
+        "warnings": result.warnings
+    });
+    pythonize::pythonize(py, &output)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to convert to Python: {}", e)
+        ))
+}
+
 /// Python module definition
 #[pymodule]
 fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -905,6 +1205,13 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     // Batch conversion functions (parallel processing with Rayon)
     m.add_function(wrap_pyfunction!(batch_trees_to_tiles, m)?)?;
     m.add_function(wrap_pyfunction!(batch_tiles_to_trees, m)?)?;
+
+    // Streaming iterator (low memory, processes one tree at a time)
+    m.add_class::<TreeToTilesIterator>()?;
+
+    // Resource merging (combine tiles from multiple resources)
+    m.add_function(wrap_pyfunction!(merge_resources, m)?)?;
+    m.add_function(wrap_pyfunction!(batch_merge_resources, m)?)?;
 
     // Label resolution (resolve concept labels to UUIDs before conversion)
     m.add_function(wrap_pyfunction!(resolve_labels_in_tree, m)?)?;
