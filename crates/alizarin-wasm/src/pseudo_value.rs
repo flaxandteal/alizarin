@@ -856,6 +856,22 @@ impl PseudoValueInner {
                 self.resolve_boolean_value(ctx, tile_data)
             }
 
+            // String - extract display value from language map
+            "string" => {
+                use alizarin_core::type_serialization::serialize_string;
+                let options = alizarin_core::SerializationOptions::display(ctx.language);
+                let result = serialize_string(tile_data, &options);
+                result.unwrap_or(tile_data.clone())
+            }
+
+            // URL - extract display value
+            "url" => {
+                use alizarin_core::type_serialization::serialize_url;
+                let options = alizarin_core::SerializationOptions::display(ctx.language);
+                let result = serialize_url(tile_data, &options);
+                result.unwrap_or(tile_data.clone())
+            }
+
             // Other types - return tile_data as-is
             _ => tile_data.clone(),
         }
