@@ -66,4 +66,8 @@ declare module 'alizarin' {
   export function unregisterDisplaySerializer(datatype: string): void;
 
   export function getRegisteredDisplaySerializers(): string[];
+
+  // WASM initialization
+  export function initWasm(): Promise<void>;
+  export const wasmReady: Promise<void>;
 }

@@ -1,11 +1,14 @@
-import { RDM, nodeConfig, utils, viewModels, registerDisplaySerializer } from "alizarin";
+import { RDM, nodeConfig, utils, viewModels, registerDisplaySerializer, wasmReady } from "alizarin";
 import type { interfaces, staticTypes } from "alizarin";
 type IPseudo = interfaces.IPseudo;
 type IViewModel = interfaces.IViewModel;
 type StaticTile = staticTypes.StaticTile;
 type StaticNode = staticTypes.StaticNode;
 
-// Register the reference display serializer immediately on module load
+// Wait for WASM to be initialized before registering display serializers
+await wasmReady;
+
+// Register the reference display serializer
 // This extracts display strings from StaticReference format for ETL templates
 registerDisplaySerializer('reference', (tileData: any, language: string) => {
   // Handle null/undefined
