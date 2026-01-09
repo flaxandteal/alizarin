@@ -5,67 +5,69 @@ type IViewModel = interfaces.IViewModel;
 type StaticTile = staticTypes.StaticTile;
 type StaticNode = staticTypes.StaticNode;
 
-// Wait for WASM to be initialized before registering display serializers
-await wasmReady;
+// WASM initialization is deferred - registrations that need it use wasmReady.then()
 
-// Register the reference display serializer
-// This extracts display strings from StaticReference format for ETL templates
-registerDisplaySerializer('reference', (tileData: any, language: string) => {
-  // Handle null/undefined
-  if (!tileData) return null;
+// Register display serializers after WASM is ready
+wasmReady.then(() => {
+  // Register the reference display serializer
+  // This extracts display strings from StaticReference format for ETL templates
+  registerDisplaySerializer('reference', (tileData: any, language: string) => {
+    // Handle null/undefined
+    if (!tileData) return null;
 
-  // Handle array of references (reference-list) - extract first item
-  const data = Array.isArray(tileData) ? tileData[0] : tileData;
-  if (!data) return null;
+    // Handle array of references (reference-list) - extract first item
+    const data = Array.isArray(tileData) ? tileData[0] : tileData;
+    if (!data) return null;
 
-  // Extract display string from StaticReference format
-  if (data.labels && data.labels.length > 0) {
-    // First try to find a label matching the requested language with prefLabel
-    const langPrefLabel = data.labels.find(
-      (l: any) => l.language_id === language && l.valuetype_id === 'prefLabel'
-    );
-    if (langPrefLabel) return langPrefLabel.value;
+    // Extract display string from StaticReference format
+    if (data.labels && data.labels.length > 0) {
+      // First try to find a label matching the requested language with prefLabel
+      const langPrefLabel = data.labels.find(
+        (l: any) => l.language_id === language && l.valuetype_id === 'prefLabel'
+      );
+      if (langPrefLabel) return langPrefLabel.value;
 
-    // Then try any label matching the language
-    const langLabel = data.labels.find((l: any) => l.language_id === language);
-    if (langLabel) return langLabel.value;
+      // Then try any label matching the language
+      const langLabel = data.labels.find((l: any) => l.language_id === language);
+      if (langLabel) return langLabel.value;
 
-    // Then try any prefLabel
-    const prefLabel = data.labels.find((l: any) => l.valuetype_id === 'prefLabel');
-    if (prefLabel) return prefLabel.value;
+      // Then try any prefLabel
+      const prefLabel = data.labels.find((l: any) => l.valuetype_id === 'prefLabel');
+      if (prefLabel) return prefLabel.value;
 
-    // Fall back to first label
-    return data.labels[0].value;
-  }
+      // Fall back to first label
+      return data.labels[0].value;
+    }
 
-  return null;
-});
+    return null;
+  });
 
-// Also register for reference-list which may be serialized differently
-registerDisplaySerializer('reference-list', (tileData: any, language: string) => {
-  if (!tileData || !Array.isArray(tileData) || tileData.length === 0) return null;
+  // Also register for reference-list which may be serialized differently
+  registerDisplaySerializer('reference-list', (tileData: any, language: string) => {
+    if (!tileData || !Array.isArray(tileData) || tileData.length === 0) return null;
 
-  // Map each reference to its display string
-  const displayStrings = tileData.map((ref: any) => {
-    if (!ref || !ref.labels || ref.labels.length === 0) return null;
+    // Map each reference to its display string
+    const displayStrings = tileData.map((ref: any) => {
+      if (!ref || !ref.labels || ref.labels.length === 0) return null;
 
-    // Same logic as single reference
-    const langPrefLabel = ref.labels.find(
-      (l: any) => l.language_id === language && l.valuetype_id === 'prefLabel'
-    );
-    if (langPrefLabel) return langPrefLabel.value;
+      // Same logic as single reference
+      const langPrefLabel = ref.labels.find(
+        (l: any) => l.language_id === language && l.valuetype_id === 'prefLabel'
+      );
+      if (langPrefLabel) return langPrefLabel.value;
 
-    const langLabel = ref.labels.find((l: any) => l.language_id === language);
-    if (langLabel) return langLabel.value;
+      const langLabel = ref.labels.find((l: any) => l.language_id === language);
+      if (langLabel) return langLabel.value;
 
-    const prefLabel = ref.labels.find((l: any) => l.valuetype_id === 'prefLabel');
-    if (prefLabel) return prefLabel.value;
+      const prefLabel = ref.labels.find((l: any) => l.valuetype_id === 'prefLabel');
+      if (prefLabel) return prefLabel.value;
 
-    return ref.labels[0].value;
-  }).filter((s: any) => s !== null);
+      return ref.labels[0].value;
+    }).filter((s: any) => s !== null);
 
-  // Return as comma-separated string or array depending on use case
-  return displayStrings.join(', ');
+    // Return as comma-separated string or array depending on use case
+    return displayStrings.join(', ');
+  });
 });
 // [{"labels": [{"id": "0ea39e2e-6663-467c-8707-ab492896d23e", "language_id": "en", "list_item_id": "6672d187-dfc3-4424-8c63-7a3b377b4159", "value": "Item 1>1", "valuetype_id": "prefLabel"}], "list_id": "2730d609-3a8d-49dc-bf51-6ac34e80294a", "uri": "http://localhost:8000/plugins/controlled-list-manager/item/6672d187-dfc3-4424-8c63-7a3b377b4159"}]
 

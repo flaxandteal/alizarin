@@ -622,19 +622,40 @@ impl IndexedGraph {
     }
 
     /// Extract string value from JSON, handling language-nested objects
-    /// Handles both simple strings and language objects like {"en": "value"}
+    /// Handles:
+    /// - Simple strings: "value"
+    /// - Language objects: {"en": "value"}
+    /// - Arches localized strings: {"en": {"direction": "ltr", "value": "actual value"}}
     fn extract_string_from_json(value: &serde_json::Value) -> Option<String> {
         match value {
             serde_json::Value::String(s) => Some(s.clone()),
             serde_json::Value::Object(map) => {
-                // Try to get language-specific value (e.g., {"en": "value"})
-                map.get("en")
-                    .and_then(|v| v.as_str())
+                // Try to get language-specific value
+                Self::extract_lang_value(map, "en")
                     .or_else(|| {
                         // Fallback to first available language
-                        map.values()
-                            .find_map(|v| v.as_str())
+                        map.values().find_map(|v| Self::extract_single_lang_value(v))
                     })
+            }
+            _ => None,
+        }
+    }
+
+    /// Extract value for a specific language key
+    fn extract_lang_value(map: &serde_json::Map<String, serde_json::Value>, lang: &str) -> Option<String> {
+        map.get(lang).and_then(|v| Self::extract_single_lang_value(v))
+    }
+
+    /// Extract string from a single language value, handling both formats:
+    /// - Direct string: "value"
+    /// - Arches format: {"direction": "ltr", "value": "actual value"}
+    fn extract_single_lang_value(value: &serde_json::Value) -> Option<String> {
+        match value {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Object(obj) => {
+                // Arches localized string format: {"direction": "...", "value": "..."}
+                obj.get("value")
+                    .and_then(|v| v.as_str())
                     .map(|s| s.to_string())
             }
             _ => None,

@@ -23,7 +23,6 @@ import { DomainValueViewModel } from "./DomainValueViewModel";
 import { DomainValueListViewModel } from "./DomainValueListViewModel";
 import { ConceptValueViewModel } from "./ConceptValueViewModel";
 import { ConceptListViewModel } from "./ConceptListViewModel";
-import { FileListViewModel } from "./FileListViewModel";
 
 export async function getViewModel<RIVM extends IRIVM<RIVM>>(
   parentPseudo: PseudoValue<any>,
@@ -116,9 +115,6 @@ export async function getViewModel<RIVM extends IRIVM<RIVM>>(
       case "number":
         vm = await NumberViewModel.__create(tile, node, data);
         break
-      case "file-list":
-        vm = await FileListViewModel.__create(tile, node, data);
-        break;
       case "edtf":
         vm = await EDTFViewModel.__create(tile, node, data);
         break;

@@ -24,7 +24,6 @@ export { DomainValueViewModel } from "./DomainValueViewModel";
 export { DomainValueListViewModel } from "./DomainValueListViewModel";
 export { ConceptValueViewModel } from "./ConceptValueViewModel";
 export { ConceptListViewModel } from "./ConceptListViewModel";
-export { FileListViewModel } from "./FileListViewModel";
 export { NodeViewModel } from "./NodeViewModel";
 
 // Factory function

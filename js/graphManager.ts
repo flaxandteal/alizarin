@@ -206,32 +206,16 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     }
   }
 
-  async getName(update: boolean = false) {
-    // If just reading cached data, use Rust implementation
-    if (!update) {
-      return this.wasmWrapper.getName();
+  getName(update: boolean = false): string {
+    if (update) {
+      // Recompute descriptors first, then get name
+      this.getDescriptors(true);
     }
-
-    // Otherwise build/update name
-    const descriptors = await this.getDescriptors(update);
-    const resourceName = (descriptors && descriptors.name) || '<Unnamed>';
-    return resourceName;
+    return this.wasmWrapper.getName();
   }
 
-  async getDescriptors(update: boolean = false) {
-    // If just reading cached data, use Rust implementation
-    if (!update) {
-      const cachedDescriptors = this.wasmWrapper.getDescriptors();
-      if (cachedDescriptors && !cachedDescriptors.isEmpty()) {
-        return cachedDescriptors;
-      }
-    }
-
-    // Compute descriptors using Rust implementation (platform-independent)
-    // Rust computes from tiles and returns fresh descriptors - no need to cache in TS
-    const descriptors = this.wasmWrapper.computeDescriptors();
-
-    return descriptors;
+  getDescriptors(update: boolean = false) {
+    return this.wasmWrapper.getDescriptors(update);
   }
 
   addPseudo(childNode: StaticNode, tile: StaticTile | null): IPseudo {

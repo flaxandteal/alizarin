@@ -446,82 +446,6 @@ class DomainValueListViewModel(list):
         return value
 
 
-class FileListViewModel(list):
-    """
-    List of file references.
-
-    Matches TypeScript FileListViewModel extends Array.
-    """
-
-    def __init__(self, *items):
-        super().__init__(items)
-        self._: Optional[Union[IViewModel, Awaitable[IViewModel]]] = None
-        self.__parentPseudo: Optional['IPseudo'] = None
-        self._value: Optional[Awaitable[List[Optional['ConceptValueViewModel']]]] = None
-
-    def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
-
-    def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
-
-    async def for_json(self) -> Optional[List[Any]]:
-        """Convert to JSON array"""
-        value = await self._value if self._value else None
-        return [await v.for_json() if v else None for v in value] if value else None
-
-    async def __forJsonCache(self) -> None:
-        """File lists not cached"""
-        return None
-
-    @staticmethod
-    async def _create(
-        tile: 'StaticTile',
-        node: 'StaticNode',
-        value: Any,
-    ) -> 'FileListViewModel':
-        """
-        Create a FileListViewModel.
-
-        Matches TypeScript FileListViewModel._create
-        """
-        nodeid = node.nodeid
-        val: List[Union['ConceptValueViewModel', Awaitable[Optional['ConceptValueViewModel']]]] = []
-
-        if nodeid not in tile.data:
-            tile.data[nodeid] = None
-
-        if value is not None:
-            tile.data[nodeid] = []
-            if not isinstance(value, list):
-                raise ValueError(
-                    f"Cannot set file list value on node {nodeid} except via array: {json.dumps(value)}"
-                )
-
-            val = value
-
-            # Extract IDs when all items resolve
-            async def set_tile_data():
-                resolved = [await v if hasattr(v, '__await__') else v for v in val]
-                ids = [
-                    (await v.getValue()).id if v else None
-                    for v in resolved
-                ]
-                tile.data[nodeid] = ids
-
-            # Schedule tile data update
-            import asyncio
-            asyncio.create_task(set_tile_data())
-        else:
-            value = []
-
-        return FileListViewModel(*value)
-
-    async def __asTileData(self) -> Optional[List[Any]]:
-        """Convert to tile data format"""
-        return await self._value if self._value else None
-
-
 # ============================================================================
 # Value View Models
 # ============================================================================
@@ -1774,8 +1698,6 @@ async def get_view_model(
             vm = StringViewModel._create(tile, node, data)
         elif datatype == "number":
             vm = NumberViewModel._create(tile, node, data)
-        elif datatype == "file-list":
-            vm = await FileListViewModel._create(tile, node, data)
         elif datatype == "edtf":
             vm = EDTFViewModel._create(tile, node, data)
         elif datatype == "url":

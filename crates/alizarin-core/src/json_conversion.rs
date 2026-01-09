@@ -614,11 +614,20 @@ fn build_pseudo_values_from_json(
         let has_graph_children = !child_child_ids.is_empty();
         let mut values: Vec<PseudoValueCore> = Vec::new();
 
+        // Check if this is an "outer" node: has children but also has its own non-semantic datatype
+        // Outer nodes use "_" key for their own value
+        let is_outer_node = has_graph_children && child_node.datatype != "semantic";
+
         let valid_child_aliases: std::collections::HashSet<&str> = if strict && has_graph_children {
-            child_child_ids.iter()
+            let mut aliases: std::collections::HashSet<&str> = child_child_ids.iter()
                 .filter_map(|id| nodes_by_alias.values().find(|n| n.nodeid == *id))
                 .filter_map(|n| n.alias.as_deref())
-                .collect()
+                .collect();
+            // Allow "_" for outer nodes (nodes with their own value plus children)
+            if is_outer_node {
+                aliases.insert("_");
+            }
+            aliases
         } else {
             std::collections::HashSet::new()
         };
@@ -761,7 +770,8 @@ fn create_pseudo_value_from_json(
         Arc::new(new_tile)
     });
 
-    let tile_data = json_obj.get("_value").map(|value| {
+    // "_" key holds the outer node's own value (for nodes with both value and semantic children)
+    let tile_data = json_obj.get("_").map(|value| {
         let coerced = coerce_value(&node.datatype, value, config.as_ref());
         if !coerced.is_null() && coerced.error.is_none() {
             coerced.tile_data
@@ -799,9 +809,10 @@ fn create_pseudo_value_from_leaf(
         Arc::new(new_tile)
     });
 
+    // Check for "_" key (outer node value convention)
     let value_to_coerce = json_value
         .as_object()
-        .and_then(|obj| obj.get("_value"))
+        .and_then(|obj| obj.get("_"))
         .unwrap_or(json_value);
 
     let coerced = coerce_value(&node.datatype, value_to_coerce, config.as_ref());

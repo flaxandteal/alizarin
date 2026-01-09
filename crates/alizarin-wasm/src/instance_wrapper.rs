@@ -828,38 +828,51 @@ impl WASMResourceInstanceWrapper {
             .unwrap_or_else(|| "<Unnamed>".to_string())
     }
 
-    /// Get resource descriptors from metadata
+    /// Get resource descriptors, optionally recomputing from tiles.
     /// PORT: js/graphManager.ts:127-186 (getDescriptors method)
     ///
-    /// Note: This returns the cached descriptors. For computed descriptors from
-    /// templates, use computeDescriptors() instead.
+    /// If `recompute` is false, returns cached descriptors.
+    /// If `recompute` is true, computes fresh descriptors from tiles using
+    /// graph configuration templates, updates the cache, and returns them.
     #[wasm_bindgen(js_name = getDescriptors)]
-    pub fn get_descriptors(&self) -> Option<StaticResourceDescriptors> {
-        self.core.borrow().resource_instance
-            .as_ref()
-            .map(|r| StaticResourceDescriptors(r.descriptors.clone()))
+    pub fn get_descriptors(&self, recompute: bool) -> Result<StaticResourceDescriptors, JsValue> {
+        if !recompute {
+            // Return cached descriptors
+            let cached = self.core.borrow().resource_instance
+                .as_ref()
+                .map(|r| StaticResourceDescriptors(r.descriptors.clone()));
+
+            if let Some(descriptors) = cached {
+                if !descriptors.is_empty() {
+                    return Ok(descriptors);
+                }
+            }
+            // Fall through to compute if cache is empty
+        }
+
+        // Compute fresh descriptors
+        let descriptors = self.compute_descriptors_internal()?;
+
+        // Update the cache
+        if let Some(ref mut r) = self.core.borrow_mut().resource_instance {
+            r.descriptors = descriptors.0.clone();
+        }
+
+        Ok(descriptors)
     }
 
-    /// Compute resource descriptors from tiles using graph configuration
-    /// PORT: js/graphManager.ts:127-186 + js/utils.ts:149-274 (buildResourceDescriptors)
-    ///
-    /// This computes descriptors by processing descriptor templates in the graph configuration
-    /// and replacing placeholders with actual values from the resource's tiles.
-    ///
-    /// Returns computed StaticResourceDescriptors, or empty descriptors if:
-    /// - No tiles are loaded
-    /// - No descriptor configuration exists in the graph
-    /// - Required template values are missing
-    #[wasm_bindgen(js_name = computeDescriptors)]
-    pub fn compute_descriptors(&self) -> Result<StaticResourceDescriptors, JsValue> {
+    /// Internal helper to compute descriptors without updating cache.
+    fn compute_descriptors_internal(&self) -> Result<StaticResourceDescriptors, JsValue> {
         use alizarin_core::IndexedGraph;
 
-        // Get tiles - return empty descriptors if no tiles loaded
-        // Store the borrow so it lives long enough
-        let core_ref = self.core.borrow();
-        let tiles = core_ref.tiles
-            .as_ref()
-            .ok_or_else(|| JsValue::from_str("No tiles loaded"))?;
+        // Get tiles - clone to release borrow
+        let tiles_vec: Vec<_> = {
+            let core_ref = self.core.borrow();
+            let tiles = core_ref.tiles
+                .as_ref()
+                .ok_or_else(|| JsValue::from_str("No tiles loaded"))?;
+            tiles.values().cloned().collect()
+        };
 
         // Get the graph from model core
         let graph = self.with_model_core(|core| {
@@ -869,14 +882,9 @@ impl WASMResourceInstanceWrapper {
         // Create IndexedGraph for efficient descriptor building
         let indexed_graph = IndexedGraph::new(graph);
 
-        // Convert tiles HashMap to Vec for the build_descriptors call
-        let tiles_vec: Vec<_> = tiles.values().cloned().collect();
-
         // Compute descriptors using the Rust implementation
         let descriptors = indexed_graph.build_descriptors(&tiles_vec);
-        web_sys::console::error_1(&format!("Descriptors: {:?}", descriptors).into());
 
-        // Wrap in WASM type and return
         Ok(StaticResourceDescriptors(descriptors))
     }
 
