@@ -67,19 +67,33 @@ for py_init in "$ROOT_DIR"/python/*/alizarin/__init__.py "$ROOT_DIR"/crates/aliz
     fi
 done
 
-# Update @alizarin/clm extension package.json (version and peerDependencies)
-CLM_PKG="$ROOT_DIR/ext/js/@alizarin/clm/package.json"
-if [ -f "$CLM_PKG" ]; then
-    node -e "
-        const fs = require('fs');
-        const pkg = JSON.parse(fs.readFileSync('$CLM_PKG', 'utf8'));
-        pkg.version = '$VERSION';
-        pkg.peerDependencies = pkg.peerDependencies || {};
-        pkg.peerDependencies.alizarin = '$VERSION';
-        fs.writeFileSync('$CLM_PKG', JSON.stringify(pkg, null, 2) + '\n');
-    "
-    echo "  ✓ ext/js/@alizarin/clm/package.json (version + peerDependencies)"
-fi
+# Update all JS extensions in ext/js/@alizarin/*/package.json
+for ext_pkg in "$ROOT_DIR"/ext/js/@alizarin/*/package.json; do
+    if [ -f "$ext_pkg" ]; then
+        ext_name=$(basename "$(dirname "$ext_pkg")")
+        node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('$ext_pkg', 'utf8'));
+            pkg.version = '$VERSION';
+            pkg.peerDependencies = pkg.peerDependencies || {};
+            pkg.peerDependencies.alizarin = '$VERSION';
+            fs.writeFileSync('$ext_pkg', JSON.stringify(pkg, null, 2) + '\n');
+        "
+        echo "  ✓ ext/js/@alizarin/$ext_name/package.json (version + peerDependencies)"
+    fi
+done
+
+# Update all Python extensions in ext/python/*/pyproject.toml
+for ext_pyproject in "$ROOT_DIR"/ext/python/*/pyproject.toml; do
+    if [ -f "$ext_pyproject" ]; then
+        ext_name=$(basename "$(dirname "$ext_pyproject")")
+        # Update version
+        sed -i "s/^version = .*/version = \"$VERSION\"/" "$ext_pyproject"
+        # Update alizarin dependency version if present
+        sed -i "s/\"alizarin>=.*\"/\"alizarin>=$VERSION\"/" "$ext_pyproject"
+        echo "  ✓ ext/python/$ext_name/pyproject.toml (version + dependencies)"
+    fi
+done
 
 echo ""
 echo "Version synced to $VERSION"
