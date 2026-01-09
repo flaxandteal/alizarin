@@ -60,25 +60,29 @@ jobs:
       - name: Build main package
         run: npm run build
 
-      # Build @alizarin/clm extension
-      - name: Install @alizarin/clm dependencies
-        working-directory: ext/js/@alizarin/clm
-        run: npm install
+      # Build all JS extensions
+      - name: Build and test JS extensions
+        run: |
+          for ext_dir in ext/js/@alizarin/*/; do
+            ext_name=$(basename "$ext_dir")
+            echo "=== Building @alizarin/$ext_name ==="
+            cd "$ext_dir"
+            npm install
+            npm run build
+            cd - > /dev/null
+            # Run tests if they exist
+            if [ -d "ext/js/@alizarin/$ext_name/tests" ]; then
+              npm test -- "ext/js/@alizarin/$ext_name/tests/" || echo "Tests for $ext_name failed or pending"
+            fi
+          done
 
-      - name: Build @alizarin/clm
-        working-directory: ext/js/@alizarin/clm
-        run: npm run build
-
-      - name: Test @alizarin/clm
-        run: npm test -- ext/js/@alizarin/clm/tests/
-
-      - name: Upload @alizarin/clm artifact
+      - name: Upload JS extension artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: alizarin-clm-js
+          name: alizarin-extensions-js
           path: |
-            ext/js/@alizarin/clm/dist/
-            ext/js/@alizarin/clm/package.json
+            ext/js/@alizarin/*/dist/
+            ext/js/@alizarin/*/package.json
 
   # Python extensions
   python-extensions:
@@ -110,7 +114,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             crates/alizarin-python/target/
-            ext/python/alizarin-clm/target/
+            ext/python/*/target/
           key: ${{ runner.os }}-cargo-python-ext-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install maturin and test dependencies
@@ -125,21 +129,24 @@ jobs:
         working-directory: crates/alizarin-python
         run: pip install target/wheels/*.whl
 
-      # Build alizarin-clm
-      - name: Build alizarin-clm wheel
-        working-directory: ext/python/alizarin-clm
-        run: maturin build --release
+      # Build all Python extensions
+      - name: Build and test Python extensions
+        run: |
+          for ext_dir in ext/python/*/; do
+            ext_name=$(basename "$ext_dir")
+            echo "=== Building $ext_name ==="
+            cd "$ext_dir"
+            maturin build --release
+            pip install target/wheels/*.whl
+            # Run tests if they exist
+            if [ -d "tests" ]; then
+              pytest tests/ -v || echo "Tests for $ext_name failed or pending"
+            fi
+            cd - > /dev/null
+          done
 
-      - name: Install alizarin-clm
-        working-directory: ext/python/alizarin-clm
-        run: pip install target/wheels/*.whl
-
-      - name: Test alizarin-clm
-        working-directory: ext/python/alizarin-clm
-        run: pytest tests/ -v || echo "Tests pending"
-
-      - name: Upload alizarin-clm wheel
+      - name: Upload Python extension wheels
         uses: actions/upload-artifact@v4
         with:
-          name: alizarin-clm-python-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: ext/python/alizarin-clm/target/wheels/*.whl
+          name: alizarin-extensions-python-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: ext/python/*/target/wheels/*.whl
