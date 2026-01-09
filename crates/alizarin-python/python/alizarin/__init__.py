@@ -249,7 +249,6 @@ from .view_models import (
     ResourceInstanceListViewModel,
     ConceptListViewModel,
     DomainValueListViewModel,
-    FileListViewModel,
     # Value ViewModels
     StringViewModel,
     DateViewModel,
@@ -441,7 +440,6 @@ __all__ = [
     "ResourceInstanceListViewModel",
     "ConceptListViewModel",
     "DomainValueListViewModel",
-    "FileListViewModel",
     "StringViewModel",
     "DateViewModel",
     "EDTFViewModel",

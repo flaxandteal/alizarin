@@ -1,0 +1,31 @@
+{
+  "name": "@alizarin/filelist",
+  "version": "0.2.1-alpha.10",
+  "description": "Alizarin display serializers and view models for file-list datatypes",
+  "license": "AGPL-3.0",
+  "author": "Phil Weir <phil.weir@flaxandteal.co.uk>",
+  "type": "module",
+  "main": "./dist/filelist.js",
+  "types": "./dist/main.d.ts",
+  "files": [
+    "dist/filelist.js",
+    "dist/main.d.ts"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "preview": "vite preview",
+    "test": "cd ../../../.. && npm test -- ext/js/@alizarin/filelist/tests/filelist.test.ts"
+  },
+  "peerDependencies": {
+    "alizarin": "0.2.1-alpha.10"
+  },
+  "devDependencies": {
+    "alizarin": "file:../../../..",
+    "typescript": "~5.9.3",
+    "vite": "npm:rolldown-vite@7.2.5"
+  },
+  "overrides": {
+    "vite": "npm:rolldown-vite@7.2.5"
+  }
+}

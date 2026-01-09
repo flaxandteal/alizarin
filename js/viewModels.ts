@@ -24,7 +24,6 @@ export {
   DomainValueListViewModel,
   ConceptValueViewModel,
   ConceptListViewModel,
-  FileListViewModel,
   NodeViewModel,
   getViewModel,
   SemanticViewModel,

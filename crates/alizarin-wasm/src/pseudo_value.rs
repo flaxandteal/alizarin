@@ -513,12 +513,11 @@ impl PseudoValueInner {
             let children_json = inner.semantic_to_json(ctx);
 
             // If children is an object, merge with own value
-            // The convention is to put own value under special key or return structured
+            // The convention is to put own value under "_" key
+            // This matches the input format: { "_": nodeValue, "child1": ..., "child2": ... }
             if let serde_json::Value::Object(mut children_map) = children_json {
-                // Insert own value - using the datatype or "_value" as key
-                // This matches how the JS ViewModels serialize
                 if !own_value.is_null() {
-                    children_map.insert("_value".to_string(), own_value);
+                    children_map.insert("_".to_string(), own_value);
                 }
                 return serde_json::Value::Object(children_map);
             }
@@ -881,7 +880,7 @@ impl PseudoValueInner {
 
             if let serde_json::Value::Object(mut children_map) = children_json {
                 if !own_value.is_null() {
-                    children_map.insert("_value".to_string(), own_value);
+                    children_map.insert("_".to_string(), own_value);
                 }
                 return serde_json::Value::Object(children_map);
             }
