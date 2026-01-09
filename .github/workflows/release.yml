@@ -67,21 +67,20 @@ jobs:
       - name: Build TypeScript/JavaScript bundle
         run: npm run build
 
-      # Build @alizarin/clm extension
-      - name: Install @alizarin/clm dependencies
-        working-directory: ext/js/@alizarin/clm
-        run: npm install
-
-      - name: Build @alizarin/clm
-        working-directory: ext/js/@alizarin/clm
-        run: npm run build
-
-      - name: Create @alizarin/clm tarball
-        working-directory: ext/js/@alizarin/clm
+      # Build all JS extensions
+      - name: Build JS extensions and create tarballs
         run: |
-          npm pack
-          # Move to root so it's found by the release upload
-          mv alizarin-clm-*.tgz ../../../../
+          for ext_dir in ext/js/@alizarin/*/; do
+            ext_name=$(basename "$ext_dir")
+            echo "=== Building @alizarin/$ext_name ==="
+            cd "$ext_dir"
+            npm install
+            npm run build
+            npm pack
+            # Move tarball to root so it's found by the release upload
+            mv alizarin-*.tgz ../../../../
+            cd - > /dev/null
+          done
 
       - name: Verify build artifacts
         run: |
@@ -91,8 +90,12 @@ jobs:
           echo "Checking pkg directory:"
           ls -lh pkg/
           echo ""
-          echo "Checking @alizarin/clm dist directory:"
-          ls -lh ext/js/@alizarin/clm/dist/
+          echo "Checking JS extension dist directories:"
+          for ext_dir in ext/js/@alizarin/*/; do
+            ext_name=$(basename "$ext_dir")
+            echo "  @alizarin/$ext_name:"
+            ls -lh "$ext_dir/dist/" 2>/dev/null || echo "    (no dist)"
+          done
           echo ""
           echo "Checking tarballs in root:"
           ls -lh *.tgz || echo "No tarballs yet"
@@ -151,18 +154,22 @@ jobs:
             npm install https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/alizarin-${{ steps.get_version.outputs.version }}.tgz
             ```
 
-            ### @alizarin/clm (CLM Extension)
+            ### Extensions
 
-            To use CLM display serializers (for reference/concept datatypes), install the extension:
-
+            **@alizarin/clm** - CLM display serializers for reference/concept datatypes:
             ```bash
             npm install https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/alizarin-clm-${{ steps.get_version.outputs.version }}.tgz
             ```
 
-            Then import it to register the display serializers:
+            **@alizarin/filelist** - File list datatype view models and display serializers:
+            ```bash
+            npm install https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/alizarin-filelist-${{ steps.get_version.outputs.version }}.tgz
+            ```
 
+            Then import to register:
             ```typescript
             import '@alizarin/clm';
+            import '@alizarin/filelist';
             ```
 
             ## What's Included
@@ -175,6 +182,11 @@ jobs:
 
             **@alizarin/clm:**
             - Display serializers for CLM reference datatypes
+            - Auto-registers when imported
+
+            **@alizarin/filelist:**
+            - View models for file-list datatypes
+            - Display serializers for file-list
             - Auto-registers when imported
 
             ## Changes
