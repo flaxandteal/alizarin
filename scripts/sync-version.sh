@@ -54,9 +54,11 @@ for cargo_file in "$ROOT_DIR"/crates/*/Cargo.toml; do
 done
 
 # Update Python pyproject.toml if it exists
-if [ -f "$ROOT_DIR/python/pyproject.toml" ]; then
-    sed -i "s/^version = .*/version = \"$VERSION\"/" "$ROOT_DIR/python/pyproject.toml"
-    echo "  ✓ python/pyproject.toml"
+# Convert to PEP 440 format: 0.2.1-alpha.12 -> 0.2.1a12
+PEP440_VERSION=$(echo "$VERSION" | sed 's/-alpha\./a/' | sed 's/-beta\./b/' | sed 's/-rc\./rc/')
+if [ -f "$ROOT_DIR/crates/alizarin-python/pyproject.toml" ]; then
+    sed -i "s/^version = .*/version = \"$PEP440_VERSION\"/" "$ROOT_DIR/crates/alizarin-python/pyproject.toml"
+    echo "  ✓ crates/alizarin-python/pyproject.toml"
 fi
 
 # Update Python __version__ if it exists
@@ -87,10 +89,10 @@ done
 for ext_pyproject in "$ROOT_DIR"/ext/python/*/pyproject.toml; do
     if [ -f "$ext_pyproject" ]; then
         ext_name=$(basename "$(dirname "$ext_pyproject")")
-        # Update version
-        sed -i "s/^version = .*/version = \"$VERSION\"/" "$ext_pyproject"
-        # Update alizarin dependency version if present
-        sed -i "s/\"alizarin>=.*\"/\"alizarin>=$VERSION\"/" "$ext_pyproject"
+        # Update version (use PEP 440 format)
+        sed -i "s/^version = .*/version = \"$PEP440_VERSION\"/" "$ext_pyproject"
+        # Update alizarin dependency version if present (use PEP 440 format)
+        sed -i "s/\"alizarin>=.*\"/\"alizarin>=$PEP440_VERSION\"/" "$ext_pyproject"
         echo "  ✓ ext/python/$ext_name/pyproject.toml (version + dependencies)"
     fi
 done
