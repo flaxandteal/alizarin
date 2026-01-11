@@ -553,7 +553,10 @@ impl WASMResourceModelWrapper {
         let core_graph = graph.0.clone();
         let graph_id = core_graph.graph_id().to_string();
 
-        // Create and register the core in the registry
+        // Register graph in core registry (for batch_merge_resources descriptor computation)
+        alizarin_core::register_graph(&graph_id, Arc::new(core_graph.clone()));
+
+        // Create and register the core in the WASM-specific registry
         let core = ResourceModelWrapperCore::new(wkrm.clone(), Arc::new(core_graph), default_allow);
         MODEL_REGISTRY.with(|registry| {
             registry.borrow_mut().insert(graph_id.clone(), Arc::new(RefCell::new(core)));

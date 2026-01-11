@@ -15,6 +15,7 @@ pub mod loader;
 pub mod node_config;
 pub mod pseudo_value_core;
 pub mod rdm_cache;
+pub mod registry;
 pub mod skos;
 pub mod type_coercion;
 pub mod type_serialization;
@@ -124,4 +125,10 @@ pub use graph_mutator::{
     get_default_widget_for_datatype, WIDGETS, DEFAULT_CARD_COMPONENT_ID,
     // Utilities
     Cardinality, MutationError, generate_uuid_v5,
+};
+
+// Graph registry (for looking up graphs by graph_id)
+pub use registry::{
+    register_graph, register_graph_owned, get_graph, is_graph_registered,
+    unregister_graph, clear_registry, registry_size,
 };

@@ -286,6 +286,7 @@ impl PseudoValueCore {
         let mut obj = Map::new();
 
         let parent_tile_id = self.tile.as_ref().and_then(|t| t.tileid.clone());
+        let parent_nodegroup_id = self.node.nodegroup_id.clone();
 
         let child_node_ids = match ctx.edges.get(&self.node.nodeid) {
             Some(ids) => ids,
@@ -314,6 +315,7 @@ impl PseudoValueCore {
             let matching_values = pseudo_list.matching_entries(
                 parent_tile_id.clone(),
                 child_node.nodegroup_id.clone(),
+                parent_nodegroup_id.clone(),
             );
 
             if matching_values.is_empty() {
@@ -482,15 +484,24 @@ impl PseudoListCore {
     /// 1. They have a tile that passes the tile filter, OR
     /// 2. They have no tile (synthetic entries) and parent_tile_id is None
     ///    (root-level match for synthetic parent collectors)
+    ///
+    /// The parent_nodegroup_id is used to determine if the child is in the same
+    /// nodegroup as the parent, which affects fallback matching behavior.
     pub fn matching_entries(
         &self,
         parent_tile_id: Option<String>,
         nodegroup_id: Option<String>,
+        parent_nodegroup_id: Option<String>,
     ) -> Vec<&PseudoValueCore> {
         self.values.iter()
             .filter(|v| {
                 match v.tile.as_ref() {
-                    Some(tile) => matches_tile_filter(tile, parent_tile_id.as_ref(), nodegroup_id.as_ref()),
+                    Some(tile) => matches_tile_filter(
+                        tile,
+                        parent_tile_id.as_ref(),
+                        nodegroup_id.as_ref(),
+                        parent_nodegroup_id.as_ref(),
+                    ),
                     // Synthetic entries (no tile) match when at root level
                     // These are created for parent semantic collectors that don't have their own tiles
                     None => parent_tile_id.is_none(),
@@ -572,11 +583,12 @@ impl TileBuilder {
 ///    - Tile's tileid equals parent_tile_id (same tile)
 ///    - Tile's parenttile_id equals parent_tile_id (child tile)
 ///    - Both parent_tile_id and tile's parenttile_id are None (root level)
-///    - Tile's parenttile_id is None and parent_tile_id is Some (fallback for data without parenttile_id)
+///    - Tile's parenttile_id is None and child is in different nodegroup than parent (fallback)
 pub fn matches_tile_filter(
     tile: &StaticTile,
     parent_tile_id: Option<&String>,
     nodegroup_id: Option<&String>,
+    parent_nodegroup_id: Option<&String>,
 ) -> bool {
     if let Some(ng) = nodegroup_id {
         if &tile.nodegroup_id == ng {
@@ -594,8 +606,14 @@ pub fn matches_tile_filter(
             }
             // Fallback: If tile has no parenttile_id but is in the correct nodegroup,
             // allow matching. This handles business data that doesn't set parenttile_id
-            // on child tiles. The nodegroup match ensures we're in the right semantic context.
-            if tile.parenttile_id.is_none() && parent_tile_id.is_some() {
+            // on child tiles.
+            // IMPORTANT: Only apply this fallback when child is in a DIFFERENT nodegroup
+            // than the parent. When same nodegroup, we need exact tileid match (handled above).
+            let is_different_nodegroup = match parent_nodegroup_id {
+                Some(parent_ng) => ng != parent_ng,
+                None => true, // No parent nodegroup means we're at root, allow fallback
+            };
+            if tile.parenttile_id.is_none() && parent_tile_id.is_some() && is_different_nodegroup {
                 return true;
             }
         }

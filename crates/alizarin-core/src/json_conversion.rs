@@ -611,6 +611,14 @@ fn build_pseudo_values_from_json(
             .map(|pt| pt.nodegroup_id == *nodegroup_id)
             .unwrap_or(false);
 
+        // Extract parent tile ID for setting parenttile_id on new tiles
+        // Only needed when NOT sharing nodegroup (creating a new tile)
+        let parent_tile_id = if shares_nodegroup {
+            None
+        } else {
+            parent_tile.as_ref().and_then(|pt| pt.tileid.as_ref())
+        };
+
         let has_graph_children = !child_child_ids.is_empty();
         let mut values: Vec<PseudoValueCore> = Vec::new();
 
@@ -656,6 +664,7 @@ fn build_pseudo_values_from_json(
                             &config_value,
                             resource_id,
                             if shares_nodegroup { parent_tile.clone() } else { None },
+                            parent_tile_id,
                         );
 
                         values.push(pv);
@@ -681,6 +690,7 @@ fn build_pseudo_values_from_json(
                         &config_value,
                         resource_id,
                         if shares_nodegroup { parent_tile.clone() } else { None },
+                        parent_tile_id,
                     );
                     values.push(pv);
                 }
@@ -707,6 +717,7 @@ fn build_pseudo_values_from_json(
                 &config_value,
                 resource_id,
                 if shares_nodegroup { parent_tile.clone() } else { None },
+                parent_tile_id,
             );
 
             values.push(pv);
@@ -731,6 +742,7 @@ fn build_pseudo_values_from_json(
                 &config_value,
                 resource_id,
                 if shares_nodegroup { parent_tile.clone() } else { None },
+                parent_tile_id,
             );
             values.push(pv);
         }
@@ -760,6 +772,7 @@ fn create_pseudo_value_from_json(
     config: &Option<Value>,
     resource_id: &str,
     shared_tile: Option<Arc<StaticTile>>,
+    parent_tile_id: Option<&String>,
 ) -> (PseudoValueCore, Arc<StaticTile>) {
     let tile = shared_tile.unwrap_or_else(|| {
         let tile_id = uuid::Uuid::new_v4().to_string();
@@ -767,6 +780,7 @@ fn create_pseudo_value_from_json(
         let mut new_tile = StaticTile::new_empty(nodegroup_id.to_string());
         new_tile.tileid = Some(tile_id);
         new_tile.resourceinstance_id = resource_id.to_string();
+        new_tile.parenttile_id = parent_tile_id.cloned();
         Arc::new(new_tile)
     });
 
@@ -799,6 +813,7 @@ fn create_pseudo_value_from_leaf(
     config: &Option<Value>,
     resource_id: &str,
     shared_tile: Option<Arc<StaticTile>>,
+    parent_tile_id: Option<&String>,
 ) -> (PseudoValueCore, Arc<StaticTile>) {
     let tile = shared_tile.unwrap_or_else(|| {
         let tile_id = uuid::Uuid::new_v4().to_string();
@@ -806,6 +821,7 @@ fn create_pseudo_value_from_leaf(
         let mut new_tile = StaticTile::new_empty(nodegroup_id.to_string());
         new_tile.tileid = Some(tile_id);
         new_tile.resourceinstance_id = resource_id.to_string();
+        new_tile.parenttile_id = parent_tile_id.cloned();
         Arc::new(new_tile)
     });
 
@@ -1254,5 +1270,454 @@ mod tests {
         let id = &result.business_data.resources[0].resourceinstance.resourceinstanceid;
 
         assert_eq!(id, "explicit-id-123", "Explicit resourceinstanceid should take precedence");
+    }
+
+    /// Test that nested semantic nodes with data children work correctly.
+    /// Mimics the Heritage Item structure: system_reference_numbers -> uuid -> resourceid
+    #[test]
+    fn test_nested_semantic_with_data_child() {
+        // Create a graph that mimics: root -> system_ref_numbers (semantic) -> uuid (semantic) -> resourceid (string)
+        // All in the same nodegroup (as in Heritage Item)
+        let graph_json = serde_json::json!({
+            "graphid": "test-nested-graph",
+            "name": {"en": "Test Nested Graph"},
+            "root": {
+                "nodeid": "root-id",
+                "name": "Heritage Item",
+                "alias": "heritage_item",
+                "datatype": "semantic",
+                "graph_id": "test-nested-graph",
+                "istopnode": true
+            },
+            "nodes": [
+                {
+                    "nodeid": "root-id",
+                    "name": "Heritage Item",
+                    "alias": "heritage_item",
+                    "datatype": "semantic",
+                    "graph_id": "test-nested-graph",
+                    "istopnode": true
+                },
+                {
+                    "nodeid": "sys-ref-id",
+                    "name": "System Reference Numbers",
+                    "alias": "system_reference_numbers",
+                    "datatype": "semantic",
+                    "nodegroup_id": "sys-ref-ng",
+                    "graph_id": "test-nested-graph",
+                    "is_collector": true
+                },
+                {
+                    "nodeid": "uuid-id",
+                    "name": "UUID",
+                    "alias": "uuid",
+                    "datatype": "semantic",
+                    "nodegroup_id": "sys-ref-ng",
+                    "graph_id": "test-nested-graph"
+                },
+                {
+                    "nodeid": "resourceid-id",
+                    "name": "ResourceID",
+                    "alias": "resourceid",
+                    "datatype": "string",
+                    "nodegroup_id": "sys-ref-ng",
+                    "graph_id": "test-nested-graph"
+                }
+            ],
+            "nodegroups": [
+                {
+                    "nodegroupid": "sys-ref-ng",
+                    "cardinality": "n",
+                    "grouping_node_id": "sys-ref-id"
+                }
+            ],
+            "edges": [
+                {"edgeid": "edge-1", "domainnode_id": "root-id", "rangenode_id": "sys-ref-id"},
+                {"edgeid": "edge-2", "domainnode_id": "sys-ref-id", "rangenode_id": "uuid-id"},
+                {"edgeid": "edge-3", "domainnode_id": "uuid-id", "rangenode_id": "resourceid-id"}
+            ]
+        });
+
+        let mut graph: StaticGraph = serde_json::from_value(graph_json)
+            .expect("Failed to deserialize graph");
+        graph.build_indices();
+
+        // Test input matching Heritage Item structure
+        let tree = serde_json::json!({
+            "system_reference_numbers": {
+                "uuid": {
+                    "resourceid": "650284"
+                }
+            }
+        });
+
+        println!("Input tree:\n{}", serde_json::to_string_pretty(&tree).unwrap());
+
+        let result = tree_to_tiles(&tree, &graph)
+            .expect("tree_to_tiles failed");
+
+        let resource = &result.business_data.resources[0];
+        let tiles = resource.tiles.as_ref().expect("Should have tiles");
+
+        println!("Output tiles:");
+        for tile in tiles {
+            println!("  Tile nodegroup_id: {}", tile.nodegroup_id);
+            println!("  Tile data: {}", serde_json::to_string_pretty(&tile.data).unwrap());
+        }
+
+        // Find the tile for sys-ref-ng
+        let sys_ref_tile = tiles.iter()
+            .find(|t| t.nodegroup_id == "sys-ref-ng")
+            .expect("Should have sys-ref-ng tile");
+
+        // The resourceid value should be in the tile data under the resourceid node ID
+        let resourceid_value = sys_ref_tile.data.get("resourceid-id");
+        assert!(
+            resourceid_value.is_some(),
+            "Tile data should contain resourceid-id. Got: {}",
+            serde_json::to_string_pretty(&sys_ref_tile.data).unwrap()
+        );
+
+        // String datatype coerces to i18n format {"en": "value"}
+        let expected = serde_json::json!({"en": "650284"});
+        assert_eq!(
+            resourceid_value.unwrap(),
+            &expected,
+            "resourceid should be i18n formatted '650284'. Got: {:?}",
+            resourceid_value
+        );
+    }
+
+    /// Test with multiple levels of nesting - cardinality "n" with array wrapper
+    #[test]
+    fn test_nested_semantic_with_array_wrapper() {
+        let graph_json = serde_json::json!({
+            "graphid": "test-nested-graph",
+            "name": {"en": "Test Nested Graph"},
+            "root": {
+                "nodeid": "root-id",
+                "name": "Heritage Item",
+                "alias": "heritage_item",
+                "datatype": "semantic",
+                "graph_id": "test-nested-graph",
+                "istopnode": true
+            },
+            "nodes": [
+                {
+                    "nodeid": "root-id",
+                    "name": "Heritage Item",
+                    "alias": "heritage_item",
+                    "datatype": "semantic",
+                    "graph_id": "test-nested-graph",
+                    "istopnode": true
+                },
+                {
+                    "nodeid": "sys-ref-id",
+                    "name": "System Reference Numbers",
+                    "alias": "system_reference_numbers",
+                    "datatype": "semantic",
+                    "nodegroup_id": "sys-ref-ng",
+                    "graph_id": "test-nested-graph",
+                    "is_collector": true
+                },
+                {
+                    "nodeid": "uuid-id",
+                    "name": "UUID",
+                    "alias": "uuid",
+                    "datatype": "semantic",
+                    "nodegroup_id": "sys-ref-ng",
+                    "graph_id": "test-nested-graph"
+                },
+                {
+                    "nodeid": "resourceid-id",
+                    "name": "ResourceID",
+                    "alias": "resourceid",
+                    "datatype": "string",
+                    "nodegroup_id": "sys-ref-ng",
+                    "graph_id": "test-nested-graph"
+                }
+            ],
+            "nodegroups": [
+                {
+                    "nodegroupid": "sys-ref-ng",
+                    "cardinality": "n",
+                    "grouping_node_id": "sys-ref-id"
+                }
+            ],
+            "edges": [
+                {"edgeid": "edge-1", "domainnode_id": "root-id", "rangenode_id": "sys-ref-id"},
+                {"edgeid": "edge-2", "domainnode_id": "sys-ref-id", "rangenode_id": "uuid-id"},
+                {"edgeid": "edge-3", "domainnode_id": "uuid-id", "rangenode_id": "resourceid-id"}
+            ]
+        });
+
+        let mut graph: StaticGraph = serde_json::from_value(graph_json)
+            .expect("Failed to deserialize graph");
+        graph.build_indices();
+
+        // Test with array wrapper (how it would come from notebook with cardinality "n")
+        let tree = serde_json::json!({
+            "system_reference_numbers": [{
+                "uuid": {
+                    "resourceid": "650284"
+                }
+            }]
+        });
+
+        println!("Input tree (array wrapper):\n{}", serde_json::to_string_pretty(&tree).unwrap());
+
+        let result = tree_to_tiles(&tree, &graph)
+            .expect("tree_to_tiles failed");
+
+        let resource = &result.business_data.resources[0];
+        let tiles = resource.tiles.as_ref().expect("Should have tiles");
+
+        println!("Output tiles (array wrapper):");
+        for tile in tiles {
+            println!("  Tile nodegroup_id: {}", tile.nodegroup_id);
+            println!("  Tile data: {}", serde_json::to_string_pretty(&tile.data).unwrap());
+        }
+
+        // Find the tile for sys-ref-ng
+        let sys_ref_tile = tiles.iter()
+            .find(|t| t.nodegroup_id == "sys-ref-ng")
+            .expect("Should have sys-ref-ng tile");
+
+        // The resourceid value should be in the tile data
+        let resourceid_value = sys_ref_tile.data.get("resourceid-id");
+        assert!(
+            resourceid_value.is_some(),
+            "Tile data should contain resourceid-id. Got: {}",
+            serde_json::to_string_pretty(&sys_ref_tile.data).unwrap()
+        );
+    }
+
+    /// Test using real Heritage Item graph structure (loaded from file if available)
+    #[test]
+    fn test_real_heritage_item_system_ref_numbers() {
+        // Use workspace root for test data
+        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent().unwrap()
+            .parent().unwrap()
+            .to_path_buf();
+
+        // Try to load Heritage Item graph - skip test if not available
+        let heritage_item_path = PathBuf::from("/home/philtweir/Cód/Cliant/Quartz/tmp.quartz-starches-buildings-test/prebuild/graphs/resource_models/Heritage Item.json");
+        let json_str = match fs::read_to_string(&heritage_item_path) {
+            Ok(s) => s,
+            Err(_) => {
+                println!("Heritage Item.json not found at {:?}, skipping test", heritage_item_path);
+                return;
+            }
+        };
+
+        let json: serde_json::Value = serde_json::from_str(&json_str)
+            .expect("Failed to parse Heritage Item.json");
+
+        let graph_data = json["graph"][0].clone();
+
+        let mut graph: StaticGraph = serde_json::from_value(graph_data)
+            .expect("Failed to deserialize StaticGraph");
+        graph.build_indices();
+
+        // Test input matching what the notebook would send - using INTEGER like the real case
+        let tree = serde_json::json!({
+            "system_reference_numbers": {
+                "uuid": {
+                    "resourceid": 650284  // Integer, not string!
+                }
+            }
+        });
+
+        println!("Input tree:\n{}", serde_json::to_string_pretty(&tree).unwrap());
+        println!("Graph ID: {}", graph.graphid);
+
+        // Debug: print the relevant node aliases
+        let nodes_by_alias = graph.nodes_by_alias_arc().unwrap();
+        println!("system_reference_numbers node exists: {}", nodes_by_alias.contains_key("system_reference_numbers"));
+        println!("uuid node exists: {}", nodes_by_alias.contains_key("uuid"));
+        println!("resourceid node exists: {}", nodes_by_alias.contains_key("resourceid"));
+
+        if let Some(uuid_node) = nodes_by_alias.get("uuid") {
+            println!("uuid node datatype: {}", uuid_node.datatype);
+            println!("uuid node nodegroup_id: {:?}", uuid_node.nodegroup_id);
+        }
+
+        if let Some(resourceid_node) = nodes_by_alias.get("resourceid") {
+            println!("resourceid node datatype: {}", resourceid_node.datatype);
+            println!("resourceid node nodegroup_id: {:?}", resourceid_node.nodegroup_id);
+        }
+
+        // Check edges
+        let edges = graph.edges_map().unwrap();
+        if let Some(sys_ref_node) = nodes_by_alias.get("system_reference_numbers") {
+            println!("system_reference_numbers -> children: {:?}", edges.get(&sys_ref_node.nodeid));
+        }
+        if let Some(uuid_node) = nodes_by_alias.get("uuid") {
+            println!("uuid -> children: {:?}", edges.get(&uuid_node.nodeid));
+        }
+
+        let result = tree_to_tiles(&tree, &graph)
+            .expect("tree_to_tiles failed");
+
+        let resource = &result.business_data.resources[0];
+        let tiles = resource.tiles.as_ref().expect("Should have tiles");
+
+        println!("\nOutput tiles:");
+        for tile in tiles {
+            println!("  Tile nodegroup_id: {}", tile.nodegroup_id);
+            println!("  Tile data: {}", serde_json::to_string_pretty(&tile.data).unwrap());
+        }
+
+        // Find the tile for System Reference Numbers nodegroup
+        let sys_ref_ng = "325a2f2f-efe4-11eb-9b0c-a87eeabdefba";
+        let sys_ref_tile = tiles.iter()
+            .find(|t| t.nodegroup_id == sys_ref_ng);
+
+        assert!(
+            sys_ref_tile.is_some(),
+            "Should have System Reference Numbers tile. Got tiles: {:?}",
+            tiles.iter().map(|t| &t.nodegroup_id).collect::<Vec<_>>()
+        );
+
+        let sys_ref_tile = sys_ref_tile.unwrap();
+        let resourceid_node_id = "325a430a-efe4-11eb-810b-a87eeabdefba";
+
+        let resourceid_value = sys_ref_tile.data.get(resourceid_node_id);
+        assert!(
+            resourceid_value.is_some(),
+            "Tile data should contain resourceid node. Got: {}",
+            serde_json::to_string_pretty(&sys_ref_tile.data).unwrap()
+        );
+    }
+
+    /// Test that parenttile_id is set correctly for nested nodegroups
+    #[test]
+    fn test_parenttile_id_set_for_nested_nodegroups() {
+        // Create a graph with nested nodegroups:
+        // root -> parent_ng (location_data) -> child_ng (geometry -> coordinates)
+        let graph_json = serde_json::json!({
+            "graphid": "test-parenttile-graph",
+            "name": {"en": "Test Parenttile Graph"},
+            "root": {
+                "nodeid": "root-id",
+                "name": "Root",
+                "alias": "root",
+                "datatype": "semantic",
+                "graph_id": "test-parenttile-graph",
+                "istopnode": true
+            },
+            "nodes": [
+                {
+                    "nodeid": "root-id",
+                    "name": "Root",
+                    "alias": "root",
+                    "datatype": "semantic",
+                    "graph_id": "test-parenttile-graph",
+                    "istopnode": true
+                },
+                {
+                    "nodeid": "location-data-id",
+                    "name": "Location Data",
+                    "alias": "location_data",
+                    "datatype": "semantic",
+                    "nodegroup_id": "parent-ng",
+                    "graph_id": "test-parenttile-graph",
+                    "is_collector": true
+                },
+                {
+                    "nodeid": "geometry-id",
+                    "name": "Geometry",
+                    "alias": "geometry",
+                    "datatype": "semantic",
+                    "nodegroup_id": "child-ng",
+                    "graph_id": "test-parenttile-graph"
+                },
+                {
+                    "nodeid": "coordinates-id",
+                    "name": "Coordinates",
+                    "alias": "coordinates",
+                    "datatype": "geojson-feature-collection",
+                    "nodegroup_id": "child-ng",
+                    "graph_id": "test-parenttile-graph"
+                }
+            ],
+            "nodegroups": [
+                {
+                    "nodegroupid": "parent-ng",
+                    "cardinality": "1",
+                    "grouping_node_id": "location-data-id"
+                },
+                {
+                    "nodegroupid": "child-ng",
+                    "cardinality": "1",
+                    "parentnodegroup_id": "parent-ng",
+                    "grouping_node_id": "geometry-id"
+                }
+            ],
+            "edges": [
+                {"edgeid": "edge-1", "domainnode_id": "root-id", "rangenode_id": "location-data-id"},
+                {"edgeid": "edge-2", "domainnode_id": "location-data-id", "rangenode_id": "geometry-id"},
+                {"edgeid": "edge-3", "domainnode_id": "geometry-id", "rangenode_id": "coordinates-id"}
+            ]
+        });
+
+        let mut graph: StaticGraph = serde_json::from_value(graph_json)
+            .expect("Failed to deserialize graph");
+        graph.build_indices();
+
+        // Input tree with nested structure
+        let tree = serde_json::json!({
+            "location_data": {
+                "geometry": {
+                    "coordinates": {
+                        "type": "FeatureCollection",
+                        "features": [{
+                            "type": "Feature",
+                            "geometry": {
+                                "type": "Point",
+                                "coordinates": [-6.26, 53.35]
+                            }
+                        }]
+                    }
+                }
+            }
+        });
+
+        let result = tree_to_tiles(&tree, &graph)
+            .expect("tree_to_tiles failed");
+
+        let resource = &result.business_data.resources[0];
+        let tiles = resource.tiles.as_ref().expect("Should have tiles");
+
+        println!("Generated tiles:");
+        for tile in tiles {
+            println!("  nodegroup: {}, tileid: {:?}, parenttile_id: {:?}",
+                tile.nodegroup_id, tile.tileid, tile.parenttile_id);
+        }
+
+        // Find parent and child tiles
+        let parent_tile = tiles.iter()
+            .find(|t| t.nodegroup_id == "parent-ng")
+            .expect("Should have parent-ng tile");
+        let child_tile = tiles.iter()
+            .find(|t| t.nodegroup_id == "child-ng")
+            .expect("Should have child-ng tile");
+
+        // Parent tile should have no parenttile_id (it's at the root level)
+        assert!(
+            parent_tile.parenttile_id.is_none(),
+            "Parent tile should have no parenttile_id. Got: {:?}",
+            parent_tile.parenttile_id
+        );
+
+        // Child tile should have parenttile_id pointing to parent tile
+        assert_eq!(
+            child_tile.parenttile_id.as_ref(),
+            parent_tile.tileid.as_ref(),
+            "Child tile's parenttile_id should match parent tile's tileid. \
+             Child parenttile_id: {:?}, Parent tileid: {:?}",
+            child_tile.parenttile_id, parent_tile.tileid
+        );
     }
 }

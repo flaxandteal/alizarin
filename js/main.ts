@@ -9,6 +9,7 @@ import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
 import { initWasm, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerDisplaySerializer, hasDisplaySerializer, unregisterDisplaySerializer, getRegisteredDisplaySerializers } from "./_wasm";
+import { newWASMResourceInstanceWrapperForResource, WASMResourceModelWrapper } from "../pkg/alizarin";
 import { resetTimingStats, getTimingStats, logTimingStats } from "./semantic";
 import * as tracing from "./tracing";
 import { IStringKeyedObject } from "./interfaces";
@@ -73,4 +74,7 @@ export {
   hasDisplaySerializer,
   unregisterDisplaySerializer,
   getRegisteredDisplaySerializers,
+  // Low-level WASM wrappers for direct resource access
+  newWASMResourceInstanceWrapperForResource,
+  WASMResourceModelWrapper,
 };
