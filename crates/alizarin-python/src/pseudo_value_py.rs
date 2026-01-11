@@ -350,16 +350,18 @@ impl PyPseudoList {
     /// Args:
     ///     parent_tile_id: The parent tile ID to match against (or None for root)
     ///     nodegroup_id: The nodegroup ID to match against
+    ///     parent_nodegroup_id: The parent's nodegroup ID (used to distinguish same vs different nodegroup children)
     ///
     /// Returns:
     ///     List of matching RustPseudoValue objects
-    #[pyo3(signature = (parent_tile_id=None, nodegroup_id=None))]
+    #[pyo3(signature = (parent_tile_id=None, nodegroup_id=None, parent_nodegroup_id=None))]
     fn matching_entries(
         &self,
         parent_tile_id: Option<String>,
         nodegroup_id: Option<String>,
+        parent_nodegroup_id: Option<String>,
     ) -> Vec<PyPseudoValue> {
-        self.inner.matching_entries(parent_tile_id, nodegroup_id)
+        self.inner.matching_entries(parent_tile_id, nodegroup_id, parent_nodegroup_id)
             .into_iter()
             .map(|v| PyPseudoValue { inner: v.clone() })
             .collect()

@@ -103,11 +103,12 @@ describe('Type Coercion Integration Tests', () => {
       assertCoercionResult(result, { en: 'John', fr: 'Jean' });
     });
 
-    it('should error on number input for string datatype', () => {
+    it('should coerce number input to localized string', () => {
       const result = coerceValue('string', 42, null);
 
-      // String coercion doesn't auto-convert numbers - requires a string input
-      expect(result.isError).toBe(true);
+      // String coercion now auto-converts numbers to localized strings
+      expect(result.isError).toBe(false);
+      assertCoercionResult(result, { en: '42' });
     });
 
     it('should handle null input', () => {

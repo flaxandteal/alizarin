@@ -239,24 +239,30 @@ fn build_alias_to_collection_from_graph(
     alias_to_collection
 }
 
+/// Helper to get a graph from the registry
+fn get_registered_graph(graph_id: &str) -> PyResult<std::sync::Arc<AlizarinCoreStaticGraph>> {
+    alizarin_core::get_graph(graph_id)
+        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyKeyError, _>(
+            format!("Graph '{}' not registered. Call register_graph() first.", graph_id)
+        ))
+}
+
 /// Convert tiled resource to nested JSON tree
 ///
 /// Args:
-///     tiles: List of tile dicts
+///     tiles_json: List of tile dicts as JSON string
 ///     resource_id: Resource instance ID
-///     graph_id: Graph ID
-///     graph_json: Graph model as JSON string
+///     graph_id: Graph ID (must be registered via register_graph first)
 ///
 /// Returns:
 ///     Nested dict structure representing the resource tree
 #[pyfunction]
-#[pyo3(signature = (tiles_json, resource_id, graph_id, graph_json))]
+#[pyo3(signature = (tiles_json, resource_id, graph_id))]
 fn tiles_to_json_tree(
     py: Python,
     tiles_json: String,
     resource_id: String,
     graph_id: String,
-    graph_json: String,
 ) -> PyResult<PyObject> {
     // Parse tiles from JSON
     let tiles: Vec<AlizarinStaticTile> = serde_json::from_str(&tiles_json)
@@ -264,14 +270,11 @@ fn tiles_to_json_tree(
             format!("Failed to parse tiles: {}", e)
         ))?;
 
-    // Parse graph from JSON (uses from_json_string which calls build_indices)
-    let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse graph: {}", e)
-        ))?;
+    // Get graph from registry
+    let graph = get_registered_graph(&graph_id)?;
 
     // Create StaticResource with computed descriptors
-    let static_resource = create_static_resource(resource_id, graph_id, tiles, &graph);
+    let static_resource = create_static_resource(resource_id, graph_id, tiles, &*graph);
 
     // Convert to JSON Value for tiles_to_tree
     let input_json = serde_json::to_value(&static_resource)
@@ -280,7 +283,7 @@ fn tiles_to_json_tree(
         ))?;
 
     // Call shared Rust conversion function (returns array)
-    let json_tree_array = tiles_to_tree(&input_json, &graph)
+    let json_tree_array = tiles_to_tree(&input_json, &*graph)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
 
     // Extract first element (single resource case)
@@ -313,8 +316,7 @@ fn tiles_to_json_tree(
 /// Args:
 ///     tree_json: Nested JSON tree as string
 ///     resource_id: Resource instance ID
-///     graph_id: Graph ID
-///     graph_json: Graph model as JSON string
+///     graph_id: Graph ID (must be registered via register_graph first)
 ///     from_camel: If True, convert keys from camelCase to snake_case before resolving
 ///     strict: If True, raise an error for any validation failures or unparseable data
 ///
@@ -326,18 +328,20 @@ fn tiles_to_json_tree(
 ///
 /// If id_key is provided and the tree does not contain a resourceinstanceid,
 /// a deterministic UUID v5 will be generated using the key and graph ID.
+///
+/// If scopes is provided (as JSON string), it will be set on all resulting resources.
 #[pyfunction]
-#[pyo3(signature = (tree_json, resource_id, graph_id, graph_json, from_camel=false, strict=false, rdm_cache=None, id_key=None))]
+#[pyo3(signature = (tree_json, resource_id, graph_id, from_camel=false, strict=false, rdm_cache=None, id_key=None, scopes=None))]
 fn json_tree_to_tiles(
     py: Python,
     tree_json: String,
     resource_id: String,
     graph_id: String,
-    graph_json: String,
     from_camel: bool,
     strict: bool,
     rdm_cache: Option<&rdm_cache_py::RdmCache>,
     id_key: Option<String>,
+    scopes: Option<String>,
 ) -> PyResult<PyObject> {
     // Parse tree from JSON
     let mut tree: serde_json::Value = serde_json::from_str(&tree_json)
@@ -345,16 +349,21 @@ fn json_tree_to_tiles(
             format!("Failed to parse tree: {}", e)
         ))?;
 
+    // Parse scopes if provided
+    let scopes_value: Option<serde_json::Value> = scopes
+        .map(|s| serde_json::from_str(&s))
+        .transpose()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to parse scopes: {}", e)
+        ))?;
+
     // Convert keys from camelCase to snake_case if requested
     if from_camel {
         tree = transform_keys_to_snake(tree);
     }
 
-    // Parse graph from JSON (uses from_json_string which calls build_indices)
-    let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse graph: {}", e)
-        ))?;
+    // Get graph from registry
+    let graph = get_registered_graph(&graph_id)?;
 
     // Resolve labels to UUIDs if an RDM cache is available
     // Use explicit cache if provided, otherwise try global cache
@@ -362,7 +371,7 @@ fn json_tree_to_tiles(
     let cache_to_use: Option<&rdm_cache_py::RdmCache> = rdm_cache.or(global_cache.as_ref());
 
     if let Some(cache) = cache_to_use {
-        let alias_map = build_alias_to_collection_from_graph(&graph);
+        let alias_map = build_alias_to_collection_from_graph(&*graph);
         tree = core_resolve_labels(tree, &alias_map, cache, strict)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.message))?;
     }
@@ -375,11 +384,18 @@ fn json_tree_to_tiles(
 
     // Call shared Rust conversion function (strict or non-strict, with optional id_key)
     let id_key_ref = id_key.as_deref();
-    let business_data = if strict {
-        tree_to_tiles_strict_with_id_key(&tree, &graph, id_key_ref)
+    let mut business_data = if strict {
+        tree_to_tiles_strict_with_id_key(&tree, &*graph, id_key_ref)
     } else {
-        tree_to_tiles_with_id_key(&tree, &graph, id_key_ref)
+        tree_to_tiles_with_id_key(&tree, &*graph, id_key_ref)
     }.map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+
+    // Set scopes on all resources if provided
+    if let Some(ref scopes_val) = scopes_value {
+        for resource in &mut business_data.business_data.resources {
+            resource.scopes = Some(scopes_val.clone());
+        }
+    }
 
     // Return full BusinessDataWrapper structure: {business_data: {resources: [...]}}
     let result_json = serde_json::to_string(&business_data)
@@ -397,20 +413,34 @@ fn json_tree_to_tiles(
 /// Batch convert multiple JSON trees to tiles in parallel
 /// Returns BusinessDataWrapper format: {business_data: {resources: [...]}, errors: [...]}
 ///
-/// If id_keys is provided (list of strings, one per tree), deterministic UUID v5s
-/// will be generated for trees that don't have resourceinstanceids.
+/// Args:
+///     trees_json: Array of trees as JSON string
+///     graph_id: Graph ID (must be registered via register_graph first)
+///     from_camel: If True, convert keys from camelCase to snake_case
+///     strict: If True, fail on first error
+///     id_keys: Optional list of keys for deterministic UUID generation
+///     scopes: Optional JSON string to set as scopes on all resources
 #[pyfunction]
-#[pyo3(signature = (trees_json, graph_json, from_camel=false, strict=false, id_keys=None))]
+#[pyo3(signature = (trees_json, graph_id, from_camel=false, strict=false, id_keys=None, scopes=None))]
 fn batch_trees_to_tiles(
     py: Python,
     trees_json: String,
-    graph_json: String,
+    graph_id: String,
     from_camel: bool,
     strict: bool,
     id_keys: Option<Vec<String>>,
+    scopes: Option<String>,
 ) -> PyResult<PyObject> {
     let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e)))?;
+
+    // Parse scopes if provided
+    let scopes_value: Option<serde_json::Value> = scopes
+        .map(|s| serde_json::from_str(&s))
+        .transpose()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to parse scopes: {}", e)
+        ))?;
 
     // Validate id_keys length if provided
     if let Some(ref keys) = id_keys {
@@ -421,9 +451,8 @@ fn batch_trees_to_tiles(
         }
     }
 
-    let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse graph: {}", e)))?;
-    let graph_id = graph.graph_id().to_string();
+    // Get graph from registry
+    let graph = get_registered_graph(&graph_id)?;
 
     let results: Vec<Result<serde_json::Value, String>> = trees
         .into_par_iter()
@@ -441,15 +470,20 @@ fn batch_trees_to_tiles(
             // Get id_key for this tree (if id_keys array provided)
             let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
-            let business_data = if strict {
-                tree_to_tiles_strict_with_id_key(&tree, &graph, id_key_ref)
+            let mut business_data = if strict {
+                tree_to_tiles_strict_with_id_key(&tree, &*graph, id_key_ref)
             } else {
-                tree_to_tiles_with_id_key(&tree, &graph, id_key_ref)
+                tree_to_tiles_with_id_key(&tree, &*graph, id_key_ref)
             }.map_err(|e| format!("Tree {}: {}", i, e))?;
 
             // Extract first resource (full StaticResource with resourceinstance metadata)
-            let resource = business_data.business_data.resources.into_iter().next()
+            let mut resource = business_data.business_data.resources.into_iter().next()
                 .ok_or_else(|| format!("Tree {}: No resources returned", i))?;
+
+            // Set scopes if provided
+            if let Some(ref scopes_val) = scopes_value {
+                resource.scopes = Some(scopes_val.clone());
+            }
 
             serde_json::to_value(&resource)
                 .map_err(|e| format!("Tree {}: Failed to serialize: {}", i, e))
@@ -486,7 +520,7 @@ fn batch_trees_to_tiles(
 /// Iterator that processes trees to tiles one at a time (low memory)
 ///
 /// Usage:
-///     iter = TreeToTilesIterator(tree_strings, graph_json, from_camel=True)
+///     iter = TreeToTilesIterator(tree_strings, graph_id, from_camel=True, scopes='{"read": true}')
 ///     for result in iter:
 ///         # result is {"resource": {...}, "error": None} or {"resource": None, "error": "..."}
 ///         if result["resource"]:
@@ -494,28 +528,36 @@ fn batch_trees_to_tiles(
 #[pyclass]
 struct TreeToTilesIterator {
     trees: Vec<String>,
-    graph: AlizarinCoreStaticGraph,
+    graph: std::sync::Arc<AlizarinCoreStaticGraph>,
     graph_id: String,
     from_camel: bool,
     strict: bool,
     id_keys: Option<Vec<String>>,
+    scopes: Option<serde_json::Value>,
     index: usize,
 }
 
 #[pymethods]
 impl TreeToTilesIterator {
     #[new]
-    #[pyo3(signature = (tree_strings, graph_json, from_camel=false, strict=false, id_keys=None))]
+    #[pyo3(signature = (tree_strings, graph_id, from_camel=false, strict=false, id_keys=None, scopes=None))]
     fn new(
         tree_strings: Vec<String>,
-        graph_json: String,
+        graph_id: String,
         from_camel: bool,
         strict: bool,
         id_keys: Option<Vec<String>>,
+        scopes: Option<String>,
     ) -> PyResult<Self> {
-        let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
+        // Get graph from registry
+        let graph = get_registered_graph(&graph_id)?;
+
+        // Parse scopes if provided
+        let scopes_value: Option<serde_json::Value> = scopes
+            .map(|s| serde_json::from_str(&s))
+            .transpose()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to parse graph: {}", e)
+                format!("Failed to parse scopes: {}", e)
             ))?;
 
         // Validate id_keys length if provided
@@ -527,8 +569,6 @@ impl TreeToTilesIterator {
             }
         }
 
-        let graph_id = graph.graph_id().to_string();
-
         Ok(TreeToTilesIterator {
             trees: tree_strings,
             graph,
@@ -536,6 +576,7 @@ impl TreeToTilesIterator {
             from_camel,
             strict,
             id_keys,
+            scopes: scopes_value,
             index: 0,
         })
     }
@@ -584,14 +625,19 @@ impl TreeToTilesIterator {
 
         // Convert tree to tiles
         let result = if self.strict {
-            tree_to_tiles_strict_with_id_key(&tree, &self.graph, id_key)
+            tree_to_tiles_strict_with_id_key(&tree, &*self.graph, id_key)
         } else {
-            tree_to_tiles_with_id_key(&tree, &self.graph, id_key)
+            tree_to_tiles_with_id_key(&tree, &*self.graph, id_key)
         };
 
         let output = match result {
             Ok(business_data) => {
-                if let Some(resource) = business_data.business_data.resources.into_iter().next() {
+                if let Some(mut resource) = business_data.business_data.resources.into_iter().next() {
+                    // Set scopes if provided
+                    if let Some(ref scopes_val) = self.scopes {
+                        resource.scopes = Some(scopes_val.clone());
+                    }
+
                     serde_json::json!({
                         "resource": resource,
                         "error": null,
@@ -638,25 +684,35 @@ impl TreeToTilesIterator {
 }
 
 /// Batch convert multiple tiled resources to JSON trees in parallel
+///
+/// Resources must contain graph_id in resourceinstance.graph_id or graph_id field.
+/// Graphs must be registered via register_graph first.
 #[pyfunction]
-#[pyo3(signature = (resources_json, graph_json, strict=false))]
+#[pyo3(signature = (resources_json, strict=false))]
 fn batch_tiles_to_trees(
     py: Python,
     resources_json: String,
-    graph_json: String,
     strict: bool,
 ) -> PyResult<PyObject> {
     let resources: Vec<serde_json::Value> = serde_json::from_str(&resources_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse resources: {}", e)))?;
 
-    let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse graph: {}", e)))?;
-    let graph_id = graph.graph_id().to_string();
-
     let results: Vec<Result<serde_json::Value, String>> = resources
         .into_par_iter()
         .enumerate()
         .map(|(i, resource)| {
+            // Extract graph_id from resource
+            let graph_id = resource.get("resourceinstance")
+                .and_then(|ri| ri.get("graph_id"))
+                .or_else(|| resource.get("graph_id"))
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| format!("Resource {}: Missing graph_id", i))?
+                .to_string();
+
+            // Get graph from registry
+            let graph = alizarin_core::get_graph(&graph_id)
+                .ok_or_else(|| format!("Resource {}: Graph '{}' not registered", i, graph_id))?;
+
             // Extract resource_id from either format:
             // - New format: resource.resourceinstance.resourceinstanceid
             // - Old format: resource.resourceinstanceid
@@ -683,7 +739,7 @@ fn batch_tiles_to_trees(
                     resource_id.clone(),
                     graph_id.clone(),
                     tiles,
-                    &graph,
+                    &*graph,
                 );
 
                 serde_json::to_value(&static_resource)
@@ -691,7 +747,7 @@ fn batch_tiles_to_trees(
             };
 
             // Call tiles_to_tree (returns array)
-            let json_tree_array = tiles_to_tree(&input_json, &graph)
+            let json_tree_array = tiles_to_tree(&input_json, &*graph)
                 .map_err(|e| format!("Resource {}: {}", i, e))?;
 
             // Extract first element and add metadata
@@ -798,24 +854,23 @@ fn transform_keys_to_snake(value: serde_json::Value) -> serde_json::Value {
 
 /// Python wrapper for ResourceModelWrapperCore
 ///
-/// Provides graph pruning and permission checking
+/// Provides graph pruning and permission checking.
+/// Graph must be registered via register_graph first.
 #[pyclass]
 struct PyResourceModelWrapper {
-    graph: Arc<AlizarinCoreStaticGraph>,
+    graph: std::sync::Arc<AlizarinCoreStaticGraph>,
     permitted_nodegroups: HashMap<String, bool>,
 }
 
 #[pymethods]
 impl PyResourceModelWrapper {
     #[new]
-    fn new(graph_json: String) -> PyResult<Self> {
-        let graph: AlizarinCoreStaticGraph = serde_json::from_str(&graph_json)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to parse graph: {}", e)
-            ))?;
+    fn new(graph_id: String) -> PyResult<Self> {
+        // Get graph from registry
+        let graph = get_registered_graph(&graph_id)?;
 
         Ok(PyResourceModelWrapper {
-            graph: Arc::new(graph),
+            graph,
             permitted_nodegroups: HashMap::new(),
         })
     }
@@ -870,151 +925,6 @@ fn matches_semantic_child(
     ))
 }
 
-/// Python wrapper for StaticGraph (core type)
-#[pyclass(name = "StaticGraphCore")]
-struct PyStaticGraph {
-    inner: AlizarinCoreStaticGraph,
-}
-
-#[pymethods]
-impl PyStaticGraph {
-    /// Create from JSON string
-    /// Handles both direct graph objects and wrapped format: {"graph": [...]}
-    #[new]
-    fn new(json_str: String) -> PyResult<Self> {
-        let graph = AlizarinCoreStaticGraph::from_json_string(&json_str)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
-        Ok(PyStaticGraph { inner: graph })
-    }
-
-    /// Get graph ID
-    #[getter]
-    fn graphid(&self) -> String {
-        self.inner.graphid.clone()
-    }
-
-    /// Get graph name as JSON string
-    fn name_json(&self) -> PyResult<String> {
-        serde_json::to_string(&self.inner.name)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to serialize name: {}", e)
-            ))
-    }
-
-    /// Export full graph as JSON string
-    fn to_json(&self) -> PyResult<String> {
-        serde_json::to_string(&self.inner)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to serialize graph: {}", e)
-            ))
-    }
-}
-
-/// Python wrapper for StaticResource (core type)
-#[pyclass(name = "StaticResourceCore")]
-struct PyStaticResource {
-    inner: AlizarinStaticResource,
-}
-
-#[pymethods]
-impl PyStaticResource {
-    /// Create from JSON string
-    #[new]
-    fn new(json_str: String) -> PyResult<Self> {
-        let resource: AlizarinStaticResource = serde_json::from_str(&json_str)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to parse resource: {}", e)
-            ))?;
-        Ok(PyStaticResource { inner: resource })
-    }
-
-    /// Get resource instance ID
-    #[getter]
-    fn resourceinstanceid(&self) -> String {
-        self.inner.resourceinstance.resourceinstanceid.clone()
-    }
-
-    /// Get graph ID
-    #[getter]
-    fn graph_id(&self) -> String {
-        self.inner.resourceinstance.graph_id.clone()
-    }
-
-    /// Get tiles as JSON string
-    fn get_tiles_json(&self) -> PyResult<String> {
-        serde_json::to_string(&self.inner.tiles)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to serialize tiles: {}", e)
-            ))
-    }
-
-    /// Export full resource as JSON string
-    fn to_json(&self) -> PyResult<String> {
-        serde_json::to_string(&self.inner)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to serialize resource: {}", e)
-            ))
-    }
-}
-
-/// Convert resource to nested JSON string (convenience function)
-#[pyfunction]
-fn resource_to_json_string(resource: &PyStaticResource, graph: &PyStaticGraph) -> PyResult<String> {
-    // Convert resource to JSON Value for the new API
-    let input_json = serde_json::to_value(&resource.inner)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to serialize resource: {}", e)
-        ))?;
-
-    // Call shared Rust conversion function (returns array)
-    let json_tree_array = tiles_to_tree(&input_json, &graph.inner)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
-
-    // Extract first element (single resource case)
-    let json_tree = json_tree_array.as_array()
-        .and_then(|arr| arr.first().cloned())
-        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-
-    // Return as JSON string
-    serde_json::to_string(&json_tree)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to serialize result: {}", e)
-        ))
-}
-
-/// Convert nested JSON string to resource (convenience function)
-#[pyfunction]
-fn json_string_to_resource(
-    json_str: String,
-    resource_id: String,
-    graph: &PyStaticGraph,
-) -> PyResult<PyStaticResource> {
-    // Parse as JSON value
-    let mut tree: serde_json::Value = serde_json::from_str(&json_str)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse JSON: {}", e)
-        ))?;
-
-    // Get graph_id from the graph
-    let graph_id = graph.inner.graphid.clone();
-
-    // Add resourceinstanceid and graph_id to tree for new API
-    if let serde_json::Value::Object(ref mut map) = tree {
-        map.insert("resourceinstanceid".to_string(), serde_json::Value::String(resource_id));
-        map.insert("graph_id".to_string(), serde_json::Value::String(graph_id));
-    }
-
-    // Call shared Rust conversion function
-    let business_data = tree_to_tiles(&tree, &graph.inner)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
-
-    // Extract first resource
-    let resource = business_data.business_data.resources.into_iter().next()
-        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("No resources returned"))?;
-
-    Ok(PyStaticResource { inner: resource })
-}
-
 /// Resolve labels to UUIDs in a JSON tree using an RDM cache
 ///
 /// This pre-processes a tree by looking up label strings in the appropriate
@@ -1022,37 +932,35 @@ fn json_string_to_resource(
 ///
 /// Args:
 ///     tree_json: The input tree as JSON string
-///     graph_json: The graph model as JSON string
+///     graph_id: Graph ID (must be registered via register_graph first)
 ///     rdm_cache: The RDM cache containing collections (optional, uses global if not provided)
 ///     strict: If true, fail on unresolved labels; if false, leave them as-is
 ///
 /// Returns:
 ///     The tree with labels resolved to UUIDs (as JSON string)
 #[pyfunction]
-#[pyo3(signature = (tree_json, graph_json, rdm_cache=None, strict = false))]
+#[pyo3(signature = (tree_json, graph_id, rdm_cache=None, strict = false))]
 fn resolve_labels_in_tree(
     tree_json: String,
-    graph_json: String,
+    graph_id: String,
     rdm_cache: Option<&rdm_cache_py::RdmCache>,
     strict: bool,
 ) -> PyResult<String> {
-    // Parse tree and graph
+    // Parse tree
     let tree: serde_json::Value = serde_json::from_str(&tree_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
             format!("Failed to parse tree: {}", e)
         ))?;
 
-    let graph: AlizarinCoreStaticGraph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse graph: {}", e)
-        ))?;
+    // Get graph from registry
+    let graph = get_registered_graph(&graph_id)?;
 
     // Use explicit cache or fall back to global
     let global_cache = rdm_cache_py::get_global_rdm_cache();
     let cache_to_use: Option<&rdm_cache_py::RdmCache> = rdm_cache.or(global_cache.as_ref());
 
     let resolved_tree = if let Some(cache) = cache_to_use {
-        let alias_map = build_alias_to_collection_from_graph(&graph);
+        let alias_map = build_alias_to_collection_from_graph(&*graph);
         core_resolve_labels(tree, &alias_map, cache, strict)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.message))?
     } else {
@@ -1063,6 +971,30 @@ fn resolve_labels_in_tree(
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
             format!("Failed to serialize result: {}", e)
         ))
+}
+
+/// Register a graph in the core registry for batch_merge_resources descriptor computation
+///
+/// Call this once per graph before using batch_merge_resources with recompute_descriptors=True.
+/// The graph will be looked up by its graph_id when computing descriptors.
+///
+/// Args:
+///     graph_json: Graph model as JSON string (can be direct object or {"graph": [...]})
+///
+/// Returns:
+///     The graph_id that was registered
+#[pyfunction]
+#[pyo3(signature = (graph_json,))]
+fn register_graph(graph_json: String) -> PyResult<String> {
+    let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to parse graph: {}", e)
+        ))?;
+
+    let graph_id = graph.graphid.clone();
+    alizarin_core::register_graph_owned(graph);
+
+    Ok(graph_id)
 }
 
 /// Merge multiple resources with the same resourceinstanceid into one
@@ -1112,14 +1044,17 @@ fn merge_resources(
 ///
 /// Args:
 ///     batches_json: List of JSON strings containing resources in any supported format
+///     recompute_descriptors: If True, recomputes descriptors from merged tiles using
+///         graphs from the registry. Graphs must be registered first.
 ///
 /// Returns:
 ///     Dict with 'resources' (list of merged StaticResources) and 'warnings' (list of warnings)
 #[pyfunction]
-#[pyo3(signature = (batches_json,))]
+#[pyo3(signature = (batches_json, recompute_descriptors=false))]
 fn batch_merge_resources(
     py: Python,
     batches_json: Vec<String>,
+    recompute_descriptors: bool,
 ) -> PyResult<PyObject> {
     // Parse each batch string into Vec<StaticResource>
     let mut resource_batches: Vec<Vec<AlizarinStaticResource>> = Vec::new();
@@ -1175,7 +1110,7 @@ fn batch_merge_resources(
         resource_batches.push(batch);
     }
 
-    let result = core_batch_merge_resources(resource_batches);
+    let result = core_batch_merge_resources(resource_batches, recompute_descriptors);
 
     let output = serde_json::json!({
         "resources": result.resources,
@@ -1190,13 +1125,8 @@ fn batch_merge_resources(
 /// Python module definition
 #[pymodule]
 fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
-    // Core Rust-backed types (named with "Core" suffix, Python will wrap them)
-    m.add_class::<PyStaticGraph>()?;
-    m.add_class::<PyStaticResource>()?;
-
-    // Convenience functions (work with JSON strings)
-    m.add_function(wrap_pyfunction!(resource_to_json_string, m)?)?;
-    m.add_function(wrap_pyfunction!(json_string_to_resource, m)?)?;
+    // Graph registry (for batch_merge_resources descriptor computation)
+    m.add_function(wrap_pyfunction!(register_graph, m)?)?;
 
     // Low-level tree conversion functions (for compatibility)
     m.add_function(wrap_pyfunction!(tiles_to_json_tree, m)?)?;

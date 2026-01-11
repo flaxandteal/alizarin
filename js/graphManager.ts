@@ -207,10 +207,8 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
   }
 
   getName(update: boolean = false): string {
-    if (update) {
-      // Recompute descriptors first, then get name
-      this.getDescriptors(true);
-    }
+    // Always ensure descriptors are computed (getDescriptors(false) computes if cache is empty)
+    this.getDescriptors(update);
     return this.wasmWrapper.getName();
   }
 
@@ -434,8 +432,9 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
 
       recordWasmTiming("populate total", performance.now() - populateStart);
     } catch (error) {
-      console.error('[populate] Rust implementation failed:', error);
-      throw new Error(`populate failed: ${error}`);
+      const resourceId = this.wasmWrapper.getResourceId?.() || 'unknown';
+      console.error(`[populate] Rust implementation failed for resource ${resourceId}:`, error);
+      throw new Error(`populate failed for resource ${resourceId}: ${error}`);
     }
   }
 

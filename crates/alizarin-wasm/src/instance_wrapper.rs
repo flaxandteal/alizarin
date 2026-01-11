@@ -380,24 +380,30 @@ impl ResourceInstanceWrapperCore {
     /// Note: This is public to allow test access
     pub fn matches_semantic_child(
         parent_tile_id: Option<&String>,
-        parent_node_id: &str,
+        parent_nodegroup_id: Option<&String>,
         child_node: &StaticNode,
         tile: &StaticTile,
     ) -> bool {
-        // TODO: double check this addition
+        // Check if tile's nodegroup matches the child node's nodegroup
         if tile.nodegroup_id != *child_node.nodegroup_id.as_ref().unwrap_or(&"".into()) {
             return false;
         }
         // We do not have a child value, unless there is a value, or the whole tile is the
-        // (semantic) value.
-        // RMV: double check for any other case
-        if !(Some(&child_node.nodeid) == child_node.nodegroup_id.as_ref() || tile.data.contains_key(&child_node.nodeid)) {
+        // (semantic) value, or the child is a semantic node (which doesn't have direct tile data).
+        let is_semantic = child_node.datatype == "semantic";
+        if !(Some(&child_node.nodeid) == child_node.nodegroup_id.as_ref()
+            || tile.data.contains_key(&child_node.nodeid)
+            || is_semantic) {
             return false;
         }
 
+        // Get the parent's nodegroup ID for comparisons
+        let parent_ng = parent_nodegroup_id.map(|s| s.as_str()).unwrap_or("");
+
         // PORT: js/semantic.ts lines 311-315
         // Branch 1: Different nodegroup + correct parent tile relationship
-        if tile.nodegroup_id != parent_node_id {
+        // This handles child nodes in a NESTED nodegroup (different from parent's nodegroup)
+        if tile.nodegroup_id != parent_ng {
             if let (t, Some(parent_tid)) = (tile, parent_tile_id) {
                 // Check if tile.parenttile_id is null or equals parent_tid
                 // PORT: Line 311 - (!(value.tile.parenttile_id) || value.tile.parenttile_id == tile.tileid)
@@ -412,11 +418,16 @@ impl ResourceInstanceWrapperCore {
 
         // PORT: js/semantic.ts lines 312-315
         // Branch 2: Same nodegroup + shared tile + not collector
-        if tile.nodegroup_id == parent_node_id {
+        // This handles child nodes in the SAME nodegroup as parent (sharing a tile)
+        if tile.nodegroup_id == parent_ng {
             if let (t, Some(parent_tid)) = (tile, parent_tile_id) {
                 // Check if this tile IS the parent tile and child is not a collector
                 // PORT: Line 314 - value.tile == tile && !childNode.is_collector
-                if t.tileid.as_ref() == Some(parent_tid) && !child_node.is_collector && t.data.contains_key(&child_node.nodeid) {
+                // For semantic nodes, we don't require tile data - they get their value
+                // from their children, not from tile data directly.
+                let has_data_or_is_semantic = t.data.contains_key(&child_node.nodeid)
+                    || child_node.datatype == "semantic";
+                if t.tileid.as_ref() == Some(parent_tid) && !child_node.is_collector && has_data_or_is_semantic {
                     return true;
                 }
             }
@@ -425,7 +436,7 @@ impl ResourceInstanceWrapperCore {
         // PORT: js/semantic.ts lines 324-327
         // Branch 3: Different nodegroup + is_collector
         // This handles collector nodes that don't share tiles with their parent
-        if tile.nodegroup_id != parent_node_id
+        if tile.nodegroup_id != parent_ng
             && child_node.is_collector {
             return true;
         }
@@ -448,7 +459,7 @@ impl ResourceInstanceWrapperCore {
         &self,
         parent_tile_id: Option<&String>,
         parent_node_id: &str,
-        _parent_nodegroup_id: Option<&String>,
+        parent_nodegroup_id: Option<&String>,
         child_alias: &str,
         loaded_nodegroups: Option<&HashSet<String>>,
     ) -> Result<SemanticChildResult, SemanticChildError> {
@@ -507,7 +518,7 @@ impl ResourceInstanceWrapperCore {
                 // Check semantic parent-child relationship
                 if Self::matches_semantic_child(
                     parent_tile_id,
-                    parent_node_id,
+                    parent_nodegroup_id,
                     &*child_node,
                     tile,
                 ) {
@@ -520,6 +531,10 @@ impl ResourceInstanceWrapperCore {
         if matching_tile_ids.is_empty() {
             return Ok(SemanticChildResult::Empty);
         }
+
+        // Sort tile IDs for deterministic ordering (important when is_single=true
+        // and there are multiple tiles for a cardinality-1 nodegroup)
+        matching_tile_ids.sort();
 
         // Get edges and nodegroups for creating PseudoValues
         let edges = self.with_model_core(|core| {
@@ -2314,7 +2329,7 @@ impl WASMResourceInstanceWrapper {
         &self,
         parent_tile_id: Option<String>,
         parent_node_id: String,
-        _parent_nodegroup_id: Option<String>,
+        parent_nodegroup_id: Option<String>,
     ) -> Result<JsValue, JsValue> {
         // Get nodes from model
         self.with_model_core_mut(|core| {
@@ -2347,7 +2362,7 @@ impl WASMResourceInstanceWrapper {
                 // PORT: js/semantic.ts lines 296-340
                 if ResourceInstanceWrapperCore::matches_semantic_child(
                     parent_tile_id.as_ref(),
-                    parent_node_id.as_ref(),
+                    parent_nodegroup_id.as_ref(),
                     &**child_node,
                     tile,
                 ) {
@@ -2357,6 +2372,11 @@ impl WASMResourceInstanceWrapper {
                         .push(tile_id.clone());
                 }
             }
+        }
+
+        // Sort each alias's tile IDs for deterministic ordering
+        for tile_ids in results.values_mut() {
+            tile_ids.sort();
         }
 
         serde_wasm_bindgen::to_value(&results)
@@ -2468,7 +2488,7 @@ impl WASMResourceInstanceWrapper {
                 })?;
 
                 // Sanity check: is_single should only have 0 or 1 values
-                let matching_entries = pseudo_list.matching_entries(parent_tile_id, nodegroup_id);
+                let matching_entries = pseudo_list.matching_entries(parent_tile_id, nodegroup_id, parent_nodegroup_id);
 
                 // Check if this should be returned as single or list based on is_single flag
                 if pseudo_list.is_single {

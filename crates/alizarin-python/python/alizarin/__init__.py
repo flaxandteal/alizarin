@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 # Rust Extension Import
 # =============================================================================
 
+register_graph: Optional[Any] = None
 tiles_to_json_tree: Optional[Any] = None
 json_tree_to_tiles: Optional[Any] = None
 batch_trees_to_tiles: Optional[Any] = None
@@ -26,11 +27,13 @@ batch_tiles_to_trees: Optional[Any] = None
 merge_resources: Optional[Any] = None
 batch_merge_resources: Optional[Any] = None
 TreeToTilesIterator: Optional[Any] = None
+resolve_labels_in_tree: Optional[Any] = None
 _alizarin_rust: Optional[Any] = None
 
 try:
     # Try importing from the built extension (maturin puts it in the package)
     from . import alizarin as _alizarin_rust
+    register_graph = _alizarin_rust.register_graph
     tiles_to_json_tree = _alizarin_rust.tiles_to_json_tree
     json_tree_to_tiles = _alizarin_rust.json_tree_to_tiles
     batch_trees_to_tiles = _alizarin_rust.batch_trees_to_tiles
@@ -38,131 +41,10 @@ try:
     merge_resources = _alizarin_rust.merge_resources
     batch_merge_resources = _alizarin_rust.batch_merge_resources
     TreeToTilesIterator = _alizarin_rust.TreeToTilesIterator
+    resolve_labels_in_tree = _alizarin_rust.resolve_labels_in_tree
 except (ImportError, AttributeError):
     # Rust module not yet compiled - functions will remain None
     pass
-
-
-# =============================================================================
-# Rust-backed Wrapper Classes
-# =============================================================================
-
-class StaticGraphRust:
-    """
-    Python wrapper for Rust StaticGraph.
-    Handles conversion between Python dicts and JSON strings.
-
-    This is a Rust-backed implementation. For pure Python, use
-    static_types.StaticGraph directly.
-    """
-
-    def __init__(self, json_str: str) -> None:
-        """Create StaticGraph from JSON string."""
-        if _alizarin_rust is None:
-            raise ImportError("Rust extension not available")
-        self._core = _alizarin_rust.StaticGraphCore(json_str)
-
-    @property
-    def graphid(self) -> str:
-        """Get graph ID."""
-        return self._core.graphid
-
-    @property
-    def name(self) -> Dict[str, str]:
-        """Get graph name as dict."""
-        return json.loads(self._core.name_json())
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Export graph as dict."""
-        return json.loads(self._core.to_json())
-
-
-class StaticResourceRust:
-    """
-    Python wrapper for Rust StaticResource.
-    Handles conversion between Python dicts and JSON strings.
-
-    This is a Rust-backed implementation. For pure Python, use
-    static_types.StaticResource directly.
-    """
-
-    def __init__(self, json_str: str) -> None:
-        """Create StaticResource from JSON string."""
-        if _alizarin_rust is None:
-            raise ImportError("Rust extension not available")
-        self._core = _alizarin_rust.StaticResourceCore(json_str)
-
-    @property
-    def resourceinstanceid(self) -> str:
-        """Get resource instance ID."""
-        return self._core.resourceinstanceid
-
-    @property
-    def graph_id(self) -> str:
-        """Get graph ID."""
-        return self._core.graph_id
-
-    def get_tiles(self) -> List[Any]:
-        """Get tiles as list."""
-        return json.loads(self._core.get_tiles_json())
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Export resource as dict."""
-        return json.loads(self._core.to_json())
-
-
-# Aliases for backwards compatibility
-StaticGraph = StaticGraphRust
-StaticResource = StaticResourceRust
-
-
-# =============================================================================
-# Rust Conversion Functions
-# =============================================================================
-
-def resource_to_json(
-    resource: StaticResourceRust,
-    graph: StaticGraphRust,
-) -> Dict[str, Any]:
-    """
-    Convert a tiled resource to nested JSON dict.
-
-    Args:
-        resource: StaticResource instance
-        graph: StaticGraph model
-
-    Returns:
-        Nested dict structure representing the resource tree
-    """
-    if _alizarin_rust is None:
-        raise ImportError("Rust extension not available")
-    json_str = _alizarin_rust.resource_to_json_string(resource._core, graph._core)
-    return json.loads(json_str)
-
-
-def json_to_resource(
-    json_dict: Dict[str, Any],
-    graph: StaticGraphRust,
-) -> StaticResourceRust:
-    """
-    Convert nested JSON dict to a tiled resource.
-
-    Args:
-        json_dict: Nested JSON structure
-        graph: StaticGraph model
-
-    Returns:
-        StaticResource instance
-    """
-    if _alizarin_rust is None:
-        raise ImportError("Rust extension not available")
-    json_str = json.dumps(json_dict)
-    core_resource = _alizarin_rust.json_string_to_resource(json_str, graph._core)
-
-    # Wrap the core resource
-    wrapper = StaticResourceRust.__new__(StaticResourceRust)
-    wrapper._core = core_resource
-    return wrapper
 
 
 # =============================================================================
@@ -172,7 +54,7 @@ def json_to_resource(
 from .static_types import (
     # Translatable strings
     StaticTranslatableString,
-    # Nodes (pure Python versions)
+    # Nodes
     StaticNode,
     StaticEdge,
     StaticNodegroup,
@@ -186,26 +68,19 @@ from .static_types import (
     StaticGraphMeta,
     StaticFunctionsXGraphs,
     StaticCardsXNodesXWidgets,
-    # Note: StaticGraph is the Rust-backed version above
-    # Use static_types.StaticGraph for pure Python
+    # Graph
+    StaticGraph,
     # Resources
     StaticResourceDescriptors,
     StaticResourceMetadata,
     StaticResourceSummary,
     StaticResourceReference,
-    # Note: StaticResource is the Rust-backed version above
-    # Use static_types.StaticResource for pure Python
+    StaticResource,
     # RDM (Concepts/Collections)
     StaticValue,
     StaticConcept,
     StaticCollection,
     StaticDomainValue,
-)
-
-# Import pure Python versions with different names
-from .static_types import (
-    StaticGraph as StaticGraphPython,
-    StaticResource as StaticResourcePython,
 )
 
 # =============================================================================
@@ -383,6 +258,8 @@ __version__ = "0.2.1-alpha.11"
 __all__ = [
     # Version
     "__version__",
+    # Graph registry
+    "register_graph",
     # Core Rust functions
     "tiles_to_json_tree",
     "json_tree_to_tiles",
@@ -391,16 +268,7 @@ __all__ = [
     "merge_resources",
     "batch_merge_resources",
     "TreeToTilesIterator",
-    "resource_to_json",
-    "json_to_resource",
-    # Rust-backed wrappers
-    "StaticGraph",
-    "StaticResource",
-    "StaticGraphRust",
-    "StaticResourceRust",
-    # Pure Python versions
-    "StaticGraphPython",
-    "StaticResourcePython",
+    "resolve_labels_in_tree",
     # Static Types
     "StaticTranslatableString",
     "StaticNode",
@@ -413,10 +281,12 @@ __all__ = [
     "StaticGraphMeta",
     "StaticFunctionsXGraphs",
     "StaticCardsXNodesXWidgets",
+    "StaticGraph",
     "StaticResourceDescriptors",
     "StaticResourceMetadata",
     "StaticResourceSummary",
     "StaticResourceReference",
+    "StaticResource",
     "StaticValue",
     "StaticConcept",
     "StaticCollection",

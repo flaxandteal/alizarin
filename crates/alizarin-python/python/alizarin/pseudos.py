@@ -423,6 +423,7 @@ class PseudoList(List[PseudoValue[VM]], Generic[VM]):
         self,
         parent_tile_id: Optional[str],
         nodegroup_id: Optional[str],
+        parent_nodegroup_id: Optional[str] = None,
     ) -> List[PseudoValue[VM]]:
         """
         Filter entries matching the given tile and nodegroup context.
@@ -433,6 +434,7 @@ class PseudoList(List[PseudoValue[VM]], Generic[VM]):
         Args:
             parent_tile_id: The parent tile ID to match against
             nodegroup_id: The nodegroup ID to match against
+            parent_nodegroup_id: The parent's nodegroup ID (used to distinguish same vs different nodegroup children)
 
         Returns:
             List of matching PseudoValue objects
@@ -444,7 +446,7 @@ class PseudoList(List[PseudoValue[VM]], Generic[VM]):
                 "PseudoList must be created via from_rust() or have a valid _rust attribute."
             )
 
-        rust_matches = self._rust.matching_entries(parent_tile_id, nodegroup_id)
+        rust_matches = self._rust.matching_entries(parent_tile_id, nodegroup_id, parent_nodegroup_id)
         # Wrap the results
         return [
             PseudoValue.from_rust(rv, parent_wkri=self._parent_wkri, model=self._parent_model)

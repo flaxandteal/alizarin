@@ -202,7 +202,6 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
 
     // Clone first resource's metadata before we consume the vector
     let first_instance = resources[0].resourceinstance.clone();
-    let first_metadata = resources[0].metadata.clone();
     let resource_id = first_instance.resourceinstanceid.clone();
 
     // Verify all resources have the same resourceinstanceid
@@ -218,8 +217,12 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
     let mut seen_tileids: HashSet<String> = HashSet::new();
     let mut merged_tiles: Vec<StaticTile> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
+    let mut merged_metadata: HashMap<String, String> = HashMap::new();
+    let mut merged_scopes: Option<serde_json::Value> = None;
+    let mut first_scopes_index: Option<usize> = None;
 
-    for resource in resources {
+    for (i, resource) in resources.into_iter().enumerate() {
+        // Merge tiles with duplicate detection
         if let Some(tiles) = resource.tiles {
             for tile in tiles {
                 if let Some(ref tileid) = tile.tileid {
@@ -232,15 +235,45 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
                 merged_tiles.push(tile);
             }
         }
+
+        // Merge metadata dicts (later values override earlier ones)
+        for (key, value) in resource.metadata {
+            if let Some(existing) = merged_metadata.get(&key) {
+                if existing != &value {
+                    warnings.push(format!(
+                        "Metadata key '{}' has conflicting values: '{}' vs '{}' (using latter)",
+                        key, existing, value
+                    ));
+                }
+            }
+            merged_metadata.insert(key, value);
+        }
+
+        // Handle scopes: warn if different, use first non-None value
+        if let Some(ref scopes) = resource.scopes {
+            match &merged_scopes {
+                None => {
+                    merged_scopes = Some(scopes.clone());
+                    first_scopes_index = Some(i);
+                }
+                Some(existing) if existing != scopes => {
+                    warnings.push(format!(
+                        "Scopes mismatch: resource {} has different scopes than resource {} (using first)",
+                        i, first_scopes_index.unwrap_or(0)
+                    ));
+                }
+                _ => {}
+            }
+        }
     }
 
     Ok(MergeResult {
         resource: StaticResource {
             resourceinstance: first_instance,
             tiles: Some(merged_tiles),
-            metadata: first_metadata,
+            metadata: merged_metadata,
             cache: None,
-            scopes: None,
+            scopes: merged_scopes,
             tiles_loaded: Some(true),
         },
         warnings,
@@ -254,6 +287,8 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
 ///
 /// # Arguments
 /// * `resource_batches` - Vector of resource collections to merge
+/// * `recompute_descriptors` - If true, recomputes descriptors from tiles after merging
+///   using the graph from the registry (looked up by graph_id from the resource)
 ///
 /// # Returns
 /// * `BatchMergeResult` - Contains merged resources (one per unique ID) and all warnings
@@ -263,11 +298,16 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
 /// // Process disjoint subgraphs from multiple files
 /// let batch1: Vec<StaticResource> = parse_file("part1.json");
 /// let batch2: Vec<StaticResource> = parse_file("part2.json");
-/// let result = batch_merge_resources(vec![batch1, batch2]);
+/// let result = batch_merge_resources(vec![batch1, batch2], true);
 /// // result.resources contains one entry per unique resourceinstanceid
 /// ```
-pub fn batch_merge_resources(resource_batches: Vec<Vec<StaticResource>>) -> BatchMergeResult {
+pub fn batch_merge_resources(
+    resource_batches: Vec<Vec<StaticResource>>,
+    recompute_descriptors: bool,
+) -> BatchMergeResult {
     use std::collections::BTreeMap;
+    use crate::registry::get_graph;
+    use crate::IndexedGraph;
 
     // Group all resources by resourceinstanceid
     let mut grouped: BTreeMap<String, Vec<StaticResource>> = BTreeMap::new();
@@ -282,6 +322,9 @@ pub fn batch_merge_resources(resource_batches: Vec<Vec<StaticResource>>) -> Batc
     let mut merged_resources = Vec::new();
     let mut all_warnings = Vec::new();
 
+    // Cache IndexedGraphs by graph_id to avoid rebuilding for each resource
+    let mut indexed_graphs: BTreeMap<String, IndexedGraph> = BTreeMap::new();
+
     // Merge each group
     for (resource_id, resources) in grouped {
         match merge_resources(resources) {
@@ -290,7 +333,52 @@ pub fn batch_merge_resources(resource_batches: Vec<Vec<StaticResource>>) -> Batc
                 for warning in result.warnings {
                     all_warnings.push(format!("[{}] {}", resource_id, warning));
                 }
-                merged_resources.push(result.resource);
+
+                let mut resource = result.resource;
+                let graph_id = resource.resourceinstance.graph_id.clone();
+
+                // Get or create IndexedGraph for this graph_id (needed for both unification and descriptors)
+                if !indexed_graphs.contains_key(&graph_id) {
+                    if let Some(graph) = get_graph(&graph_id) {
+                        indexed_graphs.insert(graph_id.clone(), IndexedGraph::new((*graph).clone()));
+                    }
+                }
+
+                // Unify cardinality-1 tiles if we have the graph
+                if let Some(indexed) = indexed_graphs.get(&graph_id) {
+                    if let Some(ref mut tiles) = resource.tiles {
+                        let unify_warnings = unify_cardinality_one_tiles(tiles, indexed);
+                        for warning in unify_warnings {
+                            all_warnings.push(format!("[{}] {}", resource_id, warning));
+                        }
+                    }
+                }
+
+                // Recompute descriptors if requested (graph already fetched above for unification)
+                if recompute_descriptors {
+                    if let Some(indexed) = indexed_graphs.get(&graph_id) {
+                        // Compute descriptors from merged tiles
+                        let tiles = resource.tiles.as_ref().map(|t| t.as_slice()).unwrap_or(&[]);
+                        let descriptors = indexed.build_descriptors(tiles);
+
+                        // Update resource with computed descriptors
+                        resource.resourceinstance.descriptors = descriptors.clone();
+
+                        // Update name from descriptors if available
+                        if let Some(ref name) = descriptors.name {
+                            if !name.is_empty() {
+                                resource.resourceinstance.name = name.clone();
+                            }
+                        }
+                    } else {
+                        all_warnings.push(format!(
+                            "[{}] Graph not found in registry for descriptor computation: {}",
+                            resource_id, graph_id
+                        ));
+                    }
+                }
+
+                merged_resources.push(resource);
             }
             Err(e) => {
                 // This shouldn't happen since we grouped by ID, but handle gracefully
@@ -303,6 +391,143 @@ pub fn batch_merge_resources(resource_batches: Vec<Vec<StaticResource>>) -> Batc
         resources: merged_resources,
         warnings: all_warnings,
     }
+}
+
+/// Unify tiles for cardinality-1 nodegroups and update parenttile_id references.
+///
+/// When merging resources from multiple sources, cardinality-1 nodegroups may end up
+/// with multiple tiles (one from each source). This function:
+/// 1. Identifies cardinality-1 nodegroups with multiple tiles
+/// 2. Keeps the first tile as canonical, merges data from duplicates
+/// 3. Updates parenttile_id references in child tiles to point to the canonical tile
+/// 4. Warns if there are conflicting data values
+///
+/// # Arguments
+/// * `tiles` - Mutable reference to the tiles vector
+/// * `indexed_graph` - The indexed graph for looking up nodegroup cardinality
+///
+/// # Returns
+/// * Vector of warning messages about unified tiles and data conflicts
+pub fn unify_cardinality_one_tiles(
+    tiles: &mut Vec<StaticTile>,
+    indexed_graph: &crate::IndexedGraph,
+) -> Vec<String> {
+    use std::collections::BTreeMap;
+
+    let mut warnings = Vec::new();
+
+    // Group tile indices by nodegroup_id
+    let mut tiles_by_nodegroup: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for (idx, tile) in tiles.iter().enumerate() {
+        tiles_by_nodegroup
+            .entry(tile.nodegroup_id.clone())
+            .or_default()
+            .push(idx);
+    }
+
+    // Build mapping of old_tile_id -> canonical_tile_id for cardinality-1 nodegroups
+    let mut tile_redirect: HashMap<String, String> = HashMap::new();
+    let mut tiles_to_remove: HashSet<usize> = HashSet::new();
+    // Store data to merge: canonical_idx -> Vec<(source_tile_id, data)>
+    let mut data_to_merge: HashMap<usize, Vec<(String, HashMap<String, serde_json::Value>)>> = HashMap::new();
+
+    for (nodegroup_id, tile_indices) in &tiles_by_nodegroup {
+        if tile_indices.len() <= 1 {
+            continue; // No unification needed
+        }
+
+        // Check cardinality
+        let nodegroup = match indexed_graph.graph.get_nodegroup_by_id(nodegroup_id) {
+            Some(ng) => ng,
+            None => continue,
+        };
+
+        let is_single = nodegroup.cardinality.as_ref()
+            .map(|c| c != "n")
+            .unwrap_or(true);
+
+        if !is_single {
+            continue; // cardinality-n, multiple tiles are allowed
+        }
+
+        // Cardinality-1 with multiple tiles - need to unify
+        let canonical_idx = tile_indices[0];
+        let canonical_tile_id = tiles[canonical_idx].tileid.clone();
+
+        for &idx in tile_indices.iter().skip(1) {
+            let tile = &tiles[idx];
+            let tile_id = tile.tileid.clone().unwrap_or_else(|| format!("(index {})", idx));
+
+            // Record tile redirect
+            if let Some(ref old_tile_id) = tile.tileid {
+                if let Some(ref canon_id) = canonical_tile_id {
+                    tile_redirect.insert(old_tile_id.clone(), canon_id.clone());
+                }
+            }
+
+            // Collect data to merge
+            if !tile.data.is_empty() {
+                data_to_merge
+                    .entry(canonical_idx)
+                    .or_default()
+                    .push((tile_id, tile.data.clone()));
+            }
+
+            tiles_to_remove.insert(idx);
+        }
+
+        if tile_indices.len() > 1 {
+            warnings.push(format!(
+                "Unified cardinality-1 nodegroup '{}': kept 1 tile, removed {} duplicate(s)",
+                nodegroup_id,
+                tile_indices.len() - 1
+            ));
+        }
+    }
+
+    // Merge data into canonical tiles
+    for (canonical_idx, sources) in data_to_merge {
+        let canonical_tile = &mut tiles[canonical_idx];
+        let canonical_tile_id = canonical_tile.tileid.clone().unwrap_or_else(|| format!("(index {})", canonical_idx));
+
+        for (source_tile_id, source_data) in sources {
+            for (key, value) in source_data {
+                if let Some(existing) = canonical_tile.data.get(&key) {
+                    if existing != &value {
+                        warnings.push(format!(
+                            "Data conflict in nodegroup '{}': key '{}' has different values in tiles '{}' and '{}' (keeping first)",
+                            canonical_tile.nodegroup_id,
+                            key,
+                            canonical_tile_id,
+                            source_tile_id
+                        ));
+                    }
+                    // Keep existing value (first wins)
+                } else {
+                    // New key, add it
+                    canonical_tile.data.insert(key, value);
+                }
+            }
+        }
+    }
+
+    // Update parenttile_id references
+    for tile in tiles.iter_mut() {
+        if let Some(ref old_parent_id) = tile.parenttile_id {
+            if let Some(new_parent_id) = tile_redirect.get(old_parent_id) {
+                tile.parenttile_id = Some(new_parent_id.clone());
+            }
+        }
+    }
+
+    // Remove duplicate tiles (in reverse order to preserve indices)
+    let mut indices: Vec<usize> = tiles_to_remove.into_iter().collect();
+    indices.sort_by(|a, b| b.cmp(a)); // Reverse order
+    for idx in indices {
+        tiles.remove(idx);
+    }
+
+    warnings
 }
 
 #[cfg(test)]

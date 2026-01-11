@@ -431,11 +431,13 @@ pub fn merge_resources_wasm(resources_json: &str) -> Result<JsValue, JsValue> {
 ///
 /// Args:
 ///     batches_json: Array of JSON strings containing resources in any supported format
+///     recompute_descriptors: If true, recomputes descriptors from merged tiles using
+///         graphs from the registry. Graphs must be registered via WASMResourceModelWrapper.
 ///
 /// Returns:
 ///     {resources: StaticResource[], warnings: string[]}
 #[wasm_bindgen(js_name = batchMergeResources)]
-pub fn batch_merge_resources_wasm(batches_json: &str) -> Result<JsValue, JsValue> {
+pub fn batch_merge_resources_wasm(batches_json: &str, recompute_descriptors: Option<bool>) -> Result<JsValue, JsValue> {
     // Parse the outer array of JSON strings
     let batch_strings: Vec<String> = serde_json::from_str(batches_json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse batches array: {}", e)))?;
@@ -480,7 +482,7 @@ pub fn batch_merge_resources_wasm(batches_json: &str) -> Result<JsValue, JsValue
         resource_batches.push(batch);
     }
 
-    let result = batch_merge_resources(resource_batches);
+    let result = batch_merge_resources(resource_batches, recompute_descriptors.unwrap_or(false));
 
     let output = serde_json::json!({
         "resources": result.resources,

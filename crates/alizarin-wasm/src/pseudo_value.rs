@@ -368,13 +368,19 @@ impl PseudoListInner {
     pub fn matching_entries(
         &self,
         parent_tile_id: Option<String>,
-        nodegroup_id: Option<String>
+        nodegroup_id: Option<String>,
+        parent_nodegroup_id: Option<String>,
     ) -> Vec<&PseudoValueInner> {
         use alizarin_core::matches_tile_filter;
         self.values.iter()
             .filter(|v| {
                 match v.core.tile.as_ref() {
-                    Some(tile) => matches_tile_filter(tile, parent_tile_id.as_ref(), nodegroup_id.as_ref()),
+                    Some(tile) => matches_tile_filter(
+                        tile,
+                        parent_tile_id.as_ref(),
+                        nodegroup_id.as_ref(),
+                        parent_nodegroup_id.as_ref(),
+                    ),
                     // Synthetic entries (no tile) match when at root level
                     // These are created for parent semantic collectors that don't have their own tiles
                     None => parent_tile_id.is_none(),
@@ -533,6 +539,8 @@ impl PseudoValueInner {
 
         // Get the tile ID for this semantic node (used to find matching children)
         let parent_tile_id = self.core.tile.as_ref().and_then(|t| t.tileid.clone());
+        // Get parent's nodegroup_id (used to distinguish same-nodegroup vs different-nodegroup children)
+        let parent_nodegroup_id = self.core.node.nodegroup_id.clone();
 
         // Get child node IDs from the edges map
         let child_node_ids = match ctx.edges.get(&self.core.node.nodeid) {
@@ -568,6 +576,7 @@ impl PseudoValueInner {
             let matching_values = pseudo_list.matching_entries(
                 parent_tile_id.clone(),
                 child_node.nodegroup_id.clone(),
+                parent_nodegroup_id.clone(),
             );
 
             if matching_values.is_empty() {
@@ -894,6 +903,7 @@ impl PseudoValueInner {
         let mut obj = serde_json::Map::new();
 
         let parent_tile_id = self.core.tile.as_ref().and_then(|t| t.tileid.clone());
+        let parent_nodegroup_id = self.core.node.nodegroup_id.clone();
 
         let child_node_ids = match ctx.edges.get(&self.core.node.nodeid) {
             Some(ids) => ids,
@@ -922,6 +932,7 @@ impl PseudoValueInner {
             let matching_values = pseudo_list.matching_entries(
                 parent_tile_id.clone(),
                 child_node.nodegroup_id.clone(),
+                parent_nodegroup_id.clone(),
             );
 
             if matching_values.is_empty() {
@@ -940,7 +951,10 @@ impl PseudoValueInner {
                 display_registry: ctx.display_registry,
             };
 
-            if pseudo_list.is_single || matching_values.len() == 1 {
+            // Only unwrap to single value for cardinality-1 nodes (is_single=true).
+            // For cardinality-n nodes, always return an array even with 1 item,
+            // otherwise Handlebars {{#each}} iterates over object properties instead of items.
+            if pseudo_list.is_single {
                 if let Some(first_value) = matching_values.first() {
                     let json_value = first_value.to_display_json(&child_ctx);
                     if !json_value.is_null() {
@@ -1114,6 +1128,7 @@ impl PseudoValueInner {
         tiles: &mut HashMap<String, TileBuilder>,
     ) {
         let parent_tile_id = self.core.tile.as_ref().and_then(|t| t.tileid.clone());
+        let parent_nodegroup_id = self.core.node.nodegroup_id.clone();
 
         let child_node_ids = match ctx.edges.get(&self.core.node.nodeid) {
             Some(ids) => ids,
@@ -1142,6 +1157,7 @@ impl PseudoValueInner {
             let matching_values = pseudo_list.matching_entries(
                 parent_tile_id.clone(),
                 child_node.nodegroup_id.clone(),
+                parent_nodegroup_id.clone(),
             );
 
             let child_ctx = TileBuilderContext {

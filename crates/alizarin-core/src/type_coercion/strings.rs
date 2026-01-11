@@ -30,6 +30,12 @@ pub fn coerce_string(value: &Value, language: Option<&str>) -> CoercionResult {
             obj.insert(lang, Value::String(s.clone()));
             CoercionResult::success_same(Value::Object(obj))
         }
+        Value::Number(n) => {
+            // Number -> convert to string and wrap in language key
+            let mut obj = serde_json::Map::new();
+            obj.insert(lang, Value::String(n.to_string()));
+            CoercionResult::success_same(Value::Object(obj))
+        }
         Value::Object(obj) => {
             // Already a dict - validate all values are strings
             for (k, v) in obj {
@@ -192,6 +198,20 @@ mod tests {
         assert_eq!(result.tile_data, json!({"fr": "Bonjour"}));
         // Reset
         set_current_language("en");
+    }
+
+    #[test]
+    fn test_coerce_string_from_integer() {
+        let result = coerce_string(&json!(650284), Some("en"));
+        assert!(!result.is_error());
+        assert_eq!(result.tile_data, json!({"en": "650284"}));
+    }
+
+    #[test]
+    fn test_coerce_string_from_float() {
+        let result = coerce_string(&json!(3.14159), Some("en"));
+        assert!(!result.is_error());
+        assert_eq!(result.tile_data, json!({"en": "3.14159"}));
     }
 
     // URL tests
