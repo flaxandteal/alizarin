@@ -53,6 +53,15 @@ for cargo_file in "$ROOT_DIR"/crates/*/Cargo.toml; do
     fi
 done
 
+# Update Python extension Cargo.toml files
+for cargo_file in "$ROOT_DIR"/ext/python/*/Cargo.toml; do
+    if [ -f "$cargo_file" ]; then
+        ext_name=$(basename "$(dirname "$cargo_file")")
+        sed -i "0,/^version = /s/^version = .*/version = \"$CARGO_VERSION\"/" "$cargo_file"
+        echo "  ✓ ext/python/$ext_name/Cargo.toml"
+    fi
+done
+
 # Update Python pyproject.toml if it exists
 # Convert to PEP 440 format: 0.2.1-alpha.12 -> 0.2.1a12
 PEP440_VERSION=$(echo "$VERSION" | sed 's/-alpha\./a/' | sed 's/-beta\./b/' | sed 's/-rc\./rc/')
