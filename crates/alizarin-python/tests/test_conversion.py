@@ -85,12 +85,14 @@ def test_tiles_to_tree_basic():
     tiles_json = json.dumps(tiles)
     graph_json = json.dumps(graph_data)
 
+    # Register graph first (required by new API)
+    graph_id = alizarin.register_graph(graph_json)
+
     # Call the binding
     result = alizarin.tiles_to_json_tree(
         tiles_json=tiles_json,
         resource_id='test-resource-123',
-        graph_id=graph_data['graphid'],
-        graph_json=graph_json
+        graph_id=graph_id
     )
 
     # Verify result structure
@@ -119,12 +121,14 @@ def test_tree_to_tiles_basic():
     tree_json = json.dumps(tree)
     graph_json = json.dumps(graph_data)
 
+    # Register graph first (required by new API)
+    graph_id = alizarin.register_graph(graph_json)
+
     # Call the binding with resource_id and graph_id as parameters
     result = alizarin.json_tree_to_tiles(
         tree_json=tree_json,
         resource_id='test-resource-456',
-        graph_id=graph_data['graphid'],
-        graph_json=graph_json
+        graph_id=graph_id
     )
 
     # Verify result is BusinessDataWrapper format
@@ -162,12 +166,14 @@ def test_roundtrip_preserves_data():
     tiles_json = json.dumps(original_tiles)
     graph_json = json.dumps(graph_data)
 
+    # Register graph first (required by new API)
+    graph_id = alizarin.register_graph(graph_json)
+
     # tiles -> tree
     tree = alizarin.tiles_to_json_tree(
         tiles_json=tiles_json,
         resource_id='test-resource-123',
-        graph_id=graph_data['graphid'],
-        graph_json=graph_json
+        graph_id=graph_id
     )
 
     print(f"Intermediate tree: {json.dumps(tree, indent=2)}")
@@ -177,8 +183,7 @@ def test_roundtrip_preserves_data():
     result = alizarin.json_tree_to_tiles(
         tree_json=tree_json,
         resource_id='test-resource-123',
-        graph_id=graph_data['graphid'],
-        graph_json=graph_json
+        graph_id=graph_id
     )
 
     # Verify BusinessDataWrapper structure
@@ -213,23 +218,29 @@ def test_roundtrip_preserves_data():
 def test_invalid_json_handling():
     """Test that invalid JSON raises appropriate errors"""
     graph_data = load_test_data()
+    graph_json = json.dumps(graph_data)
+
+    # Register graph first
+    graph_id = alizarin.register_graph(graph_json)
 
     # Invalid tiles JSON
     with pytest.raises(Exception):
         alizarin.tiles_to_json_tree(
             tiles_json="not valid json",
             resource_id='test-resource',
-            graph_id=graph_data['graphid'],
-            graph_json=json.dumps(graph_data)
+            graph_id=graph_id
         )
 
-    # Invalid graph JSON
+    # Invalid graph JSON during registration
+    with pytest.raises(Exception):
+        alizarin.register_graph("not valid json")
+
+    # Unregistered graph_id
     with pytest.raises(Exception):
         alizarin.tiles_to_json_tree(
             tiles_json="[]",
             resource_id='test-resource',
-            graph_id='test-graph',
-            graph_json="not valid json"
+            graph_id='non-existent-graph-id'
         )
 
 
@@ -256,10 +267,13 @@ def test_batch_trees_to_tiles():
     trees_json = json.dumps(trees)
     graph_json = json.dumps(graph_data)
 
+    # Register graph first (required by new API)
+    graph_id = alizarin.register_graph(graph_json)
+
     # Call batch conversion
     result = alizarin.batch_trees_to_tiles(
         trees_json=trees_json,
-        graph_json=graph_json
+        graph_id=graph_id
     )
 
     # Verify result structure - BusinessDataWrapper format
@@ -291,12 +305,15 @@ def test_batch_tiles_to_trees():
     graph_data = load_test_data()
     graph_json = json.dumps(graph_data)
 
+    # Register graph first (required by new API)
+    graph_id = alizarin.register_graph(graph_json)
+
     # Create resources in StaticResource format
     resources = [
         {
             'resourceinstance': {
                 'resourceinstanceid': 'batch-resource-1',
-                'graph_id': graph_data['graphid'],
+                'graph_id': graph_id,
                 'name': 'Batch Resource 1',
                 'descriptors': {}
             },
@@ -305,7 +322,7 @@ def test_batch_tiles_to_trees():
         {
             'resourceinstance': {
                 'resourceinstanceid': 'batch-resource-2',
-                'graph_id': graph_data['graphid'],
+                'graph_id': graph_id,
                 'name': 'Batch Resource 2',
                 'descriptors': {}
             },
@@ -317,14 +334,22 @@ def test_batch_tiles_to_trees():
 
     # Call batch conversion
     result = alizarin.batch_tiles_to_trees(
-        resources_json=resources_json,
-        graph_json=graph_json
+        resources_json=resources_json
     )
+
+    # Debug output
+    print(f"Graph ID registered: {graph_id}")
+    print(f"Result: {result}")
 
     # Verify result structure
     assert isinstance(result, dict), "Result should be a dictionary"
     assert 'results' in result, "Result should have 'results' key"
-    assert len(result['results']) == 2, "Should have 2 trees"
+
+    # Check for errors
+    if result.get('errors'):
+        print(f"Errors: {result['errors']}")
+
+    assert len(result['results']) == 2, f"Should have 2 trees, got {len(result['results'])}, errors: {result.get('errors', [])}"
 
     for i, tree in enumerate(result['results']):
         # Tree format has resourceinstanceid at root level

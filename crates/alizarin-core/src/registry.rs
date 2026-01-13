@@ -1,27 +1,30 @@
 /// Graph Registry
 ///
-/// A simple thread-local registry for storing graphs by graph_id.
+/// A thread-safe global registry for storing graphs by graph_id.
 /// Used by batch_merge_resources and other functions that need to look up
 /// graphs without passing them explicitly.
+///
+/// Uses RwLock for thread-safe access, allowing multiple concurrent readers
+/// or exclusive write access. This works correctly with rayon's parallel iterators.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use crate::StaticGraph;
 
-thread_local! {
+lazy_static::lazy_static! {
     /// Registry mapping graph_id -> StaticGraph
     /// Uses Arc for cheap cloning when retrieving graphs
-    static GRAPH_REGISTRY: RefCell<HashMap<String, Arc<StaticGraph>>> =
-        RefCell::new(HashMap::new());
+    /// Uses RwLock for thread-safe access across parallel threads
+    static ref GRAPH_REGISTRY: RwLock<HashMap<String, Arc<StaticGraph>>> =
+        RwLock::new(HashMap::new());
 }
 
 /// Register a graph in the registry
 pub fn register_graph(graph_id: &str, graph: Arc<StaticGraph>) {
-    GRAPH_REGISTRY.with(|r| {
-        r.borrow_mut().insert(graph_id.to_string(), graph);
-    });
+    if let Ok(mut registry) = GRAPH_REGISTRY.write() {
+        registry.insert(graph_id.to_string(), graph);
+    }
 }
 
 /// Register a graph from an owned StaticGraph (wraps in Arc)
@@ -32,37 +35,43 @@ pub fn register_graph_owned(graph: StaticGraph) {
 
 /// Get a graph from the registry by graph_id
 pub fn get_graph(graph_id: &str) -> Option<Arc<StaticGraph>> {
-    GRAPH_REGISTRY.with(|r| {
-        r.borrow().get(graph_id).cloned()
-    })
+    GRAPH_REGISTRY
+        .read()
+        .ok()
+        .and_then(|registry| registry.get(graph_id).cloned())
 }
 
 /// Check if a graph is registered
 pub fn is_graph_registered(graph_id: &str) -> bool {
-    GRAPH_REGISTRY.with(|r| {
-        r.borrow().contains_key(graph_id)
-    })
+    GRAPH_REGISTRY
+        .read()
+        .ok()
+        .map(|registry| registry.contains_key(graph_id))
+        .unwrap_or(false)
 }
 
 /// Unregister a graph from the registry
 pub fn unregister_graph(graph_id: &str) -> Option<Arc<StaticGraph>> {
-    GRAPH_REGISTRY.with(|r| {
-        r.borrow_mut().remove(graph_id)
-    })
+    GRAPH_REGISTRY
+        .write()
+        .ok()
+        .and_then(|mut registry| registry.remove(graph_id))
 }
 
 /// Clear all graphs from the registry
 pub fn clear_registry() {
-    GRAPH_REGISTRY.with(|r| {
-        r.borrow_mut().clear();
-    });
+    if let Ok(mut registry) = GRAPH_REGISTRY.write() {
+        registry.clear();
+    }
 }
 
 /// Get the number of registered graphs
 pub fn registry_size() -> usize {
-    GRAPH_REGISTRY.with(|r| {
-        r.borrow().len()
-    })
+    GRAPH_REGISTRY
+        .read()
+        .ok()
+        .map(|registry| registry.len())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]

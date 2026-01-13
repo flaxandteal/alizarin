@@ -241,6 +241,12 @@ set_global_rdm_cache = _alizarin_rust.set_global_rdm_cache
 get_global_rdm_cache = _alizarin_rust.get_global_rdm_cache
 clear_global_rdm_cache = _alizarin_rust.clear_global_rdm_cache
 has_global_rdm_cache = _alizarin_rust.has_global_rdm_cache
+add_collection_to_global_cache = _alizarin_rust.add_collection_to_global_cache
+# RDM namespace configuration for deterministic UUID generation
+set_rdm_namespace = _alizarin_rust.set_rdm_namespace
+get_rdm_namespace = _alizarin_rust.get_rdm_namespace
+has_rdm_namespace = _alizarin_rust.has_rdm_namespace
+clear_rdm_namespace = _alizarin_rust.clear_rdm_namespace
 resolve_labels = _alizarin_rust.resolve_labels
 get_needed_collections = _alizarin_rust.get_needed_collections
 is_valid_uuid = _alizarin_rust.is_valid_uuid
@@ -365,6 +371,12 @@ __all__ = [
     "get_global_rdm_cache",
     "clear_global_rdm_cache",
     "has_global_rdm_cache",
+    "add_collection_to_global_cache",
+    # RDM Namespace (for deterministic UUID generation)
+    "set_rdm_namespace",
+    "get_rdm_namespace",
+    "has_rdm_namespace",
+    "clear_rdm_namespace",
     "resolve_labels",
     "get_needed_collections",
     "is_valid_uuid",

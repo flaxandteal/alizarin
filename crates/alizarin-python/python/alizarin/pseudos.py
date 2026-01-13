@@ -149,16 +149,33 @@ class PseudoValue(Generic[VM]):
         model: Optional[Any] = None,
     ) -> "PseudoValue[Any]":
         """Create PseudoValue from RustPseudoValue (preferred constructor)."""
-        # Get node from model using node_id
+        from .static_types import StaticNode, StaticTile
+
+        # Get node - try from model first, otherwise reconstruct from Rust JSON
         node_id = rust_value.node_id
-        node = model.get_node_object_from_id(node_id) if model else None
+        node = None
+        if model:
+            node = model.get_node_object_from_id(node_id)
+        if node is None:
+            # Reconstruct from Rust JSON
+            node_json_str = rust_value.get_node_json()
+            if node_json_str:
+                node_dict = json.loads(node_json_str)
+                node = StaticNode.from_dict(node_dict)
+
+        # Reconstruct tile from Rust JSON
+        tile = None
+        tile_json_str = rust_value.get_tile_json()
+        if tile_json_str:
+            tile_dict = json.loads(tile_json_str)
+            tile = StaticTile.from_dict(tile_dict)
 
         # Get tile data
         tile_data = rust_value.get_tile_data()
 
         pv = cls(
             node=node,
-            tile=None,  # Will be set from rust_value if needed
+            tile=tile,
             value=tile_data,
             parent_wkri=parent_wkri,
             model=model,
@@ -560,8 +577,25 @@ def create_pseudo_value(
     rust_value = None
     if HAS_RUST_PSEUDOS and RustPseudoValue is not None:
         try:
-            node_json = json.dumps(node.__dict__) if hasattr(node, '__dict__') else "{}"
-            tile_json = json.dumps(tile.__dict__) if tile and hasattr(tile, '__dict__') else None
+            # Use to_dict() if available (for dataclasses), otherwise __dict__
+            if hasattr(node, 'to_dict'):
+                node_dict = node.to_dict()
+            elif hasattr(node, '__dict__'):
+                node_dict = node.__dict__
+            else:
+                node_dict = {}
+            node_json = json.dumps(node_dict)
+
+            tile_json = None
+            if tile is not None:
+                if hasattr(tile, 'to_dict'):
+                    tile_dict = tile.to_dict()
+                elif hasattr(tile, '__dict__'):
+                    tile_dict = tile.__dict__
+                else:
+                    tile_dict = {}
+                tile_json = json.dumps(tile_dict)
+
             tile_data_json = json.dumps(value) if value is not None else None
             rust_value = RustPseudoValue(
                 node_json=node_json,

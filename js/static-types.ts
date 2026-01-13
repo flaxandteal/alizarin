@@ -283,10 +283,21 @@ class StaticConcept {
   }
 }
 
+/**
+ * Type of SKOS grouping structure.
+ * - ConceptScheme: Uses narrower/broader hierarchy (default)
+ * - Collection: Uses flat member relationships (Arches-compatible)
+ */
+export type SkosNodeType = 'ConceptScheme' | 'Collection';
+
 // A prefLabel, for example, can only exist once per language.
 class StaticCollection {
   id: string;
+  uri?: string;
   prefLabels: { [lang: string]: StaticValue };
+  altLabels?: { [lang: string]: StaticValue[] };
+  scopeNotes?: { [lang: string]: StaticValue };
+  nodeType: SkosNodeType;
   concepts: { [conceptId: string]: StaticConcept };
   __allConcepts: { [conceptId: string]: StaticConcept };
   __values: { [valueId: string]: StaticValue };
@@ -294,20 +305,28 @@ class StaticCollection {
   static fromConceptScheme(props: {
     collectionid?: string,
     name?: string | { [lang: string]: StaticValue } | StaticValue;
-    conceptScheme: StaticConcept
+    conceptScheme: StaticConcept;
+    nodeType?: SkosNodeType;
   }): StaticCollection {
     const collectionName = props.name ?? props.conceptScheme.toString();
     return StaticCollection.create({
       collectionid: props.collectionid,
       name: collectionName,
-      concepts: props.conceptScheme.children || []
+      concepts: props.conceptScheme.children || [],
+      nodeType: props.nodeType
     })
   }
 
+  /**
+   * Create a new StaticCollection.
+   * @param props.nodeType - 'ConceptScheme' (default) for hierarchical, 'Collection' for flat Arches-compatible
+   */
   static create(props: {
     collectionid?: string,
+    uri?: string,
     name: string | { [lang: string]: StaticValue } | StaticValue;
-    concepts: StaticConcept[] | { [conceptId: string]: StaticConcept }
+    concepts: StaticConcept[] | { [conceptId: string]: StaticConcept };
+    nodeType?: SkosNodeType;
   }): StaticCollection {
     let concepts = props.concepts;
     if (Array.isArray(concepts)) {
@@ -344,7 +363,9 @@ class StaticCollection {
     } : name;
     return new StaticCollection({
       id: collectionid,
+      uri: props.uri,
       prefLabels: prefLabels,
+      nodeType: props.nodeType || 'ConceptScheme',
       concepts: concepts,
       __allConcepts: {},
       __values: {}
@@ -353,7 +374,11 @@ class StaticCollection {
 
   constructor(jsonData: StaticCollection) {
     this.id = jsonData.id;
+    this.uri = jsonData.uri;
     this.prefLabels = jsonData.prefLabels;
+    this.altLabels = jsonData.altLabels;
+    this.scopeNotes = jsonData.scopeNotes;
+    this.nodeType = jsonData.nodeType || 'ConceptScheme';
     this.concepts = jsonData.concepts;
     this.__allConcepts = {};
     this.__values = {};
@@ -451,5 +476,6 @@ export {
   StaticTranslatableString,
   StaticConstraint,
   StaticPublication,
-  type IStaticDescriptorConfig
+  type IStaticDescriptorConfig,
+  type SkosNodeType
 };
