@@ -41,7 +41,7 @@ export class DateViewModel extends Date implements IViewModel {
     }
 
     let val: string | {[key: string]: string} | any = tile.data.get(nodeid);
-    if (typeof val == "object" && val['en'] !== undefined) {
+    if (val && typeof val == "object" && val['en'] !== undefined) {
       val = val.en;
     }
     if (!tile || val === null || val === undefined || val === '') {
