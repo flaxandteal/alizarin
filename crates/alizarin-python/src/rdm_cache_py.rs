@@ -27,7 +27,7 @@ use alizarin_core::rdm_cache::{
 // SKOS parser and serializer from core crate
 use alizarin_core::skos::{
     parse_skos_to_collections, collection_to_skos_xml,
-    SkosCollection, SkosConcept, SkosValue,
+    SkosCollection, SkosConcept, SkosValue, SkosNodeType,
 };
 
 // For get_current_language
@@ -53,6 +53,8 @@ lazy_static::lazy_static! {
 /// Once set, functions like `json_tree_to_tiles` will automatically
 /// resolve label strings to UUIDs using this cache.
 ///
+/// Note: This clones the cache, so you can continue using the original.
+///
 /// Example:
 ///     cache = RustRdmCache()
 ///     cache.add_collection(my_collection)
@@ -60,10 +62,11 @@ lazy_static::lazy_static! {
 ///
 ///     # Now json_tree_to_tiles will auto-resolve labels
 ///     result = json_tree_to_tiles(tree_json, ...)
+///     # cache is still usable here
 #[pyfunction]
-pub fn set_global_rdm_cache(cache: RdmCache) {
+pub fn set_global_rdm_cache(cache: &RdmCache) {
     if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
-        *guard = Some(cache);
+        *guard = Some(cache.clone());
     }
 }
 
@@ -92,6 +95,160 @@ pub fn has_global_rdm_cache() -> bool {
         .ok()
         .map(|guard| guard.is_some())
         .unwrap_or(false)
+}
+
+/// Add a collection directly to the global RDM cache.
+///
+/// This modifies the global cache in-place. If no global cache exists,
+/// creates one first.
+///
+/// Example:
+///     collection = RustRdmCollection.from_labels("Test", ["A", "B"])
+///     add_collection_to_global_cache(collection)
+#[pyfunction]
+pub fn add_collection_to_global_cache(collection: RdmCollection) {
+    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
+        if guard.is_none() {
+            *guard = Some(RdmCache::default());
+        }
+        if let Some(ref mut cache) = *guard {
+            cache.inner.add_collection(collection.into_inner());
+        }
+    }
+}
+
+// =============================================================================
+// Global RDM Namespace for UUID Generation
+// =============================================================================
+
+lazy_static::lazy_static! {
+    /// Global namespace UUID for deterministic RDM ID generation.
+    /// Must be set before creating collections/concepts from labels.
+    static ref GLOBAL_RDM_NAMESPACE: RwLock<Option<Uuid>> = RwLock::new(None);
+}
+
+/// Set the global RDM namespace for deterministic UUID generation.
+///
+/// This namespace is used when creating collections and concepts from labels
+/// without explicit IDs. Must be set before using from_labels, from_nested_labels,
+/// add_from_label, or add_child_from_label with auto-generated IDs.
+///
+/// Args:
+///     namespace: A valid UUID string to use as the namespace
+///
+/// Example:
+///     set_rdm_namespace("550e8400-e29b-41d4-a716-446655440000")
+///     collection = RustRdmCollection.from_labels("MyCollection", ["A", "B"])
+#[pyfunction]
+pub fn set_rdm_namespace(namespace: &str) -> PyResult<()> {
+    let uuid = Uuid::parse_str(namespace).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Invalid namespace UUID: {}", e)
+        )
+    })?;
+    if let Ok(mut guard) = GLOBAL_RDM_NAMESPACE.write() {
+        *guard = Some(uuid);
+    }
+    Ok(())
+}
+
+/// Get the current global RDM namespace, if set.
+///
+/// Returns:
+///     The namespace UUID as a string, or None if not set
+#[pyfunction]
+pub fn get_rdm_namespace() -> Option<String> {
+    GLOBAL_RDM_NAMESPACE
+        .read()
+        .ok()
+        .and_then(|guard| guard.map(|u| u.to_string()))
+}
+
+/// Check if a global RDM namespace is set.
+#[pyfunction]
+pub fn has_rdm_namespace() -> bool {
+    GLOBAL_RDM_NAMESPACE
+        .read()
+        .ok()
+        .map(|guard| guard.is_some())
+        .unwrap_or(false)
+}
+
+/// Clear the global RDM namespace.
+#[pyfunction]
+pub fn clear_rdm_namespace() {
+    if let Ok(mut guard) = GLOBAL_RDM_NAMESPACE.write() {
+        *guard = None;
+    }
+}
+
+/// Get the global namespace or return an error if not set.
+fn get_required_namespace() -> PyResult<Uuid> {
+    GLOBAL_RDM_NAMESPACE
+        .read()
+        .ok()
+        .and_then(|guard| *guard)
+        .ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "RDM namespace not set. Call set_rdm_namespace() before creating \
+                 collections or concepts from labels without explicit IDs."
+            )
+        })
+}
+
+/// Convert a label (string or multilingual dict) to a consistent string for UUID generation.
+///
+/// For strings: returns the string directly
+/// For dicts: sorts by language code, concatenates as "lang1:value1|lang2:value2"
+///
+/// This ensures deterministic UUID generation regardless of dict ordering.
+fn label_to_deterministic_string(py: Python, label: &PyObject) -> PyResult<String> {
+    if let Ok(s) = label.extract::<String>(py) {
+        return Ok(s);
+    }
+
+    if let Ok(dict) = label.downcast::<PyDict>(py) {
+        let mut entries: Vec<(String, String)> = Vec::new();
+        for (key, value) in dict.iter() {
+            let lang: String = key.extract()?;
+            let label_str: String = value.extract()?;
+            entries.push((lang, label_str));
+        }
+        // Sort by language code for deterministic ordering
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let result = entries
+            .iter()
+            .map(|(lang, val)| format!("{}:{}", lang, val))
+            .collect::<Vec<_>>()
+            .join("|");
+        return Ok(result);
+    }
+
+    Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+        "label must be a string or dict of {language: label}"
+    ))
+}
+
+/// Generate a deterministic UUID for a collection from its name.
+///
+/// Uses: uuid5(global_namespace, "collection/" + name)
+fn generate_collection_id(name: &str) -> PyResult<String> {
+    let namespace = get_required_namespace()?;
+    let key = format!("collection/{}", name);
+    Ok(Uuid::new_v5(&namespace, key.as_bytes()).to_string())
+}
+
+/// Generate a deterministic UUID for a concept from its collection and label.
+///
+/// Uses: uuid5(collection_id_as_uuid, label_string)
+fn generate_concept_id(collection_id: &str, label_string: &str) -> PyResult<String> {
+    let namespace = Uuid::parse_str(collection_id).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("collection id must be a valid UUID for auto-generation: {}", e)
+        )
+    })?;
+    Ok(Uuid::new_v5(&namespace, label_string.as_bytes()).to_string())
 }
 
 // =============================================================================
@@ -240,16 +397,33 @@ impl RdmConcept {
 ///
 /// Wraps core::RdmCollection with Python-specific features like
 /// UUID generation from labels.
+///
+/// Both node types support hierarchical concepts (narrower/broader relationships):
+/// - "ConceptScheme" (default): Uses skos:inScheme for membership
+/// - "Collection": Uses skos:member for membership (Arches-compatible), lists all concepts including children
 #[derive(Clone, Debug, Default)]
 #[pyclass(name = "RustRdmCollection")]
 pub struct RdmCollection {
     inner: CoreRdmCollection,
+    /// Node type: "ConceptScheme" or "Collection"
+    node_type: String,
 }
 
 impl RdmCollection {
-    /// Create from core collection
+    /// Create from core collection (defaults to ConceptScheme)
     pub fn from_core(inner: CoreRdmCollection) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            node_type: "ConceptScheme".to_string(),
+        }
+    }
+
+    /// Create from core collection with specified node type
+    pub fn from_core_with_type(inner: CoreRdmCollection, node_type: &str) -> Self {
+        Self {
+            inner,
+            node_type: node_type.to_string(),
+        }
     }
 
     /// Get the inner core collection
@@ -266,54 +440,166 @@ impl RdmCollection {
     pub fn into_inner(self) -> CoreRdmCollection {
         self.inner
     }
-}
 
-/// Namespace UUID for generating collection IDs from names
-/// Derived from the project's base namespace: uuid5("1a79f1c8-9505-4bea-a18e-28a053f725ca", "collection")
-const COLLECTION_NAMESPACE: &str = "a8e5f3b2-7c41-5d8a-9f12-3b4c5d6e7f8a";
+    /// Get the node type
+    pub fn get_node_type(&self) -> &str {
+        &self.node_type
+    }
+}
 
 #[pymethods]
 impl RdmCollection {
     #[new]
-    fn new(id: String) -> Self {
+    #[pyo3(signature = (id, node_type=None))]
+    fn new(id: String, node_type: Option<String>) -> Self {
         Self {
             inner: CoreRdmCollection::new(id),
+            node_type: node_type.unwrap_or_else(|| "ConceptScheme".to_string()),
         }
     }
 
     /// Create a collection from a name and list of labels.
     ///
+    /// Creates top-level concepts only. Use add_child_from_label() to create
+    /// hierarchical relationships (narrower/broader) between concepts.
+    ///
+    /// Both ConceptScheme and Collection types support hierarchical concepts.
+    /// The difference is how membership is expressed in SKOS RDF:
+    /// - ConceptScheme: uses skos:inScheme on concepts
+    /// - Collection: uses skos:member to list all concepts (including children)
+    ///
     /// Args:
     ///     name: The collection name (also used to generate ID if not provided)
     ///     labels: List of concept labels (strings only - IDs are auto-generated)
     ///     id: Optional explicit collection ID. If not provided, generates uuid5 from name.
+    ///     node_type: "ConceptScheme" (default) or "Collection" (Arches-compatible)
     ///
     /// Example:
     ///     # Auto-generate collection ID from name, concept IDs from labels
-    ///     collection = RustRdmCollection.from_labels("Categories", ["Cat A", "Cat B", "Cat C"])
+    ///     collection = RustRdmCollection.from_labels("Categories", ["Animals"])
+    ///
+    ///     # Add a child concept with hierarchy
+    ///     parent = collection.find_by_label("Animals")
+    ///     collection.add_child_from_label(parent.id, "Mammals")
+    ///
+    ///     # Create an Arches-compatible Collection (with hierarchy support)
+    ///     collection = RustRdmCollection.from_labels(
+    ///         "Categories",
+    ///         ["Animals"],
+    ///         node_type="Collection"
+    ///     )
     ///
     ///     # Explicit collection ID
     ///     collection = RustRdmCollection.from_labels("Categories", ["Cat A", "Cat B"], id="my-uuid")
     #[staticmethod]
-    #[pyo3(signature = (name, labels, id=None))]
-    fn from_labels(py: Python, name: String, labels: Vec<PyObject>, id: Option<String>) -> PyResult<Self> {
+    #[pyo3(signature = (name, labels, id=None, node_type=None))]
+    fn from_labels(py: Python, name: String, labels: Vec<PyObject>, id: Option<String>, node_type: Option<String>) -> PyResult<Self> {
         // Generate or use provided collection ID
         let collection_id = match id {
             Some(explicit_id) => explicit_id,
-            None => {
-                let namespace = Uuid::parse_str(COLLECTION_NAMESPACE).unwrap();
-                Uuid::new_v5(&namespace, name.as_bytes()).to_string()
-            }
+            None => generate_collection_id(&name)?,
         };
 
         let mut collection = Self {
             inner: CoreRdmCollection::with_name(collection_id, name),
+            node_type: node_type.unwrap_or_else(|| "ConceptScheme".to_string()),
         };
 
         // Add each label as a concept
         for label in labels {
             collection.add_from_label(py, label, None)?;
         }
+
+        Ok(collection)
+    }
+
+    /// Create a hierarchical collection from a nested dictionary structure.
+    ///
+    /// The structure uses labels as keys and either None (leaf) or dict (children) as values:
+    ///
+    /// Args:
+    ///     name: The collection name
+    ///     structure: Nested dict where keys are labels, values are None (leaf) or dict (children)
+    ///     id: Optional explicit collection ID
+    ///     node_type: "ConceptScheme" (default) or "Collection" (Arches-compatible)
+    ///
+    /// Example:
+    ///     # Create a hierarchical taxonomy
+    ///     collection = RustRdmCollection.from_nested_labels(
+    ///         "Animals",
+    ///         {
+    ///             "Mammals": {
+    ///                 "Dogs": None,
+    ///                 "Cats": None
+    ///             },
+    ///             "Birds": {
+    ///                 "Eagles": None,
+    ///                 "Sparrows": None
+    ///             }
+    ///         }
+    ///     )
+    ///
+    ///     # Result: 6 concepts with hierarchy:
+    ///     # - Mammals (top-level)
+    ///     #   - Dogs (child of Mammals)
+    ///     #   - Cats (child of Mammals)
+    ///     # - Birds (top-level)
+    ///     #   - Eagles (child of Birds)
+    ///     #   - Sparrows (child of Birds)
+    ///
+    ///     # For flat collections, values can all be None:
+    ///     flat = RustRdmCollection.from_nested_labels(
+    ///         "Colors",
+    ///         {"Red": None, "Green": None, "Blue": None}
+    ///     )
+    #[staticmethod]
+    #[pyo3(signature = (name, structure, id=None, node_type=None))]
+    fn from_nested_labels(
+        py: Python,
+        name: String,
+        structure: &Bound<'_, PyDict>,
+        id: Option<String>,
+        node_type: Option<String>
+    ) -> PyResult<Self> {
+        // Generate or use provided collection ID
+        let collection_id = match id {
+            Some(explicit_id) => explicit_id,
+            None => generate_collection_id(&name)?,
+        };
+
+        let mut collection = Self {
+            inner: CoreRdmCollection::with_name(collection_id, name),
+            node_type: node_type.unwrap_or_else(|| "ConceptScheme".to_string()),
+        };
+
+        // Recursive helper to add concepts from nested structure
+        fn add_nested(
+            py: Python,
+            collection: &mut RdmCollection,
+            structure: &Bound<'_, PyDict>,
+            parent_id: Option<String>
+        ) -> PyResult<()> {
+            for (key, value) in structure.iter() {
+                // Key is the label (string or multilingual dict)
+                let label: PyObject = key.into_py(py);
+
+                // Add concept (as child if parent_id is set)
+                let concept_id = if let Some(ref pid) = parent_id {
+                    collection.add_child_from_label(py, pid.clone(), label, None)?
+                } else {
+                    collection.add_from_label(py, label, None)?
+                };
+
+                // If value is a dict, recurse for children
+                if let Ok(children_dict) = value.downcast::<PyDict>() {
+                    add_nested(py, collection, children_dict, Some(concept_id))?;
+                }
+                // If value is None or anything else, it's a leaf node (already added)
+            }
+            Ok(())
+        }
+
+        add_nested(py, &mut collection, structure, None)?;
 
         Ok(collection)
     }
@@ -326,6 +612,12 @@ impl RdmCollection {
     #[getter]
     fn name(&self) -> Option<&str> {
         self.inner.name.as_deref()
+    }
+
+    /// Get the node type ("ConceptScheme" or "Collection")
+    #[getter]
+    fn node_type(&self) -> &str {
+        &self.node_type
     }
 
     /// Add a concept to the collection
@@ -354,12 +646,12 @@ impl RdmCollection {
     ///     id3 = collection.add_from_label({"en": "Category C", "de": "Kategorie C"}, id="my-uuid-2")
     #[pyo3(signature = (label, id=None))]
     fn add_from_label(&mut self, py: Python, label: PyObject, id: Option<String>) -> PyResult<String> {
-        // Extract label and determine if it's a string or dict
+        // Extract pref_label as HashMap and get deterministic string for ID generation
         let (pref_label, label_string) = if let Ok(s) = label.extract::<String>(py) {
             let lang = get_current_language();
             let mut map = HashMap::new();
             map.insert(lang, s.clone());
-            (map, Some(s))
+            (map, s)
         } else if let Ok(dict) = label.downcast::<PyDict>(py) {
             let mut map = HashMap::new();
             for (key, value) in dict.iter() {
@@ -367,7 +659,9 @@ impl RdmCollection {
                 let label_str: String = value.extract()?;
                 map.insert(lang, label_str);
             }
-            (map, None)
+            // Get deterministic string from multilingual dict
+            let det_string = label_to_deterministic_string(py, &label)?;
+            (map, det_string)
         } else {
             return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
                 "label must be a string or dict of {language: label}"
@@ -375,22 +669,9 @@ impl RdmCollection {
         };
 
         // Determine the concept ID
-        let concept_id = match (id, label_string) {
-            (Some(explicit_id), _) => explicit_id,
-            (None, Some(label_str)) => {
-                // Parse collection ID as UUID namespace
-                let namespace = Uuid::parse_str(&self.inner.id).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                        format!("collection id must be a valid UUID for auto-generation: {}", e)
-                    )
-                })?;
-                Uuid::new_v5(&namespace, label_str.as_bytes()).to_string()
-            }
-            (None, None) => {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    "id is required when label is a dict (cannot auto-generate from multiple languages)"
-                ));
-            }
+        let concept_id = match id {
+            Some(explicit_id) => explicit_id,
+            None => generate_concept_id(&self.inner.id, &label_string)?,
         };
 
         let concept = CoreRdmConcept {
@@ -401,6 +682,82 @@ impl RdmCollection {
             narrower: vec![],
             scope_note: HashMap::new(),
         };
+
+        self.inner.add_concept(concept);
+        Ok(concept_id)
+    }
+
+    /// Add a child concept under an existing parent concept.
+    ///
+    /// This creates a narrower/broader relationship between the parent and child.
+    /// Both ConceptScheme and Collection types support hierarchical concepts.
+    ///
+    /// Args:
+    ///     parent_id: The ID of the parent concept
+    ///     label: Label as string or {lang: label} dict
+    ///     id: Optional explicit ID for the child concept
+    ///
+    /// Returns:
+    ///     The ID of the newly created child concept
+    ///
+    /// Raises:
+    ///     ValueError: If parent_id doesn't exist in the collection
+    ///
+    /// Example:
+    ///     collection = RustRdmCollection.from_labels("Categories", ["Animals"])
+    ///     parent_id = collection.find_by_label("Animals").id
+    ///     child_id = collection.add_child_from_label(parent_id, "Mammals")
+    #[pyo3(signature = (parent_id, label, id=None))]
+    fn add_child_from_label(&mut self, py: Python, parent_id: String, label: PyObject, id: Option<String>) -> PyResult<String> {
+        // Verify parent exists
+        if !self.inner.has_concept(&parent_id) {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                format!("Parent concept '{}' not found in collection", parent_id)
+            ));
+        }
+
+        // Extract pref_label as HashMap and get deterministic string for ID generation
+        let (pref_label, label_string) = if let Ok(s) = label.extract::<String>(py) {
+            let lang = get_current_language();
+            let mut map = HashMap::new();
+            map.insert(lang, s.clone());
+            (map, s)
+        } else if let Ok(dict) = label.downcast::<PyDict>(py) {
+            let mut map = HashMap::new();
+            for (key, value) in dict.iter() {
+                let lang: String = key.extract()?;
+                let label_str: String = value.extract()?;
+                map.insert(lang, label_str);
+            }
+            // Get deterministic string from multilingual dict
+            let det_string = label_to_deterministic_string(py, &label)?;
+            (map, det_string)
+        } else {
+            return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                "label must be a string or dict of {language: label}"
+            ));
+        };
+
+        // Determine the concept ID
+        let concept_id = match id {
+            Some(explicit_id) => explicit_id,
+            None => generate_concept_id(&self.inner.id, &label_string)?,
+        };
+
+        // Create concept with broader set to parent
+        let concept = CoreRdmConcept {
+            id: concept_id.clone(),
+            pref_label,
+            alt_labels: HashMap::new(),
+            broader: vec![parent_id.clone()],
+            narrower: vec![],
+            scope_note: HashMap::new(),
+        };
+
+        // Update parent's narrower list
+        if let Some(parent) = self.inner.get_concept_mut(&parent_id) {
+            parent.narrower.push(concept_id.clone());
+        }
 
         self.inner.add_concept(concept);
         Ok(concept_id)
@@ -466,6 +823,10 @@ impl RdmCollection {
     /// This calls the core serialization function and returns the XML string
     /// for Python to write to a file or send over the network.
     ///
+    /// The output format depends on node_type:
+    /// - "ConceptScheme": Uses skos:ConceptScheme with narrower/broader relations
+    /// - "Collection": Uses skos:Collection with member relations (Arches-compatible)
+    ///
     /// Args:
     ///     base_uri: Base URI for the SKOS resources (e.g., "http://example.org/")
     ///
@@ -473,16 +834,123 @@ impl RdmCollection {
     ///     SKOS RDF/XML as a string
     ///
     /// Example:
+    ///     # Create a ConceptScheme (default)
     ///     collection = RustRdmCollection.from_labels("Test", ["A", "B", "C"])
     ///     xml = collection.to_skos_xml("http://example.org/")
-    ///     with open("output.xml", "w") as f:
-    ///         f.write(xml)
+    ///
+    ///     # Create an Arches-compatible Collection
+    ///     collection = RustRdmCollection.from_labels("Test", ["A", "B"], node_type="Collection")
+    ///     xml = collection.to_skos_xml("http://example.org/")  # Uses skos:Collection
     fn to_skos_xml(&self, base_uri: &str) -> PyResult<String> {
-        // Convert RdmCollection to SkosCollection
-        let skos_collection = rdm_to_skos_collection(&self.inner);
+        // Convert RdmCollection to SkosCollection with appropriate node_type
+        let skos_collection = rdm_to_skos_collection(&self.inner, &self.node_type);
 
         // Serialize to XML using core function
         Ok(collection_to_skos_xml(&skos_collection, base_uri))
+    }
+
+    /// Export collection to simplified JSON format (Arches prebuild compatible).
+    ///
+    /// This produces a JSON structure matching the format used by arches-orm's
+    /// `export_simplified_collection()` method, suitable for prebuild reference data.
+    ///
+    /// Format:
+    /// {
+    ///     "id": "collection-id",
+    ///     "prefLabels": {"": {"value": "collection-name"}},
+    ///     "concepts": {
+    ///         "concept-id": {
+    ///             "id": "concept-id",
+    ///             "prefLabels": {"en": {"id": "value-id", "value": "Label"}},
+    ///             "source": null,
+    ///             "sortOrder": null,
+    ///             "children": [...]  // if any
+    ///         }
+    ///     }
+    /// }
+    ///
+    /// Example:
+    ///     collection = RustRdmCollection.from_nested_labels("Animals", {"Mammals": {"Dogs": None}})
+    ///     json_str = collection.to_simplified_json()
+    ///     with open(f"{collection.id}.json", "w") as f:
+    ///         f.write(json_str)
+    fn to_simplified_json(&self) -> PyResult<String> {
+        let mut concepts_map = serde_json::Map::new();
+
+        // Build concept tree for top-level concepts only
+        // Sort by ID for deterministic output
+        let mut top_concepts: Vec<_> = self.inner.get_top_concepts();
+        top_concepts.sort_by_key(|c| &c.id);
+        for concept in top_concepts {
+            let concept_json = self.concept_to_simplified_json(concept);
+            concepts_map.insert(concept.id.clone(), concept_json);
+        }
+
+        // Build collection prefLabels
+        let mut pref_labels = serde_json::Map::new();
+        let mut empty_label = serde_json::Map::new();
+        empty_label.insert(
+            "value".to_string(),
+            serde_json::Value::String(
+                self.inner.name.clone().unwrap_or_else(|| self.inner.id.clone())
+            )
+        );
+        pref_labels.insert("".to_string(), serde_json::Value::Object(empty_label));
+
+        let result = serde_json::json!({
+            "id": self.inner.id,
+            "prefLabels": pref_labels,
+            "concepts": concepts_map
+        });
+
+        serde_json::to_string_pretty(&result)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                format!("Failed to serialize to JSON: {}", e)
+            ))
+    }
+}
+
+impl RdmCollection {
+    /// Helper to convert a concept to simplified JSON format (recursive for children)
+    fn concept_to_simplified_json(&self, concept: &CoreRdmConcept) -> serde_json::Value {
+        let mut pref_labels = serde_json::Map::new();
+        // Sort languages for deterministic output
+        let mut sorted_labels: Vec<_> = concept.pref_label.iter().collect();
+        sorted_labels.sort_by_key(|(lang, _)| *lang);
+        for (lang, label) in sorted_labels {
+            let value_id = generate_skos_value_id(&concept.id, lang, label);
+            let mut label_obj = serde_json::Map::new();
+            label_obj.insert("id".to_string(), serde_json::Value::String(value_id));
+            label_obj.insert("value".to_string(), serde_json::Value::String(label.clone()));
+            pref_labels.insert(lang.clone(), serde_json::Value::Object(label_obj));
+        }
+
+        let mut concept_obj = serde_json::json!({
+            "id": concept.id,
+            "prefLabels": pref_labels,
+            "source": serde_json::Value::Null,
+            "sortOrder": serde_json::Value::Null
+        });
+
+        // Add children if any
+        if !concept.narrower.is_empty() {
+            // Sort children by ID for deterministic output
+            let mut sorted_narrower: Vec<_> = concept.narrower.iter().collect();
+            sorted_narrower.sort();
+            let children: Vec<serde_json::Value> = sorted_narrower.iter()
+                .filter_map(|child_id| self.inner.get_concept(child_id))
+                .map(|child| self.concept_to_simplified_json(child))
+                .collect();
+
+            if !children.is_empty() {
+                concept_obj.as_object_mut().unwrap().insert(
+                    "children".to_string(),
+                    serde_json::Value::Array(children)
+                );
+            }
+        }
+
+        concept_obj
     }
 }
 
@@ -510,7 +978,7 @@ fn generate_skos_value_id(concept_id: &str, lang: &str, value: &str) -> String {
 }
 
 /// Convert RdmCollection to SkosCollection for serialization
-fn rdm_to_skos_collection(rdm: &CoreRdmCollection) -> SkosCollection {
+fn rdm_to_skos_collection(rdm: &CoreRdmCollection, node_type: &str) -> SkosCollection {
     // Build collection pref_labels
     let mut collection_pref_labels = HashMap::new();
     if let Some(ref name) = rdm.name {
@@ -547,18 +1015,26 @@ fn rdm_to_skos_collection(rdm: &CoreRdmCollection) -> SkosCollection {
                 pref_labels,
                 source: Some(concept_id.clone()),
                 sort_order: None,  // No sort order in RDM format
-                children: None,  // Will be built hierarchically later
+                children: None,  // Will be built hierarchically later (for ConceptScheme only)
             };
 
             all_skos_concepts.insert(concept_id.clone(), skos_concept);
 
-            // Collect all narrower IDs
+            // Collect all narrower IDs (only relevant for ConceptScheme)
             all_narrower_ids.extend(rdm_concept.narrower.iter().cloned());
         }
     }
 
-    // Build hierarchy - find top-level concepts (those not in anyone's narrower list)
-    let mut top_level_concepts: HashMap<String, SkosConcept> = HashMap::new();
+    // Determine node type
+    let skos_node_type = if node_type == "Collection" {
+        SkosNodeType::Collection
+    } else {
+        SkosNodeType::ConceptScheme
+    };
+
+    // Build hierarchy for both ConceptScheme and Collection types
+    // (Collections use member for membership but concepts can have narrower/broader)
+    let mut hierarchy: HashMap<String, SkosConcept> = HashMap::new();
 
     for concept_id in rdm.get_concept_ids() {
         if !all_narrower_ids.contains(concept_id) {
@@ -568,19 +1044,25 @@ fn rdm_to_skos_collection(rdm: &CoreRdmCollection) -> SkosCollection {
                 &all_skos_concepts,
                 rdm,
             ) {
-                top_level_concepts.insert(concept_id.clone(), concept_with_children);
+                hierarchy.insert(concept_id.clone(), concept_with_children);
             }
         }
     }
 
     // If no hierarchy, just use all concepts as top-level
-    if top_level_concepts.is_empty() {
-        top_level_concepts = all_skos_concepts.clone();
-    }
+    let top_level_concepts = if hierarchy.is_empty() {
+        all_skos_concepts.clone()
+    } else {
+        hierarchy
+    };
 
     SkosCollection {
         id: rdm.id.clone(),
+        uri: None,
         pref_labels: collection_pref_labels,
+        alt_labels: HashMap::new(),
+        scope_notes: HashMap::new(),
+        node_type: skos_node_type,
         concepts: top_level_concepts,
         all_concepts: all_skos_concepts,
         values: HashMap::new(),
@@ -660,7 +1142,12 @@ impl RdmCache {
         );
 
         // Recursive function to add a concept and its children
-        fn add_concept_recursive(rdm: &mut CoreRdmCollection, skos_concept: &SkosConcept) {
+        // parent_id is None for top-level concepts
+        fn add_concept_recursive(
+            rdm: &mut CoreRdmCollection,
+            skos_concept: &SkosConcept,
+            parent_id: Option<&str>
+        ) {
             let mut pref_label = HashMap::new();
             for (lang, value) in &skos_concept.pref_labels {
                 pref_label.insert(lang.clone(), value.value.clone());
@@ -672,35 +1159,38 @@ impl RdmCache {
                 .map(|children| children.iter().map(|c| c.id.clone()).collect())
                 .unwrap_or_default();
 
+            // Set broader to parent if this is a child concept
+            let broader = parent_id.map(|p| vec![p.to_string()]).unwrap_or_default();
+
             let rdm_concept = CoreRdmConcept {
                 id: skos_concept.id.clone(),
                 pref_label,
                 alt_labels: HashMap::new(),
-                broader: vec![],
+                broader,
                 narrower,
                 scope_note: HashMap::new(),
             };
 
             rdm.add_concept(rdm_concept);
 
-            // Recursively add children
+            // Recursively add children with this concept as parent
             if let Some(ref children) = skos_concept.children {
                 for child in children {
-                    add_concept_recursive(rdm, child);
+                    add_concept_recursive(rdm, child, Some(&skos_concept.id));
                 }
             }
         }
 
         // Add all top-level concepts (and their children recursively)
         for skos_concept in skos.concepts.values() {
-            add_concept_recursive(&mut rdm, skos_concept);
+            add_concept_recursive(&mut rdm, skos_concept, None);
         }
 
         // Also add from all_concepts if not already added (fallback for flat structures)
         if rdm.len() == 0 && !skos.all_concepts.is_empty() {
             for skos_concept in skos.all_concepts.values() {
                 if !rdm.has_concept(&skos_concept.id) {
-                    add_concept_recursive(&mut rdm, skos_concept);
+                    add_concept_recursive(&mut rdm, skos_concept, None);
                 }
             }
         }
@@ -1002,6 +1492,13 @@ pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_global_rdm_cache, m)?)?;
     m.add_function(wrap_pyfunction!(clear_global_rdm_cache, m)?)?;
     m.add_function(wrap_pyfunction!(has_global_rdm_cache, m)?)?;
+    m.add_function(wrap_pyfunction!(add_collection_to_global_cache, m)?)?;
+
+    // Global RDM namespace functions for deterministic UUID generation
+    m.add_function(wrap_pyfunction!(set_rdm_namespace, m)?)?;
+    m.add_function(wrap_pyfunction!(get_rdm_namespace, m)?)?;
+    m.add_function(wrap_pyfunction!(has_rdm_namespace, m)?)?;
+    m.add_function(wrap_pyfunction!(clear_rdm_namespace, m)?)?;
 
     // Label resolution functions
     m.add_function(wrap_pyfunction!(resolve_labels, m)?)?;

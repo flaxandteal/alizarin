@@ -102,6 +102,11 @@ impl RdmCollection {
         self.concepts.get(concept_id)
     }
 
+    /// Get a mutable concept by ID
+    pub fn get_concept_mut(&mut self, concept_id: &str) -> Option<&mut RdmConcept> {
+        self.concepts.get_mut(concept_id)
+    }
+
     /// Get the label for a concept in this collection
     pub fn get_label(&self, concept_id: &str, language: &str) -> Option<String> {
         self.get_concept(concept_id)
@@ -409,5 +414,123 @@ mod tests {
 
         cache.clear();
         assert_eq!(cache.get_collection_ids().len(), 0);
+    }
+
+    #[test]
+    fn test_hierarchical_concepts() {
+        let mut collection = RdmCollection::new("coll-1".to_string());
+
+        // Create parent concept (no broader)
+        let mut parent_labels = HashMap::new();
+        parent_labels.insert("en".to_string(), "Parent".to_string());
+        let parent = RdmConcept {
+            id: "parent".to_string(),
+            pref_label: parent_labels,
+            alt_labels: HashMap::new(),
+            broader: vec![],
+            narrower: vec!["child".to_string()],
+            scope_note: HashMap::new(),
+        };
+
+        // Create child concept (has broader)
+        let mut child_labels = HashMap::new();
+        child_labels.insert("en".to_string(), "Child".to_string());
+        let child = RdmConcept {
+            id: "child".to_string(),
+            pref_label: child_labels,
+            alt_labels: HashMap::new(),
+            broader: vec!["parent".to_string()],
+            narrower: vec![],
+            scope_note: HashMap::new(),
+        };
+
+        collection.add_concept(parent);
+        collection.add_concept(child);
+
+        // Collection should have 2 concepts
+        assert_eq!(collection.len(), 2);
+
+        // Only parent should be in top_concepts (child has broader)
+        let top = collection.get_top_concepts();
+        assert_eq!(top.len(), 1);
+        assert_eq!(top[0].id, "parent");
+
+        // Both concepts should be accessible
+        assert!(collection.has_concept("parent"));
+        assert!(collection.has_concept("child"));
+    }
+
+    #[test]
+    fn test_get_concept_mut() {
+        let mut collection = RdmCollection::new("coll-1".to_string());
+
+        let mut labels = HashMap::new();
+        labels.insert("en".to_string(), "Original".to_string());
+        let concept = RdmConcept {
+            id: "c1".to_string(),
+            pref_label: labels,
+            alt_labels: HashMap::new(),
+            broader: vec![],
+            narrower: vec![],
+            scope_note: HashMap::new(),
+        };
+
+        collection.add_concept(concept);
+
+        // Modify the concept
+        if let Some(c) = collection.get_concept_mut("c1") {
+            c.narrower.push("c2".to_string());
+            c.pref_label.insert("de".to_string(), "Geändert".to_string());
+        }
+
+        // Verify changes persisted
+        let c = collection.get_concept("c1").unwrap();
+        assert_eq!(c.narrower, vec!["c2".to_string()]);
+        assert_eq!(c.pref_label.get("de"), Some(&"Geändert".to_string()));
+    }
+
+    #[test]
+    fn test_add_child_concept_hierarchy() {
+        let mut collection = RdmCollection::new("coll-1".to_string());
+
+        // Add parent
+        let mut parent_labels = HashMap::new();
+        parent_labels.insert("en".to_string(), "Animals".to_string());
+        let parent = RdmConcept {
+            id: "animals".to_string(),
+            pref_label: parent_labels,
+            alt_labels: HashMap::new(),
+            broader: vec![],
+            narrower: vec![],
+            scope_note: HashMap::new(),
+        };
+        collection.add_concept(parent);
+
+        // Update parent's narrower list
+        if let Some(p) = collection.get_concept_mut("animals") {
+            p.narrower.push("mammals".to_string());
+        }
+
+        // Add child with broader pointing to parent
+        let mut child_labels = HashMap::new();
+        child_labels.insert("en".to_string(), "Mammals".to_string());
+        let child = RdmConcept {
+            id: "mammals".to_string(),
+            pref_label: child_labels,
+            alt_labels: HashMap::new(),
+            broader: vec!["animals".to_string()],
+            narrower: vec![],
+            scope_note: HashMap::new(),
+        };
+        collection.add_concept(child);
+
+        // Verify hierarchy
+        let top = collection.get_top_concepts();
+        assert_eq!(top.len(), 1);
+        assert_eq!(top[0].id, "animals");
+        assert_eq!(top[0].narrower, vec!["mammals".to_string()]);
+
+        let child = collection.get_concept("mammals").unwrap();
+        assert_eq!(child.broader, vec!["animals".to_string()]);
     }
 }

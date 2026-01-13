@@ -611,7 +611,10 @@ pub fn matches_tile_filter(
             // than the parent. When same nodegroup, we need exact tileid match (handled above).
             let is_different_nodegroup = match parent_nodegroup_id {
                 Some(parent_ng) => ng != parent_ng,
-                None => true, // No parent nodegroup means we're at root, allow fallback
+                // When parent_nodegroup_id is not provided but parent_tile_id IS provided,
+                // we can't confirm different nodegroup, so don't use fallback.
+                // (Root level case where both are None is handled above at line 604)
+                None => false,
             };
             if tile.parenttile_id.is_none() && parent_tile_id.is_some() && is_different_nodegroup {
                 return true;

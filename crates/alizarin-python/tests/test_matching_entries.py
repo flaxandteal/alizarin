@@ -8,7 +8,7 @@ by their parent tile context.
 
 import pytest
 from alizarin.static_types import StaticNode, StaticTile
-from alizarin.pseudos import PseudoValue, PseudoList
+from alizarin.pseudos import PseudoValue, PseudoList, create_pseudo_value as factory_create_pseudo_value, create_pseudo_list
 
 
 def create_node(nodeid: str, alias: str, nodegroup_id: str) -> StaticNode:
@@ -41,8 +41,8 @@ def create_tile(tileid: str, nodegroup_id: str, parenttile_id: str | None = None
 
 
 def create_pseudo_value(node: StaticNode, tile: StaticTile, value: str = "test-value") -> PseudoValue:
-    """Create a PseudoValue with the specified tile"""
-    return PseudoValue(
+    """Create a PseudoValue with Rust backing via factory"""
+    return factory_create_pseudo_value(
         node=node,
         tile=tile,
         value=value,
@@ -72,8 +72,8 @@ def test_matching_entries_filters_by_parent_tile():
     # Value B belongs to tile B
     value_b = create_pseudo_value(inner_node, outer_tile_b, "Alternative")
 
-    # Create a PseudoList with both values
-    pseudo_list = PseudoList(
+    # Create a PseudoList with both values (using factory for Rust backing)
+    pseudo_list = create_pseudo_list(
         alias="name_use_type",
         values=[value_a, value_b],
         is_single=True  # is_single - this is a single value per outer tile
@@ -120,7 +120,7 @@ def test_matching_entries_handles_child_tiles():
     value_b = create_pseudo_value(inner_node, child_tile_b)
     value_unrelated = create_pseudo_value(inner_node, unrelated_tile)
 
-    pseudo_list = PseudoList(
+    pseudo_list = create_pseudo_list(
         alias="inner_value",
         values=[value_a, value_b, value_unrelated],
         is_single=False  # Can have multiple
@@ -163,7 +163,7 @@ def test_matching_entries_handles_root_level():
     value_root_b = create_pseudo_value(node, root_tile_b)
     value_child = create_pseudo_value(node, child_tile)
 
-    pseudo_list = PseudoList(
+    pseudo_list = create_pseudo_list(
         alias="root_value",
         values=[value_root_a, value_root_b, value_child],
         is_single=False
@@ -202,7 +202,7 @@ def test_matching_entries_requires_nodegroup_match():
     value_a = create_pseudo_value(node_a, tile_a)
     value_b = create_pseudo_value(node_b, tile_b)
 
-    pseudo_list = PseudoList(
+    pseudo_list = create_pseudo_list(
         alias="mixed_values",
         values=[value_a, value_b],
         is_single=False
@@ -243,7 +243,7 @@ def test_registry_names_regression():
     value_1 = create_pseudo_value(name_use_type_node, name_tile_1, "Alternative")
 
     # Create the PseudoList with is_single=True (cardinality-1)
-    pseudo_list = PseudoList(
+    pseudo_list = create_pseudo_list(
         alias="name_use_type",
         values=[value_0, value_1],
         is_single=True  # CRITICAL: is_single=True means we expect exactly 0 or 1 value per context

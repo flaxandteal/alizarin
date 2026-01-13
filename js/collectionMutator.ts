@@ -1,6 +1,6 @@
 import { generateUuidv5 } from './utils';
 import { getCurrentLanguage } from './utils';
-import { StaticCollection, StaticConcept, StaticValue } from './static-types';
+import { StaticCollection, StaticConcept, StaticValue, SkosNodeType } from './static-types';
 
 /**
  * Options for adding a concept to a collection
@@ -47,9 +47,39 @@ export class CollectionMutator {
   }
 
   /**
-   * Create a new empty collection with a mutator
+   * Create a new empty collection with a mutator.
+   *
+   * @param name - Collection name (string or multilingual object)
+   * @param options - Optional settings
+   * @param options.collectionId - Explicit ID (otherwise generated from name)
+   * @param options.nodeType - 'ConceptScheme' (default) or 'Collection' for Arches-compatible
+   * @param options.uri - Optional URI for the collection
+   *
+   * Both types support hierarchical concepts via narrower/broader relationships.
+   * The difference is how membership is expressed in RDF:
+   * - ConceptScheme: uses skos:inScheme on concepts
+   * - Collection: uses skos:member to list all concepts (including children)
+   *
+   * @example
+   * // Create a hierarchical ConceptScheme (default)
+   * const scheme = CollectionMutator.createEmpty("Categories");
+   * scheme.addConcept({ label: "Parent" });
+   * scheme.addChildConcept(parentId, { label: "Child" }); // narrower/broader
+   *
+   * @example
+   * // Create an Arches-compatible Collection with hierarchy
+   * const collection = CollectionMutator.createEmpty("My Collection", { nodeType: 'Collection' });
+   * const parent = collection.addConcept({ label: "Parent" });
+   * collection.addChildConcept(parent.id, { label: "Child" }); // narrower/broader, all listed as members
    */
-  static createEmpty(name: string | { [lang: string]: string }, collectionId?: string): CollectionMutator {
+  static createEmpty(
+    name: string | { [lang: string]: string },
+    options?: string | { collectionId?: string; nodeType?: SkosNodeType; uri?: string }
+  ): CollectionMutator {
+    // Handle backwards compatibility: if options is a string, treat as collectionId
+    const opts = typeof options === 'string' ? { collectionId: options } : (options || {});
+    const { collectionId, nodeType = 'ConceptScheme', uri } = opts;
+
     const lang = getCurrentLanguage();
     let prefLabels: { [lang: string]: StaticValue };
     let nameValue: string;
@@ -72,7 +102,9 @@ export class CollectionMutator {
 
     const collection = new StaticCollection({
       id,
+      uri,
       prefLabels,
+      nodeType,
       concepts: {},
       __allConcepts: {},
       __values: {}
@@ -82,7 +114,21 @@ export class CollectionMutator {
   }
 
   /**
-   * Add a top-level concept to the collection
+   * Create a new Arches-compatible Collection.
+   * Convenience method equivalent to createEmpty(name, { nodeType: 'Collection' })
+   * Collections can have hierarchical concepts (narrower/broader) but list all
+   * concepts (including children) as members via skos:member.
+   */
+  static createArchesCollection(
+    name: string | { [lang: string]: string },
+    options?: { collectionId?: string; uri?: string }
+  ): CollectionMutator {
+    return CollectionMutator.createEmpty(name, { ...options, nodeType: 'Collection' });
+  }
+
+  /**
+   * Add a top-level concept to the collection.
+   * Use parentId to create hierarchy (narrower/broader relationships on concepts).
    */
   addConcept(options: AddConceptOptions): AddConceptResult {
     if (options.parentId) {
@@ -101,7 +147,21 @@ export class CollectionMutator {
   }
 
   /**
-   * Add a child concept under an existing concept
+   * Add a top-level member concept (alias for addConcept).
+   * Useful when working with Collections to make intent clear.
+   * Use addChildConcept() to create hierarchical concepts.
+   */
+  addMember(options: Omit<AddConceptOptions, 'parentId'>): AddConceptResult {
+    if (this.collection.nodeType === 'ConceptScheme') {
+      console.warn('addMember called on ConceptScheme - use addConcept for clarity');
+    }
+    return this.addConcept(options);
+  }
+
+  /**
+   * Add a child concept under an existing concept.
+   * For both ConceptScheme and Collection types, this creates a narrower/broader hierarchy
+   * on the concepts. Collections list all concepts (including children) as members.
    */
   addChildConcept(parentId: string, options: Omit<AddConceptOptions, 'parentId'>): AddConceptResult {
     const parent = this._findConcept(parentId);
