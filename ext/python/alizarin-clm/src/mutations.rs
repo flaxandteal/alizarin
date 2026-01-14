@@ -3,7 +3,7 @@
 //! This module provides graph mutation handlers for CLM-specific operations.
 
 use alizarin_core::graph_mutator::{
-    ExtensionMutationHandler, MutationCompliance, MutationError, MutatorOptions,
+    ExtensionMutationHandler, MutationConformance, MutationError, MutatorOptions,
 };
 use alizarin_core::StaticGraph;
 use serde::{Deserialize, Serialize};
@@ -44,7 +44,7 @@ fn default_config_key() -> String {
 /// ## Example
 ///
 /// ```ignore
-/// use alizarin_core::graph_mutator::{GraphMutation, ExtensionMutationParams, MutationCompliance};
+/// use alizarin_core::graph_mutator::{GraphMutation, ExtensionMutationParams, MutationConformance};
 /// use serde_json::json;
 ///
 /// let mutation = GraphMutation::Extension(ExtensionMutationParams {
@@ -53,7 +53,7 @@ fn default_config_key() -> String {
 ///         "node_id": "my_reference_node",
 ///         "collection_id": "new-collection-uuid"
 ///     }),
-///     compliance: MutationCompliance::AlwaysCompliant,
+///     conformance: MutationConformance::AlwaysConformant,
 /// });
 /// ```
 pub struct ReferenceChangeCollectionHandler;
@@ -104,9 +104,9 @@ impl ExtensionMutationHandler for ReferenceChangeCollectionHandler {
         Ok(())
     }
 
-    fn compliance(&self) -> MutationCompliance {
+    fn conformance(&self) -> MutationConformance {
         // Collection changes are valid for both branches and models
-        MutationCompliance::AlwaysCompliant
+        MutationConformance::AlwaysConformant
     }
 
     fn description(&self) -> &str {
@@ -240,7 +240,7 @@ mod tests {
                 "node_id": "type_ref",
                 "collection_id": "new-collection-uuid"
             }),
-            compliance: MutationCompliance::AlwaysCompliant,
+            conformance: MutationConformance::AlwaysConformant,
         });
 
         let result = apply_mutations_with_extensions(
@@ -277,7 +277,7 @@ mod tests {
                 "node_id": "ref-node-id",
                 "collection_id": "another-collection-uuid"
             }),
-            compliance: MutationCompliance::AlwaysCompliant,
+            conformance: MutationConformance::AlwaysConformant,
         });
 
         let result = apply_mutations_with_extensions(
@@ -314,7 +314,7 @@ mod tests {
                 "collection_id": "custom-collection",
                 "config_key": "rdmCollection"
             }),
-            compliance: MutationCompliance::AlwaysCompliant,
+            conformance: MutationConformance::AlwaysConformant,
         });
 
         let result = apply_mutations_with_extensions(
@@ -349,7 +349,7 @@ mod tests {
                 "node_id": "nonexistent_node",
                 "collection_id": "some-collection"
             }),
-            compliance: MutationCompliance::AlwaysCompliant,
+            conformance: MutationConformance::AlwaysConformant,
         });
 
         let result = apply_mutations_with_extensions(
@@ -376,7 +376,7 @@ mod tests {
                 "node_id": "root",
                 "collection_id": "some-collection"
             }),
-            compliance: MutationCompliance::AlwaysCompliant,
+            conformance: MutationConformance::AlwaysConformant,
         });
 
         let result = apply_mutations_with_extensions(
@@ -487,7 +487,7 @@ mod tests {
                 "node_id": "person_type",
                 "collection_id": new_collection_id
             }),
-            compliance: MutationCompliance::AlwaysCompliant,
+            conformance: MutationConformance::AlwaysConformant,
         });
 
         let updated_graph = apply_mutations_with_extensions(

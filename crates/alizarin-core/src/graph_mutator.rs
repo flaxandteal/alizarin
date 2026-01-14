@@ -17,20 +17,20 @@
 //! ## Mutations Reference
 //!
 //! All mutations follow the Command pattern and can be serialized/deserialized for
-//! cross-platform use (Rust, Python, WASM). Each mutation has a compliance level
+//! cross-platform use (Rust, Python, WASM). Each mutation has a conformance level
 //! indicating whether it's valid for branches, models, or both.
 //!
-//! ### Compliance Levels
+//! ### Conformance Levels
 //!
 //! | Level | Description |
 //! |-------|-------------|
-//! | `AlwaysCompliant` | Valid for both branches and resource models |
-//! | `BranchCompliant` | Valid only for branches (isresource=false) |
-//! | `ModelCompliant` | Valid only for resource models (isresource=true) |
+//! | `AlwaysConformant` | Valid for both branches and resource models |
+//! | `BranchConformant` | Valid only for branches (isresource=false) |
+//! | `ModelConformant` | Valid only for resource models (isresource=true) |
 //!
 //! ---
 //!
-//! ## Structure Mutations (BranchCompliant)
+//! ## Structure Mutations (BranchConformant)
 //!
 //! ### AddNode
 //!
@@ -117,7 +117,7 @@
 //!
 //! ---
 //!
-//! ### UpdateNode (BranchCompliant)
+//! ### UpdateNode (BranchConformant)
 //!
 //! Updates node properties without changing structural IDs or datatype.
 //!
@@ -136,7 +136,7 @@
 //!
 //! ---
 //!
-//! ### ChangeNodeType (BranchCompliant)
+//! ### ChangeNodeType (BranchConformant)
 //!
 //! Changes a node's datatype. Requires that no widgets exist for the node.
 //!
@@ -151,7 +151,7 @@
 //!
 //! ---
 //!
-//! ## Subgraph Mutations (ModelCompliant)
+//! ## Subgraph Mutations (ModelConformant)
 //!
 //! ### AddSubgraph
 //!
@@ -193,7 +193,7 @@
 //!
 //! ---
 //!
-//! ## Modification Mutations (AlwaysCompliant)
+//! ## Modification Mutations (AlwaysConformant)
 //!
 //! ### ConceptChangeCollection
 //!
@@ -209,7 +209,7 @@
 //!
 //! ---
 //!
-//! ### RenameNode (AlwaysCompliant)
+//! ### RenameNode (AlwaysConformant)
 //!
 //! Changes text metadata for a node (alias, name, description).
 //!
@@ -225,7 +225,7 @@
 //!
 //! ---
 //!
-//! ## Deletion Mutations (AlwaysCompliant)
+//! ## Deletion Mutations (AlwaysConformant)
 //!
 //! ### DeleteCard
 //!
@@ -990,7 +990,7 @@ pub struct RenameGraphParams {
 ///         "node_id": "my_reference_node",
 ///         "collection_id": "new-collection-uuid"
 ///     }),
-///     compliance: MutationCompliance::AlwaysCompliant,
+///     conformance: MutationConformance::AlwaysConformant,
 /// });
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1005,15 +1005,15 @@ pub struct ExtensionMutationParams {
     /// The handler registered for this mutation name interprets these params.
     pub params: serde_json::Value,
 
-    /// Compliance level for this mutation
+    /// Conformance level for this mutation
     ///
     /// Set by the extension when defining the mutation.
-    #[serde(default = "default_extension_compliance")]
-    pub compliance: MutationCompliance,
+    #[serde(default = "default_extension_conformance")]
+    pub conformance: MutationConformance,
 }
 
-fn default_extension_compliance() -> MutationCompliance {
-    MutationCompliance::AlwaysCompliant
+fn default_extension_conformance() -> MutationConformance {
+    MutationConformance::AlwaysConformant
 }
 
 /// Handler trait for extension mutations
@@ -1040,8 +1040,8 @@ fn default_extension_compliance() -> MutationCompliance {
 ///         Ok(())
 ///     }
 ///
-///     fn compliance(&self) -> MutationCompliance {
-///         MutationCompliance::AlwaysCompliant
+///     fn conformance(&self) -> MutationConformance {
+///         MutationConformance::AlwaysConformant
 ///     }
 /// }
 /// ```
@@ -1054,10 +1054,10 @@ pub trait ExtensionMutationHandler: Send + Sync {
         options: &MutatorOptions,
     ) -> Result<(), MutationError>;
 
-    /// Get the default compliance level for this mutation type
+    /// Get the default conformance level for this mutation type
     ///
-    /// This can be overridden per-invocation via `ExtensionMutationParams.compliance`.
-    fn compliance(&self) -> MutationCompliance;
+    /// This can be overridden per-invocation via `ExtensionMutationParams.conformance`.
+    fn conformance(&self) -> MutationConformance;
 
     /// Get a description of this mutation for documentation
     fn description(&self) -> &str {
@@ -1144,23 +1144,23 @@ impl std::fmt::Debug for ExtensionMutationRegistry {
     }
 }
 
-/// Compliance level for graph mutations
+/// Conformance level for graph mutations
 ///
 /// Indicates what type of graph a mutation is valid for:
-/// - `AlwaysCompliant`: Valid for both branches and models
-/// - `BranchCompliant`: Valid only when building/modifying branches
-/// - `ModelCompliant`: Valid only when building/modifying models
-/// - `NonCompliant`: Not valid for standard use (deprecated or special-purpose)
+/// - `AlwaysConformant`: Valid for both branches and models
+/// - `BranchConformant`: Valid only when building/modifying branches
+/// - `ModelConformant`: Valid only when building/modifying models
+/// - `NonConformant`: Not valid for standard use (deprecated or special-purpose)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum MutationCompliance {
+pub enum MutationConformance {
     /// Valid for both branches and resource models
-    AlwaysCompliant,
+    AlwaysConformant,
     /// Valid only for branches (isresource=false)
-    BranchCompliant,
+    BranchConformant,
     /// Valid only for resource models (isresource=true)
-    ModelCompliant,
-    /// Not compliant with standard workflows
-    NonCompliant,
+    ModelConformant,
+    /// Not conformant with standard workflows
+    NonConformant,
 }
 
 /// A graph mutation operation (Command pattern)
@@ -1189,34 +1189,34 @@ pub enum GraphMutation {
 }
 
 impl GraphMutation {
-    /// Get the compliance level for this mutation
-    pub fn compliance(&self) -> MutationCompliance {
+    /// Get the conformance level for this mutation
+    pub fn conformance(&self) -> MutationConformance {
         match self {
             // Basic structure operations - valid for branches
-            GraphMutation::AddNode(_) => MutationCompliance::BranchCompliant,
-            GraphMutation::AddNodegroup(_) => MutationCompliance::BranchCompliant,
-            GraphMutation::AddEdge(_) => MutationCompliance::BranchCompliant,
-            GraphMutation::AddCard(_) => MutationCompliance::BranchCompliant,
-            GraphMutation::AddWidgetToCard(_) => MutationCompliance::BranchCompliant,
+            GraphMutation::AddNode(_) => MutationConformance::BranchConformant,
+            GraphMutation::AddNodegroup(_) => MutationConformance::BranchConformant,
+            GraphMutation::AddEdge(_) => MutationConformance::BranchConformant,
+            GraphMutation::AddCard(_) => MutationConformance::BranchConformant,
+            GraphMutation::AddWidgetToCard(_) => MutationConformance::BranchConformant,
             // Subgraph operations - only valid for models (adding branches to models)
-            GraphMutation::AddSubgraph(_) => MutationCompliance::ModelCompliant,
-            GraphMutation::UpdateSubgraph(_) => MutationCompliance::ModelCompliant,
+            GraphMutation::AddSubgraph(_) => MutationConformance::ModelConformant,
+            GraphMutation::UpdateSubgraph(_) => MutationConformance::ModelConformant,
             // Collection changes - valid for both
-            GraphMutation::ConceptChangeCollection(_) => MutationCompliance::AlwaysCompliant,
+            GraphMutation::ConceptChangeCollection(_) => MutationConformance::AlwaysConformant,
             // Deletion operations - valid for both branches and models
-            GraphMutation::DeleteCard(_) => MutationCompliance::AlwaysCompliant,
-            GraphMutation::DeleteWidget(_) => MutationCompliance::AlwaysCompliant,
-            GraphMutation::DeleteFunction(_) => MutationCompliance::AlwaysCompliant,
-            GraphMutation::DeleteNode(_) => MutationCompliance::AlwaysCompliant,
-            GraphMutation::DeleteNodegroup(_) => MutationCompliance::AlwaysCompliant,
+            GraphMutation::DeleteCard(_) => MutationConformance::AlwaysConformant,
+            GraphMutation::DeleteWidget(_) => MutationConformance::AlwaysConformant,
+            GraphMutation::DeleteFunction(_) => MutationConformance::AlwaysConformant,
+            GraphMutation::DeleteNode(_) => MutationConformance::AlwaysConformant,
+            GraphMutation::DeleteNodegroup(_) => MutationConformance::AlwaysConformant,
             // Node update operations
-            GraphMutation::UpdateNode(_) => MutationCompliance::BranchCompliant,
-            GraphMutation::ChangeNodeType(_) => MutationCompliance::BranchCompliant,
-            GraphMutation::RenameNode(_) => MutationCompliance::AlwaysCompliant,
+            GraphMutation::UpdateNode(_) => MutationConformance::BranchConformant,
+            GraphMutation::ChangeNodeType(_) => MutationConformance::BranchConformant,
+            GraphMutation::RenameNode(_) => MutationConformance::AlwaysConformant,
             // Graph metadata update - valid for both
-            GraphMutation::RenameGraph(_) => MutationCompliance::AlwaysCompliant,
-            // Extension mutations - compliance is specified in params
-            GraphMutation::Extension(params) => params.compliance,
+            GraphMutation::RenameGraph(_) => MutationConformance::AlwaysConformant,
+            // Extension mutations - conformance is specified in params
+            GraphMutation::Extension(params) => params.conformance,
         }
     }
 }
@@ -3334,7 +3334,7 @@ pub fn apply_mutations(
 ///     GraphMutation::Extension(ExtensionMutationParams {
 ///         name: "my_ext.custom_mutation".to_string(),
 ///         params: serde_json::json!({"key": "value"}),
-///         compliance: MutationCompliance::AlwaysCompliant,
+///         conformance: MutationConformance::AlwaysConformant,
 ///     }),
 /// ];
 ///
@@ -3789,29 +3789,29 @@ impl GraphInstruction {
         matches!(self.action.as_str(), "create_model" | "create_branch")
     }
 
-    /// Get the compliance level for this instruction action
-    pub fn compliance(&self) -> MutationCompliance {
+    /// Get the conformance level for this instruction action
+    pub fn conformance(&self) -> MutationConformance {
         match self.action.as_str() {
             // Basic structure operations - valid for branches
             "add_node" | "add_edge" | "add_nodegroup" | "add_card" | "add_widget" => {
-                MutationCompliance::BranchCompliant
+                MutationConformance::BranchConformant
             }
             // Subgraph operations - only valid for models
-            "add_subgraph" | "update_subgraph" => MutationCompliance::ModelCompliant,
+            "add_subgraph" | "update_subgraph" => MutationConformance::ModelConformant,
             // Collection changes - valid for both
-            "concept_change_collection" => MutationCompliance::AlwaysCompliant,
+            "concept_change_collection" => MutationConformance::AlwaysConformant,
             // Deletion operations - valid for both branches and models
             "delete_card" | "delete_widget" | "delete_function" | "delete_node" | "delete_nodegroup" => {
-                MutationCompliance::AlwaysCompliant
+                MutationConformance::AlwaysConformant
             }
             // Node update operations
-            "update_node" | "change_node_type" => MutationCompliance::BranchCompliant,
-            "rename_node" | "rename_graph" => MutationCompliance::AlwaysCompliant,
+            "update_node" | "change_node_type" => MutationConformance::BranchConformant,
+            "rename_node" | "rename_graph" => MutationConformance::AlwaysConformant,
             // Create operations
-            "create_model" => MutationCompliance::ModelCompliant,
-            "create_branch" => MutationCompliance::BranchCompliant,
+            "create_model" => MutationConformance::ModelConformant,
+            "create_branch" => MutationConformance::BranchConformant,
             // Unknown actions
-            _ => MutationCompliance::NonCompliant,
+            _ => MutationConformance::NonConformant,
         }
     }
 
@@ -6233,8 +6233,8 @@ mod tests {
             Ok(())
         }
 
-        fn compliance(&self) -> MutationCompliance {
-            MutationCompliance::AlwaysCompliant
+        fn conformance(&self) -> MutationConformance {
+            MutationConformance::AlwaysConformant
         }
 
         fn description(&self) -> &str {
@@ -6258,7 +6258,7 @@ mod tests {
         let mutation = GraphMutation::Extension(ExtensionMutationParams {
             name: "test.prefix_name".to_string(),
             params: serde_json::json!({"suffix": " [SUFFIX]"}),
-            compliance: MutationCompliance::AlwaysCompliant,
+            conformance: MutationConformance::AlwaysConformant,
         });
 
         // Apply with registry
@@ -6285,7 +6285,7 @@ mod tests {
         let mutation = GraphMutation::Extension(ExtensionMutationParams {
             name: "test.some_mutation".to_string(),
             params: serde_json::json!({}),
-            compliance: MutationCompliance::AlwaysCompliant,
+            conformance: MutationConformance::AlwaysConformant,
         });
 
         // Apply without registry
@@ -6311,7 +6311,7 @@ mod tests {
         let mutation = GraphMutation::Extension(ExtensionMutationParams {
             name: "test.nonexistent".to_string(),
             params: serde_json::json!({}),
-            compliance: MutationCompliance::AlwaysCompliant,
+            conformance: MutationConformance::AlwaysConformant,
         });
 
         // Apply with empty registry
@@ -6345,23 +6345,23 @@ mod tests {
     }
 
     #[test]
-    fn test_extension_mutation_compliance() {
-        // Test that compliance is read from params
+    fn test_extension_mutation_conformance() {
+        // Test that conformance is read from params
         let mutation = GraphMutation::Extension(ExtensionMutationParams {
             name: "test.mutation".to_string(),
             params: serde_json::json!({}),
-            compliance: MutationCompliance::BranchCompliant,
+            conformance: MutationConformance::BranchConformant,
         });
 
-        assert_eq!(mutation.compliance(), MutationCompliance::BranchCompliant);
+        assert_eq!(mutation.conformance(), MutationConformance::BranchConformant);
 
         let mutation2 = GraphMutation::Extension(ExtensionMutationParams {
             name: "test.mutation".to_string(),
             params: serde_json::json!({}),
-            compliance: MutationCompliance::ModelCompliant,
+            conformance: MutationConformance::ModelConformant,
         });
 
-        assert_eq!(mutation2.compliance(), MutationCompliance::ModelCompliant);
+        assert_eq!(mutation2.conformance(), MutationConformance::ModelConformant);
     }
 
     #[test]
@@ -6372,7 +6372,7 @@ mod tests {
                 "node_id": "my_node",
                 "collection_id": "new-collection"
             }),
-            compliance: MutationCompliance::AlwaysCompliant,
+            conformance: MutationConformance::AlwaysConformant,
         });
 
         // Serialize
@@ -6405,7 +6405,7 @@ mod tests {
                 "Extension": {
                     "name": "test.prefix_name",
                     "params": {"suffix": "!"},
-                    "compliance": "AlwaysCompliant"
+                    "conformance": "AlwaysConformant"
                 }
             }],
             "options": {}
@@ -6517,8 +6517,8 @@ mod tests {
         let instruction = GraphInstruction::new("rename_graph", "test", "New Graph Name")
             .with_str("author", "Instruction Author");
 
-        // Verify compliance
-        assert_eq!(instruction.compliance(), MutationCompliance::AlwaysCompliant);
+        // Verify conformance
+        assert_eq!(instruction.conformance(), MutationConformance::AlwaysConformant);
 
         let mutation = instruction.to_mutation().unwrap();
         apply_mutation(&mut graph, mutation, &options).unwrap();

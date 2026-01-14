@@ -11,7 +11,7 @@ use alizarin_core::graph_mutator::{
     get_mutation_schema as core_get_schema,
     generate_uuid_v5 as core_generate_uuid,
     ExtensionMutationRegistry, ExtensionMutationHandler,
-    MutationCompliance, MutationError, MutatorOptions,
+    MutationConformance, MutationError, MutatorOptions,
 };
 use alizarin_core::StaticGraph as CoreStaticGraph;
 
@@ -26,7 +26,7 @@ struct PyExtensionHandler {
     #[allow(dead_code)]
     name: String,
     apply_fn: PyObject,
-    compliance: MutationCompliance,
+    conformance: MutationConformance,
 }
 
 impl ExtensionMutationHandler for PyExtensionHandler {
@@ -60,8 +60,8 @@ impl ExtensionMutationHandler for PyExtensionHandler {
         })
     }
 
-    fn compliance(&self) -> MutationCompliance {
-        self.compliance
+    fn conformance(&self) -> MutationConformance {
+        self.conformance
     }
 
     fn description(&self) -> &str {
@@ -201,7 +201,7 @@ fn apply_mutations_with_extensions(graph_json: &str, mutations_json: &str) -> Py
 /// Args:
 ///     name: The mutation name (e.g., "clm.reference_change_collection")
 ///     handler: Python function to handle the mutation
-///     compliance: Compliance level ("AlwaysCompliant", "BranchCompliant", "ModelCompliant")
+///     conformance: Conformance level ("AlwaysConformant", "BranchConformant", "ModelConformant")
 ///
 /// Example:
 ///     def my_handler(graph_json: str, params_json: str) -> str:
@@ -211,23 +211,23 @@ fn apply_mutations_with_extensions(graph_json: &str, mutations_json: &str) -> Py
 ///         # Modify graph...
 ///         return json.dumps(graph)
 ///
-///     register_extension_mutation("my.custom_mutation", my_handler, "AlwaysCompliant")
+///     register_extension_mutation("my.custom_mutation", my_handler, "AlwaysConformant")
 #[pyfunction]
-#[pyo3(signature = (name, handler, compliance="AlwaysCompliant"))]
+#[pyo3(signature = (name, handler, conformance="AlwaysConformant"))]
 fn register_extension_mutation(
     py: Python,
     name: &str,
     handler: PyObject,
-    compliance: &str,
+    conformance: &str,
 ) -> PyResult<()> {
-    // Parse compliance level
-    let compliance_level = match compliance {
-        "AlwaysCompliant" => MutationCompliance::AlwaysCompliant,
-        "BranchCompliant" => MutationCompliance::BranchCompliant,
-        "ModelCompliant" => MutationCompliance::ModelCompliant,
-        "NonCompliant" => MutationCompliance::NonCompliant,
+    // Parse conformance level
+    let conformance_level = match conformance {
+        "AlwaysConformant" => MutationConformance::AlwaysConformant,
+        "BranchConformant" => MutationConformance::BranchConformant,
+        "ModelConformant" => MutationConformance::ModelConformant,
+        "NonConformant" => MutationConformance::NonConformant,
         _ => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Invalid compliance level: {}", compliance)
+            format!("Invalid conformance level: {}", conformance)
         )),
     };
 
@@ -242,7 +242,7 @@ fn register_extension_mutation(
     let py_handler = PyExtensionHandler {
         name: name.to_string(),
         apply_fn: handler,
-        compliance: compliance_level,
+        conformance: conformance_level,
     };
 
     // Register with global registry
