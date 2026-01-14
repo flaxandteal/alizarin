@@ -112,6 +112,7 @@ pub use graph_mutator::{
     // Mutation types (Command pattern)
     GraphMutation, AddNodeParams, AddNodegroupParams, AddEdgeParams,
     AddCardParams, AddWidgetParams, NodeOptions, CardOptions,
+    RenameNodeParams, RenameGraphParams,
     // Extension mutations
     ExtensionMutationParams, ExtensionMutationHandler, ExtensionMutationRegistry,
     MutationCompliance,
@@ -124,7 +125,7 @@ pub use graph_mutator::{
     Widget, CardComponent, default_card_component,
     get_default_widget_for_datatype, WIDGETS, DEFAULT_CARD_COMPONENT_ID,
     // Utilities
-    Cardinality, MutationError, generate_uuid_v5,
+    Cardinality, MutationError, generate_uuid_v5, slugify,
 };
 
 // Graph registry (for looking up graphs by graph_id)

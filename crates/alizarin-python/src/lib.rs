@@ -997,6 +997,65 @@ fn register_graph(graph_json: String) -> PyResult<String> {
     Ok(graph_id)
 }
 
+/// Recursively sort all object keys in a JSON value for deterministic output.
+fn sort_json_keys(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            // Collect keys and sort them
+            let mut entries: Vec<_> = map.into_iter().collect();
+            entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+            // Recursively sort nested values
+            let sorted: serde_json::Map<String, serde_json::Value> = entries
+                .into_iter()
+                .map(|(k, v)| (k, sort_json_keys(v)))
+                .collect();
+            serde_json::Value::Object(sorted)
+        }
+        serde_json::Value::Array(arr) => {
+            serde_json::Value::Array(arr.into_iter().map(sort_json_keys).collect())
+        }
+        other => other,
+    }
+}
+
+/// Get the JSON representation of a registered graph.
+///
+/// The output is deterministic (sorted keys) for reliable git diffing.
+///
+/// Args:
+///     graph_id: The UUID of the graph to retrieve
+///
+/// Returns:
+///     The graph as a JSON string
+///
+/// Raises:
+///     ValueError: If the graph is not registered
+///
+/// Example:
+///     graph_json = get_graph_json("12345678-1234-1234-1234-123456789012")
+///     data = json.loads(graph_json)
+#[pyfunction]
+#[pyo3(signature = (graph_id,))]
+fn get_graph_json(graph_id: String) -> PyResult<String> {
+    let graph = alizarin_core::get_graph(&graph_id)
+        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Graph '{}' not registered. Call register_graph() first.", graph_id)
+        ))?;
+
+    // Serialize to Value first, then sort all keys for deterministic output
+    let value = serde_json::to_value(&*graph)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to serialize graph: {}", e)
+        ))?;
+
+    let sorted = sort_json_keys(value);
+
+    serde_json::to_string_pretty(&sorted)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to serialize graph: {}", e)
+        ))
+}
+
 /// Merge multiple resources with the same resourceinstanceid into one
 ///
 /// Concatenates tiles from all resources, detecting and warning about duplicate tileids.
@@ -1127,6 +1186,7 @@ fn batch_merge_resources(
 fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     // Graph registry (for batch_merge_resources descriptor computation)
     m.add_function(wrap_pyfunction!(register_graph, m)?)?;
+    m.add_function(wrap_pyfunction!(get_graph_json, m)?)?;
 
     // Low-level tree conversion functions (for compatibility)
     m.add_function(wrap_pyfunction!(tiles_to_json_tree, m)?)?;

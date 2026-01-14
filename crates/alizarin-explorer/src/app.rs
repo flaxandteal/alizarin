@@ -1362,7 +1362,7 @@ impl App {
 
         // Add the tile node
         nodes.push(TileTreeNode {
-            id: format!("tile_{}", tile_id.as_deref().unwrap_or("unknown")),
+            _id: format!("tile_{}", tile_id.as_deref().unwrap_or("unknown")),
             name: nodegroup_name,
             node_id: None,
             tile_id: tile_id.clone(),
@@ -1386,7 +1386,7 @@ impl App {
                 let datatype = node.map(|n| n.datatype.clone());
 
                 nodes.push(TileTreeNode {
-                    id: format!("data_{}_{}", tile_id.as_deref().unwrap_or("unknown"), node_id),
+                    _id: format!("data_{}_{}", tile_id.as_deref().unwrap_or("unknown"), node_id),
                     name: node_name,
                     node_id: Some(node_id.clone()),
                     tile_id: tile_id.clone(),
@@ -1446,7 +1446,7 @@ impl App {
 
         // Add the tile node
         nodes.push(TileTreeNode {
-            id: format!("tile_{}", tile_id.as_deref().unwrap_or("unknown")),
+            _id: format!("tile_{}", tile_id.as_deref().unwrap_or("unknown")),
             name: nodegroup_name,
             node_id: None,
             tile_id: tile_id.clone(),
@@ -1470,7 +1470,7 @@ impl App {
                 let datatype = node.map(|n| n.datatype.clone());
 
                 nodes.push(TileTreeNode {
-                    id: format!("data_{}_{}", tile_id.as_deref().unwrap_or("unknown"), node_id),
+                    _id: format!("data_{}_{}", tile_id.as_deref().unwrap_or("unknown"), node_id),
                     name: node_name,
                     node_id: Some(node_id.clone()),
                     tile_id: tile_id.clone(),

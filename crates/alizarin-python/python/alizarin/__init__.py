@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 # =============================================================================
 
 register_graph: Optional[Any] = None
+get_graph_json: Optional[Any] = None
 tiles_to_json_tree: Optional[Any] = None
 json_tree_to_tiles: Optional[Any] = None
 batch_trees_to_tiles: Optional[Any] = None
@@ -34,6 +35,7 @@ try:
     # Try importing from the built extension (maturin puts it in the package)
     from . import alizarin as _alizarin_rust
     register_graph = _alizarin_rust.register_graph
+    get_graph_json = _alizarin_rust.get_graph_json
     tiles_to_json_tree = _alizarin_rust.tiles_to_json_tree
     json_tree_to_tiles = _alizarin_rust.json_tree_to_tiles
     batch_trees_to_tiles = _alizarin_rust.batch_trees_to_tiles
@@ -266,6 +268,7 @@ __all__ = [
     "__version__",
     # Graph registry
     "register_graph",
+    "get_graph_json",
     # Core Rust functions
     "tiles_to_json_tree",
     "json_tree_to_tiles",
