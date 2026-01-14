@@ -134,18 +134,34 @@ lazy_static::lazy_static! {
 /// add_from_label, or add_child_from_label with auto-generated IDs.
 ///
 /// Args:
-///     namespace: A valid UUID string to use as the namespace
+///     namespace: Either a valid UUID string or a URL to use as the namespace.
+///                If a URL is provided (starts with http:// or https://), it will
+///                be converted to a deterministic UUID using UUID5 with the standard
+///                URL namespace. This allows using the same URL as both the RDF
+///                namespace and the UUID generation namespace.
 ///
 /// Example:
+///     # Using a UUID directly
 ///     set_rdm_namespace("550e8400-e29b-41d4-a716-446655440000")
+///
+///     # Using a URL (same URL can be used as RDF namespace)
+///     set_rdm_namespace("http://example.org/rdm/")
 ///     collection = RustRdmCollection.from_labels("MyCollection", ["A", "B"])
 #[pyfunction]
 pub fn set_rdm_namespace(namespace: &str) -> PyResult<()> {
-    let uuid = Uuid::parse_str(namespace).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Invalid namespace UUID: {}", e)
-        )
-    })?;
+    let uuid = if namespace.starts_with("http://") || namespace.starts_with("https://") {
+        // URL provided - derive a UUID5 from it using the standard URL namespace
+        // Standard URL namespace: 6ba7b811-9dad-11d1-80b4-00c04fd430c8
+        let url_namespace = Uuid::parse_str("6ba7b811-9dad-11d1-80b4-00c04fd430c8").unwrap();
+        Uuid::new_v5(&url_namespace, namespace.as_bytes())
+    } else {
+        // Try to parse as UUID directly
+        Uuid::parse_str(namespace).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                format!("Invalid namespace: expected UUID or URL (http/https), got: {} ({})", namespace, e)
+            )
+        })?
+    };
     if let Ok(mut guard) = GLOBAL_RDM_NAMESPACE.write() {
         *guard = Some(uuid);
     }

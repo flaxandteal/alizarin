@@ -1127,6 +1127,56 @@ def test_deterministic_simplified_json_export():
     print(f"✓ Simplified JSON is deterministic ({len(json1)} bytes, 3 identical exports)")
 
 
+def test_url_namespace():
+    """Test that URLs can be used as namespaces for deterministic ID generation.
+
+    This allows using the same URL as both the RDF namespace and the UUID
+    generation namespace.
+    """
+    # Clear any existing namespace
+    alizarin.clear_rdm_namespace()
+
+    # Set namespace using a URL
+    url = "http://example.org/vocab/"
+    alizarin.set_rdm_namespace(url)
+
+    # The URL should be converted to a deterministic UUID
+    derived_uuid = alizarin.get_rdm_namespace()
+    assert derived_uuid is not None, "Namespace should be set"
+    assert alizarin.is_valid_uuid(derived_uuid), "Derived value should be a valid UUID"
+
+    # Create a collection
+    collection1 = alizarin.RustRdmCollection.from_labels(
+        name="URL Test",
+        labels=["Item A", "Item B"]
+    )
+    id1 = collection1.id
+    concept_ids1 = collection1.get_concept_ids()
+
+    # Clear and set the same URL again
+    alizarin.clear_rdm_namespace()
+    alizarin.set_rdm_namespace(url)
+
+    # Should get the same derived UUID
+    assert alizarin.get_rdm_namespace() == derived_uuid, "Same URL should give same UUID"
+
+    # Create the same collection again
+    collection2 = alizarin.RustRdmCollection.from_labels(
+        name="URL Test",
+        labels=["Item A", "Item B"]
+    )
+
+    # Should get identical IDs (compare as sets since order isn't guaranteed)
+    assert collection2.id == id1, "Same URL namespace should produce same collection ID"
+    assert set(collection2.get_concept_ids()) == set(concept_ids1), "Same URL namespace should produce same concept IDs"
+
+    # Reset to test namespace
+    alizarin.clear_rdm_namespace()
+    alizarin.set_rdm_namespace(TEST_RDM_NAMESPACE)
+
+    print(f"✓ URL namespace works ('{url}' → '{derived_uuid}')")
+
+
 if __name__ == '__main__':
     print("=" * 70)
     print("RDM Collection and Batch Conversion Tests")
@@ -1209,6 +1259,9 @@ if __name__ == '__main__':
 
     print("\n21. Deterministic simplified JSON export...")
     test_deterministic_simplified_json_export()
+
+    print("\n22. URL namespace support...")
+    test_url_namespace()
 
     print("\n" + "=" * 70)
     print("All tests completed!")

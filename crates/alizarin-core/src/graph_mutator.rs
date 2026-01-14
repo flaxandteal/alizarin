@@ -360,6 +360,18 @@ pub fn generate_uuid_v5(group: (&str, Option<&str>), key: &str) -> String {
     Uuid::new_v5(&namespace, key.as_bytes()).to_string()
 }
 
+/// Convert a display name to a slug (lowercase, spaces to underscores)
+///
+/// # Example
+/// ```
+/// use alizarin_core::graph_mutator::slugify;
+/// assert_eq!(slugify("Heritage Item"), "heritage_item");
+/// assert_eq!(slugify("My Test Graph"), "my_test_graph");
+/// ```
+pub fn slugify(name: &str) -> String {
+    name.to_lowercase().replace(' ', "_")
+}
+
 // =============================================================================
 // Widget and CardComponent Types
 // =============================================================================
@@ -939,6 +951,26 @@ pub struct RenameNodeParams {
     pub description: Option<String>,
 }
 
+/// Parameters for renaming a graph (updating name, description, etc.)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RenameGraphParams {
+    /// New name for the graph (language -> value map)
+    /// If provided, replaces the graph's name
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<std::collections::HashMap<String, String>>,
+    /// New description for the graph (language -> value map)
+    /// If provided, replaces the graph's description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<std::collections::HashMap<String, String>>,
+    /// New subtitle for the graph (language -> value map)
+    /// If provided, replaces the graph's subtitle
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subtitle: Option<std::collections::HashMap<String, String>>,
+    /// New author for the graph
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+}
+
 // =============================================================================
 // Extension Mutations
 // =============================================================================
@@ -1150,6 +1182,8 @@ pub enum GraphMutation {
     UpdateNode(UpdateNodeParams),
     ChangeNodeType(ChangeNodeTypeParams),
     RenameNode(RenameNodeParams),
+    /// Rename/update graph metadata (name, description, subtitle, author)
+    RenameGraph(RenameGraphParams),
     /// Extension mutation - delegated to a registered handler
     Extension(ExtensionMutationParams),
 }
@@ -1179,6 +1213,8 @@ impl GraphMutation {
             GraphMutation::UpdateNode(_) => MutationCompliance::BranchCompliant,
             GraphMutation::ChangeNodeType(_) => MutationCompliance::BranchCompliant,
             GraphMutation::RenameNode(_) => MutationCompliance::AlwaysCompliant,
+            // Graph metadata update - valid for both
+            GraphMutation::RenameGraph(_) => MutationCompliance::AlwaysCompliant,
             // Extension mutations - compliance is specified in params
             GraphMutation::Extension(params) => params.compliance,
         }
@@ -1602,6 +1638,7 @@ fn apply_mutation_with_extensions(
         GraphMutation::UpdateNode(params) => apply_update_node(graph, params),
         GraphMutation::ChangeNodeType(params) => apply_change_node_type(graph, params),
         GraphMutation::RenameNode(params) => apply_rename_node(graph, params),
+        GraphMutation::RenameGraph(params) => apply_rename_graph(graph, params),
         GraphMutation::Extension(params) => {
             match registry {
                 Some(reg) => {
@@ -2300,6 +2337,51 @@ fn apply_rename_node(
     }
     if let Some(description) = params.description {
         node_mut.description = Some(StaticTranslatableString::from_string(&description));
+    }
+
+    Ok(())
+}
+
+fn apply_rename_graph(
+    graph: &mut StaticGraph,
+    params: RenameGraphParams,
+) -> Result<(), MutationError> {
+    // Update name if provided
+    if let Some(name_map) = params.name {
+        let new_name = StaticTranslatableString::from_translations(name_map, None);
+
+        // Update graph name
+        graph.name = new_name.clone();
+
+        // Also update root node name to match (root node name should equal graph name)
+        let root_display_name = new_name.to_string_default();
+        graph.root.name = root_display_name.clone();
+
+        // Generate slug from name and update graph slug and root alias
+        let new_slug = slugify(&root_display_name);
+        graph.slug = Some(new_slug.clone());
+        graph.root.alias = Some(new_slug.clone());
+
+        // Update the root node in the nodes array as well
+        if let Some(root_node) = graph.nodes.iter_mut().find(|n| n.istopnode) {
+            root_node.name = root_display_name;
+            root_node.alias = Some(new_slug);
+        }
+    }
+
+    // Update description if provided
+    if let Some(desc_map) = params.description {
+        graph.description = Some(StaticTranslatableString::from_translations(desc_map, None));
+    }
+
+    // Update subtitle if provided
+    if let Some(subtitle_map) = params.subtitle {
+        graph.subtitle = Some(StaticTranslatableString::from_translations(subtitle_map, None));
+    }
+
+    // Update author if provided
+    if let Some(author) = params.author {
+        graph.author = if author.is_empty() { None } else { Some(author) };
     }
 
     Ok(())
@@ -3453,6 +3535,20 @@ impl GraphInstruction {
         self.get_str(key).unwrap_or_else(|| default.to_string())
     }
 
+    /// Helper to get a translatable map (language -> value) from params
+    fn get_translatable_map(&self, key: &str) -> Option<HashMap<String, String>> {
+        self.params.get(key).and_then(|v| {
+            if let Some(obj) = v.as_object() {
+                let map: HashMap<String, String> = obj.iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect();
+                if map.is_empty() { None } else { Some(map) }
+            } else {
+                None
+            }
+        })
+    }
+
     /// Convert this instruction to a GraphMutation
     pub fn to_mutation(&self) -> Result<GraphMutation, MutationError> {
         match self.action.as_str() {
@@ -3660,6 +3756,24 @@ impl GraphInstruction {
                     description: self.get_str("description"),
                 }))
             }
+            "rename_graph" => {
+                // Parse name: either from params.name (as map) or object (as simple en string)
+                let name = self.get_translatable_map("name").or_else(|| {
+                    if self.object.is_empty() {
+                        None
+                    } else {
+                        let mut map = HashMap::new();
+                        map.insert("en".to_string(), self.object.clone());
+                        Some(map)
+                    }
+                });
+                Ok(GraphMutation::RenameGraph(RenameGraphParams {
+                    name,
+                    description: self.get_translatable_map("description"),
+                    subtitle: self.get_translatable_map("subtitle"),
+                    author: self.get_str("author"),
+                }))
+            }
             // create_model and create_branch are handled separately via to_skeleton_graph()
             "create_model" | "create_branch" => Err(MutationError::InvalidSubgraph(
                 format!("'{}' creates a new graph, use build_graph_from_instructions() instead", self.action)
@@ -3692,7 +3806,7 @@ impl GraphInstruction {
             }
             // Node update operations
             "update_node" | "change_node_type" => MutationCompliance::BranchCompliant,
-            "rename_node" => MutationCompliance::AlwaysCompliant,
+            "rename_node" | "rename_graph" => MutationCompliance::AlwaysCompliant,
             // Create operations
             "create_model" => MutationCompliance::ModelCompliant,
             "create_branch" => MutationCompliance::BranchCompliant,
@@ -6308,5 +6422,137 @@ mod tests {
         // Check via nodes array since root field is a cached copy
         let root_node = mutated.nodes.iter().find(|n| n.istopnode).unwrap();
         assert_eq!(root_node.name, "[TEST] Root!");
+    }
+
+    // =========================================================================
+    // RenameGraph Tests
+    // =========================================================================
+
+    #[test]
+    fn test_rename_graph() {
+        let mut graph = create_skeleton_graph("Test Graph", "test", false, None);
+        let options = MutatorOptions::default();
+
+        // Verify initial state
+        assert_eq!(graph.name.get("en"), "Test Graph");
+        assert!(graph.description.is_none());
+        assert!(graph.subtitle.is_none());
+        assert!(graph.author.is_none());
+
+        // Rename the graph with all fields
+        let mut name_map = HashMap::new();
+        name_map.insert("en".to_string(), "New Name".to_string());
+        name_map.insert("es".to_string(), "Nuevo Nombre".to_string());
+
+        let mut desc_map = HashMap::new();
+        desc_map.insert("en".to_string(), "A description".to_string());
+
+        let mut subtitle_map = HashMap::new();
+        subtitle_map.insert("en".to_string(), "A subtitle".to_string());
+
+        apply_mutation(
+            &mut graph,
+            GraphMutation::RenameGraph(RenameGraphParams {
+                name: Some(name_map),
+                description: Some(desc_map),
+                subtitle: Some(subtitle_map),
+                author: Some("Test Author".to_string()),
+            }),
+            &options,
+        ).unwrap();
+
+        // Verify all fields were updated
+        assert_eq!(graph.name.get("en"), "New Name");
+        assert_eq!(graph.name.translations.get("es").unwrap(), "Nuevo Nombre");
+        assert!(graph.description.is_some());
+        assert_eq!(graph.description.as_ref().unwrap().get("en"), "A description");
+        assert!(graph.subtitle.is_some());
+        assert_eq!(graph.subtitle.as_ref().unwrap().get("en"), "A subtitle");
+        assert_eq!(graph.author, Some("Test Author".to_string()));
+
+        // Verify root node name matches graph name
+        assert_eq!(graph.root.name, "New Name");
+        let root_in_nodes = graph.nodes.iter().find(|n| n.istopnode).unwrap();
+        assert_eq!(root_in_nodes.name, "New Name");
+
+        // Verify slug and alias are updated
+        assert_eq!(graph.slug, Some("new_name".to_string()));
+        assert_eq!(graph.root.alias, Some("new_name".to_string()));
+        assert_eq!(root_in_nodes.alias, Some("new_name".to_string()));
+    }
+
+    #[test]
+    fn test_rename_graph_partial() {
+        let mut graph = create_skeleton_graph("Original Name", "test", false, None);
+        let options = MutatorOptions::default();
+
+        // Only update description, leave name unchanged
+        let mut desc_map = HashMap::new();
+        desc_map.insert("en".to_string(), "New description".to_string());
+
+        apply_mutation(
+            &mut graph,
+            GraphMutation::RenameGraph(RenameGraphParams {
+                name: None,
+                description: Some(desc_map),
+                subtitle: None,
+                author: None,
+            }),
+            &options,
+        ).unwrap();
+
+        // Name should be unchanged
+        assert_eq!(graph.name.get("en"), "Original Name");
+        // Description should be updated
+        assert!(graph.description.is_some());
+        assert_eq!(graph.description.as_ref().unwrap().get("en"), "New description");
+    }
+
+    #[test]
+    fn test_rename_graph_via_instruction() {
+        let mut graph = create_skeleton_graph("Test Graph", "test", false, None);
+        let options = MutatorOptions::default();
+
+        // Use instruction pattern: action=rename_graph, subject=graphid, object=new name (simple string)
+        let instruction = GraphInstruction::new("rename_graph", "test", "New Graph Name")
+            .with_str("author", "Instruction Author");
+
+        // Verify compliance
+        assert_eq!(instruction.compliance(), MutationCompliance::AlwaysCompliant);
+
+        let mutation = instruction.to_mutation().unwrap();
+        apply_mutation(&mut graph, mutation, &options).unwrap();
+
+        // Name should be updated (object becomes English name)
+        assert_eq!(graph.name.get("en"), "New Graph Name");
+        assert_eq!(graph.author, Some("Instruction Author".to_string()));
+    }
+
+    #[test]
+    fn test_rename_graph_via_instruction_multilingual() {
+        let mut graph = create_skeleton_graph("Test Graph", "test", false, None);
+        let options = MutatorOptions::default();
+
+        // Use instruction with translatable map in params
+        let mut name_obj = serde_json::Map::new();
+        name_obj.insert("en".to_string(), serde_json::Value::String("English Name".to_string()));
+        name_obj.insert("de".to_string(), serde_json::Value::String("Deutscher Name".to_string()));
+
+        let mut desc_obj = serde_json::Map::new();
+        desc_obj.insert("en".to_string(), serde_json::Value::String("English description".to_string()));
+
+        let instruction = GraphInstruction::new("rename_graph", "test", "")
+            .with_param("name", serde_json::Value::Object(name_obj))
+            .with_param("description", serde_json::Value::Object(desc_obj));
+
+        let mutation = instruction.to_mutation().unwrap();
+        apply_mutation(&mut graph, mutation, &options).unwrap();
+
+        // Verify multilingual name
+        assert_eq!(graph.name.get("en"), "English Name");
+        assert_eq!(graph.name.translations.get("de").unwrap(), "Deutscher Name");
+        // Verify description
+        assert!(graph.description.is_some());
+        assert_eq!(graph.description.as_ref().unwrap().get("en"), "English description");
     }
 }
