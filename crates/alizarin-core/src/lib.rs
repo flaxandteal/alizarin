@@ -115,7 +115,7 @@ pub use graph_mutator::{
     RenameNodeParams, RenameGraphParams,
     // Extension mutations
     ExtensionMutationParams, ExtensionMutationHandler, ExtensionMutationRegistry,
-    MutationCompliance,
+    MutationConformance,
     // JSON-based mutation API
     MutationRequest, MutationRequestOptions,
     apply_mutations_from_json, apply_mutations, mutations_to_json, get_mutation_schema,

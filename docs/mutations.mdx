@@ -349,7 +349,7 @@ Change a reference node's controlled list collection.
             "collection_id": "new-collection-uuid",
             "config_key": "controlledList"
         },
-        "compliance": "AlwaysCompliant"
+        "conformance": "AlwaysConformant"
     }
 }
 ```
@@ -372,16 +372,16 @@ result = alizarin.apply_mutations_with_extensions(
 )
 ```
 
-## Compliance Levels
+## Conformance Levels
 
-Mutations have compliance levels indicating when they're valid:
+Mutations have conformance levels indicating when they're valid:
 
 | Level | Description |
 |-------|-------------|
-| `AlwaysCompliant` | Valid for both branches and published models |
-| `BranchCompliant` | Valid for branches only (e.g., adding nodes) |
-| `ModelCompliant` | Valid for published models only |
-| `NonCompliant` | Never compliant (internal use) |
+| `AlwaysConformant` | Valid for both branches and published models |
+| `BranchConformant` | Valid for branches only (e.g., adding nodes) |
+| `ModelConformant` | Valid for published models only |
+| `NonConformant` | Never conformant (internal use) |
 
 ## Python API
 
@@ -417,6 +417,189 @@ def my_handler(graph_json: str, params_json: str) -> str:
 alizarin.register_extension_mutation(
     "myext.custom_mutation",
     my_handler,
-    "AlwaysCompliant"  # or "BranchCompliant", "ModelCompliant"
+    "AlwaysConformant"  # or "BranchConformant", "ModelConformant"
 )
 ```
+
+## Instruction-Based Graph Building (CSV Format)
+
+Alizarin supports a row-based instruction format that maps naturally to CSV/spreadsheets. Each instruction is a triple-like structure:
+
+| Column | Description |
+|--------|-------------|
+| `action` | The operation to perform |
+| `subject` | The source/parent entity (alias or ID) |
+| `object` | The target/new entity (alias, name, or ID) |
+| `params.*` | Additional parameters as extra columns |
+
+### CSV Structure
+
+```csv
+action,subject,object,params.name,params.datatype,params.cardinality,params.ontology_class,params.parent_property
+create_model,heritage_item,,Heritage Item,,,E18_Physical_Thing,
+add_node,heritage_item,names,Names,semantic,n,E41_Appellation,P1_is_identified_by
+add_node,names,name,Name,string,1,E41_Appellation,P1_is_identified_by
+add_node,heritage_item,description,Description,string,1,E62_String,P3_has_note
+```
+
+### Loading from CSV (Python)
+
+The instruction format maps to standard mutations. Here's how to load from CSV and apply:
+
+```python
+import csv
+import json
+import alizarin
+
+def instruction_to_mutation(instruction: dict) -> dict:
+    """Convert an instruction to a mutation."""
+    action = instruction["action"]
+    subject = instruction.get("subject", "")
+    obj = instruction.get("object", "")
+    params = instruction.get("params", {})
+
+    # Map instruction actions to mutation types
+    if action == "add_node":
+        return {
+            "AddNode": {
+                "parent_alias": subject,
+                "alias": obj,
+                "name": params.get("name", obj),
+                "datatype": params.get("datatype", "string"),
+                "cardinality": params.get("cardinality", "1"),
+                "ontology_class": params.get("ontology_class", ""),
+                "parent_property": params.get("parent_property", ""),
+                "description": params.get("description"),
+                "config": json.loads(params["config"]) if params.get("config") else None,
+                "options": {}
+            }
+        }
+    elif action == "rename_node":
+        return {
+            "RenameNode": {
+                "node_id": subject,
+                "alias": obj if obj else None,
+                "name": params.get("name"),
+                "description": params.get("description")
+            }
+        }
+    elif action == "rename_graph":
+        name_val = params.get("name", obj)
+        return {
+            "RenameGraph": {
+                "name": {"en": name_val} if name_val else None,
+                "description": {"en": params["description"]} if params.get("description") else None,
+                "subtitle": {"en": params["subtitle"]} if params.get("subtitle") else None,
+                "author": params.get("author")
+            }
+        }
+    elif action == "concept_change_collection":
+        return {
+            "ConceptChangeCollection": {
+                "node_id": subject,
+                "collection_id": obj
+            }
+        }
+    elif action == "delete_node":
+        return {"DeleteNode": {"node_id": subject}}
+    # Add more mappings as needed...
+    else:
+        raise ValueError(f"Unknown action: {action}")
+
+def load_mutations_from_csv(filepath: str) -> list:
+    """Load mutations from a CSV file."""
+    mutations = []
+
+    with open(filepath, 'r') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            # Skip create_model/create_branch (those create new graphs)
+            if row["action"] in ("create_model", "create_branch"):
+                continue
+
+            instruction = {
+                "action": row["action"],
+                "subject": row.get("subject", ""),
+                "object": row.get("object", ""),
+                "params": {}
+            }
+
+            # Extract params.* columns
+            for key, value in row.items():
+                if key.startswith("params.") and value:
+                    param_name = key[7:]  # Remove "params." prefix
+                    instruction["params"][param_name] = value
+
+            mutations.append(instruction_to_mutation(instruction))
+
+    return mutations
+
+# Load and apply mutations
+mutations = load_mutations_from_csv("graph_changes.csv")
+request = {
+    "mutations": mutations,
+    "options": {
+        "autocreate_card": True,
+        "autocreate_widget": True
+    }
+}
+
+result = alizarin.apply_mutations_from_json(graph_json, json.dumps(request))
+```
+
+### Available Actions
+
+| Action | Subject | Object | Key Params |
+|--------|---------|--------|------------|
+| `create_model` | root_alias | graphid (optional) | `name`, `ontology_class`, `slug` |
+| `create_branch` | root_alias | graphid (optional) | `name`, `ontology_class`, `slug` |
+| `add_node` | parent_alias | new_alias | `datatype`, `name`, `ontology_class`, `cardinality`, `parent_property` |
+| `add_edge` | from_alias | to_alias | `ontology_property` |
+| `add_nodegroup` | node_alias | - | `cardinality` |
+| `add_card` | nodegroup_id | card_name | `component_id` |
+| `add_widget` | node_alias | - | `widget_id` |
+| `rename_node` | old_alias | new_alias | `name`, `description` |
+| `rename_graph` | graph_id | new_name | `description`, `subtitle`, `author` |
+| `update_node` | node_alias | - | `name`, `ontology_class`, `description`, `config` |
+| `change_node_type` | node_alias | new_datatype | `name`, `ontology_class`, `config` |
+| `concept_change_collection` | node_alias | collection_id | - |
+| `delete_node` | node_alias | - | - |
+| `delete_nodegroup` | nodegroup_id | - | - |
+| `delete_card` | card_id | - | - |
+
+### Applying Mutations from CSV
+
+```python
+# Example: Apply mutations loaded from CSV
+mutations = load_mutations_from_csv("changes.csv")
+
+result = alizarin.apply_mutations_from_json(
+    graph_json,
+    json.dumps({"mutations": mutations, "options": {}})
+)
+```
+
+The CSV format is particularly useful for:
+- Bulk changes managed in spreadsheets
+- Migration scripts with many field updates
+- Template-based graph generation
+
+### Example: Complete Graph from CSV
+
+**graph_definition.csv:**
+```csv
+action,subject,object,params.name,params.datatype,params.cardinality,params.ontology_class,params.parent_property,params.config
+create_model,building,,Building,,,,E18_Physical_Thing,
+add_node,building,names,Names,semantic,n,E41_Appellation,P1_is_identified_by,
+add_node,names,primary_name,Primary Name,string,1,E41_Appellation,P1_is_identified_by,
+add_node,names,alt_names,Alternative Names,string,n,E41_Appellation,P1_is_identified_by,
+add_node,building,building_type,Building Type,concept,1,E55_Type,P2_has_type,"{""collection"":""building-types""}"
+add_node,building,location,Location,geojson-feature-collection,1,E53_Place,P53_has_former_or_current_location,
+add_node,building,construction_date,Construction Date,edtf,1,E52_Time-Span,P4_has_time-span,
+```
+
+This format makes it easy to:
+- Define graphs in spreadsheet applications
+- Version control graph definitions as text files
+- Generate graphs programmatically from templates
+- Review and diff graph structure changes

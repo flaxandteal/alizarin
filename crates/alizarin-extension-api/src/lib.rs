@@ -357,18 +357,18 @@ impl MutationResult {
     }
 }
 
-/// Compliance level for mutations (must match alizarin-core's MutationCompliance)
+/// Conformance level for mutations (must match alizarin-core's MutationConformance)
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MutationComplianceLevel {
+pub enum MutationConformanceLevel {
     /// Valid for both branches and resource models
-    AlwaysCompliant = 0,
+    AlwaysConformant = 0,
     /// Valid only for branches (isresource=false)
-    BranchCompliant = 1,
+    BranchConformant = 1,
     /// Valid only for resource models (isresource=true)
-    ModelCompliant = 2,
-    /// Not compliant with standard workflows
-    NonCompliant = 3,
+    ModelConformant = 2,
+    /// Not conformant with standard workflows
+    NonConformant = 3,
 }
 
 /// Function signature for mutation handlers
@@ -419,8 +419,8 @@ pub struct MutationHandlerInfo {
     /// Free function for mutation output (required)
     pub free_output_fn: FreeMutationOutputFn,
 
-    /// Default compliance level for this mutation
-    pub compliance: MutationComplianceLevel,
+    /// Default conformance level for this mutation
+    pub conformance: MutationConformanceLevel,
 
     /// Opaque data pointer (for extension use)
     pub user_data: *mut c_void,
@@ -433,7 +433,7 @@ impl MutationHandlerInfo {
         handler_fn: MutationHandlerFn,
         free_result_fn: FreeMutationResultFn,
         free_output_fn: FreeMutationOutputFn,
-        compliance: MutationComplianceLevel,
+        conformance: MutationConformanceLevel,
     ) -> Self {
         MutationHandlerInfo {
             mutation_name_ptr: mutation_name.as_ptr(),
@@ -441,7 +441,7 @@ impl MutationHandlerInfo {
             handler_fn,
             free_result_fn,
             free_output_fn,
-            compliance,
+            conformance,
             user_data: std::ptr::null_mut(),
         }
     }
@@ -515,10 +515,10 @@ mod tests {
     }
 
     #[test]
-    fn test_mutation_compliance_levels() {
-        assert_eq!(MutationComplianceLevel::AlwaysCompliant as u8, 0);
-        assert_eq!(MutationComplianceLevel::BranchCompliant as u8, 1);
-        assert_eq!(MutationComplianceLevel::ModelCompliant as u8, 2);
-        assert_eq!(MutationComplianceLevel::NonCompliant as u8, 3);
+    fn test_mutation_conformance_levels() {
+        assert_eq!(MutationConformanceLevel::AlwaysConformant as u8, 0);
+        assert_eq!(MutationConformanceLevel::BranchConformant as u8, 1);
+        assert_eq!(MutationConformanceLevel::ModelConformant as u8, 2);
+        assert_eq!(MutationConformanceLevel::NonConformant as u8, 3);
     }
 }
