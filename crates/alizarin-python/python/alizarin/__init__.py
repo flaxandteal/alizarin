@@ -50,6 +50,59 @@ except (ImportError, AttributeError):
 
 
 # =============================================================================
+# Chunked Merge (memory-efficient batch merging)
+# =============================================================================
+
+def chunked_merge_resources(
+    json_strings: List[str],
+    chunk_size: int = 10,
+    recompute_descriptors: bool = True,
+    on_chunk_complete: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """
+    Memory-efficient alternative to batch_merge_resources for large datasets.
+
+    Processes json_strings in chunks of chunk_size, merging progressively.
+    Optional on_chunk_complete(chunk_index, total_chunks) callback for progress.
+    """
+    if batch_merge_resources is None:
+        raise RuntimeError("Alizarin Rust extension not loaded")
+
+    if not json_strings:
+        return {"resources": [], "merge_stats": {"total_input": 0, "duplicates_removed": 0}}
+
+    total_chunks = (len(json_strings) + chunk_size - 1) // chunk_size
+    merged = None
+
+    for chunk_idx in range(0, len(json_strings), chunk_size):
+        chunk_strings = json_strings[chunk_idx:chunk_idx + chunk_size]
+
+        chunk_result = batch_merge_resources(
+            chunk_strings,
+            recompute_descriptors=False
+        )
+
+        if merged is None:
+            merged = chunk_result
+        else:
+            merged_json = json.dumps({"resources": merged["resources"]})
+            chunk_json = json.dumps({"resources": chunk_result["resources"]})
+            merged = batch_merge_resources(
+                [merged_json, chunk_json],
+                recompute_descriptors=False
+            )
+
+        if on_chunk_complete is not None:
+            on_chunk_complete(chunk_idx // chunk_size + 1, total_chunks)
+
+    if recompute_descriptors and merged and merged["resources"]:
+        final_json = json.dumps({"resources": merged["resources"]})
+        merged = batch_merge_resources([final_json], recompute_descriptors=True)
+
+    return merged or {"resources": [], "merge_stats": {"total_input": 0, "duplicates_removed": 0}}
+
+
+# =============================================================================
 # Static Types (pure Python, matching TypeScript static-types.ts)
 # =============================================================================
 
@@ -276,6 +329,7 @@ __all__ = [
     "batch_tiles_to_trees",
     "merge_resources",
     "batch_merge_resources",
+    "chunked_merge_resources",
     "TreeToTilesIterator",
     "resolve_labels_in_tree",
     # Static Types
