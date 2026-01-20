@@ -344,7 +344,7 @@ class TestIntegrationWithAlizarin:
         alizarin.register_extension_mutation(
             "clm.reference_change_collection",
             reference_change_collection_handler,
-            "AlwaysCompliant",
+            "AlwaysConformant",
         )
 
         # Verify registration
@@ -361,7 +361,7 @@ class TestIntegrationWithAlizarin:
                             "node_id": "person_type",
                             "collection_id": "new-person-type-collection"
                         },
-                        "compliance": "AlwaysCompliant"
+                        "conformance": "AlwaysConformant"
                     }
                 }
             ],
@@ -404,7 +404,7 @@ class TestIntegrationWithAlizarin:
             alizarin.register_extension_mutation(
                 "clm.reference_change_collection",
                 reference_change_collection_handler,
-                "AlwaysCompliant",
+                "AlwaysConformant",
             )
 
         # Step 1: Add a new reference node using standard AddNode mutation
@@ -458,7 +458,7 @@ class TestIntegrationWithAlizarin:
                             "node_id": "secondary_type",
                             "collection_id": "updated-secondary-collection"
                         },
-                        "compliance": "AlwaysCompliant"
+                        "conformance": "AlwaysConformant"
                     }
                 }
             ],
@@ -615,7 +615,7 @@ class TestEndToEndWorkflow:
             alizarin.register_extension_mutation(
                 "clm.reference_change_collection",
                 reference_change_collection_handler,
-                "AlwaysCompliant",
+                "AlwaysConformant",
             )
 
         # Step 1: Change the collection for the 'test' reference node
@@ -630,7 +630,7 @@ class TestEndToEndWorkflow:
                             "node_id": "test",
                             "collection_id": new_collection_id
                         },
-                        "compliance": "AlwaysCompliant"
+                        "conformance": "AlwaysConformant"
                     }
                 }
             ],
@@ -784,7 +784,7 @@ class TestEndToEndWorkflow:
                                 "node_id": "test",
                                 "collection_id": new_collection_id
                             },
-                            "compliance": "AlwaysCompliant"
+                            "conformance": "AlwaysConformant"
                         }
                     }
                 ],

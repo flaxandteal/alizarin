@@ -348,7 +348,7 @@ def _register_mutation_handler() -> bool:
         alizarin.register_extension_mutation(
             "clm.reference_change_collection",
             _reference_change_collection_handler,
-            "AlwaysCompliant",
+            "AlwaysConformant",
         )
         return True
     except ImportError:
