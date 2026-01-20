@@ -237,6 +237,210 @@ async def _resolve_reference_labels_python(
     return json.dumps(resolved_tree)
 
 
+async def resolve_reference_markers(
+    business_data_json: str,
+    graph_json: str,
+    rdm_cache: Optional[Any] = None,
+    strict: bool = False,
+) -> str:
+    """
+    Resolve __needs_rdm_lookup and __needs_rdm_label_lookup markers in tile data
+    to full StaticReference objects with embedded labels.
+
+    This should be called after batch_trees_to_tiles_with_extensions to resolve
+    any markers that were created during coercion. By resolving at write time,
+    display-time collection fetching is avoided.
+
+    Args:
+        business_data_json: JSON string of business_data result from batch_trees_to_tiles
+        graph_json: JSON string of the graph definition
+        rdm_cache: Optional RdmCache instance. If not provided, uses global cache.
+        strict: If True, raise errors for unresolved markers. If False, pass through.
+
+    Returns:
+        JSON string with markers resolved to full StaticReference objects
+
+    Raises:
+        ValueError: If strict=True and markers cannot be resolved
+
+    Example:
+        >>> from alizarin import batch_trees_to_tiles_with_extensions
+        >>> from alizarin_clm import resolve_reference_markers
+        >>>
+        >>> result = batch_trees_to_tiles_with_extensions(trees_json, graph_id)
+        >>> resolved = await resolve_reference_markers(
+        ...     json.dumps(result),
+        ...     graph_json,
+        ...     rdm_cache
+        ... )
+    """
+    import json
+    import re
+    import uuid as uuid_module
+
+    _UUID_PATTERN = re.compile(
+        r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+        re.IGNORECASE
+    )
+
+    # Get cache to use
+    cache = rdm_cache
+    if cache is None:
+        try:
+            from alizarin import get_global_rdm_cache
+            cache = get_global_rdm_cache()
+        except ImportError:
+            pass
+
+    if cache is None:
+        # No cache available, return unchanged
+        return business_data_json
+
+    # Parse inputs
+    business_data = json.loads(business_data_json)
+    graph_data = json.loads(graph_json)
+
+    # Handle wrapped graph format
+    if "graph" in graph_data and isinstance(graph_data["graph"], list):
+        graph = graph_data["graph"][0]
+    else:
+        graph = graph_data
+
+    # Build node_id -> config mapping for reference nodes
+    node_configs: dict[str, dict] = {}
+    for node in graph.get("nodes", []):
+        nodeid = node.get("nodeid")
+        datatype = node.get("datatype", "")
+        config = node.get("config", {}) or {}
+
+        if nodeid and datatype in ("reference", "reference-list"):
+            node_configs[nodeid] = config
+
+    if not node_configs:
+        return business_data_json
+
+    # Collect all needed collections from markers
+    needed_collections: set[str] = set()
+    resources = business_data.get("business_data", {}).get("resources", [])
+
+    for resource in resources:
+        tiles = resource.get("tiles", [])
+        for tile in tiles:
+            data = tile.get("data", {})
+            for node_id, value in data.items():
+                if node_id not in node_configs:
+                    continue
+
+                config = node_configs[node_id]
+                collection_id = config.get("controlledList") or config.get("rdmCollection")
+                if not collection_id:
+                    continue
+
+                # Check for markers in value (could be array or single)
+                values = value if isinstance(value, list) else [value]
+                for v in values:
+                    if isinstance(v, dict):
+                        if v.get("__needs_rdm_lookup") or v.get("__needs_rdm_label_lookup"):
+                            needed_collections.add(collection_id)
+
+    # Lazy load any missing collections
+    for collection_id in needed_collections:
+        if hasattr(cache, 'fetch_if_missing'):
+            if coro := cache.fetch_if_missing(collection_id):
+                collection = await coro
+                if collection is not None:
+                    cache.add_collection(collection)
+
+    # Resolve markers
+    errors: list[str] = []
+
+    def build_static_reference(concept: Any, collection_id: str) -> dict:
+        """Build a StaticReference dict from an RDM concept."""
+        labels = []
+        # Get pref_label - it's a dict of language -> label
+        pref_label = getattr(concept, 'pref_label', {}) or {}
+        for lang, label_value in pref_label.items():
+            labels.append({
+                "id": str(uuid_module.uuid4()),  # Generate label ID
+                "language_id": lang,
+                "list_item_id": concept.id,
+                "value": label_value,
+                "valuetype_id": "prefLabel",
+            })
+
+        return {
+            "uri": getattr(concept, 'uri', '') or concept.id,
+            "list_id": collection_id,
+            "labels": labels,
+        }
+
+    def resolve_marker(marker: dict, node_id: str, config: dict) -> dict:
+        """Resolve a single marker to a StaticReference."""
+        collection_id = config.get("controlledList") or config.get("rdmCollection")
+        if not collection_id:
+            if strict:
+                errors.append(f"Node {node_id}: No collection configured")
+            return marker
+
+        # Get collection from cache
+        collection = cache.get_collection(collection_id) if hasattr(cache, 'get_collection') else None
+        if collection is None:
+            if strict:
+                errors.append(f"Node {node_id}: Collection {collection_id} not found in cache")
+            return marker
+
+        if marker.get("__needs_rdm_lookup") and marker.get("uuid"):
+            # Look up by UUID
+            concept_id = marker["uuid"]
+            concept = collection.get_concept(concept_id) if hasattr(collection, 'get_concept') else None
+            if concept is None:
+                if strict:
+                    errors.append(f"Node {node_id}: Concept {concept_id} not found in collection {collection_id}")
+                return marker
+            return build_static_reference(concept, collection_id)
+
+        elif marker.get("__needs_rdm_label_lookup") and marker.get("label"):
+            # Look up by label
+            label = marker["label"]
+            # Use the cache's lookup_by_label method
+            concept = cache.lookup_by_label(collection_id, label) if hasattr(cache, 'lookup_by_label') else None
+            if concept is None:
+                if strict:
+                    errors.append(f"Node {node_id}: Label '{label}' not found in collection {collection_id}")
+                return marker
+            return build_static_reference(concept, collection_id)
+
+        return marker
+
+    def resolve_value(value: Any, node_id: str, config: dict) -> Any:
+        """Recursively resolve markers in a value."""
+        if isinstance(value, dict):
+            if value.get("__needs_rdm_lookup") or value.get("__needs_rdm_label_lookup"):
+                return resolve_marker(value, node_id, config)
+            # Already a full reference or other object - return as-is
+            return value
+        elif isinstance(value, list):
+            return [resolve_value(item, node_id, config) for item in value]
+        else:
+            return value
+
+    # Process all tiles
+    for resource in resources:
+        tiles = resource.get("tiles", [])
+        for tile in tiles:
+            data = tile.get("data", {})
+            for node_id, value in list(data.items()):
+                if node_id not in node_configs:
+                    continue
+                config = node_configs[node_id]
+                data[node_id] = resolve_value(value, node_id, config)
+
+    if errors:
+        raise ValueError("Failed to resolve reference markers:\n  " + "\n  ".join(errors))
+
+    return json.dumps(business_data)
+
+
 def _register_rust_handler() -> bool:
     """
     Register the Rust coercion handler with alizarin.
@@ -261,8 +465,7 @@ def _register_rust_handler() -> bool:
         # Rust extension not built yet - this is fine
         return False
     except Exception as e:
-        print(f"Warning: Failed to register CLM Rust handler: {e}")
-        return False
+        raise RuntimeError(f"Failed to register CLM Rust handler: {e}") from e
 
 
 def _register_python_handler() -> None:
@@ -275,7 +478,7 @@ def _register_python_handler() -> None:
         from alizarin.view_models import CUSTOM_DATATYPES
         CUSTOM_DATATYPES["reference"] = ReferenceMergedDataType
     except ImportError as e:
-        print(f"Warning: Could not register CLM Python handler: {e}")
+        raise ImportError(f"Could not register CLM Python handler: {e}") from e
 
 
 def _reference_change_collection_handler(graph_json: str, params_json: str) -> str:
@@ -354,7 +557,31 @@ def _register_mutation_handler() -> bool:
     except ImportError:
         return False
     except Exception as e:
-        print(f"Warning: Failed to register CLM mutation handler: {e}")
+        raise RuntimeError(f"Failed to register CLM mutation handler: {e}") from e
+
+
+def _register_list_datatype() -> bool:
+    """
+    Register 'reference' as a list datatype with alizarin.
+
+    List datatypes have arrays that should be treated as the value itself,
+    not iterated over during tree-to-tiles conversion.
+
+    Returns True if successful, False if API not available.
+    """
+    try:
+        import alizarin
+
+        if not hasattr(alizarin, 'register_list_datatype'):
+            return False
+        if alizarin.register_list_datatype is None:
+            return False
+
+        alizarin.register_list_datatype("reference")
+        return True
+    except ImportError:
+        return False
+    except Exception:
         return False
 
 
@@ -362,6 +589,7 @@ def _register_mutation_handler() -> bool:
 _rust_available = _register_rust_handler()
 _register_python_handler()
 _mutation_available = _register_mutation_handler()
+_list_datatype_registered = _register_list_datatype()
 
 
 __all__ = [
@@ -369,6 +597,8 @@ __all__ = [
     "__version__",
     # Label resolution
     "resolve_reference_labels",
+    # Marker resolution (for write-time resolution)
+    "resolve_reference_markers",
     # Static types
     "StaticReference",
     "StaticReferenceLabel",

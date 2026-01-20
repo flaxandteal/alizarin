@@ -6,6 +6,7 @@ Matches TypeScript ResourceModelWrapper in graphManager.ts
 
 from __future__ import annotations
 
+import logging
 from typing import (
     Any,
     Dict,
@@ -14,9 +15,12 @@ from typing import (
     Optional,
     Set,
     TYPE_CHECKING,
+    TypedDict,
     TypeVar,
     Union,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .static_types import StaticGraph, StaticNode, StaticEdge, StaticNodegroup, StaticTile
@@ -24,6 +28,16 @@ if TYPE_CHECKING:
 
 # Type Variables
 RIVM = TypeVar("RIVM", bound="IRIVM")
+
+
+class ConditionalPermission(TypedDict):
+    """Conditional permission rule for filtering tiles by data values."""
+    path: str  # JSON path to evaluate (e.g., ".data.uuid.field.name")
+    allowed: List[str]  # Tile is permitted if value at path is in this list
+
+
+# Permission value: bool for simple allow/deny, or conditional dict
+PermissionValue = Union[bool, ConditionalPermission]
 
 
 class ResourceModelWrapper(Generic[RIVM]):
@@ -77,7 +91,7 @@ class ResourceModelWrapper(Generic[RIVM]):
         self._nodes_by_alias: Optional[Dict[str, StaticNode]] = None
 
         # Permissions
-        self._permitted_nodegroups: Dict[str, bool] = {}
+        self._permitted_nodegroups: Dict[str, PermissionValue] = {}
 
     def build_nodes(self) -> None:
         """Build node, edge, and nodegroup caches."""
@@ -291,12 +305,12 @@ class ResourceModelWrapper(Generic[RIVM]):
 
         return list(pub_ids)
 
-    def get_permitted_nodegroups(self) -> Dict[Optional[str], bool]:
+    def get_permitted_nodegroups(self) -> Dict[str, PermissionValue]:
         """
         Get the current permission map.
 
         Returns:
-            Dictionary mapping nodegroup ID (or None) to permission bool
+            Dictionary mapping nodegroup ID to permission rule (bool or conditional)
         """
         if not self._permitted_nodegroups:
             # Default: all permitted
@@ -312,16 +326,64 @@ class ResourceModelWrapper(Generic[RIVM]):
 
     def set_permitted_nodegroups(
         self,
-        permissions: Dict[str, bool],
+        permissions: Dict[str, PermissionValue],
     ) -> None:
         """
-        Set nodegroup permissions.
+        Set nodegroup permissions with support for both boolean and conditional rules.
 
         Keys can be nodegroup IDs or node aliases (for semantic nodes).
 
+        Values can be:
+        - bool: True/False for simple allow/deny
+        - dict: {"path": ".data.uuid.field", "allowed": ["value1", "value2"]}
+          for conditional filtering based on tile data
+
         Args:
-            permissions: Dictionary mapping nodegroup ID to permission
+            permissions: Dictionary mapping nodegroup ID to permission rule
+
+        Raises:
+            ValueError: If any permission rule is invalid
         """
+        errors: List[str] = []
+
+        for key, value in permissions.items():
+            if not isinstance(key, str):
+                errors.append(f"Invalid key (not a string): {key!r}")
+                continue
+
+            if isinstance(value, bool):
+                continue  # Valid boolean permission
+
+            if isinstance(value, dict):
+                # Validate conditional permission
+                if "path" not in value:
+                    errors.append(f"Invalid conditional rule for '{key}': 'path' key is required")
+                elif not isinstance(value.get("path"), str):
+                    errors.append(f"Invalid conditional rule for '{key}': 'path' must be a string")
+                elif not value.get("path"):
+                    errors.append(f"Invalid conditional rule for '{key}': 'path' cannot be empty")
+
+                if "allowed" not in value:
+                    errors.append(f"Invalid conditional rule for '{key}': 'allowed' key is required")
+                elif not isinstance(value.get("allowed"), list):
+                    errors.append(f"Invalid conditional rule for '{key}': 'allowed' must be a list")
+                elif not value.get("allowed"):
+                    errors.append(f"Invalid conditional rule for '{key}': 'allowed' list cannot be empty")
+                else:
+                    for i, item in enumerate(value.get("allowed", [])):
+                        if not isinstance(item, str):
+                            errors.append(f"Invalid conditional rule for '{key}': 'allowed[{i}]' must be a string")
+                continue
+
+            errors.append(
+                f"Invalid permission value for '{key}': expected bool or {{path, allowed}} dict"
+            )
+
+        if errors:
+            raise ValueError(
+                "Permission validation errors:\n  - " + "\n  - ".join(errors)
+            )
+
         self._permitted_nodegroups = permissions.copy()
 
     def is_nodegroup_permitted(
@@ -330,23 +392,109 @@ class ResourceModelWrapper(Generic[RIVM]):
         tile: Optional[StaticTile],
     ) -> bool:
         """
-        Check if a nodegroup is permitted.
+        Check if a nodegroup/tile is permitted.
+
+        For boolean permissions, returns the boolean value.
+        For conditional permissions, evaluates the tile data path and checks
+        if the value is in the allowed set.
 
         Args:
             nodegroup_id: The nodegroup ID to check
-            tile: The tile (unused, for API compatibility)
+            tile: The tile to evaluate (required for conditional permissions)
 
         Returns:
-            True if the nodegroup is permitted
+            True if the nodegroup/tile is permitted
         """
         ng_id = nodegroup_id or ""
 
         # Check direct permission
-        if ng_id in self._permitted_nodegroups:
-            return self._permitted_nodegroups[ng_id]
+        if ng_id not in self._permitted_nodegroups:
+            # Default to permitted
+            return True
 
-        # Default to permitted
-        return True
+        permission = self._permitted_nodegroups[ng_id]
+
+        # Simple boolean permission
+        if isinstance(permission, bool):
+            return permission
+
+        # Conditional permission - need tile data
+        if tile is None:
+            # For nodegroup-level checks (no tile), conditional permissions allow
+            # the nodegroup itself, individual tiles will be filtered
+            return True
+
+        # Evaluate the path against the tile
+        path = permission.get("path", "")
+        allowed = set(permission.get("allowed", []))
+
+        value = self._evaluate_tile_path(tile, path)
+        permitted = value is not None and value in allowed
+
+        # Debug logging for conditional filtering
+        tile_id = getattr(tile, "tileid", None) or "(no id)"
+        logger.debug(
+            "[alizarin] Conditional filter: nodegroup=%s, tile=%s, path=%s, value=%r, allowed=%r, permitted=%s",
+            ng_id, tile_id, path, value, allowed, permitted
+        )
+
+        if value is None:
+            # Path doesn't resolve - deny by default
+            return False
+
+        return permitted
+
+    @staticmethod
+    def _evaluate_tile_path(tile: StaticTile, path: str) -> Optional[str]:
+        """
+        Evaluate a JSON path against a tile's data.
+
+        Path format: ".data.uuid.field.subfield" or "data.uuid.field.subfield"
+        Returns the string value at that path, or None if not found/not a string.
+        """
+        path = path.lstrip(".")
+        segments = path.split(".")
+
+        if not segments:
+            return None
+
+        # Start navigation - first segment should be "data" for tile data
+        tile_data = getattr(tile, "data", None) or {}
+
+        if segments[0] == "data":
+            if len(segments) < 2:
+                return None
+            # Get the node's data by the next segment (node_id/uuid)
+            current = tile_data.get(segments[1])
+            start_idx = 2
+        else:
+            # Direct path into data - treat first segment as node_id
+            current = tile_data.get(segments[0])
+            start_idx = 1
+
+        if current is None:
+            return None
+
+        # Navigate remaining segments
+        for segment in segments[start_idx:]:
+            if isinstance(current, dict):
+                current = current.get(segment)
+            else:
+                return None
+            if current is None:
+                return None
+
+        # Extract string value
+        if isinstance(current, str):
+            return current
+
+        # Try common nested patterns (e.g., {"en": "value"})
+        if isinstance(current, dict):
+            for key in ("en", "value", "label", "name"):
+                if key in current and isinstance(current[key], str):
+                    return current[key]
+
+        return None
 
     def prune_graph(self, user: Optional[Any] = None) -> None:
         """

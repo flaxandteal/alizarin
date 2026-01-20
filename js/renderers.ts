@@ -64,6 +64,13 @@ abstract class BaseRenderer {
       newValue = this.renderBlock(await value.forJson(), depth);
     } else if (this.isInstance(value, 'UrlViewModel')) {
       newValue = this.renderUrl(await value, depth);
+    } else if (value instanceof String && typeof value?.forJson === 'function') {
+      // Extension ViewModel that extends String (e.g., ReferenceValueViewModel)
+      // Use toString() for display, not forJson() which returns raw data
+      newValue = value.toString();
+    } else if (typeof value?.getDisplay === 'function') {
+      // Extension ViewModel with async display method
+      newValue = await value.getDisplay();
     } else if (typeof value?.forJson === 'function') {
       // Custom ViewModel from extension - use forJson to get serializable data
       newValue = this.renderBlock(await value.forJson(), depth);

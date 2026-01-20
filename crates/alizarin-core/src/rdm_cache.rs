@@ -150,14 +150,14 @@ impl RdmCollection {
     /// Searches pref_label and alt_labels across all languages.
     /// Returns None if no match or multiple matches (ambiguous).
     pub fn find_by_label(&self, label: &str) -> Option<&RdmConcept> {
-        let label_lower = label.to_lowercase();
+        let label_lower = label.trim().to_lowercase();
         let matches: Vec<_> = self.concepts.values()
             .filter(|c| {
-                // Check pref_label in any language
-                c.pref_label.values().any(|p| p.to_lowercase() == label_lower) ||
+                // Check pref_label in any language (trim stored values too)
+                c.pref_label.values().any(|p| p.trim().to_lowercase() == label_lower) ||
                 // Check alt_labels in any language
                 c.alt_labels.values().any(|alts|
-                    alts.iter().any(|l| l.to_lowercase() == label_lower)
+                    alts.iter().any(|l| l.trim().to_lowercase() == label_lower)
                 )
             })
             .collect();
@@ -172,12 +172,12 @@ impl RdmCollection {
 
     /// Find all concepts by exact label match (case-insensitive)
     pub fn find_all_by_label(&self, label: &str) -> Vec<&RdmConcept> {
-        let label_lower = label.to_lowercase();
+        let label_lower = label.trim().to_lowercase();
         self.concepts.values()
             .filter(|c| {
-                c.pref_label.values().any(|p| p.to_lowercase() == label_lower) ||
+                c.pref_label.values().any(|p| p.trim().to_lowercase() == label_lower) ||
                 c.alt_labels.values().any(|alts|
-                    alts.iter().any(|l| l.to_lowercase() == label_lower)
+                    alts.iter().any(|l| l.trim().to_lowercase() == label_lower)
                 )
             })
             .collect()

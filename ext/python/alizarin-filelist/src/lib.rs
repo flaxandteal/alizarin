@@ -469,6 +469,8 @@ mod python_module {
                     free_fn: alizarin_free_coerce_result as FreeFn,
                     render_display_fn: Some(render_filelist_display as RenderDisplayFn),
                     free_display_fn: Some(alizarin_free_render_display_result as FreeDisplayFn),
+                    resolve_markers_fn: None,
+                    free_resolve_markers_fn: None,
                     user_data: std::ptr::null_mut(),
                 });
             }

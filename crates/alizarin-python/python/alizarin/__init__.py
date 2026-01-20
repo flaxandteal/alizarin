@@ -24,6 +24,7 @@ get_graph_json: Optional[Any] = None
 tiles_to_json_tree: Optional[Any] = None
 json_tree_to_tiles: Optional[Any] = None
 batch_trees_to_tiles: Optional[Any] = None
+batch_trees_to_tiles_with_extensions: Optional[Any] = None
 batch_tiles_to_trees: Optional[Any] = None
 merge_resources: Optional[Any] = None
 batch_merge_resources: Optional[Any] = None
@@ -39,6 +40,7 @@ try:
     tiles_to_json_tree = _alizarin_rust.tiles_to_json_tree
     json_tree_to_tiles = _alizarin_rust.json_tree_to_tiles
     batch_trees_to_tiles = _alizarin_rust.batch_trees_to_tiles
+    batch_trees_to_tiles_with_extensions = _alizarin_rust.batch_trees_to_tiles_with_extensions
     batch_tiles_to_trees = _alizarin_rust.batch_tiles_to_trees
     merge_resources = _alizarin_rust.merge_resources
     batch_merge_resources = _alizarin_rust.batch_merge_resources
@@ -85,8 +87,8 @@ def chunked_merge_resources(
         if merged is None:
             merged = chunk_result
         else:
-            merged_json = json.dumps({"resources": merged["resources"]})
-            chunk_json = json.dumps({"resources": chunk_result["resources"]})
+            merged_json = json.dumps({"business_data": {"resources": merged["resources"]}})
+            chunk_json = json.dumps({"business_data": {"resources": chunk_result["resources"]}})
             merged = batch_merge_resources(
                 [merged_json, chunk_json],
                 recompute_descriptors=False
@@ -96,7 +98,7 @@ def chunked_merge_resources(
             on_chunk_complete(chunk_idx // chunk_size + 1, total_chunks)
 
     if recompute_descriptors and merged and merged["resources"]:
-        final_json = json.dumps({"resources": merged["resources"]})
+        final_json = json.dumps({"business_data": {"resources": merged["resources"]}})
         merged = batch_merge_resources([final_json], recompute_descriptors=True)
 
     return merged or {"resources": [], "merge_stats": {"total_input": 0, "duplicates_removed": 0}}
@@ -285,10 +287,18 @@ generate_uuid_v5 = _alizarin_rust.generate_uuid_v5
 get_mutation_schema = _alizarin_rust.get_mutation_schema
 
 # =============================================================================
-# RDM (Reference Data Manager) Cache
+# List Datatype Registry (for datatypes where array IS the value)
 # =============================================================================
 
 from . import alizarin as _alizarin_rust
+register_list_datatype = _alizarin_rust.register_list_datatype
+is_list_datatype = _alizarin_rust.is_list_datatype
+list_datatypes = _alizarin_rust.list_datatypes
+
+# =============================================================================
+# RDM (Reference Data Manager) Cache
+# =============================================================================
+
 RustRdmConcept = _alizarin_rust.RustRdmConcept
 RustRdmCollection = _alizarin_rust.RustRdmCollection
 RustRdmCache = _alizarin_rust.RustRdmCache
@@ -297,6 +307,7 @@ get_global_rdm_cache = _alizarin_rust.get_global_rdm_cache
 clear_global_rdm_cache = _alizarin_rust.clear_global_rdm_cache
 has_global_rdm_cache = _alizarin_rust.has_global_rdm_cache
 add_collection_to_global_cache = _alizarin_rust.add_collection_to_global_cache
+add_from_skos_xml_to_global_cache = _alizarin_rust.add_from_skos_xml_to_global_cache
 # RDM namespace configuration for deterministic UUID generation
 set_rdm_namespace = _alizarin_rust.set_rdm_namespace
 get_rdm_namespace = _alizarin_rust.get_rdm_namespace
@@ -310,7 +321,7 @@ is_valid_uuid = _alizarin_rust.is_valid_uuid
 # Version
 # =============================================================================
 
-__version__ = "0.2.1-alpha.16"
+__version__ = "0.2.1-alpha.17"
 
 # =============================================================================
 # Exports
@@ -326,6 +337,7 @@ __all__ = [
     "tiles_to_json_tree",
     "json_tree_to_tiles",
     "batch_trees_to_tiles",
+    "batch_trees_to_tiles_with_extensions",
     "batch_tiles_to_trees",
     "merge_resources",
     "batch_merge_resources",
@@ -420,6 +432,10 @@ __all__ = [
     "coerce_with_extension",
     "has_display_renderer",
     "render_display_with_extension",
+    # List Datatype Registry
+    "register_list_datatype",
+    "is_list_datatype",
+    "list_datatypes",
     # RDM Cache
     "RustRdmConcept",
     "RustRdmCollection",
@@ -429,6 +445,7 @@ __all__ = [
     "clear_global_rdm_cache",
     "has_global_rdm_cache",
     "add_collection_to_global_cache",
+    "add_from_skos_xml_to_global_cache",
     # RDM Namespace (for deterministic UUID generation)
     "set_rdm_namespace",
     "get_rdm_namespace",

@@ -267,6 +267,17 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
         }
     }
 
+    // Sort merged tiles by (nodegroup_id, sortorder) for consistent ordering
+    merged_tiles.sort_by(|a, b| {
+        let ng_cmp = a.nodegroup_id.cmp(&b.nodegroup_id);
+        if ng_cmp != std::cmp::Ordering::Equal {
+            return ng_cmp;
+        }
+        let a_sort = a.sortorder.unwrap_or(i32::MAX);
+        let b_sort = b.sortorder.unwrap_or(i32::MAX);
+        a_sort.cmp(&b_sort)
+    });
+
     Ok(MergeResult {
         resource: StaticResource {
             resourceinstance: first_instance,

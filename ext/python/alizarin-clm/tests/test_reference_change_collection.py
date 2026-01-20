@@ -676,14 +676,13 @@ class TestEndToEndWorkflow:
 
         tree_json = json.dumps(person_tree)
         resource_id = "test-person-001"
-        graph_id = updated_graph["graphid"]
 
-        # Step 3: Convert to tiles using the updated graph
+        # Step 3: Register graph and convert to tiles
+        graph_id = alizarin.register_graph(updated_graph_json)
         result = alizarin.json_tree_to_tiles(
             tree_json=tree_json,
             resource_id=resource_id,
             graph_id=graph_id,
-            graph_json=updated_graph_json,
         )
 
         # Step 4: Verify the result
@@ -816,14 +815,13 @@ class TestEndToEndWorkflow:
 
             tree_json = json.dumps(person_tree)
             resource_id = "test-person-with-roles"
-            graph_id = updated_graph["graphid"]
 
-            # Step 5: Convert to tiles - labels should be resolved to UUIDs
+            # Step 5: Register graph and convert to tiles - labels should be resolved to UUIDs
+            graph_id = alizarin.register_graph(updated_graph_json)
             result = alizarin.json_tree_to_tiles(
                 tree_json=tree_json,
                 resource_id=resource_id,
                 graph_id=graph_id,
-                graph_json=updated_graph_json,
             )
 
             # Step 6: Verify the result

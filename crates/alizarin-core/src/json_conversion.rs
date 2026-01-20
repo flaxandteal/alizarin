@@ -21,6 +21,7 @@ use crate::{StaticTile, StaticNode};
 use crate::graph::{StaticResource, StaticResourceMetadata};
 use crate::type_coercion::coerce_value;
 use crate::graph_mutator::generate_uuid_v5;
+use crate::registry::is_list_datatype;
 
 /// Wrapper for business data import/export format
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -205,12 +206,16 @@ fn build_pseudo_cache_from_tiles(
 
     let mut pseudo_cache: HashMap<String, PseudoListCore> = HashMap::new();
 
+    // Sort tiles by sortorder to ensure consistent ordering (lowest first = primary)
+    let mut sorted_tiles: Vec<&StaticTile> = tiles.iter().collect();
+    sorted_tiles.sort_by_key(|t| t.sortorder.unwrap_or(i32::MAX));
+
     // Track which nodegroups have tiles
     let nodegroups_with_tiles: HashSet<&str> = tiles.iter()
         .map(|t| t.nodegroup_id.as_str())
         .collect();
 
-    for tile in tiles {
+    for tile in sorted_tiles {
         let tile_arc = Arc::new(tile.clone());
 
         let nodes_in_ng = graph.get_nodes_in_nodegroup(&tile.nodegroup_id);
@@ -640,9 +645,17 @@ fn build_pseudo_values_from_json(
             std::collections::HashSet::new()
         };
 
-        if json_value.is_array() {
+        // For list-type datatypes (concept-list, resource-instance-list, reference, etc.),
+        // the array IS the value - don't iterate over it.
+        // Extensions register their list datatypes via register_list_datatype().
+        let is_list_type = is_list_datatype(&child_node.datatype);
+
+        if json_value.is_array() && !is_list_type {
             let array = json_value.as_array().unwrap();
-            for item in array {
+            for (idx, item) in array.iter().enumerate() {
+                // Use array index as sortorder (0 = primary/first)
+                let sortorder = Some(idx as i32);
+
                 if has_graph_children {
                     if let Some(item_obj) = item.as_object() {
                         if strict {
@@ -665,6 +678,7 @@ fn build_pseudo_values_from_json(
                             resource_id,
                             if shares_nodegroup { parent_tile.clone() } else { None },
                             parent_tile_id,
+                            sortorder,
                         );
 
                         values.push(pv);
@@ -691,6 +705,7 @@ fn build_pseudo_values_from_json(
                         resource_id,
                         if shares_nodegroup { parent_tile.clone() } else { None },
                         parent_tile_id,
+                        sortorder,
                     );
                     values.push(pv);
                 }
@@ -709,6 +724,7 @@ fn build_pseudo_values_from_json(
                 }
             }
 
+            // Single value gets sortorder 0 (primary)
             let (pv, tile) = create_pseudo_value_from_json(
                 item_obj,
                 &child_node,
@@ -718,6 +734,7 @@ fn build_pseudo_values_from_json(
                 resource_id,
                 if shares_nodegroup { parent_tile.clone() } else { None },
                 parent_tile_id,
+                Some(0),
             );
 
             values.push(pv);
@@ -734,6 +751,7 @@ fn build_pseudo_values_from_json(
                 strict,
             )?;
         } else {
+            // Single value gets sortorder 0 (primary)
             let (pv, _tile) = create_pseudo_value_from_leaf(
                 json_value,
                 &child_node,
@@ -743,6 +761,7 @@ fn build_pseudo_values_from_json(
                 resource_id,
                 if shares_nodegroup { parent_tile.clone() } else { None },
                 parent_tile_id,
+                Some(0),
             );
             values.push(pv);
         }
@@ -773,6 +792,7 @@ fn create_pseudo_value_from_json(
     resource_id: &str,
     shared_tile: Option<Arc<StaticTile>>,
     parent_tile_id: Option<&String>,
+    sortorder: Option<i32>,
 ) -> (PseudoValueCore, Arc<StaticTile>) {
     let tile = shared_tile.unwrap_or_else(|| {
         let tile_id = uuid::Uuid::new_v4().to_string();
@@ -781,6 +801,7 @@ fn create_pseudo_value_from_json(
         new_tile.tileid = Some(tile_id);
         new_tile.resourceinstance_id = resource_id.to_string();
         new_tile.parenttile_id = parent_tile_id.cloned();
+        new_tile.sortorder = sortorder;
         Arc::new(new_tile)
     });
 
@@ -814,6 +835,7 @@ fn create_pseudo_value_from_leaf(
     resource_id: &str,
     shared_tile: Option<Arc<StaticTile>>,
     parent_tile_id: Option<&String>,
+    sortorder: Option<i32>,
 ) -> (PseudoValueCore, Arc<StaticTile>) {
     let tile = shared_tile.unwrap_or_else(|| {
         let tile_id = uuid::Uuid::new_v4().to_string();
@@ -822,13 +844,14 @@ fn create_pseudo_value_from_leaf(
         new_tile.tileid = Some(tile_id);
         new_tile.resourceinstance_id = resource_id.to_string();
         new_tile.parenttile_id = parent_tile_id.cloned();
+        new_tile.sortorder = sortorder;
         Arc::new(new_tile)
     });
 
-    // Check for "_" key (outer node value convention)
+    // Check for "_" or "_value" key (outer node value conventions)
     let value_to_coerce = json_value
         .as_object()
-        .and_then(|obj| obj.get("_"))
+        .and_then(|obj| obj.get("_").or_else(|| obj.get("_value")))
         .unwrap_or(json_value);
 
     let coerced = coerce_value(&node.datatype, value_to_coerce, config.as_ref());

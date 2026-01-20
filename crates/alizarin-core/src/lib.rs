@@ -13,6 +13,7 @@ pub mod json_conversion;
 pub mod label_resolution;
 pub mod loader;
 pub mod node_config;
+pub mod permissions;
 pub mod pseudo_value_core;
 pub mod rdm_cache;
 pub mod registry;
@@ -133,3 +134,11 @@ pub use registry::{
     register_graph, register_graph_owned, get_graph, is_graph_registered,
     unregister_graph, clear_registry, registry_size,
 };
+
+// List datatype registry (for datatypes where array IS the value)
+pub use registry::{
+    register_list_datatype, is_list_datatype, unregister_list_datatype, list_datatypes,
+};
+
+// Permission rules (for conditional tile filtering)
+pub use permissions::{PermissionRule, evaluate_tile_path};

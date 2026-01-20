@@ -72,8 +72,7 @@ def _register_rust_handler() -> bool:
         # Rust extension not built yet - this is fine
         return False
     except Exception as e:
-        print(f"Warning: Failed to register FileList Rust handler: {e}")
-        return False
+        raise RuntimeError(f"Failed to register FileList Rust handler: {e}") from e
 
 
 def _register_python_handler() -> None:
@@ -86,7 +85,7 @@ def _register_python_handler() -> None:
         from alizarin.view_models import CUSTOM_DATATYPES
         CUSTOM_DATATYPES["file-list"] = FileListDataType
     except ImportError as e:
-        print(f"Warning: Could not register FileList Python handler: {e}")
+        raise ImportError(f"Could not register FileList Python handler: {e}") from e
 
 
 # Auto-register on import

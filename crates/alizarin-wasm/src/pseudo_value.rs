@@ -295,9 +295,16 @@ impl PseudoListInner {
     /// PORT: js/pseudos.ts PseudoList grouping logic
     /// PORT: js/graphManager.ts lines 987-1011 - PseudoList merging
     pub fn from_values(node_alias: String, values: Vec<PseudoValueInner>) -> Self {
+        // Sort values by sortorder at construction time for consistent ordering
+        let mut sorted_values = values;
+        sorted_values.sort_by_key(|v| {
+            v.core.tile.as_ref()
+                .and_then(|t| t.sortorder)
+                .unwrap_or(i32::MAX)
+        });
         PseudoListInner {
             node_alias,
-            values,
+            values: sorted_values,
             is_loaded: true,
             is_single: false,
         }
@@ -305,9 +312,16 @@ impl PseudoListInner {
 
     /// Create from values with explicit is_single flag
     pub fn from_values_with_cardinality(node_alias: String, values: Vec<PseudoValueInner>, is_single: bool) -> Self {
+        // Sort values by sortorder at construction time for consistent ordering
+        let mut sorted_values = values;
+        sorted_values.sort_by_key(|v| {
+            v.core.tile.as_ref()
+                .and_then(|t| t.sortorder)
+                .unwrap_or(i32::MAX)
+        });
         PseudoListInner {
             node_alias,
-            values,
+            values: sorted_values,
             is_loaded: true,
             is_single,
         }
@@ -372,7 +386,7 @@ impl PseudoListInner {
         parent_nodegroup_id: Option<String>,
     ) -> Vec<&PseudoValueInner> {
         use alizarin_core::matches_tile_filter;
-        self.values.iter()
+        let mut entries: Vec<&PseudoValueInner> = self.values.iter()
             .filter(|v| {
                 match v.core.tile.as_ref() {
                     Some(tile) => matches_tile_filter(
@@ -386,7 +400,16 @@ impl PseudoListInner {
                     None => parent_tile_id.is_none(),
                 }
             })
-            .collect()
+            .collect();
+
+        // Sort by sortorder to ensure consistent ordering (lowest first = primary)
+        entries.sort_by_key(|v| {
+            v.core.tile.as_ref()
+                .and_then(|t| t.sortorder)
+                .unwrap_or(i32::MAX)
+        });
+
+        entries
     }
 }
 
@@ -514,22 +537,13 @@ impl PseudoValueInner {
             serde_json::Value::Null
         };
 
-        // If there's an inner, get children from it
+        // If there's an inner, get children from it and merge using shared logic
         if let Some(ref inner) = self.inner {
             let children_json = inner.semantic_to_json(ctx);
-
-            // If children is an object, merge with own value
-            // The convention is to put own value under "_" key
-            // This matches the input format: { "_": nodeValue, "child1": ..., "child2": ... }
-            if let serde_json::Value::Object(mut children_map) = children_json {
-                if !own_value.is_null() {
-                    children_map.insert("_".to_string(), own_value);
-                }
-                return serde_json::Value::Object(children_map);
-            }
+            return ctx.serialization_options.merge_outer_with_children(own_value, children_json);
         }
 
-        // No inner or no children - just return own value
+        // No inner - just return own value
         own_value
     }
 
@@ -622,22 +636,40 @@ impl PseudoListInner {
             return serde_json::Value::Null;
         }
 
+        // Sort values by sortorder for consistent output
+        let mut sorted_values: Vec<&PseudoValueInner> = self.values.iter().collect();
+        sorted_values.sort_by_key(|v| {
+            v.core.tile.as_ref()
+                .and_then(|t| t.sortorder)
+                .unwrap_or(i32::MAX)
+        });
+
         if self.is_single {
-            // Single value
-            if let Some(first) = self.values.first() {
+            // Single value - use first sorted value
+            if let Some(first) = sorted_values.first() {
                 return first.to_json(ctx);
             }
             return serde_json::Value::Null;
         }
 
-        // Multiple values - array
-        let arr: Vec<serde_json::Value> = self.values.iter()
+        // Multiple values - array (using sorted order)
+        let arr: Vec<serde_json::Value> = sorted_values.iter()
             .map(|v| v.to_json(ctx))
             .filter(|v| !v.is_null())
             .collect();
 
         if arr.is_empty() {
             serde_json::Value::Null
+        } else if arr.len() == 1 {
+            // If there's exactly one value and it's already an array, return it directly.
+            // This handles list datatypes (reference, file-list, etc.) where all values
+            // are stored as an array in a single tile slot rather than separate tiles.
+            if let Some(first) = arr.first() {
+                if first.is_array() {
+                    return first.clone();
+                }
+            }
+            serde_json::Value::Array(arr)
         } else {
             serde_json::Value::Array(arr)
         }
@@ -886,13 +918,9 @@ impl PseudoValueInner {
 
         if let Some(ref inner) = self.inner {
             let children_json = inner.semantic_to_display_json(ctx);
-
-            if let serde_json::Value::Object(mut children_map) = children_json {
-                if !own_value.is_null() {
-                    children_map.insert("_".to_string(), own_value);
-                }
-                return serde_json::Value::Object(children_map);
-            }
+            // Use display serialization options for consistent merge behavior
+            let display_opts = SerializationOptions::display(ctx.language);
+            return display_opts.merge_outer_with_children(own_value, children_json);
         }
 
         own_value
@@ -951,23 +979,44 @@ impl PseudoValueInner {
                 display_registry: ctx.display_registry,
             };
 
+            // Helper to check if a value is "empty" for display purposes
+            // Filters null and empty objects (needed for outer node flattening)
+            fn is_empty_for_flattening(v: &serde_json::Value) -> bool {
+                match v {
+                    serde_json::Value::Null => true,
+                    serde_json::Value::Object(m) => m.is_empty(),
+                    _ => false,
+                }
+            }
+
             // Only unwrap to single value for cardinality-1 nodes (is_single=true).
             // For cardinality-n nodes, always return an array even with 1 item,
             // otherwise Handlebars {{#each}} iterates over object properties instead of items.
             if pseudo_list.is_single {
                 if let Some(first_value) = matching_values.first() {
                     let json_value = first_value.to_display_json(&child_ctx);
-                    if !json_value.is_null() {
+                    if !is_empty_for_flattening(&json_value) {
                         obj.insert(child_alias.clone(), json_value);
                     }
                 }
             } else {
                 let arr: Vec<serde_json::Value> = matching_values.iter()
                     .map(|v| v.to_display_json(&child_ctx))
-                    .filter(|v| !v.is_null())
+                    .filter(|v| !is_empty_for_flattening(v))
                     .collect();
 
                 if !arr.is_empty() {
+                    // If there's exactly one value and it's already an array, insert it directly.
+                    // This handles list datatypes (reference, file-list, etc.) where all values
+                    // are stored as an array in a single tile slot rather than separate tiles.
+                    if arr.len() == 1 {
+                        if let Some(first) = arr.first() {
+                            if first.is_array() {
+                                obj.insert(child_alias.clone(), first.clone());
+                                continue;
+                            }
+                        }
+                    }
                     obj.insert(child_alias.clone(), serde_json::Value::Array(arr));
                 }
             }
@@ -987,20 +1036,40 @@ impl PseudoListInner {
             return serde_json::Value::Null;
         }
 
+        // Sort values by sortorder for consistent output
+        let mut sorted_values: Vec<&PseudoValueInner> = self.values.iter().collect();
+        sorted_values.sort_by_key(|v| {
+            v.core.tile.as_ref()
+                .and_then(|t| t.sortorder)
+                .unwrap_or(i32::MAX)
+        });
+
         if self.is_single {
-            if let Some(first) = self.values.first() {
+            // Single value - use first sorted value
+            if let Some(first) = sorted_values.first() {
                 return first.to_display_json(ctx);
             }
             return serde_json::Value::Null;
         }
 
-        let arr: Vec<serde_json::Value> = self.values.iter()
+        // Multiple values - array (using sorted order)
+        let arr: Vec<serde_json::Value> = sorted_values.iter()
             .map(|v| v.to_display_json(ctx))
             .filter(|v| !v.is_null())
             .collect();
 
         if arr.is_empty() {
             serde_json::Value::Null
+        } else if arr.len() == 1 {
+            // If there's exactly one value and it's already an array, return it directly.
+            // This handles list datatypes (reference, file-list, etc.) where all values
+            // are stored as an array in a single tile slot rather than separate tiles.
+            if let Some(first) = arr.first() {
+                if first.is_array() {
+                    return first.clone();
+                }
+            }
+            serde_json::Value::Array(arr)
         } else {
             serde_json::Value::Array(arr)
         }

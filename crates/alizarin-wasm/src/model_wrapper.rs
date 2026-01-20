@@ -9,7 +9,9 @@ use crate::graph::StaticNodegroup as WasmStaticNodegroup;
 use crate::graph::StaticTile as WasmStaticTile;
 // Use core types for internal storage
 use alizarin_core::{StaticGraph, StaticTile, StaticNode, StaticNodegroup, StaticEdge};
-use std::collections::HashMap;
+// Permission rules from core
+pub use alizarin_core::PermissionRule;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::cell::RefCell;
 
@@ -43,8 +45,9 @@ pub struct ResourceModelWrapperCore {
     // Key: nodegroup_id, Value: list of nodes in that nodegroup
     nodes_by_nodegroup: Option<Arc<HashMap<String, Vec<Arc<StaticNode>>>>>,
 
-    permitted_nodegroups: Option<HashMap<String, bool>>,
-    default_allow: bool
+    /// Permission rules per nodegroup - supports both boolean and conditional rules
+    pub(crate) permitted_nodegroups: Option<HashMap<String, PermissionRule>>,
+    pub(crate) default_allow: bool
 }
 
 impl ResourceModelWrapperCore {
@@ -205,9 +208,14 @@ impl ResourceModelWrapperCore {
         Ok(child_nodes)
     }
 
+    /// Get permitted nodegroups as boolean map (for backward compatibility)
+    /// Conditional rules are converted to true (nodegroup is permitted, tiles filtered)
     pub fn get_permitted_nodegroups(&mut self) -> HashMap<String, bool> {
         if let Some(ref permitted) = self.permitted_nodegroups {
-            return permitted.clone();
+            // Convert PermissionRule to bool for backward compatibility
+            return permitted.iter()
+                .map(|(k, v)| (k.clone(), v.permits_nodegroup()))
+                .collect();
         }
 
         // Initialize with all nodegroups permitted
@@ -215,31 +223,63 @@ impl ResourceModelWrapperCore {
 
         if let Some(ref nodegroups) = self.nodegroups {
             for key in nodegroups.keys() {
-                permissions.insert(key.clone(), true);
+                permissions.insert(key.clone(), PermissionRule::Boolean(true));
             }
         }
 
         // Root node must be accessible
-        permissions.insert(String::new(), true);
+        permissions.insert(String::new(), PermissionRule::Boolean(true));
 
         // Store it
         self.permitted_nodegroups = Some(permissions.clone());
-        permissions
+
+        // Return as bool map
+        permissions.iter()
+            .map(|(k, v)| (k.clone(), v.permits_nodegroup()))
+            .collect()
     }
 
+    /// Check if a nodegroup is permitted (for graph pruning, etc.)
+    /// Conditional rules return true (nodegroup permitted, tiles filtered separately)
     pub fn is_nodegroup_permitted(&self, nodegroup_id: &str) -> bool {
         if let Some(ref permissions) = self.permitted_nodegroups {
-            return *permissions.get(nodegroup_id).unwrap_or(&false);
+            return permissions.get(nodegroup_id)
+                .map(|rule| rule.permits_nodegroup())
+                .unwrap_or(false);
         }
         self.default_allow
+    }
+
+    /// Check if a specific tile is permitted by its nodegroup's permission rule
+    pub fn is_tile_permitted(&self, tile: &StaticTile) -> bool {
+        if let Some(ref permissions) = self.permitted_nodegroups {
+            return permissions.get(&tile.nodegroup_id)
+                .map(|rule| rule.permits_tile(tile))
+                .unwrap_or(self.default_allow);
+        }
+        self.default_allow
+    }
+
+    /// Get the permission rule for a nodegroup (for tile filtering)
+    pub fn get_permission_rule(&self, nodegroup_id: &str) -> Option<&PermissionRule> {
+        self.permitted_nodegroups.as_ref()?.get(nodegroup_id)
     }
 
     pub fn set_default_allow_all_nodegroups(&mut self, default_allow: bool) {
         self.default_allow = default_allow;
     }
 
-    pub fn set_permitted_nodegroups(&mut self, permissions: HashMap<String, bool>) {
+    /// Set permitted nodegroups with full PermissionRule support
+    pub fn set_permitted_nodegroups_rules(&mut self, permissions: HashMap<String, PermissionRule>) {
         self.permitted_nodegroups = Some(permissions);
+    }
+
+    /// Set permitted nodegroups from boolean map (backward compatibility)
+    pub fn set_permitted_nodegroups(&mut self, permissions: HashMap<String, bool>) {
+        let rules: HashMap<String, PermissionRule> = permissions.into_iter()
+            .map(|(k, v)| (k, PermissionRule::Boolean(v)))
+            .collect();
+        self.permitted_nodegroups = Some(rules);
     }
 
     // Internal accessors for Rust code
@@ -908,20 +948,108 @@ impl WASMResourceModelWrapper {
         self.with_core_mut(|core| core.set_default_allow_all_nodegroups(default_allow));
     }
 
+    /// Set permitted nodegroups with support for both boolean and conditional rules.
+    ///
+    /// Accepts a Map where values can be:
+    /// - boolean: true/false for simple allow/deny
+    /// - object: { path: ".data.uuid.field", allowed: ["value1", "value2"] }
+    ///   for conditional filtering based on tile data
+    ///
+    /// Returns an error if any permission rule is invalid.
     #[wasm_bindgen(js_name = setPermittedNodegroups)]
-    pub fn set_permitted_nodegroups(&mut self, permissions: js_sys::Map) {
-        let mut perms = HashMap::new();
+    pub fn set_permitted_nodegroups(&mut self, permissions: js_sys::Map) -> Result<(), JsValue> {
+        let mut perms: HashMap<String, PermissionRule> = HashMap::new();
+        let mut errors: Vec<String> = Vec::new();
 
         // Use for_each callback to avoid iterator retention
         permissions.for_each(&mut |value, key| {
-            if let Some(key_str) = key.as_string() {
-                if let Some(bool_val) = value.as_bool() {
-                    perms.insert(key_str, bool_val);
+            let key_str = match key.as_string() {
+                Some(k) => k,
+                None => {
+                    errors.push(format!("Invalid key (not a string): {:?}", key));
+                    return;
                 }
+            };
+
+            // Check if it's a boolean (simple permission)
+            if let Some(bool_val) = value.as_bool() {
+                perms.insert(key_str, PermissionRule::Boolean(bool_val));
+            }
+            // Check if it's an object (conditional permission)
+            else if value.is_object() && !value.is_null() {
+                match Self::parse_conditional_rule(&value) {
+                    Ok(rule) => {
+                        perms.insert(key_str, rule);
+                    }
+                    Err(e) => {
+                        errors.push(format!("Invalid conditional rule for '{}': {}", key_str, e));
+                    }
+                }
+            } else {
+                errors.push(format!(
+                    "Invalid permission value for '{}': expected boolean or {{path, allowed}} object",
+                    key_str
+                ));
             }
         });
 
-        self.with_core_mut(|core| core.set_permitted_nodegroups(perms));
+        if !errors.is_empty() {
+            return Err(JsValue::from_str(&format!(
+                "Permission validation errors:\n  - {}",
+                errors.join("\n  - ")
+            )));
+        }
+
+        self.with_core_mut(|core| core.set_permitted_nodegroups_rules(perms));
+
+        Ok(())
+    }
+
+    /// Parse a conditional permission rule from a JS object
+    /// Expected format: { path: ".data.uuid.field", allowed: ["value1", "value2"] }
+    fn parse_conditional_rule(value: &JsValue) -> Result<PermissionRule, String> {
+        // Get the "path" property
+        let path = js_sys::Reflect::get(value, &JsValue::from_str("path"))
+            .map_err(|_| "failed to read 'path' property")?;
+        let path_str = path.as_string()
+            .ok_or("'path' must be a string")?;
+
+        if path_str.is_empty() {
+            return Err("'path' cannot be empty".to_string());
+        }
+
+        // Get the "allowed" property (should be an array)
+        let allowed = js_sys::Reflect::get(value, &JsValue::from_str("allowed"))
+            .map_err(|_| "failed to read 'allowed' property")?;
+
+        if !js_sys::Array::is_array(&allowed) {
+            return Err("'allowed' must be an array".to_string());
+        }
+
+        let allowed_array = js_sys::Array::from(&allowed);
+
+        if allowed_array.length() == 0 {
+            return Err("'allowed' array cannot be empty".to_string());
+        }
+
+        // Convert to HashSet<String>
+        let mut allowed_set = HashSet::new();
+        for i in 0..allowed_array.length() {
+            let item = allowed_array.get(i);
+            match item.as_string() {
+                Some(s) => {
+                    allowed_set.insert(s);
+                }
+                None => {
+                    return Err(format!("'allowed[{}]' must be a string", i));
+                }
+            }
+        }
+
+        Ok(PermissionRule::Conditional {
+            path: path_str,
+            allowed: allowed_set,
+        })
     }
 
     pub fn build_nodes(&mut self) -> Result<(), JsValue> {
