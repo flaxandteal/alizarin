@@ -117,6 +117,46 @@ pub fn add_collection_to_global_cache(collection: RdmCollection) {
     }
 }
 
+/// Add collections from SKOS XML directly to the global RDM cache.
+///
+/// This parses the SKOS XML and adds all collections to the global cache.
+/// If no global cache exists, creates one first.
+///
+/// Args:
+///     xml_content: SKOS XML string
+///     base_uri: Base URI for resolving relative URIs
+///
+/// Returns:
+///     List of collection IDs that were added
+///
+/// Example:
+///     ids = add_from_skos_xml_to_global_cache(xml_string, "http://example.org/")
+#[pyfunction]
+pub fn add_from_skos_xml_to_global_cache(xml_content: &str, base_uri: &str) -> PyResult<Vec<String>> {
+    let skos_collections = parse_skos_to_collections(xml_content, base_uri)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to parse SKOS XML: {}", e)
+        ))?;
+
+    let mut added_ids = Vec::new();
+
+    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
+        if guard.is_none() {
+            *guard = Some(RdmCache::default());
+        }
+        if let Some(ref mut cache) = *guard {
+            for skos_coll in skos_collections {
+                let rdm_collection = RdmCache::skos_to_rdm_collection(&skos_coll);
+                let id = rdm_collection.id.clone();
+                cache.inner.add_collection(rdm_collection);
+                added_ids.push(id);
+            }
+        }
+    }
+
+    Ok(added_ids)
+}
+
 // =============================================================================
 // Global RDM Namespace for UUID Generation
 // =============================================================================
@@ -663,20 +703,22 @@ impl RdmCollection {
     #[pyo3(signature = (label, id=None))]
     fn add_from_label(&mut self, py: Python, label: PyObject, id: Option<String>) -> PyResult<String> {
         // Extract pref_label as HashMap and get deterministic string for ID generation
+        // Labels are trimmed to normalize whitespace
         let (pref_label, label_string) = if let Ok(s) = label.extract::<String>(py) {
+            let trimmed = s.trim().to_string();
             let lang = get_current_language();
             let mut map = HashMap::new();
-            map.insert(lang, s.clone());
-            (map, s)
+            map.insert(lang, trimmed.clone());
+            (map, trimmed)
         } else if let Ok(dict) = label.downcast::<PyDict>(py) {
             let mut map = HashMap::new();
             for (key, value) in dict.iter() {
                 let lang: String = key.extract()?;
                 let label_str: String = value.extract()?;
-                map.insert(lang, label_str);
+                map.insert(lang, label_str.trim().to_string());
             }
-            // Get deterministic string from multilingual dict
-            let det_string = label_to_deterministic_string(py, &label)?;
+            // Get deterministic string from multilingual dict (uses trimmed values)
+            let det_string = label_to_deterministic_string(py, &label)?.trim().to_string();
             (map, det_string)
         } else {
             return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
@@ -733,20 +775,22 @@ impl RdmCollection {
         }
 
         // Extract pref_label as HashMap and get deterministic string for ID generation
+        // Labels are trimmed to normalize whitespace
         let (pref_label, label_string) = if let Ok(s) = label.extract::<String>(py) {
+            let trimmed = s.trim().to_string();
             let lang = get_current_language();
             let mut map = HashMap::new();
-            map.insert(lang, s.clone());
-            (map, s)
+            map.insert(lang, trimmed.clone());
+            (map, trimmed)
         } else if let Ok(dict) = label.downcast::<PyDict>(py) {
             let mut map = HashMap::new();
             for (key, value) in dict.iter() {
                 let lang: String = key.extract()?;
                 let label_str: String = value.extract()?;
-                map.insert(lang, label_str);
+                map.insert(lang, label_str.trim().to_string());
             }
-            // Get deterministic string from multilingual dict
-            let det_string = label_to_deterministic_string(py, &label)?;
+            // Get deterministic string from multilingual dict (uses trimmed values)
+            let det_string = label_to_deterministic_string(py, &label)?.trim().to_string();
             (map, det_string)
         } else {
             return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
@@ -1509,6 +1553,7 @@ pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(clear_global_rdm_cache, m)?)?;
     m.add_function(wrap_pyfunction!(has_global_rdm_cache, m)?)?;
     m.add_function(wrap_pyfunction!(add_collection_to_global_cache, m)?)?;
+    m.add_function(wrap_pyfunction!(add_from_skos_xml_to_global_cache, m)?)?;
 
     // Global RDM namespace functions for deterministic UUID generation
     m.add_function(wrap_pyfunction!(set_rdm_namespace, m)?)?;

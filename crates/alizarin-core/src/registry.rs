@@ -7,7 +7,7 @@
 /// Uses RwLock for thread-safe access, allowing multiple concurrent readers
 /// or exclusive write access. This works correctly with rayon's parallel iterators.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
 use crate::StaticGraph;
@@ -18,6 +18,19 @@ lazy_static::lazy_static! {
     /// Uses RwLock for thread-safe access across parallel threads
     static ref GRAPH_REGISTRY: RwLock<HashMap<String, Arc<StaticGraph>>> =
         RwLock::new(HashMap::new());
+
+    /// Registry of datatypes where the array IS the value (list types).
+    /// For these datatypes, arrays should NOT be iterated over during tree-to-tiles conversion.
+    /// Extensions can register their list datatypes here.
+    /// Core list types are registered at initialization.
+    static ref LIST_DATATYPE_REGISTRY: RwLock<HashSet<String>> = {
+        let mut set = HashSet::new();
+        // Core list datatypes where array is the value
+        set.insert("concept-list".to_string());
+        set.insert("resource-instance-list".to_string());
+        set.insert("domain-value-list".to_string());
+        RwLock::new(set)
+    };
 }
 
 /// Register a graph in the registry
@@ -72,6 +85,52 @@ pub fn registry_size() -> usize {
         .ok()
         .map(|registry| registry.len())
         .unwrap_or(0)
+}
+
+// ============================================================================
+// List Datatype Registry
+// ============================================================================
+
+/// Register a datatype as a list type.
+///
+/// List types are datatypes where the array IS the value (not multiple items).
+/// For these types, arrays should not be iterated during tree-to-tiles conversion.
+///
+/// Extensions should call this at initialization for their custom list datatypes.
+pub fn register_list_datatype(datatype: &str) {
+    if let Ok(mut registry) = LIST_DATATYPE_REGISTRY.write() {
+        registry.insert(datatype.to_string());
+    }
+}
+
+/// Check if a datatype is a registered list type.
+///
+/// Returns true if the datatype's array values should be treated as single values
+/// rather than iterated over.
+pub fn is_list_datatype(datatype: &str) -> bool {
+    LIST_DATATYPE_REGISTRY
+        .read()
+        .ok()
+        .map(|registry| registry.contains(datatype))
+        .unwrap_or(false)
+}
+
+/// Unregister a list datatype.
+pub fn unregister_list_datatype(datatype: &str) -> bool {
+    LIST_DATATYPE_REGISTRY
+        .write()
+        .ok()
+        .map(|mut registry| registry.remove(datatype))
+        .unwrap_or(false)
+}
+
+/// Get all registered list datatypes.
+pub fn list_datatypes() -> Vec<String> {
+    LIST_DATATYPE_REGISTRY
+        .read()
+        .ok()
+        .map(|registry| registry.iter().cloned().collect())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

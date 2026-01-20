@@ -269,13 +269,7 @@ impl PseudoValueCore {
 
         if let Some(ref inner) = self.inner {
             let children_json = inner.semantic_to_json(ctx);
-
-            if let Value::Object(mut children_map) = children_json {
-                if !own_value.is_null() {
-                    children_map.insert("_value".to_string(), own_value);
-                }
-                return Value::Object(children_map);
-            }
+            return ctx.serialization_options.merge_outer_with_children(own_value, children_json);
         }
 
         own_value
@@ -493,7 +487,7 @@ impl PseudoListCore {
         nodegroup_id: Option<String>,
         parent_nodegroup_id: Option<String>,
     ) -> Vec<&PseudoValueCore> {
-        self.values.iter()
+        let mut entries: Vec<&PseudoValueCore> = self.values.iter()
             .filter(|v| {
                 match v.tile.as_ref() {
                     Some(tile) => matches_tile_filter(
@@ -507,7 +501,16 @@ impl PseudoListCore {
                     None => parent_tile_id.is_none(),
                 }
             })
-            .collect()
+            .collect();
+
+        // Sort by sortorder to ensure consistent ordering (lowest first = primary)
+        entries.sort_by_key(|v| {
+            v.tile.as_ref()
+                .and_then(|t| t.sortorder)
+                .unwrap_or(i32::MAX)
+        });
+
+        entries
     }
 
     /// Convert to JSON
@@ -516,14 +519,22 @@ impl PseudoListCore {
             return Value::Null;
         }
 
+        // Sort values by sortorder for consistent output
+        let mut sorted_values: Vec<&PseudoValueCore> = self.values.iter().collect();
+        sorted_values.sort_by_key(|v| {
+            v.tile.as_ref()
+                .and_then(|t| t.sortorder)
+                .unwrap_or(i32::MAX)
+        });
+
         if self.is_single {
-            if let Some(first) = self.values.first() {
+            if let Some(first) = sorted_values.first() {
                 return first.to_json(ctx);
             }
             return Value::Null;
         }
 
-        let arr: Vec<Value> = self.values.iter()
+        let arr: Vec<Value> = sorted_values.iter()
             .map(|v| v.to_json(ctx))
             .filter(|v| !v.is_null())
             .collect();

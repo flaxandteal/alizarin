@@ -23,8 +23,20 @@ interface IStringKeyedObject {
 }
 
 type GetMeta = ((vm: IViewModel) => IStringKeyedObject) | undefined;
-// Phase 4h: Removed CheckPermission callback - permissions are now simple booleans checked in Rust
-// type CheckPermission = ((nodegroupId: string, tile: StaticTile | null, node: Map<string, StaticNode>) => boolean);
+
+/**
+ * Conditional permission rule for filtering tiles by data values.
+ * Tiles are permitted if the value at `path` is in the `allowed` set.
+ */
+interface ConditionalPermission {
+  /** JSON path to evaluate (e.g., ".data.uuid.field.name") */
+  path: string;
+  /** Set of allowed values - tile is permitted if value at path is in this set */
+  allowed: string[];
+}
+
+/** Permission value: boolean for simple allow/deny, or conditional rule */
+type PermissionValue = boolean | ConditionalPermission;
 
 interface IViewModel {
   _: IViewModel | undefined | Promise<IViewModel | null>;
@@ -71,8 +83,8 @@ interface IWKRM {
 
 interface IModelWrapper<T extends IRIVM<T>> {
   all(params: { limit?: number; lazy?: boolean } | undefined): Promise<Array<T>>;
-  // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
-  getPermittedNodegroups(): Map<string | null, boolean>;
+  // Supports both boolean and conditional permission rules
+  getPermittedNodegroups(): Map<string | null, PermissionValue>;
   isNodegroupPermitted(nodegroupId: string, tile: StaticTile | null): boolean;
   getChildNodes(nodeId: string): Map<string, StaticNode>;
   getNodeObjectsByAlias(): Map<string, StaticNode>;
@@ -108,4 +120,4 @@ interface IGraphManager {
   getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean): Promise<T>;
 }
 
-export type { CheckPermission, ISemantic, ResourceInstanceViewModelConstructor, GetMeta, IInstanceWrapper, IModelWrapper, IRIVM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo, INodeConfig, IGraphManager };
+export type { ConditionalPermission, PermissionValue, ISemantic, ResourceInstanceViewModelConstructor, GetMeta, IInstanceWrapper, IModelWrapper, IRIVM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo, INodeConfig, IGraphManager };

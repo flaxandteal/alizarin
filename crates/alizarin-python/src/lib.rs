@@ -24,7 +24,10 @@ use std::collections::HashMap;
 use alizarin_extension_api::{
     TypeHandlerInfo, CoerceFn, FreeFn,
     RenderDisplayFn, FreeDisplayFn,
+    ResolveMarkersFn, FreeResolveMarkersFn,
+    HasCollectionFn, ConceptLookupByIdFn, ConceptLookupByLabelFn, FreeConceptJsonFn,
 };
+use std::ffi::c_void;
 
 lazy_static::lazy_static! {
     /// Global registry of extension type handlers
@@ -39,6 +42,134 @@ struct RegisteredHandler {
     /// Optional display renderer (for toDisplayJson support)
     render_display_fn: Option<RenderDisplayFn>,
     free_display_fn: Option<FreeDisplayFn>,
+    /// Optional marker resolver (for resolving __needs_rdm_lookup etc.)
+    resolve_markers_fn: Option<ResolveMarkersFn>,
+    free_resolve_markers_fn: Option<FreeResolveMarkersFn>,
+}
+
+// =============================================================================
+// RDM Lookup Callbacks for Marker Resolution
+// =============================================================================
+
+use alizarin_core::rdm_cache::RdmCache as CoreRdmCache;
+
+/// C ABI callback to look up a concept by ID in the RDM cache
+///
+/// The user_data pointer points to an Arc<CoreRdmCache>
+unsafe extern "C" fn rdm_lookup_by_id(
+    user_data: *mut c_void,
+    collection_id_ptr: *const u8,
+    collection_id_len: usize,
+    concept_id_ptr: *const u8,
+    concept_id_len: usize,
+    concept_json_ptr: *mut *mut u8,
+    concept_json_len: *mut usize,
+) -> bool {
+    let cache = &*(user_data as *const CoreRdmCache);
+
+    let collection_id = match std::str::from_utf8(std::slice::from_raw_parts(collection_id_ptr, collection_id_len)) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    let concept_id = match std::str::from_utf8(std::slice::from_raw_parts(concept_id_ptr, concept_id_len)) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    // Look up the concept
+    if let Some(concept) = cache.lookup_concept(collection_id, concept_id) {
+        // Serialize to JSON
+        let json = serde_json::json!({
+            "id": concept.id,
+            "pref_label": concept.pref_label,
+            "alt_labels": concept.alt_labels,
+            "scope_notes": concept.scope_note,
+            "narrower": concept.narrower,
+        });
+
+        if let Ok(json_bytes) = serde_json::to_vec(&json) {
+            let len = json_bytes.len();
+            let ptr = Box::into_raw(json_bytes.into_boxed_slice()) as *mut u8;
+            *concept_json_ptr = ptr;
+            *concept_json_len = len;
+            return true;
+        }
+    }
+
+    false
+}
+
+/// C ABI callback to look up a concept by label in the RDM cache
+///
+/// The user_data pointer points to a CoreRdmCache
+unsafe extern "C" fn rdm_lookup_by_label(
+    user_data: *mut c_void,
+    collection_id_ptr: *const u8,
+    collection_id_len: usize,
+    label_ptr: *const u8,
+    label_len: usize,
+    concept_json_ptr: *mut *mut u8,
+    concept_json_len: *mut usize,
+) -> bool {
+    let cache = &*(user_data as *const CoreRdmCache);
+
+    let collection_id = match std::str::from_utf8(std::slice::from_raw_parts(collection_id_ptr, collection_id_len)) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    let label = match std::str::from_utf8(std::slice::from_raw_parts(label_ptr, label_len)) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    // Look up the concept by label
+    if let Some(concept) = cache.lookup_by_label(collection_id, label) {
+        // Serialize to JSON
+        let json = serde_json::json!({
+            "id": concept.id,
+            "pref_label": concept.pref_label,
+            "alt_labels": concept.alt_labels,
+            "scope_notes": concept.scope_note,
+            "narrower": concept.narrower,
+        });
+
+        if let Ok(json_bytes) = serde_json::to_vec(&json) {
+            let len = json_bytes.len();
+            let ptr = Box::into_raw(json_bytes.into_boxed_slice()) as *mut u8;
+            *concept_json_ptr = ptr;
+            *concept_json_len = len;
+            return true;
+        }
+    }
+
+    false
+}
+
+/// C ABI callback to free concept JSON returned by lookup functions
+unsafe extern "C" fn free_concept_json(ptr: *mut u8, len: usize) {
+    if !ptr.is_null() {
+        let _ = Box::from_raw(std::slice::from_raw_parts_mut(ptr, len));
+    }
+}
+
+/// C ABI callback to check if a collection exists in the RDM cache
+///
+/// The user_data pointer points to a CoreRdmCache
+unsafe extern "C" fn rdm_has_collection(
+    user_data: *mut c_void,
+    collection_id_ptr: *const u8,
+    collection_id_len: usize,
+) -> bool {
+    let cache = &*(user_data as *const CoreRdmCache);
+
+    let collection_id = match std::str::from_utf8(std::slice::from_raw_parts(collection_id_ptr, collection_id_len)) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+
+    cache.has_collection(collection_id)
 }
 
 /// Register a type handler from a PyCapsule
@@ -57,19 +188,24 @@ fn register_type_handler(capsule: &PyCapsule) -> PyResult<()> {
         ).to_string();
 
         let has_display = info.render_display_fn.is_some();
+        let has_markers = info.resolve_markers_fn.is_some();
 
         TYPE_HANDLERS.write().unwrap().insert(type_name.clone(), RegisteredHandler {
             coerce_fn: info.coerce_fn,
             free_fn: info.free_fn,
             render_display_fn: info.render_display_fn,
             free_display_fn: info.free_display_fn,
+            resolve_markers_fn: info.resolve_markers_fn,
+            free_resolve_markers_fn: info.free_resolve_markers_fn,
         });
 
-        if has_display {
-            println!("Registered type handler for: {} (with display renderer)", type_name);
-        } else {
-            println!("Registered type handler for: {}", type_name);
-        }
+        let features = match (has_display, has_markers) {
+            (true, true) => " (with display renderer, marker resolver)",
+            (true, false) => " (with display renderer)",
+            (false, true) => " (with marker resolver)",
+            (false, false) => "",
+        };
+        println!("Registered type handler for: {}{}", type_name, features);
     }
 
     Ok(())
@@ -207,6 +343,8 @@ use alizarin_core::{
     DEFAULT_CONFIG_KEYS,
     // Semantic child matching
     matches_semantic_child as core_matches_semantic_child,
+    // Permission rules
+    PermissionRule, evaluate_tile_path,
 };
 
 /// Build alias-to-collection mapping directly from StaticGraph.
@@ -483,6 +621,258 @@ fn batch_trees_to_tiles(
             // Set scopes if provided
             if let Some(ref scopes_val) = scopes_value {
                 resource.scopes = Some(scopes_val.clone());
+            }
+
+            serde_json::to_value(&resource)
+                .map_err(|e| format!("Tree {}: Failed to serialize: {}", i, e))
+        })
+        .collect();
+
+    // Separate successes and errors
+    let (successes, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
+    let resources: Vec<_> = successes.into_iter().map(Result::unwrap).collect();
+    let errors: Vec<_> = errors.into_iter().map(|e| e.unwrap_err()).collect();
+
+    // In strict mode, fail if any errors
+    if strict && !errors.is_empty() {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Strict mode error: {}", errors[0])
+        ));
+    }
+
+    // Return BusinessDataWrapper format with errors alongside
+    let output = serde_json::json!({
+        "business_data": {
+            "resources": resources
+        },
+        "errors": errors,
+        "error_count": errors.len()
+    });
+
+    pythonize::pythonize(py, &output)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to convert to Python: {}", e)
+        ))
+}
+
+/// Batch convert multiple JSON trees to tiles with extension coercion
+///
+/// This extends batch_trees_to_tiles by applying extension coercion to nodes
+/// with registered extension handlers (e.g., "reference" type from CLM extension).
+///
+/// Args:
+///     trees_json: Array of trees as JSON string
+///     graph_id: Graph ID (must be registered via register_graph first)
+///     from_camel: If True, convert keys from camelCase to snake_case
+///     strict: If True, fail on first error (including extension coercion errors)
+///     id_keys: Optional list of keys for deterministic UUID generation
+///     scopes: Optional JSON string to set as scopes on all resources
+///
+/// Returns:
+///     BusinessDataWrapper format with extension-coerced values:
+///     {business_data: {resources: [...]}, errors: [...], error_count: int}
+#[pyfunction]
+#[pyo3(signature = (trees_json, graph_id, from_camel=false, strict=false, id_keys=None, scopes=None, resolve_markers=true))]
+fn batch_trees_to_tiles_with_extensions(
+    py: Python,
+    trees_json: String,
+    graph_id: String,
+    from_camel: bool,
+    strict: bool,
+    id_keys: Option<Vec<String>>,
+    scopes: Option<String>,
+    resolve_markers: bool,
+) -> PyResult<PyObject> {
+    let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e)))?;
+
+    // Parse scopes if provided
+    let scopes_value: Option<serde_json::Value> = scopes
+        .map(|s| serde_json::from_str(&s))
+        .transpose()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to parse scopes: {}", e)
+        ))?;
+
+    // Validate id_keys length if provided
+    if let Some(ref keys) = id_keys {
+        if keys.len() != trees.len() {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                format!("id_keys length ({}) must match trees length ({})", keys.len(), trees.len())
+            ));
+        }
+    }
+
+    // Get graph from registry
+    let graph = get_registered_graph(&graph_id)?;
+
+    // Build lookup of node_id -> (datatype, config) for extension coercion
+    let mut node_lookup: std::collections::HashMap<String, (String, Option<serde_json::Value>)> =
+        std::collections::HashMap::new();
+    for node in &graph.nodes {
+        // node.config is HashMap<String, Value> - convert to serde_json::Value if not empty
+        let config_value = if node.config.is_empty() {
+            None
+        } else {
+            Some(serde_json::to_value(&node.config).unwrap_or(serde_json::Value::Null))
+        };
+        node_lookup.insert(node.nodeid.clone(), (node.datatype.clone(), config_value));
+    }
+
+    // Get registered handlers (read lock once)
+    let handlers = TYPE_HANDLERS.read().unwrap();
+
+    // Get global RDM cache's inner (CoreRdmCache) for marker resolution (if enabled)
+    // We clone the inner cache to make it thread-safe for parallel iteration
+    let core_cache: Option<Arc<CoreRdmCache>> = if resolve_markers {
+        rdm_cache_py::get_global_rdm_cache()
+            .map(|cache| Arc::new(cache.inner().clone()))
+    } else {
+        None
+    };
+
+    let results: Vec<Result<serde_json::Value, String>> = trees
+        .into_par_iter()
+        .enumerate()
+        .map(|(i, mut tree)| {
+            if from_camel { tree = transform_keys_to_snake(tree); }
+
+            // Add graph_id to tree if not present
+            if let serde_json::Value::Object(ref mut map) = tree {
+                if !map.contains_key("graph_id") {
+                    map.insert("graph_id".to_string(), serde_json::Value::String(graph_id.clone()));
+                }
+            }
+
+            // Get id_key for this tree (if id_keys array provided)
+            let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
+
+            let mut business_data = if strict {
+                tree_to_tiles_strict_with_id_key(&tree, &*graph, id_key_ref)
+            } else {
+                tree_to_tiles_with_id_key(&tree, &*graph, id_key_ref)
+            }.map_err(|e| format!("Tree {}: {}", i, e))?;
+
+            // Extract first resource
+            let mut resource = business_data.business_data.resources.into_iter().next()
+                .ok_or_else(|| format!("Tree {}: No resources returned", i))?;
+
+            // Set scopes if provided
+            if let Some(ref scopes_val) = scopes_value {
+                resource.scopes = Some(scopes_val.clone());
+            }
+
+            // Apply extension coercion to each tile's data
+            if let Some(ref mut tiles) = resource.tiles {
+                for tile in tiles.iter_mut() {
+                    let mut new_data = std::collections::HashMap::new();
+                    let mut coercion_errors: Vec<String> = Vec::new();
+
+                    for (node_id, value) in tile.data.iter() {
+                        if let Some((datatype, config)) = node_lookup.get(node_id) {
+                            // Check if there's a registered extension handler for this datatype
+                            if let Some(handler) = handlers.get(datatype) {
+                                // Call extension coercion
+                                let value_json = serde_json::to_string(value)
+                                    .map_err(|e| format!("Failed to serialize value: {}", e))?;
+                                let config_json = config.as_ref()
+                                    .map(|c| serde_json::to_string(c).unwrap_or_default())
+                                    .unwrap_or_else(|| "null".to_string());
+
+                                unsafe {
+                                    let result = (handler.coerce_fn)(
+                                        value_json.as_ptr(),
+                                        value_json.len(),
+                                        config_json.as_ptr(),
+                                        config_json.len(),
+                                    );
+
+                                    if result.error_ptr.is_null() {
+                                        // Success - parse coerced value
+                                        let tile_json = std::str::from_utf8_unchecked(
+                                            std::slice::from_raw_parts(result.json_ptr, result.json_len)
+                                        );
+                                        let mut coerced_value: serde_json::Value = serde_json::from_str(tile_json)
+                                            .unwrap_or(value.clone());
+                                        (handler.free_fn)(result);
+
+                                        // Apply marker resolution if enabled and handler supports it
+                                        if let (Some(resolve_fn), Some(free_fn), Some(ref cache)) = (
+                                            handler.resolve_markers_fn,
+                                            handler.free_resolve_markers_fn,
+                                            &core_cache
+                                        ) {
+                                            let coerced_json = serde_json::to_string(&coerced_value)
+                                                .unwrap_or_default();
+                                            let cache_ptr = Arc::as_ptr(cache) as *mut c_void;
+
+                                            let resolve_result = resolve_fn(
+                                                coerced_json.as_ptr(),
+                                                coerced_json.len(),
+                                                config_json.as_ptr(),
+                                                config_json.len(),
+                                                rdm_has_collection,
+                                                rdm_lookup_by_id,
+                                                rdm_lookup_by_label,
+                                                free_concept_json,
+                                                cache_ptr,
+                                            );
+
+                                            if resolve_result.modified && !resolve_result.json_ptr.is_null() {
+                                                // Use resolved value
+                                                let resolved_json = std::str::from_utf8_unchecked(
+                                                    std::slice::from_raw_parts(resolve_result.json_ptr, resolve_result.json_len)
+                                                );
+                                                if let Ok(resolved) = serde_json::from_str(resolved_json) {
+                                                    coerced_value = resolved;
+                                                }
+                                                free_fn(resolve_result);
+                                            } else if !resolve_result.error_ptr.is_null() {
+                                                // Marker resolution error
+                                                let error = std::str::from_utf8_unchecked(
+                                                    std::slice::from_raw_parts(resolve_result.error_ptr, resolve_result.error_len)
+                                                ).to_string();
+                                                free_fn(resolve_result);
+
+                                                if strict {
+                                                    return Err(format!("Tree {}, Node {}: Marker resolution failed: {}", i, node_id, error));
+                                                } else {
+                                                    coercion_errors.push(format!("Node {} marker resolution: {}", node_id, error));
+                                                }
+                                            } else {
+                                                free_fn(resolve_result);
+                                            }
+                                        }
+
+                                        new_data.insert(node_id.clone(), coerced_value);
+                                    } else {
+                                        // Error from extension coercion
+                                        let error = std::str::from_utf8_unchecked(
+                                            std::slice::from_raw_parts(result.error_ptr, result.error_len)
+                                        ).to_string();
+                                        (handler.free_fn)(result);
+
+                                        if strict {
+                                            return Err(format!("Tree {}, Node {}: Extension coercion failed: {}", i, node_id, error));
+                                        } else {
+                                            coercion_errors.push(format!("Node {}: {}", node_id, error));
+                                            // Keep original value on non-strict error
+                                            new_data.insert(node_id.clone(), value.clone());
+                                        }
+                                    }
+                                }
+                            } else {
+                                // No extension handler - keep original value
+                                new_data.insert(node_id.clone(), value.clone());
+                            }
+                        } else {
+                            // Node not found in graph - keep original value
+                            new_data.insert(node_id.clone(), value.clone());
+                        }
+                    }
+
+                    tile.data = new_data;
+                }
             }
 
             serde_json::to_value(&resource)
@@ -859,7 +1249,7 @@ fn transform_keys_to_snake(value: serde_json::Value) -> serde_json::Value {
 #[pyclass]
 struct PyResourceModelWrapper {
     graph: std::sync::Arc<AlizarinCoreStaticGraph>,
-    permitted_nodegroups: HashMap<String, bool>,
+    permitted_nodegroups: HashMap<String, PermissionRule>,
 }
 
 #[pymethods]
@@ -875,14 +1265,121 @@ impl PyResourceModelWrapper {
         })
     }
 
-    /// Set permitted nodegroups
-    fn set_permitted_nodegroups(&mut self, permissions: HashMap<String, bool>) {
-        self.permitted_nodegroups = permissions;
+    /// Set permitted nodegroups with support for both boolean and conditional rules.
+    ///
+    /// Accepts a dict where values can be:
+    /// - bool: True/False for simple allow/deny
+    /// - dict: {"path": ".data.uuid.field", "allowed": ["value1", "value2"]}
+    ///   for conditional filtering based on tile data
+    ///
+    /// Raises ValueError if any permission rule is invalid.
+    fn set_permitted_nodegroups(&mut self, py: Python, permissions: PyObject) -> PyResult<()> {
+        use pyo3::types::PyDict;
+
+        let dict = permissions.downcast_bound::<PyDict>(py)
+            .map_err(|_| PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                "permissions must be a dict"
+            ))?;
+
+        let mut perms: HashMap<String, PermissionRule> = HashMap::new();
+        let mut errors: Vec<String> = Vec::new();
+
+        for (key, value) in dict.iter() {
+            let key_str: String = key.extract()
+                .map_err(|_| {
+                    errors.push(format!("Invalid key (not a string): {:?}", key));
+                })
+                .unwrap_or_default();
+
+            if key_str.is_empty() && !errors.is_empty() {
+                continue;
+            }
+
+            // Check if it's a boolean
+            if let Ok(bool_val) = value.extract::<bool>() {
+                perms.insert(key_str, PermissionRule::Boolean(bool_val));
+                continue;
+            }
+
+            // Check if it's a dict (conditional permission)
+            if let Ok(cond_dict) = value.downcast::<PyDict>() {
+                match Self::parse_conditional_rule(cond_dict) {
+                    Ok(rule) => {
+                        perms.insert(key_str, rule);
+                    }
+                    Err(e) => {
+                        errors.push(format!("Invalid conditional rule for '{}': {}", key_str, e));
+                    }
+                }
+                continue;
+            }
+
+            errors.push(format!(
+                "Invalid permission value for '{}': expected bool or {{path, allowed}} dict",
+                key_str
+            ));
+        }
+
+        if !errors.is_empty() {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                format!("Permission validation errors:\n  - {}", errors.join("\n  - "))
+            ));
+        }
+
+        self.permitted_nodegroups = perms;
+        Ok(())
     }
 
-    /// Check if a nodegroup is permitted
+    /// Check if a nodegroup is permitted (for nodegroup-level filtering)
     fn is_nodegroup_permitted(&self, nodegroup_id: &str) -> bool {
-        self.permitted_nodegroups.get(nodegroup_id).copied().unwrap_or(true)
+        self.permitted_nodegroups
+            .get(nodegroup_id)
+            .map(|rule| rule.permits_nodegroup())
+            .unwrap_or(true)
+    }
+
+    /// Check if a specific tile is permitted by the permission rules.
+    ///
+    /// Args:
+    ///     nodegroup_id: The nodegroup ID
+    ///     tile_json: JSON string of the tile data
+    ///
+    /// Returns:
+    ///     True if the tile is permitted
+    fn is_tile_permitted(&self, py: Python, nodegroup_id: &str, tile_json: &str) -> PyResult<bool> {
+        let tile: AlizarinStaticTile = serde_json::from_str(tile_json)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                format!("Failed to parse tile JSON: {}", e)
+            ))?;
+
+        let result = match self.permitted_nodegroups.get(nodegroup_id) {
+            Some(rule) => {
+                let permitted = rule.permits_tile(&tile);
+
+                // Debug logging for conditional filtering
+                if let PermissionRule::Conditional { path, allowed } = rule {
+                    let tile_id = tile.tileid.as_deref().unwrap_or("(no id)");
+                    let value = evaluate_tile_path(&tile, path);
+
+                    // Log via Python's logging module
+                    if let Ok(logging) = py.import("logging") {
+                        if let Ok(logger) = logging.call_method1("getLogger", ("alizarin",)) {
+                            let _ = logger.call_method1("debug",
+                                (format!(
+                                    "[alizarin] Conditional filter: nodegroup={}, tile={}, path={}, value={:?}, allowed={:?}, permitted={}",
+                                    nodegroup_id, tile_id, path, value, allowed, permitted
+                                ),)
+                            );
+                        }
+                    }
+                }
+
+                permitted
+            }
+            None => true, // Default to permitted
+        };
+
+        Ok(result)
     }
 
     /// Export graph as JSON
@@ -895,6 +1392,49 @@ impl PyResourceModelWrapper {
         let json_module = py.import("json")?;
         let py_dict = json_module.call_method1("loads", (graph_json,))?;
         Ok(py_dict.to_object(py))
+    }
+}
+
+impl PyResourceModelWrapper {
+    /// Parse a conditional permission rule from a Python dict
+    /// Expected format: {"path": ".data.uuid.field", "allowed": ["value1", "value2"]}
+    fn parse_conditional_rule(dict: &Bound<'_, pyo3::types::PyDict>) -> Result<PermissionRule, String> {
+        use std::collections::HashSet;
+
+        // Get the "path" property
+        let path = dict.get_item("path")
+            .map_err(|_| "failed to read 'path' key")?
+            .ok_or("'path' key is required")?;
+        let path_str: String = path.extract()
+            .map_err(|_| "'path' must be a string")?;
+
+        if path_str.is_empty() {
+            return Err("'path' cannot be empty".to_string());
+        }
+
+        // Get the "allowed" property (should be a list)
+        let allowed = dict.get_item("allowed")
+            .map_err(|_| "failed to read 'allowed' key")?
+            .ok_or("'allowed' key is required")?;
+        let allowed_list = allowed.downcast::<pyo3::types::PyList>()
+            .map_err(|_| "'allowed' must be a list")?;
+
+        if allowed_list.is_empty() {
+            return Err("'allowed' list cannot be empty".to_string());
+        }
+
+        // Convert to HashSet<String>
+        let mut allowed_set = HashSet::new();
+        for (i, item) in allowed_list.iter().enumerate() {
+            let s: String = item.extract()
+                .map_err(|_| format!("'allowed[{}]' must be a string", i))?;
+            allowed_set.insert(s);
+        }
+
+        Ok(PermissionRule::Conditional {
+            path: path_str,
+            allowed: allowed_set,
+        })
     }
 }
 
@@ -995,6 +1535,33 @@ fn register_graph(graph_json: String) -> PyResult<String> {
     alizarin_core::register_graph_owned(graph);
 
     Ok(graph_id)
+}
+
+/// Register a datatype as a list type.
+///
+/// List types are datatypes where the array IS the value (not multiple items).
+/// Extensions should call this at initialization for their custom list datatypes.
+///
+/// Example:
+///     alizarin.register_list_datatype("reference")  # CLM reference type
+#[pyfunction]
+fn register_list_datatype(datatype: &str) {
+    alizarin_core::register_list_datatype(datatype);
+}
+
+/// Check if a datatype is a registered list type.
+///
+/// Returns True if arrays for this datatype should be treated as single values
+/// rather than iterated over during tree-to-tiles conversion.
+#[pyfunction]
+fn is_list_datatype(datatype: &str) -> bool {
+    alizarin_core::is_list_datatype(datatype)
+}
+
+/// Get all registered list datatypes.
+#[pyfunction]
+fn list_datatypes() -> Vec<String> {
+    alizarin_core::list_datatypes()
 }
 
 /// Recursively sort all object keys in a JSON value for deterministic output.
@@ -1188,12 +1755,18 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(register_graph, m)?)?;
     m.add_function(wrap_pyfunction!(get_graph_json, m)?)?;
 
+    // List datatype registry (for datatypes where array IS the value)
+    m.add_function(wrap_pyfunction!(register_list_datatype, m)?)?;
+    m.add_function(wrap_pyfunction!(is_list_datatype, m)?)?;
+    m.add_function(wrap_pyfunction!(list_datatypes, m)?)?;
+
     // Low-level tree conversion functions (for compatibility)
     m.add_function(wrap_pyfunction!(tiles_to_json_tree, m)?)?;
     m.add_function(wrap_pyfunction!(json_tree_to_tiles, m)?)?;
 
     // Batch conversion functions (parallel processing with Rayon)
     m.add_function(wrap_pyfunction!(batch_trees_to_tiles, m)?)?;
+    m.add_function(wrap_pyfunction!(batch_trees_to_tiles_with_extensions, m)?)?;
     m.add_function(wrap_pyfunction!(batch_tiles_to_trees, m)?)?;
 
     // Streaming iterator (low memory, processes one tree at a time)

@@ -193,6 +193,169 @@ pub type RenderDisplayFn = unsafe extern "C" fn(
 /// Function signature for freeing RenderDisplayResult
 pub type FreeDisplayFn = unsafe extern "C" fn(result: RenderDisplayResult);
 
+// =============================================================================
+// Marker Resolution API
+// =============================================================================
+
+/// Result of a marker resolution operation
+///
+/// Extensions use this to resolve `__needs_rdm_lookup` and similar markers
+/// to full resolved values (e.g., StaticReference with embedded labels).
+#[repr(C)]
+pub struct ResolveMarkersResult {
+    /// Resolved JSON (null if error or no change)
+    pub json_ptr: *mut u8,
+    pub json_len: usize,
+
+    /// Whether the value was modified (false if no markers found)
+    pub modified: bool,
+
+    /// Error message (null if success)
+    pub error_ptr: *mut u8,
+    pub error_len: usize,
+}
+
+impl ResolveMarkersResult {
+    /// Create a successful result with resolved value
+    pub fn success(json: Vec<u8>) -> Self {
+        let len = json.len();
+        let ptr = Box::into_raw(json.into_boxed_slice()) as *mut u8;
+
+        ResolveMarkersResult {
+            json_ptr: ptr,
+            json_len: len,
+            modified: true,
+            error_ptr: std::ptr::null_mut(),
+            error_len: 0,
+        }
+    }
+
+    /// Create a result indicating no modification was needed
+    pub fn unchanged() -> Self {
+        ResolveMarkersResult {
+            json_ptr: std::ptr::null_mut(),
+            json_len: 0,
+            modified: false,
+            error_ptr: std::ptr::null_mut(),
+            error_len: 0,
+        }
+    }
+
+    /// Create an error result
+    pub fn error(message: String) -> Self {
+        let bytes = message.into_bytes();
+        let len = bytes.len();
+        let ptr = Box::into_raw(bytes.into_boxed_slice()) as *mut u8;
+
+        ResolveMarkersResult {
+            json_ptr: std::ptr::null_mut(),
+            json_len: 0,
+            modified: false,
+            error_ptr: ptr,
+            error_len: len,
+        }
+    }
+
+    /// Check if this result is an error
+    pub fn is_error(&self) -> bool {
+        !self.error_ptr.is_null()
+    }
+}
+
+/// Callback to lookup a concept by ID in the RDM cache
+///
+/// Returns true if concept was found, false otherwise.
+/// If found, writes concept JSON to output pointers.
+pub type ConceptLookupByIdFn = unsafe extern "C" fn(
+    user_data: *mut c_void,
+    collection_id_ptr: *const u8,
+    collection_id_len: usize,
+    concept_id_ptr: *const u8,
+    concept_id_len: usize,
+    // Output
+    concept_json_ptr: *mut *mut u8,
+    concept_json_len: *mut usize,
+) -> bool;
+
+/// Callback to lookup a concept by label in the RDM cache
+///
+/// Returns true if concept was found, false otherwise.
+/// If found, writes concept JSON to output pointers.
+pub type ConceptLookupByLabelFn = unsafe extern "C" fn(
+    user_data: *mut c_void,
+    collection_id_ptr: *const u8,
+    collection_id_len: usize,
+    label_ptr: *const u8,
+    label_len: usize,
+    // Output
+    concept_json_ptr: *mut *mut u8,
+    concept_json_len: *mut usize,
+) -> bool;
+
+/// Callback to free concept JSON returned by lookup functions
+pub type FreeConceptJsonFn = unsafe extern "C" fn(ptr: *mut u8, len: usize);
+
+/// Callback to check if a collection exists in the RDM cache
+///
+/// Returns true if the collection is in the cache, false otherwise.
+/// Use this to check collection existence before attempting lookups,
+/// enabling clear error messages for missing collections.
+pub type HasCollectionFn = unsafe extern "C" fn(
+    user_data: *mut c_void,
+    collection_id_ptr: *const u8,
+    collection_id_len: usize,
+) -> bool;
+
+/// Function signature for marker resolution
+///
+/// Extensions implement this to resolve markers (e.g., `__needs_rdm_lookup`)
+/// in coerced values to fully resolved objects.
+///
+/// # Arguments
+/// * `value_ptr` - JSON string of the value (may contain markers)
+/// * `value_len` - Length of value JSON
+/// * `config_ptr` - JSON string of node config (contains collection ID)
+/// * `config_len` - Length of config JSON
+/// * `has_collection` - Callback to check if collection is in cache
+/// * `lookup_by_id` - Callback to lookup concept by ID
+/// * `lookup_by_label` - Callback to lookup concept by label
+/// * `free_concept_json` - Callback to free concept JSON from lookups
+/// * `lookup_user_data` - Opaque pointer passed to lookup callbacks
+///
+/// # Returns
+/// * `ResolveMarkersResult` - The resolved value or unchanged/error
+pub type ResolveMarkersFn = unsafe extern "C" fn(
+    value_ptr: *const u8,
+    value_len: usize,
+    config_ptr: *const u8,
+    config_len: usize,
+    has_collection: HasCollectionFn,
+    lookup_by_id: ConceptLookupByIdFn,
+    lookup_by_label: ConceptLookupByLabelFn,
+    free_concept_json: FreeConceptJsonFn,
+    lookup_user_data: *mut c_void,
+) -> ResolveMarkersResult;
+
+/// Function signature for freeing ResolveMarkersResult
+pub type FreeResolveMarkersFn = unsafe extern "C" fn(result: ResolveMarkersResult);
+
+/// Standard free function for ResolveMarkersResult
+#[no_mangle]
+pub unsafe extern "C" fn alizarin_free_resolve_markers_result(result: ResolveMarkersResult) {
+    if !result.json_ptr.is_null() {
+        let _ = Box::from_raw(std::slice::from_raw_parts_mut(
+            result.json_ptr,
+            result.json_len,
+        ));
+    }
+    if !result.error_ptr.is_null() {
+        let _ = Box::from_raw(std::slice::from_raw_parts_mut(
+            result.error_ptr,
+            result.error_len,
+        ));
+    }
+}
+
 /// Standard free function for RenderDisplayResult
 #[no_mangle]
 pub unsafe extern "C" fn alizarin_free_render_display_result(result: RenderDisplayResult) {
@@ -217,7 +380,8 @@ pub unsafe extern "C" fn alizarin_free_render_display_result(result: RenderDispl
 /// Handler registration info passed via PyCapsule
 ///
 /// Extensions must provide coerce_fn and free_fn.
-/// render_display_fn and free_display_fn are optional (null if not implemented).
+/// render_display_fn, free_display_fn, resolve_markers_fn, and free_resolve_markers_fn
+/// are optional (null if not implemented).
 #[repr(C)]
 pub struct TypeHandlerInfo {
     /// Datatype name (e.g., "reference")
@@ -237,13 +401,20 @@ pub struct TypeHandlerInfo {
     /// Free function for RenderDisplayResult (optional - null if render_display_fn is null)
     pub free_display_fn: Option<FreeDisplayFn>,
 
+    /// Marker resolution function (optional - null if not implemented)
+    /// Called after coercion to resolve __needs_rdm_lookup and similar markers
+    pub resolve_markers_fn: Option<ResolveMarkersFn>,
+
+    /// Free function for ResolveMarkersResult (optional - null if resolve_markers_fn is null)
+    pub free_resolve_markers_fn: Option<FreeResolveMarkersFn>,
+
     /// Opaque data pointer (for extension use)
     pub user_data: *mut c_void,
 }
 
 /// Helper to create a TypeHandlerInfo
 impl TypeHandlerInfo {
-    /// Create a handler without display rendering support
+    /// Create a handler without display rendering or marker resolution support
     pub fn new(
         type_name: &'static str,
         coerce_fn: CoerceFn,
@@ -256,6 +427,8 @@ impl TypeHandlerInfo {
             free_fn,
             render_display_fn: None,
             free_display_fn: None,
+            resolve_markers_fn: None,
+            free_resolve_markers_fn: None,
             user_data: std::ptr::null_mut(),
         }
     }
@@ -275,6 +448,31 @@ impl TypeHandlerInfo {
             free_fn,
             render_display_fn: Some(render_display_fn),
             free_display_fn: Some(free_display_fn),
+            resolve_markers_fn: None,
+            free_resolve_markers_fn: None,
+            user_data: std::ptr::null_mut(),
+        }
+    }
+
+    /// Create a handler with display rendering and marker resolution support
+    pub fn with_display_and_markers(
+        type_name: &'static str,
+        coerce_fn: CoerceFn,
+        free_fn: FreeFn,
+        render_display_fn: RenderDisplayFn,
+        free_display_fn: FreeDisplayFn,
+        resolve_markers_fn: ResolveMarkersFn,
+        free_resolve_markers_fn: FreeResolveMarkersFn,
+    ) -> Self {
+        TypeHandlerInfo {
+            type_name_ptr: type_name.as_ptr(),
+            type_name_len: type_name.len(),
+            coerce_fn,
+            free_fn,
+            render_display_fn: Some(render_display_fn),
+            free_display_fn: Some(free_display_fn),
+            resolve_markers_fn: Some(resolve_markers_fn),
+            free_resolve_markers_fn: Some(free_resolve_markers_fn),
             user_data: std::ptr::null_mut(),
         }
     }
@@ -282,6 +480,11 @@ impl TypeHandlerInfo {
     /// Check if this handler supports display rendering
     pub fn has_display_renderer(&self) -> bool {
         self.render_display_fn.is_some()
+    }
+
+    /// Check if this handler supports marker resolution
+    pub fn has_marker_resolver(&self) -> bool {
+        self.resolve_markers_fn.is_some()
     }
 }
 

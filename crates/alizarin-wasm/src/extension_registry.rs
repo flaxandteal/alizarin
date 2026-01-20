@@ -85,9 +85,13 @@ impl ExtensionDisplaySerializer for JsDisplaySerializer {
             let serializers = serializers.borrow();
 
             if let Some(callback) = serializers.get(&self.datatype) {
-                // Convert tile_data to JsValue
-                let js_tile_data = serde_wasm_bindgen::to_value(tile_data)
-                    .unwrap_or(JsValue::NULL);
+                // Convert tile_data to JsValue via JSON string (more reliable than serde_wasm_bindgen)
+                let js_tile_data = match serde_json::to_string(tile_data) {
+                    Ok(json_str) => {
+                        js_sys::JSON::parse(&json_str).unwrap_or(JsValue::NULL)
+                    }
+                    Err(_) => JsValue::NULL,
+                };
 
                 let js_language = JsValue::from_str(&options.language);
 

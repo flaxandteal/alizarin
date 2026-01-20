@@ -19,13 +19,16 @@ import {
 import { PseudoValue, PseudoList, PseudoUnavailable, wrapRustPseudo } from "./pseudos.ts";
 import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper, newWASMResourceInstanceWrapperForResource, newWASMResourceInstanceWrapperForModel } from "../pkg/alizarin";
 import { ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
-import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor } from "./interfaces";
+import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor, ConditionalPermission, PermissionValue } from "./interfaces";
 import { nodeConfigManager } from "./nodeConfig.ts";
 import { generateUuidv5, AttrPromise, serializeValuesMap } from "./utils";
 
 // Import and re-export timing functions from dedicated module (avoids circular imports)
 import { recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings } from './wasmTiming';
 export { recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings };
+
+// Re-export permission types for external use
+export type { ConditionalPermission, PermissionValue } from "./interfaces";
 
 class ConfigurationOptions {
   graphs: Array<string> | null | boolean = null;
@@ -805,8 +808,8 @@ class GraphMutator {
 
 class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWrapper {
   viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>;
-  // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
-  permittedNodegroups?: Map<string, boolean>;
+  // Supports both boolean and conditional permission rules
+  permittedNodegroups?: Map<string, PermissionValue>;
   pruneTiles: boolean = true;
 
   constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow: boolean) {
@@ -975,39 +978,42 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     return x;
   }
 
-  // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
-  setPermittedNodegroups(permissions: Map<string, boolean>) {
+  // Supports both boolean and conditional permission rules
+  setPermittedNodegroups(permissions: Map<string, PermissionValue>) {
     const nodegroups = this.getNodegroupObjects();
     const nodes = this.getNodeObjectsByAlias();
-    this.permittedNodegroups = new Map([...permissions].map(([key, value]): [key: string, value: boolean] => {
+
+    this.permittedNodegroups = new Map([...permissions].map(([key, value]): [string, PermissionValue] => {
       const k = key ?? '';  // Convert null/undefined to empty string
-      if (!(typeof value === "boolean")) {
-        console.error("For now, Rust cannot handle JS callbacks for permissions - setting to false for", key);
-        value = false;
-      }
+
+      // Resolve key to nodegroup ID if it's an alias
+      let resolvedKey: string;
       if (nodegroups.has(k) || k === '') {
-        return [k, value];  // Use normalized key (not original)
+        resolvedKey = k;  // Use normalized key (not original)
       } else {
         const node = nodes.get(k);
         if (node) {
           // The nodeid is the nodegroup ID of the children, but may not be the nodegroup ID of
           // the semantic node itself.
-          return [node.nodeid ?? '', value];  // Ensure nodeid is not null
+          resolvedKey = node.nodeid ?? '';  // Ensure nodeid is not null
         } else {
           throw Error(`Could not find ${key} in nodegroups for permissions`);
         }
       }
+
+      return [resolvedKey, value];
     }));
+
     // Also propagate to WASM for pruneGraph to work correctly
     super.setPermittedNodegroups(this.permittedNodegroups);
   }
 
   // Defaults to visible, which helps reduce the risk of false sense of security
   // from front-end filtering masking the presence of data transferred to it.
-  // Phase 4h: Simplified to boolean-only (removed CheckPermission callback)
-  getPermittedNodegroups(): Map<string, boolean> {
+  getPermittedNodegroups(): Map<string, PermissionValue> {
     if (!this.permittedNodegroups) {
-      const permissions = new Map([...this.getNodegroupObjects()].map(
+      // Auto-initializing with all-true permissions - this will overwrite any WASM-side permissions
+      const permissions: Map<string, PermissionValue> = new Map([...this.getNodegroupObjects()].map(
         ([k, _]: [k: string, _: StaticNodegroup]) => [k ?? '', true]  // Ensure key is not null
       ));
       permissions.set("", true); // Have to have access to root node.
@@ -1021,16 +1027,21 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
     return permittedNodegroups;
   }
 
-  // Phase 4h: Simplified - no callback, just boolean lookup
+  // Check if a nodegroup is permitted (for JS-side checks)
+  // Note: Conditional rules mean the nodegroup is permitted, but individual tiles may be filtered in Rust
   isNodegroupPermitted(nodegroupId: string, _tile: StaticTile | null): boolean {
     const permitted = this.getPermittedNodegroups().get(nodegroupId ?? '');
-    if (!permitted) {
+    if (permitted === undefined || permitted === false) {
       return false;
     }
     if (permitted === true) {
       return true;
     }
-    throw Error(`Ambiguous permission state: ${permitted} for nodegroup ${nodegroupId}`);
+    // Conditional permission - nodegroup is permitted, tiles are filtered in Rust
+    if (typeof permitted === 'object' && 'path' in permitted && 'allowed' in permitted) {
+      return true;  // Nodegroup permitted; tile filtering happens in Rust
+    }
+    throw Error(`Ambiguous permission state: ${JSON.stringify(permitted)} for nodegroup ${nodegroupId}`);
   }
 
   makeInstance(id: string, resource: StaticResource | null, pruneTiles?: boolean, lazy: boolean = false): RIVM {

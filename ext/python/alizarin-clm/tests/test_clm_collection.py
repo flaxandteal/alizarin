@@ -126,9 +126,12 @@ def test_collection_as_resource_references():
             }
         ]
 
+        # Register graph before conversion
+        graph_id = alizarin.register_graph(json.dumps(graph_data))
+
         result = alizarin.batch_trees_to_tiles(
             trees_json=json.dumps(trees),
-            graph_json=json.dumps(graph_data),
+            graph_id=graph_id,
             from_camel=False,
             strict=True
         )
@@ -238,9 +241,12 @@ def test_collection_as_concepts():
             }
         ]
 
+        # Register graph before conversion
+        graph_id = alizarin.register_graph(json.dumps(graph_data))
+
         result = alizarin.batch_trees_to_tiles(
             trees_json=json.dumps(trees),
-            graph_json=json.dumps(graph_data),
+            graph_id=graph_id,
             from_camel=False,
             strict=True
         )
@@ -383,9 +389,12 @@ def test_skos_roundtrip_with_person_model():
                 }
             ]
 
+            # Register graph before conversion
+            graph_id = alizarin.register_graph(json.dumps(graph_data))
+
             result = alizarin.batch_trees_to_tiles(
                 trees_json=json.dumps(trees),
-                graph_json=json.dumps(graph_data),
+                graph_id=graph_id,
                 from_camel=False,
                 strict=True
             )

@@ -46,7 +46,9 @@ declare module 'alizarin' {
     }
     export interface StaticCollection {
       id: string;
-      getReferenceValue?(id: string): any;
+      // Internal concept/value lookups used by CLM helper functions
+      __allConcepts?: { [conceptId: string]: any };
+      __values?: { [valueId: string]: any };
     }
   }
 

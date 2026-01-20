@@ -633,9 +633,23 @@ impl WASMResourceInstanceWrapper {
     }
 
     fn load_tiles_internal(&self, tiles: Vec<StaticTile>, append: bool, assume_tiles_comprehensive_for_nodegroup: bool) -> Result<(), JsValue> {
+        use alizarin_core::PermissionRule;
+
         self.check_tiles(&tiles)?;
 
         let lazy = *self.lazy.borrow();
+
+        // Get permission rules from model (cloned for use in filter)
+        // This allows conditional filtering based on tile data values
+        let permission_rules: Option<HashMap<String, PermissionRule>> = self.with_model_core(|model_core| {
+            // Clone permission rules if they exist - one-time cost at load time
+            Ok(model_core.permitted_nodegroups.clone())
+        }).ok().flatten();
+
+        // Get default_allow from model
+        let default_allow: bool = self.with_model_core(|model_core| {
+            Ok(model_core.default_allow)
+        }).unwrap_or(true);
 
         {
             let mut core = self.core.borrow_mut();
@@ -652,6 +666,17 @@ impl WASMResourceInstanceWrapper {
 
             // Store tiles and build index
             for mut tile in tiles {
+                // Apply permission filter - skip tiles that don't pass conditional rules
+                if let Some(ref rules) = permission_rules {
+                    if let Some(rule) = rules.get(&tile.nodegroup_id) {
+                        if !rule.permits_tile(&tile) {
+                            continue; // Skip this tile - doesn't match permission criteria
+                        }
+                    } else if !default_allow {
+                        continue; // No rule and default is deny
+                    }
+                }
+
                 // Ensure tile has an ID
                 let tile_id = tile.ensure_id();
                 let nodegroup_id = tile.nodegroup_id.clone();
@@ -910,6 +935,16 @@ impl WASMResourceInstanceWrapper {
         self.core.borrow().nodegroup_index
             .get(nodegroup_id)
             .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Get all tile IDs that have been loaded (and passed filtering)
+    /// Returns array of all tile ID strings
+    #[wasm_bindgen(js_name = getAllTileIds)]
+    pub fn get_all_tile_ids(&self) -> Vec<String> {
+        self.core.borrow().tiles
+            .as_ref()
+            .map(|tiles| tiles.keys().cloned().collect())
             .unwrap_or_default()
     }
 
