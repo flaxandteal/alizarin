@@ -561,15 +561,35 @@ fn build_static_reference_from_concept(concept: &Value, collection_id: &str) -> 
     let uri = format!("urn:uuid:{}", concept_id);
 
     // Extract labels from pref_label
+    // Handles both formats:
+    // - Simple: { "en": "Label" }
+    // - WithId: { "en": { "id": "...", "value": "Label" } }
     let mut labels = Vec::new();
     if let Some(pref_label) = concept.get("pref_label").and_then(|v| v.as_object()) {
         for (lang_id, value) in pref_label {
-            if let Some(label_value) = value.as_str() {
+            // Try as plain string first
+            let label_value = if let Some(s) = value.as_str() {
+                Some(s.to_string())
+            } else if let Some(obj) = value.as_object() {
+                // Try as RdmValue object with "value" field
+                obj.get("value").and_then(|v| v.as_str()).map(|s| s.to_string())
+            } else {
+                None
+            };
+
+            if let Some(label_text) = label_value {
+                // Use the label's own ID if available, otherwise generate one
+                let label_id = value.as_object()
+                    .and_then(|obj| obj.get("id"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| format!("{}-{}", concept_id, lang_id));
+
                 labels.push(StaticReferenceLabel {
-                    id: format!("{}-{}", concept_id, lang_id),
+                    id: label_id,
                     language_id: lang_id.clone(),
                     list_item_id: concept_id.to_string(),
-                    value: label_value.to_string(),
+                    value: label_text,
                     valuetype_id: "prefLabel".to_string(),
                 });
             }

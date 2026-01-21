@@ -6,7 +6,7 @@ use alizarin_core::{StaticNode, StaticTile, PseudoValueCore};
 use alizarin_core::node_config::NodeConfigManager;
 use alizarin_core::rdm_cache::RdmCache;
 use alizarin_core::type_serialization::{
-    serialize_value, SerializationOptions, SerializationContext,
+    SerializationOptions, SerializationContext,
 };
 // WASM wrapper types for API boundary
 use crate::graph::StaticTile as WasmStaticTile;
@@ -170,20 +170,9 @@ impl PseudoValueInner {
         tile_data: Option<serde_json::Value>,
         child_node_ids: Vec<String>,
     ) -> Self {
-        let core = PseudoValueCore::from_node_and_tile(
-            node,
-            tile,
-            tile_data,
-            child_node_ids,
-        );
-        PseudoValueInner {
-            core,
-            inner: None,
-            value: None,
-            parent: None,
-            value_loaded: Some(false),
-            accessed: false,
-        }
+        // Delegate to new() with no parent and is_inner=false
+        // This ensures inner/outer pattern is properly applied
+        Self::new(node, tile, tile_data, None, child_node_ids, false)
     }
 
     /// Create a new PseudoValueInner with full configuration
@@ -507,35 +496,21 @@ impl PseudoValueInner {
             return self.semantic_to_json(ctx);
         }
 
-        // Leaf nodes - serialize through type_serialization module
-        if let Some(ref data) = self.core.tile_data {
-            let result = serialize_value(
-                datatype,
-                data,
-                &ctx.serialization_options,
-                Some(&ctx.serialization_context),
-            );
-            return result.unwrap_or(serde_json::Value::Null);
+        // Non-semantic nodes WITH children (outer pattern without explicit inner)
+        // This handles file-list, concept-list, etc. with nested semantic structure
+        if self.core.has_children(ctx.edges) {
+            return self.non_semantic_with_children_to_json(ctx);
         }
 
-        serde_json::Value::Null
+        // Leaf nodes - delegate to core's serialize_own_value
+        self.core.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context))
     }
 
     /// Convert an outer node to JSON
     /// Outer nodes have their own value (tile_data) PLUS children via their inner
     fn outer_to_json(&self, ctx: &VisitorContext) -> serde_json::Value {
-        // Serialize the outer node's own value through type_serialization
-        let own_value = if let Some(ref data) = self.core.tile_data {
-            let result = serialize_value(
-                self.datatype(),
-                data,
-                &ctx.serialization_options,
-                Some(&ctx.serialization_context),
-            );
-            result.unwrap_or(serde_json::Value::Null)
-        } else {
-            serde_json::Value::Null
-        };
+        // Delegate to core for own value serialization
+        let own_value = self.core.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
 
         // If there's an inner, get children from it and merge using shared logic
         if let Some(ref inner) = self.inner {
@@ -545,6 +520,20 @@ impl PseudoValueInner {
 
         // No inner - just return own value
         own_value
+    }
+
+    /// Convert a non-semantic node with children to JSON
+    ///
+    /// This handles the "outer" pattern where a leaf-type node (file-list, concept-list, etc.)
+    /// also has semantic children in the graph. The node's own value is wrapped with "_"
+    /// and children are included alongside it.
+    fn non_semantic_with_children_to_json(&self, ctx: &VisitorContext) -> serde_json::Value {
+        // Delegate to core for own value serialization
+        let own_value = self.core.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
+        // Get children using WASM's semantic_to_json (traverses WASM PseudoValue types)
+        let children_json = self.semantic_to_json(ctx);
+        // Merge using the outer pattern (adds "_" wrapper when children exist)
+        ctx.serialization_options.merge_outer_with_children(own_value, children_json)
     }
 
     /// Convert a semantic node (or inner node) to JSON by finding and visiting its children

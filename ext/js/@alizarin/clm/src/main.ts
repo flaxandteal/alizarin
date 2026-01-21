@@ -360,14 +360,69 @@ class ReferenceValueViewModel extends String implements IViewModel {
   _resolutionPromise: Promise<StaticReference | null> | null = null;
   _tile: StaticTile | null = null;
   _nodeid: string | null = null;
+  _collectionId: string | null = null;
 
-  constructor(reference: StaticReference | null, pendingLookup?: PendingLookup, tile?: StaticTile, nodeid?: string) {
+  constructor(reference: StaticReference | null, pendingLookup?: PendingLookup, tile?: StaticTile, nodeid?: string, collectionId?: string) {
     // If we have a resolved reference, use its display string; otherwise use placeholder
     super(reference ? referenceToString(reference) : (pendingLookup?.type === 'label' ? pendingLookup.label : '(pending)'));
     this._ref = reference;
     this._pendingLookup = pendingLookup || null;
     this._tile = tile || null;
     this._nodeid = nodeid || null;
+    this._collectionId = collectionId ?? (pendingLookup?.collectionId ?? null);
+  }
+
+  /**
+   * Get the parent reference value, if this reference has a parent in the hierarchy.
+   * @returns A new ReferenceValueViewModel for the parent, or null if no parent
+   * @throws Error if the collection doesn't support hierarchy lookups
+   */
+  async parent(): Promise<ReferenceValueViewModel | null> {
+    const ref = await this._resolvePending();
+    if (!ref || !this._collectionId) {
+      return null;
+    }
+
+    // Get the concept ID from one of the labels
+    const conceptId = ref.labels[0]?.list_item_id;
+    if (!conceptId) {
+      return null;
+    }
+
+    const collection = await RDM.retrieveCollection(this._collectionId);
+    if (!collection.getParentId) {
+      throw new Error(
+        `Collection ${this._collectionId} does not support hierarchy lookups. ` +
+        'Ensure WASM is initialized and the collection is a StaticCollection.'
+      );
+    }
+
+    const parentId = collection.getParentId(conceptId);
+    if (!parentId) {
+      return null; // Top-level concept
+    }
+
+    const parentRef = getReferenceValueFromCollection(collection, parentId);
+    if (!parentRef) {
+      return null;
+    }
+
+    return new ReferenceValueViewModel(new StaticReference(parentRef as any), undefined, undefined, undefined, this._collectionId);
+  }
+
+  /**
+   * Get all ancestor reference values, from immediate parent to root.
+   * @returns Array of ReferenceValueViewModels for ancestors
+   */
+  async ancestors(): Promise<ReferenceValueViewModel[]> {
+    const result: ReferenceValueViewModel[] = [];
+    let current: ReferenceValueViewModel | null = this;
+
+    while ((current = await current.parent()) !== null) {
+      result.push(current);
+    }
+
+    return result;
   }
 
   /**
@@ -507,7 +562,7 @@ class ReferenceValueViewModel extends String implements IViewModel {
             const pendingLookup: PendingUuidLookup = { type: 'uuid', uuid: value, collectionId };
             // Store the marker in tile data for now
             tile.data.set(nodeid, { __needs_rdm_lookup: true, uuid: value });
-            return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid);
+            return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid, collectionId);
           } else {
             throw Error(
               `Set references using values from collections, not strings: ${value}`,
@@ -518,25 +573,25 @@ class ReferenceValueViewModel extends String implements IViewModel {
           const pendingLookup: PendingUuidLookup = { type: 'uuid', uuid: value.uuid, collectionId };
           // Keep the marker in tile data
           tile.data.set(nodeid, value);
-          return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid);
+          return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid, collectionId);
         } else if (typeof value === "object" && value !== null && value.__needs_rdm_label_lookup && value.label) {
           // Label string marked for RDM lookup - create lazy lookup (no fetch yet)
           const lookupCollectionId = value.controlledList || collectionId;
           const pendingLookup: PendingLabelLookup = { type: 'label', label: value.label, collectionId: lookupCollectionId };
           // Keep the marker in tile data
           tile.data.set(nodeid, value);
-          return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid);
+          return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid, lookupCollectionId);
         } else if (Array.isArray(value) && value.length > 0 && "labels" in value[0]) {
           // Handle array of pre-formatted reference values from business data
           // For now, just use the first value
           const ref = new StaticReference(value[0]);
           tile.data.set(nodeid, ref.toJSON());
-          return new ReferenceValueViewModel(ref);
+          return new ReferenceValueViewModel(ref, undefined, undefined, undefined, collectionId);
         } else if (typeof value === "object" && value !== null && "labels" in value) {
           // Handle single pre-formatted reference value from business data
           const ref = new StaticReference(value);
           tile.data.set(nodeid, ref.toJSON());
-          return new ReferenceValueViewModel(ref);
+          return new ReferenceValueViewModel(ref, undefined, undefined, undefined, collectionId);
         } else {
           throw Error("Could not set reference from this data: " + JSON.stringify(value));
         }
@@ -546,7 +601,7 @@ class ReferenceValueViewModel extends String implements IViewModel {
     if (!tile || !value) {
       return null;
     }
-    const str = new ReferenceValueViewModel(value);
+    const str = new ReferenceValueViewModel(value, undefined, undefined, undefined, collectionId);
     return str;
   }
 }

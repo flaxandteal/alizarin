@@ -358,49 +358,15 @@ fn build_pseudo_cache_from_tiles(
 /// - Output: `{"business_data": {"resources": [StaticResource, ...]}}`
 ///
 /// Descriptors are calculated automatically from tiles.
-pub fn tree_to_tiles(
-    json: &Value,
-    graph: &StaticGraph,
-) -> Result<BusinessDataWrapper, String> {
-    tree_to_tiles_internal(json, graph, false, None)
-}
-
-/// Convert with strict validation (fails on unknown fields)
-pub fn tree_to_tiles_strict(
-    json: &Value,
-    graph: &StaticGraph,
-) -> Result<BusinessDataWrapper, String> {
-    tree_to_tiles_internal(json, graph, true, None)
-}
-
-/// Convert tree to tiles with optional deterministic ID generation
-///
-/// When `id_key` is provided and the tree does not contain a `resourceinstanceid`,
-/// a deterministic UUID v5 will be generated using the key and graph ID as namespace.
-/// This enables consistent IDs across multiple runs with the same input.
 ///
 /// # Arguments
 /// * `json` - Tree structure to convert
 /// * `graph` - Graph definition
-/// * `id_key` - Optional key for deterministic UUID v5 generation
-pub fn tree_to_tiles_with_id_key(
-    json: &Value,
-    graph: &StaticGraph,
-    id_key: Option<&str>,
-) -> Result<BusinessDataWrapper, String> {
-    tree_to_tiles_internal(json, graph, false, id_key)
-}
-
-/// Convert with strict validation and optional deterministic ID
-pub fn tree_to_tiles_strict_with_id_key(
-    json: &Value,
-    graph: &StaticGraph,
-    id_key: Option<&str>,
-) -> Result<BusinessDataWrapper, String> {
-    tree_to_tiles_internal(json, graph, true, id_key)
-}
-
-fn tree_to_tiles_internal(
+/// * `strict` - If true, fails on unknown fields (recommended). Defaults to true.
+/// * `id_key` - Optional key for deterministic UUID v5 generation. When provided and
+///   the tree does not contain a `resourceinstanceid`, a deterministic UUID v5 will
+///   be generated using the key and graph ID as namespace.
+pub fn tree_to_tiles(
     json: &Value,
     graph: &StaticGraph,
     strict: bool,
@@ -706,7 +672,8 @@ fn build_pseudo_values_from_json(
                         if shares_nodegroup { parent_tile.clone() } else { None },
                         parent_tile_id,
                         sortorder,
-                    );
+                        strict,
+                    )?;
                     values.push(pv);
                 }
             }
@@ -751,7 +718,7 @@ fn build_pseudo_values_from_json(
                 strict,
             )?;
         } else {
-            // Single value gets sortorder 0 (primary)
+            // Single leaf value gets sortorder 0 (primary)
             let (pv, _tile) = create_pseudo_value_from_leaf(
                 json_value,
                 &child_node,
@@ -762,7 +729,8 @@ fn build_pseudo_values_from_json(
                 if shares_nodegroup { parent_tile.clone() } else { None },
                 parent_tile_id,
                 Some(0),
-            );
+                strict,
+            )?;
             values.push(pv);
         }
 
@@ -836,7 +804,8 @@ fn create_pseudo_value_from_leaf(
     shared_tile: Option<Arc<StaticTile>>,
     parent_tile_id: Option<&String>,
     sortorder: Option<i32>,
-) -> (PseudoValueCore, Arc<StaticTile>) {
+    strict: bool,
+) -> Result<(PseudoValueCore, Arc<StaticTile>), String> {
     let tile = shared_tile.unwrap_or_else(|| {
         let tile_id = uuid::Uuid::new_v4().to_string();
 
@@ -855,6 +824,18 @@ fn create_pseudo_value_from_leaf(
         .unwrap_or(json_value);
 
     let coerced = coerce_value(&node.datatype, value_to_coerce, config.as_ref());
+
+    // In strict mode, report coercion errors
+    if strict {
+        if let Some(ref error) = coerced.error {
+            let node_alias = node.alias.as_deref().unwrap_or(&node.nodeid);
+            return Err(format!(
+                "Coercion error for '{}' ({}): {}",
+                node_alias, node.datatype, error
+            ));
+        }
+    }
+
     let tile_data = if !coerced.is_null() && coerced.error.is_none() {
         Some(coerced.tile_data)
     } else {
@@ -868,7 +849,7 @@ fn create_pseudo_value_from_leaf(
         child_node_ids.to_vec(),
     );
 
-    (pv, tile)
+    Ok((pv, tile))
 }
 
 #[cfg(test)]
@@ -990,16 +971,19 @@ mod tests {
         let graph = load_group_graph();
 
         // Input: array of tree objects
+        // Note: description is in statement nodegroup, not basic_info
         let trees = serde_json::json!([{
             "resourceinstanceid": "test-resource-456",
             "graph_id": graph.graphid,
             "basic_info": [{
-                "name": {"en": "JSON Test Group", "ga": "Grúpa Tástála JSON"},
+                "name": {"en": "JSON Test Group", "ga": "Grúpa Tástála JSON"}
+            }],
+            "statement": [{
                 "description": "Created from JSON tree"
             }]
         }]);
 
-        let result = tree_to_tiles(&trees, &graph)
+        let result = tree_to_tiles(&trees, &graph, true, None)
             .expect("tree_to_tiles failed");
 
         assert_eq!(result.business_data.resources.len(), 1);
@@ -1014,16 +998,19 @@ mod tests {
         let graph = load_group_graph();
 
         // Input: single tree object (no array wrapper)
+        // Note: description is in statement nodegroup, not basic_info
         let tree = serde_json::json!({
             "resourceinstanceid": "test-resource-789",
             "graph_id": graph.graphid,
             "basic_info": [{
-                "name": {"en": "Single Resource Test"},
+                "name": {"en": "Single Resource Test"}
+            }],
+            "statement": [{
                 "description": "Testing single resource input"
             }]
         });
 
-        let result = tree_to_tiles(&tree, &graph)
+        let result = tree_to_tiles(&tree, &graph, true, None)
             .expect("tree_to_tiles failed");
 
         assert_eq!(result.business_data.resources.len(), 1);
@@ -1036,17 +1023,20 @@ mod tests {
         let graph = load_group_graph();
 
         // Create initial tree array
+        // Note: description is in statement nodegroup, not basic_info
         let initial_trees = serde_json::json!([{
             "resourceinstanceid": "round-trip-test",
             "graph_id": graph.graphid,
             "basic_info": [{
-                "name": {"en": "Round Trip Test", "ga": "Tástáil Timpeall"},
+                "name": {"en": "Round Trip Test", "ga": "Tástáil Timpeall"}
+            }],
+            "statement": [{
                 "description": "Testing round trip conversion"
             }]
         }]);
 
         // Convert to tiles (business_data format)
-        let tiles_result = tree_to_tiles(&initial_trees, &graph)
+        let tiles_result = tree_to_tiles(&initial_trees, &graph, true, None)
             .expect("tree_to_tiles failed");
 
         // Convert back to tree array
@@ -1073,7 +1063,7 @@ mod tests {
             }]
         });
 
-        let result = tree_to_tiles(&tree, &graph)
+        let result = tree_to_tiles(&tree, &graph, true, None)
             .expect("tree_to_tiles failed");
 
         // Extract first resource
@@ -1248,9 +1238,9 @@ mod tests {
         });
 
         // Same id_key should produce same resourceinstanceid
-        let result1 = tree_to_tiles_with_id_key(&tree, &graph, Some("my-unique-key"))
+        let result1 = tree_to_tiles(&tree, &graph, false, Some("my-unique-key"))
             .expect("First conversion failed");
-        let result2 = tree_to_tiles_with_id_key(&tree, &graph, Some("my-unique-key"))
+        let result2 = tree_to_tiles(&tree, &graph, false, Some("my-unique-key"))
             .expect("Second conversion failed");
 
         let id1 = &result1.business_data.resources[0].resourceinstance.resourceinstanceid;
@@ -1259,14 +1249,14 @@ mod tests {
         assert_eq!(id1, id2, "Same id_key should produce same resourceinstanceid");
 
         // Different id_key should produce different resourceinstanceid
-        let result3 = tree_to_tiles_with_id_key(&tree, &graph, Some("different-key"))
+        let result3 = tree_to_tiles(&tree, &graph, false, Some("different-key"))
             .expect("Third conversion failed");
         let id3 = &result3.business_data.resources[0].resourceinstance.resourceinstanceid;
 
         assert_ne!(id1, id3, "Different id_key should produce different resourceinstanceid");
 
         // No id_key should produce random UUID (different each time is probabilistic)
-        let result4 = tree_to_tiles_with_id_key(&tree, &graph, None)
+        let result4 = tree_to_tiles(&tree, &graph, false, None)
             .expect("Fourth conversion failed");
         let id4 = &result4.business_data.resources[0].resourceinstance.resourceinstanceid;
 
@@ -1288,7 +1278,7 @@ mod tests {
         });
 
         // id_key should be ignored when resourceinstanceid is present
-        let result = tree_to_tiles_with_id_key(&tree, &graph, Some("ignored-key"))
+        let result = tree_to_tiles(&tree, &graph, false, Some("ignored-key"))
             .expect("Conversion failed");
         let id = &result.business_data.resources[0].resourceinstance.resourceinstanceid;
 
@@ -1376,7 +1366,7 @@ mod tests {
 
         println!("Input tree:\n{}", serde_json::to_string_pretty(&tree).unwrap());
 
-        let result = tree_to_tiles(&tree, &graph)
+        let result = tree_to_tiles(&tree, &graph, true, None)
             .expect("tree_to_tiles failed");
 
         let resource = &result.business_data.resources[0];
@@ -1489,7 +1479,7 @@ mod tests {
 
         println!("Input tree (array wrapper):\n{}", serde_json::to_string_pretty(&tree).unwrap());
 
-        let result = tree_to_tiles(&tree, &graph)
+        let result = tree_to_tiles(&tree, &graph, true, None)
             .expect("tree_to_tiles failed");
 
         let resource = &result.business_data.resources[0];
@@ -1580,7 +1570,7 @@ mod tests {
             println!("uuid -> children: {:?}", edges.get(&uuid_node.nodeid));
         }
 
-        let result = tree_to_tiles(&tree, &graph)
+        let result = tree_to_tiles(&tree, &graph, true, None)
             .expect("tree_to_tiles failed");
 
         let resource = &result.business_data.resources[0];
@@ -1707,7 +1697,7 @@ mod tests {
             }
         });
 
-        let result = tree_to_tiles(&tree, &graph)
+        let result = tree_to_tiles(&tree, &graph, true, None)
             .expect("tree_to_tiles failed");
 
         let resource = &result.business_data.resources[0];

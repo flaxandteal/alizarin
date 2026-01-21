@@ -457,13 +457,14 @@ class ConceptValueViewModel(str):
     Matches TypeScript ConceptValueViewModel extends String.
     """
 
-    def __new__(cls, value: 'StaticValue'):
+    def __new__(cls, value: 'StaticValue', collection_id: Optional[str] = None):
         return str.__new__(cls, value.value)
 
-    def __init__(self, value: 'StaticValue'):
+    def __init__(self, value: 'StaticValue', collection_id: Optional[str] = None):
         self._: Optional[Union[IViewModel, Awaitable[IViewModel]]] = None
         self.__parentPseudo: Optional['IPseudo'] = None
         self._value: Union['StaticValue', Awaitable['StaticValue']] = value
+        self._collection_id: Optional[str] = collection_id
 
     def describeField(self) -> Optional[Any]:
         return self.__parentPseudo.describeField() if self.__parentPseudo else None
@@ -489,6 +490,54 @@ class ConceptValueViewModel(str):
     def getValue(self) -> Union['StaticValue', Awaitable['StaticValue']]:
         """Get the underlying StaticValue"""
         return self._value
+
+    async def parent(self) -> Optional['ConceptValueViewModel']:
+        """
+        Get the parent concept value, if this concept has a parent in the hierarchy.
+
+        Returns a new ConceptValueViewModel for the parent, or None if no parent.
+        Raises RuntimeError if the collection doesn't support hierarchy lookups.
+        """
+        from .rdm import RDM
+
+        value = await self._value if hasattr(self._value, '__await__') else self._value
+        concept_id = getattr(value, '__conceptId', None)
+        if not concept_id or not self._collection_id:
+            return None
+
+        collection = await RDM.retrieveCollection(self._collection_id)
+        if not hasattr(collection, 'get_parent_id'):
+            raise RuntimeError(
+                f"Collection {self._collection_id} does not support hierarchy lookups. "
+                "Ensure WASM is initialized and the collection is a StaticCollection."
+            )
+
+        parent_id = collection.get_parent_id(concept_id)
+        if not parent_id:
+            return None  # Top-level concept
+
+        parent_concept = collection.__allConcepts.get(parent_id)
+        if not parent_concept or not hasattr(parent_concept, 'getPrefLabel'):
+            return None
+
+        parent_value = parent_concept.getPrefLabel()
+        return ConceptValueViewModel(parent_value, self._collection_id)
+
+    async def ancestors(self) -> List['ConceptValueViewModel']:
+        """
+        Get all ancestor concept values, from immediate parent to root.
+
+        Returns a list of ConceptValueViewModels for ancestors.
+        """
+        result: List['ConceptValueViewModel'] = []
+        current: Optional['ConceptValueViewModel'] = self
+
+        while current is not None:
+            current = await current.parent()
+            if current is not None:
+                result.append(current)
+
+        return result
 
     @staticmethod
     async def _create(
@@ -545,7 +594,7 @@ class ConceptValueViewModel(str):
                                 __concept=None,
                                 __conceptId=cacheEntry.conceptId
                             )
-                            return ConceptValueViewModel(val)
+                            return ConceptValueViewModel(val, collection_id)
                         else:
                             # Look up in RDM
                             collection = await RDM.retrieveCollection(collection_id)
@@ -560,7 +609,7 @@ class ConceptValueViewModel(str):
 
                             if not tile or not val:
                                 return None
-                            return ConceptValueViewModel(val)
+                            return ConceptValueViewModel(val, collection_id)
                     else:
                         raise ValueError(f"Set concepts using values from collections, not strings: {value}")
                 else:
@@ -574,7 +623,7 @@ class ConceptValueViewModel(str):
         if not tile or not val:
             return None
 
-        return ConceptValueViewModel(val)
+        return ConceptValueViewModel(val, collection_id)
 
     async def __asTileData(self) -> Optional[str]:
         """Convert to tile data (value ID)"""

@@ -11,10 +11,61 @@ export class ConceptValueViewModel extends String implements IViewModel {
   describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
 
   _value: StaticValue | Promise<StaticValue>;
+  _collectionId: string | null = null;
 
-  constructor(value: StaticValue) {
+  constructor(value: StaticValue, collectionId?: string) {
     super(value.value);
     this._value = value;
+    this._collectionId = collectionId ?? null;
+  }
+
+  /**
+   * Get the parent concept value, if this concept has a parent in the hierarchy.
+   * @returns A new ConceptValueViewModel for the parent, or null if no parent
+   * @throws Error if the collection doesn't support hierarchy lookups
+   */
+  async parent(): Promise<ConceptValueViewModel | null> {
+    const value = await this._value;
+    const conceptId = value.__conceptId;
+    if (!conceptId || !this._collectionId) {
+      return null;
+    }
+
+    const collection = await RDM.retrieveCollection(this._collectionId);
+    if (!collection.getParentId) {
+      throw new Error(
+        `Collection ${this._collectionId} does not support hierarchy lookups. ` +
+        'Ensure WASM is initialized and the collection is a StaticCollection.'
+      );
+    }
+
+    const parentId = collection.getParentId(conceptId);
+    if (!parentId) {
+      return null; // Top-level concept
+    }
+
+    const parentConcept = collection.__allConcepts[parentId];
+    if (!parentConcept?.getPrefLabel) {
+      return null;
+    }
+
+    const parentValue = parentConcept.getPrefLabel();
+    return new ConceptValueViewModel(parentValue, this._collectionId);
+  }
+
+  /**
+   * Get all ancestor concept values, from immediate parent to root.
+   * @returns Array of ConceptValueViewModels for ancestors
+   */
+  async ancestors(): Promise<ConceptValueViewModel[]> {
+    const result: ConceptValueViewModel[] = [];
+    let current: ConceptValueViewModel | null = this;
+
+    while ((current = await current.parent()) !== null) {
+      result.push(current);
+    }
+
+    return result;
   }
 
   async forJson(): Promise<StaticValue> {
@@ -80,7 +131,7 @@ export class ConceptValueViewModel extends String implements IViewModel {
                 __concept: null,
                 __conceptId: cacheEntry.conceptId,
               }, cacheEntry.conceptId);
-              return new ConceptValueViewModel(val);
+              return new ConceptValueViewModel(val, collectionId);
             } else {
               const collection = RDM.retrieveCollection(collectionId);
               return collection.then((collection) => {
@@ -98,7 +149,7 @@ export class ConceptValueViewModel extends String implements IViewModel {
                 if (!tile || !val) {
                   return null;
                 }
-                const str = new ConceptValueViewModel(val);
+                const str = new ConceptValueViewModel(val, collectionId);
 
                 return str;
               });
@@ -125,7 +176,7 @@ export class ConceptValueViewModel extends String implements IViewModel {
     if (!tile || !val) {
       return null;
     }
-    const str = new ConceptValueViewModel(val);
+    const str = new ConceptValueViewModel(val, collectionId);
     return str;
   }
 

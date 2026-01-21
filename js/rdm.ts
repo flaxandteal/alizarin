@@ -1,9 +1,9 @@
 import { StaticCollection, StaticGraph } from "./static-types";
 import { ArchesClient, archesClient } from "./client";
+import { getGlobalWasmRdmCache, hasGlobalWasmRdmCache } from "./_wasm";
 import {
   buildAliasToCollectionMap,
   findNeededCollections,
-  resolveLabelsWithLookup,
   isValidUuid,
   getDefaultResolvableDatatypes,
   getDefaultConfigKeys,
@@ -77,16 +77,34 @@ class ReferenceDataManager {
 
   /**
    * Clear a specific collection from cache.
+   * Also clears from the Rust RDM cache if available.
    */
   clearCollection(id: string): void {
     this.collections.delete(id);
+    // Also clear from Rust cache
+    if (hasGlobalWasmRdmCache()) {
+      try {
+        getGlobalWasmRdmCache().removeCollection(id);
+      } catch {
+        // Ignore errors - cache may not have this collection
+      }
+    }
   }
 
   /**
    * Clear all cached collections.
+   * Also clears the Rust RDM cache if available.
    */
   clear(): void {
     this.collections.clear();
+    // Also clear Rust cache
+    if (hasGlobalWasmRdmCache()) {
+      try {
+        getGlobalWasmRdmCache().clear();
+      } catch {
+        // Ignore errors
+      }
+    }
   }
 
   /**
@@ -142,30 +160,24 @@ class ReferenceDataManager {
     // Use Rust to find which collections are actually needed
     const neededCollectionIds = findNeededCollections(treeJson, aliasToCollection);
 
-    // Load needed collections (in parallel)
+    // Load needed collections and sync to Rust cache
     const collectionPromises = neededCollectionIds.map((id: string) =>
-      this.retrieveCollection(id).then((coll) => [id, coll] as const)
+      this.retrieveCollection(id)
     );
-    const loadedCollections = new Map(await Promise.all(collectionPromises));
+    const loadedCollections = await Promise.all(collectionPromises);
 
-    // Build lookup table for Rust: Map<collectionId, Map<lowercase_label, conceptId>>
-    const lookupTable: Record<string, Record<string, string>> = {};
-    for (const [collectionId, collection] of loadedCollections) {
-      const labelToId: Record<string, string> = {};
-      // Iterate through all values in the collection
-      for (const value of Object.values(collection.__values || {})) {
-        if (value.value && value.__concept) {
-          labelToId[value.value.toLowerCase()] = value.__concept.id;
-        }
+    // Ensure all collections are in the Rust cache
+    const cache = getGlobalWasmRdmCache();
+    for (const collection of loadedCollections) {
+      if (collection.ensureInCache) {
+        collection.ensureInCache();
       }
-      lookupTable[collectionId] = labelToId;
     }
 
-    // Use Rust to resolve labels
-    const resolvedJson = resolveLabelsWithLookup(
+    // Use Rust cache to resolve labels (no JS lookup table needed)
+    const resolvedJson = cache.resolveLabels(
       treeJson,
       aliasToCollection,
-      lookupTable,
       strict
     );
 

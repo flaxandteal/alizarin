@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { generateUuidv5 } from './utils';
 import { getCurrentLanguage, slugify } from './utils';
+import { getGlobalWasmRdmCache, hasGlobalWasmRdmCache } from './_wasm';
 import {
   StaticGraphMeta,
   StaticNode,
@@ -410,6 +411,127 @@ class StaticCollection {
 
   getConceptByValue?(label: string) {
     return Object.values(this.__values).find(value => value.value == label)?.__concept;
+  }
+
+  // Track whether this collection has been synced to Rust cache
+  private _syncedToRustCache: boolean = false;
+
+  /**
+   * Ensure this collection is synced to the Rust RDM cache.
+   * This is called automatically by hierarchy methods, but can be called
+   * explicitly to pre-sync collections before label resolution.
+   * @throws Error if WASM is not initialized
+   */
+  ensureInCache?(): void {
+    if (!hasGlobalWasmRdmCache()) {
+      throw new Error('WASM not initialized. Call initWasm() before using cache methods.');
+    }
+    this._ensureInRustCache();
+  }
+
+  /**
+   * Get the parent concept ID for a given concept.
+   * Uses the Rust RDM cache for hierarchy lookups.
+   * @returns The parent concept ID, or null if no parent (top-level concept)
+   * @throws Error if WASM is not initialized
+   */
+  getParentId?(conceptId: string): string | null {
+    if (!hasGlobalWasmRdmCache()) {
+      throw new Error('WASM not initialized. Call initWasm() before using hierarchy methods.');
+    }
+
+    this._ensureInRustCache();
+    const cache = getGlobalWasmRdmCache();
+    return cache.getParentId(this.id, conceptId) ?? null;
+  }
+
+  /**
+   * Get the parent concept for a given concept.
+   * @returns The parent concept, or null if no parent
+   */
+  getParent?(conceptId: string): StaticConcept | null {
+    const parentId = this.getParentId?.(conceptId);
+    return parentId ? this.__allConcepts[parentId] ?? null : null;
+  }
+
+  /**
+   * Get all ancestor concepts for a given concept (parent, grandparent, etc).
+   * Returns in order from immediate parent to root.
+   */
+  getAncestors?(conceptId: string): StaticConcept[] {
+    const ancestors: StaticConcept[] = [];
+    let currentId: string | null = conceptId;
+
+    while (currentId) {
+      const parentId = this.getParentId?.(currentId);
+      if (!parentId) break;
+      const parent = this.__allConcepts[parentId];
+      if (parent) {
+        ancestors.push(parent);
+      }
+      currentId = parentId;
+    }
+
+    return ancestors;
+  }
+
+  /**
+   * Ensure this collection's data is in the Rust RDM cache.
+   * Called lazily when hierarchy lookups are needed.
+   * @internal
+   */
+  private _ensureInRustCache(): void {
+    if (this._syncedToRustCache) return;
+
+    const cache = getGlobalWasmRdmCache();
+    if (cache.hasCollection(this.id)) {
+      this._syncedToRustCache = true;
+      return;
+    }
+
+    // Convert to the format expected by the Rust cache
+    const concepts = this._toRustCacheFormat();
+    cache.addCollectionFromJson(this.id, JSON.stringify(concepts));
+    this._syncedToRustCache = true;
+  }
+
+  /**
+   * Convert collection concepts to the format expected by Rust cache.
+   * @internal
+   */
+  private _toRustCacheFormat(): object[] {
+    const result: object[] = [];
+
+    const addConcept = (concept: StaticConcept, parentId: string | null) => {
+      const prefLabels: { [lang: string]: { id: string; value: string } } = {};
+      for (const [lang, value] of Object.entries(concept.prefLabels)) {
+        prefLabels[lang] = { id: value.id, value: value.value };
+      }
+
+      const broader = parentId ? [parentId] : [];
+      const narrower = concept.children?.map(c => c.id) || [];
+
+      result.push({
+        id: concept.id,
+        prefLabels,
+        broader,
+        narrower,
+      });
+
+      // Recursively add children
+      if (concept.children) {
+        for (const child of concept.children) {
+          addConcept(child, concept.id);
+        }
+      }
+    };
+
+    // Add all top-level concepts
+    for (const concept of Object.values(this.concepts)) {
+      addConcept(concept, null);
+    }
+
+    return result;
   }
 
   toString(): string {

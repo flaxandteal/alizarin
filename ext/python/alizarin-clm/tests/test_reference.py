@@ -876,21 +876,26 @@ class TestFullRustIntegration:
                 node_config = node.get("config", {})
                 break
 
-        # Find ALL tiles with reference data (each array item creates a separate tile)
-        ref_tiles = []
+        # Find tile with reference data (reference list items are stored as array in single tile)
+        ref_data = None
         for tile in resource["tiles"]:
             if reference_node_id and reference_node_id in tile.get("data", {}):
                 ref_data = tile["data"][reference_node_id]
                 if ref_data is not None:
-                    ref_tiles.append(ref_data)
+                    break
 
-        assert len(ref_tiles) == 2, f"Should have 2 tiles with reference data, got {len(ref_tiles)}"
+        assert ref_data is not None, "Should have a tile with reference data"
+        # Reference list data is stored as an array in a single tile
+        assert isinstance(ref_data, list), f"Reference data should be a list, got {type(ref_data)}"
+        assert len(ref_data) == 2, f"Should have 2 reference items in the list, got {len(ref_data)}"
 
         # Step 4: Coerce each reference value via Rust extension handler
         # This demonstrates the Rust-to-Rust coercion path
         coerced_results = []
-        for ref_data in ref_tiles:
-            ref_json = json.dumps(ref_data)
+        for ref_item in ref_data:
+            # Extract the actual reference value from _value wrapper if present
+            ref_value = ref_item.get("_value", ref_item) if isinstance(ref_item, dict) else ref_item
+            ref_json = json.dumps(ref_value)
             config_json = json.dumps(node_config)
 
             tile_data_json, resolved_json = alizarin.coerce_with_extension(

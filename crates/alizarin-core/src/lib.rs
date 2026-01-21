@@ -92,8 +92,7 @@ pub use label_resolution::{
 
 // JSON conversion (tiles <-> tree)
 pub use json_conversion::{
-    tiles_to_tree, tree_to_tiles, tree_to_tiles_strict,
-    tree_to_tiles_with_id_key, tree_to_tiles_strict_with_id_key,
+    tiles_to_tree, tree_to_tiles,
     BusinessData, BusinessDataWrapper, create_static_resource,
 };
 
@@ -138,6 +137,18 @@ pub use registry::{
 // List datatype registry (for datatypes where array IS the value)
 pub use registry::{
     register_list_datatype, is_list_datatype, unregister_list_datatype, list_datatypes,
+};
+
+// Widget mapping registry (for extension datatype -> widget mappings)
+pub use registry::{
+    register_widget_for_datatype, get_widget_for_datatype,
+    unregister_widget_for_datatype, widget_mappings,
+};
+
+// Widget registry (for extension widget definitions)
+pub use registry::{
+    RegisteredWidget, register_widget, get_registered_widget,
+    unregister_widget, registered_widgets,
 };
 
 // Permission rules (for conditional tile filtering)

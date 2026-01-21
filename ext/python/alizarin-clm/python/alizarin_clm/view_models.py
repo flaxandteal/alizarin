@@ -33,13 +33,14 @@ class ReferenceValueViewModel(str):
     Matches TypeScript ReferenceValueViewModel extends String.
     """
 
-    def __new__(cls, reference: StaticReference):
+    def __new__(cls, reference: StaticReference, collection_id: Optional[str] = None):
         return str.__new__(cls, reference.to_display_string())
 
-    def __init__(self, reference: StaticReference):
+    def __init__(self, reference: StaticReference, collection_id: Optional[str] = None):
         self._ref: StaticReference = reference
         self._: Optional[Union['IViewModel', Awaitable['IViewModel']]] = None
         self.__parentPseudo: Optional['IPseudo'] = None
+        self._collection_id: Optional[str] = collection_id
 
     def describe_field(self) -> Optional[Any]:
         return self.__parentPseudo.describeField() if self.__parentPseudo else None
@@ -58,6 +59,79 @@ class ReferenceValueViewModel(str):
     def lang(self, language: str) -> Optional[str]:
         """Get label in specific language."""
         return self._ref.lang(language)
+
+    async def parent(self) -> Optional['ReferenceValueViewModel']:
+        """
+        Get the parent reference value, if this reference has a parent in the hierarchy.
+
+        Returns a new ReferenceValueViewModel for the parent, or None if no parent.
+        Raises RuntimeError if the collection doesn't support hierarchy lookups.
+        """
+        from alizarin.rdm import RDM
+
+        if not self._ref or not self._collection_id:
+            return None
+
+        # Get the concept ID from the first label
+        if not self._ref.labels:
+            return None
+        concept_id = self._ref.labels[0].list_item_id
+        if not concept_id:
+            return None
+
+        collection = await RDM.retrieveCollection(self._collection_id)
+        if not hasattr(collection, 'get_parent_id'):
+            raise RuntimeError(
+                f"Collection {self._collection_id} does not support hierarchy lookups. "
+                "Ensure WASM is initialized and the collection is a StaticCollection."
+            )
+
+        parent_id = collection.get_parent_id(concept_id)
+        if not parent_id:
+            return None  # Top-level concept
+
+        # Get the parent reference - need to construct it from the concept
+        parent_concept = collection.__allConcepts.get(parent_id)
+        if not parent_concept:
+            return None
+
+        # Convert concept to StaticReference format
+        labels = []
+        for lang_id, pref_label in (parent_concept.prefLabels or {}).items():
+            labels.append(StaticReferenceLabel(
+                id=pref_label.get('id', ''),
+                language_id=lang_id,
+                list_item_id=parent_concept.id,
+                value=pref_label.get('value', '') if isinstance(pref_label, dict) else str(pref_label),
+                valuetype_id='prefLabel'
+            ))
+
+        if not labels:
+            return None
+
+        parent_ref = StaticReference(
+            labels=labels,
+            list_id=self._collection_id,
+            uri=getattr(parent_concept, 'source', '') or f"http://localhost:8000/plugins/controlled-list-manager/item/{parent_id}"
+        )
+
+        return ReferenceValueViewModel(parent_ref, self._collection_id)
+
+    async def ancestors(self) -> List['ReferenceValueViewModel']:
+        """
+        Get all ancestor reference values, from immediate parent to root.
+
+        Returns a list of ReferenceValueViewModels for ancestors.
+        """
+        result: List['ReferenceValueViewModel'] = []
+        current: Optional['ReferenceValueViewModel'] = self
+
+        while current is not None:
+            current = await current.parent()
+            if current is not None:
+                result.append(current)
+
+        return result
 
     @staticmethod
     async def _create(
@@ -158,7 +232,7 @@ class ReferenceValueViewModel(str):
         if not tile or not val:
             return None
 
-        return ReferenceValueViewModel(val)
+        return ReferenceValueViewModel(val, collection_id)
 
     async def __asTileData(self) -> Optional[Dict[str, Any]]:
         """Convert to tile data format."""

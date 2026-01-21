@@ -202,7 +202,7 @@ from .view_models import (
 )
 
 # =============================================================================
-# Graph Manager (matching TypeScript graphManager.ts)
+# Graph Manager Protocols (matching TypeScript interfaces.ts)
 # =============================================================================
 
 from .graph_manager import (
@@ -212,14 +212,8 @@ from .graph_manager import (
     IModelWrapper,
     IInstanceWrapper,
     IReferenceDataManager,
-    IGraphManager,
     # Classes
     WKRM,
-    GraphManager,
-    StaticStore,
-    # Singletons
-    graph_manager,
-    static_store,
 )
 
 # =============================================================================
@@ -294,6 +288,16 @@ from . import alizarin as _alizarin_rust
 register_list_datatype = _alizarin_rust.register_list_datatype
 is_list_datatype = _alizarin_rust.is_list_datatype
 list_datatypes = _alizarin_rust.list_datatypes
+
+# =============================================================================
+# Widget Registry (for extension datatype -> widget mappings)
+# =============================================================================
+
+register_widget_for_datatype = _alizarin_rust.register_widget_for_datatype
+get_widget_for_datatype = _alizarin_rust.get_widget_for_datatype
+register_widget = _alizarin_rust.register_widget
+registered_widgets = _alizarin_rust.registered_widgets
+widget_mappings = _alizarin_rust.widget_mappings
 
 # =============================================================================
 # RDM (Reference Data Manager) Cache
@@ -400,18 +404,13 @@ __all__ = [
     "ConceptValueCacheEntry",
     "ResourceInstanceCacheEntry",
     "ResourceInstanceListCacheEntry",
-    # Graph Manager
+    # Graph Manager Protocols
     "IRIVM",
     "IWKRM",
     "IModelWrapper",
     "IInstanceWrapper",
     "IReferenceDataManager",
-    "IGraphManager",
     "WKRM",
-    "GraphManager",
-    "StaticStore",
-    "graph_manager",
-    "static_store",
     # Model Wrapper
     "ResourceModelWrapper",
     # Instance Wrapper
@@ -436,6 +435,12 @@ __all__ = [
     "register_list_datatype",
     "is_list_datatype",
     "list_datatypes",
+    # Widget Registry
+    "register_widget_for_datatype",
+    "get_widget_for_datatype",
+    "register_widget",
+    "registered_widgets",
+    "widget_mappings",
     # RDM Cache
     "RustRdmConcept",
     "RustRdmCollection",

@@ -1,7 +1,8 @@
 """
-GraphManager and StaticStore for managing resource models.
+Protocol definitions and WKRM for resource models.
 
-Matches TypeScript graphManager.ts with complete interfaces.
+Matches TypeScript interfaces.ts with complete interfaces.
+Graph and resource storage is handled by the Rust registry.
 """
 
 from __future__ import annotations
@@ -11,29 +12,23 @@ from typing import (
     Awaitable,
     Callable,
     Dict,
-    Generic,
     List,
     Optional,
     Protocol,
-    Set,
     TYPE_CHECKING,
     TypeVar,
-    Union,
     runtime_checkable,
 )
 from dataclasses import dataclass, field
 
 if TYPE_CHECKING:
     from .static_types import (
-        StaticGraph,
         StaticGraphMeta,
         StaticNode,
         StaticNodegroup,
         StaticTile,
         StaticCollection,
     )
-    from .model_wrapper import ResourceModelWrapper
-    from .instance_wrapper import ResourceInstanceWrapper
     from .pseudos import IPseudo
 
 
@@ -236,23 +231,6 @@ class IReferenceDataManager(Protocol):
         ...
 
 
-@runtime_checkable
-class IGraphManager(Protocol[RIVM]):
-    """
-    Interface for Graph Manager.
-
-    Matches TypeScript IGraphManager interface.
-    """
-
-    async def get_resource(
-        self,
-        resource_id: str,
-        lazy: bool,
-    ) -> RIVM:
-        """Get a resource by ID."""
-        ...
-
-
 # =============================================================================
 # WKRM (Well-Known Resource Model)
 # =============================================================================
@@ -293,231 +271,6 @@ class WKRM:
 
 
 # =============================================================================
-# GraphManager
-# =============================================================================
-
-class GraphManager(Generic[RIVM]):
-    """
-    Manages resource models and instances.
-
-    Matches TypeScript GraphManager singleton.
-
-    Attributes:
-        models: Dictionary of model name to ResourceModelWrapper
-        arches_client: Optional client for API communication
-    """
-
-    def __init__(self) -> None:
-        self.models: Dict[str, ResourceModelWrapper] = {}
-        self.arches_client: Optional[Any] = None
-        self._initialized: bool = False
-        self._resource_cache: Dict[str, RIVM] = {}
-
-    async def initialize(self) -> None:
-        """Initialize the graph manager."""
-        if self._initialized:
-            return
-
-        # Load available models from client if available
-        if self.arches_client:
-            # TBD: implement client communication
-            pass
-
-        self._initialized = True
-
-    async def get(
-        self,
-        model_class_or_name: Union[str, type],
-    ) -> Optional[ResourceModelWrapper]:
-        """
-        Get a resource model wrapper by class or name.
-
-        Args:
-            model_class_or_name: Model class or name string
-
-        Returns:
-            ResourceModelWrapper for the model, or None if not found
-        """
-        # Extract model name
-        if isinstance(model_class_or_name, str):
-            model_name = model_class_or_name
-        else:
-            model_name = model_class_or_name.__name__
-
-        if model_name not in self.models:
-            await self._load_model(model_name)
-
-        return self.models.get(model_name)
-
-    async def get_resource(
-        self,
-        resource_id: str,
-        lazy: bool = True,
-    ) -> Optional[RIVM]:
-        """
-        Get a resource by ID.
-
-        Args:
-            resource_id: The resource instance ID
-            lazy: Whether to use lazy loading
-
-        Returns:
-            Resource instance or None
-        """
-        # Check cache first
-        if resource_id in self._resource_cache:
-            return self._resource_cache[resource_id]
-
-        if not self.arches_client:
-            raise ValueError("No Arches client configured")
-
-        # TBD: implement resource loading from client
-        return None
-
-    async def _load_model(self, model_name: str) -> None:
-        """
-        Load a model from the Arches client.
-
-        Args:
-            model_name: Name of the model to load
-        """
-        if not self.arches_client:
-            raise ValueError("No Arches client configured")
-
-        # TBD: implement model loading from client
-        pass
-
-    def register_model(
-        self,
-        model_name: str,
-        wrapper: ResourceModelWrapper,
-    ) -> None:
-        """
-        Register a model wrapper.
-
-        Args:
-            model_name: Name to register under
-            wrapper: The ResourceModelWrapper instance
-        """
-        self.models[model_name] = wrapper
-
-    def clear_cache(self) -> None:
-        """Clear all caches."""
-        self._resource_cache.clear()
-
-
-# =============================================================================
-# StaticStore
-# =============================================================================
-
-class StaticStore:
-    """
-    Stores static resources and metadata.
-
-    Matches TypeScript StaticStore singleton.
-    Used for caching graph models and resources without API calls.
-
-    Attributes:
-        resources: Dictionary of resource ID to resource data
-        metadata: Dictionary of resource ID to metadata
-        graphs: Dictionary of graph ID to StaticGraph
-    """
-
-    def __init__(self) -> None:
-        self.resources: Dict[str, Any] = {}
-        self.metadata: Dict[str, Any] = {}
-        self.graphs: Dict[str, StaticGraph] = {}
-        self.arches_client: Optional[Any] = None
-
-    async def get_meta(
-        self,
-        resource_id: str,
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Get metadata for a resource.
-
-        Args:
-            resource_id: The resource instance ID
-
-        Returns:
-            Metadata dictionary or None
-        """
-        return self.metadata.get(resource_id)
-
-    async def store_resource(
-        self,
-        resource_id: str,
-        resource_data: Any,
-    ) -> None:
-        """
-        Store a resource.
-
-        Args:
-            resource_id: The resource instance ID
-            resource_data: The resource data to store
-        """
-        self.resources[resource_id] = resource_data
-
-    async def get_resource(
-        self,
-        resource_id: str,
-    ) -> Optional[Any]:
-        """
-        Get a stored resource.
-
-        Args:
-            resource_id: The resource instance ID
-
-        Returns:
-            Resource data or None
-        """
-        return self.resources.get(resource_id)
-
-    def store_graph(
-        self,
-        graph_id: str,
-        graph: StaticGraph,
-    ) -> None:
-        """
-        Store a graph.
-
-        Args:
-            graph_id: The graph ID
-            graph: The StaticGraph to store
-        """
-        self.graphs[graph_id] = graph
-
-    def get_graph(
-        self,
-        graph_id: str,
-    ) -> Optional[StaticGraph]:
-        """
-        Get a stored graph.
-
-        Args:
-            graph_id: The graph ID
-
-        Returns:
-            StaticGraph or None
-        """
-        return self.graphs.get(graph_id)
-
-    def clear(self) -> None:
-        """Clear all stored data."""
-        self.resources.clear()
-        self.metadata.clear()
-        self.graphs.clear()
-
-
-# =============================================================================
-# Singleton Instances
-# =============================================================================
-
-graph_manager: GraphManager[Any] = GraphManager()
-static_store: StaticStore = StaticStore()
-
-
-# =============================================================================
 # Exports
 # =============================================================================
 
@@ -528,12 +281,6 @@ __all__ = [
     "IModelWrapper",
     "IInstanceWrapper",
     "IReferenceDataManager",
-    "IGraphManager",
     # Classes
     "WKRM",
-    "GraphManager",
-    "StaticStore",
-    # Singletons
-    "graph_manager",
-    "static_store",
 ]

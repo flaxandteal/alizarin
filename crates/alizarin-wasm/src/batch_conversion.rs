@@ -9,8 +9,7 @@ use crate::graph::StaticGraph;
 use crate::json_conversion::create_static_resource;
 use alizarin_core::tiles_to_tree as core_tiles_to_tree;
 use alizarin_core::{
-    tree_to_tiles_with_id_key, tree_to_tiles_strict_with_id_key,
-    merge_resources, batch_merge_resources, StaticResource,
+    tree_to_tiles, merge_resources, batch_merge_resources, StaticResource,
 };
 
 /// Transform camelCase keys to snake_case recursively
@@ -94,11 +93,7 @@ pub fn tree_to_tiles_enhanced(
 
     // Convert tree to tiles (with optional id_key for deterministic UUID)
     let id_key_ref = id_key.as_deref();
-    let result = if strict {
-        tree_to_tiles_strict_with_id_key(&tree, &**graph, id_key_ref)
-    } else {
-        tree_to_tiles_with_id_key(&tree, &**graph, id_key_ref)
-    };
+    let result = tree_to_tiles(&tree, &**graph, strict, id_key_ref);
 
     match result {
         Ok(business_data) => {
@@ -244,11 +239,7 @@ pub fn batch_trees_to_tiles(
         let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
         // Convert tree to tiles (with optional id_key for deterministic UUID)
-        let result = if strict {
-            tree_to_tiles_strict_with_id_key(tree, &**graph, id_key_ref)
-        } else {
-            tree_to_tiles_with_id_key(tree, &**graph, id_key_ref)
-        };
+        let result = tree_to_tiles(tree, &**graph, strict, id_key_ref);
 
         match result {
             Ok(business_data) => {
