@@ -63,8 +63,11 @@ pub fn coerce_boolean(value: &Value, config: Option<&Value>) -> CoercionResult {
 ///
 /// Tile data format: UUID string (domain value ID)
 ///
-/// Input: UUID string or StaticDomainValue object
-/// Config (required for UUID lookup): `{"options": [{"id": "...", "text": {...}}, ...]}`
+/// Input: UUID string, label string, or StaticDomainValue object
+/// Config (required for label/UUID lookup): `{"options": [{"id": "...", "text": {...}}, ...]}`
+///
+/// If a non-UUID string is provided and config has options, it will attempt to
+/// resolve the string as a label by matching against option text values.
 ///
 /// Returns: tile_data is the UUID, display_value is the resolved StaticDomainValue
 pub fn coerce_domain_value(value: &Value, config: Option<&Value>) -> CoercionResult {
@@ -73,37 +76,77 @@ pub fn coerce_domain_value(value: &Value, config: Option<&Value>) -> CoercionRes
         Value::String(s) if s.is_empty() => {
             CoercionResult::success_same(Value::Null)
         }
-        Value::String(uuid) => {
-            // Validate UUID format (basic check)
-            if !is_valid_uuid(uuid) {
-                return CoercionResult::error(format!(
-                    "Domain value must be a UUID, got '{}'",
-                    uuid
-                ));
+        Value::String(s) => {
+            // Check if it's a valid UUID
+            if is_valid_uuid(s) {
+                // Look up UUID in config options if provided
+                if let Some(cfg) = config {
+                    if let Some(options) = cfg.get("options").and_then(|o| o.as_array()) {
+                        for opt in options {
+                            if opt.get("id").and_then(|id| id.as_str()) == Some(s.as_str()) {
+                                // Found - return UUID as tile_data, full object as display
+                                return CoercionResult::success(
+                                    Value::String(s.clone()),
+                                    opt.clone(),
+                                );
+                            }
+                        }
+                        // UUID not found in options
+                        return CoercionResult::error(format!(
+                            "Domain value '{}' not found in options",
+                            s
+                        ));
+                    }
+                }
+                // No config - just return UUID (can't resolve)
+                return CoercionResult::success_same(Value::String(s.clone()));
             }
 
-            // Look up in config options if provided
+            // Not a UUID - try to resolve as a label from config options
             if let Some(cfg) = config {
                 if let Some(options) = cfg.get("options").and_then(|o| o.as_array()) {
+                    // Search for matching label in options
                     for opt in options {
-                        if opt.get("id").and_then(|id| id.as_str()) == Some(uuid.as_str()) {
-                            // Found - return UUID as tile_data, full object as display
-                            return CoercionResult::success(
-                                Value::String(uuid.clone()),
-                                opt.clone(),
-                            );
+                        if let Some(text) = opt.get("text") {
+                            // text is a translatable string: {"en": "Label", "es": "Etiqueta", ...}
+                            // Check if any language value matches the input
+                            if let Some(text_obj) = text.as_object() {
+                                for (_lang, label) in text_obj {
+                                    if label.as_str() == Some(s.as_str()) {
+                                        // Found matching label - get the UUID
+                                        if let Some(id) = opt.get("id").and_then(|i| i.as_str()) {
+                                            return CoercionResult::success(
+                                                Value::String(id.to_string()),
+                                                opt.clone(),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            // Also check if text is a plain string (non-translatable)
+                            if text.as_str() == Some(s.as_str()) {
+                                if let Some(id) = opt.get("id").and_then(|i| i.as_str()) {
+                                    return CoercionResult::success(
+                                        Value::String(id.to_string()),
+                                        opt.clone(),
+                                    );
+                                }
+                            }
                         }
                     }
-                    // UUID not found in options
+                    // Label not found in any option
                     return CoercionResult::error(format!(
-                        "Domain value '{}' not found in options",
-                        uuid
+                        "Domain value label '{}' not found in options",
+                        s
                     ));
                 }
             }
 
-            // No config - just return UUID (can't resolve)
-            CoercionResult::success_same(Value::String(uuid.clone()))
+            // No config to resolve label against
+            CoercionResult::error(format!(
+                "Domain value must be a UUID (got '{}'), or config with options must be provided for label resolution",
+                s
+            ))
         }
         Value::Object(obj) => {
             // Already a resolved domain value object - extract id for tile_data
@@ -273,9 +316,52 @@ mod tests {
     }
 
     #[test]
-    fn test_coerce_domain_value_invalid_uuid() {
+    fn test_coerce_domain_value_invalid_uuid_no_config() {
+        // Without config, a non-UUID string should error
         let result = coerce_domain_value(&json!("not-a-uuid"), None);
         assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_coerce_domain_value_label_resolution() {
+        // With config, a label string should resolve to UUID
+        let config = json!({
+            "options": [
+                {"id": "550e8400-e29b-41d4-a716-446655440000", "text": {"en": "Option A", "es": "Opción A"}},
+                {"id": "550e8400-e29b-41d4-a716-446655440001", "text": {"en": "Option B"}}
+            ]
+        });
+        let result = coerce_domain_value(&json!("Option A"), Some(&config));
+        assert!(!result.is_error(), "Expected success, got error: {:?}", result.error);
+        assert_eq!(result.tile_data, json!("550e8400-e29b-41d4-a716-446655440000"));
+        assert_eq!(result.display_value["text"]["en"], json!("Option A"));
+    }
+
+    #[test]
+    fn test_coerce_domain_value_label_resolution_other_language() {
+        // Should also match labels in other languages
+        let config = json!({
+            "options": [
+                {"id": "550e8400-e29b-41d4-a716-446655440000", "text": {"en": "Option A", "es": "Opción A"}},
+                {"id": "550e8400-e29b-41d4-a716-446655440001", "text": {"en": "Option B"}}
+            ]
+        });
+        let result = coerce_domain_value(&json!("Opción A"), Some(&config));
+        assert!(!result.is_error());
+        assert_eq!(result.tile_data, json!("550e8400-e29b-41d4-a716-446655440000"));
+    }
+
+    #[test]
+    fn test_coerce_domain_value_label_not_found() {
+        // Label not in options should error
+        let config = json!({
+            "options": [
+                {"id": "550e8400-e29b-41d4-a716-446655440000", "text": {"en": "Option A"}}
+            ]
+        });
+        let result = coerce_domain_value(&json!("Unknown Label"), Some(&config));
+        assert!(result.is_error());
+        assert!(result.error.unwrap().contains("not found in options"));
     }
 
     // DomainValueList tests

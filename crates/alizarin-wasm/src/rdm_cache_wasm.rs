@@ -11,7 +11,28 @@
 //! ```
 
 use wasm_bindgen::prelude::*;
+use serde::Serialize;
 use alizarin_core::rdm_cache::RdmCache;
+
+// =============================================================================
+// RDM Value Info (for JS return type)
+// =============================================================================
+
+/// Information about a label value, returned by lookupValue
+///
+/// This matches the StaticValue interface expected by JS ViewModels.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RdmValueInfo {
+    /// Value ID (UUID) - unique identifier for this specific label
+    pub id: String,
+    /// The label text
+    pub value: String,
+    /// Concept ID that this value belongs to
+    pub concept_id: String,
+    /// Language code (e.g., "en", "de")
+    pub language: String,
+}
 
 // =============================================================================
 // RDM Cache (WASM-exported)
@@ -93,6 +114,112 @@ impl WasmRdmCache {
             }
             None => Ok(JsValue::UNDEFINED),
         }
+    }
+
+    /// Get the first parent ID for a concept
+    ///
+    /// @param collectionId - The collection to search in
+    /// @param conceptId - The concept UUID
+    /// @returns The parent concept ID, or undefined if no parent (top-level concept)
+    #[wasm_bindgen(js_name = getParentId)]
+    pub fn get_parent_id(&self, collection_id: &str, concept_id: &str) -> Option<String> {
+        self.inner.get_parent_id(collection_id, concept_id)
+    }
+
+    // =========================================================================
+    // Value ID Lookups (for StaticValue compatibility)
+    // =========================================================================
+
+    /// Look up a value by its VALUE ID
+    ///
+    /// This is the primary lookup method used by ViewModels.
+    /// Returns full value info including concept ID and language.
+    ///
+    /// @param collectionId - The collection to search in
+    /// @param valueId - The value UUID (not concept UUID)
+    /// @returns RdmValueInfo object, or undefined if not found
+    #[wasm_bindgen(js_name = lookupValue)]
+    pub fn lookup_value(
+        &self,
+        collection_id: &str,
+        value_id: &str,
+    ) -> Result<JsValue, JsError> {
+        match self.inner.lookup_value(collection_id, value_id) {
+            Some(value) => {
+                let info = RdmValueInfo {
+                    id: value.id.clone(),
+                    value: value.value.clone(),
+                    concept_id: value.concept_id.clone(),
+                    language: value.language.clone(),
+                };
+                serde_wasm_bindgen::to_value(&info)
+                    .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))
+            }
+            None => Ok(JsValue::UNDEFINED),
+        }
+    }
+
+    /// Get concept ID from value ID
+    ///
+    /// Returns the concept ID that contains the given value ID.
+    ///
+    /// @param collectionId - The collection to search in
+    /// @param valueId - The value UUID
+    /// @returns The concept ID, or undefined if not found
+    #[wasm_bindgen(js_name = getConceptIdForValue)]
+    pub fn get_concept_id_for_value(
+        &self,
+        collection_id: &str,
+        value_id: &str,
+    ) -> Option<String> {
+        self.inner.get_concept_id_for_value(collection_id, value_id)
+            .map(|s| s.to_string())
+    }
+
+    /// Validate that a value exists in a collection
+    ///
+    /// @param collectionId - The collection to check
+    /// @param valueId - The value UUID to validate
+    /// @returns true if the value exists
+    #[wasm_bindgen(js_name = validateValue)]
+    pub fn validate_value(&self, collection_id: &str, value_id: &str) -> bool {
+        self.inner.validate_value(collection_id, value_id)
+    }
+
+    // =========================================================================
+    // Label Resolution (using cache as lookup)
+    // =========================================================================
+
+    /// Resolve labels to UUIDs using this cache for lookups.
+    ///
+    /// This is more efficient than `resolveLabelsWithLookup` because it uses
+    /// the cache's internal indexes instead of requiring JS to build a lookup table.
+    ///
+    /// @param treeJson - JSON string of the tree to resolve
+    /// @param aliasToCollection - Map<string, string> mapping node aliases to collection IDs
+    /// @param strict - If true, return error for unresolved labels
+    /// @returns JSON string with labels resolved to UUIDs
+    #[wasm_bindgen(js_name = resolveLabels)]
+    pub fn resolve_labels(
+        &self,
+        tree_json: &str,
+        alias_to_collection: JsValue,
+        strict: bool,
+    ) -> Result<String, JsError> {
+        use std::collections::HashMap;
+        use alizarin_core::label_resolution;
+
+        let tree: serde_json::Value = serde_json::from_str(tree_json)
+            .map_err(|e| JsError::new(&format!("Invalid tree JSON: {}", e)))?;
+
+        let alias_map: HashMap<String, String> = serde_wasm_bindgen::from_value(alias_to_collection)
+            .map_err(|e| JsError::new(&format!("Invalid alias map: {}", e)))?;
+
+        let resolved = label_resolution::resolve_labels(tree, &alias_map, &self.inner, strict)
+            .map_err(|e| JsError::new(&e.message))?;
+
+        serde_json::to_string(&resolved)
+            .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
     }
 
     /// Clear all cached collections
@@ -186,5 +313,67 @@ mod tests {
 
         cache.clear();
         assert_eq!(cache.get_collection_ids().len(), 0);
+    }
+
+    #[test]
+    fn test_value_id_methods() {
+        let mut cache = WasmRdmCache::new();
+
+        // JSON with explicit value IDs
+        let concepts_json = r#"[
+            {
+                "id": "concept-1",
+                "prefLabels": {
+                    "en": { "id": "value-1-en", "value": "English Label" }
+                }
+            }
+        ]"#;
+
+        cache.add_collection_from_json("coll-1", concepts_json).unwrap();
+
+        // Test get_concept_id_for_value
+        assert_eq!(
+            cache.get_concept_id_for_value("coll-1", "value-1-en"),
+            Some("concept-1".to_string())
+        );
+        assert_eq!(
+            cache.get_concept_id_for_value("coll-1", "nonexistent"),
+            None
+        );
+
+        // Test validate_value
+        assert!(cache.validate_value("coll-1", "value-1-en"));
+        assert!(!cache.validate_value("coll-1", "nonexistent"));
+
+        // Note: lookup_value returns JsValue which can't be easily tested
+        // outside WASM context. The underlying logic is tested in alizarin-core.
+    }
+
+    #[test]
+    fn test_get_parent_id() {
+        let mut cache = WasmRdmCache::new();
+
+        let concepts_json = r#"[
+            {
+                "id": "parent-concept",
+                "prefLabel": {"en": "Parent"}
+            },
+            {
+                "id": "child-concept",
+                "prefLabel": {"en": "Child"},
+                "broader": ["parent-concept"]
+            }
+        ]"#;
+
+        cache.add_collection_from_json("coll-1", concepts_json).unwrap();
+
+        // Child should have parent
+        assert_eq!(
+            cache.get_parent_id("coll-1", "child-concept"),
+            Some("parent-concept".to_string())
+        );
+
+        // Parent has no parent (top-level)
+        assert_eq!(cache.get_parent_id("coll-1", "parent-concept"), None);
     }
 }

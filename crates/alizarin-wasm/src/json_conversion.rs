@@ -24,19 +24,19 @@ pub fn tiles_to_tree(input: &Value, graph: &StaticGraph) -> Result<Value, String
 ///
 /// Input: Array of nested tree objects `[{...}, {...}]` OR single tree object `{...}`
 /// Output: `{"business_data": {"resources": [StaticResource, ...]}}`
+///
+/// # Arguments
+/// * `json` - Tree structure to convert
+/// * `graph` - Graph definition
+/// * `strict` - If true, fails on unknown fields (default: true)
+/// * `id_key` - Optional key for deterministic UUID v5 generation
 pub fn tree_to_tiles(
     json: &Value,
     graph: &StaticGraph,
+    strict: bool,
+    id_key: Option<&str>,
 ) -> Result<BusinessDataWrapper, String> {
-    alizarin_core::tree_to_tiles(json, &**graph)
-}
-
-/// Convert with strict validation (fails on unknown fields)
-pub fn tree_to_tiles_strict(
-    json: &Value,
-    graph: &StaticGraph,
-) -> Result<BusinessDataWrapper, String> {
-    alizarin_core::tree_to_tiles_strict(json, &**graph)
+    alizarin_core::tree_to_tiles(json, &**graph, strict, id_key)
 }
 
 #[cfg(test)]
@@ -138,14 +138,17 @@ mod tests {
     fn test_tree_to_tiles_basic() {
         let graph = load_group_graph();
 
+        // Note: description is in statement nodegroup, not basic_info
         let tree = serde_json::json!([{
             "basic_info": [{
-                "name": {"en": "JSON Test Group", "ga": "Grúpa Tástála JSON"},
+                "name": {"en": "JSON Test Group", "ga": "Grúpa Tástála JSON"}
+            }],
+            "statement": [{
                 "description": "Created from JSON tree"
             }]
         }]);
 
-        let result = tree_to_tiles(&tree, &graph)
+        let result = tree_to_tiles(&tree, &graph, true, None)
             .expect("tree_to_tiles failed");
 
         assert!(!result.business_data.resources.is_empty(), "Should have created resources");

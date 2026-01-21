@@ -329,7 +329,6 @@ fn render_display_with_extension(
 use alizarin_core::{
     // JSON conversion
     tiles_to_tree, tree_to_tiles, create_static_resource,
-    tree_to_tiles_with_id_key, tree_to_tiles_strict_with_id_key,
     merge_resources as core_merge_resources,
     batch_merge_resources as core_batch_merge_resources,
     // Graph types
@@ -388,37 +387,62 @@ fn get_registered_graph(graph_id: &str) -> PyResult<std::sync::Arc<AlizarinCoreS
 /// Convert tiled resource to nested JSON tree
 ///
 /// Args:
-///     tiles_json: List of tile dicts as JSON string
-///     resource_id: Resource instance ID
-///     graph_id: Graph ID (must be registered via register_graph first)
+///     resource_json: Resource dict as JSON string containing:
+///         - resourceinstanceid (or resourceinstance.resourceinstanceid)
+///         - graph_id (or resourceinstance.graph_id)
+///         - tiles array
 ///
 /// Returns:
-///     Nested dict structure representing the resource tree
+///     Nested dict structure representing the resource tree with resourceinstanceid and graph_id
 #[pyfunction]
-#[pyo3(signature = (tiles_json, resource_id, graph_id))]
+#[pyo3(signature = (resource_json))]
 fn tiles_to_json_tree(
     py: Python,
-    tiles_json: String,
-    resource_id: String,
-    graph_id: String,
+    resource_json: String,
 ) -> PyResult<PyObject> {
-    // Parse tiles from JSON
-    let tiles: Vec<AlizarinStaticTile> = serde_json::from_str(&tiles_json)
+    // Parse resource from JSON
+    let resource: serde_json::Value = serde_json::from_str(&resource_json)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse tiles: {}", e)
+            format!("Failed to parse resource: {}", e)
         ))?;
+
+    // Extract graph_id from resource (supports both formats)
+    let graph_id = resource.get("resourceinstance")
+        .and_then(|ri| ri.get("graph_id"))
+        .or_else(|| resource.get("graph_id"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "Missing graph_id in resource"
+        ))?
+        .to_string();
+
+    // Extract resource_id from resource (supports both formats)
+    let resource_id = resource.get("resourceinstance")
+        .and_then(|ri| ri.get("resourceinstanceid"))
+        .or_else(|| resource.get("resourceinstanceid"))
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     // Get graph from registry
     let graph = get_registered_graph(&graph_id)?;
 
-    // Create StaticResource with computed descriptors
-    let static_resource = create_static_resource(resource_id, graph_id, tiles, &*graph);
+    // Check if input is already in StaticResource format (has resourceinstance)
+    let input_json = if resource.get("resourceinstance").is_some() {
+        // Already in StaticResource format, use directly
+        resource.clone()
+    } else {
+        // Old format - convert to StaticResource
+        let tiles: Vec<AlizarinStaticTile> = resource.get("tiles")
+            .and_then(|t| serde_json::from_value(t.clone()).ok())
+            .unwrap_or_default();
 
-    // Convert to JSON Value for tiles_to_tree
-    let input_json = serde_json::to_value(&static_resource)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to serialize resource: {}", e)
-        ))?;
+        let static_resource = create_static_resource(resource_id.clone(), graph_id.clone(), tiles, &*graph);
+        serde_json::to_value(&static_resource)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                format!("Failed to serialize resource: {}", e)
+            ))?
+    };
 
     // Call shared Rust conversion function (returns array)
     let json_tree_array = tiles_to_tree(&input_json, &*graph)
@@ -432,8 +456,8 @@ fn tiles_to_json_tree(
     // Wrap tree with metadata for consistency with json_tree_to_tiles
     let mut result = json_tree.clone();
     if let serde_json::Value::Object(ref mut map) = result {
-        map.insert("resourceinstanceid".to_string(), serde_json::Value::String(static_resource.resourceinstance.resourceinstanceid.clone()));
-        map.insert("graph_id".to_string(), serde_json::Value::String(static_resource.resourceinstance.graph_id.clone()));
+        map.insert("resourceinstanceid".to_string(), serde_json::Value::String(resource_id));
+        map.insert("graph_id".to_string(), serde_json::Value::String(graph_id));
     }
 
     // Convert to Python dict
@@ -469,7 +493,7 @@ fn tiles_to_json_tree(
 ///
 /// If scopes is provided (as JSON string), it will be set on all resulting resources.
 #[pyfunction]
-#[pyo3(signature = (tree_json, resource_id, graph_id, from_camel=false, strict=false, rdm_cache=None, id_key=None, scopes=None))]
+#[pyo3(signature = (tree_json, resource_id, graph_id, from_camel=false, strict=true, rdm_cache=None, id_key=None, scopes=None))]
 fn json_tree_to_tiles(
     py: Python,
     tree_json: String,
@@ -520,13 +544,10 @@ fn json_tree_to_tiles(
         map.insert("graph_id".to_string(), serde_json::Value::String(graph_id.clone()));
     }
 
-    // Call shared Rust conversion function (strict or non-strict, with optional id_key)
+    // Call shared Rust conversion function
     let id_key_ref = id_key.as_deref();
-    let mut business_data = if strict {
-        tree_to_tiles_strict_with_id_key(&tree, &*graph, id_key_ref)
-    } else {
-        tree_to_tiles_with_id_key(&tree, &*graph, id_key_ref)
-    }.map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+    let mut business_data = tree_to_tiles(&tree, &*graph, strict, id_key_ref)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
 
     // Set scopes on all resources if provided
     if let Some(ref scopes_val) = scopes_value {
@@ -559,7 +580,7 @@ fn json_tree_to_tiles(
 ///     id_keys: Optional list of keys for deterministic UUID generation
 ///     scopes: Optional JSON string to set as scopes on all resources
 #[pyfunction]
-#[pyo3(signature = (trees_json, graph_id, from_camel=false, strict=false, id_keys=None, scopes=None))]
+#[pyo3(signature = (trees_json, graph_id, from_camel=false, strict=true, id_keys=None, scopes=None))]
 fn batch_trees_to_tiles(
     py: Python,
     trees_json: String,
@@ -608,11 +629,8 @@ fn batch_trees_to_tiles(
             // Get id_key for this tree (if id_keys array provided)
             let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
-            let mut business_data = if strict {
-                tree_to_tiles_strict_with_id_key(&tree, &*graph, id_key_ref)
-            } else {
-                tree_to_tiles_with_id_key(&tree, &*graph, id_key_ref)
-            }.map_err(|e| format!("Tree {}: {}", i, e))?;
+            let mut business_data = tree_to_tiles(&tree, &*graph, strict, id_key_ref)
+                .map_err(|e| format!("Tree {}: {}", i, e))?;
 
             // Extract first resource (full StaticResource with resourceinstance metadata)
             let mut resource = business_data.business_data.resources.into_iter().next()
@@ -672,7 +690,7 @@ fn batch_trees_to_tiles(
 ///     BusinessDataWrapper format with extension-coerced values:
 ///     {business_data: {resources: [...]}, errors: [...], error_count: int}
 #[pyfunction]
-#[pyo3(signature = (trees_json, graph_id, from_camel=false, strict=false, id_keys=None, scopes=None, resolve_markers=true))]
+#[pyo3(signature = (trees_json, graph_id, from_camel=false, strict=true, id_keys=None, scopes=None, resolve_markers=true))]
 fn batch_trees_to_tiles_with_extensions(
     py: Python,
     trees_json: String,
@@ -747,11 +765,8 @@ fn batch_trees_to_tiles_with_extensions(
             // Get id_key for this tree (if id_keys array provided)
             let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
-            let mut business_data = if strict {
-                tree_to_tiles_strict_with_id_key(&tree, &*graph, id_key_ref)
-            } else {
-                tree_to_tiles_with_id_key(&tree, &*graph, id_key_ref)
-            }.map_err(|e| format!("Tree {}: {}", i, e))?;
+            let mut business_data = tree_to_tiles(&tree, &*graph, strict, id_key_ref)
+                .map_err(|e| format!("Tree {}: {}", i, e))?;
 
             // Extract first resource
             let mut resource = business_data.business_data.resources.into_iter().next()
@@ -930,7 +945,7 @@ struct TreeToTilesIterator {
 #[pymethods]
 impl TreeToTilesIterator {
     #[new]
-    #[pyo3(signature = (tree_strings, graph_id, from_camel=false, strict=false, id_keys=None, scopes=None))]
+    #[pyo3(signature = (tree_strings, graph_id, from_camel=false, strict=true, id_keys=None, scopes=None))]
     fn new(
         tree_strings: Vec<String>,
         graph_id: String,
@@ -1014,11 +1029,7 @@ impl TreeToTilesIterator {
         }
 
         // Convert tree to tiles
-        let result = if self.strict {
-            tree_to_tiles_strict_with_id_key(&tree, &*self.graph, id_key)
-        } else {
-            tree_to_tiles_with_id_key(&tree, &*self.graph, id_key)
-        };
+        let result = tree_to_tiles(&tree, &*self.graph, self.strict, id_key);
 
         let output = match result {
             Ok(business_data) => {
@@ -1078,7 +1089,7 @@ impl TreeToTilesIterator {
 /// Resources must contain graph_id in resourceinstance.graph_id or graph_id field.
 /// Graphs must be registered via register_graph first.
 #[pyfunction]
-#[pyo3(signature = (resources_json, strict=false))]
+#[pyo3(signature = (resources_json, strict=true))]
 fn batch_tiles_to_trees(
     py: Python,
     resources_json: String,
@@ -1564,6 +1575,76 @@ fn list_datatypes() -> Vec<String> {
     alizarin_core::list_datatypes()
 }
 
+// =============================================================================
+// Widget Registry Functions
+// =============================================================================
+
+/// Register a widget mapping for a datatype.
+///
+/// Extensions should call this at initialization to register their custom
+/// datatype-to-widget mappings. This allows `get_default_widget_for_datatype`
+/// in graph mutations to find the correct widget for extension datatypes.
+///
+/// Example:
+///     # In CLM extension initialization:
+///     alizarin.register_widget_for_datatype("reference", "reference-select-widget")
+///     alizarin.register_widget_for_datatype("reference-list", "reference-multiselect-widget")
+#[pyfunction]
+fn register_widget_for_datatype(datatype: &str, widget_name: &str) {
+    alizarin_core::register_widget_for_datatype(datatype, widget_name);
+}
+
+/// Get the registered widget name for a datatype.
+///
+/// Returns None if no widget is registered for this datatype.
+#[pyfunction]
+fn get_widget_for_datatype(datatype: &str) -> Option<String> {
+    alizarin_core::get_widget_for_datatype(datatype)
+}
+
+/// Register a widget definition.
+///
+/// Extensions should call this at initialization to register their custom widgets.
+/// This allows the mutation system to find extension widgets when creating
+/// nodes with extension datatypes.
+///
+/// Args:
+///     widget_id: UUID of the widget (should be a valid UUID string)
+///     widget_name: Name of the widget (e.g., "reference-select-widget")
+///     datatype: The datatype this widget handles
+///     default_config_json: JSON string of default config (or "{}" for empty)
+///
+/// Example:
+///     # In CLM extension initialization:
+///     alizarin.register_widget(
+///         "10000000-0000-0000-0000-000000000017",
+///         "reference-select-widget",
+///         "reference",
+///         '{"placeholder": "Select a reference"}'
+///     )
+#[pyfunction]
+fn register_widget(widget_id: &str, widget_name: &str, datatype: &str, default_config_json: &str) {
+    let widget = alizarin_core::RegisteredWidget::new(
+        widget_id,
+        widget_name,
+        datatype,
+        default_config_json,
+    );
+    alizarin_core::register_widget(widget);
+}
+
+/// Get all registered widget names.
+#[pyfunction]
+fn registered_widgets() -> Vec<String> {
+    alizarin_core::registered_widgets()
+}
+
+/// Get all registered widget mappings (datatype -> widget_name).
+#[pyfunction]
+fn widget_mappings() -> Vec<(String, String)> {
+    alizarin_core::widget_mappings()
+}
+
 /// Recursively sort all object keys in a JSON value for deterministic output.
 fn sort_json_keys(value: serde_json::Value) -> serde_json::Value {
     match value {
@@ -1759,6 +1840,13 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(register_list_datatype, m)?)?;
     m.add_function(wrap_pyfunction!(is_list_datatype, m)?)?;
     m.add_function(wrap_pyfunction!(list_datatypes, m)?)?;
+
+    // Widget registry (for extension datatype -> widget mappings)
+    m.add_function(wrap_pyfunction!(register_widget_for_datatype, m)?)?;
+    m.add_function(wrap_pyfunction!(get_widget_for_datatype, m)?)?;
+    m.add_function(wrap_pyfunction!(register_widget, m)?)?;
+    m.add_function(wrap_pyfunction!(registered_widgets, m)?)?;
+    m.add_function(wrap_pyfunction!(widget_mappings, m)?)?;
 
     // Low-level tree conversion functions (for compatibility)
     m.add_function(wrap_pyfunction!(tiles_to_json_tree, m)?)?;

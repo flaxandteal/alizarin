@@ -129,8 +129,16 @@ def test_collection_as_resource_references():
         # Register graph before conversion
         graph_id = alizarin.register_graph(json.dumps(graph_data))
 
+        # Resolve labels to UUIDs using the loaded RDM cache
+        trees_json = json.dumps(trees)
+        resolved_trees_json = alizarin.resolve_labels_in_tree(
+            tree_json=trees_json,
+            graph_id=graph_id,
+            strict=True
+        )
+
         result = alizarin.batch_trees_to_tiles(
-            trees_json=json.dumps(trees),
+            trees_json=resolved_trees_json,
             graph_id=graph_id,
             from_camel=False,
             strict=True
@@ -244,8 +252,16 @@ def test_collection_as_concepts():
         # Register graph before conversion
         graph_id = alizarin.register_graph(json.dumps(graph_data))
 
+        # Resolve labels to UUIDs using the loaded RDM cache
+        trees_json = json.dumps(trees)
+        resolved_trees_json = alizarin.resolve_labels_in_tree(
+            tree_json=trees_json,
+            graph_id=graph_id,
+            strict=True
+        )
+
         result = alizarin.batch_trees_to_tiles(
-            trees_json=json.dumps(trees),
+            trees_json=resolved_trees_json,
             graph_id=graph_id,
             from_camel=False,
             strict=True
@@ -392,8 +408,16 @@ def test_skos_roundtrip_with_person_model():
             # Register graph before conversion
             graph_id = alizarin.register_graph(json.dumps(graph_data))
 
+            # Resolve labels to UUIDs using the loaded RDM cache
+            trees_json = json.dumps(trees)
+            resolved_trees_json = alizarin.resolve_labels_in_tree(
+                tree_json=trees_json,
+                graph_id=graph_id,
+                strict=True
+            )
+
             result = alizarin.batch_trees_to_tiles(
-                trees_json=json.dumps(trees),
+                trees_json=resolved_trees_json,
                 graph_id=graph_id,
                 from_camel=False,
                 strict=True

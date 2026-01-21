@@ -22,6 +22,7 @@ use alizarin_core::rdm_cache::{
     RdmCache as CoreRdmCache,
     RdmCollection as CoreRdmCollection,
     RdmConcept as CoreRdmConcept,
+    RdmValue as CoreRdmValue,
 };
 
 // SKOS parser and serializer from core crate
@@ -341,10 +342,16 @@ impl RdmConcept {
 impl RdmConcept {
     #[new]
     fn new(id: String, pref_label: HashMap<String, String>) -> Self {
+        // Convert string labels to RdmValue (IDs will be generated when added to collection)
+        let pref_label_values: HashMap<String, CoreRdmValue> = pref_label
+            .into_iter()
+            .map(|(lang, value)| (lang, CoreRdmValue::new("__pending__".to_string(), value)))
+            .collect();
+
         Self {
             inner: CoreRdmConcept {
                 id,
-                pref_label,
+                pref_label: pref_label_values,
                 alt_labels: HashMap::new(),
                 broader: vec![],
                 narrower: vec![],
@@ -366,17 +373,17 @@ impl RdmConcept {
     ///     concept = RustRdmConcept.from_label("uuid-1", {"en": "Category A", "de": "Kategorie A"})
     #[staticmethod]
     fn from_label(py: Python, id: String, label: PyObject) -> PyResult<Self> {
-        let pref_label = if let Ok(s) = label.extract::<String>(py) {
+        let pref_label: HashMap<String, CoreRdmValue> = if let Ok(s) = label.extract::<String>(py) {
             let lang = get_current_language();
             let mut map = HashMap::new();
-            map.insert(lang, s);
+            map.insert(lang, CoreRdmValue::new("__pending__".to_string(), s));
             map
         } else if let Ok(dict) = label.downcast::<PyDict>(py) {
             let mut map = HashMap::new();
             for (key, value) in dict.iter() {
                 let lang: String = key.extract()?;
                 let label_str: String = value.extract()?;
-                map.insert(lang, label_str);
+                map.insert(lang, CoreRdmValue::new("__pending__".to_string(), label_str));
             }
             map
         } else {
@@ -404,7 +411,10 @@ impl RdmConcept {
 
     #[getter]
     fn pref_label(&self) -> HashMap<String, String> {
-        self.inner.pref_label.clone()
+        // Extract just the value strings for backward compatibility
+        self.inner.pref_label.iter()
+            .map(|(lang, v)| (lang.clone(), v.value.clone()))
+            .collect()
     }
 
     #[getter]
@@ -704,18 +714,18 @@ impl RdmCollection {
     fn add_from_label(&mut self, py: Python, label: PyObject, id: Option<String>) -> PyResult<String> {
         // Extract pref_label as HashMap and get deterministic string for ID generation
         // Labels are trimmed to normalize whitespace
-        let (pref_label, label_string) = if let Ok(s) = label.extract::<String>(py) {
+        let (pref_label, label_string): (HashMap<String, CoreRdmValue>, String) = if let Ok(s) = label.extract::<String>(py) {
             let trimmed = s.trim().to_string();
             let lang = get_current_language();
             let mut map = HashMap::new();
-            map.insert(lang, trimmed.clone());
+            map.insert(lang, CoreRdmValue::new("__pending__".to_string(), trimmed.clone()));
             (map, trimmed)
         } else if let Ok(dict) = label.downcast::<PyDict>(py) {
             let mut map = HashMap::new();
             for (key, value) in dict.iter() {
                 let lang: String = key.extract()?;
                 let label_str: String = value.extract()?;
-                map.insert(lang, label_str.trim().to_string());
+                map.insert(lang, CoreRdmValue::new("__pending__".to_string(), label_str.trim().to_string()));
             }
             // Get deterministic string from multilingual dict (uses trimmed values)
             let det_string = label_to_deterministic_string(py, &label)?.trim().to_string();
@@ -776,18 +786,18 @@ impl RdmCollection {
 
         // Extract pref_label as HashMap and get deterministic string for ID generation
         // Labels are trimmed to normalize whitespace
-        let (pref_label, label_string) = if let Ok(s) = label.extract::<String>(py) {
+        let (pref_label, label_string): (HashMap<String, CoreRdmValue>, String) = if let Ok(s) = label.extract::<String>(py) {
             let trimmed = s.trim().to_string();
             let lang = get_current_language();
             let mut map = HashMap::new();
-            map.insert(lang, trimmed.clone());
+            map.insert(lang, CoreRdmValue::new("__pending__".to_string(), trimmed.clone()));
             (map, trimmed)
         } else if let Ok(dict) = label.downcast::<PyDict>(py) {
             let mut map = HashMap::new();
             for (key, value) in dict.iter() {
                 let lang: String = key.extract()?;
                 let label_str: String = value.extract()?;
-                map.insert(lang, label_str.trim().to_string());
+                map.insert(lang, CoreRdmValue::new("__pending__".to_string(), label_str.trim().to_string()));
             }
             // Get deterministic string from multilingual dict (uses trimmed values)
             let det_string = label_to_deterministic_string(py, &label)?.trim().to_string();
@@ -826,6 +836,52 @@ impl RdmCollection {
     /// Look up a concept by ID
     fn get_concept(&self, concept_id: &str) -> Option<RdmConcept> {
         self.inner.get_concept(concept_id).cloned().map(RdmConcept::from_core)
+    }
+
+    /// Get the first parent ID for a concept (from broader field)
+    ///
+    /// Returns None if the concept doesn't exist or has no parent (top-level concept).
+    fn get_parent_id(&self, concept_id: &str) -> Option<String> {
+        self.inner.get_parent_id(concept_id)
+    }
+
+    // =========================================================================
+    // Value ID Lookups (for StaticValue compatibility)
+    // =========================================================================
+
+    /// Look up a value by its VALUE ID
+    ///
+    /// This is the primary lookup method used by ViewModels.
+    /// Returns a dict with {id, value, conceptId, language} or None if not found.
+    fn get_value_by_id(&self, py: Python, value_id: &str) -> PyResult<Option<PyObject>> {
+        match self.inner.get_value_by_id(value_id) {
+            Some(value) => {
+                let dict = pyo3::types::PyDict::new_bound(py);
+                dict.set_item("id", &value.id)?;
+                dict.set_item("value", &value.value)?;
+                dict.set_item("conceptId", &value.concept_id)?;
+                dict.set_item("language", &value.language)?;
+                Ok(Some(dict.into()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Get concept ID from value ID
+    ///
+    /// Returns the concept ID that contains the given value ID.
+    fn get_concept_id_for_value(&self, value_id: &str) -> Option<String> {
+        self.inner.get_concept_id_for_value(value_id).map(|s| s.to_string())
+    }
+
+    /// Check if a value ID exists in this collection
+    fn has_value(&self, value_id: &str) -> bool {
+        self.inner.has_value(value_id)
+    }
+
+    /// Get all value IDs in this collection
+    fn get_value_ids(&self) -> Vec<String> {
+        self.inner.get_value_ids().into_iter().cloned().collect()
     }
 
     /// Check if concept exists in collection
@@ -977,11 +1033,16 @@ impl RdmCollection {
         // Sort languages for deterministic output
         let mut sorted_labels: Vec<_> = concept.pref_label.iter().collect();
         sorted_labels.sort_by_key(|(lang, _)| *lang);
-        for (lang, label) in sorted_labels {
-            let value_id = generate_skos_value_id(&concept.id, lang, label);
+        for (lang, rdm_value) in sorted_labels {
+            // Use the existing value ID from RdmValue, or generate one
+            let value_id = if rdm_value.id.is_empty() || rdm_value.id == "__pending__" {
+                generate_skos_value_id(&concept.id, lang, &rdm_value.value)
+            } else {
+                rdm_value.id.clone()
+            };
             let mut label_obj = serde_json::Map::new();
             label_obj.insert("id".to_string(), serde_json::Value::String(value_id));
-            label_obj.insert("value".to_string(), serde_json::Value::String(label.clone()));
+            label_obj.insert("value".to_string(), serde_json::Value::String(rdm_value.value.clone()));
             pref_labels.insert(lang.clone(), serde_json::Value::Object(label_obj));
         }
 
@@ -1059,12 +1120,18 @@ fn rdm_to_skos_collection(rdm: &CoreRdmCollection, node_type: &str) -> SkosColle
         if let Some(rdm_concept) = rdm.get_concept(concept_id) {
             // Convert pref_labels to SkosValue format
             let mut pref_labels = HashMap::new();
-            for (lang, label) in &rdm_concept.pref_label {
+            for (lang, rdm_value) in &rdm_concept.pref_label {
+                // Use existing value ID from RdmValue, or generate one
+                let value_id = if rdm_value.id.is_empty() || rdm_value.id == "__pending__" {
+                    generate_skos_value_id(concept_id, lang, &rdm_value.value)
+                } else {
+                    rdm_value.id.clone()
+                };
                 pref_labels.insert(
                     lang.clone(),
                     SkosValue {
-                        id: generate_skos_value_id(concept_id, lang, label),
-                        value: label.clone(),
+                        id: value_id,
+                        value: rdm_value.value.clone(),
                     },
                 );
             }
@@ -1208,9 +1275,13 @@ impl RdmCache {
             skos_concept: &SkosConcept,
             parent_id: Option<&str>
         ) {
-            let mut pref_label = HashMap::new();
-            for (lang, value) in &skos_concept.pref_labels {
-                pref_label.insert(lang.clone(), value.value.clone());
+            let mut pref_label: HashMap<String, CoreRdmValue> = HashMap::new();
+            for (lang, skos_value) in &skos_concept.pref_labels {
+                // Use the existing value ID from SKOS
+                pref_label.insert(
+                    lang.clone(),
+                    CoreRdmValue::new(skos_value.id.clone(), skos_value.value.clone())
+                );
             }
 
             // Extract narrower IDs from children
@@ -1359,6 +1430,48 @@ impl RdmCache {
         self.inner.lookup_concept(collection_id, concept_id)
             .cloned()
             .map(RdmConcept::from_core)
+    }
+
+    /// Get the first parent ID for a concept
+    ///
+    /// Returns None if the collection doesn't exist, concept doesn't exist,
+    /// or concept has no parent (top-level concept).
+    fn get_parent_id(&self, collection_id: &str, concept_id: &str) -> Option<String> {
+        self.inner.get_parent_id(collection_id, concept_id)
+    }
+
+    // =========================================================================
+    // Value ID Lookups (for StaticValue compatibility)
+    // =========================================================================
+
+    /// Look up a value by its VALUE ID
+    ///
+    /// This is the primary lookup method used by ViewModels.
+    /// Returns a dict with {id, value, conceptId, language} or None if not found.
+    fn lookup_value(&self, py: Python, collection_id: &str, value_id: &str) -> PyResult<Option<PyObject>> {
+        match self.inner.lookup_value(collection_id, value_id) {
+            Some(value) => {
+                let dict = pyo3::types::PyDict::new_bound(py);
+                dict.set_item("id", &value.id)?;
+                dict.set_item("value", &value.value)?;
+                dict.set_item("conceptId", &value.concept_id)?;
+                dict.set_item("language", &value.language)?;
+                Ok(Some(dict.into()))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Get concept ID from value ID
+    ///
+    /// Returns the concept ID that contains the given value ID.
+    fn get_concept_id_for_value(&self, collection_id: &str, value_id: &str) -> Option<String> {
+        self.inner.get_concept_id_for_value(collection_id, value_id).map(|s| s.to_string())
+    }
+
+    /// Validate that a value exists in a collection
+    fn validate_value(&self, collection_id: &str, value_id: &str) -> bool {
+        self.inner.validate_value(collection_id, value_id)
     }
 
     /// Validate that a concept exists in a collection

@@ -402,6 +402,18 @@ impl Widget {
     }
 }
 
+/// Convert a RegisteredWidget (from dynamic registry) to Widget
+impl From<crate::registry::RegisteredWidget> for Widget {
+    fn from(registered: crate::registry::RegisteredWidget) -> Self {
+        Self {
+            id: registered.id,
+            name: registered.name,
+            datatype: registered.datatype,
+            default_config: registered.default_config,
+        }
+    }
+}
+
 /// A card component type
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CardComponent {
@@ -560,7 +572,25 @@ lazy_static::lazy_static! {
 }
 
 /// Get the default widget for a datatype
-pub fn get_default_widget_for_datatype(datatype: &str) -> Result<&'static Widget, MutationError> {
+///
+/// Checks in order:
+/// 1. Extension widget mapping registry (datatype -> widget name)
+/// 2. Dynamic widget registry (for extension-registered widgets)
+/// 3. Core static widget mappings
+pub fn get_default_widget_for_datatype(datatype: &str) -> Result<Widget, MutationError> {
+    // First check the extension registry for custom datatype mappings
+    if let Some(widget_name) = crate::registry::get_widget_for_datatype(datatype) {
+        // Check dynamic widget registry first
+        if let Some(registered) = crate::registry::get_registered_widget(&widget_name) {
+            return Ok(Widget::from(registered));
+        }
+        // Fall back to static widgets
+        return WIDGETS.get(&widget_name)
+            .cloned()
+            .ok_or_else(|| MutationError::WidgetNotFound(widget_name));
+    }
+
+    // Fall back to core datatype mappings
     let widget_name = match datatype {
         "number" => "number-widget",
         "string" => "text-widget",
@@ -577,6 +607,7 @@ pub fn get_default_widget_for_datatype(datatype: &str) -> Result<&'static Widget
     };
 
     WIDGETS.get(widget_name)
+        .cloned()
         .ok_or_else(|| MutationError::WidgetNotFound(widget_name.to_string()))
 }
 
@@ -658,6 +689,8 @@ pub enum MutationError {
     NodeHasDependentWidgets(String),
     /// Alias already exists
     AliasAlreadyExists(String),
+    /// Invalid node config
+    InvalidConfig { alias: String, error: String },
     /// Extension mutation not found in registry
     ExtensionNotFound(String),
     /// Extension mutation used but no registry provided
@@ -691,6 +724,7 @@ impl std::fmt::Display for MutationError {
             MutationError::CannotDeleteRootNode(id) => write!(f, "Cannot delete root node: {}", id),
             MutationError::NodeHasDependentWidgets(id) => write!(f, "Node has dependent widgets, cannot change type: {}", id),
             MutationError::AliasAlreadyExists(alias) => write!(f, "Alias already exists: {}", alias),
+            MutationError::InvalidConfig { alias, error } => write!(f, "Invalid config for node '{}': {}", alias, error),
             MutationError::ExtensionNotFound(name) => write!(f, "Extension mutation not found: {}", name),
             MutationError::NoExtensionRegistry(name) => write!(f, "Extension mutation '{}' used but no registry provided", name),
             MutationError::Other(msg) => write!(f, "{}", msg),
@@ -1657,6 +1691,11 @@ fn apply_add_node(
     params: AddNodeParams,
     options: &MutatorOptions,
 ) -> Result<(), MutationError> {
+    // Check for duplicate alias
+    if graph.find_node_by_alias(&params.alias).is_some() {
+        return Err(MutationError::AliasAlreadyExists(params.alias.clone()));
+    }
+
     // Find parent node
     let parent = if let Some(ref parent_alias) = params.parent_alias {
         graph.find_node_by_alias(parent_alias)
@@ -1677,7 +1716,7 @@ fn apply_add_node(
     // All nodes except root must have a nodegroup. Create a new one if:
     // - Cardinality is N (multiple instances allowed), OR
     // - Parent is root (direct children of root always get their own nodegroup)
-    let nodegroup_id = if params.cardinality == Cardinality::N || parent.is_root() {
+    let (nodegroup_id, created_new_nodegroup) = if params.cardinality == Cardinality::N || parent.is_root() {
         // Create new nodegroup for this node
         let ng_id = node_id.clone();
 
@@ -1720,15 +1759,19 @@ fn apply_add_node(
             graph.push_card(card);
         }
 
-        Some(ng_id)
+        (Some(ng_id), true)
     } else {
-        parent_nodegroup_id
+        (parent_nodegroup_id, false)
     };
 
-    // Build config
-    let config: HashMap<String, serde_json::Value> = params.config
-        .and_then(|v| serde_json::from_value(v).ok())
-        .unwrap_or_default();
+    // Build config - error if provided but invalid
+    let config: HashMap<String, serde_json::Value> = match params.config {
+        Some(v) => serde_json::from_value(v).map_err(|e| MutationError::InvalidConfig {
+            alias: params.alias.clone(),
+            error: e.to_string(),
+        })?,
+        None => HashMap::new(),
+    };
 
     // Create node
     let node = StaticNode {
@@ -1775,39 +1818,45 @@ fn apply_add_node(
 
     // Auto-create widget if enabled and not semantic
     if options.autocreate_widget && params.datatype != "semantic" {
-        if let Ok(widget) = get_default_widget_for_datatype(&params.datatype) {
-            if let Some(ref ng_id) = nodegroup_id {
-                // Check if card exists for this nodegroup
-                if graph.find_card_by_nodegroup(ng_id).is_some() {
-                    let mut widget_config = widget.get_default_config();
-                    if let serde_json::Value::Object(ref mut map) = widget_config {
-                        map.insert("label".to_string(), serde_json::Value::String(params.name.clone()));
-                    }
+        let widget = get_default_widget_for_datatype(&params.datatype)
+            .map_err(|_| MutationError::NoWidgetForDatatype(params.datatype.clone()))?;
 
-                    let cxnxw_id = generate_uuid_v5(
-                        ("graph", Some(&graph.graphid)),
-                        &format!("cxnxw-{}-{}", node_id, widget.id),
-                    );
+        let ng_id = nodegroup_id.as_ref()
+            .ok_or_else(|| MutationError::Other(format!(
+                "Cannot create widget for node '{}': no nodegroup", params.alias
+            )))?;
 
-                    // Get the card to find its ID
-                    if let Some(card) = graph.find_card_by_nodegroup(ng_id) {
-                        let card_id = card.cardid.clone();
-                        let cxnxw = StaticCardsXNodesXWidgets {
-                            card_id,
-                            config: widget_config,
-                            id: cxnxw_id,
-                            label: StaticTranslatableString::from_string(&params.name),
-                            node_id: node_id.clone(),
-                            sortorder: params.options.sortorder,
-                            visible: true,
-                            widget_id: widget.id.clone(),
-                            source_identifier_id: None,
-                        };
-                        graph.push_card_x_node_x_widget(cxnxw);
-                    }
-                }
+        // If we created a new nodegroup, a card must exist (created above if autocreate_card).
+        // If inheriting an existing nodegroup that has no card, silently skip widget creation.
+        if let Some(card) = graph.find_card_by_nodegroup(ng_id) {
+            let mut widget_config = widget.get_default_config();
+            if let serde_json::Value::Object(ref mut map) = widget_config {
+                map.insert("label".to_string(), serde_json::Value::String(params.name.clone()));
             }
+
+            let cxnxw_id = generate_uuid_v5(
+                ("graph", Some(&graph.graphid)),
+                &format!("cxnxw-{}-{}", node_id, widget.id),
+            );
+
+            let cxnxw = StaticCardsXNodesXWidgets {
+                card_id: card.cardid.clone(),
+                config: widget_config,
+                id: cxnxw_id,
+                label: StaticTranslatableString::from_string(&params.name),
+                node_id: node_id.clone(),
+                sortorder: params.options.sortorder,
+                visible: true,
+                widget_id: widget.id.clone(),
+                source_identifier_id: None,
+            };
+            graph.push_card_x_node_x_widget(cxnxw);
+        } else if created_new_nodegroup {
+            // We created a new nodegroup but it has no card - this shouldn't happen
+            // if autocreate_card is true, so this is an error
+            return Err(MutationError::CardNotFound(ng_id.clone()));
         }
+        // else: inherited nodegroup with no card, silently skip widget creation
     }
 
     Ok(())
@@ -4194,6 +4243,53 @@ mod tests {
         // Should have a widget auto-created (string -> text-widget)
         // But only if there's a card for the nodegroup
         // Since cardinality is One, no new card is created, so no widget
+    }
+
+    #[test]
+    fn test_add_node_duplicate_alias_error() {
+        let graph = create_test_graph();
+
+        // Try to add a node with alias "root" which already exists
+        let result = GraphMutator::new(graph)
+            .add_string_node(
+                Some("root"),
+                "root",  // This alias already exists!
+                "Duplicate",
+                Cardinality::One,
+                "E41_Appellation",
+                "P1_is_identified_by",
+                None,
+                NodeOptions::default(),
+                None,
+            )
+            .build();
+
+        assert!(result.is_err());
+        assert!(matches!(result, Err(MutationError::AliasAlreadyExists(_))));
+    }
+
+    #[test]
+    fn test_add_node_invalid_config_error() {
+        let graph = create_test_graph();
+
+        // Provide invalid config (not an object)
+        let result = GraphMutator::new(graph)
+            .add_generic_node(
+                Some("root"),
+                "child",
+                "Child",
+                Cardinality::N,
+                "string",
+                "E41_Appellation",
+                "P1_is_identified_by",
+                None,
+                NodeOptions::default(),
+                Some(serde_json::json!("not an object")),  // Invalid: should be object
+            )
+            .build();
+
+        assert!(result.is_err());
+        assert!(matches!(result, Err(MutationError::InvalidConfig { .. })));
     }
 
     #[test]

@@ -31,6 +31,44 @@ lazy_static::lazy_static! {
         set.insert("domain-value-list".to_string());
         RwLock::new(set)
     };
+
+    /// Registry mapping datatype -> widget_name for extension datatypes.
+    /// Extensions can register their custom datatype-to-widget mappings here.
+    /// Core mappings are handled in graph_mutator::get_default_widget_for_datatype.
+    static ref WIDGET_MAPPING_REGISTRY: RwLock<HashMap<String, String>> =
+        RwLock::new(HashMap::new());
+
+    /// Registry for dynamically registered widgets from extensions.
+    /// Maps widget_name -> Widget definition.
+    static ref WIDGET_REGISTRY: RwLock<HashMap<String, RegisteredWidget>> =
+        RwLock::new(HashMap::new());
+}
+
+/// A dynamically registered widget definition.
+/// Similar to graph_mutator::Widget but owned (not 'static).
+#[derive(Debug, Clone)]
+pub struct RegisteredWidget {
+    pub id: String,
+    pub name: String,
+    pub datatype: String,
+    pub default_config: serde_json::Value,
+}
+
+impl RegisteredWidget {
+    pub fn new(id: &str, name: &str, datatype: &str, default_config_json: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            name: name.to_string(),
+            datatype: datatype.to_string(),
+            default_config: serde_json::from_str(default_config_json)
+                .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+        }
+    }
+
+    /// Get a fresh copy of the default config
+    pub fn get_default_config(&self) -> serde_json::Value {
+        self.default_config.clone()
+    }
 }
 
 /// Register a graph in the registry
@@ -130,6 +168,108 @@ pub fn list_datatypes() -> Vec<String> {
         .read()
         .ok()
         .map(|registry| registry.iter().cloned().collect())
+        .unwrap_or_default()
+}
+
+// ============================================================================
+// Widget Mapping Registry
+// ============================================================================
+
+/// Register a widget mapping for a datatype.
+///
+/// Extensions should call this at initialization to register their custom
+/// datatype-to-widget mappings. This allows `get_default_widget_for_datatype`
+/// to find the correct widget for extension datatypes.
+///
+/// # Example
+/// ```ignore
+/// // In CLM extension initialization:
+/// register_widget_for_datatype("reference", "reference-select-widget");
+/// register_widget_for_datatype("reference-list", "reference-multiselect-widget");
+/// ```
+pub fn register_widget_for_datatype(datatype: &str, widget_name: &str) {
+    if let Ok(mut registry) = WIDGET_MAPPING_REGISTRY.write() {
+        registry.insert(datatype.to_string(), widget_name.to_string());
+    }
+}
+
+/// Get the registered widget name for a datatype.
+///
+/// Returns None if no widget is registered for this datatype.
+/// Used by `get_default_widget_for_datatype` to check extension mappings.
+pub fn get_widget_for_datatype(datatype: &str) -> Option<String> {
+    WIDGET_MAPPING_REGISTRY
+        .read()
+        .ok()
+        .and_then(|registry| registry.get(datatype).cloned())
+}
+
+/// Unregister a widget mapping for a datatype.
+pub fn unregister_widget_for_datatype(datatype: &str) -> Option<String> {
+    WIDGET_MAPPING_REGISTRY
+        .write()
+        .ok()
+        .and_then(|mut registry| registry.remove(datatype))
+}
+
+/// Get all registered widget mappings.
+pub fn widget_mappings() -> Vec<(String, String)> {
+    WIDGET_MAPPING_REGISTRY
+        .read()
+        .ok()
+        .map(|registry| registry.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+        .unwrap_or_default()
+}
+
+// ============================================================================
+// Widget Registry
+// ============================================================================
+
+/// Register a widget definition.
+///
+/// Extensions should call this at initialization to register their custom widgets.
+/// This allows `get_default_widget_for_datatype` to find extension widgets.
+///
+/// # Example
+/// ```ignore
+/// // In CLM extension initialization:
+/// register_widget(RegisteredWidget::new(
+///     "10000000-0000-0000-0000-000000000017",
+///     "reference-select-widget",
+///     "reference",
+///     r#"{ "placeholder": "Select a reference" }"#
+/// ));
+/// ```
+pub fn register_widget(widget: RegisteredWidget) {
+    if let Ok(mut registry) = WIDGET_REGISTRY.write() {
+        registry.insert(widget.name.clone(), widget);
+    }
+}
+
+/// Get a registered widget by name.
+///
+/// Returns None if no widget is registered with this name.
+pub fn get_registered_widget(name: &str) -> Option<RegisteredWidget> {
+    WIDGET_REGISTRY
+        .read()
+        .ok()
+        .and_then(|registry| registry.get(name).cloned())
+}
+
+/// Unregister a widget.
+pub fn unregister_widget(name: &str) -> Option<RegisteredWidget> {
+    WIDGET_REGISTRY
+        .write()
+        .ok()
+        .and_then(|mut registry| registry.remove(name))
+}
+
+/// Get all registered widget names.
+pub fn registered_widgets() -> Vec<String> {
+    WIDGET_REGISTRY
+        .read()
+        .ok()
+        .map(|registry| registry.keys().cloned().collect())
         .unwrap_or_default()
 }
 

@@ -6,7 +6,67 @@
 //! The WASM bindings (alizarin-wasm) wrap this with WasmRdmCache for JavaScript interop.
 
 use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Deserializer};
+use uuid::Uuid;
+
+// =============================================================================
+// RDM Value (label with its own ID)
+// =============================================================================
+
+/// A label value with its own ID (for StaticValue compatibility)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RdmValue {
+    /// Value ID (UUID) - unique identifier for this specific label
+    pub id: String,
+    /// The label text
+    pub value: String,
+    /// Back-reference to concept ID (not serialized, set during indexing)
+    #[serde(skip)]
+    pub concept_id: String,
+    /// Language code (not serialized, set during indexing)
+    #[serde(skip)]
+    pub language: String,
+}
+
+impl RdmValue {
+    /// Create a new RdmValue
+    pub fn new(id: String, value: String) -> Self {
+        Self {
+            id,
+            value,
+            concept_id: String::new(),
+            language: String::new(),
+        }
+    }
+
+    /// Create a new RdmValue with back-references
+    pub fn with_context(id: String, value: String, concept_id: String, language: String) -> Self {
+        Self {
+            id,
+            value,
+            concept_id,
+            language,
+        }
+    }
+
+    /// Generate a deterministic value ID from concept info
+    /// Uses UUID5 with namespace "value" and path: "{concept_id}/prefLabel/{value}/{language}"
+    pub fn generate_id(concept_id: &str, value: &str, language: &str) -> String {
+        let namespace = Uuid::new_v5(&Uuid::NAMESPACE_URL, b"value");
+        let name = format!("{}/prefLabel/{}/{}", concept_id, value, language);
+        Uuid::new_v5(&namespace, name.as_bytes()).to_string()
+    }
+}
+
+/// Intermediate type for deserializing pref_label that can be either:
+/// - A simple string: "Label"
+/// - A value object: { "id": "...", "value": "Label" }
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum PrefLabelEntry {
+    Simple(String),
+    WithId { id: String, value: String },
+}
 
 // =============================================================================
 // RDM Concept
@@ -17,9 +77,9 @@ use serde::{Deserialize, Serialize};
 pub struct RdmConcept {
     /// Concept ID (UUID)
     pub id: String,
-    /// Preferred labels by language code
-    #[serde(default, rename = "prefLabel")]
-    pub pref_label: HashMap<String, String>,
+    /// Preferred labels by language code (with value IDs)
+    #[serde(default, alias = "prefLabel", alias = "prefLabels", deserialize_with = "deserialize_pref_labels")]
+    pub pref_label: HashMap<String, RdmValue>,
     /// Alternative labels by language code
     #[serde(default, rename = "altLabels")]
     pub alt_labels: HashMap<String, Vec<String>>,
@@ -34,13 +94,46 @@ pub struct RdmConcept {
     pub scope_note: HashMap<String, String>,
 }
 
+/// Custom deserializer that handles both JSON formats for pref_label:
+/// - Simple: { "en": "Label" }
+/// - WithId: { "en": { "id": "...", "value": "Label" } }
+fn deserialize_pref_labels<'de, D>(deserializer: D) -> Result<HashMap<String, RdmValue>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw: HashMap<String, PrefLabelEntry> = HashMap::deserialize(deserializer)?;
+    let mut result = HashMap::new();
+
+    for (lang, entry) in raw {
+        let value = match entry {
+            PrefLabelEntry::Simple(text) => {
+                // Generate a placeholder ID - will be replaced during indexing
+                RdmValue::new("__pending__".to_string(), text)
+            }
+            PrefLabelEntry::WithId { id, value } => {
+                RdmValue::new(id, value)
+            }
+        };
+        result.insert(lang, value);
+    }
+
+    Ok(result)
+}
+
 impl RdmConcept {
     /// Get the preferred label for a language, with fallbacks
     pub fn get_label(&self, language: &str) -> Option<String> {
         self.pref_label.get(language)
             .or_else(|| self.pref_label.get("en"))
             .or_else(|| self.pref_label.values().next())
-            .cloned()
+            .map(|v| v.value.clone())
+    }
+
+    /// Get the RdmValue for a language, with fallbacks
+    pub fn get_value(&self, language: &str) -> Option<&RdmValue> {
+        self.pref_label.get(language)
+            .or_else(|| self.pref_label.get("en"))
+            .or_else(|| self.pref_label.values().next())
     }
 }
 
@@ -59,6 +152,8 @@ pub struct RdmCollection {
     concepts: HashMap<String, RdmConcept>,
     /// Top-level concepts (no broader)
     top_concepts: Vec<String>,
+    /// Index from VALUE ID to (concept_id, language) for fast lookup
+    value_index: HashMap<String, (String, String)>,
 }
 
 impl RdmCollection {
@@ -68,6 +163,7 @@ impl RdmCollection {
             name: None,
             concepts: HashMap::new(),
             top_concepts: vec![],
+            value_index: HashMap::new(),
         }
     }
 
@@ -78,16 +174,39 @@ impl RdmCollection {
             name: Some(name),
             concepts: HashMap::new(),
             top_concepts: vec![],
+            value_index: HashMap::new(),
         }
     }
 
     /// Add a concept to the collection
-    pub fn add_concept(&mut self, concept: RdmConcept) {
-        let id = concept.id.clone();
-        if concept.broader.is_empty() {
-            self.top_concepts.push(id.clone());
+    ///
+    /// This also builds the value index for all labels in the concept.
+    /// If a label has a placeholder ID ("__pending__"), a deterministic ID is generated.
+    pub fn add_concept(&mut self, mut concept: RdmConcept) {
+        let concept_id = concept.id.clone();
+
+        // Process each label: set back-references and build value index
+        for (lang, value) in concept.pref_label.iter_mut() {
+            // Generate ID if it's a placeholder
+            if value.id == "__pending__" {
+                value.id = RdmValue::generate_id(&concept_id, &value.value, lang);
+            }
+
+            // Set back-references
+            value.concept_id = concept_id.clone();
+            value.language = lang.clone();
+
+            // Add to value index
+            self.value_index.insert(
+                value.id.clone(),
+                (concept_id.clone(), lang.clone()),
+            );
         }
-        self.concepts.insert(id, concept);
+
+        if concept.broader.is_empty() {
+            self.top_concepts.push(concept_id.clone());
+        }
+        self.concepts.insert(concept_id, concept);
     }
 
     /// Get top-level concepts (no broader)
@@ -145,6 +264,53 @@ impl RdmCollection {
         self.concepts.keys().collect()
     }
 
+    /// Get the first parent ID for a concept (from broader field)
+    ///
+    /// Returns None if the concept doesn't exist or has no parent (top-level concept).
+    /// SKOS concepts can have multiple parents; this returns only the first one.
+    pub fn get_parent_id(&self, concept_id: &str) -> Option<String> {
+        self.get_concept(concept_id)
+            .and_then(|c| c.broader.first().cloned())
+    }
+
+    // =========================================================================
+    // Value ID Lookups (for StaticValue compatibility)
+    // =========================================================================
+
+    /// Look up a value by its VALUE ID
+    ///
+    /// This is the primary lookup method used by ViewModels.
+    /// Returns None if the value ID is not found in this collection.
+    pub fn get_value_by_id(&self, value_id: &str) -> Option<&RdmValue> {
+        self.value_index.get(value_id)
+            .and_then(|(concept_id, lang)| {
+                self.concepts.get(concept_id)
+                    .and_then(|c| c.pref_label.get(lang))
+            })
+    }
+
+    /// Get concept ID from value ID
+    ///
+    /// Returns the concept ID that contains the given value ID.
+    pub fn get_concept_id_for_value(&self, value_id: &str) -> Option<&str> {
+        self.value_index.get(value_id)
+            .map(|(concept_id, _)| concept_id.as_str())
+    }
+
+    /// Check if a value ID exists in this collection
+    pub fn has_value(&self, value_id: &str) -> bool {
+        self.value_index.contains_key(value_id)
+    }
+
+    /// Get all value IDs in this collection
+    pub fn get_value_ids(&self) -> Vec<&String> {
+        self.value_index.keys().collect()
+    }
+
+    // =========================================================================
+    // Label-based Lookups
+    // =========================================================================
+
     /// Find a concept by exact label match (case-insensitive)
     ///
     /// Searches pref_label and alt_labels across all languages.
@@ -154,7 +320,7 @@ impl RdmCollection {
         let matches: Vec<_> = self.concepts.values()
             .filter(|c| {
                 // Check pref_label in any language (trim stored values too)
-                c.pref_label.values().any(|p| p.trim().to_lowercase() == label_lower) ||
+                c.pref_label.values().any(|p| p.value.trim().to_lowercase() == label_lower) ||
                 // Check alt_labels in any language
                 c.alt_labels.values().any(|alts|
                     alts.iter().any(|l| l.trim().to_lowercase() == label_lower)
@@ -175,7 +341,7 @@ impl RdmCollection {
         let label_lower = label.trim().to_lowercase();
         self.concepts.values()
             .filter(|c| {
-                c.pref_label.values().any(|p| p.trim().to_lowercase() == label_lower) ||
+                c.pref_label.values().any(|p| p.value.trim().to_lowercase() == label_lower) ||
                 c.alt_labels.values().any(|alts|
                     alts.iter().any(|l| l.trim().to_lowercase() == label_lower)
                 )
@@ -192,7 +358,7 @@ impl RdmCollection {
             .filter(|c| {
                 // Check pref_label
                 if let Some(label) = c.pref_label.get(lang) {
-                    if label.to_lowercase().starts_with(&query_lower) {
+                    if label.value.to_lowercase().starts_with(&query_lower) {
                         return true;
                     }
                 }
@@ -283,6 +449,51 @@ impl RdmCache {
     ) -> Option<&RdmConcept> {
         self.collections.get(collection_id)
             .and_then(|c| c.get_concept(concept_id))
+    }
+
+    /// Get the first parent ID for a concept
+    ///
+    /// Returns None if the collection doesn't exist, concept doesn't exist,
+    /// or concept has no parent (top-level concept).
+    pub fn get_parent_id(&self, collection_id: &str, concept_id: &str) -> Option<String> {
+        self.collections.get(collection_id)
+            .and_then(|c| c.get_parent_id(concept_id))
+    }
+
+    // =========================================================================
+    // Value ID Lookups (for StaticValue compatibility)
+    // =========================================================================
+
+    /// Look up a value by its VALUE ID
+    ///
+    /// This is the primary lookup method used by ViewModels.
+    /// Returns None if the collection or value ID is not found.
+    pub fn lookup_value(
+        &self,
+        collection_id: &str,
+        value_id: &str,
+    ) -> Option<&RdmValue> {
+        self.collections.get(collection_id)
+            .and_then(|c| c.get_value_by_id(value_id))
+    }
+
+    /// Get concept ID from value ID
+    ///
+    /// Returns the concept ID that contains the given value ID.
+    pub fn get_concept_id_for_value(
+        &self,
+        collection_id: &str,
+        value_id: &str,
+    ) -> Option<&str> {
+        self.collections.get(collection_id)
+            .and_then(|c| c.get_concept_id_for_value(value_id))
+    }
+
+    /// Validate that a value exists in a collection
+    pub fn validate_value(&self, collection_id: &str, value_id: &str) -> bool {
+        self.collections.get(collection_id)
+            .map(|c| c.has_value(value_id))
+            .unwrap_or(false)
     }
 
     /// Get a collection by ID
@@ -422,7 +633,7 @@ mod tests {
 
         // Create parent concept (no broader)
         let mut parent_labels = HashMap::new();
-        parent_labels.insert("en".to_string(), "Parent".to_string());
+        parent_labels.insert("en".to_string(), RdmValue::new("v-parent-en".to_string(), "Parent".to_string()));
         let parent = RdmConcept {
             id: "parent".to_string(),
             pref_label: parent_labels,
@@ -434,7 +645,7 @@ mod tests {
 
         // Create child concept (has broader)
         let mut child_labels = HashMap::new();
-        child_labels.insert("en".to_string(), "Child".to_string());
+        child_labels.insert("en".to_string(), RdmValue::new("v-child-en".to_string(), "Child".to_string()));
         let child = RdmConcept {
             id: "child".to_string(),
             pref_label: child_labels,
@@ -465,7 +676,7 @@ mod tests {
         let mut collection = RdmCollection::new("coll-1".to_string());
 
         let mut labels = HashMap::new();
-        labels.insert("en".to_string(), "Original".to_string());
+        labels.insert("en".to_string(), RdmValue::new("v-c1-en".to_string(), "Original".to_string()));
         let concept = RdmConcept {
             id: "c1".to_string(),
             pref_label: labels,
@@ -480,13 +691,13 @@ mod tests {
         // Modify the concept
         if let Some(c) = collection.get_concept_mut("c1") {
             c.narrower.push("c2".to_string());
-            c.pref_label.insert("de".to_string(), "Geändert".to_string());
+            c.pref_label.insert("de".to_string(), RdmValue::new("v-c1-de".to_string(), "Geändert".to_string()));
         }
 
         // Verify changes persisted
         let c = collection.get_concept("c1").unwrap();
         assert_eq!(c.narrower, vec!["c2".to_string()]);
-        assert_eq!(c.pref_label.get("de"), Some(&"Geändert".to_string()));
+        assert_eq!(c.pref_label.get("de").map(|v| v.value.as_str()), Some("Geändert"));
     }
 
     #[test]
@@ -495,7 +706,7 @@ mod tests {
 
         // Add parent
         let mut parent_labels = HashMap::new();
-        parent_labels.insert("en".to_string(), "Animals".to_string());
+        parent_labels.insert("en".to_string(), RdmValue::new("v-animals-en".to_string(), "Animals".to_string()));
         let parent = RdmConcept {
             id: "animals".to_string(),
             pref_label: parent_labels,
@@ -513,7 +724,7 @@ mod tests {
 
         // Add child with broader pointing to parent
         let mut child_labels = HashMap::new();
-        child_labels.insert("en".to_string(), "Mammals".to_string());
+        child_labels.insert("en".to_string(), RdmValue::new("v-mammals-en".to_string(), "Mammals".to_string()));
         let child = RdmConcept {
             id: "mammals".to_string(),
             pref_label: child_labels,
@@ -532,5 +743,110 @@ mod tests {
 
         let child = collection.get_concept("mammals").unwrap();
         assert_eq!(child.broader, vec!["animals".to_string()]);
+    }
+
+    #[test]
+    fn test_value_id_lookup() {
+        let mut cache = RdmCache::new();
+
+        // JSON with explicit value IDs
+        let concepts_json = r#"[
+            {
+                "id": "concept-1",
+                "prefLabels": {
+                    "en": { "id": "value-1-en", "value": "English Label" },
+                    "de": { "id": "value-1-de", "value": "German Label" }
+                }
+            },
+            {
+                "id": "concept-2",
+                "prefLabels": {
+                    "en": { "id": "value-2-en", "value": "Second Concept" }
+                }
+            }
+        ]"#;
+
+        cache.add_collection_from_json("collection-1", concepts_json).unwrap();
+
+        // Look up by value ID
+        let value = cache.lookup_value("collection-1", "value-1-en").unwrap();
+        assert_eq!(value.id, "value-1-en");
+        assert_eq!(value.value, "English Label");
+        assert_eq!(value.concept_id, "concept-1");
+        assert_eq!(value.language, "en");
+
+        // Get concept ID from value ID
+        assert_eq!(
+            cache.get_concept_id_for_value("collection-1", "value-1-de"),
+            Some("concept-1")
+        );
+
+        // Non-existent value ID
+        assert!(cache.lookup_value("collection-1", "nonexistent").is_none());
+        assert!(cache.get_concept_id_for_value("collection-1", "nonexistent").is_none());
+
+        // Validate existence
+        assert!(cache.validate_value("collection-1", "value-2-en"));
+        assert!(!cache.validate_value("collection-1", "nonexistent"));
+    }
+
+    #[test]
+    fn test_simple_preflabel_format_generates_ids() {
+        let mut cache = RdmCache::new();
+
+        // JSON with simple string format (no value IDs)
+        let concepts_json = r#"[
+            {
+                "id": "concept-1",
+                "prefLabel": {"en": "Label One", "de": "Etikett Eins"}
+            }
+        ]"#;
+
+        cache.add_collection_from_json("collection-1", concepts_json).unwrap();
+
+        // Value IDs should be generated deterministically
+        let collection = cache.get_collection("collection-1").unwrap();
+        let concept = collection.get_concept("concept-1").unwrap();
+
+        // Check that value IDs were generated (not __pending__)
+        let en_value = concept.pref_label.get("en").unwrap();
+        assert_ne!(en_value.id, "__pending__");
+        assert_eq!(en_value.value, "Label One");
+
+        // Should be able to look up by the generated value ID
+        let looked_up = collection.get_value_by_id(&en_value.id).unwrap();
+        assert_eq!(looked_up.value, "Label One");
+        assert_eq!(looked_up.concept_id, "concept-1");
+    }
+
+    #[test]
+    fn test_get_parent_id() {
+        let mut cache = RdmCache::new();
+
+        let concepts_json = r#"[
+            {
+                "id": "parent-concept",
+                "prefLabel": {"en": "Parent"}
+            },
+            {
+                "id": "child-concept",
+                "prefLabel": {"en": "Child"},
+                "broader": ["parent-concept"]
+            }
+        ]"#;
+
+        cache.add_collection_from_json("coll-1", concepts_json).unwrap();
+
+        // Child should have parent
+        assert_eq!(
+            cache.get_parent_id("coll-1", "child-concept"),
+            Some("parent-concept".to_string())
+        );
+
+        // Parent has no parent (top-level)
+        assert_eq!(cache.get_parent_id("coll-1", "parent-concept"), None);
+
+        // Non-existent concept
+        assert_eq!(cache.get_parent_id("coll-1", "nonexistent"), None);
     }
 }

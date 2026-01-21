@@ -585,11 +585,52 @@ def _register_list_datatype() -> bool:
         return False
 
 
+def _register_widgets() -> bool:
+    """
+    Register CLM widgets with alizarin's widget registry.
+
+    This allows the mutation system to find the correct widgets when
+    creating nodes with 'reference' or 'reference-list' datatypes.
+
+    Returns True if successful, False if API not available.
+    """
+    try:
+        import alizarin
+
+        if not hasattr(alizarin, 'register_widget'):
+            return False
+        if alizarin.register_widget is None:
+            return False
+
+        # Reference select widget (from arches-controlled-lists)
+        # Widget ID: 19e56148-82b8-47eb-b66e-f6243639a1a8
+        # Widget name: reference-select-widget
+        alizarin.register_widget(
+            "19e56148-82b8-47eb-b66e-f6243639a1a8",
+            "reference-select-widget",
+            "reference",
+            '{"placeholder": "Select an option", "i18n_properties": ["placeholder"]}'
+        )
+
+        # Map 'reference' datatype to reference-select-widget
+        alizarin.register_widget_for_datatype("reference", "reference-select-widget")
+
+        # Map 'reference-list' to the same widget (handles both single and multi)
+        alizarin.register_widget_for_datatype("reference-list", "reference-select-widget")
+
+        return True
+    except ImportError:
+        return False
+    except Exception:
+        return False
+
+
 # Auto-register on import
 _rust_available = _register_rust_handler()
 _register_python_handler()
 _mutation_available = _register_mutation_handler()
 _list_datatype_registered = _register_list_datatype()
+_widgets_registered = _register_widgets()
 
 
 __all__ = [

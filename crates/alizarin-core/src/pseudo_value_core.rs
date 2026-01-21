@@ -211,6 +211,38 @@ impl PseudoValueCore {
         self.tile.as_ref().and_then(|t| t.tileid.clone())
     }
 
+    /// Check if this node has children in the graph edges
+    pub fn has_children(&self, edges: &HashMap<String, Vec<String>>) -> bool {
+        edges.get(&self.node.nodeid)
+            .map(|ids| !ids.is_empty())
+            .unwrap_or(false)
+    }
+
+    /// Serialize this node's own value (tile_data) using type_serialization
+    ///
+    /// This is the common logic used by outer_to_json, non_semantic_with_children_to_json,
+    /// and leaf node serialization. Extracted to allow delegation from WASM.
+    ///
+    /// Takes serialization options and context directly to allow use from different
+    /// VisitorContext types (core vs WASM).
+    pub fn serialize_own_value(
+        &self,
+        serialization_options: &SerializationOptions,
+        serialization_context: Option<&SerializationContext>,
+    ) -> Value {
+        if let Some(ref data) = self.tile_data {
+            let result = serialize_value(
+                self.datatype(),
+                data,
+                serialization_options,
+                serialization_context,
+            );
+            result.unwrap_or(Value::Null)
+        } else {
+            Value::Null
+        }
+    }
+
     /// Convert this pseudo value to JSON
     ///
     /// Uses the serialization options in the context to determine output format:
@@ -238,34 +270,19 @@ impl PseudoValueCore {
             return self.semantic_to_json(ctx);
         }
 
-        // Leaf nodes - serialize through type_serialization module
-        if let Some(ref data) = self.tile_data {
-            let result = serialize_value(
-                datatype,
-                data,
-                &ctx.serialization_options,
-                Some(&ctx.serialization_context),
-            );
-            return result.unwrap_or(Value::Null);
+        // Non-semantic nodes WITH children (outer pattern without explicit inner)
+        // This handles file-list, concept-list, etc. with nested semantic structure
+        if self.has_children(ctx.edges) {
+            return self.non_semantic_with_children_to_json(ctx);
         }
 
-        Value::Null
+        // Leaf nodes - serialize through type_serialization module
+        self.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context))
     }
 
     /// Convert an outer node to JSON
     fn outer_to_json(&self, ctx: &VisitorContext) -> Value {
-        // Serialize the outer node's own value through type_serialization
-        let own_value = if let Some(ref data) = self.tile_data {
-            let result = serialize_value(
-                self.datatype(),
-                data,
-                &ctx.serialization_options,
-                Some(&ctx.serialization_context),
-            );
-            result.unwrap_or(Value::Null)
-        } else {
-            Value::Null
-        };
+        let own_value = self.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
 
         if let Some(ref inner) = self.inner {
             let children_json = inner.semantic_to_json(ctx);
@@ -273,6 +290,17 @@ impl PseudoValueCore {
         }
 
         own_value
+    }
+
+    /// Convert a non-semantic node with children to JSON
+    ///
+    /// This handles the "outer" pattern where a leaf-type node (file-list, concept-list, etc.)
+    /// also has semantic children in the graph. The node's own value is wrapped with "_"
+    /// and children are included alongside it.
+    fn non_semantic_with_children_to_json(&self, ctx: &VisitorContext) -> Value {
+        let own_value = self.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
+        let children_json = self.semantic_to_json(ctx);
+        ctx.serialization_options.merge_outer_with_children(own_value, children_json)
     }
 
     /// Convert a semantic node to JSON by finding and visiting its children
@@ -369,7 +397,12 @@ impl PseudoValueCore {
             }
         }
 
-        if self.datatype() == "semantic" || self.is_inner {
+        // Collect children tiles for semantic nodes, inner nodes, or any node with children
+        // This handles "outer" nodes (non-semantic with children like file-list with copyright)
+        let has_children = ctx.edges.get(&self.node.nodeid)
+            .map(|ids| !ids.is_empty())
+            .unwrap_or(false);
+        if self.datatype() == "semantic" || self.is_inner || has_children {
             self.collect_children_tiles(ctx, tiles);
         }
 

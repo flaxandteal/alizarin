@@ -1,8 +1,33 @@
-import init, { initSync, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString, getRscvTimings, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerDisplaySerializer, hasDisplaySerializer, unregisterDisplaySerializer, getRegisteredDisplaySerializers } from "../pkg/alizarin";
+import init, { initSync, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString, WasmRdmCache, getRscvTimings, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerDisplaySerializer, hasDisplaySerializer, unregisterDisplaySerializer, getRegisteredDisplaySerializers } from "../pkg/alizarin";
 import { registerRustTimingGetter } from "./tracing";
 import wasmURL from "../pkg/alizarin_bg.wasm?url"
 
 let wasmInitialized = false;
+
+// Global WASM RDM cache singleton for concept parent lookups
+let _globalWasmRdmCache: WasmRdmCache | null = null;
+
+/**
+ * Get the global WASM RDM cache singleton.
+ * Creates the cache on first access (after WASM initialization).
+ * @throws Error if WASM is not yet initialized
+ */
+export function getGlobalWasmRdmCache(): WasmRdmCache {
+  if (!wasmInitialized) {
+    throw new Error("WASM not initialized. Call initWasm() first.");
+  }
+  if (!_globalWasmRdmCache) {
+    _globalWasmRdmCache = new WasmRdmCache();
+  }
+  return _globalWasmRdmCache;
+}
+
+/**
+ * Check if the global WASM RDM cache is available.
+ */
+export function hasGlobalWasmRdmCache(): boolean {
+  return wasmInitialized && _globalWasmRdmCache !== null;
+}
 
 /**
  * Patch a WASM class prototype to delegate unknown String methods to toString().
@@ -144,7 +169,7 @@ export async function initWasm() {
 }
 
 // Re-export WASM types for use in the rest of the codebase
-export { WasmStaticNode, WasmStaticGraphMeta };
+export { WasmStaticNode, WasmStaticGraphMeta, WasmRdmCache };
 
 // Re-export SKOS parsing and serialization functions
 export { parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml };

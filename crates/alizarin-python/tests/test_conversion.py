@@ -80,20 +80,21 @@ def test_tiles_to_tree_basic():
     """Test converting tiles to tree structure"""
     graph_data = load_test_data()
     tiles = create_test_tiles(graph_data)
-
-    # Convert Python objects to JSON strings
-    tiles_json = json.dumps(tiles)
     graph_json = json.dumps(graph_data)
 
     # Register graph first (required by new API)
     graph_id = alizarin.register_graph(graph_json)
 
-    # Call the binding
-    result = alizarin.tiles_to_json_tree(
-        tiles_json=tiles_json,
-        resource_id='test-resource-123',
-        graph_id=graph_id
-    )
+    # Create full resource JSON (new API)
+    resource = {
+        'resourceinstanceid': 'test-resource-123',
+        'graph_id': graph_id,
+        'tiles': tiles,
+    }
+    resource_json = json.dumps(resource)
+
+    # Call the binding with single resource JSON
+    result = alizarin.tiles_to_json_tree(resource_json)
 
     # Verify result structure
     assert isinstance(result, dict), "Result should be a dictionary"
@@ -108,12 +109,15 @@ def test_tree_to_tiles_basic():
     graph_data = load_test_data()
 
     # Create a simple tree structure (no metadata, just content)
+    # Note: description is in statement nodegroup, not basic_info
     tree = {
         'basic_info': [{
             'name': {
                 'en': 'JSON Test Group',
                 'ga': 'Grúpa Tástála JSON'
-            },
+            }
+        }],
+        'statement': [{
             'description': 'Created from JSON tree'
         }]
     }
@@ -162,19 +166,20 @@ def test_roundtrip_preserves_data():
     """Test that tiles -> tree -> tiles preserves data"""
     graph_data = load_test_data()
     original_tiles = create_test_tiles(graph_data)
-
-    tiles_json = json.dumps(original_tiles)
     graph_json = json.dumps(graph_data)
 
     # Register graph first (required by new API)
     graph_id = alizarin.register_graph(graph_json)
 
+    # Create full resource JSON (new API)
+    resource = {
+        'resourceinstanceid': 'test-resource-123',
+        'graph_id': graph_id,
+        'tiles': original_tiles,
+    }
+
     # tiles -> tree
-    tree = alizarin.tiles_to_json_tree(
-        tiles_json=tiles_json,
-        resource_id='test-resource-123',
-        graph_id=graph_id
-    )
+    tree = alizarin.tiles_to_json_tree(json.dumps(resource))
 
     print(f"Intermediate tree: {json.dumps(tree, indent=2)}")
 
@@ -223,13 +228,9 @@ def test_invalid_json_handling():
     # Register graph first
     graph_id = alizarin.register_graph(graph_json)
 
-    # Invalid tiles JSON
+    # Invalid resource JSON
     with pytest.raises(Exception):
-        alizarin.tiles_to_json_tree(
-            tiles_json="not valid json",
-            resource_id='test-resource',
-            graph_id=graph_id
-        )
+        alizarin.tiles_to_json_tree("not valid json")
 
     # Invalid graph JSON during registration
     with pytest.raises(Exception):
@@ -237,11 +238,12 @@ def test_invalid_json_handling():
 
     # Unregistered graph_id
     with pytest.raises(Exception):
-        alizarin.tiles_to_json_tree(
-            tiles_json="[]",
-            resource_id='test-resource',
-            graph_id='non-existent-graph-id'
-        )
+        resource = {
+            'resourceinstanceid': 'test-resource',
+            'graph_id': 'non-existent-graph-id',
+            'tiles': [],
+        }
+        alizarin.tiles_to_json_tree(json.dumps(resource))
 
 
 def test_batch_trees_to_tiles():
@@ -249,16 +251,21 @@ def test_batch_trees_to_tiles():
     graph_data = load_test_data()
 
     # Create multiple tree structures
+    # Note: description is in statement nodegroup, not basic_info
     trees = [
         {
             'basic_info': [{
-                'name': {'en': 'Resource One'},
+                'name': {'en': 'Resource One'}
+            }],
+            'statement': [{
                 'description': 'First resource'
             }]
         },
         {
             'basic_info': [{
-                'name': {'en': 'Resource Two'},
+                'name': {'en': 'Resource Two'}
+            }],
+            'statement': [{
                 'description': 'Second resource'
             }]
         }
