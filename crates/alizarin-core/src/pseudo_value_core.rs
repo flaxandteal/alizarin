@@ -6,7 +6,7 @@
 /// The WASM bindings extend these with JsValue fields for ViewModel integration.
 
 use std::sync::Arc;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use serde_json::{Value, Map};
 
 use crate::{StaticNode, StaticTile};
@@ -158,6 +158,8 @@ pub struct TileBuilderContext<'a> {
     pub resourceinstance_id: String,
     pub depth: usize,
     pub max_depth: usize,
+    /// Track visited aliases to prevent O(n²) duplicate traversal
+    pub visited_aliases: &'a std::cell::RefCell<HashSet<String>>,
 }
 
 impl PseudoValueCore {
@@ -399,6 +401,7 @@ impl PseudoValueCore {
 
         // Collect children tiles for semantic nodes, inner nodes, or any node with children
         // This handles "outer" nodes (non-semantic with children like file-list with copyright)
+        // Uses visited_aliases to prevent O(n²) duplicate traversal
         let has_children = ctx.edges.get(&self.node.nodeid)
             .map(|ids| !ids.is_empty())
             .unwrap_or(false);
@@ -414,6 +417,7 @@ impl PseudoValueCore {
                 resourceinstance_id: ctx.resourceinstance_id.clone(),
                 depth: ctx.depth + 1,
                 max_depth: ctx.max_depth,
+                visited_aliases: ctx.visited_aliases,
             };
             inner.collect_tiles(&child_ctx, tiles);
         }
@@ -444,6 +448,16 @@ impl PseudoValueCore {
                 _ => continue,
             };
 
+            // Skip if already visited (prevents O(n²) duplicate traversal)
+            {
+                let visited = ctx.visited_aliases.borrow();
+                if visited.contains(child_alias) {
+                    continue;
+                }
+            }
+            // Mark as visited before processing
+            ctx.visited_aliases.borrow_mut().insert(child_alias.clone());
+
             if let Some(pseudo_list) = ctx.pseudo_cache.get(child_alias) {
                 let child_ctx = TileBuilderContext {
                     pseudo_cache: ctx.pseudo_cache,
@@ -452,6 +466,7 @@ impl PseudoValueCore {
                     resourceinstance_id: ctx.resourceinstance_id.clone(),
                     depth: ctx.depth + 1,
                     max_depth: ctx.max_depth,
+                    visited_aliases: ctx.visited_aliases,
                 };
                 pseudo_list.collect_tiles(&child_ctx, tiles);
             }

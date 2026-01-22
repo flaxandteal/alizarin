@@ -362,6 +362,10 @@ class ReferenceValueViewModel extends String implements IViewModel {
   _nodeid: string | null = null;
   _collectionId: string | null = null;
 
+  get [Symbol.toStringTag]() {
+    return 'ReferenceValue';
+  }
+
   constructor(reference: StaticReference | null, pendingLookup?: PendingLookup, tile?: StaticTile, nodeid?: string, collectionId?: string) {
     // If we have a resolved reference, use its display string; otherwise use placeholder
     super(reference ? referenceToString(reference) : (pendingLookup?.type === 'label' ? pendingLookup.label : '(pending)'));
@@ -606,7 +610,7 @@ class ReferenceValueViewModel extends String implements IViewModel {
   }
 }
 
-class ReferenceListViewModel extends Array implements IViewModel {
+class ReferenceListViewModel extends Array<ReferenceValueViewModel> implements IViewModel {
   _: IViewModel | Promise<IViewModel> | undefined = undefined;
   __parentPseudo: IPseudo | undefined;
 
@@ -614,9 +618,18 @@ class ReferenceListViewModel extends Array implements IViewModel {
   describeFieldGroup = () => (this.__parentPseudo ? this.__parentPseudo.describeFieldGroup() : null)
   _value: Promise<(ReferenceValueViewModel | null)[]> | null = null;
 
+  get [Symbol.toStringTag]() {
+    return 'ReferenceList';
+  }
+
   // Return comma-separated labels for string coercion (template rendering)
   toString(): string {
     return this.map(v => v?.toString() ?? '').filter(s => s).join(', ');
+  }
+
+  // Allow string comparison to reference type
+  includes(value: ReferenceValueViewModel | string): boolean {
+    return this.some(item => item == value);
   }
 
   // For JSON serialization, return the array of plain reference objects
