@@ -8,8 +8,9 @@
 /// - `tiles_to_tree()`: Tiled resources → Array of nested tree objects
 /// - `tree_to_tiles()`: Array of nested tree objects → Tiled resources with business_data wrapper
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::cell::RefCell;
 use serde_json::{Value, Map};
 use serde::{Serialize, Deserialize};
 
@@ -463,6 +464,9 @@ fn single_tree_to_resource(
         strict,
     )?;
 
+    // Track visited aliases to prevent O(n²) duplicate traversal
+    let visited_aliases = RefCell::new(HashSet::new());
+
     let ctx = TileBuilderContext {
         pseudo_cache: &pseudo_cache,
         nodes_by_alias: &nodes_by_alias,
@@ -470,6 +474,7 @@ fn single_tree_to_resource(
         resourceinstance_id: resource_id.clone(),
         depth: 0,
         max_depth: 100,
+        visited_aliases: &visited_aliases,
     };
 
     let mut tiles_map: HashMap<String, TileBuilder> = HashMap::new();
@@ -481,6 +486,8 @@ fn single_tree_to_resource(
 
             if let Some(child_node) = child_node {
                 if let Some(alias) = &child_node.alias {
+                    // Mark as visited before processing (prevents re-traversal from children)
+                    visited_aliases.borrow_mut().insert(alias.clone());
                     if let Some(pseudo_list) = pseudo_cache.get(alias) {
                         pseudo_list.collect_tiles(&ctx, &mut tiles_map);
                     }
