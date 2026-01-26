@@ -376,57 +376,71 @@ class ReferenceValueViewModel extends String implements IViewModel {
     this._collectionId = collectionId ?? (pendingLookup?.collectionId ?? null);
   }
 
+  async getParent(): Promise<ReferenceValueViewModel | null> {
+      await wasmReady;
+
+      const ref = await this._resolvePending();
+      if (!ref || !this._collectionId) {
+        return null;
+      }
+
+      // Get the concept ID from one of the labels
+      const conceptId = ref.labels[0]?.list_item_id;
+      if (!conceptId) {
+        return null;
+      }
+
+      const collection = await RDM.retrieveCollection(this._collectionId);
+      if (!collection.getParentId) {
+        throw new Error(
+          `Collection ${this._collectionId} does not support hierarchy lookups. ` +
+          'Ensure WASM is initialized and the collection is a StaticCollection.'
+        );
+      }
+
+      const parentId = collection.getParentId(conceptId);
+      if (!parentId) {
+        return null; // Top-level concept
+      }
+
+      const parentRef = getReferenceValueFromCollection(collection, parentId);
+      if (!parentRef) {
+        return null;
+      }
+
+      return new ReferenceValueViewModel(new StaticReference(parentRef as any), undefined, undefined, undefined, this._collectionId);
+  }
+
   /**
    * Get the parent reference value, if this reference has a parent in the hierarchy.
    * @returns A new ReferenceValueViewModel for the parent, or null if no parent
    * @throws Error if the collection doesn't support hierarchy lookups
    */
-  async parent(): Promise<ReferenceValueViewModel | null> {
-    const ref = await this._resolvePending();
-    if (!ref || !this._collectionId) {
-      return null;
-    }
-
-    // Get the concept ID from one of the labels
-    const conceptId = ref.labels[0]?.list_item_id;
-    if (!conceptId) {
-      return null;
-    }
-
-    const collection = await RDM.retrieveCollection(this._collectionId);
-    if (!collection.getParentId) {
-      throw new Error(
-        `Collection ${this._collectionId} does not support hierarchy lookups. ` +
-        'Ensure WASM is initialized and the collection is a StaticCollection.'
-      );
-    }
-
-    const parentId = collection.getParentId(conceptId);
-    if (!parentId) {
-      return null; // Top-level concept
-    }
-
-    const parentRef = getReferenceValueFromCollection(collection, parentId);
-    if (!parentRef) {
-      return null;
-    }
-
-    return new ReferenceValueViewModel(new StaticReference(parentRef as any), undefined, undefined, undefined, this._collectionId);
+  get parent(): Promise<ReferenceValueViewModel | null> {
+    return this.getParent();
   }
 
   /**
    * Get all ancestor reference values, from immediate parent to root.
    * @returns Array of ReferenceValueViewModels for ancestors
    */
-  async ancestors(): Promise<ReferenceValueViewModel[]> {
+  async getAncestors(): Promise<ReferenceValueViewModel[]> {
     const result: ReferenceValueViewModel[] = [];
     let current: ReferenceValueViewModel | null = this;
 
-    while ((current = await current.parent()) !== null) {
+    while ((current = await current.parent) !== null) {
       result.push(current);
     }
 
     return result;
+  }
+
+  /**
+   * Get all ancestor reference values, from immediate parent to root.
+   * @returns Array of ReferenceValueViewModels for ancestors
+   */
+  get ancestors(): Promise<ReferenceValueViewModel[]> {
+    return this.getAncestors();
   }
 
   /**
