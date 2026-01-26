@@ -222,6 +222,29 @@ from .graph_manager import (
 
 from .model_wrapper import ResourceModelWrapper
 
+
+def load_model(graph_id: str, use_rust_cache: bool = True) -> ResourceModelWrapper:
+    """
+    Load a ResourceModelWrapper from a registered graph ID.
+
+    Convenience function that handles all the boilerplate of loading a graph
+    from the Rust registry and setting up the model wrapper.
+
+    Args:
+        graph_id: The graph ID returned by register_graph()
+        use_rust_cache: Whether to use Rust-side caching (default True)
+
+    Returns:
+        A fully initialized ResourceModelWrapper with nodes built
+
+    Example:
+        >>> import alizarin
+        >>> graph_id = alizarin.register_graph(graph_json)
+        >>> model = alizarin.load_model(graph_id)
+        >>> # model is ready to use
+    """
+    return ResourceModelWrapper.from_graph_id(graph_id, use_rust_cache=use_rust_cache)
+
 # =============================================================================
 # Instance Wrapper (matching TypeScript graphManager.ts)
 # =============================================================================
@@ -413,6 +436,7 @@ __all__ = [
     "WKRM",
     # Model Wrapper
     "ResourceModelWrapper",
+    "load_model",
     # Instance Wrapper
     "ResourceInstanceWrapper",
     "ResourceInstanceWrapperCore",

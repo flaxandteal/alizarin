@@ -6,6 +6,7 @@ Matches TypeScript ResourceModelWrapper in graphManager.ts
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import (
     Any,
@@ -92,6 +93,54 @@ class ResourceModelWrapper(Generic[RIVM]):
 
         # Permissions
         self._permitted_nodegroups: Dict[str, PermissionValue] = {}
+
+    @classmethod
+    def from_graph_id(
+        cls,
+        graph_id: str,
+        use_rust_cache: bool = True,
+    ) -> "ResourceModelWrapper[RIVM]":
+        """
+        Create a ResourceModelWrapper from a registered graph ID.
+
+        Convenience method that handles all the boilerplate of loading a graph
+        from the Rust registry and setting up the model wrapper.
+
+        Args:
+            graph_id: The graph ID returned by register_graph()
+            use_rust_cache: Whether to use Rust-side caching (default True)
+
+        Returns:
+            A fully initialized ResourceModelWrapper with nodes built
+
+        Raises:
+            RuntimeError: If the Rust extension is not loaded
+            ValueError: If the graph ID is not found
+
+        Example:
+            >>> import alizarin
+            >>> graph_id = alizarin.register_graph(graph_json)
+            >>> model = ResourceModelWrapper.from_graph_id(graph_id)
+            >>> # model is ready to use - nodes are already built
+        """
+        from . import get_graph_json
+        from .static_types import StaticGraph
+        from .graph_manager import WKRM
+
+        if get_graph_json is None:
+            raise RuntimeError("Alizarin Rust extension not loaded")
+
+        graph_json_str = get_graph_json(graph_id)
+        if graph_json_str is None:
+            raise ValueError(f"Graph not found for ID: {graph_id}")
+
+        graph_data = json.loads(graph_json_str)
+        graph = StaticGraph.from_dict(graph_data)
+        wkrm = WKRM.from_meta(graph.meta)
+
+        model = cls(wkrm, graph, use_rust_cache=use_rust_cache)
+        model.build_nodes()
+        return model
 
     def build_nodes(self) -> None:
         """Build node, edge, and nodegroup caches."""
