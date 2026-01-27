@@ -4,11 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "alizarin-filelist"
-version = "0.2.1a21"
+version = "0.2.1a22"
 description = "File List datatype extension for Alizarin"
 requires-python = ">=3.9"
 dependencies = [
-    "alizarin>=0.2.1a21",
+    "alizarin>=0.2.1a22",
 ]
 
 [project.optional-dependencies]
