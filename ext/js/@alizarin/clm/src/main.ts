@@ -377,7 +377,7 @@ class ReferenceValueViewModel extends String implements IViewModel {
   }
 
   async getParent(): Promise<ReferenceValueViewModel | null> {
-      await wasmReady;
+      console.log('wasm is ready');
 
       const ref = await this._resolvePending();
       if (!ref || !this._collectionId) {

@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { generateUuidv5 } from './utils';
 import { getCurrentLanguage, slugify } from './utils';
-import { getGlobalWasmRdmCache, hasGlobalWasmRdmCache } from './_wasm';
+import { getGlobalWasmRdmCache } from './_wasm';
 import {
   StaticGraphMeta,
   StaticNode,
@@ -423,9 +423,7 @@ class StaticCollection {
    * @throws Error if WASM is not initialized
    */
   ensureInCache?(): void {
-    if (!hasGlobalWasmRdmCache()) {
-      throw new Error('WASM not initialized. Call initWasm() before using cache methods.');
-    }
+    getGlobalWasmRdmCache(); // Ensures WASM is initialized and cache exists
     this._ensureInRustCache();
   }
 
@@ -436,12 +434,8 @@ class StaticCollection {
    * @throws Error if WASM is not initialized
    */
   getParentId?(conceptId: string): string | null {
-    if (!hasGlobalWasmRdmCache()) {
-      throw new Error('WASM not initialized. Call initWasm() before using hierarchy methods.');
-    }
-
-    this._ensureInRustCache();
     const cache = getGlobalWasmRdmCache();
+    this._ensureInRustCache();
     return cache.getParentId(this.id, conceptId) ?? null;
   }
 
