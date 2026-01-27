@@ -30,6 +30,19 @@ export function hasGlobalWasmRdmCache(): boolean {
 }
 
 /**
+ * Ensure the WASM RDM cache is initialized and ready.
+ * This can be awaited early in the application lifecycle to ensure
+ * the cache is available before any hierarchy methods are called.
+ * @returns The initialized WasmRdmCache
+ */
+export async function ensureWasmRdmCache(): Promise<WasmRdmCache> {
+  if (!wasmInitialized) {
+    await initWasm();
+  }
+  return getGlobalWasmRdmCache();
+}
+
+/**
  * Patch a WASM class prototype to delegate unknown String methods to toString().
  * This allows `sts.trim()`, `sts.toUpperCase()`, etc. to work transparently.
  */
