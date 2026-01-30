@@ -993,6 +993,28 @@ pub struct RenameNodeParams {
     pub description: Option<String>,
 }
 
+/// Parameters for creating a new graph from scratch
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateGraphParams {
+    /// Name for the graph
+    pub name: String,
+    /// Whether this is a resource model (true) or branch (false)
+    pub is_resource: bool,
+    /// Alias for the root node
+    pub root_alias: String,
+    /// Ontology class URI for the root node
+    pub root_ontology_class: String,
+    /// Optional custom graph ID (otherwise generated deterministically)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub graph_id: Option<String>,
+    /// Optional author
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
+    /// Optional description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 /// Parameters for renaming a graph (updating name, description, etc.)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenameGraphParams {
@@ -1226,6 +1248,8 @@ pub enum GraphMutation {
     RenameNode(RenameNodeParams),
     /// Rename/update graph metadata (name, description, subtitle, author)
     RenameGraph(RenameGraphParams),
+    /// Create a new graph from scratch (only valid as first mutation in apply_mutations_create)
+    CreateGraph(CreateGraphParams),
     /// Extension mutation - delegated to a registered handler
     Extension(ExtensionMutationParams),
 }
@@ -1257,6 +1281,8 @@ impl GraphMutation {
             GraphMutation::RenameNode(_) => MutationConformance::AlwaysConformant,
             // Graph metadata update - valid for both
             GraphMutation::RenameGraph(_) => MutationConformance::AlwaysConformant,
+            // CreateGraph - not a standard mutation, only valid in apply_mutations_create
+            GraphMutation::CreateGraph(_) => MutationConformance::NonConformant,
             // Extension mutations - conformance is specified in params
             GraphMutation::Extension(params) => params.conformance,
         }
@@ -1681,6 +1707,11 @@ fn apply_mutation_with_extensions(
         GraphMutation::ChangeNodeType(params) => apply_change_node_type(graph, params),
         GraphMutation::RenameNode(params) => apply_rename_node(graph, params),
         GraphMutation::RenameGraph(params) => apply_rename_graph(graph, params),
+        GraphMutation::CreateGraph(_) => {
+            Err(MutationError::Other(
+                "CreateGraph cannot be used as a regular mutation. Use apply_mutations_create_from_json instead.".to_string()
+            ))
+        }
         GraphMutation::Extension(params) => {
             match registry {
                 Some(reg) => {
@@ -3395,6 +3426,100 @@ pub fn apply_mutations_from_json_with_extensions(
     apply_mutations_with_extensions(graph, request.mutations, request.options.into(), registry)
 }
 
+/// Apply mutations that may start with a CreateGraph mutation
+///
+/// If `graph` is `None`, the first mutation must be `CreateGraph` which creates
+/// a new graph from scratch. Remaining mutations are applied to the created graph.
+///
+/// If `graph` is `Some`, the first mutation must NOT be `CreateGraph`, and all
+/// mutations are applied to the existing graph (delegating to the normal path).
+///
+/// # Arguments
+/// * `mutations_json` - JSON string containing a MutationRequest
+/// * `graph` - Optional existing graph. If None, first mutation must be CreateGraph.
+///
+/// # Returns
+/// * `Ok(StaticGraph)` - The resulting graph
+/// * `Err(String)` - Error message if mutation failed
+pub fn apply_mutations_create_from_json(
+    mutations_json: &str,
+    graph: Option<&StaticGraph>,
+) -> Result<StaticGraph, String> {
+    let request: MutationRequest = serde_json::from_str(mutations_json)
+        .map_err(|e| format!("Failed to parse mutations JSON: {}", e))?;
+
+    let mut mutations = request.mutations;
+    let options: MutatorOptions = request.options.into();
+
+    match graph {
+        None => {
+            // No graph provided - first mutation must be CreateGraph
+            if mutations.is_empty() {
+                return Err("No graph provided and no mutations to apply".to_string());
+            }
+
+            let first = mutations.remove(0);
+            match first {
+                GraphMutation::CreateGraph(params) => {
+                    // Create skeleton graph
+                    let mut new_graph = create_skeleton_graph(
+                        &params.name,
+                        &params.root_alias,
+                        params.is_resource,
+                        Some(&params.root_ontology_class),
+                    );
+
+                    // Override graph ID if provided
+                    if let Some(ref custom_id) = params.graph_id {
+                        // Update graphid and all node graph_id references
+                        let old_id = new_graph.graphid.clone();
+                        new_graph.graphid = custom_id.clone();
+                        for node in &mut new_graph.nodes {
+                            if node.graph_id == old_id {
+                                node.graph_id = custom_id.clone();
+                            }
+                        }
+                        if new_graph.root.graph_id == old_id {
+                            new_graph.root.graph_id = custom_id.clone();
+                        }
+                    }
+
+                    // Set author if provided
+                    if let Some(author) = params.author {
+                        new_graph.author = Some(author);
+                    }
+
+                    // Set description if provided
+                    if let Some(desc) = params.description {
+                        new_graph.description = Some(
+                            StaticTranslatableString::from_string(&desc)
+                        );
+                    }
+
+                    // Apply remaining mutations to the new graph
+                    if mutations.is_empty() {
+                        new_graph.build_indices();
+                        Ok(new_graph)
+                    } else {
+                        apply_mutations_with_extensions(&new_graph, mutations, options, None)
+                    }
+                }
+                _ => {
+                    Err("No graph provided and first mutation is not CreateGraph".to_string())
+                }
+            }
+        }
+        Some(existing_graph) => {
+            // Graph provided - first mutation must NOT be CreateGraph
+            if let Some(GraphMutation::CreateGraph(_)) = mutations.first() {
+                return Err("CreateGraph cannot be used when a graph already exists".to_string());
+            }
+
+            apply_mutations_with_extensions(existing_graph, mutations, options, None)
+        }
+    }
+}
+
 /// Apply a list of mutations to a graph
 ///
 /// # Arguments
@@ -4136,8 +4261,21 @@ pub fn get_mutation_schema() -> serde_json::Value {
                 { "AddNodegroup": { "$ref": "#/AddNodegroupParams" } },
                 { "AddEdge": { "$ref": "#/AddEdgeParams" } },
                 { "AddCard": { "$ref": "#/AddCardParams" } },
-                { "AddWidgetToCard": { "$ref": "#/AddWidgetParams" } }
+                { "AddWidgetToCard": { "$ref": "#/AddWidgetParams" } },
+                { "CreateGraph": { "$ref": "#/CreateGraphParams" } }
             ]
+        },
+        "CreateGraphParams": {
+            "required": ["name", "is_resource", "root_alias", "root_ontology_class"],
+            "properties": {
+                "name": { "type": "string", "description": "Name for the graph" },
+                "is_resource": { "type": "boolean", "description": "Whether this is a resource model (true) or branch (false)" },
+                "root_alias": { "type": "string", "description": "Alias for the root node" },
+                "root_ontology_class": { "type": "string", "description": "Ontology class URI for the root node" },
+                "graph_id": { "type": "string", "nullable": true, "description": "Optional custom graph ID" },
+                "author": { "type": "string", "nullable": true, "description": "Optional author" },
+                "description": { "type": "string", "nullable": true, "description": "Optional description" }
+            }
         },
         "AddNodeParams": {
             "required": ["alias", "name", "cardinality", "datatype", "ontology_class", "parent_property"],

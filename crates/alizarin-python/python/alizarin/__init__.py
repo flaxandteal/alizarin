@@ -296,6 +296,7 @@ except (ImportError, AttributeError):
 
 from . import alizarin as _alizarin_rust
 apply_mutations_from_json = _alizarin_rust.apply_mutations_from_json
+apply_mutations_create = _alizarin_rust.apply_mutations_create
 apply_mutations_with_extensions = _alizarin_rust.apply_mutations_with_extensions
 register_extension_mutation = _alizarin_rust.register_extension_mutation
 has_extension_mutation = _alizarin_rust.has_extension_mutation
@@ -348,7 +349,7 @@ is_valid_uuid = _alizarin_rust.is_valid_uuid
 # Version
 # =============================================================================
 
-__version__ = "0.2.1-alpha.22"
+__version__ = "0.2.1-alpha.23"
 
 # =============================================================================
 # Exports
@@ -485,6 +486,7 @@ __all__ = [
     "is_valid_uuid",
     # Graph Mutation API
     "apply_mutations_from_json",
+    "apply_mutations_create",
     "apply_mutations_with_extensions",
     "register_extension_mutation",
     "has_extension_mutation",

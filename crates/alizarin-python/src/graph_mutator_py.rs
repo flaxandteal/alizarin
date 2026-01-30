@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use alizarin_core::graph_mutator::{
     apply_mutations_from_json as core_apply_mutations,
     apply_mutations_from_json_with_extensions as core_apply_mutations_with_ext,
+    apply_mutations_create_from_json as core_apply_mutations_create,
     get_mutation_schema as core_get_schema,
     generate_uuid_v5 as core_generate_uuid,
     ExtensionMutationRegistry, ExtensionMutationHandler,
@@ -286,9 +287,50 @@ fn list_extension_mutations() -> PyResult<Vec<String>> {
     Ok(registry.list().into_iter().map(|s| s.to_string()).collect())
 }
 
+/// Apply mutations that may create a new graph.
+///
+/// If graph_json is None, the first mutation must be CreateGraph which creates
+/// a new graph from scratch. Remaining mutations are applied to the new graph.
+///
+/// If graph_json is provided, the first mutation must NOT be CreateGraph,
+/// and all mutations are applied to the existing graph.
+///
+/// Args:
+///     mutations_json: JSON string containing a MutationRequest
+///     graph_json: Optional existing graph as JSON string
+///
+/// Returns:
+///     The resulting graph as JSON string
+#[pyfunction]
+#[pyo3(signature = (mutations_json, graph_json=None))]
+fn apply_mutations_create(mutations_json: &str, graph_json: Option<&str>) -> PyResult<String> {
+    // Parse existing graph if provided
+    let existing_graph = match graph_json {
+        Some(json) => {
+            let graph = CoreStaticGraph::from_json_string(json)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+            Some(graph)
+        }
+        None => None,
+    };
+
+    // Apply mutations
+    let result = core_apply_mutations_create(
+        mutations_json,
+        existing_graph.as_ref(),
+    ).map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+
+    // Serialize result
+    serde_json::to_string(&result)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Failed to serialize result graph: {}", e)
+        ))
+}
+
 /// Register graph mutator functions with the Python module
 pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(apply_mutations_from_json, m)?)?;
+    m.add_function(wrap_pyfunction!(apply_mutations_create, m)?)?;
     m.add_function(wrap_pyfunction!(apply_mutations_with_extensions, m)?)?;
     m.add_function(wrap_pyfunction!(register_extension_mutation, m)?)?;
     m.add_function(wrap_pyfunction!(has_extension_mutation, m)?)?;

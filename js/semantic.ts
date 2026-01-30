@@ -216,8 +216,6 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     const t0 = performance.now();
     try {
       // Sync call - returns immediately if tiles loaded, throws if not
-        console.log('getSemanticChildValue:', key, 'parent_tile_id:', tile?.tileid, 'parent_node:', node.nodeid, 'parent_ng:', node.nodegroup_id);                                
-
       rustValue = wasmWrapper.getSemanticChildValue(
         tile?.tileid || null,
         node.nodeid,

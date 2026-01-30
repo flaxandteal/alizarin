@@ -112,13 +112,14 @@ pub use graph_mutator::{
     // Mutation types (Command pattern)
     GraphMutation, AddNodeParams, AddNodegroupParams, AddEdgeParams,
     AddCardParams, AddWidgetParams, NodeOptions, CardOptions,
-    RenameNodeParams, RenameGraphParams,
+    RenameNodeParams, RenameGraphParams, CreateGraphParams,
     // Extension mutations
     ExtensionMutationParams, ExtensionMutationHandler, ExtensionMutationRegistry,
     MutationConformance,
     // JSON-based mutation API
     MutationRequest, MutationRequestOptions,
     apply_mutations_from_json, apply_mutations, mutations_to_json, get_mutation_schema,
+    apply_mutations_create_from_json,
     // Extension-aware mutation API
     apply_mutations_with_extensions, apply_mutations_from_json_with_extensions,
     // Widget types
