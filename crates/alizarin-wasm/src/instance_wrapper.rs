@@ -72,6 +72,28 @@ impl From<String> for SemanticChildError {
     }
 }
 
+/// Determine whether a node should be treated as single-cardinality.
+///
+/// A node is single-cardinality if its nodegroup's cardinality is not "n".
+/// Used by both the static path (populate → toJson) and dynamic path
+/// (getSemanticChildValue) to ensure consistent array/object serialization.
+fn is_node_single_cardinality(
+    node: &StaticNode,
+    nodegroups: Option<&HashMap<String, Arc<StaticNodegroup>>>,
+) -> bool {
+    if let Some(ref ng_id) = node.nodegroup_id {
+        if &node.nodeid == ng_id {
+            if let Some(ngs) = nodegroups {
+                if let Some(ng) = ngs.get(ng_id) {
+                    return ng.cardinality.as_deref() != Some("n");
+                }
+            }
+        }
+    }
+    // Default: collectors are multi, others single
+    !node.is_collector
+}
+
 /// Result of get_semantic_child_value - either values or an indication that none exist
 #[derive(Debug)]
 pub(crate) enum SemanticChildResult {
@@ -543,18 +565,9 @@ impl ResourceInstanceWrapperCore {
                 .map(|map| map.clone())
         })?;
 
-        // Determine if this is a cardinality-1 node (should return single value, not list)
-        // A node is cardinality-1 if its nodegroup has cardinality "1"
-        let is_cardinality_one = self.with_model_core::<_, _, SemanticChildError>(|core| {
-            if let Some(nodegroup_id) = &child_node.nodegroup_id {
-                if let Some(nodegroups) = core.get_nodegroups_internal() {
-                    if let Some(nodegroup) = nodegroups.get(nodegroup_id) {
-                        return Ok(nodegroup.cardinality.as_deref() == Some("1"));
-                    }
-                }
-            }
-            // Default to false (treat as cardinality-n) if we can't determine
-            Ok(false)
+        // Determine cardinality using the shared helper
+        let is_single = self.with_model_core::<_, _, SemanticChildError>(|core| {
+            Ok(is_node_single_cardinality(&child_node, core.get_nodegroups_internal()))
         })?;
 
         // Create PseudoValues from the matching tiles
@@ -576,13 +589,13 @@ impl ResourceInstanceWrapperCore {
             values.push(pseudo_value);
         }
 
-        // Create PseudoList or single value based on is_collector and number of values
-        if child_node.is_collector || values.len() > 1 {
-            // Return as PseudoList, with is_single set based on cardinality
+        // Create PseudoList or single value based on cardinality and number of values
+        if !is_single || values.len() > 1 {
+            // Return as PseudoList for multi-cardinality nodes or when multiple tiles match
             let pseudo_list = PseudoListInner::from_values_with_cardinality(
                 child_alias.to_string(),
                 values,
-                is_cardinality_one,
+                is_single,
             );
             Ok(SemanticChildResult::List(pseudo_list))
         } else if values.len() == 1 {
@@ -2284,25 +2297,7 @@ impl WASMResourceInstanceWrapper {
         let t4 = now_ms();
         for (alias, (node, tiles)) in alias_tiles {
 
-            // Determine if this should be single (cardinality-1) based on nodegroup
-            let is_single = if node.is_collector {
-                // Collector nodes are lists only if nodegroup has cardinality 'n'
-                if let Some(ref ng_id) = node.nodegroup_id {
-                    if let Some(ngs) = nodegroups {
-                        if let Some(ng) = ngs.get(ng_id) {
-                            ng.cardinality.as_deref() != Some("n")
-                        } else {
-                            true // Default to single if nodegroup not found
-                        }
-                    } else {
-                        true // Default to single if no nodegroups
-                    }
-                } else {
-                    true // No nodegroup_id means single
-                }
-            } else {
-                true // Non-collector nodes are always single
-            };
+            let is_single = is_node_single_cardinality(&node, nodegroups.map(|v| &**v));
 
             // Sampled timing for from_node_tiles (hot loop)
             let do_sample = should_sample("vfrn: from_node_tiles", DEFAULT_SAMPLE_RATE);

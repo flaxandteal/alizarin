@@ -66,6 +66,9 @@ pub trait PseudoListLike {
 
     /// Check if this is a single-cardinality list (unwraps to single value)
     fn is_single(&self) -> bool;
+
+    /// Get the number of values in this list (for debug logging)
+    fn values_count(&self) -> usize;
 }
 
 /// Core pseudo value without platform-specific fields
@@ -608,6 +611,10 @@ impl PseudoListLike for PseudoListCore {
     fn is_single(&self) -> bool {
         self.is_single
     }
+
+    fn values_count(&self) -> usize {
+        self.values.len()
+    }
 }
 
 impl TileBuilder {
@@ -751,7 +758,9 @@ where
 
     let child_node_ids = match ctx.edges.get(&value.node().nodeid) {
         Some(ids) => ids,
-        None => return Value::Object(obj),
+        None => {
+            return Value::Object(obj);
+        },
     };
 
     for child_node_id in child_node_ids {
@@ -760,17 +769,23 @@ where
 
         let child_node = match child_node {
             Some(n) => n,
-            None => continue,
+            None => {
+                continue;
+            },
         };
 
         let child_alias = match &child_node.alias {
             Some(alias) if !alias.is_empty() => alias,
-            _ => continue,
+            _ => {
+                continue;
+            },
         };
 
         let pseudo_list = match ctx.pseudo_cache.get(child_alias) {
             Some(list) => list,
-            None => continue,
+            None => {
+                continue;
+            },
         };
 
         let matching_values = pseudo_list.matching_entries(
@@ -785,7 +800,8 @@ where
 
         let child_ctx = ctx.child();
 
-        if pseudo_list.is_single() || matching_values.len() == 1 {
+        if pseudo_list.is_single() {
+            // Single-cardinality node: serialize as a direct value
             if let Some(first_value) = matching_values.first() {
                 let json_value = to_json_generic(*first_value, &child_ctx);
                 if !json_value.is_null() {
@@ -793,6 +809,8 @@ where
                 }
             }
         } else {
+            // Multi-cardinality (collector) node: always serialize as array,
+            // even with only 1 matching value. Consumers expect array access (e.g. [0]).
             let arr: Vec<Value> = matching_values.iter()
                 .map(|v| to_json_generic(*v, &child_ctx))
                 .filter(|v| !v.is_null())

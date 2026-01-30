@@ -327,6 +327,10 @@ impl PseudoListLike for PseudoListInner {
     fn is_single(&self) -> bool {
         self.is_single
     }
+
+    fn values_count(&self) -> usize {
+        self.values.len()
+    }
 }
 
 impl PseudoListInner {
