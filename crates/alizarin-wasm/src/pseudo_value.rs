@@ -8,6 +8,8 @@ use alizarin_core::rdm_cache::RdmCache;
 use alizarin_core::type_serialization::{
     SerializationOptions, SerializationContext,
 };
+// Import traits and generic functions for visitor pattern delegation
+use alizarin_core::pseudo_value_core::{PseudoValueLike, PseudoListLike, to_json_generic};
 // WASM wrapper types for API boundary
 use crate::graph::StaticTile as WasmStaticTile;
 use crate::graph::StaticNode as WasmStaticNode;
@@ -268,6 +270,65 @@ impl PseudoValueInner {
     }
 }
 
+// ============================================================================
+// Trait implementations for visitor pattern delegation to core
+// ============================================================================
+
+impl PseudoValueLike for PseudoValueInner {
+    fn tile(&self) -> &Option<Arc<StaticTile>> {
+        &self.core.tile
+    }
+
+    fn node(&self) -> &Arc<StaticNode> {
+        &self.core.node
+    }
+
+    fn is_inner(&self) -> bool {
+        self.core.is_inner
+    }
+
+    fn is_outer(&self) -> bool {
+        self.inner.is_some()
+    }
+
+    fn datatype(&self) -> &str {
+        self.core.datatype()
+    }
+
+    fn serialize_own_value(
+        &self,
+        serialization_options: &SerializationOptions,
+        serialization_context: Option<&SerializationContext>,
+    ) -> serde_json::Value {
+        self.core.serialize_own_value(serialization_options, serialization_context)
+    }
+
+    fn has_children(&self, edges: &std::collections::HashMap<String, Vec<String>>) -> bool {
+        self.core.has_children(edges)
+    }
+
+    fn inner(&self) -> Option<&Self> {
+        self.inner.as_ref().map(|b| b.as_ref())
+    }
+}
+
+impl PseudoListLike for PseudoListInner {
+    type Value = PseudoValueInner;
+
+    fn matching_entries(
+        &self,
+        parent_tile_id: Option<String>,
+        nodegroup_id: Option<String>,
+        parent_nodegroup_id: Option<String>,
+    ) -> Vec<&Self::Value> {
+        self.matching_entries(parent_tile_id, nodegroup_id, parent_nodegroup_id)
+    }
+
+    fn is_single(&self) -> bool {
+        self.is_single
+    }
+}
+
 impl PseudoListInner {
     /// Create a new empty PseudoList (defaults to list, not single)
     pub fn new(node_alias: String) -> Self {
@@ -408,210 +469,13 @@ impl PseudoListInner {
 
 use std::collections::HashMap;
 
-/// Context passed to visitors during traversal
-pub(crate) struct VisitorContext<'a> {
-    /// The pseudo_cache from the instance wrapper (alias -> PseudoListInner)
-    pub pseudo_cache: &'a HashMap<String, PseudoListInner>,
-    /// Node alias to node mapping from the model
-    pub nodes_by_alias: &'a HashMap<String, Arc<StaticNode>>,
-    /// Node edges from the model (parent_nodeid -> child_nodeids)
-    pub edges: &'a HashMap<String, Vec<String>>,
-    /// Current traversal depth (for preventing infinite recursion)
-    pub depth: usize,
-    /// Maximum depth
-    pub max_depth: usize,
-    /// Serialization options (controls output format)
-    pub serialization_options: SerializationOptions,
-    /// Serialization context (resolvers for display mode)
-    pub serialization_context: SerializationContext<'a>,
-}
-
-impl<'a> VisitorContext<'a> {
-    /// Create a new VisitorContext with default tile_data serialization
-    pub fn new(
-        pseudo_cache: &'a HashMap<String, PseudoListInner>,
-        nodes_by_alias: &'a HashMap<String, Arc<StaticNode>>,
-        edges: &'a HashMap<String, Vec<String>>,
-    ) -> Self {
-        VisitorContext {
-            pseudo_cache,
-            nodes_by_alias,
-            edges,
-            depth: 0,
-            max_depth: 50,
-            serialization_options: SerializationOptions::tile_data(),
-            serialization_context: SerializationContext::empty(),
-        }
-    }
-
-    /// Create a child context with incremented depth
-    pub fn child(&self) -> Self {
-        VisitorContext {
-            pseudo_cache: self.pseudo_cache,
-            nodes_by_alias: self.nodes_by_alias,
-            edges: self.edges,
-            depth: self.depth + 1,
-            max_depth: self.max_depth,
-            serialization_options: self.serialization_options.clone(),
-            serialization_context: SerializationContext::empty(),
-        }
-    }
-}
+/// Visitor context for JSON serialization - reuses core's generic VisitorContext
+pub(crate) type VisitorContext<'a> = alizarin_core::pseudo_value_core::VisitorContext<'a, PseudoListInner>;
 
 impl PseudoValueInner {
-    /// Convert this pseudo value to JSON, recursively visiting children for semantic nodes.
-    ///
-    /// This is the Rust-side implementation of forJson() that avoids WASM boundary crossings.
-    ///
-    /// Handles the inner/outer pattern:
-    /// - Outer nodes (non-semantic with children): Have tile_data as value, inner holds children
-    /// - Inner nodes: Synthetic semantic nodes that give structure to outer's children
-    /// - Pure semantic nodes: No tile_data, only children
-    /// - Leaf nodes: Just tile_data, no children
-    /// Convert this pseudo value to JSON using the type_serialization module.
-    ///
-    /// Uses the serialization options in the context to determine output format:
-    /// - TileData mode: returns raw tile_data (UUIDs, language maps)
-    /// - Display mode: resolves UUIDs to labels, extracts display strings
+    /// Convert this pseudo value to JSON using core's generic visitor.
     pub fn to_json(&self, ctx: &VisitorContext) -> serde_json::Value {
-        if ctx.depth > ctx.max_depth {
-            return serde_json::Value::Null;
-        }
-
-        // Handle outer nodes with inner (non-semantic with children)
-        // The outer has the value, the inner has the children structure
-        if self.is_outer() {
-            return self.outer_to_json(ctx);
-        }
-
-        // Handle inner nodes (synthetic semantic) - traverse children
-        if self.core.is_inner {
-            return self.semantic_to_json(ctx);
-        }
-
-        let datatype = self.datatype();
-
-        // Pure semantic nodes - traverse children
-        if datatype == "semantic" {
-            return self.semantic_to_json(ctx);
-        }
-
-        // Non-semantic nodes WITH children (outer pattern without explicit inner)
-        // This handles file-list, concept-list, etc. with nested semantic structure
-        if self.core.has_children(ctx.edges) {
-            return self.non_semantic_with_children_to_json(ctx);
-        }
-
-        // Leaf nodes - delegate to core's serialize_own_value
-        self.core.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context))
-    }
-
-    /// Convert an outer node to JSON
-    /// Outer nodes have their own value (tile_data) PLUS children via their inner
-    fn outer_to_json(&self, ctx: &VisitorContext) -> serde_json::Value {
-        // Delegate to core for own value serialization
-        let own_value = self.core.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
-
-        // If there's an inner, get children from it and merge using shared logic
-        if let Some(ref inner) = self.inner {
-            let children_json = inner.semantic_to_json(ctx);
-            return ctx.serialization_options.merge_outer_with_children(own_value, children_json);
-        }
-
-        // No inner - just return own value
-        own_value
-    }
-
-    /// Convert a non-semantic node with children to JSON
-    ///
-    /// This handles the "outer" pattern where a leaf-type node (file-list, concept-list, etc.)
-    /// also has semantic children in the graph. The node's own value is wrapped with "_"
-    /// and children are included alongside it.
-    fn non_semantic_with_children_to_json(&self, ctx: &VisitorContext) -> serde_json::Value {
-        // Delegate to core for own value serialization
-        let own_value = self.core.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
-        // Get children using WASM's semantic_to_json (traverses WASM PseudoValue types)
-        let children_json = self.semantic_to_json(ctx);
-        // Merge using the outer pattern (adds "_" wrapper when children exist)
-        ctx.serialization_options.merge_outer_with_children(own_value, children_json)
-    }
-
-    /// Convert a semantic node (or inner node) to JSON by finding and visiting its children
-    fn semantic_to_json(&self, ctx: &VisitorContext) -> serde_json::Value {
-        let mut obj = serde_json::Map::new();
-
-        // Get the tile ID for this semantic node (used to find matching children)
-        let parent_tile_id = self.core.tile.as_ref().and_then(|t| t.tileid.clone());
-        // Get parent's nodegroup_id (used to distinguish same-nodegroup vs different-nodegroup children)
-        let parent_nodegroup_id = self.core.node.nodegroup_id.clone();
-
-        // Get child node IDs from the edges map
-        let child_node_ids = match ctx.edges.get(&self.core.node.nodeid) {
-            Some(ids) => ids,
-            None => {
-                return serde_json::Value::Object(obj);
-            }
-        };
-
-        // For each child node, find matching values in the pseudo_cache
-        for child_node_id in child_node_ids {
-            // Find the child node to get its alias and nodegroup_id
-            let child_node = ctx.nodes_by_alias.values()
-                .find(|n| &n.nodeid == child_node_id);
-
-            let child_node = match child_node {
-                Some(n) => n,
-                None => continue,
-            };
-
-            let child_alias = match &child_node.alias {
-                Some(alias) if !alias.is_empty() => alias,
-                _ => continue,
-            };
-
-            // Look up the pseudo list for this child alias
-            let pseudo_list = match ctx.pseudo_cache.get(child_alias) {
-                Some(list) => list,
-                None => continue,
-            };
-
-            // Find values that match based on tile relationship
-            let matching_values = pseudo_list.matching_entries(
-                parent_tile_id.clone(),
-                child_node.nodegroup_id.clone(),
-                parent_nodegroup_id.clone(),
-            );
-
-            if matching_values.is_empty() {
-                continue;
-            }
-
-            // Create child context with incremented depth
-            let child_ctx = ctx.child();
-
-            // If single value (cardinality 1), serialize directly
-            // If multiple values (cardinality n / collector), serialize as array
-            if pseudo_list.is_single || matching_values.len() == 1 {
-                if let Some(first_value) = matching_values.first() {
-                    let json_value = first_value.to_json(&child_ctx);
-                    if !json_value.is_null() {
-                        obj.insert(child_alias.clone(), json_value);
-                    }
-                }
-            } else {
-                // Multiple values - create array
-                let arr: Vec<serde_json::Value> = matching_values.iter()
-                    .map(|v| v.to_json(&child_ctx))
-                    .filter(|v| !v.is_null())
-                    .collect();
-
-                if !arr.is_empty() {
-                    obj.insert(child_alias.clone(), serde_json::Value::Array(arr));
-                }
-            }
-        }
-
-        serde_json::Value::Object(obj)
+        to_json_generic(self, ctx)
     }
 }
 

@@ -14,6 +14,60 @@ use crate::type_serialization::{
     serialize_value, SerializationOptions, SerializationContext, SerializationMode,
 };
 
+// =============================================================================
+// Traits for abstracting over PseudoValue and PseudoList implementations
+// =============================================================================
+
+/// Trait for PseudoValue-like types (core, WASM, Python)
+/// Defines the operations needed for visitor pattern traversal
+pub trait PseudoValueLike {
+    /// Get the tile reference
+    fn tile(&self) -> &Option<Arc<StaticTile>>;
+
+    /// Get the node reference
+    fn node(&self) -> &Arc<StaticNode>;
+
+    /// Check if this is an inner value
+    fn is_inner(&self) -> bool;
+
+    /// Check if this is an outer value (has inner)
+    fn is_outer(&self) -> bool;
+
+    /// Get the effective datatype
+    fn datatype(&self) -> &str;
+
+    /// Serialize this value's own tile_data
+    fn serialize_own_value(
+        &self,
+        serialization_options: &SerializationOptions,
+        serialization_context: Option<&SerializationContext>,
+    ) -> Value;
+
+    /// Check if this node has children in the graph
+    fn has_children(&self, edges: &HashMap<String, Vec<String>>) -> bool;
+
+    /// Get the inner value (for outer/inner pattern)
+    fn inner(&self) -> Option<&Self>;
+}
+
+/// Trait for PseudoList-like types (core, WASM, Python)
+/// Defines the operations needed for visitor pattern traversal
+pub trait PseudoListLike {
+    /// The value type this list contains
+    type Value: PseudoValueLike;
+
+    /// Get matching entries based on tile filtering
+    fn matching_entries(
+        &self,
+        parent_tile_id: Option<String>,
+        nodegroup_id: Option<String>,
+        parent_nodegroup_id: Option<String>,
+    ) -> Vec<&Self::Value>;
+
+    /// Check if this is a single-cardinality list (unwraps to single value)
+    fn is_single(&self) -> bool;
+}
+
 /// Core pseudo value without platform-specific fields
 ///
 /// Contains only the fields needed for:
@@ -67,9 +121,11 @@ pub struct PseudoListCore {
 }
 
 /// Context passed to visitors during traversal
-pub struct VisitorContext<'a> {
-    /// The pseudo_cache from the instance wrapper (alias -> PseudoListCore)
-    pub pseudo_cache: &'a HashMap<String, PseudoListCore>,
+///
+/// Generic over `L: PseudoListLike` to support both core and WASM types
+pub struct VisitorContext<'a, L: PseudoListLike> {
+    /// The pseudo_cache from the instance wrapper
+    pub pseudo_cache: &'a HashMap<String, L>,
     /// Node alias to node mapping from the model
     pub nodes_by_alias: &'a HashMap<String, Arc<StaticNode>>,
     /// Node edges from the model (parent_nodeid -> child_nodeids)
@@ -84,10 +140,13 @@ pub struct VisitorContext<'a> {
     pub serialization_context: SerializationContext<'a>,
 }
 
-impl<'a> VisitorContext<'a> {
+/// Type alias for core VisitorContext (for backward compatibility)
+pub type VisitorContextCore<'a> = VisitorContext<'a, PseudoListCore>;
+
+impl<'a, L: PseudoListLike> VisitorContext<'a, L> {
     /// Create a new VisitorContext with default tile_data serialization
     pub fn new(
-        pseudo_cache: &'a HashMap<String, PseudoListCore>,
+        pseudo_cache: &'a HashMap<String, L>,
         nodes_by_alias: &'a HashMap<String, Arc<StaticNode>>,
         edges: &'a HashMap<String, Vec<String>>,
     ) -> Self {
@@ -104,7 +163,7 @@ impl<'a> VisitorContext<'a> {
 
     /// Create a VisitorContext for display mode
     pub fn display(
-        pseudo_cache: &'a HashMap<String, PseudoListCore>,
+        pseudo_cache: &'a HashMap<String, L>,
         nodes_by_alias: &'a HashMap<String, Arc<StaticNode>>,
         edges: &'a HashMap<String, Vec<String>>,
         language: &str,
@@ -250,124 +309,10 @@ impl PseudoValueCore {
     /// Uses the serialization options in the context to determine output format:
     /// - TileData mode: returns raw tile_data (UUIDs, language maps)
     /// - Display mode: resolves UUIDs to labels, extracts display strings
-    pub fn to_json(&self, ctx: &VisitorContext) -> Value {
-        if ctx.depth > ctx.max_depth {
-            return Value::Null;
-        }
-
-        // Handle outer nodes with inner (non-semantic with children)
-        if self.is_outer() {
-            return self.outer_to_json(ctx);
-        }
-
-        // Handle inner nodes (synthetic semantic)
-        if self.is_inner {
-            return self.semantic_to_json(ctx);
-        }
-
-        let datatype = self.datatype();
-
-        // Pure semantic nodes - traverse children
-        if datatype == "semantic" {
-            return self.semantic_to_json(ctx);
-        }
-
-        // Non-semantic nodes WITH children (outer pattern without explicit inner)
-        // This handles file-list, concept-list, etc. with nested semantic structure
-        if self.has_children(ctx.edges) {
-            return self.non_semantic_with_children_to_json(ctx);
-        }
-
-        // Leaf nodes - serialize through type_serialization module
-        self.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context))
-    }
-
-    /// Convert an outer node to JSON
-    fn outer_to_json(&self, ctx: &VisitorContext) -> Value {
-        let own_value = self.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
-
-        if let Some(ref inner) = self.inner {
-            let children_json = inner.semantic_to_json(ctx);
-            return ctx.serialization_options.merge_outer_with_children(own_value, children_json);
-        }
-
-        own_value
-    }
-
-    /// Convert a non-semantic node with children to JSON
     ///
-    /// This handles the "outer" pattern where a leaf-type node (file-list, concept-list, etc.)
-    /// also has semantic children in the graph. The node's own value is wrapped with "_"
-    /// and children are included alongside it.
-    fn non_semantic_with_children_to_json(&self, ctx: &VisitorContext) -> Value {
-        let own_value = self.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
-        let children_json = self.semantic_to_json(ctx);
-        ctx.serialization_options.merge_outer_with_children(own_value, children_json)
-    }
-
-    /// Convert a semantic node to JSON by finding and visiting its children
-    fn semantic_to_json(&self, ctx: &VisitorContext) -> Value {
-        let mut obj = Map::new();
-
-        let parent_tile_id = self.tile.as_ref().and_then(|t| t.tileid.clone());
-        let parent_nodegroup_id = self.node.nodegroup_id.clone();
-
-        let child_node_ids = match ctx.edges.get(&self.node.nodeid) {
-            Some(ids) => ids,
-            None => return Value::Object(obj),
-        };
-
-        for child_node_id in child_node_ids {
-            let child_node = ctx.nodes_by_alias.values()
-                .find(|n| &n.nodeid == child_node_id);
-
-            let child_node = match child_node {
-                Some(n) => n,
-                None => continue,
-            };
-
-            let child_alias = match &child_node.alias {
-                Some(alias) if !alias.is_empty() => alias,
-                _ => continue,
-            };
-
-            let pseudo_list = match ctx.pseudo_cache.get(child_alias) {
-                Some(list) => list,
-                None => continue,
-            };
-
-            let matching_values = pseudo_list.matching_entries(
-                parent_tile_id.clone(),
-                child_node.nodegroup_id.clone(),
-                parent_nodegroup_id.clone(),
-            );
-
-            if matching_values.is_empty() {
-                continue;
-            }
-
-            let child_ctx = ctx.child();
-
-            if pseudo_list.is_single || matching_values.len() == 1 {
-                if let Some(first_value) = matching_values.first() {
-                    let json_value = first_value.to_json(&child_ctx);
-                    if !json_value.is_null() {
-                        obj.insert(child_alias.clone(), json_value);
-                    }
-                }
-            } else {
-                let arr: Vec<Value> = matching_values.iter()
-                    .map(|v| v.to_json(&child_ctx))
-                    .filter(|v| !v.is_null())
-                    .collect();
-
-                if !arr.is_empty() {
-                    obj.insert(child_alias.clone(), Value::Array(arr));
-                }
-            }
-        }
-
-        Value::Object(obj)
+    /// Delegates to the generic to_json_generic function.
+    pub fn to_json(&self, ctx: &VisitorContext<PseudoListCore>) -> Value {
+        to_json_generic(self, ctx)
     }
 
     /// Collect tiles from this pseudo value
@@ -562,7 +507,7 @@ impl PseudoListCore {
     }
 
     /// Convert to JSON
-    pub fn to_json(&self, ctx: &VisitorContext) -> Value {
+    pub fn to_json(&self, ctx: &VisitorContext<PseudoListCore>) -> Value {
         if self.values.is_empty() {
             return Value::Null;
         }
@@ -577,13 +522,13 @@ impl PseudoListCore {
 
         if self.is_single {
             if let Some(first) = sorted_values.first() {
-                return first.to_json(ctx);
+                return to_json_generic(*first, ctx);
             }
             return Value::Null;
         }
 
         let arr: Vec<Value> = sorted_values.iter()
-            .map(|v| v.to_json(ctx))
+            .map(|v| to_json_generic(*v, ctx))
             .filter(|v| !v.is_null())
             .collect();
 
@@ -603,6 +548,65 @@ impl PseudoListCore {
         for value in &self.values {
             value.collect_tiles(ctx, tiles);
         }
+    }
+}
+
+// =============================================================================
+// Trait implementations for core types
+// =============================================================================
+
+impl PseudoValueLike for PseudoValueCore {
+    fn tile(&self) -> &Option<Arc<StaticTile>> {
+        &self.tile
+    }
+
+    fn node(&self) -> &Arc<StaticNode> {
+        &self.node
+    }
+
+    fn is_inner(&self) -> bool {
+        self.is_inner
+    }
+
+    fn is_outer(&self) -> bool {
+        self.is_outer()
+    }
+
+    fn datatype(&self) -> &str {
+        self.datatype()
+    }
+
+    fn serialize_own_value(
+        &self,
+        serialization_options: &SerializationOptions,
+        serialization_context: Option<&SerializationContext>,
+    ) -> Value {
+        self.serialize_own_value(serialization_options, serialization_context)
+    }
+
+    fn has_children(&self, edges: &HashMap<String, Vec<String>>) -> bool {
+        self.has_children(edges)
+    }
+
+    fn inner(&self) -> Option<&Self> {
+        self.inner.as_ref().map(|b| b.as_ref())
+    }
+}
+
+impl PseudoListLike for PseudoListCore {
+    type Value = PseudoValueCore;
+
+    fn matching_entries(
+        &self,
+        parent_tile_id: Option<String>,
+        nodegroup_id: Option<String>,
+        parent_nodegroup_id: Option<String>,
+    ) -> Vec<&Self::Value> {
+        self.matching_entries(parent_tile_id, nodegroup_id, parent_nodegroup_id)
+    }
+
+    fn is_single(&self) -> bool {
+        self.is_single
     }
 }
 
@@ -725,4 +729,146 @@ pub fn matches_semantic_child(
     }
 
     false
+}
+
+// =============================================================================
+// Generic visitor functions - work with any PseudoValueLike/PseudoListLike
+// =============================================================================
+
+/// Generic semantic_to_json function that works with any PseudoValueLike type
+///
+/// This is the extracted traversal logic that was duplicated between core and WASM.
+/// Now both can delegate to this single implementation.
+pub fn semantic_to_json<V, L>(value: &V, ctx: &VisitorContext<L>) -> Value
+where
+    V: PseudoValueLike,
+    L: PseudoListLike<Value = V>,
+{
+    let mut obj = Map::new();
+
+    let parent_tile_id = value.tile().as_ref().and_then(|t| t.tileid.clone());
+    let parent_nodegroup_id = value.node().nodegroup_id.clone();
+
+    let child_node_ids = match ctx.edges.get(&value.node().nodeid) {
+        Some(ids) => ids,
+        None => return Value::Object(obj),
+    };
+
+    for child_node_id in child_node_ids {
+        let child_node = ctx.nodes_by_alias.values()
+            .find(|n| &n.nodeid == child_node_id);
+
+        let child_node = match child_node {
+            Some(n) => n,
+            None => continue,
+        };
+
+        let child_alias = match &child_node.alias {
+            Some(alias) if !alias.is_empty() => alias,
+            _ => continue,
+        };
+
+        let pseudo_list = match ctx.pseudo_cache.get(child_alias) {
+            Some(list) => list,
+            None => continue,
+        };
+
+        let matching_values = pseudo_list.matching_entries(
+            parent_tile_id.clone(),
+            child_node.nodegroup_id.clone(),
+            parent_nodegroup_id.clone(),
+        );
+
+        if matching_values.is_empty() {
+            continue;
+        }
+
+        let child_ctx = ctx.child();
+
+        if pseudo_list.is_single() || matching_values.len() == 1 {
+            if let Some(first_value) = matching_values.first() {
+                let json_value = to_json_generic(*first_value, &child_ctx);
+                if !json_value.is_null() {
+                    obj.insert(child_alias.clone(), json_value);
+                }
+            }
+        } else {
+            let arr: Vec<Value> = matching_values.iter()
+                .map(|v| to_json_generic(*v, &child_ctx))
+                .filter(|v| !v.is_null())
+                .collect();
+
+            if !arr.is_empty() {
+                obj.insert(child_alias.clone(), Value::Array(arr));
+            }
+        }
+    }
+
+    Value::Object(obj)
+}
+
+/// Generic outer_to_json function that works with any PseudoValueLike type
+pub fn outer_to_json<V, L>(value: &V, ctx: &VisitorContext<L>) -> Value
+where
+    V: PseudoValueLike,
+    L: PseudoListLike<Value = V>,
+{
+    let own_value = value.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
+
+    if let Some(inner) = value.inner() {
+        let children_json = semantic_to_json(inner, ctx);
+        return ctx.serialization_options.merge_outer_with_children(own_value, children_json);
+    }
+
+    own_value
+}
+
+/// Generic non_semantic_with_children_to_json function
+pub fn non_semantic_with_children_to_json<V, L>(value: &V, ctx: &VisitorContext<L>) -> Value
+where
+    V: PseudoValueLike,
+    L: PseudoListLike<Value = V>,
+{
+    let own_value = value.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
+    let children_json = semantic_to_json(value, ctx);
+    ctx.serialization_options.merge_outer_with_children(own_value, children_json)
+}
+
+/// Generic to_json function that works with any PseudoValueLike type
+///
+/// This is the main entry point for converting a pseudo value to JSON.
+/// Both core and WASM can delegate to this function.
+pub fn to_json_generic<V, L>(value: &V, ctx: &VisitorContext<L>) -> Value
+where
+    V: PseudoValueLike,
+    L: PseudoListLike<Value = V>,
+{
+    if ctx.depth > ctx.max_depth {
+        return Value::Null;
+    }
+
+    // Handle outer nodes with inner (non-semantic with children)
+    if value.is_outer() {
+        return outer_to_json(value, ctx);
+    }
+
+    // Handle inner nodes (synthetic semantic)
+    if value.is_inner() {
+        return semantic_to_json(value, ctx);
+    }
+
+    let datatype = value.datatype();
+
+    // Pure semantic nodes - traverse children
+    if datatype == "semantic" {
+        return semantic_to_json(value, ctx);
+    }
+
+    // Non-semantic nodes WITH children (outer pattern without explicit inner)
+    if value.has_children(ctx.edges) {
+        return non_semantic_with_children_to_json(value, ctx);
+    }
+
+    // Leaf nodes
+    value.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context))
 }

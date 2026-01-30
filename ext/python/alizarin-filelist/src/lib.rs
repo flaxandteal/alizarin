@@ -242,34 +242,11 @@ impl FileListItem {
 }
 
 // =============================================================================
-// Node Config for FileList Type
-// =============================================================================
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct FileListNodeConfig {
-    /// Maximum number of files allowed
-    #[serde(rename = "maxFiles")]
-    pub max_files: Option<i32>,
-
-    /// Maximum file size in bytes
-    #[serde(rename = "maxFileSize")]
-    pub max_file_size: Option<i64>,
-
-    /// Whether to activate max files limit
-    #[serde(rename = "activateMax")]
-    pub activate_max: Option<bool>,
-
-    /// Whether only images are allowed
-    #[serde(rename = "imagesOnly")]
-    pub images_only: Option<bool>,
-}
-
-// =============================================================================
 // Coercion Logic
 // =============================================================================
 
 /// Coerce a value to file-list tile data format.
-fn coerce_filelist_value(value: &Value, _config: &FileListNodeConfig) -> Result<(Value, Value), String> {
+fn coerce_filelist_value(value: &Value) -> Result<(Value, Value), String> {
     match value {
         // Already a file list array
         Value::Array(arr) => {
@@ -360,23 +337,11 @@ unsafe extern "C" fn coerce_filelist(
     };
 
     // Parse config JSON
-    let config: FileListNodeConfig = if config_len > 0 && !config_ptr.is_null() {
-        let config_slice = std::slice::from_raw_parts(config_ptr, config_len);
-        let config_str = match std::str::from_utf8(config_slice) {
-            Ok(s) => s,
-            Err(_) => return CoerceResult::error("Invalid UTF-8 in config".to_string()),
-        };
-
-        match serde_json::from_str(config_str) {
-            Ok(c) => c,
-            Err(_) => FileListNodeConfig::default(),
-        }
-    } else {
-        FileListNodeConfig::default()
-    };
+    // Config is accepted by the ABI but not currently used for coercion
+    let _ = (config_ptr, config_len);
 
     // Perform coercion
-    match coerce_filelist_value(&value, &config) {
+    match coerce_filelist_value(&value) {
         Ok((tile_data, resolved)) => {
             let tile_json = serde_json::to_vec(&tile_data).unwrap_or_default();
             let resolved_json = serde_json::to_vec(&resolved).unwrap_or_default();
@@ -519,8 +484,7 @@ mod tests {
             "status": "uploaded"
         });
 
-        let config = FileListNodeConfig::default();
-        let result = coerce_filelist_value(&value, &config);
+        let result = coerce_filelist_value(&value);
 
         assert!(result.is_ok());
         let (tile_data, _resolved) = result.unwrap();
@@ -535,8 +499,7 @@ mod tests {
             {"name": "file2.jpg", "url": "/files/2"}
         ]);
 
-        let config = FileListNodeConfig::default();
-        let result = coerce_filelist_value(&value, &config);
+        let result = coerce_filelist_value(&value);
 
         assert!(result.is_ok());
         let (tile_data, _) = result.unwrap();

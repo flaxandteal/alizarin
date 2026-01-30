@@ -225,42 +225,6 @@ wasmReady.then(() => {
     return displayStrings.join(', ');
   });
 });
-// [{"labels": [{"id": "0ea39e2e-6663-467c-8707-ab492896d23e", "language_id": "en", "list_item_id": "6672d187-dfc3-4424-8c63-7a3b377b4159", "value": "Item 1>1", "valuetype_id": "prefLabel"}], "list_id": "2730d609-3a8d-49dc-bf51-6ac34e80294a", "uri": "http://localhost:8000/plugins/controlled-list-manager/item/6672d187-dfc3-4424-8c63-7a3b377b4159"}]
-
-// class ReferenceListCacheEntry implements IStringKeyedObject {
-//   [key: string]: any;
-//   datatype: string = 'reference';
-//   _: ReferenceValueCacheEntry[];
-//   meta: {[key: string]: any};
-// 
-//   constructor({meta, _}: {meta: IStringKeyedObject | undefined, _: ReferenceValueCacheEntry[]}) {
-//     this._ = _.map(instance => {
-//       if (instance instanceof ReferenceValueCacheEntry) {
-//         return instance;
-//       } else if (instance) {
-//         return new ReferenceValueCacheEntry(instance);
-//       }
-//       return null;
-//     }).filter(cvce => cvce !== null);
-//     this.meta = meta || {};
-//   }
-// }
-// 
-// class ReferenceValueCacheEntry implements IStringKeyedObject {
-//   [key: string]: any
-//   datatype: string = 'reference';
-//   id: string;
-//   value: string;
-//   referenceId: string | null;
-//   meta: {[key: string]: any};
-// 
-//   constructor({meta, id, value, referenceId}: {meta: IStringKeyedObject | undefined, id: string, value: string, referenceId: string | null}) {
-//     this.id = id;
-//     this.value = value;
-//     this.referenceId = referenceId;
-//     this.meta = meta || {};
-//   }
-// }
 
 class StaticReferenceLabel {
   id: string
@@ -377,8 +341,6 @@ class ReferenceValueViewModel extends String implements IViewModel {
   }
 
   async getParent(): Promise<ReferenceValueViewModel | null> {
-      console.log('wasm is ready');
-
       const ref = await this._resolvePending();
       if (!ref || !this._collectionId) {
         return null;

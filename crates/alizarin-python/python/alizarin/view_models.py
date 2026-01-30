@@ -147,6 +147,76 @@ GetMeta = Optional[Callable[[Any], Awaitable[Optional[Dict[str, Any]]]]]
 
 
 # ============================================================================
+# AttrPromise - Chainable Promise for Lazy Loading
+# ============================================================================
+
+class AttrPromise:
+    """
+    Promise-like object that supports chained property access.
+
+    Matches TypeScript AttrPromise - allows syntax like:
+        await promise.foo.bar
+
+    Which is equivalent to:
+        await (await (await promise).foo).bar
+
+    This enables lazy-loading chained traversal through related resources.
+    """
+
+    def __init__(self, coro: Awaitable[Any]):
+        """
+        Create an AttrPromise from a coroutine.
+
+        Args:
+            coro: A coroutine that will resolve to a value
+        """
+        self._coro = coro
+
+    def __await__(self):
+        """Make this object awaitable"""
+        return self._coro.__await__()
+
+    def __getattr__(self, key: str):
+        """
+        Chain property access through promises.
+
+        When you access a property on this promise, it returns another
+        promise that will first await this promise, then access the
+        property on the resolved value.
+        """
+        # Don't intercept private/internal attributes
+        if key.startswith('_'):
+            return object.__getattribute__(self, key)
+
+        async def get_chained_attr():
+            # First await this promise to get the resolved value
+            resolved = await self._coro
+            # Then get the attribute from the resolved value
+            if resolved is None:
+                return None
+            # If it's a method, return it bound
+            attr = getattr(resolved, key)
+            return attr
+
+        # Return another AttrPromise for further chaining
+        return AttrPromise(get_chained_attr())
+
+    def __getitem__(self, key: Union[int, str]):
+        """
+        Support indexing through promises (for lists/dicts).
+
+        Allows: await promise[0].foo
+        """
+        async def get_indexed():
+            resolved = await self._coro
+            if resolved is None:
+                return None
+            return resolved[key]
+
+        return AttrPromise(get_indexed())
+
+
+# ============================================================================
 # Protocol Definitions
 # ============================================================================
 
@@ -770,6 +840,45 @@ class ResourceInstanceViewModel:
             return None
         root = await self._i.getRootViewModel()
         return await root.__has(key) if root else None
+
+    def __getattr__(self, key: str):
+        """
+        Lazy-load attributes from the underlying resource.
+
+        Matches TypeScript ResourceInstanceViewModel Proxy get handler.
+
+        Returns an AttrPromise that will:
+        1. Retrieve the resource if not already loaded
+        2. Get the root view model
+        3. Access the requested attribute
+
+        This enables chained access like:
+            await group.member[0].names.name
+        """
+        # Don't intercept known attributes and private/dunder attributes
+        if key in ('id', '__', '_i', 'gm', 'then', '__cacheEntry', '__parentPseudo', '_'):
+            return object.__getattribute__(self, key)
+
+        if key.startswith('_ResourceInstanceViewModel__') or key.startswith('__'):
+            return object.__getattribute__(self, key)
+
+        async def load_and_get_attr():
+            # Retrieve resource if not loaded
+            if not self._i:
+                await self.retrieve()
+                if not self._i:
+                    raise ValueError("Could not retrieve resource")
+
+            # Get the root view model (SemanticViewModel)
+            root = await self._i.getRootViewModel()
+            if not root:
+                return None
+
+            # Access the attribute on the root
+            return getattr(root, key)
+
+        # Return AttrPromise for chaining
+        return AttrPromise(load_and_get_attr())
 
     async def __asTileData(self) -> Dict[str, str]:
         """Convert to tile data format"""

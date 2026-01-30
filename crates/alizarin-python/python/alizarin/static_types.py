@@ -537,6 +537,19 @@ class StaticGraph:
             self.build_indices()
         return self._nodegroup_map.get(nodegroup_id) if self._nodegroup_map else None
 
+    @property
+    def meta(self) -> StaticGraphMeta:
+        """Get graph metadata as StaticGraphMeta."""
+        return StaticGraphMeta(
+            graphid=self.graphid,
+            name=self.name,
+            slug=self.slug,
+            iconclass=self.iconclass,
+            isresource=self.isresource,
+            relatable_resource_model_ids=self.relatable_resource_model_ids,
+            ontology_id=self.ontology_id,
+        )
+
     def to_dict(self) -> Dict[str, Any]:
         """Export graph as dict."""
         return {
@@ -642,18 +655,52 @@ class StaticResourceDescriptors:
 @dataclass
 class StaticResourceMetadata:
     """
-    Resource metadata.
+    Resource instance metadata.
 
     Matches TypeScript/Rust StaticResourceMetadata.
     """
+    descriptors: StaticResourceDescriptors
+    graph_id: str
+    name: str
+    resourceinstanceid: str
+    publication_id: Optional[str] = None
+    principaluser_id: Optional[int] = None
+    legacyid: Optional[str] = None
+    graph_publication_id: Optional[str] = None
     createdtime: Optional[str] = None
-    editedtime: Optional[str] = None
+    lastmodified: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "descriptors": self.descriptors.to_dict() if self.descriptors else None,
+            "graph_id": self.graph_id,
+            "name": self.name,
+            "resourceinstanceid": self.resourceinstanceid,
+            "publication_id": self.publication_id,
+            "principaluser_id": self.principaluser_id,
+            "legacyid": self.legacyid,
+            "graph_publication_id": self.graph_publication_id,
             "createdtime": self.createdtime,
-            "editedtime": self.editedtime,
+            "lastmodified": self.lastmodified,
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> StaticResourceMetadata:
+        descriptors = None
+        if "descriptors" in data and data["descriptors"]:
+            descriptors = StaticResourceDescriptors(**data["descriptors"])
+        return cls(
+            descriptors=descriptors or StaticResourceDescriptors(),
+            graph_id=data["graph_id"],
+            name=data.get("name", ""),
+            resourceinstanceid=data["resourceinstanceid"],
+            publication_id=data.get("publication_id"),
+            principaluser_id=data.get("principaluser_id"),
+            legacyid=data.get("legacyid"),
+            graph_publication_id=data.get("graph_publication_id"),
+            createdtime=data.get("createdtime"),
+            lastmodified=data.get("lastmodified"),
+        )
 
 
 @dataclass
@@ -720,43 +767,49 @@ class StaticResource:
 
     Matches TypeScript/Rust StaticResource.
     """
-    resourceinstanceid: str
-    graph_id: str
-    tiles: List[StaticTile] = field(default_factory=list)
-    name: Optional[str] = None
-    descriptors: Optional[StaticResourceDescriptors] = None
-    legacyid: Optional[str] = None
-    graph_publication_id: Optional[str] = None
+    resourceinstance: StaticResourceMetadata
+    tiles: Optional[List[StaticTile]] = None
+    metadata: Dict[str, str] = field(default_factory=dict)
+    cache: Optional[Any] = None
+    scopes: Optional[Any] = None
+    tiles_loaded: Optional[bool] = None
 
     def get_tiles(self) -> List[StaticTile]:
         """Get tiles as list."""
-        return self.tiles
+        return self.tiles or []
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
-            "resourceinstanceid": self.resourceinstanceid,
-            "graph_id": self.graph_id,
-            "tiles": [t.to_dict() for t in self.tiles],
-            "name": self.name,
-            "descriptors": self.descriptors.to_dict() if self.descriptors else None,
-            "legacyid": self.legacyid,
-            "graph_publication_id": self.graph_publication_id,
+        result = {
+            "resourceinstance": self.resourceinstance.to_dict(),
+            "metadata": self.metadata,
         }
+        if self.tiles is not None:
+            result["tiles"] = [t.to_dict() for t in self.tiles]
+        if self.cache is not None:
+            result["__cache"] = self.cache
+        if self.scopes is not None:
+            result["__scopes"] = self.scopes
+        if self.tiles_loaded is not None:
+            result["tiles_loaded"] = self.tiles_loaded
+        return result
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> StaticResource:
-        tiles = [StaticTile.from_dict(t) for t in data.get("tiles", [])]
-        descriptors = None
-        if "descriptors" in data and data["descriptors"]:
-            descriptors = StaticResourceDescriptors(**data["descriptors"])
+        # Parse tiles
+        tiles = None
+        if "tiles" in data and data["tiles"]:
+            tiles = [StaticTile.from_dict(t) for t in data["tiles"]]
+
+        # Parse resourceinstance metadata
+        resourceinstance = StaticResourceMetadata.from_dict(data["resourceinstance"])
+
         return cls(
-            resourceinstanceid=data["resourceinstanceid"],
-            graph_id=data["graph_id"],
+            resourceinstance=resourceinstance,
             tiles=tiles,
-            name=data.get("name"),
-            descriptors=descriptors,
-            legacyid=data.get("legacyid"),
-            graph_publication_id=data.get("graph_publication_id"),
+            metadata=data.get("metadata", {}),
+            cache=data.get("__cache") or data.get("cache"),
+            scopes=data.get("__scopes") or data.get("scopes"),
+            tiles_loaded=data.get("tiles_loaded"),
         )
 
 

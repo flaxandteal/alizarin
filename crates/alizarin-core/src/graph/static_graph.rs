@@ -188,6 +188,19 @@ impl StaticGraph {
         self.nodes_by_alias_arc = Some(nodes_by_alias_arc);
     }
 
+    /// Invalidate all internal lookup indices.
+    ///
+    /// This must be called after mutations that modify the nodes vector,
+    /// especially operations like `retain()` that shift element positions.
+    pub fn invalidate_indices(&mut self) {
+        self.node_by_id = None;
+        self.node_by_alias = None;
+        self.edges_map = None;
+        self.nodes_by_nodegroup = None;
+        self.nodegroup_by_id = None;
+        self.nodes_by_alias_arc = None;
+    }
+
     /// Get the root node
     pub fn get_root(&self) -> &StaticNode {
         &self.root
@@ -326,11 +339,7 @@ impl StaticGraph {
     /// Note: You must call `build_indices()` after all mutations to rebuild lookup tables.
     pub fn push_node(&mut self, node: StaticNode) {
         self.nodes.push(node);
-        // Invalidate indices - caller should rebuild after all mutations
-        self.node_by_id = None;
-        self.node_by_alias = None;
-        self.nodes_by_nodegroup = None;
-        self.nodes_by_alias_arc = None;
+        self.invalidate_indices();
     }
 
     /// Push a new edge to the graph

@@ -271,6 +271,163 @@ class WKRM:
 
 
 # =============================================================================
+# GraphManager - Thin coordinator (does NOT duplicate core functionality)
+# =============================================================================
+
+class GraphManager:
+    """
+    Thin coordinator for managing graphs and resources.
+
+    Does NOT duplicate core functionality - just wires together:
+    - Rust register_graph() for graph storage
+    - Python dict for resource lookup (temporary test fixture storage)
+    - ResourceModelWrapper for model management
+
+    Matches TypeScript GraphManager interface (graphManager.ts:1152-1298)
+    but delegates all heavy lifting to existing Rust/Python layers.
+    """
+
+    def __init__(self):
+        """Initialize GraphManager with minimal state."""
+        # Resource storage (temporary, for test fixtures)
+        # In production, resources come from staticStore/archesClient
+        self._resources: Dict[str, Any] = {}
+        # Track registered graph IDs
+        self._graph_ids: List[str] = []
+        # Model wrappers cache
+        self._models: Dict[str, Any] = {}
+        # Graph cache
+        self._graphs: Dict[str, Any] = {}
+
+    def register_graph(self, graph_dict: Dict[str, Any]) -> str:
+        """
+        Register a graph using Rust core.
+
+        Args:
+            graph_dict: Graph definition (dict or StaticGraph)
+
+        Returns:
+            graph_id: The registered graph ID
+
+        Raises:
+            RuntimeError: If Rust extension not loaded
+        """
+        from . import register_graph as rust_register_graph
+        from .static_types import StaticGraph
+        import json
+
+        if rust_register_graph is None:
+            raise RuntimeError("Alizarin Rust extension not loaded")
+
+        # Convert to StaticGraph if needed
+        if not isinstance(graph_dict, StaticGraph):
+            graph = StaticGraph.from_dict(graph_dict)
+        else:
+            graph = graph_dict
+
+        # Use Rust core to register
+        graph_json = json.dumps(graph.to_dict())
+        graph_id = rust_register_graph(graph_json)
+
+        self._graph_ids.append(graph_id)
+        self._graphs[graph_id] = graph
+        return graph_id
+
+    def register_resource(self, resource_dict: Dict[str, Any]) -> str:
+        """
+        Store a resource for later retrieval (test fixture helper).
+
+        In production, resources would be loaded from staticStore/archesClient.
+        This is just a simple dict for test fixtures.
+
+        Args:
+            resource_dict: Resource data (dict or StaticResource)
+
+        Returns:
+            resource_id: The resource instance ID
+        """
+        from .static_types import StaticResource
+
+        # Convert to StaticResource if needed
+        if not isinstance(resource_dict, StaticResource):
+            resource = StaticResource.from_dict(resource_dict)
+        else:
+            resource = resource_dict
+
+        resource_id = resource.resourceinstance.resourceinstanceid
+        self._resources[resource_id] = resource
+        return resource_id
+
+    async def getResource(
+        self,
+        resource_id: str,
+        lazy: bool = True,
+        pruneTiles: Optional[bool] = None
+    ) -> IRIVM:
+        """
+        Get a resource as a ResourceInstanceViewModel.
+
+        Uses existing ResourceModelWrapper to create the view model.
+
+        Args:
+            resource_id: Resource instance ID
+            lazy: Whether to use lazy loading
+            pruneTiles: Whether to prune tiles
+
+        Returns:
+            ResourceInstanceViewModel
+
+        Raises:
+            ValueError: If resource or graph not found
+        """
+        from .model_wrapper import ResourceModelWrapper
+        from .view_models import ResourceInstanceViewModel
+
+        # Look up resource (from temp storage)
+        resource = self._resources.get(resource_id)
+        if not resource:
+            raise ValueError(f"Cannot traverse resource relationships without a GraphManager. Resource not found: {resource_id}")
+
+        # Get graph ID
+        graph_id = resource.resourceinstance.graph_id
+
+        # Load or get cached model
+        if graph_id not in self._models:
+            self._models[graph_id] = ResourceModelWrapper.from_graph_id(graph_id)
+
+        model = self._models[graph_id]
+
+        # Create ResourceInstanceViewModel
+        rivm = ResourceInstanceViewModel(
+            id=resource_id,
+            modelWrapper=model,
+            instanceWrapperFactory=lambda rivm_inst: None,  # Will be set below
+            cacheEntry=None
+        )
+
+        # Create instance wrapper
+        from .instance_wrapper import ResourceInstanceWrapper
+        instance_wrapper = ResourceInstanceWrapper(
+            wkri=rivm,
+            wasm_wrapper=None,  # No Rust backend for test fixtures
+            model=model,
+        )
+
+        # Set resource data directly
+        instance_wrapper.resource = resource
+        instance_wrapper.resource_id = resource_id
+        instance_wrapper.graph_id = graph_id
+
+        rivm._i = instance_wrapper
+
+        # Populate the instance with tiles
+        tiles = resource.tiles if resource.tiles else []
+        await instance_wrapper.populate(tiles=tiles, lazy=lazy)
+
+        return rivm
+
+
+# =============================================================================
 # Exports
 # =============================================================================
 
@@ -283,4 +440,5 @@ __all__ = [
     "IReferenceDataManager",
     # Classes
     "WKRM",
+    "GraphManager",
 ]

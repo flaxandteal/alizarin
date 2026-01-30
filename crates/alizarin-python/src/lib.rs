@@ -13,6 +13,7 @@ use pyo3::prelude::*;
 mod graph_mutator_py;
 mod node_config_py;
 mod pseudo_value_py;
+mod python_json;
 mod rdm_cache_py;
 mod type_coercion_py;
 use pyo3::types::PyCapsule;
