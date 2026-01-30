@@ -616,7 +616,9 @@ pub fn get_default_widget_for_datatype(datatype: &str) -> Result<Widget, Mutatio
 // =============================================================================
 
 /// Node cardinality (one or many instances allowed)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Deserialize)]
+#[serde(from = "String")]
 pub enum Cardinality {
     /// Single instance only
     One,
@@ -639,6 +641,12 @@ impl From<&str> for Cardinality {
             "1" | "one" => Cardinality::One,
             _ => Cardinality::N,
         }
+    }
+}
+
+impl From<String> for Cardinality {
+    fn from(s: String) -> Self {
+        Cardinality::from(s.as_str())
     }
 }
 
@@ -2139,18 +2147,68 @@ fn apply_delete_node(
         return Err(MutationError::CannotDeleteRootNode(params.node_id.clone()));
     }
 
-    let node_id = node.nodeid.clone();
+    let root_id = node.nodeid.clone();
+
+    // Cascade: collect all descendant nodes by traversing edges
+    let mut nodes_to_delete = vec![root_id.clone()];
+    let mut i = 0;
+    while i < nodes_to_delete.len() {
+        let current = &nodes_to_delete[i].clone();
+        for edge in &graph.edges {
+            if edge.domainnode_id == *current
+                && !nodes_to_delete.contains(&edge.rangenode_id)
+            {
+                nodes_to_delete.push(edge.rangenode_id.clone());
+            }
+        }
+        i += 1;
+    }
+
+    // Check none of the cascaded descendants is a root node
+    for nid in &nodes_to_delete {
+        if let Some(n) = graph.nodes.iter().find(|n| n.nodeid == *nid) {
+            if n.istopnode {
+                return Err(MutationError::CannotDeleteRootNode(nid.clone()));
+            }
+        }
+    }
+
+    // Collect nodegroups to delete: where a deleted node IS the collector
+    let mut nodegroups_to_delete: Vec<String> = Vec::new();
+    for nid in &nodes_to_delete {
+        if let Some(n) = graph.nodes.iter().find(|n| n.nodeid == *nid) {
+            if let Some(ref ng_id) = n.nodegroup_id {
+                if *ng_id == n.nodeid && !nodegroups_to_delete.contains(ng_id) {
+                    nodegroups_to_delete.push(ng_id.clone());
+                }
+            }
+        }
+    }
 
     // Remove associated cards_x_nodes_x_widgets entries
     if let Some(ref mut cxnxws) = graph.cards_x_nodes_x_widgets {
-        cxnxws.retain(|c| c.node_id != node_id);
+        cxnxws.retain(|c| !nodes_to_delete.contains(&c.node_id));
     }
 
-    // Remove edges where this node is domain or range
-    graph.edges.retain(|e| e.domainnode_id != node_id && e.rangenode_id != node_id);
+    // Remove edges where any deleted node is domain or range
+    graph.edges.retain(|e| {
+        !nodes_to_delete.contains(&e.domainnode_id) &&
+        !nodes_to_delete.contains(&e.rangenode_id)
+    });
 
-    // Remove the node
-    graph.nodes.retain(|n| n.nodeid != node_id);
+    // Remove cards for the deleted nodegroups
+    if let Some(ref mut cards) = graph.cards {
+        cards.retain(|c| !nodegroups_to_delete.contains(&c.nodegroup_id));
+    }
+
+    // Remove the nodegroups
+    graph.nodegroups.retain(|ng| !nodegroups_to_delete.contains(&ng.nodegroupid));
+
+    // Remove the nodes
+    graph.nodes.retain(|n| !nodes_to_delete.contains(&n.nodeid));
+
+    // Invalidate cached indices after retain operations
+    graph.invalidate_indices();
 
     Ok(())
 }
@@ -2216,6 +2274,9 @@ fn apply_delete_nodegroup(
 
     // Remove the nodes
     graph.nodes.retain(|n| !nodes_to_delete.contains(&n.nodeid));
+
+    // Invalidate cached indices after retain operations
+    graph.invalidate_indices();
 
     Ok(())
 }

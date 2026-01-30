@@ -300,8 +300,6 @@ mod tests {
 
     #[test]
     fn test_register_and_get() {
-        clear_registry();
-
         let graph = create_test_graph("test-graph-1");
         register_graph_owned(graph);
 
@@ -309,13 +307,11 @@ mod tests {
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().graphid, "test-graph-1");
 
-        clear_registry();
+        unregister_graph("test-graph-1");
     }
 
     #[test]
     fn test_is_registered() {
-        clear_registry();
-
         assert!(!is_graph_registered("nonexistent"));
 
         let graph = create_test_graph("test-graph-2");
@@ -324,13 +320,11 @@ mod tests {
         assert!(is_graph_registered("test-graph-2"));
         assert!(!is_graph_registered("nonexistent"));
 
-        clear_registry();
+        unregister_graph("test-graph-2");
     }
 
     #[test]
     fn test_unregister() {
-        clear_registry();
-
         let graph = create_test_graph("test-graph-3");
         register_graph_owned(graph);
 
@@ -339,7 +333,5 @@ mod tests {
         let removed = unregister_graph("test-graph-3");
         assert!(removed.is_some());
         assert!(!is_graph_registered("test-graph-3"));
-
-        clear_registry();
     }
 }

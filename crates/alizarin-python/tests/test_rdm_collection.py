@@ -62,16 +62,22 @@ def find_concept_node(graph_data):
     return (None, None)
 
 
-def create_tree_with_concept(node_alias, value, parent_alias=None):
+def create_tree_with_concept(node_alias, value, parent_alias=None, datatype=None):
     """
     Create a properly structured tree for a concept node.
 
     If the node has a parent semantic nodegroup, wraps it:
-      {'permissions': [{'action': 'value'}]}
+      {'permissions': [{'action': ['value']}]}  (concept-list)
+      {'permissions': [{'action': 'value'}]}    (concept)
 
     If the node is at root level (no parent), returns flat:
-      {'group_type': 'value'}
+      {'group_type': ['value']}  (concept-list)
+      {'group_type': 'value'}    (concept)
     """
+    # concept-list expects an array of values
+    if datatype == "concept-list":
+        value = [value]
+
     if parent_alias:
         # Wrap in parent semantic nodegroup
         return {parent_alias: [{node_alias: value}]}
@@ -256,22 +262,29 @@ def test_batch_conversion_with_rdm_cache():
         # Create trees using LABEL STRINGS (not UUIDs)
         # The batch conversion should auto-resolve these to UUIDs
         trees = [
-            create_tree_with_concept(node_alias, "Concept Alpha", parent_alias),
-            create_tree_with_concept(node_alias, "Concept Beta", parent_alias)
+            create_tree_with_concept(node_alias, "Concept Alpha", parent_alias, datatype=concept_node['datatype']),
+            create_tree_with_concept(node_alias, "Concept Beta", parent_alias, datatype=concept_node['datatype'])
         ]
 
-        trees_json = json.dumps(trees)
         graph_json = json.dumps(graph_data)
 
         # Register the graph first (required by new API)
         graph_id = alizarin.register_graph(graph_json)
 
-        # Batch convert - this should auto-resolve labels using the global cache
+        # Resolve labels to UUIDs using the global cache before batch conversion
+        # (batch_trees_to_tiles does not auto-resolve; use resolve_labels_in_tree)
+        resolved_trees = [
+            json.loads(alizarin.resolve_labels_in_tree(json.dumps(t), graph_id, strict=True))
+            for t in trees
+        ]
+        trees_json = json.dumps(resolved_trees)
+
+        # Batch convert with resolved UUIDs
         result = alizarin.batch_trees_to_tiles(
             trees_json=trees_json,
             graph_id=graph_id,
             from_camel=False,
-            strict=True  # Strict mode: fail if labels can't be resolved
+            strict=True
         )
 
         # Verify result structure
@@ -298,9 +311,11 @@ def test_batch_conversion_with_rdm_cache():
 
                     # Value should be a UUID, not the original label
                     assert value is not None
-                    # It should be in the collection
-                    assert cache.validate_concept(collection_id, value), \
-                        f"Resolved value should be a valid concept ID"
+                    # concept-list stores an array of UUIDs; concept stores a single UUID
+                    values_to_check = value if isinstance(value, list) else [value]
+                    for v in values_to_check:
+                        assert cache.validate_concept(collection_id, v), \
+                            f"Resolved value {v} should be a valid concept ID"
 
         print("\n✓ Label resolution successful!")
         print(f"  Converted {len(resources)} resources")
@@ -347,14 +362,20 @@ def test_batch_conversion_with_explicit_cache():
         alizarin.set_global_rdm_cache(cache)
 
         # Create tree with label
-        trees = [create_tree_with_concept(node_alias, "Value X", parent_alias)]
+        trees = [create_tree_with_concept(node_alias, "Value X", parent_alias, datatype=concept_node['datatype'])]
 
         # Register the graph first (required by new API)
         graph_id = alizarin.register_graph(json.dumps(graph_data))
 
-        # Batch convert using global cache
+        # Resolve labels to UUIDs before batch conversion
+        resolved_trees = [
+            json.loads(alizarin.resolve_labels_in_tree(json.dumps(t), graph_id, strict=True))
+            for t in trees
+        ]
+
+        # Batch convert using resolved UUIDs
         result = alizarin.batch_trees_to_tiles(
-            trees_json=json.dumps(trees),
+            trees_json=json.dumps(resolved_trees),
             graph_id=graph_id,
             from_camel=False,
             strict=True
@@ -407,7 +428,7 @@ def test_get_needed_collections():
         pytest.skip("Concept node has no rdmCollection config")
 
     # Create a tree that uses this concept node
-    tree = create_tree_with_concept(node_alias, "Some Label", parent_alias)
+    tree = create_tree_with_concept(node_alias, "Some Label", parent_alias, datatype=concept_node['datatype'])
 
     # Get needed collections
     needed = alizarin.get_needed_collections(
@@ -447,7 +468,7 @@ def test_resolve_labels_function():
     cache.add_collection(collection)
 
     # Create tree with labels
-    tree = create_tree_with_concept(node_alias, "Label One", parent_alias)
+    tree = create_tree_with_concept(node_alias, "Label One", parent_alias, datatype=concept_node['datatype'])
     tree_json = json.dumps(tree)
     graph_json = json.dumps(graph_data)
 
@@ -472,8 +493,11 @@ def test_resolve_labels_function():
 
     # Value should now be a UUID, not "Label One"
     assert resolved_value != "Label One", "Should have resolved to UUID"
-    assert cache.validate_concept(collection_id, resolved_value), \
-        "Resolved value should be valid concept ID"
+    # concept-list stores an array of UUIDs; concept stores a single UUID
+    values_to_check = resolved_value if isinstance(resolved_value, list) else [resolved_value]
+    for v in values_to_check:
+        assert cache.validate_concept(collection_id, v), \
+            "Resolved value should be valid concept ID"
 
     assert collection_id in needed_collections
 
@@ -987,17 +1011,23 @@ def test_skos_roundtrip():
         try:
             # Create trees using the labels
             trees = [
-                create_tree_with_concept(node_alias, "Roundtrip Alpha", parent_alias),
-                create_tree_with_concept(node_alias, "Roundtrip Beta", parent_alias),
+                create_tree_with_concept(node_alias, "Roundtrip Alpha", parent_alias, datatype=concept_node['datatype']),
+                create_tree_with_concept(node_alias, "Roundtrip Beta", parent_alias, datatype=concept_node['datatype']),
             ]
 
-            trees_json = json.dumps(trees)
             graph_json = json.dumps(graph_data)
 
             # Register the graph first (required by new API)
             graph_id = alizarin.register_graph(graph_json)
 
-            # Batch convert - labels should resolve using the loaded cache
+            # Resolve labels to UUIDs before batch conversion
+            resolved_trees = [
+                json.loads(alizarin.resolve_labels_in_tree(json.dumps(t), graph_id, strict=True))
+                for t in trees
+            ]
+            trees_json = json.dumps(resolved_trees)
+
+            # Batch convert with resolved UUIDs
             result = alizarin.batch_trees_to_tiles(
                 trees_json=trees_json,
                 graph_id=graph_id,
@@ -1022,8 +1052,11 @@ def test_skos_roundtrip():
                     node_id = concept_node['nodeid']
                     if node_id in tile_data:
                         resolved_value = tile_data[node_id]
-                        assert cache.validate_concept(collection_id, resolved_value), \
-                            f"Resolved value should be a valid concept UUID"
+                        # concept-list stores an array of UUIDs; concept stores a single UUID
+                        values_to_check = resolved_value if isinstance(resolved_value, list) else [resolved_value]
+                        for v in values_to_check:
+                            assert cache.validate_concept(collection_id, v), \
+                                f"Resolved value should be a valid concept UUID"
                         print(f"  Resource {i}: Label resolved to UUID in tiles")
                         break
 

@@ -74,15 +74,22 @@ def create_test_graph() -> StaticGraph:
 
 def create_test_resource(graph_id: str = "test-graph") -> StaticResource:
     """Create a minimal test resource."""
+    from alizarin.static_types import StaticResourceMetadata, StaticResourceDescriptors
+
     tile = StaticTile(
         tileid="tile-1",
         nodegroup_id="ng-1",
         resourceinstance_id="resource-1",
         data={"child-node": {"en": "Test Value"}},
     )
-    return StaticResource(
-        resourceinstanceid="resource-1",
+    metadata = StaticResourceMetadata(
+        descriptors=StaticResourceDescriptors(),
         graph_id=graph_id,
+        name="Test Resource",
+        resourceinstanceid="resource-1",
+    )
+    return StaticResource(
+        resourceinstance=metadata,
         tiles=[tile],
     )
 
@@ -134,26 +141,40 @@ class TestStaticResource:
 
     def test_create_resource(self):
         """Should create a resource with required fields."""
-        resource = StaticResource(
-            resourceinstanceid="resource-1",
+        from alizarin.static_types import StaticResourceMetadata, StaticResourceDescriptors
+
+        metadata = StaticResourceMetadata(
+            descriptors=StaticResourceDescriptors(),
             graph_id="graph-1",
+            name="Test Resource",
+            resourceinstanceid="resource-1",
+        )
+        resource = StaticResource(
+            resourceinstance=metadata,
             tiles=[],
         )
-        assert resource.resourceinstanceid == "resource-1"
-        assert resource.graph_id == "graph-1"
-        assert len(resource.tiles) == 0
+        assert resource.resourceinstance.resourceinstanceid == "resource-1"
+        assert resource.resourceinstance.graph_id == "graph-1"
+        assert len(resource.get_tiles()) == 0
 
     def test_resource_with_tiles(self):
         """Should store tiles correctly."""
+        from alizarin.static_types import StaticResourceMetadata, StaticResourceDescriptors
+
         tile = StaticTile(
             tileid="tile-1",
             nodegroup_id="ng-1",
             resourceinstance_id="resource-1",
             data={"node-1": "value"},
         )
-        resource = StaticResource(
-            resourceinstanceid="resource-1",
+        metadata = StaticResourceMetadata(
+            descriptors=StaticResourceDescriptors(),
             graph_id="graph-1",
+            name="Test Resource",
+            resourceinstanceid="resource-1",
+        )
+        resource = StaticResource(
+            resourceinstance=metadata,
             tiles=[tile],
         )
         assert len(resource.tiles) == 1
@@ -161,6 +182,8 @@ class TestStaticResource:
 
     def test_resource_with_multiple_tiles(self):
         """Should handle multiple tiles."""
+        from alizarin.static_types import StaticResourceMetadata, StaticResourceDescriptors
+
         tiles = [
             StaticTile(
                 tileid=f"tile-{i}",
@@ -170,37 +193,51 @@ class TestStaticResource:
             )
             for i in range(5)
         ]
-        resource = StaticResource(
-            resourceinstanceid="resource-1",
+        metadata = StaticResourceMetadata(
+            descriptors=StaticResourceDescriptors(),
             graph_id="graph-1",
+            name="Test Resource",
+            resourceinstanceid="resource-1",
+        )
+        resource = StaticResource(
+            resourceinstance=metadata,
             tiles=tiles,
         )
         assert len(resource.tiles) == 5
 
     def test_resource_to_dict(self):
         """Should serialize to dict."""
-        resource = StaticResource(
-            resourceinstanceid="resource-1",
+        from alizarin.static_types import StaticResourceMetadata, StaticResourceDescriptors
+
+        metadata = StaticResourceMetadata(
+            descriptors=StaticResourceDescriptors(),
             graph_id="graph-1",
-            tiles=[],
             name="Test Resource",
+            resourceinstanceid="resource-1",
+        )
+        resource = StaticResource(
+            resourceinstance=metadata,
+            tiles=[],
         )
         d = resource.to_dict()
-        assert d["resourceinstanceid"] == "resource-1"
-        assert d["graph_id"] == "graph-1"
-        assert d["name"] == "Test Resource"
+        assert d["resourceinstance"]["resourceinstanceid"] == "resource-1"
+        assert d["resourceinstance"]["graph_id"] == "graph-1"
+        assert d["resourceinstance"]["name"] == "Test Resource"
 
     def test_resource_from_dict(self):
         """Should deserialize from dict."""
         data = {
-            "resourceinstanceid": "resource-2",
-            "graph_id": "graph-2",
+            "resourceinstance": {
+                "descriptors": {},
+                "graph_id": "graph-2",
+                "name": "Resource Two",
+                "resourceinstanceid": "resource-2",
+            },
             "tiles": [],
-            "name": "Resource Two",
         }
         resource = StaticResource.from_dict(data)
-        assert resource.resourceinstanceid == "resource-2"
-        assert resource.graph_id == "graph-2"
+        assert resource.resourceinstance.resourceinstanceid == "resource-2"
+        assert resource.resourceinstance.graph_id == "graph-2"
 
 
 # =============================================================================
@@ -515,14 +552,14 @@ class TestResourceGraphRelationship:
         graph = create_test_graph()
         resource = create_test_resource(graph.graphid)
 
-        assert resource.graph_id == graph.graphid
+        assert resource.resourceinstance.graph_id == graph.graphid
 
     def test_tile_references_resource(self):
         """Tiles should reference their parent resource."""
         resource = create_test_resource()
 
         for tile in resource.tiles:
-            assert tile.resourceinstance_id == resource.resourceinstanceid
+            assert tile.resourceinstance_id == resource.resourceinstance.resourceinstanceid
 
     def test_tile_references_nodegroup(self):
         """Tiles should reference valid nodegroups."""

@@ -406,25 +406,39 @@ class TestStaticResource:
 
     def test_create_resource(self):
         """Should create a resource."""
-        resource = StaticResource(
-            resourceinstanceid="resource-1",
+        from alizarin.static_types import StaticResourceMetadata, StaticResourceDescriptors
+
+        metadata = StaticResourceMetadata(
+            descriptors=StaticResourceDescriptors(),
             graph_id="graph-1",
+            name="Test Resource",
+            resourceinstanceid="resource-1",
+        )
+        resource = StaticResource(
+            resourceinstance=metadata,
             tiles=[],
         )
-        assert resource.resourceinstanceid == "resource-1"
-        assert resource.graph_id == "graph-1"
+        assert resource.resourceinstance.resourceinstanceid == "resource-1"
+        assert resource.resourceinstance.graph_id == "graph-1"
 
     def test_resource_with_tiles(self):
         """Should store tiles."""
+        from alizarin.static_types import StaticResourceMetadata, StaticResourceDescriptors
+
         tile = StaticTile(
             tileid="tile-1",
             nodegroup_id="ng-1",
             resourceinstance_id="resource-1",
             data={"node-1": "value"},
         )
-        resource = StaticResource(
-            resourceinstanceid="resource-1",
+        metadata = StaticResourceMetadata(
+            descriptors=StaticResourceDescriptors(),
             graph_id="graph-1",
+            name="Test Resource",
+            resourceinstanceid="resource-1",
+        )
+        resource = StaticResource(
+            resourceinstance=metadata,
             tiles=[tile],
         )
         assert len(resource.tiles) == 1
@@ -432,15 +446,21 @@ class TestStaticResource:
 
     def test_to_dict(self):
         """Should serialize to dict."""
-        resource = StaticResource(
-            resourceinstanceid="resource-2",
+        from alizarin.static_types import StaticResourceMetadata, StaticResourceDescriptors
+
+        metadata = StaticResourceMetadata(
+            descriptors=StaticResourceDescriptors(),
             graph_id="graph-2",
-            tiles=[],
             name="Test Resource",
+            resourceinstanceid="resource-2",
+        )
+        resource = StaticResource(
+            resourceinstance=metadata,
+            tiles=[],
         )
         d = resource.to_dict()
-        assert d["resourceinstanceid"] == "resource-2"
-        assert d["name"] == "Test Resource"
+        assert d["resourceinstance"]["resourceinstanceid"] == "resource-2"
+        assert d["resourceinstance"]["name"] == "Test Resource"
 
 
 # =============================================================================
