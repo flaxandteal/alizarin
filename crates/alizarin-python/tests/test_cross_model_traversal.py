@@ -195,7 +195,8 @@ async def test_cross_model_traversal_to_related_resource(graph_manager):
         # Get members
         members = await group.members
 
-        if members and len(members) > 0:
+        # members could be a list or list-like object
+        if members is not None and hasattr(members, '__len__') and len(members) > 0:
             # Get first member - this is a ResourceInstanceViewModel
             first_member = members[0]
 
@@ -243,9 +244,9 @@ def test_graph_manager_registers_both_models(graph_manager):
     """
     Test that GraphManager properly registers both Group and Person models.
     """
-    # Both models should be registered
-    assert len(graph_manager._models) == 2, "Should have both Group and Person models"
+    # Both graphs should be registered (models are lazily populated on getResource)
     assert len(graph_manager._graphs) == 2, "Should have both graph definitions"
+    assert len(graph_manager._graph_ids) == 2, "Should have both graph IDs tracked"
 
 
 def test_graph_manager_has_resources(graph_manager):

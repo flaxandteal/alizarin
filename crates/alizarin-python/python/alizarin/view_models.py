@@ -838,7 +838,7 @@ class ResourceInstanceViewModel:
         """Check if key exists (lazy-load, so returns Optional[bool])"""
         if not self._i:
             return None
-        root = await self._i.getRootViewModel()
+        root = await self._i.get_root_view_model()
         return await root.__has(key) if root else None
 
     def __getattr__(self, key: str):
@@ -870,7 +870,7 @@ class ResourceInstanceViewModel:
                     raise ValueError("Could not retrieve resource")
 
             # Get the root view model (SemanticViewModel)
-            root = await self._i.getRootViewModel()
+            root = await self._i.get_root_view_model()
             if not root:
                 return None
 
@@ -948,7 +948,7 @@ class ResourceInstanceViewModel:
                 if not self._i:
                     raise ValueError("Could not retrieve resource")
 
-            root = await self._i.getRootViewModel()
+            root = await self._i.get_root_view_model()
             basic.root = await root.for_json()
 
         return basic
@@ -965,7 +965,7 @@ class ResourceInstanceViewModel:
         if not viewContext.graphManager:
             raise ValueError("Cannot traverse resource relationships without a GraphManager")
 
-        replacement = await viewContext.graphManager.getResource(self.id, True)
+        replacement = await viewContext.graphManager.get_root_view_model(self.id, True)
 
         # Extract wrappers from replacement resource
         iw = replacement._i
