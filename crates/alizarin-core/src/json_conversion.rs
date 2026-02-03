@@ -244,10 +244,23 @@ fn build_pseudo_cache_from_tiles(
                 child_node_ids,
             );
 
-            let is_single = node.nodegroup_id.as_ref()
-                .and_then(|ng_id| graph.get_nodegroup_by_id(ng_id))
-                .map(|ng| ng.cardinality.as_ref().map(|c| c != "n").unwrap_or(true))
-                .unwrap_or(true);
+            // Only apply nodegroup cardinality to the grouping node itself,
+            // not to leaf nodes within the same nodegroup
+            let is_single = if let Some(ref ng_id) = node.nodegroup_id {
+                if node.nodeid == *ng_id {
+                    // This IS the grouping node - check cardinality
+                    graph.get_nodegroup_by_id(ng_id)
+                        .and_then(|ng| ng.cardinality.as_ref())
+                        .map(|c| c != "n")
+                        .unwrap_or(true)
+                } else {
+                    // Leaf node within a nodegroup - use is_collector
+                    !node.is_collector
+                }
+            } else {
+                // No nodegroup - use is_collector
+                !node.is_collector
+            };
 
             pseudo_cache
                 .entry(alias.clone())
