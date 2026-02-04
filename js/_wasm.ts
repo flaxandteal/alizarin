@@ -93,7 +93,7 @@ export async function initWasm() {
       console.log('[alizarin] WASM already available from another module instance');
       wasmInitialized = true;
       return;
-    } catch (e) {
+    } catch {
       // WASM not initialized yet, continue with normal initialization
     }
 

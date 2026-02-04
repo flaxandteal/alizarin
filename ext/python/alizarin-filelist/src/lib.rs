@@ -3,8 +3,6 @@
 //! This extension provides the "file-list" datatype handler for file attachments
 //! in Arches. It handles coercion and display rendering of file list values.
 
-#[cfg(feature = "pyo3-ext")]
-use pyo3::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -202,7 +200,7 @@ impl FileListItem {
                 }
             }
             // Try any language
-            for (_lang, localized) in title {
+            for localized in title.values() {
                 if !localized.value.is_empty() {
                     return localized.value.clone();
                 }
@@ -297,7 +295,7 @@ fn coerce_single_file(value: &Value, index: usize) -> Result<(Value, Value), Str
         Value::String(url) => {
             let file = FileListItem {
                 url: Some(url.clone()),
-                name: url.split('/').last().unwrap_or("file").to_string(),
+                name: url.split('/').next_back().unwrap_or("file").to_string(),
                 index: Some(index as i64),
                 status: Some("uploaded".to_string()),
                 ..Default::default()
@@ -415,43 +413,31 @@ unsafe extern "C" fn render_filelist_display(
 #[cfg(feature = "pyo3-ext")]
 mod python_module {
     use super::*;
-    use pyo3::prelude::*;
-    use pyo3::types::PyCapsule;
+    use pyo3::{pyfunction, pymodule, wrap_pyfunction, Bound, Py, PyErr, PyResult, Python};
+    use pyo3::types::{PyCapsule, PyModule};
     use std::ffi::{c_void, CString};
-    use std::sync::Once;
+    use std::sync::OnceLock;
 
     /// Static storage for the TypeHandlerInfo
-    static mut HANDLER_INFO: Option<TypeHandlerInfo> = None;
-    static INIT: Once = Once::new();
+    static HANDLER_INFO: OnceLock<TypeHandlerInfo> = OnceLock::new();
 
     /// Get the type handler capsule for registration with alizarin.
     #[pyfunction]
     pub fn get_filelist_handler_capsule(py: Python<'_>) -> PyResult<Py<PyCapsule>> {
         static TYPE_NAME: &[u8] = b"file-list";
 
-        // Initialize the static handler info once
-        INIT.call_once(|| {
-            unsafe {
-                HANDLER_INFO = Some(TypeHandlerInfo {
-                    type_name_ptr: TYPE_NAME.as_ptr(),
-                    type_name_len: TYPE_NAME.len(),
-                    coerce_fn: coerce_filelist as CoerceFn,
-                    free_fn: alizarin_free_coerce_result as FreeFn,
-                    render_display_fn: Some(render_filelist_display as RenderDisplayFn),
-                    free_display_fn: Some(alizarin_free_render_display_result as FreeDisplayFn),
-                    resolve_markers_fn: None,
-                    free_resolve_markers_fn: None,
-                    user_data: std::ptr::null_mut(),
-                });
-            }
-        });
-
-        // Get pointer to the static handler info
-        // SAFETY: HANDLER_INFO is initialized unconditionally in Once::call_once above
-        let ptr = unsafe {
-            HANDLER_INFO.as_ref().expect("HANDLER_INFO initialized in Once::call_once above")
-                as *const TypeHandlerInfo
-        };
+        // Initialize the static handler info once and get pointer
+        let ptr = HANDLER_INFO.get_or_init(|| TypeHandlerInfo {
+            type_name_ptr: TYPE_NAME.as_ptr(),
+            type_name_len: TYPE_NAME.len(),
+            coerce_fn: coerce_filelist as CoerceFn,
+            free_fn: alizarin_free_coerce_result as FreeFn,
+            render_display_fn: Some(render_filelist_display as RenderDisplayFn),
+            free_display_fn: Some(alizarin_free_render_display_result as FreeDisplayFn),
+            resolve_markers_fn: None,
+            free_resolve_markers_fn: None,
+            user_data: std::ptr::null_mut(),
+        }) as *const TypeHandlerInfo;
 
         // SAFETY: Hardcoded string with no null bytes
         let name = CString::new("alizarin_filelist.filelist_handler")
@@ -474,7 +460,7 @@ mod python_module {
 
     /// Python module definition
     #[pymodule]
-    pub fn _rust(_py: Python, m: &PyModule) -> PyResult<()> {
+    pub fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_function(wrap_pyfunction!(get_filelist_handler_capsule, m)?)?;
         Ok(())
     }

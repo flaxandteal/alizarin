@@ -59,10 +59,11 @@ export class ConceptValueViewModel extends String implements IViewModel {
    */
   async ancestors(): Promise<ConceptValueViewModel[]> {
     const result: ConceptValueViewModel[] = [];
-    let current: ConceptValueViewModel | null = this;
+    let current: ConceptValueViewModel | null = await this.parent();
 
-    while ((current = await current.parent()) !== null) {
+    while (current !== null) {
       result.push(current);
+      current = await current.parent();
     }
 
     return result;
