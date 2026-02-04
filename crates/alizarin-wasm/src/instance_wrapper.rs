@@ -1988,7 +1988,7 @@ impl WASMResourceInstanceWrapper {
 
         // Get child node IDs for the root
         let child_node_ids = edges.get(&root_node.nodeid)
-            .map(|ids| ids.clone())
+            .cloned()
             .unwrap_or_default();
 
         // Create root pseudo value with no tile (using from_node_and_tile for proper initialization)
@@ -2075,7 +2075,8 @@ impl WASMResourceInstanceWrapper {
         };
 
         // Build a map of alias -> (core node, tiles)
-        let mut alias_tiles: HashMap<String, (Arc<StaticNode>, Vec<Option<Arc<StaticTile>>>)> = HashMap::new();
+        type AliasTilesMap = HashMap<String, (Arc<StaticNode>, Vec<Option<Arc<StaticTile>>>)>;
+        let mut alias_tiles: AliasTilesMap = HashMap::new();
 
         // Helper to add a pseudo for a node
         let mut add_to_alias_tiles = |node: &Arc<StaticNode>, tile: Option<Arc<StaticTile>>, tile_id: Option<&String>| {
@@ -2147,10 +2148,8 @@ impl WASMResourceInstanceWrapper {
                                            domain_ng_id != &domain_node.nodeid &&
                                            !tile_id.is_empty() {
                                             let key = (domain_node.nodeid.clone(), tile_id.clone());
-                                            if !implied_nodes.contains_key(&key) {
-                                                if let Some(t) = tile.as_ref() {
-                                                    implied_nodes.insert(key, (Arc::clone(domain_node), Arc::clone(t)));
-                                                }
+                                            if let Some(t) = tile.as_ref() {
+                                                implied_nodes.entry(key).or_insert_with(|| (Arc::clone(domain_node), Arc::clone(t)));
                                             }
                                         }
                                     }
@@ -2659,6 +2658,7 @@ impl WASMResourceInstanceWrapper {
         };
 
         // Get child nodes for this parent
+        #[allow(clippy::map_clone)]
         let child_nodes = self.with_model_core_mut(|core| {
             core.get_child_nodes(&parent_node_id)
                 .map_err(|e| JsValue::from_str(&e))
@@ -2667,7 +2667,7 @@ impl WASMResourceInstanceWrapper {
 
         // Collect missing nodegroups
         let mut missing: Vec<String> = Vec::new();
-        for (_, child_node) in &child_nodes {
+        for child_node in child_nodes.values() {
             if let Some(ref nodegroup_id) = child_node.nodegroup_id {
                 if !loaded_nodegroups.contains(nodegroup_id) && !missing.contains(nodegroup_id) {
                     missing.push(nodegroup_id.clone());
@@ -2713,6 +2713,7 @@ impl WASMResourceInstanceWrapper {
         };
 
         // Get all child aliases for this parent
+        #[allow(clippy::map_clone)]
         let child_nodes = self.with_model_core_mut(|core| {
             core.get_child_nodes(&parent_node_id)
                 .map_err(|e| JsValue::from_str(&e))
@@ -2723,7 +2724,7 @@ impl WASMResourceInstanceWrapper {
         let result_map = JsMap::new();
 
         // Get each child value and add to map
-        for (child_alias, _) in &child_nodes {
+        for child_alias in child_nodes.keys() {
             let result = self.core.borrow().get_semantic_child_value(
                 parent_tile_id.as_ref(),
                 &parent_node_id,
