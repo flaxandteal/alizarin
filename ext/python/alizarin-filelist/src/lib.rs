@@ -416,28 +416,41 @@ mod python_module {
     use pyo3::{pyfunction, pymodule, wrap_pyfunction, Bound, Py, PyErr, PyResult, Python};
     use pyo3::types::{PyCapsule, PyModule};
     use std::ffi::{c_void, CString};
-    use std::sync::OnceLock;
+    use std::sync::Once;
 
     /// Static storage for the TypeHandlerInfo
-    static HANDLER_INFO: OnceLock<TypeHandlerInfo> = OnceLock::new();
+    static mut HANDLER_INFO: Option<TypeHandlerInfo> = None;
+    static INIT: Once = Once::new();
 
     /// Get the type handler capsule for registration with alizarin.
     #[pyfunction]
     pub fn get_filelist_handler_capsule(py: Python<'_>) -> PyResult<Py<PyCapsule>> {
         static TYPE_NAME: &[u8] = b"file-list";
 
-        // Initialize the static handler info once and get pointer
-        let ptr = HANDLER_INFO.get_or_init(|| TypeHandlerInfo {
-            type_name_ptr: TYPE_NAME.as_ptr(),
-            type_name_len: TYPE_NAME.len(),
-            coerce_fn: coerce_filelist as CoerceFn,
-            free_fn: alizarin_free_coerce_result as FreeFn,
-            render_display_fn: Some(render_filelist_display as RenderDisplayFn),
-            free_display_fn: Some(alizarin_free_render_display_result as FreeDisplayFn),
-            resolve_markers_fn: None,
-            free_resolve_markers_fn: None,
-            user_data: std::ptr::null_mut(),
-        }) as *const TypeHandlerInfo;
+        // Initialize the static handler info once
+        INIT.call_once(|| {
+            unsafe {
+                HANDLER_INFO = Some(TypeHandlerInfo {
+                    type_name_ptr: TYPE_NAME.as_ptr(),
+                    type_name_len: TYPE_NAME.len(),
+                    coerce_fn: coerce_filelist as CoerceFn,
+                    free_fn: alizarin_free_coerce_result as FreeFn,
+                    render_display_fn: Some(render_filelist_display as RenderDisplayFn),
+                    free_display_fn: Some(alizarin_free_render_display_result as FreeDisplayFn),
+                    resolve_markers_fn: None,
+                    free_resolve_markers_fn: None,
+                    user_data: std::ptr::null_mut(),
+                });
+            }
+        });
+
+        // Get pointer to the static handler info
+        // SAFETY: HANDLER_INFO is initialized unconditionally in Once::call_once above
+        #[allow(static_mut_refs)]
+        let ptr = unsafe {
+            HANDLER_INFO.as_ref().expect("HANDLER_INFO initialized in Once::call_once above")
+                as *const TypeHandlerInfo
+        };
 
         // SAFETY: Hardcoded string with no null bytes
         let name = CString::new("alizarin_filelist.filelist_handler")

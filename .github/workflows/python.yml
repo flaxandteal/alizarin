@@ -156,7 +156,7 @@ jobs:
       - name: Install alizarin-clm wheel (Unix)
         if: matrix.os != 'windows-latest'
         working-directory: ext/python/alizarin-clm
-        run: pip install dist/*.whl
+        run: pip install --no-deps dist/*.whl
 
       - name: Install alizarin-clm wheel (Windows)
         if: matrix.os == 'windows-latest'
@@ -164,7 +164,7 @@ jobs:
         shell: pwsh
         run: |
           $wheel = Get-ChildItem -Path dist/*.whl | Select-Object -First 1
-          pip install $wheel.FullName
+          pip install --no-deps $wheel.FullName
 
       - name: Run tests
         working-directory: ext/python/alizarin-clm
