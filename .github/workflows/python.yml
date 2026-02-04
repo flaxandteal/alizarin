@@ -159,9 +159,12 @@ jobs:
             maturin build --release --out dist
             pip install --no-deps dist/*.whl
             cd - > /dev/null
-            # Run tests from temp dir to avoid importing from source tree
+            # Copy tests to temp and run from there to fully isolate from source tree
             if [ -d "$ext_dir/tests" ]; then
-              (cd /tmp && pytest "$GITHUB_WORKSPACE/$ext_dir/tests/" -v) || echo "Tests for $ext_name failed or pending"
+              test_tmp="/tmp/alizarin_tests_$ext_name"
+              rm -rf "$test_tmp"
+              cp -r "$ext_dir/tests" "$test_tmp"
+              (cd /tmp && pytest "$test_tmp" -v --import-mode=importlib) || echo "Tests for $ext_name failed or pending"
             fi
           done
 
@@ -177,10 +180,14 @@ jobs:
             $wheel = Get-ChildItem -Path dist/*.whl | Select-Object -First 1
             pip install --no-deps $wheel.FullName
             Pop-Location
-            # Run tests from temp dir to avoid importing from source tree
+            # Run tests with isolated import mode to avoid source tree
             if (Test-Path "$($ext_dir.FullName)/tests") {
+              # Copy tests to temp and run from there to fully isolate from source
+              $test_tmp = Join-Path $env:TEMP "alizarin_tests_$ext_name"
+              if (Test-Path $test_tmp) { Remove-Item -Recurse -Force $test_tmp }
+              Copy-Item -Recurse "$($ext_dir.FullName)/tests" $test_tmp
               Push-Location $env:TEMP
-              pytest "$($ext_dir.FullName)/tests/" -v
+              pytest $test_tmp -v --import-mode=importlib
               if ($LASTEXITCODE -ne 0) { Write-Host "Tests for $ext_name failed or pending" }
               Pop-Location
             }
