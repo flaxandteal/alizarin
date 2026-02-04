@@ -1,13 +1,13 @@
 import { registerDisplaySerializer, utils, viewModels, wasmReady } from "alizarin";
 var FileListItem = class {
 	accepted;
-	altText;
+	alt_text;
 	attribution;
 	content;
 	description;
 	file_id;
 	index;
-	lastModified;
+	last_modified;
 	name;
 	path;
 	selected;
@@ -18,7 +18,7 @@ var FileListItem = class {
 	url;
 	renderer;
 	constructor(e) {
-		this.accepted = e.accepted ?? !1, this.altText = e.altText, this.attribution = e.attribution, this.content = e.content, this.description = e.description, this.file_id = e.file_id, this.index = e.index, this.lastModified = e.lastModified, this.name = e.name || "", this.path = e.path, this.selected = e.selected ?? !1, this.size = e.size, this.status = e.status, this.title = e.title, this.type = e.type, this.url = e.url, this.renderer = e.renderer;
+		this.accepted = e.accepted ?? !1, this.alt_text = e.alt_text, this.attribution = e.attribution, this.content = e.content, this.description = e.description, this.file_id = e.file_id, this.index = e.index, this.last_modified = e.last_modified, this.name = e.name || "", this.path = e.path, this.selected = e.selected ?? !1, this.size = e.size, this.status = e.status, this.title = e.title, this.type = e.type, this.url = e.url, this.renderer = e.renderer;
 	}
 	toDisplayString(e) {
 		let r = e || utils.getCurrentLanguage() || "en";
@@ -30,7 +30,7 @@ var FileListItem = class {
 	}
 	getAltText(e) {
 		let r = e || utils.getCurrentLanguage() || "en";
-		return this.altText && this.altText[r]?.value ? this.altText[r].value : null;
+		return this.alt_text && this.alt_text[r]?.value ? this.alt_text[r].value : null;
 	}
 	isImage() {
 		return this.type?.startsWith("image/") ?? !1;
@@ -41,7 +41,7 @@ var FileListItem = class {
 			accepted: this.accepted,
 			selected: this.selected
 		};
-		return this.altText && (e.altText = this.altText), this.attribution && (e.attribution = this.attribution), this.content && (e.content = this.content), this.description && (e.description = this.description), this.file_id && (e.file_id = this.file_id), this.index !== void 0 && (e.index = this.index), this.lastModified && (e.lastModified = this.lastModified), this.path && (e.path = this.path), this.size !== void 0 && (e.size = this.size), this.status && (e.status = this.status), this.title && (e.title = this.title), this.type && (e.type = this.type), this.url && (e.url = this.url), this.renderer && (e.renderer = this.renderer), e;
+		return this.alt_text && (e.alt_text = this.alt_text), this.attribution && (e.attribution = this.attribution), this.content && (e.content = this.content), this.description && (e.description = this.description), this.file_id && (e.file_id = this.file_id), this.index !== void 0 && (e.index = this.index), this.last_modified && (e.last_modified = this.last_modified), this.path && (e.path = this.path), this.size !== void 0 && (e.size = this.size), this.status && (e.status = this.status), this.title && (e.title = this.title), this.type && (e.type = this.type), this.url && (e.url = this.url), this.renderer && (e.renderer = this.renderer), e;
 	}
 };
 wasmReady.then(() => {

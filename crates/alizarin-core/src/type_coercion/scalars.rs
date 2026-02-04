@@ -215,9 +215,9 @@ mod tests {
 
     #[test]
     fn test_coerce_number_from_float() {
-        let result = coerce_number(&json!(3.14));
+        let result = coerce_number(&json!(2.718));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!(3.14));
+        assert_eq!(result.tile_data, json!(2.718));
     }
 
     #[test]
@@ -229,9 +229,9 @@ mod tests {
 
     #[test]
     fn test_coerce_number_from_float_string() {
-        let result = coerce_number(&json!("3.14"));
+        let result = coerce_number(&json!("2.718"));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!(3.14));
+        assert_eq!(result.tile_data, json!(2.718));
     }
 
     #[test]

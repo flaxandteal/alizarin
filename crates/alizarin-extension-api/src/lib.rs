@@ -340,16 +340,23 @@ pub type ResolveMarkersFn = unsafe extern "C" fn(
 pub type FreeResolveMarkersFn = unsafe extern "C" fn(result: ResolveMarkersResult);
 
 /// Standard free function for ResolveMarkersResult
+///
+/// # Safety
+/// This function must only be called once for a given `ResolveMarkersResult`.
+/// The pointers in the result must have been allocated by this library using
+/// `Box::into_raw(slice.into_boxed_slice())`. Calling this function multiple
+/// times with the same result or with results from other sources will cause
+/// undefined behavior.
 #[no_mangle]
 pub unsafe extern "C" fn alizarin_free_resolve_markers_result(result: ResolveMarkersResult) {
     if !result.json_ptr.is_null() {
-        let _ = Box::from_raw(std::slice::from_raw_parts_mut(
+        let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(
             result.json_ptr,
             result.json_len,
         ));
     }
     if !result.error_ptr.is_null() {
-        let _ = Box::from_raw(std::slice::from_raw_parts_mut(
+        let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(
             result.error_ptr,
             result.error_len,
         ));
@@ -357,16 +364,23 @@ pub unsafe extern "C" fn alizarin_free_resolve_markers_result(result: ResolveMar
 }
 
 /// Standard free function for RenderDisplayResult
+///
+/// # Safety
+/// This function must only be called once for a given `RenderDisplayResult`.
+/// The pointers in the result must have been allocated by this library using
+/// `Box::into_raw(slice.into_boxed_slice())`. Calling this function multiple
+/// times with the same result or with results from other sources will cause
+/// undefined behavior.
 #[no_mangle]
 pub unsafe extern "C" fn alizarin_free_render_display_result(result: RenderDisplayResult) {
     if !result.display_ptr.is_null() {
-        let _ = Box::from_raw(std::slice::from_raw_parts_mut(
+        let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(
             result.display_ptr,
             result.display_len,
         ));
     }
     if !result.error_ptr.is_null() {
-        let _ = Box::from_raw(std::slice::from_raw_parts_mut(
+        let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(
             result.error_ptr,
             result.error_len,
         ));
@@ -491,23 +505,30 @@ impl TypeHandlerInfo {
 /// Standard free function for CoerceResult
 ///
 /// Extensions can use this if they allocate results using the standard methods.
+///
+/// # Safety
+/// This function must only be called once for a given `CoerceResult`.
+/// The pointers in the result must have been allocated by this library using
+/// `Box::into_raw(slice.into_boxed_slice())`. Calling this function multiple
+/// times with the same result or with results from other sources will cause
+/// undefined behavior.
 #[no_mangle]
 pub unsafe extern "C" fn alizarin_free_coerce_result(result: CoerceResult) {
     if !result.json_ptr.is_null() {
-        let _ = Box::from_raw(std::slice::from_raw_parts_mut(
+        let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(
             result.json_ptr,
             result.json_len,
         ));
     }
     // Only free resolved if different from json
     if !result.resolved_ptr.is_null() && result.resolved_ptr != result.json_ptr {
-        let _ = Box::from_raw(std::slice::from_raw_parts_mut(
+        let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(
             result.resolved_ptr,
             result.resolved_len,
         ));
     }
     if !result.error_ptr.is_null() {
-        let _ = Box::from_raw(std::slice::from_raw_parts_mut(
+        let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(
             result.error_ptr,
             result.error_len,
         ));
@@ -651,10 +672,17 @@ impl MutationHandlerInfo {
 }
 
 /// Standard free function for MutationResult
+///
+/// # Safety
+/// This function must only be called once for a given `MutationResult`.
+/// The error pointer in the result must have been allocated by this library using
+/// `Box::into_raw(slice.into_boxed_slice())`. Calling this function multiple
+/// times with the same result or with results from other sources will cause
+/// undefined behavior.
 #[no_mangle]
 pub unsafe extern "C" fn alizarin_free_mutation_result(result: MutationResult) {
     if !result.error_ptr.is_null() {
-        let _ = Box::from_raw(std::slice::from_raw_parts_mut(
+        let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(
             result.error_ptr,
             result.error_len,
         ));
@@ -662,10 +690,17 @@ pub unsafe extern "C" fn alizarin_free_mutation_result(result: MutationResult) {
 }
 
 /// Standard free function for mutation output
+///
+/// # Safety
+/// This function must only be called once for a given output pointer/length pair.
+/// The pointer must have been allocated by this library using
+/// `Box::into_raw(slice.into_boxed_slice())`. Calling this function multiple
+/// times with the same pointer or with pointers from other sources will cause
+/// undefined behavior.
 #[no_mangle]
 pub unsafe extern "C" fn alizarin_free_mutation_output(ptr: *mut u8, len: usize) {
     if !ptr.is_null() {
-        let _ = Box::from_raw(std::slice::from_raw_parts_mut(ptr, len));
+        let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len));
     }
 }
 

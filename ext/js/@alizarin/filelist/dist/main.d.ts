@@ -12,13 +12,13 @@ type LocalizedString = {
 };
 interface FileListItemData {
     accepted?: boolean;
-    altText?: LocalizedString;
+    alt_text?: LocalizedString;
     attribution?: LocalizedString;
     content?: string;
     description?: LocalizedString;
     file_id?: string;
     index?: number;
-    lastModified?: number;
+    last_modified?: number;
     name: string;
     path?: string;
     selected?: boolean;
@@ -31,13 +31,13 @@ interface FileListItemData {
 }
 declare class FileListItem {
     accepted: boolean;
-    altText?: LocalizedString;
+    alt_text?: LocalizedString;
     attribution?: LocalizedString;
     content?: string;
     description?: LocalizedString;
     file_id?: string;
     index?: number;
-    lastModified?: number;
+    last_modified?: number;
     name: string;
     path?: string;
     selected: boolean;

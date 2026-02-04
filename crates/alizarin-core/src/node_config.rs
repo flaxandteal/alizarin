@@ -9,7 +9,6 @@
 /// - TypeScript via WASM bindings
 /// - Python via PyO3 bindings
 /// - Native Rust applications
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

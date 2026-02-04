@@ -4,7 +4,6 @@
 /// that can be used from any binding (WASM, Python, etc.)
 ///
 /// The WASM bindings extend these with JsValue fields for ViewModel integration.
-
 use std::sync::Arc;
 use std::collections::{HashMap, HashSet};
 use serde_json::{Value, Map};

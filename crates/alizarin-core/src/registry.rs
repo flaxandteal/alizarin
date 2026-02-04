@@ -6,7 +6,6 @@
 ///
 /// Uses RwLock for thread-safe access, allowing multiple concurrent readers
 /// or exclusive write access. This works correctly with rayon's parallel iterators.
-
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
