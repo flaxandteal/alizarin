@@ -109,7 +109,7 @@ fn resource_tiles_to_tree(
     // Build pseudo_cache from tiles
     let pseudo_cache = build_pseudo_cache_from_tiles(
         tiles,
-        &nodes_by_alias,
+        nodes_by_alias,
         graph,
         edges,
     );
@@ -140,8 +140,8 @@ fn resource_tiles_to_tree(
 
     let ctx = VisitorContext::new(
         &full_cache,
-        &nodes_by_alias,
-        &edges,
+        nodes_by_alias,
+        edges,
     );
 
     let mut tree = if let Some(root_value) = root_list.values.first() {
@@ -245,7 +245,7 @@ fn build_pseudo_cache_from_tiles(
             );
 
             // Use shared cardinality logic
-            let is_single = is_node_single_cardinality_with(&node, |ng_id| {
+            let is_single = is_node_single_cardinality_with(node, |ng_id| {
                 graph.get_nodegroup_by_id(ng_id)
                     .and_then(|ng| ng.cardinality.clone())
             });
@@ -456,7 +456,7 @@ fn single_tree_to_resource(
     build_pseudo_values_from_json(
         obj,
         &Arc::new(root.clone()),
-        &nodes_by_alias,
+        nodes_by_alias,
         graph,
         edges,
         &resource_id,
@@ -470,8 +470,8 @@ fn single_tree_to_resource(
 
     let ctx = TileBuilderContext {
         pseudo_cache: &pseudo_cache,
-        nodes_by_alias: &nodes_by_alias,
-        edges: &edges,
+        nodes_by_alias,
+        edges,
         resourceinstance_id: resource_id.clone(),
         depth: 0,
         max_depth: 100,
@@ -531,6 +531,7 @@ fn single_tree_to_resource(
 }
 
 /// Build PseudoValueCore tree from JSON and populate pseudo_cache
+#[allow(clippy::too_many_arguments)]
 fn build_pseudo_values_from_json(
     json_obj: &Map<String, Value>,
     current_node: &Arc<StaticNode>,
@@ -763,6 +764,7 @@ fn build_pseudo_values_from_json(
 }
 
 /// Create a PseudoValueCore from a JSON object
+#[allow(clippy::too_many_arguments)]
 fn create_pseudo_value_from_json(
     json_obj: &Map<String, Value>,
     node: &Arc<StaticNode>,
@@ -806,6 +808,7 @@ fn create_pseudo_value_from_json(
 }
 
 /// Create a PseudoValueCore from a leaf JSON value
+#[allow(clippy::too_many_arguments)]
 fn create_pseudo_value_from_leaf(
     json_value: &Value,
     node: &Arc<StaticNode>,
@@ -1520,12 +1523,6 @@ mod tests {
     /// Test using real Heritage Item graph structure (loaded from file if available)
     #[test]
     fn test_real_heritage_item_system_ref_numbers() {
-        // Use workspace root for test data
-        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent().unwrap()
-            .parent().unwrap()
-            .to_path_buf();
-
         // Try to load Heritage Item graph - skip test if not available
         let heritage_item_path = PathBuf::from("/home/philtweir/Cód/Cliant/Quartz/tmp.quartz-starches-buildings-test/prebuild/graphs/resource_models/Heritage Item.json");
         let json_str = match fs::read_to_string(&heritage_item_path) {

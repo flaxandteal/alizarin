@@ -5,6 +5,7 @@ Ports tests from tests/matching_entries_test.rs
 Tests the fix for the registry names issue where inner values need to be filtered
 by their parent tile context.
 """
+from typing import Optional
 
 import pytest
 from alizarin.static_types import StaticNode, StaticTile
@@ -29,7 +30,7 @@ def create_node(nodeid: str, alias: str, nodegroup_id: str) -> StaticNode:
     )
 
 
-def create_tile(tileid: str, nodegroup_id: str, parenttile_id: str | None = None) -> StaticTile:
+def create_tile(tileid: str, nodegroup_id: str, parenttile_id: Optional[str] = None) -> StaticTile:
     """Create a test tile"""
     return StaticTile(
         tileid=tileid,

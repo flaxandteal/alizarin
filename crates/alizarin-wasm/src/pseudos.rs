@@ -43,7 +43,7 @@ impl PseudoNode {
                 PseudoNode {
                     node: static_node.clone(),
                     parent_node: None,
-                    child_nodes: child_nodes,
+                    child_nodes,
                     is_inner: true,
                     inner: None,
                 }
@@ -165,7 +165,7 @@ impl PseudoNode {
     #[wasm_bindgen(getter = childNodeAliases)]
     pub fn get_child_node_aliases(&self) -> JsValue {
         let map = js_sys::Array::new();
-        for (key, _value) in &self.child_nodes {
+        for key in self.child_nodes.keys() {
             map.push(&JsValue::from_str(key));
         }
         map.into()

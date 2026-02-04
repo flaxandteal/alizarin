@@ -587,7 +587,7 @@ pub fn get_default_widget_for_datatype(datatype: &str) -> Result<Widget, Mutatio
         // Fall back to static widgets
         return WIDGETS.get(&widget_name)
             .cloned()
-            .ok_or_else(|| MutationError::WidgetNotFound(widget_name));
+            .ok_or(MutationError::WidgetNotFound(widget_name));
     }
 
     // Fall back to core datatype mappings
@@ -1355,6 +1355,7 @@ impl GraphMutator {
     // =========================================================================
 
     /// Add a semantic node (structural grouping node)
+    #[allow(clippy::too_many_arguments)]
     pub fn add_semantic_node(
         mut self,
         parent_alias: Option<&str>,
@@ -1383,6 +1384,7 @@ impl GraphMutator {
     }
 
     /// Add a string node
+    #[allow(clippy::too_many_arguments)]
     pub fn add_string_node(
         mut self,
         parent_alias: Option<&str>,
@@ -1411,6 +1413,7 @@ impl GraphMutator {
     }
 
     /// Add a concept node (RDM collection reference)
+    #[allow(clippy::too_many_arguments)]
     pub fn add_concept_node(
         mut self,
         parent_alias: Option<&str>,
@@ -1448,6 +1451,7 @@ impl GraphMutator {
     }
 
     /// Add a number node
+    #[allow(clippy::too_many_arguments)]
     pub fn add_number_node(
         mut self,
         parent_alias: Option<&str>,
@@ -1476,6 +1480,7 @@ impl GraphMutator {
     }
 
     /// Add a date node
+    #[allow(clippy::too_many_arguments)]
     pub fn add_date_node(
         mut self,
         parent_alias: Option<&str>,
@@ -1504,6 +1509,7 @@ impl GraphMutator {
     }
 
     /// Add a boolean node
+    #[allow(clippy::too_many_arguments)]
     pub fn add_boolean_node(
         mut self,
         parent_alias: Option<&str>,
@@ -1532,6 +1538,7 @@ impl GraphMutator {
     }
 
     /// Add a generic node with any datatype (consuming builder pattern)
+    #[allow(clippy::too_many_arguments)]
     pub fn add_generic_node(
         mut self,
         parent_alias: Option<&str>,
@@ -1561,6 +1568,7 @@ impl GraphMutator {
     }
 
     /// Internal: add a generic node (mutating)
+    #[allow(clippy::too_many_arguments)]
     fn add_generic_node_mut(
         &mut self,
         parent_alias: Option<&str>,
@@ -2250,11 +2258,10 @@ fn apply_delete_nodegroup(
         let current_ng = nodegroups_to_delete[i].clone();
         // Find child nodegroups
         for ng in &graph.nodegroups {
-            if ng.parentnodegroup_id.as_ref() == Some(&current_ng) {
-                if !nodegroups_to_delete.contains(&ng.nodegroupid) {
+            if ng.parentnodegroup_id.as_ref() == Some(&current_ng)
+                && !nodegroups_to_delete.contains(&ng.nodegroupid) {
                     nodegroups_to_delete.push(ng.nodegroupid.clone());
                 }
-            }
         }
         i += 1;
     }
@@ -2335,12 +2342,10 @@ fn apply_update_node(
     if let Some(description) = params.description {
         node_mut.description = Some(StaticTranslatableString::from_string(&description));
     }
-    if let Some(config) = params.config {
+    if let Some(serde_json::Value::Object(map)) = params.config {
         // Merge config into existing
-        if let serde_json::Value::Object(map) = config {
-            for (k, v) in map {
-                node_mut.config.insert(k, v);
-            }
+        for (k, v) in map {
+            node_mut.config.insert(k, v);
         }
     }
 
@@ -2405,12 +2410,10 @@ fn apply_change_node_type(
     if let Some(description) = params.description {
         node_mut.description = Some(StaticTranslatableString::from_string(&description));
     }
-    if let Some(config) = params.config {
+    if let Some(serde_json::Value::Object(map)) = params.config {
         // Merge config into existing
-        if let serde_json::Value::Object(map) = config {
-            for (k, v) in map {
-                node_mut.config.insert(k, v);
-            }
+        for (k, v) in map {
+            node_mut.config.insert(k, v);
         }
     }
 
@@ -2688,7 +2691,7 @@ fn apply_add_subgraph(
     // 2. IDENTIFY ROOT: Find the root node of the subgraph
     let root_node = subgraph.nodes.iter()
         .find(|n| n.istopnode)
-        .or_else(|| Some(&subgraph.root))
+        .or(Some(&subgraph.root))
         .ok_or(MutationError::BranchHasNoRoot)?;
     let root_node_id = root_node.nodeid.clone();
     let root_nodegroup_id = root_node.nodegroup_id.clone()
@@ -3008,7 +3011,7 @@ fn apply_update_subgraph(
     // 2. IDENTIFY ROOT: Find the root node of the new subgraph
     let root_node = subgraph.nodes.iter()
         .find(|n| n.istopnode)
-        .or_else(|| Some(&subgraph.root))
+        .or(Some(&subgraph.root))
         .ok_or(MutationError::BranchHasNoRoot)?;
     let root_node_id = root_node.nodeid.clone();
 
@@ -4838,14 +4841,14 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify that the new nodes have different IDs from the original subgraph
-        let original_ids = vec!["sub-root-id", "sub-child1-id", "sub-child2-id"];
+        let original_ids = ["sub-root-id", "sub-child1-id", "sub-child2-id"];
         for node in &graph_clone.nodes {
             assert!(!original_ids.contains(&node.nodeid.as_str()),
                 "Node ID {} was not remapped", node.nodeid);
         }
 
         // Verify that edges have been remapped
-        let original_edge_ids = vec!["sub-edge1-id", "sub-edge2-id"];
+        let original_edge_ids = ["sub-edge1-id", "sub-edge2-id"];
         for edge in &graph_clone.edges {
             assert!(!original_edge_ids.contains(&edge.edgeid.as_str()),
                 "Edge ID {} was not remapped", edge.edgeid);

@@ -387,6 +387,7 @@ impl PrebuildLoader {
     }
 
     /// Recursively collect all JSON files from a directory
+    #[allow(clippy::only_used_in_recursion)]
     fn collect_json_files(&self, dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), LoaderError> {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -627,6 +628,7 @@ impl PrebuildLoader {
     }
 
     /// Recursively collect all .pi files from a directory
+    #[allow(clippy::only_used_in_recursion)]
     fn collect_pi_files(&self, dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), LoaderError> {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;

@@ -369,7 +369,7 @@ pub fn batch_merge_resources(
                 if recompute_descriptors {
                     if let Some(indexed) = indexed_graphs.get(&graph_id) {
                         // Compute descriptors from merged tiles
-                        let tiles = resource.tiles.as_ref().map(|t| t.as_slice()).unwrap_or(&[]);
+                        let tiles = resource.tiles.as_deref().unwrap_or(&[]);
                         let descriptors = indexed.build_descriptors(tiles);
 
                         // Update resource with computed descriptors
@@ -403,6 +403,9 @@ pub fn batch_merge_resources(
         warnings: all_warnings,
     }
 }
+
+/// Type alias for tile data merge mapping: canonical_idx -> Vec<(source_tile_id, data)>
+type TileDataMergeMap = HashMap<usize, Vec<(String, HashMap<String, serde_json::Value>)>>;
 
 /// Unify tiles for cardinality-1 nodegroups and update parenttile_id references.
 ///
@@ -440,7 +443,7 @@ pub fn unify_cardinality_one_tiles(
     let mut tile_redirect: HashMap<String, String> = HashMap::new();
     let mut tiles_to_remove: HashSet<usize> = HashSet::new();
     // Store data to merge: canonical_idx -> Vec<(source_tile_id, data)>
-    let mut data_to_merge: HashMap<usize, Vec<(String, HashMap<String, serde_json::Value>)>> = HashMap::new();
+    let mut data_to_merge: TileDataMergeMap = HashMap::new();
 
     for (nodegroup_id, tile_indices) in &tiles_by_nodegroup {
         if tile_indices.len() <= 1 {

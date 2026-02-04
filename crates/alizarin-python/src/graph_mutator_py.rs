@@ -110,11 +110,11 @@ unsafe impl Sync for PyExtensionHandler {}
 fn apply_mutations_from_json(graph_json: &str, mutations_json: &str) -> PyResult<String> {
     // Parse graph from JSON
     let graph = CoreStaticGraph::from_json_string(graph_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Apply mutations
     let mutated = core_apply_mutations(&graph, mutations_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Serialize result
     serde_json::to_string(&mutated)
@@ -173,7 +173,7 @@ fn get_mutation_schema(py: Python) -> PyResult<PyObject> {
 fn apply_mutations_with_extensions(graph_json: &str, mutations_json: &str) -> PyResult<String> {
     // Parse graph from JSON
     let graph = CoreStaticGraph::from_json_string(graph_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Get registry
     let registry = EXTENSION_REGISTRY.lock()
@@ -183,7 +183,7 @@ fn apply_mutations_with_extensions(graph_json: &str, mutations_json: &str) -> Py
 
     // Apply mutations with extensions
     let mutated = core_apply_mutations_with_ext(&graph, mutations_json, Some(&registry))
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Serialize result
     serde_json::to_string(&mutated)
@@ -308,7 +308,7 @@ fn apply_mutations_create(mutations_json: &str, graph_json: Option<&str>) -> PyR
     let existing_graph = match graph_json {
         Some(json) => {
             let graph = CoreStaticGraph::from_json_string(json)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+                .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
             Some(graph)
         }
         None => None,
@@ -318,7 +318,7 @@ fn apply_mutations_create(mutations_json: &str, graph_json: Option<&str>) -> PyR
     let result = core_apply_mutations_create(
         mutations_json,
         existing_graph.as_ref(),
-    ).map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+    ).map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Serialize result
     serde_json::to_string(&result)

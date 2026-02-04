@@ -4,6 +4,7 @@ Tests for semantic child matching logic.
 Ports tests from tests/semantic_children_test.rs
 Ensures Python logic exactly matches TypeScript semantic.ts and Rust logic.
 """
+from typing import Dict, Optional
 
 import pytest
 from alizarin.static_types import StaticNode, StaticTile
@@ -13,7 +14,7 @@ from alizarin.instance_wrapper import ResourceInstanceWrapperCore
 def create_test_node(
     nodeid: str,
     alias: str,
-    nodegroup_id: str | None,
+    nodegroup_id: Optional[str],
     is_collector: bool,
     is_nodegroup_root: bool = True,  # By default, make node be nodegroup root for simplicity
 ) -> StaticNode:
@@ -44,8 +45,8 @@ def create_test_node(
 def create_test_tile(
     tileid: str,
     nodegroup_id: str,
-    parenttile_id: str | None,
-    data: dict | None = None,
+    parenttile_id: Optional[str],
+    data: Optional[Dict] = None,
 ) -> StaticTile:
     """Helper to create a test tile"""
     return StaticTile(
@@ -58,8 +59,8 @@ def create_test_tile(
 
 
 def matches_semantic_child(
-    parent_tile_id: str | None,
-    parent_nodegroup_id: str | None,
+    parent_tile_id: Optional[str],
+    parent_nodegroup_id: Optional[str],
     child_node: StaticNode,
     tile: StaticTile,
 ) -> bool:

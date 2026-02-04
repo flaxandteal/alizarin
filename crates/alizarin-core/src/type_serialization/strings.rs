@@ -82,10 +82,8 @@ fn extract_string_value(val: &Value) -> Value {
         Value::String(s) => Value::String(s.clone()),
         Value::Object(obj) => {
             // StringTranslatedLanguage format: {"value": "...", "direction": "..."}
-            if let Some(v) = obj.get("value") {
-                if let Value::String(s) = v {
-                    return Value::String(s.clone());
-                }
+            if let Some(Value::String(s)) = obj.get("value") {
+                return Value::String(s.clone());
             }
             Value::String(String::new())
         }
@@ -107,11 +105,9 @@ pub fn serialize_url(tile_data: &Value, options: &SerializationOptions) -> Seria
         Value::Object(obj) => {
             if options.is_display() {
                 // Display mode - return label or url
-                if let Some(label) = obj.get("url_label") {
-                    if let Value::String(s) = label {
-                        if !s.is_empty() {
-                            return SerializationResult::success(Value::String(s.clone()));
-                        }
+                if let Some(Value::String(s)) = obj.get("url_label") {
+                    if !s.is_empty() {
+                        return SerializationResult::success(Value::String(s.clone()));
                     }
                 }
                 if let Some(url) = obj.get("url") {

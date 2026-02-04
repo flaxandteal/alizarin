@@ -1,7 +1,6 @@
 /// Hierarchical tree conversion for resources - WASM wrapper
 ///
 /// Re-exports core json_conversion functionality with WASM-compatible types.
-
 use serde_json::Value;
 use crate::graph::StaticGraph;
 
@@ -17,7 +16,7 @@ use alizarin_core::json_conversion::BusinessDataWrapper;
 /// Output: Array of nested JSON tree objects `[{...}, {...}]`
 pub fn tiles_to_tree(input: &Value, graph: &StaticGraph) -> Result<Value, String> {
     // StaticGraph Derefs to CoreStaticGraph
-    alizarin_core::tiles_to_tree(input, &**graph)
+    alizarin_core::tiles_to_tree(input, graph)
 }
 
 /// Convert nested tree structure to tiled resource format
@@ -36,7 +35,7 @@ pub fn tree_to_tiles(
     strict: bool,
     id_key: Option<&str>,
 ) -> Result<BusinessDataWrapper, String> {
-    alizarin_core::tree_to_tiles(json, &**graph, strict, id_key)
+    alizarin_core::tree_to_tiles(json, graph, strict, id_key)
 }
 
 #[cfg(test)]

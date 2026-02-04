@@ -714,15 +714,8 @@ impl PseudoValueInner {
         };
 
         // Get collection ID from node config
-        let collection_id = if let Some(config_mgr) = ctx.node_config_manager {
-            if let Some(concept_config) = config_mgr.get_concept(&self.core.node.nodeid) {
-                Some(concept_config.rdm_collection.clone())
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        let collection_id = ctx.node_config_manager
+            .and_then(|config_mgr| config_mgr.get_concept(&self.core.node.nodeid).map(|concept_config| concept_config.rdm_collection.clone()));
 
         // Look up in RDM cache
         if let (Some(rdm_cache), Some(collection_id)) = (ctx.rdm_cache, collection_id) {
@@ -1335,7 +1328,7 @@ impl PseudoValue {
             &node_js,      // node
             &data,         // data
             &is_inner_js,  // isInner
-        ).map_err(|e| e)?;
+        )?;
 
         // Store the promise as the value (JS will await it)
         self.inner.borrow_mut().value = Some(vm_promise.clone());

@@ -1203,7 +1203,7 @@ impl StaticCard {
 
     #[wasm_bindgen(getter = config)]
     pub fn get_config(&self) -> JsValue {
-        self.0.config.as_ref().map(|c| json_to_js_value(c)).unwrap_or(JsValue::UNDEFINED)
+        self.0.config.as_ref().map(json_to_js_value).unwrap_or(JsValue::UNDEFINED)
     }
 
     #[wasm_bindgen(setter = config)]
@@ -2329,7 +2329,7 @@ impl WKRM {
     // Convert a string with underscores, hyphens, or spaces to PascalCase
     fn to_pascal_case(s: &str) -> String {
         // Replace underscores and hyphens with spaces
-        let normalized = s.replace('_', " ").replace('-', " ");
+        let normalized = s.replace(['_', '-'], " ");
 
         // Split by whitespace and capitalize each word
         let pascal: String = normalized
