@@ -1,4 +1,4 @@
-import { IViewModel, IPseudo } from "../interfaces";
+import { IViewModel } from "../interfaces";
 import { PseudoValue } from "../pseudos";
 import { StaticTile, StaticNode } from "../static-types";
 import { DEFAULT_LANGUAGE, StringTranslatedLanguage } from "./types";

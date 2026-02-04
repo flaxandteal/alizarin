@@ -16,12 +16,12 @@ import {
   StaticResourceSummary,
   StaticGraphMeta
 } from "./static-types";
-import { PseudoValue, PseudoList, PseudoUnavailable, wrapRustPseudo } from "./pseudos.ts";
+import { PseudoValue, PseudoUnavailable, wrapRustPseudo } from "./pseudos.ts";
 import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper, newWASMResourceInstanceWrapperForResource, newWASMResourceInstanceWrapperForModel } from "../pkg/alizarin";
 import { ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
-import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor, ConditionalPermission, PermissionValue } from "./interfaces";
+import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
 import { nodeConfigManager } from "./nodeConfig.ts";
-import { generateUuidv5, AttrPromise, serializeValuesMap } from "./utils";
+import { generateUuidv5, AttrPromise } from "./utils";
 
 // Import and re-export timing functions from dedicated module (avoids circular imports)
 import { recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings } from './wasmTiming';

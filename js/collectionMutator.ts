@@ -391,7 +391,7 @@ export class CollectionMutator {
 
     // Create prefLabels as plain objects with id and value
     // StaticConcept constructor will convert them to StaticValue with proper __concept reference
-    let prefLabels: { [lang: string]: { id: string; value: string } } = {};
+    const prefLabels: { [lang: string]: { id: string; value: string } } = {};
     if (typeof options.label === 'string') {
       const valueId = generateUuidv5(['value'], `${conceptId}/prefLabel/${options.label}/${lang}`);
       prefLabels[lang] = { id: valueId, value: options.label };

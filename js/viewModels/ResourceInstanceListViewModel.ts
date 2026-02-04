@@ -1,6 +1,6 @@
-import { IStringKeyedObject, IViewModel, IPseudo, GetMeta } from "../interfaces";
+import { IViewModel, IPseudo, GetMeta } from "../interfaces";
 import { StaticTile, StaticNode } from "../static-types";
-import { ResourceInstanceCacheEntry, ResourceInstanceListCacheEntry } from "./cacheEntries";
+import { ResourceInstanceListCacheEntry } from "./cacheEntries";
 import { ResourceInstanceViewModel } from "./ResourceInstanceViewModel";
 
 export class ResourceInstanceListViewModel extends Array implements IViewModel {
