@@ -158,10 +158,11 @@ jobs:
             cd "$ext_dir"
             maturin build --release --out dist
             pip install --no-deps dist/*.whl
-            if [ -d "tests" ]; then
-              pytest tests/ -v || echo "Tests for $ext_name failed or pending"
-            fi
             cd - > /dev/null
+            # Run tests from temp dir to avoid importing from source tree
+            if [ -d "$ext_dir/tests" ]; then
+              (cd /tmp && pytest "$GITHUB_WORKSPACE/$ext_dir/tests/" -v) || echo "Tests for $ext_name failed or pending"
+            fi
           done
 
       - name: Build and test all Python extensions (Windows)
@@ -175,11 +176,14 @@ jobs:
             maturin build --release --out dist
             $wheel = Get-ChildItem -Path dist/*.whl | Select-Object -First 1
             pip install --no-deps $wheel.FullName
-            if (Test-Path "tests") {
-              pytest tests/ -v
-              if ($LASTEXITCODE -ne 0) { Write-Host "Tests for $ext_name failed or pending" }
-            }
             Pop-Location
+            # Run tests from temp dir to avoid importing from source tree
+            if (Test-Path "$($ext_dir.FullName)/tests") {
+              Push-Location $env:TEMP
+              pytest "$($ext_dir.FullName)/tests/" -v
+              if ($LASTEXITCODE -ne 0) { Write-Host "Tests for $ext_name failed or pending" }
+              Pop-Location
+            }
           }
 
       - name: Upload wheel artifacts
