@@ -5,7 +5,6 @@
 /// - Python via PyO3 bindings (alizarin-python)
 /// - Native Rust applications (alizarin-explorer)
 /// - Other languages via C FFI
-
 pub mod extension_type_registry;
 pub mod graph;
 pub mod graph_mutator;

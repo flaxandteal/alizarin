@@ -37,12 +37,12 @@ mod tests {
 
     #[test]
     fn test_serialize_number_float() {
-        let tile_data = json!(3.14159);
+        let tile_data = json!(2.71828);
         let options = SerializationOptions::tile_data();
 
         let result = serialize_number(&tile_data, &options);
         assert!(!result.is_error());
-        assert_eq!(result.value, json!(3.14159));
+        assert_eq!(result.value, json!(2.71828));
     }
 
     #[test]
