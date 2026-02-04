@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-    branches:
-      - 'dev/validation'
   workflow_dispatch:
     inputs:
       version:
