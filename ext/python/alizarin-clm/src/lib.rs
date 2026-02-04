@@ -8,14 +8,9 @@
 //! When the `mutations` feature is enabled, this crate also provides:
 //! - `ReferenceChangeCollectionHandler` - mutation to change a reference node's collection
 
-#[cfg(feature = "pyo3-ext")]
-use pyo3::prelude::*;
-#[cfg(feature = "pyo3-ext")]
-use pyo3::types::PyCapsule;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-#[cfg(feature = "pyo3-ext")]
-use std::ffi::{c_void, CString};
+use std::ffi::c_void;
 
 use alizarin_extension_api::{
     alizarin_free_coerce_result, alizarin_free_render_display_result,
@@ -300,10 +295,7 @@ unsafe extern "C" fn coerce_reference(
             Err(_) => return CoerceResult::error("Invalid UTF-8 in config".to_string()),
         };
 
-        match serde_json::from_str(config_str) {
-            Ok(c) => c,
-            Err(_) => ReferenceNodeConfig::default(),
-        }
+        serde_json::from_str::<ReferenceNodeConfig>(config_str).unwrap_or_default()
     } else {
         ReferenceNodeConfig::default()
     };
@@ -382,9 +374,6 @@ unsafe extern "C" fn render_reference_display(
 // =============================================================================
 // Marker Resolution
 // =============================================================================
-
-#[cfg(not(feature = "pyo3-ext"))]
-use std::ffi::c_void;
 
 /// Resolve a single reference value that may contain markers
 fn resolve_single_reference(
@@ -657,10 +646,7 @@ unsafe extern "C" fn resolve_reference_markers(
             Err(_) => return ResolveMarkersResult::error("Invalid UTF-8 in config".to_string()),
         };
 
-        match serde_json::from_str(config_str) {
-            Ok(c) => c,
-            Err(_) => ReferenceNodeConfig::default(),
-        }
+        serde_json::from_str::<ReferenceNodeConfig>(config_str).unwrap_or_default()
     } else {
         ReferenceNodeConfig::default()
     };
@@ -729,6 +715,7 @@ mod python_module {
 
         // Get pointer to the static handler info
         // SAFETY: HANDLER_INFO is initialized unconditionally in Once::call_once above
+        #[allow(static_mut_refs)]
         let ptr = unsafe {
             HANDLER_INFO.as_ref().expect("HANDLER_INFO initialized in Once::call_once above")
                 as *const TypeHandlerInfo
@@ -757,7 +744,7 @@ mod python_module {
 
     /// Python module definition
     #[pymodule]
-    pub fn _rust(_py: Python, m: &PyModule) -> PyResult<()> {
+    pub fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_function(wrap_pyfunction!(get_reference_handler_capsule, m)?)?;
         Ok(())
     }
