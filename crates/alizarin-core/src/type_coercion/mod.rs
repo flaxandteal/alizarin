@@ -15,27 +15,27 @@
 //! - `helpers` - Helper functions
 
 mod config;
+mod domain;
+mod helpers;
+mod rdm;
+mod resources;
 mod result;
 mod scalars;
 mod strings;
-mod domain;
-mod rdm;
-mod resources;
-mod helpers;
 
 use serde_json::Value;
 
 // Re-export core types
-pub use config::{DEFAULT_LANGUAGE, get_current_language, set_current_language};
-pub use result::CoercionResult;
+pub use config::{get_current_language, set_current_language, DEFAULT_LANGUAGE};
 pub use helpers::value_type_name;
+pub use result::CoercionResult;
 
 // Re-export coercion functions
-pub use scalars::{coerce_number, coerce_non_localized_string, coerce_edtf, coerce_date};
-pub use strings::{coerce_string, coerce_url, coerce_geojson};
 pub use domain::{coerce_boolean, coerce_domain_value, coerce_domain_value_list};
-pub use rdm::{coerce_concept_value, coerce_concept_list};
+pub use rdm::{coerce_concept_list, coerce_concept_value};
 pub use resources::{coerce_resource_instance, coerce_resource_instance_list};
+pub use scalars::{coerce_date, coerce_edtf, coerce_non_localized_string, coerce_number};
+pub use strings::{coerce_geojson, coerce_string, coerce_url};
 
 /// Coerce a value based on datatype.
 ///
@@ -116,7 +116,11 @@ mod tests {
 
     #[test]
     fn test_coerce_value_geojson() {
-        let result = coerce_value("geojson-feature-collection", &json!({"type": "Point", "coordinates": [1, 2]}), None);
+        let result = coerce_value(
+            "geojson-feature-collection",
+            &json!({"type": "Point", "coordinates": [1, 2]}),
+            None,
+        );
         assert!(!result.is_error());
     }
 
@@ -129,40 +133,70 @@ mod tests {
 
     #[test]
     fn test_coerce_value_domain_value() {
-        let result = coerce_value("domain-value", &json!("550e8400-e29b-41d4-a716-446655440000"), None);
+        let result = coerce_value(
+            "domain-value",
+            &json!("550e8400-e29b-41d4-a716-446655440000"),
+            None,
+        );
         assert!(!result.is_error());
     }
 
     #[test]
     fn test_coerce_value_domain_value_list() {
-        let result = coerce_value("domain-value-list", &json!(["550e8400-e29b-41d4-a716-446655440000"]), None);
+        let result = coerce_value(
+            "domain-value-list",
+            &json!(["550e8400-e29b-41d4-a716-446655440000"]),
+            None,
+        );
         assert!(!result.is_error());
     }
 
     #[test]
     fn test_coerce_value_concept() {
-        let result = coerce_value("concept", &json!("550e8400-e29b-41d4-a716-446655440000"), None);
+        let result = coerce_value(
+            "concept",
+            &json!("550e8400-e29b-41d4-a716-446655440000"),
+            None,
+        );
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!("550e8400-e29b-41d4-a716-446655440000"));
+        assert_eq!(
+            result.tile_data,
+            json!("550e8400-e29b-41d4-a716-446655440000")
+        );
     }
 
     #[test]
     fn test_coerce_value_concept_list() {
-        let result = coerce_value("concept-list", &json!(["550e8400-e29b-41d4-a716-446655440000"]), None);
+        let result = coerce_value(
+            "concept-list",
+            &json!(["550e8400-e29b-41d4-a716-446655440000"]),
+            None,
+        );
         assert!(!result.is_error());
     }
 
     #[test]
     fn test_coerce_value_resource_instance() {
-        let result = coerce_value("resource-instance", &json!("550e8400-e29b-41d4-a716-446655440000"), None);
+        let result = coerce_value(
+            "resource-instance",
+            &json!("550e8400-e29b-41d4-a716-446655440000"),
+            None,
+        );
         assert!(!result.is_error());
         let arr = result.tile_data.as_array().unwrap();
-        assert_eq!(arr[0]["resourceId"], json!("550e8400-e29b-41d4-a716-446655440000"));
+        assert_eq!(
+            arr[0]["resourceId"],
+            json!("550e8400-e29b-41d4-a716-446655440000")
+        );
     }
 
     #[test]
     fn test_coerce_value_resource_instance_list() {
-        let result = coerce_value("resource-instance-list", &json!(["550e8400-e29b-41d4-a716-446655440000"]), None);
+        let result = coerce_value(
+            "resource-instance-list",
+            &json!(["550e8400-e29b-41d4-a716-446655440000"]),
+            None,
+        );
         assert!(!result.is_error());
         let arr = result.tile_data.as_array().unwrap();
         assert_eq!(arr.len(), 1);

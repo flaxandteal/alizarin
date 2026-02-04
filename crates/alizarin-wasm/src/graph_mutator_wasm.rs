@@ -9,13 +9,12 @@ use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
 use alizarin_core::graph_mutator::{
+    apply_mutations_create_from_json as core_apply_mutations_create,
     apply_mutations_from_json as core_apply_mutations,
     apply_mutations_from_json_with_extensions as core_apply_mutations_with_ext,
-    apply_mutations_create_from_json as core_apply_mutations_create,
-    get_mutation_schema as core_get_schema,
-    generate_uuid_v5 as core_generate_uuid,
-    ExtensionMutationRegistry, ExtensionMutationHandler,
-    MutationConformance, MutationError, MutatorOptions,
+    generate_uuid_v5 as core_generate_uuid, get_mutation_schema as core_get_schema,
+    ExtensionMutationHandler, ExtensionMutationRegistry, MutationConformance, MutationError,
+    MutatorOptions,
 };
 use alizarin_core::StaticGraph as CoreStaticGraph;
 
@@ -62,10 +61,12 @@ impl ExtensionMutationHandler for JsMutationHandler {
 
             if let Some(cbs) = handlers.get(&self.name) {
                 // Serialize graph and params to JSON for JS
-                let graph_json = serde_json::to_string(graph)
-                    .map_err(|e| MutationError::Other(format!("Failed to serialize graph: {}", e)))?;
-                let params_json = serde_json::to_string(params)
-                    .map_err(|e| MutationError::Other(format!("Failed to serialize params: {}", e)))?;
+                let graph_json = serde_json::to_string(graph).map_err(|e| {
+                    MutationError::Other(format!("Failed to serialize graph: {}", e))
+                })?;
+                let params_json = serde_json::to_string(params).map_err(|e| {
+                    MutationError::Other(format!("Failed to serialize params: {}", e))
+                })?;
 
                 // Convert to JsValue
                 let js_graph = js_sys::JSON::parse(&graph_json)
@@ -74,10 +75,15 @@ impl ExtensionMutationHandler for JsMutationHandler {
                     .map_err(|_| MutationError::Other("Failed to parse params JSON".to_string()))?;
 
                 // Call JS function
-                let result = cbs.apply_fn.call2(&JsValue::NULL, &js_graph, &js_params)
-                    .map_err(|e| MutationError::Other(
-                        e.as_string().unwrap_or_else(|| "JS handler error".to_string())
-                    ))?;
+                let result = cbs
+                    .apply_fn
+                    .call2(&JsValue::NULL, &js_graph, &js_params)
+                    .map_err(|e| {
+                        MutationError::Other(
+                            e.as_string()
+                                .unwrap_or_else(|| "JS handler error".to_string()),
+                        )
+                    })?;
 
                 // Parse result back as mutated graph
                 let result_json = js_sys::JSON::stringify(&result)
@@ -85,14 +91,18 @@ impl ExtensionMutationHandler for JsMutationHandler {
                     .as_string()
                     .ok_or_else(|| MutationError::Other("Result is not a string".to_string()))?;
 
-                let mutated: CoreStaticGraph = serde_json::from_str(&result_json)
-                    .map_err(|e| MutationError::Other(format!("Invalid graph JSON returned: {}", e)))?;
+                let mutated: CoreStaticGraph = serde_json::from_str(&result_json).map_err(|e| {
+                    MutationError::Other(format!("Invalid graph JSON returned: {}", e))
+                })?;
 
                 // Replace graph contents
                 *graph = mutated;
                 Ok(())
             } else {
-                Err(MutationError::Other(format!("No handler registered for: {}", self.name)))
+                Err(MutationError::Other(format!(
+                    "No handler registered for: {}",
+                    self.name
+                )))
             }
         })
     }
@@ -166,11 +176,7 @@ pub fn apply_mutations_from_json(
 /// # Returns
 /// A UUID string
 #[wasm_bindgen(js_name = generateUuidV5)]
-pub fn generate_uuid_v5(
-    group_type: &str,
-    group_id: Option<String>,
-    key: &str,
-) -> String {
+pub fn generate_uuid_v5(group_type: &str, group_id: Option<String>, key: &str) -> String {
     core_generate_uuid((group_type, group_id.as_deref()), key)
 }
 
@@ -212,14 +218,22 @@ pub fn register_extension_mutation(
         "BranchConformant" => MutationConformance::BranchConformant,
         "ModelConformant" => MutationConformance::ModelConformant,
         "NonConformant" => MutationConformance::NonConformant,
-        other => return Err(JsValue::from_str(&format!("Invalid conformance level: {}", other))),
+        other => {
+            return Err(JsValue::from_str(&format!(
+                "Invalid conformance level: {}",
+                other
+            )))
+        }
     };
 
     JS_MUTATION_HANDLERS.with(|handlers| {
-        handlers.borrow_mut().insert(name.to_string(), JsMutationCallbacks {
-            apply_fn: handler,
-            conformance: conformance_level,
-        });
+        handlers.borrow_mut().insert(
+            name.to_string(),
+            JsMutationCallbacks {
+                apply_fn: handler,
+                conformance: conformance_level,
+            },
+        );
     });
 
     Ok(())
@@ -228,9 +242,7 @@ pub fn register_extension_mutation(
 /// Check if an extension mutation handler is registered.
 #[wasm_bindgen(js_name = hasExtensionMutation)]
 pub fn has_extension_mutation(name: &str) -> bool {
-    JS_MUTATION_HANDLERS.with(|handlers| {
-        handlers.borrow().contains_key(name)
-    })
+    JS_MUTATION_HANDLERS.with(|handlers| handlers.borrow().contains_key(name))
 }
 
 /// Unregister an extension mutation handler.

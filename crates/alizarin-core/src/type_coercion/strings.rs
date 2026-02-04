@@ -1,9 +1,9 @@
 //! Dict-based type coercion: String, URL, GeoJSON.
 
-use serde_json::Value;
-use super::result::CoercionResult;
 use super::config::get_current_language;
 use super::helpers::value_type_name;
+use super::result::CoercionResult;
+use serde_json::Value;
 
 /// Coerce a value to a localized string (dict of language -> value).
 ///
@@ -51,7 +51,8 @@ pub fn coerce_string(value: &Value, language: Option<&str>) -> CoercionResult {
                     } else {
                         return CoercionResult::error(format!(
                             "String dict value for '{}' must be a string, got {:?}",
-                            k, value_type_name(v)
+                            k,
+                            value_type_name(v)
                         ));
                     }
                 }
@@ -74,9 +75,7 @@ pub fn coerce_string(value: &Value, language: Option<&str>) -> CoercionResult {
 pub fn coerce_url(value: &Value) -> CoercionResult {
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
-        Value::String(s) if s.is_empty() => {
-            CoercionResult::success_same(Value::Null)
-        }
+        Value::String(s) if s.is_empty() => CoercionResult::success_same(Value::Null),
         Value::String(s) => {
             // Plain string -> set as both url and url_label
             let mut obj = serde_json::Map::new();
@@ -138,9 +137,15 @@ pub fn coerce_geojson(value: &Value) -> CoercionResult {
             // Validate known GeoJSON types (permissive - just log unknown)
             let type_str = geo_type.as_str().unwrap();
             let valid_types = [
-                "Point", "MultiPoint", "LineString", "MultiLineString",
-                "Polygon", "MultiPolygon", "GeometryCollection",
-                "Feature", "FeatureCollection"
+                "Point",
+                "MultiPoint",
+                "LineString",
+                "MultiLineString",
+                "Polygon",
+                "MultiPolygon",
+                "GeometryCollection",
+                "Feature",
+                "FeatureCollection",
             ];
             if !valid_types.contains(&type_str) {
                 // Be permissive - some systems use custom types
@@ -157,9 +162,9 @@ pub fn coerce_geojson(value: &Value) -> CoercionResult {
 
 #[cfg(test)]
 mod tests {
+    use super::super::config::set_current_language;
     use super::*;
     use serde_json::json;
-    use super::super::config::set_current_language;
 
     // String tests
     #[test]
@@ -219,17 +224,23 @@ mod tests {
     fn test_coerce_url_plain_string() {
         let result = coerce_url(&json!("https://example.com"));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!({
-            "url": "https://example.com",
-            "url_label": "https://example.com"
-        }));
+        assert_eq!(
+            result.tile_data,
+            json!({
+                "url": "https://example.com",
+                "url_label": "https://example.com"
+            })
+        );
     }
 
     #[test]
     fn test_coerce_url_object() {
         let result = coerce_url(&json!({"url": "https://example.com", "url_label": "Example"}));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!({"url": "https://example.com", "url_label": "Example"}));
+        assert_eq!(
+            result.tile_data,
+            json!({"url": "https://example.com", "url_label": "Example"})
+        );
     }
 
     #[test]

@@ -6,15 +6,15 @@ use wasm_bindgen::prelude::*;
 
 // Re-export core types
 pub use alizarin_core::skos::{
-    parse_skos_to_collections, collection_to_skos_xml, collections_to_skos_xml,
-    SkosCollection, SkosConcept, SkosLabel, SkosValue,
+    collection_to_skos_xml, collections_to_skos_xml, parse_skos_to_collections, SkosCollection,
+    SkosConcept, SkosLabel, SkosValue,
 };
 
 /// Parse SKOS RDF/XML and return collections as JS value
 #[wasm_bindgen(js_name = parseSkosXml)]
 pub fn parse_skos_xml(xml_content: &str, base_uri: &str) -> Result<JsValue, JsValue> {
-    let collections = parse_skos_to_collections(xml_content, base_uri)
-        .map_err(|e| JsValue::from_str(&e))?;
+    let collections =
+        parse_skos_to_collections(xml_content, base_uri).map_err(|e| JsValue::from_str(&e))?;
 
     serde_wasm_bindgen::to_value(&collections)
         .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
@@ -23,8 +23,8 @@ pub fn parse_skos_xml(xml_content: &str, base_uri: &str) -> Result<JsValue, JsVa
 /// Parse SKOS RDF/XML and return a single collection as JS value
 #[wasm_bindgen(js_name = parseSkosXmlToCollection)]
 pub fn parse_skos_xml_to_collection(xml_content: &str, base_uri: &str) -> Result<JsValue, JsValue> {
-    let mut collections = parse_skos_to_collections(xml_content, base_uri)
-        .map_err(|e| JsValue::from_str(&e))?;
+    let mut collections =
+        parse_skos_to_collections(xml_content, base_uri).map_err(|e| JsValue::from_str(&e))?;
 
     if collections.is_empty() {
         return Err(JsValue::from_str("No SKOS ConceptScheme found in XML"));
@@ -37,7 +37,10 @@ pub fn parse_skos_xml_to_collection(xml_content: &str, base_uri: &str) -> Result
 
 /// Serialize a SkosCollection to SKOS RDF/XML (WASM binding)
 #[wasm_bindgen(js_name = collectionToSkosXml)]
-pub fn collection_to_skos_xml_wasm(collection_js: JsValue, base_uri: &str) -> Result<String, JsValue> {
+pub fn collection_to_skos_xml_wasm(
+    collection_js: JsValue,
+    base_uri: &str,
+) -> Result<String, JsValue> {
     let collection: SkosCollection = serde_wasm_bindgen::from_value(collection_js)
         .map_err(|e| JsValue::from_str(&format!("Failed to deserialize collection: {}", e)))?;
 
@@ -46,7 +49,10 @@ pub fn collection_to_skos_xml_wasm(collection_js: JsValue, base_uri: &str) -> Re
 
 /// Serialize multiple SkosCollections to SKOS RDF/XML (WASM binding)
 #[wasm_bindgen(js_name = collectionsToSkosXml)]
-pub fn collections_to_skos_xml_wasm(collections_js: JsValue, base_uri: &str) -> Result<String, JsValue> {
+pub fn collections_to_skos_xml_wasm(
+    collections_js: JsValue,
+    base_uri: &str,
+) -> Result<String, JsValue> {
     let collections: Vec<SkosCollection> = serde_wasm_bindgen::from_value(collections_js)
         .map_err(|e| JsValue::from_str(&format!("Failed to deserialize collections: {}", e)))?;
 

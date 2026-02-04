@@ -29,7 +29,11 @@ pub fn camel_to_snake(s: &str) -> String {
             if !result.is_empty() {
                 // Check if we're in an acronym (current is upper, next is upper or end)
                 let next_is_upper_or_end = chars.peek().map(|n| n.is_uppercase()).unwrap_or(true);
-                let prev_was_upper = result.chars().last().map(|p| p.is_uppercase()).unwrap_or(false);
+                let prev_was_upper = result
+                    .chars()
+                    .last()
+                    .map(|p| p.is_uppercase())
+                    .unwrap_or(false);
 
                 // Add underscore if:
                 // - Previous was lowercase, or
@@ -39,7 +43,11 @@ pub fn camel_to_snake(s: &str) -> String {
                 }
             }
             // SAFETY: to_lowercase() always yields at least one char for any valid Unicode char
-            result.push(c.to_lowercase().next().expect("to_lowercase() always yields at least one char"));
+            result.push(
+                c.to_lowercase()
+                    .next()
+                    .expect("to_lowercase() always yields at least one char"),
+            );
         } else {
             result.push(c);
         }
@@ -82,9 +90,7 @@ pub fn transform_keys_to_snake(value: Value) -> Value {
             }
             Value::Object(new_map)
         }
-        Value::Array(arr) => {
-            Value::Array(arr.into_iter().map(transform_keys_to_snake).collect())
-        }
+        Value::Array(arr) => Value::Array(arr.into_iter().map(transform_keys_to_snake).collect()),
         other => other,
     }
 }

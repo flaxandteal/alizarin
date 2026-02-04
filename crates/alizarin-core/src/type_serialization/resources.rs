@@ -1,7 +1,7 @@
 //! Resource and reference serialization.
 
-use serde_json::Value;
 use super::options::{SerializationOptions, SerializationResult};
+use serde_json::Value;
 
 /// Serialize a resource instance value.
 ///
@@ -27,7 +27,10 @@ pub fn serialize_resource_instance(
                 if resolved.len() == 1 {
                     // SAFETY: len() == 1 guarantees exactly one element
                     return SerializationResult::success(
-                        resolved.into_iter().next().expect("len() == 1 guarantees one element")
+                        resolved
+                            .into_iter()
+                            .next()
+                            .expect("len() == 1 guarantees one element"),
                     );
                 }
                 return SerializationResult::success(Value::Array(resolved));
@@ -37,7 +40,10 @@ pub fn serialize_resource_instance(
         // Single resource object
         Value::Object(_) => {
             if options.is_display() {
-                return SerializationResult::success(extract_resource_display(tile_data, &options.language));
+                return SerializationResult::success(extract_resource_display(
+                    tile_data,
+                    &options.language,
+                ));
             }
             // Wrap in array for consistency
             SerializationResult::success(Value::Array(vec![tile_data.clone()]))
@@ -52,10 +58,7 @@ pub fn serialize_resource_instance(
             obj.insert("resourceId".to_string(), Value::String(uuid.clone()));
             SerializationResult::success(Value::Array(vec![Value::Object(obj)]))
         }
-        _ => SerializationResult::error(format!(
-            "Expected resource instance, got {:?}",
-            tile_data
-        )),
+        _ => SerializationResult::error(format!("Expected resource instance, got {:?}", tile_data)),
     }
 }
 

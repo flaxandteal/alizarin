@@ -1,21 +1,21 @@
-use wasm_bindgen::prelude::*;
 use serde::Deserialize;
 use std::collections::HashMap;
+use wasm_bindgen::prelude::*;
 use wasm_wrapper_derive::wasm_wrapper;
 
 // Import core types
-use alizarin_core::StaticTranslatableString as CoreTranslatableString;
-use alizarin_core::StaticNodegroup as CoreStaticNodegroup;
-use alizarin_core::StaticEdge as CoreStaticEdge;
-use alizarin_core::StaticConstraint as CoreStaticConstraint;
-use alizarin_core::StaticPublication as CoreStaticPublication;
-use alizarin_core::StaticCardsXNodesXWidgets as CoreStaticCardsXNodesXWidgets;
-use alizarin_core::StaticFunctionsXGraphs as CoreStaticFunctionsXGraphs;
 use alizarin_core::StaticCard as CoreStaticCard;
-use alizarin_core::StaticTile as CoreStaticTile;
-use alizarin_core::StaticResourceSummary as CoreStaticResourceSummary;
-use alizarin_core::StaticResourceReference as CoreStaticResourceReference;
+use alizarin_core::StaticCardsXNodesXWidgets as CoreStaticCardsXNodesXWidgets;
+use alizarin_core::StaticConstraint as CoreStaticConstraint;
+use alizarin_core::StaticEdge as CoreStaticEdge;
+use alizarin_core::StaticFunctionsXGraphs as CoreStaticFunctionsXGraphs;
+use alizarin_core::StaticNodegroup as CoreStaticNodegroup;
+use alizarin_core::StaticPublication as CoreStaticPublication;
 use alizarin_core::StaticResource as CoreStaticResource;
+use alizarin_core::StaticResourceReference as CoreStaticResourceReference;
+use alizarin_core::StaticResourceSummary as CoreStaticResourceSummary;
+use alizarin_core::StaticTile as CoreStaticTile;
+use alizarin_core::StaticTranslatableString as CoreTranslatableString;
 
 // ============================================================================
 // StaticTranslatableString - WASM wrapper around core type
@@ -40,25 +40,27 @@ impl StaticTranslatableString {
         let default_lang = lang.unwrap_or_else(|| "en".to_string());
 
         // Try to parse as object (translations map)
-        if let Ok(translations) = serde_wasm_bindgen::from_value::<HashMap<String, String>>(value.clone()) {
-            return StaticTranslatableString(
-                CoreTranslatableString::from_translations(translations, Some(default_lang))
-            );
+        if let Ok(translations) =
+            serde_wasm_bindgen::from_value::<HashMap<String, String>>(value.clone())
+        {
+            return StaticTranslatableString(CoreTranslatableString::from_translations(
+                translations,
+                Some(default_lang),
+            ));
         }
 
         // Try as string
         if let Some(s) = value.as_string() {
             let mut translations = HashMap::new();
             translations.insert(default_lang.clone(), s);
-            return StaticTranslatableString(
-                CoreTranslatableString::from_translations(translations, Some(default_lang))
-            );
+            return StaticTranslatableString(CoreTranslatableString::from_translations(
+                translations,
+                Some(default_lang),
+            ));
         }
 
         // Empty string fallback
-        StaticTranslatableString(
-            CoreTranslatableString::from_string("")
-        )
+        StaticTranslatableString(CoreTranslatableString::from_string(""))
     }
 
     #[wasm_bindgen(js_name = toString)]
@@ -70,11 +72,7 @@ impl StaticTranslatableString {
     pub fn to_json(&self) -> JsValue {
         let js_obj = js_sys::Object::new();
         for (key, val) in &self.0.translations {
-            js_sys::Reflect::set(
-                &js_obj,
-                &JsValue::from_str(key),
-                &JsValue::from_str(val)
-            ).ok();
+            js_sys::Reflect::set(&js_obj, &JsValue::from_str(key), &JsValue::from_str(val)).ok();
         }
         js_obj.into()
     }
@@ -93,11 +91,7 @@ impl StaticTranslatableString {
     pub fn get_translations(&self) -> JsValue {
         let js_obj = js_sys::Object::new();
         for (key, val) in &self.0.translations {
-            js_sys::Reflect::set(
-                &js_obj,
-                &JsValue::from_str(key),
-                &JsValue::from_str(val)
-            ).ok();
+            js_sys::Reflect::set(&js_obj, &JsValue::from_str(key), &JsValue::from_str(val)).ok();
         }
         js_obj.into()
     }
@@ -121,7 +115,7 @@ fn json_to_js_value(value: &serde_json::Value) -> JsValue {
             } else {
                 JsValue::NULL
             }
-        },
+        }
         Value::String(s) => JsValue::from_str(s),
         Value::Array(arr) => {
             let js_array = js_sys::Array::new();
@@ -129,15 +123,11 @@ fn json_to_js_value(value: &serde_json::Value) -> JsValue {
                 js_array.push(&json_to_js_value(item));
             }
             js_array.into()
-        },
+        }
         Value::Object(obj) => {
             let js_obj = js_sys::Object::new();
             for (key, val) in obj {
-                js_sys::Reflect::set(
-                    &js_obj,
-                    &JsValue::from_str(key),
-                    &json_to_js_value(val)
-                ).ok();
+                js_sys::Reflect::set(&js_obj, &JsValue::from_str(key), &json_to_js_value(val)).ok();
             }
             js_obj.into()
         }
@@ -234,15 +224,21 @@ impl StaticGraphMeta {
             obj.insert("publication".to_string(), json!(val));
         }
         if !self.relatable_resource_model_ids.is_empty() {
-            obj.insert("relatable_resource_model_ids".to_string(), json!(self.relatable_resource_model_ids));
+            obj.insert(
+                "relatable_resource_model_ids".to_string(),
+                json!(self.relatable_resource_model_ids),
+            );
         }
         if let Some(r2rc) = self.resource_2_resource_constraints.as_ref() {
-            if  !r2rc.is_empty() {
+            if !r2rc.is_empty() {
                 obj.insert("resource_2_resource_constraints".to_string(), json!(r2rc));
             }
         }
         if let Some(ref val) = self.root {
-            obj.insert("root".to_string(), serde_json::to_value(val).unwrap_or(json!(null)));
+            obj.insert(
+                "root".to_string(),
+                serde_json::to_value(val).unwrap_or(json!(null)),
+            );
         }
         if let Some(ref val) = self.slug {
             obj.insert("slug".to_string(), json!(val));
@@ -320,7 +316,10 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(getter = description)]
     pub fn get_description(&self) -> Option<StaticTranslatableString> {
-        self.0.description.clone().map(StaticTranslatableString::from)
+        self.0
+            .description
+            .clone()
+            .map(StaticTranslatableString::from)
     }
 
     #[wasm_bindgen(setter = description)]
@@ -422,7 +421,9 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(js_name = getRelatableResourceModelIds)]
     pub fn get_relatable_resource_model_ids(&self) -> Result<JsValue, JsValue> {
-        Ok(serde_wasm_bindgen::to_value(&self.relatable_resource_model_ids)?)
+        Ok(serde_wasm_bindgen::to_value(
+            &self.relatable_resource_model_ids,
+        )?)
     }
 
     #[wasm_bindgen(js_name = setRelatableResourceModelIds)]
@@ -433,7 +434,9 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(js_name = getResource2ResourceConstraints)]
     pub fn get_resource_2_resource_constraints(&self) -> Result<JsValue, JsValue> {
-        Ok(serde_wasm_bindgen::to_value(&self.resource_2_resource_constraints)?)
+        Ok(serde_wasm_bindgen::to_value(
+            &self.resource_2_resource_constraints,
+        )?)
     }
 
     #[wasm_bindgen(js_name = setResource2ResourceConstraints)]
@@ -444,7 +447,10 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(js_name = getRoot)]
     pub fn get_root(&self) -> Option<StaticNode> {
-        self.0.root.as_ref().map(|b| StaticNode::from((**b).clone()))
+        self.0
+            .root
+            .as_ref()
+            .map(|b| StaticNode::from((**b).clone()))
     }
 
     #[wasm_bindgen(js_name = setRoot)]
@@ -481,7 +487,6 @@ impl StaticGraphMeta {
     pub fn set_version(&mut self, value: Option<String>) {
         self.version = value;
     }
-
 }
 
 // ============================================================================
@@ -580,7 +585,10 @@ impl StaticNode {
 
     #[wasm_bindgen(getter = description)]
     pub fn get_description(&self) -> Option<StaticTranslatableString> {
-        self.0.description.clone().map(StaticTranslatableString::from)
+        self.0
+            .description
+            .clone()
+            .map(StaticTranslatableString::from)
     }
 
     #[wasm_bindgen(setter = description)]
@@ -775,8 +783,12 @@ impl StaticNode {
             // Check if the object has a toJSON method
             if let Ok(to_json) = js_sys::Reflect::get(val, &JsValue::from_str("toJSON")) {
                 if to_json.is_function() {
-                    let func: js_sys::Function = to_json.dyn_into().map_err(|_| "toJSON is not a function".to_string())?;
-                    return func.call0(val).map_err(|e| format!("Failed to call toJSON: {:?}", e));
+                    let func: js_sys::Function = to_json
+                        .dyn_into()
+                        .map_err(|_| "toJSON is not a function".to_string())?;
+                    return func
+                        .call0(val)
+                        .map_err(|e| format!("Failed to call toJSON: {:?}", e));
                 }
             }
             Ok(val.clone())
@@ -939,7 +951,10 @@ impl StaticConstraint {
         obj.insert("card_id".to_string(), json!(self.0.card_id));
         obj.insert("constraintid".to_string(), json!(self.0.constraintid));
         obj.insert("nodes".to_string(), json!(self.0.nodes));
-        obj.insert("uniquetoallinstances".to_string(), json!(self.0.uniquetoallinstances));
+        obj.insert(
+            "uniquetoallinstances".to_string(),
+            json!(self.0.uniquetoallinstances),
+        );
         json_to_js_value(&serde_json::Value::Object(obj))
     }
 
@@ -1203,7 +1218,11 @@ impl StaticCard {
 
     #[wasm_bindgen(getter = config)]
     pub fn get_config(&self) -> JsValue {
-        self.0.config.as_ref().map(json_to_js_value).unwrap_or(JsValue::UNDEFINED)
+        self.0
+            .config
+            .as_ref()
+            .map(json_to_js_value)
+            .unwrap_or(JsValue::UNDEFINED)
     }
 
     #[wasm_bindgen(setter = config)]
@@ -1227,7 +1246,10 @@ impl StaticCard {
 
     #[wasm_bindgen(getter = description)]
     pub fn get_description(&self) -> Option<StaticTranslatableString> {
-        self.0.description.as_ref().map(|d| StaticTranslatableString::from(d.clone()))
+        self.0
+            .description
+            .as_ref()
+            .map(|d| StaticTranslatableString::from(d.clone()))
     }
 
     #[wasm_bindgen(setter = description)]
@@ -1356,12 +1378,19 @@ impl StaticTile {
         let mut obj = serde_json::Map::new();
 
         // Convert HashMap to plain object for data field
-        let data_obj: serde_json::Map<String, serde_json::Value> =
-            self.0.data.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let data_obj: serde_json::Map<String, serde_json::Value> = self
+            .0
+            .data
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
         obj.insert("data".to_string(), json!(data_obj));
 
         obj.insert("nodegroup_id".to_string(), json!(self.0.nodegroup_id));
-        obj.insert("resourceinstance_id".to_string(), json!(self.0.resourceinstance_id));
+        obj.insert(
+            "resourceinstance_id".to_string(),
+            json!(self.0.resourceinstance_id),
+        );
 
         if let Some(ref val) = self.0.tileid {
             obj.insert("tileid".to_string(), json!(val));
@@ -1417,7 +1446,9 @@ impl StaticTile {
                     }
                 });
                 self.0.data = new_data;
-            } else if let Ok(obj_data) = serde_wasm_bindgen::from_value::<HashMap<String, serde_json::Value>>(value) {
+            } else if let Ok(obj_data) =
+                serde_wasm_bindgen::from_value::<HashMap<String, serde_json::Value>>(value)
+            {
                 self.0.data = obj_data;
             }
         }
@@ -1487,7 +1518,7 @@ impl StaticTile {
                     js_array.push(&json_to_js_value(item));
                 }
                 js_array.into()
-            },
+            }
             None => JsValue::NULL,
         }
     }
@@ -1543,7 +1574,9 @@ impl StaticNode {
                 if a.len() != b.len() {
                     return false;
                 }
-                a.iter().zip(b.iter()).all(|(va, vb)| Self::deep_compare_values(va, vb))
+                a.iter()
+                    .zip(b.iter())
+                    .all(|(va, vb)| Self::deep_compare_values(va, vb))
             }
             (Value::Object(a), Value::Object(b)) => {
                 if a.len() != b.len() {
@@ -1552,12 +1585,10 @@ impl StaticNode {
                 let mut all_keys: std::collections::HashSet<&String> = a.keys().collect();
                 all_keys.extend(b.keys());
 
-                all_keys.iter().all(|key| {
-                    match (a.get(*key), b.get(*key)) {
-                        (Some(va), Some(vb)) => Self::deep_compare_values(va, vb),
-                        (None, None) => true,
-                        _ => false,
-                    }
+                all_keys.iter().all(|key| match (a.get(*key), b.get(*key)) {
+                    (Some(va), Some(vb)) => Self::deep_compare_values(va, vb),
+                    (None, None) => true,
+                    _ => false,
                 })
             }
             _ => false,
@@ -1577,35 +1608,63 @@ impl StaticNode {
         // using deep comparison for config
         let mut identical = true;
 
-        if node_a.alias != node_b.alias { identical = false; }
+        if node_a.alias != node_b.alias {
+            identical = false;
+        }
 
         // Deep compare config using JSON values
         if !Self::deep_compare_values(
             &serde_json::to_value(&node_a.config).unwrap_or(json!({})),
-            &serde_json::to_value(&node_b.config).unwrap_or(json!({}))
+            &serde_json::to_value(&node_b.config).unwrap_or(json!({})),
         ) {
             identical = false;
         }
 
-        if node_a.datatype != node_b.datatype { identical = false; }
+        if node_a.datatype != node_b.datatype {
+            identical = false;
+        }
         if !Self::deep_compare_values(
             &serde_json::to_value(&node_a.description).unwrap_or(json!({})),
-            &serde_json::to_value(&node_b.description).unwrap_or(json!({}))
+            &serde_json::to_value(&node_b.description).unwrap_or(json!({})),
         ) {
             identical = false;
         }
-        if node_a.exportable != node_b.exportable { identical = false; }
-        if node_a.fieldname != node_b.fieldname { identical = false; }
-        if node_a.hascustomalias != node_b.hascustomalias { identical = false; }
-        if node_a.is_collector != node_b.is_collector { identical = false; }
-        if node_a.isrequired != node_b.isrequired { identical = false; }
-        if node_a.issearchable != node_b.issearchable { identical = false; }
-        if node_a.istopnode != node_b.istopnode { identical = false; }
-        if node_a.name != node_b.name { identical = false; }
-        if node_a.ontologyclass != node_b.ontologyclass { identical = false; }
-        if node_a.parentproperty != node_b.parentproperty { identical = false; }
-        if node_a.sortorder != node_b.sortorder { identical = false; }
-        if node_a.sourcebranchpublication_id != node_b.sourcebranchpublication_id { identical = false; }
+        if node_a.exportable != node_b.exportable {
+            identical = false;
+        }
+        if node_a.fieldname != node_b.fieldname {
+            identical = false;
+        }
+        if node_a.hascustomalias != node_b.hascustomalias {
+            identical = false;
+        }
+        if node_a.is_collector != node_b.is_collector {
+            identical = false;
+        }
+        if node_a.isrequired != node_b.isrequired {
+            identical = false;
+        }
+        if node_a.issearchable != node_b.issearchable {
+            identical = false;
+        }
+        if node_a.istopnode != node_b.istopnode {
+            identical = false;
+        }
+        if node_a.name != node_b.name {
+            identical = false;
+        }
+        if node_a.ontologyclass != node_b.ontologyclass {
+            identical = false;
+        }
+        if node_a.parentproperty != node_b.parentproperty {
+            identical = false;
+        }
+        if node_a.sortorder != node_b.sortorder {
+            identical = false;
+        }
+        if node_a.sourcebranchpublication_id != node_b.sourcebranchpublication_id {
+            identical = false;
+        }
 
         if !identical {
             return json!(false);
@@ -1615,7 +1674,10 @@ impl StaticNode {
         // Check for differences in IDs following the JS logic
 
         // Check graph_id mismatch (both non-empty and different)
-        if !node_a.graph_id.is_empty() && !node_b.graph_id.is_empty() && node_a.graph_id != node_b.graph_id {
+        if !node_a.graph_id.is_empty()
+            && !node_b.graph_id.is_empty()
+            && node_a.graph_id != node_b.graph_id
+        {
             return json!(-3);
         }
 
@@ -1627,16 +1689,16 @@ impl StaticNode {
         }
 
         // Check nodeid mismatch (both non-empty and different)
-        if !node_a.nodeid.is_empty() && !node_b.nodeid.is_empty() && node_a.nodeid != node_b.nodeid {
+        if !node_a.nodeid.is_empty() && !node_b.nodeid.is_empty() && node_a.nodeid != node_b.nodeid
+        {
             return json!(-1);
         }
 
         // Now determine if all IDs match
         // JS logic: (A && B) || (A === B)
         // This returns true if both are truthy OR if they're equal (including both empty)
-        let graph_id_match =
-            (!node_a.graph_id.is_empty() && !node_b.graph_id.is_empty()) ||
-            node_a.graph_id == node_b.graph_id;
+        let graph_id_match = (!node_a.graph_id.is_empty() && !node_b.graph_id.is_empty())
+            || node_a.graph_id == node_b.graph_id;
 
         let nodegroup_id_match = match (&node_a.nodegroup_id, &node_b.nodegroup_id) {
             (Some(a), Some(b)) => (!a.is_empty() && !b.is_empty()) || a == b,
@@ -1644,9 +1706,8 @@ impl StaticNode {
             _ => false,
         };
 
-        let nodeid_match =
-            (!node_a.nodeid.is_empty() && !node_b.nodeid.is_empty()) ||
-            node_a.nodeid == node_b.nodeid;
+        let nodeid_match = (!node_a.nodeid.is_empty() && !node_b.nodeid.is_empty())
+            || node_a.nodeid == node_b.nodeid;
 
         // If all IDs match (either both truthy or equal), return 2
         // Otherwise return 1
@@ -1658,12 +1719,18 @@ impl StaticNode {
     }
 
     // Version of compare that works with JSON values (handles partial objects)
-    pub fn compare_values(val_a: &serde_json::Value, val_b: &serde_json::Value) -> serde_json::Value {
+    pub fn compare_values(
+        val_a: &serde_json::Value,
+        val_b: &serde_json::Value,
+    ) -> serde_json::Value {
         use serde_json::json;
 
         // Helper to get a field as a string, returning empty string if not present
         fn get_string(obj: &serde_json::Value, key: &str) -> String {
-            obj.get(key).and_then(|v| v.as_str()).unwrap_or("").to_string()
+            obj.get(key)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
         }
 
         // Helper to check if a value is falsey (null, false, empty string, etc.)
@@ -1690,12 +1757,10 @@ impl StaticNode {
 
             // Special handling for config: treat null as equivalent to {}
             if key.as_str() == "config" {
-                let is_empty_or_null = |v: Option<&serde_json::Value>| {
-                    match v {
-                        None | Some(serde_json::Value::Null) => true,
-                        Some(serde_json::Value::Object(obj)) if obj.is_empty() => true,
-                        _ => false
-                    }
+                let is_empty_or_null = |v: Option<&serde_json::Value>| match v {
+                    None | Some(serde_json::Value::Null) => true,
+                    Some(serde_json::Value::Object(obj)) if obj.is_empty() => true,
+                    _ => false,
                 };
 
                 if is_empty_or_null(val_a_field) && is_empty_or_null(val_b_field) {
@@ -1711,7 +1776,9 @@ impl StaticNode {
                 }
                 (None, None) => continue,
                 // Treat None and Null as equivalent
-                (None, Some(serde_json::Value::Null)) | (Some(serde_json::Value::Null), None) => continue,
+                (None, Some(serde_json::Value::Null)) | (Some(serde_json::Value::Null), None) => {
+                    continue
+                }
                 // One has a value, the other doesn't
                 _ => return json!(false),
             }
@@ -1746,23 +1813,20 @@ impl StaticNode {
 
         // Check if all IDs match (using JS logic: (A && B) || (A === B))
         let graph_id_match =
-            (!graph_id_a.is_empty() && !graph_id_b.is_empty()) ||
-            graph_id_a == graph_id_b;
+            (!graph_id_a.is_empty() && !graph_id_b.is_empty()) || graph_id_a == graph_id_b;
 
         let nodegroup_id_match = match (nodegroup_id_a, nodegroup_id_b) {
             (Some(a), Some(b)) if !is_falsey(a) && !is_falsey(b) => {
                 let a_str = a.as_str().unwrap_or("");
                 let b_str = b.as_str().unwrap_or("");
                 (!a_str.is_empty() && !b_str.is_empty()) || a_str == b_str
-            },
+            }
             (Some(a), Some(b)) => is_falsey(a) && is_falsey(b) || a == b,
             (None, None) => true,
             _ => false,
         };
 
-        let nodeid_match =
-            (!nodeid_a.is_empty() && !nodeid_b.is_empty()) ||
-            nodeid_a == nodeid_b;
+        let nodeid_match = (!nodeid_a.is_empty() && !nodeid_b.is_empty()) || nodeid_a == nodeid_b;
 
         if graph_id_match && nodegroup_id_match && nodeid_match {
             json!(2)
@@ -1882,7 +1946,6 @@ wasm_wrapper! {
     }
 }
 
-
 #[wasm_bindgen]
 impl StaticGraph {
     #[wasm_bindgen(constructor)]
@@ -1902,7 +1965,10 @@ impl StaticGraph {
                 web_sys::console::error_1(&"^ This is an INVALID TYPE error".into());
             }
 
-            JsValue::from_str(&format!("StaticGraph deserialization failed: {}", error_string))
+            JsValue::from_str(&format!(
+                "StaticGraph deserialization failed: {}",
+                error_string
+            ))
         })?;
         data.build_indices();
         Ok(StaticGraph(data))
@@ -1928,7 +1994,8 @@ impl StaticGraph {
         let wrapper: GraphWrapper = serde_json::from_str(json_str)
             .map_err(|e| JsValue::from_str(&format!("Failed to parse JSON: {}", e)))?;
 
-        let mut graph = wrapper.graph
+        let mut graph = wrapper
+            .graph
             .into_iter()
             .next()
             .ok_or_else(|| JsValue::from_str("No graphs found in JSON"))?;
@@ -1952,7 +2019,7 @@ impl StaticGraph {
     pub fn get_description(&self) -> StaticTranslatableString {
         match self.0.description {
             Some(ref description) => StaticTranslatableString(description.clone()),
-            _ => StaticTranslatableString::default()
+            _ => StaticTranslatableString::default(),
         }
     }
 
@@ -1960,7 +2027,7 @@ impl StaticGraph {
     pub fn get_subtitle(&self) -> StaticTranslatableString {
         match self.0.subtitle {
             Some(ref subtitle) => StaticTranslatableString(subtitle.clone()),
-            _ => StaticTranslatableString::default()
+            _ => StaticTranslatableString::default(),
         }
     }
 
@@ -2025,13 +2092,15 @@ impl StaticGraph {
                 }
                 JsValue::from(array)
             }
-            None => JsValue::NULL
+            None => JsValue::NULL,
         }
     }
 
     #[wasm_bindgen(setter = cards)]
     pub fn set_cards(&mut self, value: JsValue) {
-        if let Ok(cards) = serde_wasm_bindgen::from_value::<Option<Vec<alizarin_core::StaticCard>>>(value) {
+        if let Ok(cards) =
+            serde_wasm_bindgen::from_value::<Option<Vec<alizarin_core::StaticCard>>>(value)
+        {
             self.0.cards = cards;
         }
     }
@@ -2046,13 +2115,16 @@ impl StaticGraph {
                 }
                 JsValue::from(array)
             }
-            None => JsValue::NULL
+            None => JsValue::NULL,
         }
     }
 
     #[wasm_bindgen(setter = cards_x_nodes_x_widgets)]
     pub fn set_cards_x_nodes_x_widgets(&mut self, value: JsValue) {
-        if let Ok(cards_x_nodes_x_widgets) = serde_wasm_bindgen::from_value::<Option<Vec<alizarin_core::StaticCardsXNodesXWidgets>>>(value) {
+        if let Ok(cards_x_nodes_x_widgets) = serde_wasm_bindgen::from_value::<
+            Option<Vec<alizarin_core::StaticCardsXNodesXWidgets>>,
+        >(value)
+        {
             self.0.cards_x_nodes_x_widgets = cards_x_nodes_x_widgets;
         }
     }
@@ -2127,14 +2199,16 @@ impl StaticGraph {
     // JS-facing lookup methods
     #[wasm_bindgen(js_name = getNodeById)]
     pub fn get_node_by_id_js(&self, id: &str) -> JsValue {
-        self.0.get_node_by_id(id)
+        self.0
+            .get_node_by_id(id)
             .map(|node| JsValue::from(StaticNode(node.clone())))
             .unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(js_name = getNodeByAlias)]
     pub fn get_node_by_alias_js(&self, alias: &str) -> JsValue {
-        self.0.get_node_by_alias(alias)
+        self.0
+            .get_node_by_alias(alias)
             .map(|node| JsValue::from(StaticNode(node.clone())))
             .unwrap_or(JsValue::NULL)
     }
@@ -2150,7 +2224,10 @@ impl StaticGraph {
             obj.insert("author".to_string(), json!(val));
         }
         obj.insert("cards".to_string(), json!(self.cards));
-        obj.insert("cards_x_nodes_x_widgets".to_string(), json!(self.cards_x_nodes_x_widgets));
+        obj.insert(
+            "cards_x_nodes_x_widgets".to_string(),
+            json!(self.cards_x_nodes_x_widgets),
+        );
         if let Some(ref val) = self.color {
             obj.insert("color".to_string(), json!(val));
         }
@@ -2181,11 +2258,17 @@ impl StaticGraph {
             obj.insert("publication".to_string(), json!(val));
         }
         if !self.relatable_resource_model_ids.is_empty() {
-            obj.insert("relatable_resource_model_ids".to_string(), json!(self.relatable_resource_model_ids));
+            obj.insert(
+                "relatable_resource_model_ids".to_string(),
+                json!(self.relatable_resource_model_ids),
+            );
         }
         if let Some(r2rc) = self.resource_2_resource_constraints.as_ref() {
             if !r2rc.is_empty() {
-                obj.insert("resource_2_resource_constraints".to_string(), json!(Some(r2rc)));
+                obj.insert(
+                    "resource_2_resource_constraints".to_string(),
+                    json!(Some(r2rc)),
+                );
             }
         }
         obj.insert("root".to_string(), json!(self.root));
@@ -2247,19 +2330,27 @@ impl StaticGraph {
 
     /// Get nodegroup by ID
     #[allow(dead_code)] // Available for internal use
-    pub(crate) fn get_nodegroup_by_id(&self, nodegroup_id: &str) -> Option<&alizarin_core::StaticNodegroup> {
+    pub(crate) fn get_nodegroup_by_id(
+        &self,
+        nodegroup_id: &str,
+    ) -> Option<&alizarin_core::StaticNodegroup> {
         self.0.get_nodegroup_by_id(nodegroup_id)
     }
 
     /// Get nodes in a specific nodegroup
     #[allow(dead_code)] // Available for internal use
-    pub(crate) fn get_nodes_in_nodegroup(&self, nodegroup_id: &str) -> Vec<&alizarin_core::StaticNode> {
+    pub(crate) fn get_nodes_in_nodegroup(
+        &self,
+        nodegroup_id: &str,
+    ) -> Vec<&alizarin_core::StaticNode> {
         self.0.get_nodes_in_nodegroup(nodegroup_id)
     }
 
     /// Get Arc-wrapped nodes by alias map (for pseudo_value infrastructure)
     #[allow(dead_code)] // Available for internal use
-    pub(crate) fn nodes_by_alias_arc(&self) -> Option<&std::collections::HashMap<String, std::sync::Arc<alizarin_core::StaticNode>>> {
+    pub(crate) fn nodes_by_alias_arc(
+        &self,
+    ) -> Option<&std::collections::HashMap<String, std::sync::Arc<alizarin_core::StaticNode>>> {
         self.0.nodes_by_alias_arc()
     }
 }
@@ -2280,10 +2371,13 @@ impl WKRM {
     pub fn new(meta_js: JsValue) -> Result<WKRM, JsValue> {
         // Check if this is a WASM wrapper object (has __wbg_ptr field)
         // If so, call toJSON() to get a plain object we can deserialize
-        let value_to_deserialize = if let Ok(ptr) = js_sys::Reflect::get(&meta_js, &JsValue::from_str("__wbg_ptr")) {
+        let value_to_deserialize = if let Ok(ptr) =
+            js_sys::Reflect::get(&meta_js, &JsValue::from_str("__wbg_ptr"))
+        {
             if !ptr.is_undefined() && !ptr.is_null() {
                 // This is a WASM wrapper, call toJSON() to get a plain object
-                if let Ok(to_json_fn) = js_sys::Reflect::get(&meta_js, &JsValue::from_str("toJSON")) {
+                if let Ok(to_json_fn) = js_sys::Reflect::get(&meta_js, &JsValue::from_str("toJSON"))
+                {
                     if to_json_fn.is_function() {
                         let func = js_sys::Function::from(to_json_fn);
                         func.call0(&meta_js).unwrap_or(meta_js.clone())
@@ -2300,16 +2394,18 @@ impl WKRM {
             meta_js.clone()
         };
 
-        let meta: alizarin_core::StaticGraphMeta = serde_wasm_bindgen::from_value(value_to_deserialize).map_err(|e| {
-            let error_msg = format!("Failed to deserialize StaticGraphMeta for WKRM: {:?}", e);
-            web_sys::console::error_1(&error_msg.clone().into());
-            JsValue::from_str(&error_msg)
-        })?;
+        let meta: alizarin_core::StaticGraphMeta =
+            serde_wasm_bindgen::from_value(value_to_deserialize).map_err(|e| {
+                let error_msg = format!("Failed to deserialize StaticGraphMeta for WKRM: {:?}", e);
+                web_sys::console::error_1(&error_msg.clone().into());
+                JsValue::from_str(&error_msg)
+            })?;
 
         let graph_id = meta.graphid.clone();
 
         // Get the model name from the name field
-        let model_name = meta.name
+        let model_name = meta
+            .name
             .as_ref()
             .map(|n| n.to_string_default())
             .unwrap_or_else(|| "Unnamed".to_string());
@@ -2408,7 +2504,8 @@ impl WKRM {
     pub fn from_meta(meta: alizarin_core::StaticGraphMeta) -> WKRM {
         let graph_id = meta.graphid.clone();
 
-        let model_name = meta.name
+        let model_name = meta
+            .name
             .as_ref()
             .map(|n| n.to_string_default())
             .unwrap_or_else(|| "Unnamed".to_string());
@@ -2500,8 +2597,13 @@ wasm_wrapper! {
 impl StaticResourceSummary {
     #[wasm_bindgen(constructor)]
     pub fn new(data: JsValue) -> Result<StaticResourceSummary, JsValue> {
-        let mut summary: CoreStaticResourceSummary = serde_wasm_bindgen::from_value(data)
-            .map_err(|e| JsValue::from_str(&format!("Failed to deserialize StaticResourceSummary: {:?}", e)))?;
+        let mut summary: CoreStaticResourceSummary =
+            serde_wasm_bindgen::from_value(data).map_err(|e| {
+                JsValue::from_str(&format!(
+                    "Failed to deserialize StaticResourceSummary: {:?}",
+                    e
+                ))
+            })?;
 
         // Default name to '<Unnamed>' if empty
         if summary.name.is_empty() {
@@ -2527,10 +2629,13 @@ impl StaticResourceSummary {
     /// Extract summaries from a JSON string containing business_data with full resources
     /// This parses all resources but only keeps the summary fields, avoiding full tile parsing
     #[wasm_bindgen(js_name = summariesFromBusinessDataJsonString)]
-    pub fn summaries_from_business_data_json_string(json_str: &str) -> Result<Vec<StaticResourceSummary>, JsValue> {
+    pub fn summaries_from_business_data_json_string(
+        json_str: &str,
+    ) -> Result<Vec<StaticResourceSummary>, JsValue> {
         // Use serde_json::Value for partial parsing - we only need resourceinstance fields
-        let value: serde_json::Value = serde_json::from_str(json_str)
-            .map_err(|e| JsValue::from_str(&format!("Failed to parse business_data JSON: {}", e)))?;
+        let value: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
+            JsValue::from_str(&format!("Failed to parse business_data JSON: {}", e))
+        })?;
 
         let resources = value
             .get("business_data")
@@ -2541,44 +2646,55 @@ impl StaticResourceSummary {
         let summaries: Result<Vec<StaticResourceSummary>, JsValue> = resources
             .iter()
             .map(|resource| {
-                let ri = resource.get("resourceinstance")
+                let ri = resource
+                    .get("resourceinstance")
                     .ok_or_else(|| JsValue::from_str("Missing resourceinstance"))?;
                 let metadata = resource.get("metadata");
 
                 let mut summary = CoreStaticResourceSummary {
-                    resourceinstanceid: ri.get("resourceinstanceid")
+                    resourceinstanceid: ri
+                        .get("resourceinstanceid")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string(),
-                    graph_id: ri.get("graph_id")
+                    graph_id: ri
+                        .get("graph_id")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string(),
-                    name: ri.get("name")
+                    name: ri
+                        .get("name")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string(),
-                    descriptors: ri.get("descriptors")
+                    descriptors: ri
+                        .get("descriptors")
                         .and_then(|v| serde_json::from_value(v.clone()).ok()),
                     metadata: metadata
                         .and_then(|v| serde_json::from_value(v.clone()).ok())
                         .unwrap_or_default(),
-                    createdtime: ri.get("createdtime")
+                    createdtime: ri
+                        .get("createdtime")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string()),
-                    lastmodified: ri.get("lastmodified")
+                    lastmodified: ri
+                        .get("lastmodified")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string()),
-                    publication_id: ri.get("publication_id")
+                    publication_id: ri
+                        .get("publication_id")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string()),
-                    principaluser_id: ri.get("principaluser_id")
+                    principaluser_id: ri
+                        .get("principaluser_id")
                         .and_then(|v| v.as_i64())
                         .map(|n| n as i32),
-                    legacyid: ri.get("legacyid")
+                    legacyid: ri
+                        .get("legacyid")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string()),
-                    graph_publication_id: ri.get("graph_publication_id")
+                    graph_publication_id: ri
+                        .get("graph_publication_id")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string()),
                 };
@@ -2634,8 +2750,13 @@ wasm_wrapper! {
 impl StaticResourceReference {
     #[wasm_bindgen(constructor)]
     pub fn new(data: JsValue) -> Result<StaticResourceReference, JsValue> {
-        let reference: CoreStaticResourceReference = serde_wasm_bindgen::from_value(data)
-            .map_err(|e| JsValue::from_str(&format!("Failed to deserialize StaticResourceReference: {:?}", e)))?;
+        let reference: CoreStaticResourceReference =
+            serde_wasm_bindgen::from_value(data).map_err(|e| {
+                JsValue::from_str(&format!(
+                    "Failed to deserialize StaticResourceReference: {:?}",
+                    e
+                ))
+            })?;
         Ok(StaticResourceReference(reference))
     }
 
@@ -2660,14 +2781,18 @@ impl StaticResourceReference {
 
     #[wasm_bindgen(getter)]
     pub fn root(&self) -> JsValue {
-        self.0.root.as_ref()
+        self.0
+            .root
+            .as_ref()
             .and_then(|r| serde_wasm_bindgen::to_value(r).ok())
             .unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(getter)]
     pub fn meta(&self) -> JsValue {
-        self.0.meta.as_ref()
+        self.0
+            .meta
+            .as_ref()
             .and_then(|m| serde_wasm_bindgen::to_value(m).ok())
             .unwrap_or(JsValue::NULL)
     }
@@ -2686,8 +2811,9 @@ wasm_wrapper! {
 impl StaticResource {
     #[wasm_bindgen(constructor)]
     pub fn new(data: JsValue) -> Result<StaticResource, JsValue> {
-        let mut core: CoreStaticResource = serde_wasm_bindgen::from_value(data)
-            .map_err(|e| JsValue::from_str(&format!("Failed to deserialize StaticResource: {:?}", e)))?;
+        let mut core: CoreStaticResource = serde_wasm_bindgen::from_value(data).map_err(|e| {
+            JsValue::from_str(&format!("Failed to deserialize StaticResource: {:?}", e))
+        })?;
 
         // Set tiles loaded flag based on whether tiles exist and are non-empty
         core.tiles_loaded = Some(core.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false));
@@ -2725,13 +2851,17 @@ impl StaticResource {
             resources: Vec<CoreStaticResource>,
         }
 
-        let wrapper: BusinessDataWrapper = serde_json::from_str(json_str)
-            .map_err(|e| JsValue::from_str(&format!("Failed to parse business_data JSON: {}", e)))?;
+        let wrapper: BusinessDataWrapper = serde_json::from_str(json_str).map_err(|e| {
+            JsValue::from_str(&format!("Failed to parse business_data JSON: {}", e))
+        })?;
 
-        let resources: Vec<StaticResource> = wrapper.business_data.resources
+        let resources: Vec<StaticResource> = wrapper
+            .business_data
+            .resources
             .into_iter()
             .map(|mut core| {
-                core.tiles_loaded = Some(core.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false));
+                core.tiles_loaded =
+                    Some(core.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false));
                 StaticResource(core)
             })
             .collect();
@@ -2849,7 +2979,9 @@ impl StaticResource {
         match serde_json::to_value(&self.0) {
             Ok(json_value) => json_to_js_value(&json_value),
             Err(e) => {
-                web_sys::console::error_1(&format!("Failed to serialize StaticResource: {}", e).into());
+                web_sys::console::error_1(
+                    &format!("Failed to serialize StaticResource: {}", e).into(),
+                );
                 JsValue::NULL
             }
         }

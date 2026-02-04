@@ -41,7 +41,8 @@ impl StaticDomainValue {
 
     /// Get text for a specific language, with fallback
     pub fn lang(&self, language: &str) -> Option<&str> {
-        self.text.get(language)
+        self.text
+            .get(language)
             .or_else(|| self.text.get("en"))
             .or_else(|| self.text.values().next())
             .map(|s| s.as_str())
@@ -83,8 +84,13 @@ impl NodeConfigBoolean {
 
     /// Get label for a boolean value in a specific language
     pub fn get_label(&self, value: bool, language: &str) -> Option<&str> {
-        let labels = if value { &self.true_label } else { &self.false_label };
-        labels.get(language)
+        let labels = if value {
+            &self.true_label
+        } else {
+            &self.false_label
+        };
+        labels
+            .get(language)
             .or_else(|| labels.get("en"))
             .or_else(|| labels.values().next())
             .map(|s| s.as_str())
@@ -360,16 +366,22 @@ impl NodeConfigManager {
     }
 
     /// Parse boolean config from node.config HashMap
-    fn parse_boolean_config(&self, config: &HashMap<String, serde_json::Value>) -> NodeConfigBoolean {
-        let true_label = config.get("trueLabel")
+    fn parse_boolean_config(
+        &self,
+        config: &HashMap<String, serde_json::Value>,
+    ) -> NodeConfigBoolean {
+        let true_label = config
+            .get("trueLabel")
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
-        let false_label = config.get("falseLabel")
+        let false_label = config
+            .get("falseLabel")
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
-        let i18n_properties = config.get("i18n_properties")
+        let i18n_properties = config
+            .get("i18n_properties")
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
@@ -382,11 +394,13 @@ impl NodeConfigManager {
 
     /// Parse domain config from node.config HashMap
     fn parse_domain_config(&self, config: &HashMap<String, serde_json::Value>) -> NodeConfigDomain {
-        let options: Vec<StaticDomainValue> = config.get("options")
+        let options: Vec<StaticDomainValue> = config
+            .get("options")
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
-        let i18n_config = config.get("i18n_config")
+        let i18n_config = config
+            .get("i18n_config")
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
@@ -397,8 +411,12 @@ impl NodeConfigManager {
     }
 
     /// Parse concept config from node.config HashMap
-    fn parse_concept_config(&self, config: &HashMap<String, serde_json::Value>) -> NodeConfigConcept {
-        let rdm_collection = config.get("rdmCollection")
+    fn parse_concept_config(
+        &self,
+        config: &HashMap<String, serde_json::Value>,
+    ) -> NodeConfigConcept {
+        let rdm_collection = config
+            .get("rdmCollection")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
@@ -407,18 +425,24 @@ impl NodeConfigManager {
     }
 
     /// Parse reference config from node.config HashMap
-    fn parse_reference_config(&self, config: &HashMap<String, serde_json::Value>) -> NodeConfigReference {
-        let controlled_list = config.get("controlledList")
+    fn parse_reference_config(
+        &self,
+        config: &HashMap<String, serde_json::Value>,
+    ) -> NodeConfigReference {
+        let controlled_list = config
+            .get("controlledList")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
 
-        let rdm_collection = config.get("rdmCollection")
+        let rdm_collection = config
+            .get("rdmCollection")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
 
-        let multi_value = config.get("multiValue")
+        let multi_value = config
+            .get("multiValue")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 

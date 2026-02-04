@@ -3,25 +3,36 @@
 //! These wrappers expose the platform-agnostic type coercion logic
 //! from alizarin-core to Python via PyO3.
 #![allow(deprecated)]
+use crate::python_json::{json_to_python, python_to_json};
+use alizarin_core::type_coercion::{
+    // Phase 3
+    coerce_boolean,
+    coerce_concept_list,
+    // Phase 4
+    coerce_concept_value,
+    // Phase 1
+    coerce_date,
+    coerce_domain_value,
+    coerce_domain_value_list,
+    coerce_edtf,
+    // Phase 2
+    coerce_geojson,
+    coerce_non_localized_string,
+    coerce_number,
+    // Phase 5
+    coerce_resource_instance,
+    coerce_resource_instance_list,
+    coerce_string,
+    coerce_url,
+    // Dispatcher
+    coerce_value,
+    // Language config
+    get_current_language,
+    set_current_language,
+    CoercionResult as CoreCoercionResult,
+};
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
-use crate::python_json::{python_to_json, json_to_python};
-use alizarin_core::type_coercion::{
-    // Phase 1
-    coerce_date, coerce_edtf, coerce_non_localized_string, coerce_number,
-    // Phase 2
-    coerce_geojson, coerce_string, coerce_url,
-    // Phase 3
-    coerce_boolean, coerce_domain_value, coerce_domain_value_list,
-    // Phase 4
-    coerce_concept_value, coerce_concept_list,
-    // Phase 5
-    coerce_resource_instance, coerce_resource_instance_list,
-    // Dispatcher
-    coerce_value, CoercionResult as CoreCoercionResult,
-    // Language config
-    get_current_language, set_current_language,
-};
 
 /// Register type coercion functions with the Python module
 pub fn register_module(m: &PyModule) -> PyResult<()> {
@@ -150,7 +161,11 @@ pub fn py_coerce_date(py: Python<'_>, value: &PyAny) -> PyResult<PyCoercionResul
 /// Coerce a value to a localized string
 #[pyfunction]
 #[pyo3(name = "coerce_string")]
-pub fn py_coerce_string(py: Python<'_>, value: &PyAny, language: Option<&str>) -> PyResult<PyCoercionResult> {
+pub fn py_coerce_string(
+    py: Python<'_>,
+    value: &PyAny,
+    language: Option<&str>,
+) -> PyResult<PyCoercionResult> {
     let val = python_to_json(py, value)?;
     Ok(PyCoercionResult {
         inner: coerce_string(&val, language),
@@ -184,7 +199,11 @@ pub fn py_coerce_geojson(py: Python<'_>, value: &PyAny) -> PyResult<PyCoercionRe
 /// Coerce a value to a boolean
 #[pyfunction]
 #[pyo3(name = "coerce_boolean")]
-pub fn py_coerce_boolean(py: Python<'_>, value: &PyAny, config: Option<&PyAny>) -> PyResult<PyCoercionResult> {
+pub fn py_coerce_boolean(
+    py: Python<'_>,
+    value: &PyAny,
+    config: Option<&PyAny>,
+) -> PyResult<PyCoercionResult> {
     let val = python_to_json(py, value)?;
     let cfg = match config {
         Some(c) => Some(python_to_json(py, c)?),
@@ -198,7 +217,11 @@ pub fn py_coerce_boolean(py: Python<'_>, value: &PyAny, config: Option<&PyAny>) 
 /// Coerce a value to a domain value
 #[pyfunction]
 #[pyo3(name = "coerce_domain_value")]
-pub fn py_coerce_domain_value(py: Python<'_>, value: &PyAny, config: Option<&PyAny>) -> PyResult<PyCoercionResult> {
+pub fn py_coerce_domain_value(
+    py: Python<'_>,
+    value: &PyAny,
+    config: Option<&PyAny>,
+) -> PyResult<PyCoercionResult> {
     let val = python_to_json(py, value)?;
     let cfg = match config {
         Some(c) => Some(python_to_json(py, c)?),
@@ -212,7 +235,11 @@ pub fn py_coerce_domain_value(py: Python<'_>, value: &PyAny, config: Option<&PyA
 /// Coerce a value to a domain value list
 #[pyfunction]
 #[pyo3(name = "coerce_domain_value_list")]
-pub fn py_coerce_domain_value_list(py: Python<'_>, value: &PyAny, config: Option<&PyAny>) -> PyResult<PyCoercionResult> {
+pub fn py_coerce_domain_value_list(
+    py: Python<'_>,
+    value: &PyAny,
+    config: Option<&PyAny>,
+) -> PyResult<PyCoercionResult> {
     let val = python_to_json(py, value)?;
     let cfg = match config {
         Some(c) => Some(python_to_json(py, c)?),
@@ -230,7 +257,11 @@ pub fn py_coerce_domain_value_list(py: Python<'_>, value: &PyAny, config: Option
 /// Coerce a value to a concept value
 #[pyfunction]
 #[pyo3(name = "coerce_concept_value")]
-pub fn py_coerce_concept_value(py: Python<'_>, value: &PyAny, config: Option<&PyAny>) -> PyResult<PyCoercionResult> {
+pub fn py_coerce_concept_value(
+    py: Python<'_>,
+    value: &PyAny,
+    config: Option<&PyAny>,
+) -> PyResult<PyCoercionResult> {
     let val = python_to_json(py, value)?;
     let cfg = match config {
         Some(c) => Some(python_to_json(py, c)?),
@@ -244,7 +275,11 @@ pub fn py_coerce_concept_value(py: Python<'_>, value: &PyAny, config: Option<&Py
 /// Coerce a value to a concept list
 #[pyfunction]
 #[pyo3(name = "coerce_concept_list")]
-pub fn py_coerce_concept_list(py: Python<'_>, value: &PyAny, config: Option<&PyAny>) -> PyResult<PyCoercionResult> {
+pub fn py_coerce_concept_list(
+    py: Python<'_>,
+    value: &PyAny,
+    config: Option<&PyAny>,
+) -> PyResult<PyCoercionResult> {
     let val = python_to_json(py, value)?;
     let cfg = match config {
         Some(c) => Some(python_to_json(py, c)?),
@@ -262,7 +297,11 @@ pub fn py_coerce_concept_list(py: Python<'_>, value: &PyAny, config: Option<&PyA
 /// Coerce a value to a resource instance
 #[pyfunction]
 #[pyo3(name = "coerce_resource_instance")]
-pub fn py_coerce_resource_instance(py: Python<'_>, value: &PyAny, config: Option<&PyAny>) -> PyResult<PyCoercionResult> {
+pub fn py_coerce_resource_instance(
+    py: Python<'_>,
+    value: &PyAny,
+    config: Option<&PyAny>,
+) -> PyResult<PyCoercionResult> {
     let val = python_to_json(py, value)?;
     let cfg = match config {
         Some(c) => Some(python_to_json(py, c)?),
@@ -276,7 +315,11 @@ pub fn py_coerce_resource_instance(py: Python<'_>, value: &PyAny, config: Option
 /// Coerce a value to a resource instance list
 #[pyfunction]
 #[pyo3(name = "coerce_resource_instance_list")]
-pub fn py_coerce_resource_instance_list(py: Python<'_>, value: &PyAny, config: Option<&PyAny>) -> PyResult<PyCoercionResult> {
+pub fn py_coerce_resource_instance_list(
+    py: Python<'_>,
+    value: &PyAny,
+    config: Option<&PyAny>,
+) -> PyResult<PyCoercionResult> {
     let val = python_to_json(py, value)?;
     let cfg = match config {
         Some(c) => Some(python_to_json(py, c)?),
@@ -323,4 +366,3 @@ pub fn py_coerce_value(
         inner: coerce_value(datatype, &val, cfg.as_ref()),
     })
 }
-

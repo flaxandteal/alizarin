@@ -1,21 +1,21 @@
-mod utils;
+pub mod batch_conversion;
+pub mod extension_registry;
 pub mod graph;
-pub mod pseudos;
-pub mod pseudo_value;
-pub mod model_wrapper;
+pub mod graph_mutator_wasm;
 pub mod instance_wrapper;
 pub mod json_conversion;
-pub mod batch_conversion;
-pub mod wasm_wrappers;
-pub mod tracing;
-pub mod skos_wasm;
-pub mod node_config_wasm;
-pub mod type_coercion_wasm;
 pub mod label_resolution_wasm;
+pub mod model_wrapper;
+pub mod node_config_wasm;
+pub mod pseudo_value;
+pub mod pseudos;
 pub mod rdm_cache_wasm;
 pub mod rdm_namespace_wasm;
-pub mod graph_mutator_wasm;
-pub mod extension_registry;
+pub mod skos_wasm;
+pub mod tracing;
+pub mod type_coercion_wasm;
+mod utils;
+pub mod wasm_wrappers;
 
 // Re-export core types for native Rust consumers
 // These are the platform-agnostic types without WASM bindings
@@ -34,4 +34,3 @@ fn main() -> Result<(), JsValue> {
 
     Ok(())
 }
-

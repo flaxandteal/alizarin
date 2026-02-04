@@ -1,6 +1,9 @@
 //! Application state and logic
 
-use alizarin_core::{IndexedGraph, PrebuildInfo, PrebuildLoader, StaticNode, StaticNodegroup, StaticResource, StaticResourceSummary, StaticTile};
+use alizarin_core::{
+    IndexedGraph, PrebuildInfo, PrebuildLoader, StaticNode, StaticNodegroup, StaticResource,
+    StaticResourceSummary, StaticTile,
+};
 use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
@@ -194,7 +197,7 @@ pub struct App {
     pub bd_loading: bool,
     pub bd_loaded_count: usize,
     pub bd_total_count: Option<usize>,
-    pub bd_counting_files: usize,    // files counted so far
+    pub bd_counting_files: usize,     // files counted so far
     pub bd_counting_resources: usize, // resources found during counting
     pub bd_has_more: bool,
 
@@ -321,7 +324,8 @@ impl App {
                 }
                 GraphsView::Tree => {
                     if !self.tree_nodes.is_empty() {
-                        self.tree_selected = (self.tree_selected + 1).min(self.tree_nodes.len() - 1);
+                        self.tree_selected =
+                            (self.tree_selected + 1).min(self.tree_nodes.len() - 1);
                     }
                 }
             },
@@ -333,7 +337,9 @@ impl App {
                     }
                 }
                 BusinessDataView::ResourceList => {
-                    let max_idx = if self.bd_resources_filtered.is_empty() && self.bd_search_query.is_empty() {
+                    let max_idx = if self.bd_resources_filtered.is_empty()
+                        && self.bd_search_query.is_empty()
+                    {
                         self.bd_resources.len().saturating_sub(1)
                     } else {
                         self.bd_resources_filtered.len().saturating_sub(1)
@@ -342,7 +348,8 @@ impl App {
                 }
                 BusinessDataView::ResourceDetail => {
                     if !self.bd_tile_tree.is_empty() {
-                        self.bd_tile_selected = (self.bd_tile_selected + 1).min(self.bd_tile_tree.len() - 1);
+                        self.bd_tile_selected =
+                            (self.bd_tile_selected + 1).min(self.bd_tile_tree.len() - 1);
                     }
                 }
             },
@@ -411,12 +418,15 @@ impl App {
                     }
                 }
                 BusinessDataView::ResourceList => {
-                    let max_idx = if self.bd_resources_filtered.is_empty() && self.bd_search_query.is_empty() {
+                    let max_idx = if self.bd_resources_filtered.is_empty()
+                        && self.bd_search_query.is_empty()
+                    {
                         self.bd_resources.len().saturating_sub(1)
                     } else {
                         self.bd_resources_filtered.len().saturating_sub(1)
                     };
-                    self.bd_resource_selected = (self.bd_resource_selected + PAGE_SIZE).min(max_idx);
+                    self.bd_resource_selected =
+                        (self.bd_resource_selected + PAGE_SIZE).min(max_idx);
                 }
                 BusinessDataView::ResourceDetail => {
                     if !self.bd_tile_tree.is_empty() {
@@ -459,7 +469,9 @@ impl App {
     pub fn on_right(&mut self) {
         if self.current_tab == Tab::Graphs && self.graphs_view == GraphsView::Tree {
             self.expand_selected_node();
-        } else if self.current_tab == Tab::BusinessData && self.bd_view == BusinessDataView::ResourceDetail {
+        } else if self.current_tab == Tab::BusinessData
+            && self.bd_view == BusinessDataView::ResourceDetail
+        {
             self.bd_expand_tile();
         }
     }
@@ -467,7 +479,9 @@ impl App {
     pub fn on_left(&mut self) {
         if self.current_tab == Tab::Graphs && self.graphs_view == GraphsView::Tree {
             self.collapse_selected_node();
-        } else if self.current_tab == Tab::BusinessData && self.bd_view == BusinessDataView::ResourceDetail {
+        } else if self.current_tab == Tab::BusinessData
+            && self.bd_view == BusinessDataView::ResourceDetail
+        {
             self.bd_collapse_tile();
         }
     }
@@ -489,7 +503,7 @@ impl App {
                 BusinessDataView::ResourceDetail => {
                     self.bd_toggle_tile_expand();
                 }
-            }
+            },
             _ => {}
         }
     }
@@ -597,14 +611,28 @@ impl App {
             let mut sorted_children: Vec<_> = children.into_iter().collect();
             // Sort alphabetically by alias (fallback to name if no alias)
             sorted_children.sort_by(|a, b| {
-                let a_key = a.alias.as_deref().filter(|s| !s.is_empty()).unwrap_or(&a.name);
-                let b_key = b.alias.as_deref().filter(|s| !s.is_empty()).unwrap_or(&b.name);
+                let a_key = a
+                    .alias
+                    .as_deref()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or(&a.name);
+                let b_key = b
+                    .alias
+                    .as_deref()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or(&b.name);
                 a_key.to_lowercase().cmp(&b_key.to_lowercase())
             });
 
             for child in sorted_children {
                 // If expand_all, expand children too; otherwise children start collapsed
-                nodes.extend(Self::collect_tree_nodes(child, graph, depth + 1, expand_all, expand_all));
+                nodes.extend(Self::collect_tree_nodes(
+                    child,
+                    graph,
+                    depth + 1,
+                    expand_all,
+                    expand_all,
+                ));
             }
         }
 
@@ -641,8 +669,16 @@ impl App {
             let mut sorted_children: Vec<_> = children.into_iter().collect();
             // Sort alphabetically by alias (fallback to name if no alias)
             sorted_children.sort_by(|a, b| {
-                let a_key = a.alias.as_deref().filter(|s| !s.is_empty()).unwrap_or(&a.name);
-                let b_key = b.alias.as_deref().filter(|s| !s.is_empty()).unwrap_or(&b.name);
+                let a_key = a
+                    .alias
+                    .as_deref()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or(&a.name);
+                let b_key = b
+                    .alias
+                    .as_deref()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or(&b.name);
                 a_key.to_lowercase().cmp(&b_key.to_lowercase())
             });
 
@@ -789,12 +825,22 @@ impl App {
         }
 
         // Try to restore selection to same node if possible
-        if let Some(selected_node_id) = self.pre_search_expanded.keys().nth(self.pre_search_selected) {
-            if let Some(pos) = self.tree_nodes.iter().position(|n| &n.node_id == selected_node_id) {
+        if let Some(selected_node_id) = self
+            .pre_search_expanded
+            .keys()
+            .nth(self.pre_search_selected)
+        {
+            if let Some(pos) = self
+                .tree_nodes
+                .iter()
+                .position(|n| &n.node_id == selected_node_id)
+            {
                 self.tree_selected = pos;
             }
         }
-        self.tree_selected = self.tree_selected.min(self.tree_nodes.len().saturating_sub(1));
+        self.tree_selected = self
+            .tree_selected
+            .min(self.tree_nodes.len().saturating_sub(1));
     }
 
     /// Handle character input during search
@@ -1032,7 +1078,8 @@ impl App {
                             Ok((summaries, has_more)) => {
                                 let batch_len = summaries.len();
                                 if batch_len > 0
-                                    && tx.send(LoaderMessage::ResourceBatch(summaries)).is_err() {
+                                    && tx.send(LoaderMessage::ResourceBatch(summaries)).is_err()
+                                {
                                     break;
                                 }
                                 offset += batch_len;
@@ -1227,7 +1274,9 @@ impl App {
         self.bd_source = self.bd_source.toggle();
 
         // If we're viewing resources, reload with new source
-        if self.bd_view == BusinessDataView::ResourceList && self.bd_graph_selected < self.graphs.len() {
+        if self.bd_view == BusinessDataView::ResourceList
+            && self.bd_graph_selected < self.graphs.len()
+        {
             self.bd_resources.clear();
             self.bd_resources_filtered.clear();
             self.bd_resource_selected = 0;
@@ -1261,7 +1310,7 @@ impl App {
 
         self.bd_resource_loading = true;
         self.bd_view = BusinessDataView::ResourceDetail;
-        self.bd_tile_expanded.clear();  // Reset expansion state for new resource
+        self.bd_tile_expanded.clear(); // Reset expansion state for new resource
 
         // Load the full resource
         match self.loader.load_full_resource(&resource_id, &graph_id) {
@@ -1349,13 +1398,17 @@ impl App {
         };
 
         // Get nodegroup info
-        let nodegroup_name = graph.graph.nodes.iter()
+        let nodegroup_name = graph
+            .graph
+            .nodes
+            .iter()
             .find(|n| n.nodegroup_id.as_ref() == Some(&tile.nodegroup_id) && n.is_collector)
             .map(|n| n.alias.clone().unwrap_or_else(|| n.name.clone()))
             .unwrap_or_else(|| tile.nodegroup_id.clone());
 
         let tile_id = tile.tileid.clone();
-        let has_child_tiles = tile_id.as_ref()
+        let has_child_tiles = tile_id
+            .as_ref()
             .map(|id| children_by_parent.contains_key(&Some(id.clone())))
             .unwrap_or(false);
 
@@ -1385,7 +1438,11 @@ impl App {
                 let datatype = node.map(|n| n.datatype.clone());
 
                 nodes.push(TileTreeNode {
-                    _id: format!("data_{}_{}", tile_id.as_deref().unwrap_or("unknown"), node_id),
+                    _id: format!(
+                        "data_{}_{}",
+                        tile_id.as_deref().unwrap_or("unknown"),
+                        node_id
+                    ),
                     name: node_name,
                     node_id: Some(node_id.clone()),
                     tile_id: tile_id.clone(),
@@ -1406,7 +1463,14 @@ impl App {
                     let mut sorted_children: Vec<_> = child_tiles.clone();
                     sorted_children.sort_by_key(|t| t.sortorder.unwrap_or(0));
                     for child in &sorted_children {
-                        Self::collect_tile_tree_nodes(child, &Some(graph), children_by_parent, depth + 1, false, nodes);
+                        Self::collect_tile_tree_nodes(
+                            child,
+                            &Some(graph),
+                            children_by_parent,
+                            depth + 1,
+                            false,
+                            nodes,
+                        );
                     }
                 }
             }
@@ -1428,18 +1492,23 @@ impl App {
         };
 
         // Get nodegroup info
-        let nodegroup_name = graph.graph.nodes.iter()
+        let nodegroup_name = graph
+            .graph
+            .nodes
+            .iter()
             .find(|n| n.nodegroup_id.as_ref() == Some(&tile.nodegroup_id) && n.is_collector)
             .map(|n| n.alias.clone().unwrap_or_else(|| n.name.clone()))
             .unwrap_or_else(|| tile.nodegroup_id.clone());
 
         let tile_id = tile.tileid.clone();
-        let has_child_tiles = tile_id.as_ref()
+        let has_child_tiles = tile_id
+            .as_ref()
             .map(|id| children_by_parent.contains_key(&Some(id.clone())))
             .unwrap_or(false);
 
         // Check if this tile is expanded
-        let is_expanded = tile_id.as_ref()
+        let is_expanded = tile_id
+            .as_ref()
             .map(|id| expanded_set.contains(id))
             .unwrap_or(false);
 
@@ -1469,7 +1538,11 @@ impl App {
                 let datatype = node.map(|n| n.datatype.clone());
 
                 nodes.push(TileTreeNode {
-                    _id: format!("data_{}_{}", tile_id.as_deref().unwrap_or("unknown"), node_id),
+                    _id: format!(
+                        "data_{}_{}",
+                        tile_id.as_deref().unwrap_or("unknown"),
+                        node_id
+                    ),
                     name: node_name,
                     node_id: Some(node_id.clone()),
                     tile_id: tile_id.clone(),
@@ -1490,7 +1563,14 @@ impl App {
                     let mut sorted_children: Vec<_> = child_tiles.clone();
                     sorted_children.sort_by_key(|t| t.sortorder.unwrap_or(0));
                     for child in &sorted_children {
-                        Self::collect_tile_tree_nodes_with_expanded(child, &Some(graph), children_by_parent, expanded_set, depth + 1, nodes);
+                        Self::collect_tile_tree_nodes_with_expanded(
+                            child,
+                            &Some(graph),
+                            children_by_parent,
+                            expanded_set,
+                            depth + 1,
+                            nodes,
+                        );
                     }
                 }
             }
@@ -1797,6 +1877,9 @@ impl App {
 
     /// Get count of tile tree search matches
     pub fn bd_tile_search_match_count(&self) -> usize {
-        self.bd_tile_tree.iter().filter(|n| n.matches_search).count()
+        self.bd_tile_tree
+            .iter()
+            .filter(|n| n.matches_search)
+            .count()
     }
 }

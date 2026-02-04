@@ -4,11 +4,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::translatable::StaticTranslatableString;
-use super::nodes::{StaticNode, StaticNodegroup, StaticEdge};
-use super::tile::StaticTile;
 use super::cards::{StaticCard, StaticCardsXNodesXWidgets, StaticFunctionsXGraphs};
-use super::descriptors::{StaticResourceDescriptors, DescriptorConfig, DESCRIPTOR_FUNCTION_ID};
+use super::descriptors::{DescriptorConfig, StaticResourceDescriptors, DESCRIPTOR_FUNCTION_ID};
+use super::nodes::{StaticEdge, StaticNode, StaticNodegroup};
+use super::tile::StaticTile;
+use super::translatable::StaticTranslatableString;
 
 /// Wrapper for loading from JSON files with {graph: [...]} structure
 #[derive(Debug, Deserialize)]
@@ -175,9 +175,15 @@ impl StaticGraph {
         }
 
         // Build Arc-wrapped nodes_by_alias for pseudo_value infrastructure
-        let nodes_by_alias_arc: HashMap<String, Arc<StaticNode>> = self.nodes
+        let nodes_by_alias_arc: HashMap<String, Arc<StaticNode>> = self
+            .nodes
             .iter()
-            .filter_map(|n| n.alias.as_ref().filter(|a| !a.is_empty()).map(|a| (a.clone(), Arc::new(n.clone()))))
+            .filter_map(|n| {
+                n.alias
+                    .as_ref()
+                    .filter(|a| !a.is_empty())
+                    .map(|a| (a.clone(), Arc::new(n.clone())))
+            })
             .collect();
 
         self.node_by_id = Some(node_by_id);
@@ -317,10 +323,7 @@ impl StaticGraph {
 
     /// Get Arc-wrapped node by alias
     pub fn get_node_arc_by_alias(&self, alias: &str) -> Option<Arc<StaticNode>> {
-        self.nodes_by_alias_arc
-            .as_ref()?
-            .get(alias)
-            .cloned()
+        self.nodes_by_alias_arc.as_ref()?.get(alias).cloned()
     }
 
     // =========================================================================
@@ -386,7 +389,10 @@ impl StaticGraph {
 
     /// Find a card by nodegroup_id
     pub fn find_card_by_nodegroup(&self, nodegroup_id: &str) -> Option<&StaticCard> {
-        self.cards.as_ref()?.iter().find(|c| c.nodegroup_id == nodegroup_id)
+        self.cards
+            .as_ref()?
+            .iter()
+            .find(|c| c.nodegroup_id == nodegroup_id)
     }
 
     /// Find a node by alias (without requiring indices to be built)
@@ -396,7 +402,9 @@ impl StaticGraph {
             return Some(node);
         }
         // Fall back to linear search
-        self.nodes.iter().find(|n| n.alias.as_deref() == Some(alias))
+        self.nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some(alias))
     }
 }
 
@@ -548,9 +556,13 @@ impl IndexedGraph {
                 let node_name = placeholder.trim_start_matches('<').trim_end_matches('>');
 
                 // Find node by name in this nodegroup
-                if let Some(node) = self.find_node_by_name_in_nodegroup(node_name, &type_config.nodegroup_id) {
+                if let Some(node) =
+                    self.find_node_by_name_in_nodegroup(node_name, &type_config.nodegroup_id)
+                {
                     // Extract value from tiles
-                    if let Some(value) = Self::extract_value_from_tiles(&relevant_tiles, &node.nodeid) {
+                    if let Some(value) =
+                        Self::extract_value_from_tiles(&relevant_tiles, &node.nodeid)
+                    {
                         template = template.replace(placeholder, &value);
                     }
                 }
@@ -609,13 +621,19 @@ impl IndexedGraph {
     }
 
     /// Find node by name within a specific nodegroup
-    fn find_node_by_name_in_nodegroup(&self, name: &str, nodegroup_id: &str) -> Option<&StaticNode> {
-        self.nodes_by_id
-            .values()
-            .find(|node| {
-                node.name == name &&
-                node.nodegroup_id.as_ref().map(|id| id == nodegroup_id).unwrap_or(false)
-            })
+    fn find_node_by_name_in_nodegroup(
+        &self,
+        name: &str,
+        nodegroup_id: &str,
+    ) -> Option<&StaticNode> {
+        self.nodes_by_id.values().find(|node| {
+            node.name == name
+                && node
+                    .nodegroup_id
+                    .as_ref()
+                    .map(|id| id == nodegroup_id)
+                    .unwrap_or(false)
+        })
     }
 
     /// Extract value from tiles for a given node ID
@@ -640,18 +658,20 @@ impl IndexedGraph {
             serde_json::Value::String(s) => Some(s.clone()),
             serde_json::Value::Object(map) => {
                 // Try to get language-specific value
-                Self::extract_lang_value(map, "en")
-                    .or_else(|| {
-                        // Fallback to first available language
-                        map.values().find_map(Self::extract_single_lang_value)
-                    })
+                Self::extract_lang_value(map, "en").or_else(|| {
+                    // Fallback to first available language
+                    map.values().find_map(Self::extract_single_lang_value)
+                })
             }
             _ => None,
         }
     }
 
     /// Extract value for a specific language key
-    fn extract_lang_value(map: &serde_json::Map<String, serde_json::Value>, lang: &str) -> Option<String> {
+    fn extract_lang_value(
+        map: &serde_json::Map<String, serde_json::Value>,
+        lang: &str,
+    ) -> Option<String> {
         map.get(lang).and_then(Self::extract_single_lang_value)
     }
 

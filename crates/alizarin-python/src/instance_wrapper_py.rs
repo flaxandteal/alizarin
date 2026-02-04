@@ -8,13 +8,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use alizarin_core::{
-    StaticGraph, StaticNode, StaticNodegroup, StaticTile, StaticResourceMetadata,
-    PseudoListCore, PseudoValueCore,
-    ResourceInstanceWrapperCore, ModelAccess, SemanticChildError, SemanticChildResult,
-    PopulateResult as CorePopulateResult,
+    ModelAccess, PopulateResult as CorePopulateResult, PseudoListCore, PseudoValueCore,
+    ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult, StaticGraph, StaticNode,
+    StaticNodegroup, StaticResourceMetadata, StaticTile,
 };
 
-use crate::pseudo_value_py::{PyPseudoValue, PyPseudoList};
+use crate::pseudo_value_py::{PyPseudoList, PyPseudoValue};
 
 // =============================================================================
 // ModelAccess implementation using registered graphs
@@ -70,10 +69,7 @@ impl RegistryModelAccess {
                 .or_default()
                 .push(child_id.clone());
 
-            reverse_edges
-                .entry(child_id)
-                .or_default()
-                .push(parent_id);
+            reverse_edges.entry(child_id).or_default().push(parent_id);
         }
 
         // Build nodegroup index
@@ -120,15 +116,14 @@ impl ModelAccess for RegistryModelAccess {
     }
 
     fn get_root_node(&self) -> Result<Arc<StaticNode>, String> {
-        self.nodes.get(&self.root_node_id)
+        self.nodes
+            .get(&self.root_node_id)
             .cloned()
             .ok_or_else(|| "Root node not found".to_string())
     }
 
     fn get_child_nodes(&self, node_id: &str) -> Result<HashMap<String, Arc<StaticNode>>, String> {
-        let child_ids = self.edges.get(node_id)
-            .cloned()
-            .unwrap_or_default();
+        let child_ids = self.edges.get(node_id).cloned().unwrap_or_default();
 
         let mut children = HashMap::new();
         for child_id in child_ids {
@@ -170,10 +165,12 @@ impl PyResourceInstanceWrapperCore {
     #[new]
     fn new(graph_id: String) -> PyResult<Self> {
         // Get graph from registry
-        let graph = alizarin_core::get_graph(&graph_id)
-            .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyKeyError, _>(
-                format!("Graph '{}' not registered. Call register_graph() first.", graph_id)
-            ))?;
+        let graph = alizarin_core::get_graph(&graph_id).ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Graph '{}' not registered. Call register_graph() first.",
+                graph_id
+            ))
+        })?;
 
         // Build model access
         let model_access = RegistryModelAccess::from_graph(&graph);
@@ -196,10 +193,12 @@ impl PyResourceInstanceWrapperCore {
     /// Args:
     ///     tiles_json: JSON string of tiles array
     fn load_tiles(&mut self, tiles_json: &str) -> PyResult<()> {
-        let tiles: Vec<StaticTile> = serde_json::from_str(tiles_json)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to parse tiles JSON: {}", e)
-            ))?;
+        let tiles: Vec<StaticTile> = serde_json::from_str(tiles_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse tiles JSON: {}",
+                e
+            ))
+        })?;
 
         self.inner.load_tiles(tiles);
         Ok(())
@@ -210,10 +209,13 @@ impl PyResourceInstanceWrapperCore {
     /// Args:
     ///     metadata_json: JSON string of resource metadata
     fn set_resource_metadata(&mut self, metadata_json: &str) -> PyResult<()> {
-        let metadata: StaticResourceMetadata = serde_json::from_str(metadata_json)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to parse metadata JSON: {}", e)
-            ))?;
+        let metadata: StaticResourceMetadata =
+            serde_json::from_str(metadata_json).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to parse metadata JSON: {}",
+                    e
+                ))
+            })?;
 
         self.inner.resource_instance = Some(metadata);
         Ok(())
@@ -245,15 +247,16 @@ impl PyResourceInstanceWrapperCore {
         nodegroup_ids: Vec<String>,
         root_alias: String,
     ) -> PyResult<PyPopulateResult> {
-        let model = self.model_access.as_ref()
-            .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                "Model not initialized"
-            ))?;
+        let model = self.model_access.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Model not initialized")
+        })?;
 
-        let result = self.inner.populate(lazy, &nodegroup_ids, &root_alias, model)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                format!("Populate failed: {}", e)
-            ))?;
+        let result = self
+            .inner
+            .populate(lazy, &nodegroup_ids, &root_alias, model)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Populate failed: {}", e))
+            })?;
 
         Ok(PyPopulateResult::from_core(result))
     }
@@ -266,7 +269,8 @@ impl PyResourceInstanceWrapperCore {
     /// Returns:
     ///     RustPseudoList if found, None otherwise
     fn get_cached_pseudo(&self, alias: &str) -> Option<PyPseudoList> {
-        self.inner.get_cached_pseudo(alias)
+        self.inner
+            .get_cached_pseudo(alias)
             .map(PyPseudoList::from_core)
     }
 
@@ -298,42 +302,45 @@ impl PyResourceInstanceWrapperCore {
         parent_nodegroup_id: Option<String>,
         child_alias: String,
     ) -> PyResult<PySemanticChildResult> {
-        let model = self.model_access.as_ref()
-            .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                "Model not initialized"
-            ))?;
-
-        let result = self.inner.get_semantic_child_value(
-            parent_tile_id.as_ref(),
-            &parent_node_id,
-            parent_nodegroup_id.as_ref(),
-            &child_alias,
-            model,
-        ).map_err(|e| match e {
-            SemanticChildError::TilesNotLoaded { nodegroup_id } => {
-                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                    format!("Tiles not loaded for nodegroup: {}", nodegroup_id)
-                )
-            }
-            SemanticChildError::ChildNotFound { alias } => {
-                PyErr::new::<pyo3::exceptions::PyKeyError, _>(
-                    format!("Child node not found: {}", alias)
-                )
-            }
-            SemanticChildError::TilesNotInitialized => {
-                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                    "Tiles not initialized"
-                )
-            }
-            SemanticChildError::ModelNotInitialized(msg) => {
-                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                    format!("Model not initialized: {}", msg)
-                )
-            }
-            SemanticChildError::Other(msg) => {
-                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(msg)
-            }
+        let model = self.model_access.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Model not initialized")
         })?;
+
+        let result = self
+            .inner
+            .get_semantic_child_value(
+                parent_tile_id.as_ref(),
+                &parent_node_id,
+                parent_nodegroup_id.as_ref(),
+                &child_alias,
+                model,
+            )
+            .map_err(|e| match e {
+                SemanticChildError::TilesNotLoaded { nodegroup_id } => {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                        "Tiles not loaded for nodegroup: {}",
+                        nodegroup_id
+                    ))
+                }
+                SemanticChildError::ChildNotFound { alias } => {
+                    PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                        "Child node not found: {}",
+                        alias
+                    ))
+                }
+                SemanticChildError::TilesNotInitialized => {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Tiles not initialized")
+                }
+                SemanticChildError::ModelNotInitialized(msg) => {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                        "Model not initialized: {}",
+                        msg
+                    ))
+                }
+                SemanticChildError::Other(msg) => {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(msg)
+                }
+            })?;
 
         Ok(PySemanticChildResult::from_core(result))
     }
@@ -395,14 +402,16 @@ pub struct PyPopulateResult {
 impl PyPopulateResult {
     /// Get the values dict (alias -> RustPseudoList)
     fn get_values(&self) -> HashMap<String, PyPseudoList> {
-        self.values.iter()
+        self.values
+            .iter()
             .map(|(k, v)| (k.clone(), PyPseudoList::from_core(v.clone())))
             .collect()
     }
 
     /// Get a specific value by alias
     fn get_value(&self, alias: &str) -> Option<PyPseudoList> {
-        self.values.get(alias)
+        self.values
+            .get(alias)
             .map(|v| PyPseudoList::from_core(v.clone()))
     }
 
@@ -459,13 +468,15 @@ impl PySemanticChildResult {
 
     /// Get as list (returns None if not a list type)
     fn as_list(&self) -> Option<PyPseudoList> {
-        self.list_value.as_ref()
+        self.list_value
+            .as_ref()
             .map(|v| PyPseudoList::from_core(v.clone()))
     }
 
     /// Get as single value (returns None if not a single value)
     fn as_single(&self) -> Option<PyPseudoValue> {
-        self.single_value.as_ref()
+        self.single_value
+            .as_ref()
             .map(|v| PyPseudoValue::from_core(v.clone()))
     }
 
@@ -475,11 +486,8 @@ impl PySemanticChildResult {
             (Some(list), _) => Some(PyPseudoList::from_core(list.clone())),
             (None, Some(single)) => {
                 let alias = single.node.alias.clone().unwrap_or_default();
-                let list = PseudoListCore::from_values_with_cardinality(
-                    alias,
-                    vec![single.clone()],
-                    true,
-                );
+                let list =
+                    PseudoListCore::from_values_with_cardinality(alias, vec![single.clone()], true);
                 Some(PyPseudoList::from_core(list))
             }
             _ => None,
@@ -495,7 +503,10 @@ impl PySemanticChildResult {
             ),
             "list" => format!(
                 "RustSemanticChildResult(list, len={})",
-                self.list_value.as_ref().map(|v| v.values.len()).unwrap_or(0)
+                self.list_value
+                    .as_ref()
+                    .map(|v| v.values.len())
+                    .unwrap_or(0)
             ),
             _ => "RustSemanticChildResult(unknown)".to_string(),
         }

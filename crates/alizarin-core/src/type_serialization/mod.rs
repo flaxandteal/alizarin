@@ -24,12 +24,12 @@
 //! - `rdm` - Concepts (require RDM cache lookup)
 //! - `resources` - Resource instances, references
 
-mod options;
-mod scalars;
-mod strings;
 mod domain;
+mod options;
 mod rdm;
 mod resources;
+mod scalars;
+mod strings;
 
 use serde_json::Value;
 use std::collections::HashMap;
@@ -39,11 +39,15 @@ use std::sync::Arc;
 pub use options::{SerializationMode, SerializationOptions, SerializationResult};
 
 // Re-export serialization functions
-pub use scalars::{serialize_number, serialize_date, serialize_edtf};
-pub use strings::{serialize_string, serialize_url, serialize_geojson, serialize_non_localized_string};
-pub use domain::{serialize_boolean, serialize_domain_value, serialize_domain_value_list, DomainValueResolver};
+pub use domain::{
+    serialize_boolean, serialize_domain_value, serialize_domain_value_list, DomainValueResolver,
+};
 pub use rdm::{serialize_concept, serialize_concept_list, ConceptResolver};
 pub use resources::{serialize_resource_instance, serialize_resource_instance_list};
+pub use scalars::{serialize_date, serialize_edtf, serialize_number};
+pub use strings::{
+    serialize_geojson, serialize_non_localized_string, serialize_string, serialize_url,
+};
 
 // =============================================================================
 // Extension Display Serializer API
@@ -295,7 +299,12 @@ pub fn serialize_value(
 ///
 /// Use this when you just need to serialize without resolving UUIDs.
 pub fn serialize_tile_data(datatype: &str, tile_data: &Value) -> SerializationResult {
-    serialize_value(datatype, tile_data, &SerializationOptions::tile_data(), None)
+    serialize_value(
+        datatype,
+        tile_data,
+        &SerializationOptions::tile_data(),
+        None,
+    )
 }
 
 /// Simplified serialization for display mode without resolvers.
@@ -318,7 +327,12 @@ mod tests {
 
     #[test]
     fn test_serialize_value_dispatcher_number() {
-        let result = serialize_value("number", &json!(42), &SerializationOptions::tile_data(), None);
+        let result = serialize_value(
+            "number",
+            &json!(42),
+            &SerializationOptions::tile_data(),
+            None,
+        );
         assert!(!result.is_error());
         assert_eq!(result.value, json!(42));
     }
@@ -326,7 +340,12 @@ mod tests {
     #[test]
     fn test_serialize_value_dispatcher_string_tile_data() {
         let tile_data = json!({"en": "Hello", "es": "Hola"});
-        let result = serialize_value("string", &tile_data, &SerializationOptions::tile_data(), None);
+        let result = serialize_value(
+            "string",
+            &tile_data,
+            &SerializationOptions::tile_data(),
+            None,
+        );
         assert!(!result.is_error());
         assert_eq!(result.value, tile_data);
     }
@@ -372,7 +391,12 @@ mod tests {
     #[test]
     fn test_serialize_value_unknown_type() {
         let tile_data = json!({"custom": "data"});
-        let result = serialize_value("unknown-type", &tile_data, &SerializationOptions::tile_data(), None);
+        let result = serialize_value(
+            "unknown-type",
+            &tile_data,
+            &SerializationOptions::tile_data(),
+            None,
+        );
         assert!(!result.is_error());
         assert_eq!(result.value, tile_data);
     }

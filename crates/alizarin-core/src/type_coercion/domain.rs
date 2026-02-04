@@ -1,8 +1,8 @@
 //! Config-dependent type coercion: Boolean, DomainValue, DomainValueList.
 
-use serde_json::Value;
+use super::helpers::{is_valid_uuid, value_type_name};
 use super::result::CoercionResult;
-use super::helpers::{value_type_name, is_valid_uuid};
+use serde_json::Value;
 
 /// Coerce a value to boolean.
 ///
@@ -47,10 +47,7 @@ pub fn coerce_boolean(value: &Value, config: Option<&Value>) -> CoercionResult {
                     return CoercionResult::success(Value::Bool(b), display);
                 }
             }
-            CoercionResult::error(format!(
-                "Boolean must be true/false or 0/1, got {}",
-                n
-            ))
+            CoercionResult::error(format!("Boolean must be true/false or 0/1, got {}", n))
         }
         _ => CoercionResult::error(format!(
             "Expected boolean, got {:?}",
@@ -73,9 +70,7 @@ pub fn coerce_boolean(value: &Value, config: Option<&Value>) -> CoercionResult {
 pub fn coerce_domain_value(value: &Value, config: Option<&Value>) -> CoercionResult {
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
-        Value::String(s) if s.is_empty() => {
-            CoercionResult::success_same(Value::Null)
-        }
+        Value::String(s) if s.is_empty() => CoercionResult::success_same(Value::Null),
         Value::String(s) => {
             // Check if it's a valid UUID
             if is_valid_uuid(s) {
@@ -151,10 +146,7 @@ pub fn coerce_domain_value(value: &Value, config: Option<&Value>) -> CoercionRes
         Value::Object(obj) => {
             // Already a resolved domain value object - extract id for tile_data
             if let Some(id) = obj.get("id").and_then(|i| i.as_str()) {
-                CoercionResult::success(
-                    Value::String(id.to_string()),
-                    value.clone(),
-                )
+                CoercionResult::success(Value::String(id.to_string()), value.clone())
             } else {
                 CoercionResult::error("Domain value object must have 'id' field")
             }
@@ -177,9 +169,7 @@ pub fn coerce_domain_value(value: &Value, config: Option<&Value>) -> CoercionRes
 pub fn coerce_domain_value_list(value: &Value, config: Option<&Value>) -> CoercionResult {
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
-        Value::Array(arr) if arr.is_empty() => {
-            CoercionResult::success_same(Value::Array(vec![]))
-        }
+        Value::Array(arr) if arr.is_empty() => CoercionResult::success_same(Value::Array(vec![])),
         Value::Array(arr) => {
             let mut tile_data = Vec::new();
             let mut display_values = Vec::new();
@@ -202,10 +192,7 @@ pub fn coerce_domain_value_list(value: &Value, config: Option<&Value>) -> Coerci
                 ));
             }
 
-            CoercionResult::success(
-                Value::Array(tile_data),
-                Value::Array(display_values),
-            )
+            CoercionResult::success(Value::Array(tile_data), Value::Array(display_values))
         }
         _ => CoercionResult::error(format!(
             "Expected domain value list (array), got {:?}",
@@ -281,7 +268,10 @@ mod tests {
     fn test_coerce_domain_value_uuid_no_config() {
         let result = coerce_domain_value(&json!("550e8400-e29b-41d4-a716-446655440000"), None);
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!("550e8400-e29b-41d4-a716-446655440000"));
+        assert_eq!(
+            result.tile_data,
+            json!("550e8400-e29b-41d4-a716-446655440000")
+        );
     }
 
     #[test]
@@ -292,20 +282,32 @@ mod tests {
                 {"id": "550e8400-e29b-41d4-a716-446655440001", "text": {"en": "Option B"}}
             ]
         });
-        let result = coerce_domain_value(&json!("550e8400-e29b-41d4-a716-446655440000"), Some(&config));
+        let result = coerce_domain_value(
+            &json!("550e8400-e29b-41d4-a716-446655440000"),
+            Some(&config),
+        );
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!("550e8400-e29b-41d4-a716-446655440000"));
+        assert_eq!(
+            result.tile_data,
+            json!("550e8400-e29b-41d4-a716-446655440000")
+        );
         assert_eq!(result.display_value["text"]["en"], json!("Option A"));
     }
 
     #[test]
     fn test_coerce_domain_value_object_input() {
-        let result = coerce_domain_value(&json!({
-            "id": "550e8400-e29b-41d4-a716-446655440000",
-            "text": {"en": "Existing"}
-        }), None);
+        let result = coerce_domain_value(
+            &json!({
+                "id": "550e8400-e29b-41d4-a716-446655440000",
+                "text": {"en": "Existing"}
+            }),
+            None,
+        );
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!("550e8400-e29b-41d4-a716-446655440000"));
+        assert_eq!(
+            result.tile_data,
+            json!("550e8400-e29b-41d4-a716-446655440000")
+        );
     }
 
     #[test]
@@ -332,8 +334,15 @@ mod tests {
             ]
         });
         let result = coerce_domain_value(&json!("Option A"), Some(&config));
-        assert!(!result.is_error(), "Expected success, got error: {:?}", result.error);
-        assert_eq!(result.tile_data, json!("550e8400-e29b-41d4-a716-446655440000"));
+        assert!(
+            !result.is_error(),
+            "Expected success, got error: {:?}",
+            result.error
+        );
+        assert_eq!(
+            result.tile_data,
+            json!("550e8400-e29b-41d4-a716-446655440000")
+        );
         assert_eq!(result.display_value["text"]["en"], json!("Option A"));
     }
 
@@ -348,7 +357,10 @@ mod tests {
         });
         let result = coerce_domain_value(&json!("Opción A"), Some(&config));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!("550e8400-e29b-41d4-a716-446655440000"));
+        assert_eq!(
+            result.tile_data,
+            json!("550e8400-e29b-41d4-a716-446655440000")
+        );
     }
 
     #[test]
@@ -374,10 +386,13 @@ mod tests {
 
     #[test]
     fn test_coerce_domain_value_list_uuids() {
-        let result = coerce_domain_value_list(&json!([
-            "550e8400-e29b-41d4-a716-446655440000",
-            "550e8400-e29b-41d4-a716-446655440001"
-        ]), None);
+        let result = coerce_domain_value_list(
+            &json!([
+                "550e8400-e29b-41d4-a716-446655440000",
+                "550e8400-e29b-41d4-a716-446655440001"
+            ]),
+            None,
+        );
         assert!(!result.is_error());
         let arr = result.tile_data.as_array().unwrap();
         assert_eq!(arr.len(), 2);

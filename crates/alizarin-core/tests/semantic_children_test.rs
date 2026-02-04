@@ -1,9 +1,11 @@
 /// Tests for findSemanticChildren implementation
 /// Ensures Rust logic exactly matches TypeScript semantic.ts lines 269-340
-use alizarin_core::{StaticTile, StaticNode, matches_semantic_child as core_matches_semantic_child};
-use std::collections::HashMap;
-use serde_json::Value as JsonValue;
+use alizarin_core::{
+    matches_semantic_child as core_matches_semantic_child, StaticNode, StaticTile,
+};
 use serde_json::json;
+use serde_json::Value as JsonValue;
+use std::collections::HashMap;
 
 /// Helper to create a test node
 fn create_test_node(
@@ -79,11 +81,16 @@ fn test_different_nodegroup_null_parent_tile() {
     let parent_node_id = "ng-parent";
 
     // Child is in different nodegroup "ng-child" with null parenttile_id
-    let child_node = create_test_node("node-child", "child_alias", Some("ng-child".to_string()), false);
+    let child_node = create_test_node(
+        "node-child",
+        "child_alias",
+        Some("ng-child".to_string()),
+        false,
+    );
     let child_tile = create_test_tile(
         "tile-child",
         "ng-child",
-        None,  // parenttile_id is null
+        None, // parenttile_id is null
         vec![("node-child", JsonValue::String("test".to_string()))],
     );
 
@@ -94,7 +101,10 @@ fn test_different_nodegroup_null_parent_tile() {
         Some(&child_tile),
     );
 
-    assert!(matches, "Branch 1: Different nodegroup + null parenttile_id should match");
+    assert!(
+        matches,
+        "Branch 1: Different nodegroup + null parenttile_id should match"
+    );
 }
 
 /// Test Branch 1: Different nodegroup + matching parenttile_id
@@ -104,11 +114,16 @@ fn test_different_nodegroup_matching_parent_tile() {
     let parent_tile_id = Some("tile-parent".to_string());
     let parent_node_id = "ng-parent";
 
-    let child_node = create_test_node("node-child", "child_alias", Some("ng-child".to_string()), false);
+    let child_node = create_test_node(
+        "node-child",
+        "child_alias",
+        Some("ng-child".to_string()),
+        false,
+    );
     let child_tile = create_test_tile(
         "tile-child",
         "ng-child",
-        Some("tile-parent".to_string()),  // parenttile_id matches parent
+        Some("tile-parent".to_string()), // parenttile_id matches parent
         vec![("node-child", JsonValue::String("test".to_string()))],
     );
 
@@ -119,7 +134,10 @@ fn test_different_nodegroup_matching_parent_tile() {
         Some(&child_tile),
     );
 
-    assert!(matches, "Branch 1: Different nodegroup + matching parenttile_id should match");
+    assert!(
+        matches,
+        "Branch 1: Different nodegroup + matching parenttile_id should match"
+    );
 }
 
 /// Test Branch 1: Different nodegroup + NON-matching parenttile_id
@@ -129,11 +147,16 @@ fn test_different_nodegroup_non_matching_parent_tile() {
     let parent_tile_id = Some("tile-parent".to_string());
     let parent_node_id = "ng-parent";
 
-    let child_node = create_test_node("node-child", "child_alias", Some("ng-child".to_string()), false);
+    let child_node = create_test_node(
+        "node-child",
+        "child_alias",
+        Some("ng-child".to_string()),
+        false,
+    );
     let child_tile = create_test_tile(
         "tile-child",
         "ng-child",
-        Some("tile-different-parent".to_string()),  // parenttile_id does NOT match parent
+        Some("tile-different-parent".to_string()), // parenttile_id does NOT match parent
         vec![("node-child", JsonValue::String("test".to_string()))],
     );
 
@@ -144,7 +167,10 @@ fn test_different_nodegroup_non_matching_parent_tile() {
         Some(&child_tile),
     );
 
-    assert!(!matches, "Branch 1: Different nodegroup + non-matching parenttile_id should NOT match");
+    assert!(
+        !matches,
+        "Branch 1: Different nodegroup + non-matching parenttile_id should NOT match"
+    );
 }
 
 /// Test Branch 2: Same nodegroup + shared tile + not collector
@@ -155,7 +181,12 @@ fn test_same_nodegroup_shared_tile_not_collector() {
     let parent_node_id = "ng-shared";
 
     // Child is in same nodegroup, not a collector
-    let child_node = create_test_node("node-child", "child_alias", Some("ng-shared".to_string()), false);
+    let child_node = create_test_node(
+        "node-child",
+        "child_alias",
+        Some("ng-shared".to_string()),
+        false,
+    );
     let child_tile = create_test_tile(
         "tile-shared",
         "ng-shared",
@@ -170,7 +201,10 @@ fn test_same_nodegroup_shared_tile_not_collector() {
         Some(&child_tile),
     );
 
-    assert!(matches, "Branch 2: Same nodegroup + shared tile + not collector should match");
+    assert!(
+        matches,
+        "Branch 2: Same nodegroup + shared tile + not collector should match"
+    );
 }
 
 /// Test Branch 2: Same nodegroup + shared tile + IS collector
@@ -181,7 +215,12 @@ fn test_same_nodegroup_shared_tile_is_collector() {
     let parent_node_id = "ng-shared";
 
     // Child is a collector - should NOT match Branch 2
-    let child_node = create_test_node("node-child", "child_alias", Some("ng-shared".to_string()), true);
+    let child_node = create_test_node(
+        "node-child",
+        "child_alias",
+        Some("ng-shared".to_string()),
+        true,
+    );
     let child_tile = create_test_tile(
         "tile-shared",
         "ng-shared",
@@ -196,7 +235,10 @@ fn test_same_nodegroup_shared_tile_is_collector() {
         Some(&child_tile),
     );
 
-    assert!(!matches, "Branch 2: Same nodegroup + shared tile + IS collector should NOT match");
+    assert!(
+        !matches,
+        "Branch 2: Same nodegroup + shared tile + IS collector should NOT match"
+    );
 }
 
 /// Test Branch 3: Different nodegroup + is_collector
@@ -207,11 +249,16 @@ fn test_different_nodegroup_is_collector() {
     let parent_node_id = "ng-parent";
 
     // Child is in different nodegroup AND is a collector
-    let child_node = create_test_node("node-child", "child_alias", Some("ng-child".to_string()), true);
+    let child_node = create_test_node(
+        "node-child",
+        "child_alias",
+        Some("ng-child".to_string()),
+        true,
+    );
     let child_tile = create_test_tile(
         "tile-child",
         "ng-child",
-        Some("tile-some-other-parent".to_string()),  // parenttile_id doesn't match
+        Some("tile-some-other-parent".to_string()), // parenttile_id doesn't match
         vec![("node-child", JsonValue::String("test".to_string()))],
     );
 
@@ -222,7 +269,10 @@ fn test_different_nodegroup_is_collector() {
         Some(&child_tile),
     );
 
-    assert!(matches, "Branch 3: Different nodegroup + is_collector should match");
+    assert!(
+        matches,
+        "Branch 3: Different nodegroup + is_collector should match"
+    );
 }
 
 /// Test Edge Case: Same nodegroup + different tile
@@ -232,9 +282,14 @@ fn test_same_nodegroup_different_tile() {
     let parent_tile_id = Some("tile-parent".to_string());
     let parent_node_id = "ng-shared";
 
-    let child_node = create_test_node("node-child", "child_alias", Some("ng-shared".to_string()), false);
+    let child_node = create_test_node(
+        "node-child",
+        "child_alias",
+        Some("ng-shared".to_string()),
+        false,
+    );
     let child_tile = create_test_tile(
-        "tile-different",  // Different tile ID
+        "tile-different", // Different tile ID
         "ng-shared",
         None,
         vec![("node-child", JsonValue::String("test".to_string()))],
@@ -257,7 +312,12 @@ fn test_null_parent_tile() {
     let parent_tile_id: Option<String> = None;
     let parent_node_id = "ng-parent";
 
-    let child_node = create_test_node("node-child", "child_alias", Some("ng-child".to_string()), false);
+    let child_node = create_test_node(
+        "node-child",
+        "child_alias",
+        Some("ng-child".to_string()),
+        false,
+    );
     let child_tile = create_test_tile(
         "tile-child",
         "ng-child",
@@ -274,7 +334,10 @@ fn test_null_parent_tile() {
 
     // With null parent tile, Branch 1 and Branch 2 won't match
     // But Branch 3 might match if different nodegroup + collector
-    assert!(!matches, "Null parent tile + not collector should NOT match");
+    assert!(
+        !matches,
+        "Null parent tile + not collector should NOT match"
+    );
 }
 
 /// Test Edge Case: null parent tile + collector
@@ -284,7 +347,12 @@ fn test_null_parent_tile_collector() {
     let parent_tile_id: Option<String> = None;
     let parent_node_id = "ng-parent";
 
-    let child_node = create_test_node("node-child", "child_alias", Some("ng-child".to_string()), true);
+    let child_node = create_test_node(
+        "node-child",
+        "child_alias",
+        Some("ng-child".to_string()),
+        true,
+    );
     let child_tile = create_test_tile(
         "tile-child",
         "ng-child",
@@ -299,7 +367,10 @@ fn test_null_parent_tile_collector() {
         Some(&child_tile),
     );
 
-    assert!(matches, "Null parent tile + different nodegroup + collector should match Branch 3");
+    assert!(
+        matches,
+        "Null parent tile + different nodegroup + collector should match Branch 3"
+    );
 }
 
 /// Test comprehensive scenario: Multiple children with different relationships
@@ -309,7 +380,12 @@ fn test_multiple_children_relationships() {
     let parent_node_id = "ng-parent";
 
     // Child 1: Different nodegroup, null parent (Branch 1) - MATCH
-    let child1 = create_test_node("node-child1", "child1", Some("ng-child1".to_string()), false);
+    let child1 = create_test_node(
+        "node-child1",
+        "child1",
+        Some("ng-child1".to_string()),
+        false,
+    );
     let tile1 = create_test_tile(
         "tile-child1",
         "ng-child1",
@@ -324,7 +400,12 @@ fn test_multiple_children_relationships() {
     ));
 
     // Child 2: Same nodegroup, shared tile, not collector (Branch 2) - MATCH
-    let child2 = create_test_node("node-child2", "child2", Some("ng-parent".to_string()), false);
+    let child2 = create_test_node(
+        "node-child2",
+        "child2",
+        Some("ng-parent".to_string()),
+        false,
+    );
     let tile2 = create_test_tile(
         "tile-parent",
         "ng-parent",

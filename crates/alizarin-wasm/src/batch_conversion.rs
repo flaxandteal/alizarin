@@ -1,16 +1,15 @@
+use crate::graph::StaticGraph;
+use crate::json_conversion::create_static_resource;
+use alizarin_core::tiles_to_tree as core_tiles_to_tree;
+use alizarin_core::{
+    batch_merge_resources, merge_resources, transform_keys_to_snake, tree_to_tiles, StaticResource,
+};
+use serde_json::Value;
 /// Batch conversion functions for WASM - parallel processing
 ///
 /// This module provides batch conversion functions that process multiple resources
 /// in parallel, matching the Python API and enabling optimized bulk operations.
 use wasm_bindgen::prelude::*;
-use serde_json::Value;
-use crate::graph::StaticGraph;
-use crate::json_conversion::create_static_resource;
-use alizarin_core::tiles_to_tree as core_tiles_to_tree;
-use alizarin_core::{
-    tree_to_tiles, merge_resources, batch_merge_resources, StaticResource,
-    transform_keys_to_snake,
-};
 
 /// Single tree to tiles conversion with from_camel and strict parameters
 ///
@@ -84,7 +83,8 @@ pub fn tiles_to_tree_enhanced(
     let graph_id = graph.graph_id();
 
     // Extract resource_id
-    let resource_id = resource.get("resourceinstance")
+    let resource_id = resource
+        .get("resourceinstance")
         .and_then(|ri| ri.get("resourceinstanceid"))
         .or_else(|| resource.get("resourceinstanceid"))
         .and_then(|v| v.as_str())
@@ -96,18 +96,15 @@ pub fn tiles_to_tree_enhanced(
         resource.clone()
     } else {
         // Old format - convert to StaticResource
-        let tiles: Vec<alizarin_core::StaticTile> = resource.get("tiles")
+        let tiles: Vec<alizarin_core::StaticTile> = resource
+            .get("tiles")
             .map(|t| serde_json::from_value(t.clone()))
             .transpose()
             .map_err(|e| JsValue::from_str(&format!("Failed to parse tiles: {}", e)))?
             .unwrap_or_default();
 
-        let static_resource = create_static_resource(
-            resource_id.clone(),
-            graph_id.to_string(),
-            tiles,
-            graph,
-        );
+        let static_resource =
+            create_static_resource(resource_id.clone(), graph_id.to_string(), tiles, graph);
 
         serde_json::to_value(&static_resource)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize resource: {}", e)))?
@@ -117,7 +114,8 @@ pub fn tiles_to_tree_enhanced(
     match core_tiles_to_tree(&input_json, graph) {
         Ok(json_tree_array) => {
             // Extract first element and add metadata
-            let mut tree = json_tree_array.as_array()
+            let mut tree = json_tree_array
+                .as_array()
                 .and_then(|arr| arr.first().cloned())
                 .unwrap_or(Value::Object(serde_json::Map::new()));
 
@@ -171,7 +169,8 @@ pub fn batch_trees_to_tiles(
         if keys.len() != trees.len() {
             return Err(JsValue::from_str(&format!(
                 "id_keys length ({}) must match trees length ({})",
-                keys.len(), trees.len()
+                keys.len(),
+                trees.len()
             )));
         }
     }
@@ -263,7 +262,8 @@ pub fn batch_tiles_to_trees(
         // Extract resource_id from either format:
         // - New format: resource.resourceinstance.resourceinstanceid
         // - Old format: resource.resourceinstanceid
-        let resource_id = resource.get("resourceinstance")
+        let resource_id = resource
+            .get("resourceinstance")
             .and_then(|ri| ri.get("resourceinstanceid"))
             .or_else(|| resource.get("resourceinstanceid"))
             .and_then(|v| v.as_str())
@@ -276,19 +276,16 @@ pub fn batch_tiles_to_trees(
             resource.clone()
         } else {
             // Old format - convert to StaticResource
-            let tiles: Vec<alizarin_core::StaticTile> = resource.get("tiles")
+            let tiles: Vec<alizarin_core::StaticTile> = resource
+                .get("tiles")
                 .map(|t| serde_json::from_value(t.clone()))
                 .transpose()
                 .map_err(|e| format!("Resource {}: Failed to parse tiles: {}", i, e))
                 .map_err(|e| JsValue::from_str(&e))?
                 .unwrap_or_default();
 
-            let static_resource = create_static_resource(
-                resource_id.clone(),
-                graph_id.to_string(),
-                tiles,
-                graph,
-            );
+            let static_resource =
+                create_static_resource(resource_id.clone(), graph_id.to_string(), tiles, graph);
 
             serde_json::to_value(&static_resource)
                 .map_err(|e| format!("Resource {}: Failed to serialize: {}", i, e))
@@ -299,7 +296,8 @@ pub fn batch_tiles_to_trees(
         match core_tiles_to_tree(&input_json, graph) {
             Ok(json_tree_array) => {
                 // Extract first element and add metadata
-                let mut tree = json_tree_array.as_array()
+                let mut tree = json_tree_array
+                    .as_array()
                     .and_then(|arr| arr.first().cloned())
                     .unwrap_or(Value::Object(serde_json::Map::new()));
 
@@ -314,7 +312,10 @@ pub fn batch_tiles_to_trees(
                 let error_msg = format!("Resource {}: {}", i, e);
                 errors.push(error_msg.clone());
                 if strict {
-                    return Err(JsValue::from_str(&format!("Strict mode error: {}", error_msg)));
+                    return Err(JsValue::from_str(&format!(
+                        "Strict mode error: {}",
+                        error_msg
+                    )));
                 }
             }
         }
@@ -366,7 +367,7 @@ pub fn merge_resources_wasm(resources_json: &str) -> Result<JsValue, JsValue> {
             serde_wasm_bindgen::to_value(&output)
                 .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
         }
-        Err(e) => Err(JsValue::from_str(&e))
+        Err(e) => Err(JsValue::from_str(&e)),
     }
 }
 
@@ -387,7 +388,10 @@ pub fn merge_resources_wasm(resources_json: &str) -> Result<JsValue, JsValue> {
 /// Returns:
 ///     {resources: StaticResource[], warnings: string[]}
 #[wasm_bindgen(js_name = batchMergeResources)]
-pub fn batch_merge_resources_wasm(batches_json: &str, recompute_descriptors: Option<bool>) -> Result<JsValue, JsValue> {
+pub fn batch_merge_resources_wasm(
+    batches_json: &str,
+    recompute_descriptors: Option<bool>,
+) -> Result<JsValue, JsValue> {
     // Parse the outer array of JSON strings
     let batch_strings: Vec<String> = serde_json::from_str(batches_json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse batches array: {}", e)))?;
@@ -401,31 +405,47 @@ pub fn batch_merge_resources_wasm(batches_json: &str, recompute_descriptors: Opt
 
         let batch: Vec<StaticResource> = match &value {
             // Array of resources
-            Value::Array(_) => {
-                serde_json::from_value(value)
-                    .map_err(|e| JsValue::from_str(&format!("Batch {}: Failed to parse as resource array: {}", i, e)))?
-            }
+            Value::Array(_) => serde_json::from_value(value).map_err(|e| {
+                JsValue::from_str(&format!(
+                    "Batch {}: Failed to parse as resource array: {}",
+                    i, e
+                ))
+            })?,
             // Object - could be BusinessDataWrapper or single resource
             Value::Object(map) => {
                 if let Some(bd) = map.get("business_data") {
                     // BusinessDataWrapper format
                     if let Some(resources) = bd.get("resources") {
-                        serde_json::from_value(resources.clone())
-                            .map_err(|e| JsValue::from_str(&format!("Batch {}: Failed to parse business_data.resources: {}", i, e)))?
+                        serde_json::from_value(resources.clone()).map_err(|e| {
+                            JsValue::from_str(&format!(
+                                "Batch {}: Failed to parse business_data.resources: {}",
+                                i, e
+                            ))
+                        })?
                     } else {
-                        return Err(JsValue::from_str(&format!("Batch {}: business_data missing 'resources' field", i)));
+                        return Err(JsValue::from_str(&format!(
+                            "Batch {}: business_data missing 'resources' field",
+                            i
+                        )));
                     }
                 } else if map.contains_key("resourceinstance") {
                     // Single StaticResource
-                    let resource: StaticResource = serde_json::from_value(value)
-                        .map_err(|e| JsValue::from_str(&format!("Batch {}: Failed to parse as single resource: {}", i, e)))?;
+                    let resource: StaticResource = serde_json::from_value(value).map_err(|e| {
+                        JsValue::from_str(&format!(
+                            "Batch {}: Failed to parse as single resource: {}",
+                            i, e
+                        ))
+                    })?;
                     vec![resource]
                 } else {
                     return Err(JsValue::from_str(&format!("Batch {}: Unrecognized format - expected array, BusinessDataWrapper, or StaticResource", i)));
                 }
             }
             _ => {
-                return Err(JsValue::from_str(&format!("Batch {}: Expected array or object", i)));
+                return Err(JsValue::from_str(&format!(
+                    "Batch {}: Expected array or object",
+                    i
+                )));
             }
         };
 

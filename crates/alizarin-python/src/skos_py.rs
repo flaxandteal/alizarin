@@ -6,8 +6,7 @@
 use pyo3::prelude::*;
 
 use alizarin_core::skos::{
-    parse_skos_to_collections, collection_to_skos_xml, collections_to_skos_xml,
-    SkosCollection,
+    collection_to_skos_xml, collections_to_skos_xml, parse_skos_to_collections, SkosCollection,
 };
 
 /// Parse SKOS RDF/XML and return collections as JSON string.
@@ -26,10 +25,9 @@ pub fn parse_skos_xml(xml_content: &str, base_uri: &str) -> PyResult<String> {
     let collections = parse_skos_to_collections(xml_content, base_uri)
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
-    serde_json::to_string(&collections)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Serialization error: {}", e)
-        ))
+    serde_json::to_string(&collections).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Serialization error: {}", e))
+    })
 }
 
 /// Parse SKOS RDF/XML and return a single collection as JSON string.
@@ -50,15 +48,14 @@ pub fn parse_skos_xml_to_collection(xml_content: &str, base_uri: &str) -> PyResu
 
     if collections.is_empty() {
         return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            "No SKOS ConceptScheme found in XML"
+            "No SKOS ConceptScheme found in XML",
         ));
     }
 
     let collection = collections.remove(0);
-    serde_json::to_string(&collection)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Serialization error: {}", e)
-        ))
+    serde_json::to_string(&collection).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Serialization error: {}", e))
+    })
 }
 
 /// Serialize a SkosCollection to SKOS RDF/XML.
@@ -74,10 +71,12 @@ pub fn parse_skos_xml_to_collection(xml_content: &str, base_uri: &str) -> PyResu
 ///     ValueError: If JSON parsing fails
 #[pyfunction]
 pub fn skos_collection_to_xml(collection_json: &str, base_uri: &str) -> PyResult<String> {
-    let collection: SkosCollection = serde_json::from_str(collection_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to deserialize collection: {}", e)
-        ))?;
+    let collection: SkosCollection = serde_json::from_str(collection_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to deserialize collection: {}",
+            e
+        ))
+    })?;
 
     Ok(collection_to_skos_xml(&collection, base_uri))
 }
@@ -95,10 +94,12 @@ pub fn skos_collection_to_xml(collection_json: &str, base_uri: &str) -> PyResult
 ///     ValueError: If JSON parsing fails
 #[pyfunction]
 pub fn skos_collections_to_xml(collections_json: &str, base_uri: &str) -> PyResult<String> {
-    let collections: Vec<SkosCollection> = serde_json::from_str(collections_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to deserialize collections: {}", e)
-        ))?;
+    let collections: Vec<SkosCollection> = serde_json::from_str(collections_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to deserialize collections: {}",
+            e
+        ))
+    })?;
 
     Ok(collections_to_skos_xml(&collections, base_uri))
 }

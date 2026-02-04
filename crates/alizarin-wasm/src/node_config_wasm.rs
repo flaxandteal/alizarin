@@ -1,18 +1,15 @@
+use js_sys::{Array, Object, Reflect};
 /// WASM bindings for Node configuration types.
 ///
 /// This module wraps the platform-agnostic types from alizarin-core
 /// with wasm-bindgen bindings for TypeScript/JavaScript access.
 use wasm_bindgen::prelude::*;
-use js_sys::{Array, Object, Reflect};
 
 // Import core types
 use alizarin_core::node_config::{
-    NodeConfigBoolean as CoreNodeConfigBoolean,
-    NodeConfigConcept as CoreNodeConfigConcept,
-    NodeConfigDomain as CoreNodeConfigDomain,
-    NodeConfigManager as CoreNodeConfigManager,
-    NodeConfigReference as CoreNodeConfigReference,
-    StaticDomainValue as CoreStaticDomainValue,
+    NodeConfigBoolean as CoreNodeConfigBoolean, NodeConfigConcept as CoreNodeConfigConcept,
+    NodeConfigDomain as CoreNodeConfigDomain, NodeConfigManager as CoreNodeConfigManager,
+    NodeConfigReference as CoreNodeConfigReference, StaticDomainValue as CoreStaticDomainValue,
 };
 
 // =============================================================================
@@ -68,7 +65,9 @@ impl From<CoreStaticDomainValue> for WasmStaticDomainValue {
 
 impl From<&CoreStaticDomainValue> for WasmStaticDomainValue {
     fn from(inner: &CoreStaticDomainValue) -> Self {
-        Self { inner: inner.clone() }
+        Self {
+            inner: inner.clone(),
+        }
     }
 }
 
@@ -119,7 +118,9 @@ impl From<CoreNodeConfigBoolean> for WasmNodeConfigBoolean {
 
 impl From<&CoreNodeConfigBoolean> for WasmNodeConfigBoolean {
     fn from(inner: &CoreNodeConfigBoolean) -> Self {
-        Self { inner: inner.clone() }
+        Self {
+            inner: inner.clone(),
+        }
     }
 }
 
@@ -150,7 +151,9 @@ impl From<CoreNodeConfigConcept> for WasmNodeConfigConcept {
 
 impl From<&CoreNodeConfigConcept> for WasmNodeConfigConcept {
     fn from(inner: &CoreNodeConfigConcept) -> Self {
-        Self { inner: inner.clone() }
+        Self {
+            inner: inner.clone(),
+        }
     }
 }
 
@@ -199,7 +202,9 @@ impl From<CoreNodeConfigReference> for WasmNodeConfigReference {
 
 impl From<&CoreNodeConfigReference> for WasmNodeConfigReference {
     fn from(inner: &CoreNodeConfigReference) -> Self {
-        Self { inner: inner.clone() }
+        Self {
+            inner: inner.clone(),
+        }
     }
 }
 
@@ -218,7 +223,9 @@ impl WasmNodeConfigDomain {
     /// Get all options as an array
     #[wasm_bindgen(getter)]
     pub fn options(&self) -> Array {
-        self.inner.options.iter()
+        self.inner
+            .options
+            .iter()
             .map(|opt| {
                 let wasm_opt: WasmStaticDomainValue = opt.into();
                 JsValue::from(wasm_opt)
@@ -235,13 +242,17 @@ impl WasmNodeConfigDomain {
     /// Find option by ID
     #[wasm_bindgen(js_name = valueFromId)]
     pub fn value_from_id(&self, id: &str) -> Option<WasmStaticDomainValue> {
-        self.inner.value_from_id(id).map(WasmStaticDomainValue::from)
+        self.inner
+            .value_from_id(id)
+            .map(WasmStaticDomainValue::from)
     }
 
     /// Get all option IDs
     #[wasm_bindgen(js_name = getOptionIds)]
     pub fn get_option_ids(&self) -> Array {
-        self.inner.get_option_ids().iter()
+        self.inner
+            .get_option_ids()
+            .iter()
             .map(|id| JsValue::from_str(id))
             .collect()
     }
@@ -255,7 +266,9 @@ impl From<CoreNodeConfigDomain> for WasmNodeConfigDomain {
 
 impl From<&CoreNodeConfigDomain> for WasmNodeConfigDomain {
     fn from(inner: &CoreNodeConfigDomain) -> Self {
-        Self { inner: inner.clone() }
+        Self {
+            inner: inner.clone(),
+        }
     }
 }
 
@@ -282,38 +295,53 @@ impl WasmNodeConfigManager {
     /// Build configs from a graph JSON string
     #[wasm_bindgen(js_name = fromGraphJson)]
     pub fn from_graph_json(&mut self, graph_json: &str) -> Result<(), JsValue> {
-        self.inner.from_graph_json(graph_json)
+        self.inner
+            .from_graph_json(graph_json)
             .map_err(|e| JsValue::from_str(&e))
     }
 
     /// Get boolean config for a node
     #[wasm_bindgen(js_name = getBoolean)]
     pub fn get_boolean(&self, nodeid: &str) -> Option<WasmNodeConfigBoolean> {
-        self.inner.get_boolean(nodeid).map(WasmNodeConfigBoolean::from)
+        self.inner
+            .get_boolean(nodeid)
+            .map(WasmNodeConfigBoolean::from)
     }
 
     /// Get concept config for a node
     #[wasm_bindgen(js_name = getConcept)]
     pub fn get_concept(&self, nodeid: &str) -> Option<WasmNodeConfigConcept> {
-        self.inner.get_concept(nodeid).map(WasmNodeConfigConcept::from)
+        self.inner
+            .get_concept(nodeid)
+            .map(WasmNodeConfigConcept::from)
     }
 
     /// Get reference config for a node
     #[wasm_bindgen(js_name = getReference)]
     pub fn get_reference(&self, nodeid: &str) -> Option<WasmNodeConfigReference> {
-        self.inner.get_reference(nodeid).map(WasmNodeConfigReference::from)
+        self.inner
+            .get_reference(nodeid)
+            .map(WasmNodeConfigReference::from)
     }
 
     /// Get domain config for a node
     #[wasm_bindgen(js_name = getDomain)]
     pub fn get_domain(&self, nodeid: &str) -> Option<WasmNodeConfigDomain> {
-        self.inner.get_domain(nodeid).map(WasmNodeConfigDomain::from)
+        self.inner
+            .get_domain(nodeid)
+            .map(WasmNodeConfigDomain::from)
     }
 
     /// Look up domain value by ID
     #[wasm_bindgen(js_name = lookupDomainValue)]
-    pub fn lookup_domain_value(&self, nodeid: &str, value_id: &str) -> Option<WasmStaticDomainValue> {
-        self.inner.lookup_domain_value(nodeid, value_id).map(WasmStaticDomainValue::from)
+    pub fn lookup_domain_value(
+        &self,
+        nodeid: &str,
+        value_id: &str,
+    ) -> Option<WasmStaticDomainValue> {
+        self.inner
+            .lookup_domain_value(nodeid, value_id)
+            .map(WasmStaticDomainValue::from)
     }
 
     /// Check if a node has config

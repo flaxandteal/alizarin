@@ -326,8 +326,8 @@ use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use crate::graph::{
-    StaticGraph, StaticNode, StaticNodegroup, StaticEdge,
-    StaticCard, StaticCardsXNodesXWidgets, StaticTranslatableString,
+    StaticCard, StaticCardsXNodesXWidgets, StaticEdge, StaticGraph, StaticNode, StaticNodegroup,
+    StaticTranslatableString,
 };
 
 // =============================================================================
@@ -585,7 +585,8 @@ pub fn get_default_widget_for_datatype(datatype: &str) -> Result<Widget, Mutatio
             return Ok(Widget::from(registered));
         }
         // Fall back to static widgets
-        return WIDGETS.get(&widget_name)
+        return WIDGETS
+            .get(&widget_name)
             .cloned()
             .ok_or(MutationError::WidgetNotFound(widget_name));
     }
@@ -606,7 +607,8 @@ pub fn get_default_widget_for_datatype(datatype: &str) -> Result<Widget, Mutatio
         other => return Err(MutationError::NoWidgetForDatatype(other.to_string())),
     };
 
-    WIDGETS.get(widget_name)
+    WIDGETS
+        .get(widget_name)
         .cloned()
         .ok_or_else(|| MutationError::WidgetNotFound(widget_name.to_string()))
 }
@@ -616,8 +618,7 @@ pub fn get_default_widget_for_datatype(datatype: &str) -> Result<Widget, Mutatio
 // =============================================================================
 
 /// Node cardinality (one or many instances allowed)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "String")]
 pub enum Cardinality {
     /// Single instance only
@@ -688,7 +689,11 @@ pub enum MutationError {
     /// No nodes found for the branch at target
     NoBranchNodesFound(String),
     /// Invalid datatype for operation
-    InvalidDatatype { expected: String, found: String, node_id: String },
+    InvalidDatatype {
+        expected: String,
+        found: String,
+        node_id: String,
+    },
     /// Function mapping not found
     FunctionNotFound(String),
     /// Cannot delete root node
@@ -714,27 +719,63 @@ impl std::fmt::Display for MutationError {
             MutationError::NodeNotFound(id) => write!(f, "Node not found: {}", id),
             MutationError::NodegroupNotFound(id) => write!(f, "Nodegroup not found: {}", id),
             MutationError::CardNotFound(ng) => write!(f, "Card not found for nodegroup: {}", ng),
-            MutationError::CardAlreadyExists(ng) => write!(f, "Nodegroup already has a card: {}", ng),
-            MutationError::NoWidgetForDatatype(dt) => write!(f, "No default widget for datatype: {}", dt),
+            MutationError::CardAlreadyExists(ng) => {
+                write!(f, "Nodegroup already has a card: {}", ng)
+            }
+            MutationError::NoWidgetForDatatype(dt) => {
+                write!(f, "No default widget for datatype: {}", dt)
+            }
             MutationError::WidgetNotFound(name) => write!(f, "Widget not found: {}", name),
             MutationError::JsonError(msg) => write!(f, "JSON error: {}", msg),
-            MutationError::AliasClash(alias) => write!(f, "Alias already exists in target graph: {}", alias),
+            MutationError::AliasClash(alias) => {
+                write!(f, "Alias already exists in target graph: {}", alias)
+            }
             MutationError::BranchHasNoRoot => write!(f, "Branch has no root node"),
             MutationError::InvalidSubgraph(msg) => write!(f, "Invalid subgraph: {}", msg),
-            MutationError::InconsistentBranchPublication { expected, found, node_id } => {
-                write!(f, "Inconsistent branch publication ID at node {}: expected {}, found {:?}", node_id, expected, found)
+            MutationError::InconsistentBranchPublication {
+                expected,
+                found,
+                node_id,
+            } => {
+                write!(
+                    f,
+                    "Inconsistent branch publication ID at node {}: expected {}, found {:?}",
+                    node_id, expected, found
+                )
             }
-            MutationError::NoBranchNodesFound(target_id) => write!(f, "No branch nodes found at target: {}", target_id),
-            MutationError::InvalidDatatype { expected, found, node_id } => {
-                write!(f, "Invalid datatype for node {}: expected {}, found {}", node_id, expected, found)
+            MutationError::NoBranchNodesFound(target_id) => {
+                write!(f, "No branch nodes found at target: {}", target_id)
+            }
+            MutationError::InvalidDatatype {
+                expected,
+                found,
+                node_id,
+            } => {
+                write!(
+                    f,
+                    "Invalid datatype for node {}: expected {}, found {}",
+                    node_id, expected, found
+                )
             }
             MutationError::FunctionNotFound(id) => write!(f, "Function mapping not found: {}", id),
             MutationError::CannotDeleteRootNode(id) => write!(f, "Cannot delete root node: {}", id),
-            MutationError::NodeHasDependentWidgets(id) => write!(f, "Node has dependent widgets, cannot change type: {}", id),
-            MutationError::AliasAlreadyExists(alias) => write!(f, "Alias already exists: {}", alias),
-            MutationError::InvalidConfig { alias, error } => write!(f, "Invalid config for node '{}': {}", alias, error),
-            MutationError::ExtensionNotFound(name) => write!(f, "Extension mutation not found: {}", name),
-            MutationError::NoExtensionRegistry(name) => write!(f, "Extension mutation '{}' used but no registry provided", name),
+            MutationError::NodeHasDependentWidgets(id) => {
+                write!(f, "Node has dependent widgets, cannot change type: {}", id)
+            }
+            MutationError::AliasAlreadyExists(alias) => {
+                write!(f, "Alias already exists: {}", alias)
+            }
+            MutationError::InvalidConfig { alias, error } => {
+                write!(f, "Invalid config for node '{}': {}", alias, error)
+            }
+            MutationError::ExtensionNotFound(name) => {
+                write!(f, "Extension mutation not found: {}", name)
+            }
+            MutationError::NoExtensionRegistry(name) => write!(
+                f,
+                "Extension mutation '{}' used but no registry provided",
+                name
+            ),
             MutationError::Other(msg) => write!(f, "{}", msg),
         }
     }
@@ -1431,7 +1472,10 @@ impl GraphMutator {
         let mut node_config = config.unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
         if let Some(coll_id) = collection_id {
             if let serde_json::Value::Object(ref mut map) = node_config {
-                map.insert("rdmCollection".to_string(), serde_json::Value::String(coll_id.to_string()));
+                map.insert(
+                    "rdmCollection".to_string(),
+                    serde_json::Value::String(coll_id.to_string()),
+                );
             }
         }
         let datatype = if is_list { "concept-list" } else { "concept" };
@@ -1628,14 +1672,15 @@ impl GraphMutator {
         sortorder: Option<i32>,
         visible: Option<bool>,
     ) -> Self {
-        self.mutations.push(GraphMutation::AddWidgetToCard(AddWidgetParams {
-            node_id: node_id.to_string(),
-            widget_id: widget.id.clone(),
-            label: label.to_string(),
-            config,
-            sortorder,
-            visible,
-        }));
+        self.mutations
+            .push(GraphMutation::AddWidgetToCard(AddWidgetParams {
+                node_id: node_id.to_string(),
+                widget_id: widget.id.clone(),
+                label: label.to_string(),
+                config,
+                sortorder,
+                visible,
+            }));
         self
     }
 
@@ -1735,7 +1780,8 @@ fn apply_add_node(
 
     // Find parent node
     let parent = if let Some(ref parent_alias) = params.parent_alias {
-        graph.find_node_by_alias(parent_alias)
+        graph
+            .find_node_by_alias(parent_alias)
             .ok_or_else(|| MutationError::ParentNotFound(parent_alias.clone()))?
     } else {
         graph.get_root()
@@ -1753,53 +1799,54 @@ fn apply_add_node(
     // All nodes except root must have a nodegroup. Create a new one if:
     // - Cardinality is N (multiple instances allowed), OR
     // - Parent is root (direct children of root always get their own nodegroup)
-    let (nodegroup_id, created_new_nodegroup) = if params.cardinality == Cardinality::N || parent.is_root() {
-        // Create new nodegroup for this node
-        let ng_id = node_id.clone();
+    let (nodegroup_id, created_new_nodegroup) =
+        if params.cardinality == Cardinality::N || parent.is_root() {
+            // Create new nodegroup for this node
+            let ng_id = node_id.clone();
 
-        // Add nodegroup
-        let nodegroup = StaticNodegroup {
-            nodegroupid: ng_id.clone(),
-            cardinality: Some(params.cardinality.as_str().to_string()),
-            parentnodegroup_id: parent_nodegroup_id.clone(),
-            legacygroupid: None,
-            grouping_node_id: None,
-        };
-        graph.push_nodegroup(nodegroup);
-
-        // Auto-create card if enabled
-        if options.autocreate_card {
-            let card_id = generate_uuid_v5(
-                ("graph", Some(&graph.graphid)),
-                &format!("card-ng-{}", ng_id),
-            );
-            let card = StaticCard {
-                active: true,
-                cardid: card_id,
-                component_id: DEFAULT_CARD_COMPONENT_ID.to_string(),
-                config: None,
-                constraints: vec![],
-                cssclass: None,
-                description: None,
-                graph_id: graph.graphid.clone(),
-                helpenabled: false,
-                helptext: StaticTranslatableString::empty(),
-                helptitle: StaticTranslatableString::empty(),
-                instructions: StaticTranslatableString::empty(),
-                is_editable: Some(true),
-                name: StaticTranslatableString::from_string(&params.name),
-                nodegroup_id: ng_id.clone(),
-                sortorder: None,
-                visible: true,
-                source_identifier_id: None,
+            // Add nodegroup
+            let nodegroup = StaticNodegroup {
+                nodegroupid: ng_id.clone(),
+                cardinality: Some(params.cardinality.as_str().to_string()),
+                parentnodegroup_id: parent_nodegroup_id.clone(),
+                legacygroupid: None,
+                grouping_node_id: None,
             };
-            graph.push_card(card);
-        }
+            graph.push_nodegroup(nodegroup);
 
-        (Some(ng_id), true)
-    } else {
-        (parent_nodegroup_id, false)
-    };
+            // Auto-create card if enabled
+            if options.autocreate_card {
+                let card_id = generate_uuid_v5(
+                    ("graph", Some(&graph.graphid)),
+                    &format!("card-ng-{}", ng_id),
+                );
+                let card = StaticCard {
+                    active: true,
+                    cardid: card_id,
+                    component_id: DEFAULT_CARD_COMPONENT_ID.to_string(),
+                    config: None,
+                    constraints: vec![],
+                    cssclass: None,
+                    description: None,
+                    graph_id: graph.graphid.clone(),
+                    helpenabled: false,
+                    helptext: StaticTranslatableString::empty(),
+                    helptitle: StaticTranslatableString::empty(),
+                    instructions: StaticTranslatableString::empty(),
+                    is_editable: Some(true),
+                    name: StaticTranslatableString::from_string(&params.name),
+                    nodegroup_id: ng_id.clone(),
+                    sortorder: None,
+                    visible: true,
+                    source_identifier_id: None,
+                };
+                graph.push_card(card);
+            }
+
+            (Some(ng_id), true)
+        } else {
+            (parent_nodegroup_id, false)
+        };
 
     // Build config - error if provided but invalid
     let config: HashMap<String, serde_json::Value> = match params.config {
@@ -1825,7 +1872,9 @@ fn apply_add_node(
         config,
         parentproperty: Some(params.parent_property.clone()),
         ontologyclass: Some(params.ontology_class),
-        description: params.description.map(|d| StaticTranslatableString::from_string(&d)),
+        description: params
+            .description
+            .map(|d| StaticTranslatableString::from_string(&d)),
         fieldname: params.options.fieldname,
         hascustomalias: params.options.hascustomalias.unwrap_or(false),
         issearchable: params.options.issearchable.unwrap_or(true),
@@ -1858,17 +1907,22 @@ fn apply_add_node(
         let widget = get_default_widget_for_datatype(&params.datatype)
             .map_err(|_| MutationError::NoWidgetForDatatype(params.datatype.clone()))?;
 
-        let ng_id = nodegroup_id.as_ref()
-            .ok_or_else(|| MutationError::Other(format!(
-                "Cannot create widget for node '{}': no nodegroup", params.alias
-            )))?;
+        let ng_id = nodegroup_id.as_ref().ok_or_else(|| {
+            MutationError::Other(format!(
+                "Cannot create widget for node '{}': no nodegroup",
+                params.alias
+            ))
+        })?;
 
         // If we created a new nodegroup, a card must exist (created above if autocreate_card).
         // If inheriting an existing nodegroup that has no card, silently skip widget creation.
         if let Some(card) = graph.find_card_by_nodegroup(ng_id) {
             let mut widget_config = widget.get_default_config();
             if let serde_json::Value::Object(ref mut map) = widget_config {
-                map.insert("label".to_string(), serde_json::Value::String(params.name.clone()));
+                map.insert(
+                    "label".to_string(),
+                    serde_json::Value::String(params.name.clone()),
+                );
             }
 
             let cxnxw_id = generate_uuid_v5(
@@ -1906,7 +1960,8 @@ fn apply_add_nodegroup(
 ) -> Result<(), MutationError> {
     // Find parent
     let parent_nodegroup_id = if let Some(ref parent_alias) = params.parent_alias {
-        let parent = graph.find_node_by_alias(parent_alias)
+        let parent = graph
+            .find_node_by_alias(parent_alias)
             .ok_or_else(|| MutationError::ParentNotFound(parent_alias.clone()))?;
         parent.nodegroup_id.clone()
     } else {
@@ -1954,10 +2009,7 @@ fn apply_add_nodegroup(
     Ok(())
 }
 
-fn apply_add_edge(
-    graph: &mut StaticGraph,
-    params: AddEdgeParams,
-) -> Result<(), MutationError> {
+fn apply_add_edge(graph: &mut StaticGraph, params: AddEdgeParams) -> Result<(), MutationError> {
     let edge_id = generate_uuid_v5(
         ("graph", Some(&graph.graphid)),
         &format!("edge-{}-{}", params.from_node_id, params.to_node_id),
@@ -1978,10 +2030,7 @@ fn apply_add_edge(
     Ok(())
 }
 
-fn apply_add_card(
-    graph: &mut StaticGraph,
-    params: AddCardParams,
-) -> Result<(), MutationError> {
+fn apply_add_card(graph: &mut StaticGraph, params: AddCardParams) -> Result<(), MutationError> {
     // Check if card already exists for this nodegroup
     if graph.find_card_by_nodegroup(&params.nodegroup_id).is_some() {
         return Err(MutationError::CardAlreadyExists(params.nodegroup_id));
@@ -1995,16 +2044,27 @@ fn apply_add_card(
     let card = StaticCard {
         active: params.options.active.unwrap_or(true),
         cardid: card_id,
-        component_id: params.component_id.unwrap_or_else(|| DEFAULT_CARD_COMPONENT_ID.to_string()),
+        component_id: params
+            .component_id
+            .unwrap_or_else(|| DEFAULT_CARD_COMPONENT_ID.to_string()),
         config: params.config,
         constraints: vec![],
         cssclass: params.options.cssclass,
         description: params.options.description,
         graph_id: graph.graphid.clone(),
         helpenabled: params.options.helpenabled.unwrap_or(false),
-        helptext: params.options.helptext.unwrap_or_else(StaticTranslatableString::empty),
-        helptitle: params.options.helptitle.unwrap_or_else(StaticTranslatableString::empty),
-        instructions: params.options.instructions.unwrap_or_else(StaticTranslatableString::empty),
+        helptext: params
+            .options
+            .helptext
+            .unwrap_or_else(StaticTranslatableString::empty),
+        helptitle: params
+            .options
+            .helptitle
+            .unwrap_or_else(StaticTranslatableString::empty),
+        instructions: params
+            .options
+            .instructions
+            .unwrap_or_else(StaticTranslatableString::empty),
         is_editable: params.options.is_editable,
         name: params.name,
         nodegroup_id: params.nodegroup_id,
@@ -2017,18 +2077,21 @@ fn apply_add_card(
     Ok(())
 }
 
-fn apply_add_widget(
-    graph: &mut StaticGraph,
-    params: AddWidgetParams,
-) -> Result<(), MutationError> {
+fn apply_add_widget(graph: &mut StaticGraph, params: AddWidgetParams) -> Result<(), MutationError> {
     // Find the node to get its nodegroup
-    let node = graph.nodes.iter().find(|n| n.nodeid == params.node_id)
+    let node = graph
+        .nodes
+        .iter()
+        .find(|n| n.nodeid == params.node_id)
         .ok_or_else(|| MutationError::NodeNotFound(params.node_id.clone()))?;
-    let nodegroup_id = node.nodegroup_id.clone()
+    let nodegroup_id = node
+        .nodegroup_id
+        .clone()
         .ok_or_else(|| MutationError::NodegroupNotFound(params.node_id.clone()))?;
 
     // Find card for this nodegroup
-    let card = graph.find_card_by_nodegroup(&nodegroup_id)
+    let card = graph
+        .find_card_by_nodegroup(&nodegroup_id)
         .ok_or_else(|| MutationError::CardNotFound(nodegroup_id.clone()))?;
     let card_id = card.cardid.clone();
 
@@ -2061,7 +2124,8 @@ fn apply_concept_change_collection(
     params: ConceptChangeCollectionParams,
 ) -> Result<(), MutationError> {
     // Find node by alias first, then by ID
-    let node = graph.find_node_by_alias(&params.node_id)
+    let node = graph
+        .find_node_by_alias(&params.node_id)
         .or_else(|| graph.nodes.iter().find(|n| n.nodeid == params.node_id))
         .ok_or_else(|| MutationError::NodeNotFound(params.node_id.clone()))?;
 
@@ -2077,7 +2141,9 @@ fn apply_concept_change_collection(
     let node_id = node.nodeid.clone();
 
     // Find the mutable node and update its config
-    let node_mut = graph.nodes.iter_mut()
+    let node_mut = graph
+        .nodes
+        .iter_mut()
         .find(|n| n.nodeid == node_id)
         .ok_or_else(|| MutationError::NodeNotFound(node_id.clone()))?;
 
@@ -2099,7 +2165,9 @@ fn apply_delete_card(
     params: DeleteCardParams,
 ) -> Result<(), MutationError> {
     // Verify card exists
-    let card_exists = graph.cards.as_ref()
+    let card_exists = graph
+        .cards
+        .as_ref()
         .map(|cards| cards.iter().any(|c| c.cardid == params.card_id))
         .unwrap_or(false);
 
@@ -2125,7 +2193,9 @@ fn apply_delete_widget(
     params: DeleteWidgetParams,
 ) -> Result<(), MutationError> {
     // Verify widget mapping exists
-    let widget_exists = graph.cards_x_nodes_x_widgets.as_ref()
+    let widget_exists = graph
+        .cards_x_nodes_x_widgets
+        .as_ref()
         .map(|cxnxws| cxnxws.iter().any(|c| c.id == params.widget_mapping_id))
         .unwrap_or(false);
 
@@ -2146,7 +2216,9 @@ fn apply_delete_function(
     params: DeleteFunctionParams,
 ) -> Result<(), MutationError> {
     // Verify function mapping exists
-    let function_exists = graph.functions_x_graphs.as_ref()
+    let function_exists = graph
+        .functions_x_graphs
+        .as_ref()
         .map(|fxgs| fxgs.iter().any(|f| f.id == params.function_mapping_id))
         .unwrap_or(false);
 
@@ -2167,7 +2239,8 @@ fn apply_delete_node(
     params: DeleteNodeParams,
 ) -> Result<(), MutationError> {
     // Find node by alias first, then by ID
-    let node = graph.find_node_by_alias(&params.node_id)
+    let node = graph
+        .find_node_by_alias(&params.node_id)
         .or_else(|| graph.nodes.iter().find(|n| n.nodeid == params.node_id))
         .ok_or_else(|| MutationError::NodeNotFound(params.node_id.clone()))?;
 
@@ -2184,9 +2257,7 @@ fn apply_delete_node(
     while i < nodes_to_delete.len() {
         let current = &nodes_to_delete[i].clone();
         for edge in &graph.edges {
-            if edge.domainnode_id == *current
-                && !nodes_to_delete.contains(&edge.rangenode_id)
-            {
+            if edge.domainnode_id == *current && !nodes_to_delete.contains(&edge.rangenode_id) {
                 nodes_to_delete.push(edge.rangenode_id.clone());
             }
         }
@@ -2221,8 +2292,7 @@ fn apply_delete_node(
 
     // Remove edges where any deleted node is domain or range
     graph.edges.retain(|e| {
-        !nodes_to_delete.contains(&e.domainnode_id) &&
-        !nodes_to_delete.contains(&e.rangenode_id)
+        !nodes_to_delete.contains(&e.domainnode_id) && !nodes_to_delete.contains(&e.rangenode_id)
     });
 
     // Remove cards for the deleted nodegroups
@@ -2231,7 +2301,9 @@ fn apply_delete_node(
     }
 
     // Remove the nodegroups
-    graph.nodegroups.retain(|ng| !nodegroups_to_delete.contains(&ng.nodegroupid));
+    graph
+        .nodegroups
+        .retain(|ng| !nodegroups_to_delete.contains(&ng.nodegroupid));
 
     // Remove the nodes
     graph.nodes.retain(|n| !nodes_to_delete.contains(&n.nodeid));
@@ -2247,7 +2319,11 @@ fn apply_delete_nodegroup(
     params: DeleteNodegroupParams,
 ) -> Result<(), MutationError> {
     // Verify nodegroup exists
-    if !graph.nodegroups.iter().any(|ng| ng.nodegroupid == params.nodegroup_id) {
+    if !graph
+        .nodegroups
+        .iter()
+        .any(|ng| ng.nodegroupid == params.nodegroup_id)
+    {
         return Err(MutationError::NodegroupNotFound(params.nodegroup_id));
     }
 
@@ -2259,16 +2335,24 @@ fn apply_delete_nodegroup(
         // Find child nodegroups
         for ng in &graph.nodegroups {
             if ng.parentnodegroup_id.as_ref() == Some(&current_ng)
-                && !nodegroups_to_delete.contains(&ng.nodegroupid) {
-                    nodegroups_to_delete.push(ng.nodegroupid.clone());
-                }
+                && !nodegroups_to_delete.contains(&ng.nodegroupid)
+            {
+                nodegroups_to_delete.push(ng.nodegroupid.clone());
+            }
         }
         i += 1;
     }
 
     // Collect all nodes in these nodegroups
-    let nodes_to_delete: Vec<String> = graph.nodes.iter()
-        .filter(|n| n.nodegroup_id.as_ref().map(|ng| nodegroups_to_delete.contains(ng)).unwrap_or(false))
+    let nodes_to_delete: Vec<String> = graph
+        .nodes
+        .iter()
+        .filter(|n| {
+            n.nodegroup_id
+                .as_ref()
+                .map(|ng| nodegroups_to_delete.contains(ng))
+                .unwrap_or(false)
+        })
         .map(|n| n.nodeid.clone())
         .collect();
 
@@ -2288,8 +2372,7 @@ fn apply_delete_nodegroup(
 
     // Remove edges referencing any deleted nodes
     graph.edges.retain(|e| {
-        !nodes_to_delete.contains(&e.domainnode_id) &&
-        !nodes_to_delete.contains(&e.rangenode_id)
+        !nodes_to_delete.contains(&e.domainnode_id) && !nodes_to_delete.contains(&e.rangenode_id)
     });
 
     // Remove cards for the deleted nodegroups
@@ -2298,7 +2381,9 @@ fn apply_delete_nodegroup(
     }
 
     // Remove the nodegroups
-    graph.nodegroups.retain(|ng| !nodegroups_to_delete.contains(&ng.nodegroupid));
+    graph
+        .nodegroups
+        .retain(|ng| !nodegroups_to_delete.contains(&ng.nodegroupid));
 
     // Remove the nodes
     graph.nodes.retain(|n| !nodes_to_delete.contains(&n.nodeid));
@@ -2318,14 +2403,17 @@ fn apply_update_node(
     params: UpdateNodeParams,
 ) -> Result<(), MutationError> {
     // Find node by alias first, then by ID
-    let node = graph.find_node_by_alias(&params.node_id)
+    let node = graph
+        .find_node_by_alias(&params.node_id)
         .or_else(|| graph.nodes.iter().find(|n| n.nodeid == params.node_id))
         .ok_or_else(|| MutationError::NodeNotFound(params.node_id.clone()))?;
 
     let node_id = node.nodeid.clone();
 
     // Find the mutable node and update its fields
-    let node_mut = graph.nodes.iter_mut()
+    let node_mut = graph
+        .nodes
+        .iter_mut()
         .find(|n| n.nodeid == node_id)
         .ok_or_else(|| MutationError::NodeNotFound(node_id.clone()))?;
 
@@ -2334,10 +2422,18 @@ fn apply_update_node(
         node_mut.name = name;
     }
     if let Some(ontology_class) = params.ontology_class {
-        node_mut.ontologyclass = if ontology_class.is_empty() { None } else { Some(ontology_class) };
+        node_mut.ontologyclass = if ontology_class.is_empty() {
+            None
+        } else {
+            Some(ontology_class)
+        };
     }
     if let Some(parent_property) = params.parent_property {
-        node_mut.parentproperty = if parent_property.is_empty() { None } else { Some(parent_property) };
+        node_mut.parentproperty = if parent_property.is_empty() {
+            None
+        } else {
+            Some(parent_property)
+        };
     }
     if let Some(description) = params.description {
         node_mut.description = Some(StaticTranslatableString::from_string(&description));
@@ -2354,7 +2450,11 @@ fn apply_update_node(
         node_mut.exportable = exportable;
     }
     if let Some(fieldname) = params.options.fieldname {
-        node_mut.fieldname = if fieldname.is_empty() { None } else { Some(fieldname) };
+        node_mut.fieldname = if fieldname.is_empty() {
+            None
+        } else {
+            Some(fieldname)
+        };
     }
     if let Some(isrequired) = params.options.isrequired {
         node_mut.isrequired = isrequired;
@@ -2374,14 +2474,17 @@ fn apply_change_node_type(
     params: ChangeNodeTypeParams,
 ) -> Result<(), MutationError> {
     // Find node by alias first, then by ID
-    let node = graph.find_node_by_alias(&params.node_id)
+    let node = graph
+        .find_node_by_alias(&params.node_id)
         .or_else(|| graph.nodes.iter().find(|n| n.nodeid == params.node_id))
         .ok_or_else(|| MutationError::NodeNotFound(params.node_id.clone()))?;
 
     let node_id = node.nodeid.clone();
 
     // Check for dependent widgets
-    let has_widgets = graph.cards_x_nodes_x_widgets.as_ref()
+    let has_widgets = graph
+        .cards_x_nodes_x_widgets
+        .as_ref()
         .map(|cxnxws| cxnxws.iter().any(|c| c.node_id == node_id))
         .unwrap_or(false);
 
@@ -2390,7 +2493,9 @@ fn apply_change_node_type(
     }
 
     // Find the mutable node and update its fields
-    let node_mut = graph.nodes.iter_mut()
+    let node_mut = graph
+        .nodes
+        .iter_mut()
         .find(|n| n.nodeid == node_id)
         .ok_or_else(|| MutationError::NodeNotFound(node_id.clone()))?;
 
@@ -2402,10 +2507,18 @@ fn apply_change_node_type(
         node_mut.name = name;
     }
     if let Some(ontology_class) = params.ontology_class {
-        node_mut.ontologyclass = if ontology_class.is_empty() { None } else { Some(ontology_class) };
+        node_mut.ontologyclass = if ontology_class.is_empty() {
+            None
+        } else {
+            Some(ontology_class)
+        };
     }
     if let Some(parent_property) = params.parent_property {
-        node_mut.parentproperty = if parent_property.is_empty() { None } else { Some(parent_property) };
+        node_mut.parentproperty = if parent_property.is_empty() {
+            None
+        } else {
+            Some(parent_property)
+        };
     }
     if let Some(description) = params.description {
         node_mut.description = Some(StaticTranslatableString::from_string(&description));
@@ -2422,7 +2535,11 @@ fn apply_change_node_type(
         node_mut.exportable = exportable;
     }
     if let Some(fieldname) = params.options.fieldname {
-        node_mut.fieldname = if fieldname.is_empty() { None } else { Some(fieldname) };
+        node_mut.fieldname = if fieldname.is_empty() {
+            None
+        } else {
+            Some(fieldname)
+        };
     }
     if let Some(isrequired) = params.options.isrequired {
         node_mut.isrequired = isrequired;
@@ -2442,7 +2559,8 @@ fn apply_rename_node(
     params: RenameNodeParams,
 ) -> Result<(), MutationError> {
     // Find node by alias first, then by ID
-    let node = graph.find_node_by_alias(&params.node_id)
+    let node = graph
+        .find_node_by_alias(&params.node_id)
         .or_else(|| graph.nodes.iter().find(|n| n.nodeid == params.node_id))
         .ok_or_else(|| MutationError::NodeNotFound(params.node_id.clone()))?;
 
@@ -2451,7 +2569,9 @@ fn apply_rename_node(
     // Check if new alias already exists (if changing alias)
     if let Some(ref new_alias) = params.alias {
         // Check if another node already has this alias
-        let alias_exists = graph.nodes.iter()
+        let alias_exists = graph
+            .nodes
+            .iter()
             .any(|n| n.nodeid != node_id && n.alias.as_ref() == Some(new_alias));
         if alias_exists {
             return Err(MutationError::AliasAlreadyExists(new_alias.clone()));
@@ -2459,7 +2579,9 @@ fn apply_rename_node(
     }
 
     // Find the mutable node and update text fields
-    let node_mut = graph.nodes.iter_mut()
+    let node_mut = graph
+        .nodes
+        .iter_mut()
         .find(|n| n.nodeid == node_id)
         .ok_or_else(|| MutationError::NodeNotFound(node_id.clone()))?;
 
@@ -2510,12 +2632,19 @@ fn apply_rename_graph(
 
     // Update subtitle if provided
     if let Some(subtitle_map) = params.subtitle {
-        graph.subtitle = Some(StaticTranslatableString::from_translations(subtitle_map, None));
+        graph.subtitle = Some(StaticTranslatableString::from_translations(
+            subtitle_map,
+            None,
+        ));
     }
 
     // Update author if provided
     if let Some(author) = params.author {
-        graph.author = if author.is_empty() { None } else { Some(author) };
+        graph.author = if author.is_empty() {
+            None
+        } else {
+            Some(author)
+        };
     }
 
     Ok(())
@@ -2581,7 +2710,8 @@ impl IdRemapper {
             ("graph", Some(&self.graph_id)),
             &format!("subgraph-ng-{}-{}", old_id, self.suffix),
         );
-        self.nodegroup_map.insert(old_id.to_string(), new_id.clone());
+        self.nodegroup_map
+            .insert(old_id.to_string(), new_id.clone());
         new_id
     }
 
@@ -2621,7 +2751,8 @@ impl IdRemapper {
             ("graph", Some(&self.graph_id)),
             &format!("subgraph-constraint-{}-{}", old_id, self.suffix),
         );
-        self.constraint_map.insert(old_id.to_string(), new_id.clone());
+        self.constraint_map
+            .insert(old_id.to_string(), new_id.clone());
         new_id
     }
 
@@ -2648,7 +2779,10 @@ impl IdRemapper {
     /// Get the remapped alias, or return original if no clash was registered
     fn get_alias(&self, alias: Option<&str>) -> Option<String> {
         alias.map(|a| {
-            self.alias_map.get(a).cloned().unwrap_or_else(|| a.to_string())
+            self.alias_map
+                .get(a)
+                .cloned()
+                .unwrap_or_else(|| a.to_string())
         })
     }
 }
@@ -2683,25 +2817,30 @@ fn apply_add_subgraph(
     let branch_publication_id = subgraph.graphid.clone();
 
     // 1. VALIDATE: Target node exists
-    let target_node = graph.nodes.iter()
+    let target_node = graph
+        .nodes
+        .iter()
         .find(|n| n.nodeid == target_node_id)
         .ok_or_else(|| MutationError::NodeNotFound(target_node_id.clone()))?;
     let target_nodegroup_id = target_node.nodegroup_id.clone();
 
     // 2. IDENTIFY ROOT: Find the root node of the subgraph
-    let root_node = subgraph.nodes.iter()
+    let root_node = subgraph
+        .nodes
+        .iter()
         .find(|n| n.istopnode)
         .or(Some(&subgraph.root))
         .ok_or(MutationError::BranchHasNoRoot)?;
     let root_node_id = root_node.nodeid.clone();
-    let root_nodegroup_id = root_node.nodegroup_id.clone()
+    let root_nodegroup_id = root_node
+        .nodegroup_id
+        .clone()
         .unwrap_or_else(|| root_node_id.clone());
 
     // 3. BUILD ALIAS MAPPINGS (Arches-style: only suffix clashing aliases)
     // Collect all existing aliases in the target graph
-    let mut existing_aliases: HashSet<String> = graph.nodes.iter()
-        .filter_map(|n| n.alias.clone())
-        .collect();
+    let mut existing_aliases: HashSet<String> =
+        graph.nodes.iter().filter_map(|n| n.alias.clone()).collect();
 
     // Build the remapper with branch publication ID for tracking
     let suffix_ref = alias_suffix.as_deref();
@@ -2770,8 +2909,11 @@ fn apply_add_subgraph(
             continue;
         }
 
-        let new_node_id = remapper.get_node(&node.nodeid)
-            .ok_or_else(|| MutationError::InvalidSubgraph(format!("Node {} not mapped", node.nodeid)))?
+        let new_node_id = remapper
+            .get_node(&node.nodeid)
+            .ok_or_else(|| {
+                MutationError::InvalidSubgraph(format!("Node {} not mapped", node.nodeid))
+            })?
             .clone();
 
         // Remap nodegroup_id
@@ -2817,8 +2959,14 @@ fn apply_add_subgraph(
             continue;
         }
 
-        let new_ng_id = remapper.get_nodegroup(&nodegroup.nodegroupid)
-            .ok_or_else(|| MutationError::InvalidSubgraph(format!("Nodegroup {} not mapped", nodegroup.nodegroupid)))?
+        let new_ng_id = remapper
+            .get_nodegroup(&nodegroup.nodegroupid)
+            .ok_or_else(|| {
+                MutationError::InvalidSubgraph(format!(
+                    "Nodegroup {} not mapped",
+                    nodegroup.nodegroupid
+                ))
+            })?
             .clone();
 
         // Remap parentnodegroup_id
@@ -2832,7 +2980,9 @@ fn apply_add_subgraph(
         });
 
         // Remap grouping_node_id
-        let new_grouping_node_id = nodegroup.grouping_node_id.as_ref()
+        let new_grouping_node_id = nodegroup
+            .grouping_node_id
+            .as_ref()
             .and_then(|gn_id| remapper.get_node(gn_id).cloned());
 
         let new_nodegroup = StaticNodegroup {
@@ -2849,13 +2999,22 @@ fn apply_add_subgraph(
     for edge in subgraph.edges {
         if edge.domainnode_id == root_node_id {
             // This is an edge from root to a child - create a new edge from target to child
-            let child_node_id = remapper.get_node(&edge.rangenode_id)
-                .ok_or_else(|| MutationError::InvalidSubgraph(format!("Child node {} not mapped", edge.rangenode_id)))?
+            let child_node_id = remapper
+                .get_node(&edge.rangenode_id)
+                .ok_or_else(|| {
+                    MutationError::InvalidSubgraph(format!(
+                        "Child node {} not mapped",
+                        edge.rangenode_id
+                    ))
+                })?
                 .clone();
 
             let new_edge_id = generate_uuid_v5(
                 ("graph", Some(&graph.graphid)),
-                &format!("subgraph-connect-{}-{}-{}", target_node_id, child_node_id, remapper.suffix),
+                &format!(
+                    "subgraph-connect-{}-{}-{}",
+                    target_node_id, child_node_id, remapper.suffix
+                ),
             );
 
             let new_edge = StaticEdge {
@@ -2871,16 +3030,32 @@ fn apply_add_subgraph(
             graph.push_edge(new_edge);
         } else {
             // Regular edge within the subgraph
-            let new_edge_id = remapper.edge_map.get(&edge.edgeid)
-                .ok_or_else(|| MutationError::InvalidSubgraph(format!("Edge {} not mapped", edge.edgeid)))?
+            let new_edge_id = remapper
+                .edge_map
+                .get(&edge.edgeid)
+                .ok_or_else(|| {
+                    MutationError::InvalidSubgraph(format!("Edge {} not mapped", edge.edgeid))
+                })?
                 .clone();
 
-            let new_domain = remapper.get_node(&edge.domainnode_id)
-                .ok_or_else(|| MutationError::InvalidSubgraph(format!("Domain node {} not mapped", edge.domainnode_id)))?
+            let new_domain = remapper
+                .get_node(&edge.domainnode_id)
+                .ok_or_else(|| {
+                    MutationError::InvalidSubgraph(format!(
+                        "Domain node {} not mapped",
+                        edge.domainnode_id
+                    ))
+                })?
                 .clone();
 
-            let new_range = remapper.get_node(&edge.rangenode_id)
-                .ok_or_else(|| MutationError::InvalidSubgraph(format!("Range node {} not mapped", edge.rangenode_id)))?
+            let new_range = remapper
+                .get_node(&edge.rangenode_id)
+                .ok_or_else(|| {
+                    MutationError::InvalidSubgraph(format!(
+                        "Range node {} not mapped",
+                        edge.rangenode_id
+                    ))
+                })?
                 .clone();
 
             let new_edge = StaticEdge {
@@ -2904,27 +3079,42 @@ fn apply_add_subgraph(
                 continue;
             }
 
-            let new_card_id = remapper.get_card(&card.cardid)
-                .ok_or_else(|| MutationError::InvalidSubgraph(format!("Card {} not mapped", card.cardid)))?
+            let new_card_id = remapper
+                .get_card(&card.cardid)
+                .ok_or_else(|| {
+                    MutationError::InvalidSubgraph(format!("Card {} not mapped", card.cardid))
+                })?
                 .clone();
 
-            let new_ng_id = remapper.get_nodegroup(&card.nodegroup_id)
-                .ok_or_else(|| MutationError::InvalidSubgraph(format!("Card nodegroup {} not mapped", card.nodegroup_id)))?
+            let new_ng_id = remapper
+                .get_nodegroup(&card.nodegroup_id)
+                .ok_or_else(|| {
+                    MutationError::InvalidSubgraph(format!(
+                        "Card nodegroup {} not mapped",
+                        card.nodegroup_id
+                    ))
+                })?
                 .clone();
 
             // Remap constraints
-            let new_constraints: Vec<_> = card.constraints.into_iter().map(|c| {
-                let new_constraint_id = remapper.remap_constraint(&c.constraintid);
-                let new_nodes: Vec<_> = c.nodes.into_iter()
-                    .filter_map(|n| remapper.get_node(&n).cloned())
-                    .collect();
-                crate::graph::StaticConstraint {
-                    card_id: new_card_id.clone(),
-                    constraintid: new_constraint_id,
-                    nodes: new_nodes,
-                    uniquetoallinstances: c.uniquetoallinstances,
-                }
-            }).collect();
+            let new_constraints: Vec<_> = card
+                .constraints
+                .into_iter()
+                .map(|c| {
+                    let new_constraint_id = remapper.remap_constraint(&c.constraintid);
+                    let new_nodes: Vec<_> = c
+                        .nodes
+                        .into_iter()
+                        .filter_map(|n| remapper.get_node(&n).cloned())
+                        .collect();
+                    crate::graph::StaticConstraint {
+                        card_id: new_card_id.clone(),
+                        constraintid: new_constraint_id,
+                        nodes: new_nodes,
+                        uniquetoallinstances: c.uniquetoallinstances,
+                    }
+                })
+                .collect();
 
             let new_card = StaticCard {
                 active: card.active,
@@ -2957,16 +3147,32 @@ fn apply_add_subgraph(
                 continue;
             }
 
-            let new_id = remapper.cxnxw_map.get(&cxnxw.id)
-                .ok_or_else(|| MutationError::InvalidSubgraph(format!("CXNXW {} not mapped", cxnxw.id)))?
+            let new_id = remapper
+                .cxnxw_map
+                .get(&cxnxw.id)
+                .ok_or_else(|| {
+                    MutationError::InvalidSubgraph(format!("CXNXW {} not mapped", cxnxw.id))
+                })?
                 .clone();
 
-            let new_card_id = remapper.get_card(&cxnxw.card_id)
-                .ok_or_else(|| MutationError::InvalidSubgraph(format!("CXNXW card {} not mapped", cxnxw.card_id)))?
+            let new_card_id = remapper
+                .get_card(&cxnxw.card_id)
+                .ok_or_else(|| {
+                    MutationError::InvalidSubgraph(format!(
+                        "CXNXW card {} not mapped",
+                        cxnxw.card_id
+                    ))
+                })?
                 .clone();
 
-            let new_node_id = remapper.get_node(&cxnxw.node_id)
-                .ok_or_else(|| MutationError::InvalidSubgraph(format!("CXNXW node {} not mapped", cxnxw.node_id)))?
+            let new_node_id = remapper
+                .get_node(&cxnxw.node_id)
+                .ok_or_else(|| {
+                    MutationError::InvalidSubgraph(format!(
+                        "CXNXW node {} not mapped",
+                        cxnxw.node_id
+                    ))
+                })?
                 .clone();
 
             let new_cxnxw = StaticCardsXNodesXWidgets {
@@ -3004,12 +3210,16 @@ fn apply_update_subgraph(
     let branch_publication_id = subgraph.graphid.clone();
 
     // 1. VALIDATE: Target node exists
-    let _target_node = graph.nodes.iter()
+    let _target_node = graph
+        .nodes
+        .iter()
         .find(|n| n.nodeid == target_node_id)
         .ok_or_else(|| MutationError::NodeNotFound(target_node_id.clone()))?;
 
     // 2. IDENTIFY ROOT: Find the root node of the new subgraph
-    let root_node = subgraph.nodes.iter()
+    let root_node = subgraph
+        .nodes
+        .iter()
         .find(|n| n.istopnode)
         .or(Some(&subgraph.root))
         .ok_or(MutationError::BranchHasNoRoot)?;
@@ -3017,31 +3227,34 @@ fn apply_update_subgraph(
 
     // 3. TRAVERSE: Find existing branch nodes by following edges from target
     // and validating sourcebranchpublication_id consistency
-    let existing_branch_nodes = find_branch_nodes_by_traversal(
-        graph,
-        &target_node_id,
-        &branch_publication_id,
-    )?;
+    let existing_branch_nodes =
+        find_branch_nodes_by_traversal(graph, &target_node_id, &branch_publication_id)?;
 
     // If no nodes found, this might be a first-time add (fallback to AddSubgraph)
     if existing_branch_nodes.is_empty() {
         // No existing branch nodes - treat as new AddSubgraph
-        return apply_add_subgraph(graph, AddSubgraphParams {
-            subgraph,
-            target_node_id: params.target_node_id,
-            ontology_property,
-            alias_suffix: params.alias_suffix,
-        });
+        return apply_add_subgraph(
+            graph,
+            AddSubgraphParams {
+                subgraph,
+                target_node_id: params.target_node_id,
+                ontology_property,
+                alias_suffix: params.alias_suffix,
+            },
+        );
     }
 
     // 4. BUILD MAPPING: Map branch aliases to existing node IDs
     // existing_branch_nodes: HashMap<nodeid, (alias, node)>
-    let existing_by_alias: HashMap<String, String> = existing_branch_nodes.iter()
+    let existing_by_alias: HashMap<String, String> = existing_branch_nodes
+        .iter()
         .filter_map(|(node_id, alias)| alias.clone().map(|a| (a, node_id.clone())))
         .collect();
 
     // Collect aliases from new branch (excluding root)
-    let new_branch_aliases: HashSet<String> = subgraph.nodes.iter()
+    let new_branch_aliases: HashSet<String> = subgraph
+        .nodes
+        .iter()
         .filter(|n| n.nodeid != root_node_id)
         .filter_map(|n| n.alias.clone())
         .collect();
@@ -3071,9 +3284,13 @@ fn apply_update_subgraph(
     }
 
     let orphaned_node_ids: HashSet<String> = if remove_orphaned {
-        existing_branch_nodes.iter()
+        existing_branch_nodes
+            .iter()
             .filter(|(_, alias)| {
-                alias.as_ref().map(|a| !new_branch_aliases.contains(a)).unwrap_or(true)
+                alias
+                    .as_ref()
+                    .map(|a| !new_branch_aliases.contains(a))
+                    .unwrap_or(true)
             })
             .map(|(node_id, _)| node_id.clone())
             .collect()
@@ -3084,7 +3301,11 @@ fn apply_update_subgraph(
     // 6. UPDATE EXISTING NODES
     for (new_node, existing_node_id) in nodes_to_update {
         // Find and update the existing node
-        if let Some(existing) = graph.nodes.iter_mut().find(|n| n.nodeid == existing_node_id) {
+        if let Some(existing) = graph
+            .nodes
+            .iter_mut()
+            .find(|n| n.nodeid == existing_node_id)
+        {
             // Update mutable fields (preserve IDs and structural references)
             existing.name = new_node.name.clone();
             existing.datatype = new_node.datatype.clone();
@@ -3104,22 +3325,29 @@ fn apply_update_subgraph(
     // 7. ADD NEW NODES (similar to AddSubgraph logic)
     if !nodes_to_add.is_empty() {
         // Need to get target nodegroup for new nodes
-        let target_node = graph.nodes.iter()
+        let target_node = graph
+            .nodes
+            .iter()
             .find(|n| n.nodeid == target_node_id)
             .ok_or_else(|| MutationError::NodeNotFound(target_node_id.clone()))?;
         let target_nodegroup_id = target_node.nodegroup_id.clone();
 
         // Get root nodegroup from subgraph
-        let root_nodegroup_id = root_node.nodegroup_id.clone()
+        let root_nodegroup_id = root_node
+            .nodegroup_id
+            .clone()
             .unwrap_or_else(|| root_node_id.clone());
 
         // Build alias uniqueness set
-        let mut existing_aliases: HashSet<String> = graph.nodes.iter()
-            .filter_map(|n| n.alias.clone())
-            .collect();
+        let mut existing_aliases: HashSet<String> =
+            graph.nodes.iter().filter_map(|n| n.alias.clone()).collect();
 
         let suffix_ref = params.alias_suffix.as_deref();
-        let mut remapper = IdRemapper::new(&graph.graphid, suffix_ref, Some(branch_publication_id.clone()));
+        let mut remapper = IdRemapper::new(
+            &graph.graphid,
+            suffix_ref,
+            Some(branch_publication_id.clone()),
+        );
 
         // Register aliases for new nodes (only suffix if clashing)
         for node in &nodes_to_add {
@@ -3138,7 +3366,8 @@ fn apply_update_subgraph(
         }
 
         // Generate nodegroup IDs for nodegroups of new nodes
-        let new_node_nodegroups: HashSet<String> = nodes_to_add.iter()
+        let new_node_nodegroups: HashSet<String> = nodes_to_add
+            .iter()
             .filter_map(|n| n.nodegroup_id.clone())
             .filter(|ng_id| *ng_id != root_nodegroup_id)
             .collect();
@@ -3151,8 +3380,11 @@ fn apply_update_subgraph(
 
         // Add the new nodes
         for node in nodes_to_add {
-            let new_node_id = remapper.get_node(&node.nodeid)
-                .ok_or_else(|| MutationError::InvalidSubgraph(format!("Node {} not mapped", node.nodeid)))?
+            let new_node_id = remapper
+                .get_node(&node.nodeid)
+                .ok_or_else(|| {
+                    MutationError::InvalidSubgraph(format!("Node {} not mapped", node.nodeid))
+                })?
                 .clone();
 
             let new_nodegroup_id = node.nodegroup_id.as_ref().and_then(|ng_id| {
@@ -3212,8 +3444,14 @@ fn apply_update_subgraph(
                 continue;
             }
 
-            let new_ng_id = remapper.get_nodegroup(&nodegroup.nodegroupid)
-                .ok_or_else(|| MutationError::InvalidSubgraph(format!("Nodegroup {} not mapped", nodegroup.nodegroupid)))?
+            let new_ng_id = remapper
+                .get_nodegroup(&nodegroup.nodegroupid)
+                .ok_or_else(|| {
+                    MutationError::InvalidSubgraph(format!(
+                        "Nodegroup {} not mapped",
+                        nodegroup.nodegroupid
+                    ))
+                })?
                 .clone();
 
             let new_parent_ng_id = nodegroup.parentnodegroup_id.as_ref().and_then(|parent_id| {
@@ -3224,7 +3462,9 @@ fn apply_update_subgraph(
                 }
             });
 
-            let new_grouping_node_id = nodegroup.grouping_node_id.as_ref()
+            let new_grouping_node_id = nodegroup
+                .grouping_node_id
+                .as_ref()
                 .and_then(|gn_id| remapper.get_node(gn_id).cloned());
 
             let new_nodegroup = StaticNodegroup {
@@ -3241,12 +3481,14 @@ fn apply_update_subgraph(
     // 8. REMOVE ORPHANED NODES (if requested)
     if remove_orphaned && !orphaned_node_ids.is_empty() {
         // Remove nodes
-        graph.nodes.retain(|n| !orphaned_node_ids.contains(&n.nodeid));
+        graph
+            .nodes
+            .retain(|n| !orphaned_node_ids.contains(&n.nodeid));
 
         // Remove edges referencing orphaned nodes
         graph.edges.retain(|e| {
-            !orphaned_node_ids.contains(&e.domainnode_id) &&
-            !orphaned_node_ids.contains(&e.rangenode_id)
+            !orphaned_node_ids.contains(&e.domainnode_id)
+                && !orphaned_node_ids.contains(&e.rangenode_id)
         });
 
         // Remove cards_x_nodes_x_widgets for orphaned nodes
@@ -3484,9 +3726,7 @@ pub fn apply_mutations_create_from_json(
 
                     // Set description if provided
                     if let Some(desc) = params.description {
-                        new_graph.description = Some(
-                            StaticTranslatableString::from_string(&desc)
-                        );
+                        new_graph.description = Some(StaticTranslatableString::from_string(&desc));
                     }
 
                     // Apply remaining mutations to the new graph
@@ -3497,9 +3737,7 @@ pub fn apply_mutations_create_from_json(
                         apply_mutations_with_extensions(&new_graph, mutations, options, None)
                     }
                 }
-                _ => {
-                    Err("No graph provided and first mutation is not CreateGraph".to_string())
-                }
+                _ => Err("No graph provided and first mutation is not CreateGraph".to_string()),
             }
         }
         Some(existing_graph) => {
@@ -3633,10 +3871,7 @@ pub fn create_skeleton_graph(
     let graphid = generate_uuid_v5(("skeleton", None), name);
 
     // Generate root node ID
-    let root_nodeid = generate_uuid_v5(
-        ("graph", Some(&graphid)),
-        &format!("root-{}", root_alias),
-    );
+    let root_nodeid = generate_uuid_v5(("graph", Some(&graphid)), &format!("root-{}", root_alias));
 
     // Build graph as JSON to handle private fields correctly
     let graph_json = serde_json::json!({
@@ -3682,8 +3917,8 @@ pub fn create_skeleton_graph(
         "functions_x_graphs": []
     });
 
-    let mut graph: StaticGraph = serde_json::from_value(graph_json)
-        .expect("Failed to create skeleton graph");
+    let mut graph: StaticGraph =
+        serde_json::from_value(graph_json).expect("Failed to create skeleton graph");
     graph.build_indices();
     graph
 }
@@ -3755,7 +3990,10 @@ impl GraphInstruction {
 
     /// Helper to get a string param
     fn get_str(&self, key: &str) -> Option<String> {
-        self.params.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+        self.params
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
     }
 
     /// Helper to get a string param with default
@@ -3767,10 +4005,15 @@ impl GraphInstruction {
     fn get_translatable_map(&self, key: &str) -> Option<HashMap<String, String>> {
         self.params.get(key).and_then(|v| {
             if let Some(obj) = v.as_object() {
-                let map: HashMap<String, String> = obj.iter()
+                let map: HashMap<String, String> = obj
+                    .iter()
                     .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
                     .collect();
-                if map.is_empty() { None } else { Some(map) }
+                if map.is_empty() {
+                    None
+                } else {
+                    Some(map)
+                }
             } else {
                 None
             }
@@ -3785,13 +4028,20 @@ impl GraphInstruction {
                 let cardinality = match cardinality_str.as_str() {
                     "1" | "one" | "One" => Cardinality::One,
                     "n" | "N" | "many" => Cardinality::N,
-                    _ => return Err(MutationError::InvalidSubgraph(
-                        format!("Invalid cardinality: {}", cardinality_str)
-                    )),
+                    _ => {
+                        return Err(MutationError::InvalidSubgraph(format!(
+                            "Invalid cardinality: {}",
+                            cardinality_str
+                        )))
+                    }
                 };
 
                 Ok(GraphMutation::AddNode(AddNodeParams {
-                    parent_alias: if self.subject.is_empty() { None } else { Some(self.subject.clone()) },
+                    parent_alias: if self.subject.is_empty() {
+                        None
+                    } else {
+                        Some(self.subject.clone())
+                    },
                     alias: self.object.clone(),
                     name: self.get_str_or("name", &self.object),
                     cardinality,
@@ -3803,15 +4053,13 @@ impl GraphInstruction {
                     options: NodeOptions::default(),
                 }))
             }
-            "add_edge" => {
-                Ok(GraphMutation::AddEdge(AddEdgeParams {
-                    from_node_id: self.subject.clone(),
-                    to_node_id: self.object.clone(),
-                    ontology_property: self.get_str_or("ontology_property", ""),
-                    name: self.get_str("name"),
-                    description: self.get_str("description"),
-                }))
-            }
+            "add_edge" => Ok(GraphMutation::AddEdge(AddEdgeParams {
+                from_node_id: self.subject.clone(),
+                to_node_id: self.object.clone(),
+                ontology_property: self.get_str_or("ontology_property", ""),
+                name: self.get_str("name"),
+                description: self.get_str("description"),
+            })),
             "add_nodegroup" => {
                 let cardinality_str = self.get_str_or("cardinality", "n");
                 let cardinality = match cardinality_str.as_str() {
@@ -3821,13 +4069,18 @@ impl GraphInstruction {
                 };
 
                 // Generate nodegroup ID from subject alias
-                let nodegroup_id = self.get_str("nodegroup_id")
+                let nodegroup_id = self
+                    .get_str("nodegroup_id")
                     .unwrap_or_else(|| format!("ng-{}", self.subject));
 
                 Ok(GraphMutation::AddNodegroup(AddNodegroupParams {
                     nodegroup_id,
                     cardinality,
-                    parent_alias: if self.subject.is_empty() { None } else { Some(self.subject.clone()) },
+                    parent_alias: if self.subject.is_empty() {
+                        None
+                    } else {
+                        Some(self.subject.clone())
+                    },
                 }))
             }
             "add_card" => {
@@ -3841,35 +4094,42 @@ impl GraphInstruction {
                     name,
                     component_id: self.get_str("component_id"),
                     options: CardOptions {
-                        description: self.get_str("description")
+                        description: self
+                            .get_str("description")
                             .map(|s| StaticTranslatableString::from_string(&s)),
                         ..CardOptions::default()
                     },
                     config: self.params.get("config").cloned(),
                 }))
             }
-            "add_widget" => {
-                Ok(GraphMutation::AddWidgetToCard(AddWidgetParams {
-                    node_id: self.subject.clone(),
-                    widget_id: self.get_str_or("widget_id", "10000000-0000-0000-0000-000000000001"),
-                    label: self.get_str_or("label", ""),
-                    config: self.params.get("config").cloned()
-                        .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
-                    sortorder: self.params.get("sortorder").and_then(|v| v.as_i64()).map(|i| i as i32),
-                    visible: self.params.get("visible").and_then(|v| v.as_bool()),
-                }))
-            }
+            "add_widget" => Ok(GraphMutation::AddWidgetToCard(AddWidgetParams {
+                node_id: self.subject.clone(),
+                widget_id: self.get_str_or("widget_id", "10000000-0000-0000-0000-000000000001"),
+                label: self.get_str_or("label", ""),
+                config: self
+                    .params
+                    .get("config")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+                sortorder: self
+                    .params
+                    .get("sortorder")
+                    .and_then(|v| v.as_i64())
+                    .map(|i| i as i32),
+                visible: self.params.get("visible").and_then(|v| v.as_bool()),
+            })),
             "add_subgraph" => {
                 // Parse subgraph from params
-                let subgraph_value = self.params.get("subgraph")
-                    .ok_or_else(|| MutationError::InvalidSubgraph(
-                        "add_subgraph requires 'subgraph' param".to_string()
-                    ))?;
+                let subgraph_value = self.params.get("subgraph").ok_or_else(|| {
+                    MutationError::InvalidSubgraph(
+                        "add_subgraph requires 'subgraph' param".to_string(),
+                    )
+                })?;
 
                 let subgraph: StaticGraph = serde_json::from_value(subgraph_value.clone())
-                    .map_err(|e| MutationError::InvalidSubgraph(
-                        format!("Failed to parse subgraph: {}", e)
-                    ))?;
+                    .map_err(|e| {
+                        MutationError::InvalidSubgraph(format!("Failed to parse subgraph: {}", e))
+                    })?;
 
                 Ok(GraphMutation::AddSubgraph(AddSubgraphParams {
                     subgraph,
@@ -3880,17 +4140,20 @@ impl GraphInstruction {
             }
             "update_subgraph" => {
                 // Parse subgraph from params
-                let subgraph_value = self.params.get("subgraph")
-                    .ok_or_else(|| MutationError::InvalidSubgraph(
-                        "update_subgraph requires 'subgraph' param".to_string()
-                    ))?;
+                let subgraph_value = self.params.get("subgraph").ok_or_else(|| {
+                    MutationError::InvalidSubgraph(
+                        "update_subgraph requires 'subgraph' param".to_string(),
+                    )
+                })?;
 
                 let subgraph: StaticGraph = serde_json::from_value(subgraph_value.clone())
-                    .map_err(|e| MutationError::InvalidSubgraph(
-                        format!("Failed to parse subgraph: {}", e)
-                    ))?;
+                    .map_err(|e| {
+                        MutationError::InvalidSubgraph(format!("Failed to parse subgraph: {}", e))
+                    })?;
 
-                let remove_orphaned = self.params.get("remove_orphaned")
+                let remove_orphaned = self
+                    .params
+                    .get("remove_orphaned")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
 
@@ -3902,60 +4165,61 @@ impl GraphInstruction {
                     remove_orphaned,
                 }))
             }
-            "concept_change_collection" => {
-                Ok(GraphMutation::ConceptChangeCollection(ConceptChangeCollectionParams {
+            "concept_change_collection" => Ok(GraphMutation::ConceptChangeCollection(
+                ConceptChangeCollectionParams {
                     node_id: self.subject.clone(),
                     collection_id: self.object.clone(),
-                }))
-            }
-            "delete_card" => {
-                Ok(GraphMutation::DeleteCard(DeleteCardParams {
-                    card_id: self.subject.clone(),
-                }))
-            }
-            "delete_widget" => {
-                Ok(GraphMutation::DeleteWidget(DeleteWidgetParams {
-                    widget_mapping_id: self.subject.clone(),
-                }))
-            }
-            "delete_function" => {
-                Ok(GraphMutation::DeleteFunction(DeleteFunctionParams {
-                    function_mapping_id: self.subject.clone(),
-                }))
-            }
-            "delete_node" => {
-                Ok(GraphMutation::DeleteNode(DeleteNodeParams {
-                    node_id: self.subject.clone(),
-                }))
-            }
-            "delete_nodegroup" => {
-                Ok(GraphMutation::DeleteNodegroup(DeleteNodegroupParams {
-                    nodegroup_id: self.subject.clone(),
-                }))
-            }
-            "update_node" => {
-                Ok(GraphMutation::UpdateNode(UpdateNodeParams {
-                    node_id: self.subject.clone(),
-                    name: self.get_str("name"),
-                    ontology_class: self.get_str("ontology_class"),
-                    parent_property: self.get_str("parent_property"),
-                    description: self.get_str("description"),
-                    config: self.params.get("config").cloned(),
-                    options: UpdateNodeOptions {
-                        exportable: self.params.get("exportable").and_then(|v| v.as_bool()),
-                        fieldname: self.get_str("fieldname"),
-                        isrequired: self.params.get("isrequired").and_then(|v| v.as_bool()),
-                        issearchable: self.params.get("issearchable").and_then(|v| v.as_bool()),
-                        sortorder: self.params.get("sortorder").and_then(|v| v.as_i64()).map(|i| i as i32),
-                    },
-                }))
-            }
+                },
+            )),
+            "delete_card" => Ok(GraphMutation::DeleteCard(DeleteCardParams {
+                card_id: self.subject.clone(),
+            })),
+            "delete_widget" => Ok(GraphMutation::DeleteWidget(DeleteWidgetParams {
+                widget_mapping_id: self.subject.clone(),
+            })),
+            "delete_function" => Ok(GraphMutation::DeleteFunction(DeleteFunctionParams {
+                function_mapping_id: self.subject.clone(),
+            })),
+            "delete_node" => Ok(GraphMutation::DeleteNode(DeleteNodeParams {
+                node_id: self.subject.clone(),
+            })),
+            "delete_nodegroup" => Ok(GraphMutation::DeleteNodegroup(DeleteNodegroupParams {
+                nodegroup_id: self.subject.clone(),
+            })),
+            "update_node" => Ok(GraphMutation::UpdateNode(UpdateNodeParams {
+                node_id: self.subject.clone(),
+                name: self.get_str("name"),
+                ontology_class: self.get_str("ontology_class"),
+                parent_property: self.get_str("parent_property"),
+                description: self.get_str("description"),
+                config: self.params.get("config").cloned(),
+                options: UpdateNodeOptions {
+                    exportable: self.params.get("exportable").and_then(|v| v.as_bool()),
+                    fieldname: self.get_str("fieldname"),
+                    isrequired: self.params.get("isrequired").and_then(|v| v.as_bool()),
+                    issearchable: self.params.get("issearchable").and_then(|v| v.as_bool()),
+                    sortorder: self
+                        .params
+                        .get("sortorder")
+                        .and_then(|v| v.as_i64())
+                        .map(|i| i as i32),
+                },
+            })),
             "change_node_type" => {
-                let datatype = self.get_str("datatype")
-                    .or_else(|| if self.object.is_empty() { None } else { Some(self.object.clone()) })
-                    .ok_or_else(|| MutationError::InvalidSubgraph(
-                        "change_node_type requires 'datatype' param or object".to_string()
-                    ))?;
+                let datatype = self
+                    .get_str("datatype")
+                    .or_else(|| {
+                        if self.object.is_empty() {
+                            None
+                        } else {
+                            Some(self.object.clone())
+                        }
+                    })
+                    .ok_or_else(|| {
+                        MutationError::InvalidSubgraph(
+                            "change_node_type requires 'datatype' param or object".to_string(),
+                        )
+                    })?;
 
                 Ok(GraphMutation::ChangeNodeType(ChangeNodeTypeParams {
                     node_id: self.subject.clone(),
@@ -3970,20 +4234,26 @@ impl GraphInstruction {
                         fieldname: self.get_str("fieldname"),
                         isrequired: self.params.get("isrequired").and_then(|v| v.as_bool()),
                         issearchable: self.params.get("issearchable").and_then(|v| v.as_bool()),
-                        sortorder: self.params.get("sortorder").and_then(|v| v.as_i64()).map(|i| i as i32),
+                        sortorder: self
+                            .params
+                            .get("sortorder")
+                            .and_then(|v| v.as_i64())
+                            .map(|i| i as i32),
                     },
                 }))
             }
-            "rename_node" => {
-                Ok(GraphMutation::RenameNode(RenameNodeParams {
-                    node_id: self.subject.clone(),
-                    alias: self.get_str("alias").or_else(|| {
-                        if self.object.is_empty() { None } else { Some(self.object.clone()) }
-                    }),
-                    name: self.get_str("name"),
-                    description: self.get_str("description"),
-                }))
-            }
+            "rename_node" => Ok(GraphMutation::RenameNode(RenameNodeParams {
+                node_id: self.subject.clone(),
+                alias: self.get_str("alias").or_else(|| {
+                    if self.object.is_empty() {
+                        None
+                    } else {
+                        Some(self.object.clone())
+                    }
+                }),
+                name: self.get_str("name"),
+                description: self.get_str("description"),
+            })),
             "rename_graph" => {
                 // Parse name: either from params.name (as map) or object (as simple en string)
                 let name = self.get_translatable_map("name").or_else(|| {
@@ -4003,12 +4273,14 @@ impl GraphInstruction {
                 }))
             }
             // create_model and create_branch are handled separately via to_skeleton_graph()
-            "create_model" | "create_branch" => Err(MutationError::InvalidSubgraph(
-                format!("'{}' creates a new graph, use build_graph_from_instructions() instead", self.action)
-            )),
-            _ => Err(MutationError::InvalidSubgraph(
-                format!("Unknown action: {}", self.action)
-            )),
+            "create_model" | "create_branch" => Err(MutationError::InvalidSubgraph(format!(
+                "'{}' creates a new graph, use build_graph_from_instructions() instead",
+                self.action
+            ))),
+            _ => Err(MutationError::InvalidSubgraph(format!(
+                "Unknown action: {}",
+                self.action
+            ))),
         }
     }
 
@@ -4029,9 +4301,8 @@ impl GraphInstruction {
             // Collection changes - valid for both
             "concept_change_collection" => MutationConformance::AlwaysConformant,
             // Deletion operations - valid for both branches and models
-            "delete_card" | "delete_widget" | "delete_function" | "delete_node" | "delete_nodegroup" => {
-                MutationConformance::AlwaysConformant
-            }
+            "delete_card" | "delete_widget" | "delete_function" | "delete_node"
+            | "delete_nodegroup" => MutationConformance::AlwaysConformant,
             // Node update operations
             "update_node" | "change_node_type" => MutationConformance::BranchConformant,
             "rename_node" | "rename_graph" => MutationConformance::AlwaysConformant,
@@ -4057,9 +4328,12 @@ impl GraphInstruction {
         let is_resource = match self.action.as_str() {
             "create_model" => true,
             "create_branch" => false,
-            _ => return Err(MutationError::InvalidSubgraph(
-                format!("'{}' is not a create action, use to_mutation() instead", self.action)
-            )),
+            _ => {
+                return Err(MutationError::InvalidSubgraph(format!(
+                    "'{}' is not a create action, use to_mutation() instead",
+                    self.action
+                )))
+            }
         };
 
         let root_alias = &self.subject;
@@ -4067,12 +4341,8 @@ impl GraphInstruction {
         let ontology_class = self.get_str("ontology_class");
 
         // If object is provided, use it as the graphid override
-        let mut graph = create_skeleton_graph(
-            &name,
-            root_alias,
-            is_resource,
-            ontology_class.as_deref(),
-        );
+        let mut graph =
+            create_skeleton_graph(&name, root_alias, is_resource, ontology_class.as_deref());
 
         // Override graphid if object is provided and non-empty
         if !self.object.is_empty() {
@@ -4086,7 +4356,9 @@ impl GraphInstruction {
         }
 
         // Apply slug (both models and branches can have slugs)
-        graph.slug = self.get_str("slug").or_else(|| Some(root_alias.to_lowercase()));
+        graph.slug = self
+            .get_str("slug")
+            .or_else(|| Some(root_alias.to_lowercase()));
 
         Ok(graph)
     }
@@ -4135,8 +4407,7 @@ pub fn build_graph_from_instructions(
         ));
     }
 
-    let graph = first.to_skeleton_graph()
-        .map_err(|e| e.to_string())?;
+    let graph = first.to_skeleton_graph().map_err(|e| e.to_string())?;
 
     // Apply remaining instructions as mutations
     let remaining: Vec<GraphInstruction> = iter.collect();
@@ -4353,8 +4624,8 @@ mod tests {
             }
         }"#;
 
-        let mut graph: StaticGraph = serde_json::from_str(graph_json)
-            .expect("Failed to parse test graph JSON");
+        let mut graph: StaticGraph =
+            serde_json::from_str(graph_json).expect("Failed to parse test graph JSON");
         graph.build_indices();
         graph
     }
@@ -4445,7 +4716,7 @@ mod tests {
         let result = GraphMutator::new(graph)
             .add_string_node(
                 Some("root"),
-                "root",  // This alias already exists!
+                "root", // This alias already exists!
                 "Duplicate",
                 Cardinality::One,
                 "E41_Appellation",
@@ -4476,7 +4747,7 @@ mod tests {
                 "P1_is_identified_by",
                 None,
                 NodeOptions::default(),
-                Some(serde_json::json!("not an object")),  // Invalid: should be object
+                Some(serde_json::json!("not an object")), // Invalid: should be object
             )
             .build();
 
@@ -4536,20 +4807,18 @@ mod tests {
 
     #[test]
     fn test_mutations_serialization() {
-        let mutations = vec![
-            GraphMutation::AddNode(AddNodeParams {
-                parent_alias: Some("root".to_string()),
-                alias: "test".to_string(),
-                name: "Test".to_string(),
-                cardinality: Cardinality::One,
-                datatype: "string".to_string(),
-                ontology_class: "E41".to_string(),
-                parent_property: "P1".to_string(),
-                description: None,
-                config: None,
-                options: NodeOptions::default(),
-            }),
-        ];
+        let mutations = vec![GraphMutation::AddNode(AddNodeParams {
+            parent_alias: Some("root".to_string()),
+            alias: "test".to_string(),
+            name: "Test".to_string(),
+            cardinality: Cardinality::One,
+            datatype: "string".to_string(),
+            ontology_class: "E41".to_string(),
+            parent_property: "P1".to_string(),
+            description: None,
+            config: None,
+            options: NodeOptions::default(),
+        })];
 
         let json = mutations_to_json(&mutations);
         assert!(json.is_ok());
@@ -4695,8 +4964,8 @@ mod tests {
             }
         }"#;
 
-        let mut graph: StaticGraph = serde_json::from_str(subgraph_json)
-            .expect("Failed to parse test subgraph JSON");
+        let mut graph: StaticGraph =
+            serde_json::from_str(subgraph_json).expect("Failed to parse test subgraph JSON");
         graph.build_indices();
         graph
     }
@@ -4754,21 +5023,37 @@ mod tests {
         let mut graph_clone = graph.deep_clone();
         let result = apply_add_subgraph(&mut graph_clone, params);
 
-        assert!(result.is_ok(), "AddSubgraph with suffix failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "AddSubgraph with suffix failed: {:?}",
+            result.err()
+        );
 
         // Aliases should be preserved (no clash in base graph)
-        let child1 = graph_clone.nodes.iter()
+        let child1 = graph_clone
+            .nodes
+            .iter()
             .find(|n| n.alias.as_deref() == Some("child1"));
-        assert!(child1.is_some(), "Node with alias 'child1' not found (aliases should be preserved when no clash)");
+        assert!(
+            child1.is_some(),
+            "Node with alias 'child1' not found (aliases should be preserved when no clash)"
+        );
 
-        let child2 = graph_clone.nodes.iter()
+        let child2 = graph_clone
+            .nodes
+            .iter()
             .find(|n| n.alias.as_deref() == Some("child2"));
-        assert!(child2.is_some(), "Node with alias 'child2' not found (aliases should be preserved when no clash)");
+        assert!(
+            child2.is_some(),
+            "Node with alias 'child2' not found (aliases should be preserved when no clash)"
+        );
 
         // Verify sourcebranchpublication_id is set
         let child1_node = child1.unwrap();
-        assert!(child1_node.sourcebranchpublication_id.is_some(),
-            "sourcebranchpublication_id should be set on branch nodes");
+        assert!(
+            child1_node.sourcebranchpublication_id.is_some(),
+            "sourcebranchpublication_id should be set on branch nodes"
+        );
     }
 
     #[test]
@@ -4806,22 +5091,41 @@ mod tests {
         let result = apply_add_subgraph(&mut graph_with_child, params);
 
         // Should succeed - clashing aliases get auto-suffixed
-        assert!(result.is_ok(), "AddSubgraph should auto-suffix clashing aliases: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "AddSubgraph should auto-suffix clashing aliases: {:?}",
+            result.err()
+        );
 
         // Original child1 should still exist
-        let original_child1 = graph_with_child.nodes.iter()
+        let original_child1 = graph_with_child
+            .nodes
+            .iter()
             .find(|n| n.alias.as_deref() == Some("child1") && n.name == "Existing Child");
-        assert!(original_child1.is_some(), "Original 'child1' node should still exist");
+        assert!(
+            original_child1.is_some(),
+            "Original 'child1' node should still exist"
+        );
 
         // New child1 from branch should be renamed to child1_n1
-        let new_child1 = graph_with_child.nodes.iter()
+        let new_child1 = graph_with_child
+            .nodes
+            .iter()
             .find(|n| n.alias.as_deref() == Some("child1_n1"));
-        assert!(new_child1.is_some(), "Clashing alias should be renamed to 'child1_n1'");
+        assert!(
+            new_child1.is_some(),
+            "Clashing alias should be renamed to 'child1_n1'"
+        );
 
         // child2 should be unchanged (no clash)
-        let child2 = graph_with_child.nodes.iter()
+        let child2 = graph_with_child
+            .nodes
+            .iter()
             .find(|n| n.alias.as_deref() == Some("child2"));
-        assert!(child2.is_some(), "Non-clashing alias 'child2' should be preserved");
+        assert!(
+            child2.is_some(),
+            "Non-clashing alias 'child2' should be preserved"
+        );
     }
 
     #[test]
@@ -4843,21 +5147,29 @@ mod tests {
         // Verify that the new nodes have different IDs from the original subgraph
         let original_ids = ["sub-root-id", "sub-child1-id", "sub-child2-id"];
         for node in &graph_clone.nodes {
-            assert!(!original_ids.contains(&node.nodeid.as_str()),
-                "Node ID {} was not remapped", node.nodeid);
+            assert!(
+                !original_ids.contains(&node.nodeid.as_str()),
+                "Node ID {} was not remapped",
+                node.nodeid
+            );
         }
 
         // Verify that edges have been remapped
         let original_edge_ids = ["sub-edge1-id", "sub-edge2-id"];
         for edge in &graph_clone.edges {
-            assert!(!original_edge_ids.contains(&edge.edgeid.as_str()),
-                "Edge ID {} was not remapped", edge.edgeid);
+            assert!(
+                !original_edge_ids.contains(&edge.edgeid.as_str()),
+                "Edge ID {} was not remapped",
+                edge.edgeid
+            );
         }
 
         // Verify graph_id is remapped to target graph
         for node in &graph_clone.nodes {
-            assert_eq!(node.graph_id, "test-graph-id",
-                "Node graph_id not remapped to target graph");
+            assert_eq!(
+                node.graph_id, "test-graph-id",
+                "Node graph_id not remapped to target graph"
+            );
         }
     }
 
@@ -4879,15 +5191,27 @@ mod tests {
 
         // Verify widget_ids are preserved (not remapped)
         let cxnxws = graph_clone.cards_x_nodes_x_widgets_slice();
-        assert!(cxnxws.iter().any(|c| c.widget_id == "10000000-0000-0000-0000-000000000001"),
-            "Widget ID for text-widget should be preserved");
-        assert!(cxnxws.iter().any(|c| c.widget_id == "10000000-0000-0000-0000-000000000002"),
-            "Widget ID for concept-select-widget should be preserved");
+        assert!(
+            cxnxws
+                .iter()
+                .any(|c| c.widget_id == "10000000-0000-0000-0000-000000000001"),
+            "Widget ID for text-widget should be preserved"
+        );
+        assert!(
+            cxnxws
+                .iter()
+                .any(|c| c.widget_id == "10000000-0000-0000-0000-000000000002"),
+            "Widget ID for concept-select-widget should be preserved"
+        );
 
         // Verify component_id is preserved
         let cards = graph_clone.cards_slice();
-        assert!(cards.iter().any(|c| c.component_id == "f05e4d3a-53c1-11e8-b0ea-784f435179ea"),
-            "Component ID should be preserved");
+        assert!(
+            cards
+                .iter()
+                .any(|c| c.component_id == "f05e4d3a-53c1-11e8-b0ea-784f435179ea"),
+            "Component ID should be preserved"
+        );
     }
 
     #[test]
@@ -4923,7 +5247,8 @@ mod tests {
         // Serialize the subgraph to include in the mutation
         let subgraph_json = serde_json::to_string(&subgraph).expect("Failed to serialize subgraph");
 
-        let mutations_json = format!(r#"{{
+        let mutations_json = format!(
+            r#"{{
             "mutations": [
                 {{
                     "AddSubgraph": {{
@@ -4938,10 +5263,16 @@ mod tests {
                 "autocreate_card": true,
                 "autocreate_widget": true
             }}
-        }}"#, subgraph_json);
+        }}"#,
+            subgraph_json
+        );
 
         let result = apply_mutations_from_json(&graph, &mutations_json);
-        assert!(result.is_ok(), "JSON AddSubgraph mutation failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "JSON AddSubgraph mutation failed: {:?}",
+            result.err()
+        );
 
         let mutated = result.unwrap();
         // Should have 3 nodes (1 original + 2 from subgraph)
@@ -4949,13 +5280,24 @@ mod tests {
 
         // With Arches-compatible behavior, aliases are preserved (no clash)
         // alias_suffix is only used for UUID generation
-        assert!(mutated.nodes.iter().any(|n| n.alias.as_deref() == Some("child1")),
-            "Alias 'child1' should be preserved (no clash)");
+        assert!(
+            mutated
+                .nodes
+                .iter()
+                .any(|n| n.alias.as_deref() == Some("child1")),
+            "Alias 'child1' should be preserved (no clash)"
+        );
 
         // Verify sourcebranchpublication_id is set
-        let branch_node = mutated.nodes.iter().find(|n| n.alias.as_deref() == Some("child1")).unwrap();
-        assert!(branch_node.sourcebranchpublication_id.is_some(),
-            "sourcebranchpublication_id should be set on branch nodes");
+        let branch_node = mutated
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("child1"))
+            .unwrap();
+        assert!(
+            branch_node.sourcebranchpublication_id.is_some(),
+            "sourcebranchpublication_id should be set on branch nodes"
+        );
     }
 
     // =========================================================================
@@ -4979,13 +5321,25 @@ mod tests {
         let mut graph_clone = graph.deep_clone();
         let result = apply_update_subgraph(&mut graph_clone, params);
 
-        assert!(result.is_ok(), "UpdateSubgraph should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "UpdateSubgraph should succeed: {:?}",
+            result.err()
+        );
 
         // Should have added the branch nodes
-        assert_eq!(graph_clone.nodes.len(), 3, "Should have 3 nodes: root + 2 from branch");
+        assert_eq!(
+            graph_clone.nodes.len(),
+            3,
+            "Should have 3 nodes: root + 2 from branch"
+        );
 
         // Verify sourcebranchpublication_id is set
-        let child1 = graph_clone.nodes.iter().find(|n| n.alias.as_deref() == Some("child1")).unwrap();
+        let child1 = graph_clone
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("child1"))
+            .unwrap();
         assert!(child1.sourcebranchpublication_id.is_some());
     }
 
@@ -5023,14 +5377,25 @@ mod tests {
         };
         let result = apply_update_subgraph(&mut graph_with_branch, update_params);
 
-        assert!(result.is_ok(), "UpdateSubgraph should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "UpdateSubgraph should succeed: {:?}",
+            result.err()
+        );
 
         // Still should have 3 nodes
         assert_eq!(graph_with_branch.nodes.len(), 3);
 
         // Check that the name was updated
-        let child1 = graph_with_branch.nodes.iter().find(|n| n.alias.as_deref() == Some("child1")).unwrap();
-        assert_eq!(child1.name, "Updated Child 1", "Node name should be updated");
+        let child1 = graph_with_branch
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("child1"))
+            .unwrap();
+        assert_eq!(
+            child1.name, "Updated Child 1",
+            "Node name should be updated"
+        );
     }
 
     #[test]
@@ -5087,13 +5452,24 @@ mod tests {
         };
         let result = apply_update_subgraph(&mut graph_with_branch, update_params);
 
-        assert!(result.is_ok(), "UpdateSubgraph should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "UpdateSubgraph should succeed: {:?}",
+            result.err()
+        );
 
         // Should now have 4 nodes (root + 3 from branch)
-        assert_eq!(graph_with_branch.nodes.len(), 4, "Should have added new node");
+        assert_eq!(
+            graph_with_branch.nodes.len(),
+            4,
+            "Should have added new node"
+        );
 
         // Check that child3 was added
-        let child3 = graph_with_branch.nodes.iter().find(|n| n.alias.as_deref() == Some("child3"));
+        let child3 = graph_with_branch
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("child3"));
         assert!(child3.is_some(), "New node child3 should be added");
     }
 
@@ -5116,7 +5492,9 @@ mod tests {
 
         // Now update with only child1 (remove child2)
         let mut updated_subgraph = subgraph.deep_clone();
-        updated_subgraph.nodes.retain(|n| n.alias.as_deref() != Some("child2"));
+        updated_subgraph
+            .nodes
+            .retain(|n| n.alias.as_deref() != Some("child2"));
 
         let update_params = UpdateSubgraphParams {
             subgraph: updated_subgraph,
@@ -5127,13 +5505,24 @@ mod tests {
         };
         let result = apply_update_subgraph(&mut graph_with_branch, update_params);
 
-        assert!(result.is_ok(), "UpdateSubgraph should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "UpdateSubgraph should succeed: {:?}",
+            result.err()
+        );
 
         // Should now have 2 nodes (root + child1 only)
-        assert_eq!(graph_with_branch.nodes.len(), 2, "Orphaned child2 should be removed");
+        assert_eq!(
+            graph_with_branch.nodes.len(),
+            2,
+            "Orphaned child2 should be removed"
+        );
 
         // child2 should be gone
-        let child2 = graph_with_branch.nodes.iter().find(|n| n.alias.as_deref() == Some("child2"));
+        let child2 = graph_with_branch
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("child2"));
         assert!(child2.is_none(), "child2 should be removed");
     }
 
@@ -5204,12 +5593,15 @@ mod tests {
         };
 
         let result = apply_concept_change_collection(&mut graph, params);
-        assert!(result.is_ok(), "ConceptChangeCollection should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "ConceptChangeCollection should succeed: {:?}",
+            result.err()
+        );
 
         // Verify config was updated
         let node = graph.find_node_by_alias("test_concept").unwrap();
-        let rdm_collection = node.config.get("rdmCollection")
-            .and_then(|v| v.as_str());
+        let rdm_collection = node.config.get("rdmCollection").and_then(|v| v.as_str());
         assert_eq!(rdm_collection, Some("550e8400-e29b-41d4-a716-446655440000"));
     }
 
@@ -5249,7 +5641,11 @@ mod tests {
         };
 
         let result = apply_concept_change_collection(&mut graph, params);
-        assert!(result.is_ok(), "ConceptChangeCollection should succeed for concept-list: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "ConceptChangeCollection should succeed for concept-list: {:?}",
+            result.err()
+        );
 
         let node = graph.find_node_by_alias("test_concept_list").unwrap();
         assert_eq!(
@@ -5297,7 +5693,11 @@ mod tests {
         assert!(result.is_err(), "Should fail for non-concept datatype");
 
         match result {
-            Err(MutationError::InvalidDatatype { expected, found, node_id }) => {
+            Err(MutationError::InvalidDatatype {
+                expected,
+                found,
+                node_id,
+            }) => {
                 assert!(expected.contains("concept"));
                 assert_eq!(found, "string");
                 assert_eq!(node_id, "test_string");
@@ -5366,7 +5766,11 @@ mod tests {
         let result = apply_concept_change_collection(&mut graph, params);
         assert!(result.is_ok(), "Should find node by ID: {:?}", result.err());
 
-        let node = graph.nodes.iter().find(|n| n.nodeid == "concept-node-uuid").unwrap();
+        let node = graph
+            .nodes
+            .iter()
+            .find(|n| n.nodeid == "concept-node-uuid")
+            .unwrap();
         assert_eq!(
             node.config.get("rdmCollection").and_then(|v| v.as_str()),
             Some("new-collection")
@@ -5414,7 +5818,11 @@ mod tests {
         let mutation = instruction.to_mutation().expect("Should create mutation");
         let options = MutatorOptions::default();
         let result = apply_mutation(&mut graph, mutation, &options);
-        assert!(result.is_ok(), "Instruction should apply: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Instruction should apply: {:?}",
+            result.err()
+        );
 
         let node = graph.find_node_by_alias("my_concept").unwrap();
         assert_eq!(
@@ -5429,12 +5837,8 @@ mod tests {
 
     #[test]
     fn test_create_skeleton_graph() {
-        let graph = create_skeleton_graph(
-            "Person",
-            "person",
-            true,
-            Some("http://example.org/Person"),
-        );
+        let graph =
+            create_skeleton_graph("Person", "person", true, Some("http://example.org/Person"));
 
         // Check basic structure
         assert!(!graph.graphid.is_empty());
@@ -5445,8 +5849,14 @@ mod tests {
         assert_eq!(graph.root.alias, Some("person".to_string()));
         assert_eq!(graph.root.datatype, "semantic");
         assert!(graph.root.istopnode);
-        assert!(graph.root.nodegroup_id.is_none(), "Root should have no nodegroup");
-        assert_eq!(graph.root.ontologyclass, Some("http://example.org/Person".to_string()));
+        assert!(
+            graph.root.nodegroup_id.is_none(),
+            "Root should have no nodegroup"
+        );
+        assert_eq!(
+            graph.root.ontologyclass,
+            Some("http://example.org/Person".to_string())
+        );
 
         // Check nodes vector includes root
         assert_eq!(graph.nodes.len(), 1);
@@ -5488,14 +5898,12 @@ mod tests {
     fn test_instruction_add_node() {
         let graph = create_skeleton_graph("Person", "person", true, None);
 
-        let instructions = vec![
-            GraphInstruction::new("add_node", "person", "name")
-                .with_str("datatype", "string")
-                .with_str("name", "Full Name")
-                .with_str("cardinality", "n")
-                .with_str("ontology_class", "http://example.org/Name")
-                .with_str("parent_property", "http://example.org/hasName"),
-        ];
+        let instructions = vec![GraphInstruction::new("add_node", "person", "name")
+            .with_str("datatype", "string")
+            .with_str("name", "Full Name")
+            .with_str("cardinality", "n")
+            .with_str("ontology_class", "http://example.org/Name")
+            .with_str("parent_property", "http://example.org/hasName")];
 
         let result = apply_instructions(&graph, instructions, MutatorOptions::default());
         assert!(result.is_ok(), "Instruction failed: {:?}", result.err());
@@ -5503,13 +5911,19 @@ mod tests {
         let mutated = result.unwrap();
         assert_eq!(mutated.nodes.len(), 2);
 
-        let name_node = mutated.nodes.iter().find(|n| n.alias.as_deref() == Some("name"));
+        let name_node = mutated
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("name"));
         assert!(name_node.is_some(), "Should find 'name' node");
 
         let name_node = name_node.unwrap();
         assert_eq!(name_node.datatype, "string");
         assert_eq!(name_node.name, "Full Name");
-        assert!(name_node.nodegroup_id.is_some(), "Non-root node should have nodegroup");
+        assert!(
+            name_node.nodegroup_id.is_some(),
+            "Non-root node should have nodegroup"
+        );
     }
 
     #[test]
@@ -5535,13 +5949,25 @@ mod tests {
         assert_eq!(mutated.nodes.len(), 4); // person, names, full_name, alias_name
 
         // Check 'names' semantic node has its own nodegroup
-        let names_node = mutated.nodes.iter().find(|n| n.alias.as_deref() == Some("names")).unwrap();
+        let names_node = mutated
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("names"))
+            .unwrap();
         assert!(names_node.nodegroup_id.is_some());
         let names_ng = names_node.nodegroup_id.clone().unwrap();
 
         // Check full_name and alias_name share names' nodegroup (cardinality 1)
-        let full_name = mutated.nodes.iter().find(|n| n.alias.as_deref() == Some("full_name")).unwrap();
-        let alias_name = mutated.nodes.iter().find(|n| n.alias.as_deref() == Some("alias_name")).unwrap();
+        let full_name = mutated
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("full_name"))
+            .unwrap();
+        let alias_name = mutated
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("alias_name"))
+            .unwrap();
         assert_eq!(full_name.nodegroup_id, Some(names_ng.clone()));
         assert_eq!(alias_name.nodegroup_id, Some(names_ng.clone()));
     }
@@ -5569,7 +5995,11 @@ mod tests {
         }"#;
 
         let result = apply_instructions_from_json(&graph, json);
-        assert!(result.is_ok(), "JSON instructions failed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "JSON instructions failed: {:?}",
+            result.err()
+        );
 
         let mutated = result.unwrap();
         assert_eq!(mutated.nodes.len(), 2);
@@ -5579,9 +6009,7 @@ mod tests {
     fn test_instruction_invalid_action() {
         let graph = create_skeleton_graph("Test", "test", true, None);
 
-        let instructions = vec![
-            GraphInstruction::new("invalid_action", "test", "foo"),
-        ];
+        let instructions = vec![GraphInstruction::new("invalid_action", "test", "foo")];
 
         let result = apply_instructions(&graph, instructions, MutatorOptions::default());
         assert!(result.is_err());
@@ -5605,11 +6033,17 @@ mod tests {
         assert!(result.is_ok());
 
         let mutated = result.unwrap();
-        let child = mutated.nodes.iter().find(|n| n.alias.as_deref() == Some("child")).unwrap();
+        let child = mutated
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("child"))
+            .unwrap();
 
         // Child of root should have its own nodegroup (not inherit None from root)
-        assert!(child.nodegroup_id.is_some(),
-            "Direct children of root must have their own nodegroup");
+        assert!(
+            child.nodegroup_id.is_some(),
+            "Direct children of root must have their own nodegroup"
+        );
     }
 
     // =========================================================================
@@ -5618,12 +6052,10 @@ mod tests {
 
     #[test]
     fn test_create_model_instruction() {
-        let instructions = vec![
-            GraphInstruction::new("create_model", "person", "")
-                .with_str("name", "Person")
-                .with_str("ontology_class", "http://example.org/Person")
-                .with_str("slug", "person"),
-        ];
+        let instructions = vec![GraphInstruction::new("create_model", "person", "")
+            .with_str("name", "Person")
+            .with_str("ontology_class", "http://example.org/Person")
+            .with_str("slug", "person")];
 
         let result = build_graph_from_instructions(instructions, MutatorOptions::default());
         assert!(result.is_ok(), "create_model failed: {:?}", result.err());
@@ -5632,17 +6064,21 @@ mod tests {
         assert_eq!(graph.isresource, Some(true));
         assert_eq!(graph.name.to_string_default(), "Person");
         assert_eq!(graph.root.alias, Some("person".to_string()));
-        assert_eq!(graph.root.ontologyclass, Some("http://example.org/Person".to_string()));
+        assert_eq!(
+            graph.root.ontologyclass,
+            Some("http://example.org/Person".to_string())
+        );
         assert_eq!(graph.slug, Some("person".to_string()));
-        assert!(graph.root.nodegroup_id.is_none(), "Root should have no nodegroup");
+        assert!(
+            graph.root.nodegroup_id.is_none(),
+            "Root should have no nodegroup"
+        );
     }
 
     #[test]
     fn test_create_model_default_slug() {
-        let instructions = vec![
-            GraphInstruction::new("create_model", "Person", "")
-                .with_str("name", "Person"),
-        ];
+        let instructions =
+            vec![GraphInstruction::new("create_model", "Person", "").with_str("name", "Person")];
 
         let result = build_graph_from_instructions(instructions, MutatorOptions::default());
         assert!(result.is_ok());
@@ -5654,11 +6090,9 @@ mod tests {
 
     #[test]
     fn test_create_branch_instruction() {
-        let instructions = vec![
-            GraphInstruction::new("create_branch", "addresses", "")
-                .with_str("name", "Addresses")
-                .with_str("slug", "addresses-branch"),
-        ];
+        let instructions = vec![GraphInstruction::new("create_branch", "addresses", "")
+            .with_str("name", "Addresses")
+            .with_str("slug", "addresses-branch")];
 
         let result = build_graph_from_instructions(instructions, MutatorOptions::default());
         assert!(result.is_ok(), "create_branch failed: {:?}", result.err());
@@ -5672,10 +6106,8 @@ mod tests {
 
     #[test]
     fn test_create_branch_default_slug() {
-        let instructions = vec![
-            GraphInstruction::new("create_branch", "MyAddresses", "")
-                .with_str("name", "My Addresses"),
-        ];
+        let instructions = vec![GraphInstruction::new("create_branch", "MyAddresses", "")
+            .with_str("name", "My Addresses")];
 
         let result = build_graph_from_instructions(instructions, MutatorOptions::default());
         assert!(result.is_ok());
@@ -5704,8 +6136,7 @@ mod tests {
     #[test]
     fn test_build_graph_with_nodes() {
         let instructions = vec![
-            GraphInstruction::new("create_model", "person", "")
-                .with_str("name", "Person"),
+            GraphInstruction::new("create_model", "person", "").with_str("name", "Person"),
             GraphInstruction::new("add_node", "person", "names")
                 .with_str("datatype", "semantic")
                 .with_str("cardinality", "n"),
@@ -5721,8 +6152,16 @@ mod tests {
         assert_eq!(graph.nodes.len(), 3); // person, names, full_name
 
         // Verify structure
-        let names = graph.nodes.iter().find(|n| n.alias.as_deref() == Some("names")).unwrap();
-        let full_name = graph.nodes.iter().find(|n| n.alias.as_deref() == Some("full_name")).unwrap();
+        let names = graph
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("names"))
+            .unwrap();
+        let full_name = graph
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("full_name"))
+            .unwrap();
 
         assert!(names.nodegroup_id.is_some());
         assert_eq!(full_name.nodegroup_id, names.nodegroup_id);
@@ -5763,8 +6202,7 @@ mod tests {
     fn test_build_graph_requires_create_first() {
         let instructions = vec![
             // Missing create_model/create_branch as first instruction
-            GraphInstruction::new("add_node", "person", "name")
-                .with_str("datatype", "string"),
+            GraphInstruction::new("add_node", "person", "name").with_str("datatype", "string"),
         ];
 
         let result = build_graph_from_instructions(instructions, MutatorOptions::default());
@@ -5784,9 +6222,7 @@ mod tests {
         // create_model/create_branch should error when used with apply_instructions
         let graph = create_skeleton_graph("Test", "test", true, None);
 
-        let instructions = vec![
-            GraphInstruction::new("create_model", "other", ""),
-        ];
+        let instructions = vec![GraphInstruction::new("create_model", "other", "")];
 
         let result = apply_instructions(&graph, instructions, MutatorOptions::default());
         assert!(result.is_err());
@@ -5819,27 +6255,43 @@ mod tests {
                 options: NodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Get the card ID
         let card_id = graph.cards.as_ref().unwrap()[0].cardid.clone();
         assert!(!card_id.is_empty());
 
         // Should have widgets
-        assert!(graph.cards_x_nodes_x_widgets.as_ref().map(|c| !c.is_empty()).unwrap_or(false));
+        assert!(graph
+            .cards_x_nodes_x_widgets
+            .as_ref()
+            .map(|c| !c.is_empty())
+            .unwrap_or(false));
 
         // Delete the card
         apply_mutation(
             &mut graph,
-            GraphMutation::DeleteCard(DeleteCardParams { card_id: card_id.clone() }),
+            GraphMutation::DeleteCard(DeleteCardParams {
+                card_id: card_id.clone(),
+            }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Card should be gone
-        assert!(graph.cards.as_ref().map(|c| c.iter().all(|card| card.cardid != card_id)).unwrap_or(true));
+        assert!(graph
+            .cards
+            .as_ref()
+            .map(|c| c.iter().all(|card| card.cardid != card_id))
+            .unwrap_or(true));
 
         // Widgets for that card should be gone
-        assert!(graph.cards_x_nodes_x_widgets.as_ref().map(|c| c.iter().all(|w| w.card_id != card_id)).unwrap_or(true));
+        assert!(graph
+            .cards_x_nodes_x_widgets
+            .as_ref()
+            .map(|c| c.iter().all(|w| w.card_id != card_id))
+            .unwrap_or(true));
     }
 
     #[test]
@@ -5849,7 +6301,9 @@ mod tests {
 
         let result = apply_mutation(
             &mut graph,
-            GraphMutation::DeleteCard(DeleteCardParams { card_id: "nonexistent".to_string() }),
+            GraphMutation::DeleteCard(DeleteCardParams {
+                card_id: "nonexistent".to_string(),
+            }),
             &options,
         );
 
@@ -5878,21 +6332,31 @@ mod tests {
                 options: NodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Get the widget mapping ID
-        let widget_id = graph.cards_x_nodes_x_widgets.as_ref().unwrap()[0].id.clone();
+        let widget_id = graph.cards_x_nodes_x_widgets.as_ref().unwrap()[0]
+            .id
+            .clone();
         let initial_count = graph.cards_x_nodes_x_widgets.as_ref().unwrap().len();
 
         // Delete the widget
         apply_mutation(
             &mut graph,
-            GraphMutation::DeleteWidget(DeleteWidgetParams { widget_mapping_id: widget_id.clone() }),
+            GraphMutation::DeleteWidget(DeleteWidgetParams {
+                widget_mapping_id: widget_id.clone(),
+            }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Widget should be gone
-        let final_count = graph.cards_x_nodes_x_widgets.as_ref().map(|c| c.len()).unwrap_or(0);
+        let final_count = graph
+            .cards_x_nodes_x_widgets
+            .as_ref()
+            .map(|c| c.len())
+            .unwrap_or(0);
         assert_eq!(final_count, initial_count - 1);
     }
 
@@ -5903,7 +6367,9 @@ mod tests {
 
         let result = apply_mutation(
             &mut graph,
-            GraphMutation::DeleteWidget(DeleteWidgetParams { widget_mapping_id: "nonexistent".to_string() }),
+            GraphMutation::DeleteWidget(DeleteWidgetParams {
+                widget_mapping_id: "nonexistent".to_string(),
+            }),
             &options,
         );
 
@@ -5919,24 +6385,29 @@ mod tests {
         let options = MutatorOptions::default();
 
         // Add a function mapping
-        graph.functions_x_graphs = Some(vec![
-            StaticFunctionsXGraphs {
-                id: "func-mapping-1".to_string(),
-                function_id: "60000000-0000-0000-0000-000000000001".to_string(),
-                graph_id: graph.graphid.clone(),
-                config: serde_json::Value::Object(serde_json::Map::new()),
-            },
-        ]);
+        graph.functions_x_graphs = Some(vec![StaticFunctionsXGraphs {
+            id: "func-mapping-1".to_string(),
+            function_id: "60000000-0000-0000-0000-000000000001".to_string(),
+            graph_id: graph.graphid.clone(),
+            config: serde_json::Value::Object(serde_json::Map::new()),
+        }]);
 
         // Delete the function
         apply_mutation(
             &mut graph,
-            GraphMutation::DeleteFunction(DeleteFunctionParams { function_mapping_id: "func-mapping-1".to_string() }),
+            GraphMutation::DeleteFunction(DeleteFunctionParams {
+                function_mapping_id: "func-mapping-1".to_string(),
+            }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Function mapping should be gone
-        assert!(graph.functions_x_graphs.as_ref().map(|f| f.is_empty()).unwrap_or(true));
+        assert!(graph
+            .functions_x_graphs
+            .as_ref()
+            .map(|f| f.is_empty())
+            .unwrap_or(true));
     }
 
     #[test]
@@ -5946,7 +6417,9 @@ mod tests {
 
         let result = apply_mutation(
             &mut graph,
-            GraphMutation::DeleteFunction(DeleteFunctionParams { function_mapping_id: "nonexistent".to_string() }),
+            GraphMutation::DeleteFunction(DeleteFunctionParams {
+                function_mapping_id: "nonexistent".to_string(),
+            }),
             &options,
         );
 
@@ -5974,7 +6447,8 @@ mod tests {
                 options: NodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         let initial_node_count = graph.nodes.len();
         let initial_edge_count = graph.edges.len();
@@ -5982,9 +6456,12 @@ mod tests {
         // Delete the node by alias
         apply_mutation(
             &mut graph,
-            GraphMutation::DeleteNode(DeleteNodeParams { node_id: "field1".to_string() }),
+            GraphMutation::DeleteNode(DeleteNodeParams {
+                node_id: "field1".to_string(),
+            }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Node should be gone
         assert_eq!(graph.nodes.len(), initial_node_count - 1);
@@ -5994,7 +6471,9 @@ mod tests {
         assert!(graph.edges.len() < initial_edge_count);
 
         // Widget should be gone
-        let has_widget_for_node = graph.cards_x_nodes_x_widgets.as_ref()
+        let has_widget_for_node = graph
+            .cards_x_nodes_x_widgets
+            .as_ref()
             .map(|c| c.iter().any(|w| w.node_id.contains("field1")))
             .unwrap_or(false);
         assert!(!has_widget_for_node);
@@ -6007,7 +6486,9 @@ mod tests {
 
         let result = apply_mutation(
             &mut graph,
-            GraphMutation::DeleteNode(DeleteNodeParams { node_id: "nonexistent".to_string() }),
+            GraphMutation::DeleteNode(DeleteNodeParams {
+                node_id: "nonexistent".to_string(),
+            }),
             &options,
         );
 
@@ -6022,11 +6503,16 @@ mod tests {
         // Try to delete the root node
         let result = apply_mutation(
             &mut graph,
-            GraphMutation::DeleteNode(DeleteNodeParams { node_id: "test".to_string() }),
+            GraphMutation::DeleteNode(DeleteNodeParams {
+                node_id: "test".to_string(),
+            }),
             &options,
         );
 
-        assert!(matches!(result, Err(MutationError::CannotDeleteRootNode(_))));
+        assert!(matches!(
+            result,
+            Err(MutationError::CannotDeleteRootNode(_))
+        ));
     }
 
     #[test]
@@ -6050,7 +6536,8 @@ mod tests {
                 options: NodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Add a child node under it
         apply_mutation(
@@ -6068,7 +6555,8 @@ mod tests {
                 options: NodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Find the nodegroup for parent_field
         let parent_node = graph.find_node_by_alias("parent_field").unwrap();
@@ -6080,12 +6568,18 @@ mod tests {
         // Delete the nodegroup
         apply_mutation(
             &mut graph,
-            GraphMutation::DeleteNodegroup(DeleteNodegroupParams { nodegroup_id: nodegroup_id.clone() }),
+            GraphMutation::DeleteNodegroup(DeleteNodegroupParams {
+                nodegroup_id: nodegroup_id.clone(),
+            }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Nodegroup should be gone
-        assert!(graph.nodegroups.iter().all(|ng| ng.nodegroupid != nodegroup_id));
+        assert!(graph
+            .nodegroups
+            .iter()
+            .all(|ng| ng.nodegroupid != nodegroup_id));
 
         // Parent node should be gone
         assert!(graph.find_node_by_alias("parent_field").is_none());
@@ -6105,7 +6599,9 @@ mod tests {
 
         let result = apply_mutation(
             &mut graph,
-            GraphMutation::DeleteNodegroup(DeleteNodegroupParams { nodegroup_id: "nonexistent".to_string() }),
+            GraphMutation::DeleteNodegroup(DeleteNodegroupParams {
+                nodegroup_id: "nonexistent".to_string(),
+            }),
             &options,
         );
 
@@ -6133,7 +6629,8 @@ mod tests {
                 options: NodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Delete via instruction
         let instruction = GraphInstruction::new("delete_node", "my_field", "");
@@ -6170,7 +6667,8 @@ mod tests {
                 options: NodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Update the node
         apply_mutation(
@@ -6188,12 +6686,16 @@ mod tests {
                 },
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Verify updates
         let node = graph.find_node_by_alias("field1").unwrap();
         assert_eq!(node.name, "Updated Name");
-        assert_eq!(node.ontologyclass, Some("http://example.org/Class".to_string()));
+        assert_eq!(
+            node.ontologyclass,
+            Some("http://example.org/Class".to_string())
+        );
         assert!(node.description.is_some());
         assert!(node.isrequired);
         // Datatype should be unchanged
@@ -6247,7 +6749,8 @@ mod tests {
                 options: NodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Change to string type
         apply_mutation(
@@ -6263,7 +6766,8 @@ mod tests {
                 options: UpdateNodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Verify type changed
         let node = graph.find_node_by_alias("field1").unwrap();
@@ -6292,11 +6796,14 @@ mod tests {
                 options: NodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Verify widget exists
         let node = graph.find_node_by_alias("field1").unwrap();
-        let has_widget = graph.cards_x_nodes_x_widgets.as_ref()
+        let has_widget = graph
+            .cards_x_nodes_x_widgets
+            .as_ref()
             .map(|cxnxws| cxnxws.iter().any(|c| c.node_id == node.nodeid))
             .unwrap_or(false);
         assert!(has_widget, "Widget should exist");
@@ -6317,7 +6824,10 @@ mod tests {
             &options,
         );
 
-        assert!(matches!(result, Err(MutationError::NodeHasDependentWidgets(_))));
+        assert!(matches!(
+            result,
+            Err(MutationError::NodeHasDependentWidgets(_))
+        ));
     }
 
     #[test]
@@ -6341,7 +6851,8 @@ mod tests {
                 options: NodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Rename the node
         apply_mutation(
@@ -6353,7 +6864,8 @@ mod tests {
                 description: Some("New description".to_string()),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Old alias should not find it
         assert!(graph.find_node_by_alias("old_alias").is_none());
@@ -6385,7 +6897,8 @@ mod tests {
                 options: NodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         apply_mutation(
             &mut graph,
@@ -6402,7 +6915,8 @@ mod tests {
                 options: NodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Try to rename field1 to field2 - should fail
         let result = apply_mutation(
@@ -6440,7 +6954,8 @@ mod tests {
                 options: NodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Update via instruction
         let instruction = GraphInstruction::new("update_node", "my_field", "")
@@ -6477,7 +6992,8 @@ mod tests {
                 options: NodeOptions::default(),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Rename via instruction (object becomes new alias)
         let instruction = GraphInstruction::new("rename_node", "old_name", "new_name")
@@ -6508,9 +7024,7 @@ mod tests {
             params: &serde_json::Value,
             _options: &MutatorOptions,
         ) -> Result<(), MutationError> {
-            let suffix = params.get("suffix")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let suffix = params.get("suffix").and_then(|v| v.as_str()).unwrap_or("");
 
             // Find the root node and modify it
             let root_id = graph.get_root().nodeid.clone();
@@ -6539,7 +7053,9 @@ mod tests {
         let mut registry = ExtensionMutationRegistry::new();
         registry.register(
             "test.prefix_name",
-            std::sync::Arc::new(TestPrefixHandler { prefix: "[PREFIX] ".to_string() }),
+            std::sync::Arc::new(TestPrefixHandler {
+                prefix: "[PREFIX] ".to_string(),
+            }),
         );
 
         // Create extension mutation
@@ -6550,12 +7066,8 @@ mod tests {
         });
 
         // Apply with registry
-        let result = apply_mutations_with_extensions(
-            &graph,
-            vec![mutation],
-            options,
-            Some(&registry),
-        );
+        let result =
+            apply_mutations_with_extensions(&graph, vec![mutation], options, Some(&registry));
 
         assert!(result.is_ok());
         let mutated = result.unwrap();
@@ -6577,11 +7089,7 @@ mod tests {
         });
 
         // Apply without registry
-        let result = apply_mutations(
-            &graph,
-            vec![mutation],
-            options,
-        );
+        let result = apply_mutations(&graph, vec![mutation], options);
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("no registry provided"));
@@ -6603,12 +7111,8 @@ mod tests {
         });
 
         // Apply with empty registry
-        let result = apply_mutations_with_extensions(
-            &graph,
-            vec![mutation],
-            options,
-            Some(&registry),
-        );
+        let result =
+            apply_mutations_with_extensions(&graph, vec![mutation], options, Some(&registry));
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not found"));
@@ -6623,7 +7127,9 @@ mod tests {
 
         registry.register(
             "test.handler",
-            std::sync::Arc::new(TestPrefixHandler { prefix: "x".to_string() }),
+            std::sync::Arc::new(TestPrefixHandler {
+                prefix: "x".to_string(),
+            }),
         );
 
         assert!(registry.has("test.handler"));
@@ -6641,7 +7147,10 @@ mod tests {
             conformance: MutationConformance::BranchConformant,
         });
 
-        assert_eq!(mutation.conformance(), MutationConformance::BranchConformant);
+        assert_eq!(
+            mutation.conformance(),
+            MutationConformance::BranchConformant
+        );
 
         let mutation2 = GraphMutation::Extension(ExtensionMutationParams {
             name: "test.mutation".to_string(),
@@ -6649,7 +7158,10 @@ mod tests {
             conformance: MutationConformance::ModelConformant,
         });
 
-        assert_eq!(mutation2.conformance(), MutationConformance::ModelConformant);
+        assert_eq!(
+            mutation2.conformance(),
+            MutationConformance::ModelConformant
+        );
     }
 
     #[test]
@@ -6685,7 +7197,9 @@ mod tests {
         let mut registry = ExtensionMutationRegistry::new();
         registry.register(
             "test.prefix_name",
-            std::sync::Arc::new(TestPrefixHandler { prefix: "[TEST] ".to_string() }),
+            std::sync::Arc::new(TestPrefixHandler {
+                prefix: "[TEST] ".to_string(),
+            }),
         );
 
         let mutations_json = r#"{
@@ -6699,11 +7213,8 @@ mod tests {
             "options": {}
         }"#;
 
-        let result = apply_mutations_from_json_with_extensions(
-            &graph,
-            mutations_json,
-            Some(&registry),
-        );
+        let result =
+            apply_mutations_from_json_with_extensions(&graph, mutations_json, Some(&registry));
 
         assert!(result.is_ok());
         let mutated = result.unwrap();
@@ -6747,13 +7258,17 @@ mod tests {
                 author: Some("Test Author".to_string()),
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Verify all fields were updated
         assert_eq!(graph.name.get("en"), "New Name");
         assert_eq!(graph.name.translations.get("es").unwrap(), "Nuevo Nombre");
         assert!(graph.description.is_some());
-        assert_eq!(graph.description.as_ref().unwrap().get("en"), "A description");
+        assert_eq!(
+            graph.description.as_ref().unwrap().get("en"),
+            "A description"
+        );
         assert!(graph.subtitle.is_some());
         assert_eq!(graph.subtitle.as_ref().unwrap().get("en"), "A subtitle");
         assert_eq!(graph.author, Some("Test Author".to_string()));
@@ -6787,13 +7302,17 @@ mod tests {
                 author: None,
             }),
             &options,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Name should be unchanged
         assert_eq!(graph.name.get("en"), "Original Name");
         // Description should be updated
         assert!(graph.description.is_some());
-        assert_eq!(graph.description.as_ref().unwrap().get("en"), "New description");
+        assert_eq!(
+            graph.description.as_ref().unwrap().get("en"),
+            "New description"
+        );
     }
 
     #[test]
@@ -6806,7 +7325,10 @@ mod tests {
             .with_str("author", "Instruction Author");
 
         // Verify conformance
-        assert_eq!(instruction.conformance(), MutationConformance::AlwaysConformant);
+        assert_eq!(
+            instruction.conformance(),
+            MutationConformance::AlwaysConformant
+        );
 
         let mutation = instruction.to_mutation().unwrap();
         apply_mutation(&mut graph, mutation, &options).unwrap();
@@ -6823,11 +7345,20 @@ mod tests {
 
         // Use instruction with translatable map in params
         let mut name_obj = serde_json::Map::new();
-        name_obj.insert("en".to_string(), serde_json::Value::String("English Name".to_string()));
-        name_obj.insert("de".to_string(), serde_json::Value::String("Deutscher Name".to_string()));
+        name_obj.insert(
+            "en".to_string(),
+            serde_json::Value::String("English Name".to_string()),
+        );
+        name_obj.insert(
+            "de".to_string(),
+            serde_json::Value::String("Deutscher Name".to_string()),
+        );
 
         let mut desc_obj = serde_json::Map::new();
-        desc_obj.insert("en".to_string(), serde_json::Value::String("English description".to_string()));
+        desc_obj.insert(
+            "en".to_string(),
+            serde_json::Value::String("English description".to_string()),
+        );
 
         let instruction = GraphInstruction::new("rename_graph", "test", "")
             .with_param("name", serde_json::Value::Object(name_obj))
@@ -6841,6 +7372,9 @@ mod tests {
         assert_eq!(graph.name.translations.get("de").unwrap(), "Deutscher Name");
         // Verify description
         assert!(graph.description.is_some());
-        assert_eq!(graph.description.as_ref().unwrap().get("en"), "English description");
+        assert_eq!(
+            graph.description.as_ref().unwrap().get("en"),
+            "English description"
+        );
     }
 }

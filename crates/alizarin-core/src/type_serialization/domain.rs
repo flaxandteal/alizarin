@@ -3,8 +3,8 @@
 //! In display mode, these require node config for label lookup.
 //! The resolver callback is passed to handle the actual lookup.
 
-use serde_json::Value;
 use super::options::{SerializationOptions, SerializationResult};
+use serde_json::Value;
 
 /// Callback type for resolving domain value UUIDs to labels
 pub type DomainValueResolver = dyn Fn(&str, &str) -> Option<String>;
@@ -118,10 +118,7 @@ pub fn serialize_domain_value_list(
             }
             SerializationResult::success(Value::Array(vec![result.value]))
         }
-        _ => SerializationResult::error(format!(
-            "Expected domain value list, got {:?}",
-            tile_data
-        )),
+        _ => SerializationResult::error(format!("Expected domain value list, got {:?}", tile_data)),
     }
 }
 

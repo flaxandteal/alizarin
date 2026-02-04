@@ -222,11 +222,9 @@ mod tests {
 
     #[test]
     fn test_generate_concept_uuid_from_str() {
-        let uuid = generate_concept_uuid_from_str(
-            "550e8400-e29b-41d4-a716-446655440000",
-            "ConceptA",
-        )
-        .unwrap();
+        let uuid =
+            generate_concept_uuid_from_str("550e8400-e29b-41d4-a716-446655440000", "ConceptA")
+                .unwrap();
         assert!(uuid.to_string().len() == 36);
 
         // Invalid collection ID should error

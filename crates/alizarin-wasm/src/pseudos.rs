@@ -1,8 +1,8 @@
-use wasm_bindgen::prelude::*;
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::rc::Rc;
 use serde::Serialize;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::sync::Arc;
+use wasm_bindgen::prelude::*;
 // Use core types for internal storage
 use alizarin_core::StaticNode;
 
@@ -10,7 +10,7 @@ use alizarin_core::StaticNode;
 const ITERABLE_DATATYPES: &[&str] = &[
     "concept-list",
     "resource-instance-list",
-    "domain-value-list"
+    "domain-value-list",
 ];
 
 #[wasm_bindgen]
@@ -21,8 +21,7 @@ pub struct PseudoNode {
     // Must use JsValue for circular references (can't use PseudoNode due to recursion)
     parent_node: Option<JsValue>,
     // Store as JsValue (the original Map) to preserve reference
-    pub(crate)
-    child_nodes: HashMap<String, Arc<StaticNode>>,
+    pub(crate) child_nodes: HashMap<String, Arc<StaticNode>>,
     is_inner: bool,
     // Must use JsValue for circular references (can't use PseudoNode due to recursion)
     inner: Option<Rc<PseudoNode>>,
@@ -74,7 +73,9 @@ impl PseudoNode {
         // If we have a parent node, recursively get its placeholder
         if let Some(ref parent) = self.parent_node {
             // Call getNodePlaceholder on the parent via reflection
-            if let Ok(get_placeholder) = js_sys::Reflect::get(parent, &JsValue::from_str("getNodePlaceholder")) {
+            if let Ok(get_placeholder) =
+                js_sys::Reflect::get(parent, &JsValue::from_str("getNodePlaceholder"))
+            {
                 if let Ok(func) = get_placeholder.dyn_into::<js_sys::Function>() {
                     if let Ok(parent_placeholder) = func.call0(parent) {
                         if let Some(parent_str) = parent_placeholder.as_string() {
@@ -112,7 +113,12 @@ impl PseudoNode {
         js_sys::Reflect::set(&obj, &"datatype".into(), &self.node.datatype.clone().into()).ok();
         js_sys::Reflect::set(&obj, &"graph_id".into(), &self.node.graph_id.clone().into()).ok();
         js_sys::Reflect::set(&obj, &"exportable".into(), &self.node.exportable.into()).ok();
-        js_sys::Reflect::set(&obj, &"hascustomalias".into(), &self.node.hascustomalias.into()).ok();
+        js_sys::Reflect::set(
+            &obj,
+            &"hascustomalias".into(),
+            &self.node.hascustomalias.into(),
+        )
+        .ok();
         js_sys::Reflect::set(&obj, &"is_collector".into(), &self.node.is_collector.into()).ok();
         js_sys::Reflect::set(&obj, &"isrequired".into(), &self.node.isrequired.into()).ok();
         js_sys::Reflect::set(&obj, &"issearchable".into(), &self.node.issearchable.into()).ok();
@@ -140,10 +146,20 @@ impl PseudoNode {
             js_sys::Reflect::set(&obj, &"fieldname".into(), &fieldname.clone().into()).ok();
         }
         if let Some(ref parentproperty) = self.node.parentproperty {
-            js_sys::Reflect::set(&obj, &"parentproperty".into(), &parentproperty.clone().into()).ok();
+            js_sys::Reflect::set(
+                &obj,
+                &"parentproperty".into(),
+                &parentproperty.clone().into(),
+            )
+            .ok();
         }
         if let Some(ref sourcebranchpublication_id) = self.node.sourcebranchpublication_id {
-            js_sys::Reflect::set(&obj, &"sourcebranchpublication_id".into(), &sourcebranchpublication_id.clone().into()).ok();
+            js_sys::Reflect::set(
+                &obj,
+                &"sourcebranchpublication_id".into(),
+                &sourcebranchpublication_id.clone().into(),
+            )
+            .ok();
         }
 
         // Convert config HashMap to plain JavaScript object
@@ -206,7 +222,9 @@ impl PseudoNode {
     pub fn get_description(&self) -> JsValue {
         if let Some(ref description) = self.node.description {
             serde_wasm_bindgen::to_value(&description.to_json()).unwrap_or(JsValue::NULL)
-        } else { JsValue::NULL }
+        } else {
+            JsValue::NULL
+        }
     }
 
     #[wasm_bindgen(getter = graphId)]
@@ -333,7 +351,7 @@ impl PseudoNode {
     pub fn get_inner(&self) -> Result<PseudoNode, JsValue> {
         match self.inner.as_ref() {
             Some(inner) => Ok((**inner).clone()),
-            None => Err(JsValue::from_str("No inner node"))
+            None => Err(JsValue::from_str("No inner node")),
         }
     }
 

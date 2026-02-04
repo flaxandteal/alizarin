@@ -1,8 +1,8 @@
 //! Simple scalar type coercion: Number, NonLocalizedString, EDTF, Date.
 
-use serde_json::Value;
-use super::result::CoercionResult;
 use super::helpers::value_type_name;
+use super::result::CoercionResult;
+use serde_json::Value;
 
 /// Coerce a value to a number.
 ///
@@ -11,12 +11,8 @@ use super::helpers::value_type_name;
 pub fn coerce_number(value: &Value) -> CoercionResult {
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
-        Value::Number(n) => {
-            CoercionResult::success_same(Value::Number(n.clone()))
-        }
-        Value::String(s) if s.is_empty() => {
-            CoercionResult::success_same(Value::Null)
-        }
+        Value::Number(n) => CoercionResult::success_same(Value::Number(n.clone())),
+        Value::String(s) if s.is_empty() => CoercionResult::success_same(Value::Null),
         Value::String(s) => {
             // Try to parse as number
             if let Ok(n) = s.parse::<i64>() {
@@ -24,7 +20,9 @@ pub fn coerce_number(value: &Value) -> CoercionResult {
             } else if let Ok(n) = s.parse::<f64>() {
                 match serde_json::Number::from_f64(n) {
                     Some(num) => CoercionResult::success_same(Value::Number(num)),
-                    None => CoercionResult::error(format!("Invalid number: {} (NaN or Infinity)", s)),
+                    None => {
+                        CoercionResult::error(format!("Invalid number: {} (NaN or Infinity)", s))
+                    }
                 }
             } else {
                 CoercionResult::error(format!("Cannot parse '{}' as number", s))
@@ -44,9 +42,7 @@ pub fn coerce_number(value: &Value) -> CoercionResult {
 pub fn coerce_non_localized_string(value: &Value) -> CoercionResult {
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
-        Value::String(s) if s.is_empty() => {
-            CoercionResult::success_same(Value::Null)
-        }
+        Value::String(s) if s.is_empty() => CoercionResult::success_same(Value::Null),
         Value::String(_) => CoercionResult::success_same(value.clone()),
         Value::Number(n) => {
             // Convert number to string
@@ -56,10 +52,7 @@ pub fn coerce_non_localized_string(value: &Value) -> CoercionResult {
             // Convert bool to string
             CoercionResult::success_same(Value::String(b.to_string()))
         }
-        _ => CoercionResult::error(format!(
-            "Expected string, got {:?}",
-            value_type_name(value)
-        )),
+        _ => CoercionResult::error(format!("Expected string, got {:?}", value_type_name(value))),
     }
 }
 
@@ -73,9 +66,7 @@ pub fn coerce_non_localized_string(value: &Value) -> CoercionResult {
 pub fn coerce_edtf(value: &Value) -> CoercionResult {
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
-        Value::String(s) if s.is_empty() => {
-            CoercionResult::success_same(Value::Null)
-        }
+        Value::String(s) if s.is_empty() => CoercionResult::success_same(Value::Null),
         Value::String(s) => {
             // Basic EDTF validation could be added here
             // For now, accept any non-empty string
@@ -126,9 +117,7 @@ fn is_valid_edtf(s: &str) -> bool {
 pub fn coerce_date(value: &Value) -> CoercionResult {
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
-        Value::String(s) if s.is_empty() => {
-            CoercionResult::success_same(Value::Null)
-        }
+        Value::String(s) if s.is_empty() => CoercionResult::success_same(Value::Null),
         Value::String(s) => {
             // Validate and normalize the date
             match normalize_date_string(s) {
@@ -155,9 +144,7 @@ pub fn coerce_date(value: &Value) -> CoercionResult {
                             let tile_val = Value::String(normalized.clone());
                             CoercionResult::success(tile_val.clone(), tile_val)
                         }
-                        Err(_) => {
-                            CoercionResult::success_same(Value::String(s.clone()))
-                        }
+                        Err(_) => CoercionResult::success_same(Value::String(s.clone())),
                     }
                 }
             } else {
@@ -191,8 +178,9 @@ fn normalize_date_string(s: &str) -> Result<String, String> {
     // More thorough validation would use a date parsing library
     if s.len() >= 4 {
         let year_part = &s[..4];
-        if year_part.chars().all(|c| c.is_ascii_digit()) ||
-           (s.starts_with('-') && s.len() >= 5 && s[1..5].chars().all(|c| c.is_ascii_digit())) {
+        if year_part.chars().all(|c| c.is_ascii_digit())
+            || (s.starts_with('-') && s.len() >= 5 && s[1..5].chars().all(|c| c.is_ascii_digit()))
+        {
             return Ok(s.to_string());
         }
     }

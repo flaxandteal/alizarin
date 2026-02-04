@@ -12,14 +12,14 @@ use std::collections::HashMap;
 
 /// Colors for nodegroups - cycle through these for different nodegroups
 const NODEGROUP_COLORS: &[Color] = &[
-    Color::Rgb(60, 60, 90),    // Dark blue
-    Color::Rgb(60, 90, 60),    // Dark green
-    Color::Rgb(90, 60, 60),    // Dark red
-    Color::Rgb(90, 90, 60),    // Dark yellow
-    Color::Rgb(60, 90, 90),    // Dark cyan
-    Color::Rgb(90, 60, 90),    // Dark magenta
-    Color::Rgb(70, 70, 70),    // Dark gray
-    Color::Rgb(80, 60, 50),    // Dark brown
+    Color::Rgb(60, 60, 90), // Dark blue
+    Color::Rgb(60, 90, 60), // Dark green
+    Color::Rgb(90, 60, 60), // Dark red
+    Color::Rgb(90, 90, 60), // Dark yellow
+    Color::Rgb(60, 90, 90), // Dark cyan
+    Color::Rgb(90, 60, 90), // Dark magenta
+    Color::Rgb(70, 70, 70), // Dark gray
+    Color::Rgb(80, 60, 50), // Dark brown
 ];
 
 pub fn draw(f: &mut Frame, app: &mut App) {
@@ -87,11 +87,8 @@ fn draw_indexing_tab(f: &mut Frame, app: &mut App, area: Rect) {
         )),
     ];
 
-    let paragraph = Paragraph::new(text).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Indexing "),
-    );
+    let paragraph =
+        Paragraph::new(text).block(Block::default().borders(Borders::ALL).title(" Indexing "));
 
     f.render_widget(paragraph, area);
 }
@@ -105,21 +102,15 @@ fn draw_graphs_tab(f: &mut Frame, app: &mut App, area: Rect) {
 
 fn draw_graphs_list(f: &mut Frame, app: &mut App, area: Rect) {
     if !app.graphs_loaded {
-        let paragraph = Paragraph::new("Loading graphs...").block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Graphs "),
-        );
+        let paragraph = Paragraph::new("Loading graphs...")
+            .block(Block::default().borders(Borders::ALL).title(" Graphs "));
         f.render_widget(paragraph, area);
         return;
     }
 
     if app.graphs.is_empty() {
-        let paragraph = Paragraph::new("No graphs found").block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Graphs "),
-        );
+        let paragraph = Paragraph::new("No graphs found")
+            .block(Block::default().borders(Borders::ALL).title(" Graphs "));
         f.render_widget(paragraph, area);
         return;
     }
@@ -200,11 +191,18 @@ fn draw_graph_tree(f: &mut Frame, app: &mut App, area: Rect) {
 
 fn draw_search_input(f: &mut Frame, app: &mut App, area: Rect) {
     let match_count = app.search_match_count();
-    let case_indicator = if app.search_case_sensitive { "[Aa]" } else { "[a]" };
+    let case_indicator = if app.search_case_sensitive {
+        "[Aa]"
+    } else {
+        "[a]"
+    };
     let title = if let Some(ref err) = app.search_error {
         format!(" Search {} (error: {}) ", case_indicator, err)
     } else if match_count > 0 {
-        format!(" Search {} ({} matches) [Ctrl+i: toggle case] ", case_indicator, match_count)
+        format!(
+            " Search {} ({} matches) [Ctrl+i: toggle case] ",
+            case_indicator, match_count
+        )
     } else if !app.search_query.is_empty() {
         format!(" Search {} (no matches) ", case_indicator)
     } else {
@@ -219,14 +217,12 @@ fn draw_search_input(f: &mut Frame, app: &mut App, area: Rect) {
         Style::default().fg(Color::Yellow)
     };
 
-    let paragraph = Paragraph::new(search_text)
-        .style(style)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(Style::default().fg(Color::Yellow)),
-        );
+    let paragraph = Paragraph::new(search_text).style(style).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(title)
+            .border_style(Style::default().fg(Color::Yellow)),
+    );
 
     f.render_widget(paragraph, area);
 }
@@ -306,11 +302,8 @@ fn draw_tree_pane(f: &mut Frame, app: &mut App, area: Rect) {
     };
 
     if app.tree_nodes.is_empty() {
-        let paragraph = Paragraph::new("No nodes").block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title),
-        );
+        let paragraph =
+            Paragraph::new("No nodes").block(Block::default().borders(Borders::ALL).title(title));
         f.render_widget(paragraph, area);
         return;
     }
@@ -361,7 +354,11 @@ fn draw_tree_pane(f: &mut Frame, app: &mut App, area: Rect) {
             // Build the tree prefix with proper indentation
             let indent = "  ".repeat(node.depth);
             let expand_char = if node.has_children {
-                if node.expanded { "▼ " } else { "▶ " }
+                if node.expanded {
+                    "▼ "
+                } else {
+                    "▶ "
+                }
             } else {
                 "  "
             };
@@ -374,12 +371,7 @@ fn draw_tree_pane(f: &mut Frame, app: &mut App, area: Rect) {
             let line_content = if node.alias.is_empty() {
                 format!(
                     "{}{}{} {} [{}]{}",
-                    indent,
-                    expand_char,
-                    collector_char,
-                    node.name,
-                    node.datatype,
-                    required_char
+                    indent, expand_char, collector_char, node.name, node.datatype, required_char
                 )
             } else {
                 format!(
@@ -402,10 +394,13 @@ fn draw_tree_pane(f: &mut Frame, app: &mut App, area: Rect) {
                     .add_modifier(Modifier::BOLD)
             } else if node.matches_search {
                 // Highlight search matches with bright color
-                Style::default()
-                    .bg(Color::Yellow)
-                    .fg(Color::Black)
-            } else if let Some(bg) = get_node_bg_color(node, false, selected_nodegroup_id.as_ref(), &nodegroup_colors) {
+                Style::default().bg(Color::Yellow).fg(Color::Black)
+            } else if let Some(bg) = get_node_bg_color(
+                node,
+                false,
+                selected_nodegroup_id.as_ref(),
+                &nodegroup_colors,
+            ) {
                 Style::default().bg(bg)
             } else {
                 Style::default()
@@ -415,11 +410,8 @@ fn draw_tree_pane(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
-    let paragraph = Paragraph::new(lines).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(title),
-    );
+    let paragraph =
+        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(title));
 
     f.render_widget(paragraph, area);
 }
@@ -433,7 +425,9 @@ fn draw_detail_pane(f: &mut Frame, app: &mut App, area: Rect) {
     // Node Information Section
     lines.push(Line::from(Span::styled(
         "─── Node ───",
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(""));
 
@@ -480,10 +474,16 @@ fn draw_detail_pane(f: &mut Frame, app: &mut App, area: Rect) {
         if let Some(ref desc) = node.description {
             if !desc.is_empty() {
                 lines.push(Line::from(""));
-                lines.push(Line::from(Span::styled("Description:", Style::default().fg(Color::Cyan))));
+                lines.push(Line::from(Span::styled(
+                    "Description:",
+                    Style::default().fg(Color::Cyan),
+                )));
                 // Wrap description text
                 for line in wrap_text(desc, area.width.saturating_sub(4) as usize) {
-                    lines.push(Line::from(Span::styled(line, Style::default().fg(Color::DarkGray))));
+                    lines.push(Line::from(Span::styled(
+                        line,
+                        Style::default().fg(Color::DarkGray),
+                    )));
                 }
             }
         }
@@ -498,7 +498,9 @@ fn draw_detail_pane(f: &mut Frame, app: &mut App, area: Rect) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "─── Nodegroup ───",
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(""));
 
@@ -554,7 +556,9 @@ fn draw_detail_pane(f: &mut Frame, app: &mut App, area: Rect) {
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         "─── Legend ───",
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(""));
     lines.push(Line::from(vec![
@@ -566,11 +570,8 @@ fn draw_detail_pane(f: &mut Frame, app: &mut App, area: Rect) {
         Style::default().fg(Color::DarkGray),
     )));
 
-    let paragraph = Paragraph::new(lines).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Details "),
-    );
+    let paragraph =
+        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Details "));
 
     f.render_widget(paragraph, area);
 }
@@ -706,7 +707,11 @@ fn draw_bd_resource_list(f: &mut Frame, app: &mut App, area: Rect) {
 fn draw_bd_search_input(f: &mut Frame, app: &mut App, area: Rect) {
     let filter_count = app.bd_display_count();
     let total = app.bd_resources.len();
-    let case_indicator = if app.bd_search_case_sensitive { "[Aa]" } else { "[a]" };
+    let case_indicator = if app.bd_search_case_sensitive {
+        "[Aa]"
+    } else {
+        "[a]"
+    };
 
     let title = if !app.bd_search_query.is_empty() {
         format!(" Filter {} ({}/{}) ", case_indicator, filter_count, total)
@@ -718,14 +723,12 @@ fn draw_bd_search_input(f: &mut Frame, app: &mut App, area: Rect) {
 
     let style = Style::default().fg(Color::Yellow);
 
-    let paragraph = Paragraph::new(search_text)
-        .style(style)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(Style::default().fg(Color::Yellow)),
-        );
+    let paragraph = Paragraph::new(search_text).style(style).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(title)
+            .border_style(Style::default().fg(Color::Yellow)),
+    );
 
     f.render_widget(paragraph, area);
 }
@@ -776,10 +779,18 @@ fn draw_bd_list_pane(f: &mut Frame, app: &App, area: Rect) {
 
         let progress_label = if let Some(total) = app.bd_total_count {
             // We have the total - show loading progress
-            format!("Loading... {}/{} ({:.0}%)", app.bd_loaded_count, total, progress_ratio * 100.0)
+            format!(
+                "Loading... {}/{} ({:.0}%)",
+                app.bd_loaded_count,
+                total,
+                progress_ratio * 100.0
+            )
         } else if app.bd_counting_files > 0 {
             // Still counting - show counting progress
-            format!("Counting... {} files, {} resources found", app.bd_counting_files, app.bd_counting_resources)
+            format!(
+                "Counting... {} files, {} resources found",
+                app.bd_counting_files, app.bd_counting_resources
+            )
         } else {
             // Just started
             "Starting...".to_string()
@@ -801,11 +812,8 @@ fn draw_bd_list_pane(f: &mut Frame, app: &App, area: Rect) {
         } else {
             "No resources found"
         };
-        let paragraph = Paragraph::new(msg).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title),
-        );
+        let paragraph =
+            Paragraph::new(msg).block(Block::default().borders(Borders::ALL).title(title));
         f.render_widget(paragraph, area);
         return;
     }
@@ -813,7 +821,13 @@ fn draw_bd_list_pane(f: &mut Frame, app: &App, area: Rect) {
     draw_bd_list_content(f, app, &resources, area, &title);
 }
 
-fn draw_bd_list_content(f: &mut Frame, app: &App, resources: &[&alizarin_core::StaticResourceSummary], area: Rect, title: &str) {
+fn draw_bd_list_content(
+    f: &mut Frame,
+    app: &App,
+    resources: &[&alizarin_core::StaticResourceSummary],
+    area: Rect,
+    title: &str,
+) {
     if resources.is_empty() {
         let paragraph = Paragraph::new("Loading...").block(
             Block::default()
@@ -829,12 +843,8 @@ fn draw_bd_list_content(f: &mut Frame, app: &App, resources: &[&alizarin_core::S
     let available_width = area.width.saturating_sub(2) as usize; // subtract borders
 
     // Calculate scroll offset
-    let scroll_offset = calculate_scroll_offset(
-        app.bd_resource_selected,
-        0,
-        visible_height,
-        resources.len(),
-    );
+    let scroll_offset =
+        calculate_scroll_offset(app.bd_resource_selected, 0, visible_height, resources.len());
 
     let lines: Vec<Line> = resources
         .iter()
@@ -868,7 +878,11 @@ fn draw_bd_list_content(f: &mut Frame, app: &App, resources: &[&alizarin_core::S
                 let uuid_space = available_width.saturating_sub(name_len + overhead);
                 if uuid_space >= 8 {
                     // Show truncated UUID
-                    format!("{} [{}]", resource.name, truncate(&resource.resourceinstanceid, uuid_space))
+                    format!(
+                        "{} [{}]",
+                        resource.name,
+                        truncate(&resource.resourceinstanceid, uuid_space)
+                    )
                 } else {
                     // Not enough space, just show name
                     truncate(&resource.name, available_width)
@@ -879,11 +893,8 @@ fn draw_bd_list_content(f: &mut Frame, app: &App, resources: &[&alizarin_core::S
         })
         .collect();
 
-    let paragraph = Paragraph::new(lines).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(title),
-    );
+    let paragraph =
+        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(title));
 
     f.render_widget(paragraph, area);
 }
@@ -894,7 +905,9 @@ fn draw_bd_detail_pane(f: &mut Frame, app: &mut App, area: Rect) {
     // Resource Information Section
     lines.push(Line::from(Span::styled(
         "─── Resource ───",
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(""));
 
@@ -906,7 +919,10 @@ fn draw_bd_detail_pane(f: &mut Frame, app: &mut App, area: Rect) {
 
         lines.push(Line::from(vec![
             Span::styled("Resource ID: ", Style::default().fg(Color::Cyan)),
-            Span::styled(&resource.resourceinstanceid, Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                &resource.resourceinstanceid,
+                Style::default().fg(Color::DarkGray),
+            ),
         ]));
 
         lines.push(Line::from(vec![
@@ -956,7 +972,9 @@ fn draw_bd_detail_pane(f: &mut Frame, app: &mut App, area: Rect) {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
                 "─── Descriptors ───",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             )));
             lines.push(Line::from(""));
 
@@ -970,9 +988,15 @@ fn draw_bd_detail_pane(f: &mut Frame, app: &mut App, area: Rect) {
 
             let desc_text = descriptors.description.as_deref().unwrap_or_default();
             if !desc_text.is_empty() {
-                lines.push(Line::from(Span::styled("Description:", Style::default().fg(Color::Cyan))));
+                lines.push(Line::from(Span::styled(
+                    "Description:",
+                    Style::default().fg(Color::Cyan),
+                )));
                 for line in wrap_text(desc_text, area.width.saturating_sub(4) as usize) {
-                    lines.push(Line::from(Span::styled(line, Style::default().fg(Color::DarkGray))));
+                    lines.push(Line::from(Span::styled(
+                        line,
+                        Style::default().fg(Color::DarkGray),
+                    )));
                 }
             }
         }
@@ -982,7 +1006,9 @@ fn draw_bd_detail_pane(f: &mut Frame, app: &mut App, area: Rect) {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
                 "─── Metadata ───",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             )));
             lines.push(Line::from(""));
 
@@ -1000,11 +1026,8 @@ fn draw_bd_detail_pane(f: &mut Frame, app: &mut App, area: Rect) {
         )));
     }
 
-    let paragraph = Paragraph::new(lines).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Details "),
-    );
+    let paragraph =
+        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Details "));
 
     f.render_widget(paragraph, area);
 }
@@ -1040,11 +1063,8 @@ fn draw_bd_resource_list_narrow(f: &mut Frame, app: &mut App, area: Rect) {
     let resources = app.bd_display_resources();
 
     if resources.is_empty() {
-        let paragraph = Paragraph::new("No resources").block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title),
-        );
+        let paragraph = Paragraph::new("No resources")
+            .block(Block::default().borders(Borders::ALL).title(title));
         f.render_widget(paragraph, area);
         return;
     }
@@ -1053,12 +1073,8 @@ fn draw_bd_resource_list_narrow(f: &mut Frame, app: &mut App, area: Rect) {
     let visible_height = area.height.saturating_sub(2) as usize;
 
     // Calculate scroll offset
-    let scroll_offset = calculate_scroll_offset(
-        app.bd_resource_selected,
-        0,
-        visible_height,
-        resources.len(),
-    );
+    let scroll_offset =
+        calculate_scroll_offset(app.bd_resource_selected, 0, visible_height, resources.len());
 
     let lines: Vec<Line> = resources
         .iter()
@@ -1082,11 +1098,8 @@ fn draw_bd_resource_list_narrow(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
-    let paragraph = Paragraph::new(lines).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(title),
-    );
+    let paragraph =
+        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(title));
 
     f.render_widget(paragraph, area);
 }
@@ -1119,11 +1132,8 @@ fn draw_bd_tile_tree(f: &mut Frame, app: &mut App, area: Rect) {
         } else {
             "No tiles"
         };
-        let paragraph = Paragraph::new(msg).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title),
-        );
+        let paragraph =
+            Paragraph::new(msg).block(Block::default().borders(Borders::ALL).title(title));
         f.render_widget(paragraph, main_area);
         return;
     }
@@ -1220,14 +1230,21 @@ fn draw_bd_tile_tree(f: &mut Frame, app: &mut App, area: Rect) {
             // Build the tree prefix with proper indentation
             let indent = "  ".repeat(node.depth);
             let expand_char = if node.has_children {
-                if node.expanded { "▼ " } else { "▶ " }
+                if node.expanded {
+                    "▼ "
+                } else {
+                    "▶ "
+                }
             } else {
                 "  "
             };
 
             // Format: bracket + indent + expand + name + [type]
             let datatype = node.datatype.as_deref().unwrap_or("?");
-            let line_content = format!("{}{}{}{} [{}]", bracket, indent, expand_char, node.name, datatype);
+            let line_content = format!(
+                "{}{}{}{} [{}]",
+                bracket, indent, expand_char, node.name, datatype
+            );
 
             // Determine style based on selection, search match, and nodegroup
             let style = if is_selected {
@@ -1237,10 +1254,10 @@ fn draw_bd_tile_tree(f: &mut Frame, app: &mut App, area: Rect) {
                     .add_modifier(Modifier::BOLD)
             } else if node.matches_search {
                 // Highlight search matches with bright color
-                Style::default()
-                    .bg(Color::Yellow)
-                    .fg(Color::Black)
-            } else if let Some(bg) = get_tile_node_bg_color(node, selected_nodegroup_id.as_ref(), &tile_nodegroup_colors) {
+                Style::default().bg(Color::Yellow).fg(Color::Black)
+            } else if let Some(bg) =
+                get_tile_node_bg_color(node, selected_nodegroup_id.as_ref(), &tile_nodegroup_colors)
+            {
                 // Highlight nodes sharing nodegroup with selected node
                 Style::default().bg(bg)
             } else {
@@ -1251,11 +1268,8 @@ fn draw_bd_tile_tree(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
-    let paragraph = Paragraph::new(lines).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(title),
-    );
+    let paragraph =
+        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(title));
 
     f.render_widget(paragraph, main_area);
 
@@ -1267,11 +1281,18 @@ fn draw_bd_tile_tree(f: &mut Frame, app: &mut App, area: Rect) {
 
 fn draw_bd_tile_search_input(f: &mut Frame, app: &mut App, area: Rect) {
     let match_count = app.bd_tile_search_match_count();
-    let case_indicator = if app.bd_tile_search_case_sensitive { "[Aa]" } else { "[a]" };
+    let case_indicator = if app.bd_tile_search_case_sensitive {
+        "[Aa]"
+    } else {
+        "[a]"
+    };
     let title = if let Some(ref err) = app.bd_tile_search_error {
         format!(" Search {} (error: {}) ", case_indicator, err)
     } else if match_count > 0 {
-        format!(" Search {} ({} matches) [Ctrl+i: toggle case] ", case_indicator, match_count)
+        format!(
+            " Search {} ({} matches) [Ctrl+i: toggle case] ",
+            case_indicator, match_count
+        )
     } else if !app.bd_tile_search_query.is_empty() {
         format!(" Search {} (no matches) ", case_indicator)
     } else {
@@ -1286,14 +1307,12 @@ fn draw_bd_tile_search_input(f: &mut Frame, app: &mut App, area: Rect) {
         Style::default().fg(Color::Yellow)
     };
 
-    let paragraph = Paragraph::new(search_text)
-        .style(style)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(Style::default().fg(Color::Yellow)),
-        );
+    let paragraph = Paragraph::new(search_text).style(style).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(title)
+            .border_style(Style::default().fg(Color::Yellow)),
+    );
 
     f.render_widget(paragraph, area);
 }
@@ -1305,7 +1324,9 @@ fn draw_bd_tile_info(f: &mut Frame, app: &mut App, area: Rect) {
 
     lines.push(Line::from(Span::styled(
         "─── Tile Info ───",
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
     )));
     lines.push(Line::from(""));
 
@@ -1371,14 +1392,19 @@ fn draw_bd_tile_info(f: &mut Frame, app: &mut App, area: Rect) {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
                 "─── Value ───",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             )));
             lines.push(Line::from(""));
 
             // Format the JSON value nicely
             let value_str = format_json_value(value, area.width.saturating_sub(4) as usize);
             for line in value_str {
-                lines.push(Line::from(Span::styled(line, Style::default().fg(Color::Green))));
+                lines.push(Line::from(Span::styled(
+                    line,
+                    Style::default().fg(Color::Green),
+                )));
             }
         }
     } else {
@@ -1388,11 +1414,8 @@ fn draw_bd_tile_info(f: &mut Frame, app: &mut App, area: Rect) {
         )));
     }
 
-    let paragraph = Paragraph::new(lines).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Details "),
-    );
+    let paragraph =
+        Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(" Details "));
 
     f.render_widget(paragraph, area);
 }
@@ -1443,12 +1466,19 @@ fn format_json_value(value: &serde_json::Value, max_width: usize) -> Vec<String>
                 for (key, val) in obj.iter().take(10) {
                     let val_str = match val {
                         serde_json::Value::String(s) => {
-                            if s.len() > 30 { format!("{}...", &s[..27]) } else { s.clone() }
+                            if s.len() > 30 {
+                                format!("{}...", &s[..27])
+                            } else {
+                                s.clone()
+                            }
                         }
                         _ => serde_json::to_string(val).unwrap_or_else(|_| "?".to_string()),
                     };
                     let val_truncated = if val_str.len() > max_width.saturating_sub(key.len() + 4) {
-                        format!("{}...", &val_str[..max_width.saturating_sub(key.len() + 7).max(3)])
+                        format!(
+                            "{}...",
+                            &val_str[..max_width.saturating_sub(key.len() + 7).max(3)]
+                        )
                     } else {
                         val_str
                     };

@@ -2,8 +2,8 @@
 //!
 //! These types have no display transformation - they pass through unchanged.
 
-use serde_json::Value;
 use super::options::{SerializationOptions, SerializationResult};
+use serde_json::Value;
 
 /// Serialize a number value (pass-through).
 pub fn serialize_number(tile_data: &Value, _options: &SerializationOptions) -> SerializationResult {

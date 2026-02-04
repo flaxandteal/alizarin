@@ -3,7 +3,10 @@
 //! This module handles loading graphs and other data from the prebuild
 //! directory structure used by starches-builder.
 
-use crate::graph::{IndexedGraph, StaticGraph, StaticResource, StaticResourceDescriptors, StaticResourceMetadata, StaticResourceSummary, StaticTile};
+use crate::graph::{
+    IndexedGraph, StaticGraph, StaticResource, StaticResourceDescriptors, StaticResourceMetadata,
+    StaticResourceSummary, StaticTile,
+};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use serde::Deserialize;
@@ -177,7 +180,9 @@ impl BusinessDataResourceFull {
     /// Convert to StaticResource
     fn to_static_resource(&self) -> StaticResource {
         let ri = &self.resourceinstance;
-        let descriptors = ri.descriptors.as_ref()
+        let descriptors = ri
+            .descriptors
+            .as_ref()
             .and_then(|d| d.get_for_lang("en"))
             .unwrap_or_default();
 
@@ -437,7 +442,11 @@ impl PrebuildLoader {
             match self.load_resource_summaries_from_file(file, graph_id) {
                 Ok(summaries) => all_summaries.extend(summaries),
                 Err(e) => {
-                    eprintln!("Warning: Failed to load resources from {}: {}", file.display(), e);
+                    eprintln!(
+                        "Warning: Failed to load resources from {}: {}",
+                        file.display(),
+                        e
+                    );
                 }
             }
         }
@@ -445,11 +454,7 @@ impl PrebuildLoader {
         // Apply offset and limit
         let total = all_summaries.len();
         let has_more = offset + limit < total;
-        let summaries: Vec<_> = all_summaries
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .collect();
+        let summaries: Vec<_> = all_summaries.into_iter().skip(offset).take(limit).collect();
 
         Ok((summaries, has_more))
     }
@@ -467,7 +472,11 @@ impl PrebuildLoader {
     }
 
     /// Fast count of resources in a single file (minimal deserialization)
-    pub fn fast_count_resources_in_file(&self, path: &Path, graph_id: &str) -> Result<usize, LoaderError> {
+    pub fn fast_count_resources_in_file(
+        &self,
+        path: &Path,
+        graph_id: &str,
+    ) -> Result<usize, LoaderError> {
         let content = fs::read_to_string(path)?;
         let file_data: BusinessDataFileCount = serde_json::from_str(&content)?;
 
@@ -483,7 +492,10 @@ impl PrebuildLoader {
 
     /// Get file counts for per-file progress tracking
     /// Returns Vec of (file_path, resource_count) for each file
-    pub fn get_business_data_file_counts(&self, graph_id: &str) -> Result<Vec<(PathBuf, usize)>, LoaderError> {
+    pub fn get_business_data_file_counts(
+        &self,
+        graph_id: &str,
+    ) -> Result<Vec<(PathBuf, usize)>, LoaderError> {
         let files = self.find_business_data_files(graph_id)?;
         let mut result = Vec::with_capacity(files.len());
 
@@ -499,7 +511,11 @@ impl PrebuildLoader {
 
     /// Load a full StaticResource by its resourceinstanceid
     /// Searches through all business_data files to find the resource
-    pub fn load_full_resource(&self, resource_id: &str, graph_id: &str) -> Result<StaticResource, LoaderError> {
+    pub fn load_full_resource(
+        &self,
+        resource_id: &str,
+        graph_id: &str,
+    ) -> Result<StaticResource, LoaderError> {
         let files = self.find_business_data_files(graph_id)?;
 
         for file in &files {
@@ -584,12 +600,12 @@ impl PrebuildLoader {
     ) -> Vec<(PathBuf, usize)> {
         files
             .par_iter()
-            .filter_map(|file| {
-                match self.fast_count_resources_in_file(file, graph_id) {
+            .filter_map(
+                |file| match self.fast_count_resources_in_file(file, graph_id) {
                     Ok(count) if count > 0 => Some((file.clone(), count)),
                     _ => None,
-                }
-            })
+                },
+            )
             .collect()
     }
 
@@ -602,12 +618,12 @@ impl PrebuildLoader {
     ) -> Vec<(PathBuf, usize)> {
         files
             .iter()
-            .filter_map(|file| {
-                match self.fast_count_resources_in_file(file, graph_id) {
+            .filter_map(
+                |file| match self.fast_count_resources_in_file(file, graph_id) {
                     Ok(count) if count > 0 => Some((file.clone(), count)),
                     _ => None,
-                }
-            })
+                },
+            )
             .collect()
     }
 
@@ -657,7 +673,11 @@ impl PrebuildLoader {
             match self.load_preindex_file(file, graph_id) {
                 Ok(summaries) => all_summaries.extend(summaries),
                 Err(e) => {
-                    eprintln!("Warning: Failed to load preindex from {}: {}", file.display(), e);
+                    eprintln!(
+                        "Warning: Failed to load preindex from {}: {}",
+                        file.display(),
+                        e
+                    );
                 }
             }
         }
@@ -665,11 +685,7 @@ impl PrebuildLoader {
         // Apply offset and limit
         let total = all_summaries.len();
         let has_more = offset + limit < total;
-        let summaries: Vec<_> = all_summaries
-            .into_iter()
-            .skip(offset)
-            .take(limit)
-            .collect();
+        let summaries: Vec<_> = all_summaries.into_iter().skip(offset).take(limit).collect();
 
         Ok((summaries, has_more))
     }
@@ -741,21 +757,23 @@ mod tests {
         // Test parsing JSON without the new Arches-HER 2.0+ fields
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let test_path = PathBuf::from(manifest_dir)
-            .parent().unwrap()
-            .parent().unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
             .join("tests/data/models/Person.json");
 
-        let content = std::fs::read_to_string(&test_path)
-            .expect("Failed to read test JSON file");
+        let content = std::fs::read_to_string(&test_path).expect("Failed to read test JSON file");
 
-        let data: serde_json::Value = serde_json::from_str(&content)
-            .expect("Failed to parse JSON");
+        let data: serde_json::Value = serde_json::from_str(&content).expect("Failed to parse JSON");
 
         let graph_json = &data["graph"][0];
 
         // Verify the old format doesn't have the new fields
-        assert!(graph_json.get("source_identifier_id").is_none() ||
-                graph_json["source_identifier_id"].is_null());
+        assert!(
+            graph_json.get("source_identifier_id").is_none()
+                || graph_json["source_identifier_id"].is_null()
+        );
 
         // Parse as StaticGraph - this should succeed with defaults for missing fields
         let graph: StaticGraph = serde_json::from_value(graph_json.clone())
@@ -791,11 +809,14 @@ mod tests {
             "is_copy_immutable": false
         }"#;
 
-        let graph: StaticGraph = serde_json::from_str(json)
-            .expect("Failed to parse StaticGraph with Arches-HER fields");
+        let graph: StaticGraph =
+            serde_json::from_str(json).expect("Failed to parse StaticGraph with Arches-HER fields");
 
         assert_eq!(graph.graphid, "test-graph-id");
-        assert_eq!(graph.source_identifier_id, Some("some-source-id".to_string()));
+        assert_eq!(
+            graph.source_identifier_id,
+            Some("some-source-id".to_string())
+        );
         assert_eq!(graph.is_active, Some(true));
         assert_eq!(graph.has_unpublished_changes, Some(false));
     }

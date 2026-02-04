@@ -12,12 +12,19 @@ pub struct StaticTranslatableString {
 
 impl StaticTranslatableString {
     /// Create a new translatable string from a map of translations
-    pub fn from_translations(translations: HashMap<String, String>, default_lang: Option<String>) -> Self {
+    pub fn from_translations(
+        translations: HashMap<String, String>,
+        default_lang: Option<String>,
+    ) -> Self {
         let lang = default_lang.unwrap_or_else(|| "en".to_string());
         let actual_lang = if translations.contains_key(&lang) {
             lang
         } else {
-            translations.keys().next().cloned().unwrap_or_else(|| "en".to_string())
+            translations
+                .keys()
+                .next()
+                .cloned()
+                .unwrap_or_else(|| "en".to_string())
         };
         StaticTranslatableString {
             translations,

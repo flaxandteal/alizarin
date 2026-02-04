@@ -123,9 +123,9 @@ struct ParsedData {
 /// Extract UUID from URI or generate a deterministic one
 fn extract_or_generate_id(uri: &str) -> String {
     // Try to extract UUID from URI
-    let uuid_regex = regex_lite::Regex::new(
-        r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
-    ).unwrap();
+    let uuid_regex =
+        regex_lite::Regex::new(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})")
+            .unwrap();
 
     if let Some(caps) = uuid_regex.captures(uri) {
         return caps.get(1).unwrap().as_str().to_string();
@@ -175,11 +175,13 @@ fn parse_arches_label(raw_value: &str, fallback_id: &str, lang: &str) -> (String
     // Try to parse as JSON object with id and value fields
     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(raw_value) {
         if let Some(obj) = parsed.as_object() {
-            let id = obj.get("id")
+            let id = obj
+                .get("id")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| generate_value_id(fallback_id, lang, raw_value));
-            let value = obj.get("value")
+            let value = obj
+                .get("value")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| raw_value.to_string());
@@ -187,7 +189,10 @@ fn parse_arches_label(raw_value: &str, fallback_id: &str, lang: &str) -> (String
         }
     }
     // Not JSON, treat as plain string
-    (generate_value_id(fallback_id, lang, raw_value), raw_value.to_string())
+    (
+        generate_value_id(fallback_id, lang, raw_value),
+        raw_value.to_string(),
+    )
 }
 
 impl ParsedData {
@@ -214,10 +219,11 @@ impl ParsedData {
                         }
                         Literal::Typed { value, .. } => (value.to_string(), "en".to_string()),
                     };
-                    self.labels
-                        .entry(subject_uri)
-                        .or_default()
-                        .push((predicate.to_string(), value, lang));
+                    self.labels.entry(subject_uri).or_default().push((
+                        predicate.to_string(),
+                        value,
+                        lang,
+                    ));
                 }
             }
             SKOS_NARROWER => {
@@ -307,30 +313,37 @@ impl ParsedData {
 }
 
 /// Parse SKOS RDF/XML and return collections
-pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Vec<SkosCollection>, String> {
+pub fn parse_skos_to_collections(
+    xml_content: &str,
+    base_uri: &str,
+) -> Result<Vec<SkosCollection>, String> {
     let mut data = ParsedData::default();
 
     // Parse base URI into Iri
-    let base_iri = oxiri::Iri::parse(base_uri.to_string())
-        .map_err(|e| format!("Invalid base URI: {}", e))?;
+    let base_iri =
+        oxiri::Iri::parse(base_uri.to_string()).map_err(|e| format!("Invalid base URI: {}", e))?;
 
     // Parse RDF/XML
     let mut parser = RdfXmlParser::new(xml_content.as_bytes(), Some(base_iri));
 
-    parser.parse_all(&mut |triple| {
-        data.process_triple(triple);
-        Ok(()) as Result<(), std::io::Error>
-    }).map_err(|e| format!("RDF/XML parse error: {}", e))?;
+    parser
+        .parse_all(&mut |triple| {
+            data.process_triple(triple);
+            Ok(()) as Result<(), std::io::Error>
+        })
+        .map_err(|e| format!("RDF/XML parse error: {}", e))?;
 
     // Find all concept schemes
-    let scheme_uris: Vec<String> = data.types
+    let scheme_uris: Vec<String> = data
+        .types
         .iter()
         .filter(|(_, t)| *t == SKOS_CONCEPT_SCHEME)
         .map(|(uri, _)| uri.clone())
         .collect();
 
     // Find all concepts
-    let concept_uris: Vec<String> = data.types
+    let concept_uris: Vec<String> = data
+        .types
         .iter()
         .filter(|(_, t)| *t == SKOS_CONCEPT)
         .map(|(uri, _)| uri.clone())
@@ -347,10 +360,13 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
         if let Some(labels) = data.labels.get(uri) {
             for (pred, value, lang) in labels {
                 if pred == SKOS_PREF_LABEL {
-                    pref_labels.insert(lang.clone(), SkosValue {
-                        id: generate_value_id(&id, lang, value),
-                        value: value.clone(),
-                    });
+                    pref_labels.insert(
+                        lang.clone(),
+                        SkosValue {
+                            id: generate_value_id(&id, lang, value),
+                            value: value.clone(),
+                        },
+                    );
                 }
             }
         }
@@ -359,10 +375,13 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
         if pref_labels.is_empty() {
             if let Some(labels) = data.labels.get(uri) {
                 if let Some((_, value, lang)) = labels.first() {
-                    pref_labels.insert(lang.clone(), SkosValue {
-                        id: generate_value_id(&id, lang, value),
-                        value: value.clone(),
-                    });
+                    pref_labels.insert(
+                        lang.clone(),
+                        SkosValue {
+                            id: generate_value_id(&id, lang, value),
+                            value: value.clone(),
+                        },
+                    );
                 }
             }
         }
@@ -428,7 +447,9 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
 
             // Sort children by sort_order
             children.sort_by(|a, b| {
-                a.sort_order.unwrap_or(999).cmp(&b.sort_order.unwrap_or(999))
+                a.sort_order
+                    .unwrap_or(999)
+                    .cmp(&b.sort_order.unwrap_or(999))
             });
 
             if !children.is_empty() {
@@ -452,7 +473,8 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
                 .filter(|child| {
                     // Include child if it or any of its descendants is a member
                     let child_uri = child.uri.as_ref().unwrap_or(&child.id);
-                    member_uris.contains(child_uri) || member_uris.iter().any(|m| m.as_str() == child.id.as_str())
+                    member_uris.contains(child_uri)
+                        || member_uris.iter().any(|m| m.as_str() == child.id.as_str())
                 })
                 .map(|child| filter_concept_tree_to_members(child, member_uris))
                 .collect();
@@ -472,12 +494,15 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
 
     for scheme_uri in &scheme_uris {
         let scheme_id = extract_or_generate_id(scheme_uri);
-        let title = data.scheme_titles.get(scheme_uri)
+        let title = data
+            .scheme_titles
+            .get(scheme_uri)
             .cloned()
             .unwrap_or_else(|| scheme_id.clone());
 
         // Find concepts in this scheme
-        let scheme_concept_uris: Vec<&String> = data.in_scheme
+        let scheme_concept_uris: Vec<&String> = data
+            .in_scheme
             .iter()
             .filter(|(_, schemes)| schemes.contains(scheme_uri))
             .map(|(concept_uri, _)| concept_uri)
@@ -493,29 +518,31 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
         // Build concept trees
         let mut concepts: HashMap<String, SkosConcept> = HashMap::new();
         for uri in &top_level {
-            if let Some(concept) = build_concept_tree(uri, &all_concepts, &children_map, &data.sort_orders) {
+            if let Some(concept) =
+                build_concept_tree(uri, &all_concepts, &children_map, &data.sort_orders)
+            {
                 concepts.insert(concept.id.clone(), concept);
             }
         }
 
         let mut pref_labels = HashMap::new();
-        pref_labels.insert("en".to_string(), SkosValue {
-            id: generate_value_id(&scheme_id, "en", &title),
-            value: title,
-        });
+        pref_labels.insert(
+            "en".to_string(),
+            SkosValue {
+                id: generate_value_id(&scheme_id, "en", &title),
+                value: title,
+            },
+        );
 
         // Build alt_labels for this scheme
         let mut alt_labels: HashMap<String, Vec<SkosValue>> = HashMap::new();
         if let Some(labels) = data.labels.get(scheme_uri) {
             for (pred, value, lang) in labels {
                 if pred == SKOS_ALT_LABEL {
-                    alt_labels
-                        .entry(lang.clone())
-                        .or_default()
-                        .push(SkosValue {
-                            id: generate_value_id(&scheme_id, lang, value),
-                            value: value.clone(),
-                        });
+                    alt_labels.entry(lang.clone()).or_default().push(SkosValue {
+                        id: generate_value_id(&scheme_id, lang, value),
+                        value: value.clone(),
+                    });
                 }
             }
         }
@@ -524,10 +551,13 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
         let mut scope_notes: HashMap<String, SkosValue> = HashMap::new();
         if let Some(notes) = data.scope_notes.get(scheme_uri) {
             for (lang, value) in notes {
-                scope_notes.insert(lang.clone(), SkosValue {
-                    id: generate_value_id(&scheme_id, lang, value),
-                    value: value.clone(),
-                });
+                scope_notes.insert(
+                    lang.clone(),
+                    SkosValue {
+                        id: generate_value_id(&scheme_id, lang, value),
+                        value: value.clone(),
+                    },
+                );
             }
         }
 
@@ -545,7 +575,8 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
     }
 
     // Find all SKOS Collections (distinct from ConceptSchemes)
-    let collection_uris: Vec<String> = data.types
+    let collection_uris: Vec<String> = data
+        .types
         .iter()
         .filter(|(_, t)| *t == SKOS_COLLECTION)
         .map(|(uri, _)| uri.clone())
@@ -562,10 +593,13 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
                 if pred == SKOS_PREF_LABEL {
                     // Handle Arches JSON-wrapped labels: {"id": "...", "value": "..."}
                     let (label_id, label_value) = parse_arches_label(value, &collection_id, lang);
-                    pref_labels.insert(lang.clone(), SkosValue {
-                        id: label_id,
-                        value: label_value,
-                    });
+                    pref_labels.insert(
+                        lang.clone(),
+                        SkosValue {
+                            id: label_id,
+                            value: label_value,
+                        },
+                    );
                 }
             }
         }
@@ -576,13 +610,10 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
             for (pred, value, lang) in labels {
                 if pred == SKOS_ALT_LABEL {
                     let (label_id, label_value) = parse_arches_label(value, &collection_id, lang);
-                    alt_labels
-                        .entry(lang.clone())
-                        .or_default()
-                        .push(SkosValue {
-                            id: label_id,
-                            value: label_value,
-                        });
+                    alt_labels.entry(lang.clone()).or_default().push(SkosValue {
+                        id: label_id,
+                        value: label_value,
+                    });
                 }
             }
         }
@@ -592,10 +623,13 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
         if let Some(notes) = data.scope_notes.get(collection_uri) {
             for (lang, value) in notes {
                 let (note_id, note_value) = parse_arches_label(value, &collection_id, lang);
-                scope_notes.insert(lang.clone(), SkosValue {
-                    id: note_id,
-                    value: note_value,
-                });
+                scope_notes.insert(
+                    lang.clone(),
+                    SkosValue {
+                        id: note_id,
+                        value: note_value,
+                    },
+                );
             }
         }
 
@@ -620,7 +654,9 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
                 .collect();
 
             for member_uri in top_level_members {
-                if let Some(concept) = build_concept_tree(member_uri, &all_concepts, &children_map, &data.sort_orders) {
+                if let Some(concept) =
+                    build_concept_tree(member_uri, &all_concepts, &children_map, &data.sort_orders)
+                {
                     // Filter children to only include those that are also members
                     let filtered_concept = filter_concept_tree_to_members(&concept, &member_set);
                     concepts.insert(filtered_concept.id.clone(), filtered_concept);
@@ -651,17 +687,22 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
 
         let mut concepts: HashMap<String, SkosConcept> = HashMap::new();
         for uri in &top_level {
-            if let Some(concept) = build_concept_tree(uri, &all_concepts, &children_map, &data.sort_orders) {
+            if let Some(concept) =
+                build_concept_tree(uri, &all_concepts, &children_map, &data.sort_orders)
+            {
                 concepts.insert(concept.id.clone(), concept);
             }
         }
 
         let default_id = extract_or_generate_id(base_uri);
         let mut pref_labels = HashMap::new();
-        pref_labels.insert("en".to_string(), SkosValue {
-            id: generate_value_id(&default_id, "en", "Imported Concepts"),
-            value: "Imported Concepts".to_string(),
-        });
+        pref_labels.insert(
+            "en".to_string(),
+            SkosValue {
+                id: generate_value_id(&default_id, "en", "Imported Concepts"),
+                value: "Imported Concepts".to_string(),
+            },
+        );
 
         collections.push(SkosCollection {
             id: default_id,
@@ -898,17 +939,21 @@ pub fn collection_to_skos_xml(collection: &SkosCollection, base_uri: &str) -> St
     let mut output = String::new();
 
     // XML declaration and RDF root with namespaces
-    output.push_str(r#"<?xml version="1.0" encoding="utf-8"?>
+    output.push_str(
+        r#"<?xml version="1.0" encoding="utf-8"?>
 <rdf:RDF
   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
   xmlns:skos="http://www.w3.org/2004/02/skos/core#"
   xmlns:dcterms="http://purl.org/dc/terms/"
   xmlns:arches="http://localhost:8000/"
 >
-"#);
+"#,
+    );
 
     // Build collection/scheme URI
-    let entity_uri = collection.uri.clone()
+    let entity_uri = collection
+        .uri
+        .clone()
         .unwrap_or_else(|| format!("{}{}", base_uri, collection.id));
 
     match collection.node_type {
@@ -1036,17 +1081,21 @@ pub fn collections_to_skos_xml(collections: &[SkosCollection], base_uri: &str) -
     let mut output = String::new();
 
     // XML declaration and RDF root with namespaces
-    output.push_str(r#"<?xml version="1.0" encoding="utf-8"?>
+    output.push_str(
+        r#"<?xml version="1.0" encoding="utf-8"?>
 <rdf:RDF
   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
   xmlns:skos="http://www.w3.org/2004/02/skos/core#"
   xmlns:dcterms="http://purl.org/dc/terms/"
   xmlns:arches="http://localhost:8000/"
 >
-"#);
+"#,
+    );
 
     for collection in collections {
-        let entity_uri = collection.uri.clone()
+        let entity_uri = collection
+            .uri
+            .clone()
             .unwrap_or_else(|| format!("{}{}", base_uri, collection.id));
 
         match collection.node_type {
@@ -1257,16 +1306,22 @@ mod tests {
     fn test_serialize_collection_to_xml() {
         // Create a simple collection
         let mut pref_labels = HashMap::new();
-        pref_labels.insert("en".to_string(), SkosValue {
-            id: "label-1".to_string(),
-            value: "Test Collection".to_string(),
-        });
+        pref_labels.insert(
+            "en".to_string(),
+            SkosValue {
+                id: "label-1".to_string(),
+                value: "Test Collection".to_string(),
+            },
+        );
 
         let mut concept_labels = HashMap::new();
-        concept_labels.insert("en".to_string(), SkosValue {
-            id: "concept-label-1".to_string(),
-            value: "Test Concept".to_string(),
-        });
+        concept_labels.insert(
+            "en".to_string(),
+            SkosValue {
+                id: "concept-label-1".to_string(),
+                value: "Test Concept".to_string(),
+            },
+        );
 
         let concept = SkosConcept {
             id: "concept-1".to_string(),
@@ -1309,16 +1364,22 @@ mod tests {
     fn test_serialize_hierarchical_collection() {
         // Create collection with nested concepts
         let mut pref_labels = HashMap::new();
-        pref_labels.insert("en".to_string(), SkosValue {
-            id: "label-1".to_string(),
-            value: "Hierarchical Collection".to_string(),
-        });
+        pref_labels.insert(
+            "en".to_string(),
+            SkosValue {
+                id: "label-1".to_string(),
+                value: "Hierarchical Collection".to_string(),
+            },
+        );
 
         let mut child_labels = HashMap::new();
-        child_labels.insert("en".to_string(), SkosValue {
-            id: "child-label-1".to_string(),
-            value: "Child Concept".to_string(),
-        });
+        child_labels.insert(
+            "en".to_string(),
+            SkosValue {
+                id: "child-label-1".to_string(),
+                value: "Child Concept".to_string(),
+            },
+        );
 
         let child = SkosConcept {
             id: "child-1".to_string(),
@@ -1330,10 +1391,13 @@ mod tests {
         };
 
         let mut parent_labels = HashMap::new();
-        parent_labels.insert("en".to_string(), SkosValue {
-            id: "parent-label-1".to_string(),
-            value: "Parent Concept".to_string(),
-        });
+        parent_labels.insert(
+            "en".to_string(),
+            SkosValue {
+                id: "parent-label-1".to_string(),
+                value: "Parent Concept".to_string(),
+            },
+        );
 
         let parent = SkosConcept {
             id: "parent-1".to_string(),
@@ -1376,8 +1440,10 @@ mod tests {
         assert_eq!(xml_escape("a & b"), "a &amp; b");
         assert_eq!(xml_escape("\"quoted\""), "&quot;quoted&quot;");
         assert_eq!(xml_escape("it's"), "it&apos;s");
-        assert_eq!(xml_escape("<script>alert('xss')</script>"),
-            "&lt;script&gt;alert(&apos;xss&apos;)&lt;/script&gt;");
+        assert_eq!(
+            xml_escape("<script>alert('xss')</script>"),
+            "&lt;script&gt;alert(&apos;xss&apos;)&lt;/script&gt;"
+        );
     }
 
     #[test]
@@ -1398,16 +1464,24 @@ mod tests {
         assert_eq!(collections2.len(), 1);
 
         // Verify concept count matches
-        assert_eq!(collections[0].concepts.len(), collections2[0].concepts.len());
+        assert_eq!(
+            collections[0].concepts.len(),
+            collections2[0].concepts.len()
+        );
 
         // Verify concept labels are preserved
         for (id, concept) in &collections[0].concepts {
             // Find matching concept in round-tripped collection
-            let found = collections2[0].concepts.values()
-                .find(|c| c.pref_labels.values().any(|v|
-                    concept.pref_labels.values().any(|v2| v.value == v2.value)
-                ));
-            assert!(found.is_some(), "Concept with id {} not found after round-trip", id);
+            let found = collections2[0].concepts.values().find(|c| {
+                c.pref_labels
+                    .values()
+                    .any(|v| concept.pref_labels.values().any(|v2| v.value == v2.value))
+            });
+            assert!(
+                found.is_some(),
+                "Concept with id {} not found after round-trip",
+                id
+            );
         }
     }
 
@@ -1437,7 +1511,8 @@ mod tests {
         assert_eq!(children.len(), 2);
 
         // Children labels preserved
-        let child_labels: Vec<&str> = children.iter()
+        let child_labels: Vec<&str> = children
+            .iter()
             .filter_map(|c| c.pref_labels.get("en").map(|v| v.value.as_str()))
             .collect();
         assert!(child_labels.contains(&"Child One"));
@@ -1513,7 +1588,10 @@ mod tests {
         // Should have the correct prefLabel (parsed from JSON)
         assert!(collection.pref_labels.contains_key("en-us"));
         assert_eq!(collection.pref_labels["en-us"].value, "Test Collection");
-        assert_eq!(collection.pref_labels["en-us"].id, "956f8913-f728-4f82-b3ae-3aaf4ce7891a");
+        assert_eq!(
+            collection.pref_labels["en-us"].id,
+            "956f8913-f728-4f82-b3ae-3aaf4ce7891a"
+        );
 
         // Should have altLabel
         assert!(collection.alt_labels.contains_key("en-us"));
@@ -1536,28 +1614,40 @@ mod tests {
     fn test_serialize_arches_collection() {
         // Create a Collection (not ConceptScheme)
         let mut pref_labels = HashMap::new();
-        pref_labels.insert("en-us".to_string(), SkosValue {
-            id: "label-uuid-1".to_string(),
-            value: "Test Collection".to_string(),
-        });
+        pref_labels.insert(
+            "en-us".to_string(),
+            SkosValue {
+                id: "label-uuid-1".to_string(),
+                value: "Test Collection".to_string(),
+            },
+        );
 
         let mut alt_labels = HashMap::new();
-        alt_labels.insert("en-us".to_string(), vec![SkosValue {
-            id: "alt-uuid-1".to_string(),
-            value: "Alt Label".to_string(),
-        }]);
+        alt_labels.insert(
+            "en-us".to_string(),
+            vec![SkosValue {
+                id: "alt-uuid-1".to_string(),
+                value: "Alt Label".to_string(),
+            }],
+        );
 
         let mut scope_notes = HashMap::new();
-        scope_notes.insert("en-us".to_string(), SkosValue {
-            id: "note-uuid-1".to_string(),
-            value: "A scope note".to_string(),
-        });
+        scope_notes.insert(
+            "en-us".to_string(),
+            SkosValue {
+                id: "note-uuid-1".to_string(),
+                value: "A scope note".to_string(),
+            },
+        );
 
         let mut concept_labels = HashMap::new();
-        concept_labels.insert("en".to_string(), SkosValue {
-            id: "concept-label-1".to_string(),
-            value: "Member Concept".to_string(),
-        });
+        concept_labels.insert(
+            "en".to_string(),
+            SkosValue {
+                id: "concept-label-1".to_string(),
+                value: "Member Concept".to_string(),
+            },
+        );
 
         let concept = SkosConcept {
             id: "concept-1".to_string(),
@@ -1630,7 +1720,10 @@ mod tests {
         // Should preserve prefLabel with ID
         assert!(round_tripped.pref_labels.contains_key("en-us"));
         assert_eq!(round_tripped.pref_labels["en-us"].value, "Test Collection");
-        assert_eq!(round_tripped.pref_labels["en-us"].id, "956f8913-f728-4f82-b3ae-3aaf4ce7891a");
+        assert_eq!(
+            round_tripped.pref_labels["en-us"].id,
+            "956f8913-f728-4f82-b3ae-3aaf4ce7891a"
+        );
 
         // Should preserve member count
         assert_eq!(round_tripped.concepts.len(), original.concepts.len());
@@ -1647,7 +1740,7 @@ mod tests {
         let (id, value) = parse_arches_label(
             r#"{"id": "uuid-123", "value": "Label Text"}"#,
             "fallback",
-            "en"
+            "en",
         );
         assert_eq!(id, "uuid-123");
         assert_eq!(value, "Label Text");
@@ -1699,7 +1792,8 @@ mod tests {
 
     #[test]
     fn test_parse_hierarchical_collection() {
-        let result = parse_skos_to_collections(TEST_HIERARCHICAL_COLLECTION, "http://localhost:8000/");
+        let result =
+            parse_skos_to_collections(TEST_HIERARCHICAL_COLLECTION, "http://localhost:8000/");
         assert!(result.is_ok());
         let collections = result.unwrap();
 
@@ -1734,17 +1828,23 @@ mod tests {
     fn test_serialize_hierarchical_collection_with_children() {
         // Create a Collection with hierarchical concepts
         let mut pref_labels = HashMap::new();
-        pref_labels.insert("en".to_string(), SkosValue {
-            id: "label-1".to_string(),
-            value: "Hierarchical Collection".to_string(),
-        });
+        pref_labels.insert(
+            "en".to_string(),
+            SkosValue {
+                id: "label-1".to_string(),
+                value: "Hierarchical Collection".to_string(),
+            },
+        );
 
         // Create child concepts
         let mut child1_labels = HashMap::new();
-        child1_labels.insert("en".to_string(), SkosValue {
-            id: "child1-label".to_string(),
-            value: "Child One".to_string(),
-        });
+        child1_labels.insert(
+            "en".to_string(),
+            SkosValue {
+                id: "child1-label".to_string(),
+                value: "Child One".to_string(),
+            },
+        );
         let child1 = SkosConcept {
             id: "child-1".to_string(),
             uri: None,
@@ -1755,10 +1855,13 @@ mod tests {
         };
 
         let mut child2_labels = HashMap::new();
-        child2_labels.insert("en".to_string(), SkosValue {
-            id: "child2-label".to_string(),
-            value: "Child Two".to_string(),
-        });
+        child2_labels.insert(
+            "en".to_string(),
+            SkosValue {
+                id: "child2-label".to_string(),
+                value: "Child Two".to_string(),
+            },
+        );
         let child2 = SkosConcept {
             id: "child-2".to_string(),
             uri: None,
@@ -1770,10 +1873,13 @@ mod tests {
 
         // Create parent with children
         let mut parent_labels = HashMap::new();
-        parent_labels.insert("en".to_string(), SkosValue {
-            id: "parent-label".to_string(),
-            value: "Parent".to_string(),
-        });
+        parent_labels.insert(
+            "en".to_string(),
+            SkosValue {
+                id: "parent-label".to_string(),
+                value: "Parent".to_string(),
+            },
+        );
         let parent = SkosConcept {
             id: "parent".to_string(),
             uri: None,
@@ -1806,11 +1912,20 @@ mod tests {
         // Should have 3 members (parent + 2 children) - all concepts listed as members
         // Each member has opening <skos:member> and closing </skos:member>, so count opening tags
         let member_count = xml.matches("<skos:member>").count();
-        assert_eq!(member_count, 3, "Should list all concepts including children as members");
+        assert_eq!(
+            member_count, 3,
+            "Should list all concepts including children as members"
+        );
 
         // Should have narrower/broader relationships on concepts
-        assert!(xml.contains("skos:narrower"), "Parent should have narrower relationships");
-        assert!(xml.contains("skos:broader"), "Children should have broader relationships");
+        assert!(
+            xml.contains("skos:narrower"),
+            "Parent should have narrower relationships"
+        );
+        assert!(
+            xml.contains("skos:broader"),
+            "Children should have broader relationships"
+        );
 
         // Should contain all concept labels
         assert!(xml.contains("Parent"));
@@ -1821,7 +1936,8 @@ mod tests {
     #[test]
     fn test_round_trip_hierarchical_collection() {
         // Parse hierarchical Collection
-        let result = parse_skos_to_collections(TEST_HIERARCHICAL_COLLECTION, "http://localhost:8000/");
+        let result =
+            parse_skos_to_collections(TEST_HIERARCHICAL_COLLECTION, "http://localhost:8000/");
         assert!(result.is_ok());
         let collections = result.unwrap();
         assert_eq!(collections.len(), 1);
@@ -1852,7 +1968,10 @@ mod tests {
         // Should preserve hierarchy: one top-level concept with 2 children
         assert_eq!(round_tripped.concepts.len(), 1);
         let rt_parent = round_tripped.concepts.values().next().unwrap();
-        assert!(rt_parent.children.is_some(), "Hierarchy should be preserved after round-trip");
+        assert!(
+            rt_parent.children.is_some(),
+            "Hierarchy should be preserved after round-trip"
+        );
         assert_eq!(rt_parent.children.as_ref().unwrap().len(), 2);
 
         // Verify child labels preserved

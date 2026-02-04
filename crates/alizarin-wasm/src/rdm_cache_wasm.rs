@@ -10,9 +10,9 @@
 //! const label = cache.lookupLabel(collectionId, conceptId, "en");
 //! ```
 
-use wasm_bindgen::prelude::*;
-use serde::Serialize;
 use alizarin_core::rdm_cache::RdmCache;
+use serde::Serialize;
+use wasm_bindgen::prelude::*;
 
 // =============================================================================
 // RDM Value Info (for JS return type)
@@ -64,7 +64,8 @@ impl WasmRdmCache {
         collection_id: &str,
         concepts_json: &str,
     ) -> Result<(), JsError> {
-        self.inner.add_collection_from_json(collection_id, concepts_json)
+        self.inner
+            .add_collection_from_json(collection_id, concepts_json)
             .map_err(|e| JsError::new(&e))
     }
 
@@ -108,10 +109,8 @@ impl WasmRdmCache {
         concept_id: &str,
     ) -> Result<JsValue, JsError> {
         match self.inner.lookup_concept(collection_id, concept_id) {
-            Some(concept) => {
-                serde_wasm_bindgen::to_value(concept)
-                    .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))
-            }
+            Some(concept) => serde_wasm_bindgen::to_value(concept)
+                .map_err(|e| JsError::new(&format!("Serialization error: {}", e))),
             None => Ok(JsValue::UNDEFINED),
         }
     }
@@ -139,11 +138,7 @@ impl WasmRdmCache {
     /// @param valueId - The value UUID (not concept UUID)
     /// @returns RdmValueInfo object, or undefined if not found
     #[wasm_bindgen(js_name = lookupValue)]
-    pub fn lookup_value(
-        &self,
-        collection_id: &str,
-        value_id: &str,
-    ) -> Result<JsValue, JsError> {
+    pub fn lookup_value(&self, collection_id: &str, value_id: &str) -> Result<JsValue, JsError> {
         match self.inner.lookup_value(collection_id, value_id) {
             Some(value) => {
                 let info = RdmValueInfo {
@@ -167,12 +162,9 @@ impl WasmRdmCache {
     /// @param valueId - The value UUID
     /// @returns The concept ID, or undefined if not found
     #[wasm_bindgen(js_name = getConceptIdForValue)]
-    pub fn get_concept_id_for_value(
-        &self,
-        collection_id: &str,
-        value_id: &str,
-    ) -> Option<String> {
-        self.inner.get_concept_id_for_value(collection_id, value_id)
+    pub fn get_concept_id_for_value(&self, collection_id: &str, value_id: &str) -> Option<String> {
+        self.inner
+            .get_concept_id_for_value(collection_id, value_id)
             .map(|s| s.to_string())
     }
 
@@ -206,14 +198,15 @@ impl WasmRdmCache {
         alias_to_collection: JsValue,
         strict: bool,
     ) -> Result<String, JsError> {
-        use std::collections::HashMap;
         use alizarin_core::label_resolution;
+        use std::collections::HashMap;
 
         let tree: serde_json::Value = serde_json::from_str(tree_json)
             .map_err(|e| JsError::new(&format!("Invalid tree JSON: {}", e)))?;
 
-        let alias_map: HashMap<String, String> = serde_wasm_bindgen::from_value(alias_to_collection)
-            .map_err(|e| JsError::new(&format!("Invalid alias map: {}", e)))?;
+        let alias_map: HashMap<String, String> =
+            serde_wasm_bindgen::from_value(alias_to_collection)
+                .map_err(|e| JsError::new(&format!("Invalid alias map: {}", e)))?;
 
         let resolved = label_resolution::resolve_labels(tree, &alias_map, &self.inner, strict)
             .map_err(|e| JsError::new(&e.message))?;
@@ -277,7 +270,9 @@ mod tests {
             }
         ]"#;
 
-        cache.add_collection_from_json("collection-1", concepts_json).unwrap();
+        cache
+            .add_collection_from_json("collection-1", concepts_json)
+            .unwrap();
 
         assert!(cache.has_collection("collection-1"));
         assert!(!cache.has_collection("collection-2"));
@@ -296,18 +291,19 @@ mod tests {
             Some("English Label".to_string())
         );
         // Not found
-        assert_eq!(
-            cache.lookup_label("collection-1", "concept-3", "en"),
-            None
-        );
+        assert_eq!(cache.lookup_label("collection-1", "concept-3", "en"), None);
     }
 
     #[test]
     fn test_clear_cache() {
         let mut cache = WasmRdmCache::new();
 
-        cache.add_collection_from_json("coll-1", r#"[{"id": "c1", "prefLabel": {"en": "C1"}}]"#).unwrap();
-        cache.add_collection_from_json("coll-2", r#"[{"id": "c2", "prefLabel": {"en": "C2"}}]"#).unwrap();
+        cache
+            .add_collection_from_json("coll-1", r#"[{"id": "c1", "prefLabel": {"en": "C1"}}]"#)
+            .unwrap();
+        cache
+            .add_collection_from_json("coll-2", r#"[{"id": "c2", "prefLabel": {"en": "C2"}}]"#)
+            .unwrap();
 
         assert_eq!(cache.get_collection_ids().len(), 2);
 
@@ -329,7 +325,9 @@ mod tests {
             }
         ]"#;
 
-        cache.add_collection_from_json("coll-1", concepts_json).unwrap();
+        cache
+            .add_collection_from_json("coll-1", concepts_json)
+            .unwrap();
 
         // Test get_concept_id_for_value
         assert_eq!(
@@ -365,7 +363,9 @@ mod tests {
             }
         ]"#;
 
-        cache.add_collection_from_json("coll-1", concepts_json).unwrap();
+        cache
+            .add_collection_from_json("coll-1", concepts_json)
+            .unwrap();
 
         // Child should have parent
         assert_eq!(

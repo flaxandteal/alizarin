@@ -7,12 +7,9 @@ use std::collections::HashMap;
 
 // Import core types
 use alizarin_core::node_config::{
-    NodeConfigBoolean as CoreNodeConfigBoolean,
-    NodeConfigConcept as CoreNodeConfigConcept,
-    NodeConfigDomain as CoreNodeConfigDomain,
-    NodeConfigManager as CoreNodeConfigManager,
-    NodeConfigReference as CoreNodeConfigReference,
-    StaticDomainValue as CoreStaticDomainValue,
+    NodeConfigBoolean as CoreNodeConfigBoolean, NodeConfigConcept as CoreNodeConfigConcept,
+    NodeConfigDomain as CoreNodeConfigDomain, NodeConfigManager as CoreNodeConfigManager,
+    NodeConfigReference as CoreNodeConfigReference, StaticDomainValue as CoreStaticDomainValue,
 };
 
 // =============================================================================
@@ -34,7 +31,9 @@ impl From<CoreStaticDomainValue> for PyStaticDomainValue {
 
 impl From<&CoreStaticDomainValue> for PyStaticDomainValue {
     fn from(inner: &CoreStaticDomainValue) -> Self {
-        Self { inner: inner.clone() }
+        Self {
+            inner: inner.clone(),
+        }
     }
 }
 
@@ -72,7 +71,10 @@ impl PyStaticDomainValue {
     }
 
     fn __repr__(&self) -> String {
-        format!("RustStaticDomainValue(id={}, text={:?})", self.inner.id, self.inner.text)
+        format!(
+            "RustStaticDomainValue(id={}, text={:?})",
+            self.inner.id, self.inner.text
+        )
     }
 
     /// Convert to Python dict
@@ -103,7 +105,9 @@ impl From<CoreNodeConfigBoolean> for PyNodeConfigBoolean {
 
 impl From<&CoreNodeConfigBoolean> for PyNodeConfigBoolean {
     fn from(inner: &CoreNodeConfigBoolean) -> Self {
-        Self { inner: inner.clone() }
+        Self {
+            inner: inner.clone(),
+        }
     }
 }
 
@@ -150,7 +154,9 @@ impl From<CoreNodeConfigConcept> for PyNodeConfigConcept {
 
 impl From<&CoreNodeConfigConcept> for PyNodeConfigConcept {
     fn from(inner: &CoreNodeConfigConcept) -> Self {
-        Self { inner: inner.clone() }
+        Self {
+            inner: inner.clone(),
+        }
     }
 }
 
@@ -187,7 +193,9 @@ impl From<CoreNodeConfigReference> for PyNodeConfigReference {
 
 impl From<&CoreNodeConfigReference> for PyNodeConfigReference {
     fn from(inner: &CoreNodeConfigReference) -> Self {
-        Self { inner: inner.clone() }
+        Self {
+            inner: inner.clone(),
+        }
     }
 }
 
@@ -239,7 +247,9 @@ impl From<CoreNodeConfigDomain> for PyNodeConfigDomain {
 
 impl From<&CoreNodeConfigDomain> for PyNodeConfigDomain {
     fn from(inner: &CoreNodeConfigDomain) -> Self {
-        Self { inner: inner.clone() }
+        Self {
+            inner: inner.clone(),
+        }
     }
 }
 
@@ -247,10 +257,8 @@ impl From<&CoreNodeConfigDomain> for PyNodeConfigDomain {
 impl PyNodeConfigDomain {
     #[new]
     fn new(options: Vec<PyStaticDomainValue>) -> Self {
-        let core_options: Vec<CoreStaticDomainValue> = options
-            .into_iter()
-            .map(|o| o.inner)
-            .collect();
+        let core_options: Vec<CoreStaticDomainValue> =
+            options.into_iter().map(|o| o.inner).collect();
         Self {
             inner: CoreNodeConfigDomain::new(core_options),
         }
@@ -258,7 +266,11 @@ impl PyNodeConfigDomain {
 
     #[getter]
     fn options(&self) -> Vec<PyStaticDomainValue> {
-        self.inner.options.iter().map(PyStaticDomainValue::from).collect()
+        self.inner
+            .options
+            .iter()
+            .map(PyStaticDomainValue::from)
+            .collect()
     }
 
     /// Get the selected option (if any)
@@ -273,7 +285,11 @@ impl PyNodeConfigDomain {
 
     /// Get all option IDs
     fn get_option_ids(&self) -> Vec<String> {
-        self.inner.get_option_ids().iter().map(|s| s.to_string()).collect()
+        self.inner
+            .get_option_ids()
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
     }
 }
 
@@ -297,23 +313,30 @@ impl PyNodeConfigManager {
 
     /// Build configs from a graph JSON string
     fn load_graph_json(&mut self, graph_json: &str) -> PyResult<()> {
-        self.inner.from_graph_json(graph_json)
+        self.inner
+            .from_graph_json(graph_json)
             .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
     }
 
     /// Get boolean config for a node
     fn get_boolean(&self, nodeid: &str) -> Option<PyNodeConfigBoolean> {
-        self.inner.get_boolean(nodeid).map(PyNodeConfigBoolean::from)
+        self.inner
+            .get_boolean(nodeid)
+            .map(PyNodeConfigBoolean::from)
     }
 
     /// Get concept config for a node
     fn get_concept(&self, nodeid: &str) -> Option<PyNodeConfigConcept> {
-        self.inner.get_concept(nodeid).map(PyNodeConfigConcept::from)
+        self.inner
+            .get_concept(nodeid)
+            .map(PyNodeConfigConcept::from)
     }
 
     /// Get reference config for a node
     fn get_reference(&self, nodeid: &str) -> Option<PyNodeConfigReference> {
-        self.inner.get_reference(nodeid).map(PyNodeConfigReference::from)
+        self.inner
+            .get_reference(nodeid)
+            .map(PyNodeConfigReference::from)
     }
 
     /// Get domain config for a node
@@ -323,7 +346,9 @@ impl PyNodeConfigManager {
 
     /// Look up domain value by ID
     fn lookup_domain_value(&self, nodeid: &str, value_id: &str) -> Option<PyStaticDomainValue> {
-        self.inner.lookup_domain_value(nodeid, value_id).map(PyStaticDomainValue::from)
+        self.inner
+            .lookup_domain_value(nodeid, value_id)
+            .map(PyStaticDomainValue::from)
     }
 
     /// Check if a node has config

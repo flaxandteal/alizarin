@@ -1,9 +1,9 @@
 //! Resource types for resource instances and metadata.
 
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
 use super::descriptors::StaticResourceDescriptors;
 use super::tile::StaticTile;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 
 /// Metadata about a resource instance
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -316,9 +316,9 @@ pub fn batch_merge_resources(
     resource_batches: Vec<Vec<StaticResource>>,
     recompute_descriptors: bool,
 ) -> BatchMergeResult {
-    use std::collections::BTreeMap;
     use crate::registry::get_graph;
     use crate::IndexedGraph;
+    use std::collections::BTreeMap;
 
     // Group all resources by resourceinstanceid
     let mut grouped: BTreeMap<String, Vec<StaticResource>> = BTreeMap::new();
@@ -351,7 +351,8 @@ pub fn batch_merge_resources(
                 // Get or create IndexedGraph for this graph_id (needed for both unification and descriptors)
                 if !indexed_graphs.contains_key(&graph_id) {
                     if let Some(graph) = get_graph(&graph_id) {
-                        indexed_graphs.insert(graph_id.clone(), IndexedGraph::new((*graph).clone()));
+                        indexed_graphs
+                            .insert(graph_id.clone(), IndexedGraph::new((*graph).clone()));
                     }
                 }
 
@@ -456,7 +457,9 @@ pub fn unify_cardinality_one_tiles(
             None => continue,
         };
 
-        let is_single = nodegroup.cardinality.as_ref()
+        let is_single = nodegroup
+            .cardinality
+            .as_ref()
             .map(|c| c != "n")
             .unwrap_or(true);
 
@@ -470,7 +473,10 @@ pub fn unify_cardinality_one_tiles(
 
         for &idx in tile_indices.iter().skip(1) {
             let tile = &tiles[idx];
-            let tile_id = tile.tileid.clone().unwrap_or_else(|| format!("(index {})", idx));
+            let tile_id = tile
+                .tileid
+                .clone()
+                .unwrap_or_else(|| format!("(index {})", idx));
 
             // Record tile redirect
             if let Some(ref old_tile_id) = tile.tileid {
@@ -502,7 +508,10 @@ pub fn unify_cardinality_one_tiles(
     // Merge data into canonical tiles
     for (canonical_idx, sources) in data_to_merge {
         let canonical_tile = &mut tiles[canonical_idx];
-        let canonical_tile_id = canonical_tile.tileid.clone().unwrap_or_else(|| format!("(index {})", canonical_idx));
+        let canonical_tile_id = canonical_tile
+            .tileid
+            .clone()
+            .unwrap_or_else(|| format!("(index {})", canonical_idx));
 
         for (source_tile_id, source_data) in sources {
             for (key, value) in source_data {
@@ -547,7 +556,7 @@ pub fn unify_cardinality_one_tiles(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_static_resource_serialization() {
         let resource = StaticResource {
@@ -569,18 +578,22 @@ mod tests {
             scopes: None,
             tiles_loaded: None,
         };
-        
+
         let json = serde_json::to_string_pretty(&resource).unwrap();
         println!("StaticResource JSON:\n{}", json);
-        
+
         // Check that resourceinstance is nested
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert!(value.get("resourceinstance").is_some(), "Should have nested resourceinstance");
+        assert!(
+            value.get("resourceinstance").is_some(),
+            "Should have nested resourceinstance"
+        );
     }
 
     fn make_test_resource(resource_id: &str, tile_ids: &[&str]) -> StaticResource {
-        let tiles: Vec<StaticTile> = tile_ids.iter().map(|id| {
-            StaticTile {
+        let tiles: Vec<StaticTile> = tile_ids
+            .iter()
+            .map(|id| StaticTile {
                 tileid: Some(id.to_string()),
                 nodegroup_id: "ng1".to_string(),
                 resourceinstance_id: resource_id.to_string(),
@@ -588,8 +601,8 @@ mod tests {
                 data: HashMap::new(),
                 provisionaledits: None,
                 sortorder: None,
-            }
-        }).collect();
+            })
+            .collect();
 
         StaticResource {
             resourceinstance: StaticResourceMetadata {
@@ -628,12 +641,12 @@ mod tests {
     #[test]
     fn test_merge_resources_duplicate_detection() {
         let r1 = make_test_resource("res-1", &["tile-a", "tile-b"]);
-        let r2 = make_test_resource("res-1", &["tile-b", "tile-c"]);  // tile-b is duplicate
+        let r2 = make_test_resource("res-1", &["tile-b", "tile-c"]); // tile-b is duplicate
 
         let result = merge_resources(vec![r1, r2]).unwrap();
 
         let tiles = result.resource.tiles.unwrap();
-        assert_eq!(tiles.len(), 3);  // tile-b counted once
+        assert_eq!(tiles.len(), 3); // tile-b counted once
         assert_eq!(result.warnings.len(), 1);
         assert!(result.warnings[0].contains("tile-b"));
     }
@@ -641,7 +654,7 @@ mod tests {
     #[test]
     fn test_merge_resources_id_mismatch() {
         let r1 = make_test_resource("res-1", &["tile-a"]);
-        let r2 = make_test_resource("res-2", &["tile-b"]);  // Different ID
+        let r2 = make_test_resource("res-2", &["tile-b"]); // Different ID
 
         let result = merge_resources(vec![r1, r2]);
 

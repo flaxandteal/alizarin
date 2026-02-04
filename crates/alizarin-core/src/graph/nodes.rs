@@ -1,8 +1,8 @@
 //! Node, Nodegroup, and Edge types for the graph structure.
 
+use super::translatable::StaticTranslatableString;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use super::translatable::StaticTranslatableString;
 
 /// A node in the graph representing a data field or structural element
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -54,7 +54,8 @@ impl StaticNode {
     /// Check if this node is the root node (no nodegroup_id)
     pub fn is_root(&self) -> bool {
         self.nodegroup_id.is_none()
-            || self.nodegroup_id
+            || self
+                .nodegroup_id
                 .as_ref()
                 .map(|s| s.is_empty())
                 .unwrap_or(true)
