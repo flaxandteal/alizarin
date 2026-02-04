@@ -68,7 +68,7 @@ describe("FileList Extension", () => {
         type: "image/jpeg",
         size: 12345,
         title: { en: { direction: "ltr", value: "My Photo" } },
-        altText: { en: { direction: "ltr", value: "A beautiful sunset" } },
+        alt_text: { en: { direction: "ltr", value: "A beautiful sunset" } },
         accepted: true,
         selected: true,
       });
@@ -134,7 +134,7 @@ describe("FileList Extension", () => {
 
       const item = new FileListItem({
         name: "photo.jpg",
-        altText: {
+        alt_text: {
           en: { direction: "ltr", value: "English description" },
           es: { direction: "ltr", value: "Spanish description" },
         },

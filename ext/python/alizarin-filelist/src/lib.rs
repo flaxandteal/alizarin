@@ -119,7 +119,7 @@ pub struct FileListItem {
     pub accepted: bool,
 
     /// Alternative text for accessibility (localized)
-    #[serde(default, rename = "altText")]
+    #[serde(default)]
     pub alt_text: Option<LocalizedString>,
 
     /// Attribution/credits (localized)
@@ -143,7 +143,7 @@ pub struct FileListItem {
     pub index: Option<i64>,
 
     /// Last modified timestamp (milliseconds)
-    #[serde(default, rename = "lastModified")]
+    #[serde(default)]
     pub last_modified: Option<i64>,
 
     /// Original filename
@@ -343,9 +343,14 @@ unsafe extern "C" fn coerce_filelist(
     // Perform coercion
     match coerce_filelist_value(&value) {
         Ok((tile_data, resolved)) => {
-            let tile_json = serde_json::to_vec(&tile_data).unwrap_or_default();
-            let resolved_json = serde_json::to_vec(&resolved).unwrap_or_default();
-            CoerceResult::success(tile_json, resolved_json)
+            match (serde_json::to_vec(&tile_data), serde_json::to_vec(&resolved)) {
+                (Ok(tile_json), Ok(resolved_json)) => {
+                    CoerceResult::success(tile_json, resolved_json)
+                }
+                (Err(e), _) | (_, Err(e)) => {
+                    CoerceResult::error(format!("Failed to serialize coerced value: {}", e))
+                }
+            }
         }
         Err(e) => CoerceResult::error(e),
     }
@@ -442,9 +447,15 @@ mod python_module {
         });
 
         // Get pointer to the static handler info
-        let ptr = unsafe { HANDLER_INFO.as_ref().unwrap() as *const TypeHandlerInfo };
+        // SAFETY: HANDLER_INFO is initialized unconditionally in Once::call_once above
+        let ptr = unsafe {
+            HANDLER_INFO.as_ref().expect("HANDLER_INFO initialized in Once::call_once above")
+                as *const TypeHandlerInfo
+        };
 
-        let name = CString::new("alizarin_filelist.filelist_handler").unwrap();
+        // SAFETY: Hardcoded string with no null bytes
+        let name = CString::new("alizarin_filelist.filelist_handler")
+            .expect("handler name contains no null bytes");
 
         unsafe {
             let capsule = pyo3::ffi::PyCapsule_New(

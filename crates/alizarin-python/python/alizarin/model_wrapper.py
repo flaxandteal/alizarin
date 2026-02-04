@@ -194,6 +194,15 @@ class ResourceModelWrapper(Generic[RIVM]):
             self.build_nodes()
         return self.nodegroups or {}
 
+    def get_nodegroup_ids(self) -> List[str]:
+        """
+        Get all nodegroup IDs.
+
+        Returns:
+            List of nodegroup IDs
+        """
+        return list(self.get_nodegroup_objects().keys())
+
     def get_edges(self) -> Dict[str, List[StaticEdge]]:
         """
         Get edges grouped by domain node.

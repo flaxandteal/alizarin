@@ -10,48 +10,8 @@ use crate::json_conversion::create_static_resource;
 use alizarin_core::tiles_to_tree as core_tiles_to_tree;
 use alizarin_core::{
     tree_to_tiles, merge_resources, batch_merge_resources, StaticResource,
+    transform_keys_to_snake,
 };
-
-/// Transform camelCase keys to snake_case recursively
-fn transform_keys_to_snake(value: Value) -> Value {
-    fn camel_to_snake(s: &str) -> String {
-        let mut result = String::with_capacity(s.len() + 10);
-        let mut chars = s.chars().peekable();
-
-        while let Some(c) = chars.next() {
-            if c.is_uppercase() {
-                if !result.is_empty() {
-                    let next_is_upper_or_end = chars.peek().map(|n| n.is_uppercase()).unwrap_or(true);
-                    let prev_was_upper = result.chars().last().map(|p| p.is_uppercase()).unwrap_or(false);
-
-                    if !prev_was_upper || !next_is_upper_or_end {
-                        result.push('_');
-                    }
-                }
-                result.push(c.to_lowercase().next().unwrap());
-            } else {
-                result.push(c);
-            }
-        }
-        result
-    }
-
-    match value {
-        Value::Object(map) => {
-            let mut new_map = serde_json::Map::new();
-            for (key, val) in map {
-                let new_key = camel_to_snake(&key);
-                let new_val = transform_keys_to_snake(val);
-                new_map.insert(new_key, new_val);
-            }
-            Value::Object(new_map)
-        }
-        Value::Array(arr) => {
-            Value::Array(arr.into_iter().map(transform_keys_to_snake).collect())
-        }
-        other => other,
-    }
-}
 
 /// Single tree to tiles conversion with from_camel and strict parameters
 ///
@@ -483,24 +443,4 @@ pub fn batch_merge_resources_wasm(batches_json: &str, recompute_descriptors: Opt
         .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_camel_to_snake() {
-        let input = serde_json::json!({
-            "firstName": "John",
-            "lastName": "Doe",
-            "contactInfo": {
-                "emailAddress": "john@example.com"
-            }
-        });
-
-        let result = transform_keys_to_snake(input);
-
-        assert_eq!(result["first_name"], "John");
-        assert_eq!(result["last_name"], "Doe");
-        assert_eq!(result["contact_info"]["email_address"], "john@example.com");
-    }
-}
+// Tests for transform_keys_to_snake are in alizarin-core/src/string_utils.rs

@@ -18,6 +18,12 @@ use std::sync::RwLock;
 use uuid::Uuid;
 
 // Core types from alizarin-core
+use alizarin_core::rdm_namespace::{
+    parse_rdm_namespace as core_parse_namespace,
+    generate_collection_uuid as core_generate_collection,
+    generate_concept_uuid as core_generate_concept,
+    labels_to_deterministic_string as core_labels_to_string,
+};
 use alizarin_core::rdm_cache::{
     RdmCache as CoreRdmCache,
     RdmCollection as CoreRdmCollection,
@@ -190,19 +196,9 @@ lazy_static::lazy_static! {
 ///     collection = RustRdmCollection.from_labels("MyCollection", ["A", "B"])
 #[pyfunction]
 pub fn set_rdm_namespace(namespace: &str) -> PyResult<()> {
-    let uuid = if namespace.starts_with("http://") || namespace.starts_with("https://") {
-        // URL provided - derive a UUID5 from it using the standard URL namespace
-        // Standard URL namespace: 6ba7b811-9dad-11d1-80b4-00c04fd430c8
-        let url_namespace = Uuid::parse_str("6ba7b811-9dad-11d1-80b4-00c04fd430c8").unwrap();
-        Uuid::new_v5(&url_namespace, namespace.as_bytes())
-    } else {
-        // Try to parse as UUID directly
-        Uuid::parse_str(namespace).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Invalid namespace: expected UUID or URL (http/https), got: {} ({})", namespace, e)
-            )
-        })?
-    };
+    let uuid = core_parse_namespace(namespace).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(e)
+    })?;
     if let Ok(mut guard) = GLOBAL_RDM_NAMESPACE.write() {
         *guard = Some(uuid);
     }
@@ -265,21 +261,14 @@ fn label_to_deterministic_string(py: Python, label: &PyObject) -> PyResult<Strin
     }
 
     if let Ok(dict) = label.downcast::<PyDict>(py) {
-        let mut entries: Vec<(String, String)> = Vec::new();
+        let mut labels_map: HashMap<String, String> = HashMap::new();
         for (key, value) in dict.iter() {
             let lang: String = key.extract()?;
             let label_str: String = value.extract()?;
-            entries.push((lang, label_str));
+            labels_map.insert(lang, label_str);
         }
-        // Sort by language code for deterministic ordering
-        entries.sort_by(|a, b| a.0.cmp(&b.0));
-
-        let result = entries
-            .iter()
-            .map(|(lang, val)| format!("{}:{}", lang, val))
-            .collect::<Vec<_>>()
-            .join("|");
-        return Ok(result);
+        // Use core function for deterministic string generation
+        return Ok(core_labels_to_string(&labels_map));
     }
 
     Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
@@ -292,8 +281,7 @@ fn label_to_deterministic_string(py: Python, label: &PyObject) -> PyResult<Strin
 /// Uses: uuid5(global_namespace, "collection/" + name)
 fn generate_collection_id(name: &str) -> PyResult<String> {
     let namespace = get_required_namespace()?;
-    let key = format!("collection/{}", name);
-    Ok(Uuid::new_v5(&namespace, key.as_bytes()).to_string())
+    Ok(core_generate_collection(&namespace, name).to_string())
 }
 
 /// Generate a deterministic UUID for a concept from its collection and label.
@@ -302,10 +290,10 @@ fn generate_collection_id(name: &str) -> PyResult<String> {
 fn generate_concept_id(collection_id: &str, label_string: &str) -> PyResult<String> {
     let namespace = Uuid::parse_str(collection_id).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("collection id must be a valid UUID for auto-generation: {}", e)
+            format!("Collection ID must be a valid UUID for auto-generation: {}", e)
         )
     })?;
-    Ok(Uuid::new_v5(&namespace, label_string.as_bytes()).to_string())
+    Ok(core_generate_concept(&namespace, label_string).to_string())
 }
 
 // =============================================================================
@@ -449,7 +437,7 @@ impl RdmConcept {
     fn to_dict(&self, py: Python) -> PyResult<PyObject> {
         let json_str = serde_json::to_string(&self.inner)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
-        let json_module = py.import("json")?;
+        let json_module = py.import_bound("json")?;
         let py_dict = json_module.call_method1("loads", (json_str,))?;
         Ok(py_dict.to_object(py))
     }

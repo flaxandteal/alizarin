@@ -6,8 +6,10 @@
 /// - Native Rust applications (alizarin-explorer)
 /// - Other languages via C FFI
 
+pub mod extension_type_registry;
 pub mod graph;
 pub mod graph_mutator;
+pub mod instance_wrapper_core;
 pub mod interner;
 pub mod json_conversion;
 pub mod label_resolution;
@@ -16,8 +18,10 @@ pub mod node_config;
 pub mod permissions;
 pub mod pseudo_value_core;
 pub mod rdm_cache;
+pub mod rdm_namespace;
 pub mod registry;
 pub mod skos;
+pub mod string_utils;
 pub mod type_coercion;
 pub mod type_serialization;
 
@@ -31,6 +35,8 @@ pub use graph::{
     StaticResourceSummary, StaticResourceReference, StaticResource,
     // Resource merging
     MergeResult, BatchMergeResult, merge_resources, batch_merge_resources,
+    // Graph pruning
+    prune_graph, find_root_node, build_backedges, PruneError,
 };
 
 // Loader
@@ -98,12 +104,27 @@ pub use json_conversion::{
 
 // Pseudo value core types (for JSON conversion)
 pub use pseudo_value_core::{
-    matches_semantic_child, matches_tile_filter, PseudoListCore, PseudoValueCore,
+    matches_tile_filter, PseudoListCore, PseudoValueCore,
     TileBuilder, TileBuilderContext, VisitorContext,
+};
+
+// Instance wrapper core types (for populate, semantic traversal)
+pub use instance_wrapper_core::{
+    ResourceInstanceWrapperCore, ModelAccess,
+    LoadState, SemanticChildError, SemanticChildResult,
+    PopulateResult, EnsureNodegroupResult, ValuesFromNodegroupResult,
+    is_node_single_cardinality, is_node_single_cardinality_with,
+    matches_semantic_child,
 };
 
 // RDM cache types
 pub use rdm_cache::{RdmCache, RdmCollection, RdmConcept};
+
+// RDM namespace utilities (deterministic UUID generation)
+pub use rdm_namespace::{
+    parse_rdm_namespace, generate_collection_uuid, generate_concept_uuid,
+    generate_concept_uuid_from_str, generate_value_uuid, labels_to_deterministic_string,
+};
 
 // Graph mutator types (builder pattern for graph construction)
 pub use graph_mutator::{
@@ -154,3 +175,11 @@ pub use registry::{
 
 // Permission rules (for conditional tile filtering)
 pub use permissions::{PermissionRule, evaluate_tile_path};
+
+// String utilities
+pub use string_utils::{camel_to_snake, transform_keys_to_snake};
+
+// Extension type registry (unified handler infrastructure for WASM/Python)
+pub use extension_type_registry::{
+    ExtensionTypeRegistry, ExtensionTypeHandler, HandlerCapabilities, ExtensionError,
+};

@@ -1,5 +1,5 @@
 use wasm_bindgen::prelude::*;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 use std::collections::HashMap;
 use wasm_wrapper_derive::wasm_wrapper;
 
@@ -100,41 +100,6 @@ impl StaticTranslatableString {
             ).ok();
         }
         js_obj.into()
-    }
-}
-
-// Helper to deserialize array or number as Option<u32> (count)
-#[allow(dead_code)]
-fn deserialize_array_or_count<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    use serde_json::Value;
-    let value = Value::deserialize(deserializer)?;
-    match value {
-        Value::Null => Ok(None),
-        Value::Number(n) => Ok(n.as_u64().map(|v| v as u32)),
-        Value::Array(arr) => Ok(Some(arr.len() as u32)),
-        _ => Ok(None),
-    }
-}
-
-// Helper to deserialize string or object as Option<String>
-#[allow(dead_code)]
-fn deserialize_string_or_object<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    use serde_json::Value;
-    let value = Value::deserialize(deserializer)?;
-    match value {
-        Value::Null => Ok(None),
-        Value::String(s) => Ok(Some(s)),
-        Value::Object(_) => {
-            // If it's an object (like a TranslatableString), serialize it back to string
-            Ok(Some(serde_json::to_string(&value).unwrap_or_default()))
-        }
-        _ => Ok(None),
     }
 }
 
@@ -531,11 +496,6 @@ wasm_wrapper! {
         no_to_json,
         no_copy,
     }
-}
-
-#[allow(dead_code)]
-fn default_datatype() -> String {
-    "string".to_string()
 }
 
 #[wasm_bindgen]

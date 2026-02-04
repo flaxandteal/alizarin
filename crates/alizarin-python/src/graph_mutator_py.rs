@@ -153,7 +153,7 @@ fn get_mutation_schema(py: Python) -> PyResult<PyObject> {
             format!("Failed to serialize schema: {}", e)
         ))?;
 
-    let json_module = py.import("json")?;
+    let json_module = py.import_bound("json")?;
     let py_dict = json_module.call_method1("loads", (schema_str,))?;
     Ok(py_dict.to_object(py))
 }
@@ -233,7 +233,7 @@ fn register_extension_mutation(
     };
 
     // Verify handler is callable
-    if !handler.as_ref(py).is_callable() {
+    if !handler.bind(py).is_callable() {
         return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
             "Handler must be callable"
         ));

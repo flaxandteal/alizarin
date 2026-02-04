@@ -1345,16 +1345,6 @@ impl GraphMutator {
         }
     }
 
-    /// Get the base graph ID
-    fn graph_id(&self) -> &str {
-        &self.base_graph.graphid
-    }
-
-    /// Generate a deterministic UUID for this graph
-    fn generate_uuid(&self, key: &str) -> String {
-        generate_uuid_v5(("graph", Some(self.graph_id())), key)
-    }
-
     /// Get the list of pending mutations (for debugging/serialization)
     pub fn mutations(&self) -> &[GraphMutation] {
         &self.mutations

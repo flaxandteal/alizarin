@@ -409,7 +409,6 @@ class GraphManager:
         from .instance_wrapper import ResourceInstanceWrapper
         instance_wrapper = ResourceInstanceWrapper(
             wkri=rivm,
-            wasm_wrapper=None,  # No Rust backend for test fixtures
             model=model,
         )
 

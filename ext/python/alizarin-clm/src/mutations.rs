@@ -397,6 +397,19 @@ mod tests {
         use alizarin_core::graph_mutator::{
             AddNodeParams, Cardinality, NodeOptions,
         };
+        use alizarin_core::registry::{
+            register_widget_for_datatype, register_widget, RegisteredWidget,
+            unregister_widget_for_datatype, unregister_widget,
+        };
+
+        // Register a widget for the "reference" datatype so AddNode can succeed
+        register_widget(RegisteredWidget::new(
+            "10000000-0000-0000-0000-000000000017",
+            "reference-select-widget",
+            "reference",
+            r#"{ "placeholder": "Select a reference" }"#,
+        ));
+        register_widget_for_datatype("reference", "reference-select-widget");
 
         // Start with a minimal graph
         let base_graph_json = r#"{
@@ -511,6 +524,10 @@ mod tests {
         // Step 4: Verify the graph can be serialized (for use with tree_to_tiles)
         let graph_json = serde_json::to_string(&updated_graph).unwrap();
         assert!(graph_json.contains(new_collection_id));
+
+        // Cleanup: unregister the widget to avoid affecting other tests
+        unregister_widget_for_datatype("reference");
+        unregister_widget("reference-select-widget");
     }
 
     /// Test that verifies display text rendering for reference values

@@ -15,13 +15,14 @@ use alizarin_core::StaticTile as CoreStaticTile;
 use alizarin_core::StaticTile;
 use alizarin_core::StaticNode;
 use alizarin_core::StaticNodegroup;
+use alizarin_core::is_node_single_cardinality;
+use alizarin_core::matches_semantic_child as matches_semantic_child_core;
 use crate::pseudo_value::{PseudoValueInner, PseudoListInner, PseudoList, PseudoValue, VisitorContext, DisplayVisitorContext};
 use crate::rdm_cache_wasm::WasmRdmCache;
 use crate::node_config_wasm::WasmNodeConfigManager;
 use alizarin_core::rdm_cache::RdmCache;
 use alizarin_core::node_config::NodeConfigManager;
-use crate::model_wrapper::{WASMResourceModelWrapper};
-use js_sys::{Array, Map as JsMap};
+use js_sys::Map as JsMap;
 use wasm_bindgen::JsCast;
 // ============================================================================
 // Error types for semantic child value retrieval
@@ -70,28 +71,6 @@ impl From<String> for SemanticChildError {
     fn from(s: String) -> Self {
         SemanticChildError::Other(s)
     }
-}
-
-/// Determine whether a node should be treated as single-cardinality.
-///
-/// A node is single-cardinality if its nodegroup's cardinality is not "n".
-/// Used by both the static path (populate → toJson) and dynamic path
-/// (getSemanticChildValue) to ensure consistent array/object serialization.
-fn is_node_single_cardinality(
-    node: &StaticNode,
-    nodegroups: Option<&HashMap<String, Arc<StaticNodegroup>>>,
-) -> bool {
-    if let Some(ref ng_id) = node.nodegroup_id {
-        if &node.nodeid == ng_id {
-            if let Some(ngs) = nodegroups {
-                if let Some(ng) = ngs.get(ng_id) {
-                    return ng.cardinality.as_deref() != Some("n");
-                }
-            }
-        }
-    }
-    // Default: collectors are multi, others single
-    !node.is_collector
 }
 
 /// Result of get_semantic_child_value - either values or an indication that none exist
@@ -391,81 +370,6 @@ impl ResourceInstanceWrapperCore {
         })
     }
 
-    /// Check if a tile matches semantic parent-child relationship criteria
-    /// PORT: js/semantic.ts lines 297-340 - the complex conditional logic
-    ///
-    /// This implements the exact logic from __getChildValues to determine if a value
-    /// should be included as a child of a semantic node.
-    ///
-    /// We do not use edges, as this checks directly saving an access to the model.
-    ///
-    /// Note: This is public to allow test access
-    pub fn matches_semantic_child(
-        parent_tile_id: Option<&String>,
-        parent_nodegroup_id: Option<&String>,
-        child_node: &StaticNode,
-        tile: &StaticTile,
-    ) -> bool {
-        // Check if tile's nodegroup matches the child node's nodegroup
-        if tile.nodegroup_id != *child_node.nodegroup_id.as_ref().unwrap_or(&"".into()) {
-            return false;
-        }
-        // We do not have a child value, unless there is a value, or the whole tile is the
-        // (semantic) value, or the child is a semantic node (which doesn't have direct tile data).
-        let is_semantic = child_node.datatype == "semantic";
-        if !(Some(&child_node.nodeid) == child_node.nodegroup_id.as_ref()
-            || tile.data.contains_key(&child_node.nodeid)
-            || is_semantic) {
-            return false;
-        }
-
-        // Get the parent's nodegroup ID for comparisons
-        let parent_ng = parent_nodegroup_id.map(|s| s.as_str()).unwrap_or("");
-
-        // PORT: js/semantic.ts lines 311-315
-        // Branch 1: Different nodegroup + correct parent tile relationship
-        // This handles child nodes in a NESTED nodegroup (different from parent's nodegroup)
-        if tile.nodegroup_id != parent_ng {
-            if let (t, Some(parent_tid)) = (tile, parent_tile_id) {
-                // Check if tile.parenttile_id is null or equals parent_tid
-                // PORT: Line 311 - (!(value.tile.parenttile_id) || value.tile.parenttile_id == tile.tileid)
-                let parent_matches = t.parenttile_id.is_none()
-                    || t.parenttile_id.as_ref() == Some(parent_tid);
-
-                if parent_matches {
-                    return true;
-                }
-            }
-        }
-
-        // PORT: js/semantic.ts lines 312-315
-        // Branch 2: Same nodegroup + shared tile + not collector
-        // This handles child nodes in the SAME nodegroup as parent (sharing a tile)
-        if tile.nodegroup_id == parent_ng {
-            if let (t, Some(parent_tid)) = (tile, parent_tile_id) {
-                // Check if this tile IS the parent tile and child is not a collector
-                // PORT: Line 314 - value.tile == tile && !childNode.is_collector
-                // For semantic nodes, we don't require tile data - they get their value
-                // from their children, not from tile data directly.
-                let has_data_or_is_semantic = t.data.contains_key(&child_node.nodeid)
-                    || child_node.datatype == "semantic";
-                if t.tileid.as_ref() == Some(parent_tid) && !child_node.is_collector && has_data_or_is_semantic {
-                    return true;
-                }
-            }
-        }
-
-        // PORT: js/semantic.ts lines 324-327
-        // Branch 3: Different nodegroup + is_collector
-        // This handles collector nodes that don't share tiles with their parent
-        if tile.nodegroup_id != parent_ng
-            && child_node.is_collector {
-            return true;
-        }
-
-        false
-    }
-
     /// Pure Rust implementation of get_semantic_child_value
     /// Returns semantic child values for a given parent node and child alias.
     ///
@@ -538,7 +442,7 @@ impl ResourceInstanceWrapperCore {
         for tile_id in candidate_tile_ids {
             if let Some(tile) = tiles.get(&tile_id) {
                 // Check semantic parent-child relationship
-                if Self::matches_semantic_child(
+                if matches_semantic_child_core(
                     parent_tile_id,
                     parent_nodegroup_id,
                     &*child_node,
@@ -598,11 +502,12 @@ impl ResourceInstanceWrapperCore {
                 is_single,
             );
             Ok(SemanticChildResult::List(pseudo_list))
-        } else if values.len() == 1 {
-            // Return single value
-            Ok(SemanticChildResult::Single(values.into_iter().next().unwrap()))
         } else {
-            Ok(SemanticChildResult::Empty)
+            // Return single value if present, otherwise Empty
+            match values.into_iter().next() {
+                Some(value) => Ok(SemanticChildResult::Single(value)),
+                None => Ok(SemanticChildResult::Empty),
+            }
         }
     }
 }
@@ -673,7 +578,8 @@ impl WASMResourceInstanceWrapper {
             // In non-lazy mode and not appending, clear existing data (replacing all tiles)
             // In lazy mode or when appending, add to existing tiles (incremental loading)
             if !lazy && !append {
-                core.tiles.as_mut().unwrap().clear();
+                // SAFETY: tiles is guaranteed Some by the initialization above
+                core.tiles.as_mut().expect("tiles initialized above").clear();
                 core.nodegroup_index.clear();
             }
 
@@ -707,7 +613,8 @@ impl WASMResourceInstanceWrapper {
                 }
 
                 // Store tile
-                core.tiles.as_mut().unwrap().insert(tile_id.clone(), tile);
+                // SAFETY: tiles is guaranteed Some by the initialization above
+                core.tiles.as_mut().expect("tiles initialized above").insert(tile_id.clone(), tile);
             }
         }
 
@@ -738,13 +645,6 @@ impl WASMResourceInstanceWrapper {
             tile_loader: RefCell::new(None),
             lazy: RefCell::new(false),
         }
-    }
-
-    // Keep old API for backward compatibility
-    #[allow(dead_code)]
-    pub(crate) fn new_from_model(model: Arc<RefCell<WASMResourceModelWrapper>>) -> WASMResourceInstanceWrapper {
-        let graph_id = model.borrow().get_graph_id();
-        Self::new_from_graph_id(graph_id)
     }
 
     pub(crate) fn new_from_resource(resource: &StaticResource) -> WASMResourceInstanceWrapper {
@@ -2390,7 +2290,7 @@ impl WASMResourceInstanceWrapper {
             for (child_alias, child_node) in &child_nodes {
                 // Now check semantic parent-child relationship
                 // PORT: js/semantic.ts lines 296-340
-                if ResourceInstanceWrapperCore::matches_semantic_child(
+                if matches_semantic_child_core(
                     parent_tile_id.as_ref(),
                     parent_nodegroup_id.as_ref(),
                     &**child_node,
@@ -2629,11 +2529,12 @@ impl WASMResourceInstanceWrapper {
                             .filter(|v| v.is_function());
 
                         if let Some(func) = to_json_fn {
-                            let func: js_sys::Function = func.dyn_into().unwrap();
-                            if let Ok(json_value) = func.call0(&tile_js) {
-                                if let Ok(tile) = serde_wasm_bindgen::from_value::<StaticTile>(json_value) {
-                                    core_tiles.push(tile);
-                                    continue;
+                            if let Ok(func) = func.dyn_into::<js_sys::Function>() {
+                                if let Ok(json_value) = func.call0(&tile_js) {
+                                    if let Ok(tile) = serde_wasm_bindgen::from_value::<StaticTile>(json_value) {
+                                        core_tiles.push(tile);
+                                        continue;
+                                    }
                                 }
                             }
                         }
@@ -2859,53 +2760,6 @@ impl WASMResourceInstanceWrapper {
 // ============================================================================
 // Helper implementations
 // ============================================================================
-
-/// Helper: ExistingValue representation
-// Removed: ExistingValue struct - now using Option<bool> directly
-// Some(true) = truthy value exists
-// Some(false) = false value exists
-// None = undefined
-
-impl WASMResourceInstanceWrapper {
-    /// Deserialize JS Map<string, StaticNode> to Rust HashMap
-    #[allow(dead_code)]
-    fn deserialize_node_map(&self, js_map: JsValue) -> Result<HashMap<String, StaticNode>, JsValue> {
-        let map = JsMap::from(js_map);
-        let mut result = HashMap::new();
-
-        map.for_each(&mut |value, key| {
-            if let Some(key_str) = key.as_string() {
-                if let Ok(node) = serde_wasm_bindgen::from_value::<StaticNode>(value) {
-                    result.insert(key_str, node);
-                }
-            }
-        });
-
-        Ok(result)
-    }
-
-    /// Deserialize JS Map<string, string[]> to Rust HashMap
-    #[allow(dead_code)]
-    fn deserialize_edges_map(&self, js_map: JsValue) -> Result<HashMap<String, Vec<String>>, JsValue> {
-        let map = JsMap::from(js_map);
-        let mut result = HashMap::new();
-
-        map.for_each(&mut |value, key| {
-            if let Some(key_str) = key.as_string() {
-                if let Ok(arr) = value.dyn_into::<Array>() {
-                    let vec: Vec<String> = (0..arr.length())
-                        .filter_map(|i| arr.get(i).as_string())
-                        .collect();
-                    result.insert(key_str, vec);
-                }
-            }
-        });
-
-        Ok(result)
-    }
-
-    // Removed: deserialize_existing_values - now accepting pre-serialized HashMap<String, Option<bool>> from TS
-}
 
 #[wasm_bindgen(js_name = newWASMResourceInstanceWrapperForModel)]
 pub fn new_wasm_resource_instance_wrapper_for_model(graph_id: &str) -> Result<WASMResourceInstanceWrapper, JsValue> {

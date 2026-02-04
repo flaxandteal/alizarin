@@ -24,6 +24,7 @@ mod descriptors;
 mod resources;
 mod meta;
 mod static_graph;
+mod prune;
 
 // Re-export all public types
 pub use translatable::StaticTranslatableString;
@@ -34,6 +35,7 @@ pub use descriptors::{StaticResourceDescriptors, DescriptorConfig, DescriptorTyp
 pub use resources::{StaticResource, StaticResourceMetadata, StaticResourceSummary, StaticResourceReference, MergeResult, BatchMergeResult, merge_resources, batch_merge_resources};
 pub use meta::StaticGraphMeta;
 pub use static_graph::{StaticGraph, IndexedGraph, GraphWrapper};
+pub use prune::{prune_graph, find_root_node, build_backedges, PruneError};
 
 /// Datatypes that represent iterable/list values
 pub const ITERABLE_DATATYPES: &[&str] = &["concept-list", "resource-instance-list", "domain-value-list"];
