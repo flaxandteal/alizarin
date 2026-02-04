@@ -68,13 +68,13 @@ jobs:
 
       - name: Build wheel
         working-directory: crates/alizarin-python
-        run: maturin build --release
+        run: maturin build --release --out dist
 
       - name: Install wheel
         working-directory: crates/alizarin-python
         shell: bash
         run: |
-          pip install target/wheels/*.whl
+          pip install dist/*.whl
 
       - name: Run tests
         working-directory: crates/alizarin-python
@@ -84,7 +84,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: alizarin-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: crates/alizarin-python/target/wheels/*.whl
+          path: crates/alizarin-python/dist/*.whl
 
   # Build and test alizarin-clm extension
   alizarin-clm:
@@ -151,19 +151,19 @@ jobs:
 
       - name: Build alizarin-clm wheel
         working-directory: ext/python/alizarin-clm
-        run: maturin build --release
+        run: maturin build --release --out dist
 
       - name: Install alizarin-clm wheel (Unix)
         if: matrix.os != 'windows-latest'
         working-directory: ext/python/alizarin-clm
-        run: pip install target/wheels/*.whl
+        run: pip install dist/*.whl
 
       - name: Install alizarin-clm wheel (Windows)
         if: matrix.os == 'windows-latest'
         working-directory: ext/python/alizarin-clm
         shell: pwsh
         run: |
-          $wheel = Get-ChildItem -Path target/wheels/*.whl | Select-Object -First 1
+          $wheel = Get-ChildItem -Path dist/*.whl | Select-Object -First 1
           pip install $wheel.FullName
 
       - name: Run tests
@@ -174,7 +174,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: alizarin-clm-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: ext/python/alizarin-clm/target/wheels/*.whl
+          path: ext/python/alizarin-clm/dist/*.whl
 
   # Source distribution (for PyPI)
   sdist:
@@ -193,10 +193,10 @@ jobs:
 
       - name: Build sdist for alizarin
         working-directory: crates/alizarin-python
-        run: maturin sdist
+        run: maturin sdist --out dist
 
       - name: Upload sdist
         uses: actions/upload-artifact@v4
         with:
           name: alizarin-sdist
-          path: crates/alizarin-python/target/wheels/*.tar.gz
+          path: crates/alizarin-python/dist/*.tar.gz
