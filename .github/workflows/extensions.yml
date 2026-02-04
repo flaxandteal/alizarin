@@ -124,16 +124,17 @@ jobs:
       # Build main alizarin Python package first
       - name: Build alizarin wheel
         working-directory: crates/alizarin-python
-        run: maturin build --release
+        run: maturin build --release --out dist
 
       - name: Install alizarin
         working-directory: crates/alizarin-python
         run: |
-          WHEEL=$(find target/wheels -name '*.whl' -type f | head -n 1)
+          WHEEL=$(find dist -name '*.whl' -type f | head -n 1)
           if [ -f "$WHEEL" ]; then
             pip install "$WHEEL" --force-reinstall
           else
-            echo "No wheel file found!"
+            echo "No wheel file found in dist/!"
+            ls -la
             exit 1
           fi
 
@@ -144,13 +145,14 @@ jobs:
             ext_name=$(basename "$ext_dir")
             echo "=== Building $ext_name ==="
             cd "$ext_dir"
-            maturin build --release
+            maturin build --release --out dist
             # Install the wheel
-            WHEEL=$(find target/wheels -name '*.whl' -type f | head -n 1)
+            WHEEL=$(find dist -name '*.whl' -type f | head -n 1)
             if [ -f "$WHEEL" ]; then
               pip install "$WHEEL" --force-reinstall
             else
-              echo "No wheel file found for $ext_name!"
+              echo "No wheel file found for $ext_name in dist/!"
+              ls -la
               exit 1
             fi
             # Run tests if they exist
@@ -164,4 +166,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: alizarin-extensions-python-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: ext/python/*/target/wheels/*.whl
+          path: ext/python/*/dist/*.whl
