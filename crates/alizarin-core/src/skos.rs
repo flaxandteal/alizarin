@@ -10,13 +10,10 @@ use rio_xml::RdfXmlParser;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
-// SKOS namespace URIs (prefixes for documentation, not used in code)
-#[allow(dead_code)]
-const SKOS_NS: &str = "http://www.w3.org/2004/02/skos/core#";
-#[allow(dead_code)]
-const RDF_NS: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
-#[allow(dead_code)]
-const DCTERMS_NS: &str = "http://purl.org/dc/terms/";
+// SKOS namespace URIs (documented for reference):
+// - SKOS: http://www.w3.org/2004/02/skos/core#
+// - RDF:  http://www.w3.org/1999/02/22-rdf-syntax-ns#
+// - DCTERMS: http://purl.org/dc/terms/
 
 // SKOS predicates
 const SKOS_CONCEPT: &str = "http://www.w3.org/2004/02/skos/core#Concept";

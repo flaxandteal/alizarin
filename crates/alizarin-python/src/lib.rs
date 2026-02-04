@@ -11,10 +11,12 @@
 use pyo3::prelude::*;
 
 mod graph_mutator_py;
+mod instance_wrapper_py;
 mod node_config_py;
 mod pseudo_value_py;
 mod python_json;
 mod rdm_cache_py;
+mod skos_py;
 mod type_coercion_py;
 use pyo3::types::PyCapsule;
 use rayon::prelude::*;
@@ -26,9 +28,13 @@ use alizarin_extension_api::{
     TypeHandlerInfo, CoerceFn, FreeFn,
     RenderDisplayFn, FreeDisplayFn,
     ResolveMarkersFn, FreeResolveMarkersFn,
-    HasCollectionFn, ConceptLookupByIdFn, ConceptLookupByLabelFn, FreeConceptJsonFn,
 };
 use std::ffi::c_void;
+
+// Extension type registry (unified infrastructure)
+use alizarin_core::{
+    ExtensionTypeRegistry, ExtensionTypeHandler, HandlerCapabilities, ExtensionError,
+};
 
 lazy_static::lazy_static! {
     /// Global registry of extension type handlers
@@ -46,6 +52,252 @@ struct RegisteredHandler {
     /// Optional marker resolver (for resolving __needs_rdm_lookup etc.)
     resolve_markers_fn: Option<ResolveMarkersFn>,
     free_resolve_markers_fn: Option<FreeResolveMarkersFn>,
+}
+
+// =============================================================================
+// ExtensionTypeHandler Implementation for Python
+// =============================================================================
+
+/// Wrapper that implements ExtensionTypeHandler using C ABI callbacks.
+///
+/// This allows Python extension handlers to be used with the unified
+/// ExtensionTypeRegistry from alizarin-core.
+pub struct PyExtensionTypeHandler {
+    type_name: String,
+}
+
+impl PyExtensionTypeHandler {
+    pub fn new(type_name: String) -> Self {
+        Self { type_name }
+    }
+}
+
+// The C ABI callbacks are thread-safe (they're compiled code)
+unsafe impl Send for PyExtensionTypeHandler {}
+unsafe impl Sync for PyExtensionTypeHandler {}
+
+impl ExtensionTypeHandler for PyExtensionTypeHandler {
+    fn capabilities(&self) -> HandlerCapabilities {
+        let handlers = TYPE_HANDLERS.read().unwrap();
+        if let Some(handler) = handlers.get(&self.type_name) {
+            HandlerCapabilities {
+                can_coerce: true, // All handlers have coerce_fn
+                can_render_display: handler.render_display_fn.is_some(),
+                can_resolve_markers: handler.resolve_markers_fn.is_some(),
+            }
+        } else {
+            HandlerCapabilities::default()
+        }
+    }
+
+    fn coerce(
+        &self,
+        value: &serde_json::Value,
+        config: Option<&serde_json::Value>,
+    ) -> Result<alizarin_core::CoercionResult, ExtensionError> {
+        let handlers = TYPE_HANDLERS.read().unwrap();
+
+        if let Some(handler) = handlers.get(&self.type_name) {
+            let value_json = serde_json::to_string(value)
+                .map_err(|e| ExtensionError::new(format!("Failed to serialize value: {}", e)))?;
+
+            let config_json = match config {
+                Some(c) => serde_json::to_string(c)
+                    .map_err(|e| ExtensionError::new(format!("Failed to serialize config: {}", e)))?,
+                None => "null".to_string(),
+            };
+
+            unsafe {
+                let result = (handler.coerce_fn)(
+                    value_json.as_ptr(),
+                    value_json.len(),
+                    config_json.as_ptr(),
+                    config_json.len(),
+                );
+
+                if result.error_ptr.is_null() {
+                    let tile_json = std::str::from_utf8_unchecked(
+                        std::slice::from_raw_parts(result.json_ptr, result.json_len)
+                    );
+
+                    let resolved_json = std::str::from_utf8_unchecked(
+                        std::slice::from_raw_parts(result.resolved_ptr, result.resolved_len)
+                    );
+
+                    let tile_data: serde_json::Value = serde_json::from_str(tile_json)
+                        .map_err(|e| ExtensionError::new(format!("Failed to parse tile_data: {}", e)))?;
+
+                    let display_value: serde_json::Value = serde_json::from_str(resolved_json)
+                        .map_err(|e| ExtensionError::new(format!("Failed to parse display_value: {}", e)))?;
+
+                    // Free the result memory
+                    (handler.free_fn)(result);
+
+                    Ok(alizarin_core::CoercionResult::success(tile_data, display_value))
+                } else {
+                    let error_msg = std::str::from_utf8_unchecked(
+                        std::slice::from_raw_parts(result.error_ptr, result.error_len)
+                    ).to_string();
+
+                    (handler.free_fn)(result);
+
+                    Err(ExtensionError::new(error_msg))
+                }
+            }
+        } else {
+            // No handler - pass through
+            Ok(alizarin_core::CoercionResult::success(value.clone(), value.clone()))
+        }
+    }
+
+    fn render_display(
+        &self,
+        tile_data: &serde_json::Value,
+        language: &str,
+    ) -> Result<Option<String>, ExtensionError> {
+        let handlers = TYPE_HANDLERS.read().unwrap();
+
+        if let Some(handler) = handlers.get(&self.type_name) {
+            if let (Some(render_fn), Some(free_fn)) = (handler.render_display_fn, handler.free_display_fn) {
+                let tile_json = serde_json::to_string(tile_data)
+                    .map_err(|e| ExtensionError::new(format!("Failed to serialize tile_data: {}", e)))?;
+
+                unsafe {
+                    let result = render_fn(
+                        tile_json.as_ptr(),
+                        tile_json.len(),
+                        language.as_ptr(),
+                        language.len(),
+                    );
+
+                    if result.error_ptr.is_null() {
+                        if result.display_ptr.is_null() {
+                            free_fn(result);
+                            return Ok(None);
+                        }
+
+                        let display_str = std::str::from_utf8_unchecked(
+                            std::slice::from_raw_parts(result.display_ptr, result.display_len)
+                        ).to_string();
+
+                        free_fn(result);
+                        Ok(Some(display_str))
+                    } else {
+                        let error_msg = std::str::from_utf8_unchecked(
+                            std::slice::from_raw_parts(result.error_ptr, result.error_len)
+                        ).to_string();
+
+                        free_fn(result);
+                        Err(ExtensionError::new(error_msg))
+                    }
+                }
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn resolve_markers(
+        &self,
+        tile_data: &serde_json::Value,
+        language: &str,
+    ) -> Result<serde_json::Value, ExtensionError> {
+        let handlers = TYPE_HANDLERS.read().unwrap();
+
+        if let Some(handler) = handlers.get(&self.type_name) {
+            if let (Some(resolve_fn), Some(free_fn)) = (handler.resolve_markers_fn, handler.free_resolve_markers_fn) {
+                let tile_json = serde_json::to_string(tile_data)
+                    .map_err(|e| ExtensionError::new(format!("Failed to serialize tile_data: {}", e)))?;
+
+                // Get RDM cache for lookups
+                // Clone the inner cache and wrap in Arc (same pattern as batch_trees_to_tiles_with_extensions)
+                let core_cache: Option<Arc<CoreRdmCache>> = rdm_cache_py::get_global_rdm_cache()
+                    .map(|cache| Arc::new(cache.inner().clone()));
+
+                unsafe {
+                    let cache_ptr = if let Some(ref cache) = core_cache {
+                        Arc::as_ptr(cache) as *mut c_void
+                    } else {
+                        std::ptr::null_mut()
+                    };
+
+                    // The resolve_fn expects: (json_ptr, json_len, config_ptr, config_len,
+                    //                          has_collection_fn, lookup_by_id_fn, lookup_by_label_fn,
+                    //                          free_concept_fn, user_data)
+                    // We pass language as the config (it's used for localization)
+                    let result = resolve_fn(
+                        tile_json.as_ptr(),
+                        tile_json.len(),
+                        language.as_ptr(),
+                        language.len(),
+                        rdm_has_collection,
+                        rdm_lookup_by_id,
+                        rdm_lookup_by_label,
+                        free_concept_json,
+                        cache_ptr,
+                    );
+
+                    if result.error_ptr.is_null() {
+                        if result.modified && !result.json_ptr.is_null() {
+                            let resolved_json = std::str::from_utf8_unchecked(
+                                std::slice::from_raw_parts(result.json_ptr, result.json_len)
+                            );
+
+                            let resolved: serde_json::Value = serde_json::from_str(resolved_json)
+                                .map_err(|e| ExtensionError::new(format!("Failed to parse resolved: {}", e)))?;
+
+                            free_fn(result);
+                            Ok(resolved)
+                        } else {
+                            free_fn(result);
+                            Ok(tile_data.clone())
+                        }
+                    } else {
+                        let error_msg = std::str::from_utf8_unchecked(
+                            std::slice::from_raw_parts(result.error_ptr, result.error_len)
+                        ).to_string();
+
+                        free_fn(result);
+                        Err(ExtensionError::new(error_msg))
+                    }
+                }
+            } else {
+                Ok(tile_data.clone())
+            }
+        } else {
+            Ok(tile_data.clone())
+        }
+    }
+
+    fn description(&self) -> &str {
+        "Python extension type handler (C ABI)"
+    }
+}
+
+/// Build an ExtensionTypeRegistry from all registered Python handlers.
+///
+/// This creates a new registry populated with PyExtensionTypeHandler instances
+/// for each registered datatype.
+pub fn build_extension_type_registry() -> ExtensionTypeRegistry {
+    let mut registry = ExtensionTypeRegistry::new();
+
+    let handlers = TYPE_HANDLERS.read().unwrap();
+    for type_name in handlers.keys() {
+        registry.register(
+            type_name.clone(),
+            Arc::new(PyExtensionTypeHandler::new(type_name.clone())),
+        );
+    }
+
+    registry
+}
+
+/// Get the list of registered extension handler datatypes.
+#[pyfunction]
+fn get_registered_extension_handlers() -> Vec<String> {
+    TYPE_HANDLERS.read().unwrap().keys().cloned().collect()
 }
 
 // =============================================================================
@@ -345,6 +597,8 @@ use alizarin_core::{
     matches_semantic_child as core_matches_semantic_child,
     // Permission rules
     PermissionRule, evaluate_tile_path,
+    // String utilities
+    transform_keys_to_snake,
 };
 
 /// Build alias-to-collection mapping directly from StaticGraph.
@@ -468,7 +722,7 @@ fn tiles_to_json_tree(
         ))?;
 
     // Parse as Python dict
-    let json_module = py.import("json")?;
+    let json_module = py.import_bound("json")?;
     let py_dict = json_module.call_method1("loads", (py_str,))?;
 
     Ok(py_dict.to_object(py))
@@ -564,7 +818,7 @@ fn json_tree_to_tiles(
         ))?;
 
     // Parse as Python dict
-    let json_module = py.import("json")?;
+    let json_module = py.import_bound("json")?;
     let py_dict = json_module.call_method1("loads", (result_json,))?;
 
     Ok(py_dict.to_object(py))
@@ -630,7 +884,7 @@ fn batch_trees_to_tiles(
             // Get id_key for this tree (if id_keys array provided)
             let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
-            let mut business_data = tree_to_tiles(&tree, &*graph, strict, id_key_ref)
+            let business_data = tree_to_tiles(&tree, &*graph, strict, id_key_ref)
                 .map_err(|e| format!("Tree {}: {}", i, e))?;
 
             // Extract first resource (full StaticResource with resourceinstance metadata)
@@ -766,7 +1020,7 @@ fn batch_trees_to_tiles_with_extensions(
             // Get id_key for this tree (if id_keys array provided)
             let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
-            let mut business_data = tree_to_tiles(&tree, &*graph, strict, id_key_ref)
+            let business_data = tree_to_tiles(&tree, &*graph, strict, id_key_ref)
                 .map_err(|e| format!("Tree {}: {}", i, e))?;
 
             // Extract first resource
@@ -1206,53 +1460,7 @@ fn batch_tiles_to_trees(
         ))
 }
 
-/// Convert a camelCase string to snake_case
-fn camel_to_snake(s: &str) -> String {
-    let mut result = String::with_capacity(s.len() + 10);
-    let mut chars = s.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        if c.is_uppercase() {
-            // Don't add underscore at the start
-            if !result.is_empty() {
-                // Check if we're in an acronym (current is upper, next is upper or end)
-                let next_is_upper_or_end = chars.peek().map(|n| n.is_uppercase()).unwrap_or(true);
-                let prev_was_upper = result.chars().last().map(|p| p.is_uppercase()).unwrap_or(false);
-
-                // Add underscore if:
-                // - Previous was lowercase, or
-                // - We're at the end of an acronym (next is lowercase)
-                if !prev_was_upper || !next_is_upper_or_end {
-                    result.push('_');
-                }
-            }
-            result.push(c.to_lowercase().next().unwrap());
-        } else {
-            result.push(c);
-        }
-    }
-
-    result
-}
-
-/// Recursively convert all keys in a JSON value from camelCase to snake_case
-fn transform_keys_to_snake(value: serde_json::Value) -> serde_json::Value {
-    match value {
-        serde_json::Value::Object(map) => {
-            let mut new_map = serde_json::Map::new();
-            for (key, val) in map {
-                let new_key = camel_to_snake(&key);
-                let new_val = transform_keys_to_snake(val);
-                new_map.insert(new_key, new_val);
-            }
-            serde_json::Value::Object(new_map)
-        }
-        serde_json::Value::Array(arr) => {
-            serde_json::Value::Array(arr.into_iter().map(transform_keys_to_snake).collect())
-        }
-        other => other,
-    }
-}
+// camel_to_snake and transform_keys_to_snake are now in alizarin-core/src/string_utils.rs
 
 /// Python wrapper for ResourceModelWrapperCore
 ///
@@ -1374,7 +1582,7 @@ impl PyResourceModelWrapper {
                     let value = evaluate_tile_path(&tile, path);
 
                     // Log via Python's logging module
-                    if let Ok(logging) = py.import("logging") {
+                    if let Ok(logging) = py.import_bound("logging") {
                         if let Ok(logger) = logging.call_method1("getLogger", ("alizarin",)) {
                             let _ = logger.call_method1("debug",
                                 (format!(
@@ -1401,7 +1609,7 @@ impl PyResourceModelWrapper {
                 format!("Failed to serialize graph: {}", e)
             ))?;
 
-        let json_module = py.import("json")?;
+        let json_module = py.import_bound("json")?;
         let py_dict = json_module.call_method1("loads", (graph_json,))?;
         Ok(py_dict.to_object(py))
     }
@@ -1451,11 +1659,14 @@ impl PyResourceModelWrapper {
 }
 
 /// Static method: Check if a tile/node matches as a semantic child
+///
+/// Note: `parent_nodegroup_id` was previously named `parent_node_id` - callers
+/// should pass the nodegroup ID of the parent node, not the node ID.
 #[pyfunction]
-#[pyo3(signature = (parent_tile_id, parent_node_id, child_node_json, tile_json))]
+#[pyo3(signature = (parent_tile_id, parent_nodegroup_id, child_node_json, tile_json))]
 fn matches_semantic_child(
     parent_tile_id: Option<String>,
-    parent_node_id: String,
+    parent_nodegroup_id: Option<String>,
     child_node_json: String,
     tile_json: String,
 ) -> PyResult<bool> {
@@ -1471,7 +1682,7 @@ fn matches_semantic_child(
 
     Ok(core_matches_semantic_child(
         parent_tile_id.as_ref(),
-        &parent_node_id,
+        parent_nodegroup_id.as_ref(),
         &child_node,
         &tile,
     ))
@@ -1880,6 +2091,7 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(coerce_with_extension, m)?)?;
     m.add_function(wrap_pyfunction!(has_display_renderer, m)?)?;
     m.add_function(wrap_pyfunction!(render_display_with_extension, m)?)?;
+    m.add_function(wrap_pyfunction!(get_registered_extension_handlers, m)?)?;
 
     // Node configuration management (Phase 0 of type coercion)
     node_config_py::register_module(m)?;
@@ -1893,8 +2105,14 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     // Rust-backed pseudo values (single source of truth for matching_entries)
     pseudo_value_py::register_module(m)?;
 
+    // Rust-backed instance wrapper (tile processing, pseudo cache population)
+    instance_wrapper_py::register_module(m)?;
+
     // Graph mutation API (JSON-based)
     graph_mutator_py::register_module(m)?;
+
+    // SKOS RDF/XML parsing and serialization
+    skos_py::register_module(m)?;
 
     Ok(())
 }
@@ -1902,6 +2120,7 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alizarin_core::string_utils::{camel_to_snake, transform_keys_to_snake};
 
     #[test]
     fn test_camel_to_snake_simple() {

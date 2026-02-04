@@ -23,6 +23,7 @@ use crate::graph::{StaticResource, StaticResourceMetadata};
 use crate::type_coercion::coerce_value;
 use crate::graph_mutator::generate_uuid_v5;
 use crate::registry::is_list_datatype;
+use crate::instance_wrapper_core::is_node_single_cardinality_with;
 
 /// Wrapper for business data import/export format
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -244,23 +245,11 @@ fn build_pseudo_cache_from_tiles(
                 child_node_ids,
             );
 
-            // Only apply nodegroup cardinality to the grouping node itself,
-            // not to leaf nodes within the same nodegroup
-            let is_single = if let Some(ref ng_id) = node.nodegroup_id {
-                if node.nodeid == *ng_id {
-                    // This IS the grouping node - check cardinality
-                    graph.get_nodegroup_by_id(ng_id)
-                        .and_then(|ng| ng.cardinality.as_ref())
-                        .map(|c| c != "n")
-                        .unwrap_or(true)
-                } else {
-                    // Leaf node within a nodegroup - use is_collector
-                    !node.is_collector
-                }
-            } else {
-                // No nodegroup - use is_collector
-                !node.is_collector
-            };
+            // Use shared cardinality logic
+            let is_single = is_node_single_cardinality_with(&node, |ng_id| {
+                graph.get_nodegroup_by_id(ng_id)
+                    .and_then(|ng| ng.cardinality.clone())
+            });
 
             pseudo_cache
                 .entry(alias.clone())
@@ -580,9 +569,11 @@ fn build_pseudo_values_from_json(
         let nodegroup_id = child_node.nodegroup_id.as_ref()
             .ok_or_else(|| format!("Node {} has no nodegroup_id", child_id))?;
 
-        let is_single = graph.get_nodegroup_by_id(nodegroup_id)
-            .map(|ng| ng.cardinality.as_ref().map(|c| c != "n").unwrap_or(true))
-            .unwrap_or(true);
+        // Use shared cardinality logic
+        let is_single = is_node_single_cardinality_with(&child_node, |ng_id| {
+            graph.get_nodegroup_by_id(ng_id)
+                .and_then(|ng| ng.cardinality.clone())
+        });
 
         let config_value = if child_node.config.is_empty() {
             None
@@ -637,7 +628,8 @@ fn build_pseudo_values_from_json(
         let is_list_type = is_list_datatype(&child_node.datatype);
 
         if json_value.is_array() && !is_list_type {
-            let array = json_value.as_array().unwrap();
+            // SAFETY: is_array() check guarantees as_array() succeeds
+            let array = json_value.as_array().expect("checked is_array()");
             for (idx, item) in array.iter().enumerate() {
                 // Use array index as sortorder (0 = primary/first)
                 let sortorder = Some(idx as i32);
@@ -698,7 +690,8 @@ fn build_pseudo_values_from_json(
                 }
             }
         } else if has_graph_children && json_value.is_object() {
-            let item_obj = json_value.as_object().unwrap();
+            // SAFETY: is_object() check guarantees as_object() succeeds
+            let item_obj = json_value.as_object().expect("checked is_object()");
 
             if strict {
                 for key in item_obj.keys() {

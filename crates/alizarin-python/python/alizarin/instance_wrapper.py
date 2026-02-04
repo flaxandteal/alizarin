@@ -6,7 +6,7 @@ Matches TypeScript ResourceInstanceWrapper in graphManager.ts
 
 from __future__ import annotations
 
-import asyncio
+import json
 from typing import (
     Any,
     Awaitable,
@@ -28,6 +28,10 @@ if TYPE_CHECKING:
     from .graph_manager import IRIVM, IModelWrapper
 
 from .pseudos import PseudoValue, PseudoList, wrap_rust_pseudo
+
+# Import Rust core wrapper from the extension module
+from . import alizarin as _alizarin_rust
+RustResourceInstanceWrapperCore = _alizarin_rust.RustResourceInstanceWrapperCore
 
 # Type Variables
 RIVM = TypeVar("RIVM", bound="IRIVM")
@@ -51,7 +55,7 @@ class ResourceInstanceWrapper(Generic[RIVM]):
 
     __slots__ = (
         "wkri",
-        "wasm_wrapper",
+        "_rust_core",
         "model",
         "_pseudo_cache",
         "value_cache",
@@ -64,7 +68,6 @@ class ResourceInstanceWrapper(Generic[RIVM]):
     def __init__(
         self,
         wkri: RIVM,
-        wasm_wrapper: Any,
         model: ResourceModelWrapper,
     ) -> None:
         """
@@ -72,12 +75,15 @@ class ResourceInstanceWrapper(Generic[RIVM]):
 
         Args:
             wkri: WKRI instance (resource instance view model)
-            wasm_wrapper: Rust wrapper instance
             model: ResourceModelWrapper for the model
         """
         self.wkri: RIVM = wkri
-        self.wasm_wrapper: Any = wasm_wrapper
         self.model: ResourceModelWrapper = model
+
+        # Create Rust core wrapper
+        self._rust_core: RustResourceInstanceWrapperCore = (
+            RustResourceInstanceWrapperCore(model.wkrm.graph_id)
+        )
 
         # Layer 2: Python pseudo cache (wrapped objects)
         self._pseudo_cache: Dict[str, PseudoList[Any]] = {}
@@ -87,7 +93,7 @@ class ResourceInstanceWrapper(Generic[RIVM]):
 
         # Resource data
         self.resource_id: Optional[str] = None
-        self.graph_id: Optional[str] = None
+        self.graph_id: Optional[str] = model.wkrm.graph_id
         self.resource: Optional[StaticResource] = None
 
         # Tile loader callback
@@ -104,8 +110,6 @@ class ResourceInstanceWrapper(Generic[RIVM]):
             loader: Async function that loads tiles for a nodegroup
         """
         self._tile_loader = loader
-        if self.wasm_wrapper and hasattr(self.wasm_wrapper, "set_tile_loader"):
-            self.wasm_wrapper.set_tile_loader(loader)
 
     async def retrieve_pseudo(
         self,
@@ -139,9 +143,7 @@ class ResourceInstanceWrapper(Generic[RIVM]):
                 return list(result)
 
         # Query Rust cache (Layer 1)
-        rust_value = None
-        if self.wasm_wrapper and hasattr(self.wasm_wrapper, "get_cached_pseudo"):
-            rust_value = self.wasm_wrapper.get_cached_pseudo(key)
+        rust_value = self._rust_core.get_cached_pseudo(key)
 
         if rust_value is not None:
             # Wrap the Rust value
@@ -178,10 +180,8 @@ class ResourceInstanceWrapper(Generic[RIVM]):
         if key in self._pseudo_cache:
             return len(self._pseudo_cache[key]) > 0
 
-        if self.wasm_wrapper and hasattr(self.wasm_wrapper, "has_cached_pseudo"):
-            return self.wasm_wrapper.has_cached_pseudo(key)
-
-        return False
+        rust_value = self._rust_core.get_cached_pseudo(key)
+        return rust_value is not None and len(rust_value) > 0
 
     def set_pseudo(self, key: str, value: Any) -> None:
         """
@@ -233,21 +233,30 @@ class ResourceInstanceWrapper(Generic[RIVM]):
         Matches TypeScript ResourceInstanceWrapper.populate
 
         Flow:
-        1. Call Rust populate to build Layer 1 (pseudo_cache)
-        2. Clear Python Layer 2 cache (Rust is now source of truth)
-        3. Layer 3 (value_cache) remains unpopulated until buildValueCache
+        1. Load tiles into Rust core
+        2. Call Rust populate to build Layer 1 (pseudo_cache)
+        3. Clear Python Layer 2 cache (Rust is now source of truth)
+        4. Layer 3 (value_cache) remains unpopulated until buildValueCache
 
         Args:
             tiles: List of tiles to populate with (optional)
             lazy: Whether to use lazy loading
         """
-        if self.wasm_wrapper and hasattr(self.wasm_wrapper, "populate"):
-            if tiles:
-                # Convert tiles to format Rust expects
-                tiles_data = [self._tile_to_dict(t) for t in tiles]
-                await asyncio.coroutine(lambda: self.wasm_wrapper.populate(tiles_data))()
-            else:
-                await asyncio.coroutine(lambda: self.wasm_wrapper.populate([]))()
+        if tiles:
+            # Convert tiles to JSON for Rust
+            tiles_data = [self._tile_to_dict(t) for t in tiles]
+            tiles_json = json.dumps(tiles_data)
+            self._rust_core.load_tiles(tiles_json)
+
+        # Get nodegroup IDs from the model
+        nodegroup_ids = list(self.model.get_nodegroup_ids())
+
+        # Get root node alias
+        root_node = self.model.get_root_node()
+        root_alias = root_node.alias if root_node and root_node.alias else "root"
+
+        # Call Rust populate
+        self._rust_core.populate(lazy, nodegroup_ids, root_alias)
 
         # Clear Python cache - Rust pseudo_cache is now the source of truth
         self._pseudo_cache = {}
@@ -442,33 +451,9 @@ class ResourceInstanceWrapper(Generic[RIVM]):
         root_vm = SemanticViewModel(self.wkri, None, root_node)
         return root_vm
 
-    async def set_orm_attribute(self, key: str, value: Any) -> None:
-        """
-        Set an ORM attribute.
-
-        Args:
-            key: Attribute name
-            value: Attribute value
-        """
-        if self.wasm_wrapper and hasattr(self.wasm_wrapper, "set_orm_attribute"):
-            self.wasm_wrapper.set_orm_attribute(key, value)
-
-    async def get_orm_attribute(self, key: str) -> Any:
-        """
-        Get an ORM attribute.
-
-        Args:
-            key: Attribute name
-
-        Returns:
-            Attribute value
-        """
-        if self.wasm_wrapper and hasattr(self.wasm_wrapper, "get_orm_attribute"):
-            return self.wasm_wrapper.get_orm_attribute(key)
-        return None
-
     def clear_caches(self) -> None:
-        """Clear all Python caches (Layer 2 and 3)."""
+        """Clear all caches (Rust Layer 1, Python Layer 2 and 3)."""
+        self._rust_core.clear_cache()
         self._pseudo_cache = {}
         self.value_cache = None
 
@@ -489,7 +474,7 @@ class ResourceInstanceWrapper(Generic[RIVM]):
             "data": tile.data,
             "parenttile_id": tile.parenttile_id,
             "sortorder": tile.sortorder,
-            "provisionaledits": tile.provisionaledits,
+            "provisionaledits": getattr(tile, 'provisionaledits', None),
         }
 
 
@@ -497,65 +482,51 @@ class ResourceInstanceWrapperCore:
     """
     Core functionality for ResourceInstanceWrapper.
 
-    Provides static methods that can be called from tests.
-    Matches functionality in Rust ResourceInstanceWrapperCore.
+    Provides static methods that delegate to Rust implementations.
     """
 
     @staticmethod
     def matches_semantic_child(
         parent_tile_id: Optional[str],
-        parent_node_id: str,
+        parent_nodegroup_id: Optional[str],
         child_node: StaticNode,
         tile: StaticTile,
     ) -> bool:
         """
         Check if a tile/node combination matches as a semantic child.
 
-        Matches the semantic child matching logic from TypeScript semantic.ts
-        and Rust instance_wrapper.rs.
-
-        Three branches:
-        1. Different nodegroup + parent_tile_id exists + (null parenttile_id OR matching parent tile)
-        2. Same nodegroup + parent_tile_id exists + same tile + not collector
-        3. Different nodegroup + is collector (always matches)
+        Delegates to Rust implementation via alizarin.matches_semantic_child().
 
         Args:
             parent_tile_id: Parent tile ID (may be None for root)
-            parent_node_id: Parent node ID (nodegroup)
+            parent_nodegroup_id: Parent nodegroup ID
             child_node: The child node to check
             tile: The tile to check
 
         Returns:
             True if this is a matching semantic child
         """
-        child_nodegroup = child_node.nodegroup_id
-        tile_nodegroup = tile.nodegroup_id
+        from alizarin import alizarin as alizarin_rust
+        import json
 
-        # Branch 1: Different nodegroup + correct parent tile relationship
-        # PORT: instance_wrapper.rs lines 370-381
-        # Only matches if parent_tile_id is provided (not None)
-        if child_nodegroup != parent_node_id and parent_tile_id is not None:
-            # Check if tile.parenttile_id is None or equals parent_tile_id
-            parent_matches = (
-                tile.parenttile_id is None or
-                tile.parenttile_id == parent_tile_id
-            )
-            if parent_matches:
-                return True
+        # Serialize node and tile to JSON for Rust binding
+        child_node_json = json.dumps(child_node.to_dict())
+        tile_json = json.dumps({
+            "tileid": tile.tileid,
+            "nodegroup_id": tile.nodegroup_id,
+            "resourceinstance_id": tile.resourceinstance_id,
+            "data": tile.data or {},
+            "parenttile_id": tile.parenttile_id,
+            "sortorder": tile.sortorder,
+            "provisionaledits": getattr(tile, 'provisionaledits', None),
+        })
 
-        # Branch 2: Same nodegroup + shared tile + not collector
-        # PORT: instance_wrapper.rs lines 385-393
-        # Only matches if parent_tile_id is provided (not None)
-        if child_nodegroup == parent_node_id and parent_tile_id is not None:
-            if tile.tileid == parent_tile_id and not child_node.is_collector:
-                return True
-
-        # Branch 3: Different nodegroup + is collector (always matches)
-        # PORT: instance_wrapper.rs lines 398-401
-        if child_nodegroup != parent_node_id and child_node.is_collector:
-            return True
-
-        return False
+        return alizarin_rust.matches_semantic_child(
+            parent_tile_id,
+            parent_nodegroup_id,
+            child_node_json,
+            tile_json,
+        )
 
 
 __all__ = [

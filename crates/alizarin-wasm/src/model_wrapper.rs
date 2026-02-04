@@ -11,6 +11,8 @@ use crate::graph::StaticTile as WasmStaticTile;
 use alizarin_core::{StaticGraph, StaticTile, StaticNode, StaticNodegroup, StaticEdge};
 // Permission rules from core
 pub use alizarin_core::PermissionRule;
+// Graph pruning from core
+use alizarin_core::prune_graph as core_prune_graph;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::cell::RefCell;
@@ -395,152 +397,25 @@ impl ResourceModelWrapperCore {
     /// Prune graph to only include permitted nodegroups and their dependencies
     /// Filters nodes, edges, cards, nodegroups, and functions based on permissions
     /// Returns error if graph is malformed or has cycles
+    ///
+    /// Delegates to `alizarin_core::prune_graph` for the actual pruning logic.
     pub fn prune_graph(&mut self, keep_functions: Option<Vec<String>>) -> Result<(), String> {
-        const MAX_GRAPH_DEPTH: usize = 100;
+        // Create permission check closure that captures self
+        let is_permitted = |ng_id: &str| self.is_nodegroup_permitted(ng_id);
 
-        // Ensure nodes are built
-        if self.nodes.is_none() || self.nodegroups.is_none() || self.edges.is_none() {
-            self.build_nodes()?;
-        }
-
-        // Get root node first (requires mutable borrow)
-        let root_node = self.get_root_node()?;
-        let root = root_node.nodeid.clone();
-
-        // Now we can borrow nodegroups immutably
-        let all_nodegroups = self.nodegroups.as_ref().ok_or("Nodegroups not built")?;
-
-        // Build allowed_nodegroups map: nodegroup_id -> is_rooted
-        // Filter to only permitted nodegroups
-        let mut allowed_nodegroups: HashMap<String, bool> = all_nodegroups
-            .iter()
-            .filter(|(ng_id, _)| self.is_nodegroup_permitted(ng_id))
-            .map(|(ng_id, _)| {
-                let is_root = ng_id.is_empty() || *ng_id == root;
-                (ng_id.clone(), is_root)
-            })
-            .collect();
-
-        // Build backedges map (child -> parent)
-        let edges = self.edges.as_ref().ok_or("Edges not built")?;
-        let mut backedges: HashMap<String, String> = HashMap::new();
-        for (domain, ranges) in edges.iter() {
-            for range in ranges {
-                if backedges.contains_key(range) {
-                    return Err(format!(
-                        "Graph is malformed, node {} has multiple parents, {} and {} at least",
-                        range,
-                        backedges.get(range).unwrap(),
-                        domain
-                    ));
-                }
-                backedges.insert(range.clone(), domain.clone());
-            }
-        }
-
-        // Mark root as rooted
-        allowed_nodegroups.insert(root.clone(), true);
-
-        // Iteratively ensure all kept nodegroups have path to root
-        let mut loops = 0;
-        while loops < MAX_GRAPH_DEPTH {
-            let unrooted: Vec<String> = allowed_nodegroups
-                .iter()
-                .filter(|(_, &rooted)| !rooted)
-                .map(|(ng, _)| ng.clone())
-                .collect();
-
-            if unrooted.is_empty() {
-                break;
-            }
-
-            for ng in unrooted {
-                if ng == root {
-                    continue;
-                }
-
-                let next = backedges.get(&ng)
-                    .ok_or_else(|| format!("Graph does not have a parent for {}", ng))?;
-
-                allowed_nodegroups.insert(ng.clone(), true);
-                if !allowed_nodegroups.contains_key(next) {
-                    allowed_nodegroups.insert(next.clone(), false);
-                }
-            }
-
-            loops += 1;
-        }
-
-        if loops >= MAX_GRAPH_DEPTH {
-            return Err("Hit edge traversal limit when pruning, is the graph well-formed without cycles?".to_string());
-        }
-
-        // Build set of allowed node IDs
-        let nodes = self.nodes.as_ref().ok_or("Nodes not built")?;
-        let allowed_nodes: std::collections::HashSet<String> = nodes
-            .values()
-            .filter(|node| {
-                node.nodegroup_id.as_ref()
-                    .and_then(|ng_id| allowed_nodegroups.get(ng_id))
-                    .copied()
-                    .unwrap_or(false)
-                    || node.nodeid == root
-            })
-            .map(|node| node.nodeid.clone())
-            .collect();
-
-        // Filter graph components
-        let mut graph = (*self.graph).clone();
-
-        // Filter cards (Option<Vec<StaticCard>>)
-        graph.cards = graph.cards.map(|cards| {
-            cards.into_iter()
-                .filter(|card| allowed_nodegroups.get(&card.nodegroup_id).copied().unwrap_or(false))
-                .collect()
-        });
-
-        // Filter cards_x_nodes_x_widgets (Option<Vec<StaticCardsXNodesXWidgets>>)
-        graph.cards_x_nodes_x_widgets = graph.cards_x_nodes_x_widgets.map(|cxnxws| {
-            cxnxws.into_iter()
-                .filter(|cxnxw| allowed_nodes.contains(&cxnxw.node_id))
-                .collect()
-        });
-
-        // Filter edges
-        graph.edges = graph.edges.into_iter()
-            .filter(|edge| {
-                (edge.domainnode_id == root || allowed_nodes.contains(&edge.domainnode_id))
-                    && allowed_nodes.contains(&edge.rangenode_id)
-            })
-            .collect();
-
-        // Filter nodegroups
-        graph.nodegroups = graph.nodegroups.into_iter()
-            .filter(|ng| allowed_nodegroups.contains_key(&ng.nodegroupid))
-            .collect();
-
-        // Filter nodes
-        graph.nodes = graph.nodes.into_iter()
-            .filter(|node| allowed_nodes.contains(&node.nodeid))
-            .collect();
-
-        // Filter functions_x_graphs (Option<Vec<StaticFunctionsXGraphs>>)
-        if let Some(keep_fns) = keep_functions {
-            graph.functions_x_graphs = graph.functions_x_graphs.map(|fxgs| {
-                fxgs.into_iter()
-                    .filter(|fxg| keep_fns.contains(&fxg.function_id))
-                    .collect()
-            });
-        } else {
-            graph.functions_x_graphs = Some(Vec::new());
-        }
+        // Delegate to core prune_graph function
+        let keep_fns_ref = keep_functions.as_ref().map(|v| v.as_slice());
+        let pruned = core_prune_graph(&self.graph, is_permitted, keep_fns_ref)
+            .map_err(|e| e.to_string())?;
 
         // Update the graph and clear caches to force rebuild
-        self.graph = Arc::new(graph);
+        self.graph = Arc::new(pruned);
         self.nodes = None;
         self.edges = None;
         self.nodegroups = None;
         self.nodes_by_alias = None;
+        self.reverse_edges = None;
+        self.nodes_by_nodegroup = None;
 
         Ok(())
     }
@@ -1060,26 +935,6 @@ impl WASMResourceModelWrapper {
     pub fn build_nodes_for_graph(&mut self, graph: &WasmStaticGraph) -> Result<(), JsValue> {
         let graph = graph.0.clone();
         self.with_core_mut(|core| core.build_nodes_for_graph(&graph).map_err(|e| JsValue::from_str(&e)))
-    }
-
-    // Internal accessors for Rust code (not exposed to JavaScript)
-    // These can't use with_core because they return references, so we need a different approach
-    // We'll make these methods panic if called on an unregistered model (shouldn't happen in practice)
-    #[allow(dead_code)]
-    pub(crate) fn get_nodes_by_alias_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
-        // Cannot return references from with_core closure - would need different design
-        // For now, panic - this should not be called on unregistered models
-        panic!("get_nodes_by_alias_internal called - refactor needed to use registry directly")
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn get_nodes_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
-        panic!("get_nodes_internal called - refactor needed to use registry directly")
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn get_edges_internal(&self) -> Option<&HashMap<String, Vec<String>>> {
-        panic!("get_edges_internal called - refactor needed to use registry directly")
     }
 
     // Graph modification methods - accept WASM wrappers, extract core types

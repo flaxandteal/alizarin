@@ -80,7 +80,7 @@ impl PyStaticDomainValue {
     fn to_dict(&self, py: Python) -> PyResult<PyObject> {
         let json_str = serde_json::to_string(&self.inner)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
-        let json_module = py.import("json")?;
+        let json_module = py.import_bound("json")?;
         let py_dict = json_module.call_method1("loads", (json_str,))?;
         Ok(py_dict.to_object(py))
     }

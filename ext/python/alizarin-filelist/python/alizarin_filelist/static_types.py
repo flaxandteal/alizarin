@@ -157,8 +157,8 @@ class FileListItem:
         """Create from dictionary."""
         # Known fields to extract
         known_fields = {
-            'accepted', 'altText', 'alt_text', 'attribution', 'content',
-            'description', 'file_id', 'index', 'lastModified', 'last_modified',
+            'accepted', 'alt_text', 'attribution', 'content',
+            'description', 'file_id', 'index', 'last_modified', 'last_modified',
             'name', 'path', 'selected', 'size', 'status', 'title', 'type',
             'file_type', 'url', 'renderer'
         }
@@ -169,13 +169,13 @@ class FileListItem:
         return cls(
             name=data.get("name", ""),
             accepted=data.get("accepted", False),
-            alt_text=localized_string_from_dict(data.get("altText") or data.get("alt_text")),
+            alt_text=localized_string_from_dict(data.get("alt_text")),
             attribution=localized_string_from_dict(data.get("attribution")),
             content=data.get("content"),
             description=localized_string_from_dict(data.get("description")),
             file_id=data.get("file_id"),
             index=data.get("index"),
-            last_modified=data.get("lastModified") or data.get("last_modified"),
+            last_modified=data.get("last_modified"),
             path=data.get("path"),
             selected=data.get("selected", False),
             size=data.get("size"),
@@ -197,7 +197,7 @@ class FileListItem:
 
         # Add optional fields if present
         if self.alt_text is not None:
-            result["altText"] = localized_string_to_dict(self.alt_text)
+            result["alt_text"] = localized_string_to_dict(self.alt_text)
         if self.attribution is not None:
             result["attribution"] = localized_string_to_dict(self.attribution)
         if self.content is not None:
@@ -209,7 +209,7 @@ class FileListItem:
         if self.index is not None:
             result["index"] = self.index
         if self.last_modified is not None:
-            result["lastModified"] = self.last_modified
+            result["last_modified"] = self.last_modified
         if self.path is not None:
             result["path"] = self.path
         if self.size is not None:

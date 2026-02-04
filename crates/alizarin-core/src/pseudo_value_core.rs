@@ -694,50 +694,6 @@ pub fn matches_tile_filter(
     false
 }
 
-/// Check if a tile/node matches as a semantic child
-///
-/// This is used by both WASM and Python bindings for filtering tiles
-/// that belong to a particular parent node in the graph hierarchy.
-pub fn matches_semantic_child(
-    parent_tile_id: Option<&String>,
-    parent_node_id: &str,
-    child_node: &StaticNode,
-    tile: &StaticTile,
-) -> bool {
-    // Check nodegroup match
-    if tile.nodegroup_id != *child_node.nodegroup_id.as_ref().unwrap_or(&"".into()) {
-        return false;
-    }
-
-    // We do not have a child value, unless there is a value, or the whole tile is the (semantic) value
-    if !(Some(&child_node.nodeid) == child_node.nodegroup_id.as_ref() || tile.data.contains_key(&child_node.nodeid)) {
-        return false;
-    }
-
-    // Branch 1: Different nodegroup + correct parent tile relationship
-    if tile.nodegroup_id != parent_node_id {
-        if let Some(parent_tid) = parent_tile_id {
-            let parent_matches = tile.parenttile_id.is_none()
-                || tile.parenttile_id.as_ref() == Some(parent_tid);
-
-            if parent_matches {
-                return true;
-            }
-        }
-    }
-
-    // Branch 2: Same nodegroup as parent - child exists on same tile
-    if tile.nodegroup_id == parent_node_id {
-        if let Some(parent_tid) = parent_tile_id {
-            if tile.tileid.as_ref() == Some(parent_tid) {
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
 // =============================================================================
 // Generic visitor functions - work with any PseudoValueLike/PseudoListLike
 // =============================================================================

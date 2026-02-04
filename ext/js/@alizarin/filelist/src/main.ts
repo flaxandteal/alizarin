@@ -24,13 +24,13 @@ type LocalizedString = { [lang: string]: LocalizedStringValue };
 
 interface FileListItemData {
   accepted?: boolean;
-  altText?: LocalizedString;
+  alt_text?: LocalizedString;
   attribution?: LocalizedString;
   content?: string;
   description?: LocalizedString;
   file_id?: string;
   index?: number;
-  lastModified?: number;
+  last_modified?: number;
   name: string;
   path?: string;
   selected?: boolean;
@@ -44,13 +44,13 @@ interface FileListItemData {
 
 class FileListItem {
   accepted: boolean;
-  altText?: LocalizedString;
+  alt_text?: LocalizedString;
   attribution?: LocalizedString;
   content?: string;
   description?: LocalizedString;
   file_id?: string;
   index?: number;
-  lastModified?: number;
+  last_modified?: number;
   name: string;
   path?: string;
   selected: boolean;
@@ -63,13 +63,13 @@ class FileListItem {
 
   constructor(data: FileListItemData) {
     this.accepted = data.accepted ?? false;
-    this.altText = data.altText;
+    this.alt_text = data.alt_text;
     this.attribution = data.attribution;
     this.content = data.content;
     this.description = data.description;
     this.file_id = data.file_id;
     this.index = data.index;
-    this.lastModified = data.lastModified;
+    this.last_modified = data.last_modified;
     this.name = data.name || "";
     this.path = data.path;
     this.selected = data.selected ?? false;
@@ -116,9 +116,9 @@ class FileListItem {
   getAltText(lang?: string): string | null {
     const targetLang = lang || utils.getCurrentLanguage() || "en";
 
-    if (this.altText) {
-      if (this.altText[targetLang]?.value) {
-        return this.altText[targetLang].value;
+    if (this.alt_text) {
+      if (this.alt_text[targetLang]?.value) {
+        return this.alt_text[targetLang].value;
       }
     }
     return null;
@@ -141,13 +141,13 @@ class FileListItem {
       selected: this.selected,
     };
 
-    if (this.altText) result.altText = this.altText;
+    if (this.alt_text) result.alt_text = this.alt_text;
     if (this.attribution) result.attribution = this.attribution;
     if (this.content) result.content = this.content;
     if (this.description) result.description = this.description;
     if (this.file_id) result.file_id = this.file_id;
     if (this.index !== undefined) result.index = this.index;
-    if (this.lastModified) result.lastModified = this.lastModified;
+    if (this.last_modified) result.last_modified = this.last_modified;
     if (this.path) result.path = this.path;
     if (this.size !== undefined) result.size = this.size;
     if (this.status) result.status = this.status;

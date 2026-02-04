@@ -25,7 +25,10 @@ pub fn serialize_resource_instance(
 
                 // If single value, return unwrapped
                 if resolved.len() == 1 {
-                    return SerializationResult::success(resolved.into_iter().next().unwrap());
+                    // SAFETY: len() == 1 guarantees exactly one element
+                    return SerializationResult::success(
+                        resolved.into_iter().next().expect("len() == 1 guarantees one element")
+                    );
                 }
                 return SerializationResult::success(Value::Array(resolved));
             }

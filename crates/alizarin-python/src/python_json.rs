@@ -54,7 +54,7 @@ pub fn python_to_json(py: Python<'_>, obj: &PyAny) -> PyResult<serde_json::Value
     }
 
     // Fall back to JSON serialization via Python's json module
-    let json_module = py.import("json")?;
+    let json_module = py.import_bound("json")?;
     let json_str: String = json_module.call_method1("dumps", (obj,))?.extract()?;
     serde_json::from_str(&json_str).map_err(|e| {
         pyo3::exceptions::PyValueError::new_err(format!("Failed to parse JSON: {}", e))
@@ -79,14 +79,14 @@ pub fn json_to_python(py: Python<'_>, value: &serde_json::Value) -> PyResult<PyO
         }
         serde_json::Value::String(s) => Ok(s.to_object(py)),
         serde_json::Value::Array(arr) => {
-            let list = PyList::empty(py);
+            let list = PyList::empty_bound(py);
             for item in arr {
                 list.append(json_to_python(py, item)?)?;
             }
             Ok(list.to_object(py))
         }
         serde_json::Value::Object(obj) => {
-            let dict = PyDict::new(py);
+            let dict = PyDict::new_bound(py);
             for (k, v) in obj {
                 dict.set_item(k, json_to_python(py, v)?)?;
             }

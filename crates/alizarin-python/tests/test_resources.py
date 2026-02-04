@@ -6,14 +6,18 @@ Ports tests from tests/client.test.ts and covers ResourceInstanceWrapper functio
 
 import pytest
 import asyncio
+import json
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+import alizarin as alizarin_rust
 from alizarin.static_types import (
     StaticNode,
     StaticEdge,
     StaticNodegroup,
     StaticTile,
     StaticGraph,
+    StaticGraphMeta,
     StaticResource,
     StaticTranslatableString,
 )
@@ -21,7 +25,22 @@ from alizarin.instance_wrapper import (
     ResourceInstanceWrapper,
     ResourceInstanceWrapperCore,
 )
+from alizarin.model_wrapper import ResourceModelWrapper
 from alizarin.pseudos import PseudoValue, PseudoList
+
+
+# =============================================================================
+# Mock WKRM for tests
+# =============================================================================
+
+
+@dataclass
+class MockWKRM:
+    """Mock WKRM for testing."""
+    model_name: str
+    model_class_name: str
+    graph_id: str
+    meta: StaticGraphMeta
 
 
 # =============================================================================
@@ -72,6 +91,32 @@ def create_test_graph() -> StaticGraph:
     )
 
 
+@pytest.fixture
+def registered_test_graph():
+    """Fixture that registers the test graph and returns it."""
+    graph = create_test_graph()
+    graph_dict = graph.to_dict()
+    graph_json = json.dumps(graph_dict)
+    alizarin_rust.register_graph(graph_json)
+    return graph
+
+
+@pytest.fixture
+def test_model(registered_test_graph):
+    """Fixture that creates a ResourceModelWrapper with the test graph."""
+    graph = registered_test_graph
+    wkrm = MockWKRM(
+        model_name="TestModel",
+        model_class_name="TestModel",
+        graph_id=graph.graphid,
+        meta=StaticGraphMeta(
+            name={"en": "Test Graph"},
+            graphid=graph.graphid,
+        ),
+    )
+    return ResourceModelWrapper(wkrm=wkrm, graph=graph)
+
+
 def create_test_resource(graph_id: str = "test-graph") -> StaticResource:
     """Create a minimal test resource."""
     from alizarin.static_types import StaticResourceMetadata, StaticResourceDescriptors
@@ -100,10 +145,16 @@ def create_test_node(
     datatype: str = "string",
     nodegroup_id: str = "ng-1",
     is_collector: bool = False,
+    is_nodegroup_root: bool = True,  # By default, make node be nodegroup root
 ) -> StaticNode:
-    """Helper to create a test node."""
+    """Helper to create a test node.
+
+    If is_nodegroup_root=True (default), nodeid will be set equal to nodegroup_id,
+    which makes the node a nodegroup root and satisfies the "value exists" check.
+    """
+    actual_nodeid = nodegroup_id if is_nodegroup_root else nodeid
     return StaticNode(
-        nodeid=nodeid,
+        nodeid=actual_nodeid,
         name=alias,
         datatype=datatype,
         nodegroup_id=nodegroup_id,
@@ -255,7 +306,7 @@ class TestResourceInstanceWrapperCore:
 
         result = ResourceInstanceWrapperCore.matches_semantic_child(
             parent_tile_id="parent-tile",
-            parent_node_id="ng-parent",
+            parent_nodegroup_id="ng-parent",
             child_node=child_node,
             tile=tile,
         )
@@ -268,7 +319,7 @@ class TestResourceInstanceWrapperCore:
 
         result = ResourceInstanceWrapperCore.matches_semantic_child(
             parent_tile_id="parent-tile",
-            parent_node_id="ng-parent",
+            parent_nodegroup_id="ng-parent",
             child_node=child_node,
             tile=tile,
         )
@@ -281,7 +332,7 @@ class TestResourceInstanceWrapperCore:
 
         result = ResourceInstanceWrapperCore.matches_semantic_child(
             parent_tile_id=None,  # No parent tile
-            parent_node_id="ng-parent",
+            parent_nodegroup_id="ng-parent",
             child_node=child_node,
             tile=tile,
         )
@@ -290,14 +341,16 @@ class TestResourceInstanceWrapperCore:
 
     def test_matches_same_nodegroup_shared_tile(self):
         """Branch 2: Same nodegroup + shared tile + not collector."""
+        # Node is nodegroup root (nodeid == nodegroup_id = "ng-shared")
         child_node = create_test_node(
             "child", "child_alias", nodegroup_id="ng-shared", is_collector=False
         )
-        tile = create_test_tile("tile-shared", "ng-shared", {})
+        # Tile must have data for the node (key = nodeid = "ng-shared")
+        tile = create_test_tile("tile-shared", "ng-shared", {"ng-shared": "some value"})
 
         result = ResourceInstanceWrapperCore.matches_semantic_child(
             parent_tile_id="tile-shared",  # Same as tile.tileid
-            parent_node_id="ng-shared",
+            parent_nodegroup_id="ng-shared",
             child_node=child_node,
             tile=tile,
         )
@@ -312,7 +365,7 @@ class TestResourceInstanceWrapperCore:
 
         result = ResourceInstanceWrapperCore.matches_semantic_child(
             parent_tile_id="tile-different",  # Different from tile.tileid
-            parent_node_id="ng-shared",
+            parent_nodegroup_id="ng-shared",
             child_node=child_node,
             tile=tile,
         )
@@ -330,7 +383,7 @@ class TestResourceInstanceWrapperCore:
 
         result = ResourceInstanceWrapperCore.matches_semantic_child(
             parent_tile_id="tile-shared",
-            parent_node_id="ng-shared",
+            parent_nodegroup_id="ng-shared",
             child_node=child_node,
             tile=tile,
         )
@@ -347,7 +400,7 @@ class TestResourceInstanceWrapperCore:
 
         result = ResourceInstanceWrapperCore.matches_semantic_child(
             parent_tile_id=None,  # Even without parent tile
-            parent_node_id="ng-parent",  # Different nodegroup
+            parent_nodegroup_id="ng-parent",  # Different nodegroup
             child_node=child_node,
             tile=tile,
         )
@@ -362,7 +415,7 @@ class TestResourceInstanceWrapperCore:
 
         result = ResourceInstanceWrapperCore.matches_semantic_child(
             parent_tile_id=None,
-            parent_node_id="ng-parent",
+            parent_nodegroup_id="ng-parent",
             child_node=child_node,
             tile=tile,
         )
@@ -377,31 +430,26 @@ class TestResourceInstanceWrapperCore:
 class TestResourceInstanceWrapper:
     """Tests for ResourceInstanceWrapper."""
 
-    def test_create_wrapper(self):
+    def test_create_wrapper(self, test_model):
         """Should create wrapper instance."""
-        # Mock WKRI and model
         mock_wkri = object()
-        mock_wasm_wrapper = None
-        mock_model = None
 
         wrapper = ResourceInstanceWrapper(
             wkri=mock_wkri,
-            wasm_wrapper=mock_wasm_wrapper,
-            model=mock_model,
+            model=test_model,
         )
 
         assert wrapper.wkri is mock_wkri
-        assert wrapper.wasm_wrapper is None
+        assert wrapper._rust_core is not None
         assert wrapper._pseudo_cache == {}
         assert wrapper.value_cache is None
 
-    def test_set_pseudo(self):
+    def test_set_pseudo(self, test_model):
         """Should set pseudo values in cache."""
         mock_wkri = object()
         wrapper = ResourceInstanceWrapper(
             wkri=mock_wkri,
-            wasm_wrapper=None,
-            model=None,
+            model=test_model,
         )
 
         node = create_test_node("node-1", "test_alias")
@@ -413,13 +461,12 @@ class TestResourceInstanceWrapper:
         assert "test_alias" in wrapper._pseudo_cache
         assert len(wrapper._pseudo_cache["test_alias"]) == 1
 
-    def test_set_pseudo_list(self):
+    def test_set_pseudo_list(self, test_model):
         """Should set PseudoList in cache."""
         mock_wkri = object()
         wrapper = ResourceInstanceWrapper(
             wkri=mock_wkri,
-            wasm_wrapper=None,
-            model=None,
+            model=test_model,
         )
 
         node = create_test_node("node-1", "test_alias")
@@ -435,13 +482,12 @@ class TestResourceInstanceWrapper:
         assert "test_alias" in wrapper._pseudo_cache
         assert wrapper._pseudo_cache["test_alias"] is pseudo_list
 
-    def test_clear_caches(self):
+    def test_clear_caches(self, test_model):
         """Should clear all caches."""
         mock_wkri = object()
         wrapper = ResourceInstanceWrapper(
             wkri=mock_wkri,
-            wasm_wrapper=None,
-            model=None,
+            model=test_model,
         )
 
         # Add some cache entries
@@ -454,51 +500,47 @@ class TestResourceInstanceWrapper:
         assert wrapper.value_cache is None
 
     @pytest.mark.asyncio
-    async def test_has_pseudo_returns_false_when_empty(self):
+    async def test_has_pseudo_returns_false_when_empty(self, test_model):
         """Should return False when cache is empty."""
         mock_wkri = object()
         wrapper = ResourceInstanceWrapper(
             wkri=mock_wkri,
-            wasm_wrapper=None,
-            model=None,
+            model=test_model,
         )
 
         result = await wrapper.has_pseudo("nonexistent")
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_retrieve_pseudo_returns_default_when_not_found(self):
+    async def test_retrieve_pseudo_returns_default_when_not_found(self, test_model):
         """Should return default when pseudo not found."""
         mock_wkri = object()
         wrapper = ResourceInstanceWrapper(
             wkri=mock_wkri,
-            wasm_wrapper=None,
-            model=None,
+            model=test_model,
         )
 
         result = await wrapper.retrieve_pseudo("nonexistent", default=[])
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_retrieve_pseudo_raises_when_not_found_and_raise_error(self):
+    async def test_retrieve_pseudo_raises_when_not_found_and_raise_error(self, test_model):
         """Should raise KeyError when pseudo not found and raise_error=True."""
         mock_wkri = object()
         wrapper = ResourceInstanceWrapper(
             wkri=mock_wkri,
-            wasm_wrapper=None,
-            model=None,
+            model=test_model,
         )
 
         with pytest.raises(KeyError, match="Pseudo value not found"):
             await wrapper.retrieve_pseudo("nonexistent", raise_error=True)
 
-    def test_all_entries_iterates_cache(self):
+    def test_all_entries_iterates_cache(self, test_model):
         """Should iterate over all cached entries."""
         mock_wkri = object()
         wrapper = ResourceInstanceWrapper(
             wkri=mock_wkri,
-            wasm_wrapper=None,
-            model=None,
+            model=test_model,
         )
 
         # Add cache entries
@@ -511,13 +553,12 @@ class TestResourceInstanceWrapper:
         assert "alias1" in aliases
         assert "alias2" in aliases
 
-    def test_tile_to_dict(self):
+    def test_tile_to_dict(self, test_model):
         """Should convert tile to dict format."""
         mock_wkri = object()
         wrapper = ResourceInstanceWrapper(
             wkri=mock_wkri,
-            wasm_wrapper=None,
-            model=None,
+            model=test_model,
         )
 
         tile = StaticTile(

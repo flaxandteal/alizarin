@@ -7,7 +7,8 @@
 
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize, Deserializer};
-use uuid::Uuid;
+
+use crate::rdm_namespace::generate_value_uuid;
 
 // =============================================================================
 // RDM Value (label with its own ID)
@@ -51,10 +52,10 @@ impl RdmValue {
 
     /// Generate a deterministic value ID from concept info
     /// Uses UUID5 with namespace "value" and path: "{concept_id}/prefLabel/{value}/{language}"
+    ///
+    /// Delegates to `rdm_namespace::generate_value_uuid` for the actual generation.
     pub fn generate_id(concept_id: &str, value: &str, language: &str) -> String {
-        let namespace = Uuid::new_v5(&Uuid::NAMESPACE_URL, b"value");
-        let name = format!("{}/prefLabel/{}/{}", concept_id, value, language);
-        Uuid::new_v5(&namespace, name.as_bytes()).to_string()
+        generate_value_uuid(concept_id, value, language).to_string()
     }
 }
 
