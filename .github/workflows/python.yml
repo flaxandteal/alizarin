@@ -64,7 +64,7 @@ jobs:
           key: ${{ runner.os }}-cargo-python-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install maturin
-        run: pip install maturin pytest
+        run: pip install maturin pytest pytest-asyncio
 
       - name: Build wheel
         working-directory: crates/alizarin-python
