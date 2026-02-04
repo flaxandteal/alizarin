@@ -52,7 +52,8 @@ jobs:
 
       # Build main alizarin package first (dependency for extensions)
       - name: Build WASM
-        run: wasm-pack build --target web --out-dir pkg --release
+        working-directory: crates/alizarin-wasm
+        run: wasm-pack build --target web --out-dir ../../pkg --release
 
       - name: Install root dependencies
         run: npm ci
@@ -127,7 +128,14 @@ jobs:
 
       - name: Install alizarin
         working-directory: crates/alizarin-python
-        run: pip install target/wheels/*.whl
+        run: |
+          WHEEL=$(find target/wheels -name '*.whl' -type f | head -n 1)
+          if [ -f "$WHEEL" ]; then
+            pip install "$WHEEL" --force-reinstall
+          else
+            echo "No wheel file found!"
+            exit 1
+          fi
 
       # Build all Python extensions
       - name: Build and test Python extensions
@@ -137,7 +145,14 @@ jobs:
             echo "=== Building $ext_name ==="
             cd "$ext_dir"
             maturin build --release
-            pip install target/wheels/*.whl
+            # Install the wheel
+            WHEEL=$(find target/wheels -name '*.whl' -type f | head -n 1)
+            if [ -f "$WHEEL" ]; then
+              pip install "$WHEEL" --force-reinstall
+            else
+              echo "No wheel file found for $ext_name!"
+              exit 1
+            fi
             # Run tests if they exist
             if [ -d "tests" ]; then
               pytest tests/ -v || echo "Tests for $ext_name failed or pending"
