@@ -86,11 +86,11 @@ jobs:
           name: alizarin-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
           path: crates/alizarin-python/dist/*.whl
 
-  # Build and test alizarin-clm extension
-  alizarin-clm:
-    name: Build alizarin-clm (${{ matrix.os }} / py${{ matrix.python-version }})
+  # Build and test all Python extensions
+  python-extensions:
+    name: Build Python extensions (${{ matrix.os }} / py${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
-    needs: alizarin-python  # CLM depends on alizarin
+    needs: alizarin-python  # Extensions depend on alizarin
     strategy:
       fail-fast: false
       matrix:
@@ -126,8 +126,8 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            ext/python/alizarin-clm/target/
-          key: ${{ runner.os }}-cargo-clm-${{ hashFiles('**/Cargo.lock') }}
+            ext/python/*/target/
+          key: ${{ runner.os }}-cargo-extensions-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install maturin and pytest
         run: pip install maturin pytest pytest-asyncio
@@ -149,32 +149,44 @@ jobs:
           $wheel = Get-ChildItem -Path /tmp/wheels/*.whl | Select-Object -First 1
           pip install $wheel.FullName
 
-      - name: Build alizarin-clm wheel
-        working-directory: ext/python/alizarin-clm
-        run: maturin build --release --out dist
-
-      - name: Install alizarin-clm wheel (Unix)
+      - name: Build and test all Python extensions (Unix)
         if: matrix.os != 'windows-latest'
-        working-directory: ext/python/alizarin-clm
-        run: pip install --no-deps dist/*.whl
+        run: |
+          for ext_dir in ext/python/*/; do
+            ext_name=$(basename "$ext_dir")
+            echo "=== Building $ext_name ==="
+            cd "$ext_dir"
+            maturin build --release --out dist
+            pip install --no-deps dist/*.whl
+            if [ -d "tests" ]; then
+              pytest tests/ -v || echo "Tests for $ext_name failed or pending"
+            fi
+            cd - > /dev/null
+          done
 
-      - name: Install alizarin-clm wheel (Windows)
+      - name: Build and test all Python extensions (Windows)
         if: matrix.os == 'windows-latest'
-        working-directory: ext/python/alizarin-clm
         shell: pwsh
         run: |
-          $wheel = Get-ChildItem -Path dist/*.whl | Select-Object -First 1
-          pip install --no-deps $wheel.FullName
+          foreach ($ext_dir in Get-ChildItem -Path ext/python -Directory) {
+            $ext_name = $ext_dir.Name
+            Write-Host "=== Building $ext_name ==="
+            Push-Location $ext_dir.FullName
+            maturin build --release --out dist
+            $wheel = Get-ChildItem -Path dist/*.whl | Select-Object -First 1
+            pip install --no-deps $wheel.FullName
+            if (Test-Path "tests") {
+              pytest tests/ -v
+              if ($LASTEXITCODE -ne 0) { Write-Host "Tests for $ext_name failed or pending" }
+            }
+            Pop-Location
+          }
 
-      - name: Run tests
-        working-directory: ext/python/alizarin-clm
-        run: pytest tests/ -v || echo "Tests not yet implemented"
-
-      - name: Upload wheel artifact
+      - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: alizarin-clm-wheel-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: ext/python/alizarin-clm/dist/*.whl
+          name: python-extensions-wheels-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: ext/python/*/dist/*.whl
 
   # Source distribution (for PyPI)
   sdist:

@@ -4,11 +4,11 @@ on:
   push:
     branches: [main, dev/*]
     paths:
-      - 'ext/**'
+      - 'ext/js/**'
       - '.github/workflows/extensions.yml'
   pull_request:
     paths:
-      - 'ext/**'
+      - 'ext/js/**'
   workflow_dispatch:
 
 jobs:
@@ -85,85 +85,5 @@ jobs:
             ext/js/@alizarin/*/dist/
             ext/js/@alizarin/*/package.json
 
-  # Python extensions
-  python-extensions:
-    name: Python Extensions (${{ matrix.os }} / py${{ matrix.python-version }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ['3.11', '3.12']
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            crates/alizarin-python/target/
-            ext/python/*/target/
-          key: ${{ runner.os }}-cargo-python-ext-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Install maturin and test dependencies
-        run: pip install maturin pytest pytest-asyncio
-
-      # Build main alizarin Python package first
-      - name: Build alizarin wheel
-        working-directory: crates/alizarin-python
-        run: maturin build --release --out dist
-
-      - name: Install alizarin
-        working-directory: crates/alizarin-python
-        run: |
-          WHEEL=$(find dist -name '*.whl' -type f | head -n 1)
-          if [ -f "$WHEEL" ]; then
-            pip install "$WHEEL" --force-reinstall
-          else
-            echo "No wheel file found in dist/!"
-            ls -la
-            exit 1
-          fi
-
-      # Build all Python extensions
-      - name: Build and test Python extensions
-        run: |
-          for ext_dir in ext/python/*/; do
-            ext_name=$(basename "$ext_dir")
-            echo "=== Building $ext_name ==="
-            cd "$ext_dir"
-            maturin build --release --out dist
-            # Install the wheel
-            WHEEL=$(find dist -name '*.whl' -type f | head -n 1)
-            if [ -f "$WHEEL" ]; then
-              pip install "$WHEEL" --force-reinstall
-            else
-              echo "No wheel file found for $ext_name in dist/!"
-              ls -la
-              exit 1
-            fi
-            # Run tests if they exist
-            if [ -d "tests" ]; then
-              pytest tests/ -v || echo "Tests for $ext_name failed or pending"
-            fi
-            cd - > /dev/null
-          done
-
-      - name: Upload Python extension wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: alizarin-extensions-python-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: ext/python/*/dist/*.whl
+  # Note: Python extensions are built and tested in python.yml workflow
+  # which provides full matrix coverage (Python 3.9-3.13, all major OSes)
