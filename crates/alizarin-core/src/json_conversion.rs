@@ -1,3 +1,6 @@
+use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+use std::cell::RefCell;
 /// Hierarchical tree conversion for resources
 ///
 /// This module provides bidirectional conversion between:
@@ -9,20 +12,17 @@
 /// - `tree_to_tiles()`: Array of nested tree objects → Tiled resources with business_data wrapper
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::cell::RefCell;
-use serde_json::{Value, Map};
-use serde::{Serialize, Deserialize};
 
-use crate::graph::{StaticGraph, IndexedGraph};
-use crate::pseudo_value_core::{
-    PseudoValueCore, PseudoListCore, TileBuilder, TileBuilderContext, VisitorContext,
-};
-use crate::{StaticTile, StaticNode};
+use crate::graph::{IndexedGraph, StaticGraph};
 use crate::graph::{StaticResource, StaticResourceMetadata};
-use crate::type_coercion::coerce_value;
 use crate::graph_mutator::generate_uuid_v5;
-use crate::registry::is_list_datatype;
 use crate::instance_wrapper_core::is_node_single_cardinality_with;
+use crate::pseudo_value_core::{
+    PseudoListCore, PseudoValueCore, TileBuilder, TileBuilderContext, VisitorContext,
+};
+use crate::registry::is_list_datatype;
+use crate::type_coercion::coerce_value;
+use crate::{StaticNode, StaticTile};
 
 /// Wrapper for business data import/export format
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,7 +47,9 @@ pub fn create_static_resource(
     let descriptors = indexed.build_descriptors(&tiles);
 
     // Use name from descriptors, or fallback to resourceinstanceid
-    let name = descriptors.name.clone()
+    let name = descriptors
+        .name
+        .clone()
         .unwrap_or_else(|| resourceinstanceid.clone());
 
     StaticResource {
@@ -84,7 +86,9 @@ pub fn tiles_to_tree(input: &Value, graph: &StaticGraph) -> Result<Value, String
     let mut tree_resources = Vec::new();
 
     for resource in resources {
-        let tiles = resource.tiles.as_ref()
+        let tiles = resource
+            .tiles
+            .as_ref()
             .ok_or_else(|| "Resource has no tiles".to_string())?;
 
         let tree = resource_tiles_to_tree(tiles, &resource.resourceinstance, graph)?;
@@ -100,49 +104,36 @@ fn resource_tiles_to_tree(
     metadata: &StaticResourceMetadata,
     graph: &StaticGraph,
 ) -> Result<Value, String> {
-    let nodes_by_alias = graph.nodes_by_alias_arc()
+    let nodes_by_alias = graph
+        .nodes_by_alias_arc()
         .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
 
-    let edges = graph.edges_map()
+    let edges = graph
+        .edges_map()
         .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
 
     // Build pseudo_cache from tiles
-    let pseudo_cache = build_pseudo_cache_from_tiles(
-        tiles,
-        nodes_by_alias,
-        graph,
-        edges,
-    );
+    let pseudo_cache = build_pseudo_cache_from_tiles(tiles, nodes_by_alias, graph, edges);
 
     // Create root pseudo value
     let root = graph.root_node();
     let root_alias = root.alias.clone().unwrap_or_default();
 
-    let child_node_ids = graph.get_child_ids(&root.nodeid)
+    let child_node_ids = graph
+        .get_child_ids(&root.nodeid)
         .cloned()
         .unwrap_or_default();
 
-    let root_pseudo = PseudoValueCore::from_node_and_tile(
-        Arc::new(root.clone()),
-        None,
-        None,
-        child_node_ids,
-    );
+    let root_pseudo =
+        PseudoValueCore::from_node_and_tile(Arc::new(root.clone()), None, None, child_node_ids);
 
-    let root_list = PseudoListCore::from_values_with_cardinality(
-        root_alias.clone(),
-        vec![root_pseudo],
-        true,
-    );
+    let root_list =
+        PseudoListCore::from_values_with_cardinality(root_alias.clone(), vec![root_pseudo], true);
 
     let mut full_cache = pseudo_cache;
     full_cache.insert(root_alias.clone(), root_list.clone());
 
-    let ctx = VisitorContext::new(
-        &full_cache,
-        nodes_by_alias,
-        edges,
-    );
+    let ctx = VisitorContext::new(&full_cache, nodes_by_alias, edges);
 
     let mut tree = if let Some(root_value) = root_list.values.first() {
         root_value.to_json(&ctx)
@@ -152,8 +143,14 @@ fn resource_tiles_to_tree(
 
     // Add metadata to tree
     if let Some(obj) = tree.as_object_mut() {
-        obj.insert("resourceinstanceid".to_string(), Value::String(metadata.resourceinstanceid.clone()));
-        obj.insert("graph_id".to_string(), Value::String(metadata.graph_id.clone()));
+        obj.insert(
+            "resourceinstanceid".to_string(),
+            Value::String(metadata.resourceinstanceid.clone()),
+        );
+        obj.insert(
+            "graph_id".to_string(),
+            Value::String(metadata.graph_id.clone()),
+        );
         if let Some(ref name) = metadata.descriptors.name {
             obj.insert("_name".to_string(), Value::String(name.clone()));
         }
@@ -212,9 +209,8 @@ fn build_pseudo_cache_from_tiles(
     sorted_tiles.sort_by_key(|t| t.sortorder.unwrap_or(i32::MAX));
 
     // Track which nodegroups have tiles
-    let nodegroups_with_tiles: HashSet<&str> = tiles.iter()
-        .map(|t| t.nodegroup_id.as_str())
-        .collect();
+    let nodegroups_with_tiles: HashSet<&str> =
+        tiles.iter().map(|t| t.nodegroup_id.as_str()).collect();
 
     for tile in sorted_tiles {
         let tile_arc = Arc::new(tile.clone());
@@ -227,13 +223,12 @@ fn build_pseudo_cache_from_tiles(
                 _ => continue,
             };
 
-            let child_node_ids = edges.get(&node.nodeid)
-                .cloned()
-                .unwrap_or_default();
+            let child_node_ids = edges.get(&node.nodeid).cloned().unwrap_or_default();
 
             let tile_data = tile.data.get(&node.nodeid).cloned();
 
-            let node_arc = nodes_by_alias.get(&alias)
+            let node_arc = nodes_by_alias
+                .get(&alias)
                 .map(Arc::clone)
                 .unwrap_or_else(|| Arc::new(node.clone()));
 
@@ -246,7 +241,8 @@ fn build_pseudo_cache_from_tiles(
 
             // Use shared cardinality logic
             let is_single = is_node_single_cardinality_with(node, |ng_id| {
-                graph.get_nodegroup_by_id(ng_id)
+                graph
+                    .get_nodegroup_by_id(ng_id)
                     .and_then(|ng| ng.cardinality.clone())
             });
 
@@ -261,11 +257,7 @@ fn build_pseudo_cache_from_tiles(
                     existing.merge(new_list);
                 })
                 .or_insert_with(|| {
-                    PseudoListCore::from_values_with_cardinality(
-                        alias.clone(),
-                        vec![pv],
-                        is_single,
-                    )
+                    PseudoListCore::from_values_with_cardinality(alias.clone(), vec![pv], is_single)
                 });
         }
 
@@ -301,11 +293,14 @@ fn build_pseudo_cache_from_tiles(
 
             // Find the grouping/semantic node for the parent nodegroup
             // This is the node that acts as the semantic collector
-            let grouping_node_id = parent_nodegroup.grouping_node_id.as_ref()
+            let grouping_node_id = parent_nodegroup
+                .grouping_node_id
+                .as_ref()
                 .unwrap_or(&parent_ng_id); // Fallback to nodegroup_id if not set
 
             // Find the semantic collector node
-            let semantic_node = graph.nodes_slice()
+            let semantic_node = graph
+                .nodes_slice()
                 .iter()
                 .find(|n| n.nodeid == *grouping_node_id);
 
@@ -313,11 +308,13 @@ fn build_pseudo_cache_from_tiles(
                 if let Some(ref alias) = semantic_node.alias {
                     if !alias.is_empty() && !pseudo_cache.contains_key(alias) {
                         // Create a synthetic pseudo value for this semantic collector
-                        let child_node_ids = edges.get(&semantic_node.nodeid)
+                        let child_node_ids = edges
+                            .get(&semantic_node.nodeid)
                             .cloned()
                             .unwrap_or_default();
 
-                        let node_arc = nodes_by_alias.get(alias)
+                        let node_arc = nodes_by_alias
+                            .get(alias)
                             .map(Arc::clone)
                             .unwrap_or_else(|| Arc::new(semantic_node.clone()));
 
@@ -329,7 +326,9 @@ fn build_pseudo_cache_from_tiles(
                             child_node_ids,
                         );
 
-                        let is_single = parent_nodegroup.cardinality.as_ref()
+                        let is_single = parent_nodegroup
+                            .cardinality
+                            .as_ref()
                             .map(|c| c != "n")
                             .unwrap_or(true);
 
@@ -339,7 +338,7 @@ fn build_pseudo_cache_from_tiles(
                                 alias.clone(),
                                 vec![pv],
                                 is_single,
-                            )
+                            ),
                         );
                     }
                 }
@@ -410,42 +409,56 @@ fn single_tree_to_resource(
     strict: bool,
     id_key: Option<&str>,
 ) -> Result<StaticResource, String> {
-    let obj = json.as_object()
+    let obj = json
+        .as_object()
         .ok_or_else(|| "JSON must be an object".to_string())?;
 
     // Extract metadata from tree
     // Priority: explicit resourceinstanceid > id_key (UUID v5) > random UUID v4
-    let resource_id = obj.get("resourceinstanceid")
+    let resource_id = obj
+        .get("resourceinstanceid")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .or_else(|| {
             // If id_key provided, generate deterministic UUID v5
-            id_key.map(|key| {
-                generate_uuid_v5(("resource", Some(&graph.graphid)), key)
-            })
+            id_key.map(|key| generate_uuid_v5(("resource", Some(&graph.graphid)), key))
         })
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
-    let graph_id = obj.get("graph_id")
+    let graph_id = obj
+        .get("graph_id")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .unwrap_or_else(|| graph.graphid.clone());
 
-    let legacyid = obj.get("legacyid")
+    let legacyid = obj
+        .get("legacyid")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let nodes_by_alias = graph.nodes_by_alias_arc()
+    let nodes_by_alias = graph
+        .nodes_by_alias_arc()
         .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
-    let edges = graph.edges_map()
+    let edges = graph
+        .edges_map()
         .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
 
     // Strict mode validation
-    let known_metadata = ["resourceinstanceid", "graph_id", "legacyid", "_name", "_description", "_map_popup"];
+    let known_metadata = [
+        "resourceinstanceid",
+        "graph_id",
+        "legacyid",
+        "_name",
+        "_description",
+        "_map_popup",
+    ];
     if strict {
         for key in obj.keys() {
             if !known_metadata.contains(&key.as_str()) && !nodes_by_alias.contains_key(key) {
-                return Err(format!("Unknown field '{}' not found in graph aliases", key));
+                return Err(format!(
+                    "Unknown field '{}' not found in graph aliases",
+                    key
+                ));
             }
         }
     }
@@ -482,8 +495,7 @@ fn single_tree_to_resource(
 
     if let Some(child_ids) = edges.get(&root.nodeid) {
         for child_id in child_ids {
-            let child_node = nodes_by_alias.values()
-                .find(|n| n.nodeid == *child_id);
+            let child_node = nodes_by_alias.values().find(|n| n.nodeid == *child_id);
 
             if let Some(child_node) = child_node {
                 if let Some(alias) = &child_node.alias {
@@ -497,7 +509,8 @@ fn single_tree_to_resource(
         }
     }
 
-    let tiles: Vec<StaticTile> = tiles_map.values()
+    let tiles: Vec<StaticTile> = tiles_map
+        .values()
         .map(|builder| builder.to_static_tile())
         .collect();
 
@@ -506,7 +519,9 @@ fn single_tree_to_resource(
     let descriptors = indexed.build_descriptors(&tiles);
 
     // Use name from descriptors, or fallback to resourceinstanceid
-    let name = descriptors.name.clone()
+    let name = descriptors
+        .name
+        .clone()
         .unwrap_or_else(|| resource_id.clone());
 
     Ok(StaticResource {
@@ -543,13 +558,10 @@ fn build_pseudo_values_from_json(
     pseudo_cache: &mut HashMap<String, PseudoListCore>,
     strict: bool,
 ) -> Result<(), String> {
-    let child_ids = edges.get(&current_node.nodeid)
-        .cloned()
-        .unwrap_or_default();
+    let child_ids = edges.get(&current_node.nodeid).cloned().unwrap_or_default();
 
     for child_id in child_ids {
-        let child_node = nodes_by_alias.values()
-            .find(|n| n.nodeid == child_id);
+        let child_node = nodes_by_alias.values().find(|n| n.nodeid == child_id);
 
         let child_node = match child_node {
             Some(n) => Arc::clone(n),
@@ -566,12 +578,15 @@ fn build_pseudo_values_from_json(
             None => continue,
         };
 
-        let nodegroup_id = child_node.nodegroup_id.as_ref()
+        let nodegroup_id = child_node
+            .nodegroup_id
+            .as_ref()
             .ok_or_else(|| format!("Node {} has no nodegroup_id", child_id))?;
 
         // Use shared cardinality logic
         let is_single = is_node_single_cardinality_with(&child_node, |ng_id| {
-            graph.get_nodegroup_by_id(ng_id)
+            graph
+                .get_nodegroup_by_id(ng_id)
                 .and_then(|ng| ng.cardinality.clone())
         });
 
@@ -579,17 +594,18 @@ fn build_pseudo_values_from_json(
             None
         } else {
             Some(serde_json::Value::Object(
-                child_node.config.iter()
+                child_node
+                    .config
+                    .iter()
                     .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect()
+                    .collect(),
             ))
         };
 
-        let child_child_ids = edges.get(&child_node.nodeid)
-            .cloned()
-            .unwrap_or_default();
+        let child_child_ids = edges.get(&child_node.nodeid).cloned().unwrap_or_default();
 
-        let shares_nodegroup = parent_tile.as_ref()
+        let shares_nodegroup = parent_tile
+            .as_ref()
             .map(|pt| pt.nodegroup_id == *nodegroup_id)
             .unwrap_or(false);
 
@@ -609,7 +625,8 @@ fn build_pseudo_values_from_json(
         let is_outer_node = has_graph_children && child_node.datatype != "semantic";
 
         let valid_child_aliases: std::collections::HashSet<&str> = if strict && has_graph_children {
-            let mut aliases: std::collections::HashSet<&str> = child_child_ids.iter()
+            let mut aliases: std::collections::HashSet<&str> = child_child_ids
+                .iter()
                 .filter_map(|id| nodes_by_alias.values().find(|n| n.nodeid == *id))
                 .filter_map(|n| n.alias.as_deref())
                 .collect();
@@ -654,7 +671,11 @@ fn build_pseudo_values_from_json(
                             nodegroup_id,
                             &config_value,
                             resource_id,
-                            if shares_nodegroup { parent_tile.clone() } else { None },
+                            if shares_nodegroup {
+                                parent_tile.clone()
+                            } else {
+                                None
+                            },
                             parent_tile_id,
                             sortorder,
                         );
@@ -681,7 +702,11 @@ fn build_pseudo_values_from_json(
                         nodegroup_id,
                         &config_value,
                         resource_id,
-                        if shares_nodegroup { parent_tile.clone() } else { None },
+                        if shares_nodegroup {
+                            parent_tile.clone()
+                        } else {
+                            None
+                        },
                         parent_tile_id,
                         sortorder,
                         strict,
@@ -712,7 +737,11 @@ fn build_pseudo_values_from_json(
                 nodegroup_id,
                 &config_value,
                 resource_id,
-                if shares_nodegroup { parent_tile.clone() } else { None },
+                if shares_nodegroup {
+                    parent_tile.clone()
+                } else {
+                    None
+                },
                 parent_tile_id,
                 Some(0),
             );
@@ -739,7 +768,11 @@ fn build_pseudo_values_from_json(
                 nodegroup_id,
                 &config_value,
                 resource_id,
-                if shares_nodegroup { parent_tile.clone() } else { None },
+                if shares_nodegroup {
+                    parent_tile.clone()
+                } else {
+                    None
+                },
                 parent_tile_id,
                 Some(0),
                 strict,
@@ -754,7 +787,8 @@ fn build_pseudo_values_from_json(
                 is_single,
             );
 
-            pseudo_cache.entry(child_alias)
+            pseudo_cache
+                .entry(child_alias)
                 .and_modify(|existing| existing.merge(list.clone()))
                 .or_insert(list);
         }
@@ -788,14 +822,17 @@ fn create_pseudo_value_from_json(
     });
 
     // "_" key holds the outer node's own value (for nodes with both value and semantic children)
-    let tile_data = json_obj.get("_").map(|value| {
-        let coerced = coerce_value(&node.datatype, value, config.as_ref());
-        if !coerced.is_null() && coerced.error.is_none() {
-            coerced.tile_data
-        } else {
-            Value::Null
-        }
-    }).filter(|v| !v.is_null());
+    let tile_data = json_obj
+        .get("_")
+        .map(|value| {
+            let coerced = coerce_value(&node.datatype, value, config.as_ref());
+            if !coerced.is_null() && coerced.error.is_none() {
+                coerced.tile_data
+            } else {
+                Value::Null
+            }
+        })
+        .filter(|v| !v.is_null());
 
     let pv = PseudoValueCore::from_node_and_tile(
         Arc::clone(node),
@@ -876,19 +913,20 @@ mod tests {
     fn load_group_graph() -> StaticGraph {
         // Use workspace root for test data
         let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent().unwrap()
-            .parent().unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
             .to_path_buf();
         let test_file = workspace_root.join("tests/data/models/Group.json");
-        let json_str = fs::read_to_string(&test_file)
-            .expect("Failed to read Group.json");
-        let json: serde_json::Value = serde_json::from_str(&json_str)
-            .expect("Failed to parse Group.json");
+        let json_str = fs::read_to_string(&test_file).expect("Failed to read Group.json");
+        let json: serde_json::Value =
+            serde_json::from_str(&json_str).expect("Failed to parse Group.json");
 
         let graph_data = json["graph"][0].clone();
 
-        let mut core_graph: StaticGraph = serde_json::from_value(graph_data)
-            .expect("Failed to deserialize StaticGraph");
+        let mut core_graph: StaticGraph =
+            serde_json::from_value(graph_data).expect("Failed to deserialize StaticGraph");
         core_graph.build_indices();
 
         core_graph
@@ -897,13 +935,14 @@ mod tests {
     fn create_test_business_data(graph: &StaticGraph) -> BusinessDataWrapper {
         let mut tiles = Vec::new();
 
-        let basic_info_ng = graph.nodegroups_slice()
+        let basic_info_ng = graph
+            .nodegroups_slice()
             .iter()
             .find(|ng| {
-                graph.nodes_slice()
-                    .iter()
-                    .any(|n| n.alias.as_deref() == Some("basic_info")
-                          && n.nodegroup_id.as_ref() == Some(&ng.nodegroupid))
+                graph.nodes_slice().iter().any(|n| {
+                    n.alias.as_deref() == Some("basic_info")
+                        && n.nodegroup_id.as_ref() == Some(&ng.nodegroupid)
+                })
             })
             .expect("Could not find basic_info nodegroup");
 
@@ -911,21 +950,25 @@ mod tests {
         tile.resourceinstance_id = "test-resource-123".to_string();
         tile.tileid = Some("test-tile-1".to_string());
 
-        if let Some(name_node) = graph.nodes_slice()
+        if let Some(name_node) = graph
+            .nodes_slice()
             .iter()
-            .find(|n| n.alias.as_deref() == Some("name")) {
+            .find(|n| n.alias.as_deref() == Some("name"))
+        {
             tile.data.insert(
                 name_node.nodeid.clone(),
-                serde_json::json!({"en": "Test Group", "ga": "Grúpa Tástála"})
+                serde_json::json!({"en": "Test Group", "ga": "Grúpa Tástála"}),
             );
         }
 
-        if let Some(desc_node) = graph.nodes_slice()
+        if let Some(desc_node) = graph
+            .nodes_slice()
             .iter()
-            .find(|n| n.alias.as_deref() == Some("description")) {
+            .find(|n| n.alias.as_deref() == Some("description"))
+        {
             tile.data.insert(
                 desc_node.nodeid.clone(),
-                serde_json::json!("A test group for unit testing")
+                serde_json::json!("A test group for unit testing"),
             );
         }
 
@@ -934,7 +977,10 @@ mod tests {
         // Calculate descriptors
         let indexed = IndexedGraph::new(graph.clone());
         let descriptors = indexed.build_descriptors(&tiles);
-        let name = descriptors.name.clone().unwrap_or_else(|| "test-resource-123".to_string());
+        let name = descriptors
+            .name
+            .clone()
+            .unwrap_or_else(|| "test-resource-123".to_string());
 
         BusinessDataWrapper {
             business_data: BusinessData {
@@ -967,8 +1013,7 @@ mod tests {
         let business_data = create_test_business_data(&graph);
 
         let input = serde_json::to_value(&business_data).unwrap();
-        let tree = tiles_to_tree(&input, &graph)
-            .expect("tiles_to_tree failed");
+        let tree = tiles_to_tree(&input, &graph).expect("tiles_to_tree failed");
 
         assert!(tree.is_array(), "Result should be an array");
 
@@ -977,8 +1022,14 @@ mod tests {
 
         let resource_tree = &resources[0];
         // Tree format has resourceinstanceid and graph_id at root level (not nested in resourceinstance)
-        assert!(resource_tree.get("resourceinstanceid").is_some(), "Should include resourceinstanceid");
-        assert!(resource_tree.get("graph_id").is_some(), "Should include graph_id");
+        assert!(
+            resource_tree.get("resourceinstanceid").is_some(),
+            "Should include resourceinstanceid"
+        );
+        assert!(
+            resource_tree.get("graph_id").is_some(),
+            "Should include graph_id"
+        );
     }
 
     #[test]
@@ -998,14 +1049,23 @@ mod tests {
             }]
         }]);
 
-        let result = tree_to_tiles(&trees, &graph, true, None)
-            .expect("tree_to_tiles failed");
+        let result = tree_to_tiles(&trees, &graph, true, None).expect("tree_to_tiles failed");
 
         assert_eq!(result.business_data.resources.len(), 1);
         let resource = &result.business_data.resources[0];
-        assert_eq!(resource.resourceinstance.resourceinstanceid, "test-resource-456");
+        assert_eq!(
+            resource.resourceinstance.resourceinstanceid,
+            "test-resource-456"
+        );
         assert_eq!(resource.resourceinstance.graph_id, graph.graphid);
-        assert!(resource.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false), "Should have created tiles");
+        assert!(
+            resource
+                .tiles
+                .as_ref()
+                .map(|t| !t.is_empty())
+                .unwrap_or(false),
+            "Should have created tiles"
+        );
     }
 
     #[test]
@@ -1025,12 +1085,14 @@ mod tests {
             }]
         });
 
-        let result = tree_to_tiles(&tree, &graph, true, None)
-            .expect("tree_to_tiles failed");
+        let result = tree_to_tiles(&tree, &graph, true, None).expect("tree_to_tiles failed");
 
         assert_eq!(result.business_data.resources.len(), 1);
         let resource = &result.business_data.resources[0];
-        assert_eq!(resource.resourceinstance.resourceinstanceid, "test-resource-789");
+        assert_eq!(
+            resource.resourceinstance.resourceinstanceid,
+            "test-resource-789"
+        );
     }
 
     #[test]
@@ -1051,13 +1113,12 @@ mod tests {
         }]);
 
         // Convert to tiles (business_data format)
-        let tiles_result = tree_to_tiles(&initial_trees, &graph, true, None)
-            .expect("tree_to_tiles failed");
+        let tiles_result =
+            tree_to_tiles(&initial_trees, &graph, true, None).expect("tree_to_tiles failed");
 
         // Convert back to tree array
         let tiles_json = serde_json::to_value(&tiles_result).unwrap();
-        let tree_result = tiles_to_tree(&tiles_json, &graph)
-            .expect("tiles_to_tree failed");
+        let tree_result = tiles_to_tree(&tiles_json, &graph).expect("tiles_to_tree failed");
 
         // Verify structure
         assert!(tree_result.is_array());
@@ -1078,8 +1139,7 @@ mod tests {
             }]
         });
 
-        let result = tree_to_tiles(&tree, &graph, true, None)
-            .expect("tree_to_tiles failed");
+        let result = tree_to_tiles(&tree, &graph, true, None).expect("tree_to_tiles failed");
 
         // Extract first resource
         let resource = &result.business_data.resources[0];
@@ -1092,10 +1152,16 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
 
         // Check that resourceinstance is nested (not flattened)
-        assert!(parsed.get("resourceinstance").is_some(),
-            "Expected nested 'resourceinstance', got: {}", json);
-        assert!(parsed.get("resourceinstanceid").is_none(),
-            "Should NOT have 'resourceinstanceid' at root level, got: {}", json);
+        assert!(
+            parsed.get("resourceinstance").is_some(),
+            "Expected nested 'resourceinstance', got: {}",
+            json
+        );
+        assert!(
+            parsed.get("resourceinstanceid").is_none(),
+            "Should NOT have 'resourceinstanceid' at root level, got: {}",
+            json
+        );
     }
 
     /// Test that parent semantic collectors appear in output even when
@@ -1169,8 +1235,8 @@ mod tests {
             ]
         });
 
-        let mut graph: StaticGraph = serde_json::from_value(graph_json)
-            .expect("Failed to deserialize graph");
+        let mut graph: StaticGraph =
+            serde_json::from_value(graph_json).expect("Failed to deserialize graph");
         graph.build_indices();
 
         // Create a tile ONLY for the child nodegroup (child-ng), not for parent-ng
@@ -1185,7 +1251,7 @@ mod tests {
                     "type": "Point",
                     "coordinates": [151.84, -26.54]
                 }
-            })
+            }),
         );
 
         let business_data = serde_json::json!({
@@ -1204,7 +1270,13 @@ mod tests {
 
         // Debug: check what nodes are in the child nodegroup
         let nodes_in_child_ng = graph.get_nodes_in_nodegroup("child-ng");
-        println!("Nodes in child-ng: {:?}", nodes_in_child_ng.iter().map(|n| &n.alias).collect::<Vec<_>>());
+        println!(
+            "Nodes in child-ng: {:?}",
+            nodes_in_child_ng
+                .iter()
+                .map(|n| &n.alias)
+                .collect::<Vec<_>>()
+        );
 
         // Debug: check edges
         let edges = graph.edges_map().unwrap();
@@ -1212,12 +1284,17 @@ mod tests {
 
         // Debug: check nodes_by_alias
         let nodes_by_alias = graph.nodes_by_alias_arc().unwrap();
-        println!("Nodes by alias: {:?}", nodes_by_alias.keys().collect::<Vec<_>>());
+        println!(
+            "Nodes by alias: {:?}",
+            nodes_by_alias.keys().collect::<Vec<_>>()
+        );
 
-        let tree = tiles_to_tree(&business_data, &graph)
-            .expect("tiles_to_tree failed");
+        let tree = tiles_to_tree(&business_data, &graph).expect("tiles_to_tree failed");
 
-        println!("Tree output:\n{}", serde_json::to_string_pretty(&tree).unwrap());
+        println!(
+            "Tree output:\n{}",
+            serde_json::to_string_pretty(&tree).unwrap()
+        );
 
         let resources = tree.as_array().expect("Should be array");
         assert_eq!(resources.len(), 1);
@@ -1258,22 +1335,35 @@ mod tests {
         let result2 = tree_to_tiles(&tree, &graph, false, Some("my-unique-key"))
             .expect("Second conversion failed");
 
-        let id1 = &result1.business_data.resources[0].resourceinstance.resourceinstanceid;
-        let id2 = &result2.business_data.resources[0].resourceinstance.resourceinstanceid;
+        let id1 = &result1.business_data.resources[0]
+            .resourceinstance
+            .resourceinstanceid;
+        let id2 = &result2.business_data.resources[0]
+            .resourceinstance
+            .resourceinstanceid;
 
-        assert_eq!(id1, id2, "Same id_key should produce same resourceinstanceid");
+        assert_eq!(
+            id1, id2,
+            "Same id_key should produce same resourceinstanceid"
+        );
 
         // Different id_key should produce different resourceinstanceid
         let result3 = tree_to_tiles(&tree, &graph, false, Some("different-key"))
             .expect("Third conversion failed");
-        let id3 = &result3.business_data.resources[0].resourceinstance.resourceinstanceid;
+        let id3 = &result3.business_data.resources[0]
+            .resourceinstance
+            .resourceinstanceid;
 
-        assert_ne!(id1, id3, "Different id_key should produce different resourceinstanceid");
+        assert_ne!(
+            id1, id3,
+            "Different id_key should produce different resourceinstanceid"
+        );
 
         // No id_key should produce random UUID (different each time is probabilistic)
-        let result4 = tree_to_tiles(&tree, &graph, false, None)
-            .expect("Fourth conversion failed");
-        let id4 = &result4.business_data.resources[0].resourceinstance.resourceinstanceid;
+        let result4 = tree_to_tiles(&tree, &graph, false, None).expect("Fourth conversion failed");
+        let id4 = &result4.business_data.resources[0]
+            .resourceinstance
+            .resourceinstanceid;
 
         // Just verify it's a valid UUID format
         assert!(uuid::Uuid::parse_str(id4).is_ok(), "Should be valid UUID");
@@ -1293,11 +1383,16 @@ mod tests {
         });
 
         // id_key should be ignored when resourceinstanceid is present
-        let result = tree_to_tiles(&tree, &graph, false, Some("ignored-key"))
-            .expect("Conversion failed");
-        let id = &result.business_data.resources[0].resourceinstance.resourceinstanceid;
+        let result =
+            tree_to_tiles(&tree, &graph, false, Some("ignored-key")).expect("Conversion failed");
+        let id = &result.business_data.resources[0]
+            .resourceinstance
+            .resourceinstanceid;
 
-        assert_eq!(id, "explicit-id-123", "Explicit resourceinstanceid should take precedence");
+        assert_eq!(
+            id, "explicit-id-123",
+            "Explicit resourceinstanceid should take precedence"
+        );
     }
 
     /// Test that nested semantic nodes with data children work correctly.
@@ -1366,8 +1461,8 @@ mod tests {
             ]
         });
 
-        let mut graph: StaticGraph = serde_json::from_value(graph_json)
-            .expect("Failed to deserialize graph");
+        let mut graph: StaticGraph =
+            serde_json::from_value(graph_json).expect("Failed to deserialize graph");
         graph.build_indices();
 
         // Test input matching Heritage Item structure
@@ -1379,10 +1474,12 @@ mod tests {
             }
         });
 
-        println!("Input tree:\n{}", serde_json::to_string_pretty(&tree).unwrap());
+        println!(
+            "Input tree:\n{}",
+            serde_json::to_string_pretty(&tree).unwrap()
+        );
 
-        let result = tree_to_tiles(&tree, &graph, true, None)
-            .expect("tree_to_tiles failed");
+        let result = tree_to_tiles(&tree, &graph, true, None).expect("tree_to_tiles failed");
 
         let resource = &result.business_data.resources[0];
         let tiles = resource.tiles.as_ref().expect("Should have tiles");
@@ -1390,11 +1487,15 @@ mod tests {
         println!("Output tiles:");
         for tile in tiles {
             println!("  Tile nodegroup_id: {}", tile.nodegroup_id);
-            println!("  Tile data: {}", serde_json::to_string_pretty(&tile.data).unwrap());
+            println!(
+                "  Tile data: {}",
+                serde_json::to_string_pretty(&tile.data).unwrap()
+            );
         }
 
         // Find the tile for sys-ref-ng
-        let sys_ref_tile = tiles.iter()
+        let sys_ref_tile = tiles
+            .iter()
             .find(|t| t.nodegroup_id == "sys-ref-ng")
             .expect("Should have sys-ref-ng tile");
 
@@ -1479,8 +1580,8 @@ mod tests {
             ]
         });
 
-        let mut graph: StaticGraph = serde_json::from_value(graph_json)
-            .expect("Failed to deserialize graph");
+        let mut graph: StaticGraph =
+            serde_json::from_value(graph_json).expect("Failed to deserialize graph");
         graph.build_indices();
 
         // Test with array wrapper (how it would come from notebook with cardinality "n")
@@ -1492,10 +1593,12 @@ mod tests {
             }]
         });
 
-        println!("Input tree (array wrapper):\n{}", serde_json::to_string_pretty(&tree).unwrap());
+        println!(
+            "Input tree (array wrapper):\n{}",
+            serde_json::to_string_pretty(&tree).unwrap()
+        );
 
-        let result = tree_to_tiles(&tree, &graph, true, None)
-            .expect("tree_to_tiles failed");
+        let result = tree_to_tiles(&tree, &graph, true, None).expect("tree_to_tiles failed");
 
         let resource = &result.business_data.resources[0];
         let tiles = resource.tiles.as_ref().expect("Should have tiles");
@@ -1503,11 +1606,15 @@ mod tests {
         println!("Output tiles (array wrapper):");
         for tile in tiles {
             println!("  Tile nodegroup_id: {}", tile.nodegroup_id);
-            println!("  Tile data: {}", serde_json::to_string_pretty(&tile.data).unwrap());
+            println!(
+                "  Tile data: {}",
+                serde_json::to_string_pretty(&tile.data).unwrap()
+            );
         }
 
         // Find the tile for sys-ref-ng
-        let sys_ref_tile = tiles.iter()
+        let sys_ref_tile = tiles
+            .iter()
             .find(|t| t.nodegroup_id == "sys-ref-ng")
             .expect("Should have sys-ref-ng tile");
 
@@ -1528,18 +1635,21 @@ mod tests {
         let json_str = match fs::read_to_string(&heritage_item_path) {
             Ok(s) => s,
             Err(_) => {
-                println!("Heritage Item.json not found at {:?}, skipping test", heritage_item_path);
+                println!(
+                    "Heritage Item.json not found at {:?}, skipping test",
+                    heritage_item_path
+                );
                 return;
             }
         };
 
-        let json: serde_json::Value = serde_json::from_str(&json_str)
-            .expect("Failed to parse Heritage Item.json");
+        let json: serde_json::Value =
+            serde_json::from_str(&json_str).expect("Failed to parse Heritage Item.json");
 
         let graph_data = json["graph"][0].clone();
 
-        let mut graph: StaticGraph = serde_json::from_value(graph_data)
-            .expect("Failed to deserialize StaticGraph");
+        let mut graph: StaticGraph =
+            serde_json::from_value(graph_data).expect("Failed to deserialize StaticGraph");
         graph.build_indices();
 
         // Test input matching what the notebook would send - using INTEGER like the real case
@@ -1551,14 +1661,23 @@ mod tests {
             }
         });
 
-        println!("Input tree:\n{}", serde_json::to_string_pretty(&tree).unwrap());
+        println!(
+            "Input tree:\n{}",
+            serde_json::to_string_pretty(&tree).unwrap()
+        );
         println!("Graph ID: {}", graph.graphid);
 
         // Debug: print the relevant node aliases
         let nodes_by_alias = graph.nodes_by_alias_arc().unwrap();
-        println!("system_reference_numbers node exists: {}", nodes_by_alias.contains_key("system_reference_numbers"));
+        println!(
+            "system_reference_numbers node exists: {}",
+            nodes_by_alias.contains_key("system_reference_numbers")
+        );
         println!("uuid node exists: {}", nodes_by_alias.contains_key("uuid"));
-        println!("resourceid node exists: {}", nodes_by_alias.contains_key("resourceid"));
+        println!(
+            "resourceid node exists: {}",
+            nodes_by_alias.contains_key("resourceid")
+        );
 
         if let Some(uuid_node) = nodes_by_alias.get("uuid") {
             println!("uuid node datatype: {}", uuid_node.datatype);
@@ -1567,20 +1686,25 @@ mod tests {
 
         if let Some(resourceid_node) = nodes_by_alias.get("resourceid") {
             println!("resourceid node datatype: {}", resourceid_node.datatype);
-            println!("resourceid node nodegroup_id: {:?}", resourceid_node.nodegroup_id);
+            println!(
+                "resourceid node nodegroup_id: {:?}",
+                resourceid_node.nodegroup_id
+            );
         }
 
         // Check edges
         let edges = graph.edges_map().unwrap();
         if let Some(sys_ref_node) = nodes_by_alias.get("system_reference_numbers") {
-            println!("system_reference_numbers -> children: {:?}", edges.get(&sys_ref_node.nodeid));
+            println!(
+                "system_reference_numbers -> children: {:?}",
+                edges.get(&sys_ref_node.nodeid)
+            );
         }
         if let Some(uuid_node) = nodes_by_alias.get("uuid") {
             println!("uuid -> children: {:?}", edges.get(&uuid_node.nodeid));
         }
 
-        let result = tree_to_tiles(&tree, &graph, true, None)
-            .expect("tree_to_tiles failed");
+        let result = tree_to_tiles(&tree, &graph, true, None).expect("tree_to_tiles failed");
 
         let resource = &result.business_data.resources[0];
         let tiles = resource.tiles.as_ref().expect("Should have tiles");
@@ -1588,13 +1712,15 @@ mod tests {
         println!("\nOutput tiles:");
         for tile in tiles {
             println!("  Tile nodegroup_id: {}", tile.nodegroup_id);
-            println!("  Tile data: {}", serde_json::to_string_pretty(&tile.data).unwrap());
+            println!(
+                "  Tile data: {}",
+                serde_json::to_string_pretty(&tile.data).unwrap()
+            );
         }
 
         // Find the tile for System Reference Numbers nodegroup
         let sys_ref_ng = "325a2f2f-efe4-11eb-9b0c-a87eeabdefba";
-        let sys_ref_tile = tiles.iter()
-            .find(|t| t.nodegroup_id == sys_ref_ng);
+        let sys_ref_tile = tiles.iter().find(|t| t.nodegroup_id == sys_ref_ng);
 
         assert!(
             sys_ref_tile.is_some(),
@@ -1684,8 +1810,8 @@ mod tests {
             ]
         });
 
-        let mut graph: StaticGraph = serde_json::from_value(graph_json)
-            .expect("Failed to deserialize graph");
+        let mut graph: StaticGraph =
+            serde_json::from_value(graph_json).expect("Failed to deserialize graph");
         graph.build_indices();
 
         // Input tree with nested structure
@@ -1706,23 +1832,26 @@ mod tests {
             }
         });
 
-        let result = tree_to_tiles(&tree, &graph, true, None)
-            .expect("tree_to_tiles failed");
+        let result = tree_to_tiles(&tree, &graph, true, None).expect("tree_to_tiles failed");
 
         let resource = &result.business_data.resources[0];
         let tiles = resource.tiles.as_ref().expect("Should have tiles");
 
         println!("Generated tiles:");
         for tile in tiles {
-            println!("  nodegroup: {}, tileid: {:?}, parenttile_id: {:?}",
-                tile.nodegroup_id, tile.tileid, tile.parenttile_id);
+            println!(
+                "  nodegroup: {}, tileid: {:?}, parenttile_id: {:?}",
+                tile.nodegroup_id, tile.tileid, tile.parenttile_id
+            );
         }
 
         // Find parent and child tiles
-        let parent_tile = tiles.iter()
+        let parent_tile = tiles
+            .iter()
             .find(|t| t.nodegroup_id == "parent-ng")
             .expect("Should have parent-ng tile");
-        let child_tile = tiles.iter()
+        let child_tile = tiles
+            .iter()
             .find(|t| t.nodegroup_id == "child-ng")
             .expect("Should have child-ng tile");
 
@@ -1739,7 +1868,8 @@ mod tests {
             parent_tile.tileid.as_ref(),
             "Child tile's parenttile_id should match parent tile's tileid. \
              Child parenttile_id: {:?}, Parent tileid: {:?}",
-            child_tile.parenttile_id, parent_tile.tileid
+            child_tile.parenttile_id,
+            parent_tile.tileid
         );
     }
 }

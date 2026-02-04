@@ -36,7 +36,10 @@ use darling::{FromDeriveInput, FromMeta};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, DeriveInput, Path, parse::Parse, parse::ParseStream, Token, Ident, Visibility};
+use syn::{
+    parse::Parse, parse::ParseStream, parse_macro_input, DeriveInput, Ident, Path, Token,
+    Visibility,
+};
 
 /// Configuration for a single field getter/setter
 #[derive(Debug, Clone, FromMeta)]
@@ -282,11 +285,15 @@ fn generate_setter(_name: &syn::Ident, field_name: &str) -> TokenStream2 {
 fn generate_accessors(args: &WasmWrapperArgs) -> TokenStream2 {
     let name = &args.ident;
 
-    let getters: Vec<_> = args.getter.iter()
+    let getters: Vec<_> = args
+        .getter
+        .iter()
         .map(|field| generate_getter(name, field))
         .collect();
 
-    let setters: Vec<_> = args.setter.iter()
+    let setters: Vec<_> = args
+        .setter
+        .iter()
         .map(|field| generate_setter(name, field))
         .collect();
 
@@ -476,8 +483,15 @@ impl Parse for WasmWrapInput {
 #[proc_macro]
 pub fn wasm_wrapper(input: TokenStream) -> TokenStream {
     let WasmWrapInput {
-        vis, name, core_type, getters, setters,
-        no_constructor, no_to_json, no_copy, impl_default
+        vis,
+        name,
+        core_type,
+        getters,
+        setters,
+        no_constructor,
+        no_to_json,
+        no_copy,
+        impl_default,
     } = parse_macro_input!(input as WasmWrapInput);
 
     // Generate getters
@@ -493,18 +507,21 @@ pub fn wasm_wrapper(input: TokenStream) -> TokenStream {
     }).collect();
 
     // Generate setters
-    let setter_impls: Vec<_> = setters.iter().map(|field| {
-        let setter_name = format_ident!("set_{}", field);
-        let js_name = field.to_string();
-        quote! {
-            #[wasm_bindgen(setter = #js_name)]
-            pub fn #setter_name(&mut self, value: ::wasm_bindgen::JsValue) {
-                if let Ok(v) = ::serde_wasm_bindgen::from_value(value) {
-                    self.0.#field = v;
+    let setter_impls: Vec<_> = setters
+        .iter()
+        .map(|field| {
+            let setter_name = format_ident!("set_{}", field);
+            let js_name = field.to_string();
+            quote! {
+                #[wasm_bindgen(setter = #js_name)]
+                pub fn #setter_name(&mut self, value: ::wasm_bindgen::JsValue) {
+                    if let Ok(v) = ::serde_wasm_bindgen::from_value(value) {
+                        self.0.#field = v;
+                    }
                 }
             }
-        }
-    }).collect();
+        })
+        .collect();
 
     let accessors_impl = if getter_impls.is_empty() && setter_impls.is_empty() {
         quote! {}

@@ -1,8 +1,8 @@
 //! RDM-dependent type coercion: ConceptValue, ConceptList.
 
-use serde_json::Value;
+use super::helpers::{is_valid_uuid, value_type_name};
 use super::result::CoercionResult;
-use super::helpers::{value_type_name, is_valid_uuid};
+use serde_json::Value;
 
 /// Coerce a value to a concept value.
 ///
@@ -16,9 +16,7 @@ use super::helpers::{value_type_name, is_valid_uuid};
 pub fn coerce_concept_value(value: &Value, _config: Option<&Value>) -> CoercionResult {
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
-        Value::String(s) if s.is_empty() => {
-            CoercionResult::success_same(Value::Null)
-        }
+        Value::String(s) if s.is_empty() => CoercionResult::success_same(Value::Null),
         Value::String(uuid) => {
             // Validate UUID format
             if !is_valid_uuid(uuid) {
@@ -43,7 +41,7 @@ pub fn coerce_concept_value(value: &Value, _config: Option<&Value>) -> CoercionR
                     // The concept ID isn't what we store in tile data though...
                     // Actually, when you set a concept, you store the value ID, not concept ID
                     return CoercionResult::error(
-                        "Cannot coerce StaticConcept directly - use its value ID instead"
+                        "Cannot coerce StaticConcept directly - use its value ID instead",
                     );
                 }
 
@@ -56,10 +54,7 @@ pub fn coerce_concept_value(value: &Value, _config: Option<&Value>) -> CoercionR
                 }
 
                 // tile_data is just the UUID, display_value is the whole object
-                CoercionResult::success(
-                    Value::String(id.to_string()),
-                    value.clone(),
-                )
+                CoercionResult::success(Value::String(id.to_string()), value.clone())
             } else {
                 CoercionResult::error("Concept value object must have 'id' field")
             }
@@ -80,9 +75,7 @@ pub fn coerce_concept_value(value: &Value, _config: Option<&Value>) -> CoercionR
 pub fn coerce_concept_list(value: &Value, config: Option<&Value>) -> CoercionResult {
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
-        Value::Array(arr) if arr.is_empty() => {
-            CoercionResult::success_same(Value::Array(vec![]))
-        }
+        Value::Array(arr) if arr.is_empty() => CoercionResult::success_same(Value::Array(vec![])),
         Value::Array(arr) => {
             let mut tile_data = Vec::new();
             let mut display_values = Vec::new();
@@ -105,10 +98,7 @@ pub fn coerce_concept_list(value: &Value, config: Option<&Value>) -> CoercionRes
                 ));
             }
 
-            CoercionResult::success(
-                Value::Array(tile_data),
-                Value::Array(display_values),
-            )
+            CoercionResult::success(Value::Array(tile_data), Value::Array(display_values))
         }
         _ => CoercionResult::error(format!(
             "Expected concept list (array), got {:?}",
@@ -127,18 +117,27 @@ mod tests {
     fn test_coerce_concept_value_uuid() {
         let result = coerce_concept_value(&json!("550e8400-e29b-41d4-a716-446655440000"), None);
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!("550e8400-e29b-41d4-a716-446655440000"));
+        assert_eq!(
+            result.tile_data,
+            json!("550e8400-e29b-41d4-a716-446655440000")
+        );
     }
 
     #[test]
     fn test_coerce_concept_value_static_value_object() {
-        let result = coerce_concept_value(&json!({
-            "id": "550e8400-e29b-41d4-a716-446655440000",
-            "value": "Some Label",
-            "__conceptId": "660e8400-e29b-41d4-a716-446655440000"
-        }), None);
+        let result = coerce_concept_value(
+            &json!({
+                "id": "550e8400-e29b-41d4-a716-446655440000",
+                "value": "Some Label",
+                "__conceptId": "660e8400-e29b-41d4-a716-446655440000"
+            }),
+            None,
+        );
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!("550e8400-e29b-41d4-a716-446655440000"));
+        assert_eq!(
+            result.tile_data,
+            json!("550e8400-e29b-41d4-a716-446655440000")
+        );
         assert_eq!(result.display_value["value"], json!("Some Label"));
     }
 
@@ -164,10 +163,13 @@ mod tests {
 
     #[test]
     fn test_coerce_concept_value_static_concept_rejected() {
-        let result = coerce_concept_value(&json!({
-            "id": "550e8400-e29b-41d4-a716-446655440000",
-            "prefLabels": {"en": {"id": "...", "value": "Label"}}
-        }), None);
+        let result = coerce_concept_value(
+            &json!({
+                "id": "550e8400-e29b-41d4-a716-446655440000",
+                "prefLabels": {"en": {"id": "...", "value": "Label"}}
+            }),
+            None,
+        );
         assert!(result.is_error());
     }
 
@@ -181,10 +183,13 @@ mod tests {
 
     #[test]
     fn test_coerce_concept_list_uuids() {
-        let result = coerce_concept_list(&json!([
-            "550e8400-e29b-41d4-a716-446655440000",
-            "550e8400-e29b-41d4-a716-446655440001"
-        ]), None);
+        let result = coerce_concept_list(
+            &json!([
+                "550e8400-e29b-41d4-a716-446655440000",
+                "550e8400-e29b-41d4-a716-446655440001"
+            ]),
+            None,
+        );
         assert!(!result.is_error());
         let arr = result.tile_data.as_array().unwrap();
         assert_eq!(arr.len(), 2);

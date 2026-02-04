@@ -26,15 +26,15 @@
 //! ```
 
 use std::cell::RefCell;
-use wasm_bindgen::prelude::*;
 use uuid::Uuid;
+use wasm_bindgen::prelude::*;
 
 use alizarin_core::rdm_namespace::{
-    parse_rdm_namespace as core_parse_namespace,
     generate_collection_uuid as core_generate_collection,
     generate_concept_uuid_from_str as core_generate_concept,
     generate_value_uuid as core_generate_value,
     labels_to_deterministic_string as core_labels_to_string,
+    parse_rdm_namespace as core_parse_namespace,
 };
 
 // =============================================================================
@@ -64,8 +64,7 @@ thread_local! {
 /// setRdmNamespace("550e8400-e29b-41d4-a716-446655440000");
 #[wasm_bindgen(js_name = setRdmNamespace)]
 pub fn set_rdm_namespace(namespace: &str) -> Result<(), JsError> {
-    let uuid = core_parse_namespace(namespace)
-        .map_err(|e| JsError::new(&e))?;
+    let uuid = core_parse_namespace(namespace).map_err(|e| JsError::new(&e))?;
 
     GLOBAL_RDM_NAMESPACE.with(|ns| {
         *ns.borrow_mut() = Some(uuid);
@@ -79,9 +78,7 @@ pub fn set_rdm_namespace(namespace: &str) -> Result<(), JsError> {
 /// @returns The namespace UUID as a string, or undefined if not set
 #[wasm_bindgen(js_name = getRdmNamespace)]
 pub fn get_rdm_namespace() -> Option<String> {
-    GLOBAL_RDM_NAMESPACE.with(|ns| {
-        ns.borrow().map(|u| u.to_string())
-    })
+    GLOBAL_RDM_NAMESPACE.with(|ns| ns.borrow().map(|u| u.to_string()))
 }
 
 /// Check if a global RDM namespace is set.
@@ -187,7 +184,7 @@ fn get_required_namespace() -> Result<Uuid, JsError> {
         ns.borrow().ok_or_else(|| {
             JsError::new(
                 "RDM namespace not set. Call setRdmNamespace() before creating \
-                 collections or concepts from labels without explicit IDs."
+                 collections or concepts from labels without explicit IDs.",
             )
         })
     })
@@ -258,20 +255,14 @@ mod tests {
     #[test]
     fn test_generate_concept_uuid() {
         // Concept UUID doesn't require global namespace
-        let uuid1 = generate_concept_uuid(
-            "550e8400-e29b-41d4-a716-446655440000",
-            "ConceptA"
-        ).unwrap();
-        let uuid2 = generate_concept_uuid(
-            "550e8400-e29b-41d4-a716-446655440000",
-            "ConceptA"
-        ).unwrap();
+        let uuid1 =
+            generate_concept_uuid("550e8400-e29b-41d4-a716-446655440000", "ConceptA").unwrap();
+        let uuid2 =
+            generate_concept_uuid("550e8400-e29b-41d4-a716-446655440000", "ConceptA").unwrap();
         assert_eq!(uuid1, uuid2);
 
-        let uuid3 = generate_concept_uuid(
-            "550e8400-e29b-41d4-a716-446655440000",
-            "ConceptB"
-        ).unwrap();
+        let uuid3 =
+            generate_concept_uuid("550e8400-e29b-41d4-a716-446655440000", "ConceptB").unwrap();
         assert_ne!(uuid1, uuid3);
     }
 

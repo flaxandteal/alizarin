@@ -216,7 +216,12 @@ pub fn widget_mappings() -> Vec<(String, String)> {
     WIDGET_MAPPING_REGISTRY
         .read()
         .ok()
-        .map(|registry| registry.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+        .map(|registry| {
+            registry
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -278,7 +283,8 @@ mod tests {
     use crate::StaticGraph;
 
     fn create_test_graph(graph_id: &str) -> StaticGraph {
-        let json = format!(r#"{{
+        let json = format!(
+            r#"{{
             "graphid": "{}",
             "name": {{"en": "Test Graph"}},
             "nodes": [{{
@@ -293,7 +299,9 @@ mod tests {
                 "datatype": "semantic",
                 "graph_id": "{}"
             }}
-        }}"#, graph_id, graph_id, graph_id);
+        }}"#,
+            graph_id, graph_id, graph_id
+        );
         StaticGraph::from_json_string(&json).expect("Failed to create test graph")
     }
 

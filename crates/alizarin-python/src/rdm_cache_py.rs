@@ -18,23 +18,21 @@ use std::sync::RwLock;
 use uuid::Uuid;
 
 // Core types from alizarin-core
+use alizarin_core::rdm_cache::{
+    RdmCache as CoreRdmCache, RdmCollection as CoreRdmCollection, RdmConcept as CoreRdmConcept,
+    RdmValue as CoreRdmValue,
+};
 use alizarin_core::rdm_namespace::{
-    parse_rdm_namespace as core_parse_namespace,
     generate_collection_uuid as core_generate_collection,
     generate_concept_uuid as core_generate_concept,
     labels_to_deterministic_string as core_labels_to_string,
-};
-use alizarin_core::rdm_cache::{
-    RdmCache as CoreRdmCache,
-    RdmCollection as CoreRdmCollection,
-    RdmConcept as CoreRdmConcept,
-    RdmValue as CoreRdmValue,
+    parse_rdm_namespace as core_parse_namespace,
 };
 
 // SKOS parser and serializer from core crate
 use alizarin_core::skos::{
-    parse_skos_to_collections, collection_to_skos_xml,
-    SkosCollection, SkosConcept, SkosValue, SkosNodeType,
+    collection_to_skos_xml, parse_skos_to_collections, SkosCollection, SkosConcept, SkosNodeType,
+    SkosValue,
 };
 
 // For get_current_language
@@ -42,8 +40,8 @@ use alizarin_core::type_coercion::get_current_language;
 
 // Label resolution from core
 use alizarin_core::label_resolution::{
-    self, build_alias_to_collection_map, find_needed_collections,
-    ConceptLookup, LabelResolutionConfig,
+    self, build_alias_to_collection_map, find_needed_collections, ConceptLookup,
+    LabelResolutionConfig,
 };
 
 // =============================================================================
@@ -80,10 +78,7 @@ pub fn set_global_rdm_cache(cache: &RdmCache) {
 /// Get a clone of the global RDM cache, if set.
 #[pyfunction]
 pub fn get_global_rdm_cache() -> Option<RdmCache> {
-    GLOBAL_RDM_CACHE
-        .read()
-        .ok()
-        .and_then(|guard| guard.clone())
+    GLOBAL_RDM_CACHE.read().ok().and_then(|guard| guard.clone())
 }
 
 /// Clear the global RDM cache.
@@ -139,11 +134,13 @@ pub fn add_collection_to_global_cache(collection: RdmCollection) {
 /// Example:
 ///     ids = add_from_skos_xml_to_global_cache(xml_string, "http://example.org/")
 #[pyfunction]
-pub fn add_from_skos_xml_to_global_cache(xml_content: &str, base_uri: &str) -> PyResult<Vec<String>> {
-    let skos_collections = parse_skos_to_collections(xml_content, base_uri)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse SKOS XML: {}", e)
-        ))?;
+pub fn add_from_skos_xml_to_global_cache(
+    xml_content: &str,
+    base_uri: &str,
+) -> PyResult<Vec<String>> {
+    let skos_collections = parse_skos_to_collections(xml_content, base_uri).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse SKOS XML: {}", e))
+    })?;
 
     let mut added_ids = Vec::new();
 
@@ -196,9 +193,8 @@ lazy_static::lazy_static! {
 ///     collection = RustRdmCollection.from_labels("MyCollection", ["A", "B"])
 #[pyfunction]
 pub fn set_rdm_namespace(namespace: &str) -> PyResult<()> {
-    let uuid = core_parse_namespace(namespace).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(e)
-    })?;
+    let uuid = core_parse_namespace(namespace)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
     if let Ok(mut guard) = GLOBAL_RDM_NAMESPACE.write() {
         *guard = Some(uuid);
     }
@@ -244,7 +240,7 @@ fn get_required_namespace() -> PyResult<Uuid> {
         .ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
                 "RDM namespace not set. Call set_rdm_namespace() before creating \
-                 collections or concepts from labels without explicit IDs."
+                 collections or concepts from labels without explicit IDs.",
             )
         })
 }
@@ -272,7 +268,7 @@ fn label_to_deterministic_string(py: Python, label: &PyObject) -> PyResult<Strin
     }
 
     Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-        "label must be a string or dict of {language: label}"
+        "label must be a string or dict of {language: label}",
     ))
 }
 
@@ -289,9 +285,10 @@ fn generate_collection_id(name: &str) -> PyResult<String> {
 /// Uses: uuid5(collection_id_as_uuid, label_string)
 fn generate_concept_id(collection_id: &str, label_string: &str) -> PyResult<String> {
     let namespace = Uuid::parse_str(collection_id).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Collection ID must be a valid UUID for auto-generation: {}", e)
-        )
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Collection ID must be a valid UUID for auto-generation: {}",
+            e
+        ))
     })?;
     Ok(core_generate_concept(&namespace, label_string).to_string())
 }
@@ -371,12 +368,15 @@ impl RdmConcept {
             for (key, value) in dict.iter() {
                 let lang: String = key.extract()?;
                 let label_str: String = value.extract()?;
-                map.insert(lang, CoreRdmValue::new("__pending__".to_string(), label_str));
+                map.insert(
+                    lang,
+                    CoreRdmValue::new("__pending__".to_string(), label_str),
+                );
             }
             map
         } else {
             return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                "label must be a string or dict of {language: label}"
+                "label must be a string or dict of {language: label}",
             ));
         };
 
@@ -400,7 +400,9 @@ impl RdmConcept {
     #[getter]
     fn pref_label(&self) -> HashMap<String, String> {
         // Extract just the value strings for backward compatibility
-        self.inner.pref_label.iter()
+        self.inner
+            .pref_label
+            .iter()
             .map(|(lang, v)| (lang.clone(), v.value.clone()))
             .collect()
     }
@@ -430,7 +432,10 @@ impl RdmConcept {
     }
 
     fn __repr__(&self) -> String {
-        format!("RustRdmConcept(id={}, labels={:?})", self.inner.id, self.inner.pref_label)
+        format!(
+            "RustRdmConcept(id={}, labels={:?})",
+            self.inner.id, self.inner.pref_label
+        )
     }
 
     /// Convert to Python dict
@@ -547,7 +552,13 @@ impl RdmCollection {
     ///     collection = RustRdmCollection.from_labels("Categories", ["Cat A", "Cat B"], id="my-uuid")
     #[staticmethod]
     #[pyo3(signature = (name, labels, id=None, node_type=None))]
-    fn from_labels(py: Python, name: String, labels: Vec<PyObject>, id: Option<String>, node_type: Option<String>) -> PyResult<Self> {
+    fn from_labels(
+        py: Python,
+        name: String,
+        labels: Vec<PyObject>,
+        id: Option<String>,
+        node_type: Option<String>,
+    ) -> PyResult<Self> {
         // Generate or use provided collection ID
         let collection_id = match id {
             Some(explicit_id) => explicit_id,
@@ -613,7 +624,7 @@ impl RdmCollection {
         name: String,
         structure: &Bound<'_, PyDict>,
         id: Option<String>,
-        node_type: Option<String>
+        node_type: Option<String>,
     ) -> PyResult<Self> {
         // Generate or use provided collection ID
         let collection_id = match id {
@@ -631,7 +642,7 @@ impl RdmCollection {
             py: Python,
             collection: &mut RdmCollection,
             structure: &Bound<'_, PyDict>,
-            parent_id: Option<String>
+            parent_id: Option<String>,
         ) -> PyResult<()> {
             for (key, value) in structure.iter() {
                 // Key is the label (string or multilingual dict)
@@ -699,30 +710,44 @@ impl RdmCollection {
     ///     # Multi-language requires explicit ID
     ///     id3 = collection.add_from_label({"en": "Category C", "de": "Kategorie C"}, id="my-uuid-2")
     #[pyo3(signature = (label, id=None))]
-    fn add_from_label(&mut self, py: Python, label: PyObject, id: Option<String>) -> PyResult<String> {
+    fn add_from_label(
+        &mut self,
+        py: Python,
+        label: PyObject,
+        id: Option<String>,
+    ) -> PyResult<String> {
         // Extract pref_label as HashMap and get deterministic string for ID generation
         // Labels are trimmed to normalize whitespace
-        let (pref_label, label_string): (HashMap<String, CoreRdmValue>, String) = if let Ok(s) = label.extract::<String>(py) {
-            let trimmed = s.trim().to_string();
-            let lang = get_current_language();
-            let mut map = HashMap::new();
-            map.insert(lang, CoreRdmValue::new("__pending__".to_string(), trimmed.clone()));
-            (map, trimmed)
-        } else if let Ok(dict) = label.downcast::<PyDict>(py) {
-            let mut map = HashMap::new();
-            for (key, value) in dict.iter() {
-                let lang: String = key.extract()?;
-                let label_str: String = value.extract()?;
-                map.insert(lang, CoreRdmValue::new("__pending__".to_string(), label_str.trim().to_string()));
-            }
-            // Get deterministic string from multilingual dict (uses trimmed values)
-            let det_string = label_to_deterministic_string(py, &label)?.trim().to_string();
-            (map, det_string)
-        } else {
-            return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                "label must be a string or dict of {language: label}"
-            ));
-        };
+        let (pref_label, label_string): (HashMap<String, CoreRdmValue>, String) =
+            if let Ok(s) = label.extract::<String>(py) {
+                let trimmed = s.trim().to_string();
+                let lang = get_current_language();
+                let mut map = HashMap::new();
+                map.insert(
+                    lang,
+                    CoreRdmValue::new("__pending__".to_string(), trimmed.clone()),
+                );
+                (map, trimmed)
+            } else if let Ok(dict) = label.downcast::<PyDict>(py) {
+                let mut map = HashMap::new();
+                for (key, value) in dict.iter() {
+                    let lang: String = key.extract()?;
+                    let label_str: String = value.extract()?;
+                    map.insert(
+                        lang,
+                        CoreRdmValue::new("__pending__".to_string(), label_str.trim().to_string()),
+                    );
+                }
+                // Get deterministic string from multilingual dict (uses trimmed values)
+                let det_string = label_to_deterministic_string(py, &label)?
+                    .trim()
+                    .to_string();
+                (map, det_string)
+            } else {
+                return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                    "label must be a string or dict of {language: label}",
+                ));
+            };
 
         // Determine the concept ID
         let concept_id = match id {
@@ -764,37 +789,53 @@ impl RdmCollection {
     ///     parent_id = collection.find_by_label("Animals").id
     ///     child_id = collection.add_child_from_label(parent_id, "Mammals")
     #[pyo3(signature = (parent_id, label, id=None))]
-    fn add_child_from_label(&mut self, py: Python, parent_id: String, label: PyObject, id: Option<String>) -> PyResult<String> {
+    fn add_child_from_label(
+        &mut self,
+        py: Python,
+        parent_id: String,
+        label: PyObject,
+        id: Option<String>,
+    ) -> PyResult<String> {
         // Verify parent exists
         if !self.inner.has_concept(&parent_id) {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Parent concept '{}' not found in collection", parent_id)
-            ));
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Parent concept '{}' not found in collection",
+                parent_id
+            )));
         }
 
         // Extract pref_label as HashMap and get deterministic string for ID generation
         // Labels are trimmed to normalize whitespace
-        let (pref_label, label_string): (HashMap<String, CoreRdmValue>, String) = if let Ok(s) = label.extract::<String>(py) {
-            let trimmed = s.trim().to_string();
-            let lang = get_current_language();
-            let mut map = HashMap::new();
-            map.insert(lang, CoreRdmValue::new("__pending__".to_string(), trimmed.clone()));
-            (map, trimmed)
-        } else if let Ok(dict) = label.downcast::<PyDict>(py) {
-            let mut map = HashMap::new();
-            for (key, value) in dict.iter() {
-                let lang: String = key.extract()?;
-                let label_str: String = value.extract()?;
-                map.insert(lang, CoreRdmValue::new("__pending__".to_string(), label_str.trim().to_string()));
-            }
-            // Get deterministic string from multilingual dict (uses trimmed values)
-            let det_string = label_to_deterministic_string(py, &label)?.trim().to_string();
-            (map, det_string)
-        } else {
-            return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                "label must be a string or dict of {language: label}"
-            ));
-        };
+        let (pref_label, label_string): (HashMap<String, CoreRdmValue>, String) =
+            if let Ok(s) = label.extract::<String>(py) {
+                let trimmed = s.trim().to_string();
+                let lang = get_current_language();
+                let mut map = HashMap::new();
+                map.insert(
+                    lang,
+                    CoreRdmValue::new("__pending__".to_string(), trimmed.clone()),
+                );
+                (map, trimmed)
+            } else if let Ok(dict) = label.downcast::<PyDict>(py) {
+                let mut map = HashMap::new();
+                for (key, value) in dict.iter() {
+                    let lang: String = key.extract()?;
+                    let label_str: String = value.extract()?;
+                    map.insert(
+                        lang,
+                        CoreRdmValue::new("__pending__".to_string(), label_str.trim().to_string()),
+                    );
+                }
+                // Get deterministic string from multilingual dict (uses trimmed values)
+                let det_string = label_to_deterministic_string(py, &label)?
+                    .trim()
+                    .to_string();
+                (map, det_string)
+            } else {
+                return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                    "label must be a string or dict of {language: label}",
+                ));
+            };
 
         // Determine the concept ID
         let concept_id = match id {
@@ -823,7 +864,10 @@ impl RdmCollection {
 
     /// Look up a concept by ID
     fn get_concept(&self, concept_id: &str) -> Option<RdmConcept> {
-        self.inner.get_concept(concept_id).cloned().map(RdmConcept::from_core)
+        self.inner
+            .get_concept(concept_id)
+            .cloned()
+            .map(RdmConcept::from_core)
     }
 
     /// Get the first parent ID for a concept (from broader field)
@@ -859,7 +903,9 @@ impl RdmCollection {
     ///
     /// Returns the concept ID that contains the given value ID.
     fn get_concept_id_for_value(&self, value_id: &str) -> Option<String> {
-        self.inner.get_concept_id_for_value(value_id).map(|s| s.to_string())
+        self.inner
+            .get_concept_id_for_value(value_id)
+            .map(|s| s.to_string())
     }
 
     /// Check if a value ID exists in this collection
@@ -884,7 +930,8 @@ impl RdmCollection {
 
     /// Get top-level concepts
     fn get_top_concepts(&self) -> Vec<RdmConcept> {
-        self.inner.get_top_concepts()
+        self.inner
+            .get_top_concepts()
             .into_iter()
             .cloned()
             .map(RdmConcept::from_core)
@@ -898,7 +945,8 @@ impl RdmCollection {
 
     /// Search concepts by label (case-insensitive prefix match)
     fn search(&self, query: &str, language: Option<&str>) -> Vec<RdmConcept> {
-        self.inner.search(query, language)
+        self.inner
+            .search(query, language)
             .into_iter()
             .cloned()
             .map(RdmConcept::from_core)
@@ -910,12 +958,16 @@ impl RdmCollection {
     /// Searches pref_label and alt_labels across all languages.
     /// Returns None if no match or multiple matches (ambiguous).
     fn find_by_label(&self, label: &str) -> Option<RdmConcept> {
-        self.inner.find_by_label(label).cloned().map(RdmConcept::from_core)
+        self.inner
+            .find_by_label(label)
+            .cloned()
+            .map(RdmConcept::from_core)
     }
 
     /// Find a concept by exact label match, returning all matches
     fn find_all_by_label(&self, label: &str) -> Vec<RdmConcept> {
-        self.inner.find_all_by_label(label)
+        self.inner
+            .find_all_by_label(label)
             .into_iter()
             .cloned()
             .map(RdmConcept::from_core)
@@ -996,8 +1048,11 @@ impl RdmCollection {
         empty_label.insert(
             "value".to_string(),
             serde_json::Value::String(
-                self.inner.name.clone().unwrap_or_else(|| self.inner.id.clone())
-            )
+                self.inner
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| self.inner.id.clone()),
+            ),
         );
         pref_labels.insert("".to_string(), serde_json::Value::Object(empty_label));
 
@@ -1007,10 +1062,12 @@ impl RdmCollection {
             "concepts": concepts_map
         });
 
-        serde_json::to_string_pretty(&result)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to serialize to JSON: {}", e)
+        serde_json::to_string_pretty(&result).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to serialize to JSON: {}",
+                e
             ))
+        })
     }
 }
 
@@ -1030,7 +1087,10 @@ impl RdmCollection {
             };
             let mut label_obj = serde_json::Map::new();
             label_obj.insert("id".to_string(), serde_json::Value::String(value_id));
-            label_obj.insert("value".to_string(), serde_json::Value::String(rdm_value.value.clone()));
+            label_obj.insert(
+                "value".to_string(),
+                serde_json::Value::String(rdm_value.value.clone()),
+            );
             pref_labels.insert(lang.clone(), serde_json::Value::Object(label_obj));
         }
 
@@ -1046,16 +1106,17 @@ impl RdmCollection {
             // Sort children by ID for deterministic output
             let mut sorted_narrower: Vec<_> = concept.narrower.iter().collect();
             sorted_narrower.sort();
-            let children: Vec<serde_json::Value> = sorted_narrower.iter()
+            let children: Vec<serde_json::Value> = sorted_narrower
+                .iter()
                 .filter_map(|child_id| self.inner.get_concept(child_id))
                 .map(|child| self.concept_to_simplified_json(child))
                 .collect();
 
             if !children.is_empty() {
-                concept_obj.as_object_mut().unwrap().insert(
-                    "children".to_string(),
-                    serde_json::Value::Array(children)
-                );
+                concept_obj
+                    .as_object_mut()
+                    .unwrap()
+                    .insert("children".to_string(), serde_json::Value::Array(children));
             }
         }
 
@@ -1126,11 +1187,11 @@ fn rdm_to_skos_collection(rdm: &CoreRdmCollection, node_type: &str) -> SkosColle
 
             let skos_concept = SkosConcept {
                 id: concept_id.clone(),
-                uri: None,  // No URI in RDM format
+                uri: None, // No URI in RDM format
                 pref_labels,
                 source: Some(concept_id.clone()),
-                sort_order: None,  // No sort order in RDM format
-                children: None,  // Will be built hierarchically later (for ConceptScheme only)
+                sort_order: None, // No sort order in RDM format
+                children: None,   // Will be built hierarchically later (for ConceptScheme only)
             };
 
             all_skos_concepts.insert(concept_id.clone(), skos_concept);
@@ -1154,11 +1215,9 @@ fn rdm_to_skos_collection(rdm: &CoreRdmCollection, node_type: &str) -> SkosColle
     for concept_id in rdm.get_concept_ids() {
         if !all_narrower_ids.contains(concept_id) {
             // This is a top-level concept
-            if let Some(concept_with_children) = build_concept_tree(
-                concept_id,
-                &all_skos_concepts,
-                rdm,
-            ) {
+            if let Some(concept_with_children) =
+                build_concept_tree(concept_id, &all_skos_concepts, rdm)
+            {
                 hierarchy.insert(concept_id.clone(), concept_with_children);
             }
         }
@@ -1253,7 +1312,10 @@ impl RdmCache {
     fn skos_to_rdm_collection(skos: &SkosCollection) -> CoreRdmCollection {
         let mut rdm = CoreRdmCollection::with_name(
             skos.id.clone(),
-            skos.pref_labels.get("en").map(|v| v.value.clone()).unwrap_or_else(|| skos.id.clone())
+            skos.pref_labels
+                .get("en")
+                .map(|v| v.value.clone())
+                .unwrap_or_else(|| skos.id.clone()),
         );
 
         // Recursive function to add a concept and its children
@@ -1261,19 +1323,20 @@ impl RdmCache {
         fn add_concept_recursive(
             rdm: &mut CoreRdmCollection,
             skos_concept: &SkosConcept,
-            parent_id: Option<&str>
+            parent_id: Option<&str>,
         ) {
             let mut pref_label: HashMap<String, CoreRdmValue> = HashMap::new();
             for (lang, skos_value) in &skos_concept.pref_labels {
                 // Use the existing value ID from SKOS
                 pref_label.insert(
                     lang.clone(),
-                    CoreRdmValue::new(skos_value.id.clone(), skos_value.value.clone())
+                    CoreRdmValue::new(skos_value.id.clone(), skos_value.value.clone()),
                 );
             }
 
             // Extract narrower IDs from children
-            let narrower: Vec<String> = skos_concept.children
+            let narrower: Vec<String> = skos_concept
+                .children
                 .as_ref()
                 .map(|children| children.iter().map(|c| c.id.clone()).collect())
                 .unwrap_or_default();
@@ -1362,8 +1425,13 @@ impl RdmCache {
     /// Args:
     ///     collection_id: The collection identifier
     ///     concepts_json: JSON array of concepts
-    fn add_collection_from_json(&mut self, collection_id: &str, concepts_json: &str) -> PyResult<()> {
-        self.inner.add_collection_from_json(collection_id, concepts_json)
+    fn add_collection_from_json(
+        &mut self,
+        collection_id: &str,
+        concepts_json: &str,
+    ) -> PyResult<()> {
+        self.inner
+            .add_collection_from_json(collection_id, concepts_json)
             .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
     }
 
@@ -1383,10 +1451,12 @@ impl RdmCache {
     /// Returns:
     ///     List of collection IDs that were added
     fn add_from_skos_xml(&mut self, xml_content: &str, base_uri: &str) -> PyResult<Vec<String>> {
-        let skos_collections = parse_skos_to_collections(xml_content, base_uri)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to parse SKOS XML: {}", e)
-            ))?;
+        let skos_collections = parse_skos_to_collections(xml_content, base_uri).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse SKOS XML: {}",
+                e
+            ))
+        })?;
 
         let mut added_ids = Vec::new();
 
@@ -1402,7 +1472,10 @@ impl RdmCache {
 
     /// Get a collection by ID
     fn get_collection(&self, collection_id: &str) -> Option<RdmCollection> {
-        self.inner.get_collection(collection_id).cloned().map(RdmCollection::from_core)
+        self.inner
+            .get_collection(collection_id)
+            .cloned()
+            .map(RdmCollection::from_core)
     }
 
     /// Check if collection is cached
@@ -1415,7 +1488,8 @@ impl RdmCache {
     /// This is the main lookup method for coercion:
     /// given a collection ID and concept ID, return the concept.
     fn lookup_concept(&self, collection_id: &str, concept_id: &str) -> Option<RdmConcept> {
-        self.inner.lookup_concept(collection_id, concept_id)
+        self.inner
+            .lookup_concept(collection_id, concept_id)
             .cloned()
             .map(RdmConcept::from_core)
     }
@@ -1436,7 +1510,12 @@ impl RdmCache {
     ///
     /// This is the primary lookup method used by ViewModels.
     /// Returns a dict with {id, value, conceptId, language} or None if not found.
-    fn lookup_value(&self, py: Python, collection_id: &str, value_id: &str) -> PyResult<Option<PyObject>> {
+    fn lookup_value(
+        &self,
+        py: Python,
+        collection_id: &str,
+        value_id: &str,
+    ) -> PyResult<Option<PyObject>> {
         match self.inner.lookup_value(collection_id, value_id) {
             Some(value) => {
                 let dict = pyo3::types::PyDict::new_bound(py);
@@ -1454,7 +1533,9 @@ impl RdmCache {
     ///
     /// Returns the concept ID that contains the given value ID.
     fn get_concept_id_for_value(&self, collection_id: &str, value_id: &str) -> Option<String> {
-        self.inner.get_concept_id_for_value(collection_id, value_id).map(|s| s.to_string())
+        self.inner
+            .get_concept_id_for_value(collection_id, value_id)
+            .map(|s| s.to_string())
     }
 
     /// Validate that a value exists in a collection
@@ -1472,14 +1553,16 @@ impl RdmCache {
     /// Returns the concept if exactly one match is found.
     /// Returns None if no match or ambiguous (multiple matches).
     fn lookup_by_label(&self, collection_id: &str, label: &str) -> Option<RdmConcept> {
-        self.inner.lookup_by_label(collection_id, label)
+        self.inner
+            .lookup_by_label(collection_id, label)
             .cloned()
             .map(RdmConcept::from_core)
     }
 
     /// Look up a concept by label, returning all matches
     fn lookup_all_by_label(&self, collection_id: &str, label: &str) -> Vec<RdmConcept> {
-        self.inner.lookup_all_by_label(collection_id, label)
+        self.inner
+            .lookup_all_by_label(collection_id, label)
             .into_iter()
             .cloned()
             .map(RdmConcept::from_core)
@@ -1508,7 +1591,8 @@ impl RdmCache {
 
     /// Search across all collections (for autocomplete)
     fn search_all(&self, query: &str, language: Option<&str>) -> Vec<(String, RdmConcept)> {
-        self.inner.search_all(query, language)
+        self.inner
+            .search_all(query, language)
             .into_iter()
             .map(|(coll_id, concept)| (coll_id.to_string(), RdmConcept::from_core(concept.clone())))
             .collect()
@@ -1522,7 +1606,8 @@ impl RdmCache {
 /// Implement the ConceptLookup trait for RdmCache
 impl ConceptLookup for RdmCache {
     fn lookup_by_label(&self, collection_id: &str, label: &str) -> Option<String> {
-        self.inner.lookup_by_label(collection_id, label)
+        self.inner
+            .lookup_by_label(collection_id, label)
             .map(|c| c.id.clone())
     }
 }
@@ -1617,11 +1702,13 @@ pub fn get_needed_collections(
     };
 
     // Parse inputs
-    let tree: serde_json::Value = serde_json::from_str(tree_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid tree JSON: {}", e)))?;
+    let tree: serde_json::Value = serde_json::from_str(tree_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid tree JSON: {}", e))
+    })?;
 
-    let graph: serde_json::Value = serde_json::from_str(graph_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid graph JSON: {}", e)))?;
+    let graph: serde_json::Value = serde_json::from_str(graph_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid graph JSON: {}", e))
+    })?;
 
     // Build alias -> collection mapping
     let alias_to_collection = build_alias_to_collection_map(&graph, &config);

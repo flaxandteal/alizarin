@@ -3,8 +3,8 @@
 //! Supports both simple boolean permissions and conditional permissions
 //! based on tile data values (set membership).
 
-use std::collections::HashSet;
 use crate::StaticTile;
+use std::collections::HashSet;
 
 // =============================================================================
 // Permission Rules
@@ -150,10 +150,13 @@ fn parse_path_segments(path: &str) -> Vec<String> {
 
 /// Navigate a single segment in a JSON value
 /// Handles both object keys and array indices (bracket notation like "[0]")
-fn navigate_segment<'a>(current: &'a serde_json::Value, segment: &str) -> Option<&'a serde_json::Value> {
+fn navigate_segment<'a>(
+    current: &'a serde_json::Value,
+    segment: &str,
+) -> Option<&'a serde_json::Value> {
     // Check if it's an array index (bracket notation)
     if segment.starts_with('[') && segment.ends_with(']') {
-        let index_str = &segment[1..segment.len()-1];
+        let index_str = &segment[1..segment.len() - 1];
         if let Ok(index) = index_str.parse::<usize>() {
             return current.get(index);
         }
@@ -198,9 +201,12 @@ mod tests {
 
     #[test]
     fn test_conditional_permission_match() {
-        let tile = make_test_tile("node1", serde_json::json!({
-            "label": {"name": "Hotel/Inn"}
-        }));
+        let tile = make_test_tile(
+            "node1",
+            serde_json::json!({
+                "label": {"name": "Hotel/Inn"}
+            }),
+        );
 
         let mut allowed = HashSet::new();
         allowed.insert("Hotel/Inn".to_string());
@@ -217,9 +223,12 @@ mod tests {
 
     #[test]
     fn test_conditional_permission_no_match() {
-        let tile = make_test_tile("node1", serde_json::json!({
-            "label": {"name": "Castle"}
-        }));
+        let tile = make_test_tile(
+            "node1",
+            serde_json::json!({
+                "label": {"name": "Castle"}
+            }),
+        );
 
         let mut allowed = HashSet::new();
         allowed.insert("Hotel/Inn".to_string());
@@ -235,9 +244,12 @@ mod tests {
 
     #[test]
     fn test_conditional_permission_missing_path() {
-        let tile = make_test_tile("node1", serde_json::json!({
-            "other_field": "value"
-        }));
+        let tile = make_test_tile(
+            "node1",
+            serde_json::json!({
+                "other_field": "value"
+            }),
+        );
 
         let mut allowed = HashSet::new();
         allowed.insert("Hotel/Inn".to_string());
@@ -252,9 +264,12 @@ mod tests {
 
     #[test]
     fn test_path_without_data_prefix() {
-        let tile = make_test_tile("node1", serde_json::json!({
-            "label": {"name": "Hotel/Inn"}
-        }));
+        let tile = make_test_tile(
+            "node1",
+            serde_json::json!({
+                "label": {"name": "Hotel/Inn"}
+            }),
+        );
 
         let mut allowed = HashSet::new();
         allowed.insert("Hotel/Inn".to_string());
@@ -270,12 +285,15 @@ mod tests {
     #[test]
     fn test_array_indexing() {
         // Test array access with bracket notation like labels[0].value
-        let tile = make_test_tile("node1", serde_json::json!({
-            "labels": [
-                {"value": "Description", "language": "en"},
-                {"value": "Title", "language": "en"}
-            ]
-        }));
+        let tile = make_test_tile(
+            "node1",
+            serde_json::json!({
+                "labels": [
+                    {"value": "Description", "language": "en"},
+                    {"value": "Title", "language": "en"}
+                ]
+            }),
+        );
 
         let mut allowed = HashSet::new();
         allowed.insert("Description".to_string());
@@ -306,6 +324,9 @@ mod tests {
         assert_eq!(segments, vec!["data", "uuid", "labels", "[0]", "value"]);
 
         let segments2 = parse_path_segments(".data.node.array[2].nested.field");
-        assert_eq!(segments2, vec!["data", "node", "array", "[2]", "nested", "field"]);
+        assert_eq!(
+            segments2,
+            vec!["data", "node", "array", "[2]", "nested", "field"]
+        );
     }
 }

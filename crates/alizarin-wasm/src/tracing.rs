@@ -110,25 +110,29 @@ impl Span {
 
     /// Add a string attribute to the span
     pub fn set_attribute_str(&mut self, key: &str, value: &str) -> &mut Self {
-        self.attributes.insert(key.to_string(), SpanValue::String(value.to_string()));
+        self.attributes
+            .insert(key.to_string(), SpanValue::String(value.to_string()));
         self
     }
 
     /// Add an integer attribute to the span
     pub fn set_attribute_int(&mut self, key: &str, value: i64) -> &mut Self {
-        self.attributes.insert(key.to_string(), SpanValue::Int(value));
+        self.attributes
+            .insert(key.to_string(), SpanValue::Int(value));
         self
     }
 
     /// Add a float attribute to the span
     pub fn set_attribute_float(&mut self, key: &str, value: f64) -> &mut Self {
-        self.attributes.insert(key.to_string(), SpanValue::Float(value));
+        self.attributes
+            .insert(key.to_string(), SpanValue::Float(value));
         self
     }
 
     /// Add a boolean attribute to the span
     pub fn set_attribute_bool(&mut self, key: &str, value: bool) -> &mut Self {
-        self.attributes.insert(key.to_string(), SpanValue::Bool(value));
+        self.attributes
+            .insert(key.to_string(), SpanValue::Bool(value));
         self
     }
 
@@ -243,7 +247,11 @@ impl LegacyTimingStats {
     }
 
     fn avg_ms(&self) -> f64 {
-        if self.count == 0 { 0.0 } else { self.total_ms / self.count as f64 }
+        if self.count == 0 {
+            0.0
+        } else {
+            self.total_ms / self.count as f64
+        }
     }
 }
 
@@ -341,7 +349,12 @@ pub fn print_rscv_timings() {
         for (label, stats) in entries {
             println!(
                 "{}: count={}, total={:.2}ms, avg={:.2}ms, min={:.2}ms, max={:.2}ms",
-                label, stats.count, stats.total_ms, stats.avg_ms(), stats.min_ms, stats.max_ms
+                label,
+                stats.count,
+                stats.total_ms,
+                stats.avg_ms(),
+                stats.min_ms,
+                stats.max_ms
             );
         }
     });
@@ -372,10 +385,18 @@ pub fn print_rscv_timings() {
         let mut entries: Vec<_> = timings.iter().collect();
         entries.sort_by(|a, b| b.1.total_ms.partial_cmp(&a.1.total_ms).unwrap());
         for (label, stats) in entries {
-            web_sys::console::log_1(&format!(
-                "{}: count={}, total={:.2}ms, avg={:.2}ms, min={:.2}ms, max={:.2}ms",
-                label, stats.count, stats.total_ms, stats.avg_ms(), stats.min_ms, stats.max_ms
-            ).into());
+            web_sys::console::log_1(
+                &format!(
+                    "{}: count={}, total={:.2}ms, avg={:.2}ms, min={:.2}ms, max={:.2}ms",
+                    label,
+                    stats.count,
+                    stats.total_ms,
+                    stats.avg_ms(),
+                    stats.min_ms,
+                    stats.max_ms
+                )
+                .into(),
+            );
         }
     });
 }

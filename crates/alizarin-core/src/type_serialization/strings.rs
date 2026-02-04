@@ -1,7 +1,7 @@
 //! String serialization: localized strings, URLs, GeoJSON.
 
-use serde_json::Value;
 use super::options::{SerializationOptions, SerializationResult};
+use serde_json::Value;
 
 /// Serialize a localized string value.
 ///
@@ -68,10 +68,9 @@ pub fn serialize_string(tile_data: &Value, options: &SerializationOptions) -> Se
             }
         }
 
-        _ => SerializationResult::error(format!(
-            "Expected string language map, got {:?}",
-            tile_data
-        )),
+        _ => {
+            SerializationResult::error(format!("Expected string language map, got {:?}", tile_data))
+        }
     }
 }
 
@@ -143,13 +142,19 @@ pub fn serialize_url(tile_data: &Value, options: &SerializationOptions) -> Seria
 /// Serialize a GeoJSON value.
 ///
 /// GeoJSON is always returned as-is (no display transformation needed).
-pub fn serialize_geojson(tile_data: &Value, _options: &SerializationOptions) -> SerializationResult {
+pub fn serialize_geojson(
+    tile_data: &Value,
+    _options: &SerializationOptions,
+) -> SerializationResult {
     // GeoJSON is returned as-is regardless of mode
     SerializationResult::success(tile_data.clone())
 }
 
 /// Serialize a non-localized string (pass-through).
-pub fn serialize_non_localized_string(tile_data: &Value, _options: &SerializationOptions) -> SerializationResult {
+pub fn serialize_non_localized_string(
+    tile_data: &Value,
+    _options: &SerializationOptions,
+) -> SerializationResult {
     SerializationResult::success(tile_data.clone())
 }
 

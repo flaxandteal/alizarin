@@ -1,9 +1,9 @@
 //! Lightweight graph metadata type.
 
+use super::nodes::StaticNode;
+use super::translatable::StaticTranslatableString;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use super::translatable::StaticTranslatableString;
-use super::nodes::StaticNode;
 
 /// Lightweight metadata about a graph, without the full nodes/edges arrays.
 /// Used for listing graphs without loading all their data.

@@ -20,19 +20,18 @@ mod skos_py;
 mod type_coercion_py;
 use pyo3::types::PyCapsule;
 use rayon::prelude::*;
-use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 
 use alizarin_extension_api::{
-    TypeHandlerInfo, CoerceFn, FreeFn,
-    RenderDisplayFn, FreeDisplayFn,
-    ResolveMarkersFn, FreeResolveMarkersFn,
+    CoerceFn, FreeDisplayFn, FreeFn, FreeResolveMarkersFn, RenderDisplayFn, ResolveMarkersFn,
+    TypeHandlerInfo,
 };
 use std::ffi::c_void;
 
 // Extension type registry (unified infrastructure)
 use alizarin_core::{
-    ExtensionTypeRegistry, ExtensionTypeHandler, HandlerCapabilities, ExtensionError,
+    ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities,
 };
 
 lazy_static::lazy_static! {
@@ -101,8 +100,9 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
                 .map_err(|e| ExtensionError::new(format!("Failed to serialize value: {}", e)))?;
 
             let config_json = match config {
-                Some(c) => serde_json::to_string(c)
-                    .map_err(|e| ExtensionError::new(format!("Failed to serialize config: {}", e)))?,
+                Some(c) => serde_json::to_string(c).map_err(|e| {
+                    ExtensionError::new(format!("Failed to serialize config: {}", e))
+                })?,
                 None => "null".to_string(),
             };
 
@@ -115,28 +115,39 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
                 );
 
                 if result.error_ptr.is_null() {
-                    let tile_json = std::str::from_utf8_unchecked(
-                        std::slice::from_raw_parts(result.json_ptr, result.json_len)
-                    );
+                    let tile_json = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                        result.json_ptr,
+                        result.json_len,
+                    ));
 
-                    let resolved_json = std::str::from_utf8_unchecked(
-                        std::slice::from_raw_parts(result.resolved_ptr, result.resolved_len)
-                    );
+                    let resolved_json = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                        result.resolved_ptr,
+                        result.resolved_len,
+                    ));
 
-                    let tile_data: serde_json::Value = serde_json::from_str(tile_json)
-                        .map_err(|e| ExtensionError::new(format!("Failed to parse tile_data: {}", e)))?;
+                    let tile_data: serde_json::Value =
+                        serde_json::from_str(tile_json).map_err(|e| {
+                            ExtensionError::new(format!("Failed to parse tile_data: {}", e))
+                        })?;
 
                     let display_value: serde_json::Value = serde_json::from_str(resolved_json)
-                        .map_err(|e| ExtensionError::new(format!("Failed to parse display_value: {}", e)))?;
+                        .map_err(|e| {
+                            ExtensionError::new(format!("Failed to parse display_value: {}", e))
+                        })?;
 
                     // Free the result memory
                     (handler.free_fn)(result);
 
-                    Ok(alizarin_core::CoercionResult::success(tile_data, display_value))
+                    Ok(alizarin_core::CoercionResult::success(
+                        tile_data,
+                        display_value,
+                    ))
                 } else {
-                    let error_msg = std::str::from_utf8_unchecked(
-                        std::slice::from_raw_parts(result.error_ptr, result.error_len)
-                    ).to_string();
+                    let error_msg = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                        result.error_ptr,
+                        result.error_len,
+                    ))
+                    .to_string();
 
                     (handler.free_fn)(result);
 
@@ -145,7 +156,10 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
             }
         } else {
             // No handler - pass through
-            Ok(alizarin_core::CoercionResult::success(value.clone(), value.clone()))
+            Ok(alizarin_core::CoercionResult::success(
+                value.clone(),
+                value.clone(),
+            ))
         }
     }
 
@@ -157,9 +171,12 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
         let handlers = TYPE_HANDLERS.read().unwrap();
 
         if let Some(handler) = handlers.get(&self.type_name) {
-            if let (Some(render_fn), Some(free_fn)) = (handler.render_display_fn, handler.free_display_fn) {
-                let tile_json = serde_json::to_string(tile_data)
-                    .map_err(|e| ExtensionError::new(format!("Failed to serialize tile_data: {}", e)))?;
+            if let (Some(render_fn), Some(free_fn)) =
+                (handler.render_display_fn, handler.free_display_fn)
+            {
+                let tile_json = serde_json::to_string(tile_data).map_err(|e| {
+                    ExtensionError::new(format!("Failed to serialize tile_data: {}", e))
+                })?;
 
                 unsafe {
                     let result = render_fn(
@@ -176,15 +193,18 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
                         }
 
                         let display_str = std::str::from_utf8_unchecked(
-                            std::slice::from_raw_parts(result.display_ptr, result.display_len)
-                        ).to_string();
+                            std::slice::from_raw_parts(result.display_ptr, result.display_len),
+                        )
+                        .to_string();
 
                         free_fn(result);
                         Ok(Some(display_str))
                     } else {
-                        let error_msg = std::str::from_utf8_unchecked(
-                            std::slice::from_raw_parts(result.error_ptr, result.error_len)
-                        ).to_string();
+                        let error_msg = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                            result.error_ptr,
+                            result.error_len,
+                        ))
+                        .to_string();
 
                         free_fn(result);
                         Err(ExtensionError::new(error_msg))
@@ -206,9 +226,12 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
         let handlers = TYPE_HANDLERS.read().unwrap();
 
         if let Some(handler) = handlers.get(&self.type_name) {
-            if let (Some(resolve_fn), Some(free_fn)) = (handler.resolve_markers_fn, handler.free_resolve_markers_fn) {
-                let tile_json = serde_json::to_string(tile_data)
-                    .map_err(|e| ExtensionError::new(format!("Failed to serialize tile_data: {}", e)))?;
+            if let (Some(resolve_fn), Some(free_fn)) =
+                (handler.resolve_markers_fn, handler.free_resolve_markers_fn)
+            {
+                let tile_json = serde_json::to_string(tile_data).map_err(|e| {
+                    ExtensionError::new(format!("Failed to serialize tile_data: {}", e))
+                })?;
 
                 // Get RDM cache for lookups
                 // Clone the inner cache and wrap in Arc (same pattern as batch_trees_to_tiles_with_extensions)
@@ -241,11 +264,13 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
                     if result.error_ptr.is_null() {
                         if result.modified && !result.json_ptr.is_null() {
                             let resolved_json = std::str::from_utf8_unchecked(
-                                std::slice::from_raw_parts(result.json_ptr, result.json_len)
+                                std::slice::from_raw_parts(result.json_ptr, result.json_len),
                             );
 
                             let resolved: serde_json::Value = serde_json::from_str(resolved_json)
-                                .map_err(|e| ExtensionError::new(format!("Failed to parse resolved: {}", e)))?;
+                                .map_err(|e| {
+                                ExtensionError::new(format!("Failed to parse resolved: {}", e))
+                            })?;
 
                             free_fn(result);
                             Ok(resolved)
@@ -254,9 +279,11 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
                             Ok(tile_data.clone())
                         }
                     } else {
-                        let error_msg = std::str::from_utf8_unchecked(
-                            std::slice::from_raw_parts(result.error_ptr, result.error_len)
-                        ).to_string();
+                        let error_msg = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                            result.error_ptr,
+                            result.error_len,
+                        ))
+                        .to_string();
 
                         free_fn(result);
                         Err(ExtensionError::new(error_msg))
@@ -319,15 +346,19 @@ unsafe extern "C" fn rdm_lookup_by_id(
 ) -> bool {
     let cache = &*(user_data as *const CoreRdmCache);
 
-    let collection_id = match std::str::from_utf8(std::slice::from_raw_parts(collection_id_ptr, collection_id_len)) {
+    let collection_id = match std::str::from_utf8(std::slice::from_raw_parts(
+        collection_id_ptr,
+        collection_id_len,
+    )) {
         Ok(s) => s,
         Err(_) => return false,
     };
 
-    let concept_id = match std::str::from_utf8(std::slice::from_raw_parts(concept_id_ptr, concept_id_len)) {
-        Ok(s) => s,
-        Err(_) => return false,
-    };
+    let concept_id =
+        match std::str::from_utf8(std::slice::from_raw_parts(concept_id_ptr, concept_id_len)) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
 
     // Look up the concept
     if let Some(concept) = cache.lookup_concept(collection_id, concept_id) {
@@ -366,7 +397,10 @@ unsafe extern "C" fn rdm_lookup_by_label(
 ) -> bool {
     let cache = &*(user_data as *const CoreRdmCache);
 
-    let collection_id = match std::str::from_utf8(std::slice::from_raw_parts(collection_id_ptr, collection_id_len)) {
+    let collection_id = match std::str::from_utf8(std::slice::from_raw_parts(
+        collection_id_ptr,
+        collection_id_len,
+    )) {
         Ok(s) => s,
         Err(_) => return false,
     };
@@ -416,7 +450,10 @@ unsafe extern "C" fn rdm_has_collection(
 ) -> bool {
     let cache = &*(user_data as *const CoreRdmCache);
 
-    let collection_id = match std::str::from_utf8(std::slice::from_raw_parts(collection_id_ptr, collection_id_len)) {
+    let collection_id = match std::str::from_utf8(std::slice::from_raw_parts(
+        collection_id_ptr,
+        collection_id_len,
+    )) {
         Ok(s) => s,
         Err(_) => return false,
     };
@@ -435,21 +472,26 @@ fn register_type_handler(capsule: &PyCapsule) -> PyResult<()> {
 
     unsafe {
         let info = &*ptr;
-        let type_name = std::str::from_utf8_unchecked(
-            std::slice::from_raw_parts(info.type_name_ptr, info.type_name_len)
-        ).to_string();
+        let type_name = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+            info.type_name_ptr,
+            info.type_name_len,
+        ))
+        .to_string();
 
         let has_display = info.render_display_fn.is_some();
         let has_markers = info.resolve_markers_fn.is_some();
 
-        TYPE_HANDLERS.write().unwrap().insert(type_name.clone(), RegisteredHandler {
-            coerce_fn: info.coerce_fn,
-            free_fn: info.free_fn,
-            render_display_fn: info.render_display_fn,
-            free_display_fn: info.free_display_fn,
-            resolve_markers_fn: info.resolve_markers_fn,
-            free_resolve_markers_fn: info.free_resolve_markers_fn,
-        });
+        TYPE_HANDLERS.write().unwrap().insert(
+            type_name.clone(),
+            RegisteredHandler {
+                coerce_fn: info.coerce_fn,
+                free_fn: info.free_fn,
+                render_display_fn: info.render_display_fn,
+                free_display_fn: info.free_display_fn,
+                resolve_markers_fn: info.resolve_markers_fn,
+                free_resolve_markers_fn: info.free_resolve_markers_fn,
+            },
+        );
 
         let features = match (has_display, has_markers) {
             (true, true) => " (with display renderer, marker resolver)",
@@ -492,36 +534,45 @@ fn coerce_with_extension(
             );
 
             if result.error_ptr.is_null() {
-                let tile_json = std::str::from_utf8_unchecked(
-                    std::slice::from_raw_parts(result.json_ptr, result.json_len)
-                ).to_string();
+                let tile_json = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                    result.json_ptr,
+                    result.json_len,
+                ))
+                .to_string();
 
-                let resolved_json = std::str::from_utf8_unchecked(
-                    std::slice::from_raw_parts(result.resolved_ptr, result.resolved_len)
-                ).to_string();
+                let resolved_json = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                    result.resolved_ptr,
+                    result.resolved_len,
+                ))
+                .to_string();
 
                 (handler.free_fn)(result);
                 Ok((tile_json, resolved_json))
             } else {
-                let error = std::str::from_utf8_unchecked(
-                    std::slice::from_raw_parts(result.error_ptr, result.error_len)
-                ).to_string();
+                let error = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                    result.error_ptr,
+                    result.error_len,
+                ))
+                .to_string();
 
                 (handler.free_fn)(result);
                 Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(error))
             }
         }
     } else {
-        Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(
-            format!("No handler registered for type: {}", type_name)
-        ))
+        Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+            "No handler registered for type: {}",
+            type_name
+        )))
     }
 }
 
 /// Check if a type handler has display rendering support
 #[pyfunction]
 fn has_display_renderer(type_name: &str) -> bool {
-    TYPE_HANDLERS.read().unwrap()
+    TYPE_HANDLERS
+        .read()
+        .unwrap()
         .get(type_name)
         .map(|h| h.render_display_fn.is_some())
         .unwrap_or(false)
@@ -540,7 +591,9 @@ fn render_display_with_extension(
     let handlers = TYPE_HANDLERS.read().unwrap();
 
     if let Some(handler) = handlers.get(type_name) {
-        if let (Some(render_fn), Some(free_fn)) = (handler.render_display_fn, handler.free_display_fn) {
+        if let (Some(render_fn), Some(free_fn)) =
+            (handler.render_display_fn, handler.free_display_fn)
+        {
             unsafe {
                 let result = render_fn(
                     resolved_json.as_ptr(),
@@ -550,54 +603,63 @@ fn render_display_with_extension(
                 );
 
                 if result.error_ptr.is_null() {
-                    let display = std::str::from_utf8_unchecked(
-                        std::slice::from_raw_parts(result.display_ptr, result.display_len)
-                    ).to_string();
+                    let display = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                        result.display_ptr,
+                        result.display_len,
+                    ))
+                    .to_string();
 
                     free_fn(result);
                     Ok(display)
                 } else {
-                    let error = std::str::from_utf8_unchecked(
-                        std::slice::from_raw_parts(result.error_ptr, result.error_len)
-                    ).to_string();
+                    let error = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                        result.error_ptr,
+                        result.error_len,
+                    ))
+                    .to_string();
 
                     free_fn(result);
                     Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(error))
                 }
             }
         } else {
-            Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(
-                format!("Handler for type '{}' does not support display rendering", type_name)
-            ))
+            Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Handler for type '{}' does not support display rendering",
+                type_name
+            )))
         }
     } else {
-        Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(
-            format!("No handler registered for type: {}", type_name)
-        ))
+        Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+            "No handler registered for type: {}",
+            type_name
+        )))
     }
 }
 
 // Import core types and functions directly (no WASM dependency needed)
 use alizarin_core::{
-    // JSON conversion
-    tiles_to_tree, tree_to_tiles, create_static_resource,
-    merge_resources as core_merge_resources,
     batch_merge_resources as core_batch_merge_resources,
-    // Graph types
-    StaticTile as AlizarinStaticTile,
-    StaticNode as AlizarinStaticNode,
-    StaticResource as AlizarinStaticResource,
-    StaticGraph as AlizarinCoreStaticGraph,
-    // Label resolution
-    resolve_labels as core_resolve_labels,
-    DEFAULT_RESOLVABLE_DATATYPES,
-    DEFAULT_CONFIG_KEYS,
+    create_static_resource,
+    evaluate_tile_path,
     // Semantic child matching
     matches_semantic_child as core_matches_semantic_child,
-    // Permission rules
-    PermissionRule, evaluate_tile_path,
+    merge_resources as core_merge_resources,
+    // Label resolution
+    resolve_labels as core_resolve_labels,
+    // JSON conversion
+    tiles_to_tree,
     // String utilities
     transform_keys_to_snake,
+    tree_to_tiles,
+    // Permission rules
+    PermissionRule,
+    StaticGraph as AlizarinCoreStaticGraph,
+    StaticNode as AlizarinStaticNode,
+    StaticResource as AlizarinStaticResource,
+    // Graph types
+    StaticTile as AlizarinStaticTile,
+    DEFAULT_CONFIG_KEYS,
+    DEFAULT_RESOLVABLE_DATATYPES,
 };
 
 /// Build alias-to-collection mapping directly from StaticGraph.
@@ -608,10 +670,7 @@ fn build_alias_to_collection_from_graph(
 ) -> HashMap<String, String> {
     use std::collections::HashSet;
 
-    let resolvable_set: HashSet<&str> = DEFAULT_RESOLVABLE_DATATYPES
-        .iter()
-        .copied()
-        .collect();
+    let resolvable_set: HashSet<&str> = DEFAULT_RESOLVABLE_DATATYPES.iter().copied().collect();
 
     let mut alias_to_collection = HashMap::new();
     for node in &graph.nodes {
@@ -632,10 +691,12 @@ fn build_alias_to_collection_from_graph(
 
 /// Helper to get a graph from the registry
 fn get_registered_graph(graph_id: &str) -> PyResult<std::sync::Arc<AlizarinCoreStaticGraph>> {
-    alizarin_core::get_graph(graph_id)
-        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyKeyError, _>(
-            format!("Graph '{}' not registered. Call register_graph() first.", graph_id)
+    alizarin_core::get_graph(graph_id).ok_or_else(|| {
+        PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+            "Graph '{}' not registered. Call register_graph() first.",
+            graph_id
         ))
+    })
 }
 
 /// Convert tiled resource to nested JSON tree
@@ -650,28 +711,26 @@ fn get_registered_graph(graph_id: &str) -> PyResult<std::sync::Arc<AlizarinCoreS
 ///     Nested dict structure representing the resource tree with resourceinstanceid and graph_id
 #[pyfunction]
 #[pyo3(signature = (resource_json))]
-fn tiles_to_json_tree(
-    py: Python,
-    resource_json: String,
-) -> PyResult<PyObject> {
+fn tiles_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
     // Parse resource from JSON
-    let resource: serde_json::Value = serde_json::from_str(&resource_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse resource: {}", e)
-        ))?;
+    let resource: serde_json::Value = serde_json::from_str(&resource_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse resource: {}", e))
+    })?;
 
     // Extract graph_id from resource (supports both formats)
-    let graph_id = resource.get("resourceinstance")
+    let graph_id = resource
+        .get("resourceinstance")
         .and_then(|ri| ri.get("graph_id"))
         .or_else(|| resource.get("graph_id"))
         .and_then(|v| v.as_str())
-        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            "Missing graph_id in resource"
-        ))?
+        .ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>("Missing graph_id in resource")
+        })?
         .to_string();
 
     // Extract resource_id from resource (supports both formats)
-    let resource_id = resource.get("resourceinstance")
+    let resource_id = resource
+        .get("resourceinstance")
         .and_then(|ri| ri.get("resourceinstanceid"))
         .or_else(|| resource.get("resourceinstanceid"))
         .and_then(|v| v.as_str())
@@ -687,15 +746,19 @@ fn tiles_to_json_tree(
         resource.clone()
     } else {
         // Old format - convert to StaticResource
-        let tiles: Vec<AlizarinStaticTile> = resource.get("tiles")
+        let tiles: Vec<AlizarinStaticTile> = resource
+            .get("tiles")
             .and_then(|t| serde_json::from_value(t.clone()).ok())
             .unwrap_or_default();
 
-        let static_resource = create_static_resource(resource_id.clone(), graph_id.clone(), tiles, &graph);
-        serde_json::to_value(&static_resource)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to serialize resource: {}", e)
-            ))?
+        let static_resource =
+            create_static_resource(resource_id.clone(), graph_id.clone(), tiles, &graph);
+        serde_json::to_value(&static_resource).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to serialize resource: {}",
+                e
+            ))
+        })?
     };
 
     // Call shared Rust conversion function (returns array)
@@ -703,22 +766,28 @@ fn tiles_to_json_tree(
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Extract first element (single resource case)
-    let json_tree = json_tree_array.as_array()
+    let json_tree = json_tree_array
+        .as_array()
         .and_then(|arr| arr.first().cloned())
         .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
     // Wrap tree with metadata for consistency with json_tree_to_tiles
     let mut result = json_tree.clone();
     if let serde_json::Value::Object(ref mut map) = result {
-        map.insert("resourceinstanceid".to_string(), serde_json::Value::String(resource_id));
+        map.insert(
+            "resourceinstanceid".to_string(),
+            serde_json::Value::String(resource_id),
+        );
         map.insert("graph_id".to_string(), serde_json::Value::String(graph_id));
     }
 
     // Convert to Python dict
-    let py_str = serde_json::to_string(&result)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to serialize result: {}", e)
-        ))?;
+    let py_str = serde_json::to_string(&result).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize result: {}",
+            e
+        ))
+    })?;
 
     // Parse as Python dict
     let json_module = py.import_bound("json")?;
@@ -761,18 +830,20 @@ fn json_tree_to_tiles(
     scopes: Option<String>,
 ) -> PyResult<PyObject> {
     // Parse tree from JSON
-    let mut tree: serde_json::Value = serde_json::from_str(&tree_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse tree: {}", e)
-        ))?;
+    let mut tree: serde_json::Value = serde_json::from_str(&tree_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse tree: {}", e))
+    })?;
 
     // Parse scopes if provided
     let scopes_value: Option<serde_json::Value> = scopes
         .map(|s| serde_json::from_str(&s))
         .transpose()
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse scopes: {}", e)
-        ))?;
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse scopes: {}",
+                e
+            ))
+        })?;
 
     // Convert keys from camelCase to snake_case if requested
     if from_camel {
@@ -795,8 +866,14 @@ fn json_tree_to_tiles(
 
     // Add resourceinstanceid and graph_id to tree for new API
     if let serde_json::Value::Object(ref mut map) = tree {
-        map.insert("resourceinstanceid".to_string(), serde_json::Value::String(resource_id.clone()));
-        map.insert("graph_id".to_string(), serde_json::Value::String(graph_id.clone()));
+        map.insert(
+            "resourceinstanceid".to_string(),
+            serde_json::Value::String(resource_id.clone()),
+        );
+        map.insert(
+            "graph_id".to_string(),
+            serde_json::Value::String(graph_id.clone()),
+        );
     }
 
     // Call shared Rust conversion function
@@ -812,10 +889,12 @@ fn json_tree_to_tiles(
     }
 
     // Return full BusinessDataWrapper structure: {business_data: {resources: [...]}}
-    let result_json = serde_json::to_string(&business_data)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to serialize result: {}", e)
-        ))?;
+    let result_json = serde_json::to_string(&business_data).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize result: {}",
+            e
+        ))
+    })?;
 
     // Parse as Python dict
     let json_module = py.import_bound("json")?;
@@ -845,23 +924,29 @@ fn batch_trees_to_tiles(
     id_keys: Option<Vec<String>>,
     scopes: Option<String>,
 ) -> PyResult<PyObject> {
-    let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e)))?;
+    let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e))
+    })?;
 
     // Parse scopes if provided
     let scopes_value: Option<serde_json::Value> = scopes
         .map(|s| serde_json::from_str(&s))
         .transpose()
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse scopes: {}", e)
-        ))?;
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse scopes: {}",
+                e
+            ))
+        })?;
 
     // Validate id_keys length if provided
     if let Some(ref keys) = id_keys {
         if keys.len() != trees.len() {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("id_keys length ({}) must match trees length ({})", keys.len(), trees.len())
-            ));
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "id_keys length ({}) must match trees length ({})",
+                keys.len(),
+                trees.len()
+            )));
         }
     }
 
@@ -872,12 +957,17 @@ fn batch_trees_to_tiles(
         .into_par_iter()
         .enumerate()
         .map(|(i, mut tree)| {
-            if from_camel { tree = transform_keys_to_snake(tree); }
+            if from_camel {
+                tree = transform_keys_to_snake(tree);
+            }
 
             // Add graph_id to tree if not present
             if let serde_json::Value::Object(ref mut map) = tree {
                 if !map.contains_key("graph_id") {
-                    map.insert("graph_id".to_string(), serde_json::Value::String(graph_id.clone()));
+                    map.insert(
+                        "graph_id".to_string(),
+                        serde_json::Value::String(graph_id.clone()),
+                    );
                 }
             }
 
@@ -888,7 +978,11 @@ fn batch_trees_to_tiles(
                 .map_err(|e| format!("Tree {}: {}", i, e))?;
 
             // Extract first resource (full StaticResource with resourceinstance metadata)
-            let mut resource = business_data.business_data.resources.into_iter().next()
+            let mut resource = business_data
+                .business_data
+                .resources
+                .into_iter()
+                .next()
                 .ok_or_else(|| format!("Tree {}: No resources returned", i))?;
 
             // Set scopes if provided
@@ -908,9 +1002,10 @@ fn batch_trees_to_tiles(
 
     // In strict mode, fail if any errors
     if strict && !errors.is_empty() {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Strict mode error: {}", errors[0])
-        ));
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Strict mode error: {}",
+            errors[0]
+        )));
     }
 
     // Return BusinessDataWrapper format with errors alongside
@@ -922,10 +1017,12 @@ fn batch_trees_to_tiles(
         "error_count": errors.len()
     });
 
-    pythonize::pythonize(py, &output)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to convert to Python: {}", e)
+    pythonize::pythonize(py, &output).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to convert to Python: {}",
+            e
         ))
+    })
 }
 
 /// Batch convert multiple JSON trees to tiles with extension coercion
@@ -957,23 +1054,29 @@ fn batch_trees_to_tiles_with_extensions(
     scopes: Option<String>,
     resolve_markers: bool,
 ) -> PyResult<PyObject> {
-    let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e)))?;
+    let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e))
+    })?;
 
     // Parse scopes if provided
     let scopes_value: Option<serde_json::Value> = scopes
         .map(|s| serde_json::from_str(&s))
         .transpose()
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse scopes: {}", e)
-        ))?;
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse scopes: {}",
+                e
+            ))
+        })?;
 
     // Validate id_keys length if provided
     if let Some(ref keys) = id_keys {
         if keys.len() != trees.len() {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("id_keys length ({}) must match trees length ({})", keys.len(), trees.len())
-            ));
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "id_keys length ({}) must match trees length ({})",
+                keys.len(),
+                trees.len()
+            )));
         }
     }
 
@@ -999,8 +1102,7 @@ fn batch_trees_to_tiles_with_extensions(
     // Get global RDM cache's inner (CoreRdmCache) for marker resolution (if enabled)
     // We clone the inner cache to make it thread-safe for parallel iteration
     let core_cache: Option<Arc<CoreRdmCache>> = if resolve_markers {
-        rdm_cache_py::get_global_rdm_cache()
-            .map(|cache| Arc::new(cache.inner().clone()))
+        rdm_cache_py::get_global_rdm_cache().map(|cache| Arc::new(cache.inner().clone()))
     } else {
         None
     };
@@ -1158,9 +1260,10 @@ fn batch_trees_to_tiles_with_extensions(
 
     // In strict mode, fail if any errors
     if strict && !errors.is_empty() {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Strict mode error: {}", errors[0])
-        ));
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Strict mode error: {}",
+            errors[0]
+        )));
     }
 
     // Return BusinessDataWrapper format with errors alongside
@@ -1172,10 +1275,12 @@ fn batch_trees_to_tiles_with_extensions(
         "error_count": errors.len()
     });
 
-    pythonize::pythonize(py, &output)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to convert to Python: {}", e)
+    pythonize::pythonize(py, &output).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to convert to Python: {}",
+            e
         ))
+    })
 }
 
 /// Iterator that processes trees to tiles one at a time (low memory)
@@ -1217,16 +1322,21 @@ impl TreeToTilesIterator {
         let scopes_value: Option<serde_json::Value> = scopes
             .map(|s| serde_json::from_str(&s))
             .transpose()
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to parse scopes: {}", e)
-            ))?;
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to parse scopes: {}",
+                    e
+                ))
+            })?;
 
         // Validate id_keys length if provided
         if let Some(ref keys) = id_keys {
             if keys.len() != tree_strings.len() {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    format!("id_keys length ({}) must match trees length ({})", keys.len(), tree_strings.len())
-                ));
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "id_keys length ({}) must match trees length ({})",
+                    keys.len(),
+                    tree_strings.len()
+                )));
             }
         }
 
@@ -1280,7 +1390,10 @@ impl TreeToTilesIterator {
         // Add graph_id to tree if not present
         if let serde_json::Value::Object(ref mut map) = tree {
             if !map.contains_key("graph_id") {
-                map.insert("graph_id".to_string(), serde_json::Value::String(self.graph_id.clone()));
+                map.insert(
+                    "graph_id".to_string(),
+                    serde_json::Value::String(self.graph_id.clone()),
+                );
             }
         }
 
@@ -1289,7 +1402,8 @@ impl TreeToTilesIterator {
 
         let output = match result {
             Ok(business_data) => {
-                if let Some(mut resource) = business_data.business_data.resources.into_iter().next() {
+                if let Some(mut resource) = business_data.business_data.resources.into_iter().next()
+                {
                     // Set scopes if provided
                     if let Some(ref scopes_val) = self.scopes {
                         resource.scopes = Some(scopes_val.clone());
@@ -1346,20 +1460,18 @@ impl TreeToTilesIterator {
 /// Graphs must be registered via register_graph first.
 #[pyfunction]
 #[pyo3(signature = (resources_json, strict=true))]
-fn batch_tiles_to_trees(
-    py: Python,
-    resources_json: String,
-    strict: bool,
-) -> PyResult<PyObject> {
-    let resources: Vec<serde_json::Value> = serde_json::from_str(&resources_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse resources: {}", e)))?;
+fn batch_tiles_to_trees(py: Python, resources_json: String, strict: bool) -> PyResult<PyObject> {
+    let resources: Vec<serde_json::Value> = serde_json::from_str(&resources_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse resources: {}", e))
+    })?;
 
     let results: Vec<Result<serde_json::Value, String>> = resources
         .into_par_iter()
         .enumerate()
         .map(|(i, resource)| {
             // Extract graph_id from resource
-            let graph_id = resource.get("resourceinstance")
+            let graph_id = resource
+                .get("resourceinstance")
                 .and_then(|ri| ri.get("graph_id"))
                 .or_else(|| resource.get("graph_id"))
                 .and_then(|v| v.as_str())
@@ -1373,7 +1485,8 @@ fn batch_tiles_to_trees(
             // Extract resource_id from either format:
             // - New format: resource.resourceinstance.resourceinstanceid
             // - Old format: resource.resourceinstanceid
-            let resource_id = resource.get("resourceinstance")
+            let resource_id = resource
+                .get("resourceinstance")
                 .and_then(|ri| ri.get("resourceinstanceid"))
                 .or_else(|| resource.get("resourceinstanceid"))
                 .and_then(|v| v.as_str())
@@ -1386,35 +1499,39 @@ fn batch_tiles_to_trees(
                 resource.clone()
             } else {
                 // Old format - convert to StaticResource
-                let tiles: Vec<AlizarinStaticTile> = resource.get("tiles")
+                let tiles: Vec<AlizarinStaticTile> = resource
+                    .get("tiles")
                     .map(|t| serde_json::from_value(t.clone()))
                     .transpose()
                     .map_err(|e| format!("Resource {}: Failed to parse tiles: {}", i, e))?
                     .unwrap_or_default();
 
-                let static_resource = create_static_resource(
-                    resource_id.clone(),
-                    graph_id.clone(),
-                    tiles,
-                    &graph,
-                );
+                let static_resource =
+                    create_static_resource(resource_id.clone(), graph_id.clone(), tiles, &graph);
 
                 serde_json::to_value(&static_resource)
                     .map_err(|e| format!("Resource {}: Failed to serialize: {}", i, e))?
             };
 
             // Call tiles_to_tree (returns array)
-            let json_tree_array = tiles_to_tree(&input_json, &graph)
-                .map_err(|e| format!("Resource {}: {}", i, e))?;
+            let json_tree_array =
+                tiles_to_tree(&input_json, &graph).map_err(|e| format!("Resource {}: {}", i, e))?;
 
             // Extract first element and add metadata
-            let mut tree = json_tree_array.as_array()
+            let mut tree = json_tree_array
+                .as_array()
                 .and_then(|arr| arr.first().cloned())
                 .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
             if let serde_json::Value::Object(ref mut map) = tree {
-                map.insert("resourceinstanceid".to_string(), serde_json::Value::String(resource_id));
-                map.insert("graph_id".to_string(), serde_json::Value::String(graph_id.clone()));
+                map.insert(
+                    "resourceinstanceid".to_string(),
+                    serde_json::Value::String(resource_id),
+                );
+                map.insert(
+                    "graph_id".to_string(),
+                    serde_json::Value::String(graph_id.clone()),
+                );
             }
 
             Ok(tree)
@@ -1435,10 +1552,12 @@ fn batch_tiles_to_trees(
             "count": successes.len()
         });
 
-        return pythonize::pythonize(py, &output)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to convert to Python: {}", e)
-            ));
+        return pythonize::pythonize(py, &output).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert to Python: {}",
+                e
+            ))
+        });
     }
 
     // Non-strict: separate successes and errors
@@ -1455,10 +1574,12 @@ fn batch_tiles_to_trees(
         })
     };
 
-    pythonize::pythonize(py, &output)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to convert to Python: {}", e)
+    pythonize::pythonize(py, &output).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to convert to Python: {}",
+            e
         ))
+    })
 }
 
 // camel_to_snake and transform_keys_to_snake are now in alizarin-core/src/string_utils.rs
@@ -1497,16 +1618,16 @@ impl PyResourceModelWrapper {
     fn set_permitted_nodegroups(&mut self, py: Python, permissions: PyObject) -> PyResult<()> {
         use pyo3::types::PyDict;
 
-        let dict = permissions.downcast_bound::<PyDict>(py)
-            .map_err(|_| PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                "permissions must be a dict"
-            ))?;
+        let dict = permissions.downcast_bound::<PyDict>(py).map_err(|_| {
+            PyErr::new::<pyo3::exceptions::PyTypeError, _>("permissions must be a dict")
+        })?;
 
         let mut perms: HashMap<String, PermissionRule> = HashMap::new();
         let mut errors: Vec<String> = Vec::new();
 
         for (key, value) in dict.iter() {
-            let key_str: String = key.extract()
+            let key_str: String = key
+                .extract()
                 .map_err(|_| {
                     errors.push(format!("Invalid key (not a string): {:?}", key));
                 })
@@ -1542,9 +1663,10 @@ impl PyResourceModelWrapper {
         }
 
         if !errors.is_empty() {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Permission validation errors:\n  - {}", errors.join("\n  - "))
-            ));
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Permission validation errors:\n  - {}",
+                errors.join("\n  - ")
+            )));
         }
 
         self.permitted_nodegroups = perms;
@@ -1568,10 +1690,12 @@ impl PyResourceModelWrapper {
     /// Returns:
     ///     True if the tile is permitted
     fn is_tile_permitted(&self, py: Python, nodegroup_id: &str, tile_json: &str) -> PyResult<bool> {
-        let tile: AlizarinStaticTile = serde_json::from_str(tile_json)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to parse tile JSON: {}", e)
-            ))?;
+        let tile: AlizarinStaticTile = serde_json::from_str(tile_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse tile JSON: {}",
+                e
+            ))
+        })?;
 
         let result = match self.permitted_nodegroups.get(nodegroup_id) {
             Some(rule) => {
@@ -1605,10 +1729,12 @@ impl PyResourceModelWrapper {
 
     /// Export graph as JSON
     fn export_graph(&self, py: Python) -> PyResult<PyObject> {
-        let graph_json = serde_json::to_string(&*self.graph)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to serialize graph: {}", e)
-            ))?;
+        let graph_json = serde_json::to_string(&*self.graph).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to serialize graph: {}",
+                e
+            ))
+        })?;
 
         let json_module = py.import_bound("json")?;
         let py_dict = json_module.call_method1("loads", (graph_json,))?;
@@ -1619,25 +1745,29 @@ impl PyResourceModelWrapper {
 impl PyResourceModelWrapper {
     /// Parse a conditional permission rule from a Python dict
     /// Expected format: {"path": ".data.uuid.field", "allowed": ["value1", "value2"]}
-    fn parse_conditional_rule(dict: &Bound<'_, pyo3::types::PyDict>) -> Result<PermissionRule, String> {
+    fn parse_conditional_rule(
+        dict: &Bound<'_, pyo3::types::PyDict>,
+    ) -> Result<PermissionRule, String> {
         use std::collections::HashSet;
 
         // Get the "path" property
-        let path = dict.get_item("path")
+        let path = dict
+            .get_item("path")
             .map_err(|_| "failed to read 'path' key")?
             .ok_or("'path' key is required")?;
-        let path_str: String = path.extract()
-            .map_err(|_| "'path' must be a string")?;
+        let path_str: String = path.extract().map_err(|_| "'path' must be a string")?;
 
         if path_str.is_empty() {
             return Err("'path' cannot be empty".to_string());
         }
 
         // Get the "allowed" property (should be a list)
-        let allowed = dict.get_item("allowed")
+        let allowed = dict
+            .get_item("allowed")
             .map_err(|_| "failed to read 'allowed' key")?
             .ok_or("'allowed' key is required")?;
-        let allowed_list = allowed.downcast::<pyo3::types::PyList>()
+        let allowed_list = allowed
+            .downcast::<pyo3::types::PyList>()
             .map_err(|_| "'allowed' must be a list")?;
 
         if allowed_list.is_empty() {
@@ -1647,7 +1777,8 @@ impl PyResourceModelWrapper {
         // Convert to HashSet<String>
         let mut allowed_set = HashSet::new();
         for (i, item) in allowed_list.iter().enumerate() {
-            let s: String = item.extract()
+            let s: String = item
+                .extract()
                 .map_err(|_| format!("'allowed[{}]' must be a string", i))?;
             allowed_set.insert(s);
         }
@@ -1671,15 +1802,16 @@ fn matches_semantic_child(
     child_node_json: String,
     tile_json: String,
 ) -> PyResult<bool> {
-    let child_node: AlizarinStaticNode = serde_json::from_str(&child_node_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse child node: {}", e)
-        ))?;
+    let child_node: AlizarinStaticNode = serde_json::from_str(&child_node_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to parse child node: {}",
+            e
+        ))
+    })?;
 
-    let tile: AlizarinStaticTile = serde_json::from_str(&tile_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse tile: {}", e)
-        ))?;
+    let tile: AlizarinStaticTile = serde_json::from_str(&tile_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse tile: {}", e))
+    })?;
 
     Ok(core_matches_semantic_child(
         parent_tile_id.as_ref(),
@@ -1711,10 +1843,9 @@ fn resolve_labels_in_tree(
     strict: bool,
 ) -> PyResult<String> {
     // Parse tree
-    let tree: serde_json::Value = serde_json::from_str(&tree_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse tree: {}", e)
-        ))?;
+    let tree: serde_json::Value = serde_json::from_str(&tree_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse tree: {}", e))
+    })?;
 
     // Get graph from registry
     let graph = get_registered_graph(&graph_id)?;
@@ -1731,10 +1862,12 @@ fn resolve_labels_in_tree(
         tree
     };
 
-    serde_json::to_string(&resolved_tree)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to serialize result: {}", e)
+    serde_json::to_string(&resolved_tree).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize result: {}",
+            e
         ))
+    })
 }
 
 /// Register a graph in the core registry for batch_merge_resources descriptor computation
@@ -1750,10 +1883,9 @@ fn resolve_labels_in_tree(
 #[pyfunction]
 #[pyo3(signature = (graph_json,))]
 fn register_graph(graph_json: String) -> PyResult<String> {
-    let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse graph: {}", e)
-        ))?;
+    let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse graph: {}", e))
+    })?;
 
     let graph_id = graph.graphid.clone();
     alizarin_core::register_graph_owned(graph);
@@ -1837,12 +1969,8 @@ fn get_widget_for_datatype(datatype: &str) -> Option<String> {
 ///     )
 #[pyfunction]
 fn register_widget(widget_id: &str, widget_name: &str, datatype: &str, default_config_json: &str) {
-    let widget = alizarin_core::RegisteredWidget::new(
-        widget_id,
-        widget_name,
-        datatype,
-        default_config_json,
-    );
+    let widget =
+        alizarin_core::RegisteredWidget::new(widget_id, widget_name, datatype, default_config_json);
     alizarin_core::register_widget(widget);
 }
 
@@ -1898,23 +2026,23 @@ fn sort_json_keys(value: serde_json::Value) -> serde_json::Value {
 #[pyfunction]
 #[pyo3(signature = (graph_id,))]
 fn get_graph_json(graph_id: String) -> PyResult<String> {
-    let graph = alizarin_core::get_graph(&graph_id)
-        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Graph '{}' not registered. Call register_graph() first.", graph_id)
-        ))?;
+    let graph = alizarin_core::get_graph(&graph_id).ok_or_else(|| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Graph '{}' not registered. Call register_graph() first.",
+            graph_id
+        ))
+    })?;
 
     // Serialize to Value first, then sort all keys for deterministic output
-    let value = serde_json::to_value(&*graph)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to serialize graph: {}", e)
-        ))?;
+    let value = serde_json::to_value(&*graph).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to serialize graph: {}", e))
+    })?;
 
     let sorted = sort_json_keys(value);
 
-    serde_json::to_string_pretty(&sorted)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to serialize graph: {}", e)
-        ))
+    serde_json::to_string_pretty(&sorted).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to serialize graph: {}", e))
+    })
 }
 
 /// Merge multiple resources with the same resourceinstanceid into one
@@ -1929,14 +2057,14 @@ fn get_graph_json(graph_id: String) -> PyResult<String> {
 ///     Dict with 'resource' (merged StaticResource) and 'warnings' (list of duplicate warnings)
 #[pyfunction]
 #[pyo3(signature = (resources_json,))]
-fn merge_resources(
-    py: Python,
-    resources_json: String,
-) -> PyResult<PyObject> {
-    let resources: Vec<AlizarinStaticResource> = serde_json::from_str(&resources_json)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to parse resources: {}", e)
-        ))?;
+fn merge_resources(py: Python, resources_json: String) -> PyResult<PyObject> {
+    let resources: Vec<AlizarinStaticResource> =
+        serde_json::from_str(&resources_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse resources: {}",
+                e
+            ))
+        })?;
 
     match core_merge_resources(resources) {
         Ok(result) => {
@@ -1944,12 +2072,14 @@ fn merge_resources(
                 "resource": result.resource,
                 "warnings": result.warnings
             });
-            pythonize::pythonize(py, &output)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    format!("Failed to convert to Python: {}", e)
+            pythonize::pythonize(py, &output).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to convert to Python: {}",
+                    e
                 ))
+            })
         }
-        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e))
+        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(e)),
     }
 }
 
@@ -1980,39 +2110,47 @@ fn batch_merge_resources(
     let mut resource_batches: Vec<Vec<AlizarinStaticResource>> = Vec::new();
     for (i, batch_str) in batches_json.iter().enumerate() {
         // Try to parse as JSON value first to determine format
-        let value: serde_json::Value = serde_json::from_str(batch_str)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to parse batch {}: {}", i, e)
-            ))?;
+        let value: serde_json::Value = serde_json::from_str(batch_str).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse batch {}: {}",
+                i, e
+            ))
+        })?;
 
         let batch: Vec<AlizarinStaticResource> = match &value {
             // Array of resources
-            serde_json::Value::Array(_) => {
-                serde_json::from_value(value)
-                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                        format!("Batch {}: Failed to parse as resource array: {}", i, e)
-                    ))?
-            }
+            serde_json::Value::Array(_) => serde_json::from_value(value).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Batch {}: Failed to parse as resource array: {}",
+                    i, e
+                ))
+            })?,
             // Object - could be BusinessDataWrapper or single resource
             serde_json::Value::Object(map) => {
                 if let Some(bd) = map.get("business_data") {
                     // BusinessDataWrapper format
                     if let Some(resources) = bd.get("resources") {
-                        serde_json::from_value(resources.clone())
-                            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                                format!("Batch {}: Failed to parse business_data.resources: {}", i, e)
-                            ))?
+                        serde_json::from_value(resources.clone()).map_err(|e| {
+                            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                                "Batch {}: Failed to parse business_data.resources: {}",
+                                i, e
+                            ))
+                        })?
                     } else {
-                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                            format!("Batch {}: business_data missing 'resources' field", i)
-                        ));
+                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                            "Batch {}: business_data missing 'resources' field",
+                            i
+                        )));
                     }
                 } else if map.contains_key("resourceinstance") {
                     // Single StaticResource
-                    let resource: AlizarinStaticResource = serde_json::from_value(value)
-                        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                            format!("Batch {}: Failed to parse as single resource: {}", i, e)
-                        ))?;
+                    let resource: AlizarinStaticResource =
+                        serde_json::from_value(value).map_err(|e| {
+                            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                                "Batch {}: Failed to parse as single resource: {}",
+                                i, e
+                            ))
+                        })?;
                     vec![resource]
                 } else {
                     return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
@@ -2021,9 +2159,10 @@ fn batch_merge_resources(
                 }
             }
             _ => {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    format!("Batch {}: Expected array or object, got {:?}", i, value)
-                ));
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Batch {}: Expected array or object, got {:?}",
+                    i, value
+                )));
             }
         };
 
@@ -2036,10 +2175,12 @@ fn batch_merge_resources(
         "resources": result.resources,
         "warnings": result.warnings
     });
-    pythonize::pythonize(py, &output)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to convert to Python: {}", e)
+    pythonize::pythonize(py, &output).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to convert to Python: {}",
+            e
         ))
+    })
 }
 
 /// Python module definition

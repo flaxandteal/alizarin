@@ -16,29 +16,41 @@
 //! - `meta` - Lightweight graph metadata
 //! - `static_graph` - StaticGraph and IndexedGraph
 
-mod translatable;
-mod nodes;
-mod tile;
 mod cards;
 mod descriptors;
-mod resources;
 mod meta;
-mod static_graph;
+mod nodes;
 mod prune;
+mod resources;
+mod static_graph;
+mod tile;
+mod translatable;
 
 // Re-export all public types
-pub use translatable::StaticTranslatableString;
-pub use nodes::{StaticNode, StaticNodegroup, StaticEdge};
-pub use tile::StaticTile;
-pub use cards::{StaticCard, StaticConstraint, StaticPublication, StaticCardsXNodesXWidgets, StaticFunctionsXGraphs};
-pub use descriptors::{StaticResourceDescriptors, DescriptorConfig, DescriptorTypeConfig, DESCRIPTOR_FUNCTION_ID};
-pub use resources::{StaticResource, StaticResourceMetadata, StaticResourceSummary, StaticResourceReference, MergeResult, BatchMergeResult, merge_resources, batch_merge_resources};
+pub use cards::{
+    StaticCard, StaticCardsXNodesXWidgets, StaticConstraint, StaticFunctionsXGraphs,
+    StaticPublication,
+};
+pub use descriptors::{
+    DescriptorConfig, DescriptorTypeConfig, StaticResourceDescriptors, DESCRIPTOR_FUNCTION_ID,
+};
 pub use meta::StaticGraphMeta;
-pub use static_graph::{StaticGraph, IndexedGraph, GraphWrapper};
-pub use prune::{prune_graph, find_root_node, build_backedges, PruneError};
+pub use nodes::{StaticEdge, StaticNode, StaticNodegroup};
+pub use prune::{build_backedges, find_root_node, prune_graph, PruneError};
+pub use resources::{
+    batch_merge_resources, merge_resources, BatchMergeResult, MergeResult, StaticResource,
+    StaticResourceMetadata, StaticResourceReference, StaticResourceSummary,
+};
+pub use static_graph::{GraphWrapper, IndexedGraph, StaticGraph};
+pub use tile::StaticTile;
+pub use translatable::StaticTranslatableString;
 
 /// Datatypes that represent iterable/list values
-pub const ITERABLE_DATATYPES: &[&str] = &["concept-list", "resource-instance-list", "domain-value-list"];
+pub const ITERABLE_DATATYPES: &[&str] = &[
+    "concept-list",
+    "resource-instance-list",
+    "domain-value-list",
+];
 
 /// Check if a datatype is iterable
 pub fn is_iterable_datatype(datatype: &str) -> bool {

@@ -18,8 +18,8 @@
 /// Without proper filtering, accessing names[0].name_use_type might return
 /// both "Primary" AND "Alternative", causing "is_single=true but has 2 values" errors.
 use alizarin_core::{PseudoListCore, PseudoValueCore, StaticNode, StaticTile};
-use std::sync::Arc;
 use serde_json::json;
+use std::sync::Arc;
 
 /// Create a test node
 fn create_node(nodeid: &str, alias: &str, nodegroup_id: &str) -> Arc<StaticNode> {
@@ -53,12 +53,7 @@ fn create_tile(tileid: &str, nodegroup_id: &str, parenttile_id: Option<&str>) ->
 
 /// Create a PseudoValueCore with the specified tile
 fn create_pseudo_value(node: Arc<StaticNode>, tile: Arc<StaticTile>) -> PseudoValueCore {
-    PseudoValueCore::from_node_and_tile(
-        node,
-        Some(tile),
-        Some(json!("test-value")),
-        vec![],
-    )
+    PseudoValueCore::from_node_and_tile(node, Some(tile), Some(json!("test-value")), vec![])
 }
 
 /// Test: matching_entries filters by tile context
@@ -152,10 +147,15 @@ fn test_matching_entries_handles_child_tiles() {
         Some(outer_nodegroup.to_string()), // parent_nodegroup_id
     );
 
-    assert_eq!(matches.len(), 2, "Should match both child tiles pointing to outer tile");
+    assert_eq!(
+        matches.len(),
+        2,
+        "Should match both child tiles pointing to outer tile"
+    );
 
     // Verify we got the right tiles
-    let tile_ids: Vec<_> = matches.iter()
+    let tile_ids: Vec<_> = matches
+        .iter()
         .map(|m| m.tile.as_ref().unwrap().tileid.clone())
         .collect();
     assert!(tile_ids.contains(&Some("tile-child-a".to_string())));
@@ -199,7 +199,8 @@ fn test_matching_entries_handles_root_level() {
 
     assert_eq!(matches.len(), 2, "Should match only root-level tiles");
 
-    let tile_ids: Vec<_> = matches.iter()
+    let tile_ids: Vec<_> = matches
+        .iter()
         .map(|m| m.tile.as_ref().unwrap().tileid.clone())
         .collect();
     assert!(tile_ids.contains(&Some("tile-root-a".to_string())));
@@ -232,13 +233,13 @@ fn test_matching_entries_requires_nodegroup_match() {
     );
 
     // Query for nodegroup A - should only get value from nodegroup A
-    let matches = list.matching_entries(
-        None,
-        Some(nodegroup_a.to_string()),
-        None,
-    );
+    let matches = list.matching_entries(None, Some(nodegroup_a.to_string()), None);
 
-    assert_eq!(matches.len(), 1, "Should only match values in requested nodegroup");
+    assert_eq!(
+        matches.len(),
+        1,
+        "Should only match values in requested nodegroup"
+    );
     assert_eq!(
         matches[0].tile.as_ref().unwrap().nodegroup_id,
         nodegroup_a,
@@ -286,7 +287,8 @@ fn test_registry_names_regression() {
     );
 
     assert_eq!(
-        matches_0.len(), 1,
+        matches_0.len(),
+        1,
         "REGRESSION: names[0].name_use_type should return exactly 1 value, not {}",
         matches_0.len()
     );
@@ -304,7 +306,8 @@ fn test_registry_names_regression() {
     );
 
     assert_eq!(
-        matches_1.len(), 1,
+        matches_1.len(),
+        1,
         "REGRESSION: names[1].name_use_type should return exactly 1 value, not {}",
         matches_1.len()
     );

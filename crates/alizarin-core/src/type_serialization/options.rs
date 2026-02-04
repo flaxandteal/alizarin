@@ -176,10 +176,13 @@ mod tests {
         let result = opts.merge_outer_with_children(own_value, children_json);
 
         // Should wrap with "_" key when children exist
-        assert_eq!(result, json!({
-            "_": "Hotel/Inn",
-            "monument_metatype": "Some Value"
-        }));
+        assert_eq!(
+            result,
+            json!({
+                "_": "Hotel/Inn",
+                "monument_metatype": "Some Value"
+            })
+        );
     }
 
     #[test]

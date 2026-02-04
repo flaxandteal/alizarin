@@ -6,13 +6,12 @@ use pyo3::prelude::*;
 use std::sync::{Arc, Mutex};
 
 use alizarin_core::graph_mutator::{
+    apply_mutations_create_from_json as core_apply_mutations_create,
     apply_mutations_from_json as core_apply_mutations,
     apply_mutations_from_json_with_extensions as core_apply_mutations_with_ext,
-    apply_mutations_create_from_json as core_apply_mutations_create,
-    get_mutation_schema as core_get_schema,
-    generate_uuid_v5 as core_generate_uuid,
-    ExtensionMutationRegistry, ExtensionMutationHandler,
-    MutationConformance, MutationError, MutatorOptions,
+    generate_uuid_v5 as core_generate_uuid, get_mutation_schema as core_get_schema,
+    ExtensionMutationHandler, ExtensionMutationRegistry, MutationConformance, MutationError,
+    MutatorOptions,
 };
 use alizarin_core::StaticGraph as CoreStaticGraph;
 
@@ -45,12 +44,15 @@ impl ExtensionMutationHandler for PyExtensionHandler {
                 .map_err(|e| MutationError::Other(format!("Failed to serialize params: {}", e)))?;
 
             // Call Python function
-            let result = self.apply_fn.call1(py, (graph_json, params_json))
+            let result = self
+                .apply_fn
+                .call1(py, (graph_json, params_json))
                 .map_err(|e| MutationError::Other(format!("Python handler error: {}", e)))?;
 
             // Parse result back as mutated graph JSON
-            let result_json: String = result.extract(py)
-                .map_err(|e| MutationError::Other(format!("Handler must return JSON string: {}", e)))?;
+            let result_json: String = result.extract(py).map_err(|e| {
+                MutationError::Other(format!("Handler must return JSON string: {}", e))
+            })?;
 
             let mutated: CoreStaticGraph = serde_json::from_str(&result_json)
                 .map_err(|e| MutationError::Other(format!("Invalid graph JSON returned: {}", e)))?;
@@ -117,10 +119,12 @@ fn apply_mutations_from_json(graph_json: &str, mutations_json: &str) -> PyResult
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Serialize result
-    serde_json::to_string(&mutated)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to serialize mutated graph: {}", e)
+    serde_json::to_string(&mutated).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize mutated graph: {}",
+            e
         ))
+    })
 }
 
 /// Generate a deterministic UUID v5 from group and key.
@@ -148,10 +152,12 @@ fn generate_uuid_v5(group_type: &str, key: &str, group_id: Option<&str>) -> Stri
 #[pyfunction]
 fn get_mutation_schema(py: Python) -> PyResult<PyObject> {
     let schema = core_get_schema();
-    let schema_str = serde_json::to_string(&schema)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to serialize schema: {}", e)
-        ))?;
+    let schema_str = serde_json::to_string(&schema).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize schema: {}",
+            e
+        ))
+    })?;
 
     let json_module = py.import_bound("json")?;
     let py_dict = json_module.call_method1("loads", (schema_str,))?;
@@ -176,20 +182,23 @@ fn apply_mutations_with_extensions(graph_json: &str, mutations_json: &str) -> Py
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Get registry
-    let registry = EXTENSION_REGISTRY.lock()
-        .map_err(|_| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            "Failed to acquire extension registry lock"
-        ))?;
+    let registry = EXTENSION_REGISTRY.lock().map_err(|_| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+            "Failed to acquire extension registry lock",
+        )
+    })?;
 
     // Apply mutations with extensions
     let mutated = core_apply_mutations_with_ext(&graph, mutations_json, Some(&registry))
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Serialize result
-    serde_json::to_string(&mutated)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to serialize mutated graph: {}", e)
+    serde_json::to_string(&mutated).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize mutated graph: {}",
+            e
         ))
+    })
 }
 
 /// Register a Python function as an extension mutation handler.
@@ -227,15 +236,18 @@ fn register_extension_mutation(
         "BranchConformant" => MutationConformance::BranchConformant,
         "ModelConformant" => MutationConformance::ModelConformant,
         "NonConformant" => MutationConformance::NonConformant,
-        _ => return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Invalid conformance level: {}", conformance)
-        )),
+        _ => {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Invalid conformance level: {}",
+                conformance
+            )))
+        }
     };
 
     // Verify handler is callable
     if !handler.bind(py).is_callable() {
         return Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-            "Handler must be callable"
+            "Handler must be callable",
         ));
     }
 
@@ -247,10 +259,11 @@ fn register_extension_mutation(
     };
 
     // Register with global registry
-    let mut registry = EXTENSION_REGISTRY.lock()
-        .map_err(|_| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            "Failed to acquire extension registry lock"
-        ))?;
+    let mut registry = EXTENSION_REGISTRY.lock().map_err(|_| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+            "Failed to acquire extension registry lock",
+        )
+    })?;
 
     registry.register(name, Arc::new(py_handler));
     Ok(())
@@ -265,10 +278,11 @@ fn register_extension_mutation(
 ///     True if the handler is registered
 #[pyfunction]
 fn has_extension_mutation(name: &str) -> PyResult<bool> {
-    let registry = EXTENSION_REGISTRY.lock()
-        .map_err(|_| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            "Failed to acquire extension registry lock"
-        ))?;
+    let registry = EXTENSION_REGISTRY.lock().map_err(|_| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+            "Failed to acquire extension registry lock",
+        )
+    })?;
 
     Ok(registry.has(name))
 }
@@ -279,10 +293,11 @@ fn has_extension_mutation(name: &str) -> PyResult<bool> {
 ///     List of registered mutation names
 #[pyfunction]
 fn list_extension_mutations() -> PyResult<Vec<String>> {
-    let registry = EXTENSION_REGISTRY.lock()
-        .map_err(|_| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-            "Failed to acquire extension registry lock"
-        ))?;
+    let registry = EXTENSION_REGISTRY.lock().map_err(|_| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+            "Failed to acquire extension registry lock",
+        )
+    })?;
 
     Ok(registry.list().into_iter().map(|s| s.to_string()).collect())
 }
@@ -315,16 +330,16 @@ fn apply_mutations_create(mutations_json: &str, graph_json: Option<&str>) -> PyR
     };
 
     // Apply mutations
-    let result = core_apply_mutations_create(
-        mutations_json,
-        existing_graph.as_ref(),
-    ).map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+    let result = core_apply_mutations_create(mutations_json, existing_graph.as_ref())
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Serialize result
-    serde_json::to_string(&result)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-            format!("Failed to serialize result graph: {}", e)
+    serde_json::to_string(&result).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize result graph: {}",
+            e
         ))
+    })
 }
 
 /// Register graph mutator functions with the Python module

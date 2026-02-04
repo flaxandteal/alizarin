@@ -19,16 +19,16 @@
 //! registerDisplaySerializer('reference', (tileData, language) => 'Label');
 //! ```
 
+use alizarin_core::{
+    CoercionResult, DisplaySerializerRegistry, ExtensionDisplaySerializer, ExtensionError,
+    ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities, SerializationOptions,
+    SerializationResult,
+};
+use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
-use serde_json::Value;
-use alizarin_core::{
-    ExtensionDisplaySerializer, SerializationOptions, SerializationResult, DisplaySerializerRegistry,
-    ExtensionTypeRegistry, ExtensionTypeHandler, HandlerCapabilities, ExtensionError,
-    CoercionResult,
-};
 
 // Thread-local registry of JS callbacks
 // WASM is single-threaded, so thread_local is safe and avoids Send/Sync requirements
@@ -80,15 +80,20 @@ pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<()
         .map(|v| v.dyn_into::<js_sys::Function>().unwrap());
 
     if coerce_fn.is_none() && render_display_fn.is_none() && resolve_markers_fn.is_none() {
-        return Err(JsValue::from_str("At least one callback (coerce, renderDisplay, resolveMarkers) is required"));
+        return Err(JsValue::from_str(
+            "At least one callback (coerce, renderDisplay, resolveMarkers) is required",
+        ));
     }
 
     JS_TYPE_HANDLERS.with(|handlers| {
-        handlers.borrow_mut().insert(datatype.to_string(), JsHandlerCallbacks {
-            coerce_fn,
-            render_display_fn,
-            resolve_markers_fn,
-        });
+        handlers.borrow_mut().insert(
+            datatype.to_string(),
+            JsHandlerCallbacks {
+                coerce_fn,
+                render_display_fn,
+                resolve_markers_fn,
+            },
+        );
     });
 
     Ok(())
@@ -97,9 +102,7 @@ pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<()
 /// Check if an extension handler is registered for a datatype.
 #[wasm_bindgen(js_name = hasExtensionHandler)]
 pub fn has_extension_handler(datatype: &str) -> bool {
-    JS_TYPE_HANDLERS.with(|handlers| {
-        handlers.borrow().contains_key(datatype)
-    })
+    JS_TYPE_HANDLERS.with(|handlers| handlers.borrow().contains_key(datatype))
 }
 
 /// Unregister an extension handler.
@@ -147,7 +150,10 @@ impl JsExtensionTypeHandler {
             }
         });
 
-        Self { datatype, capabilities }
+        Self {
+            datatype,
+            capabilities,
+        }
     }
 }
 
@@ -189,26 +195,30 @@ impl ExtensionTypeHandler for JsExtensionTypeHandler {
                     match coerce_fn.call2(&JsValue::NULL, &js_value, &js_config) {
                         Ok(result) => {
                             // Extract tileData and displayValue from result
-                            let tile_data = js_sys::Reflect::get(&result, &JsValue::from_str("tileData"))
-                                .ok()
-                                .and_then(|v| {
-                                    let json = js_sys::JSON::stringify(&v).ok()?.as_string()?;
-                                    serde_json::from_str(&json).ok()
-                                })
-                                .unwrap_or_else(|| value.clone());
+                            let tile_data =
+                                js_sys::Reflect::get(&result, &JsValue::from_str("tileData"))
+                                    .ok()
+                                    .and_then(|v| {
+                                        let json = js_sys::JSON::stringify(&v).ok()?.as_string()?;
+                                        serde_json::from_str(&json).ok()
+                                    })
+                                    .unwrap_or_else(|| value.clone());
 
-                            let display_value = js_sys::Reflect::get(&result, &JsValue::from_str("displayValue"))
-                                .ok()
-                                .and_then(|v| {
-                                    let json = js_sys::JSON::stringify(&v).ok()?.as_string()?;
-                                    serde_json::from_str(&json).ok()
-                                })
-                                .unwrap_or_else(|| tile_data.clone());
+                            let display_value =
+                                js_sys::Reflect::get(&result, &JsValue::from_str("displayValue"))
+                                    .ok()
+                                    .and_then(|v| {
+                                        let json = js_sys::JSON::stringify(&v).ok()?.as_string()?;
+                                        serde_json::from_str(&json).ok()
+                                    })
+                                    .unwrap_or_else(|| tile_data.clone());
 
                             Ok(CoercionResult::success(tile_data, display_value))
                         }
                         Err(e) => {
-                            let msg = e.as_string().unwrap_or_else(|| "JS coerce callback failed".to_string());
+                            let msg = e
+                                .as_string()
+                                .unwrap_or_else(|| "JS coerce callback failed".to_string());
                             Err(ExtensionError::new(msg))
                         }
                     }
@@ -249,7 +259,9 @@ impl ExtensionTypeHandler for JsExtensionTypeHandler {
                             }
                         }
                         Err(e) => {
-                            let msg = e.as_string().unwrap_or_else(|| "JS renderDisplay callback failed".to_string());
+                            let msg = e
+                                .as_string()
+                                .unwrap_or_else(|| "JS renderDisplay callback failed".to_string());
                             Err(ExtensionError::new(msg))
                         }
                     }
@@ -262,11 +274,7 @@ impl ExtensionTypeHandler for JsExtensionTypeHandler {
         })
     }
 
-    fn resolve_markers(
-        &self,
-        tile_data: &Value,
-        language: &str,
-    ) -> Result<Value, ExtensionError> {
+    fn resolve_markers(&self, tile_data: &Value, language: &str) -> Result<Value, ExtensionError> {
         JS_TYPE_HANDLERS.with(|handlers| {
             let handlers = handlers.borrow();
 
@@ -286,13 +294,19 @@ impl ExtensionTypeHandler for JsExtensionTypeHandler {
                                 .and_then(|s| s.as_string());
 
                             match json {
-                                Some(j) => serde_json::from_str(&j)
-                                    .map_err(|e| ExtensionError::new(format!("Failed to parse resolved data: {}", e))),
+                                Some(j) => serde_json::from_str(&j).map_err(|e| {
+                                    ExtensionError::new(format!(
+                                        "Failed to parse resolved data: {}",
+                                        e
+                                    ))
+                                }),
                                 None => Ok(tile_data.clone()),
                             }
                         }
                         Err(e) => {
-                            let msg = e.as_string().unwrap_or_else(|| "JS resolveMarkers callback failed".to_string());
+                            let msg = e
+                                .as_string()
+                                .unwrap_or_else(|| "JS resolveMarkers callback failed".to_string());
                             Err(ExtensionError::new(msg))
                         }
                     }
@@ -343,16 +357,16 @@ pub fn build_extension_type_registry() -> ExtensionTypeRegistry {
 #[wasm_bindgen(js_name = registerDisplaySerializer)]
 pub fn register_display_serializer(datatype: &str, callback: js_sys::Function) {
     JS_DISPLAY_SERIALIZERS.with(|serializers| {
-        serializers.borrow_mut().insert(datatype.to_string(), callback);
+        serializers
+            .borrow_mut()
+            .insert(datatype.to_string(), callback);
     });
 }
 
 /// Check if a display serializer is registered for a datatype.
 #[wasm_bindgen(js_name = hasDisplaySerializer)]
 pub fn has_display_serializer(datatype: &str) -> bool {
-    JS_DISPLAY_SERIALIZERS.with(|serializers| {
-        serializers.borrow().contains_key(datatype)
-    })
+    JS_DISPLAY_SERIALIZERS.with(|serializers| serializers.borrow().contains_key(datatype))
 }
 
 /// Unregister a display serializer.
@@ -386,9 +400,7 @@ impl ExtensionDisplaySerializer for JsDisplaySerializer {
             if let Some(callback) = serializers.get(&self.datatype) {
                 // Convert tile_data to JsValue via JSON string (more reliable than serde_wasm_bindgen)
                 let js_tile_data = match serde_json::to_string(tile_data) {
-                    Ok(json_str) => {
-                        js_sys::JSON::parse(&json_str).unwrap_or(JsValue::NULL)
-                    }
+                    Ok(json_str) => js_sys::JSON::parse(&json_str).unwrap_or(JsValue::NULL),
                     Err(_) => JsValue::NULL,
                 };
 
@@ -411,7 +423,9 @@ impl ExtensionDisplaySerializer for JsDisplaySerializer {
                         }
                     }
                     Err(e) => {
-                        let msg = e.as_string().unwrap_or_else(|| "JS callback failed".to_string());
+                        let msg = e
+                            .as_string()
+                            .unwrap_or_else(|| "JS callback failed".to_string());
                         SerializationResult::error(msg)
                     }
                 }

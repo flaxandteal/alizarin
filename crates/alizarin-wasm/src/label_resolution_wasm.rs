@@ -9,12 +9,12 @@
 //! 3. JS loads collections and builds a lookup table (collectionId -> label -> conceptId)
 //! 4. JS calls `resolveLabelsWithLookup` with the lookup table
 
+use alizarin_core::label_resolution::{
+    self, build_alias_to_collection_map, find_needed_collections, ConceptLookup,
+    LabelResolutionConfig,
+};
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
-use alizarin_core::label_resolution::{
-    self, build_alias_to_collection_map, find_needed_collections,
-    LabelResolutionConfig, ConceptLookup,
-};
 
 /// Build a mapping from node alias to collection ID.
 ///
@@ -109,8 +109,9 @@ pub fn wasm_resolve_labels_with_lookup(
     let alias_map: HashMap<String, String> = serde_wasm_bindgen::from_value(alias_to_collection)
         .map_err(|e| JsError::new(&format!("Invalid alias map: {}", e)))?;
 
-    let table: HashMap<String, HashMap<String, String>> = serde_wasm_bindgen::from_value(lookup_table)
-        .map_err(|e| JsError::new(&format!("Invalid lookup table: {}", e)))?;
+    let table: HashMap<String, HashMap<String, String>> =
+        serde_wasm_bindgen::from_value(lookup_table)
+            .map_err(|e| JsError::new(&format!("Invalid lookup table: {}", e)))?;
 
     let lookup = TableLookup { table };
 

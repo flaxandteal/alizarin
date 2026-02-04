@@ -106,7 +106,9 @@ pub struct ExtensionError {
 
 impl ExtensionError {
     pub fn new(message: impl Into<String>) -> Self {
-        Self { message: message.into() }
+        Self {
+            message: message.into(),
+        }
     }
 }
 
@@ -181,11 +183,7 @@ pub trait ExtensionTypeHandler: Send + Sync {
     ///
     /// # Returns
     /// The resolved tile data (may be unchanged if no markers)
-    fn resolve_markers(
-        &self,
-        tile_data: &Value,
-        _language: &str,
-    ) -> Result<Value, ExtensionError> {
+    fn resolve_markers(&self, tile_data: &Value, _language: &str) -> Result<Value, ExtensionError> {
         // Default: return unchanged
         Ok(tile_data.clone())
     }
@@ -361,9 +359,12 @@ mod tests {
         let mut registry = ExtensionTypeRegistry::new();
         assert!(registry.is_empty());
 
-        registry.register("test-type", Arc::new(TestHandler {
-            caps: HandlerCapabilities::full(),
-        }));
+        registry.register(
+            "test-type",
+            Arc::new(TestHandler {
+                caps: HandlerCapabilities::full(),
+            }),
+        );
 
         assert!(!registry.is_empty());
         assert_eq!(registry.len(), 1);
@@ -374,9 +375,12 @@ mod tests {
     #[test]
     fn test_coerce_with_handler() {
         let mut registry = ExtensionTypeRegistry::new();
-        registry.register("test-type", Arc::new(TestHandler {
-            caps: HandlerCapabilities::coercion_only(),
-        }));
+        registry.register(
+            "test-type",
+            Arc::new(TestHandler {
+                caps: HandlerCapabilities::coercion_only(),
+            }),
+        );
 
         let value = serde_json::json!("test-value");
         let result = registry.coerce("test-type", &value, None).unwrap();
@@ -397,12 +401,17 @@ mod tests {
     #[test]
     fn test_render_display() {
         let mut registry = ExtensionTypeRegistry::new();
-        registry.register("test-type", Arc::new(TestHandler {
-            caps: HandlerCapabilities::display_only(),
-        }));
+        registry.register(
+            "test-type",
+            Arc::new(TestHandler {
+                caps: HandlerCapabilities::display_only(),
+            }),
+        );
 
         let tile_data = serde_json::json!({"id": "123"});
-        let result = registry.render_display("test-type", &tile_data, "en").unwrap();
+        let result = registry
+            .render_display("test-type", &tile_data, "en")
+            .unwrap();
 
         assert!(result.is_some());
         assert!(result.unwrap().contains("Display:"));
@@ -413,9 +422,12 @@ mod tests {
         let mut registry = ExtensionTypeRegistry::new();
 
         // Handler that only does display
-        registry.register("display-only", Arc::new(TestHandler {
-            caps: HandlerCapabilities::display_only(),
-        }));
+        registry.register(
+            "display-only",
+            Arc::new(TestHandler {
+                caps: HandlerCapabilities::display_only(),
+            }),
+        );
 
         let value = serde_json::json!("test");
 
@@ -424,16 +436,21 @@ mod tests {
         assert!(coerce_result.is_none());
 
         // Display should work
-        let display_result = registry.render_display("display-only", &value, "en").unwrap();
+        let display_result = registry
+            .render_display("display-only", &value, "en")
+            .unwrap();
         assert!(display_result.is_some());
     }
 
     #[test]
     fn test_unregister() {
         let mut registry = ExtensionTypeRegistry::new();
-        registry.register("test-type", Arc::new(TestHandler {
-            caps: HandlerCapabilities::full(),
-        }));
+        registry.register(
+            "test-type",
+            Arc::new(TestHandler {
+                caps: HandlerCapabilities::full(),
+            }),
+        );
 
         assert!(registry.has("test-type"));
 
@@ -445,12 +462,18 @@ mod tests {
     #[test]
     fn test_list() {
         let mut registry = ExtensionTypeRegistry::new();
-        registry.register("type-a", Arc::new(TestHandler {
-            caps: HandlerCapabilities::full(),
-        }));
-        registry.register("type-b", Arc::new(TestHandler {
-            caps: HandlerCapabilities::full(),
-        }));
+        registry.register(
+            "type-a",
+            Arc::new(TestHandler {
+                caps: HandlerCapabilities::full(),
+            }),
+        );
+        registry.register(
+            "type-b",
+            Arc::new(TestHandler {
+                caps: HandlerCapabilities::full(),
+            }),
+        );
 
         let list = registry.list();
         assert_eq!(list.len(), 2);

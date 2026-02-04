@@ -1,18 +1,16 @@
-use std::sync::Arc;
 use std::cell::RefCell;
+use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 // Use core types for internal storage (no WASM wrapper overhead)
-use alizarin_core::{StaticNode, StaticTile, PseudoValueCore};
 use alizarin_core::node_config::NodeConfigManager;
 use alizarin_core::rdm_cache::RdmCache;
-use alizarin_core::type_serialization::{
-    SerializationOptions, SerializationContext,
-};
+use alizarin_core::type_serialization::{SerializationContext, SerializationOptions};
+use alizarin_core::{PseudoValueCore, StaticNode, StaticTile};
 // Import traits and generic functions for visitor pattern delegation
-use alizarin_core::pseudo_value_core::{PseudoValueLike, PseudoListLike, to_json_generic};
+use alizarin_core::pseudo_value_core::{to_json_generic, PseudoListLike, PseudoValueLike};
 // WASM wrapper types for API boundary
-use crate::graph::StaticTile as WasmStaticTile;
 use crate::graph::StaticNode as WasmStaticNode;
+use crate::graph::StaticTile as WasmStaticTile;
 
 /// Internal pseudo-value data structure.
 /// Used internally for efficient iteration without RefCell overhead.
@@ -38,7 +36,6 @@ pub(crate) struct PseudoValueInner {
     pub inner: Option<Box<PseudoValueInner>>,
 
     // ============ WASM-specific Runtime State ============
-
     /// The loaded ViewModel (opaque JsValue - Rust doesn't inspect it)
     /// PORT: js/pseudos.ts:54 - value: any
     pub value: Option<JsValue>,
@@ -126,7 +123,6 @@ impl PseudoValueInner {
     pub fn independent(&self) -> bool {
         self.core.independent
     }
-
 }
 
 /// Internal pseudo-list data structure.
@@ -201,10 +197,10 @@ impl PseudoValueInner {
                 node: node.clone(),
                 child_node_ids: child_node_ids.clone(),
                 is_collector: node.is_collector,
-                inner: None,  // core.inner unused
-                is_inner: true,  // This IS the inner
+                inner: None,    // core.inner unused
+                is_inner: true, // This IS the inner
                 tile: tile.clone(),
-                tile_data: None,  // Inner doesn't get tile_data directly
+                tile_data: None, // Inner doesn't get tile_data directly
                 independent,
                 original_tile: tile.clone(),
             };
@@ -223,9 +219,13 @@ impl PseudoValueInner {
         let core = PseudoValueCore {
             node,
             // Outer gets empty child_node_ids if it has inner (children go through inner)
-            child_node_ids: if inner.is_some() { vec![] } else { child_node_ids },
+            child_node_ids: if inner.is_some() {
+                vec![]
+            } else {
+                child_node_ids
+            },
             is_collector: false,
-            inner: None,  // core.inner unused, we use our own
+            inner: None, // core.inner unused, we use our own
             is_inner: is_inner_flag,
             tile: tile.clone(),
             tile_data,
@@ -300,7 +300,8 @@ impl PseudoValueLike for PseudoValueInner {
         serialization_options: &SerializationOptions,
         serialization_context: Option<&SerializationContext>,
     ) -> serde_json::Value {
-        self.core.serialize_own_value(serialization_options, serialization_context)
+        self.core
+            .serialize_own_value(serialization_options, serialization_context)
     }
 
     fn has_children(&self, edges: &std::collections::HashMap<String, Vec<String>>) -> bool {
@@ -352,7 +353,9 @@ impl PseudoListInner {
         // Sort values by sortorder at construction time for consistent ordering
         let mut sorted_values = values;
         sorted_values.sort_by_key(|v| {
-            v.core.tile.as_ref()
+            v.core
+                .tile
+                .as_ref()
                 .and_then(|t| t.sortorder)
                 .unwrap_or(i32::MAX)
         });
@@ -365,11 +368,17 @@ impl PseudoListInner {
     }
 
     /// Create from values with explicit is_single flag
-    pub fn from_values_with_cardinality(node_alias: String, values: Vec<PseudoValueInner>, is_single: bool) -> Self {
+    pub fn from_values_with_cardinality(
+        node_alias: String,
+        values: Vec<PseudoValueInner>,
+        is_single: bool,
+    ) -> Self {
         // Sort values by sortorder at construction time for consistent ordering
         let mut sorted_values = values;
         sorted_values.sort_by_key(|v| {
-            v.core.tile.as_ref()
+            v.core
+                .tile
+                .as_ref()
                 .and_then(|t| t.sortorder)
                 .unwrap_or(i32::MAX)
         });
@@ -399,13 +408,12 @@ impl PseudoListInner {
         let mut values = Vec::new();
 
         // PORT: js/pseudos.ts:466 - get child node IDs once (same for all tiles)
-        let child_node_ids = edges.get(&node.nodeid)
-            .cloned()
-            .unwrap_or_default();
+        let child_node_ids = edges.get(&node.nodeid).cloned().unwrap_or_default();
 
         for tile_opt in tiles {
             // PORT: Extract tile data for this specific tile
-            let tile_data = tile_opt.as_ref()
+            let tile_data = tile_opt
+                .as_ref()
                 .and_then(|t| t.data.get(&node.nodeid))
                 .cloned();
 
@@ -424,13 +432,16 @@ impl PseudoListInner {
             values.push(value);
         }
 
-        Self::from_values_with_cardinality(node.alias.clone().unwrap_or_default(), values, is_single)
+        Self::from_values_with_cardinality(
+            node.alias.clone().unwrap_or_default(),
+            values,
+            is_single,
+        )
     }
 
     /// Get all values across
     pub fn all_values(&self) -> Vec<&PseudoValueInner> {
-        self.values.iter()
-            .collect()
+        self.values.iter().collect()
     }
 
     pub fn matching_entries(
@@ -440,7 +451,9 @@ impl PseudoListInner {
         parent_nodegroup_id: Option<String>,
     ) -> Vec<&PseudoValueInner> {
         use alizarin_core::matches_tile_filter;
-        let mut entries: Vec<&PseudoValueInner> = self.values.iter()
+        let mut entries: Vec<&PseudoValueInner> = self
+            .values
+            .iter()
             .filter(|v| {
                 match v.core.tile.as_ref() {
                     Some(tile) => matches_tile_filter(
@@ -458,7 +471,9 @@ impl PseudoListInner {
 
         // Sort by sortorder to ensure consistent ordering (lowest first = primary)
         entries.sort_by_key(|v| {
-            v.core.tile.as_ref()
+            v.core
+                .tile
+                .as_ref()
                 .and_then(|t| t.sortorder)
                 .unwrap_or(i32::MAX)
         });
@@ -474,7 +489,8 @@ impl PseudoListInner {
 use std::collections::HashMap;
 
 /// Visitor context for JSON serialization - reuses core's generic VisitorContext
-pub(crate) type VisitorContext<'a> = alizarin_core::pseudo_value_core::VisitorContext<'a, PseudoListInner>;
+pub(crate) type VisitorContext<'a> =
+    alizarin_core::pseudo_value_core::VisitorContext<'a, PseudoListInner>;
 
 impl PseudoValueInner {
     /// Convert this pseudo value to JSON using core's generic visitor.
@@ -496,7 +512,9 @@ impl PseudoListInner {
         // Sort values by sortorder for consistent output
         let mut sorted_values: Vec<&PseudoValueInner> = self.values.iter().collect();
         sorted_values.sort_by_key(|v| {
-            v.core.tile.as_ref()
+            v.core
+                .tile
+                .as_ref()
                 .and_then(|t| t.sortorder)
                 .unwrap_or(i32::MAX)
         });
@@ -510,7 +528,8 @@ impl PseudoListInner {
         }
 
         // Multiple values - array (using sorted order)
-        let arr: Vec<serde_json::Value> = sorted_values.iter()
+        let arr: Vec<serde_json::Value> = sorted_values
+            .iter()
             .map(|v| v.to_json(ctx))
             .filter(|v| !v.is_null())
             .collect();
@@ -598,7 +617,11 @@ impl PseudoValueInner {
     }
 
     /// Convert a leaf node to display JSON
-    fn leaf_to_display_json(&self, ctx: &DisplayVisitorContext, datatype: &str) -> serde_json::Value {
+    fn leaf_to_display_json(
+        &self,
+        ctx: &DisplayVisitorContext,
+        datatype: &str,
+    ) -> serde_json::Value {
         let tile_data = match &self.core.tile_data {
             Some(data) => data,
             None => return serde_json::Value::Null,
@@ -617,29 +640,19 @@ impl PseudoValueInner {
 
         match datatype {
             // Domain value - lookup from node config
-            "domain-value" => {
-                self.resolve_domain_value(ctx, tile_data)
-            }
+            "domain-value" => self.resolve_domain_value(ctx, tile_data),
 
             // Domain value list - lookup each from node config
-            "domain-value-list" => {
-                self.resolve_domain_value_list(ctx, tile_data)
-            }
+            "domain-value-list" => self.resolve_domain_value_list(ctx, tile_data),
 
             // Concept value - lookup from RDM cache
-            "concept" | "concept-value" => {
-                self.resolve_concept_value(ctx, tile_data)
-            }
+            "concept" | "concept-value" => self.resolve_concept_value(ctx, tile_data),
 
             // Concept list - lookup each from RDM cache
-            "concept-list" => {
-                self.resolve_concept_list(ctx, tile_data)
-            }
+            "concept-list" => self.resolve_concept_list(ctx, tile_data),
 
             // Boolean with labels
-            "boolean" => {
-                self.resolve_boolean_value(ctx, tile_data)
-            }
+            "boolean" => self.resolve_boolean_value(ctx, tile_data),
 
             // String - extract display value from language map
             "string" => {
@@ -663,14 +676,19 @@ impl PseudoValueInner {
     }
 
     /// Resolve a domain value UUID to its display label
-    fn resolve_domain_value(&self, ctx: &DisplayVisitorContext, tile_data: &serde_json::Value) -> serde_json::Value {
+    fn resolve_domain_value(
+        &self,
+        ctx: &DisplayVisitorContext,
+        tile_data: &serde_json::Value,
+    ) -> serde_json::Value {
         let uuid = match tile_data.as_str() {
             Some(s) => s,
             None => return tile_data.clone(),
         };
 
         if let Some(config_mgr) = ctx.node_config_manager {
-            if let Some(domain_value) = config_mgr.lookup_domain_value(&self.core.node.nodeid, uuid) {
+            if let Some(domain_value) = config_mgr.lookup_domain_value(&self.core.node.nodeid, uuid)
+            {
                 // Return the label for the requested language
                 if let Some(label) = domain_value.lang(ctx.language) {
                     return serde_json::Value::String(label.to_string());
@@ -685,13 +703,18 @@ impl PseudoValueInner {
     }
 
     /// Resolve a domain value list to display labels
-    fn resolve_domain_value_list(&self, ctx: &DisplayVisitorContext, tile_data: &serde_json::Value) -> serde_json::Value {
+    fn resolve_domain_value_list(
+        &self,
+        ctx: &DisplayVisitorContext,
+        tile_data: &serde_json::Value,
+    ) -> serde_json::Value {
         let arr = match tile_data.as_array() {
             Some(a) => a,
             None => return tile_data.clone(),
         };
 
-        let resolved: Vec<serde_json::Value> = arr.iter()
+        let resolved: Vec<serde_json::Value> = arr
+            .iter()
             .map(|item| self.resolve_domain_value(ctx, item))
             .collect();
 
@@ -699,7 +722,11 @@ impl PseudoValueInner {
     }
 
     /// Resolve a concept UUID to its display label using RDM cache
-    fn resolve_concept_value(&self, ctx: &DisplayVisitorContext, tile_data: &serde_json::Value) -> serde_json::Value {
+    fn resolve_concept_value(
+        &self,
+        ctx: &DisplayVisitorContext,
+        tile_data: &serde_json::Value,
+    ) -> serde_json::Value {
         // tile_data could be a UUID string or a concept object with "id" field
         let uuid = if let Some(s) = tile_data.as_str() {
             s.to_string()
@@ -714,8 +741,11 @@ impl PseudoValueInner {
         };
 
         // Get collection ID from node config
-        let collection_id = ctx.node_config_manager
-            .and_then(|config_mgr| config_mgr.get_concept(&self.core.node.nodeid).map(|concept_config| concept_config.rdm_collection.clone()));
+        let collection_id = ctx.node_config_manager.and_then(|config_mgr| {
+            config_mgr
+                .get_concept(&self.core.node.nodeid)
+                .map(|concept_config| concept_config.rdm_collection.clone())
+        });
 
         // Look up in RDM cache
         if let (Some(rdm_cache), Some(collection_id)) = (ctx.rdm_cache, collection_id) {
@@ -729,13 +759,18 @@ impl PseudoValueInner {
     }
 
     /// Resolve a concept list to display labels
-    fn resolve_concept_list(&self, ctx: &DisplayVisitorContext, tile_data: &serde_json::Value) -> serde_json::Value {
+    fn resolve_concept_list(
+        &self,
+        ctx: &DisplayVisitorContext,
+        tile_data: &serde_json::Value,
+    ) -> serde_json::Value {
         let arr = match tile_data.as_array() {
             Some(a) => a,
             None => return tile_data.clone(),
         };
 
-        let resolved: Vec<serde_json::Value> = arr.iter()
+        let resolved: Vec<serde_json::Value> = arr
+            .iter()
             .map(|item| self.resolve_concept_value(ctx, item))
             .collect();
 
@@ -743,7 +778,11 @@ impl PseudoValueInner {
     }
 
     /// Resolve a boolean value to its display label
-    fn resolve_boolean_value(&self, ctx: &DisplayVisitorContext, tile_data: &serde_json::Value) -> serde_json::Value {
+    fn resolve_boolean_value(
+        &self,
+        ctx: &DisplayVisitorContext,
+        tile_data: &serde_json::Value,
+    ) -> serde_json::Value {
         let bool_value = match tile_data.as_bool() {
             Some(b) => b,
             None => return tile_data.clone(),
@@ -789,7 +828,9 @@ impl PseudoValueInner {
         };
 
         for child_node_id in child_node_ids {
-            let child_node = ctx.nodes_by_alias.values()
+            let child_node = ctx
+                .nodes_by_alias
+                .values()
                 .find(|n| &n.nodeid == child_node_id);
 
             let child_node = match child_node {
@@ -850,7 +891,8 @@ impl PseudoValueInner {
                     }
                 }
             } else {
-                let arr: Vec<serde_json::Value> = matching_values.iter()
+                let arr: Vec<serde_json::Value> = matching_values
+                    .iter()
                     .map(|v| v.to_display_json(&child_ctx))
                     .filter(|v| !is_empty_for_flattening(v))
                     .collect();
@@ -889,7 +931,9 @@ impl PseudoListInner {
         // Sort values by sortorder for consistent output
         let mut sorted_values: Vec<&PseudoValueInner> = self.values.iter().collect();
         sorted_values.sort_by_key(|v| {
-            v.core.tile.as_ref()
+            v.core
+                .tile
+                .as_ref()
                 .and_then(|t| t.sortorder)
                 .unwrap_or(i32::MAX)
         });
@@ -903,7 +947,8 @@ impl PseudoListInner {
         }
 
         // Multiple values - array (using sorted order)
-        let arr: Vec<serde_json::Value> = sorted_values.iter()
+        let arr: Vec<serde_json::Value> = sorted_values
+            .iter()
             .map(|v| v.to_display_json(ctx))
             .filter(|v| !v.is_null())
             .collect();
@@ -1015,7 +1060,9 @@ impl PseudoValueInner {
             if datatype != "semantic" && !self.core.is_inner {
                 if let Some(ref data) = self.core.tile_data {
                     if let Some(tile_builder) = tiles.get_mut(&tile_key) {
-                        tile_builder.data.insert(self.core.node.nodeid.clone(), data.clone());
+                        tile_builder
+                            .data
+                            .insert(self.core.node.nodeid.clone(), data.clone());
                     }
                 }
             }
@@ -1055,7 +1102,9 @@ impl PseudoValueInner {
         };
 
         for child_node_id in child_node_ids {
-            let child_node = ctx.nodes_by_alias.values()
+            let child_node = ctx
+                .nodes_by_alias
+                .values()
                 .find(|n| &n.nodeid == child_node_id);
 
             let child_node = match child_node {
@@ -1152,7 +1201,7 @@ impl PseudoValue {
                 let core_tile = tile.as_ref().clone();
                 let wasm_tile = WasmStaticTile::from(core_tile);
                 wasm_tile.into()
-            },
+            }
             None => JsValue::NULL,
         }
     }
@@ -1291,7 +1340,8 @@ impl PseudoValue {
             inner.value.clone().unwrap_or(JsValue::NULL)
         } else if let (Some(tile), false) = (&inner.core.tile, inner.datatype() == "semantic") {
             // Get data from tile.data[nodeid]
-            tile.data.get(&inner.core.node.nodeid)
+            tile.data
+                .get(&inner.core.node.nodeid)
                 .map(|d| serde_wasm_bindgen::to_value(d).unwrap_or(JsValue::NULL))
                 .unwrap_or(JsValue::NULL)
         } else {
@@ -1307,7 +1357,7 @@ impl PseudoValue {
             Some(t) => {
                 let wasm_tile = WasmStaticTile::from(t.as_ref().clone());
                 JsValue::from(wasm_tile)
-            },
+            }
             None => JsValue::NULL,
         };
 
@@ -1324,10 +1374,10 @@ impl PseudoValue {
         // Note: We pass tile, node, data, isInner - the JS caller already has 'this'
         let vm_promise = get_view_model.call4(
             &JsValue::NULL,
-            &tile_js,      // tile
-            &node_js,      // node
-            &data,         // data
-            &is_inner_js,  // isInner
+            &tile_js,     // tile
+            &node_js,     // node
+            &data,        // data
+            &is_inner_js, // isInner
         )?;
 
         // Store the promise as the value (JS will await it)
@@ -1360,7 +1410,8 @@ impl PseudoValue {
             self.inner.borrow_mut().core.tile = None;
         } else {
             // Convert JsValue to StaticTile via serde deserialization
-            if let Ok(core_tile) = serde_wasm_bindgen::from_value::<alizarin_core::StaticTile>(tile) {
+            if let Ok(core_tile) = serde_wasm_bindgen::from_value::<alizarin_core::StaticTile>(tile)
+            {
                 self.inner.borrow_mut().core.tile = Some(Arc::new(core_tile));
             }
         }
@@ -1385,7 +1436,7 @@ impl PseudoValue {
                 }
                 Err(e) => {
                     web_sys::console::warn_1(
-                        &format!("setTileData: failed to convert value: {:?}", e).into()
+                        &format!("setTileData: failed to convert value: {:?}", e).into(),
                     );
                 }
             }
@@ -1445,7 +1496,7 @@ impl PseudoValue {
         const ITERABLE_DATATYPES: &[&str] = &[
             "concept-list",
             "resource-instance-list",
-            "domain-value-list"
+            "domain-value-list",
         ];
         ITERABLE_DATATYPES.contains(&self.inner.borrow().core.node.datatype.as_str())
     }
@@ -1582,32 +1633,68 @@ impl PseudoValue {
         let mut map = serde_json::Map::new();
 
         // Core identity
-        map.insert("datatype".to_string(), serde_json::Value::String(inner.datatype().to_string()));
-        map.insert("nodeId".to_string(), serde_json::Value::String(inner.core.node.nodeid.clone()));
-        map.insert("name".to_string(), serde_json::Value::String(inner.core.node.name.clone()));
+        map.insert(
+            "datatype".to_string(),
+            serde_json::Value::String(inner.datatype().to_string()),
+        );
+        map.insert(
+            "nodeId".to_string(),
+            serde_json::Value::String(inner.core.node.nodeid.clone()),
+        );
+        map.insert(
+            "name".to_string(),
+            serde_json::Value::String(inner.core.node.name.clone()),
+        );
 
         // Node alias
         if let Some(ref alias) = inner.core.node.alias {
-            map.insert("alias".to_string(), serde_json::Value::String(alias.to_string()));
+            map.insert(
+                "alias".to_string(),
+                serde_json::Value::String(alias.to_string()),
+            );
         }
 
         // Nodegroup ID
         if let Some(ref ng_id) = inner.core.node.nodegroup_id {
-            map.insert("nodegroupId".to_string(), serde_json::Value::String(ng_id.to_string()));
+            map.insert(
+                "nodegroupId".to_string(),
+                serde_json::Value::String(ng_id.to_string()),
+            );
         }
 
         // Sortorder
         if let Some(so) = inner.core.node.sortorder {
-            map.insert("sortorder".to_string(), serde_json::Value::Number(so.into()));
+            map.insert(
+                "sortorder".to_string(),
+                serde_json::Value::Number(so.into()),
+            );
         }
 
         // Flags
-        map.insert("isOuter".to_string(), serde_json::Value::Bool(inner.is_outer()));
-        map.insert("isInner".to_string(), serde_json::Value::Bool(inner.core.is_inner));
-        map.insert("isCollector".to_string(), serde_json::Value::Bool(inner.core.is_collector));
-        map.insert("accessed".to_string(), serde_json::Value::Bool(inner.accessed));
-        map.insert("independent".to_string(), serde_json::Value::Bool(inner.core.independent));
-        map.insert("hasTile".to_string(), serde_json::Value::Bool(inner.has_tile()));
+        map.insert(
+            "isOuter".to_string(),
+            serde_json::Value::Bool(inner.is_outer()),
+        );
+        map.insert(
+            "isInner".to_string(),
+            serde_json::Value::Bool(inner.core.is_inner),
+        );
+        map.insert(
+            "isCollector".to_string(),
+            serde_json::Value::Bool(inner.core.is_collector),
+        );
+        map.insert(
+            "accessed".to_string(),
+            serde_json::Value::Bool(inner.accessed),
+        );
+        map.insert(
+            "independent".to_string(),
+            serde_json::Value::Bool(inner.core.independent),
+        );
+        map.insert(
+            "hasTile".to_string(),
+            serde_json::Value::Bool(inner.has_tile()),
+        );
 
         // Tile data
         if let Some(ref tile_data) = inner.core.tile_data {
@@ -1627,7 +1714,8 @@ impl PseudoValue {
         }
 
         // Convert to JS via JSON parse (single crossing)
-        let json_string = serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or_default();
+        let json_string =
+            serde_json::to_string(&serde_json::Value::Object(map)).unwrap_or_default();
         js_sys::JSON::parse(&json_string).unwrap_or(JsValue::NULL)
     }
 }
@@ -1636,7 +1724,9 @@ impl PseudoValue {
 impl PseudoValue {
     /// Create a PseudoValue from PseudoValueInner (for Rust-internal use)
     pub(crate) fn from_rust(inner: PseudoValueInner) -> Self {
-        PseudoValue { inner: RefCell::new(inner) }
+        PseudoValue {
+            inner: RefCell::new(inner),
+        }
     }
 
     /// Get the inner PseudoValueInner (for Rust-internal use)
@@ -1682,7 +1772,8 @@ impl PseudoList {
     /// PORT: js/pseudos.ts:336 - Array element access
     #[wasm_bindgen(js_name = getValue)]
     pub fn get_value(&self, value_index: usize) -> Option<PseudoValue> {
-        self.inner.values
+        self.inner
+            .values
             .get(value_index)
             .map(|v| PseudoValue::from_rust(v.clone()))
     }
@@ -1691,7 +1782,8 @@ impl PseudoList {
     /// PORT: js/pseudos.ts:350 - map over array elements
     #[wasm_bindgen(js_name = getAllValues)]
     pub fn get_all_values(&self) -> Vec<PseudoValue> {
-        self.inner.all_values()
+        self.inner
+            .all_values()
             .into_iter()
             .map(|v| PseudoValue::from_rust(v.clone()))
             .collect()
@@ -1734,9 +1826,10 @@ impl WasmNodegroupResult {
     /// Get a value by index
     #[wasm_bindgen(js_name = getValue)]
     pub fn get_value(&self, index: usize) -> Option<PseudoValue> {
-        self.inner.values.get(index).map(|v| {
-            PseudoValue::from_rust(v.clone())
-        })
+        self.inner
+            .values
+            .get(index)
+            .map(|v| PseudoValue::from_rust(v.clone()))
     }
 
     /// Get implied nodegroups
@@ -1810,5 +1903,4 @@ mod tests {
         assert_eq!(list.all_values().len(), 3); // Three total values
         assert!(list.is_loaded);
     }
-
 }

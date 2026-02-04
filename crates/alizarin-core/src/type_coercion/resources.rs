@@ -1,8 +1,8 @@
 //! Format normalization: ResourceInstance, ResourceInstanceList.
 
-use serde_json::Value;
+use super::helpers::{is_valid_uuid, value_type_name};
 use super::result::CoercionResult;
-use super::helpers::{value_type_name, is_valid_uuid};
+use serde_json::Value;
 
 /// Coerce a value to a resource instance.
 ///
@@ -16,9 +16,7 @@ use super::helpers::{value_type_name, is_valid_uuid};
 pub fn coerce_resource_instance(value: &Value, config: Option<&Value>) -> CoercionResult {
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
-        Value::String(s) if s.is_empty() => {
-            CoercionResult::success_same(Value::Null)
-        }
+        Value::String(s) if s.is_empty() => CoercionResult::success_same(Value::Null),
         Value::String(uuid) => {
             // Validate UUID format
             if !is_valid_uuid(uuid) {
@@ -28,9 +26,7 @@ pub fn coerce_resource_instance(value: &Value, config: Option<&Value>) -> Coerci
                 ));
             }
             // Normalize to [{resourceId: uuid}]
-            let tile_data = Value::Array(vec![
-                serde_json::json!({"resourceId": uuid})
-            ]);
+            let tile_data = Value::Array(vec![serde_json::json!({"resourceId": uuid})]);
             CoercionResult::success(tile_data, Value::String(uuid.clone()))
         }
         Value::Object(obj) => {
@@ -43,9 +39,7 @@ pub fn coerce_resource_instance(value: &Value, config: Option<&Value>) -> Coerci
                     ));
                 }
                 // Normalize to [{resourceId: uuid}]
-                let tile_data = Value::Array(vec![
-                    serde_json::json!({"resourceId": resource_id})
-                ]);
+                let tile_data = Value::Array(vec![serde_json::json!({"resourceId": resource_id})]);
                 CoercionResult::success(tile_data, Value::String(resource_id.to_string()))
             } else {
                 CoercionResult::error("Resource instance object must have 'resourceId' field")
@@ -82,9 +76,7 @@ pub fn coerce_resource_instance(value: &Value, config: Option<&Value>) -> Coerci
 pub fn coerce_resource_instance_list(value: &Value, _config: Option<&Value>) -> CoercionResult {
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
-        Value::Array(arr) if arr.is_empty() => {
-            CoercionResult::success_same(Value::Array(vec![]))
-        }
+        Value::Array(arr) if arr.is_empty() => CoercionResult::success_same(Value::Array(vec![])),
         Value::Array(arr) => {
             let mut tile_data = Vec::new();
             let mut display_values = Vec::new();
@@ -103,7 +95,10 @@ pub fn coerce_resource_instance_list(value: &Value, _config: Option<&Value>) -> 
                     Value::Object(obj) => {
                         if let Some(resource_id) = obj.get("resourceId").and_then(|r| r.as_str()) {
                             if !is_valid_uuid(resource_id) {
-                                errors.push(format!("[{}]: invalid resourceId UUID '{}'", i, resource_id));
+                                errors.push(format!(
+                                    "[{}]: invalid resourceId UUID '{}'",
+                                    i, resource_id
+                                ));
                             } else {
                                 tile_data.push(serde_json::json!({"resourceId": resource_id}));
                                 display_values.push(Value::String(resource_id.to_string()));
@@ -116,7 +111,11 @@ pub fn coerce_resource_instance_list(value: &Value, _config: Option<&Value>) -> 
                         // Skip null or empty string entries
                     }
                     _ => {
-                        errors.push(format!("[{}]: expected UUID or object, got {:?}", i, value_type_name(item)));
+                        errors.push(format!(
+                            "[{}]: expected UUID or object, got {:?}",
+                            i,
+                            value_type_name(item)
+                        ));
                     }
                 }
             }
@@ -128,10 +127,7 @@ pub fn coerce_resource_instance_list(value: &Value, _config: Option<&Value>) -> 
                 ));
             }
 
-            CoercionResult::success(
-                Value::Array(tile_data),
-                Value::Array(display_values),
-            )
+            CoercionResult::success(Value::Array(tile_data), Value::Array(display_values))
         }
         _ => CoercionResult::error(format!(
             "Expected resource instance list (array), got {:?}",
@@ -152,28 +148,42 @@ mod tests {
         assert!(!result.is_error());
         let arr = result.tile_data.as_array().unwrap();
         assert_eq!(arr.len(), 1);
-        assert_eq!(arr[0]["resourceId"], json!("550e8400-e29b-41d4-a716-446655440000"));
-        assert_eq!(result.display_value, json!("550e8400-e29b-41d4-a716-446655440000"));
+        assert_eq!(
+            arr[0]["resourceId"],
+            json!("550e8400-e29b-41d4-a716-446655440000")
+        );
+        assert_eq!(
+            result.display_value,
+            json!("550e8400-e29b-41d4-a716-446655440000")
+        );
     }
 
     #[test]
     fn test_coerce_resource_instance_object() {
-        let result = coerce_resource_instance(&json!({
-            "resourceId": "550e8400-e29b-41d4-a716-446655440000"
-        }), None);
+        let result = coerce_resource_instance(
+            &json!({
+                "resourceId": "550e8400-e29b-41d4-a716-446655440000"
+            }),
+            None,
+        );
         assert!(!result.is_error());
         let arr = result.tile_data.as_array().unwrap();
-        assert_eq!(arr[0]["resourceId"], json!("550e8400-e29b-41d4-a716-446655440000"));
+        assert_eq!(
+            arr[0]["resourceId"],
+            json!("550e8400-e29b-41d4-a716-446655440000")
+        );
     }
 
     #[test]
     fn test_coerce_resource_instance_array_single() {
-        let result = coerce_resource_instance(&json!([
-            "550e8400-e29b-41d4-a716-446655440000"
-        ]), None);
+        let result =
+            coerce_resource_instance(&json!(["550e8400-e29b-41d4-a716-446655440000"]), None);
         assert!(!result.is_error());
         let arr = result.tile_data.as_array().unwrap();
-        assert_eq!(arr[0]["resourceId"], json!("550e8400-e29b-41d4-a716-446655440000"));
+        assert_eq!(
+            arr[0]["resourceId"],
+            json!("550e8400-e29b-41d4-a716-446655440000")
+        );
     }
 
     #[test]
@@ -198,10 +208,13 @@ mod tests {
 
     #[test]
     fn test_coerce_resource_instance_array_multiple() {
-        let result = coerce_resource_instance(&json!([
-            "550e8400-e29b-41d4-a716-446655440000",
-            "550e8400-e29b-41d4-a716-446655440001"
-        ]), None);
+        let result = coerce_resource_instance(
+            &json!([
+                "550e8400-e29b-41d4-a716-446655440000",
+                "550e8400-e29b-41d4-a716-446655440001"
+            ]),
+            None,
+        );
         assert!(result.is_error());
     }
 
@@ -215,15 +228,24 @@ mod tests {
 
     #[test]
     fn test_coerce_resource_instance_list_uuids() {
-        let result = coerce_resource_instance_list(&json!([
-            "550e8400-e29b-41d4-a716-446655440000",
-            "550e8400-e29b-41d4-a716-446655440001"
-        ]), None);
+        let result = coerce_resource_instance_list(
+            &json!([
+                "550e8400-e29b-41d4-a716-446655440000",
+                "550e8400-e29b-41d4-a716-446655440001"
+            ]),
+            None,
+        );
         assert!(!result.is_error());
         let arr = result.tile_data.as_array().unwrap();
         assert_eq!(arr.len(), 2);
-        assert_eq!(arr[0]["resourceId"], json!("550e8400-e29b-41d4-a716-446655440000"));
-        assert_eq!(arr[1]["resourceId"], json!("550e8400-e29b-41d4-a716-446655440001"));
+        assert_eq!(
+            arr[0]["resourceId"],
+            json!("550e8400-e29b-41d4-a716-446655440000")
+        );
+        assert_eq!(
+            arr[1]["resourceId"],
+            json!("550e8400-e29b-41d4-a716-446655440001")
+        );
     }
 
     #[test]
@@ -235,11 +257,14 @@ mod tests {
 
     #[test]
     fn test_coerce_resource_instance_list_skips_nulls() {
-        let result = coerce_resource_instance_list(&json!([
-            "550e8400-e29b-41d4-a716-446655440000",
-            null,
-            "550e8400-e29b-41d4-a716-446655440001"
-        ]), None);
+        let result = coerce_resource_instance_list(
+            &json!([
+                "550e8400-e29b-41d4-a716-446655440000",
+                null,
+                "550e8400-e29b-41d4-a716-446655440001"
+            ]),
+            None,
+        );
         assert!(!result.is_error());
         let arr = result.tile_data.as_array().unwrap();
         assert_eq!(arr.len(), 2);

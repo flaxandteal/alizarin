@@ -3,8 +3,8 @@
 //! Provides functions for pruning a graph to only include permitted nodegroups
 //! and their dependencies. This is useful for permission-based filtering.
 
-use std::collections::{HashMap, HashSet};
 use super::{StaticGraph, StaticNode};
+use std::collections::{HashMap, HashSet};
 
 /// Maximum depth for edge traversal to prevent infinite loops
 const MAX_GRAPH_DEPTH: usize = 100;
@@ -13,7 +13,11 @@ const MAX_GRAPH_DEPTH: usize = 100;
 #[derive(Debug, Clone)]
 pub enum PruneError {
     /// Node has multiple parents (malformed graph)
-    MultipleParents { node: String, parent1: String, parent2: String },
+    MultipleParents {
+        node: String,
+        parent1: String,
+        parent2: String,
+    },
     /// Node has no parent but is not root (disconnected)
     NoParent { node: String },
     /// Edge traversal hit depth limit (likely cycle)
@@ -25,9 +29,16 @@ pub enum PruneError {
 impl std::fmt::Display for PruneError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PruneError::MultipleParents { node, parent1, parent2 } => {
-                write!(f, "Graph is malformed, node {} has multiple parents: {} and {}",
-                       node, parent1, parent2)
+            PruneError::MultipleParents {
+                node,
+                parent1,
+                parent2,
+            } => {
+                write!(
+                    f,
+                    "Graph is malformed, node {} has multiple parents: {} and {}",
+                    node, parent1, parent2
+                )
             }
             PruneError::NoParent { node } => {
                 write!(f, "Graph does not have a parent for {}", node)
@@ -49,8 +60,12 @@ impl std::error::Error for PruneError {}
 /// The root node is the node with no nodegroup_id or an empty nodegroup_id.
 pub fn find_root_node(graph: &StaticGraph) -> Option<&StaticNode> {
     graph.nodes.iter().find(|node| {
-        node.nodegroup_id.is_none() ||
-        node.nodegroup_id.as_ref().map(|s| s.is_empty()).unwrap_or(true)
+        node.nodegroup_id.is_none()
+            || node
+                .nodegroup_id
+                .as_ref()
+                .map(|s| s.is_empty())
+                .unwrap_or(true)
     })
 }
 
@@ -99,13 +114,16 @@ where
     let root = root_node.nodeid.clone();
 
     // Build nodegroup set from nodes
-    let all_nodegroups: HashSet<String> = graph.nodes.iter()
+    let all_nodegroups: HashSet<String> = graph
+        .nodes
+        .iter()
         .filter_map(|n| n.nodegroup_id.clone())
         .collect();
 
     // Build allowed_nodegroups map: nodegroup_id -> is_rooted
     // Filter to only permitted nodegroups
-    let mut allowed_nodegroups: HashMap<String, bool> = all_nodegroups.iter()
+    let mut allowed_nodegroups: HashMap<String, bool> = all_nodegroups
+        .iter()
         .filter(|ng_id| is_nodegroup_permitted(ng_id))
         .map(|ng_id| {
             let is_root = ng_id.is_empty() || *ng_id == root;
@@ -122,7 +140,8 @@ where
     // Iteratively ensure all kept nodegroups have path to root
     let mut loops = 0;
     while loops < MAX_GRAPH_DEPTH {
-        let unrooted: Vec<String> = allowed_nodegroups.iter()
+        let unrooted: Vec<String> = allowed_nodegroups
+            .iter()
             .filter(|(_, &rooted)| !rooted)
             .map(|(ng, _)| ng.clone())
             .collect();
@@ -136,7 +155,8 @@ where
                 continue;
             }
 
-            let next = backedges.get(&ng)
+            let next = backedges
+                .get(&ng)
                 .ok_or_else(|| PruneError::NoParent { node: ng.clone() })?;
 
             allowed_nodegroups.insert(ng.clone(), true);
@@ -153,9 +173,12 @@ where
     }
 
     // Build set of allowed node IDs
-    let allowed_nodes: HashSet<String> = graph.nodes.iter()
+    let allowed_nodes: HashSet<String> = graph
+        .nodes
+        .iter()
         .filter(|node| {
-            node.nodegroup_id.as_ref()
+            node.nodegroup_id
+                .as_ref()
                 .and_then(|ng_id| allowed_nodegroups.get(ng_id))
                 .copied()
                 .unwrap_or(false)
@@ -169,14 +192,21 @@ where
 
     // Filter cards
     pruned.cards = pruned.cards.map(|cards| {
-        cards.into_iter()
-            .filter(|card| allowed_nodegroups.get(&card.nodegroup_id).copied().unwrap_or(false))
+        cards
+            .into_iter()
+            .filter(|card| {
+                allowed_nodegroups
+                    .get(&card.nodegroup_id)
+                    .copied()
+                    .unwrap_or(false)
+            })
             .collect()
     });
 
     // Filter cards_x_nodes_x_widgets
     pruned.cards_x_nodes_x_widgets = pruned.cards_x_nodes_x_widgets.map(|cxnxws| {
-        cxnxws.into_iter()
+        cxnxws
+            .into_iter()
             .filter(|cxnxw| allowed_nodes.contains(&cxnxw.node_id))
             .collect()
     });
@@ -188,10 +218,14 @@ where
     });
 
     // Filter nodegroups
-    pruned.nodegroups.retain(|ng| allowed_nodegroups.contains_key(&ng.nodegroupid));
+    pruned
+        .nodegroups
+        .retain(|ng| allowed_nodegroups.contains_key(&ng.nodegroupid));
 
     // Filter nodes
-    pruned.nodes.retain(|node| allowed_nodes.contains(&node.nodeid));
+    pruned
+        .nodes
+        .retain(|node| allowed_nodes.contains(&node.nodeid));
 
     // Filter functions_x_graphs
     if let Some(keep_fns) = keep_functions {
@@ -279,7 +313,8 @@ mod tests {
             "config": {}
         });
 
-        let graph: StaticGraph = serde_json::from_value(graph_json).expect("Failed to create graph");
+        let graph: StaticGraph =
+            serde_json::from_value(graph_json).expect("Failed to create graph");
 
         // Only permit child1
         let permitted = |ng: &str| ng == "child1";
@@ -287,13 +322,28 @@ mod tests {
         let pruned = prune_graph(&graph, permitted, None).expect("Prune failed");
 
         // Verify child1 is included, child2 is not
-        assert!(pruned.nodes.iter().any(|n| n.nodeid == "root"), "Root should be included");
-        assert!(pruned.nodes.iter().any(|n| n.nodeid == "child1"), "child1 should be included");
-        assert!(!pruned.nodes.iter().any(|n| n.nodeid == "child2"), "child2 should NOT be included");
+        assert!(
+            pruned.nodes.iter().any(|n| n.nodeid == "root"),
+            "Root should be included"
+        );
+        assert!(
+            pruned.nodes.iter().any(|n| n.nodeid == "child1"),
+            "child1 should be included"
+        );
+        assert!(
+            !pruned.nodes.iter().any(|n| n.nodeid == "child2"),
+            "child2 should NOT be included"
+        );
 
         // Verify nodegroups
-        assert!(pruned.nodegroups.iter().any(|ng| ng.nodegroupid == "child1"));
-        assert!(!pruned.nodegroups.iter().any(|ng| ng.nodegroupid == "child2"));
+        assert!(pruned
+            .nodegroups
+            .iter()
+            .any(|ng| ng.nodegroupid == "child1"));
+        assert!(!pruned
+            .nodegroups
+            .iter()
+            .any(|ng| ng.nodegroupid == "child2"));
 
         // Verify edges
         assert!(pruned.edges.iter().any(|e| e.rangenode_id == "child1"));
@@ -327,7 +377,8 @@ mod tests {
             "config": {}
         });
 
-        let graph: StaticGraph = serde_json::from_value(graph_json).expect("Failed to create graph");
+        let graph: StaticGraph =
+            serde_json::from_value(graph_json).expect("Failed to create graph");
 
         // Only permit leaf - middle should still be included for path to root
         let permitted = |ng: &str| ng == "leaf";
@@ -336,7 +387,10 @@ mod tests {
 
         // All nodes should be included to maintain path
         assert!(pruned.nodes.iter().any(|n| n.nodeid == "root"));
-        assert!(pruned.nodes.iter().any(|n| n.nodeid == "middle"), "middle should be included for path");
+        assert!(
+            pruned.nodes.iter().any(|n| n.nodeid == "middle"),
+            "middle should be included for path"
+        );
         assert!(pruned.nodes.iter().any(|n| n.nodeid == "leaf"));
     }
 
@@ -365,7 +419,8 @@ mod tests {
             "config": {}
         });
 
-        let graph: StaticGraph = serde_json::from_value(graph_json).expect("Failed to create graph");
+        let graph: StaticGraph =
+            serde_json::from_value(graph_json).expect("Failed to create graph");
 
         let result = prune_graph(&graph, |_| true, None);
         assert!(matches!(result, Err(PruneError::MultipleParents { .. })));

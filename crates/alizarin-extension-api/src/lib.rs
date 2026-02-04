@@ -429,11 +429,7 @@ pub struct TypeHandlerInfo {
 /// Helper to create a TypeHandlerInfo
 impl TypeHandlerInfo {
     /// Create a handler without display rendering or marker resolution support
-    pub fn new(
-        type_name: &'static str,
-        coerce_fn: CoerceFn,
-        free_fn: FreeFn,
-    ) -> Self {
+    pub fn new(type_name: &'static str, coerce_fn: CoerceFn, free_fn: FreeFn) -> Self {
         TypeHandlerInfo {
             type_name_ptr: type_name.as_ptr(),
             type_name_len: type_name.len(),
@@ -710,10 +706,8 @@ mod tests {
 
     #[test]
     fn test_coerce_result_success() {
-        let result = CoerceResult::success(
-            b"\"tile_data\"".to_vec(),
-            b"{\"resolved\": true}".to_vec(),
-        );
+        let result =
+            CoerceResult::success(b"\"tile_data\"".to_vec(), b"{\"resolved\": true}".to_vec());
         assert!(!result.is_error());
         assert!(!result.json_ptr.is_null());
         assert!(!result.resolved_ptr.is_null());

@@ -10,8 +10,8 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
-use crate::{StaticNode, StaticNodegroup, StaticTile, StaticResourceMetadata};
-use crate::pseudo_value_core::{PseudoValueCore, PseudoListCore};
+use crate::pseudo_value_core::{PseudoListCore, PseudoValueCore};
+use crate::{StaticNode, StaticNodegroup, StaticResourceMetadata, StaticTile};
 
 // =============================================================================
 // Error types
@@ -175,10 +175,7 @@ pub trait ModelAccess {
 ///
 /// The closure should return `Some(cardinality_string)` if the nodegroup is found,
 /// or `None` if not found. Returns `Option<String>` to avoid lifetime complexity.
-pub fn is_node_single_cardinality_with<F>(
-    node: &StaticNode,
-    get_cardinality: F,
-) -> bool
+pub fn is_node_single_cardinality_with<F>(node: &StaticNode, get_cardinality: F) -> bool
 where
     F: Fn(&str) -> Option<String>,
 {
@@ -228,7 +225,8 @@ pub fn matches_semantic_child(
     let is_semantic = child_node.datatype == "semantic";
     if !(Some(&child_node.nodeid) == child_node.nodegroup_id.as_ref()
         || tile.data.contains_key(&child_node.nodeid)
-        || is_semantic) {
+        || is_semantic)
+    {
         return false;
     }
 
@@ -240,8 +238,8 @@ pub fn matches_semantic_child(
     if tile.nodegroup_id != parent_ng {
         if let Some(parent_tid) = parent_tile_id {
             // Check if tile.parenttile_id is null or equals parent_tid
-            let parent_matches = tile.parenttile_id.is_none()
-                || tile.parenttile_id.as_ref() == Some(parent_tid);
+            let parent_matches =
+                tile.parenttile_id.is_none() || tile.parenttile_id.as_ref() == Some(parent_tid);
 
             if parent_matches {
                 return true;
@@ -256,9 +254,12 @@ pub fn matches_semantic_child(
             // Check if this tile IS the parent tile and child is not a collector
             // For semantic nodes, we don't require tile data - they get their value
             // from their children, not from tile data directly.
-            let has_data_or_is_semantic = tile.data.contains_key(&child_node.nodeid)
-                || child_node.datatype == "semantic";
-            if tile.tileid.as_ref() == Some(parent_tid) && !child_node.is_collector && has_data_or_is_semantic {
+            let has_data_or_is_semantic =
+                tile.data.contains_key(&child_node.nodeid) || child_node.datatype == "semantic";
+            if tile.tileid.as_ref() == Some(parent_tid)
+                && !child_node.is_collector
+                && has_data_or_is_semantic
+            {
                 return true;
             }
         }
@@ -334,7 +335,8 @@ impl ResourceInstanceWrapperCore {
         self.cached_nodes = model.get_nodes().map(|m| Arc::new(m.clone()));
         self.cached_edges = model.get_edges().map(|m| Arc::new(m.clone()));
         self.cached_reverse_edges = model.get_reverse_edges().map(|m| Arc::new(m.clone()));
-        self.cached_nodes_by_nodegroup = model.get_nodes_by_nodegroup().map(|m| Arc::new(m.clone()));
+        self.cached_nodes_by_nodegroup =
+            model.get_nodes_by_nodegroup().map(|m| Arc::new(m.clone()));
         self.cached_nodegroups = model.get_nodegroups().map(|m| Arc::new(m.clone()));
     }
 
@@ -344,9 +346,10 @@ impl ResourceInstanceWrapperCore {
         let mut nodegroup_index: HashMap<String, Vec<String>> = HashMap::new();
 
         for tile in tiles {
-            let tile_id = tile.tileid.clone().unwrap_or_else(|| {
-                format!("synthetic_{}", tiles_map.len())
-            });
+            let tile_id = tile
+                .tileid
+                .clone()
+                .unwrap_or_else(|| format!("synthetic_{}", tiles_map.len()));
 
             // Index by nodegroup
             nodegroup_index
@@ -370,11 +373,7 @@ impl ResourceInstanceWrapperCore {
     pub fn get_tiles_for_nodegroup(&self, nodegroup_id: &str) -> Vec<&StaticTile> {
         let tile_ids = self.nodegroup_index.get(nodegroup_id);
         match (tile_ids, &self.tiles) {
-            (Some(ids), Some(tiles)) => {
-                ids.iter()
-                    .filter_map(|id| tiles.get(id))
-                    .collect()
-            }
+            (Some(ids), Some(tiles)) => ids.iter().filter_map(|id| tiles.get(id)).collect(),
             _ => Vec::new(),
         }
     }
@@ -422,21 +421,30 @@ impl ResourceInstanceWrapperCore {
         nodegroup_id: &str,
         model: &dyn ModelAccess,
     ) -> Result<ValuesFromNodegroupResult, SemanticChildError> {
-        let node_objs = model.get_nodes()
-            .ok_or_else(|| SemanticChildError::ModelNotInitialized("Model nodes not initialized".to_string()))?;
-        let edges = model.get_edges()
-            .ok_or_else(|| SemanticChildError::ModelNotInitialized("Model edges not initialized".to_string()))?;
-        let reverse_edges = model.get_reverse_edges()
-            .ok_or_else(|| SemanticChildError::ModelNotInitialized("Model reverse edges not initialized".to_string()))?;
-        let nodes_by_nodegroup = model.get_nodes_by_nodegroup()
-            .ok_or_else(|| SemanticChildError::ModelNotInitialized("Model nodes-by-nodegroup not initialized".to_string()))?;
+        let node_objs = model.get_nodes().ok_or_else(|| {
+            SemanticChildError::ModelNotInitialized("Model nodes not initialized".to_string())
+        })?;
+        let edges = model.get_edges().ok_or_else(|| {
+            SemanticChildError::ModelNotInitialized("Model edges not initialized".to_string())
+        })?;
+        let reverse_edges = model.get_reverse_edges().ok_or_else(|| {
+            SemanticChildError::ModelNotInitialized(
+                "Model reverse edges not initialized".to_string(),
+            )
+        })?;
+        let nodes_by_nodegroup = model.get_nodes_by_nodegroup().ok_or_else(|| {
+            SemanticChildError::ModelNotInitialized(
+                "Model nodes-by-nodegroup not initialized".to_string(),
+            )
+        })?;
         let nodegroups = model.get_nodegroups();
 
         let mut values: HashMap<String, PseudoListCore> = HashMap::new();
         let mut implied_nodegroups: HashSet<String> = HashSet::new();
 
         // Track implied nodes (parent nodes in same nodegroup that need pseudo values)
-        let mut implied_nodes: HashMap<(String, String), (Arc<StaticNode>, Arc<StaticTile>)> = HashMap::new();
+        let mut implied_nodes: HashMap<(String, String), (Arc<StaticNode>, Arc<StaticTile>)> =
+            HashMap::new();
         let mut tile_nodes_seen: HashSet<(String, String)> = HashSet::new();
 
         let tiles_store = match &self.tiles {
@@ -481,9 +489,9 @@ impl ResourceInstanceWrapperCore {
                     }
 
                     // Add to alias_tiles
-                    let entry = alias_tiles.entry(alias.clone()).or_insert_with(|| {
-                        (Arc::clone(node), Vec::new())
-                    });
+                    let entry = alias_tiles
+                        .entry(alias.clone())
+                        .or_insert_with(|| (Arc::clone(node), Vec::new()));
                     entry.1.push(tile.clone());
 
                     // Check for implied nodegroups (parent in different nodegroup)
@@ -503,7 +511,9 @@ impl ResourceInstanceWrapperCore {
                                         {
                                             let key = (domain_node.nodeid.clone(), tile_id.clone());
                                             if let Some(t) = tile.as_ref() {
-                                                implied_nodes.entry(key).or_insert_with(|| (Arc::clone(domain_node), Arc::clone(t)));
+                                                implied_nodes.entry(key).or_insert_with(|| {
+                                                    (Arc::clone(domain_node), Arc::clone(t))
+                                                });
                                             }
                                         }
                                     }
@@ -528,9 +538,9 @@ impl ResourceInstanceWrapperCore {
                     tile_nodes_seen.insert(key);
 
                     if existing_values.get(&alias) != Some(&Some(true)) {
-                        let entry = alias_tiles.entry(alias.clone()).or_insert_with(|| {
-                            (Arc::clone(node), Vec::new())
-                        });
+                        let entry = alias_tiles
+                            .entry(alias.clone())
+                            .or_insert_with(|| (Arc::clone(node), Vec::new()));
                         entry.1.push(Some(Arc::clone(tile)));
                     }
                 }
@@ -558,15 +568,14 @@ impl ResourceInstanceWrapperCore {
         is_single: bool,
     ) -> PseudoListCore {
         let alias = node.alias.clone().unwrap_or_default();
-        let child_node_ids = edges.get(&node.nodeid)
-            .cloned()
-            .unwrap_or_default();
+        let child_node_ids = edges.get(&node.nodeid).cloned().unwrap_or_default();
 
-        let values: Vec<PseudoValueCore> = tiles.into_iter()
+        let values: Vec<PseudoValueCore> = tiles
+            .into_iter()
             .map(|tile| {
-                let tile_data = tile.as_ref().and_then(|t| {
-                    t.data.get(&node.nodeid).cloned()
-                });
+                let tile_data = tile
+                    .as_ref()
+                    .and_then(|t| t.data.get(&node.nodeid).cloned());
 
                 PseudoValueCore::from_node_and_tile(
                     Arc::clone(&node),
@@ -595,9 +604,9 @@ impl ResourceInstanceWrapperCore {
         // Check sentinel state
         let sentinel = all_nodegroups.get(nodegroup_id);
         let should_process = match sentinel {
-            Some(&false) => true,        // force reload
-            Some(&true) => false,        // already loaded
-            None => add_if_missing,      // key doesn't exist
+            Some(&false) => true,   // force reload
+            Some(&true) => false,   // already loaded
+            None => add_if_missing, // key doesn't exist
         };
 
         let mut all_values: HashMap<String, PseudoListCore> = HashMap::new();
@@ -610,7 +619,10 @@ impl ResourceInstanceWrapperCore {
             if let Some(tiles) = &self.tiles {
                 for (tile_id, tile) in tiles.iter() {
                     if tile.nodegroup_id == nodegroup_id {
-                        let permitted = nodegroup_permissions.get(&tile.nodegroup_id).copied().unwrap_or(true);
+                        let permitted = nodegroup_permissions
+                            .get(&tile.nodegroup_id)
+                            .copied()
+                            .unwrap_or(true);
                         if permitted {
                             nodegroup_tiles.push(tile_id.clone());
                         }
@@ -698,7 +710,8 @@ impl ResourceInstanceWrapperCore {
         // Get already-loaded nodegroups
         let already_loaded: HashSet<String> = if cache_populated {
             if let Ok(loaded) = self.loaded_nodegroups.lock() {
-                loaded.iter()
+                loaded
+                    .iter()
                     .filter(|(_, state)| **state == LoadState::Loaded)
                     .map(|(id, _)| id.clone())
                     .collect()
@@ -710,7 +723,8 @@ impl ResourceInstanceWrapperCore {
         };
 
         // Filter nodegroup_ids to only those not already loaded
-        let nodegroups_to_process: Vec<String> = nodegroup_ids.iter()
+        let nodegroups_to_process: Vec<String> = nodegroup_ids
+            .iter()
             .filter(|id| !already_loaded.contains(*id))
             .cloned()
             .collect();
@@ -729,15 +743,16 @@ impl ResourceInstanceWrapperCore {
         all_values.insert(root_node_alias.to_string(), Some(false));
 
         // Start with existing cache entries
-        let mut all_structured_values: HashMap<String, PseudoListCore> = if !already_loaded.is_empty() {
-            if let Ok(cache) = self.pseudo_cache.lock() {
-                cache.clone()
+        let mut all_structured_values: HashMap<String, PseudoListCore> =
+            if !already_loaded.is_empty() {
+                if let Ok(cache) = self.pseudo_cache.lock() {
+                    cache.clone()
+                } else {
+                    HashMap::new()
+                }
             } else {
                 HashMap::new()
-            }
-        } else {
-            HashMap::new()
-        };
+            };
 
         // Non-lazy loading: process all nodegroups
         if !lazy {
@@ -799,21 +814,17 @@ impl ResourceInstanceWrapperCore {
         }
 
         // Create root pseudo value
-        let root_node = model.get_root_node()
+        let root_node = model
+            .get_root_node()
             .map_err(SemanticChildError::ModelNotInitialized)?;
-        let edges = model.get_edges()
-            .ok_or_else(|| SemanticChildError::ModelNotInitialized("Model edges not initialized".to_string()))?;
+        let edges = model.get_edges().ok_or_else(|| {
+            SemanticChildError::ModelNotInitialized("Model edges not initialized".to_string())
+        })?;
 
-        let child_node_ids = edges.get(&root_node.nodeid)
-            .cloned()
-            .unwrap_or_default();
+        let child_node_ids = edges.get(&root_node.nodeid).cloned().unwrap_or_default();
 
-        let root_pseudo = PseudoValueCore::from_node_and_tile(
-            root_node,
-            None,
-            None,
-            child_node_ids,
-        );
+        let root_pseudo =
+            PseudoValueCore::from_node_and_tile(root_node, None, None, child_node_ids);
 
         let root_list = PseudoListCore::from_values_with_cardinality(
             root_node_alias.to_string(),
@@ -847,27 +858,29 @@ impl ResourceInstanceWrapperCore {
         model: &dyn ModelAccess,
     ) -> Result<SemanticChildResult, SemanticChildError> {
         // Get child nodes for this parent
-        let child_nodes = model.get_child_nodes(parent_node_id)
+        let child_nodes = model
+            .get_child_nodes(parent_node_id)
             .map_err(SemanticChildError::ModelNotInitialized)?;
 
         // Find the child node by alias
-        let child_node = child_nodes.values()
+        let child_node = child_nodes
+            .values()
             .find(|n| n.alias.as_deref() == Some(child_alias))
-            .ok_or_else(|| SemanticChildError::ChildNotFound { alias: child_alias.to_string() })?;
+            .ok_or_else(|| SemanticChildError::ChildNotFound {
+                alias: child_alias.to_string(),
+            })?;
 
         // Get tiles storage
-        let tiles = self.tiles.as_ref()
+        let tiles = self
+            .tiles
+            .as_ref()
             .ok_or(SemanticChildError::TilesNotInitialized)?;
 
         // Filter tiles that match the semantic child relationship
-        let matching_tiles: Vec<Arc<StaticTile>> = tiles.values()
+        let matching_tiles: Vec<Arc<StaticTile>> = tiles
+            .values()
             .filter(|tile| {
-                matches_semantic_child(
-                    parent_tile_id,
-                    parent_nodegroup_id,
-                    child_node,
-                    tile,
-                )
+                matches_semantic_child(parent_tile_id, parent_nodegroup_id, child_node, tile)
             })
             .map(|t| Arc::new(t.clone()))
             .collect();
@@ -877,18 +890,18 @@ impl ResourceInstanceWrapperCore {
         }
 
         // Get edges for child_node_ids
-        let edges = model.get_edges()
-            .ok_or_else(|| SemanticChildError::ModelNotInitialized("Model edges not initialized".to_string()))?;
-        let child_node_ids = edges.get(&child_node.nodeid)
-            .cloned()
-            .unwrap_or_default();
+        let edges = model.get_edges().ok_or_else(|| {
+            SemanticChildError::ModelNotInitialized("Model edges not initialized".to_string())
+        })?;
+        let child_node_ids = edges.get(&child_node.nodeid).cloned().unwrap_or_default();
 
         // Determine cardinality
         let nodegroups = model.get_nodegroups();
         let is_single = is_node_single_cardinality(child_node, nodegroups);
 
         // Create pseudo values
-        let values: Vec<PseudoValueCore> = matching_tiles.into_iter()
+        let values: Vec<PseudoValueCore> = matching_tiles
+            .into_iter()
             .map(|tile| {
                 let tile_data = tile.data.get(&child_node.nodeid).cloned();
                 PseudoValueCore::from_node_and_tile(
@@ -901,7 +914,9 @@ impl ResourceInstanceWrapperCore {
             .collect();
 
         if is_single && values.len() == 1 {
-            Ok(SemanticChildResult::Single(values.into_iter().next().unwrap()))
+            Ok(SemanticChildResult::Single(
+                values.into_iter().next().unwrap(),
+            ))
         } else {
             let list = PseudoListCore::from_values_with_cardinality(
                 child_alias.to_string(),

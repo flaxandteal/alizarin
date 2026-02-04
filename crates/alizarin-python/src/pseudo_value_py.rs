@@ -1,4 +1,5 @@
 #![allow(deprecated)]
+use crate::python_json::{json_to_python, python_to_json};
 /// PyO3 bindings for PseudoValueCore/PseudoListCore from alizarin-core
 ///
 /// These provide Rust-backed pseudo values for Python, matching the
@@ -10,12 +11,9 @@
 /// - Performance: filtering happens in Rust
 use pyo3::prelude::*;
 use std::sync::Arc;
-use crate::python_json::{python_to_json, json_to_python};
 
 use alizarin_core::{
-    StaticNode as CoreStaticNode,
-    StaticTile as CoreStaticTile,
-    PseudoValueCore, PseudoListCore,
+    PseudoListCore, PseudoValueCore, StaticNode as CoreStaticNode, StaticTile as CoreStaticTile,
 };
 
 // =============================================================================
@@ -43,27 +41,30 @@ impl PyPseudoValue {
         tile_data_json: Option<&str>,
         child_node_ids: Option<Vec<String>>,
     ) -> PyResult<Self> {
-        let node: CoreStaticNode = serde_json::from_str(node_json)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to parse node: {}", e)
-            ))?;
+        let node: CoreStaticNode = serde_json::from_str(node_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse node: {}", e))
+        })?;
 
         let tile: Option<Arc<CoreStaticTile>> = match tile_json {
             Some(json) => {
-                let t: CoreStaticTile = serde_json::from_str(json)
-                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                        format!("Failed to parse tile: {}", e)
-                    ))?;
+                let t: CoreStaticTile = serde_json::from_str(json).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Failed to parse tile: {}",
+                        e
+                    ))
+                })?;
                 Some(Arc::new(t))
             }
             None => None,
         };
 
         let tile_data: Option<serde_json::Value> = match tile_data_json {
-            Some(json) => Some(serde_json::from_str(json)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    format!("Failed to parse tile_data: {}", e)
-                ))?),
+            Some(json) => Some(serde_json::from_str(json).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to parse tile_data: {}",
+                    e
+                ))
+            })?),
             None => None,
         };
 
@@ -157,10 +158,12 @@ impl PyPseudoValue {
     fn get_tile_json(&self) -> PyResult<Option<String>> {
         match &self.inner.tile {
             Some(tile) => {
-                let json = serde_json::to_string(tile.as_ref())
-                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                        format!("Failed to serialize tile: {}", e)
-                    ))?;
+                let json = serde_json::to_string(tile.as_ref()).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Failed to serialize tile: {}",
+                        e
+                    ))
+                })?;
                 Ok(Some(json))
             }
             None => Ok(None),
@@ -171,10 +174,12 @@ impl PyPseudoValue {
     fn get_tile_data_json(&self) -> PyResult<Option<String>> {
         match &self.inner.tile_data {
             Some(data) => {
-                let json = serde_json::to_string(data)
-                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                        format!("Failed to serialize tile_data: {}", e)
-                    ))?;
+                let json = serde_json::to_string(data).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Failed to serialize tile_data: {}",
+                        e
+                    ))
+                })?;
                 Ok(Some(json))
             }
             None => Ok(None),
@@ -191,16 +196,18 @@ impl PyPseudoValue {
 
     /// Get the node as JSON string
     fn get_node_json(&self) -> PyResult<String> {
-        serde_json::to_string(self.inner.node.as_ref())
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to serialize node: {}", e)
+        serde_json::to_string(self.inner.node.as_ref()).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to serialize node: {}",
+                e
             ))
+        })
     }
 
     /// Get the inner PseudoValue (if this is an outer node)
     fn get_inner(&self) -> Option<PyPseudoValue> {
-        self.inner.inner.as_ref().map(|inner| {
-            PyPseudoValue { inner: (**inner).clone() }
+        self.inner.inner.as_ref().map(|inner| PyPseudoValue {
+            inner: (**inner).clone(),
         })
     }
 
@@ -216,10 +223,12 @@ impl PyPseudoValue {
 
     /// Set tile data from JSON
     fn set_tile_data_json(&mut self, json: &str) -> PyResult<()> {
-        let data: serde_json::Value = serde_json::from_str(json)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                format!("Failed to parse tile_data: {}", e)
-            ))?;
+        let data: serde_json::Value = serde_json::from_str(json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse tile_data: {}",
+                e
+            ))
+        })?;
         self.inner.tile_data = Some(data);
         Ok(())
     }
@@ -286,9 +295,7 @@ impl PyPseudoList {
     #[staticmethod]
     #[pyo3(signature = (alias, values, is_single=false))]
     fn from_values(alias: String, values: Vec<PyPseudoValue>, is_single: bool) -> Self {
-        let cores: Vec<PseudoValueCore> = values.into_iter()
-            .map(|v| v.inner)
-            .collect();
+        let cores: Vec<PseudoValueCore> = values.into_iter().map(|v| v.inner).collect();
         PyPseudoList {
             inner: PseudoListCore::from_values_with_cardinality(alias, cores, is_single),
         }
@@ -320,7 +327,9 @@ impl PyPseudoList {
 
     /// Get all values
     fn get_all_values(&self) -> Vec<PyPseudoValue> {
-        self.inner.values.iter()
+        self.inner
+            .values
+            .iter()
             .map(|v| PyPseudoValue { inner: v.clone() })
             .collect()
     }
@@ -337,7 +346,9 @@ impl PyPseudoList {
 
     /// Get a value by index
     fn __getitem__(&self, index: usize) -> PyResult<PyPseudoValue> {
-        self.inner.values.get(index)
+        self.inner
+            .values
+            .get(index)
             .map(|v| PyPseudoValue { inner: v.clone() })
             .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyIndexError, _>("Index out of range"))
     }
@@ -361,7 +372,8 @@ impl PyPseudoList {
         nodegroup_id: Option<String>,
         parent_nodegroup_id: Option<String>,
     ) -> Vec<PyPseudoValue> {
-        self.inner.matching_entries(parent_tile_id, nodegroup_id, parent_nodegroup_id)
+        self.inner
+            .matching_entries(parent_tile_id, nodegroup_id, parent_nodegroup_id)
             .into_iter()
             .map(|v| PyPseudoValue { inner: v.clone() })
             .collect()
@@ -421,7 +433,9 @@ impl PyPseudoListIterator {
 
     fn __next__(mut slf: PyRefMut<'_, Self>) -> Option<PyPseudoValue> {
         if slf.index < slf.values.len() {
-            let value = PyPseudoValue { inner: slf.values[slf.index].clone() };
+            let value = PyPseudoValue {
+                inner: slf.values[slf.index].clone(),
+            };
             slf.index += 1;
             Some(value)
         } else {

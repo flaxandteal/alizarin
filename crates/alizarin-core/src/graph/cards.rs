@@ -1,7 +1,7 @@
 //! Card-related types for UI configuration.
 
-use serde::{Deserialize, Serialize};
 use super::translatable::StaticTranslatableString;
+use serde::{Deserialize, Serialize};
 
 /// A constraint on a card limiting how nodes can be used
 #[derive(Serialize, Deserialize, Clone, Debug)]

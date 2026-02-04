@@ -2,8 +2,8 @@
 //!
 //! In display mode, these require RDM cache for label lookup.
 
-use serde_json::Value;
 use super::options::{SerializationOptions, SerializationResult};
+use serde_json::Value;
 
 /// Callback type for resolving concept UUIDs to labels
 pub type ConceptResolver = dyn Fn(&str, &str) -> Option<String>;
@@ -108,10 +108,7 @@ pub fn serialize_concept_list(
             // For consistency, concept-list should return array
             SerializationResult::success(Value::Array(vec![result.value]))
         }
-        _ => SerializationResult::error(format!(
-            "Expected concept list, got {:?}",
-            tile_data
-        )),
+        _ => SerializationResult::error(format!("Expected concept list, got {:?}", tile_data)),
     }
 }
 
@@ -169,12 +166,10 @@ mod tests {
         let tile_data = json!(["uuid1", "uuid2"]);
         let options = SerializationOptions::display("en");
 
-        let resolver = |uuid: &str, _lang: &str| {
-            match uuid {
-                "uuid1" => Some("Label 1".to_string()),
-                "uuid2" => Some("Label 2".to_string()),
-                _ => None,
-            }
+        let resolver = |uuid: &str, _lang: &str| match uuid {
+            "uuid1" => Some("Label 1".to_string()),
+            "uuid2" => Some("Label 2".to_string()),
+            _ => None,
         };
 
         let result = serialize_concept_list(&tile_data, &options, Some(&resolver));

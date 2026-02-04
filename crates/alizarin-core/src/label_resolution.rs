@@ -75,11 +75,7 @@ impl Default for LabelResolutionConfig {
 
 impl LabelResolutionConfig {
     /// Create a new config with custom datatypes and keys
-    pub fn new(
-        resolvable_datatypes: Vec<String>,
-        config_keys: Vec<String>,
-        strict: bool,
-    ) -> Self {
+    pub fn new(resolvable_datatypes: Vec<String>, config_keys: Vec<String>, strict: bool) -> Self {
         Self {
             resolvable_datatypes,
             config_keys,
@@ -261,7 +257,8 @@ pub fn resolve_labels<L: ConceptLookup>(
                 let resolved_obj: serde_json::Map<String, Value> = obj
                     .into_iter()
                     .map(|(key, v)| {
-                        let resolved = resolve(v, Some(key.as_str()), alias_map, lookup, errors, strict);
+                        let resolved =
+                            resolve(v, Some(key.as_str()), alias_map, lookup, errors, strict);
                         (key, resolved)
                     })
                     .collect();
@@ -495,10 +492,7 @@ mod tests {
 
         let result = resolve_labels(tree, &alias_map, &lookup, true);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .message
-            .contains("Unknown Label"));
+        assert!(result.unwrap_err().message.contains("Unknown Label"));
     }
 
     #[test]

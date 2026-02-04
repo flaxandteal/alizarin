@@ -1,3 +1,5 @@
+use serde_json::{Map, Value};
+use std::collections::{HashMap, HashSet};
 /// Core PseudoValue types for JSON conversion
 ///
 /// These types contain the platform-agnostic parts of pseudo values
@@ -5,13 +7,11 @@
 ///
 /// The WASM bindings extend these with JsValue fields for ViewModel integration.
 use std::sync::Arc;
-use std::collections::{HashMap, HashSet};
-use serde_json::{Value, Map};
 
-use crate::{StaticNode, StaticTile};
 use crate::type_serialization::{
-    serialize_value, SerializationOptions, SerializationContext, SerializationMode,
+    serialize_value, SerializationContext, SerializationMode, SerializationOptions,
 };
+use crate::{StaticNode, StaticTile};
 
 // =============================================================================
 // Traits for abstracting over PseudoValue and PseudoList implementations
@@ -276,7 +276,8 @@ impl PseudoValueCore {
 
     /// Check if this node has children in the graph edges
     pub fn has_children(&self, edges: &HashMap<String, Vec<String>>) -> bool {
-        edges.get(&self.node.nodeid)
+        edges
+            .get(&self.node.nodeid)
             .map(|ids| !ids.is_empty())
             .unwrap_or(false)
     }
@@ -340,7 +341,9 @@ impl PseudoValueCore {
             if datatype != "semantic" && !self.is_inner {
                 if let Some(ref data) = self.tile_data {
                     if let Some(tile_builder) = tiles.get_mut(&tile_key) {
-                        tile_builder.data.insert(self.node.nodeid.clone(), data.clone());
+                        tile_builder
+                            .data
+                            .insert(self.node.nodeid.clone(), data.clone());
                     }
                 }
             }
@@ -349,7 +352,9 @@ impl PseudoValueCore {
         // Collect children tiles for semantic nodes, inner nodes, or any node with children
         // This handles "outer" nodes (non-semantic with children like file-list with copyright)
         // Uses visited_aliases to prevent O(n²) duplicate traversal
-        let has_children = ctx.edges.get(&self.node.nodeid)
+        let has_children = ctx
+            .edges
+            .get(&self.node.nodeid)
             .map(|ids| !ids.is_empty())
             .unwrap_or(false);
         if self.datatype() == "semantic" || self.is_inner || has_children {
@@ -382,7 +387,9 @@ impl PseudoValueCore {
         };
 
         for child_node_id in child_node_ids {
-            let child_node = ctx.nodes_by_alias.values()
+            let child_node = ctx
+                .nodes_by_alias
+                .values()
                 .find(|n| &n.nodeid == child_node_id);
 
             let child_node = match child_node {
@@ -453,7 +460,11 @@ impl PseudoListCore {
     }
 
     /// Create from values with explicit is_single flag
-    pub fn from_values_with_cardinality(node_alias: String, values: Vec<PseudoValueCore>, is_single: bool) -> Self {
+    pub fn from_values_with_cardinality(
+        node_alias: String,
+        values: Vec<PseudoValueCore>,
+        is_single: bool,
+    ) -> Self {
         PseudoListCore {
             node_alias,
             values,
@@ -482,7 +493,9 @@ impl PseudoListCore {
         nodegroup_id: Option<String>,
         parent_nodegroup_id: Option<String>,
     ) -> Vec<&PseudoValueCore> {
-        let mut entries: Vec<&PseudoValueCore> = self.values.iter()
+        let mut entries: Vec<&PseudoValueCore> = self
+            .values
+            .iter()
             .filter(|v| {
                 match v.tile.as_ref() {
                     Some(tile) => matches_tile_filter(
@@ -500,7 +513,8 @@ impl PseudoListCore {
 
         // Sort by sortorder to ensure consistent ordering (lowest first = primary)
         entries.sort_by_key(|v| {
-            v.tile.as_ref()
+            v.tile
+                .as_ref()
                 .and_then(|t| t.sortorder)
                 .unwrap_or(i32::MAX)
         });
@@ -517,7 +531,8 @@ impl PseudoListCore {
         // Sort values by sortorder for consistent output
         let mut sorted_values: Vec<&PseudoValueCore> = self.values.iter().collect();
         sorted_values.sort_by_key(|v| {
-            v.tile.as_ref()
+            v.tile
+                .as_ref()
                 .and_then(|t| t.sortorder)
                 .unwrap_or(i32::MAX)
         });
@@ -529,7 +544,8 @@ impl PseudoListCore {
             return Value::Null;
         }
 
-        let arr: Vec<Value> = sorted_values.iter()
+        let arr: Vec<Value> = sorted_values
+            .iter()
             .map(|v| to_json_generic(*v, ctx))
             .filter(|v| !v.is_null())
             .collect();
@@ -715,32 +731,34 @@ where
         Some(ids) => ids,
         None => {
             return Value::Object(obj);
-        },
+        }
     };
 
     for child_node_id in child_node_ids {
-        let child_node = ctx.nodes_by_alias.values()
+        let child_node = ctx
+            .nodes_by_alias
+            .values()
             .find(|n| &n.nodeid == child_node_id);
 
         let child_node = match child_node {
             Some(n) => n,
             None => {
                 continue;
-            },
+            }
         };
 
         let child_alias = match &child_node.alias {
             Some(alias) if !alias.is_empty() => alias,
             _ => {
                 continue;
-            },
+            }
         };
 
         let pseudo_list = match ctx.pseudo_cache.get(child_alias) {
             Some(list) => list,
             None => {
                 continue;
-            },
+            }
         };
 
         let matching_values = pseudo_list.matching_entries(
@@ -766,7 +784,8 @@ where
         } else {
             // Multi-cardinality (collector) node: always serialize as array,
             // even with only 1 matching value. Consumers expect array access (e.g. [0]).
-            let arr: Vec<Value> = matching_values.iter()
+            let arr: Vec<Value> = matching_values
+                .iter()
                 .map(|v| to_json_generic(*v, &child_ctx))
                 .filter(|v| !v.is_null())
                 .collect();
@@ -786,11 +805,14 @@ where
     V: PseudoValueLike,
     L: PseudoListLike<Value = V>,
 {
-    let own_value = value.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
+    let own_value =
+        value.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
 
     if let Some(inner) = value.inner() {
         let children_json = semantic_to_json(inner, ctx);
-        return ctx.serialization_options.merge_outer_with_children(own_value, children_json);
+        return ctx
+            .serialization_options
+            .merge_outer_with_children(own_value, children_json);
     }
 
     own_value
@@ -802,9 +824,11 @@ where
     V: PseudoValueLike,
     L: PseudoListLike<Value = V>,
 {
-    let own_value = value.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
+    let own_value =
+        value.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
     let children_json = semantic_to_json(value, ctx);
-    ctx.serialization_options.merge_outer_with_children(own_value, children_json)
+    ctx.serialization_options
+        .merge_outer_with_children(own_value, children_json)
 }
 
 /// Generic to_json function that works with any PseudoValueLike type

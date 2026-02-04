@@ -7,7 +7,7 @@
 //! The `Spur` key type from lasso is a 32-bit integer that can be used
 //! as a HashMap key instead of the full UUID string.
 
-pub use lasso::{Rodeo, Spur, RodeoReader, RodeoResolver};
+pub use lasso::{Rodeo, RodeoReader, RodeoResolver, Spur};
 
 #[cfg(feature = "multi-threaded")]
 pub use lasso::ThreadedRodeo;
