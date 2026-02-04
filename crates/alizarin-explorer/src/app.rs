@@ -1031,10 +1031,9 @@ impl App {
                         match loader.load_preindex_summaries(&graph_id, offset, batch_size) {
                             Ok((summaries, has_more)) => {
                                 let batch_len = summaries.len();
-                                if batch_len > 0 {
-                                    if tx.send(LoaderMessage::ResourceBatch(summaries)).is_err() {
-                                        break;
-                                    }
+                                if batch_len > 0
+                                    && tx.send(LoaderMessage::ResourceBatch(summaries)).is_err() {
+                                    break;
                                 }
                                 offset += batch_len;
                                 if !has_more || batch_len == 0 {

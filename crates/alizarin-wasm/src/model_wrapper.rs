@@ -15,15 +15,16 @@ pub use alizarin_core::PermissionRule;
 use alizarin_core::prune_graph as core_prune_graph;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::rc::Rc;
 use std::cell::RefCell;
 
 // Thread-local registry for canonical model instances
 // WASM is single-threaded, so thread_local is safe and appropriate
-// Key: graph_id (String), Value: Arc<RefCell<ResourceModelWrapperCore>>
+// Key: graph_id (String), Value: Rc<RefCell<ResourceModelWrapperCore>>
 // RefCell allows interior mutability for lazy initialization (build_nodes)
 // This is the single source of truth for model state
 thread_local! {
-    pub(crate) static MODEL_REGISTRY: RefCell<HashMap<String, Arc<RefCell<ResourceModelWrapperCore>>>> =
+    pub(crate) static MODEL_REGISTRY: RefCell<HashMap<String, Rc<RefCell<ResourceModelWrapperCore>>>> =
         RefCell::new(HashMap::new());
 }
 
@@ -64,7 +65,7 @@ impl ResourceModelWrapperCore {
             reverse_edges: None,
             nodes_by_nodegroup: None,
             permitted_nodegroups: None,
-            default_allow: default_allow
+            default_allow
         }
     }
 
@@ -124,7 +125,7 @@ impl ResourceModelWrapperCore {
             let ng_id = node_arc.nodegroup_id.clone().unwrap_or_default();
             nodes_by_nodegroup_map
                 .entry(ng_id)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(node_arc);
         }
 
@@ -154,12 +155,12 @@ impl ResourceModelWrapperCore {
             // Forward: parent -> children
             edges_map
                 .entry(edge.domainnode_id.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(edge.rangenode_id.clone());
             // Reverse: child -> parents (for O(1) parent lookups)
             reverse_edges_map
                 .entry(edge.rangenode_id.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(edge.domainnode_id.clone());
         }
 
@@ -404,7 +405,7 @@ impl ResourceModelWrapperCore {
         let is_permitted = |ng_id: &str| self.is_nodegroup_permitted(ng_id);
 
         // Delegate to core prune_graph function
-        let keep_fns_ref = keep_functions.as_ref().map(|v| v.as_slice());
+        let keep_fns_ref = keep_functions.as_deref();
         let pruned = core_prune_graph(&self.graph, is_permitted, keep_fns_ref)
             .map_err(|e| e.to_string())?;
 
@@ -439,9 +440,9 @@ impl WASMResourceModelWrapper {
         MODEL_REGISTRY.with(|registry| {
             let registry_borrow = registry.borrow();
             let core_arc = registry_borrow.get(&self.graph_id)
-                .expect(&format!("Model not found in registry: {}", self.graph_id));
+                .unwrap_or_else(|| panic!("Model not found in registry: {}", self.graph_id));
             let core_borrow = core_arc.borrow();
-            f(&*core_borrow)
+            f(&core_borrow)
         })
     }
 
@@ -453,9 +454,9 @@ impl WASMResourceModelWrapper {
         MODEL_REGISTRY.with(|registry| {
             let registry_borrow = registry.borrow();
             let core_arc = registry_borrow.get(&self.graph_id)
-                .expect(&format!("Model not found in registry: {}", self.graph_id));
+                .unwrap_or_else(|| panic!("Model not found in registry: {}", self.graph_id));
             let mut core_borrow = core_arc.borrow_mut();
-            f(&mut *core_borrow)
+            f(&mut core_borrow)
         })
     }
 }
@@ -474,7 +475,7 @@ impl WASMResourceModelWrapper {
         // Create and register the core in the WASM-specific registry
         let core = ResourceModelWrapperCore::new(wkrm.clone(), Arc::new(core_graph), default_allow);
         MODEL_REGISTRY.with(|registry| {
-            registry.borrow_mut().insert(graph_id.clone(), Arc::new(RefCell::new(core)));
+            registry.borrow_mut().insert(graph_id.clone(), Rc::new(RefCell::new(core)));
         });
 
         // Return a lightweight wrapper that just holds the graph_id
@@ -550,24 +551,22 @@ impl WASMResourceModelWrapper {
             Arc::clone(parent.child_nodes.get(
                 child_node.ok_or_else(|| JsValue::from_str("Must have a child node name if passing a parent"))?.as_str()
             ).ok_or_else(|| JsValue::from_str(format!("This parent node does not have this child: {:?} {:?}", parent.get_nodeid(), child_node_id).as_str()))?)
+        } else if let Some(key_str) = child_node {
+            // Get by alias - clone the Arc (cheap)
+            self.with_core(|core| {
+                let nodes_by_alias = core.get_nodes_by_alias_internal()
+                    .ok_or_else(|| JsValue::from_str("Could not access nodes by alias"))?;
+                Ok::<Arc<StaticNode>, JsValue>(Arc::clone(
+                    nodes_by_alias.get(key_str.as_str())
+                        .ok_or_else(|| JsValue::from_str(&format!("Could not find node with alias: {}", key_str)))?
+                ))
+            })?
         } else {
-            if let Some(key_str) = child_node {
-                // Get by alias - clone the Arc (cheap)
-                self.with_core(|core| {
-                    let nodes_by_alias = core.get_nodes_by_alias_internal()
-                        .ok_or_else(|| JsValue::from_str("Could not access nodes by alias"))?;
-                    Ok::<Arc<StaticNode>, JsValue>(Arc::clone(
-                        nodes_by_alias.get(key_str.as_str())
-                            .ok_or_else(|| JsValue::from_str(&format!("Could not find node with alias: {}", key_str)))?
-                    ))
-                })?
-            } else {
-                // Get root node - returns Arc<StaticNode>
-                self.with_core_mut(|core| {
-                    core.get_root_node()
-                        .map_err(|e| JsValue::from_str(&format!("Could not find root node: {}", e)))
-                })?
-            }
+            // Get root node - returns Arc<StaticNode>
+            self.with_core_mut(|core| {
+                core.get_root_node()
+                    .map_err(|e| JsValue::from_str(&format!("Could not find root node: {}", e)))
+            })?
         };
 
         // Dereference Arc to get StaticNode for JavaScript
@@ -707,7 +706,7 @@ impl WASMResourceModelWrapper {
         self.with_core_mut(|core| {
             let nodes = core.get_node_objects().map_err(|e| JsValue::from_str(&e))?;
             let node = nodes.get(id)
-                .expect(&format!("Node not found in model: {}", id));
+                .unwrap_or_else(|| panic!("Node not found in model: {}", id));
             Ok(WasmStaticNode((**node).clone()))
         })
     }
@@ -784,7 +783,7 @@ impl WASMResourceModelWrapper {
             let nodes = core.get_node_objects().map_err(|e| JsValue::from_str(&e))?;
             let node = nodes.get(nodegroup_id)
                 .ok_or_else(|| JsValue::from_str(&format!("Node not found: {}", nodegroup_id)))?;
-            Ok((**node).name.clone())
+            Ok(node.name.clone())
         })
     }
 

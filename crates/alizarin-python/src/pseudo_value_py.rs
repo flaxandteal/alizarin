@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 /// PyO3 bindings for PseudoValueCore/PseudoListCore from alizarin-core
 ///
 /// These provide Rust-backed pseudo values for Python, matching the
@@ -7,7 +8,6 @@
 /// - Single source of truth for matching_entries logic
 /// - Feature parity with JS/TS implementation
 /// - Performance: filtering happens in Rust
-
 use pyo3::prelude::*;
 use std::sync::Arc;
 use crate::python_json::{python_to_json, json_to_python};

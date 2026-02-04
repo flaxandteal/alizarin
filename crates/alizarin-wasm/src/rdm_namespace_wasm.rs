@@ -43,7 +43,7 @@ use alizarin_core::rdm_namespace::{
 
 // Thread-local storage for global namespace (WASM is single-threaded)
 thread_local! {
-    static GLOBAL_RDM_NAMESPACE: RefCell<Option<Uuid>> = RefCell::new(None);
+    static GLOBAL_RDM_NAMESPACE: RefCell<Option<Uuid>> = const { RefCell::new(None) };
 }
 
 /// Set the global RDM namespace for deterministic UUID generation.

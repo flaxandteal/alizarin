@@ -62,18 +62,13 @@ pub struct SkosValue {
 }
 
 /// The type of SKOS grouping structure
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SkosNodeType {
     /// A ConceptScheme uses narrower/broader hierarchy
+    #[default]
     ConceptScheme,
     /// A Collection uses flat member relationships (Arches-compatible)
     Collection,
-}
-
-impl Default for SkosNodeType {
-    fn default() -> Self {
-        SkosNodeType::ConceptScheme
-    }
 }
 
 /// A parsed SKOS collection/concept scheme
@@ -418,7 +413,7 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
         uri: &str,
         all_concepts: &HashMap<String, SkosConcept>,
         children_map: &HashMap<String, Vec<String>>,
-        sort_orders: &HashMap<String, i32>,
+        _sort_orders: &HashMap<String, i32>,
     ) -> Option<SkosConcept> {
         let concept = all_concepts.get(uri)?;
         let mut result = concept.clone();
@@ -427,7 +422,7 @@ pub fn parse_skos_to_collections(xml_content: &str, base_uri: &str) -> Result<Ve
             let mut children: Vec<SkosConcept> = child_uris
                 .iter()
                 .filter_map(|child_uri| {
-                    build_concept_tree(child_uri, all_concepts, children_map, sort_orders)
+                    build_concept_tree(child_uri, all_concepts, children_map, _sort_orders)
                 })
                 .collect();
 
@@ -711,7 +706,7 @@ fn xml_escape_content(s: &str) -> String {
 // enabling git diff comparisons.
 
 /// Get sorted iterator over HashMap by key
-fn sorted_by_key<'a, K: Ord, V>(map: &'a HashMap<K, V>) -> Vec<(&'a K, &'a V)> {
+fn sorted_by_key<K: Ord, V>(map: &HashMap<K, V>) -> Vec<(&K, &V)> {
     let mut entries: Vec<_> = map.iter().collect();
     entries.sort_by_key(|(k, _)| *k);
     entries
@@ -730,7 +725,7 @@ fn sorted_children(children: &Option<Vec<SkosConcept>>) -> Vec<&SkosConcept> {
 }
 
 /// Get sorted concepts from HashMap by ID
-fn sorted_concepts<'a>(concepts: &'a HashMap<String, SkosConcept>) -> Vec<&'a SkosConcept> {
+fn sorted_concepts(concepts: &HashMap<String, SkosConcept>) -> Vec<&SkosConcept> {
     let mut sorted: Vec<_> = concepts.values().collect();
     sorted.sort_by_key(|c| &c.id);
     sorted
@@ -1114,7 +1109,7 @@ pub fn collections_to_skos_xml(collections: &[SkosCollection], base_uri: &str) -
                 for concept_uri in &all_concept_uris {
                     output.push_str(&format!(
                         "    <skos:member>\n      <skos:Concept rdf:about=\"{}\"/>\n    </skos:member>\n",
-                        xml_escape(&concept_uri)
+                        xml_escape(concept_uri)
                     ));
                 }
 

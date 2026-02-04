@@ -2,7 +2,6 @@
 ///
 /// This module wraps the platform-agnostic types from alizarin-core
 /// with PyO3 bindings for Python access.
-
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
@@ -297,9 +296,9 @@ impl PyNodeConfigManager {
     }
 
     /// Build configs from a graph JSON string
-    fn from_graph_json(&mut self, graph_json: &str) -> PyResult<()> {
+    fn load_graph_json(&mut self, graph_json: &str) -> PyResult<()> {
         self.inner.from_graph_json(graph_json)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
     }
 
     /// Get boolean config for a node

@@ -2,7 +2,6 @@
 ///
 /// This module provides batch conversion functions that process multiple resources
 /// in parallel, matching the Python API and enabling optimized bulk operations.
-
 use wasm_bindgen::prelude::*;
 use serde_json::Value;
 use crate::graph::StaticGraph;
@@ -53,7 +52,7 @@ pub fn tree_to_tiles_enhanced(
 
     // Convert tree to tiles (with optional id_key for deterministic UUID)
     let id_key_ref = id_key.as_deref();
-    let result = tree_to_tiles(&tree, &**graph, strict, id_key_ref);
+    let result = tree_to_tiles(&tree, graph, strict, id_key_ref);
 
     match result {
         Ok(business_data) => {
@@ -107,7 +106,7 @@ pub fn tiles_to_tree_enhanced(
             resource_id.clone(),
             graph_id.to_string(),
             tiles,
-            &**graph,
+            graph,
         );
 
         serde_json::to_value(&static_resource)
@@ -115,7 +114,7 @@ pub fn tiles_to_tree_enhanced(
     };
 
     // Call tiles_to_tree
-    match core_tiles_to_tree(&input_json, &**graph) {
+    match core_tiles_to_tree(&input_json, graph) {
         Ok(json_tree_array) => {
             // Extract first element and add metadata
             let mut tree = json_tree_array.as_array()
@@ -199,7 +198,7 @@ pub fn batch_trees_to_tiles(
         let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
         // Convert tree to tiles (with optional id_key for deterministic UUID)
-        let result = tree_to_tiles(tree, &**graph, strict, id_key_ref);
+        let result = tree_to_tiles(tree, graph, strict, id_key_ref);
 
         match result {
             Ok(business_data) => {
@@ -288,7 +287,7 @@ pub fn batch_tiles_to_trees(
                 resource_id.clone(),
                 graph_id.to_string(),
                 tiles,
-                &**graph,
+                graph,
             );
 
             serde_json::to_value(&static_resource)
@@ -297,7 +296,7 @@ pub fn batch_tiles_to_trees(
         };
 
         // Call tiles_to_tree (returns array)
-        match core_tiles_to_tree(&input_json, &**graph) {
+        match core_tiles_to_tree(&input_json, graph) {
             Ok(json_tree_array) => {
                 // Extract first element and add metadata
                 let mut tree = json_tree_array.as_array()

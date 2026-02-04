@@ -464,7 +464,7 @@ impl PseudoListCore {
 
     /// Merge another PseudoListCore into this one
     pub fn merge(&mut self, mut other: PseudoListCore) {
-        self.values.extend(other.values.drain(..));
+        self.values.append(&mut other.values);
     }
 
     /// Get matching entries based on tile relationship

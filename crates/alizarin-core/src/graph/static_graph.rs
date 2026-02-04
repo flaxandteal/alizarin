@@ -643,7 +643,7 @@ impl IndexedGraph {
                 Self::extract_lang_value(map, "en")
                     .or_else(|| {
                         // Fallback to first available language
-                        map.values().find_map(|v| Self::extract_single_lang_value(v))
+                        map.values().find_map(Self::extract_single_lang_value)
                     })
             }
             _ => None,
@@ -652,7 +652,7 @@ impl IndexedGraph {
 
     /// Extract value for a specific language key
     fn extract_lang_value(map: &serde_json::Map<String, serde_json::Value>, lang: &str) -> Option<String> {
-        map.get(lang).and_then(|v| Self::extract_single_lang_value(v))
+        map.get(lang).and_then(Self::extract_single_lang_value)
     }
 
     /// Extract string from a single language value, handling both formats:

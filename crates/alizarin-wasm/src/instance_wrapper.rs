@@ -1,7 +1,8 @@
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::rc::Rc;
 use std::cell::RefCell;
 use crate::graph::{StaticResource, StaticResourceDescriptors};
 
@@ -23,7 +24,6 @@ use crate::node_config_wasm::WasmNodeConfigManager;
 use alizarin_core::rdm_cache::RdmCache;
 use alizarin_core::node_config::NodeConfigManager;
 use js_sys::Map as JsMap;
-use wasm_bindgen::JsCast;
 // ============================================================================
 // Error types for semantic child value retrieval
 // ============================================================================
@@ -245,12 +245,12 @@ pub struct ResourceInstanceWrapperCore {
     pub(crate) nodegroup_index: HashMap<String, Vec<String>>,
 
     // Track which nodegroups have been loaded/loading
-    // Phase 4g: Now uses Mutex for thread-safe parallel access
-    pub(crate) loaded_nodegroups: Arc<Mutex<HashMap<String, LoadState>>>,
+    // WASM is single-threaded, so we use Rc<RefCell<...>> instead of Arc<Mutex<...>>
+    pub(crate) loaded_nodegroups: Rc<RefCell<HashMap<String, LoadState>>>,
 
-    // Phase 4g: Cache of PseudoValues (alias -> PseudoListInner)
+    // Cache of PseudoValues (alias -> PseudoListInner)
     // This allows Rust to own the authoritative data and bindings to create lightweight wrappers
-    pub(crate) pseudo_cache: Arc<Mutex<HashMap<String, PseudoListInner>>>,
+    pub(crate) pseudo_cache: Rc<RefCell<HashMap<String, PseudoListInner>>>,
 
     // Cached Arc references to model indices - avoids cloning on every nodegroup access
     // These are populated once on first access and shared across all calls
@@ -320,8 +320,8 @@ impl ResourceInstanceWrapperCore {
             resource_instance: None,
             tiles: None,
             nodegroup_index: HashMap::new(),
-            loaded_nodegroups: Arc::new(Mutex::new(HashMap::new())),
-            pseudo_cache: Arc::new(Mutex::new(HashMap::new())),
+            loaded_nodegroups: Rc::new(RefCell::new(HashMap::new())),
+            pseudo_cache: Rc::new(RefCell::new(HashMap::new())),
             cached_nodes,
             cached_edges,
             cached_reverse_edges,
@@ -350,7 +350,7 @@ impl ResourceInstanceWrapperCore {
             let core_arc = registry_borrow.get(&self.graph_id)
                 .ok_or_else(|| E::from(format!("Model not found in registry: {}", self.graph_id)))?;
             let core_borrow = core_arc.borrow();
-            f(&*core_borrow)
+            f(&core_borrow)
         })
     }
 
@@ -366,7 +366,7 @@ impl ResourceInstanceWrapperCore {
             let core_arc = registry_borrow.get(&self.graph_id)
                 .ok_or_else(|| E::from(format!("Model not found in registry: {}", self.graph_id)))?;
             let mut core_borrow = core_arc.borrow_mut();
-            f(&mut *core_borrow)
+            f(&mut core_borrow)
         })
     }
 
@@ -390,9 +390,10 @@ impl ResourceInstanceWrapperCore {
         loaded_nodegroups: Option<&HashSet<String>>,
     ) -> Result<SemanticChildResult, SemanticChildError> {
         // Get child nodes for this parent (needs mutable access for lazy init)
+        #[allow(clippy::map_clone)]
         let child_nodes = self.with_model_core_mut(|core| {
             core.get_child_nodes(parent_node_id)
-                .map_err(|e| SemanticChildError::ModelNotInitialized(e))
+                .map_err(SemanticChildError::ModelNotInitialized)
                 .map(|map| map.clone())
         })?;
 
@@ -445,7 +446,7 @@ impl ResourceInstanceWrapperCore {
                 if matches_semantic_child_core(
                     parent_tile_id,
                     parent_nodegroup_id,
-                    &*child_node,
+                    &child_node,
                     tile,
                 ) {
                     matching_tile_ids.push(tile_id);
@@ -462,6 +463,7 @@ impl ResourceInstanceWrapperCore {
         // and there are multiple tiles for a cardinality-1 nodegroup)
         matching_tile_ids.sort();
 
+        #[allow(clippy::map_clone)]
         // Get edges and nodegroups for creating PseudoValues
         let edges = self.with_model_core(|core| {
             core.get_edges_internal()
@@ -603,12 +605,13 @@ impl WASMResourceInstanceWrapper {
                 // Add to nodegroup index
                 core.nodegroup_index
                     .entry(nodegroup_id.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(tile_id.clone());
 
                 // Mark this nodegroup as loaded in loaded_nodegroups
                 // This consolidates tile tracking with nodegroup processing state
-                if let Ok(mut loaded) = core.loaded_nodegroups.lock() {
+                {
+                    let mut loaded = core.loaded_nodegroups.borrow_mut();
                     loaded.insert(nodegroup_id, LoadState::Loaded);
                 }
 
@@ -623,10 +626,10 @@ impl WASMResourceInstanceWrapper {
         if assume_tiles_comprehensive_for_nodegroup {
             self.with_model_core_mut(|model_core| {
                 if let Some(nodegroups) = model_core.get_nodegroups_internal() {
-                    if let Ok(mut loaded) = self.core.borrow().loaded_nodegroups.lock() {
-                        for nodegroup_id in nodegroups.keys() {
-                            loaded.entry(nodegroup_id.clone()).or_insert(LoadState::Loaded);
-                        }
+                    let core_ref = self.core.borrow();
+                    let mut loaded = core_ref.loaded_nodegroups.borrow_mut();
+                    for nodegroup_id in nodegroups.keys() {
+                        loaded.entry(nodegroup_id.clone()).or_insert(LoadState::Loaded);
                     }
                 }
                 Ok(())
@@ -669,7 +672,7 @@ impl WASMResourceInstanceWrapper {
     pub fn tiles_loaded(&self) -> bool {
         // Check if tiles exist AND have actual content (not just initialized but empty)
         // In lazy mode, tiles HashMap is initialized empty, so we need to check for actual content
-        self.core.borrow().tiles.as_ref().map_or(false, |t| !t.is_empty())
+        self.core.borrow().tiles.as_ref().is_some_and(|t| !t.is_empty())
     }
 
     /// Set a callback function for lazy-loading tiles
@@ -706,11 +709,9 @@ impl WASMResourceInstanceWrapper {
             return self.core.borrow().tiles.is_some();
         }
         // Lazy mode: check if this specific nodegroup has been loaded via loaded_nodegroups
-        if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
-            matches!(loaded.get(&nodegroup_id), Some(LoadState::Loaded))
-        } else {
-            false
-        }
+        let core_ref = self.core.borrow();
+        let loaded = core_ref.loaded_nodegroups.borrow();
+        matches!(loaded.get(&nodegroup_id), Some(LoadState::Loaded))
     }
 
     /// Load tiles from plain JS objects (JSON deserialization)
@@ -897,27 +898,23 @@ impl WASMResourceInstanceWrapper {
     /// Phase 4g: Check if a nodegroup is being loaded or already loaded
     #[wasm_bindgen(js_name = isNodegroupLoadedOrLoading)]
     pub fn is_nodegroup_loaded_or_loading(&self, nodegroup_id: &str) -> bool {
-        if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
-            matches!(loaded.get(nodegroup_id), Some(LoadState::Loading) | Some(LoadState::Loaded))
-        } else {
-            false
-        }
+        let core_ref = self.core.borrow();
+        let loaded = core_ref.loaded_nodegroups.borrow();
+        matches!(loaded.get(nodegroup_id), Some(LoadState::Loading) | Some(LoadState::Loaded))
     }
 
     /// Phase 4g: Try to atomically acquire loading lock for a nodegroup
     /// Returns true if caller should proceed with loading, false if already being loaded
     #[wasm_bindgen(js_name = tryAcquireNodegroupLock)]
     pub fn try_acquire_nodegroup_lock(&self, nodegroup_id: String) -> bool {
-        if let Ok(mut loaded) = self.core.borrow().loaded_nodegroups.lock() {
-            match loaded.get(&nodegroup_id) {
-                Some(LoadState::Loading) | Some(LoadState::Loaded) => false,
-                _ => {
-                    loaded.insert(nodegroup_id, LoadState::Loading);
-                    true
-                }
+        let core_ref = self.core.borrow();
+        let mut loaded = core_ref.loaded_nodegroups.borrow_mut();
+        match loaded.get(&nodegroup_id) {
+            Some(LoadState::Loading) | Some(LoadState::Loaded) => false,
+            _ => {
+                loaded.insert(nodegroup_id, LoadState::Loading);
+                true
             }
-        } else {
-            false
         }
     }
 
@@ -925,7 +922,9 @@ impl WASMResourceInstanceWrapper {
     /// Returns PseudoList if found, null otherwise
     #[wasm_bindgen(js_name = getCachedPseudo)]
     pub fn get_cached_pseudo(&self, alias: &str) -> Option<PseudoList> {
-        if let Ok(cache) = self.core.borrow().pseudo_cache.lock() {
+        {
+            let core_ref = self.core.borrow();
+            let cache = core_ref.pseudo_cache.borrow();
             if let Some(pseudo_list) = cache.get(alias) {
                 // Convert PseudoListInner to PseudoList
                 return Some(PseudoList::from_rust(pseudo_list.clone()));
@@ -938,7 +937,9 @@ impl WASMResourceInstanceWrapper {
     #[wasm_bindgen(js_name = cachePseudoList)]
     pub fn cache_pseudo_list(&self, alias: String, wasm_list: PseudoList) {
         let rust_list = wasm_list.into_inner();
-        if let Ok(mut cache) = self.core.borrow().pseudo_cache.lock() {
+        {
+            let core_ref = self.core.borrow();
+            let mut cache = core_ref.pseudo_cache.borrow_mut();
             cache.insert(alias, rust_list);
         }
     }
@@ -971,7 +972,9 @@ impl WASMResourceInstanceWrapper {
             is_loaded: true,
             is_single: true, // Single value being cached
         };
-        if let Ok(mut cache) = self.core.borrow().pseudo_cache.lock() {
+        {
+            let core_ref = self.core.borrow();
+            let mut cache = core_ref.pseudo_cache.borrow_mut();
             cache.insert(alias, rust_list);
         }
     }
@@ -979,7 +982,9 @@ impl WASMResourceInstanceWrapper {
     /// Phase 4g: Clear all cached PseudoValues
     #[wasm_bindgen(js_name = clearPseudoCache)]
     pub fn clear_pseudo_cache(&self) {
-        if let Ok(mut cache) = self.core.borrow().pseudo_cache.lock() {
+        {
+            let core_ref = self.core.borrow();
+            let mut cache = core_ref.pseudo_cache.borrow_mut();
             cache.clear();
         }
     }
@@ -1000,12 +1005,16 @@ impl WASMResourceInstanceWrapper {
         }
 
         // Clear pseudo cache
-        if let Ok(mut cache) = self.core.borrow().pseudo_cache.lock() {
+        {
+            let core_ref = self.core.borrow();
+            let mut cache = core_ref.pseudo_cache.borrow_mut();
             cache.clear();
         }
 
         // Clear loaded nodegroups tracking
-        if let Ok(mut loaded) = self.core.borrow().loaded_nodegroups.lock() {
+        {
+            let core_ref = self.core.borrow();
+            let mut loaded = core_ref.loaded_nodegroups.borrow_mut();
             loaded.clear();
         }
 
@@ -1030,7 +1039,7 @@ impl WASMResourceInstanceWrapper {
 
         // Need to hold borrow long enough for the lock
         let core_ref = self.core.borrow();
-        let cache = core_ref.pseudo_cache.lock().ok()?;
+        let cache = core_ref.pseudo_cache.borrow();
 
         // Look up root by its actual alias
         let root_list = cache.get(&root_alias)?;
@@ -1050,8 +1059,7 @@ impl WASMResourceInstanceWrapper {
     /// Returns an error if any nodegroups are not in Loaded state.
     fn check_tiles_loaded(&self, method_name: &str) -> Result<(), JsValue> {
         let core_ref = self.core.borrow();
-        let loaded_nodegroups = core_ref.loaded_nodegroups.lock()
-            .map_err(|e| JsValue::from_str(&format!("Failed to lock loaded_nodegroups: {}", e)))?;
+        let loaded_nodegroups = core_ref.loaded_nodegroups.borrow();
 
         if loaded_nodegroups.is_empty() {
             return Err(JsValue::from_str(&format!(
@@ -1120,8 +1128,7 @@ impl WASMResourceInstanceWrapper {
 
         // Get the pseudo_cache (populated by populate())
         let core_ref = self.core.borrow();
-        let cache = core_ref.pseudo_cache.lock()
-            .map_err(|e| JsValue::from_str(&format!("Failed to lock pseudo_cache: {}", e)))?;
+        let cache = core_ref.pseudo_cache.borrow();
 
         // Build visitor context with default tile_data serialization
         let ctx = VisitorContext::new(&cache, &nodes_by_alias, &edges);
@@ -1228,8 +1235,7 @@ impl WASMResourceInstanceWrapper {
 
         // Get the pseudo_cache (populated by populate())
         let core_ref = self.core.borrow();
-        let cache = core_ref.pseudo_cache.lock()
-            .map_err(|e| JsValue::from_str(&format!("Failed to lock pseudo_cache: {}", e)))?;
+        let cache = core_ref.pseudo_cache.borrow();
 
         let lang = language.unwrap_or_else(|| "en".to_string());
 
@@ -1301,12 +1307,14 @@ impl WASMResourceInstanceWrapper {
             .unwrap_or_default();
 
         // Get nodes and edges
+        #[allow(clippy::map_clone)]
         let nodes_by_alias = self.with_model_core(|core| {
             core.get_nodes_by_alias_internal()
                 .ok_or_else(|| JsValue::from_str("Model nodes not initialized"))
                 .map(|map| map.clone())
         })?;
 
+        #[allow(clippy::map_clone)]
         let edges = self.with_model_core(|core| {
             core.get_edges_internal()
                 .ok_or_else(|| JsValue::from_str("Model edges not initialized"))
@@ -1315,8 +1323,7 @@ impl WASMResourceInstanceWrapper {
 
         // Get the pseudo cache
         let core_ref = self.core.borrow();
-        let cache = core_ref.pseudo_cache.lock()
-            .map_err(|e| JsValue::from_str(&format!("Failed to lock pseudo_cache: {}", e)))?;
+        let cache = core_ref.pseudo_cache.borrow();
 
         // Build context for tile collection
         let ctx = TileBuilderContext {
@@ -1385,12 +1392,14 @@ impl WASMResourceInstanceWrapper {
         let root_alias = root_node.alias.clone().unwrap_or_default();
 
         // Get nodes and edges
+        #[allow(clippy::map_clone)]
         let nodes_by_alias = self.with_model_core(|core| {
             core.get_nodes_by_alias_internal()
                 .ok_or_else(|| JsValue::from_str("Model nodes not initialized"))
                 .map(|map| map.clone())
         })?;
 
+        #[allow(clippy::map_clone)]
         let edges = self.with_model_core(|core| {
             core.get_edges_internal()
                 .ok_or_else(|| JsValue::from_str("Model edges not initialized"))
@@ -1399,8 +1408,7 @@ impl WASMResourceInstanceWrapper {
 
         // Get the pseudo cache
         let core_ref = self.core.borrow();
-        let cache = core_ref.pseudo_cache.lock()
-            .map_err(|e| JsValue::from_str(&format!("Failed to lock pseudo_cache: {}", e)))?;
+        let cache = core_ref.pseudo_cache.borrow();
 
         // Build context for tile collection
         let ctx = TileBuilderContext {
@@ -1481,6 +1489,7 @@ impl WASMResourceInstanceWrapper {
             Ok(())
         })?;
 
+        #[allow(clippy::map_clone)]
         let node_objs = self.with_model_core(|core| {
             core.get_nodes_by_alias_internal()
                 .ok_or_else(|| JsValue::from_str("Model nodes not initialized"))
@@ -1530,6 +1539,7 @@ impl WASMResourceInstanceWrapper {
             let tile_ids = self.get_tile_ids_by_nodegroup(nodegroup_id);
 
             // Get edges from model directly (no deserialization needed)
+            #[allow(clippy::map_clone)]
             let edges = self.with_model_core(|core| {
                 core.get_edges_internal()
                     .ok_or_else(|| JsValue::from_str("Model edges not initialized"))
@@ -1590,6 +1600,7 @@ impl WASMResourceInstanceWrapper {
             };
 
             // Get child node IDs from edges from model directly
+            #[allow(clippy::map_clone)]
             let edges = self.with_model_core(|core| {
                 core.get_edges_internal()
                     .ok_or_else(|| JsValue::from_str("Model edges not initialized"))
@@ -1617,11 +1628,9 @@ impl WASMResourceInstanceWrapper {
     /// Phase 4g: Updated to use Mutex
     #[wasm_bindgen(js_name = isNodegroupLoaded)]
     pub fn is_nodegroup_loaded(&self, nodegroup_id: &str) -> bool {
-        if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
-            matches!(loaded.get(nodegroup_id), Some(LoadState::Loaded))
-        } else {
-            false
-        }
+        let core_ref = self.core.borrow();
+        let loaded = core_ref.loaded_nodegroups.borrow();
+        matches!(loaded.get(nodegroup_id), Some(LoadState::Loaded))
     }
 
     /// Get count of tiles stored
@@ -1837,23 +1846,21 @@ impl WASMResourceInstanceWrapper {
         // Check if pseudo_cache has been populated (not just tiles loaded).
         // This is the true indicator that populate() has run before.
         // loaded_nodegroups tracks tile loading, but pseudo_cache tracks populate().
-        let cache_len = if let Ok(cache) = self.core.borrow().pseudo_cache.lock() {
+        let cache_len = {
+            let core_ref = self.core.borrow();
+            let cache = core_ref.pseudo_cache.borrow();
             cache.len()
-        } else {
-            0
         };
         let cache_populated = cache_len > 1;
 
         // Only use optimization if cache was actually populated previously
         let already_loaded: HashSet<String> = if cache_populated {
-            if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
-                loaded.iter()
-                    .filter(|(_, state)| **state == LoadState::Loaded)
-                    .map(|(id, _)| id.clone())
-                    .collect()
-            } else {
-                HashSet::new()
-            }
+            let core_ref = self.core.borrow();
+            let loaded = core_ref.loaded_nodegroups.borrow();
+            loaded.iter()
+                .filter(|(_, state)| **state == LoadState::Loaded)
+                .map(|(id, _)| id.clone())
+                .collect()
         } else {
             // First time populate() is called - process all nodegroups
             HashSet::new()
@@ -1883,11 +1890,9 @@ impl WASMResourceInstanceWrapper {
         // PORT: js/graphManager.ts:668 - newValues is a Map<string, PseudoValue | PseudoList>
         // Start with existing cache entries for already-loaded nodegroups
         let mut all_structured_values: HashMap<String, PseudoListInner> = if !already_loaded.is_empty() {
-            if let Ok(cache) = self.core.borrow().pseudo_cache.lock() {
-                cache.clone()
-            } else {
-                HashMap::new()
-            }
+            let core_ref = self.core.borrow();
+            let cache = core_ref.pseudo_cache.borrow();
+            cache.clone()
         } else {
             HashMap::new()
         };
@@ -1974,6 +1979,7 @@ impl WASMResourceInstanceWrapper {
             core.get_root_node().map_err(|e| JsValue::from_str(&e))
         })?;
 
+        #[allow(clippy::map_clone)]
         let edges = self.with_model_core(|core| {
             core.get_edges_internal()
                 .ok_or_else(|| JsValue::from_str("Model edges not initialized"))
@@ -2006,7 +2012,9 @@ impl WASMResourceInstanceWrapper {
 
         // Store all values in Rust's pseudo_cache so TS can query them later
         let t2 = now_ms();
-        if let Ok(mut cache) = self.core.borrow().pseudo_cache.lock() {
+        {
+            let core_ref = self.core.borrow();
+            let mut cache = core_ref.pseudo_cache.borrow_mut();
             for (alias, pseudo_list) in all_structured_values.iter() {
                 cache.insert(alias.clone(), pseudo_list.clone());
             }
@@ -2202,7 +2210,7 @@ impl WASMResourceInstanceWrapper {
             // Sampled timing for from_node_tiles (hot loop)
             let do_sample = should_sample("vfrn: from_node_tiles", DEFAULT_SAMPLE_RATE);
             let t4b = if do_sample { now_ms() } else { 0.0 };
-            let pseudo_list = PseudoListInner::from_node_tiles(node, tiles, &edges, None, is_single);
+            let pseudo_list = PseudoListInner::from_node_tiles(node, tiles, edges, None, is_single);
             if do_sample {
                 record_timing_sampled("vfrn: from_node_tiles", now_ms() - t4b, DEFAULT_SAMPLE_RATE);
             }
@@ -2269,8 +2277,9 @@ impl WASMResourceInstanceWrapper {
             Ok(())
         })?;
 
+        #[allow(clippy::map_clone)]
         let child_nodes = self.with_model_core_mut(|core| {
-            core.get_child_nodes(&parent_node_id.as_str())
+            core.get_child_nodes(parent_node_id.as_str())
                 .map_err(|e| JsValue::from_str(&e))
                 .map(|map| map.clone())
         })?;
@@ -2293,12 +2302,12 @@ impl WASMResourceInstanceWrapper {
                 if matches_semantic_child_core(
                     parent_tile_id.as_ref(),
                     parent_nodegroup_id.as_ref(),
-                    &**child_node,
+                    child_node,
                     tile,
                 ) {
                     results
                         .entry(child_alias.clone())
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(tile_id.clone());
                 }
             }
@@ -2338,14 +2347,12 @@ impl WASMResourceInstanceWrapper {
         // Extract loaded nodegroup IDs from loaded_nodegroups state
         let is_lazy = *self.lazy.borrow();
         let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
-            if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
-                Some(loaded.iter()
-                    .filter(|(_, state)| **state == LoadState::Loaded)
-                    .map(|(id, _)| id.clone())
-                    .collect())
-            } else {
-                Some(HashSet::new())
-            }
+            let core_ref = self.core.borrow();
+            let loaded = core_ref.loaded_nodegroups.borrow();
+            Some(loaded.iter()
+                .filter(|(_, state)| **state == LoadState::Loaded)
+                .map(|(id, _)| id.clone())
+                .collect())
         } else {
             None
         };
@@ -2405,7 +2412,9 @@ impl WASMResourceInstanceWrapper {
         child_alias: String,
     ) -> Result<JsValue, JsValue> {
         // First check pseudo_cache - after populate() values are stored there
-        if let Ok(cache) = self.core.borrow().pseudo_cache.lock() {
+        {
+            let core_ref = self.core.borrow();
+            let cache = core_ref.pseudo_cache.borrow();
             if let Some(pseudo_list) = cache.get(&child_alias) {
                 // TODO: inefficient and cacheable on PseudoListInner
                 let nodegroup_id = self.with_model_core_mut(|core| {
@@ -2453,14 +2462,12 @@ impl WASMResourceInstanceWrapper {
         // Extract loaded nodegroup IDs from loaded_nodegroups state
         let is_lazy = *self.lazy.borrow();
         let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
-            if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
-                Some(loaded.iter()
-                    .filter(|(_, state)| **state == LoadState::Loaded)
-                    .map(|(id, _)| id.clone())
-                    .collect())
-            } else {
-                Some(HashSet::new())
-            }
+            let core_ref = self.core.borrow();
+            let loaded = core_ref.loaded_nodegroups.borrow();
+            Some(loaded.iter()
+                .filter(|(_, state)| **state == LoadState::Loaded)
+                .map(|(id, _)| id.clone())
+                .collect())
         } else {
             None
         };
@@ -2550,7 +2557,9 @@ impl WASMResourceInstanceWrapper {
 
                 // Mark this nodegroup as loaded even if no tiles were returned
                 let t4 = now_ms();
-                if let Ok(mut loaded) = self.core.borrow().loaded_nodegroups.lock() {
+                {
+            let core_ref = self.core.borrow();
+            let mut loaded = core_ref.loaded_nodegroups.borrow_mut();
                     loaded.insert(nodegroup_id.clone(), LoadState::Loaded);
                 }
                 record_timing("mark_loaded", now_ms() - t4);
@@ -2559,14 +2568,12 @@ impl WASMResourceInstanceWrapper {
                 let t5 = now_ms();
                 let is_lazy = *self.lazy.borrow();
                 let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
-                    if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
-                        Some(loaded.iter()
-                            .filter(|(_, state)| **state == LoadState::Loaded)
-                            .map(|(id, _)| id.clone())
-                            .collect())
-                    } else {
-                        Some(HashSet::new())
-                    }
+                    let core_ref = self.core.borrow();
+                    let loaded = core_ref.loaded_nodegroups.borrow();
+                    Some(loaded.iter()
+                        .filter(|(_, state)| **state == LoadState::Loaded)
+                        .map(|(id, _)| id.clone())
+                        .collect())
                 } else {
                     None
                 };
@@ -2642,13 +2649,13 @@ impl WASMResourceInstanceWrapper {
         }
 
         // Get loaded nodegroups snapshot
-        let loaded_nodegroups: HashSet<String> = if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
+        let loaded_nodegroups: HashSet<String> = {
+            let core_ref = self.core.borrow();
+            let loaded = core_ref.loaded_nodegroups.borrow();
             loaded.iter()
                 .filter(|(_, state)| **state == LoadState::Loaded)
                 .map(|(id, _)| id.clone())
                 .collect()
-        } else {
-            HashSet::new()
         };
 
         // Get child nodes for this parent
@@ -2695,14 +2702,12 @@ impl WASMResourceInstanceWrapper {
         // Determine loaded nodegroups for lazy mode check
         let is_lazy = *self.lazy.borrow();
         let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
-            if let Ok(loaded) = self.core.borrow().loaded_nodegroups.lock() {
-                Some(loaded.iter()
-                    .filter(|(_, state)| **state == LoadState::Loaded)
-                    .map(|(id, _)| id.clone())
-                    .collect())
-            } else {
-                Some(HashSet::new())
-            }
+            let core_ref = self.core.borrow();
+            let loaded = core_ref.loaded_nodegroups.borrow();
+            Some(loaded.iter()
+                .filter(|(_, state)| **state == LoadState::Loaded)
+                .map(|(id, _)| id.clone())
+                .collect())
         } else {
             None
         };

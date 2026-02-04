@@ -277,6 +277,9 @@ pub fn matches_semantic_child(
 // Core resource instance wrapper
 // =============================================================================
 
+/// Type alias for alias -> (node, tiles) mapping used in values_from_resource_nodegroup
+type AliasTilesMap = HashMap<String, (Arc<StaticNode>, Vec<Option<Arc<StaticTile>>>)>;
+
 /// Core resource instance wrapper - platform-agnostic business logic
 ///
 /// Contains all tile storage, indexing, and business logic.
@@ -447,7 +450,7 @@ impl ResourceInstanceWrapperCore {
         };
 
         // Build a map of alias -> (node, tiles)
-        let mut alias_tiles: HashMap<String, (Arc<StaticNode>, Vec<Option<Arc<StaticTile>>>)> = HashMap::new();
+        let mut alias_tiles: AliasTilesMap = HashMap::new();
 
         // Get nodes for this nodegroup
         let nodegroup_nodes = nodes_by_nodegroup.get(nodegroup_id);
@@ -499,10 +502,8 @@ impl ResourceInstanceWrapperCore {
                                             && !tile_id.is_empty()
                                         {
                                             let key = (domain_node.nodeid.clone(), tile_id.clone());
-                                            if !implied_nodes.contains_key(&key) {
-                                                if let Some(t) = tile.as_ref() {
-                                                    implied_nodes.insert(key, (Arc::clone(domain_node), Arc::clone(t)));
-                                                }
+                                            if let Some(t) = tile.as_ref() {
+                                                implied_nodes.entry(key).or_insert_with(|| (Arc::clone(domain_node), Arc::clone(t)));
                                             }
                                         }
                                     }
@@ -558,7 +559,7 @@ impl ResourceInstanceWrapperCore {
     ) -> PseudoListCore {
         let alias = node.alias.clone().unwrap_or_default();
         let child_node_ids = edges.get(&node.nodeid)
-            .map(|ids| ids.clone())
+            .cloned()
             .unwrap_or_default();
 
         let values: Vec<PseudoValueCore> = tiles.into_iter()
@@ -580,6 +581,7 @@ impl ResourceInstanceWrapperCore {
     }
 
     /// Process a single nodegroup and return structured values
+    #[allow(clippy::too_many_arguments)]
     pub fn ensure_nodegroup(
         &self,
         all_values_map: &HashMap<String, Option<bool>>,
@@ -771,11 +773,7 @@ impl ResourceInstanceWrapperCore {
 
                 for nodegroup_id in current_implied.iter() {
                     let current_value = all_nodegroups.get(nodegroup_id);
-                    let should_process = match current_value {
-                        Some(&false) => true,
-                        None => true,
-                        _ => false,
-                    };
+                    let should_process = matches!(current_value, Some(&false) | None);
 
                     if should_process {
                         let result = self.ensure_nodegroup(
@@ -802,12 +800,12 @@ impl ResourceInstanceWrapperCore {
 
         // Create root pseudo value
         let root_node = model.get_root_node()
-            .map_err(|e| SemanticChildError::ModelNotInitialized(e))?;
+            .map_err(SemanticChildError::ModelNotInitialized)?;
         let edges = model.get_edges()
             .ok_or_else(|| SemanticChildError::ModelNotInitialized("Model edges not initialized".to_string()))?;
 
         let child_node_ids = edges.get(&root_node.nodeid)
-            .map(|ids| ids.clone())
+            .cloned()
             .unwrap_or_default();
 
         let root_pseudo = PseudoValueCore::from_node_and_tile(
@@ -850,7 +848,7 @@ impl ResourceInstanceWrapperCore {
     ) -> Result<SemanticChildResult, SemanticChildError> {
         // Get child nodes for this parent
         let child_nodes = model.get_child_nodes(parent_node_id)
-            .map_err(|e| SemanticChildError::ModelNotInitialized(e))?;
+            .map_err(SemanticChildError::ModelNotInitialized)?;
 
         // Find the child node by alias
         let child_node = child_nodes.values()
@@ -882,7 +880,7 @@ impl ResourceInstanceWrapperCore {
         let edges = model.get_edges()
             .ok_or_else(|| SemanticChildError::ModelNotInitialized("Model edges not initialized".to_string()))?;
         let child_node_ids = edges.get(&child_node.nodeid)
-            .map(|ids| ids.clone())
+            .cloned()
             .unwrap_or_default();
 
         // Determine cardinality

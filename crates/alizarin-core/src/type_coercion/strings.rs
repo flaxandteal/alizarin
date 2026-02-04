@@ -209,9 +209,9 @@ mod tests {
 
     #[test]
     fn test_coerce_string_from_float() {
-        let result = coerce_string(&json!(2.71828), Some("en"));
+        let result = coerce_string(&json!(4.2), Some("en"));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!({"en": "2.71828"}));
+        assert_eq!(result.tile_data, json!({"en": "4.2"}));
     }
 
     // URL tests

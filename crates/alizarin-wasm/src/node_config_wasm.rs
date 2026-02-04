@@ -2,7 +2,6 @@
 ///
 /// This module wraps the platform-agnostic types from alizarin-core
 /// with wasm-bindgen bindings for TypeScript/JavaScript access.
-
 use wasm_bindgen::prelude::*;
 use js_sys::{Array, Object, Reflect};
 

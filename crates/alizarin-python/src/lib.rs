@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 /// Python bindings for Alizarin
 ///
 /// This provides Python bindings for:
@@ -7,7 +8,6 @@
 /// - Graph management utilities
 /// - Extension type handler registration
 /// - Node configuration management for type coercion
-
 use pyo3::prelude::*;
 
 mod graph_mutator_py;
@@ -20,7 +20,6 @@ mod skos_py;
 mod type_coercion_py;
 use pyo3::types::PyCapsule;
 use rayon::prelude::*;
-use serde_json;
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
 
@@ -403,7 +402,7 @@ unsafe extern "C" fn rdm_lookup_by_label(
 /// C ABI callback to free concept JSON returned by lookup functions
 unsafe extern "C" fn free_concept_json(ptr: *mut u8, len: usize) {
     if !ptr.is_null() {
-        let _ = Box::from_raw(std::slice::from_raw_parts_mut(ptr, len));
+        let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(ptr, len));
     }
 }
 
@@ -692,7 +691,7 @@ fn tiles_to_json_tree(
             .and_then(|t| serde_json::from_value(t.clone()).ok())
             .unwrap_or_default();
 
-        let static_resource = create_static_resource(resource_id.clone(), graph_id.clone(), tiles, &*graph);
+        let static_resource = create_static_resource(resource_id.clone(), graph_id.clone(), tiles, &graph);
         serde_json::to_value(&static_resource)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
                 format!("Failed to serialize resource: {}", e)
@@ -700,8 +699,8 @@ fn tiles_to_json_tree(
     };
 
     // Call shared Rust conversion function (returns array)
-    let json_tree_array = tiles_to_tree(&input_json, &*graph)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+    let json_tree_array = tiles_to_tree(&input_json, &graph)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Extract first element (single resource case)
     let json_tree = json_tree_array.as_array()
@@ -748,6 +747,7 @@ fn tiles_to_json_tree(
 ///
 /// If scopes is provided (as JSON string), it will be set on all resulting resources.
 #[pyfunction]
+#[allow(clippy::too_many_arguments)]
 #[pyo3(signature = (tree_json, resource_id, graph_id, from_camel=false, strict=true, rdm_cache=None, id_key=None, scopes=None))]
 fn json_tree_to_tiles(
     py: Python,
@@ -788,7 +788,7 @@ fn json_tree_to_tiles(
     let cache_to_use: Option<&rdm_cache_py::RdmCache> = rdm_cache.or(global_cache.as_ref());
 
     if let Some(cache) = cache_to_use {
-        let alias_map = build_alias_to_collection_from_graph(&*graph);
+        let alias_map = build_alias_to_collection_from_graph(&graph);
         tree = core_resolve_labels(tree, &alias_map, cache, strict)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.message))?;
     }
@@ -801,8 +801,8 @@ fn json_tree_to_tiles(
 
     // Call shared Rust conversion function
     let id_key_ref = id_key.as_deref();
-    let mut business_data = tree_to_tiles(&tree, &*graph, strict, id_key_ref)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+    let mut business_data = tree_to_tiles(&tree, &graph, strict, id_key_ref)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Set scopes on all resources if provided
     if let Some(ref scopes_val) = scopes_value {
@@ -884,7 +884,7 @@ fn batch_trees_to_tiles(
             // Get id_key for this tree (if id_keys array provided)
             let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
-            let business_data = tree_to_tiles(&tree, &*graph, strict, id_key_ref)
+            let business_data = tree_to_tiles(&tree, &graph, strict, id_key_ref)
                 .map_err(|e| format!("Tree {}: {}", i, e))?;
 
             // Extract first resource (full StaticResource with resourceinstance metadata)
@@ -945,6 +945,7 @@ fn batch_trees_to_tiles(
 ///     BusinessDataWrapper format with extension-coerced values:
 ///     {business_data: {resources: [...]}, errors: [...], error_count: int}
 #[pyfunction]
+#[allow(clippy::too_many_arguments)]
 #[pyo3(signature = (trees_json, graph_id, from_camel=false, strict=true, id_keys=None, scopes=None, resolve_markers=true))]
 fn batch_trees_to_tiles_with_extensions(
     py: Python,
@@ -1020,7 +1021,7 @@ fn batch_trees_to_tiles_with_extensions(
             // Get id_key for this tree (if id_keys array provided)
             let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
-            let business_data = tree_to_tiles(&tree, &*graph, strict, id_key_ref)
+            let business_data = tree_to_tiles(&tree, &graph, strict, id_key_ref)
                 .map_err(|e| format!("Tree {}: {}", i, e))?;
 
             // Extract first resource
@@ -1284,7 +1285,7 @@ impl TreeToTilesIterator {
         }
 
         // Convert tree to tiles
-        let result = tree_to_tiles(&tree, &*self.graph, self.strict, id_key);
+        let result = tree_to_tiles(&tree, &self.graph, self.strict, id_key);
 
         let output = match result {
             Ok(business_data) => {
@@ -1395,7 +1396,7 @@ fn batch_tiles_to_trees(
                     resource_id.clone(),
                     graph_id.clone(),
                     tiles,
-                    &*graph,
+                    &graph,
                 );
 
                 serde_json::to_value(&static_resource)
@@ -1403,7 +1404,7 @@ fn batch_tiles_to_trees(
             };
 
             // Call tiles_to_tree (returns array)
-            let json_tree_array = tiles_to_tree(&input_json, &*graph)
+            let json_tree_array = tiles_to_tree(&input_json, &graph)
                 .map_err(|e| format!("Resource {}: {}", i, e))?;
 
             // Extract first element and add metadata
@@ -1723,7 +1724,7 @@ fn resolve_labels_in_tree(
     let cache_to_use: Option<&rdm_cache_py::RdmCache> = rdm_cache.or(global_cache.as_ref());
 
     let resolved_tree = if let Some(cache) = cache_to_use {
-        let alias_map = build_alias_to_collection_from_graph(&*graph);
+        let alias_map = build_alias_to_collection_from_graph(&graph);
         core_resolve_labels(tree, &alias_map, cache, strict)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.message))?
     } else {
@@ -2119,7 +2120,6 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alizarin_core::string_utils::{camel_to_snake, transform_keys_to_snake};
 
     #[test]

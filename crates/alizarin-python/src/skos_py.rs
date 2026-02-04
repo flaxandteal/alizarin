@@ -24,7 +24,7 @@ use alizarin_core::skos::{
 #[pyfunction]
 pub fn parse_skos_xml(xml_content: &str, base_uri: &str) -> PyResult<String> {
     let collections = parse_skos_to_collections(xml_content, base_uri)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     serde_json::to_string(&collections)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(
@@ -46,7 +46,7 @@ pub fn parse_skos_xml(xml_content: &str, base_uri: &str) -> PyResult<String> {
 #[pyfunction]
 pub fn parse_skos_xml_to_collection(xml_content: &str, base_uri: &str) -> PyResult<String> {
     let mut collections = parse_skos_to_collections(xml_content, base_uri)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     if collections.is_empty() {
         return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(

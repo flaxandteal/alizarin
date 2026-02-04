@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 /// RDM (Reference Data Manager) Cache for concept collections.
 ///
 /// This module provides Python bindings that wrap core types from alizarin-core:
@@ -10,7 +11,6 @@
 /// - Global singleton for automatic label resolution
 /// - SKOS RDF/XML parsing
 /// - UUID generation from labels
-
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::collections::{HashMap, HashSet};
@@ -1306,7 +1306,7 @@ impl RdmCache {
         }
 
         // Also add from all_concepts if not already added (fallback for flat structures)
-        if rdm.len() == 0 && !skos.all_concepts.is_empty() {
+        if rdm.is_empty() && !skos.all_concepts.is_empty() {
             for skos_concept in skos.all_concepts.values() {
                 if !rdm.has_concept(&skos_concept.id) {
                     add_concept_recursive(&mut rdm, skos_concept, None);
@@ -1364,7 +1364,7 @@ impl RdmCache {
     ///     concepts_json: JSON array of concepts
     fn add_collection_from_json(&mut self, collection_id: &str, concepts_json: &str) -> PyResult<()> {
         self.inner.add_collection_from_json(collection_id, concepts_json)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
     }
 
     /// Add a pre-built collection

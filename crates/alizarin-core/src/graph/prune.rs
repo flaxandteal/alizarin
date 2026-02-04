@@ -182,22 +182,16 @@ where
     });
 
     // Filter edges
-    pruned.edges = pruned.edges.into_iter()
-        .filter(|edge| {
-            (edge.domainnode_id == root || allowed_nodes.contains(&edge.domainnode_id))
-                && allowed_nodes.contains(&edge.rangenode_id)
-        })
-        .collect();
+    pruned.edges.retain(|edge| {
+        (edge.domainnode_id == root || allowed_nodes.contains(&edge.domainnode_id))
+            && allowed_nodes.contains(&edge.rangenode_id)
+    });
 
     // Filter nodegroups
-    pruned.nodegroups = pruned.nodegroups.into_iter()
-        .filter(|ng| allowed_nodegroups.contains_key(&ng.nodegroupid))
-        .collect();
+    pruned.nodegroups.retain(|ng| allowed_nodegroups.contains_key(&ng.nodegroupid));
 
     // Filter nodes
-    pruned.nodes = pruned.nodes.into_iter()
-        .filter(|node| allowed_nodes.contains(&node.nodeid))
-        .collect();
+    pruned.nodes.retain(|node| allowed_nodes.contains(&node.nodeid));
 
     // Filter functions_x_graphs
     if let Some(keep_fns) = keep_functions {

@@ -3,7 +3,6 @@
 /// Provides Python bindings for the platform-agnostic instance wrapper logic,
 /// enabling Python to use the same tile processing and pseudo cache population
 /// as the WASM implementation.
-
 use pyo3::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -268,7 +267,7 @@ impl PyResourceInstanceWrapperCore {
     ///     RustPseudoList if found, None otherwise
     fn get_cached_pseudo(&self, alias: &str) -> Option<PyPseudoList> {
         self.inner.get_cached_pseudo(alias)
-            .map(|core| PyPseudoList::from_core(core))
+            .map(PyPseudoList::from_core)
     }
 
     /// Check if a nodegroup is loaded

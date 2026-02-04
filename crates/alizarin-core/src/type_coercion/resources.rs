@@ -12,6 +12,7 @@ use super::helpers::{value_type_name, is_valid_uuid};
 /// Config: Not used
 ///
 /// Returns: tile_data is `[{resourceId: uuid}]`, display_value is the UUID string
+#[allow(clippy::only_used_in_recursion)]
 pub fn coerce_resource_instance(value: &Value, config: Option<&Value>) -> CoercionResult {
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
