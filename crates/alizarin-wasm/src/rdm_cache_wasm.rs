@@ -303,24 +303,24 @@ mod tests {
             .add_collection_from_json("collection-1", concepts_json)
             .unwrap();
 
-        assert!(cache.has_collection("collection-1"));
-        assert!(!cache.has_collection("collection-2"));
+        assert!(cache.has_collection(Some("collection-1".to_string())));
+        assert!(!cache.has_collection(Some("collection-2".to_string())));
 
         assert_eq!(
-            cache.lookup_label("collection-1", "concept-1", "en"),
+            cache.lookup_label(Some("collection-1".to_string()), Some("concept-1".to_string()), Some("en".to_string())),
             Some("English Label".to_string())
         );
         assert_eq!(
-            cache.lookup_label("collection-1", "concept-1", "de"),
+            cache.lookup_label(Some("collection-1".to_string()), Some("concept-1".to_string()), Some("de".to_string())),
             Some("German Label".to_string())
         );
         // Fallback to en
         assert_eq!(
-            cache.lookup_label("collection-1", "concept-1", "fr"),
+            cache.lookup_label(Some("collection-1".to_string()), Some("concept-1".to_string()), Some("fr".to_string())),
             Some("English Label".to_string())
         );
         // Not found
-        assert_eq!(cache.lookup_label("collection-1", "concept-3", "en"), None);
+        assert_eq!(cache.lookup_label(Some("collection-1".to_string()), Some("concept-3".to_string()), Some("en".to_string())), None);
     }
 
     #[test]
@@ -360,17 +360,17 @@ mod tests {
 
         // Test get_concept_id_for_value
         assert_eq!(
-            cache.get_concept_id_for_value("coll-1", "value-1-en"),
+            cache.get_concept_id_for_value(Some("coll-1".to_string()), Some("value-1-en".to_string())),
             Some("concept-1".to_string())
         );
         assert_eq!(
-            cache.get_concept_id_for_value("coll-1", "nonexistent"),
+            cache.get_concept_id_for_value(Some("coll-1".to_string()), Some("nonexistent".to_string())),
             None
         );
 
         // Test validate_value
-        assert!(cache.validate_value("coll-1", "value-1-en"));
-        assert!(!cache.validate_value("coll-1", "nonexistent"));
+        assert!(cache.validate_value(Some("coll-1".to_string()), Some("value-1-en".to_string())));
+        assert!(!cache.validate_value(Some("coll-1".to_string()), Some("nonexistent".to_string())));
 
         // Note: lookup_value returns JsValue which can't be easily tested
         // outside WASM context. The underlying logic is tested in alizarin-core.
@@ -398,11 +398,11 @@ mod tests {
 
         // Child should have parent
         assert_eq!(
-            cache.get_parent_id("coll-1", "child-concept"),
+            cache.get_parent_id(Some("coll-1".to_string()), Some("child-concept".to_string())),
             Some("parent-concept".to_string())
         );
 
         // Parent has no parent (top-level)
-        assert_eq!(cache.get_parent_id("coll-1", "parent-concept"), None);
+        assert_eq!(cache.get_parent_id(Some("coll-1".to_string()), Some("parent-concept".to_string())), None);
     }
 }
