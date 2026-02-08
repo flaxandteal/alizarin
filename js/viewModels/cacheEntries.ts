@@ -41,14 +41,30 @@ export class ResourceInstanceListCacheEntry implements IStringKeyedObject {
   _: ResourceInstanceCacheEntry[];
   meta: {[key: string]: any};
 
-  constructor({meta, _}: {meta: IStringKeyedObject | undefined, _: ResourceInstanceCacheEntry[]}) {
-    this._ = _.map(instance => {
+  constructor(input: {meta?: IStringKeyedObject, _?: ResourceInstanceCacheEntry[]} | {id: string, type: string, graphId: string, title?: string | null, meta?: IStringKeyedObject}) {
+    // Handle both list format {meta, _} and single entry format {id, type, graphId, title}
+    // This allows wrapping a single resource-instance entry as a list
+    let entries: any[];
+    if ('_' in input && Array.isArray(input._)) {
+      // List format: {meta, _: [...]}
+      entries = input._;
+      this.meta = input.meta || {};
+    } else if ('id' in input) {
+      // Single entry format: {id, type, graphId, title} - wrap in array
+      entries = [input];
+      this.meta = (input as any).meta || {};
+    } else {
+      // Unknown format - use empty array
+      entries = [];
+      this.meta = {};
+    }
+
+    this._ = entries.map(instance => {
       if (instance instanceof ResourceInstanceCacheEntry) {
         return instance;
       }
       return new ResourceInstanceCacheEntry(instance);
     });
-    this.meta = meta || {};
   }
 }
 

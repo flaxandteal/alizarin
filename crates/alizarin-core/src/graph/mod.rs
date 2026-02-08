@@ -38,8 +38,10 @@ pub use meta::StaticGraphMeta;
 pub use nodes::{StaticEdge, StaticNode, StaticNodegroup};
 pub use prune::{build_backedges, find_root_node, prune_graph, PruneError};
 pub use resources::{
-    batch_merge_resources, merge_resources, BatchMergeResult, MergeResult, StaticResource,
-    StaticResourceMetadata, StaticResourceReference, StaticResourceSummary,
+    batch_merge_resources, merge_resources, unify_cardinality_one_tiles, BatchMergeResult,
+    MergeResult, PopulateCachesResult, RelatedResourceEntry, ResourceCache, ResourceEntry,
+    StaticResource, StaticResourceMetadata, StaticResourceReference, StaticResourceRegistry,
+    StaticResourceSummary, UnknownReference,
 };
 pub use static_graph::{GraphWrapper, IndexedGraph, StaticGraph};
 pub use tile::StaticTile;

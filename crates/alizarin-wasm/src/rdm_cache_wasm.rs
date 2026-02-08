@@ -69,10 +69,13 @@ impl WasmRdmCache {
             .map_err(|e| JsError::new(&e))
     }
 
-    /// Check if a collection is loaded
+    /// Check if a collection is loaded (returns false if collection_id is null)
     #[wasm_bindgen(js_name = hasCollection)]
-    pub fn has_collection(&self, collection_id: &str) -> bool {
-        self.inner.has_collection(collection_id)
+    pub fn has_collection(&self, collection_id: Option<String>) -> bool {
+        match collection_id {
+            Some(id) => self.inner.has_collection(&id),
+            None => false,
+        }
     }
 
     /// Get all loaded collection IDs
@@ -86,29 +89,40 @@ impl WasmRdmCache {
     /// @param collectionId - The collection to search in
     /// @param conceptId - The concept UUID
     /// @param language - The language code (e.g., "en")
-    /// @returns The label string, or undefined if not found
+    /// @returns The label string, or undefined if not found or any param is null
     #[wasm_bindgen(js_name = lookupLabel)]
     pub fn lookup_label(
         &self,
-        collection_id: &str,
-        concept_id: &str,
-        language: &str,
+        collection_id: Option<String>,
+        concept_id: Option<String>,
+        language: Option<String>,
     ) -> Option<String> {
-        self.inner.lookup_label(collection_id, concept_id, language)
+        let collection_id = collection_id?;
+        let concept_id = concept_id?;
+        let language = language?;
+        self.inner.lookup_label(&collection_id, &concept_id, &language)
     }
 
     /// Look up full concept info
     ///
     /// @param collectionId - The collection to search in
     /// @param conceptId - The concept UUID
-    /// @returns JSON object with concept info, or undefined if not found
+    /// @returns JSON object with concept info, or undefined if not found or any param is null
     #[wasm_bindgen(js_name = lookupConcept)]
     pub fn lookup_concept(
         &self,
-        collection_id: &str,
-        concept_id: &str,
+        collection_id: Option<String>,
+        concept_id: Option<String>,
     ) -> Result<JsValue, JsError> {
-        match self.inner.lookup_concept(collection_id, concept_id) {
+        let collection_id = match collection_id {
+            Some(id) => id,
+            None => return Ok(JsValue::UNDEFINED),
+        };
+        let concept_id = match concept_id {
+            Some(id) => id,
+            None => return Ok(JsValue::UNDEFINED),
+        };
+        match self.inner.lookup_concept(&collection_id, &concept_id) {
             Some(concept) => serde_wasm_bindgen::to_value(concept)
                 .map_err(|e| JsError::new(&format!("Serialization error: {}", e))),
             None => Ok(JsValue::UNDEFINED),
@@ -119,10 +133,12 @@ impl WasmRdmCache {
     ///
     /// @param collectionId - The collection to search in
     /// @param conceptId - The concept UUID
-    /// @returns The parent concept ID, or undefined if no parent (top-level concept)
+    /// @returns The parent concept ID, or undefined if no parent (top-level concept) or any param is null
     #[wasm_bindgen(js_name = getParentId)]
-    pub fn get_parent_id(&self, collection_id: &str, concept_id: &str) -> Option<String> {
-        self.inner.get_parent_id(collection_id, concept_id)
+    pub fn get_parent_id(&self, collection_id: Option<String>, concept_id: Option<String>) -> Option<String> {
+        let collection_id = collection_id?;
+        let concept_id = concept_id?;
+        self.inner.get_parent_id(&collection_id, &concept_id)
     }
 
     // =========================================================================
@@ -136,10 +152,18 @@ impl WasmRdmCache {
     ///
     /// @param collectionId - The collection to search in
     /// @param valueId - The value UUID (not concept UUID)
-    /// @returns RdmValueInfo object, or undefined if not found
+    /// @returns RdmValueInfo object, or undefined if not found or any param is null
     #[wasm_bindgen(js_name = lookupValue)]
-    pub fn lookup_value(&self, collection_id: &str, value_id: &str) -> Result<JsValue, JsError> {
-        match self.inner.lookup_value(collection_id, value_id) {
+    pub fn lookup_value(&self, collection_id: Option<String>, value_id: Option<String>) -> Result<JsValue, JsError> {
+        let collection_id = match collection_id {
+            Some(id) => id,
+            None => return Ok(JsValue::UNDEFINED),
+        };
+        let value_id = match value_id {
+            Some(id) => id,
+            None => return Ok(JsValue::UNDEFINED),
+        };
+        match self.inner.lookup_value(&collection_id, &value_id) {
             Some(value) => {
                 let info = RdmValueInfo {
                     id: value.id.clone(),
@@ -160,11 +184,13 @@ impl WasmRdmCache {
     ///
     /// @param collectionId - The collection to search in
     /// @param valueId - The value UUID
-    /// @returns The concept ID, or undefined if not found
+    /// @returns The concept ID, or undefined if not found or any param is null
     #[wasm_bindgen(js_name = getConceptIdForValue)]
-    pub fn get_concept_id_for_value(&self, collection_id: &str, value_id: &str) -> Option<String> {
+    pub fn get_concept_id_for_value(&self, collection_id: Option<String>, value_id: Option<String>) -> Option<String> {
+        let collection_id = collection_id?;
+        let value_id = value_id?;
         self.inner
-            .get_concept_id_for_value(collection_id, value_id)
+            .get_concept_id_for_value(&collection_id, &value_id)
             .map(|s| s.to_string())
     }
 
@@ -172,10 +198,13 @@ impl WasmRdmCache {
     ///
     /// @param collectionId - The collection to check
     /// @param valueId - The value UUID to validate
-    /// @returns true if the value exists
+    /// @returns true if the value exists (returns false if any param is null)
     #[wasm_bindgen(js_name = validateValue)]
-    pub fn validate_value(&self, collection_id: &str, value_id: &str) -> bool {
-        self.inner.validate_value(collection_id, value_id)
+    pub fn validate_value(&self, collection_id: Option<String>, value_id: Option<String>) -> bool {
+        match (collection_id, value_id) {
+            (Some(cid), Some(vid)) => self.inner.validate_value(&cid, &vid),
+            _ => false,
+        }
     }
 
     // =========================================================================

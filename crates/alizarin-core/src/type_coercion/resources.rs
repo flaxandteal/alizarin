@@ -9,7 +9,7 @@ use serde_json::Value;
 /// Tile data format: `[{resourceId: "uuid"}]` (array with single object)
 ///
 /// Input: UUID string, object with `resourceId`, or array with single element
-/// Config: Not used
+/// Config: Not used (relationship properties are populated at a higher level from node config)
 ///
 /// Returns: tile_data is `[{resourceId: uuid}]`, display_value is the UUID string
 #[allow(clippy::only_used_in_recursion)]
@@ -70,7 +70,7 @@ pub fn coerce_resource_instance(value: &Value, config: Option<&Value>) -> Coerci
 /// Tile data format: `[{resourceId: "uuid1"}, {resourceId: "uuid2"}, ...]`
 ///
 /// Input: Array of UUIDs or objects with `resourceId`
-/// Config: Not used
+/// Config: Not used (relationship properties are populated at a higher level from node config)
 ///
 /// Returns: tile_data is array of `{resourceId: uuid}` objects
 pub fn coerce_resource_instance_list(value: &Value, _config: Option<&Value>) -> CoercionResult {

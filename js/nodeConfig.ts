@@ -150,7 +150,8 @@ class NodeConfigManager {
     const graphId = graph.graphid;
     if (this._graphsLoaded.has(graphId)) return;
 
-    this.getWasmManager().fromGraphJson(JSON.stringify(graph));
+    // Use direct graph loading (avoids JSON stringify/parse round-trip)
+    this.getWasmManager().fromGraph(graph);
     this._graphsLoaded.add(graphId);
   }
 

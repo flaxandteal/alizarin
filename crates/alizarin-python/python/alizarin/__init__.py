@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 register_graph: Optional[Any] = None
 get_graph_json: Optional[Any] = None
+get_graph_schema: Optional[Any] = None
 tiles_to_json_tree: Optional[Any] = None
 json_tree_to_tiles: Optional[Any] = None
 batch_trees_to_tiles: Optional[Any] = None
@@ -29,6 +30,7 @@ batch_tiles_to_trees: Optional[Any] = None
 merge_resources: Optional[Any] = None
 batch_merge_resources: Optional[Any] = None
 TreeToTilesIterator: Optional[Any] = None
+ResourceRegistry: Optional[Any] = None
 resolve_labels_in_tree: Optional[Any] = None
 _alizarin_rust: Optional[Any] = None
 
@@ -37,6 +39,7 @@ try:
     from . import alizarin as _alizarin_rust
     register_graph = _alizarin_rust.register_graph
     get_graph_json = _alizarin_rust.get_graph_json
+    get_graph_schema = _alizarin_rust.get_graph_schema
     tiles_to_json_tree = _alizarin_rust.tiles_to_json_tree
     json_tree_to_tiles = _alizarin_rust.json_tree_to_tiles
     batch_trees_to_tiles = _alizarin_rust.batch_trees_to_tiles
@@ -45,6 +48,7 @@ try:
     merge_resources = _alizarin_rust.merge_resources
     batch_merge_resources = _alizarin_rust.batch_merge_resources
     TreeToTilesIterator = _alizarin_rust.TreeToTilesIterator
+    ResourceRegistry = _alizarin_rust.ResourceRegistry
     resolve_labels_in_tree = _alizarin_rust.resolve_labels_in_tree
 except (ImportError, AttributeError):
     # Rust module not yet compiled - functions will remain None
@@ -361,6 +365,7 @@ __all__ = [
     # Graph registry
     "register_graph",
     "get_graph_json",
+    "get_graph_schema",
     # Core Rust functions
     "tiles_to_json_tree",
     "json_tree_to_tiles",
@@ -371,6 +376,7 @@ __all__ = [
     "batch_merge_resources",
     "chunked_merge_resources",
     "TreeToTilesIterator",
+    "ResourceRegistry",
     "resolve_labels_in_tree",
     # Static Types
     "StaticTranslatableString",

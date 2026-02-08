@@ -276,6 +276,19 @@ impl StaticGraph {
         &self.graphid
     }
 
+    /// Get the model class name for this graph.
+    ///
+    /// This returns the graph's display name, which is used as the
+    /// ResourceInstanceCacheEntry "type" field in TypeScript.
+    pub fn get_model_class_name(&self) -> Option<String> {
+        let name = self.name.to_string_default();
+        if name.is_empty() {
+            None
+        } else {
+            Some(name)
+        }
+    }
+
     /// Get edges map (parent_nodeid -> child_nodeids)
     /// Returns None if indices haven't been built
     pub fn edges_map(&self) -> Option<&HashMap<String, Vec<String>>> {
@@ -406,6 +419,89 @@ impl StaticGraph {
             .iter()
             .find(|n| n.alias.as_deref() == Some(alias))
     }
+
+    /// Get a simplified schema view of the graph showing node aliases and structure.
+    ///
+    /// Returns a nested structure representing the tree with:
+    /// - Keys are node aliases (or nodeid if no alias)
+    /// - Values contain 'datatype', 'nodeid', optionally 'required', and 'children'
+    ///
+    /// Useful for understanding what keys are available in tree output.
+    pub fn get_schema(&self) -> serde_json::Value {
+        // Build a map from nodeid to node for quick lookup
+        let node_map: HashMap<&str, &StaticNode> = self
+            .nodes
+            .iter()
+            .map(|n| (n.nodeid.as_str(), n))
+            .collect();
+
+        // Build parent -> children map based on edges
+        let mut children_map: HashMap<&str, Vec<&str>> = HashMap::new();
+        for edge in &self.edges {
+            children_map
+                .entry(edge.domainnode_id.as_str())
+                .or_default()
+                .push(&edge.rangenode_id);
+        }
+
+        // Recursive function to build node schema
+        fn build_node_schema(
+            nodeid: &str,
+            node_map: &HashMap<&str, &StaticNode>,
+            children_map: &HashMap<&str, Vec<&str>>,
+        ) -> serde_json::Value {
+            let node = match node_map.get(nodeid) {
+                Some(n) => n,
+                None => return serde_json::json!({}),
+            };
+
+            let mut schema = serde_json::json!({
+                "datatype": node.datatype,
+                "nodeid": node.nodeid,
+            });
+
+            if node.isrequired {
+                schema["required"] = serde_json::json!(true);
+            }
+
+            // Add children recursively
+            if let Some(child_ids) = children_map.get(nodeid) {
+                let mut children = serde_json::Map::new();
+                for child_id in child_ids {
+                    if let Some(child_node) = node_map.get(child_id) {
+                        let key = child_node.alias.as_deref().unwrap_or(&child_node.nodeid);
+                        children.insert(
+                            key.to_string(),
+                            build_node_schema(child_id, node_map, children_map),
+                        );
+                    }
+                }
+                if !children.is_empty() {
+                    schema["children"] = serde_json::Value::Object(children);
+                }
+            }
+
+            schema
+        }
+
+        // Start from root node and build tree
+        let root_id = &self.root.nodeid;
+        let mut root_schema = serde_json::Map::new();
+
+        if let Some(child_ids) = children_map.get(root_id.as_str()) {
+            for child_id in child_ids {
+                if let Some(child_node) = node_map.get(child_id) {
+                    let key = child_node.alias.as_deref().unwrap_or(&child_node.nodeid);
+                    root_schema.insert(
+                        key.to_string(),
+                        build_node_schema(child_id, &node_map, &children_map),
+                    );
+                }
+            }
+        }
+
+        serde_json::Value::Object(root_schema)
+    }
 }
 
 /// Graph with precomputed indices for efficient tree traversal
@@ -522,10 +618,22 @@ impl IndexedGraph {
     /// # Returns
     /// Populated StaticResourceDescriptors with name, description, map_popup fields
     pub fn build_descriptors(&self, tiles: &[StaticTile]) -> StaticResourceDescriptors {
-        // Get descriptor config from graph
-        let config = match self.get_descriptor_config() {
+        self.build_descriptors_with_diagnostics(tiles, &mut Vec::new())
+    }
+
+    /// Build descriptors with diagnostic warnings for silent failure cases
+    pub fn build_descriptors_with_diagnostics(
+        &self,
+        tiles: &[StaticTile],
+        warnings: &mut Vec<String>,
+    ) -> StaticResourceDescriptors {
+        // Get descriptor config from graph with diagnostics
+        let config = match self.get_descriptor_config_with_diagnostics(warnings) {
             Some(c) => c,
-            None => return StaticResourceDescriptors::default(),
+            None => {
+                // Warning already added by get_descriptor_config_with_diagnostics
+                return StaticResourceDescriptors::default();
+            }
         };
 
         let mut descriptors = StaticResourceDescriptors::default();
@@ -537,6 +645,10 @@ impl IndexedGraph {
             // Extract placeholders from template (e.g., <Node Name>)
             let placeholders = Self::extract_placeholders(&template);
             if placeholders.is_empty() {
+                warnings.push(format!(
+                    "Descriptor '{}': No placeholders found in template '{}'",
+                    descriptor_type, template
+                ));
                 continue;
             }
 
@@ -547,6 +659,11 @@ impl IndexedGraph {
                 .collect();
 
             if relevant_tiles.is_empty() {
+                let tile_nodegroups: Vec<_> = tiles.iter().map(|t| &t.nodegroup_id).collect();
+                warnings.push(format!(
+                    "Descriptor '{}': No tiles match nodegroup_id '{}'. Available tile nodegroups: {:?}",
+                    descriptor_type, type_config.nodegroup_id, tile_nodegroups
+                ));
                 continue;
             }
 
@@ -564,7 +681,32 @@ impl IndexedGraph {
                         Self::extract_value_from_tiles(&relevant_tiles, &node.nodeid)
                     {
                         template = template.replace(placeholder, &value);
+                    } else {
+                        let available_keys: Vec<_> = relevant_tiles
+                            .iter()
+                            .flat_map(|t| t.data.keys())
+                            .collect();
+                        warnings.push(format!(
+                            "Descriptor '{}': No value found for node '{}' (nodeid '{}') in tiles. Available data keys: {:?}",
+                            descriptor_type, node_name, node.nodeid, available_keys
+                        ));
                     }
+                } else {
+                    let nodes_in_nodegroup: Vec<_> = self
+                        .nodes_by_id
+                        .values()
+                        .filter(|n| {
+                            n.nodegroup_id
+                                .as_ref()
+                                .map(|id| id == &type_config.nodegroup_id)
+                                .unwrap_or(false)
+                        })
+                        .map(|n| &n.name)
+                        .collect();
+                    warnings.push(format!(
+                        "Descriptor '{}': Node '{}' not found in nodegroup '{}'. Available nodes: {:?}",
+                        descriptor_type, node_name, type_config.nodegroup_id, nodes_in_nodegroup
+                    ));
                 }
             }
 
@@ -582,14 +724,44 @@ impl IndexedGraph {
 
     /// Extract descriptor config from graph.functions_x_graphs
     fn get_descriptor_config(&self) -> Option<DescriptorConfig> {
-        let functions_x_graphs = self.graph.functions_x_graphs.as_ref()?;
+        self.get_descriptor_config_with_diagnostics(&mut Vec::new())
+    }
+
+    /// Extract descriptor config with diagnostic warnings
+    fn get_descriptor_config_with_diagnostics(
+        &self,
+        warnings: &mut Vec<String>,
+    ) -> Option<DescriptorConfig> {
+        let functions_x_graphs = match self.graph.functions_x_graphs.as_ref() {
+            Some(fxg) => fxg,
+            None => {
+                warnings.push("Graph has no functions_x_graphs array".to_string());
+                return None;
+            }
+        };
 
         for func in functions_x_graphs {
             if func.function_id == DESCRIPTOR_FUNCTION_ID {
                 // Parse config as DescriptorConfig
-                return serde_json::from_value(func.config.clone()).ok();
+                match serde_json::from_value::<DescriptorConfig>(func.config.clone()) {
+                    Ok(config) => return Some(config),
+                    Err(e) => {
+                        warnings.push(format!(
+                            "Failed to parse descriptor config: {}. Raw config: {}",
+                            e,
+                            serde_json::to_string(&func.config).unwrap_or_default()
+                        ));
+                        return None;
+                    }
+                }
             }
         }
+
+        warnings.push(format!(
+            "No descriptor function found in functions_x_graphs (looking for function_id {}). Available function_ids: {:?}",
+            DESCRIPTOR_FUNCTION_ID,
+            functions_x_graphs.iter().map(|f| &f.function_id).collect::<Vec<_>>()
+        ));
         None
     }
 

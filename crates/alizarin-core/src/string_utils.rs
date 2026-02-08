@@ -5,6 +5,35 @@
 
 use serde_json::Value;
 
+/// Convert a snake_case string to camelCase.
+///
+/// # Examples
+///
+/// ```
+/// use alizarin_core::string_utils::snake_to_camel;
+///
+/// assert_eq!(snake_to_camel("first_name"), "firstName");
+/// assert_eq!(snake_to_camel("already_camel"), "alreadyCamel");
+/// assert_eq!(snake_to_camel("single"), "single");
+/// ```
+pub fn snake_to_camel(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut capitalize_next = false;
+
+    for c in s.chars() {
+        if c == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(c.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
+}
+
 /// Convert a camelCase string to snake_case.
 ///
 /// Converts uppercase letters to lowercase with underscore prefix.

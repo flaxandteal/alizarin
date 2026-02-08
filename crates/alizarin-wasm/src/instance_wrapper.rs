@@ -151,10 +151,11 @@ impl WasmEnsureNodegroupResult {
     /// Get a structured value by alias
     /// PORT: js/graphManager.ts:353 - recipe.nodeAlias lookup
     #[wasm_bindgen(js_name = getValue)]
-    pub fn get_value(&self, alias: &str) -> Option<PseudoList> {
+    pub fn get_value(&self, alias: Option<String>) -> Option<PseudoList> {
+        let alias = alias?;
         self.inner
             .values
-            .get(alias)
+            .get(&alias)
             .map(|v| PseudoList::from_rust(v.clone()))
     }
 
@@ -209,10 +210,11 @@ impl WasmPopulateResult {
 
     /// PORT: js/graphManager.ts:670 - accessing value by alias
     #[wasm_bindgen(js_name = getValue)]
-    pub fn get_value(&self, alias: &str) -> Option<PseudoList> {
+    pub fn get_value(&self, alias: Option<String>) -> Option<PseudoList> {
+        let alias = alias?;
         self.inner
             .values
-            .get(alias)
+            .get(&alias)
             .map(|v| PseudoList::from_rust(v.clone()))
     }
 
@@ -933,15 +935,18 @@ impl WASMResourceInstanceWrapper {
     }
 
     /// Get tile IDs for a specific nodegroup
-    /// Returns array of tile ID strings
+    /// Returns array of tile ID strings, or empty array if nodegroup_id is null/undefined
     #[wasm_bindgen(js_name = getTileIdsByNodegroup)]
-    pub fn get_tile_ids_by_nodegroup(&self, nodegroup_id: &str) -> Vec<String> {
-        self.core
-            .borrow()
-            .nodegroup_index
-            .get(nodegroup_id)
-            .cloned()
-            .unwrap_or_default()
+    pub fn get_tile_ids_by_nodegroup(&self, nodegroup_id: Option<String>) -> Vec<String> {
+        match nodegroup_id {
+            Some(id) => self.core
+                .borrow()
+                .nodegroup_index
+                .get(&id)
+                .cloned()
+                .unwrap_or_default(),
+            None => Vec::new(),
+        }
     }
 
     /// Get all tile IDs that have been loaded (and passed filtering)
@@ -958,14 +963,16 @@ impl WASMResourceInstanceWrapper {
 
     /// Get full tile data by tile ID
     /// Returns StaticTile WASM object or error if not found
+    /// Returns error with clear message if tile_id is null/undefined
     #[wasm_bindgen(js_name = getTile)]
-    pub fn get_tile(&self, tile_id: &str) -> Result<WasmStaticTile, JsValue> {
+    pub fn get_tile(&self, tile_id: Option<String>) -> Result<WasmStaticTile, JsValue> {
+        let tile_id = tile_id.ok_or_else(|| JsValue::from_str("tile_id is null or undefined"))?;
         self.core
             .borrow()
             .tiles
             .as_ref()
             .ok_or_else(|| JsValue::from_str(&format!("No tiles loaded: {}", tile_id)))?
-            .get(tile_id)
+            .get(&tile_id)
             .cloned()
             .map(WasmStaticTile)
             .ok_or_else(|| JsValue::from_str(&format!("Tile not found: {}", tile_id)))
@@ -973,19 +980,22 @@ impl WASMResourceInstanceWrapper {
 
     /// Get specific node data from a tile
     /// Returns the data value for the given node_id within the tile
+    /// Returns error with clear message if tile_id or node_id is null/undefined
     #[wasm_bindgen(js_name = getTileData)]
-    pub fn get_tile_data(&self, tile_id: &str, node_id: &str) -> Result<JsValue, JsValue> {
+    pub fn get_tile_data(&self, tile_id: Option<String>, node_id: Option<String>) -> Result<JsValue, JsValue> {
+        let tile_id = tile_id.ok_or_else(|| JsValue::from_str("tile_id is null or undefined"))?;
+        let node_id = node_id.ok_or_else(|| JsValue::from_str("node_id is null or undefined"))?;
         // Store the borrow so it lives long enough
         let core_ref = self.core.borrow();
         let tile = core_ref
             .tiles
             .as_ref()
             .ok_or_else(|| JsValue::from_str(&format!("No tiles loaded: {}", tile_id)))?
-            .get(tile_id)
+            .get(&tile_id)
             .ok_or_else(|| JsValue::from_str(&format!("Tile not found: {}", tile_id)))?;
 
         // Get data for specific node from tile.data HashMap
-        match tile.data.get(node_id) {
+        match tile.data.get(&node_id) {
             Some(value) => serde_wasm_bindgen::to_value(value)
                 .map_err(|e| JsValue::from_str(&format!("Failed to serialize data: {:?}", e))),
             None => Ok(JsValue::NULL),
@@ -993,12 +1003,17 @@ impl WASMResourceInstanceWrapper {
     }
 
     /// Phase 4g: Check if a nodegroup is being loaded or already loaded
+    /// Returns false if nodegroup_id is null/undefined
     #[wasm_bindgen(js_name = isNodegroupLoadedOrLoading)]
-    pub fn is_nodegroup_loaded_or_loading(&self, nodegroup_id: &str) -> bool {
+    pub fn is_nodegroup_loaded_or_loading(&self, nodegroup_id: Option<String>) -> bool {
+        let nodegroup_id = match nodegroup_id {
+            Some(id) => id,
+            None => return false,
+        };
         let core_ref = self.core.borrow();
         let loaded = core_ref.loaded_nodegroups.borrow();
         matches!(
-            loaded.get(nodegroup_id),
+            loaded.get(&nodegroup_id),
             Some(LoadState::Loading) | Some(LoadState::Loaded)
         )
     }
@@ -1020,12 +1035,14 @@ impl WASMResourceInstanceWrapper {
 
     /// Phase 4g: Get cached PseudoValue from Rust cache
     /// Returns PseudoList if found, null otherwise
+    /// Handles null/undefined alias gracefully by returning None
     #[wasm_bindgen(js_name = getCachedPseudo)]
-    pub fn get_cached_pseudo(&self, alias: &str) -> Option<PseudoList> {
+    pub fn get_cached_pseudo(&self, alias: Option<String>) -> Option<PseudoList> {
+        let alias = alias?;
         {
             let core_ref = self.core.borrow();
             let cache = core_ref.pseudo_cache.borrow();
-            if let Some(pseudo_list) = cache.get(alias) {
+            if let Some(pseudo_list) = cache.get(&alias) {
                 // Convert PseudoListInner to PseudoList
                 return Some(PseudoList::from_rust(pseudo_list.clone()));
             }
@@ -1668,7 +1685,7 @@ impl WASMResourceInstanceWrapper {
             }
 
             // Get all tiles for this nodegroup
-            let tile_ids = self.get_tile_ids_by_nodegroup(nodegroup_id);
+            let tile_ids = self.get_tile_ids_by_nodegroup(Some(nodegroup_id.to_string()));
 
             // Get edges from model directly (no deserialization needed)
             #[allow(clippy::map_clone)]
@@ -1755,10 +1772,14 @@ impl WASMResourceInstanceWrapper {
     /// Check if a nodegroup has been loaded
     /// Phase 4g: Updated to use Mutex
     #[wasm_bindgen(js_name = isNodegroupLoaded)]
-    pub fn is_nodegroup_loaded(&self, nodegroup_id: &str) -> bool {
+    pub fn is_nodegroup_loaded(&self, nodegroup_id: Option<String>) -> bool {
+        let nodegroup_id = match nodegroup_id {
+            Some(id) => id,
+            None => return false,
+        };
         let core_ref = self.core.borrow();
         let loaded = core_ref.loaded_nodegroups.borrow();
-        matches!(loaded.get(nodegroup_id), Some(LoadState::Loaded))
+        matches!(loaded.get(&nodegroup_id), Some(LoadState::Loaded))
     }
 
     /// Get count of tiles stored

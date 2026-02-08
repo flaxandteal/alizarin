@@ -20,6 +20,7 @@ import {
   StaticResourceSummary,
   StaticResourceReference,
   StaticResource,
+  StaticResourceRegistry,
 } from '../pkg/alizarin';
 
 interface IStaticDescriptorConfig {
@@ -577,6 +578,7 @@ export {
   StaticResource,
   StaticResourceSummary,
   StaticResourceMetadata,
+  StaticResourceRegistry,
   StaticNode,
   StaticNodegroup,
   StaticEdge,
