@@ -690,7 +690,9 @@ fn build_pseudo_values_from_json(
                             for key in item_obj.keys() {
                                 // Check both exact key and snake_case version (for camelCase input)
                                 let key_matches = valid_child_aliases.contains(key.as_str())
-                                    || (from_camel && valid_child_aliases.contains(crate::camel_to_snake(key).as_str()));
+                                    || (from_camel
+                                        && valid_child_aliases
+                                            .contains(crate::camel_to_snake(key).as_str()));
                                 if !key_matches {
                                     return Err(format!(
                                         "Unknown field '{}' in '{}' - valid fields: {:?}",
@@ -759,7 +761,8 @@ fn build_pseudo_values_from_json(
                 for key in item_obj.keys() {
                     // Check both exact key and snake_case version (for camelCase input)
                     let key_matches = valid_child_aliases.contains(key.as_str())
-                        || (from_camel && valid_child_aliases.contains(crate::camel_to_snake(key).as_str()));
+                        || (from_camel
+                            && valid_child_aliases.contains(crate::camel_to_snake(key).as_str()));
                     if !key_matches {
                         return Err(format!(
                             "Unknown field '{}' in '{}' - valid fields: {:?}",

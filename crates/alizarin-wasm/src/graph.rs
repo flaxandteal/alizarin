@@ -2207,7 +2207,8 @@ impl StaticGraph {
 
     #[wasm_bindgen(js_name = getNodeByAlias)]
     pub fn get_node_by_alias_js(&self, alias: Option<String>) -> JsValue {
-        alias.and_then(|a| self.0.get_node_by_alias(&a))
+        alias
+            .and_then(|a| self.0.get_node_by_alias(&a))
             .map(|node| JsValue::from(StaticNode(node.clone())))
             .unwrap_or(JsValue::NULL)
     }
@@ -3097,7 +3098,11 @@ impl StaticResourceRegistry {
     /// Get the full summary for a resource (or undefined if not known or resource_id is null)
     #[wasm_bindgen(js_name = getSummary)]
     pub fn get_summary(&self, resource_id: Option<String>) -> Option<StaticResourceSummary> {
-        resource_id.and_then(|id| self.0.get_summary(&id).map(|s| StaticResourceSummary(s.clone())))
+        resource_id.and_then(|id| {
+            self.0
+                .get_summary(&id)
+                .map(|s| StaticResourceSummary(s.clone()))
+        })
     }
 
     /// Get the full resource if stored (or undefined if only summary, not known, or resource_id is null)
@@ -3119,7 +3124,10 @@ impl StaticResourceRegistry {
     /// Get all full resources as an array (for iteration)
     #[wasm_bindgen(js_name = getAllFull)]
     pub fn get_all_full(&self) -> Vec<StaticResource> {
-        self.0.iter_full().map(|(_, r)| StaticResource(r.clone())).collect()
+        self.0
+            .iter_full()
+            .map(|(_, r)| StaticResource(r.clone()))
+            .collect()
     }
 
     /// Get all full resources for a specific graph
@@ -3127,7 +3135,9 @@ impl StaticResourceRegistry {
     #[wasm_bindgen(js_name = getAllFullForGraph)]
     pub fn get_all_full_for_graph(&self, graph_id: Option<String>) -> Vec<StaticResource> {
         match graph_id {
-            Some(gid) => self.0.iter_full()
+            Some(gid) => self
+                .0
+                .iter_full()
                 .filter(|(_, r)| r.resourceinstance.graph_id == gid)
                 .map(|(_, r)| StaticResource(r.clone()))
                 .collect(),
@@ -3170,7 +3180,11 @@ impl StaticResourceRegistry {
     ) -> Result<(), JsValue> {
         let resources: Vec<CoreStaticResource> = serde_json::from_str(resources_json)
             .map_err(|e| JsValue::from_str(&format!("Failed to parse resources: {}", e)))?;
-        self.0.merge_from_resources(&resources, store_full.unwrap_or(false), include_caches.unwrap_or(true));
+        self.0.merge_from_resources(
+            &resources,
+            store_full.unwrap_or(false),
+            include_caches.unwrap_or(true),
+        );
         Ok(())
     }
 
@@ -3191,7 +3205,11 @@ impl StaticResourceRegistry {
         include_caches: Option<bool>,
     ) {
         let core_resources: Vec<CoreStaticResource> = resources.into_iter().map(|r| r.0).collect();
-        self.0.merge_from_resources(&core_resources, store_full.unwrap_or(false), include_caches.unwrap_or(true));
+        self.0.merge_from_resources(
+            &core_resources,
+            store_full.unwrap_or(false),
+            include_caches.unwrap_or(true),
+        );
     }
 
     /// Populate __cache on resources with summaries for referenced resources
@@ -3285,7 +3303,9 @@ impl StaticResourceRegistry {
         graph: &StaticGraph,
         node_identifier: &str,
     ) -> Result<JsValue, JsValue> {
-        let index = self.0.get_node_values_index(&graph.0, node_identifier)
+        let index = self
+            .0
+            .get_node_values_index(&graph.0, node_identifier)
             .map_err(|e| JsValue::from_str(&e))?;
 
         serde_wasm_bindgen::to_value(&index)
@@ -3314,11 +3334,14 @@ impl StaticResourceRegistry {
         node_identifier: &str,
         flatten_localized: Option<bool>,
     ) -> Result<JsValue, JsValue> {
-        let index = self.0.get_value_to_resources_index(
-            &graph.0,
-            node_identifier,
-            flatten_localized.unwrap_or(true),
-        ).map_err(|e| JsValue::from_str(&e))?;
+        let index = self
+            .0
+            .get_value_to_resources_index(
+                &graph.0,
+                node_identifier,
+                flatten_localized.unwrap_or(true),
+            )
+            .map_err(|e| JsValue::from_str(&e))?;
 
         serde_wasm_bindgen::to_value(&index)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))

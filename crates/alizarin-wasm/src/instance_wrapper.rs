@@ -939,7 +939,8 @@ impl WASMResourceInstanceWrapper {
     #[wasm_bindgen(js_name = getTileIdsByNodegroup)]
     pub fn get_tile_ids_by_nodegroup(&self, nodegroup_id: Option<String>) -> Vec<String> {
         match nodegroup_id {
-            Some(id) => self.core
+            Some(id) => self
+                .core
                 .borrow()
                 .nodegroup_index
                 .get(&id)
@@ -982,7 +983,11 @@ impl WASMResourceInstanceWrapper {
     /// Returns the data value for the given node_id within the tile
     /// Returns error with clear message if tile_id or node_id is null/undefined
     #[wasm_bindgen(js_name = getTileData)]
-    pub fn get_tile_data(&self, tile_id: Option<String>, node_id: Option<String>) -> Result<JsValue, JsValue> {
+    pub fn get_tile_data(
+        &self,
+        tile_id: Option<String>,
+        node_id: Option<String>,
+    ) -> Result<JsValue, JsValue> {
         let tile_id = tile_id.ok_or_else(|| JsValue::from_str("tile_id is null or undefined"))?;
         let node_id = node_id.ok_or_else(|| JsValue::from_str("node_id is null or undefined"))?;
         // Store the borrow so it lives long enough

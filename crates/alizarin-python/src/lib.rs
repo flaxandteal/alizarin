@@ -648,10 +648,10 @@ use alizarin_core::{
     resolve_labels as core_resolve_labels,
     // JSON conversion
     tiles_to_tree,
-    tree_to_tiles,
-    tree_to_tiles_with_options,
     // String utilities
     transform_keys_to_snake,
+    tree_to_tiles,
+    tree_to_tiles_with_options,
     // Permission rules
     PermissionRule,
     StaticGraph as AlizarinCoreStaticGraph,
@@ -878,8 +878,9 @@ fn json_tree_to_tiles(
     // Call shared Rust conversion function with from_camel support
     // This handles camelCase keys at lookup time, preserving value structures
     let id_key_ref = id_key.as_deref();
-    let mut business_data = tree_to_tiles_with_options(&tree, &graph, strict, id_key_ref, from_camel)
-        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+    let mut business_data =
+        tree_to_tiles_with_options(&tree, &graph, strict, id_key_ref, from_camel)
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Set scopes on all resources if provided
     if let Some(ref scopes_val) = scopes_value {
@@ -972,8 +973,9 @@ fn batch_trees_to_tiles(
 
             // Use tree_to_tiles_with_options to handle camelCase keys at lookup time
             // This preserves value structures like {"resourceId": "uuid"}
-            let business_data = tree_to_tiles_with_options(&tree, &graph, strict, id_key_ref, from_camel)
-                .map_err(|e| format!("Tree {}: {}", i, e))?;
+            let business_data =
+                tree_to_tiles_with_options(&tree, &graph, strict, id_key_ref, from_camel)
+                    .map_err(|e| format!("Tree {}: {}", i, e))?;
 
             // Extract first resource (full StaticResource with resourceinstance metadata)
             let mut resource = business_data
@@ -1375,7 +1377,8 @@ impl ResourceRegistry {
 
     /// Get all full resources as a list of JSON dicts
     fn get_all_full(&self, py: Python) -> PyResult<PyObject> {
-        let resources: Vec<&AlizarinStaticResource> = self.inner.iter_full().map(|(_, r)| r).collect();
+        let resources: Vec<&AlizarinStaticResource> =
+            self.inner.iter_full().map(|(_, r)| r).collect();
         let json = serde_json::to_value(&resources).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                 "Failed to serialize resources: {}",
@@ -1387,7 +1390,9 @@ impl ResourceRegistry {
 
     /// Get all full resources for a specific graph
     fn get_all_full_for_graph(&self, py: Python, graph_id: &str) -> PyResult<PyObject> {
-        let resources: Vec<&AlizarinStaticResource> = self.inner.iter_full()
+        let resources: Vec<&AlizarinStaticResource> = self
+            .inner
+            .iter_full()
             .filter(|(_, r)| r.resourceinstance.graph_id == graph_id)
             .map(|(_, r)| r)
             .collect();
@@ -1405,12 +1410,13 @@ impl ResourceRegistry {
     /// Args:
     ///     summary_json: JSON string with {resourceinstanceid, graph_id, name, ...}
     fn insert(&mut self, summary_json: &str) -> PyResult<()> {
-        let summary: CoreStaticResourceSummary = serde_json::from_str(summary_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to parse summary: {}",
-                e
-            ))
-        })?;
+        let summary: CoreStaticResourceSummary =
+            serde_json::from_str(summary_json).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to parse summary: {}",
+                    e
+                ))
+            })?;
         self.inner.insert(summary);
         Ok(())
     }
@@ -1427,7 +1433,12 @@ impl ResourceRegistry {
     ///     store_full: If True, store full resources; if False, store only summaries
     ///     include_caches: If True, also merge related resources from __cache
     #[pyo3(signature = (resources_json, store_full=false, include_caches=true))]
-    fn merge_from_resources(&mut self, resources_json: &str, store_full: bool, include_caches: bool) -> PyResult<()> {
+    fn merge_from_resources(
+        &mut self,
+        resources_json: &str,
+        store_full: bool,
+        include_caches: bool,
+    ) -> PyResult<()> {
         let resources: Vec<AlizarinStaticResource> =
             serde_json::from_str(resources_json).map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
@@ -1435,7 +1446,8 @@ impl ResourceRegistry {
                     e
                 ))
             })?;
-        self.inner.merge_from_resources(&resources, store_full, include_caches);
+        self.inner
+            .merge_from_resources(&resources, store_full, include_caches);
         Ok(())
     }
 
@@ -1464,8 +1476,8 @@ impl ResourceRegistry {
         graph_id: &str,
         enrich_relationships: bool,
     ) -> PyResult<PyObject> {
-        let mut resources: Vec<AlizarinStaticResource> =
-            serde_json::from_str(resources_json).map_err(|e| {
+        let mut resources: Vec<AlizarinStaticResource> = serde_json::from_str(resources_json)
+            .map_err(|e| {
                 PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                     "Failed to parse resources: {}",
                     e
@@ -1515,9 +1527,10 @@ impl ResourceRegistry {
     ) -> PyResult<PyObject> {
         let graph = get_registered_graph(graph_id)?;
 
-        let index = self.inner.get_node_values_index(&graph, node_identifier).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(e)
-        })?;
+        let index = self
+            .inner
+            .get_node_values_index(&graph, node_identifier)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
 
         pythonize::pythonize(py, &index).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
@@ -1552,9 +1565,10 @@ impl ResourceRegistry {
     ) -> PyResult<PyObject> {
         let graph = get_registered_graph(graph_id)?;
 
-        let index = self.inner.get_value_to_resources_index(&graph, node_identifier, flatten_localized).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(e)
-        })?;
+        let index = self
+            .inner
+            .get_value_to_resources_index(&graph, node_identifier, flatten_localized)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
 
         pythonize::pythonize(py, &index).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
@@ -1676,7 +1690,8 @@ impl TreeToTilesIterator {
 
         // Convert tree to tiles with from_camel support
         // This handles camelCase keys at lookup time, preserving value structures
-        let result = tree_to_tiles_with_options(&tree, &self.graph, self.strict, id_key, self.from_camel);
+        let result =
+            tree_to_tiles_with_options(&tree, &self.graph, self.strict, id_key, self.from_camel);
 
         let output = match result {
             Ok(business_data) => {
@@ -2346,7 +2361,10 @@ fn get_graph_schema(py: Python, graph_id: String) -> PyResult<PyObject> {
     let graph = get_registered_graph(&graph_id)?;
     let schema = graph.get_schema();
     pythonize::pythonize(py, &schema).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to convert to Python: {}", e))
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to convert to Python: {}",
+            e
+        ))
     })
 }
 

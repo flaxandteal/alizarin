@@ -100,7 +100,8 @@ impl WasmRdmCache {
         let collection_id = collection_id?;
         let concept_id = concept_id?;
         let language = language?;
-        self.inner.lookup_label(&collection_id, &concept_id, &language)
+        self.inner
+            .lookup_label(&collection_id, &concept_id, &language)
     }
 
     /// Look up full concept info
@@ -135,7 +136,11 @@ impl WasmRdmCache {
     /// @param conceptId - The concept UUID
     /// @returns The parent concept ID, or undefined if no parent (top-level concept) or any param is null
     #[wasm_bindgen(js_name = getParentId)]
-    pub fn get_parent_id(&self, collection_id: Option<String>, concept_id: Option<String>) -> Option<String> {
+    pub fn get_parent_id(
+        &self,
+        collection_id: Option<String>,
+        concept_id: Option<String>,
+    ) -> Option<String> {
         let collection_id = collection_id?;
         let concept_id = concept_id?;
         self.inner.get_parent_id(&collection_id, &concept_id)
@@ -154,7 +159,11 @@ impl WasmRdmCache {
     /// @param valueId - The value UUID (not concept UUID)
     /// @returns RdmValueInfo object, or undefined if not found or any param is null
     #[wasm_bindgen(js_name = lookupValue)]
-    pub fn lookup_value(&self, collection_id: Option<String>, value_id: Option<String>) -> Result<JsValue, JsError> {
+    pub fn lookup_value(
+        &self,
+        collection_id: Option<String>,
+        value_id: Option<String>,
+    ) -> Result<JsValue, JsError> {
         let collection_id = match collection_id {
             Some(id) => id,
             None => return Ok(JsValue::UNDEFINED),
@@ -186,7 +195,11 @@ impl WasmRdmCache {
     /// @param valueId - The value UUID
     /// @returns The concept ID, or undefined if not found or any param is null
     #[wasm_bindgen(js_name = getConceptIdForValue)]
-    pub fn get_concept_id_for_value(&self, collection_id: Option<String>, value_id: Option<String>) -> Option<String> {
+    pub fn get_concept_id_for_value(
+        &self,
+        collection_id: Option<String>,
+        value_id: Option<String>,
+    ) -> Option<String> {
         let collection_id = collection_id?;
         let value_id = value_id?;
         self.inner
@@ -307,20 +320,39 @@ mod tests {
         assert!(!cache.has_collection(Some("collection-2".to_string())));
 
         assert_eq!(
-            cache.lookup_label(Some("collection-1".to_string()), Some("concept-1".to_string()), Some("en".to_string())),
+            cache.lookup_label(
+                Some("collection-1".to_string()),
+                Some("concept-1".to_string()),
+                Some("en".to_string())
+            ),
             Some("English Label".to_string())
         );
         assert_eq!(
-            cache.lookup_label(Some("collection-1".to_string()), Some("concept-1".to_string()), Some("de".to_string())),
+            cache.lookup_label(
+                Some("collection-1".to_string()),
+                Some("concept-1".to_string()),
+                Some("de".to_string())
+            ),
             Some("German Label".to_string())
         );
         // Fallback to en
         assert_eq!(
-            cache.lookup_label(Some("collection-1".to_string()), Some("concept-1".to_string()), Some("fr".to_string())),
+            cache.lookup_label(
+                Some("collection-1".to_string()),
+                Some("concept-1".to_string()),
+                Some("fr".to_string())
+            ),
             Some("English Label".to_string())
         );
         // Not found
-        assert_eq!(cache.lookup_label(Some("collection-1".to_string()), Some("concept-3".to_string()), Some("en".to_string())), None);
+        assert_eq!(
+            cache.lookup_label(
+                Some("collection-1".to_string()),
+                Some("concept-3".to_string()),
+                Some("en".to_string())
+            ),
+            None
+        );
     }
 
     #[test]
@@ -360,11 +392,17 @@ mod tests {
 
         // Test get_concept_id_for_value
         assert_eq!(
-            cache.get_concept_id_for_value(Some("coll-1".to_string()), Some("value-1-en".to_string())),
+            cache.get_concept_id_for_value(
+                Some("coll-1".to_string()),
+                Some("value-1-en".to_string())
+            ),
             Some("concept-1".to_string())
         );
         assert_eq!(
-            cache.get_concept_id_for_value(Some("coll-1".to_string()), Some("nonexistent".to_string())),
+            cache.get_concept_id_for_value(
+                Some("coll-1".to_string()),
+                Some("nonexistent".to_string())
+            ),
             None
         );
 
@@ -398,11 +436,20 @@ mod tests {
 
         // Child should have parent
         assert_eq!(
-            cache.get_parent_id(Some("coll-1".to_string()), Some("child-concept".to_string())),
+            cache.get_parent_id(
+                Some("coll-1".to_string()),
+                Some("child-concept".to_string())
+            ),
             Some("parent-concept".to_string())
         );
 
         // Parent has no parent (top-level)
-        assert_eq!(cache.get_parent_id(Some("coll-1".to_string()), Some("parent-concept".to_string())), None);
+        assert_eq!(
+            cache.get_parent_id(
+                Some("coll-1".to_string()),
+                Some("parent-concept".to_string())
+            ),
+            None
+        );
     }
 }
