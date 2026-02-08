@@ -770,7 +770,10 @@ impl WASMResourceModelWrapper {
     }
 
     #[wasm_bindgen(js_name = getNodeObjectFromAlias)]
-    pub fn get_node_object_from_alias(&mut self, alias: Option<String>) -> Result<WasmStaticNode, JsValue> {
+    pub fn get_node_object_from_alias(
+        &mut self,
+        alias: Option<String>,
+    ) -> Result<WasmStaticNode, JsValue> {
         let alias = alias.ok_or_else(|| JsValue::from_str("alias is null or undefined"))?;
         self.with_core_mut(|core| {
             let nodes_by_alias = core
@@ -784,7 +787,10 @@ impl WASMResourceModelWrapper {
     }
 
     #[wasm_bindgen(js_name = getNodeObjectFromId)]
-    pub fn get_node_object_from_id(&mut self, id: Option<String>) -> Result<WasmStaticNode, JsValue> {
+    pub fn get_node_object_from_id(
+        &mut self,
+        id: Option<String>,
+    ) -> Result<WasmStaticNode, JsValue> {
         let id = id.ok_or_else(|| JsValue::from_str("id is null or undefined"))?;
         self.with_core_mut(|core| {
             let nodes = core.get_node_objects().map_err(|e| JsValue::from_str(&e))?;
@@ -878,7 +884,8 @@ impl WASMResourceModelWrapper {
     /// Note: nodegroup_id is actually a node ID (the root node of the nodegroup)
     #[wasm_bindgen(js_name = getNodegroupName)]
     pub fn get_nodegroup_name(&mut self, nodegroup_id: Option<String>) -> Result<String, JsValue> {
-        let nodegroup_id = nodegroup_id.ok_or_else(|| JsValue::from_str("nodegroup_id is null or undefined"))?;
+        let nodegroup_id =
+            nodegroup_id.ok_or_else(|| JsValue::from_str("nodegroup_id is null or undefined"))?;
         self.with_core_mut(|core| {
             let nodes = core.get_node_objects().map_err(|e| JsValue::from_str(&e))?;
             let node = nodes

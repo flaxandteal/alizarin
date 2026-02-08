@@ -429,11 +429,8 @@ impl StaticGraph {
     /// Useful for understanding what keys are available in tree output.
     pub fn get_schema(&self) -> serde_json::Value {
         // Build a map from nodeid to node for quick lookup
-        let node_map: HashMap<&str, &StaticNode> = self
-            .nodes
-            .iter()
-            .map(|n| (n.nodeid.as_str(), n))
-            .collect();
+        let node_map: HashMap<&str, &StaticNode> =
+            self.nodes.iter().map(|n| (n.nodeid.as_str(), n)).collect();
 
         // Build parent -> children map based on edges
         let mut children_map: HashMap<&str, Vec<&str>> = HashMap::new();
@@ -682,10 +679,8 @@ impl IndexedGraph {
                     {
                         template = template.replace(placeholder, &value);
                     } else {
-                        let available_keys: Vec<_> = relevant_tiles
-                            .iter()
-                            .flat_map(|t| t.data.keys())
-                            .collect();
+                        let available_keys: Vec<_> =
+                            relevant_tiles.iter().flat_map(|t| t.data.keys()).collect();
                         warnings.push(format!(
                             "Descriptor '{}': No value found for node '{}' (nodeid '{}') in tiles. Available data keys: {:?}",
                             descriptor_type, node_name, node.nodeid, available_keys

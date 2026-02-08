@@ -572,13 +572,15 @@ impl StaticResourceRegistry {
     /// Add a full resource (always overwrites, as it's more complete)
     pub fn insert_full(&mut self, resource: StaticResource) {
         let id = resource.resourceinstance.resourceinstanceid.clone();
-        self.resources.insert(id, ResourceEntry::Full(Box::new(resource)));
+        self.resources
+            .insert(id, ResourceEntry::Full(Box::new(resource)));
     }
 
     /// Upgrade a summary to a full resource (if the resource exists)
     pub fn upgrade_to_full(&mut self, resource: StaticResource) {
         let id = resource.resourceinstance.resourceinstanceid.clone();
-        self.resources.insert(id, ResourceEntry::Full(Box::new(resource)));
+        self.resources
+            .insert(id, ResourceEntry::Full(Box::new(resource)));
     }
 
     /// Merge resources into registry
@@ -619,7 +621,9 @@ impl StaticResourceRegistry {
                                     if !self.resources.contains_key(&id) {
                                         self.resources.insert(
                                             id,
-                                            ResourceEntry::Summary(StaticResourceSummary::from(entry.clone())),
+                                            ResourceEntry::Summary(StaticResourceSummary::from(
+                                                entry.clone(),
+                                            )),
                                         );
                                     }
                                 }
@@ -638,9 +642,9 @@ impl StaticResourceRegistry {
 
     /// Iterate over all full resources
     pub fn iter_full(&self) -> impl Iterator<Item = (&String, &StaticResource)> {
-        self.resources.iter().filter_map(|(id, entry)| {
-            entry.as_full().map(|r| (id, r))
-        })
+        self.resources
+            .iter()
+            .filter_map(|(id, entry)| entry.as_full().map(|r| (id, r)))
     }
 
     /// Get all resource IDs
@@ -763,7 +767,8 @@ impl StaticResourceRegistry {
                         } else {
                             // Store single entry in cache keyed by tileId -> nodeId
                             let tile_cache = cache.entry(tile_id.to_string()).or_default();
-                            tile_cache.insert(node.nodeid.clone(), CacheEntry::Single(related_entry));
+                            tile_cache
+                                .insert(node.nodeid.clone(), CacheEntry::Single(related_entry));
                         }
 
                         // Enrich with relationship properties if requested
@@ -885,9 +890,10 @@ impl StaticResourceRegistry {
             })?;
 
         let node_id = &node.nodeid;
-        let nodegroup_id = node.nodegroup_id.as_ref().ok_or_else(|| {
-            format!("Node '{}' has no nodegroup_id", node_identifier)
-        })?;
+        let nodegroup_id = node
+            .nodegroup_id
+            .as_ref()
+            .ok_or_else(|| format!("Node '{}' has no nodegroup_id", node_identifier))?;
 
         let mut index: HashMap<String, Vec<serde_json::Value>> = HashMap::new();
 
@@ -948,9 +954,10 @@ impl StaticResourceRegistry {
             })?;
 
         let node_id = &node.nodeid;
-        let nodegroup_id = node.nodegroup_id.as_ref().ok_or_else(|| {
-            format!("Node '{}' has no nodegroup_id", node_identifier)
-        })?;
+        let nodegroup_id = node
+            .nodegroup_id
+            .as_ref()
+            .ok_or_else(|| format!("Node '{}' has no nodegroup_id", node_identifier))?;
 
         let mut index: HashMap<String, Vec<String>> = HashMap::new();
 
@@ -1233,8 +1240,8 @@ pub fn batch_merge_resources(
                         // Compute descriptors from merged tiles with diagnostics
                         let tiles = resource.tiles.as_deref().unwrap_or(&[]);
                         let mut descriptor_warnings = Vec::new();
-                        let descriptors =
-                            indexed.build_descriptors_with_diagnostics(tiles, &mut descriptor_warnings);
+                        let descriptors = indexed
+                            .build_descriptors_with_diagnostics(tiles, &mut descriptor_warnings);
 
                         // Add descriptor warnings with resource context
                         for warning in descriptor_warnings {
@@ -1608,9 +1615,8 @@ mod tests {
         // Check that cache was preserved
         assert!(result.resource.cache.is_some(), "Cache should be present");
 
-        let merged_cache: ResourceCache = serde_json::from_value(
-            result.resource.cache.unwrap()
-        ).unwrap();
+        let merged_cache: ResourceCache =
+            serde_json::from_value(result.resource.cache.unwrap()).unwrap();
 
         // Should have 2 tiles (tile-a, tile-b)
         assert_eq!(merged_cache.len(), 2);
