@@ -21,6 +21,7 @@ use crate::pseudo_value_core::{
     PseudoListCore, PseudoValueCore, TileBuilder, TileBuilderContext, VisitorContext,
 };
 use crate::registry::is_list_datatype;
+use crate::string_utils::snake_to_camel;
 use crate::type_coercion::coerce_value;
 use crate::{StaticNode, StaticTile};
 
@@ -373,12 +374,27 @@ pub fn tree_to_tiles(
     strict: bool,
     id_key: Option<&str>,
 ) -> Result<BusinessDataWrapper, String> {
+    tree_to_tiles_with_options(json, graph, strict, id_key, false)
+}
+
+/// Convert tree to tiles with camelCase key support.
+///
+/// When `from_camel` is true, tree keys like `associatedActors` will match
+/// node aliases like `associated_actors`. Value structures (like `{"resourceId": "..."}`)
+/// are preserved unchanged.
+pub fn tree_to_tiles_with_options(
+    json: &Value,
+    graph: &StaticGraph,
+    strict: bool,
+    id_key: Option<&str>,
+    from_camel: bool,
+) -> Result<BusinessDataWrapper, String> {
     let trees = extract_tree_resources(json)?;
 
     let mut resources = Vec::new();
 
     for tree in trees {
-        let resource = single_tree_to_resource(&tree, graph, strict, id_key)?;
+        let resource = single_tree_to_resource(&tree, graph, strict, id_key, from_camel)?;
         resources.push(resource);
     }
 
@@ -408,6 +424,7 @@ fn single_tree_to_resource(
     graph: &StaticGraph,
     strict: bool,
     id_key: Option<&str>,
+    from_camel: bool,
 ) -> Result<StaticResource, String> {
     let obj = json
         .as_object()
@@ -454,7 +471,11 @@ fn single_tree_to_resource(
     ];
     if strict {
         for key in obj.keys() {
-            if !known_metadata.contains(&key.as_str()) && !nodes_by_alias.contains_key(key) {
+            // Check both exact key and snake_case version (for camelCase input)
+            let key_matches = known_metadata.contains(&key.as_str())
+                || nodes_by_alias.contains_key(key)
+                || (from_camel && nodes_by_alias.contains_key(&crate::camel_to_snake(key)));
+            if !key_matches {
                 return Err(format!(
                     "Unknown field '{}' not found in graph aliases",
                     key
@@ -476,6 +497,7 @@ fn single_tree_to_resource(
         None,
         &mut pseudo_cache,
         strict,
+        from_camel,
     )?;
 
     // Track visited aliases to prevent O(n²) duplicate traversal
@@ -557,6 +579,7 @@ fn build_pseudo_values_from_json(
     parent_tile: Option<Arc<StaticTile>>,
     pseudo_cache: &mut HashMap<String, PseudoListCore>,
     strict: bool,
+    from_camel: bool,
 ) -> Result<(), String> {
     let child_ids = edges.get(&current_node.nodeid).cloned().unwrap_or_default();
 
@@ -573,7 +596,17 @@ fn build_pseudo_values_from_json(
             _ => continue,
         };
 
-        let json_value = match json_obj.get(&child_alias) {
+        // Try exact alias first, then camelCase version if from_camel is true
+        let json_value = json_obj.get(&child_alias).or_else(|| {
+            if from_camel {
+                let camel_key = snake_to_camel(&child_alias);
+                json_obj.get(&camel_key)
+            } else {
+                None
+            }
+        });
+
+        let json_value = match json_value {
             Some(v) => v,
             None => continue,
         };
@@ -655,7 +688,10 @@ fn build_pseudo_values_from_json(
                     if let Some(item_obj) = item.as_object() {
                         if strict {
                             for key in item_obj.keys() {
-                                if !valid_child_aliases.contains(key.as_str()) {
+                                // Check both exact key and snake_case version (for camelCase input)
+                                let key_matches = valid_child_aliases.contains(key.as_str())
+                                    || (from_camel && valid_child_aliases.contains(crate::camel_to_snake(key).as_str()));
+                                if !key_matches {
                                     return Err(format!(
                                         "Unknown field '{}' in '{}' - valid fields: {:?}",
                                         key, child_alias, valid_child_aliases
@@ -692,6 +728,7 @@ fn build_pseudo_values_from_json(
                             Some(tile),
                             pseudo_cache,
                             strict,
+                            from_camel,
                         )?;
                     }
                 } else {
@@ -720,7 +757,10 @@ fn build_pseudo_values_from_json(
 
             if strict {
                 for key in item_obj.keys() {
-                    if !valid_child_aliases.contains(key.as_str()) {
+                    // Check both exact key and snake_case version (for camelCase input)
+                    let key_matches = valid_child_aliases.contains(key.as_str())
+                        || (from_camel && valid_child_aliases.contains(crate::camel_to_snake(key).as_str()));
+                    if !key_matches {
                         return Err(format!(
                             "Unknown field '{}' in '{}' - valid fields: {:?}",
                             key, child_alias, valid_child_aliases
@@ -758,6 +798,7 @@ fn build_pseudo_values_from_json(
                 Some(tile),
                 pseudo_cache,
                 strict,
+                from_camel,
             )?;
         } else {
             // Single leaf value gets sortorder 0 (primary)

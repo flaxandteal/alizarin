@@ -38,7 +38,12 @@ pub use graph::{
     IndexedGraph,
     // Resource merging
     MergeResult,
+    // Resource registry for relationship resolution
+    PopulateCachesResult,
     PruneError,
+    RelatedResourceEntry,
+    ResourceCache,
+    ResourceEntry,
     StaticCard,
     StaticCardsXNodesXWidgets,
     // Additional Static* types
@@ -54,9 +59,11 @@ pub use graph::{
     StaticResourceDescriptors,
     StaticResourceMetadata,
     StaticResourceReference,
+    StaticResourceRegistry,
     StaticResourceSummary,
     StaticTile,
     StaticTranslatableString,
+    UnknownReference,
     ITERABLE_DATATYPES,
 };
 
@@ -147,7 +154,8 @@ pub use label_resolution::{
 
 // JSON conversion (tiles <-> tree)
 pub use json_conversion::{
-    create_static_resource, tiles_to_tree, tree_to_tiles, BusinessData, BusinessDataWrapper,
+    create_static_resource, tiles_to_tree, tree_to_tiles, tree_to_tiles_with_options,
+    BusinessData, BusinessDataWrapper,
 };
 
 // Pseudo value core types (for JSON conversion)
@@ -245,7 +253,7 @@ pub use registry::{
 pub use permissions::{evaluate_tile_path, PermissionRule};
 
 // String utilities
-pub use string_utils::{camel_to_snake, transform_keys_to_snake};
+pub use string_utils::{camel_to_snake, snake_to_camel, transform_keys_to_snake};
 
 // Extension type registry (unified handler infrastructure for WASM/Python)
 pub use extension_type_registry::{

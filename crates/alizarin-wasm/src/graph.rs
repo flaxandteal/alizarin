@@ -13,6 +13,7 @@ use alizarin_core::StaticNodegroup as CoreStaticNodegroup;
 use alizarin_core::StaticPublication as CoreStaticPublication;
 use alizarin_core::StaticResource as CoreStaticResource;
 use alizarin_core::StaticResourceReference as CoreStaticResourceReference;
+use alizarin_core::StaticResourceRegistry as CoreStaticResourceRegistry;
 use alizarin_core::StaticResourceSummary as CoreStaticResourceSummary;
 use alizarin_core::StaticTile as CoreStaticTile;
 use alizarin_core::StaticTranslatableString as CoreTranslatableString;
@@ -2196,19 +2197,17 @@ impl StaticGraph {
         }
     }
 
-    // JS-facing lookup methods
+    // JS-facing lookup methods (accept Option to handle null/undefined gracefully)
     #[wasm_bindgen(js_name = getNodeById)]
-    pub fn get_node_by_id_js(&self, id: &str) -> JsValue {
-        self.0
-            .get_node_by_id(id)
+    pub fn get_node_by_id_js(&self, id: Option<String>) -> JsValue {
+        id.and_then(|id| self.0.get_node_by_id(&id))
             .map(|node| JsValue::from(StaticNode(node.clone())))
             .unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(js_name = getNodeByAlias)]
-    pub fn get_node_by_alias_js(&self, alias: &str) -> JsValue {
-        self.0
-            .get_node_by_alias(alias)
+    pub fn get_node_by_alias_js(&self, alias: Option<String>) -> JsValue {
+        alias.and_then(|a| self.0.get_node_by_alias(&a))
             .map(|node| JsValue::from(StaticNode(node.clone())))
             .unwrap_or(JsValue::NULL)
     }
@@ -2283,6 +2282,34 @@ impl StaticGraph {
         }
 
         json_to_js_value(&serde_json::Value::Object(obj))
+    }
+
+    /// Get a simplified schema view of the graph showing node aliases and structure.
+    ///
+    /// Returns a nested object representing the tree with:
+    /// - Keys are node aliases (or nodeid if no alias)
+    /// - Values contain 'datatype', 'nodeid', optionally 'required', and 'children'
+    ///
+    /// Useful for understanding what keys are available in tree output.
+    ///
+    /// @example
+    /// ```typescript
+    /// const schema = graph.getSchema();
+    /// console.log(JSON.stringify(schema, null, 2));
+    /// // {
+    /// //   "name": {
+    /// //     "datatype": "semantic",
+    /// //     "children": {
+    /// //       "forenames": { ... }
+    /// //     }
+    /// //   }
+    /// // }
+    /// ```
+    #[wasm_bindgen(js_name = getSchema)]
+    pub fn get_schema(&self) -> Result<JsValue, JsValue> {
+        let schema = self.0.get_schema();
+        serde_wasm_bindgen::to_value(&schema)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize schema: {}", e)))
     }
 }
 
@@ -2733,6 +2760,25 @@ impl StaticResourceSummary {
     pub fn metadata(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&self.0.metadata).unwrap_or(JsValue::NULL)
     }
+
+    /// Create a summary from a full resource
+    #[wasm_bindgen(js_name = fromResource)]
+    pub fn from_resource(resource: &StaticResource) -> StaticResourceSummary {
+        let ri = &resource.0.resourceinstance;
+        StaticResourceSummary(CoreStaticResourceSummary {
+            resourceinstanceid: ri.resourceinstanceid.clone(),
+            graph_id: ri.graph_id.clone(),
+            name: ri.name.clone(),
+            descriptors: Some(ri.descriptors.clone()),
+            metadata: resource.0.metadata.clone(),
+            createdtime: ri.createdtime.clone(),
+            lastmodified: ri.lastmodified.clone(),
+            publication_id: ri.publication_id.clone(),
+            principaluser_id: ri.principaluser_id,
+            legacyid: ri.legacyid.clone(),
+            graph_publication_id: ri.graph_publication_id.clone(),
+        })
+    }
 }
 
 // StaticResourceReference - Reference to a resource instance (for resource-instance datatype)
@@ -2985,5 +3031,302 @@ impl StaticResource {
                 JsValue::NULL
             }
         }
+    }
+}
+
+// =============================================================================
+// StaticResourceRegistry - Registry for relationship resolution
+// =============================================================================
+
+/// Registry of known resources for relationship resolution
+///
+/// Used to:
+/// - Look up graph_id for referenced resources
+/// - Populate __cache on resources with related resource summaries
+/// - Enrich resource-instance tile data with ontologyProperty from node config
+/// - Validate that referenced resources exist (in strict mode)
+///
+/// @example
+/// ```typescript
+/// const registry = new StaticResourceRegistry();
+/// registry.mergeFromResourcesJson(existingResourcesJson);
+///
+/// // After conversion, populate caches
+/// const result = registry.populateCaches(resourcesJson, graph, true);
+/// if (result.hasUnknown) {
+///   console.warn('Unknown references:', result.unknownReferences);
+/// }
+/// ```
+#[wasm_bindgen]
+pub struct StaticResourceRegistry(CoreStaticResourceRegistry);
+
+#[wasm_bindgen]
+impl StaticResourceRegistry {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> StaticResourceRegistry {
+        StaticResourceRegistry(CoreStaticResourceRegistry::new())
+    }
+
+    /// Number of resources in the registry
+    #[wasm_bindgen(getter)]
+    pub fn length(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Check if registry is empty
+    #[wasm_bindgen(getter = isEmpty)]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Check if a resource ID is known
+    /// Returns false if resource_id is null/undefined
+    pub fn contains(&self, resource_id: Option<String>) -> bool {
+        match resource_id {
+            Some(id) => self.0.contains(&id),
+            None => false,
+        }
+    }
+
+    /// Get the graph_id for a resource (or undefined if not known or resource_id is null)
+    #[wasm_bindgen(js_name = getGraphId)]
+    pub fn get_graph_id(&self, resource_id: Option<String>) -> Option<String> {
+        resource_id.and_then(|id| self.0.get_graph_id(&id).map(|s| s.to_string()))
+    }
+
+    /// Get the full summary for a resource (or undefined if not known or resource_id is null)
+    #[wasm_bindgen(js_name = getSummary)]
+    pub fn get_summary(&self, resource_id: Option<String>) -> Option<StaticResourceSummary> {
+        resource_id.and_then(|id| self.0.get_summary(&id).map(|s| StaticResourceSummary(s.clone())))
+    }
+
+    /// Get the full resource if stored (or undefined if only summary, not known, or resource_id is null)
+    #[wasm_bindgen(js_name = getFull)]
+    pub fn get_full(&self, resource_id: Option<String>) -> Option<StaticResource> {
+        resource_id.and_then(|id| self.0.get_full(&id).map(|r| StaticResource(r.clone())))
+    }
+
+    /// Check if a resource has full data stored (not just summary)
+    /// Returns false if resource_id is null/undefined
+    #[wasm_bindgen(js_name = hasFull)]
+    pub fn has_full(&self, resource_id: Option<String>) -> bool {
+        match resource_id {
+            Some(id) => self.0.has_full(&id),
+            None => false,
+        }
+    }
+
+    /// Get all full resources as an array (for iteration)
+    #[wasm_bindgen(js_name = getAllFull)]
+    pub fn get_all_full(&self) -> Vec<StaticResource> {
+        self.0.iter_full().map(|(_, r)| StaticResource(r.clone())).collect()
+    }
+
+    /// Get all full resources for a specific graph
+    /// Returns empty array if graph_id is null/undefined
+    #[wasm_bindgen(js_name = getAllFullForGraph)]
+    pub fn get_all_full_for_graph(&self, graph_id: Option<String>) -> Vec<StaticResource> {
+        match graph_id {
+            Some(gid) => self.0.iter_full()
+                .filter(|(_, r)| r.resourceinstance.graph_id == gid)
+                .map(|(_, r)| StaticResource(r.clone()))
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// Add a single resource summary to the registry
+    ///
+    /// @param summaryJson - JSON string with {resourceinstanceid, graph_id, name, ...}
+    #[wasm_bindgen(js_name = insertFromJson)]
+    pub fn insert_from_json(&mut self, summary_json: &str) -> Result<(), JsValue> {
+        let summary: CoreStaticResourceSummary = serde_json::from_str(summary_json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse summary: {}", e)))?;
+        self.0.insert(summary);
+        Ok(())
+    }
+
+    /// Add a StaticResourceSummary to the registry
+    pub fn insert(&mut self, summary: &StaticResourceSummary) {
+        self.0.insert(summary.0.clone());
+    }
+
+    /// Merge resources into the registry from a JSON string
+    ///
+    /// Registers each resource's ID → summary mapping or full resources.
+    /// If storeFull is true, stores full resources (for traversal).
+    /// If storeFull is false (default), stores only summaries (memory efficient).
+    /// If includeCaches is true (default), also merges any __cache.relatedResources as summaries.
+    ///
+    /// @param resourcesJson - JSON string containing array of StaticResource objects
+    /// @param storeFull - If true, store full resources; if false, store only summaries
+    /// @param includeCaches - If true, also merge related resources from __cache
+    #[wasm_bindgen(js_name = mergeFromResourcesJson)]
+    pub fn merge_from_resources_json(
+        &mut self,
+        resources_json: &str,
+        store_full: Option<bool>,
+        include_caches: Option<bool>,
+    ) -> Result<(), JsValue> {
+        let resources: Vec<CoreStaticResource> = serde_json::from_str(resources_json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse resources: {}", e)))?;
+        self.0.merge_from_resources(&resources, store_full.unwrap_or(false), include_caches.unwrap_or(true));
+        Ok(())
+    }
+
+    /// Merge resources into the registry from StaticResource array
+    ///
+    /// If storeFull is true, stores full resources (for traversal).
+    /// If storeFull is false (default), stores only summaries (memory efficient).
+    /// If includeCaches is true (default), also merges any __cache.relatedResources as summaries.
+    ///
+    /// @param resources - Array of StaticResource objects
+    /// @param storeFull - If true, store full resources; if false, store only summaries
+    /// @param includeCaches - If true, also merge related resources from __cache
+    #[wasm_bindgen(js_name = mergeFromResources)]
+    pub fn merge_from_resources(
+        &mut self,
+        resources: Vec<StaticResource>,
+        store_full: Option<bool>,
+        include_caches: Option<bool>,
+    ) {
+        let core_resources: Vec<CoreStaticResource> = resources.into_iter().map(|r| r.0).collect();
+        self.0.merge_from_resources(&core_resources, store_full.unwrap_or(false), include_caches.unwrap_or(true));
+    }
+
+    /// Populate __cache on resources with summaries for referenced resources
+    ///
+    /// Uses the graph to identify resource-instance nodes, then populates
+    /// cache entries for each referenced resource found in this registry.
+    ///
+    /// If enrichRelationships is true, also adds ontologyProperty/inverseOntologyProperty
+    /// to tile data based on node config and the target resource's graph.
+    ///
+    /// @param resourcesJson - JSON string containing array of StaticResource objects
+    /// @param graph - StaticGraph to use for node lookup
+    /// @param enrichRelationships - If true, add ontologyProperty to tile data
+    /// @returns Object with resources (updated), unknownReferences, and hasUnknown flag
+    #[wasm_bindgen(js_name = populateCachesFromJson)]
+    pub fn populate_caches_from_json(
+        &self,
+        resources_json: &str,
+        graph: &StaticGraph,
+        enrich_relationships: Option<bool>,
+    ) -> Result<JsValue, JsValue> {
+        let mut resources: Vec<CoreStaticResource> = serde_json::from_str(resources_json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse resources: {}", e)))?;
+
+        let result = self.0.populate_caches(
+            &mut resources,
+            &graph.0,
+            enrich_relationships.unwrap_or(true),
+        );
+
+        let output = serde_json::json!({
+            "resources": resources,
+            "unknownReferences": result.unknown_references,
+            "hasUnknown": result.has_unknown_references(),
+        });
+
+        serde_wasm_bindgen::to_value(&output)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+    }
+
+    /// Populate __cache on resources with summaries for referenced resources
+    ///
+    /// @param resources - Array of StaticResource objects (modified in place)
+    /// @param graph - StaticGraph to use for node lookup
+    /// @param enrichRelationships - If true, add ontologyProperty to tile data
+    /// @returns Object with unknownReferences array and hasUnknown flag
+    #[wasm_bindgen(js_name = populateCaches)]
+    pub fn populate_caches(
+        &self,
+        resources: Vec<StaticResource>,
+        graph: &StaticGraph,
+        enrich_relationships: Option<bool>,
+    ) -> Result<JsValue, JsValue> {
+        let mut core_resources: Vec<CoreStaticResource> =
+            resources.into_iter().map(|r| r.0).collect();
+
+        let result = self.0.populate_caches(
+            &mut core_resources,
+            &graph.0,
+            enrich_relationships.unwrap_or(true),
+        );
+
+        // Return both the modified resources and the result info
+        let output = serde_json::json!({
+            "resources": core_resources,
+            "unknownReferences": result.unknown_references,
+            "hasUnknown": result.has_unknown_references(),
+        });
+
+        serde_wasm_bindgen::to_value(&output)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+    }
+
+    /// Build an index from resource IDs to node values for a given node.
+    ///
+    /// Iterates through all full resources in the registry that match the graph,
+    /// filtering tiles by the node's nodegroup_id, and collecting values for the node.
+    ///
+    /// @param graph - The graph definition containing the node
+    /// @param nodeIdentifier - Node alias or node ID to look up
+    /// @returns Object mapping resource IDs to arrays of values found in tiles
+    ///
+    /// @example
+    /// ```typescript
+    /// const index = registry.getNodeValuesIndex(graph, 'forename');
+    /// // Returns: { "resource-uuid-1": ["Alice"], "resource-uuid-2": ["Bob", "Robert"] }
+    /// ```
+    #[wasm_bindgen(js_name = getNodeValuesIndex)]
+    pub fn get_node_values_index(
+        &self,
+        graph: &StaticGraph,
+        node_identifier: &str,
+    ) -> Result<JsValue, JsValue> {
+        let index = self.0.get_node_values_index(&graph.0, node_identifier)
+            .map_err(|e| JsValue::from_str(&e))?;
+
+        serde_wasm_bindgen::to_value(&index)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+    }
+
+    /// Build an inverted index from node values to resource IDs.
+    ///
+    /// Iterates through all full resources in the registry that match the graph,
+    /// collecting which resources have each value for the specified node.
+    ///
+    /// @param graph - The graph definition containing the node
+    /// @param nodeIdentifier - Node alias or node ID to look up
+    /// @param flattenLocalized - If true (default), extracts string from localized format {"en": "value"}
+    /// @returns Object mapping string values to arrays of resource IDs
+    ///
+    /// @example
+    /// ```typescript
+    /// const index = registry.getValueToResourcesIndex(graph, 'forename', true);
+    /// // Returns: { "Alice": ["resource-uuid-1"], "Bob": ["resource-uuid-2", "resource-uuid-3"] }
+    /// ```
+    #[wasm_bindgen(js_name = getValueToResourcesIndex)]
+    pub fn get_value_to_resources_index(
+        &self,
+        graph: &StaticGraph,
+        node_identifier: &str,
+        flatten_localized: Option<bool>,
+    ) -> Result<JsValue, JsValue> {
+        let index = self.0.get_value_to_resources_index(
+            &graph.0,
+            node_identifier,
+            flatten_localized.unwrap_or(true),
+        ).map_err(|e| JsValue::from_str(&e))?;
+
+        serde_wasm_bindgen::to_value(&index)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+    }
+}
+
+impl Default for StaticResourceRegistry {
+    fn default() -> Self {
+        Self::new()
     }
 }

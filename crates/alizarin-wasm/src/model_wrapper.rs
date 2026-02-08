@@ -529,13 +529,14 @@ impl WASMResourceModelWrapper {
         WASMResourceModelWrapper { graph_id }
     }
 
-    /// Get a registered model by graph_id (returns None if not found)
+    /// Get a registered model by graph_id (returns None if not found or graph_id is null)
     #[wasm_bindgen(js_name = getModelByGraphId)]
-    pub fn get_model_by_graph_id(graph_id: &str) -> Option<WASMResourceModelWrapper> {
+    pub fn get_model_by_graph_id(graph_id: Option<String>) -> Option<WASMResourceModelWrapper> {
+        let graph_id = graph_id?;
         MODEL_REGISTRY.with(|registry| {
-            if registry.borrow().contains_key(graph_id) {
+            if registry.borrow().contains_key(&graph_id) {
                 Some(WASMResourceModelWrapper {
-                    graph_id: graph_id.to_string(),
+                    graph_id: graph_id.clone(),
                 })
             } else {
                 None
@@ -543,10 +544,13 @@ impl WASMResourceModelWrapper {
         })
     }
 
-    /// Check if a model is registered
+    /// Check if a model is registered (returns false if graph_id is null)
     #[wasm_bindgen(js_name = isModelRegistered)]
-    pub fn is_model_registered(graph_id: &str) -> bool {
-        MODEL_REGISTRY.with(|registry| registry.borrow().contains_key(graph_id))
+    pub fn is_model_registered(graph_id: Option<String>) -> bool {
+        match graph_id {
+            Some(id) => MODEL_REGISTRY.with(|registry| registry.borrow().contains_key(&id)),
+            None => false,
+        }
     }
 
     /// Get the graph_id for this model
@@ -766,32 +770,34 @@ impl WASMResourceModelWrapper {
     }
 
     #[wasm_bindgen(js_name = getNodeObjectFromAlias)]
-    pub fn get_node_object_from_alias(&mut self, alias: &str) -> Result<WasmStaticNode, JsValue> {
+    pub fn get_node_object_from_alias(&mut self, alias: Option<String>) -> Result<WasmStaticNode, JsValue> {
+        let alias = alias.ok_or_else(|| JsValue::from_str("alias is null or undefined"))?;
         self.with_core_mut(|core| {
             let nodes_by_alias = core
                 .get_node_objects_by_alias()
                 .map_err(|e| JsValue::from_str(&e))?;
             let node = nodes_by_alias
-                .get(alias)
+                .get(&alias)
                 .ok_or_else(|| JsValue::from_str(&format!("Node not found in model: {}", alias)))?;
             Ok(WasmStaticNode((**node).clone()))
         })
     }
 
     #[wasm_bindgen(js_name = getNodeObjectFromId)]
-    pub fn get_node_object_from_id(&mut self, id: &str) -> Result<WasmStaticNode, JsValue> {
+    pub fn get_node_object_from_id(&mut self, id: Option<String>) -> Result<WasmStaticNode, JsValue> {
+        let id = id.ok_or_else(|| JsValue::from_str("id is null or undefined"))?;
         self.with_core_mut(|core| {
             let nodes = core.get_node_objects().map_err(|e| JsValue::from_str(&e))?;
             let node = nodes
-                .get(id)
-                .unwrap_or_else(|| panic!("Node not found in model: {}", id));
+                .get(&id)
+                .ok_or_else(|| JsValue::from_str(&format!("Node not found in model: {}", id)))?;
             Ok(WasmStaticNode((**node).clone()))
         })
     }
 
     #[wasm_bindgen(js_name = getChildNodes)]
-    pub fn get_child_nodes(&self, node_id: &str) -> Result<JsValue, JsValue> {
-        let node_id = node_id.to_string();
+    pub fn get_child_nodes(&self, node_id: Option<String>) -> Result<JsValue, JsValue> {
+        let node_id = node_id.ok_or_else(|| JsValue::from_str("node_id is null or undefined"))?;
         self.with_core_mut(|core| {
             let child_nodes = core
                 .get_child_nodes(&node_id)
@@ -845,10 +851,11 @@ impl WASMResourceModelWrapper {
     /// Get child node aliases for a given node ID
     /// Returns array of alias strings instead of full node objects
     #[wasm_bindgen(js_name = getChildNodeAliases)]
-    pub fn get_child_node_aliases(&self, node_id: &str) -> Result<Vec<String>, JsValue> {
+    pub fn get_child_node_aliases(&self, node_id: Option<String>) -> Result<Vec<String>, JsValue> {
+        let node_id = node_id.ok_or_else(|| JsValue::from_str("node_id is null or undefined"))?;
         self.with_core_mut(|core| {
             let child_nodes = core
-                .get_child_nodes(node_id)
+                .get_child_nodes(&node_id)
                 .map_err(|e| JsValue::from_str(&e))?;
             Ok(child_nodes.keys().cloned().collect())
         })
@@ -870,11 +877,12 @@ impl WASMResourceModelWrapper {
     /// Returns just the name string instead of full node object
     /// Note: nodegroup_id is actually a node ID (the root node of the nodegroup)
     #[wasm_bindgen(js_name = getNodegroupName)]
-    pub fn get_nodegroup_name(&mut self, nodegroup_id: &str) -> Result<String, JsValue> {
+    pub fn get_nodegroup_name(&mut self, nodegroup_id: Option<String>) -> Result<String, JsValue> {
+        let nodegroup_id = nodegroup_id.ok_or_else(|| JsValue::from_str("nodegroup_id is null or undefined"))?;
         self.with_core_mut(|core| {
             let nodes = core.get_node_objects().map_err(|e| JsValue::from_str(&e))?;
             let node = nodes
-                .get(nodegroup_id)
+                .get(&nodegroup_id)
                 .ok_or_else(|| JsValue::from_str(&format!("Node not found: {}", nodegroup_id)))?;
             Ok(node.name.clone())
         })
@@ -883,12 +891,13 @@ impl WASMResourceModelWrapper {
     /// Get node ID from alias
     /// Returns just the node ID string instead of full node map
     #[wasm_bindgen(js_name = getNodeIdFromAlias)]
-    pub fn get_node_id_from_alias(&mut self, alias: &str) -> Result<String, JsValue> {
+    pub fn get_node_id_from_alias(&mut self, alias: Option<String>) -> Result<String, JsValue> {
+        let alias = alias.ok_or_else(|| JsValue::from_str("alias is null or undefined"))?;
         self.with_core_mut(|core| {
             let nodes_by_alias = core
                 .get_node_objects_by_alias()
                 .map_err(|e| JsValue::from_str(&e))?;
-            let node = nodes_by_alias.get(alias).ok_or_else(|| {
+            let node = nodes_by_alias.get(&alias).ok_or_else(|| {
                 JsValue::from_str(&format!("Node not found for alias: {}", alias))
             })?;
             Ok(node.nodeid.clone())

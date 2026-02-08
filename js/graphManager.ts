@@ -125,23 +125,36 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
 
   async ensureTilesLoaded(): Promise<void> {
     if (!this.wasmWrapper.tilesLoaded()) {
-      const resourceId = this.wasmWrapper.getResourceId();
-
-      // Try to load directly from full resource (avoids expensive tiles getter)
-      const fullResource = await staticStore.ensureFullResource(resourceId);
-      if (fullResource && fullResource.tilesLoaded) {
+      // First try to use the resource we already have (avoids registry/disk lookup)
+      if (this.resource && this.resource.tiles && this.resource.tiles.length > 0) {
         try {
-          this.wasmWrapper.loadTilesFromResource(fullResource, true);
+          this.wasmWrapper.loadTilesFromResource(this.resource, true);
+          return;
         } catch (e) {
-          console.error("Failed to load tiles from resource:", e);
-          // Fallback to loading tiles through getter (slower but works)
-          const tiles = fullResource.tiles || [];
-          this.wasmWrapper.loadTilesWasm(tiles, true);
+          console.error("Failed to load tiles from existing resource:", e);
+          // Fall through to registry lookup
         }
       }
 
-      // Re-populate with full tile data
-      await this.populate(false); // non-lazy to process all tiles
+      // Fallback: try to load from staticStore registry
+      const resourceId = this.wasmWrapper.getResourceId();
+      try {
+        const fullResource = await staticStore.ensureFullResource(resourceId);
+        if (fullResource && fullResource.tilesLoaded) {
+          try {
+            this.wasmWrapper.loadTilesFromResource(fullResource, true);
+          } catch (e) {
+            console.error("Failed to load tiles from resource:", e);
+            // Fallback to loading tiles through getter (slower but works)
+            const tiles = fullResource.tiles || [];
+            this.wasmWrapper.loadTilesWasm(tiles, true);
+          }
+        }
+      } catch (e) {
+        // ensureFullResource failed - resource might not be in registry
+        // This can happen if the resource was loaded directly without going through staticStore
+        console.warn(`Could not load tiles for resource ${resourceId} from registry:`, e);
+      }
     }
   }
 

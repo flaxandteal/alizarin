@@ -648,14 +648,18 @@ use alizarin_core::{
     resolve_labels as core_resolve_labels,
     // JSON conversion
     tiles_to_tree,
+    tree_to_tiles,
+    tree_to_tiles_with_options,
     // String utilities
     transform_keys_to_snake,
-    tree_to_tiles,
     // Permission rules
     PermissionRule,
     StaticGraph as AlizarinCoreStaticGraph,
     StaticNode as AlizarinStaticNode,
     StaticResource as AlizarinStaticResource,
+    // Resource registry for relationship resolution
+    StaticResourceRegistry as CoreStaticResourceRegistry,
+    StaticResourceSummary as CoreStaticResourceSummary,
     // Graph types
     StaticTile as AlizarinStaticTile,
     DEFAULT_CONFIG_KEYS,
@@ -845,11 +849,6 @@ fn json_tree_to_tiles(
             ))
         })?;
 
-    // Convert keys from camelCase to snake_case if requested
-    if from_camel {
-        tree = transform_keys_to_snake(tree);
-    }
-
     // Get graph from registry
     let graph = get_registered_graph(&graph_id)?;
 
@@ -876,9 +875,10 @@ fn json_tree_to_tiles(
         );
     }
 
-    // Call shared Rust conversion function
+    // Call shared Rust conversion function with from_camel support
+    // This handles camelCase keys at lookup time, preserving value structures
     let id_key_ref = id_key.as_deref();
-    let mut business_data = tree_to_tiles(&tree, &graph, strict, id_key_ref)
+    let mut business_data = tree_to_tiles_with_options(&tree, &graph, strict, id_key_ref, from_camel)
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Set scopes on all resources if provided
@@ -957,10 +957,6 @@ fn batch_trees_to_tiles(
         .into_par_iter()
         .enumerate()
         .map(|(i, mut tree)| {
-            if from_camel {
-                tree = transform_keys_to_snake(tree);
-            }
-
             // Add graph_id to tree if not present
             if let serde_json::Value::Object(ref mut map) = tree {
                 if !map.contains_key("graph_id") {
@@ -974,7 +970,9 @@ fn batch_trees_to_tiles(
             // Get id_key for this tree (if id_keys array provided)
             let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
-            let business_data = tree_to_tiles(&tree, &graph, strict, id_key_ref)
+            // Use tree_to_tiles_with_options to handle camelCase keys at lookup time
+            // This preserves value structures like {"resourceId": "uuid"}
+            let business_data = tree_to_tiles_with_options(&tree, &graph, strict, id_key_ref, from_camel)
                 .map_err(|e| format!("Tree {}: {}", i, e))?;
 
             // Extract first resource (full StaticResource with resourceinstance metadata)
@@ -1111,8 +1109,6 @@ fn batch_trees_to_tiles_with_extensions(
         .into_par_iter()
         .enumerate()
         .map(|(i, mut tree)| {
-            if from_camel { tree = transform_keys_to_snake(tree); }
-
             // Add graph_id to tree if not present
             if let serde_json::Value::Object(ref mut map) = tree {
                 if !map.contains_key("graph_id") {
@@ -1123,7 +1119,9 @@ fn batch_trees_to_tiles_with_extensions(
             // Get id_key for this tree (if id_keys array provided)
             let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
-            let business_data = tree_to_tiles(&tree, &graph, strict, id_key_ref)
+            // Use tree_to_tiles_with_options to handle camelCase keys at lookup time
+            // This preserves value structures like {"resourceId": "uuid"}
+            let business_data = tree_to_tiles_with_options(&tree, &graph, strict, id_key_ref, from_camel)
                 .map_err(|e| format!("Tree {}: {}", i, e))?;
 
             // Extract first resource
@@ -1283,6 +1281,290 @@ fn batch_trees_to_tiles_with_extensions(
     })
 }
 
+// =============================================================================
+// ResourceRegistry - For relationship resolution and cache population
+// =============================================================================
+
+/// Registry of known resources for relationship resolution
+///
+/// Used to:
+/// - Look up graph_id for referenced resources
+/// - Populate __cache on resources with related resource summaries
+/// - Enrich resource-instance tile data with ontologyProperty from node config
+/// - Validate that referenced resources exist (in strict mode)
+///
+/// Usage:
+///     registry = ResourceRegistry()
+///     registry.merge_from_resources(resources_json)  # Load known resources
+///     result = batch_trees_to_tiles_with_extensions(..., registry=registry)
+#[pyclass]
+pub struct ResourceRegistry {
+    inner: CoreStaticResourceRegistry,
+}
+
+#[pymethods]
+impl ResourceRegistry {
+    #[new]
+    fn new() -> Self {
+        ResourceRegistry {
+            inner: CoreStaticResourceRegistry::new(),
+        }
+    }
+
+    /// Number of resources in the registry
+    fn __len__(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Check if a resource ID is known
+    fn __contains__(&self, resource_id: &str) -> bool {
+        self.inner.contains(resource_id)
+    }
+
+    /// Check if registry is empty
+    #[getter]
+    fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    /// Get the graph_id for a resource (or None if not known)
+    fn get_graph_id(&self, resource_id: &str) -> Option<String> {
+        self.inner.get_graph_id(resource_id).map(|s| s.to_string())
+    }
+
+    /// Get the summary for a resource (or None if not known)
+    ///
+    /// Returns a JSON string with {resourceinstanceid, graph_id, name, ...}
+    fn get_summary(&self, py: Python, resource_id: &str) -> PyResult<Option<PyObject>> {
+        match self.inner.get_summary(resource_id) {
+            Some(summary) => {
+                let json = serde_json::to_value(&summary).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Failed to serialize summary: {}",
+                        e
+                    ))
+                })?;
+                Ok(Some(pythonize::pythonize(py, &json)?))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Get the full resource if stored (or None if only summary or not known)
+    ///
+    /// Returns a JSON dict with full resource data including tiles
+    fn get_full(&self, py: Python, resource_id: &str) -> PyResult<Option<PyObject>> {
+        match self.inner.get_full(resource_id) {
+            Some(resource) => {
+                let json = serde_json::to_value(resource).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Failed to serialize resource: {}",
+                        e
+                    ))
+                })?;
+                Ok(Some(pythonize::pythonize(py, &json)?))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Check if a resource has full data stored (not just summary)
+    fn has_full(&self, resource_id: &str) -> bool {
+        self.inner.has_full(resource_id)
+    }
+
+    /// Get all full resources as a list of JSON dicts
+    fn get_all_full(&self, py: Python) -> PyResult<PyObject> {
+        let resources: Vec<&AlizarinStaticResource> = self.inner.iter_full().map(|(_, r)| r).collect();
+        let json = serde_json::to_value(&resources).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to serialize resources: {}",
+                e
+            ))
+        })?;
+        pythonize::pythonize(py, &json).map_err(|e| e.into())
+    }
+
+    /// Get all full resources for a specific graph
+    fn get_all_full_for_graph(&self, py: Python, graph_id: &str) -> PyResult<PyObject> {
+        let resources: Vec<&AlizarinStaticResource> = self.inner.iter_full()
+            .filter(|(_, r)| r.resourceinstance.graph_id == graph_id)
+            .map(|(_, r)| r)
+            .collect();
+        let json = serde_json::to_value(&resources).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to serialize resources: {}",
+                e
+            ))
+        })?;
+        pythonize::pythonize(py, &json).map_err(|e| e.into())
+    }
+
+    /// Add a single resource summary to the registry
+    ///
+    /// Args:
+    ///     summary_json: JSON string with {resourceinstanceid, graph_id, name, ...}
+    fn insert(&mut self, summary_json: &str) -> PyResult<()> {
+        let summary: CoreStaticResourceSummary = serde_json::from_str(summary_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse summary: {}",
+                e
+            ))
+        })?;
+        self.inner.insert(summary);
+        Ok(())
+    }
+
+    /// Merge resources into the registry
+    ///
+    /// Registers each resource's ID → summary mapping or full resources.
+    /// If store_full is True, stores full resources (for traversal).
+    /// If store_full is False (default), stores only summaries (memory efficient).
+    /// If include_caches is True (default), also merges any __cache.relatedResources as summaries.
+    ///
+    /// Args:
+    ///     resources_json: JSON string containing array of StaticResource objects
+    ///     store_full: If True, store full resources; if False, store only summaries
+    ///     include_caches: If True, also merge related resources from __cache
+    #[pyo3(signature = (resources_json, store_full=false, include_caches=true))]
+    fn merge_from_resources(&mut self, resources_json: &str, store_full: bool, include_caches: bool) -> PyResult<()> {
+        let resources: Vec<AlizarinStaticResource> =
+            serde_json::from_str(resources_json).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to parse resources: {}",
+                    e
+                ))
+            })?;
+        self.inner.merge_from_resources(&resources, store_full, include_caches);
+        Ok(())
+    }
+
+    /// Populate __cache on resources with summaries for referenced resources
+    ///
+    /// Uses the graph to identify resource-instance nodes, then populates
+    /// cache entries for each referenced resource found in this registry.
+    ///
+    /// If enrich_relationships is True, also adds ontologyProperty/inverseOntologyProperty
+    /// to tile data based on node config and the target resource's graph.
+    ///
+    /// Args:
+    ///     resources_json: JSON string containing array of StaticResource objects
+    ///     graph_id: ID of the graph to use for node lookup
+    ///     enrich_relationships: If True, add ontologyProperty to tile data
+    ///
+    /// Returns:
+    ///     Dict with:
+    ///     - resources: Updated resources with __cache populated
+    ///     - unknown_references: List of {source_resource_id, node_id, node_alias, referenced_id}
+    #[pyo3(signature = (resources_json, graph_id, enrich_relationships=true))]
+    fn populate_caches(
+        &self,
+        py: Python,
+        resources_json: &str,
+        graph_id: &str,
+        enrich_relationships: bool,
+    ) -> PyResult<PyObject> {
+        let mut resources: Vec<AlizarinStaticResource> =
+            serde_json::from_str(resources_json).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to parse resources: {}",
+                    e
+                ))
+            })?;
+
+        let graph = get_registered_graph(graph_id)?;
+        let result = self
+            .inner
+            .populate_caches(&mut resources, &graph, enrich_relationships);
+
+        let output = serde_json::json!({
+            "resources": resources,
+            "unknown_references": result.unknown_references,
+            "has_unknown": result.has_unknown_references(),
+        });
+
+        pythonize::pythonize(py, &output).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert to Python: {}",
+                e
+            ))
+        })
+    }
+
+    /// Extract node values from all resources, returning a map from resource ID to values.
+    ///
+    /// Efficiently iterates through tiles in Rust, filtering by nodegroup and extracting
+    /// values for the specified node.
+    ///
+    /// Args:
+    ///     graph_id: ID of the graph (must be registered via register_graph)
+    ///     node_identifier: Node alias or node ID to extract values for
+    ///
+    /// Returns:
+    ///     Dict mapping resource_id -> list of values found for that node.
+    ///     Values are returned as-is (may be strings, dicts for localized strings, etc.)
+    ///
+    /// Example:
+    ///     >>> index = registry.get_node_values_index(graph_id, "resource_id")
+    ///     >>> # Returns: {"uuid-1": ["REF-001"], "uuid-2": ["REF-002", "REF-003"]}
+    fn get_node_values_index(
+        &self,
+        py: Python,
+        graph_id: &str,
+        node_identifier: &str,
+    ) -> PyResult<PyObject> {
+        let graph = get_registered_graph(graph_id)?;
+
+        let index = self.inner.get_node_values_index(&graph, node_identifier).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(e)
+        })?;
+
+        pythonize::pythonize(py, &index).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert to Python: {}",
+                e
+            ))
+        })
+    }
+
+    /// Extract node values and return an inverted index: value -> list of resource IDs.
+    ///
+    /// Useful for looking up resources by a field value (e.g., find resource by external ID).
+    ///
+    /// Args:
+    ///     graph_id: ID of the graph (must be registered via register_graph)
+    ///     node_identifier: Node alias or node ID to extract values for
+    ///     flatten_localized: If True, extract string from localized values {"en": "value"}
+    ///
+    /// Returns:
+    ///     Dict mapping value -> list of resource_ids that have that value.
+    ///
+    /// Example:
+    ///     >>> index = registry.get_value_to_resources_index(graph_id, "resource_id", True)
+    ///     >>> # Returns: {"REF-001": ["uuid-1"], "REF-002": ["uuid-2", "uuid-3"]}
+    #[pyo3(signature = (graph_id, node_identifier, flatten_localized=true))]
+    fn get_value_to_resources_index(
+        &self,
+        py: Python,
+        graph_id: &str,
+        node_identifier: &str,
+        flatten_localized: bool,
+    ) -> PyResult<PyObject> {
+        let graph = get_registered_graph(graph_id)?;
+
+        let index = self.inner.get_value_to_resources_index(&graph, node_identifier, flatten_localized).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(e)
+        })?;
+
+        pythonize::pythonize(py, &index).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert to Python: {}",
+                e
+            ))
+        })
+    }
+}
+
 /// Iterator that processes trees to tiles one at a time (low memory)
 ///
 /// Usage:
@@ -1382,11 +1664,6 @@ impl TreeToTilesIterator {
             }
         };
 
-        // Transform keys if requested
-        if self.from_camel {
-            tree = transform_keys_to_snake(tree);
-        }
-
         // Add graph_id to tree if not present
         if let serde_json::Value::Object(ref mut map) = tree {
             if !map.contains_key("graph_id") {
@@ -1397,8 +1674,9 @@ impl TreeToTilesIterator {
             }
         }
 
-        // Convert tree to tiles
-        let result = tree_to_tiles(&tree, &self.graph, self.strict, id_key);
+        // Convert tree to tiles with from_camel support
+        // This handles camelCase keys at lookup time, preserving value structures
+        let result = tree_to_tiles_with_options(&tree, &self.graph, self.strict, id_key, self.from_camel);
 
         let output = match result {
             Ok(business_data) => {
@@ -2045,6 +2323,33 @@ fn get_graph_json(graph_id: String) -> PyResult<String> {
     })
 }
 
+/// Get a simplified schema view of a registered graph showing node aliases and structure.
+///
+/// Returns a nested dictionary representing the tree structure with:
+/// - Keys are node aliases (or nodeid if no alias)
+/// - Values are dicts with 'datatype', 'nodeid', optionally 'required', and 'children'
+///
+/// Useful for understanding what keys are available in batch_tiles_to_trees output.
+///
+/// Args:
+///     graph_id: The graph UUID that was returned from register_graph()
+///
+/// Returns:
+///     dict: Nested structure showing node hierarchy with aliases and datatypes
+///
+/// Example:
+///     schema = get_graph_schema("12345678-1234-1234-1234-123456789012")
+///     print(json.dumps(schema, indent=2))
+#[pyfunction]
+#[pyo3(signature = (graph_id,))]
+fn get_graph_schema(py: Python, graph_id: String) -> PyResult<PyObject> {
+    let graph = get_registered_graph(&graph_id)?;
+    let schema = graph.get_schema();
+    pythonize::pythonize(py, &schema).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to convert to Python: {}", e))
+    })
+}
+
 /// Merge multiple resources with the same resourceinstanceid into one
 ///
 /// Concatenates tiles from all resources, detecting and warning about duplicate tileids.
@@ -2189,6 +2494,7 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     // Graph registry (for batch_merge_resources descriptor computation)
     m.add_function(wrap_pyfunction!(register_graph, m)?)?;
     m.add_function(wrap_pyfunction!(get_graph_json, m)?)?;
+    m.add_function(wrap_pyfunction!(get_graph_schema, m)?)?;
 
     // List datatype registry (for datatypes where array IS the value)
     m.add_function(wrap_pyfunction!(register_list_datatype, m)?)?;
@@ -2213,6 +2519,9 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
 
     // Streaming iterator (low memory, processes one tree at a time)
     m.add_class::<TreeToTilesIterator>()?;
+
+    // Resource registry (for relationship resolution and cache population)
+    m.add_class::<ResourceRegistry>()?;
 
     // Resource merging (combine tiles from multiple resources)
     m.add_function(wrap_pyfunction!(merge_resources, m)?)?;

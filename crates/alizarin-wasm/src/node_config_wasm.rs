@@ -12,6 +12,9 @@ use alizarin_core::node_config::{
     NodeConfigReference as CoreNodeConfigReference, StaticDomainValue as CoreStaticDomainValue,
 };
 
+// Import WASM graph type for direct graph loading
+use crate::graph::StaticGraph as WasmStaticGraph;
+
 // =============================================================================
 // StaticDomainValue WASM Wrapper
 // =============================================================================
@@ -300,60 +303,79 @@ impl WasmNodeConfigManager {
             .map_err(|e| JsValue::from_str(&e))
     }
 
-    /// Get boolean config for a node
+    /// Build configs directly from a StaticGraph (more efficient than fromGraphJson)
+    ///
+    /// This avoids the JSON stringify/parse round-trip by taking the WASM
+    /// graph object directly.
+    #[wasm_bindgen(js_name = fromGraph)]
+    pub fn from_graph(&mut self, graph: &WasmStaticGraph) {
+        self.inner.build_from_graph(&graph.0);
+    }
+
+    /// Get boolean config for a node (returns None if nodeid is null)
     #[wasm_bindgen(js_name = getBoolean)]
-    pub fn get_boolean(&self, nodeid: &str) -> Option<WasmNodeConfigBoolean> {
+    pub fn get_boolean(&self, nodeid: Option<String>) -> Option<WasmNodeConfigBoolean> {
+        let nodeid = nodeid?;
         self.inner
-            .get_boolean(nodeid)
+            .get_boolean(&nodeid)
             .map(WasmNodeConfigBoolean::from)
     }
 
-    /// Get concept config for a node
+    /// Get concept config for a node (returns None if nodeid is null)
     #[wasm_bindgen(js_name = getConcept)]
-    pub fn get_concept(&self, nodeid: &str) -> Option<WasmNodeConfigConcept> {
+    pub fn get_concept(&self, nodeid: Option<String>) -> Option<WasmNodeConfigConcept> {
+        let nodeid = nodeid?;
         self.inner
-            .get_concept(nodeid)
+            .get_concept(&nodeid)
             .map(WasmNodeConfigConcept::from)
     }
 
-    /// Get reference config for a node
+    /// Get reference config for a node (returns None if nodeid is null)
     #[wasm_bindgen(js_name = getReference)]
-    pub fn get_reference(&self, nodeid: &str) -> Option<WasmNodeConfigReference> {
+    pub fn get_reference(&self, nodeid: Option<String>) -> Option<WasmNodeConfigReference> {
+        let nodeid = nodeid?;
         self.inner
-            .get_reference(nodeid)
+            .get_reference(&nodeid)
             .map(WasmNodeConfigReference::from)
     }
 
-    /// Get domain config for a node
+    /// Get domain config for a node (returns None if nodeid is null)
     #[wasm_bindgen(js_name = getDomain)]
-    pub fn get_domain(&self, nodeid: &str) -> Option<WasmNodeConfigDomain> {
+    pub fn get_domain(&self, nodeid: Option<String>) -> Option<WasmNodeConfigDomain> {
+        let nodeid = nodeid?;
         self.inner
-            .get_domain(nodeid)
+            .get_domain(&nodeid)
             .map(WasmNodeConfigDomain::from)
     }
 
-    /// Look up domain value by ID
+    /// Look up domain value by ID (returns None if any param is null)
     #[wasm_bindgen(js_name = lookupDomainValue)]
     pub fn lookup_domain_value(
         &self,
-        nodeid: &str,
-        value_id: &str,
+        nodeid: Option<String>,
+        value_id: Option<String>,
     ) -> Option<WasmStaticDomainValue> {
+        let nodeid = nodeid?;
+        let value_id = value_id?;
         self.inner
-            .lookup_domain_value(nodeid, value_id)
+            .lookup_domain_value(&nodeid, &value_id)
             .map(WasmStaticDomainValue::from)
     }
 
-    /// Check if a node has config
+    /// Check if a node has config (returns false if nodeid is null)
     #[wasm_bindgen(js_name = hasConfig)]
-    pub fn has_config(&self, nodeid: &str) -> bool {
-        self.inner.has_config(nodeid)
+    pub fn has_config(&self, nodeid: Option<String>) -> bool {
+        match nodeid {
+            Some(id) => self.inner.has_config(&id),
+            None => false,
+        }
     }
 
-    /// Get the config type for a node
+    /// Get the config type for a node (returns None if nodeid is null)
     #[wasm_bindgen(js_name = getConfigType)]
-    pub fn get_config_type(&self, nodeid: &str) -> Option<String> {
-        self.inner.get_config_type(nodeid).map(|s| s.to_string())
+    pub fn get_config_type(&self, nodeid: Option<String>) -> Option<String> {
+        let nodeid = nodeid?;
+        self.inner.get_config_type(&nodeid).map(|s| s.to_string())
     }
 
     /// Clear all cached configs

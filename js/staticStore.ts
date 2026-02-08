@@ -1,165 +1,271 @@
-import { archesClient, ArchesClient } from "./client.ts";
+import { ArchesClient } from "./client.ts";
 import {
   StaticResource,
   StaticResourceSummary,
   StaticResourceMetadata,
+  StaticResourceRegistry,
   StaticTile,
 } from "./static-types";
 
-// TODO: this does not currently cache, to avoid
-//  memory leaks.
+/**
+ * StaticStore - Thin wrapper around StaticResourceRegistry with optional archesClient fallback
+ *
+ * Primary mode: Resources are pre-loaded into the registry before use.
+ * Fallback mode: If archesClient is set and resource not in registry, loads on-demand.
+ *
+ * Methods return sync results wrapped in Promises for API compatibility.
+ */
 class StaticStore {
-  archesClient: ArchesClient;
-  cache: Map<string, StaticResource | StaticResourceSummary | StaticResourceMetadata>;
-  cacheMetadataOnly: boolean;
+  private _registry: StaticResourceRegistry | null = null;
+  archesClient: ArchesClient | null = null;
 
-  constructor(archesClient: ArchesClient, cacheMetadataOnly: boolean = true) {
-    this.archesClient = archesClient;
-    this.cache = new Map();
-    this.cacheMetadataOnly = cacheMetadataOnly;
+  constructor(registry?: StaticResourceRegistry) {
+    if (registry) {
+      this._registry = registry;
+    }
   }
 
+  /**
+   * Get or create the registry (lazy initialization for WASM timing)
+   */
+  get registry(): StaticResourceRegistry {
+    if (!this._registry) {
+      this._registry = new StaticResourceRegistry();
+    }
+    return this._registry;
+  }
+
+  /**
+   * Set the registry (allows replacing with a pre-populated registry)
+   */
+  set registry(registry: StaticResourceRegistry) {
+    this._registry = registry;
+  }
+
+  /**
+   * Get metadata for a resource from the registry (or load via archesClient if available).
+   */
   async getMeta(id: string, onlyIfCached: boolean = true): Promise<StaticResourceMetadata | null> {
-    if (this.cache.has(id)) {
-      const resource = this.cache.get(id);
-      if (resource instanceof StaticResource) {
-        return resource.resourceinstance;
-      } else if (resource instanceof StaticResourceSummary) {
-        return resource.toMetadata();
-      }
-      return resource || null;
+    const summary = this.registry.getSummary(id);
+    if (summary) {
+      return summary.toMetadata();
     }
 
-    if (!onlyIfCached) {
+    // Fallback: load via archesClient if not in registry
+    if (!onlyIfCached && this.archesClient) {
       const resource = await this.loadOne(id);
       return resource.resourceinstance;
     }
     return null;
   }
 
+  /**
+   * Get all full resources for a graph.
+   * First yields from registry, then loads remaining via archesClient if available.
+   */
   async* loadAll(
     graphId: string,
     limit: number | undefined = undefined,
     useCache: boolean = true
   ): AsyncIterable<StaticResource> {
-    // IMPORTANT: When cacheMetadataOnly is true, this cache only stores metadata (StaticResourceMetadata),
-    // not full StaticResource objects. This means:
-    // 1. The cache check below (instanceof StaticResource) will never find cached entries
-    // 2. We rely entirely on the ArchesClient's file-level caching (via reloadIfSeen parameter)
-    // 3. We always pass reloadIfSeen=false so files aren't re-read, but StaticResources are reconstructed each time
-    // This is intentional for memory efficiency - we don't keep full resources in memory.
+    let count = 0;
+    const yielded = new Set<string>();
 
-    let toFind: number = limit | -1;
+    // First: yield from registry
+    if (useCache) {
+      const resources = this.registry.getAllFullForGraph(graphId);
+      for (const resource of resources) {
+        if (limit && count >= limit) return;
+        yielded.add(resource.resourceinstance.resourceinstanceid);
+        yield resource;
+        count++;
+      }
+    }
 
-    // Only check in-memory cache if we're storing full StaticResource objects
-    if (useCache && !this.cacheMetadataOnly) {
-      for (const entry of this.cache.values()) {
-        if (entry instanceof StaticResource && entry.resourceinstance.graph_id === graphId) {
-          toFind -= 1;
-          yield entry;
-          if (toFind === 0) return;
+    // Second: load remaining via archesClient if available
+    if (this.archesClient && (!limit || count < limit)) {
+      const remaining = limit ? limit - count : undefined;
+      const resourcesJSON = await this.archesClient.getResources(graphId, remaining || 0, !useCache);
+
+      for (let resourceJSON of resourcesJSON) {
+        if (limit && count >= limit) return;
+
+        // Skip if already yielded from registry
+        const id = resourceJSON.resourceinstanceid ||
+          (resourceJSON as any).resourceinstance?.resourceinstanceid;
+        if (id && yielded.has(id)) continue;
+
+        // Load full resource if we got a summary
+        let resource: StaticResource;
+        if (resourceJSON instanceof StaticResource) {
+          resource = resourceJSON;
+        } else if (resourceJSON.resourceinstanceid) {
+          // It's a summary, load the full resource
+          resource = await this.archesClient.getResource(resourceJSON.resourceinstanceid);
+        } else {
+          // Plain JSON object, wrap in StaticResource
+          resource = new StaticResource(resourceJSON);
+        }
+
+        if (resource.resourceinstance.graph_id !== graphId) continue;
+
+        // Get the resource ID before merging (merge consumes the resource)
+        const resourceId = resource.resourceinstance.resourceinstanceid;
+
+        // Add to registry first (this consumes the resource)
+        this.registry.mergeFromResources([resource], true, false);
+
+        // Get fresh copy from registry to yield (the original is now consumed)
+        const fresh = this.registry.getFull(resourceId);
+        if (fresh) {
+          yield fresh;
+          count++;
         }
       }
     }
-    toFind = toFind > 0 ? toFind : 0;
-
-    // When cacheMetadataOnly is true, we don't keep full StaticResources in memory,
-    // so we need to reload files to reconstruct them (reloadIfSeen=true).
-    // Otherwise respect the useCache parameter for file-level deduplication.
-    const reloadIfSeen = this.cacheMetadataOnly ? true : !useCache;
-    const resourcesJSON: (StaticResource | StaticResourceSummary)[] =
-      await this.archesClient.getResources(graphId, toFind, reloadIfSeen);
-    for (let resourceJSON of resourcesJSON.values()) {
-      if (!(resourceJSON instanceof StaticResource) && resourceJSON.resourceinstanceid) {
-        resourceJSON = await this.archesClient.getResource(resourceJSON.resourceinstanceid);
-      }
-      const resource = new StaticResource(resourceJSON);
-      if (resource.resourceinstance.graph_id !== graphId) {
-        continue;
-      }
-      this.cache.set(
-        resource.resourceinstance.resourceinstanceid,
-        this.cacheMetadataOnly ? resource.resourceinstance : resource
-      );
-      yield resource;
-    }
   }
 
+  /**
+   * Get a full resource from the registry (or load via archesClient if available).
+   */
   async loadOne(id: string): Promise<StaticResource> {
-    if (this.cache.has(id)) {
-      const resource = this.cache.get(id);
-      if (resource instanceof StaticResource) {
-        return resource;
-      }
+    // Check registry first
+    const cached = this.registry.getFull(id);
+    if (cached) {
+      return cached;
     }
 
-    // getResource now returns a proper StaticResource directly (using fast JSON string path)
-    const resource: StaticResource = await this.archesClient.getResource(id);
-    // Cache based on cacheMetadataOnly setting
-    this.cache.set(id, this.cacheMetadataOnly ? resource.resourceinstance : resource);
-    return resource;
+    // Fallback: load via archesClient
+    if (this.archesClient) {
+      const resource = await this.archesClient.getResource(id);
+      // Get the actual resourceinstanceid before merging (merge consumes the resource)
+      // The registry stores by resourceinstanceid, not the lookup ID (which may be a slug)
+      const resourceId = resource.resourceinstance.resourceinstanceid;
+      // mergeFromResources CONSUMES the resource (transfers ownership to Rust),
+      // so we must get a fresh copy from the registry after merging
+      this.registry.mergeFromResources([resource], true, false);
+      // Get fresh copy from registry using the actual resourceinstanceid
+      const fresh = this.registry.getFull(resourceId);
+      if (!fresh) {
+        throw new Error(`Resource ${id} (${resourceId}) was merged but not found in registry`);
+      }
+      return fresh;
+    }
+
+    throw new Error(`Resource ${id} not in registry and no archesClient available.`);
   }
 
-  // New summary-based loading methods
+  /**
+   * Get all summaries for a graph.
+   */
   async* loadAllSummaries(
     graphId: string,
     limit: number | undefined = undefined,
   ): AsyncIterable<StaticResourceSummary> {
-    const summariesJSON: StaticResourceSummary[] =
-      await this.archesClient.getResourceSummaries(graphId, limit || 0);
-    for (const summaryJSON of summariesJSON.values()) {
-      const summary = new StaticResourceSummary(summaryJSON);
-      if (summary.graph_id !== graphId) {
-        continue;
+    let count = 0;
+    const yielded = new Set<string>();
+
+    // First: yield from registry (convert full resources to summaries)
+    const resources = this.registry.getAllFullForGraph(graphId);
+    for (const resource of resources) {
+      if (limit && count >= limit) return;
+      yielded.add(resource.resourceinstance.resourceinstanceid);
+      yield StaticResourceSummary.fromResource(resource);
+      count++;
+    }
+
+    // Second: load summaries via archesClient if available
+    if (this.archesClient && (!limit || count < limit)) {
+      const remaining = limit ? limit - count : 0;
+      const summariesJSON = await this.archesClient.getResourceSummaries(graphId, remaining);
+
+      for (const summaryJSON of summariesJSON) {
+        if (limit && count >= limit) return;
+
+        const summary = new StaticResourceSummary(summaryJSON);
+        if (summary.graph_id !== graphId) continue;
+
+        // Skip if already yielded from registry
+        if (yielded.has(summary.resourceinstanceid)) continue;
+
+        // Add to registry as summary only
+        this.registry.insert(summary);
+
+        yield summary;
+        count++;
       }
-      // Cache summary only
-      this.cache.set(summary.resourceinstanceid, summary);
-      yield summary;
     }
   }
 
+  /**
+   * Get tiles for a resource.
+   */
   async loadTiles(id: string, nodegroupId?: string | null): Promise<StaticTile[]> {
-    // Check if we already have full resource with tiles in cache
-    const cached = this.cache.get(id);
-    // Cache tiles to avoid multiple expensive getter calls (each creates N WASM wrappers)
-    const cachedTiles = cached instanceof StaticResource ? cached.tiles : null;
-    if (cachedTiles && cachedTiles.length > 0) {
-      // Filter by nodegroup if specified
-      if (nodegroupId) {
-        return cachedTiles.filter(tile => tile.nodegroup_id === nodegroupId);
-      }
-      return cachedTiles;
+    // Try registry first
+    const cached = this.registry.getFull(id);
+    if (cached && cached.tilesLoaded) {
+      const tiles = cached.tiles ?? [];
+      return nodegroupId ? tiles.filter(tile => tile.nodegroup_id === nodegroupId) : tiles;
     }
 
-    // Load tiles on-demand
-    const tiles = await this.archesClient.getResourceTiles(id);
-    // Filter by nodegroup if specified
-    if (nodegroupId) {
-      return tiles.filter(tile => tile.nodegroup_id === nodegroupId);
+    // Fallback: load tiles via archesClient
+    if (this.archesClient) {
+      const tiles = await this.archesClient.getResourceTiles(id);
+      return nodegroupId ? tiles.filter(tile => tile.nodegroup_id === nodegroupId) : tiles;
     }
-    return tiles;
+
+    throw new Error(`Resource ${id} tiles not in registry and no archesClient available.`);
   }
 
+  /**
+   * Get a full resource with tiles loaded.
+   */
   async ensureFullResource(id: string): Promise<StaticResource> {
-    const cached = this.cache.get(id);
-
-    // Check tiles existence without creating new WASM wrappers (use tilesLoaded flag)
-    if (cached instanceof StaticResource && cached.tilesLoaded) {
+    // Check registry for full resource with tiles
+    const cached = this.registry.getFull(id);
+    if (cached && cached.tilesLoaded) {
       return cached;
     }
 
-    if (cached instanceof StaticResourceSummary) {
-      // We have summary, need to load full resource
-      const fullResource = await this.loadOne(id);
-      this.cache.set(id, fullResource);
-      return fullResource;
+    // Fallback: load via archesClient
+    if (this.archesClient) {
+      const resource = await this.archesClient.getResource(id);
+      // Get the actual resourceinstanceid before merging (merge consumes the resource)
+      // The registry stores by resourceinstanceid, not the lookup ID (which may be a slug)
+      const resourceId = resource.resourceinstance.resourceinstanceid;
+      // mergeFromResources CONSUMES the resource (transfers ownership to Rust),
+      // so we must get a fresh copy from the registry after merging
+      this.registry.mergeFromResources([resource], true, false);
+      // Get fresh copy from registry using the actual resourceinstanceid
+      const fresh = this.registry.getFull(resourceId);
+      if (!fresh) {
+        throw new Error(`Resource ${id} (${resourceId}) was merged but not found in registry`);
+      }
+      return fresh;
     }
 
-    // Load full resource
-    return await this.loadOne(id);
+    if (cached) {
+      throw new Error(`Resource ${id} in registry but tiles not loaded.`);
+    }
+    throw new Error(`Resource ${id} not in registry and no archesClient available.`);
+  }
+
+  /**
+   * Check if a resource exists in the registry.
+   */
+  contains(id: string): boolean {
+    return this.registry.contains(id);
+  }
+
+  /**
+   * Check if a full resource (with tiles) exists in the registry.
+   */
+  hasFull(id: string): boolean {
+    return this.registry.hasFull(id);
   }
 }
 
-const staticStore = new StaticStore(archesClient);
+// Default instance - registry is lazily initialized when first accessed
+const staticStore = new StaticStore();
 
-export { staticStore };
+export { staticStore, StaticStore };
