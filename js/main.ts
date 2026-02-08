@@ -31,6 +31,8 @@ const AlizarinModel = viewModels.ResourceInstanceViewModel;
 const setCurrentLanguage = utils.setCurrentLanguage;
 const getCurrentLanguage = utils.getCurrentLanguage;
 const slugify = utils.slugify;
+const getValueFromPath = utils.getValueFromPath;
+const getValueFromPathSync = utils.getValueFromPathSync;
 export type {
   IStringKeyedObject,
   ResolveLabelsOptions,
@@ -43,6 +45,8 @@ export {
   staticTypes,
   utils,
   slugify,
+  getValueFromPath,
+  getValueFromPathSync,
   viewModels,
   staticStore,
   RDM,
