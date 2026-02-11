@@ -33,7 +33,6 @@ export class StringViewModel extends String implements IViewModel {
   }
 
   forJson(): string {
-    console.log(this.toString(), 'ts');
     return this.toString();
   }
 

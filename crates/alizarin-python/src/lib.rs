@@ -2423,11 +2423,12 @@ fn merge_resources(py: Python, resources_json: String) -> PyResult<PyObject> {
 /// Returns:
 ///     Dict with 'resources' (list of merged StaticResources) and 'warnings' (list of warnings)
 #[pyfunction]
-#[pyo3(signature = (batches_json, recompute_descriptors=false))]
+#[pyo3(signature = (batches_json, recompute_descriptors=false, strict=true))]
 fn batch_merge_resources(
     py: Python,
     batches_json: Vec<String>,
     recompute_descriptors: bool,
+    strict: bool,
 ) -> PyResult<PyObject> {
     // Parse each batch string into Vec<StaticResource>
     let mut resource_batches: Vec<Vec<AlizarinStaticResource>> = Vec::new();
@@ -2492,7 +2493,13 @@ fn batch_merge_resources(
         resource_batches.push(batch);
     }
 
-    let result = core_batch_merge_resources(resource_batches, recompute_descriptors);
+    let result = core_batch_merge_resources(resource_batches, recompute_descriptors, strict);
+
+    if let Some(ref error) = result.error {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            error.clone(),
+        ));
+    }
 
     let output = serde_json::json!({
         "resources": result.resources,

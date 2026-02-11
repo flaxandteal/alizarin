@@ -1019,6 +1019,9 @@ pub struct BatchMergeResult {
     pub resources: Vec<StaticResource>,
     /// All warnings from merging (including which resource had issues)
     pub warnings: Vec<String>,
+    /// Fatal error message if strict mode aborted early
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// Merge multiple StaticResources into one
@@ -1183,6 +1186,7 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
 pub fn batch_merge_resources(
     resource_batches: Vec<Vec<StaticResource>>,
     recompute_descriptors: bool,
+    strict: bool,
 ) -> BatchMergeResult {
     use crate::registry::get_graph;
     use crate::IndexedGraph;
@@ -1227,9 +1231,22 @@ pub fn batch_merge_resources(
                 // Unify cardinality-1 tiles if we have the graph
                 if let Some(indexed) = indexed_graphs.get(&graph_id) {
                     if let Some(ref mut tiles) = resource.tiles {
-                        let unify_warnings = unify_cardinality_one_tiles(tiles, indexed);
-                        for warning in unify_warnings {
-                            all_warnings.push(format!("[{}] {}", resource_id, warning));
+                        match unify_cardinality_one_tiles(tiles, indexed, strict) {
+                            Ok(unify_warnings) => {
+                                for warning in unify_warnings {
+                                    all_warnings.push(format!("[{}] {}", resource_id, warning));
+                                }
+                            }
+                            Err(e) => {
+                                all_warnings.push(format!("[{}] Unify error: {}", resource_id, e));
+                                if strict {
+                                    return BatchMergeResult {
+                                        resources: merged_resources,
+                                        warnings: all_warnings,
+                                        error: Some(format!("[{}] {}", resource_id, e)),
+                                    };
+                                }
+                            }
                         }
                     }
                 }
@@ -1277,6 +1294,7 @@ pub fn batch_merge_resources(
     BatchMergeResult {
         resources: merged_resources,
         warnings: all_warnings,
+        error: None,
     }
 }
 
@@ -1301,16 +1319,19 @@ type TileDataMergeMap = HashMap<usize, Vec<(String, HashMap<String, serde_json::
 pub fn unify_cardinality_one_tiles(
     tiles: &mut Vec<StaticTile>,
     indexed_graph: &crate::IndexedGraph,
-) -> Vec<String> {
+    strict: bool,
+) -> Result<Vec<String>, String> {
     use std::collections::BTreeMap;
 
     let mut warnings = Vec::new();
 
-    // Group tile indices by nodegroup_id
-    let mut tiles_by_nodegroup: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    // Group tile indices by (nodegroup_id, parenttile_id).
+    // Cardinality-1 means one tile per parent context, not one tile total —
+    // tiles under different parent tiles are separate instances and must not be unified.
+    let mut tiles_by_context: BTreeMap<(String, Option<String>), Vec<usize>> = BTreeMap::new();
     for (idx, tile) in tiles.iter().enumerate() {
-        tiles_by_nodegroup
-            .entry(tile.nodegroup_id.clone())
+        tiles_by_context
+            .entry((tile.nodegroup_id.clone(), tile.parenttile_id.clone()))
             .or_default()
             .push(idx);
     }
@@ -1321,7 +1342,7 @@ pub fn unify_cardinality_one_tiles(
     // Store data to merge: canonical_idx -> Vec<(source_tile_id, data)>
     let mut data_to_merge: TileDataMergeMap = HashMap::new();
 
-    for (nodegroup_id, tile_indices) in &tiles_by_nodegroup {
+    for ((nodegroup_id, _parent_tile_id), tile_indices) in &tiles_by_context {
         if tile_indices.len() <= 1 {
             continue; // No unification needed
         }
@@ -1342,7 +1363,7 @@ pub fn unify_cardinality_one_tiles(
             continue; // cardinality-n, multiple tiles are allowed
         }
 
-        // Cardinality-1 with multiple tiles - need to unify
+        // Cardinality-1 with multiple tiles under the same parent - need to unify
         let canonical_idx = tile_indices[0];
         let canonical_tile_id = tiles[canonical_idx].tileid.clone();
 
@@ -1392,13 +1413,17 @@ pub fn unify_cardinality_one_tiles(
             for (key, value) in source_data {
                 if let Some(existing) = canonical_tile.data.get(&key) {
                     if existing != &value {
-                        warnings.push(format!(
-                            "Data conflict in nodegroup '{}': key '{}' has different values in tiles '{}' and '{}' (keeping first)",
+                        let msg = format!(
+                            "Data conflict in nodegroup '{}': key '{}' has different values in tiles '{}' and '{}'",
                             canonical_tile.nodegroup_id,
                             key,
                             canonical_tile_id,
                             source_tile_id
-                        ));
+                        );
+                        if strict {
+                            return Err(msg);
+                        }
+                        warnings.push(format!("{} (keeping first)", msg));
                     }
                     // Keep existing value (first wins)
                 } else {
@@ -1425,7 +1450,7 @@ pub fn unify_cardinality_one_tiles(
         tiles.remove(idx);
     }
 
-    warnings
+    Ok(warnings)
 }
 
 #[cfg(test)]

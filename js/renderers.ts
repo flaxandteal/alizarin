@@ -1,6 +1,6 @@
 import { staticStore } from "./staticStore.ts"
 import { PseudoList } from "./pseudos.ts"
-import { UrlViewModel, DateViewModel, ResourceInstanceViewModel, DomainValueViewModel, ConceptValueViewModel, NonLocalizedStringViewModel, StringViewModel, SemanticViewModel, BooleanViewModel, NumberViewModel } from './viewModels';
+import { UrlViewModel, DateViewModel, ResourceInstanceViewModel, DomainValueViewModel, ConceptValueViewModel, NonLocalizedStringViewModel, StringViewModel, SemanticViewModel, BooleanViewModel, NumberViewModel, GeoJSONViewModel } from './viewModels';
 
 class Cleanable extends String {
   __clean: string | undefined
@@ -27,13 +27,6 @@ abstract class BaseRenderer {
   abstract renderNumber(value: number | NumberViewModel, _depth: number): Promise<any>;
   abstract renderUrl(value: UrlViewModel, _depth: number): Promise<any>;
 
-  // Helper to check if value is instance of a class (handles Proxies)
-  private isInstance(value: any, className: string): boolean {
-    const isInstance = value?.constructor?.name === className ||
-           value?.constructor?.name?.includes(className);
-    return isInstance;
-  }
-
   async renderValue(value: any, depth: number): Promise<any> {
     if (value === null) {
       return null;
@@ -42,27 +35,27 @@ abstract class BaseRenderer {
     if (value instanceof Promise) {
       value = await value;
     }
-    if (this.isInstance(value, 'DomainValueViewModel')) {
+    if (value instanceof DomainValueViewModel) {
       newValue = this.renderDomainValue(value, depth);
-    } else if (this.isInstance(value, 'DateViewModel')) {
+    } else if (value instanceof DateViewModel) {
       newValue = this.renderDate(value, depth);
-    } else if (this.isInstance(value, 'ConceptValueViewModel')) {
+    } else if (value instanceof ConceptValueViewModel) {
       newValue = this.renderConceptValue(value, depth);
-    } else if (this.isInstance(value, 'ResourceInstanceViewModel')) {
+    } else if (value instanceof ResourceInstanceViewModel) {
       newValue = this.renderResourceReference(value, depth);
-    } else if (this.isInstance(value, 'SemanticViewModel')) {
+    } else if (value instanceof SemanticViewModel) {
       newValue = this.renderSemantic(value, depth);
     } else if (value instanceof Array) {
       newValue = this.renderArray(value, depth);
-    } else if (this.isInstance(value, 'StringViewModel') || this.isInstance(value, 'NonLocalizedStringViewModel') || typeof value === 'string') {
+    } else if (value instanceof StringViewModel || value instanceof NonLocalizedStringViewModel || typeof value === 'string') {
       newValue = this.renderString(value, depth);
-    } else if (this.isInstance(value, 'BooleanViewModel')) {
+    } else if (value instanceof BooleanViewModel) {
       newValue = this.renderBoolean(value, depth);
-    } else if (this.isInstance(value, 'NumberViewModel')) {
+    } else if (value instanceof NumberViewModel) {
       newValue = this.renderNumber(value, depth);
-    } else if (this.isInstance(value, 'GeoJSONViewModel')) {
+    } else if (value instanceof GeoJSONViewModel) {
       newValue = this.renderBlock(await value.forJson(), depth);
-    } else if (this.isInstance(value, 'UrlViewModel')) {
+    } else if (value instanceof UrlViewModel) {
       newValue = this.renderUrl(await value, depth);
     } else if (value instanceof String && typeof value?.forJson === 'function') {
       // Extension ViewModel that extends String (e.g., ReferenceValueViewModel)

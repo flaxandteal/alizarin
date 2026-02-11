@@ -391,6 +391,7 @@ pub fn merge_resources_wasm(resources_json: &str) -> Result<JsValue, JsValue> {
 pub fn batch_merge_resources_wasm(
     batches_json: &str,
     recompute_descriptors: Option<bool>,
+    strict: Option<bool>,
 ) -> Result<JsValue, JsValue> {
     // Parse the outer array of JSON strings
     let batch_strings: Vec<String> = serde_json::from_str(batches_json)
@@ -452,7 +453,12 @@ pub fn batch_merge_resources_wasm(
         resource_batches.push(batch);
     }
 
-    let result = batch_merge_resources(resource_batches, recompute_descriptors.unwrap_or(false));
+    let strict = strict.unwrap_or(true);
+    let result = batch_merge_resources(resource_batches, recompute_descriptors.unwrap_or(false), strict);
+
+    if let Some(ref error) = result.error {
+        return Err(JsValue::from_str(error));
+    }
 
     let output = serde_json::json!({
         "resources": result.resources,

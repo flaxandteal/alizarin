@@ -8,7 +8,7 @@ import * as utils from "./utils";
 import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
-import { initWasm, ensureWasmRdmCache, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerDisplaySerializer, hasDisplaySerializer, unregisterDisplaySerializer, getRegisteredDisplaySerializers } from "./_wasm";
+import { initWasm, setWasmURL, ensureWasmRdmCache, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerDisplaySerializer, hasDisplaySerializer, unregisterDisplaySerializer, getRegisteredDisplaySerializers } from "./_wasm";
 import { newWASMResourceInstanceWrapperForResource, WASMResourceModelWrapper } from "../pkg/alizarin";
 import { resetTimingStats, getTimingStats, logTimingStats } from "./semantic";
 import * as tracing from "./tracing";
@@ -23,9 +23,13 @@ tracing.registerAlizarinTimingGetter(getTimingStats);
 // Register detailed WASM timing getter
 tracing.registerWasmTimingGetter(getWasmTimings);
 
-// Initialize WASM module at startup
-// Note: This returns a promise that must be awaited before using WASM features
-const wasmReady = initWasm();
+// Initialize WASM module - deferred to allow consumers to call setWasmURL() first
+// Consumers should await wasmReady before using WASM features
+let _wasmReadyResolve: () => void;
+const wasmReady = new Promise<void>(resolve => { _wasmReadyResolve = resolve; });
+
+// Auto-init after a microtask, giving consumers a chance to call setWasmURL() synchronously
+Promise.resolve().then(() => initWasm().then(_wasmReadyResolve));
 
 const AlizarinModel = viewModels.ResourceInstanceViewModel;
 const setCurrentLanguage = utils.setCurrentLanguage;
@@ -59,6 +63,7 @@ export {
   setCurrentLanguage,
   getCurrentLanguage,
   initWasm,
+  setWasmURL,
   wasmReady,
   ensureWasmRdmCache,
   // Legacy timing (deprecated - use tracing instead)

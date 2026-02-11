@@ -25,6 +25,9 @@
       "import": "./dist/alizarin.js",
       "require": "./dist/alizarin.umd.cjs"
     },
+    "./inline": {
+      "import": "./dist/alizarin.inline.js"
+    },
     "./validation": {
       "import": "./dist/validation/index.js",
       "types": "./dist/validation/index.d.ts"
@@ -33,7 +36,7 @@
   "scripts": {
     "build:wasm": "wasm-pack build crates/alizarin-wasm --target web --out-dir ../../pkg --out-name alizarin --release",
     "build:wasm:dev": "wasm-pack build crates/alizarin-wasm --target web --out-dir ../../pkg --out-name alizarin --dev",
-    "build:js": "NODE_OPTIONS='--experimental-wasm-modules' vite build",
+    "build:js": "NODE_OPTIONS='--experimental-wasm-modules' vite build && node scripts/create-inline.mjs",
     "build": "npm run build:wasm && npm run build:js",
     "prebuild": "npm run build:wasm",
     "prepublishOnly": "npm run build",
