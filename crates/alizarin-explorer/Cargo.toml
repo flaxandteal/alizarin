@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-explorer"
-version = "0.2.1-alpha.30"
+version = "0.2.1-alpha.31"
 authors = ["Phil Weir <phil.weir@flaxandteal.co.uk>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
