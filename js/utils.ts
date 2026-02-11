@@ -315,8 +315,6 @@ function getValueFromPathSync(asset: any, path: string): any {
       if (segment === "*") {
         multi = true;
         return headValue.map((headSubvalue: any) => {
-          // const value = await headSubvalue;
-          // console.log(value, segments, value.constructor.name);
           return descend(headSubvalue, [...segments]);
         }).flat();
       } else {
@@ -356,8 +354,6 @@ async function getValueFromPath(asset: any, path: string): Promise<any> {
       if (segment === "*") {
         multi = true;
         return (await Promise.all(headValue.map(async (headSubvalue: any) => {
-          // const value = await headSubvalue;
-          // console.log(value, segments, value.constructor.name);
           return descend(await headSubvalue, [...segments]);
         }))).flat();
       } else {

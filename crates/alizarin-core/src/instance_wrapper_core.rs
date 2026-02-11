@@ -268,6 +268,9 @@ pub fn matches_semantic_child(
     // Branch 3: Different nodegroup + is_collector
     // This handles collector nodes that don't share tiles with their parent
     if tile.nodegroup_id != parent_ng && child_node.is_collector {
+        if let Some(parent_tid) = parent_tile_id {
+            return tile.parenttile_id.is_none() || tile.parenttile_id.as_ref() == Some(parent_tid);
+        }
         return true;
     }
 

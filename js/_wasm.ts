@@ -1,6 +1,19 @@
 import init, { initSync, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString, WasmRdmCache, getRscvTimings, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerDisplaySerializer, hasDisplaySerializer, unregisterDisplaySerializer, getRegisteredDisplaySerializers } from "../pkg/alizarin";
 import { registerRustTimingGetter } from "./tracing";
-import wasmURL from "../pkg/alizarin_bg.wasm?url"
+let wasmURL: string = (() => {
+  try {
+    return new URL("../pkg/alizarin_bg.wasm", import.meta.url).href;
+  } catch {
+    return "alizarin_bg.wasm";
+  }
+})();
+
+export function setWasmURL(url: string) {
+  if (wasmInitialized) {
+    throw new Error("Cannot set WASM URL after initialization");
+  }
+  wasmURL = url;
+}
 
 let wasmInitialized = false;
 
@@ -101,6 +114,20 @@ export async function initWasm() {
     if (typeof process !== 'undefined' && process.versions?.node) {
       try {
         console.log('[alizarin] Initializing WASM in Node.js environment');
+
+        // If WASM is available as inline data URI (from alizarin/inline build), decode directly
+        if (wasmURL.startsWith('data:')) {
+          const base64Data = wasmURL.slice(wasmURL.indexOf(',') + 1);
+          const wasmBuffer = Buffer.from(base64Data, 'base64');
+          initSync({ module: wasmBuffer });
+          wasmInitialized = true;
+          console.log('[alizarin] WASM initialized from inline data URI in Node.js');
+
+          applyPrototypePatches();
+          registerRustTimingGetter(getRscvTimings);
+          return;
+        }
+
         // Import Node modules only when in Node.js environment
         const fs = await import('fs');
         const path = await import('path');

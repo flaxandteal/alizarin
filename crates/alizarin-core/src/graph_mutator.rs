@@ -151,6 +151,21 @@
 //!
 //! ---
 //!
+//! ### ChangeCardinality (BranchConformant)
+//!
+//! Changes a nodegroup's cardinality from 1 (single) to n (multiple) or vice versa.
+//! The node must be the grouping node of its nodegroup.
+//!
+//! **Parameters:**
+//! - `node_id` (String): Node ID or alias (must be the grouping node)
+//! - `cardinality` (Cardinality): `One` or `N`
+//!
+//! **Error:** If node is not the grouping node for its nodegroup
+//!
+//! **Instruction:** `change_cardinality` (subject: node_id, object: "1" or "n")
+//!
+//! ---
+//!
 //! ## Subgraph Mutations (ModelConformant)
 //!
 //! ### AddSubgraph
@@ -1034,6 +1049,15 @@ pub struct RenameNodeParams {
     pub description: Option<String>,
 }
 
+/// Parameters for changing a nodegroup's cardinality (1 <-> n)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangeCardinalityParams {
+    /// Node ID or alias - the grouping node of the nodegroup to change
+    pub node_id: String,
+    /// New cardinality
+    pub cardinality: Cardinality,
+}
+
 /// Parameters for creating a new graph from scratch
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateGraphParams {
@@ -1286,6 +1310,7 @@ pub enum GraphMutation {
     DeleteNodegroup(DeleteNodegroupParams),
     UpdateNode(UpdateNodeParams),
     ChangeNodeType(ChangeNodeTypeParams),
+    ChangeCardinality(ChangeCardinalityParams),
     RenameNode(RenameNodeParams),
     /// Rename/update graph metadata (name, description, subtitle, author)
     RenameGraph(RenameGraphParams),
@@ -1319,6 +1344,7 @@ impl GraphMutation {
             // Node update operations
             GraphMutation::UpdateNode(_) => MutationConformance::BranchConformant,
             GraphMutation::ChangeNodeType(_) => MutationConformance::BranchConformant,
+            GraphMutation::ChangeCardinality(_) => MutationConformance::BranchConformant,
             GraphMutation::RenameNode(_) => MutationConformance::AlwaysConformant,
             // Graph metadata update - valid for both
             GraphMutation::RenameGraph(_) => MutationConformance::AlwaysConformant,
@@ -1748,6 +1774,7 @@ fn apply_mutation_with_extensions(
         GraphMutation::DeleteNodegroup(params) => apply_delete_nodegroup(graph, params),
         GraphMutation::UpdateNode(params) => apply_update_node(graph, params),
         GraphMutation::ChangeNodeType(params) => apply_change_node_type(graph, params),
+        GraphMutation::ChangeCardinality(params) => apply_change_cardinality(graph, params),
         GraphMutation::RenameNode(params) => apply_rename_node(graph, params),
         GraphMutation::RenameGraph(params) => apply_rename_graph(graph, params),
         GraphMutation::CreateGraph(_) => {
@@ -2550,6 +2577,66 @@ fn apply_change_node_type(
     if let Some(sortorder) = params.options.sortorder {
         node_mut.sortorder = Some(sortorder);
     }
+
+    Ok(())
+}
+
+fn apply_change_cardinality(
+    graph: &mut StaticGraph,
+    params: ChangeCardinalityParams,
+) -> Result<(), MutationError> {
+    // Find node by alias first, then by ID - extract what we need
+    let (node_id, nodegroup_id) = {
+        let node = graph
+            .find_node_by_alias(&params.node_id)
+            .or_else(|| graph.nodes.iter().find(|n| n.nodeid == params.node_id))
+            .ok_or_else(|| MutationError::NodeNotFound(params.node_id.clone()))?;
+
+        let nodegroup_id = node.nodegroup_id.clone().ok_or_else(|| {
+            MutationError::Other(format!(
+                "Node '{}' has no nodegroup_id - cannot change cardinality",
+                params.node_id
+            ))
+        })?;
+
+        (node.nodeid.clone(), nodegroup_id)
+    };
+
+    // Verify the node is the grouping node for the nodegroup
+    // The grouping node is defined as:
+    // 1. If nodegroup.grouping_node_id is set, the node must match it
+    // 2. If not set, the node's nodegroup_id must equal the nodegroup's nodegroupid
+    //    AND the nodegroupid must equal the node's nodeid (semantic node pattern)
+    let nodegroup = graph
+        .nodegroups
+        .iter()
+        .find(|ng| ng.nodegroupid == nodegroup_id)
+        .ok_or_else(|| MutationError::NodegroupNotFound(nodegroup_id.clone()))?;
+
+    let is_grouping_node = match &nodegroup.grouping_node_id {
+        Some(grouping_id) => grouping_id == &node_id,
+        None => {
+            // If grouping_node_id not set, check if this is the semantic/grouping node pattern:
+            // The grouping node typically has nodegroup_id == nodegroupid == nodeid
+            nodegroup_id == node_id
+        }
+    };
+
+    if !is_grouping_node {
+        return Err(MutationError::Other(format!(
+            "Node '{}' is not the grouping node for nodegroup '{}'. Only the grouping node can change cardinality.",
+            params.node_id, nodegroup_id
+        )));
+    }
+
+    // Find the nodegroup mutably and update its cardinality
+    let nodegroup_mut = graph
+        .nodegroups
+        .iter_mut()
+        .find(|ng| ng.nodegroupid == nodegroup_id)
+        .ok_or_else(|| MutationError::NodegroupNotFound(nodegroup_id.clone()))?;
+
+    nodegroup_mut.cardinality = Some(params.cardinality.as_str().to_string());
 
     Ok(())
 }
@@ -4242,6 +4329,39 @@ impl GraphInstruction {
                     },
                 }))
             }
+            "change_cardinality" => {
+                let cardinality_str = self
+                    .get_str("cardinality")
+                    .or_else(|| {
+                        if self.object.is_empty() {
+                            None
+                        } else {
+                            Some(self.object.clone())
+                        }
+                    })
+                    .ok_or_else(|| {
+                        MutationError::InvalidSubgraph(
+                            "change_cardinality requires 'cardinality' param or object (1 or n)"
+                                .to_string(),
+                        )
+                    })?;
+
+                let cardinality = match cardinality_str.to_lowercase().as_str() {
+                    "1" | "one" => Cardinality::One,
+                    "n" | "many" => Cardinality::N,
+                    _ => {
+                        return Err(MutationError::InvalidSubgraph(format!(
+                            "Invalid cardinality '{}', expected '1', 'one', 'n', or 'many'",
+                            cardinality_str
+                        )))
+                    }
+                };
+
+                Ok(GraphMutation::ChangeCardinality(ChangeCardinalityParams {
+                    node_id: self.subject.clone(),
+                    cardinality,
+                }))
+            }
             "rename_node" => Ok(GraphMutation::RenameNode(RenameNodeParams {
                 node_id: self.subject.clone(),
                 alias: self.get_str("alias").or_else(|| {
@@ -4304,7 +4424,9 @@ impl GraphInstruction {
             "delete_card" | "delete_widget" | "delete_function" | "delete_node"
             | "delete_nodegroup" => MutationConformance::AlwaysConformant,
             // Node update operations
-            "update_node" | "change_node_type" => MutationConformance::BranchConformant,
+            "update_node" | "change_node_type" | "change_cardinality" => {
+                MutationConformance::BranchConformant
+            }
             "rename_node" | "rename_graph" => MutationConformance::AlwaysConformant,
             // Create operations
             "create_model" => MutationConformance::ModelConformant,

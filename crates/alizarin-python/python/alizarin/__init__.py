@@ -63,6 +63,7 @@ def chunked_merge_resources(
     json_strings: List[str],
     chunk_size: int = 10,
     recompute_descriptors: bool = True,
+    strict: bool = True,
     on_chunk_complete: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """
@@ -70,6 +71,9 @@ def chunked_merge_resources(
 
     Processes json_strings in chunks of chunk_size, merging progressively.
     Optional on_chunk_complete(chunk_index, total_chunks) callback for progress.
+
+    If strict=True (default), raises ValueError on conflicting data when unifying
+    cardinality-1 tiles. Identical data and gap-filling are always allowed.
     """
     if batch_merge_resources is None:
         raise RuntimeError("Alizarin Rust extension not loaded")
@@ -85,7 +89,8 @@ def chunked_merge_resources(
 
         chunk_result = batch_merge_resources(
             chunk_strings,
-            recompute_descriptors=False
+            recompute_descriptors=False,
+            strict=strict,
         )
 
         if merged is None:
@@ -95,7 +100,8 @@ def chunked_merge_resources(
             chunk_json = json.dumps({"business_data": {"resources": chunk_result["resources"]}})
             merged = batch_merge_resources(
                 [merged_json, chunk_json],
-                recompute_descriptors=False
+                recompute_descriptors=False,
+                strict=strict,
             )
 
         if on_chunk_complete is not None:
@@ -103,7 +109,7 @@ def chunked_merge_resources(
 
     if recompute_descriptors and merged and merged["resources"]:
         final_json = json.dumps({"business_data": {"resources": merged["resources"]}})
-        merged = batch_merge_resources([final_json], recompute_descriptors=True)
+        merged = batch_merge_resources([final_json], recompute_descriptors=True, strict=strict)
 
     return merged or {"resources": [], "merge_stats": {"total_input": 0, "duplicates_removed": 0}}
 

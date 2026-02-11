@@ -270,8 +270,41 @@ fn test_different_nodegroup_is_collector() {
     );
 
     assert!(
+        !matches,
+        "Branch 3: Different nodegroup + is_collector with non-matching parenttile_id should NOT match"
+    );
+}
+
+/// Test Branch 3: Different nodegroup + is_collector + matching parenttile_id
+/// Should match
+#[test]
+fn test_different_nodegroup_is_collector_matching_parent() {
+    let parent_tile_id = Some("tile-parent".to_string());
+    let parent_node_id = "ng-parent";
+
+    let child_node = create_test_node(
+        "node-child",
+        "child_alias",
+        Some("ng-child".to_string()),
+        true,
+    );
+    let child_tile = create_test_tile(
+        "tile-child",
+        "ng-child",
+        Some("tile-parent".to_string()), // parenttile_id MATCHES
+        vec![("node-child", JsonValue::String("test".to_string()))],
+    );
+
+    let matches = matches_semantic_child(
+        parent_tile_id.as_ref(),
+        parent_node_id,
+        &child_node,
+        Some(&child_tile),
+    );
+
+    assert!(
         matches,
-        "Branch 3: Different nodegroup + is_collector should match"
+        "Branch 3: Different nodegroup + is_collector with matching parenttile_id should match"
     );
 }
 
@@ -419,12 +452,12 @@ fn test_multiple_children_relationships() {
         Some(&tile2),
     ));
 
-    // Child 3: Different nodegroup, collector (Branch 3) - MATCH
+    // Child 3: Different nodegroup, collector, matching parenttile_id (Branch 3) - MATCH
     let child3 = create_test_node("node-child3", "child3", Some("ng-child3".to_string()), true);
     let tile3 = create_test_tile(
         "tile-child3",
         "ng-child3",
-        Some("tile-unrelated".to_string()),
+        Some("tile-parent".to_string()),
         vec![("node-child3", JsonValue::String("test".to_string()))],
     );
     assert!(matches_semantic_child(
@@ -432,6 +465,20 @@ fn test_multiple_children_relationships() {
         parent_node_id,
         &child3,
         Some(&tile3),
+    ));
+
+    // Child 3b: Different nodegroup, collector, non-matching parenttile_id (Branch 3) - NO MATCH
+    let tile3b = create_test_tile(
+        "tile-child3b",
+        "ng-child3",
+        Some("tile-unrelated".to_string()),
+        vec![("node-child3", JsonValue::String("test".to_string()))],
+    );
+    assert!(!matches_semantic_child(
+        parent_tile_id.as_ref(),
+        parent_node_id,
+        &child3,
+        Some(&tile3b),
     ));
 
     // Child 4: Same nodegroup, collector (no branch matches) - NO MATCH
