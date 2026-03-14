@@ -345,6 +345,30 @@ impl PyResourceInstanceWrapperCore {
         Ok(PySemanticChildResult::from_core(result))
     }
 
+    /// Resolve a dot-separated path and return a PseudoList for the target node.
+    ///
+    /// Walks the graph edges matching node aliases at each path segment (e.g. "building.name"),
+    /// then retrieves matching tiles for the target node's nodegroup. Avoids full tree
+    /// materialization.
+    ///
+    /// Args:
+    ///     path: Dot-separated path of node aliases (e.g. "building.name")
+    ///
+    /// Returns:
+    ///     RustPseudoList for the target node
+    fn get_values_at_path(&self, path: &str) -> PyResult<PyPseudoList> {
+        let model = self.model_access.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Model not initialized")
+        })?;
+
+        let result = self
+            .inner
+            .get_values_at_path(path, model)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        Ok(PyPseudoList::from_core(result))
+    }
+
     /// Get all nodegroup IDs that have tiles
     fn get_loaded_nodegroup_ids(&self) -> Vec<String> {
         self.inner.nodegroup_index.keys().cloned().collect()

@@ -225,7 +225,11 @@ impl RelatedResourceEntry {
                 .unwrap_or_else(|| summary.graph_id.clone()),
             graph_id: summary.graph_id.clone(),
             title: Some(summary.name.clone()),
-            meta: None,
+            meta: if summary.metadata.is_empty() {
+                None
+            } else {
+                Some(summary.metadata.iter().map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone()))).collect())
+            },
         }
     }
 

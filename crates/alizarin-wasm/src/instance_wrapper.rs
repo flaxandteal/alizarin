@@ -2587,6 +2587,85 @@ impl WASMResourceInstanceWrapper {
         }
     }
 
+    /// Resolve a dot-separated path through the graph model and return a PseudoList.
+    ///
+    /// Walks the graph edges matching node aliases at each path segment (e.g. "building.name"),
+    /// then retrieves matching tiles for the target node's nodegroup. This avoids
+    /// full tree materialization — it goes straight from path to nodegroup to tiles.
+    ///
+    /// Parameters:
+    /// - path: Dot-separated path of node aliases (e.g. "building.name" or ".building.name")
+    ///
+    /// Returns: PseudoList for the target node, or throws on invalid path
+    #[wasm_bindgen(js_name = getValuesAtPath)]
+    pub fn get_values_at_path(&self, path: &str) -> Result<PseudoList, JsValue> {
+        // Get model data needed for path resolution
+        let (root_node, nodes, edges, nodegroups) =
+            self.with_model_core_mut(|core| {
+                let root = core
+                    .get_root_node()
+                    .map_err(|e| JsValue::from_str(&e))?;
+                let nodes = core
+                    .get_nodes_internal()
+                    .ok_or_else(|| JsValue::from_str("Nodes not initialized"))?
+                    .clone();
+                let edges = core
+                    .get_edges_internal()
+                    .ok_or_else(|| JsValue::from_str("Edges not initialized"))?
+                    .clone();
+                let nodegroups = core.get_nodegroups_internal().cloned();
+                Ok((root, nodes, edges, nodegroups))
+            })?;
+
+        // Resolve path to target node info
+        let info = alizarin_core::resolve_path_segments(
+            path,
+            &root_node,
+            &nodes,
+            &edges,
+            nodegroups.as_ref(),
+        )
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        // Get tiles for the target's nodegroup from WASM tile store
+        let core_ref = self.core.borrow();
+        let tiles_store = core_ref
+            .tiles
+            .as_ref()
+            .ok_or_else(|| JsValue::from_str("Tiles not initialized"))?;
+        let tile_ids = core_ref
+            .nodegroup_index
+            .get(&info.nodegroup_id)
+            .cloned()
+            .unwrap_or_default();
+
+        // Build PseudoValueInner for each tile
+        let mut values = Vec::new();
+        for tile_id in &tile_ids {
+            if let Some(tile) = tiles_store.get(tile_id) {
+                let tile_arc = Arc::new(tile.clone());
+                let tile_data = tile.data.get(&info.target_node.nodeid).cloned();
+                let pseudo_value = PseudoValueInner::from_node_and_tile(
+                    Arc::clone(&info.target_node),
+                    Some(tile_arc),
+                    tile_data,
+                    info.child_node_ids.clone(),
+                );
+                values.push(pseudo_value);
+            }
+        }
+
+        let alias = info
+            .target_node
+            .alias
+            .clone()
+            .unwrap_or_default();
+
+        let pseudo_list =
+            PseudoListInner::from_values_with_cardinality(alias, values, info.is_single);
+        Ok(PseudoList::from_rust(pseudo_list))
+    }
+
     /// Async version of getSemanticChildValue that handles lazy tile loading
     ///
     /// If tiles are not loaded for the child's nodegroup, this method will:

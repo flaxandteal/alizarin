@@ -10,6 +10,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
+use crate::path_resolution::{resolve_path_segments, PathError, PathResolutionInfo};
 use crate::pseudo_value_core::{PseudoListCore, PseudoValueCore};
 use crate::{StaticNode, StaticNodegroup, StaticResourceMetadata, StaticTile};
 
@@ -928,6 +929,68 @@ impl ResourceInstanceWrapperCore {
             );
             Ok(SemanticChildResult::List(list))
         }
+    }
+
+    /// Resolve a dot-separated path through the graph model.
+    ///
+    /// Walks the graph edges matching node aliases at each segment,
+    /// returning the target node's metadata and nodegroup ID.
+    pub fn resolve_path(
+        &self,
+        path: &str,
+        model: &dyn ModelAccess,
+    ) -> Result<PathResolutionInfo, PathError> {
+        let root_node = model
+            .get_root_node()
+            .map_err(PathError::ModelNotInitialized)?;
+        let nodes = model
+            .get_nodes()
+            .ok_or_else(|| PathError::ModelNotInitialized("Nodes not initialized".into()))?;
+        let edges = model
+            .get_edges()
+            .ok_or_else(|| PathError::ModelNotInitialized("Edges not initialized".into()))?;
+        let nodegroups = model.get_nodegroups();
+
+        resolve_path_segments(path, &root_node, nodes, edges, nodegroups)
+    }
+
+    /// Resolve a dot-separated path and return a PseudoListCore for the target node.
+    ///
+    /// This is the main entry point for path-based value access. It walks the graph
+    /// model to find the target node, then retrieves matching tiles from the store
+    /// and builds a PseudoListCore — all without materializing the full tree.
+    pub fn get_values_at_path(
+        &self,
+        path: &str,
+        model: &dyn ModelAccess,
+    ) -> Result<PseudoListCore, PathError> {
+        let info = self.resolve_path(path, model)?;
+
+        let edges = model
+            .get_edges()
+            .ok_or_else(|| PathError::ModelNotInitialized("Edges not initialized".into()))?;
+
+        // Get tiles for the target's nodegroup
+        let tiles_store = self.tiles.as_ref().ok_or(PathError::TilesNotInitialized)?;
+        let tile_ids = self
+            .nodegroup_index
+            .get(&info.nodegroup_id)
+            .cloned()
+            .unwrap_or_default();
+
+        let tiles: Vec<Option<Arc<StaticTile>>> = tile_ids
+            .iter()
+            .filter_map(|tid| tiles_store.get(tid).map(|t| Some(Arc::new(t.clone()))))
+            .collect();
+
+        let pseudo_list = Self::create_pseudo_list_from_tiles(
+            info.target_node,
+            tiles,
+            edges,
+            info.is_single,
+        );
+
+        Ok(pseudo_list)
     }
 }
 

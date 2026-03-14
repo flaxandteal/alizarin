@@ -158,6 +158,9 @@ fn resource_tiles_to_tree(
         if let Some(ref desc) = metadata.descriptors.description {
             obj.insert("_description".to_string(), Value::String(desc.clone()));
         }
+        if let Some(ref slug) = metadata.descriptors.slug {
+            obj.insert("_slug".to_string(), Value::String(slug.clone()));
+        }
         if let Some(ref legacyid) = metadata.legacyid {
             obj.insert("legacyid".to_string(), Value::String(legacyid.clone()));
         }
@@ -468,6 +471,7 @@ fn single_tree_to_resource(
         "_name",
         "_description",
         "_map_popup",
+        "_slug",
     ];
     if strict {
         for key in obj.keys() {

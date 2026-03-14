@@ -2186,6 +2186,37 @@ fn register_graph(graph_json: String) -> PyResult<String> {
     Ok(graph_id)
 }
 
+/// Set a descriptor template on a registered graph.
+///
+/// Creates or updates the descriptor function config for the given type.
+/// The nodegroup_id is inferred from the <Node Name> placeholders in the template.
+/// All placeholder nodes must belong to exactly one nodegroup.
+///
+/// Args:
+///     graph_id: The graph ID to update
+///     descriptor_type: Type name (e.g. "slug", "name", "description", "map_popup")
+///     string_template: Template string with <Node Name> placeholders
+#[pyfunction]
+#[pyo3(signature = (graph_id, descriptor_type, string_template))]
+fn set_descriptor_template(
+    graph_id: &str,
+    descriptor_type: &str,
+    string_template: &str,
+) -> PyResult<()> {
+    let graph_arc = alizarin_core::get_graph(graph_id).ok_or_else(|| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Graph '{}' not found in registry",
+            graph_id
+        ))
+    })?;
+    let mut graph = (*graph_arc).clone();
+    graph.set_descriptor_template(descriptor_type, string_template).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(e)
+    })?;
+    alizarin_core::register_graph_owned(graph);
+    Ok(())
+}
+
 /// Register a datatype as a list type.
 ///
 /// List types are datatypes where the array IS the value (not multiple items).
@@ -2520,6 +2551,7 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(register_graph, m)?)?;
     m.add_function(wrap_pyfunction!(get_graph_json, m)?)?;
     m.add_function(wrap_pyfunction!(get_graph_schema, m)?)?;
+    m.add_function(wrap_pyfunction!(set_descriptor_template, m)?)?;
 
     // List datatype registry (for datatypes where array IS the value)
     m.add_function(wrap_pyfunction!(register_list_datatype, m)?)?;

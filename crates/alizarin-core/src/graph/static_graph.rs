@@ -499,6 +499,95 @@ impl StaticGraph {
 
         serde_json::Value::Object(root_schema)
     }
+
+    /// Set a descriptor template for a given descriptor type (e.g. "slug", "name").
+    ///
+    /// The `nodegroup_id` is inferred from the `<Node Name>` placeholders in the
+    /// template by looking up nodes in the graph. All placeholder nodes must belong
+    /// to exactly one nodegroup — returns an error otherwise.
+    ///
+    /// Creates or updates the descriptor function entry in `functions_x_graphs`.
+    pub fn set_descriptor_template(
+        &mut self,
+        descriptor_type: &str,
+        string_template: &str,
+    ) -> Result<(), String> {
+        use crate::graph::descriptors::DESCRIPTOR_FUNCTION_ID;
+        use crate::graph::StaticFunctionsXGraphs;
+        use std::collections::HashSet;
+
+        // Extract placeholders and resolve nodegroup_id
+        let placeholders = IndexedGraph::extract_placeholders(string_template);
+        if placeholders.is_empty() {
+            return Err(format!(
+                "Template '{}' has no <Node Name> placeholders",
+                string_template
+            ));
+        }
+
+        let mut nodegroup_ids = HashSet::new();
+        for placeholder in &placeholders {
+            let node_name = placeholder.trim_start_matches('<').trim_end_matches('>');
+            let node = self
+                .nodes
+                .iter()
+                .find(|n| n.name == node_name)
+                .ok_or_else(|| {
+                    format!(
+                        "Node '{}' from template not found in graph",
+                        node_name
+                    )
+                })?;
+            let ng_id = node.nodegroup_id.as_ref().ok_or_else(|| {
+                format!("Node '{}' has no nodegroup_id", node_name)
+            })?;
+            nodegroup_ids.insert(ng_id.clone());
+        }
+
+        if nodegroup_ids.len() != 1 {
+            return Err(format!(
+                "Template placeholders span {} nodegroups ({:?}), expected exactly 1",
+                nodegroup_ids.len(),
+                nodegroup_ids
+            ));
+        }
+
+        let nodegroup_id = nodegroup_ids.into_iter().next().unwrap();
+
+        let fxg = self.functions_x_graphs.get_or_insert_with(Vec::new);
+
+        // Find existing descriptor function entry
+        let existing = fxg.iter_mut().find(|f| f.function_id == DESCRIPTOR_FUNCTION_ID);
+
+        let entry = serde_json::json!({
+            "nodegroup_id": nodegroup_id,
+            "string_template": string_template,
+        });
+
+        if let Some(func) = existing {
+            if !func.config.is_object() {
+                func.config = serde_json::json!({"descriptor_types": {}});
+            }
+            let config = func.config.as_object_mut().unwrap();
+            let dt = config
+                .entry("descriptor_types")
+                .or_insert_with(|| serde_json::json!({}));
+            if let Some(dt_obj) = dt.as_object_mut() {
+                dt_obj.insert(descriptor_type.to_string(), entry);
+            }
+        } else {
+            let mut dt_map = serde_json::Map::new();
+            dt_map.insert(descriptor_type.to_string(), entry);
+            fxg.push(StaticFunctionsXGraphs {
+                config: serde_json::json!({ "descriptor_types": dt_map }),
+                function_id: DESCRIPTOR_FUNCTION_ID.to_string(),
+                graph_id: self.graphid.clone(),
+                id: uuid::Uuid::new_v4().to_string(),
+            });
+        }
+
+        Ok(())
+    }
 }
 
 /// Graph with precomputed indices for efficient tree traversal
@@ -710,16 +799,12 @@ impl IndexedGraph {
                 "name" => descriptors.name = Some(template),
                 "description" => descriptors.description = Some(template),
                 "map_popup" => descriptors.map_popup = Some(template),
+                "slug" => descriptors.slug = Some(crate::graph_mutator::slugify(&template).replace('_', "-")),
                 _ => {} // Unknown descriptor type, ignore
             }
         }
 
         descriptors
-    }
-
-    /// Extract descriptor config from graph.functions_x_graphs
-    fn get_descriptor_config(&self) -> Option<DescriptorConfig> {
-        self.get_descriptor_config_with_diagnostics(&mut Vec::new())
     }
 
     /// Extract descriptor config with diagnostic warnings
@@ -762,7 +847,7 @@ impl IndexedGraph {
 
     /// Extract placeholders from template using regex pattern
     /// Finds patterns like <Node Name> in the template string
-    fn extract_placeholders(template: &str) -> Vec<String> {
+    pub fn extract_placeholders(template: &str) -> Vec<String> {
         // Pattern matches: <[A-Za-z _-]+>
         // For now, use a simple manual parser to avoid regex dependency
         let mut placeholders = Vec::new();
