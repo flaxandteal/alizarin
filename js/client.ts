@@ -98,7 +98,7 @@ class ArchesClientRemote extends ArchesClient {
       resourceinstanceid: resource.resourceinstance.resourceinstanceid,
       graph_id: resource.resourceinstance.graph_id,
       name: resource.resourceinstance.name,
-      descriptors: resource.resourceinstance.descriptors,
+      descriptors: resource.resourceinstance.descriptors || {},
       metadata: resource.metadata || {},
       publication_id: resource.resourceinstance.publication_id,
       principaluser_id: resource.resourceinstance.principaluser_id,

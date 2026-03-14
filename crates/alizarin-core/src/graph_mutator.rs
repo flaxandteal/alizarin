@@ -474,6 +474,12 @@ lazy_static::lazy_static! {
             "concept",
             r#"{ "placeholder": "Select an option", "options": [] }"#
         ));
+        m.insert("resource-instance-multiselect-widget".to_string(), Widget::new(
+            "ff3c400a-76ec-11e7-a793-784f435179ea",
+            "resource-instance-multiselect-widget",
+            "resource-instance-list",
+            r#"{ "placeholder": "Select an option", "options": [] }"#
+        ));
         m.insert("concept-multiselect-widget".to_string(), Widget::new(
             "10000000-0000-0000-0000-000000000012",
             "concept-multiselect-widget",
@@ -612,6 +618,7 @@ pub fn get_default_widget_for_datatype(datatype: &str) -> Result<Widget, Mutatio
         "string" => "text-widget",
         "concept" => "concept-select-widget",
         "concept-list" => "concept-multiselect-widget",
+        "resource-instance-list" => "resource-instance-multiselect-widget",
         "domain-value" => "domain-select-widget",
         "domain-value-list" => "domain-multiselect-widget",
         "geojson-feature-collection" => "map-widget",

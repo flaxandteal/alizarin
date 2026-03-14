@@ -2312,6 +2312,18 @@ impl StaticGraph {
         serde_wasm_bindgen::to_value(&schema)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize schema: {}", e)))
     }
+
+    /// Set a descriptor template for a given type (e.g. "slug", "name").
+    /// The nodegroup_id is inferred from the placeholder node names in the template.
+    #[wasm_bindgen(js_name = setDescriptorTemplate)]
+    pub fn set_descriptor_template(
+        &mut self,
+        descriptor_type: &str,
+        string_template: &str,
+    ) -> Result<(), JsValue> {
+        self.0.set_descriptor_template(descriptor_type, string_template)
+            .map_err(|e| JsValue::from_str(&e))
+    }
 }
 
 // Rust-internal methods (not exposed to JS) - delegate to core
@@ -2560,6 +2572,7 @@ wasm_wrapper! {
     pub struct StaticResourceDescriptors wraps alizarin_core::StaticResourceDescriptors {
         get set name,
         get set description,
+        get set slug,
     }
 }
 

@@ -14,6 +14,7 @@ pub mod json_conversion;
 pub mod label_resolution;
 pub mod loader;
 pub mod node_config;
+pub mod path_resolution;
 pub mod permissions;
 pub mod pseudo_value_core;
 pub mod rdm_cache;
@@ -170,6 +171,9 @@ pub use instance_wrapper_core::{
     EnsureNodegroupResult, LoadState, ModelAccess, PopulateResult, ResourceInstanceWrapperCore,
     SemanticChildError, SemanticChildResult, ValuesFromNodegroupResult,
 };
+
+// Path resolution (dot-separated path → nodegroup tiles)
+pub use path_resolution::{resolve_path_segments, PathError, PathResolutionInfo};
 
 // RDM cache types
 pub use rdm_cache::{RdmCache, RdmCollection, RdmConcept};
