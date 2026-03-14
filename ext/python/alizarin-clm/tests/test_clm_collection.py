@@ -83,7 +83,7 @@ def test_collection_as_resource_references():
     assert activities_node['datatype'] == 'resource-instance-list', \
         "Expected resource-instance-list datatype"
 
-    print(f"\n--- Part 1: Using as Resource References (Built-in CLM) ---")
+    print("\n--- Part 1: Using as Resource References (Built-in CLM) ---")
     print(f"Node: {activities_node['alias']}")
     print(f"Datatype: {activities_node['datatype']}")
 
@@ -101,7 +101,7 @@ def test_collection_as_resource_references():
     )
 
     print(f"Collection ID: {collection_id}")
-    print(f"Collection type: Resource references")
+    print("Collection type: Resource references")
     print(f"Labels: {activity_labels}")
 
     # Add to cache
@@ -148,7 +148,7 @@ def test_collection_as_resource_references():
         resources = result['business_data']['resources']
         assert len(resources) == 1
 
-        print(f"✓ Converted tree with resource references")
+        print("✓ Converted tree with resource references")
         print(f"  Resource ID: {resources[0]['resourceinstance']['resourceinstanceid']}")
         print(f"  Tiles created: {len(resources[0]['tiles'])}")
 
@@ -171,7 +171,7 @@ def test_collection_as_resource_references():
         if not found_activities:
             print("  Note: Activity references not in tiles (may be filtered if empty)")
 
-        print(f"\n✓ Part 1 Complete: Collection works as RESOURCE REFERENCES")
+        print("\n✓ Part 1 Complete: Collection works as RESOURCE REFERENCES")
 
     finally:
         alizarin.clear_global_rdm_cache()
@@ -200,7 +200,7 @@ def test_collection_as_concepts():
     if not activities_node:
         pytest.skip("'associated_activities' node not found in Person model")
 
-    print(f"\n--- Part 2: Using as Concepts (Type Override) ---")
+    print("\n--- Part 2: Using as Concepts (Type Override) ---")
     print(f"Node: {activities_node['alias']}")
     print(f"Original datatype: {activities_node['datatype']}")
 
@@ -224,7 +224,7 @@ def test_collection_as_concepts():
     )
 
     print(f"Collection ID: {collection_id}")
-    print(f"Collection type: Concepts")
+    print("Collection type: Concepts")
     print(f"Labels: {activity_labels} (same as Part 1)")
 
     # Add to cache
@@ -271,7 +271,7 @@ def test_collection_as_concepts():
         resources = result['business_data']['resources']
         assert len(resources) == 1
 
-        print(f"✓ Converted tree with concepts")
+        print("✓ Converted tree with concepts")
         print(f"  Resource ID: {resources[0]['resourceinstance']['resourceinstanceid']}")
         print(f"  Tiles created: {len(resources[0]['tiles'])}")
 
@@ -294,8 +294,8 @@ def test_collection_as_concepts():
         if not found_activities:
             print("  Note: Activity concepts not in tiles (may be filtered if empty)")
 
-        print(f"\n✓ Part 2 Complete: SAME collection works as CONCEPTS")
-        print(f"\n" + "=" * 70)
+        print("\n✓ Part 2 Complete: SAME collection works as CONCEPTS")
+        print("\n" + "=" * 70)
         print("KEY INSIGHT:")
         print("  The SAME collection and labels work for both:")
         print("  1. Resource references (resource-instance-list)")
@@ -330,7 +330,7 @@ def test_skos_roundtrip_with_person_model():
     collection_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, 'test.activities.skos'))
     activities_node['config']['rdmCollection'] = collection_id
 
-    print(f"\n--- SKOS Roundtrip Test ---")
+    print("\n--- SKOS Roundtrip Test ---")
     print(f"Using node: {activities_node['alias']}")
     print(f"Datatype: {activities_node['datatype']}")
 
@@ -371,7 +371,7 @@ def test_skos_roundtrip_with_person_model():
 
         assert len(loaded_ids) > 0
         assert cache.has_collection(collection_id)
-        print(f"✓ Loaded from file")
+        print("✓ Loaded from file")
 
         # Verify all labels preserved
         loaded_collection = cache.get_collection(collection_id)
@@ -426,11 +426,11 @@ def test_skos_roundtrip_with_person_model():
             assert 'business_data' in result
             resources = result['business_data']['resources']
             assert len(resources) == 1
-            print(f"✓ Converted tree with loaded collection")
-            print(f"  Used datatypes: string, number, resource-instance-list")
-            print(f"  Labels resolved from SKOS file")
+            print("✓ Converted tree with loaded collection")
+            print("  Used datatypes: string, number, resource-instance-list")
+            print("  Labels resolved from SKOS file")
 
-            print(f"\n✓ SKOS Roundtrip Complete!")
+            print("\n✓ SKOS Roundtrip Complete!")
 
         finally:
             alizarin.clear_global_rdm_cache()
@@ -479,7 +479,7 @@ def test_multilanguage_collection():
     assert swimming_ga.get_label("en") == "Swimming"
 
     print("✓ Multilingual collection works")
-    print(f"  English: Swimming → Snámh (ga) → Natation (fr)")
+    print("  English: Swimming → Snámh (ga) → Natation (fr)")
 
 
 if __name__ == '__main__':

@@ -8,7 +8,7 @@ Tests that unpermitted nodegroups are correctly filtered from the graph.
 import pytest
 from alizarin.static_types import (
     StaticGraph, StaticNode, StaticEdge, StaticNodegroup,
-    StaticCard, StaticTile
+    StaticCard
 )
 from alizarin.model_wrapper import ResourceModelWrapper
 from alizarin.graph_manager import WKRM

@@ -7,8 +7,7 @@ Tests graph model management, navigation, and caching.
 
 import pytest
 from alizarin.static_types import (
-    StaticGraph, StaticNode, StaticEdge, StaticNodegroup,
-    StaticCard
+    StaticGraph, StaticNode, StaticEdge, StaticNodegroup
 )
 from alizarin.model_wrapper import ResourceModelWrapper
 from alizarin.graph_manager import WKRM

@@ -8,7 +8,6 @@ tree conversion functionality to Python.
 import json
 import pytest
 import os
-import sys
 
 # Import the compiled Alizarin module
 import alizarin

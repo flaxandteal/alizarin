@@ -5,7 +5,6 @@ Tests static types, view models, and extension registration.
 """
 
 import pytest
-import json
 
 
 # =============================================================================

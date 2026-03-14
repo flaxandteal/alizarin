@@ -9,7 +9,7 @@ from typing import Optional
 
 import pytest
 from alizarin.static_types import StaticNode, StaticTile
-from alizarin.pseudos import PseudoValue, PseudoList, create_pseudo_value as factory_create_pseudo_value, create_pseudo_list
+from alizarin.pseudos import PseudoValue, create_pseudo_value as factory_create_pseudo_value, create_pseudo_list
 
 
 def create_node(nodeid: str, alias: str, nodegroup_id: str) -> StaticNode:

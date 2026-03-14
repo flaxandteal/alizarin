@@ -1,11 +1,9 @@
 """Tests for type coercion functions, especially domain values."""
 
-import pytest
 from alizarin.alizarin import (
     coerce_value,
     coerce_domain_value,
     coerce_domain_value_list,
-    CoercionResult,
 )
 
 

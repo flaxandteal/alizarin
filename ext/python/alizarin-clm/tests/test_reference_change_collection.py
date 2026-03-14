@@ -849,7 +849,7 @@ class TestEndToEndWorkflow:
             # The label should have been resolved to UUID from our collection
             archaeologist_concept = new_collection.find_by_label("Archaeologist")
 
-            print(f"\nResolved reference data:")
+            print("\nResolved reference data:")
             print(f"  Expected Archaeologist UUID: {archaeologist_concept.id}")
             print(f"  Actual tile data: {json.dumps(ref_data, indent=2)[:500]}")
 
@@ -860,7 +860,7 @@ class TestEndToEndWorkflow:
 
             print("\n✓ Full workflow completed successfully!")
             print(f"  - Created collection '{new_collection_id}' with {len(test_labels)} items")
-            print(f"  - Updated node 'test' to use new collection")
+            print("  - Updated node 'test' to use new collection")
             print(f"  - Resolved label 'Archaeologist' -> UUID {archaeologist_concept.id}")
             print(f"  - Generated {len(resource['tiles'])} tiles")
 

@@ -6,7 +6,6 @@ Tests loading JSON strings like {"Test": ["Item 1>1"]} into tiles.
 
 import pytest
 import json
-import os
 from pathlib import Path
 
 # Test data directory
@@ -314,7 +313,7 @@ class TestReferenceDisplaySerialization:
         This verifies the error case where flattened display output
         was incorrectly used as tile data input.
         """
-        from alizarin_clm import ReferenceMergedDataType, ReferenceListViewModel
+        from alizarin_clm import ReferenceMergedDataType
         from alizarin import StaticTile, StaticNode
 
         node = StaticNode(
@@ -2225,7 +2224,6 @@ class TestPhase0Integration:
         3. Full value object is returned for tile storage
         """
         from alizarin.alizarin import (
-            RustNodeConfigManager,
             RustNodeConfigDomain,
             RustStaticDomainValue
         )

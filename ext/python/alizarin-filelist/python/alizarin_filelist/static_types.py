@@ -7,7 +7,7 @@ These types match the Arches file-list datatype structure.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 
 @dataclass
