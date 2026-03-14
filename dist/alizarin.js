@@ -797,7 +797,7 @@ ${val.stack}`;
     const ret = wasm.getRegisteredDisplaySerializers();
     return ret;
   };
-  function __wbg_adapter_14(arg0, arg1, arg2) {
+  function __wbg_adapter_10(arg0, arg1, arg2) {
     wasm.closure180_externref_shim(arg0, arg1, arg2);
   }
   function __wbg_adapter_766(arg0, arg1, arg2, arg3) {
@@ -5628,7 +5628,7 @@ ${val.stack}`;
       return ret;
     };
     imports.wbg.__wbindgen_cast_cc1857654cb621bc = function(arg0, arg1) {
-      const ret = makeMutClosure(arg0, arg1, 169, __wbg_adapter_14);
+      const ret = makeMutClosure(arg0, arg1, 169, __wbg_adapter_10);
       return ret;
     };
     imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function(arg0) {
