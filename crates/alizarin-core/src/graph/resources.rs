@@ -702,6 +702,7 @@ impl StaticResourceRegistry {
         graph: &super::StaticGraph,
         enrich_relationships: bool,
         strict: bool,
+        recompute_descriptors: bool,
     ) -> Result<PopulateCachesResult, String> {
         let mut result = PopulateCachesResult::default();
 
@@ -758,6 +759,29 @@ impl StaticResourceRegistry {
                     }
                 }
                 resource.cache = serde_json::to_value(&cache).ok();
+            }
+        }
+
+        // Recompute descriptors using the freshly-built caches
+        if recompute_descriptors {
+            let indexed = super::static_graph::IndexedGraph::new(graph.clone());
+            for resource in resources.iter_mut() {
+                let tiles = resource.tiles.as_deref().unwrap_or(&[]);
+                let cache: Option<ResourceCache> = resource
+                    .cache
+                    .as_ref()
+                    .and_then(|v| serde_json::from_value(v.clone()).ok());
+                let descriptors = indexed.build_descriptors_with_diagnostics(
+                    tiles,
+                    &mut Vec::new(),
+                    cache.as_ref(),
+                );
+                if let Some(ref name) = descriptors.name {
+                    if !name.is_empty() {
+                        resource.resourceinstance.name = name.clone();
+                    }
+                }
+                resource.resourceinstance.descriptors = descriptors;
             }
         }
 
@@ -1293,8 +1317,16 @@ pub fn batch_merge_resources(
                         // Compute descriptors from merged tiles with diagnostics
                         let tiles = resource.tiles.as_deref().unwrap_or(&[]);
                         let mut descriptor_warnings = Vec::new();
-                        let descriptors = indexed
-                            .build_descriptors_with_diagnostics(tiles, &mut descriptor_warnings);
+                        // Deserialize __cache so resource-instance placeholders can resolve to titles
+                        let cache: Option<ResourceCache> = resource
+                            .cache
+                            .as_ref()
+                            .and_then(|v| serde_json::from_value(v.clone()).ok());
+                        let descriptors = indexed.build_descriptors_with_diagnostics(
+                            tiles,
+                            &mut descriptor_warnings,
+                            cache.as_ref(),
+                        );
 
                         // Add descriptor warnings with resource context
                         for warning in descriptor_warnings {

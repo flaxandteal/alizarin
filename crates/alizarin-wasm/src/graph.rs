@@ -3245,6 +3245,7 @@ impl StaticResourceRegistry {
         graph: &StaticGraph,
         enrich_relationships: Option<bool>,
         strict: Option<bool>,
+        recompute_descriptors: Option<bool>,
     ) -> Result<JsValue, JsValue> {
         let mut resources: Vec<CoreStaticResource> = serde_json::from_str(resources_json)
             .map_err(|e| JsValue::from_str(&format!("Failed to parse resources: {}", e)))?;
@@ -3256,6 +3257,7 @@ impl StaticResourceRegistry {
                 &graph.0,
                 enrich_relationships.unwrap_or(true),
                 strict.unwrap_or(false),
+                recompute_descriptors.unwrap_or(false),
             )
             .map_err(|e| JsValue::from_str(&e))?;
 
@@ -3282,6 +3284,7 @@ impl StaticResourceRegistry {
         graph: &StaticGraph,
         enrich_relationships: Option<bool>,
         strict: Option<bool>,
+        recompute_descriptors: Option<bool>,
     ) -> Result<JsValue, JsValue> {
         let mut core_resources: Vec<CoreStaticResource> =
             resources.into_iter().map(|r| r.0).collect();
@@ -3293,6 +3296,7 @@ impl StaticResourceRegistry {
                 &graph.0,
                 enrich_relationships.unwrap_or(true),
                 strict.unwrap_or(false),
+                recompute_descriptors.unwrap_or(false),
             )
             .map_err(|e| JsValue::from_str(&e))?;
 
