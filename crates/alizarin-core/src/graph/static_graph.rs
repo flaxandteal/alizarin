@@ -702,7 +702,7 @@ impl IndexedGraph {
     /// # Returns
     /// Populated StaticResourceDescriptors with name, description, map_popup fields
     pub fn build_descriptors(&self, tiles: &[StaticTile]) -> StaticResourceDescriptors {
-        self.build_descriptors_with_diagnostics(tiles, &mut Vec::new())
+        self.build_descriptors_with_diagnostics(tiles, &mut Vec::new(), None)
     }
 
     /// Build descriptors with diagnostic warnings for silent failure cases
@@ -710,6 +710,7 @@ impl IndexedGraph {
         &self,
         tiles: &[StaticTile],
         warnings: &mut Vec<String>,
+        cache: Option<&super::resources::ResourceCache>,
     ) -> StaticResourceDescriptors {
         // Get descriptor config from graph with diagnostics
         let config = match self.get_descriptor_config_with_diagnostics(warnings) {
@@ -765,6 +766,7 @@ impl IndexedGraph {
                         &relevant_tiles,
                         &node.nodeid,
                         &node.datatype,
+                        cache,
                     ) {
                         template = template.replace(placeholder, &value);
                     } else {
@@ -892,14 +894,32 @@ impl IndexedGraph {
     }
 
     /// Extract a display string from tiles for a given node, using:
-    /// 1. Extension render_display (for extension datatypes like "reference")
-    /// 2. Built-in serialize_display (for string, number, date, concept, etc.)
-    /// 3. Fallback to extract_string_from_json (language maps, Arches format)
+    /// 1. Cache lookup (for resource-instance / resource-instance-list, uses titles from __cache)
+    /// 2. Extension render_display (for extension datatypes like "reference")
+    /// 3. Built-in serialize_display (for string, number, date, concept, etc.)
+    /// 4. Fallback to extract_string_from_json (language maps, Arches format)
     fn extract_display_value_from_tiles(
         tiles: &[&StaticTile],
         node_id: &str,
         datatype: &str,
+        cache: Option<&super::resources::ResourceCache>,
     ) -> Option<String> {
+        // For resource-instance / resource-instance-list, look up display names from __cache
+        // (mirrors how TS ViewModels use __cache entries with title for display)
+        if let Some(cache) = cache {
+            if datatype == "resource-instance" || datatype == "resource-instance-list" {
+                for tile in tiles {
+                    if let Some(tile_id) = &tile.tileid {
+                        if let Some(node_entries) = cache.get(tile_id) {
+                            if let Some(entry) = node_entries.get(node_id) {
+                                return Self::display_from_cache_entry(entry);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         for tile in tiles {
             if let Some(value) = tile.data.get(node_id) {
                 // 1. Try extension render_display (optional — not all extensions have it)
@@ -927,6 +947,25 @@ impl IndexedGraph {
             }
         }
         None
+    }
+
+    /// Extract display string from a cache entry (title, or comma-separated titles for lists)
+    fn display_from_cache_entry(entry: &super::resources::CacheEntry) -> Option<String> {
+        match entry {
+            super::resources::CacheEntry::Single(r) => r.title.clone(),
+            super::resources::CacheEntry::List(list) => {
+                let titles: Vec<&str> = list
+                    .entries
+                    .iter()
+                    .filter_map(|e| e.title.as_deref())
+                    .collect();
+                if titles.is_empty() {
+                    None
+                } else {
+                    Some(titles.join(", "))
+                }
+            }
+        }
     }
 
     /// Extract string value from JSON, handling language-nested objects

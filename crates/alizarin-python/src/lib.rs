@@ -1501,7 +1501,7 @@ impl ResourceRegistry {
     ///     Dict with:
     ///     - resources: Updated resources with __cache populated
     ///     - unknown_references: List of {source_resource_id, node_id, node_alias, referenced_id}
-    #[pyo3(signature = (resources_json, graph_id, enrich_relationships=true, strict=false))]
+    #[pyo3(signature = (resources_json, graph_id, enrich_relationships=true, strict=false, recompute_descriptors=false))]
     fn populate_caches(
         &self,
         py: Python,
@@ -1509,6 +1509,7 @@ impl ResourceRegistry {
         graph_id: &str,
         enrich_relationships: bool,
         strict: bool,
+        recompute_descriptors: bool,
     ) -> PyResult<PyObject> {
         let mut resources: Vec<AlizarinStaticResource> = serde_json::from_str(resources_json)
             .map_err(|e| {
@@ -1521,7 +1522,13 @@ impl ResourceRegistry {
         let graph = get_registered_graph(graph_id)?;
         let result = self
             .inner
-            .populate_caches(&mut resources, &graph, enrich_relationships, strict)
+            .populate_caches(
+                &mut resources,
+                &graph,
+                enrich_relationships,
+                strict,
+                recompute_descriptors,
+            )
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
 
         let output = serde_json::json!({
