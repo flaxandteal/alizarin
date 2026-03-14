@@ -454,7 +454,11 @@ pub fn batch_merge_resources_wasm(
     }
 
     let strict = strict.unwrap_or(true);
-    let result = batch_merge_resources(resource_batches, recompute_descriptors.unwrap_or(false), strict);
+    let result = batch_merge_resources(
+        resource_batches,
+        recompute_descriptors.unwrap_or(false),
+        strict,
+    );
 
     if let Some(ref error) = result.error {
         return Err(JsValue::from_str(error));

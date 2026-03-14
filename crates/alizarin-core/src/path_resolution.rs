@@ -45,11 +45,7 @@ impl std::fmt::Display for PathError {
                         segment, parent
                     )
                 } else {
-                    write!(
-                        f,
-                        "No child with alias '{}' found under root node",
-                        segment
-                    )
+                    write!(f, "No child with alias '{}' found under root node", segment)
                 }
             }
             PathError::NoNodegroup { node_alias } => {
@@ -158,10 +154,7 @@ pub fn resolve_path_segments(
         })?;
 
     // Get child node IDs for PseudoValue construction
-    let child_node_ids = edges
-        .get(&current_node.nodeid)
-        .cloned()
-        .unwrap_or_default();
+    let child_node_ids = edges.get(&current_node.nodeid).cloned().unwrap_or_default();
 
     // Determine cardinality
     let is_single = is_node_single_cardinality(&current_node, nodegroups);
@@ -349,8 +342,14 @@ mod tests {
     #[test]
     fn test_alias_not_found() {
         let (root, nodes, edges, nodegroups) = setup_graph();
-        let err = resolve_path_segments("building.nonexistent", &root, &nodes, &edges, Some(&nodegroups))
-            .unwrap_err();
+        let err = resolve_path_segments(
+            "building.nonexistent",
+            &root,
+            &nodes,
+            &edges,
+            Some(&nodegroups),
+        )
+        .unwrap_err();
         match err {
             PathError::AliasNotFound {
                 segment,

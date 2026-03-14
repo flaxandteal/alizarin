@@ -22,7 +22,10 @@ pub struct StaticResourceDescriptors {
 impl StaticResourceDescriptors {
     /// Check if all descriptors are empty
     pub fn is_empty(&self) -> bool {
-        self.name.is_none() && self.map_popup.is_none() && self.description.is_none() && self.slug.is_none()
+        self.name.is_none()
+            && self.map_popup.is_none()
+            && self.description.is_none()
+            && self.slug.is_none()
     }
 
     /// Create empty descriptors

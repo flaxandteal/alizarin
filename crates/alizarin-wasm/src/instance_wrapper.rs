@@ -2600,22 +2600,19 @@ impl WASMResourceInstanceWrapper {
     #[wasm_bindgen(js_name = getValuesAtPath)]
     pub fn get_values_at_path(&self, path: &str) -> Result<PseudoList, JsValue> {
         // Get model data needed for path resolution
-        let (root_node, nodes, edges, nodegroups) =
-            self.with_model_core_mut(|core| {
-                let root = core
-                    .get_root_node()
-                    .map_err(|e| JsValue::from_str(&e))?;
-                let nodes = core
-                    .get_nodes_internal()
-                    .ok_or_else(|| JsValue::from_str("Nodes not initialized"))?
-                    .clone();
-                let edges = core
-                    .get_edges_internal()
-                    .ok_or_else(|| JsValue::from_str("Edges not initialized"))?
-                    .clone();
-                let nodegroups = core.get_nodegroups_internal().cloned();
-                Ok((root, nodes, edges, nodegroups))
-            })?;
+        let (root_node, nodes, edges, nodegroups) = self.with_model_core_mut(|core| {
+            let root = core.get_root_node().map_err(|e| JsValue::from_str(&e))?;
+            let nodes = core
+                .get_nodes_internal()
+                .ok_or_else(|| JsValue::from_str("Nodes not initialized"))?
+                .clone();
+            let edges = core
+                .get_edges_internal()
+                .ok_or_else(|| JsValue::from_str("Edges not initialized"))?
+                .clone();
+            let nodegroups = core.get_nodegroups_internal().cloned();
+            Ok((root, nodes, edges, nodegroups))
+        })?;
 
         // Resolve path to target node info
         let info = alizarin_core::resolve_path_segments(
@@ -2655,11 +2652,7 @@ impl WASMResourceInstanceWrapper {
             }
         }
 
-        let alias = info
-            .target_node
-            .alias
-            .clone()
-            .unwrap_or_default();
+        let alias = info.target_node.alias.clone().unwrap_or_default();
 
         let pseudo_list =
             PseudoListInner::from_values_with_cardinality(alias, values, info.is_single);

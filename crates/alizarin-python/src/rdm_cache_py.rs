@@ -193,8 +193,8 @@ lazy_static::lazy_static! {
 ///     collection = RustRdmCollection.from_labels("MyCollection", ["A", "B"])
 #[pyfunction]
 pub fn set_rdm_namespace(namespace: &str) -> PyResult<()> {
-    let uuid = core_parse_namespace(namespace)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+    let uuid =
+        core_parse_namespace(namespace).map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
     if let Ok(mut guard) = GLOBAL_RDM_NAMESPACE.write() {
         *guard = Some(uuid);
     }

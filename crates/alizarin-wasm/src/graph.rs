@@ -2321,7 +2321,8 @@ impl StaticGraph {
         descriptor_type: &str,
         string_template: &str,
     ) -> Result<(), JsValue> {
-        self.0.set_descriptor_template(descriptor_type, string_template)
+        self.0
+            .set_descriptor_template(descriptor_type, string_template)
             .map_err(|e| JsValue::from_str(&e))
     }
 }
