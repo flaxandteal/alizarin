@@ -11,7 +11,7 @@ import { StaticTile, StaticNode, StaticResource, StaticResourceReference } from 
 import { AttrPromise } from "../utils";
 import { recordWasmTiming } from '../wasmTiming';
 import { viewContext, DEFAULT_LANGUAGE } from "./types";
-import { ResourceInstanceCacheEntry } from "./cacheEntries";
+import { ResourceInstanceCacheEntry, ResourceDescriptors } from "./cacheEntries";
 
 export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStringKeyedObject {
   [key: string | symbol]: any;
@@ -31,6 +31,37 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
       return `[Resource:${this.id}]`;
     }
     return `[${this.__.wkrm.modelClassName}:${this.id ?? "-"}]`;
+  }
+
+  async getName(retrieveIfNeeded: boolean=false): Promise<string> {
+    return (await this.getDescriptors(retrieveIfNeeded))?.name;
+  }
+
+  async getSlug(retrieveIfNeeded: boolean=false): Promise<string> {
+    return (await this.getDescriptors(retrieveIfNeeded))?.slug;
+  }
+
+  async getDescription(retrieveIfNeeded: boolean=false): Promise<string> {
+    return (await this.getDescriptors(retrieveIfNeeded))?.description;
+  }
+
+  async getMapPopup(retrieveIfNeeded: boolean=false): Promise<string> {
+    return (await this.getDescriptors(retrieveIfNeeded))?.map_popup;
+  }
+
+  async getDescriptors(retrieveIfNeeded: boolean=false): Promise<ResourceDescriptors | undefined> {
+    if (this.__cacheEntry?.descriptors) {
+      return this.__cacheEntry.descriptors;
+    }
+    if (retrieveIfNeeded) {
+      if (!this.$) {
+        await this.retrieve();
+      }
+      if (this.$) {
+        return this.$.getDescriptors();
+      }
+    }
+    return undefined;
   }
 
   async __has(key: string): Promise<boolean | undefined> {
@@ -96,6 +127,7 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
         graphId: this.__cacheEntry.graphId,
         id: this.__cacheEntry.id,
         title: this.__cacheEntry.title || undefined,
+        descriptors: this.__cacheEntry.descriptors || undefined,
         meta: this.__cacheEntry.meta || undefined,
         root: rootJson
       };
@@ -105,6 +137,7 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
         graphId: this.__.wkrm.graphId,
         id: this.id,
         title: undefined,
+        descriptors: undefined,
         meta: undefined,
         root: rootJson
       };
@@ -114,6 +147,7 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
         graphId: "",
         id: this.id,
         title: undefined,
+        descriptors: undefined,
         meta: undefined,
         root: rootJson
       };
@@ -162,6 +196,7 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
         graphId: this.__cacheEntry.graphId,
         id: this.__cacheEntry.id,
         title: this.__cacheEntry.title || undefined,
+        descriptors: this.__cacheEntry.descriptors || undefined,
         meta: this.__cacheEntry.meta || undefined,
         root: rootJson
       };
@@ -171,6 +206,7 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
         graphId: this.__.wkrm.graphId,
         id: this.id,
         title: undefined,
+        descriptors: undefined,
         meta: undefined,
         root: rootJson
       };
@@ -180,6 +216,7 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
         graphId: "",
         id: this.id,
         title: undefined,
+        descriptors: undefined,
         meta: undefined,
         root: rootJson
       };
