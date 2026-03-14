@@ -532,15 +532,11 @@ impl StaticGraph {
                 .nodes
                 .iter()
                 .find(|n| n.name == node_name)
-                .ok_or_else(|| {
-                    format!(
-                        "Node '{}' from template not found in graph",
-                        node_name
-                    )
-                })?;
-            let ng_id = node.nodegroup_id.as_ref().ok_or_else(|| {
-                format!("Node '{}' has no nodegroup_id", node_name)
-            })?;
+                .ok_or_else(|| format!("Node '{}' from template not found in graph", node_name))?;
+            let ng_id = node
+                .nodegroup_id
+                .as_ref()
+                .ok_or_else(|| format!("Node '{}' has no nodegroup_id", node_name))?;
             nodegroup_ids.insert(ng_id.clone());
         }
 
@@ -557,7 +553,9 @@ impl StaticGraph {
         let fxg = self.functions_x_graphs.get_or_insert_with(Vec::new);
 
         // Find existing descriptor function entry
-        let existing = fxg.iter_mut().find(|f| f.function_id == DESCRIPTOR_FUNCTION_ID);
+        let existing = fxg
+            .iter_mut()
+            .find(|f| f.function_id == DESCRIPTOR_FUNCTION_ID);
 
         let entry = serde_json::json!({
             "nodegroup_id": nodegroup_id,
@@ -799,7 +797,10 @@ impl IndexedGraph {
                 "name" => descriptors.name = Some(template),
                 "description" => descriptors.description = Some(template),
                 "map_popup" => descriptors.map_popup = Some(template),
-                "slug" => descriptors.slug = Some(crate::graph_mutator::slugify(&template).replace('_', "-")),
+                "slug" => {
+                    descriptors.slug =
+                        Some(crate::graph_mutator::slugify(&template).replace('_', "-"))
+                }
                 _ => {} // Unknown descriptor type, ignore
             }
         }

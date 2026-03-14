@@ -648,9 +648,6 @@ use alizarin_core::{
     resolve_labels as core_resolve_labels,
     // JSON conversion
     tiles_to_tree,
-    // String utilities
-    transform_keys_to_snake,
-    tree_to_tiles,
     tree_to_tiles_with_options,
     // Permission rules
     PermissionRule,
@@ -1530,7 +1527,7 @@ impl ResourceRegistry {
         let index = self
             .inner
             .get_node_values_index(&graph, node_identifier)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
         pythonize::pythonize(py, &index).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
@@ -1568,7 +1565,7 @@ impl ResourceRegistry {
         let index = self
             .inner
             .get_value_to_resources_index(&graph, node_identifier, flatten_localized)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
         pythonize::pythonize(py, &index).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
@@ -2210,9 +2207,9 @@ fn set_descriptor_template(
         ))
     })?;
     let mut graph = (*graph_arc).clone();
-    graph.set_descriptor_template(descriptor_type, string_template).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(e)
-    })?;
+    graph
+        .set_descriptor_template(descriptor_type, string_template)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
     alizarin_core::register_graph_owned(graph);
     Ok(())
 }

@@ -228,7 +228,13 @@ impl RelatedResourceEntry {
             meta: if summary.metadata.is_empty() {
                 None
             } else {
-                Some(summary.metadata.iter().map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone()))).collect())
+                Some(
+                    summary
+                        .metadata
+                        .iter()
+                        .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
+                        .collect(),
+                )
             },
         }
     }

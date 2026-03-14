@@ -983,12 +983,8 @@ impl ResourceInstanceWrapperCore {
             .filter_map(|tid| tiles_store.get(tid).map(|t| Some(Arc::new(t.clone()))))
             .collect();
 
-        let pseudo_list = Self::create_pseudo_list_from_tiles(
-            info.target_node,
-            tiles,
-            edges,
-            info.is_single,
-        );
+        let pseudo_list =
+            Self::create_pseudo_list_from_tiles(info.target_node, tiles, edges, info.is_single);
 
         Ok(pseudo_list)
     }

@@ -168,19 +168,38 @@ def test_same_nodegroup_shared_tile_is_collector():
 # Test Branch 3: Different nodegroup + is_collector
 # PORT: js/semantic.ts lines 324-327
 def test_different_nodegroup_is_collector():
-    """Branch 3: Different nodegroup + is_collector should match"""
+    """Branch 3: Different nodegroup + is_collector should match when parenttile matches"""
     parent_tile_id = "tile-parent"
     parent_nodegroup_id = "ng-parent"
 
+    # Collector with matching parenttile_id should match
     child_node = create_test_node("node-child", "child_alias", "ng-child", True)
-    child_tile = create_test_tile("tile-child", "ng-child", "tile-some-other-parent")
+    child_tile = create_test_tile("tile-child", "ng-child", "tile-parent")
 
     assert matches_semantic_child(
         parent_tile_id,
         parent_nodegroup_id,
         child_node,
         child_tile
-    ), "Branch 3: Different nodegroup + is_collector should match"
+    ), "Branch 3: Different nodegroup + is_collector + matching parent should match"
+
+    # Collector with null parenttile_id should also match
+    child_tile_null = create_test_tile("tile-child2", "ng-child", None)
+    assert matches_semantic_child(
+        parent_tile_id,
+        parent_nodegroup_id,
+        child_node,
+        child_tile_null
+    ), "Branch 3: Different nodegroup + is_collector + null parent should match"
+
+    # Collector with non-matching parenttile_id should NOT match
+    child_tile_other = create_test_tile("tile-child3", "ng-child", "tile-some-other-parent")
+    assert not matches_semantic_child(
+        parent_tile_id,
+        parent_nodegroup_id,
+        child_node,
+        child_tile_other
+    ), "Branch 3: Different nodegroup + is_collector + wrong parent should NOT match"
 
 
 # Test Edge Case: Same nodegroup + different tile
@@ -255,9 +274,9 @@ def test_multiple_children_relationships():
     tile2 = create_test_tile("tile-parent", "ng-parent", None, data={"ng-parent": "some value"})
     assert matches_semantic_child(parent_tile_id, parent_nodegroup_id, child2, tile2)
 
-    # Child 3: Different nodegroup, collector (Branch 3) - MATCH
+    # Child 3: Different nodegroup, collector (Branch 3) - MATCH (matching parent)
     child3 = create_test_node("node-child3", "child3", "ng-child3", True)
-    tile3 = create_test_tile("tile-child3", "ng-child3", "tile-unrelated")
+    tile3 = create_test_tile("tile-child3", "ng-child3", "tile-parent")
     assert matches_semantic_child(parent_tile_id, parent_nodegroup_id, child3, tile3)
 
     # Child 4: Same nodegroup, collector (no branch matches) - NO MATCH
