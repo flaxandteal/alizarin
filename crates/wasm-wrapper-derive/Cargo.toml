@@ -1,6 +1,6 @@
 [package]
 name = "wasm-wrapper-derive"
-version = "0.2.1-alpha.39"
+version = "0.2.1-alpha.40"
 edition = "2021"
 
 [lib]
