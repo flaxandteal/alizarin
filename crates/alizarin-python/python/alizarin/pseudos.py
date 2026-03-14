@@ -16,10 +16,8 @@ import json
 from typing import (
     Any,
     Awaitable,
-    Callable,
     Dict,
     Generic,
-    Iterator,
     List,
     Optional,
     Protocol,

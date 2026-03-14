@@ -1554,7 +1554,7 @@ class TestPhase0RdmCache:
         assert collection.has_concept(id2)
 
         # IDs should be deterministic (uuid5)
-        id1_again = collection.add_from_label("Category A")
+        collection.add_from_label("Category A")
         # Same label produces same ID, so it overwrites
         assert len(collection) == 2
 

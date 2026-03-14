@@ -1,0 +1,16 @@
+line-length = 120
+
+[lint]
+select = ["F", "E"]
+ignore = [
+    "E501",  # line length handled by formatter, not linter
+    "E402",  # __init__.py files use structured section imports
+]
+
+[lint.per-file-ignores]
+# Tests: allow `== True`/`== False` comparisons and short variable names
+"**/tests/**/*.py" = ["E712", "E741"]
+# __init__.py re-exports: TYPE_CHECKING may appear unused but is used at runtime
+"**/__init__.py" = ["F401"]
+# view_models uses forward references to types imported at runtime
+"**/view_models.py" = ["F821"]

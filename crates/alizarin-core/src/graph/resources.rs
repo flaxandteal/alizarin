@@ -195,6 +195,9 @@ pub struct RelatedResourceEntry {
     /// Display title (resource name)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// Resource descriptors (name, description, map_popup, slug)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub descriptors: Option<StaticResourceDescriptors>,
     /// Additional metadata
     #[serde(skip_serializing_if = "Option::is_none")]
     pub meta: Option<HashMap<String, serde_json::Value>>,
@@ -211,6 +214,7 @@ impl RelatedResourceEntry {
                 .unwrap_or_else(|| entry.graph_id().to_string()),
             graph_id: entry.graph_id().to_string(),
             title: Some(entry.name().to_string()),
+            descriptors: entry.descriptors().cloned(),
             meta: None,
         }
     }
@@ -225,6 +229,7 @@ impl RelatedResourceEntry {
                 .unwrap_or_else(|| summary.graph_id.clone()),
             graph_id: summary.graph_id.clone(),
             title: Some(summary.name.clone()),
+            descriptors: summary.descriptors.clone(),
             meta: if summary.metadata.is_empty() {
                 None
             } else {
@@ -253,12 +258,18 @@ impl From<&StaticResourceSummary> for RelatedResourceEntry {
 
 impl From<&StaticResource> for RelatedResourceEntry {
     fn from(resource: &StaticResource) -> Self {
+        let descriptors = &resource.resourceinstance.descriptors;
         RelatedResourceEntry {
             datatype: "resource-instance".to_string(),
             id: resource.resourceinstance.resourceinstanceid.clone(),
             resource_type: resource.resourceinstance.graph_id.clone(),
             graph_id: resource.resourceinstance.graph_id.clone(),
             title: Some(resource.resourceinstance.name.clone()),
+            descriptors: if descriptors.is_empty() {
+                None
+            } else {
+                Some(descriptors.clone())
+            },
             meta: None,
         }
     }
@@ -271,7 +282,7 @@ impl From<RelatedResourceEntry> for StaticResourceSummary {
             resourceinstanceid: entry.id,
             graph_id: entry.graph_id,
             name: entry.title.unwrap_or_default(),
-            descriptors: None,
+            descriptors: entry.descriptors,
             metadata: HashMap::new(),
             createdtime: None,
             lastmodified: None,
@@ -440,6 +451,14 @@ impl ResourceEntry {
         match self {
             ResourceEntry::Summary(s) => &s.name,
             ResourceEntry::Full(r) => &r.resourceinstance.name,
+        }
+    }
+
+    /// Get the resource descriptors (if available)
+    pub fn descriptors(&self) -> Option<&StaticResourceDescriptors> {
+        match self {
+            ResourceEntry::Summary(s) => s.descriptors.as_ref(),
+            ResourceEntry::Full(r) => Some(&r.resourceinstance.descriptors),
         }
     }
 
@@ -682,7 +701,8 @@ impl StaticResourceRegistry {
         resources: &mut [StaticResource],
         graph: &super::StaticGraph,
         enrich_relationships: bool,
-    ) -> PopulateCachesResult {
+        strict: bool,
+    ) -> Result<PopulateCachesResult, String> {
         let mut result = PopulateCachesResult::default();
 
         for resource in resources.iter_mut() {
@@ -741,7 +761,12 @@ impl StaticResourceRegistry {
             }
         }
 
-        result
+        if strict && result.has_unknown_references() {
+            let msgs = result.error_messages();
+            return Err(format!("Unknown resource references:\n{}", msgs.join("\n")));
+        }
+
+        Ok(result)
     }
 
     /// Process resource-instance data: populate cache and optionally enrich with relationship properties
@@ -1598,6 +1623,7 @@ mod tests {
                 resource_type: "TestModel".to_string(),
                 graph_id: "graph-a".to_string(),
                 title: Some("Related 1".to_string()),
+                descriptors: None,
                 meta: None,
             }),
         );
@@ -1609,6 +1635,7 @@ mod tests {
                 resource_type: "TestModel".to_string(),
                 graph_id: "graph-a".to_string(),
                 title: Some("Related 2".to_string()),
+                descriptors: None,
                 meta: None,
             }),
         );
@@ -1626,6 +1653,7 @@ mod tests {
                 resource_type: "TestModel".to_string(),
                 graph_id: "graph-a".to_string(),
                 title: Some("Related 2 - Different Name".to_string()), // Should be ignored (first wins)
+                descriptors: None,
                 meta: None,
             }),
         );
@@ -1640,6 +1668,7 @@ mod tests {
                 resource_type: "OtherModel".to_string(),
                 graph_id: "graph-b".to_string(),
                 title: Some("Related 3".to_string()),
+                descriptors: None,
                 meta: None,
             }),
         );

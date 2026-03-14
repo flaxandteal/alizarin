@@ -16,7 +16,6 @@ from typing import (
     Awaitable,
     Callable,
     Dict,
-    Generic,
     List,
     Optional,
     Protocol,
@@ -26,9 +25,8 @@ from typing import (
     runtime_checkable,
 )
 from datetime import datetime
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import json
-import re
 
 if TYPE_CHECKING:
     from .static_types import (
@@ -36,8 +34,6 @@ if TYPE_CHECKING:
         StaticTile,
         StaticDomainValue,
         StaticValue,
-        StaticConcept,
-        StaticResourceReference,
     )
     from .pseudos import PseudoValue, IPseudo
 
@@ -109,6 +105,7 @@ class ResourceInstanceCacheEntry:
     type: str = ''
     graphId: str = ''
     title: Optional[str] = None
+    descriptors: Optional[Dict[str, Optional[str]]] = None
     meta: Dict[str, Any] = None
 
     def __post_init__(self):
@@ -1036,7 +1033,7 @@ class DateViewModel(datetime):
     def __new__(cls, val: str):
         try:
             dt = datetime.fromisoformat(val.replace('Z', '+00:00'))
-        except:
+        except (ValueError, TypeError):
             dt = datetime.now()
         return datetime.__new__(
             cls,
@@ -1693,7 +1690,6 @@ class NodeViewModel:
 
     async def __getEdgeTo(self, key: str) -> 'StaticEdge':
         """Get edge from parent node to child node by alias"""
-        from .static_types import StaticEdge
 
         childNode = self.__parentPseudo.childNodes.get(key)
         if not childNode:

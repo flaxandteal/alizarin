@@ -23,7 +23,7 @@ Label Resolution:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional  # noqa: F401 - used in type annotations
 
 # Import static types
 from .static_types import StaticReference, StaticReferenceLabel

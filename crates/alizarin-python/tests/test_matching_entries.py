@@ -107,8 +107,8 @@ def test_matching_entries_handles_child_tiles():
     outer_nodegroup = "ng-outer"
     inner_nodegroup = "ng-inner"
 
-    # Create outer tile
-    outer_tile = create_tile("tile-outer", outer_nodegroup)
+    # Create outer tile (needed as parenttile_id target for children)
+    create_tile("tile-outer", outer_nodegroup)
 
     # Create child tiles that point to the outer tile
     child_tile_a = create_tile("tile-child-a", inner_nodegroup, "tile-outer")
