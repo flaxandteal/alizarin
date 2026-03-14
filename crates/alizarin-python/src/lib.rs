@@ -876,7 +876,7 @@ fn json_tree_to_tiles(
     // This handles camelCase keys at lookup time, preserving value structures
     let id_key_ref = id_key.as_deref();
     let mut business_data =
-        tree_to_tiles_with_options(&tree, &graph, strict, id_key_ref, from_camel)
+        tree_to_tiles_with_options(&tree, &graph, strict, id_key_ref, from_camel, false)
             .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Set scopes on all resources if provided
@@ -912,7 +912,8 @@ fn json_tree_to_tiles(
 ///     id_keys: Optional list of keys for deterministic UUID generation
 ///     scopes: Optional JSON string to set as scopes on all resources
 #[pyfunction]
-#[pyo3(signature = (trees_json, graph_id, from_camel=false, strict=true, id_keys=None, scopes=None))]
+#[allow(clippy::too_many_arguments)]
+#[pyo3(signature = (trees_json, graph_id, from_camel=false, strict=true, id_keys=None, scopes=None, random_ids=false))]
 fn batch_trees_to_tiles(
     py: Python,
     trees_json: String,
@@ -921,6 +922,7 @@ fn batch_trees_to_tiles(
     strict: bool,
     id_keys: Option<Vec<String>>,
     scopes: Option<String>,
+    random_ids: bool,
 ) -> PyResult<PyObject> {
     let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e))
@@ -970,9 +972,10 @@ fn batch_trees_to_tiles(
 
             // Use tree_to_tiles_with_options to handle camelCase keys at lookup time
             // This preserves value structures like {"resourceId": "uuid"}
-            let business_data =
-                tree_to_tiles_with_options(&tree, &graph, strict, id_key_ref, from_camel)
-                    .map_err(|e| format!("Tree {}: {}", i, e))?;
+            let business_data = tree_to_tiles_with_options(
+                &tree, &graph, strict, id_key_ref, from_camel, random_ids,
+            )
+            .map_err(|e| format!("Tree {}: {}", i, e))?;
 
             // Extract first resource (full StaticResource with resourceinstance metadata)
             let mut resource = business_data
@@ -995,7 +998,7 @@ fn batch_trees_to_tiles(
     // Separate successes and errors
     let (successes, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
     let resources: Vec<_> = successes.into_iter().map(Result::unwrap).collect();
-    let errors: Vec<_> = errors.into_iter().map(|e| e.unwrap_err()).collect();
+    let mut errors: Vec<_> = errors.into_iter().map(|e| e.unwrap_err()).collect();
 
     // In strict mode, fail if any errors
     if strict && !errors.is_empty() {
@@ -1003,6 +1006,29 @@ fn batch_trees_to_tiles(
             "Strict mode error: {}",
             errors[0]
         )));
+    }
+
+    // Check slug uniqueness if slug-based IDs were used
+    if id_keys.is_none() && !random_ids {
+        let mut seen_slugs: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for (i, resource_value) in resources.iter().enumerate() {
+            if let Some(slug) = resource_value
+                .get("resourceinstance")
+                .and_then(|ri| ri.get("descriptors"))
+                .and_then(|d| d.get("slug"))
+                .and_then(|s| s.as_str())
+            {
+                if let Some(prev_idx) = seen_slugs.insert(slug.to_string(), i) {
+                    let err_msg =
+                        format!("Duplicate slug '{}' on trees {} and {}", slug, prev_idx, i);
+                    if strict {
+                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(err_msg));
+                    }
+                    errors.push(err_msg);
+                }
+            }
+        }
     }
 
     // Return BusinessDataWrapper format with errors alongside
@@ -1040,7 +1066,7 @@ fn batch_trees_to_tiles(
 ///     {business_data: {resources: [...]}, errors: [...], error_count: int}
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
-#[pyo3(signature = (trees_json, graph_id, from_camel=false, strict=true, id_keys=None, scopes=None, resolve_markers=true))]
+#[pyo3(signature = (trees_json, graph_id, from_camel=false, strict=true, id_keys=None, scopes=None, resolve_markers=true, random_ids=false))]
 fn batch_trees_to_tiles_with_extensions(
     py: Python,
     trees_json: String,
@@ -1050,6 +1076,7 @@ fn batch_trees_to_tiles_with_extensions(
     id_keys: Option<Vec<String>>,
     scopes: Option<String>,
     resolve_markers: bool,
+    random_ids: bool,
 ) -> PyResult<PyObject> {
     let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e))
@@ -1120,7 +1147,7 @@ fn batch_trees_to_tiles_with_extensions(
 
             // Use tree_to_tiles_with_options to handle camelCase keys at lookup time
             // This preserves value structures like {"resourceId": "uuid"}
-            let business_data = tree_to_tiles_with_options(&tree, &graph, strict, id_key_ref, from_camel)
+            let business_data = tree_to_tiles_with_options(&tree, &graph, strict, id_key_ref, from_camel, random_ids)
                 .map_err(|e| format!("Tree {}: {}", i, e))?;
 
             // Extract first resource
@@ -1253,7 +1280,7 @@ fn batch_trees_to_tiles_with_extensions(
     // Separate successes and errors
     let (successes, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
     let resources: Vec<_> = successes.into_iter().map(Result::unwrap).collect();
-    let errors: Vec<_> = errors.into_iter().map(|e| e.unwrap_err()).collect();
+    let mut errors: Vec<_> = errors.into_iter().map(|e| e.unwrap_err()).collect();
 
     // In strict mode, fail if any errors
     if strict && !errors.is_empty() {
@@ -1261,6 +1288,29 @@ fn batch_trees_to_tiles_with_extensions(
             "Strict mode error: {}",
             errors[0]
         )));
+    }
+
+    // Check slug uniqueness if slug-based IDs were used
+    if id_keys.is_none() && !random_ids {
+        let mut seen_slugs: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for (i, resource_value) in resources.iter().enumerate() {
+            if let Some(slug) = resource_value
+                .get("resourceinstance")
+                .and_then(|ri| ri.get("descriptors"))
+                .and_then(|d| d.get("slug"))
+                .and_then(|s| s.as_str())
+            {
+                if let Some(prev_idx) = seen_slugs.insert(slug.to_string(), i) {
+                    let err_msg =
+                        format!("Duplicate slug '{}' on trees {} and {}", slug, prev_idx, i);
+                    if strict {
+                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(err_msg));
+                    }
+                    errors.push(err_msg);
+                }
+            }
+        }
     }
 
     // Return BusinessDataWrapper format with errors alongside
@@ -1593,13 +1643,14 @@ struct TreeToTilesIterator {
     strict: bool,
     id_keys: Option<Vec<String>>,
     scopes: Option<serde_json::Value>,
+    random_ids: bool,
     index: usize,
 }
 
 #[pymethods]
 impl TreeToTilesIterator {
     #[new]
-    #[pyo3(signature = (tree_strings, graph_id, from_camel=false, strict=true, id_keys=None, scopes=None))]
+    #[pyo3(signature = (tree_strings, graph_id, from_camel=false, strict=true, id_keys=None, scopes=None, random_ids=false))]
     fn new(
         tree_strings: Vec<String>,
         graph_id: String,
@@ -1607,6 +1658,7 @@ impl TreeToTilesIterator {
         strict: bool,
         id_keys: Option<Vec<String>>,
         scopes: Option<String>,
+        random_ids: bool,
     ) -> PyResult<Self> {
         // Get graph from registry
         let graph = get_registered_graph(&graph_id)?;
@@ -1641,6 +1693,7 @@ impl TreeToTilesIterator {
             strict,
             id_keys,
             scopes: scopes_value,
+            random_ids,
             index: 0,
         })
     }
@@ -1687,8 +1740,14 @@ impl TreeToTilesIterator {
 
         // Convert tree to tiles with from_camel support
         // This handles camelCase keys at lookup time, preserving value structures
-        let result =
-            tree_to_tiles_with_options(&tree, &self.graph, self.strict, id_key, self.from_camel);
+        let result = tree_to_tiles_with_options(
+            &tree,
+            &self.graph,
+            self.strict,
+            id_key,
+            self.from_camel,
+            self.random_ids,
+        );
 
         let output = match result {
             Ok(business_data) => {

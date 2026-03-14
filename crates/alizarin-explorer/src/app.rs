@@ -305,12 +305,12 @@ impl App {
         match self.loader.load_all_indexed_graphs() {
             Ok(graphs) => {
                 self.graphs = graphs;
-                self.graphs_loaded = true;
             }
             Err(e) => {
                 eprintln!("Failed to load graphs: {}", e);
             }
         }
+        self.graphs_loaded = true;
     }
 
     pub fn on_down(&mut self) {

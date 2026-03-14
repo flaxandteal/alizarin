@@ -284,7 +284,8 @@ def test_batch_conversion_with_rdm_cache():
             trees_json=trees_json,
             graph_id=graph_id,
             from_camel=False,
-            strict=True
+            strict=True,
+            random_ids=True,
         )
 
         # Verify result structure
@@ -378,7 +379,8 @@ def test_batch_conversion_with_explicit_cache():
             trees_json=json.dumps(resolved_trees),
             graph_id=graph_id,
             from_camel=False,
-            strict=True
+            strict=True,
+            random_ids=True,
         )
 
         assert 'business_data' in result
@@ -1032,7 +1034,8 @@ def test_skos_roundtrip():
                 trees_json=trees_json,
                 graph_id=graph_id,
                 from_camel=False,
-                strict=True
+                strict=True,
+                random_ids=True,
             )
 
             # Verify result

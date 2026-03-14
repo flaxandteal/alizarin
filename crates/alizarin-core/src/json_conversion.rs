@@ -377,7 +377,7 @@ pub fn tree_to_tiles(
     strict: bool,
     id_key: Option<&str>,
 ) -> Result<BusinessDataWrapper, String> {
-    tree_to_tiles_with_options(json, graph, strict, id_key, false)
+    tree_to_tiles_with_options(json, graph, strict, id_key, false, true)
 }
 
 /// Convert tree to tiles with camelCase key support.
@@ -391,13 +391,15 @@ pub fn tree_to_tiles_with_options(
     strict: bool,
     id_key: Option<&str>,
     from_camel: bool,
+    random_ids: bool,
 ) -> Result<BusinessDataWrapper, String> {
     let trees = extract_tree_resources(json)?;
 
     let mut resources = Vec::new();
 
     for tree in trees {
-        let resource = single_tree_to_resource(&tree, graph, strict, id_key, from_camel)?;
+        let resource =
+            single_tree_to_resource(&tree, graph, strict, id_key, from_camel, random_ids)?;
         resources.push(resource);
     }
 
@@ -428,21 +430,25 @@ fn single_tree_to_resource(
     strict: bool,
     id_key: Option<&str>,
     from_camel: bool,
+    random_ids: bool,
 ) -> Result<StaticResource, String> {
     let obj = json
         .as_object()
         .ok_or_else(|| "JSON must be an object".to_string())?;
 
     // Extract metadata from tree
-    // Priority: explicit resourceinstanceid > id_key (UUID v5) > random UUID v4
-    let resource_id = obj
+    // Priority: explicit resourceinstanceid > id_key (UUID v5) > slug (UUID v5) > random UUID v4
+    let explicit_id = obj
         .get("resourceinstanceid")
         .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .or_else(|| {
-            // If id_key provided, generate deterministic UUID v5
-            id_key.map(|key| generate_uuid_v5(("resource", Some(&graph.graphid)), key))
-        })
+        .map(|s| s.to_string());
+    let id_from_key = id_key.map(|key| generate_uuid_v5(("resource", Some(&graph.graphid)), key));
+    let needs_slug_id = explicit_id.is_none() && id_from_key.is_none() && !random_ids;
+
+    // Use temp ID if slug-based; will be replaced after building tiles
+    let resource_id = explicit_id
+        .clone()
+        .or(id_from_key)
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
     let graph_id = obj
@@ -535,7 +541,7 @@ fn single_tree_to_resource(
         }
     }
 
-    let tiles: Vec<StaticTile> = tiles_map
+    let mut tiles: Vec<StaticTile> = tiles_map
         .values()
         .map(|builder| builder.to_static_tile())
         .collect();
@@ -543,6 +549,22 @@ fn single_tree_to_resource(
     // Calculate descriptors from tiles
     let indexed = IndexedGraph::new(graph.clone());
     let descriptors = indexed.build_descriptors(&tiles);
+
+    // If no explicit ID or id_key, derive resource ID from slug descriptor
+    let resource_id = if needs_slug_id {
+        let slug = descriptors.slug.as_ref().ok_or_else(|| {
+            "No slug descriptor configured but slug-based ID generation requested. \
+             Configure a slug template, provide id_keys, or set random_ids=true."
+                .to_string()
+        })?;
+        let real_id = generate_uuid_v5(("resource", Some(&graph.graphid)), slug);
+        for tile in &mut tiles {
+            tile.resourceinstance_id = real_id.clone();
+        }
+        real_id
+    } else {
+        resource_id
+    };
 
     // Use name from descriptors, or fallback to resourceinstanceid
     let name = descriptors
@@ -1919,5 +1941,242 @@ mod tests {
             child_tile.parenttile_id,
             parent_tile.tileid
         );
+    }
+
+    /// Helper: build a graph with a name node and optionally a slug descriptor template.
+    fn build_slug_test_graph(slug_template: Option<&str>) -> StaticGraph {
+        use crate::graph::DESCRIPTOR_FUNCTION_ID;
+
+        let mut descriptor_types = serde_json::json!({
+            "name": {
+                "nodegroup_id": "name-ng",
+                "string_template": "<Name>"
+            }
+        });
+
+        if let Some(tmpl) = slug_template {
+            descriptor_types["slug"] = serde_json::json!({
+                "nodegroup_id": "name-ng",
+                "string_template": tmpl
+            });
+        }
+
+        let graph_json = serde_json::json!({
+            "graphid": "slug-test-graph",
+            "name": {"en": "Slug Test Graph"},
+            "root": {
+                "nodeid": "root-id",
+                "name": "Root",
+                "alias": "root",
+                "datatype": "semantic",
+                "graph_id": "slug-test-graph",
+                "istopnode": true
+            },
+            "nodes": [
+                {
+                    "nodeid": "root-id",
+                    "name": "Root",
+                    "alias": "root",
+                    "datatype": "semantic",
+                    "graph_id": "slug-test-graph",
+                    "istopnode": true
+                },
+                {
+                    "nodeid": "name-node-id",
+                    "name": "Name",
+                    "alias": "name",
+                    "datatype": "string",
+                    "nodegroup_id": "name-ng",
+                    "graph_id": "slug-test-graph"
+                }
+            ],
+            "nodegroups": [
+                { "nodegroupid": "name-ng", "cardinality": "1" }
+            ],
+            "edges": [
+                { "domainnode_id": "root-id", "rangenode_id": "name-node-id" }
+            ],
+            "functions_x_graphs": [
+                {
+                    "config": { "descriptor_types": descriptor_types },
+                    "function_id": DESCRIPTOR_FUNCTION_ID,
+                    "graph_id": "slug-test-graph",
+                    "id": "fxg-1"
+                }
+            ]
+        });
+
+        let mut graph: StaticGraph =
+            serde_json::from_value(graph_json).expect("slug test graph JSON");
+        graph.build_indices();
+        graph
+    }
+
+    #[test]
+    fn test_slug_based_id_is_deterministic() {
+        let graph = build_slug_test_graph(Some("<Name>"));
+
+        let tree = serde_json::json!({
+            "graph_id": "slug-test-graph",
+            "name": {"en": {"value": "My Test Resource", "direction": "ltr"}}
+        });
+
+        // random_ids=false → slug-based UUID5
+        let result1 = tree_to_tiles_with_options(&tree, &graph, false, None, false, false)
+            .expect("First conversion failed");
+        let result2 = tree_to_tiles_with_options(&tree, &graph, false, None, false, false)
+            .expect("Second conversion failed");
+
+        let id1 = &result1.business_data.resources[0]
+            .resourceinstance
+            .resourceinstanceid;
+        let id2 = &result2.business_data.resources[0]
+            .resourceinstance
+            .resourceinstanceid;
+
+        assert_eq!(id1, id2, "Same tree data should produce same resource ID");
+        assert!(uuid::Uuid::parse_str(id1).is_ok(), "Should be valid UUID");
+    }
+
+    #[test]
+    fn test_slug_based_id_differs_for_different_data() {
+        let graph = build_slug_test_graph(Some("<Name>"));
+
+        let tree1 = serde_json::json!({
+            "graph_id": "slug-test-graph",
+            "name": {"en": {"value": "Resource Alpha", "direction": "ltr"}}
+        });
+        let tree2 = serde_json::json!({
+            "graph_id": "slug-test-graph",
+            "name": {"en": {"value": "Resource Beta", "direction": "ltr"}}
+        });
+
+        let result1 = tree_to_tiles_with_options(&tree1, &graph, false, None, false, false)
+            .expect("First conversion failed");
+        let result2 = tree_to_tiles_with_options(&tree2, &graph, false, None, false, false)
+            .expect("Second conversion failed");
+
+        let id1 = &result1.business_data.resources[0]
+            .resourceinstance
+            .resourceinstanceid;
+        let id2 = &result2.business_data.resources[0]
+            .resourceinstance
+            .resourceinstanceid;
+
+        assert_ne!(
+            id1, id2,
+            "Different data should produce different resource IDs"
+        );
+    }
+
+    #[test]
+    fn test_slug_based_id_errors_without_slug_configured() {
+        // Graph with NO slug descriptor template
+        let graph = build_slug_test_graph(None);
+
+        let tree = serde_json::json!({
+            "graph_id": "slug-test-graph",
+            "name": {"en": {"value": "Test", "direction": "ltr"}}
+        });
+
+        // random_ids=false, no id_key, no slug configured → error
+        let result = tree_to_tiles_with_options(&tree, &graph, false, None, false, false);
+
+        assert!(result.is_err(), "Should error without slug configured");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("No slug descriptor configured"),
+            "Error should mention slug not configured. Got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_random_ids_bypasses_slug() {
+        // Graph with NO slug descriptor template
+        let graph = build_slug_test_graph(None);
+
+        let tree = serde_json::json!({
+            "graph_id": "slug-test-graph",
+            "name": {"en": {"value": "Test", "direction": "ltr"}}
+        });
+
+        // random_ids=true → should succeed even without slug
+        let result = tree_to_tiles_with_options(&tree, &graph, false, None, false, true)
+            .expect("random_ids=true should not require slug");
+
+        let id = &result.business_data.resources[0]
+            .resourceinstance
+            .resourceinstanceid;
+        assert!(uuid::Uuid::parse_str(id).is_ok(), "Should be valid UUID");
+    }
+
+    #[test]
+    fn test_explicit_id_takes_precedence_over_slug() {
+        let graph = build_slug_test_graph(Some("<Name>"));
+
+        let tree = serde_json::json!({
+            "resourceinstanceid": "my-explicit-id",
+            "graph_id": "slug-test-graph",
+            "name": {"en": {"value": "Test", "direction": "ltr"}}
+        });
+
+        // Even with random_ids=false, explicit ID should win
+        let result = tree_to_tiles_with_options(&tree, &graph, false, None, false, false)
+            .expect("Explicit ID should work");
+
+        let id = &result.business_data.resources[0]
+            .resourceinstance
+            .resourceinstanceid;
+        assert_eq!(id, "my-explicit-id", "Explicit ID should take precedence");
+    }
+
+    #[test]
+    fn test_id_key_takes_precedence_over_slug() {
+        let graph = build_slug_test_graph(Some("<Name>"));
+
+        let tree = serde_json::json!({
+            "graph_id": "slug-test-graph",
+            "name": {"en": {"value": "Test", "direction": "ltr"}}
+        });
+
+        // With id_key provided, slug should not be used
+        let result = tree_to_tiles_with_options(&tree, &graph, false, Some("my-key"), false, false)
+            .expect("id_key should work");
+
+        let id = &result.business_data.resources[0]
+            .resourceinstance
+            .resourceinstanceid;
+
+        // Should be a uuid5 from the id_key, not from the slug
+        let expected_id = crate::generate_uuid_v5(("resource", Some("slug-test-graph")), "my-key");
+        assert_eq!(id, &expected_id, "id_key should produce uuid5 from key");
+    }
+
+    #[test]
+    fn test_slug_based_id_patches_all_tiles() {
+        let graph = build_slug_test_graph(Some("<Name>"));
+
+        let tree = serde_json::json!({
+            "graph_id": "slug-test-graph",
+            "name": {"en": {"value": "Tile Patch Test", "direction": "ltr"}}
+        });
+
+        let result = tree_to_tiles_with_options(&tree, &graph, false, None, false, false)
+            .expect("Conversion failed");
+
+        let resource = &result.business_data.resources[0];
+        let resource_id = &resource.resourceinstance.resourceinstanceid;
+
+        // Every tile should have the same resourceinstance_id as the resource
+        if let Some(tiles) = &resource.tiles {
+            assert!(!tiles.is_empty(), "Should have at least one tile");
+            for tile in tiles {
+                assert_eq!(
+                    &tile.resourceinstance_id, resource_id,
+                    "Tile resourceinstance_id should match resource ID"
+                );
+            }
+        }
     }
 }

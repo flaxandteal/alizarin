@@ -2,7 +2,8 @@ use crate::graph::StaticGraph;
 use crate::json_conversion::create_static_resource;
 use alizarin_core::tiles_to_tree as core_tiles_to_tree;
 use alizarin_core::{
-    batch_merge_resources, merge_resources, transform_keys_to_snake, tree_to_tiles, StaticResource,
+    batch_merge_resources, merge_resources, transform_keys_to_snake, tree_to_tiles_with_options,
+    StaticResource,
 };
 use serde_json::Value;
 /// Batch conversion functions for WASM - parallel processing
@@ -31,6 +32,7 @@ pub fn tree_to_tiles_enhanced(
     from_camel: bool,
     strict: bool,
     id_key: Option<String>,
+    random_ids: Option<bool>,
 ) -> Result<JsValue, JsValue> {
     // Parse tree from JSON
     let mut tree: Value = serde_json::from_str(tree_json)
@@ -50,8 +52,16 @@ pub fn tree_to_tiles_enhanced(
     }
 
     // Convert tree to tiles (with optional id_key for deterministic UUID)
+    // Default to random_ids=true for backward compat; batch functions default to false (slug-based)
     let id_key_ref = id_key.as_deref();
-    let result = tree_to_tiles(&tree, graph, strict, id_key_ref);
+    let result = tree_to_tiles_with_options(
+        &tree,
+        graph,
+        strict,
+        id_key_ref,
+        false,
+        random_ids.unwrap_or(true),
+    );
 
     match result {
         Ok(business_data) => {
@@ -140,6 +150,8 @@ pub fn tiles_to_tree_enhanced(
 ///     from_camel: If true, convert keys from camelCase to snake_case
 ///     strict: If true, fail on any validation error
 ///     id_keys_json: Optional JSON array of keys for deterministic UUID v5 generation (one per tree)
+///     random_ids: Optional boolean - if not True and no id_keys, will try to use `slug`
+///         descriptor with uuid5, erroring instead of using uuid4.
 ///
 /// Returns:
 ///     BusinessDataWrapper format: {business_data: {resources: [...]}, errors: [...]}
@@ -153,6 +165,7 @@ pub fn batch_trees_to_tiles(
     from_camel: bool,
     strict: bool,
     id_keys_json: Option<String>,
+    random_ids: Option<bool>,
 ) -> Result<JsValue, JsValue> {
     // Parse trees from JSON
     let mut trees: Vec<Value> = serde_json::from_str(trees_json)
@@ -196,8 +209,15 @@ pub fn batch_trees_to_tiles(
         // Get id_key for this tree (if id_keys array provided)
         let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
-        // Convert tree to tiles (with optional id_key for deterministic UUID)
-        let result = tree_to_tiles(tree, graph, strict, id_key_ref);
+        // Convert tree to tiles (with optional id_key for deterministic UUID, or slug-based)
+        let result = tree_to_tiles_with_options(
+            tree,
+            graph,
+            strict,
+            id_key_ref,
+            false,
+            random_ids.unwrap_or(false),
+        );
 
         match result {
             Ok(business_data) => {
@@ -215,6 +235,29 @@ pub fn batch_trees_to_tiles(
                 errors.push(format!("Tree {}: {}", i, e));
                 if strict {
                     return Err(JsValue::from_str(&format!("Strict mode error: {}", e)));
+                }
+            }
+        }
+    }
+
+    // Check slug uniqueness if slug-based IDs were used
+    if id_keys.is_none() && !random_ids.unwrap_or(false) {
+        let mut seen_slugs: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        for (i, resource_value) in resources.iter().enumerate() {
+            if let Some(slug) = resource_value
+                .get("resourceinstance")
+                .and_then(|ri| ri.get("descriptors"))
+                .and_then(|d| d.get("slug"))
+                .and_then(|s| s.as_str())
+            {
+                if let Some(prev_idx) = seen_slugs.insert(slug.to_string(), i) {
+                    let err_msg =
+                        format!("Duplicate slug '{}' on trees {} and {}", slug, prev_idx, i);
+                    if strict {
+                        return Err(JsValue::from_str(&err_msg));
+                    }
+                    errors.push(err_msg);
                 }
             }
         }
