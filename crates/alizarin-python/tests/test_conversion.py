@@ -27,8 +27,6 @@ def load_test_data():
 
 def create_test_tiles(graph_data):
     """Create test tiles matching Rust test data"""
-    graph_id = graph_data['graphid']
-
     # Find nodegroup IDs from the graph
     # Looking for basic_info nodegroup
     basic_info_ng = None
@@ -225,7 +223,7 @@ def test_invalid_json_handling():
     graph_json = json.dumps(graph_data)
 
     # Register graph first
-    graph_id = alizarin.register_graph(graph_json)
+    alizarin.register_graph(graph_json)
 
     # Invalid resource JSON
     with pytest.raises(Exception):

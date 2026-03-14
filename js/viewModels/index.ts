@@ -8,6 +8,7 @@ export {
   ResourceInstanceListCacheEntry,
   ResourceInstanceCacheEntry,
 } from "./cacheEntries";
+export type { ResourceDescriptors } from "./cacheEntries";
 
 // ViewModels
 export { ResourceInstanceViewModel } from "./ResourceInstanceViewModel";

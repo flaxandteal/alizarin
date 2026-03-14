@@ -19,13 +19,12 @@ from typing import (
     Tuple,
     TYPE_CHECKING,
     TypeVar,
-    Union,
 )
 
 if TYPE_CHECKING:
-    from .static_types import StaticGraph, StaticTile, StaticNode, StaticResource
+    from .static_types import StaticTile, StaticNode, StaticResource
     from .model_wrapper import ResourceModelWrapper
-    from .graph_manager import IRIVM, IModelWrapper
+    from .graph_manager import IRIVM
 
 from .pseudos import PseudoValue, PseudoList, wrap_rust_pseudo
 

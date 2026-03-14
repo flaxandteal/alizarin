@@ -35,6 +35,24 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --workspace --exclude alizarin-python -- -D warnings
 
+  # Python linting
+  python-lint:
+    name: Python Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff
+        run: ruff check
+
   # WASM + TypeScript build and tests
   wasm-and-typescript:
     name: WASM + TypeScript

@@ -27,8 +27,6 @@ Working with Files:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
-
 # Import static types
 from .static_types import (
     LocalizedStringValue,

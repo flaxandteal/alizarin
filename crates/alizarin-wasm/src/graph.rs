@@ -3244,15 +3244,20 @@ impl StaticResourceRegistry {
         resources_json: &str,
         graph: &StaticGraph,
         enrich_relationships: Option<bool>,
+        strict: Option<bool>,
     ) -> Result<JsValue, JsValue> {
         let mut resources: Vec<CoreStaticResource> = serde_json::from_str(resources_json)
             .map_err(|e| JsValue::from_str(&format!("Failed to parse resources: {}", e)))?;
 
-        let result = self.0.populate_caches(
-            &mut resources,
-            &graph.0,
-            enrich_relationships.unwrap_or(true),
-        );
+        let result = self
+            .0
+            .populate_caches(
+                &mut resources,
+                &graph.0,
+                enrich_relationships.unwrap_or(true),
+                strict.unwrap_or(false),
+            )
+            .map_err(|e| JsValue::from_str(&e))?;
 
         let output = serde_json::json!({
             "resources": resources,
@@ -3276,15 +3281,20 @@ impl StaticResourceRegistry {
         resources: Vec<StaticResource>,
         graph: &StaticGraph,
         enrich_relationships: Option<bool>,
+        strict: Option<bool>,
     ) -> Result<JsValue, JsValue> {
         let mut core_resources: Vec<CoreStaticResource> =
             resources.into_iter().map(|r| r.0).collect();
 
-        let result = self.0.populate_caches(
-            &mut core_resources,
-            &graph.0,
-            enrich_relationships.unwrap_or(true),
-        );
+        let result = self
+            .0
+            .populate_caches(
+                &mut core_resources,
+                &graph.0,
+                enrich_relationships.unwrap_or(true),
+                strict.unwrap_or(false),
+            )
+            .map_err(|e| JsValue::from_str(&e))?;
 
         // Return both the modified resources and the result info
         let output = serde_json::json!({

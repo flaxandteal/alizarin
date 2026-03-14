@@ -68,6 +68,13 @@ export class ResourceInstanceListCacheEntry implements IStringKeyedObject {
   }
 }
 
+export interface ResourceDescriptors {
+  name?: string | null;
+  description?: string | null;
+  map_popup?: string | null;
+  slug?: string | null;
+}
+
 export class ResourceInstanceCacheEntry implements IStringKeyedObject {
   [key: string]: any
   datatype: string = 'resource-instance';
@@ -75,13 +82,15 @@ export class ResourceInstanceCacheEntry implements IStringKeyedObject {
   type: string;
   graphId: string;
   title: string | null;
+  descriptors: ResourceDescriptors | null;
   meta: {[key: string]: any};
 
-  constructor({meta, id, type, graphId, title}: {meta: IStringKeyedObject | undefined, id: string, type: string, graphId: string, title: string | null}) {
+  constructor({meta, id, type, graphId, title, descriptors}: {meta: IStringKeyedObject | undefined, id: string, type: string, graphId: string, title: string | null, descriptors?: ResourceDescriptors | null}) {
     this.id = id;
     this.type = type;
     this.graphId = graphId;
     this.meta = meta || {};
     this.title = this.meta.title || title;
+    this.descriptors = descriptors || null;
   }
 }

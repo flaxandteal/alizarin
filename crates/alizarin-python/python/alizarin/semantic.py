@@ -9,12 +9,10 @@ from __future__ import annotations
 
 from typing import (
     Any,
-    Awaitable,
     Dict,
     List,
     Optional,
     TYPE_CHECKING,
-    Union,
 )
 
 if TYPE_CHECKING:
@@ -315,7 +313,6 @@ class SemanticViewModel:
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
         # Return an awaitable that gets the child value
-        import asyncio
 
         async def get_child() -> Any:
             return await self.__get(name)
