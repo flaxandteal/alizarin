@@ -716,9 +716,7 @@ impl StaticResourceRegistry {
                                 source_resource_id: &resource_id,
                                 result: &mut result,
                             };
-                            self.process_resource_instance_data(
-                                data, node, &tile_id, &mut ctx,
-                            );
+                            self.process_resource_instance_data(data, node, &tile_id, &mut ctx);
                         }
                     }
                 }
@@ -779,8 +777,7 @@ impl StaticResourceRegistry {
                             list_entries.push(related_entry);
                         } else {
                             // Store single entry in cache keyed by tileId -> nodeId
-                            let tile_cache =
-                                ctx.cache.entry(tile_id.to_string()).or_default();
+                            let tile_cache = ctx.cache.entry(tile_id.to_string()).or_default();
                             tile_cache
                                 .insert(node.nodeid.clone(), CacheEntry::Single(related_entry));
                         }
