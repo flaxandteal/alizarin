@@ -63,7 +63,8 @@ def test_batch_trees_to_tiles_nested_name():
         trees_json=trees_json,
         graph_id=graph_id,
         from_camel=False,
-        strict=True
+        strict=True,
+        random_ids=True,
     )
 
     # Verify result structure
@@ -133,7 +134,8 @@ def test_batch_trees_to_tiles_group_members():
     person_result = alizarin.batch_trees_to_tiles(
         trees_json=json.dumps(person_trees),
         graph_id=person_graph_id,
-        strict=True
+        strict=True,
+        random_ids=True,
     )
 
     person_resource = person_result['business_data']['resources'][0]
@@ -156,7 +158,8 @@ def test_batch_trees_to_tiles_group_members():
     group_result = alizarin.batch_trees_to_tiles(
         trees_json=json.dumps(group_trees),
         graph_id=group_graph_id,
-        strict=True
+        strict=True,
+        random_ids=True,
     )
 
     # Verify Group result
@@ -228,7 +231,8 @@ def test_cross_model_with_registry():
     person_result = alizarin.batch_trees_to_tiles(
         trees_json=json.dumps(person_trees),
         graph_id=person_graph_id,
-        strict=True
+        strict=True,
+        random_ids=True,
     )
 
     person_resources = person_result['business_data']['resources']
@@ -273,7 +277,8 @@ def test_cross_model_with_registry():
     group_result = alizarin.batch_trees_to_tiles(
         trees_json=json.dumps(group_trees),
         graph_id=group_graph_id,
-        strict=True
+        strict=True,
+        random_ids=True,
     )
 
     group_resources = group_result['business_data']['resources']
@@ -441,7 +446,8 @@ def test_tiles_to_trees_then_cross_model():
     group_result = alizarin.batch_trees_to_tiles(
         trees_json=json.dumps(group_tree),
         graph_id=group_graph_id,
-        strict=True
+        strict=True,
+        random_ids=True,
     )
 
     group_resource = group_result['business_data']['resources'][0]
@@ -514,7 +520,8 @@ def test_node_values_index():
     result = alizarin.batch_trees_to_tiles(
         trees_json=json.dumps(person_trees),
         graph_id=graph_id,
-        strict=True
+        strict=True,
+        random_ids=True,
     )
 
     resources = result['business_data']['resources']

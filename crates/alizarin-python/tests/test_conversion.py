@@ -280,7 +280,8 @@ def test_batch_trees_to_tiles():
     # Call batch conversion
     result = alizarin.batch_trees_to_tiles(
         trees_json=trees_json,
-        graph_id=graph_id
+        graph_id=graph_id,
+        random_ids=True,
     )
 
     # Verify result structure - BusinessDataWrapper format

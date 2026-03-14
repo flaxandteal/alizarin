@@ -32,6 +32,7 @@ batch_merge_resources: Optional[Any] = None
 TreeToTilesIterator: Optional[Any] = None
 ResourceRegistry: Optional[Any] = None
 resolve_labels_in_tree: Optional[Any] = None
+set_descriptor_template: Optional[Any] = None
 _alizarin_rust: Optional[Any] = None
 
 try:
@@ -50,6 +51,7 @@ try:
     TreeToTilesIterator = _alizarin_rust.TreeToTilesIterator
     ResourceRegistry = _alizarin_rust.ResourceRegistry
     resolve_labels_in_tree = _alizarin_rust.resolve_labels_in_tree
+    set_descriptor_template = _alizarin_rust.set_descriptor_template
 except (ImportError, AttributeError):
     # Rust module not yet compiled - functions will remain None
     pass
@@ -384,6 +386,7 @@ __all__ = [
     "TreeToTilesIterator",
     "ResourceRegistry",
     "resolve_labels_in_tree",
+    "set_descriptor_template",
     # Static Types
     "StaticTranslatableString",
     "StaticNode",
