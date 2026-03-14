@@ -353,6 +353,14 @@ pub enum CacheEntry {
 /// `cacheEntries[tile.tileid][node.nodeid]`
 pub type ResourceCache = HashMap<String, HashMap<String, CacheEntry>>;
 
+/// Mutable context passed through resource-instance processing
+struct ProcessResourceContext<'a> {
+    cache: &'a mut ResourceCache,
+    enrich_relationships: bool,
+    source_resource_id: &'a str,
+    result: &'a mut PopulateCachesResult,
+}
+
 /// Reference to an unknown resource found during cache population
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UnknownReference {
@@ -405,7 +413,7 @@ impl PopulateCachesResult {
 #[derive(Clone, Debug)]
 pub enum ResourceEntry {
     /// Summary only - minimal memory, no tiles
-    Summary(StaticResourceSummary),
+    Summary(Box<StaticResourceSummary>),
     /// Full resource with tiles
     Full(Box<StaticResource>),
 }
@@ -467,7 +475,7 @@ impl ResourceEntry {
     /// Convert to summary (extracts summary from full resource if needed)
     pub fn to_summary(&self) -> StaticResourceSummary {
         match self {
-            ResourceEntry::Summary(s) => s.clone(),
+            ResourceEntry::Summary(s) => *s.clone(),
             ResourceEntry::Full(r) => r.to_summary(),
         }
     }
@@ -475,7 +483,7 @@ impl ResourceEntry {
     /// Convert to minimal cache entry
     pub fn to_cache_entry(&self) -> RelatedResourceEntry {
         match self {
-            ResourceEntry::Summary(s) => RelatedResourceEntry::from(s),
+            ResourceEntry::Summary(s) => RelatedResourceEntry::from(s.as_ref()),
             ResourceEntry::Full(r) => RelatedResourceEntry::from(r.as_ref()),
         }
     }
@@ -483,7 +491,7 @@ impl ResourceEntry {
 
 impl From<StaticResourceSummary> for ResourceEntry {
     fn from(summary: StaticResourceSummary) -> Self {
-        ResourceEntry::Summary(summary)
+        ResourceEntry::Summary(Box::new(summary))
     }
 }
 
@@ -570,7 +578,8 @@ impl StaticResourceRegistry {
         let id = summary.resourceinstanceid.clone();
         // Don't downgrade full → summary
         if !self.has_full(&id) {
-            self.resources.insert(id, ResourceEntry::Summary(summary));
+            self.resources
+                .insert(id, ResourceEntry::Summary(Box::new(summary)));
         }
     }
 
@@ -628,14 +637,11 @@ impl StaticResourceRegistry {
                                 for entry in entries {
                                     let id = entry.id.clone();
                                     // Don't overwrite existing entries (first wins, and don't downgrade)
-                                    if !self.resources.contains_key(&id) {
-                                        self.resources.insert(
-                                            id,
-                                            ResourceEntry::Summary(StaticResourceSummary::from(
-                                                entry.clone(),
-                                            )),
-                                        );
-                                    }
+                                    self.resources.entry(id).or_insert_with(|| {
+                                        ResourceEntry::Summary(Box::new(
+                                            StaticResourceSummary::from(entry.clone()),
+                                        ))
+                                    });
                                 }
                             }
                         }
@@ -704,14 +710,14 @@ impl StaticResourceRegistry {
 
                         // Get tile data for this node
                         if let Some(data) = tile.data.get_mut(&node.nodeid) {
-                            self.process_resource_instance_data(
-                                data,
-                                node,
-                                &tile_id,
-                                &mut cache,
+                            let mut ctx = ProcessResourceContext {
+                                cache: &mut cache,
                                 enrich_relationships,
-                                &resource_id,
-                                &mut result,
+                                source_resource_id: &resource_id,
+                                result: &mut result,
+                            };
+                            self.process_resource_instance_data(
+                                data, node, &tile_id, &mut ctx,
                             );
                         }
                     }
@@ -746,10 +752,7 @@ impl StaticResourceRegistry {
         data: &mut serde_json::Value,
         node: &super::StaticNode,
         tile_id: &str,
-        cache: &mut ResourceCache,
-        enrich_relationships: bool,
-        source_resource_id: &str,
-        result: &mut PopulateCachesResult,
+        ctx: &mut ProcessResourceContext<'_>,
     ) {
         let is_list = node.datatype == "resource-instance-list";
 
@@ -776,19 +779,20 @@ impl StaticResourceRegistry {
                             list_entries.push(related_entry);
                         } else {
                             // Store single entry in cache keyed by tileId -> nodeId
-                            let tile_cache = cache.entry(tile_id.to_string()).or_default();
+                            let tile_cache =
+                                ctx.cache.entry(tile_id.to_string()).or_default();
                             tile_cache
                                 .insert(node.nodeid.clone(), CacheEntry::Single(related_entry));
                         }
 
                         // Enrich with relationship properties if requested
-                        if enrich_relationships {
+                        if ctx.enrich_relationships {
                             self.enrich_entry_with_relationship(entry, resource_entry, node);
                         }
                     } else {
                         // Track unknown reference
-                        result.unknown_references.push(UnknownReference {
-                            source_resource_id: source_resource_id.to_string(),
+                        ctx.result.unknown_references.push(UnknownReference {
+                            source_resource_id: ctx.source_resource_id.to_string(),
                             node_id: node.nodeid.clone(),
                             node_alias: node.alias.clone(),
                             referenced_id: resource_id.to_string(),
@@ -800,7 +804,7 @@ impl StaticResourceRegistry {
 
         // For list datatype, store all collected entries as a list
         if is_list && !list_entries.is_empty() {
-            let tile_cache = cache.entry(tile_id.to_string()).or_default();
+            let tile_cache = ctx.cache.entry(tile_id.to_string()).or_default();
             tile_cache.insert(
                 node.nodeid.clone(),
                 CacheEntry::List(RelatedResourceListEntry {
