@@ -557,6 +557,14 @@ fn single_tree_to_resource(
              Configure a slug template, provide id_keys, or set random_ids=true."
                 .to_string()
         })?;
+        // Detect unresolved <Placeholder> in the slug (template evaluation failed silently)
+        if slug.contains('<') {
+            return Err(format!(
+                "Slug contains unresolved placeholder(s): '{}'. \
+                 Check that all <Node Name> references in the slug template have matching tile data.",
+                slug
+            ));
+        }
         let real_id = generate_uuid_v5(("resource", Some(&graph.graphid)), slug);
         for tile in &mut tiles {
             tile.resourceinstance_id = real_id.clone();
@@ -2178,5 +2186,103 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Helper: build a graph with two string nodes (name + code) in the same nodegroup,
+    /// and a slug template that references only one of them.
+    fn build_two_node_slug_graph(slug_template: &str) -> StaticGraph {
+        use crate::graph::DESCRIPTOR_FUNCTION_ID;
+
+        let descriptor_types = serde_json::json!({
+            "name": {
+                "nodegroup_id": "info-ng",
+                "string_template": "<Name>"
+            },
+            "slug": {
+                "nodegroup_id": "info-ng",
+                "string_template": slug_template
+            }
+        });
+
+        let graph_json = serde_json::json!({
+            "graphid": "two-node-slug-graph",
+            "name": {"en": "Two Node Slug Graph"},
+            "root": {
+                "nodeid": "root-id",
+                "name": "Root",
+                "alias": "root",
+                "datatype": "semantic",
+                "graph_id": "two-node-slug-graph",
+                "istopnode": true
+            },
+            "nodes": [
+                {
+                    "nodeid": "root-id",
+                    "name": "Root",
+                    "alias": "root",
+                    "datatype": "semantic",
+                    "graph_id": "two-node-slug-graph",
+                    "istopnode": true
+                },
+                {
+                    "nodeid": "name-node-id",
+                    "name": "Name",
+                    "alias": "name",
+                    "datatype": "string",
+                    "nodegroup_id": "info-ng",
+                    "graph_id": "two-node-slug-graph"
+                },
+                {
+                    "nodeid": "code-node-id",
+                    "name": "Code",
+                    "alias": "code",
+                    "datatype": "string",
+                    "nodegroup_id": "info-ng",
+                    "graph_id": "two-node-slug-graph"
+                }
+            ],
+            "nodegroups": [
+                { "nodegroupid": "info-ng", "cardinality": "1" }
+            ],
+            "edges": [
+                { "domainnode_id": "root-id", "rangenode_id": "name-node-id" },
+                { "domainnode_id": "root-id", "rangenode_id": "code-node-id" }
+            ],
+            "functions_x_graphs": [
+                {
+                    "config": { "descriptor_types": descriptor_types },
+                    "function_id": DESCRIPTOR_FUNCTION_ID,
+                    "graph_id": "two-node-slug-graph",
+                    "id": "fxg-1"
+                }
+            ]
+        });
+
+        let mut graph: StaticGraph =
+            serde_json::from_value(graph_json).expect("two-node slug test graph JSON");
+        graph.build_indices();
+        graph
+    }
+
+    #[test]
+    fn test_slug_unresolved_placeholder_errors() {
+        // Slug template references both <Name> and <Code>, but we only provide name data
+        let graph = build_two_node_slug_graph("<Name>-<Code>");
+
+        // Tree with name but no code — <Code> placeholder stays unresolved
+        let tree = serde_json::json!({
+            "graph_id": "two-node-slug-graph",
+            "name": {"en": {"value": "Test", "direction": "ltr"}}
+        });
+
+        let result = tree_to_tiles_with_options(&tree, &graph, false, None, false, false);
+
+        assert!(result.is_err(), "Should error on unresolved placeholder");
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("unresolved placeholder"),
+            "Error should mention unresolved placeholder. Got: {}",
+            err
+        );
     }
 }

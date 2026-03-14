@@ -21,8 +21,7 @@
 
 use alizarin_core::{
     CoercionResult, DisplaySerializerRegistry, ExtensionDisplaySerializer, ExtensionError,
-    ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities, SerializationOptions,
-    SerializationResult,
+    ExtensionTypeHandler, HandlerCapabilities, SerializationOptions, SerializationResult,
 };
 use serde_json::Value;
 use std::cell::RefCell;
@@ -96,6 +95,12 @@ pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<()
         );
     });
 
+    // Also register into the global core registry so build_descriptors etc. can use it
+    alizarin_core::register_extension_type_handler(
+        datatype,
+        Arc::new(JsExtensionTypeHandler::new(datatype.to_string())),
+    );
+
     Ok(())
 }
 
@@ -111,6 +116,7 @@ pub fn unregister_extension_handler(datatype: &str) {
     JS_TYPE_HANDLERS.with(|handlers| {
         handlers.borrow_mut().remove(datatype);
     });
+    alizarin_core::unregister_extension_type_handler(datatype);
 }
 
 /// Get the list of registered extension handler datatypes.
@@ -322,26 +328,6 @@ impl ExtensionTypeHandler for JsExtensionTypeHandler {
     fn description(&self) -> &str {
         "JS extension type handler"
     }
-}
-
-/// Build an ExtensionTypeRegistry from all registered JS handlers.
-///
-/// This creates a new registry each time, populated with JsExtensionTypeHandler
-/// instances for each registered datatype.
-pub fn build_extension_type_registry() -> ExtensionTypeRegistry {
-    let mut registry = ExtensionTypeRegistry::new();
-
-    JS_TYPE_HANDLERS.with(|handlers| {
-        let handlers = handlers.borrow();
-        for datatype in handlers.keys() {
-            registry.register(
-                datatype.clone(),
-                Arc::new(JsExtensionTypeHandler::new(datatype.clone())),
-            );
-        }
-    });
-
-    registry
 }
 
 // =============================================================================
