@@ -2209,7 +2209,7 @@ fn set_descriptor_template(
     let mut graph = (*graph_arc).clone();
     graph
         .set_descriptor_template(descriptor_type, string_template)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
     alizarin_core::register_graph_owned(graph);
     Ok(())
 }
