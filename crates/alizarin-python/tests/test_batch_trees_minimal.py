@@ -565,6 +565,74 @@ def test_node_values_index():
     print("✓ Node values indexing works correctly!")
 
 
+def test_batch_duplicate_slugs_raises_error():
+    """
+    When two trees in a batch produce the same slug and random_ids=False,
+    batch_trees_to_tiles should raise a ValueError (strict mode).
+    """
+    # Load Person graph and set up a slug descriptor based on forename
+    person_graph = load_graph('Person')
+    graph_json = json.dumps(person_graph)
+    graph_id = alizarin.register_graph(graph_json)
+    alizarin.set_descriptor_template(graph_id, "slug", "<Forename>")
+
+    # Two trees with the SAME forename → same slug → duplicate
+    trees = [
+        {"name": [{"forenames": [{"forename": "Alice"}]}]},
+        {"name": [{"forenames": [{"forename": "Alice"}]}]},
+    ]
+
+    with pytest.raises(ValueError, match="Duplicate slug"):
+        alizarin.batch_trees_to_tiles(
+            trees_json=json.dumps(trees),
+            graph_id=graph_id,
+            from_camel=False,
+            strict=True,
+            random_ids=False,
+        )
+
+
+def test_set_descriptor_template_invalid_node_raises_error():
+    """
+    set_descriptor_template should raise ValueError when the template
+    references a <NodeName> that doesn't exist in the graph.
+    """
+    person_graph = load_graph('Person')
+    graph_json = json.dumps(person_graph)
+    graph_id = alizarin.register_graph(graph_json)
+
+    with pytest.raises(ValueError, match="not found in graph"):
+        alizarin.set_descriptor_template(graph_id, "slug", "<NonExistentNode>")
+
+
+def test_slug_unresolved_placeholder_raises_error():
+    """
+    When a slug template has <Placeholder> that can't resolve to tile data
+    (e.g. the node exists but the tree provides no value for it),
+    batch_trees_to_tiles should raise ValueError mentioning 'unresolved placeholder'.
+    """
+    person_graph = load_graph('Person')
+    graph_json = json.dumps(person_graph)
+    graph_id = alizarin.register_graph(graph_json)
+
+    # Slug template references both Forename and Surname (same nodegroup),
+    # but we only provide forename data — Surname stays unresolved
+    alizarin.set_descriptor_template(graph_id, "slug", "<Forename>-<Surname>")
+
+    trees = [
+        {"name": [{"forenames": [{"forename": "Alice"}]}]},
+    ]
+
+    with pytest.raises(ValueError, match="unresolved placeholder"):
+        alizarin.batch_trees_to_tiles(
+            trees_json=json.dumps(trees),
+            graph_id=graph_id,
+            from_camel=False,
+            strict=True,
+            random_ids=False,
+        )
+
+
 if __name__ == '__main__':
     print("=" * 60)
     print("Running test_batch_trees_to_tiles_nested_name...")

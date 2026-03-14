@@ -30,9 +30,7 @@ use alizarin_extension_api::{
 use std::ffi::c_void;
 
 // Extension type registry (unified infrastructure)
-use alizarin_core::{
-    ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities,
-};
+use alizarin_core::{ExtensionError, ExtensionTypeHandler, HandlerCapabilities};
 
 lazy_static::lazy_static! {
     /// Global registry of extension type handlers
@@ -302,24 +300,6 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
     }
 }
 
-/// Build an ExtensionTypeRegistry from all registered Python handlers.
-///
-/// This creates a new registry populated with PyExtensionTypeHandler instances
-/// for each registered datatype.
-pub fn build_extension_type_registry() -> ExtensionTypeRegistry {
-    let mut registry = ExtensionTypeRegistry::new();
-
-    let handlers = TYPE_HANDLERS.read().unwrap();
-    for type_name in handlers.keys() {
-        registry.register(
-            type_name.clone(),
-            Arc::new(PyExtensionTypeHandler::new(type_name.clone())),
-        );
-    }
-
-    registry
-}
-
 /// Get the list of registered extension handler datatypes.
 #[pyfunction]
 fn get_registered_extension_handlers() -> Vec<String> {
@@ -491,6 +471,12 @@ fn register_type_handler(capsule: &PyCapsule) -> PyResult<()> {
                 resolve_markers_fn: info.resolve_markers_fn,
                 free_resolve_markers_fn: info.free_resolve_markers_fn,
             },
+        );
+
+        // Also register into the global core registry so build_descriptors etc. can use it
+        alizarin_core::register_extension_type_handler(
+            &type_name,
+            Arc::new(PyExtensionTypeHandler::new(type_name.clone())),
         );
 
         let features = match (has_display, has_markers) {

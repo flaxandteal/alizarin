@@ -263,3 +263,9 @@ pub use string_utils::{camel_to_snake, snake_to_camel, transform_keys_to_snake};
 pub use extension_type_registry::{
     ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities,
 };
+
+// Global extension type handler registry
+pub use registry::{
+    has_extension_type_handler, list_extension_type_handlers, register_extension_type_handler,
+    render_extension_display, unregister_extension_type_handler,
+};

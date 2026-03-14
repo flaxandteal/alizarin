@@ -760,10 +760,12 @@ impl IndexedGraph {
                 if let Some(node) =
                     self.find_node_by_name_in_nodegroup(node_name, &type_config.nodegroup_id)
                 {
-                    // Extract value from tiles
-                    if let Some(value) =
-                        Self::extract_value_from_tiles(&relevant_tiles, &node.nodeid)
-                    {
+                    // Extract value from tiles using the type serialization system
+                    if let Some(value) = Self::extract_display_value_from_tiles(
+                        &relevant_tiles,
+                        &node.nodeid,
+                        &node.datatype,
+                    ) {
                         template = template.replace(placeholder, &value);
                     } else {
                         let available_keys: Vec<_> =
@@ -889,10 +891,36 @@ impl IndexedGraph {
         })
     }
 
-    /// Extract value from tiles for a given node ID
-    fn extract_value_from_tiles(tiles: &[&StaticTile], node_id: &str) -> Option<String> {
+    /// Extract a display string from tiles for a given node, using:
+    /// 1. Extension render_display (for extension datatypes like "reference")
+    /// 2. Built-in serialize_display (for string, number, date, concept, etc.)
+    /// 3. Fallback to extract_string_from_json (language maps, Arches format)
+    fn extract_display_value_from_tiles(
+        tiles: &[&StaticTile],
+        node_id: &str,
+        datatype: &str,
+    ) -> Option<String> {
         for tile in tiles {
             if let Some(value) = tile.data.get(node_id) {
+                // 1. Try extension render_display (optional — not all extensions have it)
+                if let Ok(Some(display)) =
+                    crate::registry::render_extension_display(datatype, value, "en")
+                {
+                    return Some(display);
+                }
+
+                // 2. Try built-in type serialization
+                let result = crate::type_serialization::serialize_display(datatype, value, "en");
+                if !result.is_error() {
+                    match &result.value {
+                        serde_json::Value::String(s) if !s.is_empty() => return Some(s.clone()),
+                        serde_json::Value::Number(n) => return Some(n.to_string()),
+                        serde_json::Value::Bool(b) => return Some(b.to_string()),
+                        _ => {}
+                    }
+                }
+
+                // 3. Fallback to raw JSON extraction (language maps, Arches format)
                 if let Some(extracted) = Self::extract_string_from_json(value) {
                     return Some(extracted);
                 }
@@ -909,6 +937,8 @@ impl IndexedGraph {
     fn extract_string_from_json(value: &serde_json::Value) -> Option<String> {
         match value {
             serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            serde_json::Value::Bool(b) => Some(b.to_string()),
             serde_json::Value::Object(map) => {
                 // Try to get language-specific value
                 Self::extract_lang_value(map, "en").or_else(|| {
