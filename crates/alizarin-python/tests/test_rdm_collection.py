@@ -320,7 +320,7 @@ def test_batch_conversion_with_rdm_cache():
 
         print("\n✓ Label resolution successful!")
         print(f"  Converted {len(resources)} resources")
-        print(f"  Labels automatically resolved to UUIDs using RDM cache")
+        print("  Labels automatically resolved to UUIDs using RDM cache")
 
     finally:
         # Clean up global cache
@@ -663,7 +663,6 @@ def test_arches_collection_with_hierarchy():
 
 def test_hierarchical_collection_roundtrip():
     """Test SKOS roundtrip preserves hierarchy"""
-    import tempfile
 
     # Create hierarchical collection
     collection = alizarin.RustRdmCollection.from_labels(
@@ -754,9 +753,9 @@ def test_from_nested_labels():
     assert mammals.id in dogs.broader, "Dogs should have Mammals as broader"
 
     print("Created hierarchical collection from nested dict:")
-    print(f"  - 6 concepts total, 2 top-level")
-    print(f"  - Mammals -> Dogs, Cats")
-    print(f"  - Birds -> Eagles, Sparrows")
+    print("  - 6 concepts total, 2 top-level")
+    print("  - Mammals -> Dogs, Cats")
+    print("  - Birds -> Eagles, Sparrows")
 
 
 def test_from_nested_labels_flat():
@@ -932,7 +931,7 @@ def test_skos_roundtrip():
     if not collection_id:
         pytest.skip("Concept node has no rdmCollection config")
 
-    print(f"\n--- Part 1: Create and Serialize ---")
+    print("\n--- Part 1: Create and Serialize ---")
     print(f"Testing with concept node: {node_alias}")
     if parent_alias:
         print(f"Parent nodegroup: {parent_alias}")
@@ -972,7 +971,7 @@ def test_skos_roundtrip():
         print(f"✓ Wrote SKOS XML to: {temp_file}")
 
     try:
-        print(f"\n--- Part 2: Load and Use ---")
+        print("\n--- Part 2: Load and Use ---")
 
         # Read from file
         with open(temp_file, 'r') as f:
@@ -1002,11 +1001,11 @@ def test_skos_roundtrip():
             assert concept is not None, \
                 f"Should be able to find concept by label '{label}'"
             assert concept.get_label("en") == label, \
-                f"Concept label should match original"
+                "Concept label should match original"
         print(f"✓ All {len(original_labels)} labels preserved correctly")
 
         # Part 3: Use in batch conversion to verify it works end-to-end
-        print(f"\n--- Part 3: Batch Conversion Test ---")
+        print("\n--- Part 3: Batch Conversion Test ---")
 
         alizarin.set_global_rdm_cache(cache)
 
@@ -1059,15 +1058,15 @@ def test_skos_roundtrip():
                         values_to_check = resolved_value if isinstance(resolved_value, list) else [resolved_value]
                         for v in values_to_check:
                             assert cache.validate_concept(collection_id, v), \
-                                f"Resolved value should be a valid concept UUID"
+                                "Resolved value should be a valid concept UUID"
                         print(f"  Resource {i}: Label resolved to UUID in tiles")
                         break
 
             print("\n✓ SKOS Roundtrip Complete!")
             print(f"  1. Created collection with {len(original_labels)} concepts")
-            print(f"  2. Serialized to SKOS XML and wrote to file")
-            print(f"  3. Loaded from file back into RDM cache")
-            print(f"  4. All labels preserved and functional in batch conversion")
+            print("  2. Serialized to SKOS XML and wrote to file")
+            print("  3. Loaded from file back into RDM cache")
+            print("  4. All labels preserved and functional in batch conversion")
 
         finally:
             alizarin.clear_global_rdm_cache()
@@ -1077,7 +1076,7 @@ def test_skos_roundtrip():
         import os
         if os.path.exists(temp_file):
             os.unlink(temp_file)
-            print(f"✓ Cleaned up temp file")
+            print("✓ Cleaned up temp file")
 
 
 def test_deterministic_skos_export():

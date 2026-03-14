@@ -10,12 +10,8 @@ import pytest
 import os
 import uuid
 
-import alizarin
-from alizarin.graph_manager import GraphManager, WKRM
+from alizarin.graph_manager import GraphManager
 from alizarin.view_models import viewContext
-from alizarin.static_types import StaticGraph, StaticResource
-from alizarin.model_wrapper import ResourceModelWrapper
-from alizarin.instance_wrapper import ResourceInstanceWrapper
 
 
 # Test data paths

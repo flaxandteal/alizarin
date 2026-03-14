@@ -5,7 +5,6 @@ Tests creation and serialization of ViewModels matching TypeScript viewModels te
 """
 
 import pytest
-import asyncio
 from alizarin.static_types import StaticNode, StaticTile, StaticDomainValue
 from alizarin.view_models import (
     StringViewModel,
@@ -15,7 +14,6 @@ from alizarin.view_models import (
     UrlViewModel,
     NonLocalizedStringViewModel,
     DomainValueViewModel,
-    DomainValueListViewModel,
     DEFAULT_LANGUAGE,
     CUSTOM_DATATYPES,
     ViewContext,

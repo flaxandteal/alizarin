@@ -5,22 +5,14 @@ Ports tests from tests/graphManager.test.ts
 """
 
 import pytest
-from typing import Any, Dict, List, Optional
 
 from alizarin.static_types import (
     StaticNode,
-    StaticEdge,
-    StaticNodegroup,
     StaticGraph,
     StaticGraphMeta,
-    StaticTranslatableString,
 )
 from alizarin.graph_manager import (
     WKRM,
-    IRIVM,
-    IWKRM,
-    IModelWrapper,
-    IInstanceWrapper,
 )
 
 
