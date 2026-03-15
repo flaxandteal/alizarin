@@ -4420,10 +4420,32 @@ impl GraphInstruction {
                 "'{}' creates a new graph, use build_graph_from_instructions() instead",
                 self.action
             ))),
-            _ => Err(MutationError::InvalidSubgraph(format!(
-                "Unknown action: {}",
-                self.action
-            ))),
+            // Unrecognized actions are treated as extension mutations
+            other => Ok(GraphMutation::Extension(ExtensionMutationParams {
+                name: other.to_string(),
+                params: {
+                    let mut map = serde_json::Map::new();
+                    // Pass subject and object as params for the extension handler
+                    if !self.subject.is_empty() {
+                        map.insert(
+                            "subject".to_string(),
+                            serde_json::Value::String(self.subject.clone()),
+                        );
+                    }
+                    if !self.object.is_empty() {
+                        map.insert(
+                            "object".to_string(),
+                            serde_json::Value::String(self.object.clone()),
+                        );
+                    }
+                    // Merge all instruction params
+                    for (k, v) in &self.params {
+                        map.insert(k.clone(), v.clone());
+                    }
+                    serde_json::Value::Object(map)
+                },
+                conformance: MutationConformance::AlwaysConformant,
+            })),
         }
     }
 
@@ -4540,6 +4562,18 @@ pub fn build_graph_from_instructions(
     instructions: Vec<GraphInstruction>,
     options: MutatorOptions,
 ) -> Result<StaticGraph, String> {
+    build_graph_from_instructions_with_extensions(instructions, options, None)
+}
+
+/// Build a graph from instructions with extension mutation support.
+///
+/// Same as `build_graph_from_instructions` but accepts an optional extension
+/// mutation registry for handling custom/extension actions in the CSV.
+pub fn build_graph_from_instructions_with_extensions(
+    instructions: Vec<GraphInstruction>,
+    options: MutatorOptions,
+    registry: Option<&ExtensionMutationRegistry>,
+) -> Result<StaticGraph, String> {
     if instructions.is_empty() {
         return Err("No instructions provided".to_string());
     }
@@ -4574,7 +4608,7 @@ pub fn build_graph_from_instructions(
         return Ok(graph);
     }
 
-    apply_instructions(&graph, remaining, options)
+    apply_instructions(&graph, remaining, options, registry)
 }
 
 /// Build a graph from scratch using JSON instructions
@@ -4712,6 +4746,7 @@ pub fn apply_instructions(
     graph: &StaticGraph,
     instructions: Vec<GraphInstruction>,
     options: MutatorOptions,
+    registry: Option<&ExtensionMutationRegistry>,
 ) -> Result<StaticGraph, String> {
     let mutations: Vec<GraphMutation> = instructions
         .into_iter()
@@ -4719,7 +4754,7 @@ pub fn apply_instructions(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
-    apply_mutations(graph, mutations, options)
+    apply_mutations_with_extensions(graph, mutations, options, registry)
 }
 
 /// Apply instructions from JSON
@@ -4747,7 +4782,7 @@ pub fn apply_instructions_from_json(
     let request: InstructionRequest = serde_json::from_str(json)
         .map_err(|e| format!("Failed to parse instructions JSON: {}", e))?;
 
-    apply_instructions(graph, request.instructions, request.options.into())
+    apply_instructions(graph, request.instructions, request.options.into(), None)
 }
 
 /// Get the JSON schema for mutation types (as documentation)
@@ -6157,7 +6192,7 @@ mod tests {
             .with_str("ontology_class", "http://example.org/Name")
             .with_str("parent_property", "http://example.org/hasName")];
 
-        let result = apply_instructions(&graph, instructions, MutatorOptions::default());
+        let result = apply_instructions(&graph, instructions, MutatorOptions::default(), None);
         assert!(result.is_ok(), "Instruction failed: {:?}", result.err());
 
         let mutated = result.unwrap();
@@ -6194,7 +6229,7 @@ mod tests {
                 .with_str("cardinality", "1"),
         ];
 
-        let result = apply_instructions(&graph, instructions, MutatorOptions::default());
+        let result = apply_instructions(&graph, instructions, MutatorOptions::default(), None);
         assert!(result.is_ok(), "Instructions failed: {:?}", result.err());
 
         let mutated = result.unwrap();
@@ -6258,14 +6293,16 @@ mod tests {
     }
 
     #[test]
-    fn test_instruction_invalid_action() {
+    fn test_instruction_unknown_action_becomes_extension() {
         let graph = create_skeleton_graph("Test", "test", true, None);
 
         let instructions = vec![GraphInstruction::new("invalid_action", "test", "foo")];
 
-        let result = apply_instructions(&graph, instructions, MutatorOptions::default());
+        // Without a registry, unknown actions are treated as extension mutations
+        // and fail because no handler is registered
+        let result = apply_instructions(&graph, instructions, MutatorOptions::default(), None);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Unknown action"));
+        assert!(result.unwrap_err().contains("Extension mutation"));
     }
 
     #[test]
@@ -6281,7 +6318,7 @@ mod tests {
                 .with_str("cardinality", "1"),
         ];
 
-        let result = apply_instructions(&graph, instructions, MutatorOptions::default());
+        let result = apply_instructions(&graph, instructions, MutatorOptions::default(), None);
         assert!(result.is_ok());
 
         let mutated = result.unwrap();
@@ -6476,7 +6513,7 @@ mod tests {
 
         let instructions = vec![GraphInstruction::new("create_model", "other", "")];
 
-        let result = apply_instructions(&graph, instructions, MutatorOptions::default());
+        let result = apply_instructions(&graph, instructions, MutatorOptions::default(), None);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("creates a new graph"));
     }
