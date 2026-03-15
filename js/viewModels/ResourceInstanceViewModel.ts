@@ -53,10 +53,11 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
     if (this.__cacheEntry?.descriptors) {
       return this.__cacheEntry.descriptors;
     }
+    if (this.$) {
+      return this.$.getDescriptors();
+    }
     if (retrieveIfNeeded) {
-      if (!this.$) {
-        await this.retrieve();
-      }
+      await this.retrieve();
       if (this.$) {
         return this.$.getDescriptors();
       }

@@ -3117,7 +3117,11 @@ fn apply_add_subgraph(
                 rangenode_id: child_node_id,
                 graph_id: graph.graphid.clone(),
                 name: edge.name,
-                ontologyproperty: Some(ontology_property.clone()),
+                ontologyproperty: if ontology_property.is_empty() {
+                    edge.ontologyproperty
+                } else {
+                    Some(ontology_property.clone())
+                },
                 description: edge.description,
                 source_identifier_id: None,
             };
@@ -3515,6 +3519,10 @@ fn apply_update_subgraph(
             graph.push_node(new_node);
 
             // Create edge from target to new node
+            let original_edge = subgraph
+                .edges
+                .iter()
+                .find(|e| e.domainnode_id == root_node_id && e.rangenode_id == node.nodeid);
             let new_edge_id = generate_uuid_v5(
                 ("graph", Some(&graph.graphid)),
                 &format!("update-subgraph-edge-{}-{}", target_node_id, new_node_id),
@@ -3524,9 +3532,13 @@ fn apply_update_subgraph(
                 domainnode_id: target_node_id.clone(),
                 rangenode_id: new_node_id,
                 graph_id: graph.graphid.clone(),
-                name: None,
-                ontologyproperty: Some(ontology_property.clone()),
-                description: None,
+                name: original_edge.and_then(|e| e.name.clone()),
+                ontologyproperty: if ontology_property.is_empty() {
+                    original_edge.and_then(|e| e.ontologyproperty.clone())
+                } else {
+                    Some(ontology_property.clone())
+                },
+                description: original_edge.and_then(|e| e.description.clone()),
                 source_identifier_id: None,
             };
             graph.push_edge(new_edge);
@@ -4095,6 +4107,28 @@ impl GraphInstruction {
         self.get_str(key).unwrap_or_else(|| default.to_string())
     }
 
+    /// Resolve a subgraph from either `params.subgraph` (inline JSON) or
+    /// `object` (graph ID looked up from the global registry).
+    fn resolve_subgraph(&self) -> Result<StaticGraph, MutationError> {
+        if let Some(subgraph_value) = self.params.get("subgraph") {
+            serde_json::from_value(subgraph_value.clone()).map_err(|e| {
+                MutationError::InvalidSubgraph(format!("Failed to parse subgraph: {}", e))
+            })
+        } else if !self.object.is_empty() {
+            let graph = crate::registry::get_graph(&self.object).ok_or_else(|| {
+                MutationError::InvalidSubgraph(format!(
+                    "Branch '{}' not found in graph registry",
+                    self.object
+                ))
+            })?;
+            Ok((*graph).clone())
+        } else {
+            Err(MutationError::InvalidSubgraph(
+                "add_subgraph/update_subgraph requires either 'subgraph' param or a branch graph ID as object".to_string(),
+            ))
+        }
+    }
+
     /// Helper to get a translatable map (language -> value) from params
     fn get_translatable_map(&self, key: &str) -> Option<HashMap<String, String>> {
         self.params.get(key).and_then(|v| {
@@ -4213,17 +4247,7 @@ impl GraphInstruction {
                 visible: self.params.get("visible").and_then(|v| v.as_bool()),
             })),
             "add_subgraph" => {
-                // Parse subgraph from params
-                let subgraph_value = self.params.get("subgraph").ok_or_else(|| {
-                    MutationError::InvalidSubgraph(
-                        "add_subgraph requires 'subgraph' param".to_string(),
-                    )
-                })?;
-
-                let subgraph: StaticGraph = serde_json::from_value(subgraph_value.clone())
-                    .map_err(|e| {
-                        MutationError::InvalidSubgraph(format!("Failed to parse subgraph: {}", e))
-                    })?;
+                let subgraph = self.resolve_subgraph()?;
 
                 Ok(GraphMutation::AddSubgraph(AddSubgraphParams {
                     subgraph,
@@ -4233,17 +4257,7 @@ impl GraphInstruction {
                 }))
             }
             "update_subgraph" => {
-                // Parse subgraph from params
-                let subgraph_value = self.params.get("subgraph").ok_or_else(|| {
-                    MutationError::InvalidSubgraph(
-                        "update_subgraph requires 'subgraph' param".to_string(),
-                    )
-                })?;
-
-                let subgraph: StaticGraph = serde_json::from_value(subgraph_value.clone())
-                    .map_err(|e| {
-                        MutationError::InvalidSubgraph(format!("Failed to parse subgraph: {}", e))
-                    })?;
+                let subgraph = self.resolve_subgraph()?;
 
                 let remove_orphaned = self
                     .params
@@ -4571,6 +4585,96 @@ pub fn build_graph_from_instructions_json(json: &str) -> Result<StaticGraph, Str
         .map_err(|e| format!("Failed to parse build request JSON: {}", e))?;
 
     build_graph_from_instructions(request.instructions, request.options.into())
+}
+
+/// Parse CSV text into a list of GraphInstructions.
+///
+/// Expected columns: `action`, `subject`, `object`, plus any `params.*` columns.
+/// The first row is the header. Empty `params.*` values are ignored.
+///
+/// # Example CSV
+/// ```csv
+/// action,subject,object,params.name,params.datatype,params.ontology_class,params.parent_property
+/// create_model,registry,,Registry,,,E78_Collection,
+/// add_node,registry,names,Names,semantic,E41_Appellation,P1_is_identified_by
+/// ```
+pub fn parse_instructions_from_csv(csv_text: &str) -> Result<Vec<GraphInstruction>, String> {
+    let mut reader = csv::Reader::from_reader(csv_text.as_bytes());
+    let headers = reader
+        .headers()
+        .map_err(|e| format!("Failed to parse CSV headers: {}", e))?
+        .clone();
+
+    let param_indices: Vec<(usize, String)> = headers
+        .iter()
+        .enumerate()
+        .filter_map(|(i, h)| h.strip_prefix("params.").map(|p| (i, p.to_string())))
+        .collect();
+
+    let action_idx = headers
+        .iter()
+        .position(|h| h == "action")
+        .ok_or("CSV missing 'action' column")?;
+    let subject_idx = headers
+        .iter()
+        .position(|h| h == "subject")
+        .ok_or("CSV missing 'subject' column")?;
+    let object_idx = headers
+        .iter()
+        .position(|h| h == "object")
+        .ok_or("CSV missing 'object' column")?;
+
+    let mut instructions = Vec::new();
+    for result in reader.records() {
+        let record = result.map_err(|e| format!("Failed to parse CSV row: {}", e))?;
+
+        let action = record.get(action_idx).unwrap_or("").to_string();
+        if action.is_empty() {
+            continue;
+        }
+
+        let mut params = serde_json::Map::new();
+        for (idx, param_name) in &param_indices {
+            if let Some(value) = record.get(*idx) {
+                if !value.is_empty() {
+                    // Try to parse as JSON first (for config objects), fall back to string
+                    let json_value = serde_json::from_str(value)
+                        .unwrap_or(serde_json::Value::String(value.to_string()));
+                    params.insert(param_name.clone(), json_value);
+                }
+            }
+        }
+
+        instructions.push(GraphInstruction {
+            action,
+            subject: record.get(subject_idx).unwrap_or("").to_string(),
+            object: record.get(object_idx).unwrap_or("").to_string(),
+            params: serde_json::Value::Object(params)
+                .as_object()
+                .unwrap()
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+        });
+    }
+
+    Ok(instructions)
+}
+
+/// Build a graph from CSV instructions.
+///
+/// Parses CSV text into instructions, then builds the graph.
+/// The first row must be `create_model` or `create_branch`.
+///
+/// # Arguments
+/// * `csv_text` - CSV string with header row
+/// * `options` - Options for mutation application
+pub fn build_graph_from_instructions_csv(
+    csv_text: &str,
+    options: MutatorOptions,
+) -> Result<StaticGraph, String> {
+    let instructions = parse_instructions_from_csv(csv_text)?;
+    build_graph_from_instructions(instructions, options)
 }
 
 /// Apply a list of instructions to a graph
