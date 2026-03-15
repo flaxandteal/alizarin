@@ -9,11 +9,10 @@ use alizarin_core::graph_mutator::{
     apply_mutations_create_from_json as core_apply_mutations_create,
     apply_mutations_from_json as core_apply_mutations,
     apply_mutations_from_json_with_extensions as core_apply_mutations_with_ext,
-    build_graph_from_instructions_csv as core_build_from_csv,
     build_graph_from_instructions_json as core_build_from_instructions,
-    generate_uuid_v5 as core_generate_uuid, get_mutation_schema as core_get_schema,
-    ExtensionMutationHandler, ExtensionMutationRegistry, MutationConformance, MutationError,
-    MutatorOptions,
+    build_graph_from_instructions_with_extensions, generate_uuid_v5 as core_generate_uuid,
+    get_mutation_schema as core_get_schema, parse_instructions_from_csv, ExtensionMutationHandler,
+    ExtensionMutationRegistry, MutationConformance, MutationError, MutatorOptions,
 };
 use alizarin_core::StaticGraph as CoreStaticGraph;
 
@@ -391,6 +390,9 @@ fn build_graph_from_instructions(instructions_json: &str) -> PyResult<String> {
 /// and apply subsequent instructions to it. Branches referenced by graph ID
 /// in `add_subgraph` instructions are also looked up from the registry.
 ///
+/// Unrecognized actions are treated as extension mutations and dispatched to
+/// handlers registered via `register_extension_mutation`.
+///
 /// Args:
 ///     csv_text: CSV string with header row and instruction rows
 ///     autocreate_card: Whether to auto-create cards for nodegroups (default True)
@@ -411,7 +413,23 @@ fn build_graph_from_csv(
         ..Default::default()
     };
 
-    let graph = core_build_from_csv(csv_text, options)
+    let instructions = parse_instructions_from_csv(csv_text)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+
+    // Use extension registry if any extensions are registered
+    let registry = EXTENSION_REGISTRY.lock().map_err(|_| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+            "Failed to acquire extension registry lock",
+        )
+    })?;
+
+    let ext_registry = if registry.list().is_empty() {
+        None
+    } else {
+        Some(&*registry)
+    };
+
+    let graph = build_graph_from_instructions_with_extensions(instructions, options, ext_registry)
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     serde_json::to_string(&graph).map_err(|e| {

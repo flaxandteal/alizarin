@@ -186,17 +186,23 @@ pub use rdm_namespace::{
 
 // Graph mutator types (builder pattern for graph construction)
 pub use graph_mutator::{
+    apply_instructions,
     apply_mutations,
     apply_mutations_create_from_json,
     apply_mutations_from_json,
     apply_mutations_from_json_with_extensions,
     // Extension-aware mutation API
     apply_mutations_with_extensions,
+    build_graph_from_instructions,
+    build_graph_from_instructions_csv,
+    build_graph_from_instructions_json,
+    build_graph_from_instructions_with_extensions,
     default_card_component,
     generate_uuid_v5,
     get_default_widget_for_datatype,
     get_mutation_schema,
     mutations_to_json,
+    parse_instructions_from_csv,
     slugify,
     AddCardParams,
     AddEdgeParams,
@@ -212,6 +218,8 @@ pub use graph_mutator::{
     // Extension mutations
     ExtensionMutationParams,
     ExtensionMutationRegistry,
+    // Instruction-based API
+    GraphInstruction,
     // Mutation types (Command pattern)
     GraphMutation,
     // Builder and options
