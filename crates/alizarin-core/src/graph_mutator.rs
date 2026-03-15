@@ -588,6 +588,30 @@ lazy_static::lazy_static! {
             "file-list",
             r#"{"acceptedFiles": "", "maxFilesize": "200"}"#
         ));
+        m.insert("urldatatype-widget".to_string(), Widget::new(
+            "ca0c43ff-af73-4349-bafd-53ff9f22eebd",
+            "urldatatype-widget",
+            "url",
+            r#"{ "placeholder": "Enter URL", "url_placeholder": "Enter URL", "url_label_placeholder": "Enter URL label" }"#
+        ));
+        m.insert("resource-instance-select-widget".to_string(), Widget::new(
+            "31f3728c-7613-11e7-a139-784f435179ea",
+            "resource-instance-select-widget",
+            "resource-instance",
+            r#"{ "placeholder": "Select a resource" }"#
+        ));
+        m.insert("edtf-widget".to_string(), Widget::new(
+            "10000000-0000-0000-0000-000000000010",
+            "edtf-widget",
+            "edtf",
+            r#"{ "placeholder": "Enter EDTF date" }"#
+        ));
+        m.insert("non-localized-text-widget".to_string(), Widget::new(
+            "10000000-0000-0000-0000-000000000011",
+            "non-localized-text-widget",
+            "non-localized-string",
+            r#"{ "placeholder": "Enter text", "width": "100%" }"#
+        ));
         m
     };
 }
@@ -624,6 +648,10 @@ pub fn get_default_widget_for_datatype(datatype: &str) -> Result<Widget, Mutatio
         "geojson-feature-collection" => "map-widget",
         "boolean" => "switch-widget",
         "date" => "datepicker-widget",
+        "url" => "urldatatype-widget",
+        "resource-instance" => "resource-instance-select-widget",
+        "edtf" => "edtf-widget",
+        "non-localized-string" => "non-localized-text-widget",
         "file-list" => "file-widget",
         "semantic" => return Err(MutationError::NoWidgetForDatatype(datatype.to_string())),
         other => return Err(MutationError::NoWidgetForDatatype(other.to_string())),
