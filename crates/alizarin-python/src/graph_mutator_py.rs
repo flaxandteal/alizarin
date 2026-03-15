@@ -382,13 +382,14 @@ fn build_graph_from_instructions(instructions_json: &str) -> PyResult<String> {
     })
 }
 
-/// Build a graph from CSV instructions.
+/// Build or mutate a graph from CSV instructions.
 ///
 /// Parses CSV text with columns `action`, `subject`, `object`, and `params.*`.
-/// The first row must be `create_model` or `create_branch`.
+/// The first row must be `create_model`, `create_branch`, or `load_graph`.
 ///
-/// Branches referenced by graph ID in `add_subgraph` instructions are looked
-/// up from the global registry (see `register_graph`).
+/// Use `load_graph` with the graph ID as `subject` to load a registered graph
+/// and apply subsequent instructions to it. Branches referenced by graph ID
+/// in `add_subgraph` instructions are also looked up from the registry.
 ///
 /// Args:
 ///     csv_text: CSV string with header row and instruction rows

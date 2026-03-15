@@ -2910,12 +2910,12 @@ fn apply_add_subgraph(
     // Get the branch's graphid for sourcebranchpublication_id tracking
     let branch_publication_id = subgraph.graphid.clone();
 
-    // 1. VALIDATE: Target node exists
+    // 1. VALIDATE: Target node exists (find by alias first, then by ID)
     let target_node = graph
-        .nodes
-        .iter()
-        .find(|n| n.nodeid == target_node_id)
+        .find_node_by_alias(&target_node_id)
+        .or_else(|| graph.nodes.iter().find(|n| n.nodeid == target_node_id))
         .ok_or_else(|| MutationError::NodeNotFound(target_node_id.clone()))?;
+    let target_node_id = target_node.nodeid.clone();
     let target_nodegroup_id = target_node.nodegroup_id.clone();
 
     // 2. IDENTIFY ROOT: Find the root node of the subgraph
@@ -3307,12 +3307,12 @@ fn apply_update_subgraph(
     // Get the branch's graphid for tracking
     let branch_publication_id = subgraph.graphid.clone();
 
-    // 1. VALIDATE: Target node exists
-    let _target_node = graph
-        .nodes
-        .iter()
-        .find(|n| n.nodeid == target_node_id)
+    // 1. VALIDATE: Target node exists (find by alias first, then by ID)
+    let target_node_ref = graph
+        .find_node_by_alias(&target_node_id)
+        .or_else(|| graph.nodes.iter().find(|n| n.nodeid == target_node_id))
         .ok_or_else(|| MutationError::NodeNotFound(target_node_id.clone()))?;
+    let target_node_id = target_node_ref.nodeid.clone();
 
     // 2. IDENTIFY ROOT: Find the root node of the new subgraph
     let root_node = subgraph
@@ -4425,9 +4425,12 @@ impl GraphInstruction {
         }
     }
 
-    /// Check if this instruction creates a new graph
+    /// Check if this instruction creates or loads a graph
     pub fn is_create_action(&self) -> bool {
-        matches!(self.action.as_str(), "create_model" | "create_branch")
+        matches!(
+            self.action.as_str(),
+            "create_model" | "create_branch" | "load_graph"
+        )
     }
 
     /// Get the conformance level for this instruction action
@@ -4542,15 +4545,26 @@ pub fn build_graph_from_instructions(
     let mut iter = instructions.into_iter();
     let first = iter.next().unwrap();
 
-    // First instruction must create the graph
+    // First instruction must create or load the graph
     if !first.is_create_action() {
         return Err(format!(
-            "First instruction must be 'create_model' or 'create_branch', got '{}'",
+            "First instruction must be 'create_model', 'create_branch', or 'load_graph', got '{}'",
             first.action
         ));
     }
 
-    let graph = first.to_skeleton_graph().map_err(|e| e.to_string())?;
+    let graph = if first.action == "load_graph" {
+        let graph_id = &first.subject;
+        let arc = crate::registry::get_graph(graph_id).ok_or_else(|| {
+            format!(
+                "Graph '{}' not found in registry. Call register_graph() first.",
+                graph_id
+            )
+        })?;
+        (*arc).clone()
+    } else {
+        first.to_skeleton_graph().map_err(|e| e.to_string())?
+    };
 
     // Apply remaining instructions as mutations
     let remaining: Vec<GraphInstruction> = iter.collect();
@@ -4661,10 +4675,13 @@ pub fn parse_instructions_from_csv(csv_text: &str) -> Result<Vec<GraphInstructio
     Ok(instructions)
 }
 
-/// Build a graph from CSV instructions.
+/// Build or mutate a graph from CSV instructions.
 ///
-/// Parses CSV text into instructions, then builds the graph.
-/// The first row must be `create_model` or `create_branch`.
+/// Parses CSV text into instructions, then builds or mutates a graph.
+/// The first row must be `create_model`, `create_branch`, or `load_graph`.
+///
+/// Use `load_graph` with the graph ID as `subject` to load an existing graph
+/// from the registry and apply subsequent instructions to it.
 ///
 /// # Arguments
 /// * `csv_text` - CSV string with header row

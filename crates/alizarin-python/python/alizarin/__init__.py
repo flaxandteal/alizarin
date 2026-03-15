@@ -315,6 +315,8 @@ has_extension_mutation = _alizarin_rust.has_extension_mutation
 list_extension_mutations = _alizarin_rust.list_extension_mutations
 generate_uuid_v5 = _alizarin_rust.generate_uuid_v5
 get_mutation_schema = _alizarin_rust.get_mutation_schema
+build_graph_from_instructions = _alizarin_rust.build_graph_from_instructions
+build_graph_from_csv = _alizarin_rust.build_graph_from_csv
 
 # =============================================================================
 # List Datatype Registry (for datatypes where array IS the value)
@@ -361,7 +363,7 @@ is_valid_uuid = _alizarin_rust.is_valid_uuid
 # Version
 # =============================================================================
 
-__version__ = "0.2.1-alpha.41"
+__version__ = "0.2.1-alpha.42"
 
 # =============================================================================
 # Exports
@@ -508,4 +510,6 @@ __all__ = [
     "list_extension_mutations",
     "generate_uuid_v5",
     "get_mutation_schema",
+    "build_graph_from_instructions",
+    "build_graph_from_csv",
 ]
