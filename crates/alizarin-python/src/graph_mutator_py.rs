@@ -9,6 +9,8 @@ use alizarin_core::graph_mutator::{
     apply_mutations_create_from_json as core_apply_mutations_create,
     apply_mutations_from_json as core_apply_mutations,
     apply_mutations_from_json_with_extensions as core_apply_mutations_with_ext,
+    build_graph_from_instructions_csv as core_build_from_csv,
+    build_graph_from_instructions_json as core_build_from_instructions,
     generate_uuid_v5 as core_generate_uuid, get_mutation_schema as core_get_schema,
     ExtensionMutationHandler, ExtensionMutationRegistry, MutationConformance, MutationError,
     MutatorOptions,
@@ -342,6 +344,83 @@ fn apply_mutations_create(mutations_json: &str, graph_json: Option<&str>) -> PyR
     })
 }
 
+/// Build a graph from scratch using instruction-based format.
+///
+/// Instructions use a CSV-friendly triple format (action, subject, object)
+/// with additional params. The first instruction must be `create_model` or
+/// `create_branch`.
+///
+/// Branches referenced by graph ID in `add_subgraph` instructions are looked
+/// up from the global registry (see `register_graph`).
+///
+/// Args:
+///     instructions_json: JSON string containing instructions and options
+///
+/// Example:
+/// ```json
+/// {
+///   "instructions": [
+///     {"action": "create_model", "subject": "person", "object": "", "params": {"name": "Person", "ontology_class": "E21_Person"}},
+///     {"action": "add_node", "subject": "person", "object": "name", "params": {"datatype": "string", "name": "Name"}}
+///   ],
+///   "options": {"autocreate_card": true, "autocreate_widget": true}
+/// }
+/// ```
+///
+/// Returns:
+///     The built graph as JSON string
+#[pyfunction]
+fn build_graph_from_instructions(instructions_json: &str) -> PyResult<String> {
+    let graph = core_build_from_instructions(instructions_json)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+
+    serde_json::to_string(&graph).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize built graph: {}",
+            e
+        ))
+    })
+}
+
+/// Build a graph from CSV instructions.
+///
+/// Parses CSV text with columns `action`, `subject`, `object`, and `params.*`.
+/// The first row must be `create_model` or `create_branch`.
+///
+/// Branches referenced by graph ID in `add_subgraph` instructions are looked
+/// up from the global registry (see `register_graph`).
+///
+/// Args:
+///     csv_text: CSV string with header row and instruction rows
+///     autocreate_card: Whether to auto-create cards for nodegroups (default True)
+///     autocreate_widget: Whether to auto-create widgets for nodes (default True)
+///
+/// Returns:
+///     The built graph as JSON string
+#[pyfunction]
+#[pyo3(signature = (csv_text, autocreate_card=true, autocreate_widget=true))]
+fn build_graph_from_csv(
+    csv_text: &str,
+    autocreate_card: bool,
+    autocreate_widget: bool,
+) -> PyResult<String> {
+    let options = MutatorOptions {
+        autocreate_card,
+        autocreate_widget,
+        ..Default::default()
+    };
+
+    let graph = core_build_from_csv(csv_text, options)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+
+    serde_json::to_string(&graph).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize built graph: {}",
+            e
+        ))
+    })
+}
+
 /// Register graph mutator functions with the Python module
 pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(apply_mutations_from_json, m)?)?;
@@ -352,5 +431,7 @@ pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(list_extension_mutations, m)?)?;
     m.add_function(wrap_pyfunction!(generate_uuid_v5, m)?)?;
     m.add_function(wrap_pyfunction!(get_mutation_schema, m)?)?;
+    m.add_function(wrap_pyfunction!(build_graph_from_instructions, m)?)?;
+    m.add_function(wrap_pyfunction!(build_graph_from_csv, m)?)?;
     Ok(())
 }

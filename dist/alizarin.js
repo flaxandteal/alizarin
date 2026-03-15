@@ -677,44 +677,12 @@ ${val.stack}`;
     const ret = wasm.getRscvTimings();
     return ret;
   }
-  collectionsToSkosXml = function(collections_js, base_uri) {
-    let deferred3_0;
-    let deferred3_1;
-    try {
-      const ptr0 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len0 = WASM_VECTOR_LEN;
-      const ret = wasm.collectionsToSkosXml(collections_js, ptr0, len0);
-      var ptr2 = ret[0];
-      var len2 = ret[1];
-      if (ret[3]) {
-        ptr2 = 0;
-        len2 = 0;
-        throw takeFromExternrefTable0(ret[2]);
-      }
-      deferred3_0 = ptr2;
-      deferred3_1 = len2;
-      return getStringFromWasm0(ptr2, len2);
-    } finally {
-      wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
-    }
-  };
   parseSkosXmlToCollection = function(xml_content, base_uri) {
     const ptr0 = passStringToWasm0(xml_content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
     const ret = wasm.parseSkosXmlToCollection(ptr0, len0, ptr1, len1);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  };
-  parseSkosXml = function(xml_content, base_uri) {
-    const ptr0 = passStringToWasm0(xml_content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.parseSkosXml(ptr0, len0, ptr1, len1);
     if (ret[2]) {
       throw takeFromExternrefTable0(ret[1]);
     }
@@ -741,6 +709,43 @@ ${val.stack}`;
       wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
   };
+  collectionsToSkosXml = function(collections_js, base_uri) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+      const ptr0 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len0 = WASM_VECTOR_LEN;
+      const ret = wasm.collectionsToSkosXml(collections_js, ptr0, len0);
+      var ptr2 = ret[0];
+      var len2 = ret[1];
+      if (ret[3]) {
+        ptr2 = 0;
+        len2 = 0;
+        throw takeFromExternrefTable0(ret[2]);
+      }
+      deferred3_0 = ptr2;
+      deferred3_1 = len2;
+      return getStringFromWasm0(ptr2, len2);
+    } finally {
+      wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+  };
+  parseSkosXml = function(xml_content, base_uri) {
+    const ptr0 = passStringToWasm0(xml_content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.parseSkosXml(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  };
+  registerDisplaySerializer = function(datatype, callback) {
+    const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    wasm.registerDisplaySerializer(ptr0, len0, callback);
+  };
   hasDisplaySerializer = function(datatype) {
     const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
@@ -751,16 +756,34 @@ ${val.stack}`;
     const ret = wasm.getRegisteredDisplaySerializers();
     return ret;
   };
-  registerDisplaySerializer = function(datatype, callback) {
-    const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    wasm.registerDisplaySerializer(ptr0, len0, callback);
-  };
   unregisterDisplaySerializer = function(datatype) {
     const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     wasm.unregisterDisplaySerializer(ptr0, len0);
   };
+  function findNeededCollections(tree_json, alias_to_collection) {
+    const ptr0 = passStringToWasm0(tree_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.findNeededCollections(ptr0, len0, alias_to_collection);
+    if (ret[3]) {
+      throw takeFromExternrefTable0(ret[2]);
+    }
+    var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v2;
+  }
+  function getDefaultConfigKeys() {
+    const ret = wasm.getDefaultConfigKeys();
+    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v1;
+  }
+  function getDefaultResolvableDatatypes() {
+    const ret = wasm.getDefaultResolvableDatatypes();
+    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v1;
+  }
   function buildAliasToCollectionMap(graph_json, resolvable_datatypes, config_keys) {
     const ptr0 = passStringToWasm0(graph_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
@@ -774,34 +797,11 @@ ${val.stack}`;
     }
     return takeFromExternrefTable0(ret[0]);
   }
-  function getDefaultResolvableDatatypes() {
-    const ret = wasm.getDefaultResolvableDatatypes();
-    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-    return v1;
-  }
-  function getDefaultConfigKeys() {
-    const ret = wasm.getDefaultConfigKeys();
-    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-    return v1;
-  }
-  function findNeededCollections(tree_json, alias_to_collection) {
-    const ptr0 = passStringToWasm0(tree_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.findNeededCollections(ptr0, len0, alias_to_collection);
-    if (ret[3]) {
-      throw takeFromExternrefTable0(ret[2]);
-    }
-    var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-    return v2;
-  }
   function __wbg_adapter_6(arg0, arg1, arg2) {
     wasm.closure187_externref_shim(arg0, arg1, arg2);
   }
   function __wbg_adapter_766(arg0, arg1, arg2, arg3) {
-    wasm.closure500_externref_shim(arg0, arg1, arg2, arg3);
+    wasm.closure506_externref_shim(arg0, arg1, arg2, arg3);
   }
   typeof FinalizationRegistry === "undefined" ? {} : new FinalizationRegistry((ptr) => wasm.__wbg_exampleedgewrapper_free(ptr >>> 0, 1));
   const ExampleNodegroupWrapperFinalization = typeof FinalizationRegistry === "undefined" ? {
@@ -3285,11 +3285,11 @@ ${val.stack}`;
       }
       return v2;
     }
-    populateCaches(resources, graph, enrich_relationships) {
+    populateCaches(resources, graph, enrich_relationships, strict, recompute_descriptors) {
       const ptr0 = passArrayJsValueToWasm0(resources, wasm.__wbindgen_malloc);
       const len0 = WASM_VECTOR_LEN;
       _assertClass(graph, StaticGraph);
-      const ret = wasm.staticresourceregistry_populateCaches(this.__wbg_ptr, ptr0, len0, graph.__wbg_ptr, isLikeNone(enrich_relationships) ? 16777215 : enrich_relationships ? 1 : 0);
+      const ret = wasm.staticresourceregistry_populateCaches(this.__wbg_ptr, ptr0, len0, graph.__wbg_ptr, isLikeNone(enrich_relationships) ? 16777215 : enrich_relationships ? 1 : 0, isLikeNone(strict) ? 16777215 : strict ? 1 : 0, isLikeNone(recompute_descriptors) ? 16777215 : recompute_descriptors ? 1 : 0);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
       }
@@ -3334,11 +3334,11 @@ ${val.stack}`;
         throw takeFromExternrefTable0(ret[0]);
       }
     }
-    populateCachesFromJson(resources_json, graph, enrich_relationships) {
+    populateCachesFromJson(resources_json, graph, enrich_relationships, strict, recompute_descriptors) {
       const ptr0 = passStringToWasm0(resources_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       _assertClass(graph, StaticGraph);
-      const ret = wasm.staticresourceregistry_populateCachesFromJson(this.__wbg_ptr, ptr0, len0, graph.__wbg_ptr, isLikeNone(enrich_relationships) ? 16777215 : enrich_relationships ? 1 : 0);
+      const ret = wasm.staticresourceregistry_populateCachesFromJson(this.__wbg_ptr, ptr0, len0, graph.__wbg_ptr, isLikeNone(enrich_relationships) ? 16777215 : enrich_relationships ? 1 : 0, isLikeNone(strict) ? 16777215 : strict ? 1 : 0, isLikeNone(recompute_descriptors) ? 16777215 : recompute_descriptors ? 1 : 0);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
       }
@@ -5163,7 +5163,7 @@ ${val.stack}`;
         return ret;
       }, arguments);
     };
-    imports.wbg.__wbg_clearMarks_152fadaa19757fcb = function(arg0, arg1) {
+    imports.wbg.__wbg_clearMarks_31ff06b18c60e847 = function(arg0, arg1) {
       performance.clearMarks(getStringFromWasm0(arg0, arg1));
     };
     imports.wbg.__wbg_crypto_574e78ad8b13b65f = function(arg0) {
@@ -5294,10 +5294,10 @@ ${val.stack}`;
     imports.wbg.__wbg_log_6c7b5f4f00b8ce3f = function(arg0) {
       console.log(arg0);
     };
-    imports.wbg.__wbg_mark_c7eb5174b1bfe90f = function(arg0, arg1) {
+    imports.wbg.__wbg_mark_927aa0fb7933ebd4 = function(arg0, arg1) {
       performance.mark(getStringFromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbg_measure_1055e7260b751012 = function(arg0, arg1, arg2) {
+    imports.wbg.__wbg_measure_60feac5a04cb5ade = function(arg0, arg1, arg2) {
       performance.measure(getStringFromWasm0(arg0, arg1), arg2);
     };
     imports.wbg.__wbg_msCrypto_a61aeb35a24c1329 = function(arg0) {
@@ -5367,7 +5367,7 @@ ${val.stack}`;
       const ret = arg0.node;
       return ret;
     };
-    imports.wbg.__wbg_now_10ea5b843c7c7169 = function() {
+    imports.wbg.__wbg_now_eab93288fbdc33d4 = function() {
       const ret = performance.now();
       return ret;
     };
@@ -7545,18 +7545,20 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
     }
   }
   class ResourceInstanceCacheEntry {
-    constructor({ meta, id, type, graphId, title }) {
+    constructor({ meta, id, type, graphId, title, descriptors }) {
       __publicField(this, "datatype", "resource-instance");
       __publicField(this, "id");
       __publicField(this, "type");
       __publicField(this, "graphId");
       __publicField(this, "title");
+      __publicField(this, "descriptors");
       __publicField(this, "meta");
       this.id = id;
       this.type = type;
       this.graphId = graphId;
       this.meta = meta || {};
       this.title = this.meta.title || title;
+      this.descriptors = descriptors || null;
     }
   }
   const wasmTimings = /* @__PURE__ */ new Map();
@@ -7643,6 +7645,38 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       }
       return `[${this.__.wkrm.modelClassName}:${this.id ?? "-"}]`;
     }
+    async getName(retrieveIfNeeded = false) {
+      var _a2;
+      return (_a2 = await this.getDescriptors(retrieveIfNeeded)) == null ? void 0 : _a2.name;
+    }
+    async getSlug(retrieveIfNeeded = false) {
+      var _a2;
+      return (_a2 = await this.getDescriptors(retrieveIfNeeded)) == null ? void 0 : _a2.slug;
+    }
+    async getDescription(retrieveIfNeeded = false) {
+      var _a2;
+      return (_a2 = await this.getDescriptors(retrieveIfNeeded)) == null ? void 0 : _a2.description;
+    }
+    async getMapPopup(retrieveIfNeeded = false) {
+      var _a2;
+      return (_a2 = await this.getDescriptors(retrieveIfNeeded)) == null ? void 0 : _a2.map_popup;
+    }
+    async getDescriptors(retrieveIfNeeded = false) {
+      var _a2;
+      if ((_a2 = this.__cacheEntry) == null ? void 0 : _a2.descriptors) {
+        return this.__cacheEntry.descriptors;
+      }
+      if (this.$) {
+        return this.$.getDescriptors();
+      }
+      if (retrieveIfNeeded) {
+        await this.retrieve();
+        if (this.$) {
+          return this.$.getDescriptors();
+        }
+      }
+      return void 0;
+    }
     async __has(key) {
       if (!this.$) {
         return void 0;
@@ -7700,6 +7734,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
           graphId: this.__cacheEntry.graphId,
           id: this.__cacheEntry.id,
           title: this.__cacheEntry.title || void 0,
+          descriptors: this.__cacheEntry.descriptors || void 0,
           meta: this.__cacheEntry.meta || void 0,
           root: rootJson
         };
@@ -7709,6 +7744,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
           graphId: this.__.wkrm.graphId,
           id: this.id,
           title: void 0,
+          descriptors: void 0,
           meta: void 0,
           root: rootJson
         };
@@ -7718,6 +7754,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
           graphId: "",
           id: this.id,
           title: void 0,
+          descriptors: void 0,
           meta: void 0,
           root: rootJson
         };
@@ -7750,6 +7787,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
           graphId: this.__cacheEntry.graphId,
           id: this.__cacheEntry.id,
           title: this.__cacheEntry.title || void 0,
+          descriptors: this.__cacheEntry.descriptors || void 0,
           meta: this.__cacheEntry.meta || void 0,
           root: rootJson
         };
@@ -7759,6 +7797,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
           graphId: this.__.wkrm.graphId,
           id: this.id,
           title: void 0,
+          descriptors: void 0,
           meta: void 0,
           root: rootJson
         };
@@ -7768,6 +7807,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
           graphId: "",
           id: this.id,
           title: void 0,
+          descriptors: void 0,
           meta: void 0,
           root: rootJson
         };
@@ -11122,7 +11162,7 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}
   }, Symbol.toStringTag, {
     value: "Module"
   }));
-  version = "0.2.1-alpha.37";
+  version = "0.2.1-alpha.40";
   registerAlizarinTimingGetter(getTimingStats);
   registerWasmTimingGetter(getWasmTimings);
   let _wasmReadyResolve;
