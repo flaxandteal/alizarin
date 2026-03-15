@@ -2979,12 +2979,11 @@ fn apply_add_subgraph(
         }
     }
 
-    // Pre-generate card mappings (excluding cards for root's nodegroup)
+    // Pre-generate card mappings (including root-nodegroup cards, since
+    // non-root CXNXWs may reference them)
     if let Some(ref cards) = subgraph.cards {
         for card in cards {
-            if card.nodegroup_id != root_nodegroup_id {
-                remapper.remap_card(&card.cardid);
-            }
+            remapper.remap_card(&card.cardid);
         }
     }
 
@@ -3170,13 +3169,9 @@ fn apply_add_subgraph(
         }
     }
 
-    // 8. ADD CARDS (excluding card for root's nodegroup)
+    // 8. ADD CARDS (root-nodegroup cards get reassigned to the target's nodegroup)
     if let Some(cards) = subgraph.cards {
         for card in cards {
-            if card.nodegroup_id == root_nodegroup_id {
-                continue;
-            }
-
             let new_card_id = remapper
                 .get_card(&card.cardid)
                 .ok_or_else(|| {
@@ -3184,15 +3179,22 @@ fn apply_add_subgraph(
                 })?
                 .clone();
 
-            let new_ng_id = remapper
-                .get_nodegroup(&card.nodegroup_id)
-                .ok_or_else(|| {
-                    MutationError::InvalidSubgraph(format!(
-                        "Card nodegroup {} not mapped",
-                        card.nodegroup_id
-                    ))
-                })?
-                .clone();
+            let new_ng_id = if card.nodegroup_id == root_nodegroup_id {
+                // Root-nodegroup card gets reassigned to the target node's nodegroup
+                target_nodegroup_id
+                    .clone()
+                    .unwrap_or_else(|| target_node_id.clone())
+            } else {
+                remapper
+                    .get_nodegroup(&card.nodegroup_id)
+                    .ok_or_else(|| {
+                        MutationError::InvalidSubgraph(format!(
+                            "Card nodegroup {} not mapped",
+                            card.nodegroup_id
+                        ))
+                    })?
+                    .clone()
+            };
 
             // Remap constraints
             let new_constraints: Vec<_> = card
