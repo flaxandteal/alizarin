@@ -256,11 +256,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Publish to PyPI using trusted publishers (OIDC)
+  # Publish core alizarin package to PyPI using trusted publishers (OIDC)
   publish-pypi:
-    name: Publish to PyPI
+    name: Publish alizarin to PyPI
     runs-on: ubuntu-latest
-    needs: [build-wheels, build-sdist, build-extensions]
+    needs: [build-wheels, build-sdist]
     if: github.event.inputs.publish_pypi == 'true' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     environment:
       name: pypi
@@ -269,23 +269,60 @@ jobs:
       id-token: write
 
     steps:
-      - name: Download all wheels
+      - name: Download core wheels
         uses: actions/download-artifact@v4
         with:
-          pattern: wheels-*
-          path: dist/
+          pattern: wheels-*-py*
+          path: artifacts/
           merge-multiple: true
 
       - name: Download sdist
         uses: actions/download-artifact@v4
         with:
           name: sdist
-          path: dist/
+          path: artifacts/
 
-      - name: List artifacts
-        run: ls -la dist/
+      - name: Collect core distributions only
+        run: |
+          mkdir -p dist/
+          find artifacts/ -name "alizarin-*.whl" ! -name "alizarin_clm-*" ! -name "alizarin_filelist-*" -exec cp {} dist/ \;
+          find artifacts/ -name "alizarin-*.tar.gz" -exec cp {} dist/ \;
+          echo "Core distribution contents:"
+          ls -la dist/
 
       - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+  # Publish extension packages to PyPI
+  publish-extensions-pypi:
+    name: Publish extensions to PyPI
+    runs-on: ubuntu-latest
+    needs: [build-extensions, publish-pypi]
+    if: github.event.inputs.publish_pypi == 'true' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    environment:
+      name: pypi
+      url: https://pypi.org/p/alizarin-clm
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download extension wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-extensions-*
+          path: dist/
+          merge-multiple: true
+
+      - name: Flatten wheel files
+        run: |
+          find dist/ -name "*.whl" -exec mv {} dist/ \;
+          find dist/ -mindepth 1 -type d -exec rm -rf {} + 2>/dev/null || true
+          echo "Extension distribution contents:"
+          ls -la dist/
+
+      - name: Publish extensions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
