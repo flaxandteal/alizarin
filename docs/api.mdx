@@ -3,4 +3,26 @@ title: API
 description: Details of public methods
 ---
 
-This is to come.
+## Client Classes
+
+- `ArchesClient` - Abstract base class for all clients
+- `ArchesClientRemote` - Connect to live Arches servers
+- `ArchesClientRemoteStatic` - Load from static JSON files
+- `ArchesClientLocal` - Load from local filesystem (Node.js)
+
+## Core Classes
+
+- `GraphManager` - Central manager for graphs and resources
+- `ResourceModelWrapper` - ORM wrapper for resource models
+- `ResourceInstanceViewModel` - View model for resource instances
+- `GraphMutator` - Tool for modifying graph schemas
+
+## View Model Types
+
+- `StringViewModel` - String values
+- `NumberViewModel` - Numeric values
+- `DateViewModel` - Date/time values
+- `ConceptValueViewModel` - Controlled vocabulary concepts
+- `GeojsonFeatureCollectionViewModel` - Geographic data
+- `ResourceInstanceListViewModel` - Related resources
+- `SemanticViewModel` - Complex nested structures

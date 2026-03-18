@@ -1,0 +1,49 @@
+[package]
+name = "alizarin-wasm"
+version = "0.2.1-alpha.46"
+authors = ["Phil Weir <phil.weir@flaxandteal.co.uk>"]
+edition = "2021"
+description = "WASM bindings for Alizarin"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+
+[dependencies]
+alizarin-core = { path = "../alizarin-core" }
+wasm-wrapper-derive = { path = "../wasm-wrapper-derive" }
+wasm-bindgen = "0.2.84"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rio_api = "0.8"
+rio_xml = "0.8"
+oxiri = "0.2"
+regex-lite = "0.1"
+serde-wasm-bindgen = "0.6"
+uuid = { version = "1.0", features = ["v4", "wasm-bindgen"] }
+getrandom = { version = "0.2", features = ["js"] }
+once_cell = "1.19"
+
+# Better debugging of panics
+console_error_panic_hook = "0.1.7"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.34"
+
+[dependencies.web-sys]
+version = "0.3.4"
+features = [
+  'console',
+  'Document',
+  'Element',
+  'HtmlElement',
+  'Node',
+  'Window',
+  'Performance',
+  'PerformanceMark',
+  'PerformanceMeasure',
+]

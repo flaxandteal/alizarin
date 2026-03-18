@@ -1,0 +1,78 @@
+---
+title: Architecture
+description: Design principles of Alizarin
+---
+
+## Core Components
+
+### 1. Client Layer
+The client layer provides different strategies for connecting to Arches data:
+
+- **`ArchesClientRemoteStatic`**: Loads from pre-exported static JSON files
+- **`ArchesClientLocal`**: Loads from local filesystem (Node.js only)
+- (IN PROGRESS) **`ArchesClientRemote`**: Connects to live Arches servers via REST API
+
+### 2. Graph Management
+The graph management layer handles loading and caching of Arches graph models:
+
+- **`GraphManager`**: Central registry for loaded graphs and resources
+- **`ResourceModelWrapper`**: Provides ORM functionality for graph models
+- **`GraphMutator`**: Fluent API for modifying graph schemas programmatically
+
+### 3. View Models
+View models provide type-safe access to resource data:
+
+- **`ResourceInstanceViewModel`**: Main entry point for accessing resource data
+- **`SemanticViewModel`**: Handles complex nested node structures
+- **Type-specific ViewModels**: `StringViewModel`, `DateViewModel`, `ConceptValueViewModel`, etc.
+
+### 4. Data Access Pattern
+
+```typescript
+// 1. Initialize client
+const client = new ArchesClientRemote("https://my-arches-instance.org");
+
+// 2. Create graph manager
+const graphManager = new GraphManager(client);
+
+// 3. Load a graph model
+const PersonModel = await graphManager.loadGraph("Person");
+
+// 4. Query resources
+const people = await PersonModel.all();
+
+// 5. Access data through view models
+const person = people[0];
+console.log(person.name); // Transparent property access
+console.log(person.birthDate); // Typed, parsed values
+```
+
+## Data Flow
+
+```
+┌─────────────┐     ┌───────────────┐     ┌─────────────────┐
+│   Client    │────▶│ GraphManager  │────▶│ ResourceModel   │
+│  (Remote/   │     │   (Cache)     │     │    Wrapper      │
+│   Static)   │     └───────────────┘     └─────────────────┘
+└─────────────┘              │                      │
+                             ▼                      ▼
+                    ┌───────────────┐     ┌─────────────────┐
+                    │ StaticStore   │     │ ResourceInstance│
+                    │   (Cache)     │     │   ViewModel     │
+                    └───────────────┘     └─────────────────┘
+                                                    │
+                                          ┌─────────┴─────────┐
+                                          ▼                   ▼
+                                   ┌─────────────┐    ┌──────────────┐
+                                   │ PseudoValue │    │ Semantic     │
+                                   │ (Lazy Load) │    │ ViewModel    │
+                                   └─────────────┘    └──────────────┘
+```
+
+## Key Design Patterns
+
+1. **Proxy Pattern**: ES6 Proxies enable transparent property access on view models
+2. **Lazy Loading**: Tile data is fetched only when accessed
+3. **Factory Pattern**: View models are created based on node data types
+4. **Repository Pattern**: GraphManager and StaticStore provide centralized data access
+5. **Builder Pattern**: GraphMutator provides a fluent interface for schema modification

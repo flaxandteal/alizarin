@@ -1,0 +1,116 @@
+{
+  "graph": [
+    {
+      "graphid": "12345678-1234-1234-1234-123456789abc",
+      "name": {
+        "en": "Test Model"
+      },
+      "description": {
+        "en": "A valid test model"
+      },
+      "author": "Test Author",
+      "version": "1.0",
+      "isresource": true,
+      "iconclass": "fa fa-test",
+      "color": "#ff0000",
+      "ontology_id": "test-ontology",
+      "nodes": [
+        {
+          "nodeid": "12345678-1234-1234-1234-123456789001",
+          "name": "Root Node",
+          "datatype": "semantic",
+          "istopnode": true,
+          "nodegroup_id": null,
+          "graph_id": "12345678-1234-1234-1234-123456789abc",
+          "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E1_CRM_Entity",
+          "config": {},
+          "sortorder": 0,
+          "fieldname": null,
+          "exportable": true,
+          "isrequired": false,
+          "issearchable": false,
+          "is_collector": false,
+          "hascustomalias": false,
+          "alias": null,
+          "parentproperty": null,
+          "sourcebranchpublication_id": null
+        },
+        {
+          "nodeid": "12345678-1234-1234-1234-123456789002",
+          "name": "Child Node",
+          "datatype": "string",
+          "istopnode": false,
+          "nodegroup_id": "12345678-1234-1234-1234-123456789002",
+          "graph_id": "12345678-1234-1234-1234-123456789abc",
+          "ontologyclass": "http://www.w3.org/2000/01/rdf-schema#Literal",
+          "config": {},
+          "sortorder": 1,
+          "fieldname": "test_field",
+          "exportable": true,
+          "isrequired": false,
+          "issearchable": true,
+          "is_collector": false,
+          "hascustomalias": false,
+          "alias": "test_alias",
+          "parentproperty": "http://www.cidoc-crm.org/cidoc-crm/P3_has_note",
+          "sourcebranchpublication_id": null
+        }
+      ],
+      "nodegroups": [
+        {
+          "nodegroupid": "12345678-1234-1234-1234-123456789002",
+          "cardinality": "n",
+          "parentnodegroup_id": null,
+          "legacygroupid": null,
+          "name": "Child Group",
+          "sortorder": 0
+        }
+      ],
+      "edges": [
+        {
+          "edgeid": "12345678-1234-1234-1234-123456789e01",
+          "graph_id": "12345678-1234-1234-1234-123456789abc",
+          "domainnode_id": "12345678-1234-1234-1234-123456789001",
+          "rangenode_id": "12345678-1234-1234-1234-123456789002",
+          "name": "has note",
+          "description": "Test edge",
+          "ontologyproperty": "http://www.cidoc-crm.org/cidoc-crm/P3_has_note",
+          "sortorder": 0
+        }
+      ],
+      "cards": [
+        {
+          "cardid": "12345678-1234-1234-1234-123456789c01",
+          "nodegroup_id": "12345678-1234-1234-1234-123456789002",
+          "graph_id": "12345678-1234-1234-1234-123456789abc",
+          "name": {
+            "en": "Test Card"
+          },
+          "description": "Test card description",
+          "instructions": {
+            "en": "Test instructions"
+          },
+          "active": true,
+          "visible": true,
+          "sortorder": 0,
+          "helpenabled": false,
+          "helptext": {
+            "en": "Help text"
+          },
+          "helptitle": {
+            "en": "Help title"
+          },
+          "cssclass": "test-class",
+          "is_editable": true,
+          "config": null,
+          "constraints": []
+        }
+      ],
+      "cards_x_nodes_x_widgets": [],
+      "relatable_resource_model_ids": [],
+      "resource_2_resource_constraints": [],
+      "functions_x_graphs": [],
+      "publication": null
+    }
+  ]
+}

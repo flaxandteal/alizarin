@@ -1,0 +1,29 @@
+[package]
+name = "alizarin-core"
+version = "0.2.1-alpha.46"
+authors = ["Phil Weir <phil.weir@flaxandteal.co.uk>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = []
+parallel = ["rayon"]
+# Enable thread-safe interner for NAPI/Python bindings
+multi-threaded = ["lasso/multi-threaded"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.0", features = ["v4", "v5"] }
+rayon = { version = "1.10", optional = true }
+lasso = { version = "0.7", features = ["serialize"] }
+lazy_static = "1.4"
+# SKOS RDF/XML parsing
+rio_api = "0.8"
+rio_xml = "0.8"
+oxiri = "0.2"
+regex-lite = "0.1"
+csv = "1.3"
+chrono = "0.4"
+
+[dev-dependencies]

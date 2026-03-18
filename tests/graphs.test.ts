@@ -1,10 +1,16 @@
-import { assert, describe, beforeEach } from 'vitest';
+import { assert, describe, beforeAll, beforeEach } from 'vitest';
 import fetchMock from '@fetch-mock/vitest';
-import { GraphMutator } from "../src/graphManager";
-import { StaticNode, StaticGraph } from "../src/static-types";
+import { GraphMutator } from "../js/graphManager";
+import { StaticNode } from "../js/static-types";
 import { coreTest } from "./coreTest";
+import { initWasmForTests } from './wasm-init';
 
 describe("testing graph", () => {
+  beforeAll(async () => {
+    // Initialize WASM module for tests
+    await initWasmForTests();
+  });
+
   beforeEach(() => {
     fetchMock.mockReset();
   });
@@ -49,9 +55,9 @@ describe("testing graph", () => {
         outputGraph.nodes[1],
         {
           alias: 'test',
-          config: null,
+          config: {},  // Empty object
           datatype: 'string',
-          description: 'Describe',
+          description: { en: 'Describe' },
           exportable: true,
           fieldname: 'TestDescription',
           hascustomalias: false,
@@ -63,7 +69,7 @@ describe("testing graph", () => {
           parentproperty: 'http://www.cidoc-crm.org/cidoc-crm/P3_has_note',
           sortorder: 0,
           ontologyclass: 'http://www.w3.org/2000/01/rdf-schema#Literal',
-          sourcebranchpublication_id: null
+          sourcebranchpublication_id: undefined  // Changed from null to undefined (Rust None -> JS undefined)
         }
       ) === 1);
       assert(outputGraph.edges.length === 1);
@@ -120,7 +126,7 @@ describe("testing graph", () => {
             rdmCollection: 'f63b1a5d-75af-565b-a78f-c710ee6ea2fd',
           },
           datatype: 'concept',
-          description: 'Describe',
+          description: { en: 'Describe' },
           exportable: true,
           fieldname: 'TestDescription',
           hascustomalias: false,
@@ -132,7 +138,7 @@ describe("testing graph", () => {
           parentproperty: 'http://www.cidoc-crm.org/cidoc-crm/P3_has_note',
           sortorder: 0,
           ontologyclass: 'http://www.w3.org/2000/01/rdf-schema#Literal',
-          sourcebranchpublication_id: null
+          sourcebranchpublication_id: undefined  // Changed from null to undefined
         }
       ) === 1);
       assert(outputGraph.edges.length === 1);

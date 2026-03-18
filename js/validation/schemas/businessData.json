@@ -1,0 +1,250 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Arches Business Data Schema",
+  "description": "JSON Schema for Arches heritage management business data files with Alizarin compatibility",
+  "type": "object",
+  "required": [
+    "business_data"
+  ],
+  "properties": {
+    "business_data": {
+      "$ref": "#/definitions/businessData"
+    }
+  },
+  "definitions": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "businessData": {
+      "type": "object",
+      "required": [
+        "resources"
+      ],
+      "properties": {
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/resource"
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "required": [
+        "resourceid",
+        "graph_id",
+        "tiles",
+        "resourceinstance"
+      ],
+      "properties": {
+        "resourceid": {
+          "$ref": "#/definitions/uuid"
+        },
+        "graph_id": {
+          "$ref": "#/definitions/uuid"
+        },
+        "legacyid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/tile"
+          },
+          "minItems": 1
+        },
+        "resourceinstance": {
+          "$ref": "#/definitions/resourceInstance"
+        }
+      }
+    },
+    "resourceInstance": {
+      "type": "object",
+      "required": [
+        "resourceinstanceid",
+        "graph_id",
+        "legacyid",
+        "name",
+        "displayname",
+        "descriptors"
+      ],
+      "properties": {
+        "resourceinstanceid": {
+          "$ref": "#/definitions/uuid"
+        },
+        "graph_id": {
+          "$ref": "#/definitions/uuid"
+        },
+        "legacyid": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Legacy identifier for the resource - required for Alizarin"
+        },
+        "createdtime": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Display name for the resource - required for Alizarin"
+        },
+        "displayname": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Display name for UI purposes - required for Alizarin"
+        },
+        "map_popup": {
+          "type": "string",
+          "description": "Text to show in map popups"
+        },
+        "provisional": {
+          "type": "string",
+          "enum": [
+            "true",
+            "false"
+          ]
+        },
+        "descriptors": {
+          "type": "object",
+          "required": [
+            "name",
+            "description",
+            "map_popup",
+            "displayname"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "map_popup": {
+              "type": "string",
+              "minLength": 1
+            },
+            "displayname": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false,
+          "description": "Descriptors object - required for Alizarin resource metadata"
+        },
+        "graph_publication_id": {
+          "$ref": "#/definitions/uuid"
+        },
+        "publication_id": {
+          "$ref": "#/definitions/uuid"
+        }
+      }
+    },
+    "tile": {
+      "type": "object",
+      "required": [
+        "tileid",
+        "nodegroup_id",
+        "data"
+      ],
+      "properties": {
+        "tileid": {
+          "$ref": "#/definitions/uuid"
+        },
+        "nodegroup_id": {
+          "$ref": "#/definitions/uuid"
+        },
+        "parenttile_id": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resourceid": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sortorder": {
+          "type": "number"
+        },
+        "tiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/tile"
+          }
+        },
+        "provisionaledits": {
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "data": {
+          "type": "object",
+          "patternProperties": {
+            "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "en": {
+                      "type": "object",
+                      "required": [
+                        "value",
+                        "direction"
+                      ],
+                      "properties": {
+                        "value": {
+                          "type": "string"
+                        },
+                        "direction": {
+                          "type": "string",
+                          "enum": [
+                            "ltr",
+                            "rtl"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "minProperties": 1
+        }
+      }
+    }
+  }
+}

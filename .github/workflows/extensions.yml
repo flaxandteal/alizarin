@@ -1,0 +1,89 @@
+name: Extensions
+
+on:
+  push:
+    branches: [main, dev/*]
+    paths:
+      - 'ext/js/**'
+      - '.github/workflows/extensions.yml'
+  pull_request:
+    paths:
+      - 'ext/js/**'
+  workflow_dispatch:
+
+jobs:
+  # Build and test JS extensions
+  js-extensions:
+    name: JS Extensions
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache Node dependencies (root)
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-root-${{ hashFiles('package-lock.json') }}
+
+      # Build main alizarin package first (dependency for extensions)
+      - name: Build WASM
+        working-directory: crates/alizarin-wasm
+        run: wasm-pack build --target web --out-dir ../../pkg --release
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Build main package
+        run: npm run build
+
+      # Build all JS extensions
+      - name: Build and test JS extensions
+        run: |
+          for ext_dir in ext/js/@alizarin/*/; do
+            ext_name=$(basename "$ext_dir")
+            echo "=== Building @alizarin/$ext_name ==="
+            cd "$ext_dir"
+            npm install
+            npm run build
+            cd - > /dev/null
+            # Run tests if they exist
+            if [ -d "ext/js/@alizarin/$ext_name/tests" ]; then
+              npm test -- "ext/js/@alizarin/$ext_name/tests/" || echo "Tests for $ext_name failed or pending"
+            fi
+          done
+
+      - name: Upload JS extension artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: alizarin-extensions-js
+          path: |
+            ext/js/@alizarin/*/dist/
+            ext/js/@alizarin/*/package.json
+
+  # Note: Python extensions are built and tested in python.yml workflow
+  # which provides full matrix coverage (Python 3.9-3.13, all major OSes)

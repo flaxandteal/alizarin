@@ -22,3 +22,23 @@ dist-ssr
 *.sln
 *.sw?
 .nenv
+**/target
+**/*.rs.bk
+Cargo.lock
+bin/
+pkg/
+wasm-pack.log
+.venv/
+tmp/
+__pycache__/
+*.pyc
+*.so
+
+# Vite temp files
+vite.config.js.timestamp-*.mjs
+
+# Debug artifacts
+debug_*.js
+
+# Screenshots (accidental commits)
+Screenshot*.png

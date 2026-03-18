@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CLM Extension - Reference Datatype Example</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        max-width: 1200px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.6;
+      }
+      h1 {
+        color: #333;
+        border-bottom: 2px solid #007acc;
+        padding-bottom: 0.5rem;
+      }
+      h2 {
+        color: #555;
+        margin-top: 2rem;
+      }
+      .status {
+        background: #f0f0f0;
+        padding: 1rem;
+        border-radius: 4px;
+        margin: 1rem 0;
+      }
+      .loading {
+        color: #666;
+      }
+      .error {
+        background: #fee;
+        color: #c00;
+        padding: 1rem;
+        border-radius: 4px;
+        border-left: 4px solid #c00;
+      }
+      .field {
+        margin: 1rem 0;
+        padding: 1rem;
+        background: #fafafa;
+        border-radius: 4px;
+        border-left: 4px solid #007acc;
+      }
+      .field-label {
+        font-weight: bold;
+        color: #007acc;
+        margin-bottom: 0.5rem;
+      }
+      .field-value {
+        font-family: 'Courier New', monospace;
+        background: white;
+        padding: 0.5rem;
+        border-radius: 2px;
+        margin-top: 0.5rem;
+      }
+      .reference-value {
+        background: #e8f4f8;
+        border-left-color: #00a8e8;
+      }
+      pre {
+        background: #f5f5f5;
+        padding: 1rem;
+        border-radius: 4px;
+        overflow-x: auto;
+      }
+      code {
+        font-family: 'Courier New', monospace;
+        font-size: 0.9em;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>CLM Extension - Reference Datatype Example</h1>
+
+    <div class="status">
+      <div id="status" class="loading">Loading...</div>
+    </div>
+
+    <div id="output"></div>
+
+    <script type="module">
+      import { RDM, graphManager, staticStore, client, wasmReady, AlizarinModel, parseSkosXmlToCollection, collectionToSkosXml } from 'alizarin';
+      import './src/main.ts'; // Register the reference datatype
+
+      const statusEl = document.getElementById('status');
+      const outputEl = document.getElementById('output');
+
+      function setStatus(message, isError = false) {
+        statusEl.textContent = message;
+        statusEl.className = isError ? 'error' : 'loading';
+      }
+
+      function addField(label, value, isReference = false) {
+        const fieldDiv = document.createElement('div');
+        fieldDiv.className = 'field' + (isReference ? ' reference-value' : '');
+
+        const labelDiv = document.createElement('div');
+        labelDiv.className = 'field-label';
+        labelDiv.textContent = label;
+
+        const valueDiv = document.createElement('div');
+        valueDiv.className = 'field-value';
+
+        if (typeof value === 'object' && value !== null) {
+          const pre = document.createElement('pre');
+          pre.innerHTML = '<code>' + JSON.stringify(value, null, 2) + '</code>';
+          valueDiv.appendChild(pre);
+        } else {
+          valueDiv.textContent = String(value);
+        }
+
+        fieldDiv.appendChild(labelDiv);
+        fieldDiv.appendChild(valueDiv);
+        outputEl.appendChild(fieldDiv);
+      }
+
+      // Cache for parsed SKOS collections
+      const skosCache = new Map();
+
+      // Custom collection fetcher that parses SKOS XML
+      // Returns data in a format that StaticCollection constructor expects
+      async function fetchSkosCollection(collectionId) {
+        if (skosCache.has(collectionId)) {
+          return skosCache.get(collectionId);
+        }
+
+        const xmlUrl = `collections/${collectionId}.xml`;
+        console.log(`Fetching SKOS XML from: ${xmlUrl}`);
+
+        const response = await fetch(xmlUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch SKOS XML: ${response.status}`);
+        }
+
+        const xmlContent = await response.text();
+        console.log('Parsing SKOS XML with Rust parser...');
+
+        // Parse SKOS XML using the Rust parser
+        // This returns { id, prefLabels, concepts } - the format StaticCollection expects
+        const parsed = parseSkosXmlToCollection(xmlContent, 'http://localhost:8000/');
+        console.log('Parsed SKOS collection (raw):', parsed);
+
+        // Return in format StaticCollection constructor expects
+        // (it will build __allConcepts and __values itself)
+        const collectionData = {
+          id: parsed.id || collectionId,
+          prefLabels: parsed.prefLabels || {},
+          concepts: parsed.concepts || {}
+        };
+        console.log('Collection data for StaticCollection:', collectionData);
+
+        skosCache.set(collectionId, collectionData);
+        return collectionData;
+      }
+
+      // Helper to add getReferenceValue to a StaticCollection for CLM extension
+      function addReferenceValueMethod(collection) {
+        if (collection.getReferenceValue) {
+          return collection; // Already has the method
+        }
+
+        collection.getReferenceValue = function(conceptId) {
+          const concept = this.__allConcepts[conceptId];
+          if (!concept) {
+            console.warn(`Concept ${conceptId} not found in collection`);
+            return null;
+          }
+
+          // Convert SKOS concept to CLM StaticReference format
+          const labels = [];
+          for (const [langId, prefLabel] of Object.entries(concept.prefLabels || {})) {
+            labels.push({
+              id: prefLabel.id,
+              language_id: langId,
+              list_item_id: concept.id,
+              value: prefLabel.value,
+              valuetype_id: 'prefLabel'
+            });
+          }
+
+          return {
+            labels,
+            list_id: this.id,
+            uri: concept.uri || concept.source || `http://localhost:8000/plugins/controlled-list-manager/item/${concept.id}`,
+            id: concept.id
+          };
+        };
+
+        return collection;
+      }
+
+      async function loadAndDisplay() {
+        try {
+          setStatus('Waiting for WASM initialization...');
+          await wasmReady;
+
+          setStatus('Configuring client...');
+
+          // Create a static client that loads from the public folder
+          // Note: collectionIdToFile returns XML path now, but we use custom fetcher
+          const staticClient = new client.ArchesClientRemoteStatic('', {
+            allGraphFile: () => 'resource_models/_all.json',
+            graphIdToGraphFile: (graphId) => `resource_models/${graphId}.json`,
+            graphIdToResourcesFiles: (graphId) => [`business_data/_${graphId}.json`],
+            collectionIdToFile: (collectionId) => `collections/${collectionId}.xml`,
+          });
+
+          // Override the collection fetcher to use our SKOS XML parser
+          staticClient.getCollection = fetchSkosCollection;
+
+          // Set the client on all managers
+          graphManager.archesClient = staticClient;
+          staticStore.archesClient = staticClient;
+          RDM.archesClient = staticClient;
+
+          // Now initialize with our static client
+          setStatus('Initializing graph manager...');
+          await graphManager.initialize();
+
+          setStatus('Loading resource instance...');
+
+          // Create a Person view model class
+          class Person extends AlizarinModel {}
+
+          // Get the model manager for Person
+          const PersonManager = await graphManager.get(Person);
+
+          // Load resources for this graph
+          const resources = await PersonManager.all({ pruneTiles: false });
+
+          if (resources.length === 0) {
+            throw new Error('No resources found');
+          }
+
+          const model = resources[0];
+
+          setStatus('Resource loaded successfully!');
+          statusEl.className = '';
+
+          // Demonstrate SKOS XML parsing directly
+          const skosH2 = document.createElement('h2');
+          skosH2.textContent = 'SKOS XML Parsing Demo';
+          outputEl.appendChild(skosH2);
+
+          // Fetch and parse the SKOS XML to demonstrate the Rust parser
+          const collectionId = '2730d609-3a8d-49dc-bf51-6ac34e80294a';
+          setStatus('Fetching and parsing SKOS XML...');
+
+          // Retrieve collection through RDM (which wraps it in StaticCollection)
+          const collection = await RDM.retrieveCollection(collectionId);
+          // Add the getReferenceValue method for CLM compatibility
+          addReferenceValueMethod(collection);
+
+          addField('Collection ID', collectionId, true);
+          addField('Parsed from SKOS XML', {
+            id: collection.id,
+            prefLabels: collection.prefLabels,
+            concepts: collection.concepts,
+            __allConcepts: Object.keys(collection.__allConcepts || {}),
+            __values: Object.keys(collection.__values || {})
+          }, true);
+
+          // Demonstrate looking up a concept by ID
+          const testConceptId = '6672d187-dfc3-4424-8c63-7a3b377b4159';  // "Item 1>1"
+          const referenceValue = collection.getReferenceValue(testConceptId);
+          addField(`Concept lookup: ${testConceptId}`, referenceValue, true);
+
+          // Demonstrate serialization back to SKOS XML (round-trip)
+          const roundTripH2 = document.createElement('h2');
+          roundTripH2.textContent = 'SKOS XML Serialization (Round-trip)';
+          outputEl.appendChild(roundTripH2);
+
+          // Need to convert our collection back to the format expected by the Rust serializer
+          // Note: Rust struct expects __allConcepts and __values (with serde rename)
+          const skosCollection = {
+            id: collection.id,
+            prefLabels: collection.prefLabels,
+            concepts: collection.concepts,
+            __allConcepts: collection.__allConcepts || {},
+            __values: collection.__values || {}
+          };
+
+          const serializedXml = collectionToSkosXml(skosCollection, 'http://localhost:8000/');
+          addField('Serialized back to SKOS XML', serializedXml, true);
+
+          setStatus('Resource loaded successfully!');
+          statusEl.className = '';
+
+          // Display resource information
+          const h2 = document.createElement('h2');
+          h2.textContent = 'Resource Instance';
+          outputEl.appendChild(h2);
+
+          addField('Resource ID', model.id);
+          addField('Graph ID', model.__wrapper?.model?.wkrm?.graphId || 'N/A');
+
+          // Display all fields from the model
+          const fieldsH2 = document.createElement('h2');
+          fieldsH2.textContent = 'Fields';
+          outputEl.appendChild(fieldsH2);
+
+          // Access fields through the model
+          if (model.test) {
+            const testValue = await model.test;
+            addField('Test Field (Reference) - Raw Value', testValue, true);
+            addField('Test Field (Reference) - As String', String(testValue), true);
+
+            // Show the underlying reference data if available
+            if (testValue._ref) {
+              addField('Test Field (Reference) - _ref data', testValue._ref, true);
+            }
+          } else {
+            addField('Test Field', 'No test field found on model');
+          }
+
+        } catch (error) {
+          console.error('Error loading data:', error);
+          setStatus('Error: ' + error.message, true);
+
+          const pre = document.createElement('pre');
+          pre.innerHTML = '<code>' + error.stack + '</code>';
+          outputEl.appendChild(pre);
+        }
+      }
+
+      loadAndDisplay();
+    </script>
+  </body>
+</html>

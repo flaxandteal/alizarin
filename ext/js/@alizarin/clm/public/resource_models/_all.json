@@ -1,0 +1,21 @@
+{
+  "models": {
+    "22477f01-1a44-11e9-b0a9-000d3ab1e588": {
+      "graphid": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+      "name": {
+        "en": "Person"
+      },
+      "description": {
+        "en": "Used to describe individuals associated with a heritage resource. \nA person can either be current (eg. owners, developers etc) or a person of historic interest (eg. an author who formerly lived in a heritage resource)."
+      },
+      "subtitle": {
+        "en": "Used to describe individuals associated with a heritage resource. A person can either be current (eg. owners, developers etc) or a person of historic interest (eg. an author who formerly lived in a heritage resource)."
+      },
+      "iconclass": "fa fa-user",
+      "color": "rgba(236,109,155,1)",
+      "isresource": true,
+      "ontology_id": null,
+      "version": ""
+    }
+  }
+}

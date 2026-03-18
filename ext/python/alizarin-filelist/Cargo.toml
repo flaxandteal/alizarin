@@ -1,0 +1,24 @@
+[package]
+name = "alizarin-filelist"
+version = "0.2.1-alpha.46"
+edition = "2021"
+description = "File List datatype extension for Alizarin"
+
+[lib]
+name = "_rust"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["pyo3-ext"]
+pyo3-ext = ["pyo3"]
+mutations = ["alizarin-core"]
+
+[dependencies]
+pyo3 = { version = "0.21", features = ["extension-module", "abi3-py39"], optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+alizarin-extension-api = { path = "../../../crates/alizarin-extension-api" }
+alizarin-core = { path = "../../../crates/alizarin-core", optional = true }
+
+[dev-dependencies]
+alizarin-core = { path = "../../../crates/alizarin-core" }

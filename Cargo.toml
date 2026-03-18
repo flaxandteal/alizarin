@@ -1,0 +1,29 @@
+[workspace]
+members = [
+    "crates/alizarin-core",
+    "crates/alizarin-wasm",
+    "crates/alizarin-python",
+    "crates/alizarin-explorer",
+    "crates/alizarin-extension-api",
+    "crates/wasm-wrapper-derive",
+]
+exclude = [
+    "ext/python/alizarin-clm",
+    "ext/python/alizarin-filelist",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.2.1-alpha.46"
+authors = ["Phil Weir <phil.weir@flaxandteal.co.uk>"]
+edition = "2021"
+
+[profile.release]
+# Tell `rustc` to optimize for small code size.
+opt-level = "s"
+# Include debug symbols for better panic backtraces
+debug = true
+
+[profile.dev]
+# Enable debug symbols for better error messages
+debug = true

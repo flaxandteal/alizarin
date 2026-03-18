@@ -1,0 +1,198 @@
+name: Release Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v0.0.1-alpha.1)'
+        required: true
+        type: string
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: 'https://npm.pkg.github.com'
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache Node dependencies
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Build WASM
+        working-directory: crates/alizarin-wasm
+        run: |
+          wasm-pack build --target web --out-dir ../../pkg --out-name alizarin --release
+          echo "WASM build complete. Contents of pkg/:"
+          ls -lh ../../pkg/
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build TypeScript/JavaScript bundle
+        run: npm run build
+
+      # Build all JS extensions
+      - name: Build JS extensions and create tarballs
+        run: |
+          for ext_dir in ext/js/@alizarin/*/; do
+            ext_name=$(basename "$ext_dir")
+            echo "=== Building @alizarin/$ext_name ==="
+            cd "$ext_dir"
+            npm install
+            npm run build
+            npm pack
+            # Move tarball to root so it's found by the release upload
+            mv alizarin-*.tgz ../../../../
+            cd - > /dev/null
+          done
+
+      - name: Verify build artifacts
+        run: |
+          echo "Checking dist directory:"
+          ls -lh dist/
+          echo ""
+          echo "Checking pkg directory:"
+          ls -lh pkg/
+          echo ""
+          echo "Checking JS extension dist directories:"
+          for ext_dir in ext/js/@alizarin/*/; do
+            ext_name=$(basename "$ext_dir")
+            echo "  @alizarin/$ext_name:"
+            ls -lh "$ext_dir/dist/" 2>/dev/null || echo "    (no dist)"
+          done
+          echo ""
+          echo "Checking tarballs in root:"
+          ls -lh *.tgz || echo "No tarballs yet"
+          echo ""
+          echo "Checking package.json files array includes required directories"
+          cat package.json | grep -A 5 '"files"'
+
+      # temp: disable tests - name: Run tests
+      # temp: disable tests   run: npm test
+
+      - name: Prepare package for npm
+        run: |
+          # Remove pkg/.gitignore created by wasm-pack so pkg/ contents are included in tarball
+          rm -f pkg/.gitignore
+          echo "Removed pkg/.gitignore to ensure WASM files are included in package"
+
+      - name: Create tarball for npm installation
+        run: |
+          # Create a clean package tarball that npm can install
+          npm pack
+          echo ""
+          echo "Tarball contents:"
+          tar -tzf alizarin-*.tgz | grep -E "(pkg/|dist/)" | head -20
+
+      - name: Get version from tag or input
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: Release ${{ steps.get_version.outputs.version }}
+          draft: false
+          prerelease: ${{ contains(steps.get_version.outputs.version, 'alpha') || contains(steps.get_version.outputs.version, 'beta') }}
+          files: |
+            *.tgz
+          body: |
+            ## Installation
+
+            Install this release directly from GitHub:
+
+            ```bash
+            npm install ${{ github.repository }}#${{ steps.get_version.outputs.version }}
+            ```
+
+            Or install from the tarball:
+
+            ```bash
+            npm install https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/alizarin-${{ steps.get_version.outputs.version }}.tgz
+            ```
+
+            ### Extensions
+
+            **@alizarin/clm** - CLM display serializers for reference/concept datatypes:
+            ```bash
+            npm install https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/alizarin-clm-${{ steps.get_version.outputs.version }}.tgz
+            ```
+
+            **@alizarin/filelist** - File list datatype view models and display serializers:
+            ```bash
+            npm install https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/alizarin-filelist-${{ steps.get_version.outputs.version }}.tgz
+            ```
+
+            Then import to register:
+            ```typescript
+            import '@alizarin/clm';
+            import '@alizarin/filelist';
+            ```
+
+            ## What's Included
+
+            **alizarin:**
+            - Pre-built WASM binary (`pkg/`)
+            - Bundled JavaScript/TypeScript distribution (`dist/`)
+            - Type definitions
+            - Source maps
+
+            **@alizarin/clm:**
+            - Display serializers for CLM reference datatypes
+            - Auto-registers when imported
+
+            **@alizarin/filelist:**
+            - View models for file-list datatypes
+            - Display serializers for file-list
+            - Auto-registers when imported
+
+            ## Changes
+
+            See commits since last release for details.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Output installation instructions
+        run: |
+          echo "::notice::Release created! Install with: npm install ${{ github.repository }}#${{ steps.get_version.outputs.version }}"

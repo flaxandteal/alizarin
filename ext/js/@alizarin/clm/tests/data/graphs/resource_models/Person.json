@@ -1,0 +1,524 @@
+{
+    "graph": [
+        {
+            "author": " Phil Carlisle",
+            "cards": [
+                {
+                    "active": true,
+                    "cardid": "0d5c912c-dd18-4d6f-8595-418d1ea692f3",
+                    "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+                    "config": null,
+                    "constraints": [],
+                    "cssclass": null,
+                    "description": null,
+                    "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                    "helpenabled": false,
+                    "helptext": {
+                        "en": ""
+                    },
+                    "helptitle": {
+                        "en": ""
+                    },
+                    "instructions": {
+                        "en": ""
+                    },
+                    "name": {
+                        "en": "Test"
+                    },
+                    "nodegroup_id": "3ade323c-376c-433e-bf07-e776546a562b",
+                    "sortorder": null,
+                    "source_identifier_id": null,
+                    "visible": true,
+                    "is_editable": true
+                },
+                {
+                    "active": true,
+                    "cardid": "4110f743-1a44-11e9-9a37-000d3ab1e588",
+                    "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+                    "config": null,
+                    "constraints": [],
+                    "cssclass": null,
+                    "description": "",
+                    "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                    "helpenabled": true,
+                    "helptext": {
+                        "en": "<p>&nbsp;</p>\n\n<p>&nbsp;</p>\n\n<p>&nbsp;</p>\n\n<p>The following guidelines are based on the National Council of Archives <em>Rules for the Construction of Personal, Place and Corporate Names.&nbsp;</em></p>\n\n<p><strong>Full Name</strong></p>\n\n<p>Use to record a concatenated form of the name. This can be useful for display or migration purposes but should not be used as a repalcement for the structured name data.</p>\n\n<p><strong>Title</strong></p>\n\n<p>In English only the titles Lord, Lady, Sir, Dame and Hon (Honourable) may precede the forename. However common practice allows for other titles, such as Mr, Mrs etc, to be used. Select the most appropriate.</p>\n\n<p><strong>Forename</strong></p>\n\n<p>A forename is the component of the name which a person is given in addition to his/her surname. All forenames, including middle names where known,&nbsp;should be listed to assist disambiguation between individuals.</p>\n\n<p><strong>Initials</strong></p>\n\n<p>These should only be used where the full name is not known&nbsp;or the individual is more usually known by their initials, eg. T.S. Eliot.&nbsp;</p>\n\n<p><strong>Surname</strong></p>\n\n<p>The component of a name which a person usually shares with other members of their family<strong>.</strong></p>\n\n<p><strong>Epithet</strong></p>\n\n<p>This is a word or phrase describing a person&#39;s status, position, occupation, nationality, place of birth etc. An epithet should be included as a qualifier where any confusion between persons may arise.</p>\n\n<p>&nbsp;</p>\n\n<p>&nbsp;</p>\n"
+                    },
+                    "helptitle": {
+                        "en": "Name Details"
+                    },
+                    "instructions": {
+                        "en": ""
+                    },
+                    "name": {
+                        "en": "Names"
+                    },
+                    "nodegroup_id": "4110f741-1a44-11e9-885e-000d3ab1e588",
+                    "sortorder": 0,
+                    "source_identifier_id": null,
+                    "visible": true,
+                    "is_editable": true
+                },
+                {
+                    "active": true,
+                    "cardid": "e2543712-8ada-478f-84f0-fd30d2cfd9e5",
+                    "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+                    "config": null,
+                    "constraints": [],
+                    "cssclass": null,
+                    "description": null,
+                    "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                    "helpenabled": false,
+                    "helptext": {
+                        "en": ""
+                    },
+                    "helptitle": {
+                        "en": ""
+                    },
+                    "instructions": {
+                        "en": ""
+                    },
+                    "name": {
+                        "en": "User Account"
+                    },
+                    "nodegroup_id": "b1f5c336-6a0e-11ee-b748-0242ac140009",
+                    "sortorder": null,
+                    "source_identifier_id": null,
+                    "visible": true,
+                    "is_editable": true
+                }
+            ],
+            "cards_x_nodes_x_widgets": [
+                {
+                    "card_id": "e2543712-8ada-478f-84f0-fd30d2cfd9e5",
+                    "config": {
+                        "defaultValue": {
+                            "en": {
+                                "direction": "ltr",
+                                "value": ""
+                            }
+                        },
+                        "i18n_properties": [
+                            "placeholder"
+                        ],
+                        "label": "User Account",
+                        "maxLength": null,
+                        "placeholder": {
+                            "en": ""
+                        },
+                        "uneditable": true,
+                        "width": "100%"
+                    },
+                    "id": "070e72e8-691c-411e-b9f5-35f9c16f215a",
+                    "label": {
+                        "en": "User Account"
+                    },
+                    "node_id": "b1f5c336-6a0e-11ee-b748-0242ac140009",
+                    "sortorder": 0,
+                    "source_identifier_id": null,
+                    "visible": true,
+                    "widget_id": "8e113d7f-668c-400c-824e-087167ad5d9d"
+                },
+                {
+                    "card_id": "0d5c912c-dd18-4d6f-8595-418d1ea692f3",
+                    "config": {
+                        "i18n_properties": [
+                            "placeholder"
+                        ],
+                        "label": "Test",
+                        "placeholder": {
+                            "en": "Select an option"
+                        }
+                    },
+                    "id": "63677e51-9bf6-4eb4-8aab-7a54d3fd82ae",
+                    "label": {
+                        "en": "Test"
+                    },
+                    "node_id": "3ade323c-376c-433e-bf07-e776546a562b",
+                    "sortorder": 0,
+                    "source_identifier_id": null,
+                    "visible": true,
+                    "widget_id": "19e56148-82b8-47eb-b66e-f6243639a1a8"
+                },
+                {
+                    "card_id": "4110f743-1a44-11e9-9a37-000d3ab1e588",
+                    "config": {
+                        "defaultValue": {
+                            "en": {
+                                "direction": "ltr",
+                                "value": ""
+                            }
+                        },
+                        "i18n_properties": [
+                            "placeholder"
+                        ],
+                        "label": "Full Name",
+                        "maxLength": null,
+                        "placeholder": {
+                            "en": "Enter text"
+                        },
+                        "uneditable": false,
+                        "width": "100%"
+                    },
+                    "id": "aba26601-7ef9-11ea-9b7d-f875a44e0e11",
+                    "label": {
+                        "en": "Full Name"
+                    },
+                    "node_id": "5f8ded26-7ef9-11ea-8e29-f875a44e0e11",
+                    "sortorder": 0,
+                    "source_identifier_id": null,
+                    "visible": true,
+                    "widget_id": "10000000-0000-0000-0000-000000000001"
+                }
+            ],
+            "color": "rgba(236,109,155,1)",
+            "config": {
+                "nodes": [
+                    "84bb5171-1ac3-11eb-b702-f875a44e0e11"
+                ]
+            },
+            "deploymentdate": null,
+            "deploymentfile": null,
+            "description": {
+                "en": "Used to describe individuals associated with a heritage resource. \nA person can either be current (eg. owners, developers etc) or a person of historic interest (eg. an author who formerly lived in a heritage resource)."
+            },
+            "edges": [
+                {
+                    "description": null,
+                    "domainnode_id": "22477f00-1a44-11e9-a60e-000d3ab1e588",
+                    "edgeid": "0ec7bbf4-b234-43cd-81ed-5a71dbf3a266",
+                    "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                    "name": null,
+                    "ontologyproperty": null,
+                    "rangenode_id": "3ade323c-376c-433e-bf07-e776546a562b",
+                    "source_identifier_id": null
+                },
+                {
+                    "description": null,
+                    "domainnode_id": "22477f00-1a44-11e9-a60e-000d3ab1e588",
+                    "edgeid": "35b6f4df-baf9-46aa-b9ef-804435dcc7a5",
+                    "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                    "name": null,
+                    "ontologyproperty": null,
+                    "rangenode_id": "b1f5c336-6a0e-11ee-b748-0242ac140009",
+                    "source_identifier_id": null
+                },
+                {
+                    "description": null,
+                    "domainnode_id": "22477f00-1a44-11e9-a60e-000d3ab1e588",
+                    "edgeid": "4110f759-1a44-11e9-9ffe-000d3ab1e588",
+                    "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                    "name": null,
+                    "ontologyproperty": null,
+                    "rangenode_id": "4110f741-1a44-11e9-885e-000d3ab1e588",
+                    "source_identifier_id": null
+                },
+                {
+                    "description": null,
+                    "domainnode_id": "4110f741-1a44-11e9-885e-000d3ab1e588",
+                    "edgeid": "5f8e1436-7ef9-11ea-a3f1-f875a44e0e11",
+                    "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                    "name": null,
+                    "ontologyproperty": null,
+                    "rangenode_id": "5f8ded26-7ef9-11ea-8e29-f875a44e0e11",
+                    "source_identifier_id": null
+                }
+            ],
+            "functions_x_graphs": [
+                {
+                    "config": {
+                        "descriptor_types": {
+                            "description": {
+                                "nodegroup_id": "554b62c7-9504-11ea-8510-f875a44e0e11",
+                                "string_template": "<Description>"
+                            },
+                            "map_popup": {
+                                "nodegroup_id": "4110f741-1a44-11e9-885e-000d3ab1e588",
+                                "string_template": "<Full Name>"
+                            },
+                            "name": {
+                                "nodegroup_id": "4110f741-1a44-11e9-885e-000d3ab1e588",
+                                "string_template": "<Full Name>"
+                            }
+                        },
+                        "triggering_nodegroups": []
+                    },
+                    "function_id": "60000000-0000-0000-0000-000000000001",
+                    "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                    "id": "eda0d03d-615e-43ad-8f46-570629ffb456"
+                }
+            ],
+            "graphid": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+            "group_permissions": {},
+            "has_unpublished_changes": true,
+            "iconclass": "fa fa-user",
+            "is_active": true,
+            "is_copy_immutable": false,
+            "isresource": true,
+            "jsonldcontext": null,
+            "name": {
+                "en": "Person"
+            },
+            "nodegroups": [
+                {
+                    "cardinality": "1",
+                    "grouping_node_id": "3ade323c-376c-433e-bf07-e776546a562b",
+                    "legacygroupid": null,
+                    "nodegroupid": "3ade323c-376c-433e-bf07-e776546a562b",
+                    "parentnodegroup_id": null
+                },
+                {
+                    "cardinality": "n",
+                    "grouping_node_id": "4110f741-1a44-11e9-885e-000d3ab1e588",
+                    "legacygroupid": null,
+                    "nodegroupid": "4110f741-1a44-11e9-885e-000d3ab1e588",
+                    "parentnodegroup_id": null
+                },
+                {
+                    "cardinality": "1",
+                    "grouping_node_id": "b1f5c336-6a0e-11ee-b748-0242ac140009",
+                    "legacygroupid": null,
+                    "nodegroupid": "b1f5c336-6a0e-11ee-b748-0242ac140009",
+                    "parentnodegroup_id": null
+                }
+            ],
+            "nodes": [
+                {
+                    "alias": "person",
+                    "config": {},
+                    "datatype": "semantic",
+                    "description": "",
+                    "exportable": false,
+                    "fieldname": "",
+                    "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                    "hascustomalias": false,
+                    "is_collector": false,
+                    "is_immutable": false,
+                    "isrequired": false,
+                    "issearchable": true,
+                    "istopnode": true,
+                    "name": "Person",
+                    "nodegroup_id": null,
+                    "nodeid": "22477f00-1a44-11e9-a60e-000d3ab1e588",
+                    "ontologyclass": null,
+                    "parentproperty": "",
+                    "sortorder": 0,
+                    "source_identifier_id": null,
+                    "sourcebranchpublication_id": null,
+                    "is_editable": true
+                },
+                {
+                    "alias": "test",
+                    "config": {
+                        "controlledList": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
+                        "multiValue": true
+                    },
+                    "datatype": "reference",
+                    "description": null,
+                    "exportable": false,
+                    "fieldname": null,
+                    "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                    "hascustomalias": false,
+                    "is_collector": true,
+                    "is_immutable": false,
+                    "isrequired": false,
+                    "issearchable": true,
+                    "istopnode": false,
+                    "name": "Test",
+                    "nodegroup_id": "3ade323c-376c-433e-bf07-e776546a562b",
+                    "nodeid": "3ade323c-376c-433e-bf07-e776546a562b",
+                    "ontologyclass": null,
+                    "parentproperty": null,
+                    "sortorder": 0,
+                    "source_identifier_id": null,
+                    "sourcebranchpublication_id": null,
+                    "is_editable": true
+                },
+                {
+                    "alias": "name",
+                    "config": {
+                        "fillColor": "rgba(233,112,111,0.8)"
+                    },
+                    "datatype": "semantic",
+                    "description": "",
+                    "exportable": false,
+                    "fieldname": "",
+                    "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                    "hascustomalias": false,
+                    "is_collector": true,
+                    "is_immutable": false,
+                    "isrequired": false,
+                    "issearchable": true,
+                    "istopnode": false,
+                    "name": "Name",
+                    "nodegroup_id": "4110f741-1a44-11e9-885e-000d3ab1e588",
+                    "nodeid": "4110f741-1a44-11e9-885e-000d3ab1e588",
+                    "ontologyclass": null,
+                    "parentproperty": null,
+                    "sortorder": 0,
+                    "source_identifier_id": null,
+                    "sourcebranchpublication_id": null,
+                    "is_editable": true
+                },
+                {
+                    "alias": "full_name",
+                    "config": {},
+                    "datatype": "string",
+                    "description": null,
+                    "exportable": true,
+                    "fieldname": "Full_Name",
+                    "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                    "hascustomalias": false,
+                    "is_collector": false,
+                    "is_immutable": false,
+                    "isrequired": false,
+                    "issearchable": true,
+                    "istopnode": false,
+                    "name": "Full Name",
+                    "nodegroup_id": "4110f741-1a44-11e9-885e-000d3ab1e588",
+                    "nodeid": "5f8ded26-7ef9-11ea-8e29-f875a44e0e11",
+                    "ontologyclass": null,
+                    "parentproperty": null,
+                    "sortorder": 0,
+                    "source_identifier_id": null,
+                    "sourcebranchpublication_id": null,
+                    "is_editable": true
+                },
+                {
+                    "alias": "user_account",
+                    "config": {
+                        "en": ""
+                    },
+                    "datatype": "user",
+                    "description": null,
+                    "exportable": false,
+                    "fieldname": null,
+                    "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                    "hascustomalias": false,
+                    "is_collector": true,
+                    "is_immutable": false,
+                    "isrequired": false,
+                    "issearchable": true,
+                    "istopnode": false,
+                    "name": "User Account",
+                    "nodegroup_id": "b1f5c336-6a0e-11ee-b748-0242ac140009",
+                    "nodeid": "b1f5c336-6a0e-11ee-b748-0242ac140009",
+                    "ontologyclass": null,
+                    "parentproperty": null,
+                    "sortorder": 0,
+                    "source_identifier_id": null,
+                    "sourcebranchpublication_id": null,
+                    "is_editable": true
+                }
+            ],
+            "ontology_id": null,
+            "publication": {
+                "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                "most_recent_edit_id": null,
+                "notes": null,
+                "publicationid": "b34c00e3-be7f-4e64-ad96-a49e3b42763c",
+                "published_time": "2025-12-11T05:43:46.309"
+            },
+            "relatable_resource_model_ids": [],
+            "resource_2_resource_constraints": [],
+            "resource_instance_lifecycle": {
+                "id": "7e3cce56-fbfb-4a4b-8e83-59b9f9e7cb75",
+                "name": {
+                    "en": "Standard"
+                },
+                "resource_instance_lifecycle_states": [
+                    {
+                        "action_label": {
+                            "en": "Revert to Draft"
+                        },
+                        "can_delete_resource_instances": true,
+                        "can_edit_resource_instances": true,
+                        "id": "9375c9a7-dad2-4f14-a5c1-d7e329fdde4f",
+                        "is_initial_state": true,
+                        "name": {
+                            "en": "Draft"
+                        },
+                        "next_resource_instance_lifecycle_states": [
+                            "f75bb034-36e3-4ab4-8167-f520cf0b4c58"
+                        ],
+                        "previous_resource_instance_lifecycle_states": [],
+                        "resource_instance_lifecycle_id": "7e3cce56-fbfb-4a4b-8e83-59b9f9e7cb75"
+                    },
+                    {
+                        "action_label": {
+                            "en": "Make Active"
+                        },
+                        "can_delete_resource_instances": false,
+                        "can_edit_resource_instances": true,
+                        "id": "f75bb034-36e3-4ab4-8167-f520cf0b4c58",
+                        "is_initial_state": false,
+                        "name": {
+                            "en": "Active"
+                        },
+                        "next_resource_instance_lifecycle_states": [
+                            "d95d9c0e-0e2c-4450-93a3-d788b91abcc8"
+                        ],
+                        "previous_resource_instance_lifecycle_states": [
+                            "9375c9a7-dad2-4f14-a5c1-d7e329fdde4f"
+                        ],
+                        "resource_instance_lifecycle_id": "7e3cce56-fbfb-4a4b-8e83-59b9f9e7cb75"
+                    },
+                    {
+                        "action_label": {
+                            "en": "Retire"
+                        },
+                        "can_delete_resource_instances": false,
+                        "can_edit_resource_instances": false,
+                        "id": "d95d9c0e-0e2c-4450-93a3-d788b91abcc8",
+                        "is_initial_state": false,
+                        "name": {
+                            "en": "Retired"
+                        },
+                        "next_resource_instance_lifecycle_states": [],
+                        "previous_resource_instance_lifecycle_states": [
+                            "f75bb034-36e3-4ab4-8167-f520cf0b4c58"
+                        ],
+                        "resource_instance_lifecycle_id": "7e3cce56-fbfb-4a4b-8e83-59b9f9e7cb75"
+                    }
+                ]
+            },
+            "root": {
+                "alias": "person",
+                "config": {},
+                "datatype": "semantic",
+                "description": "",
+                "exportable": false,
+                "fieldname": "",
+                "graph_id": "22477f01-1a44-11e9-b0a9-000d3ab1e588",
+                "hascustomalias": false,
+                "is_collector": false,
+                "is_immutable": false,
+                "isrequired": false,
+                "issearchable": true,
+                "istopnode": true,
+                "name": "Person",
+                "nodegroup_id": null,
+                "nodeid": "22477f00-1a44-11e9-a60e-000d3ab1e588",
+                "ontologyclass": null,
+                "sortorder": 0,
+                "source_identifier_id": null,
+                "sourcebranchpublication_id": null
+            },
+            "slug": "person",
+            "source_identifier_id": null,
+            "spatial_views": [],
+            "subtitle": {
+                "en": "Used to describe individuals associated with a heritage resource. A person can either be current (eg. owners, developers etc) or a person of historic interest (eg. an author who formerly lived in a heritage resource)."
+            },
+            "template_id": "50000000-0000-0000-0000-000000000001",
+            "user_permissions": {},
+            "version": ""
+        }
+    ],
+    "metadata": {
+        "db": "PostgreSQL 16.4 (Debian 16.4-1.pgdg110+1) on x86_64-pc-linux-gnu, compiled by gcc (Debian 10.2.1-6) 10.2.1 20210110, 64-bit",
+        "git hash": "2f6eae12e7 2025-11-14 13:20:19 -0800",
+        "os": "Linux",
+        "os version": "6.17.0-5-generic"
+    }
+}

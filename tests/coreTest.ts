@@ -1,8 +1,8 @@
 import { test } from "vitest";
-import { StaticGraph, StaticCollection, StaticConcept } from '../src/static-types';
+import { createStaticGraph, StaticCollection, StaticConcept } from '../js/static-types';
 
-async function basicGraph({ test }, use) {
-  const graph = StaticGraph.create({
+async function basicGraph({}, use: any) {
+  const graph = createStaticGraph({
     author: "Author",
     description: "Graph description",
     name: "Graph",
@@ -10,7 +10,7 @@ async function basicGraph({ test }, use) {
   await use(graph);
 }
 
-async function basicCollection({ test }, use) {
+async function basicCollection({}, use: any) {
   const graph = StaticCollection.fromConceptScheme({
     conceptScheme: StaticConcept.fromValue(
       null,
@@ -25,8 +25,8 @@ const coreTest = test.extend<{
   basicGraph: StaticGraph,
   basicCollection: StaticCollection
 }>({
-  basicGraph: basicGraph,
-  basicCollection: basicCollection
+  basicGraph: basicGraph as any,
+  basicCollection: basicCollection as any
 });
 
 export { coreTest };
