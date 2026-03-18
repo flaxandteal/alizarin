@@ -164,7 +164,7 @@ jobs:
               test_tmp="/tmp/alizarin_tests_$ext_name"
               rm -rf "$test_tmp"
               cp -r "$ext_dir/tests" "$test_tmp"
-              (cd /tmp && pytest "$test_tmp" -v --import-mode=importlib) || echo "Tests for $ext_name failed or pending"
+              (cd /tmp && pytest "$test_tmp" -v --import-mode=importlib)
             fi
           done
 
@@ -188,7 +188,7 @@ jobs:
               Copy-Item -Recurse "$($ext_dir.FullName)/tests" $test_tmp
               Push-Location $env:TEMP
               pytest $test_tmp -v --import-mode=importlib
-              if ($LASTEXITCODE -ne 0) { Write-Host "Tests for $ext_name failed or pending" }
+              if ($LASTEXITCODE -ne 0) { throw "Tests for $ext_name failed" }
               Pop-Location
             }
           }

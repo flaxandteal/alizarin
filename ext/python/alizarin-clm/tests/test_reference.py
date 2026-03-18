@@ -973,11 +973,12 @@ class TestFullRustIntegration:
         assert len(tiles_resource["tiles"]) > 0
 
         # Step 2: tiles → tree (Rust)
-        tree_result = alizarin.tiles_to_json_tree(
-            tiles_json=json.dumps(tiles_resource["tiles"]),
-            resource_id=resource_id,
-            graph_id=graph_id,
-        )
+        # tiles_to_json_tree now takes a full resource JSON (with graph_id and tiles)
+        tree_result = alizarin.tiles_to_json_tree(json.dumps({
+            "graph_id": graph_id,
+            "resourceinstanceid": resource_id,
+            "tiles": tiles_resource["tiles"],
+        }))
 
         assert "person" in tree_result or len(tree_result) > 0
 
@@ -1264,7 +1265,7 @@ class TestPhase0NodeConfigManager:
         from alizarin.alizarin import RustNodeConfigManager
 
         manager = RustNodeConfigManager()
-        manager.from_graph_json(person_graph_json)
+        manager.load_graph_json(person_graph_json)
 
         # Person graph has 1 reference node
         assert len(manager) >= 1
@@ -1274,7 +1275,7 @@ class TestPhase0NodeConfigManager:
         from alizarin.alizarin import RustNodeConfigManager
 
         manager = RustNodeConfigManager()
-        manager.from_graph_json(person_graph_json)
+        manager.load_graph_json(person_graph_json)
 
         # Find reference node
         ref_node_id = None
@@ -2173,7 +2174,7 @@ class TestPhase0Integration:
 
         # Step 1: Build NodeConfigManager from graph
         config_manager = RustNodeConfigManager()
-        config_manager.from_graph_json(person_graph_json)
+        config_manager.load_graph_json(person_graph_json)
 
         # Step 2: Get reference config for the test node
         ref_node_id = None
@@ -2344,6 +2345,7 @@ class TestBatchTreesToTilesWithMultiValueReference:
         result = alizarin.batch_trees_to_tiles(
             trees_json=trees_json,
             graph_id=graph_id,
+            random_ids=True,
         )
 
         # Verify the result structure
@@ -2414,6 +2416,7 @@ class TestBatchTreesToTilesWithMultiValueReference:
             trees_json=trees_json,
             graph_id=graph_id,
             strict=True,
+            random_ids=True,
         )
 
         # Check if there are errors in the result
@@ -2461,6 +2464,7 @@ class TestBatchTreesToTilesWithMultiValueReference:
             trees_json=trees_json,
             graph_id=graph_id,
             strict=True,
+            random_ids=True,
         )
 
         # Verify success
@@ -2540,6 +2544,7 @@ class TestBatchTreesToTilesWithMultiValueReference:
             trees_json=trees_json,
             graph_id=graph_id,
             strict=True,
+            random_ids=True,
         )
 
         # Verify success

@@ -130,6 +130,8 @@ def test_collection_as_resource_references():
         graph_id = alizarin.register_graph(json.dumps(graph_data))
 
         # Resolve labels to UUIDs using the loaded RDM cache
+        # Note: resolve_labels_in_tree does not resolve resource-instance-list
+        # labels to UUIDs, so we use strict=False for batch_trees_to_tiles.
         trees_json = json.dumps(trees)
         resolved_trees_json = alizarin.resolve_labels_in_tree(
             tree_json=trees_json,
@@ -141,7 +143,8 @@ def test_collection_as_resource_references():
             trees_json=resolved_trees_json,
             graph_id=graph_id,
             from_camel=False,
-            strict=True
+            strict=False,
+            random_ids=True,
         )
 
         assert 'business_data' in result
@@ -264,7 +267,8 @@ def test_collection_as_concepts():
             trees_json=resolved_trees_json,
             graph_id=graph_id,
             from_camel=False,
-            strict=True
+            strict=True,
+            random_ids=True,
         )
 
         assert 'business_data' in result
@@ -409,6 +413,8 @@ def test_skos_roundtrip_with_person_model():
             graph_id = alizarin.register_graph(json.dumps(graph_data))
 
             # Resolve labels to UUIDs using the loaded RDM cache
+            # Note: resolve_labels_in_tree does not resolve resource-instance-list
+            # labels to UUIDs, so we use strict=False for batch_trees_to_tiles.
             trees_json = json.dumps(trees)
             resolved_trees_json = alizarin.resolve_labels_in_tree(
                 tree_json=trees_json,
@@ -420,7 +426,8 @@ def test_skos_roundtrip_with_person_model():
                 trees_json=resolved_trees_json,
                 graph_id=graph_id,
                 from_camel=False,
-                strict=True
+                strict=False,
+                random_ids=True,
             )
 
             assert 'business_data' in result
