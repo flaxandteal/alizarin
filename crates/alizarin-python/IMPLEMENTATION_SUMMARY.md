@@ -2,332 +2,148 @@
 
 ## Overview
 
-This document summarizes the implementation of Python bindings for Alizarin that replicate the JavaScript/TypeScript API with feature parity, including the three-layer caching architecture.
+Python bindings for Alizarin that replicate the JavaScript/TypeScript API,
+including three-layer caching, type coercion, RDM collection management,
+graph mutations, and extension type handlers.
 
-## Completed Implementation
+## Python Modules
 
-### 1. Core Python Modules (7 files)
+Location: `python/alizarin/`
 
-**Location**: `python/alizarin/`
+| Module | Lines | Description |
+|--------|-------|-------------|
+| `__init__.py` | ~515 | Package exports, Rust bindings import, chunked merge helper |
+| `view_models.py` | ~1,888 | 16 ViewModel classes + caching infrastructure |
+| `static_types.py` | ~1,063 | Dataclass definitions for Arches graph/resource structures |
+| `model_wrapper.py` | ~679 | ResourceModelWrapper with permissions and pruning |
+| `pseudos.py` | ~657 | PseudoValue/PseudoList wrapper types |
+| `instance_wrapper.py` | ~535 | ResourceInstanceWrapper and core population logic |
+| `graph_manager.py` | ~443 | GraphManager coordinator and protocol definitions |
+| `cli.py` | ~364 | Command-line interface |
+| `semantic.py` | ~321 | SemanticViewModel for nested structures |
+| `node_config.py` | ~207 | Node configuration classes |
 
-All core modules have been implemented with full type hints and docstrings:
+Total: ~6,672 lines
 
-#### `static_types.py` (174 lines)
-- `StaticNode` - Node definitions with all Arches properties
-- `StaticEdge` - Edge definitions connecting nodes
-- `StaticNodegroup` - Nodegroup metadata
-- `StaticCard` - Card configuration
-- `StaticTile` - Tile data containers
-- `StaticGraph` - Complete graph model
-- `StaticConcept` / `StaticDomainValue` / `StaticCollection` - RDM types
+## Rust PyO3 Bindings
 
-#### `pseudos.py` (136 lines)
-- `PseudoValue` - Wrapper for single tile values
-- `PseudoList` - List of pseudo values with context filtering
-- `matching_entries()` - Critical filtering method for inner/outer value pattern
-- `wrap_rust_pseudo()` - Factory function for wrapping Rust values
+Location: `src/`
 
-#### `view_models.py` (422 lines)
-- `IViewModel` - Base interface
-- `SemanticViewModel` - Navigable semantic nodes with lazy child loading
-- `StringViewModel` - Translatable string support with `lang()` method
-- `NonLocalizedStringViewModel` - Plain strings
-- `NumberViewModel` / `BooleanViewModel` - Numeric and boolean types
-- `DateViewModel` - ISO date handling
-- `UrlViewModel` - URL with `href()` method
-- `ConceptValueViewModel` - RDM concept references
-- `DomainValueViewModel` - Domain value references
-- `GeoJSONViewModel` - GeoJSON geometry support
-- `ResourceInstanceViewModel` - Resource references
-- `create_view_model()` - Factory function based on datatype
+| Module | Lines | Description |
+|--------|-------|-------------|
+| `lib.rs` | ~2,762 | Extension registry, batch tree conversion, mutation API, SKOS |
+| `rdm_cache_py.rs` | ~1,744 | RDM cache with label resolution |
+| `instance_wrapper_py.rs` | ~572 | ResourceInstanceWrapper bindings |
+| `pseudos.py.rs` | ~457 | Pseudo value wrappers |
+| `graph_mutator_py.rs` | ~455 | Graph mutation operations |
+| `node_config_py.rs` | ~395 | Node configuration types |
+| `type_coercion_py.rs` | ~368 | Type coercion functions |
+| `skos_py.rs` | ~114 | SKOS RDF/XML parsing |
+| `python_json.rs` | ~96 | JSON-Python conversion helpers |
 
-#### `instance_wrapper.py` (217 lines)
-- `ResourceInstanceWrapper` - Main wrapper with three-layer caching:
-  - Layer 1: Rust `pseudo_cache` via PyO3
-  - Layer 2: Python `_pseudo_cache` dict
-  - Layer 3: Python `value_cache` dict
-- `retrieve_pseudo()` - Two-tier cache lookup
-- `populate()` - Load tiles and build Rust cache
-- `get_value_cache()` / `build_value_cache()` - JSON cache operations
-- `get_root()` - Get root semantic ViewModel
-- `ResourceInstanceWrapperCore.matches_semantic_child()` - Static matching logic
+Total: ~6,963 lines
 
-#### `model_wrapper.py` (212 lines)
-- `ResourceModelWrapper` - Graph model management
-- `build_nodes()` - Build node/edge/nodegroup indices
-- `get_child_nodes()` / `get_child_node_aliases()` - Navigation helpers
-- `get_collections()` / `get_branch_publication_ids()` - Metadata extraction
-- `set_permitted_nodegroups()` / `is_nodegroup_permitted()` - Permission system
-- `prune_graph()` - Remove unpermitted nodes/edges/cards
-- `get_root()` - Get root NodeViewModel for navigation
+## Test Suite
 
-#### `graph_manager.py` (75 lines)
-- `WKRM` - Well-Known Resource Model metadata
-- `GraphManager` - Singleton for model registry
-- `StaticStore` - Resource metadata storage
-- Singleton instances: `graph_manager`, `static_store`
+Location: `tests/` -- 16 test files, 204 tests passing.
 
-#### `__init__.py` (79 lines)
-- Package initialization
-- Imports from Rust module (with graceful fallback)
-- Re-exports all public API
-- Module documentation
+| Test file | Tests | Lines | Covers |
+|-----------|-------|-------|--------|
+| `test_rdm_collection.py` | 27 | ~1,303 | RDM cache, collections, label resolution, SKOS |
+| `test_resources.py` | 17 | ~678 | Resource wrapper, instance creation, pseudo lists |
+| `test_batch_trees_minimal.py` | 8 | ~664 | Batch tree-to-tiles, cross-model, slug errors |
+| `test_view_models.py` | 23 | ~603 | ViewModel creation and serialization |
+| `test_static_types.py` | 27 | ~603 | Type serialization and deserialization |
+| `test_graph_manager.py` | 9 | ~469 | GraphManager operations, caching |
+| `test_conversion.py` | 6 | ~381 | JSON/tree conversions |
+| `test_prune_graph.py` | 2 | ~331 | Permission pruning, ancestor preservation |
+| `test_type_coercion.py` | 24 | ~301 | Domain/concept value coercion round-trips |
+| `test_semantic_children.py` | 10 | ~290 | Semantic child matching |
+| `test_cross_model_traversal.py` | 6 | ~280 | Multi-graph navigation |
+| `test_matching_entries.py` | 5 | ~275 | Parent tile filtering, nodegroup matching |
+| `test_create_graph_mutation.py` | 8 | ~267 | Graph creation mutations |
+| `test_wkrm.py` | 7 | ~157 | Well-known resource model metadata |
+| `test_attr_promise.py` | 5 | ~101 | Promise-like lazy attributes |
+| `test_regression.py` | 1 | ~91 | Regression checks |
 
-### 2. Rust PyO3 Bindings
+## Feature Status
 
-**Location**: `src/lib.rs` (318 lines)
+### Complete
 
-Extended from basic tree conversion to full wrapper support:
+- **Type coercion** -- all 5 phases in Rust (scalars, dicts, config-dependent,
+  RDM-dependent, format normalisation)
+- **RDM cache** -- global singleton with collection loading, label resolution,
+  UUID generation, SKOS XML parsing
+- **Graph mutations** -- JSON-based mutation API, extension mutation registry,
+  graph building from instructions and CSV
+- **Extension type handlers** -- PyCapsule-based registration, coercion, display
+  rendering, marker resolution via C ABI callbacks
+- **Batch operations** -- `batch_trees_to_tiles`, `batch_tiles_to_trees`,
+  `batch_merge_resources`, lazy `TreeToTilesIterator`
+- **View models** -- 16 types: String, NonLocalizedString, Number, Boolean,
+  Date, EDTF, Url, GeoJSON, DomainValue, DomainValueList, ConceptValue,
+  ConceptList, ResourceInstance, ResourceInstanceList, Semantic + base IViewModel
+- **Cross-model traversal** -- GraphManager, WKRM protocol, semantic child
+  matching, resource lookup
+- **Resource model wrapper** -- permissions (boolean + conditional), graph
+  pruning, node/edge/nodegroup caching
+- **Three-layer caching** -- Rust pseudo_cache -> Python _pseudo_cache ->
+  Python value_cache (JSON-serialisable)
+- **SKOS** -- RDF/XML parsing and serialisation
+- **Label resolution** -- graph-aware, config-driven, integrated with batch ops
+- **Node config** -- Python-side manager with Rust PyO3 type wrappers
+- **CLI** -- command-line interface for common operations
+- **CI/CD** -- GitHub Actions for tests and releases
 
-**Classes**:
-- `PyResourceInstanceWrapper` - Exposes Rust instance wrapper
-  - `new(graph_json)` - Constructor
-  - `populate(tiles_json)` - Build Layer 1 cache
-  - `get_cached_pseudo(alias)` - Query Layer 1 cache
-  - `tiles_loaded()` - Check if populated
+### Not implemented
 
-- `PyResourceModelWrapper` - Exposes Rust model wrapper
-  - `new(graph_json)` - Constructor
-  - `set_permitted_nodegroups(permissions)` - Set permissions
-  - `is_nodegroup_permitted(nodegroup_id)` - Check permission
-  - `export_graph()` - Export as JSON
+- Lazy/async RDM collection fetching (collections must be pre-loaded)
+- Type stub files (`.pyi`)
+- Sphinx documentation
+- General-purpose renderers (only extension handler display rendering exists)
 
-**Functions**:
-- `tiles_to_json_tree()` - Convert tiles to nested JSON
-- `json_tree_to_tiles()` - Convert nested JSON to tiles
-- `matches_semantic_child()` - Static matching function
+## Architecture
 
-**Helpers**:
-- `pseudo_list_to_py()` - Convert RustPseudoList to Python dict
-- `pseudo_value_to_py()` - Convert RustPseudoValue to Python dict
-
-### 3. Test Suite (3 files, 19 test cases)
-
-**Location**: `tests/`
-
-All Rust tests ported with 100% coverage:
-
-#### `test_semantic_children.py` (216 lines, 11 tests)
-Ports `tests/semantic_children_test.rs`:
-- Branch 1: Different nodegroup matching (3 tests)
-- Branch 2: Same nodegroup matching (2 tests)
-- Branch 3: Collector matching (1 test)
-- Edge cases: null parent, different tiles (2 tests)
-- Comprehensive multi-child scenarios (1 test)
-
-#### `test_matching_entries.py` (227 lines, 6 tests)
-Ports `tests/matching_entries_test.rs`:
-- Parent tile filtering (1 test)
-- Child tile handling (1 test)
-- Root level handling (1 test)
-- Nodegroup requirement (1 test)
-- Registry names regression test (1 test - critical bug fix verification)
-
-#### `test_prune_graph.py` (215 lines, 2 tests)
-Ports `tests/prune_graph_test.rs`:
-- Filter unpermitted nodegroups (1 test)
-- Preserve parent nodes of permitted children (1 test)
-
-### 4. Configuration Files
-
-**Location**: Root of `crates/alizarin-python/`
-
-- `pyproject.toml` - Maturin build configuration with pytest settings
-- `pytest.ini` - Pytest configuration
-- `.gitignore` - Python/Rust ignore patterns
-- `Cargo.toml` - Rust dependencies (existing)
-- `README.md` - Professional documentation (updated)
-
-### 5. Documentation
-
-- `README.md` - Comprehensive professional documentation covering:
-  - Three-layer caching architecture with performance metrics
-  - Installation and usage examples
-  - Module structure
-  - API comparison (TypeScript vs Python)
-  - Test coverage status
-  - Implementation roadmap
-
-- `IMPLEMENTATION_SUMMARY.md` - This file
-
-## Implementation Statistics
-
-### Code Written
-- **Python**: ~1,511 lines across 7 modules
-- **Rust**: +206 lines added to lib.rs
-- **Tests**: ~658 lines across 3 test files
-- **Docs**: ~270 lines of README content
-- **Total**: ~2,645 lines of new code
-
-### Test Coverage
-- **Rust tests**: 3/3 files ported (100%)
-- **Test cases**: 19/19 ported (100%)
-- **TypeScript tests**: 0/14 files ported (0% - future work)
-
-### API Coverage
-- **Core types**: 100% (all static types implemented)
-- **View models**: 100% (all datatypes supported)
-- **Caching layers**: 100% (all three layers implemented)
-- **Pseudo system**: 100% (values, lists, matching)
-- **Wrappers**: 100% (instance and model wrappers)
-- **Graph operations**: 100% (pruning, permissions, navigation)
-
-## Architectural Achievements
-
-### Three-Layer Caching System
-
-Successfully replicated the TypeScript architecture:
-
-**Layer 1: Rust `pseudo_cache`**
-- Implemented in `ResourceInstanceWrapperCore`
-- Exposed via PyO3 `get_cached_pseudo()`
-- Authoritative source of truth
-
-**Layer 2: Python `_pseudo_cache`**
-- Implemented in `ResourceInstanceWrapper`
-- Caches wrapped Python objects
-- Reduces FFI calls by ~70% (estimated)
-
-**Layer 3: Python `value_cache`**
-- Implemented in `ResourceInstanceWrapper.build_value_cache()`
-- JSON-serializable representations
-- Provides ~85% faster rendering (estimated)
-
-### Data Flow
+### Three-Layer Caching
 
 ```
-Arches → Tiles → Layer 1 (Rust) → Layer 2 (Python objects) → Layer 3 (JSON)
-                     ↓                    ↓                         ↓
-                 populate()        retrieve_pseudo()      build_value_cache()
+Arches -> Tiles -> Layer 1 (Rust) -> Layer 2 (Python objects) -> Layer 3 (JSON)
+                       |                    |                         |
+                   populate()        retrieve_pseudo()      build_value_cache()
 ```
 
-### Key Design Patterns
+Layer 1 (Rust `pseudo_cache`) is the authoritative source. Layer 2 caches
+wrapped Python objects to reduce FFI calls. Layer 3 provides JSON-serialisable
+representations for rendering.
 
-1. **Lazy Loading**: Semantic children loaded on-demand
-2. **Context Filtering**: PseudoList.matching_entries() for inner/outer values
-3. **Permission System**: Graph pruning based on nodegroup permissions
-4. **Type Safety**: Full Python type hints throughout
-5. **Async/Await**: Consistent async patterns matching TypeScript
+### Rust-Python Boundary
 
-## Remaining Work
+- PyO3 with C ABI callbacks for extension handlers
+- Thread-safe global state via `RwLock` + `lazy_static` (RDM cache, type
+  handlers, graph registry)
+- Parallel batch processing via rayon
 
-### High Priority
+## Building and Testing
 
-1. **TypeScript Test Ports** (~6,300 lines)
-   - `graphManager.test.ts` (612 lines)
-   - `resources.test.ts` (202 lines)
-   - 12 additional test files
+```bash
+cd crates/alizarin-python
+maturin develop --release
+pytest tests/ -v
+```
 
-2. **Build & Compile**
-   - Fix any Rust compilation errors
-   - Build Python wheel with Maturin
-   - Verify all 19 tests pass
-
-3. **PyO3 Bindings Expansion**
-   - Add `retrieve_semantic_child_value()` method
-   - Expose more Rust wrapper functions as needed
-   - Add error handling improvements
-
-### Medium Priority
-
-4. **Client Layer**
-   - `ArchesClient` implementations (Local, Remote)
-   - HTTP communication
-   - Resource loading
-
-5. **RDM (Reference Data Manager)**
-   - Concept/Collection management
-   - SKOS support
-   - RDM queries
-
-6. **Renderers**
-   - `MarkdownRenderer`
-   - `FlatMarkdownRenderer`
-   - Note: JSON rendering is handled by `toDisplayJson` in core
-
-### Low Priority
-
-7. **Additional Features**
-   - Type stub files (`.pyi`)
-   - Sphinx documentation
-   - Performance benchmarks
-   - Integration examples (Django, Flask)
-   - CI/CD setup
-
-## Usage Example (Future)
+## Usage
 
 ```python
-from alizarin import graph_manager, ResourceInstanceViewModel
-
-# Initialize
-await graph_manager.initialize()
+from alizarin import graph_manager
 
 # Load model
 Groups = await graph_manager.get("Group")
 
-# Query resources
-groups = await Groups.all()
-
 # Navigate with caching
+groups = await Groups.all()
 group = groups[0]
-# Layer 1 (Rust) populated during load
-basic_info = await group.basic_info  # Layer 2 (Python) cached here
-name = await basic_info[0].name      # Reuses Layer 2 cache
-print(name)  # "Global Group"
-print(name.lang("ga"))  # "Grúpa Domhanda"
-
-# Build JSON cache for rendering
-await group.$.get_value_cache(build=True)  # Layer 3 created
+basic_info = await group.basic_info
+name = await basic_info[0].name
+print(name)               # "Global Group"
+print(name.lang("ga"))    # "Grupa Domhanda"
 ```
-
-## Testing Instructions
-
-### Build Extension
-
-```bash
-cd crates/alizarin-python
-maturin develop
-```
-
-### Run Tests
-
-```bash
-# All tests
-pytest tests/ -v
-
-# Specific test file
-pytest tests/test_semantic_children.py -v
-
-# With coverage
-pytest tests/ --cov=alizarin --cov-report=html
-```
-
-### Expected Results
-
-All 19 test cases should pass:
-- `test_semantic_children.py`: 11 passed
-- `test_matching_entries.py`: 6 passed
-- `test_prune_graph.py`: 2 passed
-
-## Technical Challenges Addressed
-
-1. **FFI Boundary**: Minimized Python-Rust calls with Layer 2 cache
-2. **Type Conversion**: Seamless conversion between Rust and Python types
-3. **Async Patterns**: Consistent async/await throughout
-4. **Context Filtering**: Solved inner/outer value problem with matching_entries()
-5. **Graph Pruning**: Correct ancestor preservation during permission filtering
-
-## Conclusion
-
-The Python bindings successfully replicate the TypeScript API with:
-- **Feature Parity**: All core features implemented
-- **Performance**: Three-layer caching for optimization
-- **Testing**: 100% of Rust tests ported and passing
-- **Documentation**: Professional README and architecture docs
-- **Type Safety**: Full Python type hints
-
-The foundation is complete and ready for:
-- TypeScript test ports
-- Build and compilation
-- Client layer implementation
-- Production deployment
