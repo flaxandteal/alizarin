@@ -1898,7 +1898,7 @@ fn apply_add_node(
                     is_editable: Some(true),
                     name: StaticTranslatableString::from_string(&params.name),
                     nodegroup_id: ng_id.clone(),
-                    sortorder: None,
+                    sortorder: Some(0),
                     visible: true,
                     source_identifier_id: None,
                 };
@@ -1930,7 +1930,7 @@ fn apply_add_node(
         is_collector: params.options.is_collector.unwrap_or(false),
         isrequired: params.options.isrequired.unwrap_or(false),
         exportable: params.options.exportable.unwrap_or(false),
-        sortorder: params.options.sortorder,
+        sortorder: Some(params.options.sortorder.unwrap_or(0)),
         config,
         parentproperty: Some(params.parent_property.clone()),
         ontologyclass: Some(params.ontology_class),
@@ -1998,7 +1998,7 @@ fn apply_add_node(
                 id: cxnxw_id,
                 label: StaticTranslatableString::from_string(&params.name),
                 node_id: node_id.clone(),
-                sortorder: params.options.sortorder,
+                sortorder: Some(params.options.sortorder.unwrap_or(0)),
                 visible: true,
                 widget_id: widget.id.clone(),
                 source_identifier_id: None,
@@ -2061,7 +2061,7 @@ fn apply_add_nodegroup(
             is_editable: Some(true),
             name: StaticTranslatableString::from_string("(unnamed)"),
             nodegroup_id: params.nodegroup_id,
-            sortorder: None,
+            sortorder: Some(0),
             visible: true,
             source_identifier_id: None,
         };
@@ -2130,7 +2130,7 @@ fn apply_add_card(graph: &mut StaticGraph, params: AddCardParams) -> Result<(), 
         is_editable: params.options.is_editable,
         name: params.name,
         nodegroup_id: params.nodegroup_id,
-        sortorder: params.options.sortorder,
+        sortorder: Some(params.options.sortorder.unwrap_or(0)),
         visible: params.options.visible.unwrap_or(true),
         source_identifier_id: None,
     };
@@ -2168,7 +2168,7 @@ fn apply_add_widget(graph: &mut StaticGraph, params: AddWidgetParams) -> Result<
         id: cxnxw_id,
         label: StaticTranslatableString::from_string(&params.label),
         node_id: params.node_id,
-        sortorder: params.sortorder,
+        sortorder: Some(params.sortorder.unwrap_or(0)),
         visible: params.visible.unwrap_or(true),
         widget_id: params.widget_id,
         source_identifier_id: None,
@@ -2935,8 +2935,19 @@ fn apply_add_subgraph(
     let ontology_property = params.ontology_property;
     let alias_suffix = params.alias_suffix;
 
-    // Get the branch's graphid for sourcebranchpublication_id tracking
-    let branch_publication_id = subgraph.graphid.clone();
+    // Get the branch's publicationid for sourcebranchpublication_id tracking.
+    // In Arches, sourcebranchpublication_id is an FK to graphs_x_published_graphs,
+    // so it must be the publication's publicationid, not the branch's graphid.
+    let branch_publication_id = subgraph
+        .publication
+        .as_ref()
+        .and_then(|p| p.get("publicationid"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| MutationError::InvalidSubgraph(format!(
+            "Subgraph '{}' has no publication.publicationid — the branch must be published before it can be added as a subgraph",
+            subgraph.graphid
+        )))?;
 
     // 1. VALIDATE: Target node exists (find by alias first, then by ID)
     let target_node = graph
@@ -3260,7 +3271,7 @@ fn apply_add_subgraph(
                 is_editable: card.is_editable,
                 name: card.name,
                 nodegroup_id: new_ng_id,
-                sortorder: card.sortorder,
+                sortorder: Some(card.sortorder.unwrap_or(0)),
                 visible: card.visible,
                 source_identifier_id: None,
             };
@@ -3310,7 +3321,7 @@ fn apply_add_subgraph(
                 widget_id: cxnxw.widget_id, // Preserve external ID
                 config: cxnxw.config,
                 label: cxnxw.label,
-                sortorder: cxnxw.sortorder,
+                sortorder: Some(cxnxw.sortorder.unwrap_or(0)),
                 visible: cxnxw.visible,
                 source_identifier_id: None,
             };
@@ -3334,8 +3345,17 @@ fn apply_update_subgraph(
     let ontology_property = params.ontology_property;
     let remove_orphaned = params.remove_orphaned;
 
-    // Get the branch's graphid for tracking
-    let branch_publication_id = subgraph.graphid.clone();
+    // Get the branch's publicationid for sourcebranchpublication_id tracking
+    let branch_publication_id = subgraph
+        .publication
+        .as_ref()
+        .and_then(|p| p.get("publicationid"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| MutationError::InvalidSubgraph(format!(
+            "Subgraph '{}' has no publication.publicationid — the branch must be published before it can be added as a subgraph",
+            subgraph.graphid
+        )))?;
 
     // 1. VALIDATE: Target node exists (find by alias first, then by ID)
     let target_node_ref = graph
@@ -3867,6 +3887,7 @@ pub fn apply_mutations_create_from_json(
 
                     // Apply remaining mutations to the new graph
                     if mutations.is_empty() {
+                        stamp_publication(&mut new_graph);
                         new_graph.build_indices();
                         Ok(new_graph)
                     } else {
@@ -3960,8 +3981,31 @@ pub fn apply_mutations_with_extensions(
             .map_err(|e| e.to_string())?;
     }
 
+    // Stamp publication after applying mutations
+    stamp_publication(&mut result);
+
     result.build_indices();
     Ok(result)
+}
+
+/// Stamp a graph with a new publication entry.
+///
+/// Generates a deterministic `publicationid` (UUID5 from graphid + timestamp)
+/// and sets `published_time` to the current UTC time. This ensures the graph
+/// can be used as a subgraph source (add_subgraph requires a publicationid).
+fn stamp_publication(graph: &mut StaticGraph) {
+    let now = chrono::Utc::now();
+    let timestamp = now.timestamp_millis().to_string();
+
+    let publication_id = generate_uuid_v5(("publication", Some(&graph.graphid)), &timestamp);
+    let published_time = now.format("%Y-%m-%dT%H:%M:%S%.3f").to_string();
+
+    graph.publication = Some(serde_json::json!({
+        "publicationid": publication_id,
+        "graph_id": graph.graphid,
+        "published_time": published_time,
+        "notes": null
+    }));
 }
 
 /// Serialize mutations to JSON
@@ -4009,21 +4053,33 @@ pub fn create_skeleton_graph(
     // Generate root node ID
     let root_nodeid = generate_uuid_v5(("graph", Some(&graphid)), &format!("root-{}", root_alias));
 
+    // For branches, the root must be a collector (Arches validation requirement).
+    // In Arches, is_collector is a computed property: nodeid == nodegroup_id && nodegroup_id != null.
+    // So for branches, the root's nodegroup_id must equal its nodeid.
+    let root_nodegroup_id: serde_json::Value = if is_resource {
+        serde_json::Value::Null
+    } else {
+        serde_json::Value::String(root_nodeid.clone())
+    };
+    let root_is_collector = !is_resource;
+
     // Build graph as JSON to handle private fields correctly
     let graph_json = serde_json::json!({
         "graphid": graphid,
         "name": { "en": name },
         "isresource": is_resource,
         "is_editable": true,
+        "config": {},
+        "template_id": "50000000-0000-0000-0000-000000000001",
         "version": "1",
         "nodes": [{
             "nodeid": root_nodeid,
             "name": name,
             "alias": root_alias,
             "datatype": "semantic",
-            "nodegroup_id": null,
+            "nodegroup_id": root_nodegroup_id,
             "graph_id": graphid,
-            "is_collector": false,
+            "is_collector": root_is_collector,
             "isrequired": false,
             "exportable": true,
             "sortorder": 0,
@@ -4036,9 +4092,9 @@ pub fn create_skeleton_graph(
             "name": name,
             "alias": root_alias,
             "datatype": "semantic",
-            "nodegroup_id": null,
+            "nodegroup_id": root_nodegroup_id,
             "graph_id": graphid,
-            "is_collector": false,
+            "is_collector": root_is_collector,
             "isrequired": false,
             "exportable": true,
             "sortorder": 0,
@@ -4208,7 +4264,30 @@ impl GraphInstruction {
                     parent_property: self.get_str_or("parent_property", ""),
                     description: self.get_str("description"),
                     config: self.params.get("config").cloned(),
-                    options: NodeOptions::default(),
+                    options: NodeOptions {
+                        is_collector: self
+                            .params
+                            .get("is_collector")
+                            .and_then(|v| v.as_bool())
+                            .or_else(|| {
+                                // Default: semantic nodes with cardinality N are collectors
+                                let dt = self.get_str_or("datatype", "semantic");
+                                if dt == "semantic" && cardinality == Cardinality::N {
+                                    Some(true)
+                                } else {
+                                    None
+                                }
+                            }),
+                        exportable: self.params.get("exportable").and_then(|v| v.as_bool()),
+                        isrequired: self.params.get("isrequired").and_then(|v| v.as_bool()),
+                        issearchable: self.params.get("issearchable").and_then(|v| v.as_bool()),
+                        sortorder: self
+                            .params
+                            .get("sortorder")
+                            .and_then(|v| v.as_i64())
+                            .map(|v| v as i32),
+                        ..NodeOptions::default()
+                    },
                 }))
             }
             "add_edge" => Ok(GraphMutation::AddEdge(AddEdgeParams {
@@ -4633,6 +4712,8 @@ pub fn build_graph_from_instructions_with_extensions(
     // Apply remaining instructions as mutations
     let remaining: Vec<GraphInstruction> = iter.collect();
     if remaining.is_empty() {
+        let mut graph = graph;
+        stamp_publication(&mut graph);
         return Ok(graph);
     }
 
@@ -4677,7 +4758,18 @@ pub fn build_graph_from_instructions_json(json: &str) -> Result<StaticGraph, Str
 /// add_node,registry,names,Names,semantic,E41_Appellation,P1_is_identified_by
 /// ```
 pub fn parse_instructions_from_csv(csv_text: &str) -> Result<Vec<GraphInstruction>, String> {
-    let mut reader = csv::Reader::from_reader(csv_text.as_bytes());
+    // Pre-filter comment lines (starting with #) before CSV parsing,
+    // since they may have mismatched column counts
+    let filtered: String = csv_text
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !trimmed.starts_with('#')
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let mut reader = csv::Reader::from_reader(filtered.as_bytes());
     let headers = reader
         .headers()
         .map_err(|e| format!("Failed to parse CSV headers: {}", e))?
@@ -4707,7 +4799,7 @@ pub fn parse_instructions_from_csv(csv_text: &str) -> Result<Vec<GraphInstructio
         let record = result.map_err(|e| format!("Failed to parse CSV row: {}", e))?;
 
         let action = record.get(action_idx).unwrap_or("").to_string();
-        if action.is_empty() {
+        if action.is_empty() || action.starts_with('#') {
             continue;
         }
 
@@ -5149,6 +5241,11 @@ mod tests {
             "graphid": "subgraph-id",
             "name": {"en": "Test Subgraph"},
             "isresource": false,
+            "publication": {
+                "publicationid": "test-publication-id",
+                "graph_id": "subgraph-id",
+                "published_time": "2024-01-01T00:00:00.000"
+            },
             "nodes": [
                 {
                     "nodeid": "sub-root-id",

@@ -1529,7 +1529,7 @@ impl ResourceRegistry {
                 strict,
                 recompute_descriptors,
             )
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))?;
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
         let output = serde_json::json!({
             "resources": resources,

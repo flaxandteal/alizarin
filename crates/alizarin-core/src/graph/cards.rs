@@ -74,7 +74,7 @@ pub struct StaticCard {
     pub is_editable: Option<bool>,
     pub name: StaticTranslatableString,
     pub nodegroup_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub sortorder: Option<i32>,
     pub visible: bool,
     // Arches-HER 2.0+ fields
