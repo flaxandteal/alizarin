@@ -180,6 +180,9 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
                     ExtensionError::new(format!("Failed to serialize tile_data: {}", e))
                 })?;
 
+                // SAFETY: Calling render_display FFI function pointer registered via PyCapsule.
+                // The handler owns the result memory and we free it via free_fn before returning.
+                // Pointers are valid UTF-8 JSON produced by the extension's Rust code (same process).
                 unsafe {
                     let result = render_fn(
                         tile_json.as_ptr(),
@@ -240,6 +243,11 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
                 let core_cache: Option<Arc<CoreRdmCache>> = rdm_cache_py::get_global_rdm_cache()
                     .map(|cache| Arc::new(cache.inner().clone()));
 
+                // SAFETY: Calling resolve_markers FFI function pointer registered via PyCapsule.
+                // cache_ptr is either null or points to an Arc<CoreRdmCache> kept alive by
+                // core_cache for the duration of this call. RDM callback fn pointers
+                // (rdm_has_collection, rdm_lookup_by_id, etc.) are safe extern "C" functions
+                // defined in this crate. Result memory is freed via free_fn before returning.
                 unsafe {
                     let cache_ptr = if let Some(ref cache) = core_cache {
                         Arc::as_ptr(cache) as *mut c_void
@@ -454,6 +462,10 @@ unsafe extern "C" fn rdm_has_collection(
 fn register_type_handler(capsule: &PyCapsule) -> PyResult<()> {
     let ptr = capsule.pointer() as *const TypeHandlerInfo;
 
+    // SAFETY: ptr comes from PyCapsule::pointer(), which returns the pointer set by the
+    // extension when creating the capsule. The TypeHandlerInfo struct and its type_name
+    // buffer are owned by the capsule and remain valid for its lifetime. Function pointers
+    // within the struct are valid Rust fn pointers exported by the extension's cdylib.
     unsafe {
         let info = &*ptr;
         let type_name = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
@@ -515,6 +527,9 @@ fn coerce_with_extension(
     if let Some(handler) = handlers.get(type_name) {
         let config = config_json.unwrap_or("null");
 
+        // SAFETY: Calling coerce_fn FFI function pointer registered via PyCapsule.
+        // The handler owns the result memory and we free it via handler.free_fn before
+        // returning. Pointers are valid UTF-8 JSON produced by the extension's Rust code.
         unsafe {
             let result = (handler.coerce_fn)(
                 value_json.as_ptr(),
@@ -584,6 +599,9 @@ fn render_display_with_extension(
         if let (Some(render_fn), Some(free_fn)) =
             (handler.render_display_fn, handler.free_display_fn)
         {
+            // SAFETY: Calling render_display FFI function pointer registered via PyCapsule.
+            // The handler owns the result memory and we free it via free_fn before returning.
+            // Pointers are valid UTF-8 produced by the extension's Rust code (same process).
             unsafe {
                 let result = render_fn(
                     resolved_json.as_ptr(),
@@ -1166,6 +1184,12 @@ fn batch_trees_to_tiles_with_extensions(
                                     .map(|c| serde_json::to_string(c).unwrap_or_default())
                                     .unwrap_or_else(|| "null".to_string());
 
+                                // SAFETY: Calling coerce_fn and optionally resolve_markers_fn FFI
+                                // function pointers registered via PyCapsule. All result memory is
+                                // freed via the corresponding free_fn before moving on. cache_ptr
+                                // points to an Arc<CoreRdmCache> kept alive by core_cache for the
+                                // duration of the batch. RDM callback fn pointers are safe extern "C"
+                                // functions defined in this crate.
                                 unsafe {
                                     let result = (handler.coerce_fn)(
                                         value_json.as_ptr(),
