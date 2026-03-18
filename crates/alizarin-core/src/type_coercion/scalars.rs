@@ -158,31 +158,30 @@ pub fn coerce_date(value: &Value) -> CoercionResult {
     }
 }
 
-/// Normalize a date string to ISO 8601 format.
+/// Validate and pass through an ISO 8601 date string.
 ///
-/// This is a basic implementation - could be enhanced with chrono crate.
+/// Accepts date-only, datetime, datetime with timezone, and datetime with
+/// milliseconds. Returns the original string if valid (Arches stores as-is).
 fn normalize_date_string(s: &str) -> Result<String, String> {
-    // ISO 8601 formats we accept:
-    // - "2023-05-15" (date only)
-    // - "2023-05-15T10:30:00" (datetime)
-    // - "2023-05-15T10:30:00Z" (datetime with Z)
-    // - "2023-05-15T10:30:00+00:00" (datetime with offset)
-    // - "2023-05-15T10:30:00.000Z" (datetime with milliseconds)
-
     let s = s.trim();
     if s.is_empty() {
         return Err("Empty date string".to_string());
     }
 
-    // Basic validation: should start with a year-like pattern
-    // More thorough validation would use a date parsing library
-    if s.len() >= 4 {
-        let year_part = &s[..4];
-        if year_part.chars().all(|c| c.is_ascii_digit())
-            || (s.starts_with('-') && s.len() >= 5 && s[1..5].chars().all(|c| c.is_ascii_digit()))
-        {
-            return Ok(s.to_string());
-        }
+    // Try parsing in order of specificity:
+    // 1. Full datetime with timezone offset (2023-05-15T10:30:00+00:00, ...Z)
+    if chrono::DateTime::parse_from_rfc3339(s).is_ok() {
+        return Ok(s.to_string());
+    }
+
+    // 2. Datetime without timezone (2023-05-15T10:30:00, 2023-05-15T10:30:00.000)
+    if chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f").is_ok() {
+        return Ok(s.to_string());
+    }
+
+    // 3. Date only (2023-05-15)
+    if chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok() {
+        return Ok(s.to_string());
     }
 
     Err(format!("Invalid date format: {}", s))

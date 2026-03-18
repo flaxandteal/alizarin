@@ -120,53 +120,27 @@ struct ParsedData {
     sort_orders: HashMap<String, i32>,
 }
 
-/// Extract UUID from URI or generate a deterministic one
+/// Extract UUID from URI or generate a deterministic one via UUID5.
 fn extract_or_generate_id(uri: &str) -> String {
-    // Try to extract UUID from URI
-    let uuid_regex =
+    use std::sync::OnceLock;
+
+    static UUID_RE: OnceLock<regex_lite::Regex> = OnceLock::new();
+    let uuid_regex = UUID_RE.get_or_init(|| {
         regex_lite::Regex::new(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})")
-            .unwrap();
+            .unwrap()
+    });
 
     if let Some(caps) = uuid_regex.captures(uri) {
         return caps.get(1).unwrap().as_str().to_string();
     }
 
-    // Generate deterministic UUID from URI using simple hash
-    // In production, use proper UUID v5
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut hasher = DefaultHasher::new();
-    uri.hash(&mut hasher);
-    let hash = hasher.finish();
-
-    format!(
-        "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
-        (hash >> 32) as u32,
-        ((hash >> 16) & 0xFFFF) as u16,
-        (hash & 0xFFFF) as u16,
-        ((hash >> 48) & 0xFFFF) as u16,
-        hash & 0xFFFFFFFFFFFF
-    )
+    // Generate deterministic UUID from URI using proper UUID v5
+    uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, uri.as_bytes()).to_string()
 }
 
-/// Generate a value ID
+/// Generate a value ID using UUID5 (delegates to rdm_namespace).
 fn generate_value_id(concept_id: &str, lang: &str, value: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut hasher = DefaultHasher::new();
-    format!("{}/{}/{}", concept_id, lang, value).hash(&mut hasher);
-    let hash = hasher.finish();
-
-    format!(
-        "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
-        (hash >> 32) as u32,
-        ((hash >> 16) & 0xFFFF) as u16,
-        (hash & 0xFFFF) as u16,
-        ((hash >> 48) & 0xFFFF) as u16,
-        hash & 0xFFFFFFFFFFFF
-    )
+    crate::rdm_namespace::generate_value_uuid(concept_id, value, lang).to_string()
 }
 
 /// Parse Arches-style JSON-wrapped label values

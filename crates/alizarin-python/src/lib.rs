@@ -104,6 +104,10 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
                 None => "null".to_string(),
             };
 
+            // SAFETY: Calling extension handler via FFI function pointers registered through
+            // PyCapsule. The handler owns the result memory and we free it via handler.free_fn
+            // before the result goes out of scope. Pointers are valid UTF-8 JSON produced by
+            // the extension's Rust code (same process, no IPC).
             unsafe {
                 let result = (handler.coerce_fn)(
                     value_json.as_ptr(),

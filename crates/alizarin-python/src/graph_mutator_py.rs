@@ -410,7 +410,6 @@ fn build_graph_from_csv(
     let options = MutatorOptions {
         autocreate_card,
         autocreate_widget,
-        ..Default::default()
     };
 
     let instructions = parse_instructions_from_csv(csv_text)

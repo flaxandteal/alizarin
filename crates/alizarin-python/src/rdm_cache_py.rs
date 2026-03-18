@@ -1128,23 +1128,9 @@ impl RdmCollection {
 // RDM ↔ SKOS Conversion
 // =============================================================================
 
-/// Generate a value ID for SKOS format
+/// Generate a value ID for SKOS format (delegates to rdm_namespace UUID5).
 fn generate_skos_value_id(concept_id: &str, lang: &str, value: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut hasher = DefaultHasher::new();
-    format!("{}/{}/{}", concept_id, lang, value).hash(&mut hasher);
-    let hash = hasher.finish();
-
-    format!(
-        "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
-        (hash >> 32) as u32,
-        ((hash >> 16) & 0xFFFF) as u16,
-        (hash & 0xFFFF) as u16,
-        ((hash >> 48) & 0xFFFF) as u16,
-        hash & 0xFFFFFFFFFFFF
-    )
+    alizarin_core::rdm_namespace::generate_value_uuid(concept_id, value, lang).to_string()
 }
 
 /// Convert RdmCollection to SkosCollection for serialization
