@@ -931,6 +931,12 @@ pub struct AddSubgraphParams {
     /// Optional suffix to add to all aliases from the subgraph
     #[serde(default)]
     pub alias_suffix: Option<String>,
+    /// Optional prefix for aliases (e.g. "monument" → alias "name" becomes "monument_name")
+    #[serde(default)]
+    pub alias_prefix: Option<String>,
+    /// Optional prefix for display names (e.g. "Monument" → name "Name" becomes "Monument Name")
+    #[serde(default)]
+    pub name_prefix: Option<String>,
 }
 
 /// Parameters for updating an existing subgraph/branch in a graph
@@ -955,6 +961,15 @@ pub struct UpdateSubgraphParams {
     /// WARNING: Setting this to true may orphan resource instance data
     #[serde(default)]
     pub remove_orphaned: bool,
+    /// Optional prefix for aliases — used when matching branch aliases to existing
+    /// prefixed aliases (e.g. "monument" matches branch "name" to existing "monument_name")
+    /// and when adding new nodes from the branch.
+    #[serde(default)]
+    pub alias_prefix: Option<String>,
+    /// Optional prefix for display names — applied to new nodes added from the branch
+    /// (e.g. "Monument" → "Name Type" becomes "Monument Name Type")
+    #[serde(default)]
+    pub name_prefix: Option<String>,
 }
 
 /// Parameters for changing the collection of a concept/concept-list node
@@ -2980,15 +2995,20 @@ fn apply_add_subgraph(
     let mut remapper = IdRemapper::new(&graph.graphid, suffix_ref, Some(branch_publication_id));
 
     // Process aliases from subgraph nodes (excluding root)
-    // For each alias, if it clashes with existing, make it unique using _n1, _n2, etc.
+    // Apply alias_prefix if set, then dedup with _n1, _n2 if clashing.
     for node in &subgraph.nodes {
         if node.nodeid == root_node_id {
             continue; // Skip root node
         }
         if let Some(ref alias) = node.alias {
-            let new_alias = make_name_unique(alias, &existing_aliases);
+            let prefixed_alias = if let Some(ref prefix) = params.alias_prefix {
+                format!("{}_{}", prefix, alias)
+            } else {
+                alias.clone()
+            };
+            let new_alias = make_name_unique(&prefixed_alias, &existing_aliases);
             if new_alias != *alias {
-                // Alias was changed due to clash - record the mapping
+                // Alias was changed (prefix and/or clash) - record the mapping
                 remapper.register_alias(alias, new_alias.clone());
             }
             // Add to existing set so subsequent branch aliases don't clash with each other
@@ -3058,9 +3078,15 @@ fn apply_add_subgraph(
             }
         });
 
+        let prefixed_name = if let Some(ref prefix) = params.name_prefix {
+            format!("{} {}", prefix, node.name)
+        } else {
+            node.name
+        };
+
         let new_node = StaticNode {
             nodeid: new_node_id,
-            name: node.name,
+            name: prefixed_name,
             alias: remapper.get_alias(node.alias.as_deref()),
             datatype: node.datatype,
             nodegroup_id: new_nodegroup_id,
@@ -3388,6 +3414,8 @@ fn apply_update_subgraph(
                 target_node_id: params.target_node_id,
                 ontology_property,
                 alias_suffix: params.alias_suffix,
+                alias_prefix: params.alias_prefix,
+                name_prefix: params.name_prefix,
             },
         );
     }
@@ -3420,7 +3448,14 @@ fn apply_update_subgraph(
             continue; // Skip root
         }
         if let Some(ref alias) = node.alias {
-            if let Some(existing_node_id) = existing_by_alias.get(alias) {
+            // When alias_prefix is set, look for prefixed version in existing nodes
+            // e.g. branch "name" matches existing "monument_name" with prefix "monument"
+            let lookup_alias = if let Some(ref prefix) = params.alias_prefix {
+                format!("{}_{}", prefix, alias)
+            } else {
+                alias.clone()
+            };
+            if let Some(existing_node_id) = existing_by_alias.get(&lookup_alias) {
                 nodes_to_update.push((node, existing_node_id.clone()));
             } else {
                 nodes_to_add.push(node);
@@ -3431,13 +3466,23 @@ fn apply_update_subgraph(
         }
     }
 
+    // Build the set of expected existing aliases (with prefix applied) for orphan detection
+    let expected_existing_aliases: HashSet<String> = if let Some(ref prefix) = params.alias_prefix {
+        new_branch_aliases
+            .iter()
+            .map(|a| format!("{}_{}", prefix, a))
+            .collect()
+    } else {
+        new_branch_aliases.clone()
+    };
+
     let orphaned_node_ids: HashSet<String> = if remove_orphaned {
         existing_branch_nodes
             .iter()
             .filter(|(_, alias)| {
                 alias
                     .as_ref()
-                    .map(|a| !new_branch_aliases.contains(a))
+                    .map(|a| !expected_existing_aliases.contains(a))
                     .unwrap_or(true)
             })
             .map(|(node_id, _)| node_id.clone())
@@ -3497,10 +3542,15 @@ fn apply_update_subgraph(
             Some(branch_publication_id.clone()),
         );
 
-        // Register aliases for new nodes (only suffix if clashing)
+        // Register aliases for new nodes — apply prefix if set, then dedup if clashing
         for node in &nodes_to_add {
             if let Some(ref alias) = node.alias {
-                let new_alias = make_name_unique(alias, &existing_aliases);
+                let prefixed_alias = if let Some(ref prefix) = params.alias_prefix {
+                    format!("{}_{}", prefix, alias)
+                } else {
+                    alias.clone()
+                };
+                let new_alias = make_name_unique(&prefixed_alias, &existing_aliases);
                 if new_alias != *alias {
                     remapper.register_alias(alias, new_alias.clone());
                 }
@@ -3543,9 +3593,15 @@ fn apply_update_subgraph(
                 }
             });
 
+            let prefixed_name = if let Some(ref prefix) = params.name_prefix {
+                format!("{} {}", prefix, node.name)
+            } else {
+                node.name.clone()
+            };
+
             let new_node = StaticNode {
                 nodeid: new_node_id.clone(),
-                name: node.name.clone(),
+                name: prefixed_name,
                 alias: remapper.get_alias(node.alias.as_deref()),
                 datatype: node.datatype.clone(),
                 nodegroup_id: new_nodegroup_id,
@@ -4363,6 +4419,8 @@ impl GraphInstruction {
                     target_node_id: self.subject.clone(),
                     ontology_property: self.get_str_or("ontology_property", ""),
                     alias_suffix: self.get_str("alias_suffix"),
+                    alias_prefix: self.get_str("alias_prefix"),
+                    name_prefix: self.get_str("name_prefix"),
                 }))
             }
             "update_subgraph" => {
@@ -4380,6 +4438,8 @@ impl GraphInstruction {
                     ontology_property: self.get_str_or("ontology_property", ""),
                     alias_suffix: self.get_str("alias_suffix"),
                     remove_orphaned,
+                    alias_prefix: self.get_str("alias_prefix"),
+                    name_prefix: self.get_str("name_prefix"),
                 }))
             }
             "concept_change_collection" => Ok(GraphMutation::ConceptChangeCollection(
@@ -5392,6 +5452,8 @@ mod tests {
             target_node_id: "root-node-id".to_string(),
             ontology_property: "P106_is_composed_of".to_string(),
             alias_suffix: None,
+            alias_prefix: None,
+            name_prefix: None,
         };
 
         let mut graph_clone = graph.deep_clone();
@@ -5430,6 +5492,8 @@ mod tests {
             target_node_id: "root-node-id".to_string(),
             ontology_property: "P106_is_composed_of".to_string(),
             alias_suffix: Some("v2".to_string()),
+            alias_prefix: None,
+            name_prefix: None,
         };
 
         let mut graph_clone = graph.deep_clone();
@@ -5498,6 +5562,8 @@ mod tests {
             target_node_id: "root-node-id".to_string(),
             ontology_property: "P106_is_composed_of".to_string(),
             alias_suffix: None,
+            alias_prefix: None,
+            name_prefix: None,
         };
 
         let result = apply_add_subgraph(&mut graph_with_child, params);
@@ -5550,6 +5616,8 @@ mod tests {
             target_node_id: "root-node-id".to_string(),
             ontology_property: "P106_is_composed_of".to_string(),
             alias_suffix: None,
+            alias_prefix: None,
+            name_prefix: None,
         };
 
         let mut graph_clone = graph.deep_clone();
@@ -5595,6 +5663,8 @@ mod tests {
             target_node_id: "root-node-id".to_string(),
             ontology_property: "P106_is_composed_of".to_string(),
             alias_suffix: None,
+            alias_prefix: None,
+            name_prefix: None,
         };
 
         let mut graph_clone = graph.deep_clone();
@@ -5636,6 +5706,8 @@ mod tests {
             target_node_id: "nonexistent-node-id".to_string(),
             ontology_property: "P106_is_composed_of".to_string(),
             alias_suffix: None,
+            alias_prefix: None,
+            name_prefix: None,
         };
 
         let mut graph_clone = graph.deep_clone();
@@ -5728,6 +5800,8 @@ mod tests {
             ontology_property: "P106_is_composed_of".to_string(),
             alias_suffix: None,
             remove_orphaned: false,
+            alias_prefix: None,
+            name_prefix: None,
         };
 
         let mut graph_clone = graph.deep_clone();
@@ -5767,6 +5841,8 @@ mod tests {
             target_node_id: "root-node-id".to_string(),
             ontology_property: "P106_is_composed_of".to_string(),
             alias_suffix: None,
+            alias_prefix: None,
+            name_prefix: None,
         };
         let mut graph_with_branch = graph.deep_clone();
         apply_add_subgraph(&mut graph_with_branch, add_params).expect("Add should succeed");
@@ -5786,6 +5862,8 @@ mod tests {
             ontology_property: "P106_is_composed_of".to_string(),
             alias_suffix: None,
             remove_orphaned: false,
+            alias_prefix: None,
+            name_prefix: None,
         };
         let result = apply_update_subgraph(&mut graph_with_branch, update_params);
 
@@ -5822,6 +5900,8 @@ mod tests {
             target_node_id: "root-node-id".to_string(),
             ontology_property: "P106_is_composed_of".to_string(),
             alias_suffix: None,
+            alias_prefix: None,
+            name_prefix: None,
         };
         let mut graph_with_branch = graph.deep_clone();
         apply_add_subgraph(&mut graph_with_branch, add_params).expect("Add should succeed");
@@ -5861,6 +5941,8 @@ mod tests {
             ontology_property: "P106_is_composed_of".to_string(),
             alias_suffix: None,
             remove_orphaned: false,
+            alias_prefix: None,
+            name_prefix: None,
         };
         let result = apply_update_subgraph(&mut graph_with_branch, update_params);
 
@@ -5897,6 +5979,8 @@ mod tests {
             target_node_id: "root-node-id".to_string(),
             ontology_property: "P106_is_composed_of".to_string(),
             alias_suffix: None,
+            alias_prefix: None,
+            name_prefix: None,
         };
         let mut graph_with_branch = graph.deep_clone();
         apply_add_subgraph(&mut graph_with_branch, add_params).expect("Add should succeed");
@@ -5914,6 +5998,8 @@ mod tests {
             ontology_property: "P106_is_composed_of".to_string(),
             alias_suffix: None,
             remove_orphaned: true, // Enable orphan removal
+            alias_prefix: None,
+            name_prefix: None,
         };
         let result = apply_update_subgraph(&mut graph_with_branch, update_params);
 
@@ -5949,6 +6035,8 @@ mod tests {
             ontology_property: "P106_is_composed_of".to_string(),
             alias_suffix: None,
             remove_orphaned: false,
+            alias_prefix: None,
+            name_prefix: None,
         };
 
         let mut graph_clone = graph.deep_clone();
