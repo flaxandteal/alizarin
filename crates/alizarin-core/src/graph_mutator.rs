@@ -3500,7 +3500,11 @@ fn apply_update_subgraph(
             .find(|n| n.nodeid == existing_node_id)
         {
             // Update mutable fields (preserve IDs and structural references)
-            existing.name = new_node.name.clone();
+            existing.name = if let Some(ref prefix) = params.name_prefix {
+                format!("{} {}", prefix, new_node.name)
+            } else {
+                new_node.name.clone()
+            };
             existing.datatype = new_node.datatype.clone();
             existing.ontologyclass = new_node.ontologyclass.clone();
             existing.config = new_node.config.clone();
