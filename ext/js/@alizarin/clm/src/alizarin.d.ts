@@ -69,6 +69,10 @@ declare module 'alizarin' {
 
   export function getRegisteredDisplaySerializers(): string[];
 
+  // Label resolution extension registration
+  export function registerResolvableDatatype(datatype: string): void;
+  export function unregisterResolvableDatatype(datatype: string): void;
+
   // WASM initialization
   export function initWasm(): Promise<void>;
   export const wasmReady: Promise<void>;

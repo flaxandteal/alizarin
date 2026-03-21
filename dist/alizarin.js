@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-let AlizarinModel, CollectionMutator, GraphManager, GraphMutator, RDM, ResourceModelWrapper, WASMResourceModelWrapper, WKRM, client, collectionToSkosXml, collectionsToSkosXml, ensureWasmRdmCache, getCurrentLanguage, getRegisteredDisplaySerializers, getTimingStats, getValueFromPath, getValueFromPathSync, graphManager, hasDisplaySerializer, initWasm, interfaces, logTimingStats, newWASMResourceInstanceWrapperForResource, nodeConfig, parseSkosXml, parseSkosXmlToCollection, registerDisplaySerializer, renderers, resetTimingStats, setCurrentLanguage, setWasmURL, slugify, staticStore, staticTypes, index, unregisterDisplaySerializer, utils, version, viewModels, wasmReady;
+let AlizarinModel, CollectionMutator, GraphManager, GraphMutator, RDM, ResourceModelWrapper, WASMResourceModelWrapper, WKRM, client, collectionToSkosXml, collectionsToSkosXml, ensureWasmRdmCache, getCurrentLanguage, getRegisteredDisplaySerializers, getTimingStats, getValueFromPath, getValueFromPathSync, graphManager, hasDisplaySerializer, initWasm, interfaces, logTimingStats, newWASMResourceInstanceWrapperForResource, nodeConfig, parseSkosXml, parseSkosXmlToCollection, registerDisplaySerializer, registerResolvableDatatype, renderers, resetTimingStats, setCurrentLanguage, setWasmURL, slugify, staticStore, staticTypes, index, unregisterDisplaySerializer, unregisterResolvableDatatype, utils, version, viewModels, wasmReady;
 let __tla = (async () => {
   var _a, _b, _c, _d, _e, _f;
   const REGEX = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/i;
@@ -7048,12 +7048,25 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
   }));
   let _labelResolvableDatatypes = null;
   let _collectionConfigKeys = null;
+  const _extensionResolvableDatatypes = /* @__PURE__ */ new Set();
   function getLabelResolvableDatatypes() {
     if (_labelResolvableDatatypes === null) {
       _labelResolvableDatatypes = new Set(getDefaultResolvableDatatypes());
     }
+    if (_extensionResolvableDatatypes.size > 0) {
+      return /* @__PURE__ */ new Set([
+        ..._labelResolvableDatatypes,
+        ..._extensionResolvableDatatypes
+      ]);
+    }
     return _labelResolvableDatatypes;
   }
+  registerResolvableDatatype = function(datatype) {
+    _extensionResolvableDatatypes.add(datatype);
+  };
+  unregisterResolvableDatatype = function(datatype) {
+    _extensionResolvableDatatypes.delete(datatype);
+  };
   function getCollectionConfigKeys() {
     if (_collectionConfigKeys === null) {
       _collectionConfigKeys = getDefaultConfigKeys();
@@ -11162,7 +11175,7 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}
   }, Symbol.toStringTag, {
     value: "Module"
   }));
-  version = "0.2.1-alpha.40";
+  version = "0.2.1-alpha.48";
   registerAlizarinTimingGetter(getTimingStats);
   registerWasmTimingGetter(getWasmTimings);
   let _wasmReadyResolve;
@@ -11206,6 +11219,7 @@ export {
   parseSkosXml,
   parseSkosXmlToCollection,
   registerDisplaySerializer,
+  registerResolvableDatatype,
   renderers,
   resetTimingStats,
   setCurrentLanguage,
@@ -11215,6 +11229,7 @@ export {
   staticTypes,
   index as tracing,
   unregisterDisplaySerializer,
+  unregisterResolvableDatatype,
   utils,
   version,
   viewModels,
