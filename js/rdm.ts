@@ -17,11 +17,34 @@ export { isValidUuid };
 let _labelResolvableDatatypes: Set<string> | null = null;
 let _collectionConfigKeys: string[] | null = null;
 
+// Extension-registered resolvable datatypes (e.g. CLM registers "reference")
+const _extensionResolvableDatatypes: Set<string> = new Set();
+
 function getLabelResolvableDatatypes(): Set<string> {
   if (_labelResolvableDatatypes === null) {
     _labelResolvableDatatypes = new Set(getDefaultResolvableDatatypes());
   }
+  // Merge in extension-registered datatypes
+  if (_extensionResolvableDatatypes.size > 0) {
+    return new Set([..._labelResolvableDatatypes, ..._extensionResolvableDatatypes]);
+  }
   return _labelResolvableDatatypes;
+}
+
+/**
+ * Register an additional datatype for label resolution.
+ * Extensions should call this to include their datatypes in resolveLabels.
+ * E.g. CLM registers "reference" so reference labels are resolved.
+ */
+function registerResolvableDatatype(datatype: string): void {
+  _extensionResolvableDatatypes.add(datatype);
+}
+
+/**
+ * Unregister a previously registered resolvable datatype.
+ */
+function unregisterResolvableDatatype(datatype: string): void {
+  _extensionResolvableDatatypes.delete(datatype);
 }
 
 function getCollectionConfigKeys(): string[] {
@@ -34,7 +57,7 @@ function getCollectionConfigKeys(): string[] {
 interface ResolveLabelsOptions {
   /** If true, throw errors for unresolved labels. Default: false */
   strict?: boolean;
-  /** Additional datatypes to resolve (beyond concept/concept-list/reference) */
+  /** Additional datatypes to resolve beyond the defaults and any extension-registered types */
   additionalDatatypes?: string[];
   /** Additional config keys to check for collection IDs */
   additionalConfigKeys?: string[];
@@ -187,5 +210,5 @@ class ReferenceDataManager {
 
 const RDM = new ReferenceDataManager(archesClient);
 
-export { StaticCollection, ReferenceDataManager, RDM };
+export { StaticCollection, ReferenceDataManager, RDM, registerResolvableDatatype, unregisterResolvableDatatype };
 export type { ResolveLabelsOptions };

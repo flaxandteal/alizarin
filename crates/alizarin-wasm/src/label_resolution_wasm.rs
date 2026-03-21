@@ -19,7 +19,7 @@ use wasm_bindgen::prelude::*;
 /// Build a mapping from node alias to collection ID.
 ///
 /// @param graphJson - JSON string of the graph definition
-/// @param resolvableDatatypes - Array of datatypes to resolve (default: concept, concept-list, reference)
+/// @param resolvableDatatypes - Array of datatypes to resolve (default: concept, concept-list)
 /// @param configKeys - Array of config keys to check (default: rdmCollection, controlledList)
 /// @returns Map<string, string> of alias -> collectionId
 #[wasm_bindgen(js_name = buildAliasToCollectionMap)]
@@ -133,7 +133,7 @@ pub fn wasm_is_valid_uuid(s: &str) -> bool {
 
 /// Get the default resolvable datatypes.
 ///
-/// @returns Array of datatype strings: ["concept", "concept-list", "reference"]
+/// @returns Array of datatype strings: ["concept", "concept-list"]
 #[wasm_bindgen(js_name = getDefaultResolvableDatatypes)]
 pub fn wasm_get_default_resolvable_datatypes() -> Vec<String> {
     label_resolution::DEFAULT_RESOLVABLE_DATATYPES

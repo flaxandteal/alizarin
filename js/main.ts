@@ -1,6 +1,6 @@
 import * as client from "./client";
 import * as interfaces from "./interfaces";
-import { RDM, ResolveLabelsOptions } from "./rdm";
+import { RDM, ResolveLabelsOptions, registerResolvableDatatype, unregisterResolvableDatatype } from "./rdm";
 import { ResourceModelWrapper, WKRM, graphManager, staticStore, GraphManager, GraphMutator, getWasmTimings } from "./graphManager";
 import * as staticTypes from "./static-types";
 import { CollectionMutator } from "./collectionMutator";
@@ -54,6 +54,8 @@ export {
   viewModels,
   staticStore,
   RDM,
+  registerResolvableDatatype,
+  unregisterResolvableDatatype,
   renderers,
   interfaces,
   WKRM,

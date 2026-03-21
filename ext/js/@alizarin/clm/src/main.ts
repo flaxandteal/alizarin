@@ -1,4 +1,4 @@
-import { RDM, nodeConfig, utils, viewModels, registerDisplaySerializer, wasmReady } from "alizarin";
+import { RDM, nodeConfig, utils, viewModels, registerDisplaySerializer, registerResolvableDatatype, wasmReady } from "alizarin";
 import type { interfaces, staticTypes } from "alizarin";
 type IPseudo = interfaces.IPseudo;
 type IViewModel = interfaces.IViewModel;
@@ -720,3 +720,7 @@ class ReferenceMergedDataType {
 }
 
 viewModels.CUSTOM_DATATYPES.set("reference", ReferenceMergedDataType);
+// Register "reference" as a resolvable datatype for label resolution.
+// This tells the core that reference nodes should be included in
+// alias-to-collection mapping, so resolveLabels resolves reference labels.
+registerResolvableDatatype("reference");
