@@ -12,6 +12,9 @@ pub struct CoercionResult {
     pub display_value: Value,
     /// Error message if coercion failed
     pub error: Option<String>,
+    /// True when the datatype was unknown and the value was passed through unchanged
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub passthrough: bool,
 }
 
 impl CoercionResult {
@@ -20,6 +23,7 @@ impl CoercionResult {
             tile_data,
             display_value,
             error: None,
+            passthrough: false,
         }
     }
 
@@ -28,6 +32,17 @@ impl CoercionResult {
             tile_data: value.clone(),
             display_value: value,
             error: None,
+            passthrough: false,
+        }
+    }
+
+    /// Value passed through unchanged because the datatype is unknown to core.
+    pub fn success_passthrough(value: Value) -> Self {
+        CoercionResult {
+            tile_data: value.clone(),
+            display_value: value,
+            error: None,
+            passthrough: true,
         }
     }
 
@@ -36,6 +51,7 @@ impl CoercionResult {
             tile_data: Value::Null,
             display_value: Value::Null,
             error: Some(message.into()),
+            passthrough: false,
         }
     }
 

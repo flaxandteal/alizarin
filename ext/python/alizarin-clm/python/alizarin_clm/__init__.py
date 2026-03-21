@@ -247,7 +247,7 @@ async def resolve_reference_markers(
     Resolve __needs_rdm_lookup and __needs_rdm_label_lookup markers in tile data
     to full StaticReference objects with embedded labels.
 
-    This should be called after batch_trees_to_tiles_with_extensions to resolve
+    This should be called after batch_trees_to_tiles to resolve
     any markers that were created during coercion. By resolving at write time,
     display-time collection fetching is avoided.
 
@@ -264,10 +264,10 @@ async def resolve_reference_markers(
         ValueError: If strict=True and markers cannot be resolved
 
     Example:
-        >>> from alizarin import batch_trees_to_tiles_with_extensions
+        >>> from alizarin import batch_trees_to_tiles
         >>> from alizarin_clm import resolve_reference_markers
         >>>
-        >>> result = batch_trees_to_tiles_with_extensions(trees_json, graph_id)
+        >>> result = batch_trees_to_tiles(trees_json, graph_id)
         >>> resolved = await resolve_reference_markers(
         ...     json.dumps(result),
         ...     graph_json,

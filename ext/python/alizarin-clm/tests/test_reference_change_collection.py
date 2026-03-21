@@ -526,10 +526,8 @@ class TestDisplayTextWithUpdatedCollection:
         Test that reference values are properly coerced after
         the node's collection has been changed.
 
-        This simulates the workflow:
-        1. Collection was changed from A to B
-        2. User provides a value from collection B
-        3. Coercion succeeds because node now points to B
+        After changing collection A → B, a label string should produce
+        a marker pointing to collection B.
         """
         import alizarin
         import alizarin_clm  # noqa: F401 - registers handler
@@ -537,20 +535,8 @@ class TestDisplayTextWithUpdatedCollection:
         if alizarin.coerce_with_extension is None:
             pytest.skip("coerce_with_extension not available")
 
-        # Reference value from the "new" collection
-        value_json = json.dumps({
-            "labels": [
-                {
-                    "id": "label-1",
-                    "language_id": "en",
-                    "list_item_id": "item-from-new-collection",
-                    "value": "New Collection Item",
-                    "valuetype_id": "prefLabel",
-                }
-            ],
-            "list_id": "new-person-type-collection",
-            "uri": "http://example.com/new-collection/item-1",
-        })
+        # Label string — the user-facing input format
+        value_json = json.dumps("New Collection Item")
 
         # Node config now points to new collection
         config_json = json.dumps({
@@ -558,18 +544,16 @@ class TestDisplayTextWithUpdatedCollection:
             "multiValue": False,
         })
 
-        # Coerce the value
-        tile_data_json, resolved_json = alizarin.coerce_with_extension(
-            "reference",
-            value_json,
-            config_json,
+        tile_data_json, _ = alizarin.coerce_with_extension(
+            "reference", value_json, config_json,
         )
 
-        resolved = json.loads(resolved_json)
+        tile_data = json.loads(tile_data_json)
 
-        # Verify coercion worked
-        assert resolved["list_id"] == "new-person-type-collection"
-        assert resolved["labels"][0]["value"] == "New Collection Item"
+        # Should produce a label lookup marker pointing to the new collection
+        assert tile_data.get("__needs_rdm_label_lookup") is True
+        assert tile_data["label"] == "New Collection Item"
+        assert tile_data["controlledList"] == "new-person-type-collection"
 
 
 class TestEndToEndWorkflow:
@@ -653,64 +637,60 @@ class TestEndToEndWorkflow:
         )
         assert test_node["config"]["controlledList"] == new_collection_id
 
-        # Step 2: Create a JSON tree with a reference from the new collection
-        person_tree = {
-            "test": [
-                {
-                    "_value": {
-                        "labels": [
-                            {
-                                "id": "new-label-1",
-                                "language_id": "en",
-                                "list_item_id": "new-item-1",
-                                "value": "Item From Updated Collection",
-                                "valuetype_id": "prefLabel",
-                            }
-                        ],
-                        "list_id": new_collection_id,
-                        "uri": "http://example.com/updated-collection/item-1",
-                    }
-                }
-            ]
-        }
-
-        tree_json = json.dumps(person_tree)
-        resource_id = "test-person-001"
-
-        # Step 3: Register graph and convert to tiles
-        graph_id = alizarin.register_graph(updated_graph_json)
-        result = alizarin.json_tree_to_tiles(
-            tree_json=tree_json,
-            resource_id=resource_id,
-            graph_id=graph_id,
+        # Step 2: Set up RDM cache with concept from updated collection
+        from alizarin import (
+            RustRdmCollection, RustRdmConcept, RustRdmCache,
+            set_global_rdm_cache, clear_global_rdm_cache,
         )
 
-        # Step 4: Verify the result
-        assert "business_data" in result
-        resources = result["business_data"]["resources"]
-        assert len(resources) == 1
+        collection = RustRdmCollection(new_collection_id)
+        collection.add_concept(RustRdmConcept(
+            "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            {"en": "Item From Updated Collection"},
+        ))
+        cache = RustRdmCache()
+        cache.add_collection(collection)
+        set_global_rdm_cache(cache)
 
-        resource = resources[0]
-        assert resource["resourceinstance"]["resourceinstanceid"] == resource_id
-        assert "tiles" in resource
-        assert len(resource["tiles"]) > 0
+        try:
+            # Step 3: Create tree with label string from new collection
+            person_tree = {
+                "test": ["Item From Updated Collection"],
+            }
 
-        # Find the tile with our reference data
-        ref_node_id = test_node["nodeid"]
-        ref_tile = None
-        for tile in resource["tiles"]:
-            if ref_node_id in tile.get("data", {}):
-                ref_tile = tile
-                break
+            resource_id = "test-person-001"
+            graph_id = alizarin.register_graph(updated_graph_json)
+            result = alizarin.json_tree_to_tiles(
+                tree_json=json.dumps(person_tree),
+                resource_id=resource_id,
+                graph_id=graph_id,
+            )
 
-        assert ref_tile is not None, "Should find tile with reference data"
+            # Step 4: Verify the result
+            assert "business_data" in result
+            resources = result["business_data"]["resources"]
+            assert len(resources) == 1
 
-        # Verify the reference data is present
-        ref_data = ref_tile["data"][ref_node_id]
-        assert ref_data is not None
+            resource = resources[0]
+            assert resource["resourceinstance"]["resourceinstanceid"] == resource_id
+            assert "tiles" in resource
+            assert len(resource["tiles"]) > 0
 
-        print(f"Successfully created tiles with updated collection: {new_collection_id}")
-        print(f"Reference data in tile: {json.dumps(ref_data, indent=2)[:200]}...")
+            # Find the tile with resolved reference data
+            ref_node_id = test_node["nodeid"]
+            ref_tile = None
+            for tile in resource["tiles"]:
+                if ref_node_id in tile.get("data", {}):
+                    ref_tile = tile
+                    break
+
+            assert ref_tile is not None, "Should find tile with reference data"
+            ref_data = ref_tile["data"][ref_node_id]
+            assert ref_data is not None
+            assert isinstance(ref_data, list)
+            assert "labels" in ref_data[0], "Should be resolved StaticReference"
+        finally:
+            clear_global_rdm_cache()
 
     def test_full_workflow_with_collection_creation(self, person_graph):
         """

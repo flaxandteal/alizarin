@@ -61,6 +61,7 @@ pub fn tree_to_tiles_enhanced(
         id_key_ref,
         false,
         random_ids.unwrap_or(true),
+        false,
     );
 
     match result {
@@ -217,6 +218,7 @@ pub fn batch_trees_to_tiles(
             id_key_ref,
             false,
             random_ids.unwrap_or(false),
+            false,
         );
 
         match result {

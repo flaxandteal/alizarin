@@ -72,8 +72,8 @@ pub fn coerce_value(datatype: &str, value: &Value, config: Option<&Value>) -> Co
         "resource-instance" => coerce_resource_instance(value, config),
         "resource-instance-list" => coerce_resource_instance_list(value, config),
         _ => {
-            // Unknown type - pass through unchanged
-            CoercionResult::success_same(value.clone())
+            // Unknown type - pass through unchanged but flag as passthrough
+            CoercionResult::success_passthrough(value.clone())
         }
     }
 }
@@ -94,10 +94,17 @@ mod tests {
 
     #[test]
     fn test_coerce_value_unknown_type() {
-        // Unknown types pass through unchanged
+        // Unknown types pass through unchanged but flagged as passthrough
         let result = coerce_value("unknown-type", &json!({"foo": "bar"}), None);
         assert!(!result.is_error());
+        assert!(result.passthrough);
         assert_eq!(result.tile_data, json!({"foo": "bar"}));
+    }
+
+    #[test]
+    fn test_coerce_value_known_type_not_passthrough() {
+        let result = coerce_value("string", &json!("test"), None);
+        assert!(!result.passthrough);
     }
 
     #[test]

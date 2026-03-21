@@ -25,7 +25,6 @@ get_graph_schema: Optional[Any] = None
 tiles_to_json_tree: Optional[Any] = None
 json_tree_to_tiles: Optional[Any] = None
 batch_trees_to_tiles: Optional[Any] = None
-batch_trees_to_tiles_with_extensions: Optional[Any] = None
 batch_tiles_to_trees: Optional[Any] = None
 merge_resources: Optional[Any] = None
 batch_merge_resources: Optional[Any] = None
@@ -44,7 +43,6 @@ try:
     tiles_to_json_tree = _alizarin_rust.tiles_to_json_tree
     json_tree_to_tiles = _alizarin_rust.json_tree_to_tiles
     batch_trees_to_tiles = _alizarin_rust.batch_trees_to_tiles
-    batch_trees_to_tiles_with_extensions = _alizarin_rust.batch_trees_to_tiles_with_extensions
     batch_tiles_to_trees = _alizarin_rust.batch_tiles_to_trees
     merge_resources = _alizarin_rust.merge_resources
     batch_merge_resources = _alizarin_rust.batch_merge_resources
@@ -380,7 +378,6 @@ __all__ = [
     "tiles_to_json_tree",
     "json_tree_to_tiles",
     "batch_trees_to_tiles",
-    "batch_trees_to_tiles_with_extensions",
     "batch_tiles_to_trees",
     "merge_resources",
     "batch_merge_resources",

@@ -700,84 +700,86 @@ class TestFullRustIntegration:
 
     def test_json_tree_to_tiles_with_reference_field(self, person_graph_json, person_graph_data):
         """
-        Test full Rust flow: JSON tree → tiles conversion with reference values.
+        Test full Rust flow: JSON tree with label strings → resolved reference tiles.
 
-        This demonstrates that a Person JSON with reference fields can be converted
-        to tiles entirely in Rust via json_tree_to_tiles.
+        Demonstrates the real user flow: submit human-readable labels, get back
+        resolved StaticReference objects in tile data.
         """
         import alizarin
         import alizarin_clm  # noqa: F401 - registers handler
+        from alizarin import (
+            RustRdmCollection, RustRdmConcept, RustRdmCache,
+            set_global_rdm_cache, clear_global_rdm_cache,
+        )
 
         if alizarin.json_tree_to_tiles is None:
             pytest.skip("json_tree_to_tiles not available")
 
-        # Create a Person JSON tree with a reference value
-        # Structure: direct children of root node (person) at top level
-        # Leaf values are wrapped in "_value" for Rust tree_to_tiles
-        person_tree = {
-            "test": [
-                {
-                    "_value": {
-                        "labels": [
-                            {
-                                "id": "label-1",
-                                "language_id": "en",
-                                "list_item_id": "item-1",
-                                "value": "Test Reference Value",
-                                "valuetype_id": "prefLabel",
-                            }
-                        ],
-                        "list_id": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
-                        "uri": "http://localhost:8000/item/1",
-                    }
-                }
-            ],
-            "name": [{
-                "full_name": {"_value": {"en": "John Doe"}}
-            }]
-        }
+        # Set up RDM cache with a collection matching the graph config.
+        # Concept ID must be UUID-formatted (as in production) so the handler
+        # routes it to __needs_rdm_lookup (by UUID) after core_resolve_labels
+        # has already resolved the label to a concept ID.
+        collection = RustRdmCollection("2730d609-3a8d-49dc-bf51-6ac34e80294a")
+        collection.add_concept(RustRdmConcept("a1b2c3d4-e5f6-7890-abcd-ef1234567890", {"en": "Test Reference Value"}))
+        cache = RustRdmCache()
+        cache.add_collection(collection)
+        set_global_rdm_cache(cache)
 
-        tree_json = json.dumps(person_tree)
-        resource_id = "test-person-001"
+        try:
+            # Tree input uses plain label strings — the user-facing format
+            person_tree = {
+                "test": ["Test Reference Value"],
+                "name": [{
+                    "full_name": {"_value": {"en": "John Doe"}}
+                }]
+            }
 
-        # Register graph before conversion
-        graph_id = alizarin.register_graph(person_graph_json)
+            tree_json = json.dumps(person_tree)
+            resource_id = "test-person-001"
 
-        # Convert JSON tree to tiles - entirely in Rust
-        result = alizarin.json_tree_to_tiles(
-            tree_json=tree_json,
-            resource_id=resource_id,
-            graph_id=graph_id,
-        )
+            graph_id = alizarin.register_graph(person_graph_json)
 
-        # Verify the result structure - new BusinessDataWrapper format
-        assert 'business_data' in result
-        resources = result['business_data']['resources']
-        assert len(resources) == 1
+            result = alizarin.json_tree_to_tiles(
+                tree_json=tree_json,
+                resource_id=resource_id,
+                graph_id=graph_id,
+            )
 
-        resource = resources[0]
-        assert resource["resourceinstance"]["resourceinstanceid"] == resource_id
-        assert resource["resourceinstance"]["graph_id"] == graph_id
-        assert "tiles" in resource
-        assert len(resource["tiles"]) > 0
+            assert 'business_data' in result
+            resources = result['business_data']['resources']
+            assert len(resources) == 1
 
-        # Find the tile with reference data
-        reference_node_id = None
-        for node in person_graph_data["nodes"]:
-            if node.get("alias") == "test" and node.get("datatype") == "reference":
-                reference_node_id = node["nodeid"]
-                break
+            resource = resources[0]
+            assert resource["resourceinstance"]["resourceinstanceid"] == resource_id
+            assert resource["resourceinstance"]["graph_id"] == graph_id
+            assert "tiles" in resource
+            assert len(resource["tiles"]) > 0
 
-        assert reference_node_id is not None, "Should find reference node"
+            # Find the tile with reference data
+            reference_node_id = None
+            for node in person_graph_data["nodes"]:
+                if node.get("alias") == "test" and node.get("datatype") == "reference":
+                    reference_node_id = node["nodeid"]
+                    break
 
-        # Find tile containing reference data
-        reference_tile = None
-        for tile in resource["tiles"]:
-            if reference_node_id in tile.get("data", {}):
-                reference_tile = tile
-                break
+            assert reference_node_id is not None, "Should find reference node"
 
-        assert reference_tile is not None, "Should have tile with reference data"
+            reference_tile = None
+            for tile in resource["tiles"]:
+                if reference_node_id in tile.get("data", {}):
+                    reference_tile = tile
+                    break
+
+            assert reference_tile is not None, "Should have tile with reference data"
+
+            # The label should have been resolved to a full StaticReference
+            ref_data = reference_tile["data"][reference_node_id]
+            assert isinstance(ref_data, list), f"multiValue reference should be array, got {type(ref_data)}"
+            assert len(ref_data) == 1
+            assert "labels" in ref_data[0], f"Should be resolved StaticReference: {ref_data[0]}"
+            assert ref_data[0]["labels"][0]["value"] == "Test Reference Value"
+        finally:
+            clear_global_rdm_cache()
 
         # The reference data should be stored in the tile
         ref_data = reference_tile["data"][reference_node_id]
@@ -802,227 +804,143 @@ class TestFullRustIntegration:
         if alizarin.coerce_with_extension is None:
             pytest.skip("coerce_with_extension not available")
 
-        # Step 1: Create Person JSON with multiple fields including reference
-        # Structure: direct children of root node at top level
-        # Leaf values wrapped in "_value" for Rust tree_to_tiles
-        person_tree = {
-            "test": [
-                {
-                    "_value": {
-                        "labels": [
-                            {
-                                "id": "ref-label-1",
-                                "language_id": "en",
-                                "list_item_id": "item-123",
-                                "value": "Category A",
-                                "valuetype_id": "prefLabel",
-                            },
-                            {
-                                "id": "ref-label-2",
-                                "language_id": "es",
-                                "list_item_id": "item-123",
-                                "value": "Categoría A",
-                                "valuetype_id": "prefLabel",
-                            }
-                        ],
-                        "list_id": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
-                        "uri": "http://localhost:8000/item/123",
-                    }
-                },
-                {
-                    "_value": {
-                        "labels": [
-                            {
-                                "id": "ref-label-3",
-                                "language_id": "en",
-                                "list_item_id": "item-456",
-                                "value": "Category B",
-                                "valuetype_id": "prefLabel",
-                            }
-                        ],
-                        "list_id": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
-                        "uri": "http://localhost:8000/item/456",
-                    }
-                }
-            ],
-            "name": [{
-                "full_name": {"_value": {"en": "Jane Smith", "ga": "Síle Ní Ghobnait"}}
-            }]
-        }
-
-        # Step 2: Register graph and convert to tiles via Rust
-        tree_json = json.dumps(person_tree)
-        graph_id = alizarin.register_graph(person_graph_json)
-        result = alizarin.json_tree_to_tiles(
-            tree_json=tree_json,
-            resource_id="test-person-002",
-            graph_id=graph_id,
+        # Step 1: Set up RDM cache with labels matching the tree input
+        from alizarin import (
+            RustRdmCollection, RustRdmConcept, RustRdmCache,
+            set_global_rdm_cache, clear_global_rdm_cache,
         )
 
-        # Extract resource from BusinessDataWrapper format
-        assert 'business_data' in result
-        resources = result['business_data']['resources']
-        assert len(resources) == 1
-        resource = resources[0]
-        assert len(resource["tiles"]) > 0
+        collection = RustRdmCollection("2730d609-3a8d-49dc-bf51-6ac34e80294a")
+        collection.add_concept(RustRdmConcept("b1c2d3e4-f5a6-7890-abcd-ef1234567890", {"en": "Category A", "es": "Categoría A"}))
+        collection.add_concept(RustRdmConcept("c2d3e4f5-a6b7-8901-bcde-f12345678901", {"en": "Category B"}))
+        cache = RustRdmCache()
+        cache.add_collection(collection)
+        set_global_rdm_cache(cache)
 
-        # Step 3: Find reference data in tiles
-        reference_node_id = None
-        node_config = None
-        for node in person_graph_data["nodes"]:
-            if node.get("alias") == "test" and node.get("datatype") == "reference":
-                reference_node_id = node["nodeid"]
-                node_config = node.get("config", {})
-                break
+        try:
+            # Step 2: Create tree with label strings — the user-facing format
+            person_tree = {
+                "test": ["Category A", "Category B"],
+                "name": [{
+                    "full_name": {"_value": {"en": "Jane Smith", "ga": "Síle Ní Ghobnait"}}
+                }]
+            }
 
-        # Find tile with reference data (reference list items are stored as array in single tile)
-        ref_data = None
-        for tile in resource["tiles"]:
-            if reference_node_id and reference_node_id in tile.get("data", {}):
-                ref_data = tile["data"][reference_node_id]
-                if ref_data is not None:
-                    break
-
-        assert ref_data is not None, "Should have a tile with reference data"
-        # Reference list data is stored as an array in a single tile
-        assert isinstance(ref_data, list), f"Reference data should be a list, got {type(ref_data)}"
-        assert len(ref_data) == 2, f"Should have 2 reference items in the list, got {len(ref_data)}"
-
-        # Step 4: Coerce each reference value via Rust extension handler
-        # This demonstrates the Rust-to-Rust coercion path
-        coerced_results = []
-        for ref_item in ref_data:
-            # Extract the actual reference value from _value wrapper if present
-            ref_value = ref_item.get("_value", ref_item) if isinstance(ref_item, dict) else ref_item
-            ref_json = json.dumps(ref_value)
-            config_json = json.dumps(node_config)
-
-            tile_data_json, resolved_json = alizarin.coerce_with_extension(
-                "reference",
-                ref_json,
-                config_json
+            tree_json = json.dumps(person_tree)
+            graph_id = alizarin.register_graph(person_graph_json)
+            result = alizarin.json_tree_to_tiles(
+                tree_json=tree_json,
+                resource_id="test-person-002",
+                graph_id=graph_id,
             )
 
-            resolved = json.loads(resolved_json)
-            # Arches tile format wraps references in an array
-            if isinstance(resolved, list) and len(resolved) > 0:
-                resolved = resolved[0]
-            coerced_results.append(resolved)
+            assert 'business_data' in result
+            resources = result['business_data']['resources']
+            assert len(resources) == 1
+            resource = resources[0]
+            assert len(resource["tiles"]) > 0
 
-        # Verify we coerced both reference values
-        assert len(coerced_results) == 2, "Should have coerced 2 reference values"
+            # Step 3: Find resolved reference data in tiles
+            reference_node_id = None
+            for node in person_graph_data["nodes"]:
+                if node.get("alias") == "test" and node.get("datatype") == "reference":
+                    reference_node_id = node["nodeid"]
+                    break
 
-        # Find references by label value (order not guaranteed)
-        label_values = {r["labels"][0]["value"] for r in coerced_results}
-        assert "Category A" in label_values, "Should have Category A reference"
-        assert "Category B" in label_values, "Should have Category B reference"
+            ref_data = None
+            for tile in resource["tiles"]:
+                if reference_node_id and reference_node_id in tile.get("data", {}):
+                    ref_data = tile["data"][reference_node_id]
+                    if ref_data is not None:
+                        break
 
-        # Verify the one with Spanish label
-        cat_a_ref = next(r for r in coerced_results if r["labels"][0]["value"] == "Category A")
-        assert any(l["language_id"] == "es" for l in cat_a_ref["labels"]), \
-            "Category A should preserve Spanish label"
+            assert ref_data is not None, "Should have a tile with reference data"
+            assert isinstance(ref_data, list), f"Reference data should be a list, got {type(ref_data)}"
+            assert len(ref_data) == 2, f"Should have 2 reference items, got {len(ref_data)}"
 
-        print("Full Rust pipeline completed successfully:")
-        print(f"  - Converted JSON tree to {len(resource['tiles'])} tiles")
-        print(f"  - Coerced {len(coerced_results)} reference values via Rust extension")
+            # Step 4: Verify labels were resolved to full StaticReference objects
+            label_values = {r["labels"][0]["value"] for r in ref_data}
+            assert "Category A" in label_values, "Should have Category A reference"
+            assert "Category B" in label_values, "Should have Category B reference"
+
+            # Verify multilingual labels preserved
+            cat_a_ref = next(r for r in ref_data if r["labels"][0]["value"] == "Category A")
+            assert any(l["language_id"] == "es" for l in cat_a_ref["labels"]), \
+                "Category A should have Spanish label from RDM"
+        finally:
+            clear_global_rdm_cache()
 
     def test_rust_coercion_in_roundtrip(self, person_graph_json, person_graph_data):
         """
-        Test that reference values survive a complete roundtrip through Rust:
-        JSON tree → tiles → JSON tree → tiles
+        Test that reference values survive tree → tiles → tree through Rust.
 
-        All transformations happen in Rust.
+        Input is a label string resolved via RDM cache. After tiles → tree,
+        the tree contains resolved StaticReference objects — these are NOT
+        valid for re-ingestion (tree → tiles rejects pre-formed objects).
+        This test verifies each direction works correctly.
         """
         import alizarin
         import alizarin_clm  # noqa: F401
+        from alizarin import (
+            RustRdmCollection, RustRdmConcept, RustRdmCache,
+            set_global_rdm_cache, clear_global_rdm_cache,
+        )
 
         if alizarin.json_tree_to_tiles is None or alizarin.tiles_to_json_tree is None:
             pytest.skip("Rust conversion functions not available")
 
-        # Original tree with reference
-        # Structure: direct children of root node at top level
-        # Leaf values wrapped in "_value" for Rust tree_to_tiles
-        original_tree = {
-            "test": [
-                {
-                    "_value": {
-                        "labels": [{"id": "l1", "language_id": "en", "list_item_id": "i1",
-                                   "value": "Roundtrip Test", "valuetype_id": "prefLabel"}],
-                        "list_id": "list-roundtrip",
-                        "uri": "http://example.com/roundtrip",
-                    }
-                }
-            ]
-        }
+        collection = RustRdmCollection("2730d609-3a8d-49dc-bf51-6ac34e80294a")
+        collection.add_concept(RustRdmConcept(
+            "d4e5f6a7-b8c9-0123-def0-456789abcdef",
+            {"en": "Roundtrip Test"},
+        ))
+        cache = RustRdmCache()
+        cache.add_collection(collection)
+        set_global_rdm_cache(cache)
 
-        resource_id = "roundtrip-test-001"
+        try:
+            original_tree = {"test": ["Roundtrip Test"]}
+            resource_id = "roundtrip-test-001"
+            graph_id = alizarin.register_graph(person_graph_json)
 
-        # Register graph once for all operations
-        graph_id = alizarin.register_graph(person_graph_json)
+            # Step 1: tree → tiles — label gets resolved to StaticReference
+            tiles_result = alizarin.json_tree_to_tiles(
+                tree_json=json.dumps(original_tree),
+                resource_id=resource_id,
+                graph_id=graph_id,
+            )
 
-        # Step 1: tree → tiles (Rust)
-        tiles_result = alizarin.json_tree_to_tiles(
-            tree_json=json.dumps(original_tree),
-            resource_id=resource_id,
-            graph_id=graph_id,
-        )
+            assert 'business_data' in tiles_result
+            tiles_resource = tiles_result['business_data']['resources'][0]
+            assert len(tiles_resource["tiles"]) > 0
 
-        # Extract tiles from BusinessDataWrapper format
-        assert 'business_data' in tiles_result
-        tiles_resource = tiles_result['business_data']['resources'][0]
-        assert len(tiles_resource["tiles"]) > 0
+            # Find reference data in tiles
+            ref_node_id = None
+            for node in person_graph_data["nodes"]:
+                if node.get("alias") == "test":
+                    ref_node_id = node["nodeid"]
+                    break
 
-        # Step 2: tiles → tree (Rust)
-        # tiles_to_json_tree now takes a full resource JSON (with graph_id and tiles)
-        tree_result = alizarin.tiles_to_json_tree(json.dumps({
-            "graph_id": graph_id,
-            "resourceinstanceid": resource_id,
-            "tiles": tiles_resource["tiles"],
-        }))
+            ref_data = None
+            for tile in tiles_resource["tiles"]:
+                if ref_node_id and ref_node_id in tile.get("data", {}):
+                    ref_data = tile["data"][ref_node_id]
+                    break
 
-        assert "person" in tree_result or len(tree_result) > 0
+            assert ref_data is not None, "Should have resolved reference data"
+            assert isinstance(ref_data, list)
+            assert "labels" in ref_data[0], "Should be resolved StaticReference"
 
-        # Step 3: tree → tiles again (Rust)
-        final_result = alizarin.json_tree_to_tiles(
-            tree_json=json.dumps(tree_result),
-            resource_id=resource_id,
-            graph_id=graph_id,
-        )
+            # Step 2: tiles → tree — resolved data goes back to tree format
+            tree_result = alizarin.tiles_to_json_tree(json.dumps({
+                "graph_id": graph_id,
+                "resourceinstanceid": resource_id,
+                "tiles": tiles_resource["tiles"],
+            }))
 
-        # Extract tiles from final result
-        assert 'business_data' in final_result
-        final_resource = final_result['business_data']['resources'][0]
-        assert len(final_resource["tiles"]) > 0
-
-        # Find reference node
-        ref_node_id = None
-        for node in person_graph_data["nodes"]:
-            if node.get("alias") == "test":
-                ref_node_id = node["nodeid"]
-                break
-
-        # Check reference data survived roundtrip
-        original_ref_data = None
-        final_ref_data = None
-
-        for tile in tiles_resource["tiles"]:
-            if ref_node_id and ref_node_id in tile.get("data", {}):
-                original_ref_data = tile["data"][ref_node_id]
-                break
-
-        for tile in final_resource["tiles"]:
-            if ref_node_id and ref_node_id in tile.get("data", {}):
-                final_ref_data = tile["data"][ref_node_id]
-                break
-
-        if original_ref_data and final_ref_data:
-            # Data should be preserved through roundtrip
-            print(f"Original reference data: {json.dumps(original_ref_data)[:100]}...")
-            print(f"Final reference data: {json.dumps(final_ref_data)[:100]}...")
-            # The structure should be similar (exact match depends on normalization)
-            assert final_ref_data is not None
-
-        print("Roundtrip through Rust completed successfully")
+            assert len(tree_result) > 0
+        finally:
+            clear_global_rdm_cache()
 
 
 class TestRustCoercionIntegration:
@@ -1043,9 +961,9 @@ class TestRustCoercionIntegration:
 
     def test_coerce_with_extension_single_reference(self):
         """
-        Test coerce_with_extension with a single reference value.
+        Test coerce_with_extension with a single label string.
 
-        This tests the direct Rust-to-Rust coercion path.
+        Label strings produce __needs_rdm_label_lookup markers.
         """
         import alizarin_clm  # noqa: F401
         import alizarin
@@ -1053,54 +971,26 @@ class TestRustCoercionIntegration:
         if alizarin.coerce_with_extension is None:
             pytest.skip("Rust extension not available")
 
-        # Pre-formatted reference value as JSON
-        value_json = json.dumps({
-            "labels": [
-                {
-                    "id": "0ea39e2e-6663-467c-8707-ab492896d23e",
-                    "language_id": "en",
-                    "list_item_id": "6672d187-dfc3-4424-8c63-7a3b377b4159",
-                    "value": "Item 1>1",
-                    "valuetype_id": "prefLabel",
-                }
-            ],
-            "list_id": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
-            "uri": "http://localhost:8000/plugins/controlled-list-manager/item/6672d187-dfc3-4424-8c63-7a3b377b4159",
-        })
-
-        # Node config as JSON
+        value_json = json.dumps("Item 1>1")
         config_json = json.dumps({
             "controlledList": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
             "multiValue": False,
         })
 
-        # Call the Rust coercion function
         tile_data_json, resolved_json = alizarin.coerce_with_extension(
-            "reference",
-            value_json,
-            config_json,
+            "reference", value_json, config_json,
         )
 
-        # Parse results
         tile_data = json.loads(tile_data_json)
-        resolved = json.loads(resolved_json)
+        assert tile_data.get("__needs_rdm_label_lookup") is True
+        assert tile_data["label"] == "Item 1>1"
+        assert tile_data["controlledList"] == "2730d609-3a8d-49dc-bf51-6ac34e80294a"
 
-        # Verify tile data format
-        assert tile_data is not None
-        assert "list_id" in tile_data
-        assert tile_data["list_id"] == "2730d609-3a8d-49dc-bf51-6ac34e80294a"
-
-        # Verify resolved data
-        assert resolved is not None
-        assert "labels" in resolved
-        assert len(resolved["labels"]) == 1
-        assert resolved["labels"][0]["value"] == "Item 1>1"
-
-    def test_coerce_with_extension_reference_array(self):
+    def test_coerce_with_extension_single_uuid(self):
         """
-        Test coerce_with_extension with an array of reference values.
+        Test coerce_with_extension with a single UUID string.
 
-        This demonstrates multi-value reference coercion.
+        UUID strings produce __needs_rdm_lookup markers.
         """
         import alizarin_clm  # noqa: F401
         import alizarin
@@ -1108,67 +998,56 @@ class TestRustCoercionIntegration:
         if alizarin.coerce_with_extension is None:
             pytest.skip("Rust extension not available")
 
-        # Array of reference values
-        value_json = json.dumps([
-            {
-                "labels": [
-                    {
-                        "id": "label-1",
-                        "language_id": "en",
-                        "list_item_id": "item-1",
-                        "value": "First Item",
-                        "valuetype_id": "prefLabel",
-                    }
-                ],
-                "list_id": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
-                "uri": "http://localhost:8000/item/1",
-            },
-            {
-                "labels": [
-                    {
-                        "id": "label-2",
-                        "language_id": "en",
-                        "list_item_id": "item-2",
-                        "value": "Second Item",
-                        "valuetype_id": "prefLabel",
-                    }
-                ],
-                "list_id": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
-                "uri": "http://localhost:8000/item/2",
-            },
-        ])
+        uuid_val = "6672d187-dfc3-4424-8c63-7a3b377b4159"
+        value_json = json.dumps(uuid_val)
+        config_json = json.dumps({
+            "controlledList": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
+            "multiValue": False,
+        })
 
+        tile_data_json, _ = alizarin.coerce_with_extension(
+            "reference", value_json, config_json,
+        )
+
+        tile_data = json.loads(tile_data_json)
+        assert tile_data.get("__needs_rdm_lookup") is True
+        assert tile_data["uuid"] == uuid_val
+
+    def test_coerce_with_extension_reference_array(self):
+        """
+        Test coerce_with_extension with an array of label strings.
+
+        Each label produces a __needs_rdm_label_lookup marker.
+        """
+        import alizarin_clm  # noqa: F401
+        import alizarin
+
+        if alizarin.coerce_with_extension is None:
+            pytest.skip("Rust extension not available")
+
+        value_json = json.dumps(["First Item", "Second Item"])
         config_json = json.dumps({
             "controlledList": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
             "multiValue": True,
         })
 
-        # Call the Rust coercion function
-        tile_data_json, resolved_json = alizarin.coerce_with_extension(
-            "reference",
-            value_json,
-            config_json,
+        tile_data_json, _ = alizarin.coerce_with_extension(
+            "reference", value_json, config_json,
         )
 
-        # Parse results
         tile_data = json.loads(tile_data_json)
-        resolved = json.loads(resolved_json)
-
-        # Verify tile data format - should be an array
         assert isinstance(tile_data, list)
         assert len(tile_data) == 2
+        assert tile_data[0]["label"] == "First Item"
+        assert tile_data[1]["label"] == "Second Item"
+        for item in tile_data:
+            assert item.get("__needs_rdm_label_lookup") is True
 
-        # Verify resolved data - should be an array
-        assert isinstance(resolved, list)
-        assert len(resolved) == 2
-        assert resolved[0]["labels"][0]["value"] == "First Item"
-        assert resolved[1]["labels"][0]["value"] == "Second Item"
-
-    def test_coerce_preserves_all_label_fields(self):
+    def test_coerce_rejects_preformed_reference_object(self):
         """
-        Test that coercion preserves all fields in reference labels.
+        Test that coerce_with_extension rejects pre-formed StaticReference objects.
 
-        The Rust coercion should maintain all label metadata.
+        Pre-formed objects (with labels/list_id keys) are not valid coercion input.
         """
         import alizarin_clm  # noqa: F401
         import alizarin
@@ -1176,7 +1055,6 @@ class TestRustCoercionIntegration:
         if alizarin.coerce_with_extension is None:
             pytest.skip("Rust extension not available")
 
-        # Reference with multiple labels in different languages
         value_json = json.dumps({
             "labels": [
                 {
@@ -1186,13 +1064,6 @@ class TestRustCoercionIntegration:
                     "value": "English Label",
                     "valuetype_id": "prefLabel",
                 },
-                {
-                    "id": "es-label",
-                    "language_id": "es",
-                    "list_item_id": "item-1",
-                    "value": "Etiqueta Española",
-                    "valuetype_id": "prefLabel",
-                },
             ],
             "list_id": "list-123",
             "uri": "http://example.com/item/1",
@@ -1200,27 +1071,8 @@ class TestRustCoercionIntegration:
 
         config_json = json.dumps({"multiValue": False})
 
-        tile_data_json, resolved_json = alizarin.coerce_with_extension(
-            "reference",
-            value_json,
-            config_json,
-        )
-
-        resolved = json.loads(resolved_json)
-
-        # Verify all labels are preserved
-        assert len(resolved["labels"]) == 2
-
-        # Find English label
-        en_label = next(l for l in resolved["labels"] if l["language_id"] == "en")
-        assert en_label["id"] == "en-label"
-        assert en_label["value"] == "English Label"
-        assert en_label["valuetype_id"] == "prefLabel"
-
-        # Find Spanish label
-        es_label = next(l for l in resolved["labels"] if l["language_id"] == "es")
-        assert es_label["id"] == "es-label"
-        assert es_label["value"] == "Etiqueta Española"
+        with pytest.raises(ValueError, match="Pre-formed reference objects are not valid input"):
+            alizarin.coerce_with_extension("reference", value_json, config_json)
 
     def test_coerce_with_missing_handler_raises_error(self):
         """Test that coercing with an unregistered type raises an error."""
@@ -2288,98 +2140,81 @@ class TestBatchTreesToTilesWithMultiValueReference:
 
     def test_batch_trees_to_tiles_with_reference_array(self, person_graph_json, person_graph_data):
         """
-        Test batch_trees_to_tiles with an array of StaticReference values
-        for a multiValue reference node.
+        Test batch_trees_to_tiles with label strings for a multiValue reference node.
 
-        This verifies that a list of valid reference values is correctly
-        converted to tile data format.
+        Labels are resolved via RDM cache to full StaticReference objects.
+        batch_trees_to_tiles does NOT call core_resolve_labels, so the CLM handler's
+        __needs_rdm_label_lookup markers are the only resolution path.
         """
         import alizarin
         import alizarin_clm  # noqa: F401 - registers handler
+        from alizarin import (
+            RustRdmCollection, RustRdmConcept, RustRdmCache,
+            set_global_rdm_cache, clear_global_rdm_cache,
+        )
 
         if alizarin.batch_trees_to_tiles is None:
             pytest.skip("batch_trees_to_tiles not available")
         if alizarin.register_graph is None:
             pytest.skip("register_graph not available")
 
-        # Register the graph (returns graph_id)
         graph_id = alizarin.register_graph(person_graph_json)
 
-        # Create a tree with multiValue reference data
-        # Using fully-formed StaticReference objects
-        tree = {
-            "graph_id": graph_id,
-            "test": [
-                {
-                    "labels": [
-                        {
-                            "id": "label-1",
-                            "language_id": "en",
-                            "list_item_id": "item-1",
-                            "value": "Hotel/Inn",
-                            "valuetype_id": "prefLabel",
-                        }
-                    ],
-                    "list_id": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
-                    "uri": "http://example.com/item/1",
-                },
-                {
-                    "labels": [
-                        {
-                            "id": "label-2",
-                            "language_id": "en",
-                            "list_item_id": "item-2",
-                            "value": "Picture theatre/Cinema",
-                            "valuetype_id": "prefLabel",
-                        }
-                    ],
-                    "list_id": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
-                    "uri": "http://example.com/item/2",
-                },
-            ]
-        }
+        # Set up RDM cache for label resolution
+        collection = RustRdmCollection("2730d609-3a8d-49dc-bf51-6ac34e80294a")
+        collection.add_concept(RustRdmConcept(
+            "e1f2a3b4-c5d6-7890-abcd-ef1234567890", {"en": "Hotel/Inn"}
+        ))
+        collection.add_concept(RustRdmConcept(
+            "f2a3b4c5-d6e7-8901-bcde-f12345678901", {"en": "Picture theatre/Cinema"}
+        ))
+        cache = RustRdmCache()
+        cache.add_collection(collection)
+        set_global_rdm_cache(cache)
 
-        trees_json = json.dumps([tree])
+        try:
+            tree = {
+                "graph_id": graph_id,
+                "test": ["Hotel/Inn", "Picture theatre/Cinema"],
+            }
 
-        # Call batch_trees_to_tiles
-        result = alizarin.batch_trees_to_tiles(
-            trees_json=trees_json,
-            graph_id=graph_id,
-            random_ids=True,
-        )
+            result = alizarin.batch_trees_to_tiles(
+                trees_json=json.dumps([tree]),
+                graph_id=graph_id,
+                random_ids=True,
+            )
 
-        # Verify the result structure
-        assert "business_data" in result
-        assert "resources" in result["business_data"]
-        assert len(result["business_data"]["resources"]) == 1
+            assert "business_data" in result
+            assert len(result["business_data"]["resources"]) == 1
 
-        resource = result["business_data"]["resources"][0]
-        assert "tiles" in resource
+            resource = result["business_data"]["resources"][0]
 
-        # Find the reference node
-        ref_node_id = None
-        for node in person_graph_data["nodes"]:
-            if node.get("alias") == "test" and node.get("datatype") == "reference":
-                ref_node_id = node["nodeid"]
-                break
+            ref_node_id = None
+            for node in person_graph_data["nodes"]:
+                if node.get("alias") == "test" and node.get("datatype") == "reference":
+                    ref_node_id = node["nodeid"]
+                    break
 
-        assert ref_node_id is not None, "Should find reference node in graph"
+            assert ref_node_id is not None
 
-        # Find tiles with reference data
-        ref_tiles = []
-        for tile in resource["tiles"]:
-            if ref_node_id in tile.get("data", {}):
-                ref_data = tile["data"][ref_node_id]
-                if ref_data is not None:
-                    ref_tiles.append(ref_data)
+            # Find tile with resolved reference data
+            ref_data = None
+            for tile in resource["tiles"]:
+                if ref_node_id in tile.get("data", {}):
+                    ref_data = tile["data"][ref_node_id]
+                    if ref_data is not None:
+                        break
 
-        # For multiValue, we expect multiple tiles (one per reference value)
-        # or a single tile with array data - depends on implementation
-        assert len(ref_tiles) >= 1, f"Should have reference data in tiles, got {len(ref_tiles)} tiles"
+            assert ref_data is not None, "Should have reference data in tiles"
+            assert isinstance(ref_data, list), f"multiValue should be array, got {type(ref_data)}"
+            assert len(ref_data) == 2
 
-        print(f"Reference tiles created: {len(ref_tiles)}")
-        for i, ref_data in enumerate(ref_tiles):
-            print(f"  Tile {i}: {json.dumps(ref_data)[:100]}...")
+            # Labels should be resolved to StaticReference objects
+            label_values = {r["labels"][0]["value"] for r in ref_data}
+            assert "Hotel/Inn" in label_values
+            assert "Picture theatre/Cinema" in label_values
+        finally:
+            clear_global_rdm_cache()
 
     def test_batch_trees_to_tiles_strict_raises_on_invalid_reference(
         self, person_graph_json, person_graph_data
@@ -2401,40 +2236,30 @@ class TestBatchTreesToTilesWithMultiValueReference:
         # Register the graph (returns graph_id)
         graph_id = alizarin.register_graph(person_graph_json)
 
-        # Create a tree with an INVALID reference value (plain string, not UUID or StaticReference)
+        # A plain string like "Hotel/Inn" is actually VALID — it's a label
+        # that will be marked for RDM lookup via __needs_rdm_label_lookup.
+        # To test strict-mode rejection, use a genuinely invalid value like a number.
         tree = {
             "graph_id": graph_id,
-            "test": ["Hotel/Inn"],  # Invalid: should be StaticReference or UUID, not plain string
+            "test": [42],  # Invalid: numbers are not valid reference input
         }
 
         trees_json = json.dumps([tree])
 
-        # In strict mode, should raise an error for invalid reference
-        # Note: This test documents expected behavior - currently core doesn't
-        # call extension coercion during tree_to_tiles
-        result = alizarin.batch_trees_to_tiles(
-            trees_json=trees_json,
-            graph_id=graph_id,
-            strict=True,
-            random_ids=True,
-        )
+        # In strict mode, should raise an error for invalid reference input
+        with pytest.raises(ValueError, match="Extension coercion failed"):
+            alizarin.batch_trees_to_tiles(
+                trees_json=trees_json,
+                graph_id=graph_id,
+                strict=True,
+                random_ids=True,
+            )
 
-        # Check if there are errors in the result
-        # If extension coercion is not being called, the value will pass through unchanged
-        # and we may not get an error. This test documents that behavior.
-        if result.get("error_count", 0) > 0:
-            print(f"Got expected error: {result['errors']}")
-        else:
-            # Document that extension coercion isn't being called in tree_to_tiles
-            print("Note: No error - extension coercion not called in tree_to_tiles path")
-            # The reference value should have been passed through unchanged
-            # since core doesn't know about "reference" datatype
-
-    def test_batch_trees_to_tiles_with_extensions_marks_label_for_lookup(
+    def test_batch_trees_to_tiles_marks_label_for_lookup(
         self, person_graph_json, person_graph_data
     ):
         """
-        Test that batch_trees_to_tiles_with_extensions marks plain strings
+        Test that batch_trees_to_tiles marks plain strings
         for RDM label lookup.
 
         Plain strings like "Hotel/Inn" should be accepted and marked for lookup
@@ -2443,8 +2268,8 @@ class TestBatchTreesToTilesWithMultiValueReference:
         import alizarin
         import alizarin_clm  # noqa: F401 - registers handler
 
-        if alizarin.batch_trees_to_tiles_with_extensions is None:
-            pytest.skip("batch_trees_to_tiles_with_extensions not available")
+        if alizarin.batch_trees_to_tiles is None:
+            pytest.skip("batch_trees_to_tiles not available")
         if alizarin.register_graph is None:
             pytest.skip("register_graph not available")
 
@@ -2460,7 +2285,7 @@ class TestBatchTreesToTilesWithMultiValueReference:
         trees_json = json.dumps([tree])
 
         # Should succeed - plain strings are accepted and marked for lookup
-        result = alizarin.batch_trees_to_tiles_with_extensions(
+        result = alizarin.batch_trees_to_tiles(
             trees_json=trees_json,
             graph_id=graph_id,
             strict=True,
@@ -2499,60 +2324,54 @@ class TestBatchTreesToTilesWithMultiValueReference:
         assert item.get("label") == "Hotel/Inn"
         print(f"Plain string correctly marked for label lookup: {item}")
 
-    def test_batch_trees_to_tiles_with_extensions_accepts_valid_references(
+    def test_batch_trees_to_tiles_accepts_uuid_references(
         self, person_graph_json, person_graph_data
     ):
         """
-        Test that batch_trees_to_tiles_with_extensions correctly processes
-        valid StaticReference objects.
+        Test that batch_trees_to_tiles correctly processes UUID strings
+        as reference input. UUIDs are marked for RDM lookup.
         """
         import alizarin
         import alizarin_clm  # noqa: F401 - registers handler
+        from alizarin import (
+            RustRdmCollection, RustRdmConcept, RustRdmCache,
+            set_global_rdm_cache, clear_global_rdm_cache,
+        )
 
-        if alizarin.batch_trees_to_tiles_with_extensions is None:
-            pytest.skip("batch_trees_to_tiles_with_extensions not available")
+        if alizarin.batch_trees_to_tiles is None:
+            pytest.skip("batch_trees_to_tiles not available")
         if alizarin.register_graph is None:
             pytest.skip("register_graph not available")
 
-        # Register the graph (returns graph_id)
         graph_id = alizarin.register_graph(person_graph_json)
 
-        # Create a tree with VALID StaticReference objects
-        tree = {
-            "graph_id": graph_id,
-            "test": [
-                {
-                    "labels": [
-                        {
-                            "id": "label-1",
-                            "language_id": "en",
-                            "list_item_id": "item-1",
-                            "value": "Hotel/Inn",
-                            "valuetype_id": "prefLabel",
-                        }
-                    ],
-                    "list_id": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
-                    "uri": "http://example.com/item/1",
-                },
-            ]
-        }
+        concept_uuid = "e1f2a3b4-c5d6-7890-abcd-ef1234567890"
 
-        trees_json = json.dumps([tree])
+        # Set up RDM cache with the concept that will be looked up by UUID
+        collection = RustRdmCollection("2730d609-3a8d-49dc-bf51-6ac34e80294a")
+        collection.add_concept(RustRdmConcept(concept_uuid, {"en": "Hotel/Inn"}))
+        cache = RustRdmCache()
+        cache.add_collection(collection)
+        set_global_rdm_cache(cache)
 
-        # Should succeed with valid reference objects
-        result = alizarin.batch_trees_to_tiles_with_extensions(
-            trees_json=trees_json,
-            graph_id=graph_id,
-            strict=True,
-            random_ids=True,
-        )
+        try:
+            tree = {
+                "graph_id": graph_id,
+                "test": [concept_uuid],
+            }
 
-        # Verify success
-        assert "business_data" in result
-        assert result.get("error_count", 0) == 0, f"Should have no errors, got: {result.get('errors')}"
-        assert len(result["business_data"]["resources"]) == 1
+            result = alizarin.batch_trees_to_tiles(
+                trees_json=json.dumps([tree]),
+                graph_id=graph_id,
+                strict=True,
+                random_ids=True,
+            )
 
-        print("Valid references processed successfully with extensions enabled")
+            assert "business_data" in result
+            assert result.get("error_count", 0) == 0, f"Should have no errors, got: {result.get('errors')}"
+            assert len(result["business_data"]["resources"]) == 1
+        finally:
+            clear_global_rdm_cache()
 
     def test_coerce_with_extension_marks_label_string_for_lookup(self):
         """
@@ -2633,9 +2452,10 @@ class TestBatchTreesToTilesWithMultiValueReference:
             assert item.get("__needs_rdm_lookup") is True, \
                 f"UUID should be marked for RDM lookup: {item}"
 
-    def test_coerce_with_extension_accepts_static_reference_array(self):
+    def test_coerce_with_extension_rejects_static_reference_array(self):
         """
-        Test that coerce_with_extension accepts an array of full StaticReference objects.
+        Test that coerce_with_extension rejects an array of pre-formed
+        StaticReference objects.
         """
         import alizarin
         import alizarin_clm  # noqa: F401 - registers handler
@@ -2643,33 +2463,12 @@ class TestBatchTreesToTilesWithMultiValueReference:
         if alizarin.coerce_with_extension is None:
             pytest.skip("coerce_with_extension not available")
 
-        # Valid: array of StaticReference objects
         ref_array = json.dumps([
             {
-                "labels": [
-                    {
-                        "id": "label-1",
-                        "language_id": "en",
-                        "list_item_id": "item-1",
-                        "value": "Hotel/Inn",
-                        "valuetype_id": "prefLabel",
-                    }
-                ],
+                "labels": [{"id": "l1", "language_id": "en", "list_item_id": "i1",
+                            "value": "Hotel/Inn", "valuetype_id": "prefLabel"}],
                 "list_id": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
                 "uri": "http://example.com/item/1",
-            },
-            {
-                "labels": [
-                    {
-                        "id": "label-2",
-                        "language_id": "en",
-                        "list_item_id": "item-2",
-                        "value": "Picture theatre/Cinema",
-                        "valuetype_id": "prefLabel",
-                    }
-                ],
-                "list_id": "2730d609-3a8d-49dc-bf51-6ac34e80294a",
-                "uri": "http://example.com/item/2",
             },
         ])
 
@@ -2678,22 +2477,8 @@ class TestBatchTreesToTilesWithMultiValueReference:
             "multiValue": True,
         })
 
-        # Should succeed
-        tile_data_json, resolved_json = alizarin.coerce_with_extension(
-            "reference", ref_array, config_json
-        )
-
-        tile_data = json.loads(tile_data_json)
-
-        # Result should be an array
-        assert isinstance(tile_data, list), f"Expected array, got {type(tile_data)}"
-        assert len(tile_data) == 2
-
-        # Each item should be a full StaticReference (no __needs_rdm_lookup)
-        for item in tile_data:
-            assert "labels" in item, f"Should be StaticReference: {item}"
-            assert "list_id" in item
-            assert "__needs_rdm_lookup" not in item
+        with pytest.raises(ValueError, match="Pre-formed reference objects are not valid input"):
+            alizarin.coerce_with_extension("reference", ref_array, config_json)
 
 
 class TestResolveReferenceMarkers:

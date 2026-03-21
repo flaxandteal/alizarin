@@ -199,16 +199,14 @@ fn coerce_reference_value(value: &Value, config: &ReferenceNodeConfig) -> Result
     // Helper to coerce single item (without multiValue wrapping)
     fn coerce_single(value: &Value, config: &ReferenceNodeConfig) -> Result<(Value, Value), String> {
         match value {
-            // Already a StaticReference object
-            Value::Object(obj) if obj.contains_key("labels") && obj.contains_key("list_id") => {
-                // Validate and pass through
-                let reference: StaticReference = serde_json::from_value(value.clone())
-                    .map_err(|e| format!("Invalid reference object: {}", e))?;
-
-                let tile_data = serde_json::to_value(&reference)
-                    .map_err(|e| format!("Failed to serialize reference: {}", e))?;
-
-                Ok((tile_data.clone(), tile_data))
+            // Pre-formed StaticReference objects are not valid coercion input.
+            // Use a label string or UUID instead.
+            Value::Object(obj) if obj.contains_key("labels") || obj.contains_key("list_id") => {
+                Err(format!(
+                    "Pre-formed reference objects are not valid input. \
+                     Use a label string or UUID instead. Got: {:?}",
+                    value
+                ))
             }
 
             // String - could be UUID or label value, needs lookup
@@ -755,7 +753,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_coerce_reference_object() {
+    fn test_coerce_rejects_preformed_reference_object() {
         let value = json!({
             "labels": [{
                 "id": "label-1",
@@ -771,9 +769,8 @@ mod tests {
         let config = ReferenceNodeConfig::default();
         let result = coerce_reference_value(&value, &config);
 
-        assert!(result.is_ok());
-        let (tile_data, _resolved) = result.unwrap();
-        assert!(tile_data.get("labels").is_some());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Pre-formed reference objects are not valid input"));
     }
 
     #[test]
@@ -882,19 +879,10 @@ mod tests {
 
     #[test]
     fn test_coerce_multivalue_wraps_single_in_array() {
-        let value = json!({
-            "labels": [{
-                "id": "1",
-                "language_id": "en",
-                "list_item_id": "item-1",
-                "value": "Test Label",
-                "valuetype_id": "prefLabel"
-            }],
-            "list_id": "list-1",
-            "uri": "http://example.com"
-        });
+        // Use a UUID string (valid input)
+        let value = json!("550e8400-e29b-41d4-a716-446655440000");
 
-        // Without multiValue - should return single object
+        // Without multiValue - should return single object (marker)
         let config_single = ReferenceNodeConfig {
             controlled_list: Some("list-1".to_string()),
             rdm_collection: None,
@@ -916,18 +904,8 @@ mod tests {
 
     #[test]
     fn test_coerce_multivalue_preserves_existing_array() {
-        let value = json!([
-            {
-                "labels": [{"id": "1", "language_id": "en", "list_item_id": "item-1", "value": "Label A", "valuetype_id": "prefLabel"}],
-                "list_id": "list-1",
-                "uri": "http://example.com/a"
-            },
-            {
-                "labels": [{"id": "2", "language_id": "en", "list_item_id": "item-2", "value": "Label B", "valuetype_id": "prefLabel"}],
-                "list_id": "list-1",
-                "uri": "http://example.com/b"
-            }
-        ]);
+        // Use an array of label strings (valid input)
+        let value = json!(["Hotel/Inn", "Cinema"]);
 
         // With multiValue=true and already an array - should not double-wrap
         let config = ReferenceNodeConfig {

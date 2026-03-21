@@ -12,8 +12,10 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
-/// Datatypes that support label resolution by default
-pub const DEFAULT_RESOLVABLE_DATATYPES: &[&str] = &["concept", "concept-list", "reference"];
+/// Datatypes that support label resolution by default.
+/// Extension types (e.g. "reference") should register themselves
+/// via the extension handler mechanism rather than being listed here.
+pub const DEFAULT_RESOLVABLE_DATATYPES: &[&str] = &["concept", "concept-list"];
 
 /// Config keys that hold collection IDs (in order of preference)
 pub const DEFAULT_CONFIG_KEYS: &[&str] = &["rdmCollection", "controlledList"];
@@ -391,9 +393,14 @@ mod tests {
                     "config": {"rdmCollection": "collection-1"}
                 },
                 {
+                    "alias": "tags",
+                    "datatype": "concept-list",
+                    "config": {"rdmCollection": "collection-2"}
+                },
+                {
                     "alias": "status",
                     "datatype": "reference",
-                    "config": {"controlledList": "collection-2"}
+                    "config": {"controlledList": "collection-3"}
                 },
                 {
                     "alias": "name",
@@ -403,12 +410,40 @@ mod tests {
             ]
         });
 
+        // Default config only includes core types (concept, concept-list)
         let config = LabelResolutionConfig::default();
         let map = build_alias_to_collection_map(&graph, &config);
 
         assert_eq!(map.get("category"), Some(&"collection-1".to_string()));
-        assert_eq!(map.get("status"), Some(&"collection-2".to_string()));
+        assert_eq!(map.get("tags"), Some(&"collection-2".to_string()));
+        // "reference" is an extension type — not in default resolvable set
+        assert_eq!(map.get("status"), None);
         assert_eq!(map.get("name"), None);
+    }
+
+    #[test]
+    fn test_build_alias_to_collection_map_with_additional_datatypes() {
+        let graph = serde_json::json!({
+            "nodes": [
+                {
+                    "alias": "category",
+                    "datatype": "concept",
+                    "config": {"rdmCollection": "collection-1"}
+                },
+                {
+                    "alias": "status",
+                    "datatype": "reference",
+                    "config": {"controlledList": "collection-2"}
+                }
+            ]
+        });
+
+        // Extensions can add their datatypes via with_additional_datatypes
+        let config = LabelResolutionConfig::default().with_additional_datatypes(&["reference"]);
+        let map = build_alias_to_collection_map(&graph, &config);
+
+        assert_eq!(map.get("category"), Some(&"collection-1".to_string()));
+        assert_eq!(map.get("status"), Some(&"collection-2".to_string()));
     }
 
     #[test]
