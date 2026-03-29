@@ -91,9 +91,15 @@ def test_batch_trees_to_tiles_nested_name():
                 forename_tile = tile
                 break
             # String datatype wraps value in localized format
-            if isinstance(value, dict) and value.get('en') == "Alice":
-                forename_tile = tile
-                break
+            # Handles both {"en": "Alice"} and {"en": {"value": "Alice", "direction": "ltr"}}
+            if isinstance(value, dict):
+                lang_val = value.get('en')
+                if lang_val == "Alice":
+                    forename_tile = tile
+                    break
+                if isinstance(lang_val, dict) and lang_val.get('value') == "Alice":
+                    forename_tile = tile
+                    break
 
     assert forename_tile is not None, "Should find tile with 'Alice' value"
 
@@ -544,7 +550,7 @@ def test_node_values_index():
     # Each resource should have one forename value
     for resource_id, values in node_values_index.items():
         assert len(values) >= 1, f"Resource {resource_id} should have at least 1 value"
-        # Value is localized format {"en": "Alice"}
+        # Value is localized format {"en": {"value": "Alice", "direction": "ltr"}}
         first_value = values[0]
         assert isinstance(first_value, dict), "Value should be localized dict"
         assert 'en' in first_value, "Value should have 'en' key"

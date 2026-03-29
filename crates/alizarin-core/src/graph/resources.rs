@@ -1036,12 +1036,17 @@ impl StaticResourceRegistry {
                         if let Some(value) = tile.data.get(node_id) {
                             // Convert value to string key
                             let key = if flatten_localized {
-                                // Try to extract from localized format {"en": "value"}
+                                // Try to extract from localized format
+                                // Handles both {"en": "value"} and {"en": {"value": "value", "direction": "ltr"}}
                                 if let Some(obj) = value.as_object() {
-                                    obj.get("en")
-                                        .or_else(|| obj.values().next())
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| s.to_string())
+                                    obj.get("en").or_else(|| obj.values().next()).and_then(|v| {
+                                        v.as_str().map(|s| s.to_string()).or_else(|| {
+                                            v.as_object()
+                                                .and_then(|inner| inner.get("value"))
+                                                .and_then(|val| val.as_str())
+                                                .map(|s| s.to_string())
+                                        })
+                                    })
                                 } else {
                                     value.as_str().map(|s| s.to_string())
                                 }
