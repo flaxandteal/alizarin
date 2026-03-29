@@ -16,7 +16,7 @@ pub struct StaticResourceMetadata {
     pub publication_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub principaluser_id: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub legacyid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graph_publication_id: Option<String>,
@@ -44,7 +44,7 @@ pub struct StaticResourceSummary {
     pub publication_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub principaluser_id: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub legacyid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graph_publication_id: Option<String>,

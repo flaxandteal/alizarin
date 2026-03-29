@@ -5,12 +5,20 @@ use super::helpers::value_type_name;
 use super::result::CoercionResult;
 use serde_json::Value;
 
-/// Coerce a value to a localized string (dict of language -> value).
+/// Create a StringTranslatedLanguage entry: `{"value": "...", "direction": "ltr"}`
+fn make_string_entry(s: &str) -> Value {
+    let mut entry = serde_json::Map::new();
+    entry.insert("value".to_string(), Value::String(s.to_string()));
+    entry.insert("direction".to_string(), Value::String("ltr".to_string()));
+    Value::Object(entry)
+}
+
+/// Coerce a value to a localized string (dict of language -> StringTranslatedLanguage).
 ///
-/// Tile data format: `{"en": "Hello", "es": "Hola", ...}`
+/// Tile data format: `{"en": {"value": "Hello", "direction": "ltr"}, ...}`
 ///
 /// If input is a plain string, wraps it in the current language key.
-/// If input is already a dict, passes through with validation.
+/// If input is already a dict, normalizes entries to StringTranslatedLanguage format.
 pub fn coerce_string(value: &Value, language: Option<&str>) -> CoercionResult {
     let lang: String = language
         .map(|s| s.to_string())
@@ -18,46 +26,44 @@ pub fn coerce_string(value: &Value, language: Option<&str>) -> CoercionResult {
 
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
-        Value::String(s) if s.is_empty() => {
-            // Empty string -> empty object for that language
-            let mut obj = serde_json::Map::new();
-            obj.insert(lang.clone(), Value::String(String::new()));
-            CoercionResult::success_same(Value::Object(obj))
-        }
         Value::String(s) => {
-            // Plain string -> wrap in language key
+            // Plain string -> wrap in language key with direction
             let mut obj = serde_json::Map::new();
-            obj.insert(lang, Value::String(s.clone()));
+            obj.insert(lang, make_string_entry(s));
             CoercionResult::success_same(Value::Object(obj))
         }
         Value::Number(n) => {
             // Number -> convert to string and wrap in language key
             let mut obj = serde_json::Map::new();
-            obj.insert(lang, Value::String(n.to_string()));
+            obj.insert(lang, make_string_entry(&n.to_string()));
             CoercionResult::success_same(Value::Object(obj))
         }
         Value::Object(obj) => {
-            // Already a dict - validate all values are strings
+            // Already a dict - normalize all entries to StringTranslatedLanguage format
+            let mut result = serde_json::Map::new();
             for (k, v) in obj {
-                if !v.is_string() && !v.is_null() {
-                    // Some values might be StringTranslatedLanguage objects
-                    if let Value::Object(inner) = v {
-                        if !inner.contains_key("value") {
-                            return CoercionResult::error(format!(
-                                "String dict value for '{}' must be a string or {{value: string}}, got {:?}",
-                                k, v
-                            ));
-                        }
-                    } else {
+                match v {
+                    // Already in new format: {"value": "...", "direction": "..."}
+                    Value::Object(inner) if inner.contains_key("value") => {
+                        result.insert(k.clone(), v.clone());
+                    }
+                    // Old format: plain string value -> normalize
+                    Value::String(s) => {
+                        result.insert(k.clone(), make_string_entry(s));
+                    }
+                    Value::Null => {
+                        result.insert(k.clone(), make_string_entry(""));
+                    }
+                    _ => {
                         return CoercionResult::error(format!(
-                            "String dict value for '{}' must be a string, got {:?}",
+                            "String dict value for '{}' must be a string or {{value: string, direction: string}}, got {:?}",
                             k,
                             value_type_name(v)
                         ));
                     }
                 }
             }
-            CoercionResult::success_same(value.clone())
+            CoercionResult::success_same(Value::Object(result))
         }
         _ => CoercionResult::error(format!(
             "Expected string or language dict, got {:?}",
@@ -171,21 +177,44 @@ mod tests {
     fn test_coerce_string_plain() {
         let result = coerce_string(&json!("Hello"), Some("en"));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!({"en": "Hello"}));
+        assert_eq!(
+            result.tile_data,
+            json!({"en": {"value": "Hello", "direction": "ltr"}})
+        );
     }
 
     #[test]
     fn test_coerce_string_with_language() {
         let result = coerce_string(&json!("Hola"), Some("es"));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!({"es": "Hola"}));
+        assert_eq!(
+            result.tile_data,
+            json!({"es": {"value": "Hola", "direction": "ltr"}})
+        );
     }
 
     #[test]
-    fn test_coerce_string_dict_passthrough() {
+    fn test_coerce_string_dict_old_format_normalized() {
         let result = coerce_string(&json!({"en": "Hello", "es": "Hola"}), Some("en"));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!({"en": "Hello", "es": "Hola"}));
+        assert_eq!(
+            result.tile_data,
+            json!({
+                "en": {"value": "Hello", "direction": "ltr"},
+                "es": {"value": "Hola", "direction": "ltr"}
+            })
+        );
+    }
+
+    #[test]
+    fn test_coerce_string_dict_new_format_passthrough() {
+        let input = json!({
+            "en": {"value": "Hello", "direction": "ltr"},
+            "ar": {"value": "مرحبا", "direction": "rtl"}
+        });
+        let result = coerce_string(&input, Some("en"));
+        assert!(!result.is_error());
+        assert_eq!(result.tile_data, input);
     }
 
     #[test]
@@ -200,7 +229,10 @@ mod tests {
         set_current_language("fr");
         let result = coerce_string(&json!("Bonjour"), None);
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!({"fr": "Bonjour"}));
+        assert_eq!(
+            result.tile_data,
+            json!({"fr": {"value": "Bonjour", "direction": "ltr"}})
+        );
         // Reset
         set_current_language("en");
     }
@@ -209,14 +241,30 @@ mod tests {
     fn test_coerce_string_from_integer() {
         let result = coerce_string(&json!(650284), Some("en"));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!({"en": "650284"}));
+        assert_eq!(
+            result.tile_data,
+            json!({"en": {"value": "650284", "direction": "ltr"}})
+        );
     }
 
     #[test]
     fn test_coerce_string_from_float() {
         let result = coerce_string(&json!(4.2), Some("en"));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!({"en": "4.2"}));
+        assert_eq!(
+            result.tile_data,
+            json!({"en": {"value": "4.2", "direction": "ltr"}})
+        );
+    }
+
+    #[test]
+    fn test_coerce_string_empty() {
+        let result = coerce_string(&json!(""), Some("en"));
+        assert!(!result.is_error());
+        assert_eq!(
+            result.tile_data,
+            json!({"en": {"value": "", "direction": "ltr"}})
+        );
     }
 
     // URL tests

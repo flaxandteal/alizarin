@@ -111,7 +111,10 @@ mod tests {
     fn test_coerce_value_string() {
         let result = coerce_value("string", &json!("test"), Some(&json!({"language": "de"})));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!({"de": "test"}));
+        assert_eq!(
+            result.tile_data,
+            json!({"de": {"value": "test", "direction": "ltr"}})
+        );
     }
 
     #[test]

@@ -161,8 +161,13 @@ fn resource_tiles_to_tree(
         if let Some(ref slug) = metadata.descriptors.slug {
             obj.insert("_slug".to_string(), Value::String(slug.clone()));
         }
-        if let Some(ref legacyid) = metadata.legacyid {
-            obj.insert("legacyid".to_string(), Value::String(legacyid.clone()));
+        match metadata.legacyid {
+            Some(ref legacyid) => {
+                obj.insert("legacyid".to_string(), Value::String(legacyid.clone()));
+            }
+            None => {
+                obj.insert("legacyid".to_string(), Value::Null);
+            }
         }
     }
 
@@ -1612,8 +1617,8 @@ mod tests {
             serde_json::to_string_pretty(&sys_ref_tile.data).unwrap()
         );
 
-        // String datatype coerces to i18n format {"en": "value"}
-        let expected = serde_json::json!({"en": "650284"});
+        // String datatype coerces to i18n format {"en": {"value": "...", "direction": "ltr"}}
+        let expected = serde_json::json!({"en": {"value": "650284", "direction": "ltr"}});
         assert_eq!(
             resourceid_value.unwrap(),
             &expected,

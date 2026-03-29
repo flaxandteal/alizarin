@@ -61,9 +61,12 @@ pub fn serialize_string(tile_data: &Value, options: &SerializationOptions) -> Se
             if options.is_display() {
                 SerializationResult::success(Value::String(s.clone()))
             } else {
-                // Wrap in language map for consistency
+                // Wrap in language map with StringTranslatedLanguage format
+                let mut entry = serde_json::Map::new();
+                entry.insert("value".to_string(), Value::String(s.clone()));
+                entry.insert("direction".to_string(), Value::String("ltr".to_string()));
                 let mut obj = serde_json::Map::new();
-                obj.insert(options.language.clone(), Value::String(s.clone()));
+                obj.insert(options.language.clone(), Value::Object(entry));
                 SerializationResult::success(Value::Object(obj))
             }
         }
@@ -195,6 +198,21 @@ mod tests {
 
     #[test]
     fn test_serialize_string_tile_data_mode() {
+        // New format passes through
+        let tile_data = json!({
+            "en": {"value": "Hello", "direction": "ltr"},
+            "es": {"value": "Hola", "direction": "ltr"}
+        });
+        let options = SerializationOptions::tile_data();
+
+        let result = serialize_string(&tile_data, &options);
+        assert!(!result.is_error());
+        assert_eq!(result.value, tile_data);
+    }
+
+    #[test]
+    fn test_serialize_string_tile_data_mode_old_format() {
+        // Old format also passes through in tile_data mode (raw preservation)
         let tile_data = json!({"en": "Hello", "es": "Hola"});
         let options = SerializationOptions::tile_data();
 

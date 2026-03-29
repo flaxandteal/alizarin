@@ -93,14 +93,29 @@ describe('Type Coercion Integration Tests', () => {
     it('should coerce a plain string to localized format', () => {
       const result = coerceValue('string', 'John', null);
 
-      // Both tile data and display value are the localized object
-      assertCoercionResult(result, { en: 'John' }, { en: 'John' });
+      // Both tile data and display value are the localized object with direction
+      assertCoercionResult(result, { en: { value: 'John', direction: 'ltr' } }, { en: { value: 'John', direction: 'ltr' } });
     });
 
-    it('should coerce a localized string object as-is', () => {
+    it('should coerce a localized string object (old format) to new format', () => {
       const result = coerceValue('string', { en: 'John', fr: 'Jean' }, null);
 
-      assertCoercionResult(result, { en: 'John', fr: 'Jean' });
+      assertCoercionResult(result, {
+        en: { value: 'John', direction: 'ltr' },
+        fr: { value: 'Jean', direction: 'ltr' }
+      });
+    });
+
+    it('should pass through new format localized string', () => {
+      const result = coerceValue('string', {
+        en: { value: 'John', direction: 'ltr' },
+        ar: { value: 'جون', direction: 'rtl' }
+      }, null);
+
+      assertCoercionResult(result, {
+        en: { value: 'John', direction: 'ltr' },
+        ar: { value: 'جون', direction: 'rtl' }
+      });
     });
 
     it('should coerce number input to localized string', () => {
@@ -108,7 +123,7 @@ describe('Type Coercion Integration Tests', () => {
 
       // String coercion now auto-converts numbers to localized strings
       expect(result.isError).toBe(false);
-      assertCoercionResult(result, { en: '42' });
+      assertCoercionResult(result, { en: { value: '42', direction: 'ltr' } });
     });
 
     it('should handle null input', () => {
@@ -501,7 +516,7 @@ describe('Type Coercion Integration Tests', () => {
     it('should use coerceString directly', () => {
       const result = coerceString('Hello', 'en');
 
-      assertCoercionResult(result, { en: 'Hello' }, { en: 'Hello' });
+      assertCoercionResult(result, { en: { value: 'Hello', direction: 'ltr' } }, { en: { value: 'Hello', direction: 'ltr' } });
     });
 
     it('should use coerceDate directly', () => {
@@ -551,7 +566,7 @@ describe('Type Coercion Integration Tests', () => {
       const dateResult = coerceValue('date', plainInput.creation_date, null);
 
       // Then: We get properly formatted tile data
-      expect(mapToObject(forenameResult.tileData)).toEqual({ en: 'John' });
+      expect(mapToObject(forenameResult.tileData)).toEqual({ en: { value: 'John', direction: 'ltr' } });
       expect(mapToObject(numberResult.tileData)).toEqual(12345);
       expect(mapToObject(dateResult.tileData)).toEqual('2024-01-15');
     });
@@ -597,7 +612,7 @@ describe('Type Coercion Integration Tests', () => {
       tileData[forenameNode.nodeid] = mapToObject(forenameResult.tileData);
       tileData[nameTypeNode.nodeid] = mapToObject(nameTypeResult.tileData);
 
-      expect(tileData[forenameNode.nodeid]).toEqual({ en: 'Jane' });
+      expect(tileData[forenameNode.nodeid]).toEqual({ en: { value: 'Jane', direction: 'ltr' } });
       expect(tileData[nameTypeNode.nodeid]).toEqual(conceptId);
     });
   });
