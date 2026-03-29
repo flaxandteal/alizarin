@@ -1,6 +1,6 @@
 {
   "name": "@alizarin/clm",
-  "version": "0.2.1-alpha.49",
+  "version": "0.2.1-alpha.50",
   "description": "Alizarin display serializers for CLM reference datatypes",
   "license": "AGPL-3.0",
   "author": "Phil Weir <phil.weir@flaxandteal.co.uk>",
@@ -18,7 +18,7 @@
     "test": "cd ../../../.. && npm test -- ext/js/@alizarin/clm/tests/clm.test.ts"
   },
   "peerDependencies": {
-    "alizarin": "0.2.1-alpha.49"
+    "alizarin": "0.2.1-alpha.50"
   },
   "devDependencies": {
     "alizarin": "file:../../../..",
