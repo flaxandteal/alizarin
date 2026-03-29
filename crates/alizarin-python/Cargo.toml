@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-python"
-version = "0.2.1-alpha.50"
+version = "0.2.1-alpha.51"
 authors = ["Phil Weir <phil.weir@flaxandteal.co.uk>"]
 edition = "2021"
 license = "MIT"
