@@ -1036,6 +1036,18 @@ pub fn collection_to_skos_xml(collection: &SkosCollection, base_uri: &str) -> St
                 ));
             }
 
+            // Add hasTopConcept references for each top-level concept (sorted by ID)
+            for concept in sorted_concepts(&collection.concepts) {
+                let concept_uri = match &concept.uri {
+                    Some(uri) if !uri.is_empty() => uri.clone(),
+                    _ => format!("{}{}", base_uri, concept.id),
+                };
+                output.push_str(&format!(
+                    "    <skos:hasTopConcept rdf:resource=\"{}\"/>\n",
+                    xml_escape(&concept_uri)
+                ));
+            }
+
             output.push_str("  </skos:ConceptScheme>\n");
 
             // Write all top-level concepts (and their children recursively, sorted by ID)
@@ -1176,6 +1188,18 @@ pub fn collections_to_skos_xml(collections: &[SkosCollection], base_uri: &str) -
                         "    <skos:scopeNote xml:lang=\"{}\">{}</skos:scopeNote>\n",
                         xml_escape(lang),
                         xml_escape_content(&value.value)
+                    ));
+                }
+
+                // Add hasTopConcept references for each top-level concept (sorted by ID)
+                for concept in sorted_concepts(&collection.concepts) {
+                    let concept_uri = match &concept.uri {
+                        Some(uri) if !uri.is_empty() => uri.clone(),
+                        _ => format!("{}{}", base_uri, concept.id),
+                    };
+                    output.push_str(&format!(
+                        "    <skos:hasTopConcept rdf:resource=\"{}\"/>\n",
+                        xml_escape(&concept_uri)
                     ));
                 }
 
