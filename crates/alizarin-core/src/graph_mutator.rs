@@ -3025,9 +3025,20 @@ fn apply_add_subgraph(
     }
 
     // Pre-generate all nodegroup mappings (excluding root's nodegroup)
+    // In Arches, nodegroupid == groupingnodeid (the grouping node's nodeid).
+    // If a nodegroup's ID matches a node's ID, use the node's remapped ID
+    // so the constraint is preserved after remapping.
     for nodegroup in &subgraph.nodegroups {
         if nodegroup.nodegroupid != root_nodegroup_id {
-            remapper.remap_nodegroup(&nodegroup.nodegroupid);
+            if let Some(node_id) = remapper.get_node(&nodegroup.nodegroupid) {
+                // This nodegroup's ID matches a node ID - reuse the node's remapped ID
+                let node_id = node_id.clone();
+                remapper
+                    .nodegroup_map
+                    .insert(nodegroup.nodegroupid.clone(), node_id);
+            } else {
+                remapper.remap_nodegroup(&nodegroup.nodegroupid);
+            }
         }
     }
 
