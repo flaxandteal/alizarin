@@ -14,6 +14,7 @@ use alizarin_core::graph_mutator::{
     get_mutation_schema as core_get_schema, parse_instructions_from_csv, ExtensionMutationHandler,
     ExtensionMutationRegistry, MutationConformance, MutationError, MutatorOptions,
 };
+use alizarin_core::ontology::OntologyValidator;
 use alizarin_core::StaticGraph as CoreStaticGraph;
 
 // Global extension mutation registry
@@ -397,19 +398,22 @@ fn build_graph_from_instructions(instructions_json: &str) -> PyResult<String> {
 ///     csv_text: CSV string with header row and instruction rows
 ///     autocreate_card: Whether to auto-create cards for nodegroups (default True)
 ///     autocreate_widget: Whether to auto-create widgets for nodes (default True)
+///     ontology_validator: Optional OntologyValidator for class/property validation
 ///
 /// Returns:
 ///     The built graph as JSON string
 #[pyfunction]
-#[pyo3(signature = (csv_text, autocreate_card=true, autocreate_widget=true))]
+#[pyo3(signature = (csv_text, autocreate_card=true, autocreate_widget=true, ontology_validator=None))]
 fn build_graph_from_csv(
     csv_text: &str,
     autocreate_card: bool,
     autocreate_widget: bool,
+    ontology_validator: Option<PyOntologyValidator>,
 ) -> PyResult<String> {
     let options = MutatorOptions {
         autocreate_card,
         autocreate_widget,
+        ontology_validator: ontology_validator.map(|v| v.inner),
     };
 
     let instructions = parse_instructions_from_csv(csv_text)
@@ -439,6 +443,62 @@ fn build_graph_from_csv(
     })
 }
 
+/// Python wrapper for OntologyValidator
+#[pyclass(name = "OntologyValidator")]
+#[derive(Clone)]
+pub struct PyOntologyValidator {
+    inner: OntologyValidator,
+}
+
+#[pymethods]
+impl PyOntologyValidator {
+    /// Load an ontology validator from one or more RDFS/XML file paths.
+    ///
+    /// Args:
+    ///     file_paths: List of paths to RDFS/XML ontology files.
+    ///                 The base ontology should be first, extensions after.
+    ///
+    /// Returns:
+    ///     An OntologyValidator instance
+    #[new]
+    fn new(file_paths: Vec<String>) -> PyResult<Self> {
+        let contents: Vec<String> = file_paths
+            .iter()
+            .map(|p| {
+                std::fs::read_to_string(p).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyIOError, _>(format!("{}: {}", p, e))
+                })
+            })
+            .collect::<PyResult<Vec<String>>>()?;
+
+        let refs: Vec<&str> = contents.iter().map(|s| s.as_str()).collect();
+        let validator = OntologyValidator::from_rdfs_xml(&refs)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e)))?;
+
+        Ok(Self { inner: validator })
+    }
+
+    /// Check if a class URI is known in the loaded ontology.
+    fn is_valid_class(&self, class_uri: &str) -> bool {
+        self.inner.is_valid_class(class_uri)
+    }
+
+    /// Validate that a property is valid between domain and range classes.
+    ///
+    /// Raises ValueError if the edge is invalid.
+    fn validate_edge(&self, domain_class: &str, property: &str, range_class: &str) -> PyResult<()> {
+        self.inner
+            .validate_edge(domain_class, property, range_class)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e)))
+    }
+
+    /// Number of known classes
+    #[getter]
+    fn class_count(&self) -> usize {
+        self.inner.class_count()
+    }
+}
+
 /// Register graph mutator functions with the Python module
 pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(apply_mutations_from_json, m)?)?;
@@ -451,5 +511,6 @@ pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_mutation_schema, m)?)?;
     m.add_function(wrap_pyfunction!(build_graph_from_instructions, m)?)?;
     m.add_function(wrap_pyfunction!(build_graph_from_csv, m)?)?;
+    m.add_class::<PyOntologyValidator>()?;
     Ok(())
 }

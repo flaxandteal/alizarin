@@ -62,6 +62,7 @@ class ResourceInstanceWrapper(Generic[RIVM]):
         "graph_id",
         "resource",
         "_tile_loader",
+        "_traversal_mode",
     )
 
     def __init__(
@@ -97,6 +98,21 @@ class ResourceInstanceWrapper(Generic[RIVM]):
 
         # Tile loader callback
         self._tile_loader: Optional[Callable[[str], Awaitable[List[StaticTile]]]] = None
+
+        # Traversal mode: "node" (default) or "card"
+        self._traversal_mode: str = "node"
+
+    @property
+    def traversal_mode(self) -> str:
+        """Current traversal mode: 'node' (default) or 'card'."""
+        return self._traversal_mode
+
+    @traversal_mode.setter
+    def traversal_mode(self, mode: str) -> None:
+        """Set traversal mode. 'node' = node/edge hierarchy, 'card' = card/widget hierarchy."""
+        if mode not in ("node", "card"):
+            raise ValueError(f"traversal_mode must be 'node' or 'card', got '{mode}'")
+        self._traversal_mode = mode
 
     def set_tile_loader(
         self,
@@ -435,13 +451,22 @@ class ResourceInstanceWrapper(Generic[RIVM]):
 
     async def get_root_view_model(self) -> Any:
         """
-        Get root node ViewModel.
+        Get root ViewModel.
 
-        Alias for get_root (matches TypeScript API).
+        In 'node' mode (default): returns a SemanticViewModel rooted at the
+        graph's root node, traversing the node/edge hierarchy.
+
+        In 'card' mode: returns a RootCardViewModel wrapping the card/widget
+        hierarchy, serialized from the pseudo_cache.
 
         Returns:
-            Root SemanticViewModel
+            Root SemanticViewModel or RootCardViewModel
         """
+        if self._traversal_mode == "card":
+            from .card_view_model import RootCardViewModel
+            root_cards = self._rust_core.serialize_root_cards()
+            return RootCardViewModel(root_cards)
+
         root_node = self.model.get_root_node()
         if not root_node:
             return None

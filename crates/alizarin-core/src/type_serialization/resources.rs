@@ -16,7 +16,7 @@ pub fn serialize_resource_instance(
     match tile_data {
         Value::Null => SerializationResult::success(Value::Null),
         Value::Array(arr) => {
-            if options.is_display() {
+            if options.is_display_like() {
                 // Extract display names from resource references
                 let resolved: Vec<Value> = arr
                     .iter()
@@ -39,7 +39,7 @@ pub fn serialize_resource_instance(
         }
         // Single resource object
         Value::Object(_) => {
-            if options.is_display() {
+            if options.is_display_like() {
                 return SerializationResult::success(extract_resource_display(
                     tile_data,
                     &options.language,
@@ -50,7 +50,7 @@ pub fn serialize_resource_instance(
         }
         // UUID string
         Value::String(uuid) => {
-            if options.is_display() {
+            if options.is_display_like() {
                 return SerializationResult::success(Value::String(uuid.clone()));
             }
             // Wrap in standard format

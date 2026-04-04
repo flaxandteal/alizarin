@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Output mode for serialization
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SerializationMode {
     /// Output tile_data format (UUIDs, language maps as-is)
@@ -11,6 +12,8 @@ pub enum SerializationMode {
     TileData,
     /// Output display format (resolve UUIDs to labels, extract display strings)
     Display,
+    /// Output search-indexable format (resolved JSON values, falls back to Display)
+    SearchData,
 }
 
 /// Options for value serialization
@@ -69,9 +72,28 @@ impl SerializationOptions {
         }
     }
 
+    /// Create options for search data output
+    pub fn search_data(language: impl Into<String>) -> Self {
+        Self {
+            mode: SerializationMode::SearchData,
+            language: language.into(),
+            include_all_languages: false,
+            flatten_empty_outer_nodes: true,
+            outer_value_key: "_".to_string(),
+        }
+    }
+
     /// Check if we're in display mode
     pub fn is_display(&self) -> bool {
         self.mode == SerializationMode::Display
+    }
+
+    /// Check if we're in a mode that resolves UUIDs to labels (Display or SearchData)
+    pub fn is_display_like(&self) -> bool {
+        matches!(
+            self.mode,
+            SerializationMode::Display | SerializationMode::SearchData
+        )
     }
 
     /// Merge an outer node's own value with its children JSON.
@@ -224,6 +246,32 @@ mod tests {
 
         // Should return children without adding null own_value
         assert_eq!(result, json!({"child": "value"}));
+    }
+
+    #[test]
+    fn test_is_display_like_display() {
+        let opts = SerializationOptions::display("en");
+        assert!(opts.is_display_like());
+    }
+
+    #[test]
+    fn test_is_display_like_search_data() {
+        let opts = SerializationOptions::search_data("en");
+        assert!(opts.is_display_like());
+    }
+
+    #[test]
+    fn test_is_display_like_tile_data() {
+        let opts = SerializationOptions::tile_data();
+        assert!(!opts.is_display_like());
+    }
+
+    #[test]
+    fn test_search_data_factory() {
+        let opts = SerializationOptions::search_data("fr");
+        assert_eq!(opts.language, "fr");
+        assert!(matches!(opts.mode, SerializationMode::SearchData));
+        assert!(opts.flatten_empty_outer_nodes);
     }
 
     #[test]

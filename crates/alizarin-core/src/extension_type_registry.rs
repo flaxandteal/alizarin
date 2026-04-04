@@ -65,6 +65,8 @@ pub struct HandlerCapabilities {
     pub can_coerce: bool,
     /// Can render tile data to display strings
     pub can_render_display: bool,
+    /// Can render tile data to search-indexable JSON
+    pub can_render_search: bool,
     /// Can resolve markers (e.g., reference labels from RDM)
     pub can_resolve_markers: bool,
 }
@@ -75,6 +77,7 @@ impl HandlerCapabilities {
         Self {
             can_coerce: true,
             can_render_display: false,
+            can_render_search: false,
             can_resolve_markers: false,
         }
     }
@@ -84,6 +87,7 @@ impl HandlerCapabilities {
         Self {
             can_coerce: false,
             can_render_display: true,
+            can_render_search: false,
             can_resolve_markers: false,
         }
     }
@@ -93,6 +97,7 @@ impl HandlerCapabilities {
         Self {
             can_coerce: true,
             can_render_display: true,
+            can_render_search: false,
             can_resolve_markers: true,
         }
     }
@@ -169,6 +174,27 @@ pub trait ExtensionTypeHandler: Send + Sync {
         _language: &str,
     ) -> Result<Option<String>, ExtensionError> {
         // Default: no custom rendering
+        Ok(None)
+    }
+
+    /// Render tile data to search-indexable JSON.
+    ///
+    /// Unlike `render_display` which returns a string, this returns a JSON Value
+    /// suitable for search indexing. Falls back to `render_display` (wrapped as
+    /// `Value::String`) if not implemented.
+    ///
+    /// # Arguments
+    /// * `tile_data` - The resolved tile data
+    /// * `language` - The language code for localization
+    ///
+    /// # Returns
+    /// `Some(Value)` if rendered, `None` to fall back to display rendering
+    fn render_search(
+        &self,
+        _tile_data: &Value,
+        _language: &str,
+    ) -> Result<Option<Value>, ExtensionError> {
+        // Default: no custom search rendering (falls back to display)
         Ok(None)
     }
 
@@ -296,6 +322,26 @@ impl ExtensionTypeRegistry {
         match self.handlers.get(datatype) {
             Some(handler) if handler.capabilities().can_render_display => {
                 handler.render_display(tile_data, language)
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// Render a search value using the registered handler, if any.
+    ///
+    /// # Returns
+    /// - `Ok(Some(value))` if handler rendered a search value
+    /// - `Ok(None)` if no handler or handler returned None
+    /// - `Err(e)` if handler failed
+    pub fn render_search(
+        &self,
+        datatype: &str,
+        tile_data: &Value,
+        language: &str,
+    ) -> Result<Option<Value>, ExtensionError> {
+        match self.handlers.get(datatype) {
+            Some(handler) if handler.capabilities().can_render_search => {
+                handler.render_search(tile_data, language)
             }
             _ => Ok(None),
         }

@@ -1,4 +1,4 @@
-import { RDM, nodeConfig, utils, viewModels, registerDisplaySerializer, registerResolvableDatatype, wasmReady } from "alizarin";
+import { RDM, nodeConfig, utils, viewModels, registerExtensionHandler, registerResolvableDatatype, wasmReady } from "alizarin";
 import type { interfaces, staticTypes } from "alizarin";
 type IPseudo = interfaces.IPseudo;
 type IViewModel = interfaces.IViewModel;
@@ -112,117 +112,86 @@ function unwrapToReference(value: any): any {
   return value;
 }
 
-// Register display serializers after WASM is ready
+// Helper to render display string from a single reference object
+function renderReferenceDisplay(data: any, language: string): string | null {
+  if (!data) return null;
+
+  // Handle __needs_rdm_label_lookup format (unresolved marker with label property)
+  if (data.__needs_rdm_label_lookup && data.label) {
+    return data.label;
+  }
+
+  // Extract display string from StaticReference format
+  if (data.labels && data.labels.length > 0) {
+    const langPrefLabel = data.labels.find(
+      (l: any) => l.language_id === language && l.valuetype_id === 'prefLabel'
+    );
+    if (langPrefLabel) return langPrefLabel.value;
+
+    const langLabel = data.labels.find((l: any) => l.language_id === language);
+    if (langLabel) return langLabel.value;
+
+    const prefLabel = data.labels.find((l: any) => l.valuetype_id === 'prefLabel');
+    if (prefLabel) return prefLabel.value;
+
+    return data.labels[0].value;
+  }
+
+  return null;
+}
+
+// Register extension handlers after WASM is ready
 wasmReady.then(() => {
-  // Register the reference display serializer
-  // This extracts display strings from StaticReference format for ETL templates
-  registerDisplaySerializer('reference', (tileData: any, language: string) => {
-    // Handle null/undefined
-    if (!tileData) return null;
-
-    // Unwrap nested arrays to find the actual reference object
-    const data = unwrapToReference(tileData);
-    if (!data) return null;
-
-    // Handle __needs_rdm_label_lookup format (unresolved marker with label property)
-    if (data.__needs_rdm_label_lookup && data.label) {
-      return data.label;
-    }
-
-    // Extract display string from StaticReference format
-    if (data.labels && data.labels.length > 0) {
-      // First try to find a label matching the requested language with prefLabel
-      const langPrefLabel = data.labels.find(
-        (l: any) => l.language_id === language && l.valuetype_id === 'prefLabel'
-      );
-      if (langPrefLabel) return langPrefLabel.value;
-
-      // Then try any label matching the language
-      const langLabel = data.labels.find((l: any) => l.language_id === language);
-      if (langLabel) return langLabel.value;
-
-      // Then try any prefLabel
-      const prefLabel = data.labels.find((l: any) => l.valuetype_id === 'prefLabel');
-      if (prefLabel) return prefLabel.value;
-
-      // Fall back to first label
-      return data.labels[0].value;
-    }
-
-    return null;
+  registerExtensionHandler('reference', {
+    renderDisplay: (tileData: any, language: string) => {
+      if (!tileData) return null;
+      const data = unwrapToReference(tileData);
+      return renderReferenceDisplay(data, language);
+    },
   });
 
-  // Also register for reference-list which may be serialized differently
-  registerDisplaySerializer('reference-list', (tileData: any, language: string) => {
-    if (!tileData) return null;
+  registerExtensionHandler('reference-list', {
+    renderDisplay: (tileData: any, language: string) => {
+      if (!tileData) return null;
 
-    // Handle potentially nested arrays/view models - flatten to get all reference items
-    let items: any[] = [];
-    const flatten = (val: any) => {
-      if (!val) return;
-      // Handle ReferenceValueViewModel (extends String with _ref property)
-      if (val._ref) {
-        const ref = val._ref;
-        const refObj = typeof ref.toJSON === 'function' ? ref.toJSON() : ref;
-        if (refObj && (refObj.labels || refObj.__needs_rdm_label_lookup)) {
-          items.push(refObj);
+      // Flatten nested arrays/view models to get all reference items
+      let items: any[] = [];
+      const flatten = (val: any) => {
+        if (!val) return;
+        if (val._ref) {
+          const ref = val._ref;
+          const refObj = typeof ref.toJSON === 'function' ? ref.toJSON() : ref;
+          if (refObj && (refObj.labels || refObj.__needs_rdm_label_lookup)) {
+            items.push(refObj);
+          }
+          return;
         }
-        return;
-      }
-      // Handle arrays (including ReferenceListViewModel)
-      if (Array.isArray(val)) {
-        val.forEach(flatten);
-        return;
-      }
-      // Handle __needs_rdm_label_lookup format (unresolved marker)
-      if (val.__needs_rdm_label_lookup && val.label) {
-        items.push(val);
-        return;
-      }
-      // Handle plain reference objects
-      if (val.labels) {
-        items.push(val);
-        return;
-      }
-      // Handle JSON strings
-      if (typeof val === 'string') {
-        try {
-          flatten(JSON.parse(val));
-        } catch {}
-      }
-    };
-    flatten(tileData);
+        if (Array.isArray(val)) {
+          val.forEach(flatten);
+          return;
+        }
+        if (val.__needs_rdm_label_lookup && val.label) {
+          items.push(val);
+          return;
+        }
+        if (val.labels) {
+          items.push(val);
+          return;
+        }
+        if (typeof val === 'string') {
+          try { flatten(JSON.parse(val)); } catch {}
+        }
+      };
+      flatten(tileData);
 
-    if (items.length === 0) return null;
+      if (items.length === 0) return null;
 
-    // Map each reference to its display string
-    const displayStrings = items.map((ref: any) => {
-      if (!ref) return null;
+      const displayStrings = items
+        .map((ref: any) => renderReferenceDisplay(ref, language))
+        .filter((s): s is string => s !== null);
 
-      // Handle __needs_rdm_label_lookup format
-      if (ref.__needs_rdm_label_lookup && ref.label) {
-        return ref.label;
-      }
-
-      // Handle resolved reference format
-      if (!ref.labels || ref.labels.length === 0) return null;
-
-      const langPrefLabel = ref.labels.find(
-        (l: any) => l.language_id === language && l.valuetype_id === 'prefLabel'
-      );
-      if (langPrefLabel) return langPrefLabel.value;
-
-      const langLabel = ref.labels.find((l: any) => l.language_id === language);
-      if (langLabel) return langLabel.value;
-
-      const prefLabel = ref.labels.find((l: any) => l.valuetype_id === 'prefLabel');
-      if (prefLabel) return prefLabel.value;
-
-      return ref.labels[0].value;
-    }).filter((s: any) => s !== null);
-
-    // Return as comma-separated string
-    return displayStrings.join(', ');
+      return displayStrings.join(', ');
+    },
   });
 });
 

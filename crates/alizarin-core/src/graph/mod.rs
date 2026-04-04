@@ -16,6 +16,7 @@
 //! - `meta` - Lightweight graph metadata
 //! - `static_graph` - StaticGraph and IndexedGraph
 
+pub mod card_index;
 mod cards;
 mod descriptors;
 mod meta;

@@ -1,3 +1,4 @@
+pub mod card_traversal;
 /// Alizarin Core Library
 ///
 /// Platform-agnostic core functionality that can be used from:
@@ -14,6 +15,7 @@ pub mod json_conversion;
 pub mod label_resolution;
 pub mod loader;
 pub mod node_config;
+pub mod ontology;
 pub mod path_resolution;
 pub mod permissions;
 pub mod pseudo_value_core;
@@ -114,6 +116,7 @@ pub use type_coercion::{
 
 // Type serialization (output formatting)
 pub use type_serialization::{
+    // Individual serializers
     serialize_boolean,
     serialize_concept,
     serialize_concept_list,
@@ -127,18 +130,13 @@ pub use type_serialization::{
     serialize_number,
     serialize_resource_instance,
     serialize_resource_instance_list,
-    // Individual serializers
     serialize_string,
     serialize_tile_data,
     serialize_url,
     // Dispatcher functions
     serialize_value,
-    ConceptResolver,
-    DisplaySerializerRegistry,
-    // Resolver types
-    DomainValueResolver,
-    // Extension support
-    ExtensionDisplaySerializer,
+    // Context and resolver
+    ExternalResolver,
     SerializationContext,
     // Options and result
     SerializationMode,
@@ -151,6 +149,11 @@ pub use label_resolution::{
     build_alias_to_collection_map, find_needed_collections, is_valid_uuid, resolve_labels,
     resolve_labels_full, ConceptLookup, LabelResolutionConfig, LabelResolutionError,
     DEFAULT_CONFIG_KEYS, DEFAULT_RESOLVABLE_DATATYPES,
+};
+
+// Card-based traversal (card hierarchy instead of node hierarchy)
+pub use card_traversal::{
+    cards_to_tree, serialize_card, serialize_root_cards, CardSerializationParams,
 };
 
 // JSON conversion (tiles <-> tree)
@@ -238,6 +241,9 @@ pub use graph_mutator::{
     DEFAULT_CARD_COMPONENT_ID,
     WIDGETS,
 };
+
+// Ontology validation
+pub use ontology::{OntologyConfig, OntologyError, OntologyValidationDetail, OntologyValidator};
 
 // Graph registry (for looking up graphs by graph_id)
 pub use registry::{

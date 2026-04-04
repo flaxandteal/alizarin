@@ -288,6 +288,16 @@ pub fn registered_widgets() -> Vec<String> {
 // Extension Type Handler Registry
 // ============================================================================
 
+/// Get a read guard to the global extension type registry.
+///
+/// Used by `serialize_value` to check extension handlers during serialization.
+pub fn global_extension_registry() -> Result<
+    std::sync::RwLockReadGuard<'static, ExtensionTypeRegistry>,
+    std::sync::PoisonError<std::sync::RwLockReadGuard<'static, ExtensionTypeRegistry>>,
+> {
+    EXTENSION_TYPE_REGISTRY.read()
+}
+
 /// Register an extension type handler globally.
 ///
 /// Called by Python/WASM when extensions register their type handlers.

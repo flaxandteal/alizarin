@@ -1,37 +1,37 @@
 //! Domain serialization: booleans, domain values.
 //!
-//! In display mode, these require node config for label lookup.
-//! The resolver callback is passed to handle the actual lookup.
+//! In display/search modes, these read from `SerializationContext.node_config`
+//! for label lookup.
 
 use super::options::{SerializationOptions, SerializationResult};
+use super::SerializationContext;
 use serde_json::Value;
-
-/// Callback type for resolving domain value UUIDs to labels
-pub type DomainValueResolver = dyn Fn(&str, &str) -> Option<String>;
 
 /// Serialize a boolean value.
 ///
 /// In TileData mode: returns true/false
-/// In Display mode with resolver: returns trueLabel/falseLabel if available
+/// In Display/Search mode: returns label from node_config, or "true"/"false" string
 pub fn serialize_boolean(
     tile_data: &Value,
     options: &SerializationOptions,
-    true_label: Option<&Value>,
-    false_label: Option<&Value>,
+    ctx: &SerializationContext,
 ) -> SerializationResult {
     match tile_data {
         Value::Null => SerializationResult::success(Value::Null),
         Value::Bool(b) => {
-            if options.is_display() {
-                // Try to get label
-                let label_map = if *b { true_label } else { false_label };
-                if let Some(label_obj) = label_map {
-                    if let Some(label) = extract_label(label_obj, &options.language) {
-                        return SerializationResult::success(Value::String(label));
+            if options.is_display_like() {
+                // Try to get label from node config
+                if let Some(bool_config) = ctx.node_config.and_then(|nc| nc.as_boolean()) {
+                    if let Some(label) = bool_config.get_label(*b, &options.language) {
+                        return SerializationResult::success(Value::String(label.to_string()));
                     }
                 }
+                // Display fallback: return string representation
+                return SerializationResult::success(Value::String(
+                    if *b { "true" } else { "false" }.to_string(),
+                ));
             }
-            // Return boolean as-is
+            // TileData: return boolean as-is
             SerializationResult::success(Value::Bool(*b))
         }
         _ => SerializationResult::error(format!("Expected boolean, got {:?}", tile_data)),
@@ -41,34 +41,29 @@ pub fn serialize_boolean(
 /// Serialize a domain value (UUID).
 ///
 /// In TileData mode: returns UUID string
-/// In Display mode: calls resolver to get label, returns UUID if not found
+/// In Display/Search mode: looks up label from node_config domain options
 pub fn serialize_domain_value(
     tile_data: &Value,
     options: &SerializationOptions,
-    resolver: Option<&DomainValueResolver>,
+    ctx: &SerializationContext,
 ) -> SerializationResult {
     match tile_data {
         Value::Null => SerializationResult::success(Value::Null),
         Value::String(uuid) => {
-            if options.is_display() {
-                if let Some(resolve) = resolver {
-                    if let Some(label) = resolve(uuid, &options.language) {
-                        return SerializationResult::success(Value::String(label));
-                    }
+            if options.is_display_like() {
+                if let Some(label) = resolve_domain_label(uuid, &options.language, ctx) {
+                    return SerializationResult::success(Value::String(label));
                 }
             }
-            // Return UUID as-is
             SerializationResult::success(Value::String(uuid.clone()))
         }
         // Handle array format (sometimes domain values are stored as arrays)
         Value::Array(arr) => {
             if arr.len() == 1 {
                 if let Some(Value::String(uuid)) = arr.first() {
-                    if options.is_display() {
-                        if let Some(resolve) = resolver {
-                            if let Some(label) = resolve(uuid, &options.language) {
-                                return SerializationResult::success(Value::String(label));
-                            }
+                    if options.is_display_like() {
+                        if let Some(label) = resolve_domain_label(uuid, &options.language, ctx) {
+                            return SerializationResult::success(Value::String(label));
                         }
                     }
                     return SerializationResult::success(Value::String(uuid.clone()));
@@ -83,36 +78,35 @@ pub fn serialize_domain_value(
 /// Serialize a domain value list (array of UUIDs).
 ///
 /// In TileData mode: returns array of UUIDs
-/// In Display mode: resolves each UUID to label
+/// In Display/Search mode: resolves each UUID to label
 pub fn serialize_domain_value_list(
     tile_data: &Value,
     options: &SerializationOptions,
-    resolver: Option<&DomainValueResolver>,
+    ctx: &SerializationContext,
 ) -> SerializationResult {
     match tile_data {
         Value::Null => SerializationResult::success(Value::Null),
         Value::Array(arr) => {
-            if options.is_display() {
-                if let Some(resolve) = resolver {
-                    let resolved: Vec<Value> = arr
-                        .iter()
-                        .map(|v| {
-                            if let Value::String(uuid) = v {
-                                if let Some(label) = resolve(uuid, &options.language) {
-                                    return Value::String(label);
-                                }
+            if options.is_display_like() {
+                let resolved: Vec<Value> = arr
+                    .iter()
+                    .map(|v| {
+                        if let Value::String(uuid) = v {
+                            if let Some(label) = resolve_domain_label(uuid, &options.language, ctx)
+                            {
+                                return Value::String(label);
                             }
-                            v.clone()
-                        })
-                        .collect();
-                    return SerializationResult::success(Value::Array(resolved));
-                }
+                        }
+                        v.clone()
+                    })
+                    .collect();
+                return SerializationResult::success(Value::Array(resolved));
             }
             SerializationResult::success(tile_data.clone())
         }
         // Single value - wrap in array
         Value::String(_) => {
-            let result = serialize_domain_value(tile_data, options, resolver);
+            let result = serialize_domain_value(tile_data, options, ctx);
             if result.is_error() {
                 return result;
             }
@@ -122,37 +116,20 @@ pub fn serialize_domain_value_list(
     }
 }
 
-/// Extract label from a translatable label object
-fn extract_label(label_obj: &Value, language: &str) -> Option<String> {
-    match label_obj {
-        Value::String(s) => Some(s.clone()),
-        Value::Object(obj) => {
-            // Try exact language
-            if let Some(Value::String(s)) = obj.get(language) {
-                return Some(s.clone());
-            }
-            // Try base language
-            let base_lang = language.split('-').next().unwrap_or(language);
-            if base_lang != language {
-                if let Some(Value::String(s)) = obj.get(base_lang) {
-                    return Some(s.clone());
-                }
-            }
-            // Fall back to first available
-            for (_, v) in obj {
-                if let Value::String(s) = v {
-                    return Some(s.clone());
-                }
-            }
-            None
-        }
-        _ => None,
-    }
+/// Resolve a domain value UUID to its display label using node config.
+fn resolve_domain_label(uuid: &str, language: &str, ctx: &SerializationContext) -> Option<String> {
+    let domain_config = ctx.node_config.and_then(|nc| nc.as_domain())?;
+    let domain_value = domain_config.options.iter().find(|dv| dv.id == uuid)?;
+    domain_value
+        .lang(language)
+        .map(|s| s.to_string())
+        .or_else(|| Some(domain_value.display().to_string()))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::node_config::{NodeConfig, NodeConfigBoolean, NodeConfigDomain, StaticDomainValue};
     use serde_json::json;
 
     #[test]
@@ -160,7 +137,7 @@ mod tests {
         let tile_data = json!(true);
         let options = SerializationOptions::tile_data();
 
-        let result = serialize_boolean(&tile_data, &options, None, None);
+        let result = serialize_boolean(&tile_data, &options, &SerializationContext::empty());
         assert!(!result.is_error());
         assert_eq!(result.value, json!(true));
     }
@@ -169,9 +146,16 @@ mod tests {
     fn test_serialize_boolean_with_label() {
         let tile_data = json!(true);
         let options = SerializationOptions::display("en");
-        let true_label = json!({"en": "Yes", "es": "Sí"});
+        let config = NodeConfig::Boolean(NodeConfigBoolean::new(
+            [("en".into(), "Yes".into())].into(),
+            [("en".into(), "No".into())].into(),
+        ));
+        let ctx = SerializationContext {
+            node_config: Some(&config),
+            ..Default::default()
+        };
 
-        let result = serialize_boolean(&tile_data, &options, Some(&true_label), None);
+        let result = serialize_boolean(&tile_data, &options, &ctx);
         assert!(!result.is_error());
         assert_eq!(result.value, json!("Yes"));
     }
@@ -181,9 +165,9 @@ mod tests {
         let tile_data = json!(false);
         let options = SerializationOptions::display("en");
 
-        let result = serialize_boolean(&tile_data, &options, None, None);
+        let result = serialize_boolean(&tile_data, &options, &SerializationContext::empty());
         assert!(!result.is_error());
-        assert_eq!(result.value, json!(false)); // No label available, returns bool
+        assert_eq!(result.value, json!("false")); // String fallback, not Value::Bool
     }
 
     #[test]
@@ -192,20 +176,31 @@ mod tests {
         let tile_data = json!(uuid);
         let options = SerializationOptions::tile_data();
 
-        let result = serialize_domain_value(&tile_data, &options, None);
+        let result = serialize_domain_value(&tile_data, &options, &SerializationContext::empty());
         assert!(!result.is_error());
         assert_eq!(result.value, json!(uuid));
     }
 
     #[test]
-    fn test_serialize_domain_value_display_with_resolver() {
+    fn test_serialize_domain_value_display_with_config() {
         let uuid = "550e8400-e29b-41d4-a716-446655440000";
         let tile_data = json!(uuid);
         let options = SerializationOptions::display("en");
 
-        let resolver = |_uuid: &str, _lang: &str| Some("Resolved Label".to_string());
+        let config = NodeConfig::Domain(NodeConfigDomain {
+            options: vec![StaticDomainValue::new(
+                uuid.to_string(),
+                false,
+                [("en".into(), "Resolved Label".into())].into(),
+            )],
+            i18n_config: Default::default(),
+        });
+        let ctx = SerializationContext {
+            node_config: Some(&config),
+            ..Default::default()
+        };
 
-        let result = serialize_domain_value(&tile_data, &options, Some(&resolver));
+        let result = serialize_domain_value(&tile_data, &options, &ctx);
         assert!(!result.is_error());
         assert_eq!(result.value, json!("Resolved Label"));
     }
@@ -215,7 +210,8 @@ mod tests {
         let tile_data = json!(["uuid1", "uuid2"]);
         let options = SerializationOptions::tile_data();
 
-        let result = serialize_domain_value_list(&tile_data, &options, None);
+        let result =
+            serialize_domain_value_list(&tile_data, &options, &SerializationContext::empty());
         assert!(!result.is_error());
         assert_eq!(result.value, json!(["uuid1", "uuid2"]));
     }

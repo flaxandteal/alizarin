@@ -2,8 +2,6 @@ use std::cell::RefCell;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 // Use core types for internal storage (no WASM wrapper overhead)
-use alizarin_core::node_config::NodeConfigManager;
-use alizarin_core::rdm_cache::RdmCache;
 use alizarin_core::type_serialization::{SerializationContext, SerializationOptions};
 use alizarin_core::{PseudoValueCore, StaticNode, StaticTile};
 // Import traits and generic functions for visitor pattern delegation
@@ -144,6 +142,19 @@ pub(crate) struct PseudoListInner {
     /// Whether this should be unwrapped to a single value when returned
     /// (cardinality-1 nodes store as list internally but return single value)
     pub is_single: bool,
+}
+
+impl PseudoListInner {
+    /// Convert to a PseudoListCore (for use with card_traversal functions).
+    /// Extracts only the data fields, dropping WASM-specific runtime state.
+    pub fn to_core(&self) -> alizarin_core::PseudoListCore {
+        alizarin_core::PseudoListCore {
+            node_alias: self.node_alias.clone(),
+            values: self.values.iter().map(|v| v.core.clone()).collect(),
+            is_loaded: self.is_loaded,
+            is_single: self.is_single,
+        }
+    }
 }
 
 /// Result returned from nodegroup operations
@@ -531,425 +542,6 @@ impl PseudoListInner {
         let arr: Vec<serde_json::Value> = sorted_values
             .iter()
             .map(|v| v.to_json(ctx))
-            .filter(|v| !v.is_null())
-            .collect();
-
-        if arr.is_empty() {
-            serde_json::Value::Null
-        } else if arr.len() == 1 {
-            // If there's exactly one value and it's already an array, return it directly.
-            // This handles list datatypes (reference, file-list, etc.) where all values
-            // are stored as an array in a single tile slot rather than separate tiles.
-            if let Some(first) = arr.first() {
-                if first.is_array() {
-                    return first.clone();
-                }
-            }
-            serde_json::Value::Array(arr)
-        } else {
-            serde_json::Value::Array(arr)
-        }
-    }
-}
-
-// ============================================================================
-// Display JSON Visitor - returns display values instead of tile_data
-// ============================================================================
-
-/// Context for display JSON traversal
-///
-/// Includes references to RDM cache and node config manager for resolving
-/// UUIDs to display values.
-pub(crate) struct DisplayVisitorContext<'a> {
-    /// The pseudo_cache from the instance wrapper (alias -> PseudoListInner)
-    pub pseudo_cache: &'a HashMap<String, PseudoListInner>,
-    /// Node alias to node mapping from the model
-    pub nodes_by_alias: &'a HashMap<String, Arc<StaticNode>>,
-    /// Node edges from the model (parent_nodeid -> child_nodeids)
-    pub edges: &'a HashMap<String, Vec<String>>,
-    /// RDM cache for concept lookups
-    pub rdm_cache: Option<&'a RdmCache>,
-    /// Node config manager for domain value lookups
-    pub node_config_manager: Option<&'a NodeConfigManager>,
-    /// Language for display labels
-    pub language: &'a str,
-    /// Current traversal depth (for preventing infinite recursion)
-    pub depth: usize,
-    /// Maximum depth
-    pub max_depth: usize,
-    /// Extension display serializer registry for custom datatypes
-    pub display_registry: Option<&'a alizarin_core::DisplaySerializerRegistry>,
-}
-
-impl PseudoValueInner {
-    /// Convert this pseudo value to display JSON.
-    ///
-    /// Unlike `to_json()` which returns tile_data (UUIDs) for leaf nodes,
-    /// this method resolves UUIDs to display values:
-    /// - domain-value: looks up label from node config
-    /// - concept/concept-list: looks up label from RDM cache
-    /// - reference (CLM): already contains StaticReference, extracts display string
-    /// - Other types: returns tile_data as-is
-    pub fn to_display_json(&self, ctx: &DisplayVisitorContext) -> serde_json::Value {
-        if ctx.depth > ctx.max_depth {
-            return serde_json::Value::Null;
-        }
-
-        // Handle outer nodes with inner
-        if self.is_outer() {
-            return self.outer_to_display_json(ctx);
-        }
-
-        // Handle inner nodes (synthetic semantic)
-        if self.core.is_inner {
-            return self.semantic_to_display_json(ctx);
-        }
-
-        let datatype = self.datatype();
-
-        // Pure semantic nodes - traverse children
-        if datatype == "semantic" {
-            return self.semantic_to_display_json(ctx);
-        }
-
-        // Leaf nodes - resolve to display value based on datatype
-        self.leaf_to_display_json(ctx, datatype)
-    }
-
-    /// Convert a leaf node to display JSON
-    fn leaf_to_display_json(
-        &self,
-        ctx: &DisplayVisitorContext,
-        datatype: &str,
-    ) -> serde_json::Value {
-        let tile_data = match &self.core.tile_data {
-            Some(data) => data,
-            None => return serde_json::Value::Null,
-        };
-
-        // Check extension registry first for custom datatypes
-        if let Some(registry) = ctx.display_registry {
-            if let Some(serializer) = registry.get(datatype) {
-                let options = alizarin_core::SerializationOptions::display(ctx.language);
-                let result = serializer.serialize_display(tile_data, &options);
-                if !result.is_error() {
-                    return result.value;
-                }
-            }
-        }
-
-        match datatype {
-            // Domain value - lookup from node config
-            "domain-value" => self.resolve_domain_value(ctx, tile_data),
-
-            // Domain value list - lookup each from node config
-            "domain-value-list" => self.resolve_domain_value_list(ctx, tile_data),
-
-            // Concept value - lookup from RDM cache
-            "concept" | "concept-value" => self.resolve_concept_value(ctx, tile_data),
-
-            // Concept list - lookup each from RDM cache
-            "concept-list" => self.resolve_concept_list(ctx, tile_data),
-
-            // Boolean with labels
-            "boolean" => self.resolve_boolean_value(ctx, tile_data),
-
-            // String - extract display value from language map
-            "string" => {
-                use alizarin_core::type_serialization::serialize_string;
-                let options = alizarin_core::SerializationOptions::display(ctx.language);
-                let result = serialize_string(tile_data, &options);
-                result.unwrap_or(tile_data.clone())
-            }
-
-            // URL - extract display value
-            "url" => {
-                use alizarin_core::type_serialization::serialize_url;
-                let options = alizarin_core::SerializationOptions::display(ctx.language);
-                let result = serialize_url(tile_data, &options);
-                result.unwrap_or(tile_data.clone())
-            }
-
-            // Other types - return tile_data as-is
-            _ => tile_data.clone(),
-        }
-    }
-
-    /// Resolve a domain value UUID to its display label
-    fn resolve_domain_value(
-        &self,
-        ctx: &DisplayVisitorContext,
-        tile_data: &serde_json::Value,
-    ) -> serde_json::Value {
-        let uuid = match tile_data.as_str() {
-            Some(s) => s,
-            None => return tile_data.clone(),
-        };
-
-        if let Some(config_mgr) = ctx.node_config_manager {
-            if let Some(domain_value) = config_mgr.lookup_domain_value(&self.core.node.nodeid, uuid)
-            {
-                // Return the label for the requested language
-                if let Some(label) = domain_value.lang(ctx.language) {
-                    return serde_json::Value::String(label.to_string());
-                }
-                // Fall back to display()
-                return serde_json::Value::String(domain_value.display().to_string());
-            }
-        }
-
-        // Could not resolve - return original
-        tile_data.clone()
-    }
-
-    /// Resolve a domain value list to display labels
-    fn resolve_domain_value_list(
-        &self,
-        ctx: &DisplayVisitorContext,
-        tile_data: &serde_json::Value,
-    ) -> serde_json::Value {
-        let arr = match tile_data.as_array() {
-            Some(a) => a,
-            None => return tile_data.clone(),
-        };
-
-        let resolved: Vec<serde_json::Value> = arr
-            .iter()
-            .map(|item| self.resolve_domain_value(ctx, item))
-            .collect();
-
-        serde_json::Value::Array(resolved)
-    }
-
-    /// Resolve a concept UUID to its display label using RDM cache
-    fn resolve_concept_value(
-        &self,
-        ctx: &DisplayVisitorContext,
-        tile_data: &serde_json::Value,
-    ) -> serde_json::Value {
-        // tile_data could be a UUID string or a concept object with "id" field
-        let uuid = if let Some(s) = tile_data.as_str() {
-            s.to_string()
-        } else if let Some(obj) = tile_data.as_object() {
-            if let Some(id) = obj.get("id").and_then(|v| v.as_str()) {
-                id.to_string()
-            } else {
-                return tile_data.clone();
-            }
-        } else {
-            return tile_data.clone();
-        };
-
-        // Get collection ID from node config
-        let collection_id = ctx.node_config_manager.and_then(|config_mgr| {
-            config_mgr
-                .get_concept(&self.core.node.nodeid)
-                .map(|concept_config| concept_config.rdm_collection.clone())
-        });
-
-        // Look up in RDM cache
-        if let (Some(rdm_cache), Some(collection_id)) = (ctx.rdm_cache, collection_id) {
-            if let Some(label) = rdm_cache.lookup_label(&collection_id, &uuid, ctx.language) {
-                return serde_json::Value::String(label);
-            }
-        }
-
-        // Could not resolve - return original
-        tile_data.clone()
-    }
-
-    /// Resolve a concept list to display labels
-    fn resolve_concept_list(
-        &self,
-        ctx: &DisplayVisitorContext,
-        tile_data: &serde_json::Value,
-    ) -> serde_json::Value {
-        let arr = match tile_data.as_array() {
-            Some(a) => a,
-            None => return tile_data.clone(),
-        };
-
-        let resolved: Vec<serde_json::Value> = arr
-            .iter()
-            .map(|item| self.resolve_concept_value(ctx, item))
-            .collect();
-
-        serde_json::Value::Array(resolved)
-    }
-
-    /// Resolve a boolean value to its display label
-    fn resolve_boolean_value(
-        &self,
-        ctx: &DisplayVisitorContext,
-        tile_data: &serde_json::Value,
-    ) -> serde_json::Value {
-        let bool_value = match tile_data.as_bool() {
-            Some(b) => b,
-            None => return tile_data.clone(),
-        };
-
-        if let Some(config_mgr) = ctx.node_config_manager {
-            if let Some(bool_config) = config_mgr.get_boolean(&self.core.node.nodeid) {
-                if let Some(label) = bool_config.get_label(bool_value, ctx.language) {
-                    return serde_json::Value::String(label.to_string());
-                }
-            }
-        }
-
-        // Fall back to true/false string
-        serde_json::Value::String(if bool_value { "true" } else { "false" }.to_string())
-    }
-
-    /// Convert an outer node to display JSON
-    fn outer_to_display_json(&self, ctx: &DisplayVisitorContext) -> serde_json::Value {
-        let datatype = self.datatype();
-        let own_value = self.leaf_to_display_json(ctx, datatype);
-
-        if let Some(ref inner) = self.inner {
-            let children_json = inner.semantic_to_display_json(ctx);
-            // Use display serialization options for consistent merge behavior
-            let display_opts = SerializationOptions::display(ctx.language);
-            return display_opts.merge_outer_with_children(own_value, children_json);
-        }
-
-        own_value
-    }
-
-    /// Convert a semantic node to display JSON by visiting its children
-    fn semantic_to_display_json(&self, ctx: &DisplayVisitorContext) -> serde_json::Value {
-        let mut obj = serde_json::Map::new();
-
-        let parent_tile_id = self.core.tile.as_ref().and_then(|t| t.tileid.clone());
-        let parent_nodegroup_id = self.core.node.nodegroup_id.clone();
-
-        let child_node_ids = match ctx.edges.get(&self.core.node.nodeid) {
-            Some(ids) => ids,
-            None => return serde_json::Value::Object(obj),
-        };
-
-        for child_node_id in child_node_ids {
-            let child_node = ctx
-                .nodes_by_alias
-                .values()
-                .find(|n| &n.nodeid == child_node_id);
-
-            let child_node = match child_node {
-                Some(n) => n,
-                None => continue,
-            };
-
-            let child_alias = match &child_node.alias {
-                Some(alias) if !alias.is_empty() => alias,
-                _ => continue,
-            };
-
-            let pseudo_list = match ctx.pseudo_cache.get(child_alias) {
-                Some(list) => list,
-                None => continue,
-            };
-
-            let matching_values = pseudo_list.matching_entries(
-                parent_tile_id.clone(),
-                child_node.nodegroup_id.clone(),
-                parent_nodegroup_id.clone(),
-            );
-
-            if matching_values.is_empty() {
-                continue;
-            }
-
-            let child_ctx = DisplayVisitorContext {
-                pseudo_cache: ctx.pseudo_cache,
-                nodes_by_alias: ctx.nodes_by_alias,
-                edges: ctx.edges,
-                rdm_cache: ctx.rdm_cache,
-                node_config_manager: ctx.node_config_manager,
-                language: ctx.language,
-                depth: ctx.depth + 1,
-                max_depth: ctx.max_depth,
-                display_registry: ctx.display_registry,
-            };
-
-            // Helper to check if a value is "empty" for display purposes
-            // Filters null and empty objects (needed for outer node flattening)
-            fn is_empty_for_flattening(v: &serde_json::Value) -> bool {
-                match v {
-                    serde_json::Value::Null => true,
-                    serde_json::Value::Object(m) => m.is_empty(),
-                    _ => false,
-                }
-            }
-
-            // Only unwrap to single value for cardinality-1 nodes (is_single=true).
-            // For cardinality-n nodes, always return an array even with 1 item,
-            // otherwise Handlebars {{#each}} iterates over object properties instead of items.
-            if pseudo_list.is_single {
-                if let Some(first_value) = matching_values.first() {
-                    let json_value = first_value.to_display_json(&child_ctx);
-                    if !is_empty_for_flattening(&json_value) {
-                        obj.insert(child_alias.clone(), json_value);
-                    }
-                }
-            } else {
-                let arr: Vec<serde_json::Value> = matching_values
-                    .iter()
-                    .map(|v| v.to_display_json(&child_ctx))
-                    .filter(|v| !is_empty_for_flattening(v))
-                    .collect();
-
-                if !arr.is_empty() {
-                    // If there's exactly one value and it's already an array, insert it directly.
-                    // This handles list datatypes (reference, file-list, etc.) where all values
-                    // are stored as an array in a single tile slot rather than separate tiles.
-                    if arr.len() == 1 {
-                        if let Some(first) = arr.first() {
-                            if first.is_array() {
-                                obj.insert(child_alias.clone(), first.clone());
-                                continue;
-                            }
-                        }
-                    }
-                    obj.insert(child_alias.clone(), serde_json::Value::Array(arr));
-                }
-            }
-        }
-
-        serde_json::Value::Object(obj)
-    }
-}
-
-impl PseudoListInner {
-    /// Convert this pseudo list to display JSON
-    ///
-    /// For single-cardinality nodes, returns the single value's display JSON.
-    /// For multi-cardinality (collector) nodes, returns an array.
-    pub fn to_display_json(&self, ctx: &DisplayVisitorContext) -> serde_json::Value {
-        if self.values.is_empty() {
-            return serde_json::Value::Null;
-        }
-
-        // Sort values by sortorder for consistent output
-        let mut sorted_values: Vec<&PseudoValueInner> = self.values.iter().collect();
-        sorted_values.sort_by_key(|v| {
-            v.core
-                .tile
-                .as_ref()
-                .and_then(|t| t.sortorder)
-                .unwrap_or(i32::MAX)
-        });
-
-        if self.is_single {
-            // Single value - use first sorted value
-            if let Some(first) = sorted_values.first() {
-                return first.to_display_json(ctx);
-            }
-            return serde_json::Value::Null;
-        }
-
-        // Multiple values - array (using sorted order)
-        let arr: Vec<serde_json::Value> = sorted_values
-            .iter()
-            .map(|v| v.to_display_json(ctx))
             .filter(|v| !v.is_null())
             .collect();
 
@@ -1460,6 +1052,33 @@ impl PseudoValue {
     #[wasm_bindgen(js_name = hasTileData)]
     pub fn has_tile_data(&self) -> bool {
         self.inner.borrow().core.tile_data.is_some()
+    }
+
+    /// Serialize this pseudo value's own tile_data in display mode.
+    ///
+    /// Resolves UUIDs to labels, extracts display strings, applies domain lookups
+    /// for this node only (no child traversal).
+    ///
+    /// @param rdmCache - RDM cache for concept label resolution
+    /// @param nodeConfigManager - Node config for domain value / boolean label lookups
+    /// @param language - Language code (defaults to "en")
+    #[wasm_bindgen(js_name = toDisplayValue)]
+    pub fn to_display_value(
+        &self,
+        rdm_cache: &crate::rdm_cache_wasm::WasmRdmCache,
+        node_config_manager: &crate::node_config_wasm::WasmNodeConfigManager,
+        language: Option<String>,
+    ) -> JsValue {
+        let inner = self.inner.borrow();
+        let lang = language.unwrap_or_else(|| "en".to_string());
+        let rcache = rdm_cache.inner();
+        let ncm = node_config_manager.inner();
+        let result = inner.core.serialize_display(
+            &lang,
+            Some(ncm),
+            Some(rcache as &dyn alizarin_core::type_serialization::ExternalResolver),
+        );
+        serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
     }
 
     /// PORT: js/pseudos.ts node getter - return node as WASM StaticNode wrapper

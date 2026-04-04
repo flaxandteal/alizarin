@@ -175,7 +175,7 @@ fn resource_tiles_to_tree(
 }
 
 /// Extract resources from input (handles both wrapper format and single resource)
-fn extract_resources(input: &Value) -> Result<Vec<StaticResource>, String> {
+pub(crate) fn extract_resources(input: &Value) -> Result<Vec<StaticResource>, String> {
     // Try business_data wrapper format first
     if let Some(bd) = input.get("business_data") {
         if let Some(resources) = bd.get("resources") {
@@ -203,7 +203,7 @@ fn extract_resources(input: &Value) -> Result<Vec<StaticResource>, String> {
 ///
 /// This also creates synthetic entries for parent semantic collector nodes
 /// when their child nodegroups have tiles but the parent nodegroup doesn't.
-fn build_pseudo_cache_from_tiles(
+pub(crate) fn build_pseudo_cache_from_tiles(
     tiles: &[StaticTile],
     nodes_by_alias: &HashMap<String, Arc<StaticNode>>,
     graph: &StaticGraph,

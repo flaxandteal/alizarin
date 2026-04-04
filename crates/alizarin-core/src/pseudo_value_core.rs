@@ -8,8 +8,10 @@ use std::collections::{HashMap, HashSet};
 /// The WASM bindings extend these with JsValue fields for ViewModel integration.
 use std::sync::Arc;
 
+use crate::node_config::NodeConfigManager;
 use crate::type_serialization::{
-    serialize_value, SerializationContext, SerializationMode, SerializationOptions,
+    serialize_value, ExternalResolver, SerializationContext, SerializationMode,
+    SerializationOptions,
 };
 use crate::{StaticNode, StaticTile};
 
@@ -138,8 +140,10 @@ pub struct VisitorContext<'a, L: PseudoListLike> {
     pub max_depth: usize,
     /// Serialization options (controls output format)
     pub serialization_options: SerializationOptions,
-    /// Serialization context (resolvers for display mode)
+    /// Serialization context (shared external_resolver + extension_registry; node_config is None at tree level)
     pub serialization_context: SerializationContext<'a>,
+    /// Node config manager for per-node config lookups at leaf serialization
+    pub node_config_manager: Option<&'a NodeConfigManager>,
 }
 
 /// Type alias for core VisitorContext (for backward compatibility)
@@ -160,6 +164,7 @@ impl<'a, L: PseudoListLike> VisitorContext<'a, L> {
             max_depth: 50,
             serialization_options: SerializationOptions::tile_data(),
             serialization_context: SerializationContext::empty(),
+            node_config_manager: None,
         }
     }
 
@@ -178,10 +183,14 @@ impl<'a, L: PseudoListLike> VisitorContext<'a, L> {
             max_depth: 50,
             serialization_options: SerializationOptions::display(language),
             serialization_context: SerializationContext::empty(),
+            node_config_manager: None,
         }
     }
 
-    /// Create a child context with incremented depth
+    /// Create a child context with incremented depth.
+    ///
+    /// Propagates external_resolver, extension_registry, and node_config_manager.
+    /// node_config is reset to None (set per-node at leaf serialization).
     pub fn child(&self) -> Self {
         VisitorContext {
             pseudo_cache: self.pseudo_cache,
@@ -190,7 +199,8 @@ impl<'a, L: PseudoListLike> VisitorContext<'a, L> {
             depth: self.depth + 1,
             max_depth: self.max_depth,
             serialization_options: self.serialization_options.clone(),
-            serialization_context: SerializationContext::empty(), // Can't borrow resolvers
+            serialization_context: self.serialization_context.with_node_config(None),
+            node_config_manager: self.node_config_manager,
         }
     }
 
@@ -305,6 +315,26 @@ impl PseudoValueCore {
         } else {
             Value::Null
         }
+    }
+
+    /// Serialize this value in display mode without tree traversal.
+    ///
+    /// Resolves UUIDs to labels, extracts display strings, applies domain lookups
+    /// for this node's own tile_data only (no children).
+    pub fn serialize_display(
+        &self,
+        language: &str,
+        node_config_manager: Option<&NodeConfigManager>,
+        external_resolver: Option<&dyn ExternalResolver>,
+    ) -> Value {
+        let opts = SerializationOptions::display(language);
+        let node_config = node_config_manager.and_then(|ncm| ncm.get(&self.node.nodeid));
+        let ser_ctx = SerializationContext {
+            node_config,
+            external_resolver,
+            extension_registry: None,
+        };
+        self.serialize_own_value(&opts, Some(&ser_ctx))
     }
 
     /// Convert this pseudo value to JSON
@@ -799,14 +829,29 @@ where
     Value::Object(obj)
 }
 
+/// Build a per-node SerializationContext and serialize the value's own tile_data.
+///
+/// This looks up node config from the context's NodeConfigManager and creates
+/// a SerializationContext with the node-specific config plus shared resolvers.
+fn serialize_leaf_value<V, L>(value: &V, ctx: &VisitorContext<L>) -> Value
+where
+    V: PseudoValueLike,
+    L: PseudoListLike<Value = V>,
+{
+    let node_config = ctx
+        .node_config_manager
+        .and_then(|ncm| ncm.get(&value.node().nodeid));
+    let per_node_ctx = ctx.serialization_context.with_node_config(node_config);
+    value.serialize_own_value(&ctx.serialization_options, Some(&per_node_ctx))
+}
+
 /// Generic outer_to_json function that works with any PseudoValueLike type
 pub fn outer_to_json<V, L>(value: &V, ctx: &VisitorContext<L>) -> Value
 where
     V: PseudoValueLike,
     L: PseudoListLike<Value = V>,
 {
-    let own_value =
-        value.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
+    let own_value = serialize_leaf_value(value, ctx);
 
     if let Some(inner) = value.inner() {
         let children_json = semantic_to_json(inner, ctx);
@@ -824,8 +869,7 @@ where
     V: PseudoValueLike,
     L: PseudoListLike<Value = V>,
 {
-    let own_value =
-        value.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context));
+    let own_value = serialize_leaf_value(value, ctx);
     let children_json = semantic_to_json(value, ctx);
     ctx.serialization_options
         .merge_outer_with_children(own_value, children_json)
@@ -866,6 +910,6 @@ where
         return non_semantic_with_children_to_json(value, ctx);
     }
 
-    // Leaf nodes
-    value.serialize_own_value(&ctx.serialization_options, Some(&ctx.serialization_context))
+    // Leaf nodes - build per-node context for display/search resolution
+    serialize_leaf_value(value, ctx)
 }

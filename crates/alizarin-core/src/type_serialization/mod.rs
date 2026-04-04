@@ -8,12 +8,12 @@
 //!
 //! - `TileData`: Output suitable for storage (UUIDs, language maps)
 //! - `Display`: Human-readable output (resolved labels, extracted strings)
+//! - `SearchData`: Search-indexable output (resolved JSON values, falls back to Display)
 //!
 //! ## Extension Support
 //!
-//! Custom datatypes can implement `ExtensionDisplaySerializer` and register
-//! with `DisplaySerializerRegistry`. The `serialize_value` dispatcher checks
-//! the registry for unknown types before falling back to pass-through.
+//! Custom datatypes register handlers via `ExtensionTypeRegistry`. The
+//! `serialize_value` dispatcher checks the registry for extension types.
 //!
 //! ## Submodules
 //!
@@ -32,17 +32,16 @@ mod scalars;
 mod strings;
 
 use serde_json::Value;
-use std::collections::HashMap;
-use std::sync::Arc;
+
+use crate::extension_type_registry::ExtensionTypeRegistry;
+use crate::node_config::NodeConfig;
 
 // Re-export core types
 pub use options::{SerializationMode, SerializationOptions, SerializationResult};
 
 // Re-export serialization functions
-pub use domain::{
-    serialize_boolean, serialize_domain_value, serialize_domain_value_list, DomainValueResolver,
-};
-pub use rdm::{serialize_concept, serialize_concept_list, ConceptResolver};
+pub use domain::{serialize_boolean, serialize_domain_value, serialize_domain_value_list};
+pub use rdm::{serialize_concept, serialize_concept_list};
 pub use resources::{serialize_resource_instance, serialize_resource_instance_list};
 pub use scalars::{serialize_date, serialize_edtf, serialize_number};
 pub use strings::{
@@ -50,163 +49,64 @@ pub use strings::{
 };
 
 // =============================================================================
-// Extension Display Serializer API
+// External Resolver Trait
 // =============================================================================
 
-/// Trait for extension display serializers.
+/// Trait for resolving external data during serialization.
 ///
-/// Extensions can implement this trait to provide custom display serialization
-/// for their datatypes. This is used by `toDisplayJson()` to convert resolved
-/// values to human-readable strings.
-///
-/// # Example
-///
-/// ```ignore
-/// struct ReferenceDisplaySerializer;
-///
-/// impl ExtensionDisplaySerializer for ReferenceDisplaySerializer {
-///     fn serialize_display(
-///         &self,
-///         tile_data: &Value,
-///         options: &SerializationOptions,
-///     ) -> SerializationResult {
-///         // Extract label from StaticReference format
-///         if let Some(labels) = tile_data.get("labels").and_then(|v| v.as_array()) {
-///             for label in labels {
-///                 if label.get("language_id").and_then(|v| v.as_str()) == Some(&options.language) {
-///                     if let Some(value) = label.get("value").and_then(|v| v.as_str()) {
-///                         return SerializationResult::success(json!(value));
-///                     }
-///                 }
-///             }
-///         }
-///         SerializationResult::success(tile_data.clone())
-///     }
-/// }
-/// ```
-pub trait ExtensionDisplaySerializer: Send + Sync {
-    /// Serialize a tile_data value to display format.
+/// Currently used for concept label lookups from RDM cache.
+/// Platform bindings implement this — e.g., `impl ExternalResolver for RdmCache`.
+pub trait ExternalResolver: Send + Sync {
+    /// Resolve a concept UUID to its display label.
     ///
     /// # Arguments
-    /// * `tile_data` - The resolved tile_data value to serialize
-    /// * `options` - Serialization options (mode, language)
-    ///
-    /// # Returns
-    /// SerializationResult with the display value or error
-    fn serialize_display(
+    /// * `collection_id` - The RDM collection containing the concept
+    /// * `concept_id` - The concept UUID
+    /// * `language` - Language code for the label
+    fn resolve_concept(
         &self,
-        tile_data: &Value,
-        options: &SerializationOptions,
-    ) -> SerializationResult;
-
-    /// Get a description of this serializer for documentation
-    fn description(&self) -> &str {
-        "Extension display serializer"
-    }
+        collection_id: &str,
+        concept_id: &str,
+        language: &str,
+    ) -> Option<String>;
 }
 
-/// Registry for extension display serializers.
-///
-/// Extensions register their display serializers by datatype name.
-/// The `serialize_value` dispatcher checks this registry for custom
-/// datatypes before falling back to pass-through.
-///
-/// # Example
-///
-/// ```ignore
-/// let mut registry = DisplaySerializerRegistry::new();
-/// registry.register("reference", Arc::new(ReferenceDisplaySerializer));
-///
-/// let ctx = SerializationContext {
-///     display_registry: Some(&registry),
-///     ..Default::default()
-/// };
-///
-/// let result = serialize_value("reference", &tile_data, &options, Some(&ctx));
-/// ```
-pub struct DisplaySerializerRegistry {
-    serializers: HashMap<String, Arc<dyn ExtensionDisplaySerializer>>,
-}
-
-impl DisplaySerializerRegistry {
-    /// Create a new empty registry
-    pub fn new() -> Self {
-        Self {
-            serializers: HashMap::new(),
-        }
-    }
-
-    /// Register a display serializer for a datatype.
-    ///
-    /// # Arguments
-    /// * `datatype` - The datatype name (e.g., "reference", "my-custom-type")
-    /// * `serializer` - The serializer implementation
-    pub fn register(
-        &mut self,
-        datatype: impl Into<String>,
-        serializer: Arc<dyn ExtensionDisplaySerializer>,
-    ) {
-        self.serializers.insert(datatype.into(), serializer);
-    }
-
-    /// Get the serializer for a datatype, if registered.
-    pub fn get(&self, datatype: &str) -> Option<&Arc<dyn ExtensionDisplaySerializer>> {
-        self.serializers.get(datatype)
-    }
-
-    /// Check if a serializer is registered for a datatype.
-    pub fn has(&self, datatype: &str) -> bool {
-        self.serializers.contains_key(datatype)
-    }
-
-    /// Get all registered datatype names.
-    pub fn datatypes(&self) -> impl Iterator<Item = &String> {
-        self.serializers.keys()
-    }
-}
-
-impl Default for DisplaySerializerRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// =============================================================================
+// Serialization Context
+// =============================================================================
 
 /// Context for serialization operations that require lookups.
 ///
-/// This allows the serialization dispatcher to resolve UUIDs to labels
-/// without directly depending on RdmCache or NodeConfigManager.
+/// At the graph/tree level, `node_config` is None — it's set per-node at leaf
+/// serialization time by looking up `NodeConfigManager::get(&node_id)`.
+/// `external_resolver` and `extension_registry` are shared across all nodes.
 pub struct SerializationContext<'a> {
-    /// Resolver for domain value UUIDs -> labels
-    pub domain_resolver: Option<&'a DomainValueResolver>,
-    /// Resolver for concept UUIDs -> labels
-    pub concept_resolver: Option<&'a ConceptResolver>,
-    /// True/false labels for boolean nodes (from node config)
-    pub boolean_true_label: Option<&'a Value>,
-    pub boolean_false_label: Option<&'a Value>,
-    /// Registry of extension display serializers for custom datatypes
-    pub display_registry: Option<&'a DisplaySerializerRegistry>,
+    /// Per-node config (domain options, boolean labels, concept collection).
+    /// Set at leaf serialization, not at graph level.
+    pub node_config: Option<&'a NodeConfig>,
+    /// External data lookup (e.g., RDM cache for concept labels).
+    pub external_resolver: Option<&'a dyn ExternalResolver>,
+    /// Unified extension registry for custom datatypes.
+    pub extension_registry: Option<&'a ExtensionTypeRegistry>,
 }
 
 impl<'a> SerializationContext<'a> {
-    /// Create an empty context (no resolvers)
+    /// Create an empty context (no config, no resolvers)
     pub fn empty() -> Self {
         SerializationContext {
-            domain_resolver: None,
-            concept_resolver: None,
-            boolean_true_label: None,
-            boolean_false_label: None,
-            display_registry: None,
+            node_config: None,
+            external_resolver: None,
+            extension_registry: None,
         }
     }
 
-    /// Create a context with just a display registry
-    pub fn with_registry(registry: &'a DisplaySerializerRegistry) -> Self {
+    /// Create a child context sharing external_resolver and extension_registry
+    /// but with a different node_config.
+    pub fn with_node_config(&self, node_config: Option<&'a NodeConfig>) -> Self {
         SerializationContext {
-            domain_resolver: None,
-            concept_resolver: None,
-            boolean_true_label: None,
-            boolean_false_label: None,
-            display_registry: Some(registry),
+            node_config,
+            external_resolver: self.external_resolver,
+            extension_registry: self.extension_registry,
         }
     }
 }
@@ -227,7 +127,7 @@ impl Default for SerializationContext<'_> {
 /// * `datatype` - The Arches datatype (e.g., "string", "concept", "domain-value")
 /// * `tile_data` - The tile_data value to serialize
 /// * `options` - Serialization options (mode, language)
-/// * `ctx` - Optional context for UUID resolution (needed for display mode)
+/// * `ctx` - Optional context for UUID resolution (needed for display/search modes)
 ///
 /// # Returns
 ///
@@ -241,12 +141,46 @@ pub fn serialize_value(
     let empty_ctx = SerializationContext::empty();
     let ctx = ctx.unwrap_or(&empty_ctx);
 
-    // Check extension registry first (allows overriding built-in types)
-    if options.is_display() {
-        if let Some(registry) = ctx.display_registry {
-            if let Some(serializer) = registry.get(datatype) {
-                return serializer.serialize_display(tile_data, options);
+    // Check extension registry for custom datatypes.
+    // Try context-provided registry first, then fall back to the global registry.
+    let try_extension = |registry: &ExtensionTypeRegistry| -> Option<SerializationResult> {
+        let handler = registry.get(datatype)?;
+        let caps = handler.capabilities();
+
+        match options.mode {
+            SerializationMode::SearchData => {
+                if caps.can_render_search {
+                    if let Ok(Some(val)) = handler.render_search(tile_data, &options.language) {
+                        return Some(SerializationResult::success(val));
+                    }
+                }
+                if caps.can_render_display {
+                    if let Ok(Some(label)) = handler.render_display(tile_data, &options.language) {
+                        return Some(SerializationResult::success(Value::String(label)));
+                    }
+                }
             }
+            SerializationMode::Display => {
+                if caps.can_render_display {
+                    if let Ok(Some(label)) = handler.render_display(tile_data, &options.language) {
+                        return Some(SerializationResult::success(Value::String(label)));
+                    }
+                }
+            }
+            _ => {}
+        }
+        None
+    };
+
+    if let Some(registry) = ctx.extension_registry {
+        if let Some(result) = try_extension(registry) {
+            return result;
+        }
+    }
+    // Fall back to global registry (handlers registered at init by extensions)
+    if let Ok(global_registry) = crate::registry::global_extension_registry() {
+        if let Some(result) = try_extension(&global_registry) {
+            return result;
         }
     }
 
@@ -262,19 +196,14 @@ pub fn serialize_value(
         "url" => serialize_url(tile_data, options),
         "geojson-feature-collection" => serialize_geojson(tile_data, options),
 
-        // Domain types (need config for display)
-        "boolean" => serialize_boolean(
-            tile_data,
-            options,
-            ctx.boolean_true_label,
-            ctx.boolean_false_label,
-        ),
-        "domain-value" => serialize_domain_value(tile_data, options, ctx.domain_resolver),
-        "domain-value-list" => serialize_domain_value_list(tile_data, options, ctx.domain_resolver),
+        // Domain types (need node_config for display/search)
+        "boolean" => serialize_boolean(tile_data, options, ctx),
+        "domain-value" => serialize_domain_value(tile_data, options, ctx),
+        "domain-value-list" => serialize_domain_value_list(tile_data, options, ctx),
 
-        // RDM types (need cache for display)
-        "concept" | "concept-value" => serialize_concept(tile_data, options, ctx.concept_resolver),
-        "concept-list" => serialize_concept_list(tile_data, options, ctx.concept_resolver),
+        // RDM types (need node_config + external_resolver for display/search)
+        "concept" | "concept-value" => serialize_concept(tile_data, options, ctx),
+        "concept-list" => serialize_concept_list(tile_data, options, ctx),
 
         // Resource types
         "resource-instance" => serialize_resource_instance(tile_data, options),
@@ -283,15 +212,8 @@ pub fn serialize_value(
         // Semantic nodes don't have leaf values
         "semantic" => SerializationResult::success(Value::Null),
 
-        // Unknown types - check extension registry (non-display mode), else pass through
-        _ => {
-            if let Some(registry) = ctx.display_registry {
-                if let Some(serializer) = registry.get(datatype) {
-                    return serializer.serialize_display(tile_data, options);
-                }
-            }
-            SerializationResult::success(tile_data.clone())
-        }
+        // Unknown types - pass through
+        _ => SerializationResult::success(tile_data.clone()),
     }
 }
 
@@ -364,31 +286,6 @@ mod tests {
     }
 
     #[test]
-    fn test_serialize_value_dispatcher_concept_with_resolver() {
-        let tile_data = json!("uuid-123");
-        let resolver = |uuid: &str, _lang: &str| {
-            if uuid == "uuid-123" {
-                Some("Resolved Concept".to_string())
-            } else {
-                None
-            }
-        };
-        let ctx = SerializationContext {
-            concept_resolver: Some(&resolver),
-            ..Default::default()
-        };
-
-        let result = serialize_value(
-            "concept",
-            &tile_data,
-            &SerializationOptions::display("en"),
-            Some(&ctx),
-        );
-        assert!(!result.is_error());
-        assert_eq!(result.value, json!("Resolved Concept"));
-    }
-
-    #[test]
     fn test_serialize_value_unknown_type() {
         let tile_data = json!({"custom": "data"});
         let result = serialize_value(
@@ -413,5 +310,256 @@ mod tests {
         let result = serialize_display("string", &json!({"en": "Test", "es": "Prueba"}), "es");
         assert!(!result.is_error());
         assert_eq!(result.value, json!("Prueba"));
+    }
+
+    #[test]
+    fn test_search_data_resolves_string_like_display() {
+        let tile_data = json!({"en": "Hello", "es": "Hola"});
+        let result = serialize_value(
+            "string",
+            &tile_data,
+            &SerializationOptions::search_data("en"),
+            None,
+        );
+        assert!(!result.is_error());
+        assert_eq!(result.value, json!("Hello"));
+    }
+
+    #[test]
+    fn test_search_data_resolves_boolean_like_display() {
+        let result = serialize_value(
+            "boolean",
+            &json!(true),
+            &SerializationOptions::search_data("en"),
+            None,
+        );
+        assert!(!result.is_error());
+        // Without node config, falls back to "true"/"false" string
+        assert_eq!(result.value, json!("true"));
+    }
+
+    #[test]
+    fn test_extension_dispatch_display_mode() {
+        use crate::extension_type_registry::ExtensionTypeRegistry;
+        use crate::{CoercionResult, ExtensionError, ExtensionTypeHandler, HandlerCapabilities};
+
+        struct TestHandler;
+        impl ExtensionTypeHandler for TestHandler {
+            fn capabilities(&self) -> HandlerCapabilities {
+                HandlerCapabilities {
+                    can_coerce: false,
+                    can_render_display: true,
+                    can_render_search: false,
+                    can_resolve_markers: false,
+                }
+            }
+            fn coerce(
+                &self,
+                _: &Value,
+                _: Option<&Value>,
+            ) -> Result<CoercionResult, ExtensionError> {
+                unimplemented!()
+            }
+            fn render_display(
+                &self,
+                _: &Value,
+                lang: &str,
+            ) -> Result<Option<String>, ExtensionError> {
+                Ok(Some(format!("displayed:{}", lang)))
+            }
+            fn render_search(&self, _: &Value, _: &str) -> Result<Option<Value>, ExtensionError> {
+                unimplemented!()
+            }
+            fn resolve_markers(&self, td: &Value, _: &str) -> Result<Value, ExtensionError> {
+                Ok(td.clone())
+            }
+            fn description(&self) -> &str {
+                "test"
+            }
+        }
+
+        let mut registry = ExtensionTypeRegistry::new();
+        registry.register("test-ext", std::sync::Arc::new(TestHandler));
+
+        let ctx = SerializationContext {
+            node_config: None,
+            external_resolver: None,
+            extension_registry: Some(&registry),
+        };
+
+        let result = serialize_value(
+            "test-ext",
+            &json!({"some": "data"}),
+            &SerializationOptions::display("en"),
+            Some(&ctx),
+        );
+        assert_eq!(result.value, json!("displayed:en"));
+    }
+
+    #[test]
+    fn test_extension_dispatch_search_data_falls_back_to_display() {
+        use crate::extension_type_registry::ExtensionTypeRegistry;
+        use crate::{CoercionResult, ExtensionError, ExtensionTypeHandler, HandlerCapabilities};
+
+        struct DisplayOnlyHandler;
+        impl ExtensionTypeHandler for DisplayOnlyHandler {
+            fn capabilities(&self) -> HandlerCapabilities {
+                HandlerCapabilities {
+                    can_coerce: false,
+                    can_render_display: true,
+                    can_render_search: false,
+                    can_resolve_markers: false,
+                }
+            }
+            fn coerce(
+                &self,
+                _: &Value,
+                _: Option<&Value>,
+            ) -> Result<CoercionResult, ExtensionError> {
+                unimplemented!()
+            }
+            fn render_display(&self, _: &Value, _: &str) -> Result<Option<String>, ExtensionError> {
+                Ok(Some("display-fallback".to_string()))
+            }
+            fn render_search(&self, _: &Value, _: &str) -> Result<Option<Value>, ExtensionError> {
+                unimplemented!()
+            }
+            fn resolve_markers(&self, td: &Value, _: &str) -> Result<Value, ExtensionError> {
+                Ok(td.clone())
+            }
+            fn description(&self) -> &str {
+                "test"
+            }
+        }
+
+        let mut registry = ExtensionTypeRegistry::new();
+        registry.register("test-ext", std::sync::Arc::new(DisplayOnlyHandler));
+
+        let ctx = SerializationContext {
+            node_config: None,
+            external_resolver: None,
+            extension_registry: Some(&registry),
+        };
+
+        // SearchData mode with handler that only has render_display should fall back
+        let result = serialize_value(
+            "test-ext",
+            &json!({"data": 1}),
+            &SerializationOptions::search_data("en"),
+            Some(&ctx),
+        );
+        assert_eq!(result.value, json!("display-fallback"));
+    }
+
+    #[test]
+    fn test_extension_dispatch_search_data_prefers_render_search() {
+        use crate::extension_type_registry::ExtensionTypeRegistry;
+        use crate::{CoercionResult, ExtensionError, ExtensionTypeHandler, HandlerCapabilities};
+
+        struct SearchHandler;
+        impl ExtensionTypeHandler for SearchHandler {
+            fn capabilities(&self) -> HandlerCapabilities {
+                HandlerCapabilities {
+                    can_coerce: false,
+                    can_render_display: true,
+                    can_render_search: true,
+                    can_resolve_markers: false,
+                }
+            }
+            fn coerce(
+                &self,
+                _: &Value,
+                _: Option<&Value>,
+            ) -> Result<CoercionResult, ExtensionError> {
+                unimplemented!()
+            }
+            fn render_display(&self, _: &Value, _: &str) -> Result<Option<String>, ExtensionError> {
+                Ok(Some("should-not-use".to_string()))
+            }
+            fn render_search(&self, _: &Value, _: &str) -> Result<Option<Value>, ExtensionError> {
+                Ok(Some(json!({"search": "result"})))
+            }
+            fn resolve_markers(&self, td: &Value, _: &str) -> Result<Value, ExtensionError> {
+                Ok(td.clone())
+            }
+            fn description(&self) -> &str {
+                "test"
+            }
+        }
+
+        let mut registry = ExtensionTypeRegistry::new();
+        registry.register("test-ext", std::sync::Arc::new(SearchHandler));
+
+        let ctx = SerializationContext {
+            node_config: None,
+            external_resolver: None,
+            extension_registry: Some(&registry),
+        };
+
+        let result = serialize_value(
+            "test-ext",
+            &json!({"data": 1}),
+            &SerializationOptions::search_data("en"),
+            Some(&ctx),
+        );
+        // Should use render_search, not render_display
+        assert_eq!(result.value, json!({"search": "result"}));
+    }
+
+    #[test]
+    fn test_extension_dispatch_tile_data_skips_handlers() {
+        use crate::extension_type_registry::ExtensionTypeRegistry;
+        use crate::{CoercionResult, ExtensionError, ExtensionTypeHandler, HandlerCapabilities};
+
+        struct TestHandler;
+        impl ExtensionTypeHandler for TestHandler {
+            fn capabilities(&self) -> HandlerCapabilities {
+                HandlerCapabilities {
+                    can_coerce: false,
+                    can_render_display: true,
+                    can_render_search: true,
+                    can_resolve_markers: false,
+                }
+            }
+            fn coerce(
+                &self,
+                _: &Value,
+                _: Option<&Value>,
+            ) -> Result<CoercionResult, ExtensionError> {
+                unimplemented!()
+            }
+            fn render_display(&self, _: &Value, _: &str) -> Result<Option<String>, ExtensionError> {
+                Ok(Some("should-not-use".to_string()))
+            }
+            fn render_search(&self, _: &Value, _: &str) -> Result<Option<Value>, ExtensionError> {
+                Ok(Some(json!("should-not-use")))
+            }
+            fn resolve_markers(&self, td: &Value, _: &str) -> Result<Value, ExtensionError> {
+                Ok(td.clone())
+            }
+            fn description(&self) -> &str {
+                "test"
+            }
+        }
+
+        let mut registry = ExtensionTypeRegistry::new();
+        registry.register("test-ext", std::sync::Arc::new(TestHandler));
+
+        let ctx = SerializationContext {
+            node_config: None,
+            external_resolver: None,
+            extension_registry: Some(&registry),
+        };
+
+        let data = json!({"raw": "data"});
+        let result = serialize_value(
+            "test-ext",
+            &data,
+            &SerializationOptions::tile_data(),
+            Some(&ctx),
+        );
+        // TileData mode should NOT call render_display or render_search
+        // Falls through to unknown type passthrough
+        assert_eq!(result.value, data);
     }
 }

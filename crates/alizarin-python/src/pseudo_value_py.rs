@@ -240,6 +240,33 @@ impl PyPseudoValue {
         Ok(())
     }
 
+    /// Serialize this value in display mode (resolves UUIDs to labels).
+    ///
+    /// Uses the global RDM cache for concept resolution.
+    /// Only serializes this node's own tile_data — no child traversal.
+    ///
+    /// Args:
+    ///     node_config_manager: Optional PyNodeConfigManager for domain/boolean lookups
+    ///     language: Language code (defaults to "en")
+    #[pyo3(signature = (node_config_manager=None, language=None))]
+    fn to_display_value(
+        &self,
+        py: Python<'_>,
+        node_config_manager: Option<&crate::node_config_py::PyNodeConfigManager>,
+        language: Option<String>,
+    ) -> PyResult<PyObject> {
+        let lang = language.unwrap_or_else(|| "en".to_string());
+        let global_rdm = crate::rdm_cache_py::get_global_rdm_cache();
+        let rdm_inner = global_rdm.as_ref().map(|c| c.inner());
+        let ncm = node_config_manager.map(|m| m.inner());
+        let result = self.inner.serialize_display(
+            &lang,
+            ncm,
+            rdm_inner.map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+        );
+        json_to_python(py, &result)
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "RustPseudoValue(alias={:?}, datatype={}, has_tile={})",

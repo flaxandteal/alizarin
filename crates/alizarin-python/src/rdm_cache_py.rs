@@ -161,6 +161,106 @@ pub fn add_from_skos_xml_to_global_cache(
     Ok(added_ids)
 }
 
+/// Merge additional flat labels into a collection in the global RDM cache.
+///
+/// Retrieves the collection, adds new labels (skipping duplicates by
+/// deterministic concept ID), and stores it back in the global cache.
+///
+/// Args:
+///     collection_id: ID of the collection to update
+///     labels: List of labels (strings or {lang: label} dicts) to add
+///
+/// Returns:
+///     Number of new concepts added
+///
+/// Raises:
+///     ValueError: If collection_id is not in the global cache
+#[pyfunction]
+pub fn update_collection_in_global_cache(
+    py: Python,
+    collection_id: String,
+    labels: Vec<PyObject>,
+) -> PyResult<usize> {
+    let core_coll = {
+        let guard = GLOBAL_RDM_CACHE.read().map_err(|_| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Failed to read global RDM cache")
+        })?;
+        let cache = guard.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Global RDM cache not set")
+        })?;
+        cache
+            .inner
+            .get_collection(&collection_id)
+            .ok_or_else(|| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Collection '{}' not found in global cache",
+                    collection_id
+                ))
+            })?
+            .clone()
+    };
+
+    let mut wrapper = RdmCollection::from_core(core_coll);
+    let added = wrapper.update_from_labels(py, labels)?;
+
+    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
+        if let Some(ref mut cache) = *guard {
+            cache.inner.add_collection(wrapper.into_inner());
+        }
+    }
+    Ok(added)
+}
+
+/// Merge additional hierarchical entries into a collection in the global RDM cache.
+///
+/// Retrieves the collection, adds new entries from a nested dict (skipping
+/// duplicates, recursing into children of existing parents), and stores it back.
+///
+/// Args:
+///     collection_id: ID of the collection to update
+///     structure: Nested dict where keys are labels, values are None (leaf) or dict (children)
+///
+/// Returns:
+///     Number of new concepts added
+///
+/// Raises:
+///     ValueError: If collection_id is not in the global cache
+#[pyfunction]
+pub fn update_collection_nested_in_global_cache(
+    py: Python,
+    collection_id: String,
+    structure: &Bound<'_, PyDict>,
+) -> PyResult<usize> {
+    let core_coll = {
+        let guard = GLOBAL_RDM_CACHE.read().map_err(|_| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Failed to read global RDM cache")
+        })?;
+        let cache = guard.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Global RDM cache not set")
+        })?;
+        cache
+            .inner
+            .get_collection(&collection_id)
+            .ok_or_else(|| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Collection '{}' not found in global cache",
+                    collection_id
+                ))
+            })?
+            .clone()
+    };
+
+    let mut wrapper = RdmCollection::from_core(core_coll);
+    let added = wrapper.update_from_nested_labels(py, structure)?;
+
+    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
+        if let Some(ref mut cache) = *guard {
+            cache.inner.add_collection(wrapper.into_inner());
+        }
+    }
+    Ok(added)
+}
+
 // =============================================================================
 // Global RDM Namespace for UUID Generation
 // =============================================================================
@@ -267,6 +367,23 @@ fn label_to_deterministic_string(py: Python, label: &PyObject) -> PyResult<Strin
         return Ok(core_labels_to_string(&labels_map));
     }
 
+    Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+        "label must be a string or dict of {language: label}",
+    ))
+}
+
+/// Extract a trimmed deterministic label string from a PyObject label.
+///
+/// Mirrors the logic in `add_from_label` for computing the string used in
+/// concept ID generation: plain strings are trimmed, multilingual dicts
+/// go through `label_to_deterministic_string` then trimmed.
+fn extract_label_string(py: Python, label: &PyObject) -> PyResult<String> {
+    if let Ok(s) = label.extract::<String>(py) {
+        return Ok(s.trim().to_string());
+    }
+    if label.downcast::<PyDict>(py).is_ok() {
+        return Ok(label_to_deterministic_string(py, label)?.trim().to_string());
+    }
     Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
         "label must be a string or dict of {language: label}",
     ))
@@ -862,6 +979,94 @@ impl RdmCollection {
         Ok(concept_id)
     }
 
+    /// Merge additional flat labels into this collection, skipping duplicates.
+    ///
+    /// A label is considered a duplicate if its deterministic concept ID
+    /// (uuid5 of collection_id + label) already exists in the collection.
+    ///
+    /// Returns the number of new concepts added.
+    ///
+    /// Args:
+    ///     labels: List of labels (strings or {lang: label} dicts)
+    ///
+    /// Example:
+    ///     collection = RustRdmCollection.from_labels("Colors", ["Red", "Green"])
+    ///     added = collection.update_from_labels(["Green", "Blue"])
+    ///     # added == 1 (Green skipped, Blue added)
+    #[pyo3(signature = (labels,))]
+    fn update_from_labels(&mut self, py: Python, labels: Vec<PyObject>) -> PyResult<usize> {
+        let mut added = 0;
+        for label in labels {
+            let label_string = extract_label_string(py, &label)?;
+            let concept_id = generate_concept_id(&self.inner.id, &label_string)?;
+            if self.inner.has_concept(&concept_id) {
+                continue;
+            }
+            self.add_from_label(py, label, None)?;
+            added += 1;
+        }
+        Ok(added)
+    }
+
+    /// Merge additional hierarchical entries into this collection, skipping duplicates.
+    ///
+    /// Walks the nested dict structure. For each label:
+    /// - If its deterministic concept ID already exists, skips creation but still
+    ///   recurses into children (so new children of existing parents get added).
+    /// - If it doesn't exist, creates it as top-level or as child of its parent.
+    ///
+    /// Returns the number of new concepts added.
+    ///
+    /// Args:
+    ///     structure: Nested dict where keys are labels, values are None (leaf) or dict (children)
+    ///
+    /// Example:
+    ///     col = RustRdmCollection.from_nested_labels("Animals", {"Mammals": {"Dogs": None}})
+    ///     added = col.update_from_nested_labels({"Mammals": {"Cats": None}, "Birds": None})
+    ///     # added == 2 (Mammals skipped, Cats and Birds added)
+    #[pyo3(signature = (structure,))]
+    fn update_from_nested_labels(
+        &mut self,
+        py: Python,
+        structure: &Bound<'_, PyDict>,
+    ) -> PyResult<usize> {
+        fn merge_nested(
+            py: Python,
+            collection: &mut RdmCollection,
+            structure: &Bound<'_, PyDict>,
+            parent_id: Option<String>,
+        ) -> PyResult<usize> {
+            let mut added = 0;
+            for (key, value) in structure.iter() {
+                let label: PyObject = key.into_py(py);
+                let label_string = extract_label_string(py, &label)?;
+                let concept_id = generate_concept_id(&collection.inner.id, &label_string)?;
+
+                if collection.inner.has_concept(&concept_id) {
+                    // Already exists — recurse for potential new children
+                    if let Ok(children_dict) = value.downcast::<PyDict>() {
+                        added += merge_nested(py, collection, children_dict, Some(concept_id))?;
+                    }
+                } else {
+                    // New concept
+                    if let Some(ref pid) = parent_id {
+                        collection.add_child_from_label(py, pid.clone(), label, None)?;
+                    } else {
+                        collection.add_from_label(py, label, None)?;
+                    }
+                    added += 1;
+
+                    if let Ok(children_dict) = value.downcast::<PyDict>() {
+                        added += merge_nested(py, collection, children_dict, Some(concept_id))?;
+                    }
+                }
+            }
+            Ok(added)
+        }
+
+        merge_nested(py, self, structure, None)
+    }
+
     /// Look up a concept by ID
     fn get_concept(&self, concept_id: &str) -> Option<RdmConcept> {
         self.inner
@@ -1426,6 +1631,81 @@ impl RdmCache {
         self.inner.add_collection(collection.into_inner());
     }
 
+    /// Merge additional flat labels into an existing collection in the cache.
+    ///
+    /// Retrieves the collection, adds new labels (skipping duplicates), and
+    /// stores it back. No clone-and-replace needed from Python.
+    ///
+    /// Args:
+    ///     collection_id: ID of the collection to update
+    ///     labels: List of labels (strings or {lang: label} dicts) to add
+    ///
+    /// Returns:
+    ///     Number of new concepts added
+    ///
+    /// Raises:
+    ///     ValueError: If collection_id is not in the cache
+    #[pyo3(signature = (collection_id, labels))]
+    fn update_collection(
+        &mut self,
+        py: Python,
+        collection_id: String,
+        labels: Vec<PyObject>,
+    ) -> PyResult<usize> {
+        // Clone out, mutate via the Python wrapper, put back
+        let core_coll = self
+            .inner
+            .get_collection(&collection_id)
+            .ok_or_else(|| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Collection '{}' not found in cache",
+                    collection_id
+                ))
+            })?
+            .clone();
+        let mut wrapper = RdmCollection::from_core(core_coll);
+        let added = wrapper.update_from_labels(py, labels)?;
+        self.inner.add_collection(wrapper.into_inner());
+        Ok(added)
+    }
+
+    /// Merge additional hierarchical entries into an existing collection in the cache.
+    ///
+    /// Retrieves the collection, adds new entries (skipping duplicates, recursing
+    /// into children of existing parents), and stores it back.
+    ///
+    /// Args:
+    ///     collection_id: ID of the collection to update
+    ///     structure: Nested dict where keys are labels, values are None (leaf) or dict (children)
+    ///
+    /// Returns:
+    ///     Number of new concepts added
+    ///
+    /// Raises:
+    ///     ValueError: If collection_id is not in the cache
+    #[pyo3(signature = (collection_id, structure))]
+    fn update_collection_nested(
+        &mut self,
+        py: Python,
+        collection_id: String,
+        structure: &Bound<'_, PyDict>,
+    ) -> PyResult<usize> {
+        let core_coll = self
+            .inner
+            .get_collection(&collection_id)
+            .ok_or_else(|| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Collection '{}' not found in cache",
+                    collection_id
+                ))
+            })?
+            .clone();
+        let mut wrapper = RdmCollection::from_core(core_coll);
+        let added = wrapper.update_from_nested_labels(py, structure)?;
+        self.inner.add_collection(wrapper.into_inner());
+        Ok(added)
+    }
+
     /// Add collection(s) from SKOS RDF/XML
     ///
     /// Parses SKOS XML and adds the concept schemes as collections.
@@ -1728,6 +2008,11 @@ pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(has_global_rdm_cache, m)?)?;
     m.add_function(wrap_pyfunction!(add_collection_to_global_cache, m)?)?;
     m.add_function(wrap_pyfunction!(add_from_skos_xml_to_global_cache, m)?)?;
+    m.add_function(wrap_pyfunction!(update_collection_in_global_cache, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        update_collection_nested_in_global_cache,
+        m
+    )?)?;
 
     // Global RDM namespace functions for deterministic UUID generation
     m.add_function(wrap_pyfunction!(set_rdm_namespace, m)?)?;

@@ -511,6 +511,11 @@ impl RdmCache {
         self.collections.get(collection_id)
     }
 
+    /// Get a mutable reference to a collection by ID
+    pub fn get_collection_mut(&mut self, collection_id: &str) -> Option<&mut RdmCollection> {
+        self.collections.get_mut(collection_id)
+    }
+
     /// Clear all cached collections
     pub fn clear(&mut self) {
         self.collections.clear();
@@ -568,6 +573,23 @@ impl RdmCache {
                     .map(move |c| (coll_id.as_str(), c))
             })
             .collect()
+    }
+}
+
+// =============================================================================
+// ExternalResolver Implementation
+// =============================================================================
+
+use crate::type_serialization::ExternalResolver;
+
+impl ExternalResolver for RdmCache {
+    fn resolve_concept(
+        &self,
+        collection_id: &str,
+        concept_id: &str,
+        language: &str,
+    ) -> Option<String> {
+        self.lookup_label(collection_id, concept_id, language)
     }
 }
 

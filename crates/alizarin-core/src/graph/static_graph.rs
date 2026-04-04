@@ -112,6 +112,9 @@ pub struct StaticGraph {
     // Arc-wrapped node caches for pseudo_value infrastructure (avoids cloning on every conversion)
     #[serde(skip)]
     nodes_by_alias_arc: Option<HashMap<String, Arc<StaticNode>>>,
+    // Card hierarchy index (built when cards are present)
+    #[serde(skip)]
+    card_index: Option<super::card_index::CardIndex>,
 }
 
 impl StaticGraph {
@@ -192,6 +195,17 @@ impl StaticGraph {
         self.nodes_by_nodegroup = Some(nodes_by_nodegroup);
         self.nodegroup_by_id = Some(nodegroup_by_id);
         self.nodes_by_alias_arc = Some(nodes_by_alias_arc);
+
+        // Build card index when cards are present
+        if self.cards.is_some() {
+            self.card_index = Some(super::card_index::build_card_index(
+                self.cards_slice(),
+                self.cards_x_nodes_x_widgets_slice(),
+                &self.nodegroups,
+                &self.nodes,
+                crate::graph_mutator::get_widget_name_by_id,
+            ));
+        }
     }
 
     /// Invalidate all internal lookup indices.
@@ -205,6 +219,7 @@ impl StaticGraph {
         self.nodes_by_nodegroup = None;
         self.nodegroup_by_id = None;
         self.nodes_by_alias_arc = None;
+        self.card_index = None;
     }
 
     /// Get the root node
@@ -393,6 +408,11 @@ impl StaticGraph {
     /// Get cards slice (for mutation checks)
     pub fn cards_slice(&self) -> &[StaticCard] {
         self.cards.as_deref().unwrap_or(&[])
+    }
+
+    /// Get the card hierarchy index (None if graph has no cards)
+    pub fn card_index(&self) -> Option<&super::card_index::CardIndex> {
+        self.card_index.as_ref()
     }
 
     /// Get cards_x_nodes_x_widgets slice

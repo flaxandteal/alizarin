@@ -15,8 +15,8 @@ pub fn serialize_string(tile_data: &Value, options: &SerializationOptions) -> Se
         Value::Null => SerializationResult::success(Value::Null),
 
         Value::Object(lang_map) => {
-            if options.is_display() {
-                // Display mode - extract single language value
+            if options.is_display_like() {
+                // Display/SearchData mode - extract single language value
                 let lang = &options.language;
 
                 // Try exact language match first
@@ -58,7 +58,7 @@ pub fn serialize_string(tile_data: &Value, options: &SerializationOptions) -> Se
 
         // Plain string (shouldn't happen for well-formed tile_data, but handle gracefully)
         Value::String(s) => {
-            if options.is_display() {
+            if options.is_display_like() {
                 SerializationResult::success(Value::String(s.clone()))
             } else {
                 // Wrap in language map with StringTranslatedLanguage format
@@ -105,8 +105,8 @@ pub fn serialize_url(tile_data: &Value, options: &SerializationOptions) -> Seria
         Value::Null => SerializationResult::success(Value::Null),
 
         Value::Object(obj) => {
-            if options.is_display() {
-                // Display mode - return label or url
+            if options.is_display_like() {
+                // Display/SearchData mode - return label or url
                 if let Some(Value::String(s)) = obj.get("url_label") {
                     if !s.is_empty() {
                         return SerializationResult::success(Value::String(s.clone()));
@@ -124,7 +124,7 @@ pub fn serialize_url(tile_data: &Value, options: &SerializationOptions) -> Seria
 
         // Plain string URL
         Value::String(s) => {
-            if options.is_display() {
+            if options.is_display_like() {
                 SerializationResult::success(Value::String(s.clone()))
             } else {
                 // Wrap in object for consistency

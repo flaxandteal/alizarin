@@ -315,6 +315,7 @@ generate_uuid_v5 = _alizarin_rust.generate_uuid_v5
 get_mutation_schema = _alizarin_rust.get_mutation_schema
 build_graph_from_instructions = _alizarin_rust.build_graph_from_instructions
 build_graph_from_csv = _alizarin_rust.build_graph_from_csv
+OntologyValidator = _alizarin_rust.OntologyValidator
 
 # =============================================================================
 # List Datatype Registry (for datatypes where array IS the value)
@@ -348,6 +349,8 @@ clear_global_rdm_cache = _alizarin_rust.clear_global_rdm_cache
 has_global_rdm_cache = _alizarin_rust.has_global_rdm_cache
 add_collection_to_global_cache = _alizarin_rust.add_collection_to_global_cache
 add_from_skos_xml_to_global_cache = _alizarin_rust.add_from_skos_xml_to_global_cache
+update_collection_in_global_cache = _alizarin_rust.update_collection_in_global_cache
+update_collection_nested_in_global_cache = _alizarin_rust.update_collection_nested_in_global_cache
 # RDM namespace configuration for deterministic UUID generation
 set_rdm_namespace = _alizarin_rust.set_rdm_namespace
 get_rdm_namespace = _alizarin_rust.get_rdm_namespace
@@ -490,6 +493,8 @@ __all__ = [
     "has_global_rdm_cache",
     "add_collection_to_global_cache",
     "add_from_skos_xml_to_global_cache",
+    "update_collection_in_global_cache",
+    "update_collection_nested_in_global_cache",
     # RDM Namespace (for deterministic UUID generation)
     "set_rdm_namespace",
     "get_rdm_namespace",
@@ -509,4 +514,6 @@ __all__ = [
     "get_mutation_schema",
     "build_graph_from_instructions",
     "build_graph_from_csv",
+    # Ontology Validation
+    "OntologyValidator",
 ]

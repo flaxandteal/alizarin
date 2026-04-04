@@ -13,7 +13,9 @@ use alizarin_core::{
     StaticNodegroup, StaticResourceMetadata, StaticTile,
 };
 
+use crate::node_config_py::PyNodeConfigManager;
 use crate::pseudo_value_py::{PyPseudoList, PyPseudoValue};
+use crate::rdm_cache_py;
 
 // =============================================================================
 // ModelAccess implementation using registered graphs
@@ -396,6 +398,349 @@ impl PyResourceInstanceWrapperCore {
         if let Ok(mut loaded) = self.inner.loaded_nodegroups.lock() {
             loaded.clear();
         }
+    }
+
+    /// Serialize a single card from the populated pseudo_cache.
+    ///
+    /// Prerequisites: populate() must have been called for the relevant nodegroups.
+    /// Use nodegroup_ids_for_card() to discover which nodegroups are needed.
+    ///
+    /// Args:
+    ///     card_id: The card UUID to serialize
+    ///     parent_tile_id: Parent tile ID for nested cards (None for root cards)
+    ///     parent_nodegroup_id: Parent nodegroup ID for nested cards (None for root cards)
+    ///     max_depth: Max recursion depth (None = unlimited, 0 = this card only)
+    #[pyo3(signature = (card_id, parent_tile_id=None, parent_nodegroup_id=None, max_depth=None))]
+    fn serialize_card(
+        &self,
+        py: Python,
+        card_id: String,
+        parent_tile_id: Option<String>,
+        parent_nodegroup_id: Option<String>,
+        max_depth: Option<usize>,
+    ) -> PyResult<PyObject> {
+        let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Graph '{}' not registered",
+                self.graph_id
+            ))
+        })?;
+
+        let card_index = graph.card_index().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Graph has no card index — cards may not be loaded",
+            )
+        })?;
+
+        let cache = self.inner.pseudo_cache.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
+        })?;
+
+        let result = alizarin_core::serialize_card(
+            &card_id,
+            card_index,
+            &cache,
+            parent_tile_id.as_deref(),
+            parent_nodegroup_id.as_deref(),
+            &graph,
+            max_depth,
+            None,
+        )
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+
+        pythonize::pythonize(py, &result).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert to Python: {}",
+                e
+            ))
+        })
+    }
+
+    /// Serialize all root cards from the populated pseudo_cache.
+    ///
+    /// Args:
+    ///     max_depth: Max recursion depth (None = unlimited, 0 = root cards only)
+    #[pyo3(signature = (max_depth=None))]
+    fn serialize_root_cards(&self, py: Python, max_depth: Option<usize>) -> PyResult<PyObject> {
+        let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Graph '{}' not registered",
+                self.graph_id
+            ))
+        })?;
+
+        let card_index = graph.card_index().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Graph has no card index — cards may not be loaded",
+            )
+        })?;
+
+        let cache = self.inner.pseudo_cache.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
+        })?;
+
+        let result =
+            alizarin_core::serialize_root_cards(card_index, &cache, &graph, max_depth, None);
+
+        pythonize::pythonize(py, &result).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert to Python: {}",
+                e
+            ))
+        })
+    }
+
+    /// Serialize a single card in display mode (resolves UUIDs to labels
+    /// using the global RDM cache and optional node config manager).
+    ///
+    /// Args:
+    ///     card_id: The card UUID to serialize
+    ///     node_config_manager: PyNodeConfigManager for domain value / boolean label lookups
+    ///     parent_tile_id: Parent tile ID for nested cards (None for root cards)
+    ///     parent_nodegroup_id: Parent nodegroup ID for nested cards (None for root cards)
+    ///     max_depth: Max recursion depth (None = unlimited, 0 = this card only)
+    ///     language: Language code for display labels (defaults to "en")
+    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (card_id, node_config_manager=None, parent_tile_id=None, parent_nodegroup_id=None, max_depth=None, language=None))]
+    fn serialize_card_display(
+        &self,
+        py: Python,
+        card_id: String,
+        node_config_manager: Option<&PyNodeConfigManager>,
+        parent_tile_id: Option<String>,
+        parent_nodegroup_id: Option<String>,
+        max_depth: Option<usize>,
+        language: Option<String>,
+    ) -> PyResult<PyObject> {
+        let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Graph '{}' not registered",
+                self.graph_id
+            ))
+        })?;
+
+        let card_index = graph.card_index().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Graph has no card index — cards may not be loaded",
+            )
+        })?;
+
+        let cache = self.inner.pseudo_cache.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
+        })?;
+
+        let lang = language.unwrap_or_else(|| "en".to_string());
+        let opts = alizarin_core::SerializationOptions::display(&lang);
+
+        let global_rdm = rdm_cache_py::get_global_rdm_cache();
+        let rdm_inner = global_rdm.as_ref().map(|c| c.inner());
+        let ser_ctx = alizarin_core::type_serialization::SerializationContext {
+            node_config: None,
+            external_resolver: rdm_inner
+                .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+            extension_registry: None,
+        };
+
+        let ncm = node_config_manager.map(|m| m.inner());
+
+        let result = alizarin_core::serialize_card(
+            &card_id,
+            card_index,
+            &cache,
+            parent_tile_id.as_deref(),
+            parent_nodegroup_id.as_deref(),
+            &graph,
+            max_depth,
+            Some(alizarin_core::card_traversal::CardSerializationParams {
+                opts: &opts,
+                ser_ctx: &ser_ctx,
+                node_config_manager: ncm,
+            }),
+        )
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+
+        pythonize::pythonize(py, &result).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert to Python: {}",
+                e
+            ))
+        })
+    }
+
+    /// Serialize all root cards in display mode.
+    ///
+    /// Args:
+    ///     node_config_manager: PyNodeConfigManager for domain value / boolean label lookups
+    ///     max_depth: Max recursion depth (None = unlimited, 0 = root cards only)
+    ///     language: Language code for display labels (defaults to "en")
+    #[pyo3(signature = (node_config_manager=None, max_depth=None, language=None))]
+    fn serialize_root_cards_display(
+        &self,
+        py: Python,
+        node_config_manager: Option<&PyNodeConfigManager>,
+        max_depth: Option<usize>,
+        language: Option<String>,
+    ) -> PyResult<PyObject> {
+        let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Graph '{}' not registered",
+                self.graph_id
+            ))
+        })?;
+
+        let card_index = graph.card_index().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Graph has no card index — cards may not be loaded",
+            )
+        })?;
+
+        let cache = self.inner.pseudo_cache.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
+        })?;
+
+        let lang = language.unwrap_or_else(|| "en".to_string());
+        let opts = alizarin_core::SerializationOptions::display(&lang);
+
+        let global_rdm = rdm_cache_py::get_global_rdm_cache();
+        let rdm_inner = global_rdm.as_ref().map(|c| c.inner());
+        let ser_ctx = alizarin_core::type_serialization::SerializationContext {
+            node_config: None,
+            external_resolver: rdm_inner
+                .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+            extension_registry: None,
+        };
+
+        let ncm = node_config_manager.map(|m| m.inner());
+
+        let result = alizarin_core::serialize_root_cards(
+            card_index,
+            &cache,
+            &graph,
+            max_depth,
+            Some(alizarin_core::card_traversal::CardSerializationParams {
+                opts: &opts,
+                ser_ctx: &ser_ctx,
+                node_config_manager: ncm,
+            }),
+        );
+
+        pythonize::pythonize(py, &result).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert to Python: {}",
+                e
+            ))
+        })
+    }
+
+    /// Serialize the populated pseudo_cache as a node-hierarchy display tree.
+    ///
+    /// This is the Python equivalent of WASM's `toDisplayJson()`. It traverses
+    /// the pseudo_cache using the node/edge graph hierarchy (not card hierarchy)
+    /// and serializes in display mode — resolving UUIDs to labels for concepts,
+    /// domain values, booleans, etc.
+    ///
+    /// Prerequisites: `populate()` must have been called.
+    ///
+    /// Args:
+    ///     node_config_manager: Optional PyNodeConfigManager for domain/boolean lookups
+    ///     language: Language code for display labels (defaults to "en")
+    #[pyo3(signature = (node_config_manager=None, language=None))]
+    fn to_display_json(
+        &self,
+        py: Python,
+        node_config_manager: Option<&crate::node_config_py::PyNodeConfigManager>,
+        language: Option<String>,
+    ) -> PyResult<PyObject> {
+        let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Graph '{}' not registered",
+                self.graph_id
+            ))
+        })?;
+
+        let nodes_by_alias = graph.nodes_by_alias_arc().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>("Graph indices not built")
+        })?;
+
+        let edges = graph.edges_map().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>("Graph indices not built")
+        })?;
+
+        let root_node = graph.root_node();
+        let root_alias = root_node.alias.clone().unwrap_or_default();
+
+        let cache = self.inner.pseudo_cache.lock().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
+        })?;
+
+        let root_list = cache.get(&root_alias).ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Root pseudo not found in cache for alias '{}' — was populate() called?",
+                root_alias
+            ))
+        })?;
+
+        let lang = language.unwrap_or_else(|| "en".to_string());
+        let global_rdm = rdm_cache_py::get_global_rdm_cache();
+        let rdm_inner = global_rdm.as_ref().map(|c| c.inner());
+        let ncm = node_config_manager.map(|m| m.inner());
+
+        let ser_ctx = alizarin_core::type_serialization::SerializationContext {
+            node_config: None,
+            external_resolver: rdm_inner
+                .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+            extension_registry: None,
+        };
+
+        let ctx = alizarin_core::pseudo_value_core::VisitorContext {
+            pseudo_cache: &*cache,
+            nodes_by_alias,
+            edges,
+            depth: 0,
+            max_depth: 50,
+            serialization_options: alizarin_core::SerializationOptions::display(&lang),
+            serialization_context: ser_ctx,
+            node_config_manager: ncm,
+        };
+
+        let json = root_list.to_json(&ctx);
+
+        pythonize::pythonize(py, &json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert to Python: {}",
+                e
+            ))
+        })
+    }
+
+    /// Get nodegroup IDs needed to serialize a card (and its descendants).
+    ///
+    /// Use this to know which nodegroups to pass to populate() before calling
+    /// serialize_card().
+    ///
+    /// Args:
+    ///     card_id: The card UUID
+    ///     max_depth: Max depth (None = all descendants, 0 = this card only)
+    #[pyo3(signature = (card_id, max_depth=None))]
+    fn nodegroup_ids_for_card(
+        &self,
+        card_id: String,
+        max_depth: Option<usize>,
+    ) -> PyResult<Vec<String>> {
+        let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Graph '{}' not registered",
+                self.graph_id
+            ))
+        })?;
+
+        let card_index = graph.card_index().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Graph has no card index — cards may not be loaded",
+            )
+        })?;
+
+        Ok(card_index.nodegroup_ids_for_card(&card_id, max_depth))
     }
 
     fn __repr__(&self) -> String {

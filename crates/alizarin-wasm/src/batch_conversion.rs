@@ -1,5 +1,6 @@
 use crate::graph::StaticGraph;
 use crate::json_conversion::create_static_resource;
+use alizarin_core::cards_to_tree as core_cards_to_tree;
 use alizarin_core::tiles_to_tree as core_tiles_to_tree;
 use alizarin_core::{
     batch_merge_resources, merge_resources, transform_keys_to_snake, tree_to_tiles_with_options,
@@ -136,6 +137,68 @@ pub fn tiles_to_tree_enhanced(
             }
 
             // Convert to JS value
+            serde_wasm_bindgen::to_value(&tree)
+                .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+        }
+        Err(e) => Err(JsValue::from_str(&e)),
+    }
+}
+
+/// Convert tiles to a card-structured tree.
+///
+/// Groups data by the card/widget hierarchy (UI structure) rather than by
+/// node edges (data structure). Each card contains its widgets' values and
+/// nested child cards.
+///
+/// Args:
+///     resource_json: Resource JSON string (same format as tilesToTree)
+///     graph: StaticGraph wrapper (must have cards loaded)
+///
+/// Returns:
+///     Card-structured tree with widgets and nested cards
+#[wasm_bindgen(js_name = cardsToTree)]
+pub fn cards_to_tree(resource_json: &str, graph: &StaticGraph) -> Result<JsValue, JsValue> {
+    let resource: Value = serde_json::from_str(resource_json)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse resource: {}", e)))?;
+
+    let graph_id = graph.graph_id();
+    let resource_id = resource
+        .get("resourceinstance")
+        .and_then(|ri| ri.get("resourceinstanceid"))
+        .or_else(|| resource.get("resourceinstanceid"))
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+    let input_json = if resource.get("resourceinstance").is_some() {
+        resource.clone()
+    } else {
+        let tiles: Vec<alizarin_core::StaticTile> = resource
+            .get("tiles")
+            .map(|t| serde_json::from_value(t.clone()))
+            .transpose()
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse tiles: {}", e)))?
+            .unwrap_or_default();
+
+        let static_resource =
+            create_static_resource(resource_id.clone(), graph_id.to_string(), tiles, graph);
+
+        serde_json::to_value(&static_resource)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize resource: {}", e)))?
+    };
+
+    match core_cards_to_tree(&input_json, graph) {
+        Ok(json_array) => {
+            let mut tree = json_array
+                .as_array()
+                .and_then(|arr| arr.first().cloned())
+                .unwrap_or(Value::Object(serde_json::Map::new()));
+
+            if let Value::Object(ref mut map) = tree {
+                map.insert("resourceinstanceid".to_string(), Value::String(resource_id));
+                map.insert("graph_id".to_string(), Value::String(graph_id.to_string()));
+            }
+
             serde_wasm_bindgen::to_value(&tree)
                 .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
         }

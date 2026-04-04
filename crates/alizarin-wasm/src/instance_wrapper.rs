@@ -15,8 +15,7 @@ use crate::graph::StaticTile as WasmStaticTile;
 // Core types for internal storage (avoid WASM wrapper overhead)
 use crate::node_config_wasm::WasmNodeConfigManager;
 use crate::pseudo_value::{
-    DisplayVisitorContext, PseudoList, PseudoListInner, PseudoValue, PseudoValueInner,
-    VisitorContext,
+    PseudoList, PseudoListInner, PseudoValue, PseudoValueInner, VisitorContext,
 };
 use crate::rdm_cache_wasm::WasmRdmCache;
 use alizarin_core::is_node_single_cardinality;
@@ -1223,6 +1222,232 @@ impl WASMResourceInstanceWrapper {
         Ok(())
     }
 
+    /// Serialize a single card from the populated pseudo_cache.
+    ///
+    /// Prerequisites: `populate()` must have been called for the relevant nodegroups.
+    /// Use `nodegroupIdsForCard` to discover which nodegroups are needed.
+    ///
+    /// @param cardId - The card UUID to serialize
+    /// @param parentTileId - Parent tile ID for nested cards (null for root cards)
+    /// @param parentNodegroupId - Parent nodegroup ID for nested cards (null for root cards)
+    /// @param maxDepth - Max recursion depth (null = unlimited, 0 = this card only)
+    #[wasm_bindgen(js_name = serializeCard)]
+    pub fn serialize_card(
+        &self,
+        card_id: String,
+        parent_tile_id: Option<String>,
+        parent_nodegroup_id: Option<String>,
+        max_depth: Option<usize>,
+    ) -> Result<JsValue, JsValue> {
+        let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
+
+        let card_index = graph.card_index().ok_or_else(|| {
+            JsValue::from_str("Graph has no card index — cards may not be loaded")
+        })?;
+
+        // Convert WASM pseudo_cache to core types
+        let core_cache: std::collections::HashMap<String, alizarin_core::PseudoListCore> = {
+            let core_ref = self.core.borrow();
+            let cache = core_ref.pseudo_cache.borrow();
+            cache
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_core()))
+                .collect()
+        };
+
+        let result = alizarin_core::serialize_card(
+            &card_id,
+            card_index,
+            &core_cache,
+            parent_tile_id.as_deref(),
+            parent_nodegroup_id.as_deref(),
+            &graph,
+            max_depth,
+            None,
+        )
+        .map_err(|e| JsValue::from_str(&e))?;
+
+        serde_wasm_bindgen::to_value(&result)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize: {}", e)))
+    }
+
+    /// Serialize all root cards from the populated pseudo_cache.
+    ///
+    /// Prerequisites: `populate()` must have been called.
+    ///
+    /// @param maxDepth - Max recursion depth (null = unlimited, 0 = root cards only)
+    #[wasm_bindgen(js_name = serializeRootCards)]
+    pub fn serialize_root_cards(&self, max_depth: Option<usize>) -> Result<JsValue, JsValue> {
+        let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
+
+        let card_index = graph.card_index().ok_or_else(|| {
+            JsValue::from_str("Graph has no card index — cards may not be loaded")
+        })?;
+
+        let core_cache: std::collections::HashMap<String, alizarin_core::PseudoListCore> = {
+            let core_ref = self.core.borrow();
+            let cache = core_ref.pseudo_cache.borrow();
+            cache
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_core()))
+                .collect()
+        };
+
+        let result =
+            alizarin_core::serialize_root_cards(card_index, &core_cache, &graph, max_depth, None);
+
+        serde_wasm_bindgen::to_value(&result)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize: {}", e)))
+    }
+
+    /// Serialize a single card in display mode (resolves UUIDs to labels
+    /// using the provided RDM cache and node config manager).
+    ///
+    /// @param cardId - The card UUID to serialize
+    /// @param rdmCache - WasmRdmCache for concept label lookups
+    /// @param nodeConfigManager - WasmNodeConfigManager for domain value / boolean label lookups
+    /// @param parentTileId - Parent tile ID for nested cards (null for root cards)
+    /// @param parentNodegroupId - Parent nodegroup ID for nested cards (null for root cards)
+    /// @param maxDepth - Max recursion depth (null = unlimited, 0 = this card only)
+    /// @param language - Language code for display labels (defaults to "en")
+    #[allow(clippy::too_many_arguments)]
+    #[wasm_bindgen(js_name = serializeCardDisplay)]
+    pub fn serialize_card_display(
+        &self,
+        card_id: String,
+        rdm_cache: &WasmRdmCache,
+        node_config_manager: &WasmNodeConfigManager,
+        parent_tile_id: Option<String>,
+        parent_nodegroup_id: Option<String>,
+        max_depth: Option<usize>,
+        language: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
+
+        let card_index = graph.card_index().ok_or_else(|| {
+            JsValue::from_str("Graph has no card index — cards may not be loaded")
+        })?;
+
+        let core_cache: std::collections::HashMap<String, alizarin_core::PseudoListCore> = {
+            let core_ref = self.core.borrow();
+            let cache = core_ref.pseudo_cache.borrow();
+            cache
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_core()))
+                .collect()
+        };
+
+        let lang = language.unwrap_or_else(|| "en".to_string());
+        let opts = alizarin_core::SerializationOptions::display(&lang);
+        let rcache = rdm_cache.inner();
+        let ncm = node_config_manager.inner();
+        let ser_ctx = alizarin_core::type_serialization::SerializationContext {
+            node_config: None,
+            external_resolver: Some(
+                rcache as &dyn alizarin_core::type_serialization::ExternalResolver,
+            ),
+            extension_registry: None,
+        };
+
+        let result = alizarin_core::serialize_card(
+            &card_id,
+            card_index,
+            &core_cache,
+            parent_tile_id.as_deref(),
+            parent_nodegroup_id.as_deref(),
+            &graph,
+            max_depth,
+            Some(alizarin_core::card_traversal::CardSerializationParams {
+                opts: &opts,
+                ser_ctx: &ser_ctx,
+                node_config_manager: Some(ncm),
+            }),
+        )
+        .map_err(|e| JsValue::from_str(&e))?;
+
+        serde_wasm_bindgen::to_value(&result)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize: {}", e)))
+    }
+
+    /// Serialize all root cards in display mode.
+    ///
+    /// @param rdmCache - WasmRdmCache for concept label lookups
+    /// @param nodeConfigManager - WasmNodeConfigManager for domain value / boolean label lookups
+    /// @param maxDepth - Max recursion depth (null = unlimited, 0 = root cards only)
+    /// @param language - Language code for display labels (defaults to "en")
+    #[wasm_bindgen(js_name = serializeRootCardsDisplay)]
+    pub fn serialize_root_cards_display(
+        &self,
+        rdm_cache: &WasmRdmCache,
+        node_config_manager: &WasmNodeConfigManager,
+        max_depth: Option<usize>,
+        language: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
+
+        let card_index = graph.card_index().ok_or_else(|| {
+            JsValue::from_str("Graph has no card index — cards may not be loaded")
+        })?;
+
+        let core_cache: std::collections::HashMap<String, alizarin_core::PseudoListCore> = {
+            let core_ref = self.core.borrow();
+            let cache = core_ref.pseudo_cache.borrow();
+            cache
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_core()))
+                .collect()
+        };
+
+        let lang = language.unwrap_or_else(|| "en".to_string());
+        let opts = alizarin_core::SerializationOptions::display(&lang);
+        let rcache = rdm_cache.inner();
+        let ncm = node_config_manager.inner();
+        let ser_ctx = alizarin_core::type_serialization::SerializationContext {
+            node_config: None,
+            external_resolver: Some(
+                rcache as &dyn alizarin_core::type_serialization::ExternalResolver,
+            ),
+            extension_registry: None,
+        };
+
+        let result = alizarin_core::serialize_root_cards(
+            card_index,
+            &core_cache,
+            &graph,
+            max_depth,
+            Some(alizarin_core::card_traversal::CardSerializationParams {
+                opts: &opts,
+                ser_ctx: &ser_ctx,
+                node_config_manager: Some(ncm),
+            }),
+        );
+
+        serde_wasm_bindgen::to_value(&result)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize: {}", e)))
+    }
+
+    /// Get nodegroup IDs needed to serialize a card (and its descendants).
+    ///
+    /// Use this to know which nodegroups to load via `populate()` or
+    /// `ensureNodegroup()` before calling `serializeCard()`.
+    ///
+    /// @param cardId - The card UUID
+    /// @param maxDepth - Max depth (null = all descendants, 0 = this card only)
+    #[wasm_bindgen(js_name = nodegroupIdsForCard)]
+    pub fn nodegroup_ids_for_card(
+        &self,
+        card_id: String,
+        max_depth: Option<usize>,
+    ) -> Result<Vec<String>, JsValue> {
+        let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
+
+        let card_index = graph.card_index().ok_or_else(|| {
+            JsValue::from_str("Graph has no card index — cards may not be loaded")
+        })?;
+
+        Ok(card_index.nodegroup_ids_for_card(&card_id, max_depth))
+    }
+
     /// This replaces the JS `forJson()` method that makes 98+ WASM boundary
     /// crossings per resource. By doing the traversal entirely in Rust,
     /// we only cross the boundary once.
@@ -1334,7 +1559,11 @@ impl WASMResourceInstanceWrapper {
         self.to_display_json_impl(None, None, language)
     }
 
-    /// Internal implementation for toDisplayJson variants
+    /// Internal implementation for toDisplayJson variants.
+    ///
+    /// Uses the same core `VisitorContext` + `to_json_generic` path as `toJson()`,
+    /// but with display-mode serialization options and a populated `SerializationContext`
+    /// carrying `node_config_manager` and `external_resolver` for label resolution.
     fn to_display_json_impl(
         &self,
         rdm_cache: Option<&RdmCache>,
@@ -1378,20 +1607,24 @@ impl WASMResourceInstanceWrapper {
 
         let lang = language.unwrap_or_else(|| "en".to_string());
 
-        // Build display registry from any JS-registered serializers
-        let registry = crate::extension_registry::build_display_registry();
+        // Build SerializationContext with external resolver for concept lookups
+        let ser_ctx = alizarin_core::type_serialization::SerializationContext {
+            node_config: None, // Set per-node at leaf serialization
+            external_resolver: rdm_cache
+                .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+            extension_registry: None, // Extensions dispatched via global registry in serialize_value
+        };
 
-        // Build display visitor context
-        let ctx = DisplayVisitorContext {
+        // Build display-mode VisitorContext — same path as toJson() but with display options
+        let ctx = VisitorContext {
             pseudo_cache: &cache,
             nodes_by_alias: &nodes_by_alias,
             edges: &edges,
-            rdm_cache,
-            node_config_manager,
-            language: &lang,
             depth: 0,
             max_depth: 50,
-            display_registry: Some(&registry),
+            serialization_options: alizarin_core::SerializationOptions::display(&lang),
+            serialization_context: ser_ctx,
+            node_config_manager,
         };
 
         // Look up the root pseudo from cache (created in populate())
@@ -1402,8 +1635,9 @@ impl WASMResourceInstanceWrapper {
             ))
         })?;
 
-        // Use the root list's to_display_json - the root is a semantic node, so it traverses children
-        let json = root_list.to_display_json(&ctx);
+        // Use the same to_json path — display resolution happens at leaf level
+        // via serialize_leaf_value in to_json_generic
+        let json = root_list.to_json(&ctx);
 
         // Convert serde_json::Value to JSON string, then parse to JS object
         let json_string = serde_json::to_string(&json)

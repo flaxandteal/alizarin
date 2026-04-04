@@ -616,6 +616,32 @@ lazy_static::lazy_static! {
     };
 }
 
+lazy_static::lazy_static! {
+    /// Reverse lookup: widget ID -> widget name
+    pub static ref WIDGET_BY_ID: HashMap<String, String> = {
+        WIDGETS.iter().map(|(name, w)| (w.id.clone(), name.clone())).collect()
+    };
+}
+
+/// Look up a widget name by its UUID.
+///
+/// Checks both the static Arches widget registry and the dynamic extension registry.
+pub fn get_widget_name_by_id(widget_id: &str) -> Option<String> {
+    // Check static registry first
+    if let Some(name) = WIDGET_BY_ID.get(widget_id) {
+        return Some(name.clone());
+    }
+    // Check dynamic (extension) registry
+    for name in crate::registry::registered_widgets() {
+        if let Some(widget) = crate::registry::get_registered_widget(&name) {
+            if widget.id == widget_id {
+                return Some(name);
+            }
+        }
+    }
+    None
+}
+
 /// Get the default widget for a datatype
 ///
 /// Checks in order:
@@ -758,6 +784,8 @@ pub enum MutationError {
     ExtensionNotFound(String),
     /// Extension mutation used but no registry provided
     NoExtensionRegistry(String),
+    /// Ontology validation failure
+    OntologyValidation(crate::ontology::OntologyValidationDetail),
     /// Generic error
     Other(String),
 }
@@ -826,6 +854,9 @@ impl std::fmt::Display for MutationError {
                 "Extension mutation '{}' used but no registry provided",
                 name
             ),
+            MutationError::OntologyValidation(detail) => {
+                write!(f, "Ontology validation error: {}", detail)
+            }
             MutationError::Other(msg) => write!(f, "{}", msg),
         }
     }
@@ -1417,6 +1448,8 @@ pub struct MutatorOptions {
     pub autocreate_card: bool,
     /// Automatically add default widgets to cards
     pub autocreate_widget: bool,
+    /// Optional ontology validator for class/property validation
+    pub ontology_validator: Option<crate::ontology::OntologyValidator>,
 }
 
 impl Default for MutatorOptions {
@@ -1424,6 +1457,7 @@ impl Default for MutatorOptions {
         Self {
             autocreate_card: true,
             autocreate_widget: true,
+            ontology_validator: None,
         }
     }
 }
@@ -1822,7 +1856,7 @@ fn apply_mutation_with_extensions(
         GraphMutation::DeleteFunction(params) => apply_delete_function(graph, params),
         GraphMutation::DeleteNode(params) => apply_delete_node(graph, params),
         GraphMutation::DeleteNodegroup(params) => apply_delete_nodegroup(graph, params),
-        GraphMutation::UpdateNode(params) => apply_update_node(graph, params),
+        GraphMutation::UpdateNode(params) => apply_update_node(graph, params, options),
         GraphMutation::ChangeNodeType(params) => apply_change_node_type(graph, params),
         GraphMutation::ChangeCardinality(params) => apply_change_cardinality(graph, params),
         GraphMutation::RenameNode(params) => apply_rename_node(graph, params),
@@ -1865,6 +1899,20 @@ fn apply_add_node(
     };
     let parent_nodeid = parent.nodeid.clone();
     let parent_nodegroup_id = parent.nodegroup_id.clone();
+    let parent_ontologyclass = parent.ontologyclass.clone();
+
+    // Validate ontology class and property if validator is present
+    if let Some(ref validator) = options.ontology_validator {
+        if !params.ontology_class.is_empty() {
+            validator
+                .validate_edge(
+                    parent_ontologyclass.as_deref().unwrap_or(""),
+                    &params.parent_property,
+                    &params.ontology_class,
+                )
+                .map_err(MutationError::OntologyValidation)?;
+        }
+    }
 
     // Generate node ID
     let node_id = generate_uuid_v5(
@@ -2478,6 +2526,7 @@ fn apply_delete_nodegroup(
 fn apply_update_node(
     graph: &mut StaticGraph,
     params: UpdateNodeParams,
+    options: &MutatorOptions,
 ) -> Result<(), MutationError> {
     // Find node by alias first, then by ID
     let node = graph
@@ -2486,6 +2535,17 @@ fn apply_update_node(
         .ok_or_else(|| MutationError::NodeNotFound(params.node_id.clone()))?;
 
     let node_id = node.nodeid.clone();
+
+    // Validate ontology class if validator is present and class is being changed
+    if let Some(ref validator) = options.ontology_validator {
+        if let Some(ref new_class) = params.ontology_class {
+            if !new_class.is_empty() && !validator.is_valid_class(new_class) {
+                return Err(MutationError::OntologyValidation(
+                    crate::ontology::OntologyValidationDetail::UnknownClass(new_class.clone()),
+                ));
+            }
+        }
+    }
 
     // Find the mutable node and update its fields
     let node_mut = graph
@@ -3822,6 +3882,7 @@ impl From<MutationRequestOptions> for MutatorOptions {
         MutatorOptions {
             autocreate_card: opts.autocreate_card,
             autocreate_widget: opts.autocreate_widget,
+            ontology_validator: None,
         }
     }
 }
@@ -7248,6 +7309,7 @@ mod tests {
         let options = MutatorOptions {
             autocreate_card: true,
             autocreate_widget: false,
+            ontology_validator: None,
         };
 
         // Add a semantic node (no widget)

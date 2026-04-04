@@ -1,4 +1,4 @@
-import { utils, viewModels, registerDisplaySerializer, wasmReady } from "alizarin";
+import { utils, viewModels, registerExtensionHandler, wasmReady } from "alizarin";
 import type { interfaces, staticTypes } from "alizarin";
 type IPseudo = interfaces.IPseudo;
 type IViewModel = interfaces.IViewModel;
@@ -164,32 +164,31 @@ class FileListItem {
 // Display Serializers
 // =============================================================================
 
-// Register the file-list display serializer (after WASM is ready)
+// Register the file-list extension handler (after WASM is ready)
 wasmReady.then(() => {
-  registerDisplaySerializer('file-list', (tileData: unknown, language: string) => {
-    // Handle null/undefined
-    if (!tileData) return null;
+  registerExtensionHandler('file-list', {
+    renderDisplay: (tileData: unknown, language: string) => {
+      if (!tileData) return null;
 
-    // Handle array of files
-    if (Array.isArray(tileData)) {
-      if (tileData.length === 0) return null;
+      if (Array.isArray(tileData)) {
+        if (tileData.length === 0) return null;
 
-      const displayStrings = tileData.map((item: unknown) => {
-        if (!item || typeof item !== 'object') return null;
-        const file = new FileListItem(item as FileListItemData);
+        const displayStrings = tileData.map((item: unknown) => {
+          if (!item || typeof item !== 'object') return null;
+          const file = new FileListItem(item as FileListItemData);
+          return file.toDisplayString(language);
+        }).filter((s): s is string => s !== null);
+
+        return displayStrings.join(', ');
+      }
+
+      if (typeof tileData === 'object' && tileData !== null) {
+        const file = new FileListItem(tileData as FileListItemData);
         return file.toDisplayString(language);
-      }).filter((s): s is string => s !== null);
+      }
 
-      return displayStrings.join(', ');
-    }
-
-    // Handle single file object
-    if (typeof tileData === 'object' && tileData !== null) {
-      const file = new FileListItem(tileData as FileListItemData);
-      return file.toDisplayString(language);
-    }
-
-    return null;
+      return null;
+    },
   });
 });
 

@@ -79,6 +79,7 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
             HandlerCapabilities {
                 can_coerce: true, // All handlers have coerce_fn
                 can_render_display: handler.render_display_fn.is_some(),
+                can_render_search: false,
                 can_resolve_markers: handler.resolve_markers_fn.is_some(),
             }
         } else {
@@ -647,6 +648,8 @@ fn render_display_with_extension(
 // Import core types and functions directly (no WASM dependency needed)
 use alizarin_core::{
     batch_merge_resources as core_batch_merge_resources,
+    // JSON conversion
+    cards_to_tree,
     create_static_resource,
     evaluate_tile_path,
     // Semantic child matching
@@ -654,7 +657,6 @@ use alizarin_core::{
     merge_resources as core_merge_resources,
     // Label resolution
     resolve_labels as core_resolve_labels,
-    // JSON conversion
     tiles_to_tree,
     tree_to_tiles_with_options,
     // Permission rules
@@ -811,6 +813,92 @@ fn tiles_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
     })?;
 
     // Parse as Python dict
+    let json_module = py.import_bound("json")?;
+    let py_dict = json_module.call_method1("loads", (py_str,))?;
+
+    Ok(py_dict.to_object(py))
+}
+
+/// Convert tiles to a card-structured tree.
+///
+/// Groups data by the card/widget hierarchy (UI structure) rather than by
+/// node edges (data structure). Each card contains its widgets' values and
+/// nested child cards.
+///
+/// Args:
+///     resource_json: Resource JSON string (same format as tiles_to_json_tree)
+///
+/// Returns:
+///     Card-structured dict with widgets and nested cards
+#[pyfunction]
+#[pyo3(signature = (resource_json))]
+fn cards_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
+    let resource: serde_json::Value = serde_json::from_str(&resource_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse resource: {}", e))
+    })?;
+
+    let graph_id = resource
+        .get("resourceinstance")
+        .and_then(|ri| ri.get("graph_id"))
+        .or_else(|| resource.get("graph_id"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>("Missing graph_id in resource")
+        })?
+        .to_string();
+
+    let resource_id = resource
+        .get("resourceinstance")
+        .and_then(|ri| ri.get("resourceinstanceid"))
+        .or_else(|| resource.get("resourceinstanceid"))
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+    let graph = get_registered_graph(&graph_id)?;
+
+    let input_json = if resource.get("resourceinstance").is_some() {
+        resource.clone()
+    } else {
+        let tiles: Vec<AlizarinStaticTile> = resource
+            .get("tiles")
+            .and_then(|t| serde_json::from_value(t.clone()).ok())
+            .unwrap_or_default();
+
+        let static_resource =
+            create_static_resource(resource_id.clone(), graph_id.clone(), tiles, &graph);
+        serde_json::to_value(&static_resource).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to serialize resource: {}",
+                e
+            ))
+        })?
+    };
+
+    let json_tree_array = cards_to_tree(&input_json, &graph)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+
+    let json_tree = json_tree_array
+        .as_array()
+        .and_then(|arr| arr.first().cloned())
+        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+
+    let mut result = json_tree.clone();
+    if let serde_json::Value::Object(ref mut map) = result {
+        map.insert(
+            "resourceinstanceid".to_string(),
+            serde_json::Value::String(resource_id),
+        );
+        map.insert("graph_id".to_string(), serde_json::Value::String(graph_id));
+    }
+
+    let py_str = serde_json::to_string(&result).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize result: {}",
+            e
+        ))
+    })?;
+
     let json_module = py.import_bound("json")?;
     let py_dict = json_module.call_method1("loads", (py_str,))?;
 
@@ -2644,6 +2732,7 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     // Batch conversion functions (parallel processing with Rayon)
     m.add_function(wrap_pyfunction!(batch_trees_to_tiles, m)?)?;
     m.add_function(wrap_pyfunction!(batch_tiles_to_trees, m)?)?;
+    m.add_function(wrap_pyfunction!(cards_to_json_tree, m)?)?;
 
     // Streaming iterator (low memory, processes one tree at a time)
     m.add_class::<TreeToTilesIterator>()?;
