@@ -57,18 +57,6 @@ declare module 'alizarin' {
     ResourceInstanceViewModel: any;
   };
 
-  // Extension registry functions
-  export function registerDisplaySerializer(
-    datatype: string,
-    callback: (tileData: any, language: string) => string | null
-  ): void;
-
-  export function hasDisplaySerializer(datatype: string): boolean;
-
-  export function unregisterDisplaySerializer(datatype: string): void;
-
-  export function getRegisteredDisplaySerializers(): string[];
-
   // Label resolution extension registration
   export function registerResolvableDatatype(datatype: string): void;
   export function unregisterResolvableDatatype(datatype: string): void;

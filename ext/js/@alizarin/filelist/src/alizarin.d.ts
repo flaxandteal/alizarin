@@ -43,18 +43,6 @@ declare module 'alizarin' {
     ResourceInstanceViewModel: unknown;
   };
 
-  // Extension registry functions
-  export function registerDisplaySerializer(
-    datatype: string,
-    callback: (tileData: unknown, language: string) => string | null
-  ): void;
-
-  export function hasDisplaySerializer(datatype: string): boolean;
-
-  export function unregisterDisplaySerializer(datatype: string): void;
-
-  export function getRegisteredDisplaySerializers(): string[];
-
   // WASM initialization
   export function initWasm(): Promise<void>;
   export const wasmReady: Promise<void>;
