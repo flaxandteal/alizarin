@@ -8,7 +8,7 @@ import * as utils from "./utils";
 import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
-import { initWasm, setWasmURL, ensureWasmRdmCache, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml } from "./_wasm";
+import { initWasm, setWasmURL, ensureWasmRdmCache, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerExtensionHandler } from "./_wasm";
 import { newWASMResourceInstanceWrapperForResource, WASMResourceModelWrapper } from "../pkg/alizarin";
 import { resetTimingStats, getTimingStats, logTimingStats } from "./semantic";
 import * as tracing from "./tracing";
@@ -81,6 +81,8 @@ export {
   collectionsToSkosXml,
   // Collection mutator
   CollectionMutator,
+  // Extension function
+  registerExtensionHandler,
   // Low-level WASM wrappers for direct resource access
   newWASMResourceInstanceWrapperForResource,
   WASMResourceModelWrapper,

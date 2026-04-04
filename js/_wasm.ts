@@ -1,4 +1,4 @@
-import init, { initSync, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString, WasmRdmCache, getRscvTimings, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml } from "../pkg/alizarin";
+import init, { initSync, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString, WasmRdmCache, getRscvTimings, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerExtensionHandler } from "../pkg/alizarin";
 import { registerRustTimingGetter } from "./tracing";
 let wasmURL: string = (() => {
   try {
@@ -213,3 +213,6 @@ export { WasmStaticNode, WasmStaticGraphMeta, WasmRdmCache };
 
 // Re-export SKOS parsing and serialization functions
 export { parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml };
+
+// Re-export extension registry function
+export { registerExtensionHandler };
