@@ -58,8 +58,8 @@ jobs:
       - name: Install root dependencies
         run: npm ci
 
-      - name: Build main package
-        run: npm run build
+      - name: Build JS package (WASM already built above)
+        run: npm run build:js
 
       # Build all JS extensions
       - name: Build and test JS extensions
