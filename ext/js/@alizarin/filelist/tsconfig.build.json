@@ -5,7 +5,8 @@
     "declaration": true,
     "declarationDir": "./dist",
     "emitDeclarationOnly": true,
-    "allowImportingTsExtensions": false
+    "allowImportingTsExtensions": false,
+    "noCheck": true
   },
-  "include": ["src/main.ts", "src/alizarin.d.ts"]
+  "include": ["src/main.ts"]
 }

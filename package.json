@@ -9,6 +9,7 @@
   ],
   "main": "./dist/alizarin.umd.cjs",
   "module": "./dist/alizarin.js",
+  "types": "./dist/main.d.ts",
   "browser": {
     "fs": false,
     "path": false,
@@ -22,6 +23,7 @@
   },
   "exports": {
     ".": {
+      "types": "./dist/main.d.ts",
       "import": "./dist/alizarin.js",
       "require": "./dist/alizarin.umd.cjs"
     },
@@ -36,7 +38,7 @@
   "scripts": {
     "build:wasm": "wasm-pack build crates/alizarin-wasm --target web --out-dir ../../pkg --out-name alizarin --release",
     "build:wasm:dev": "wasm-pack build crates/alizarin-wasm --target web --out-dir ../../pkg --out-name alizarin --dev",
-    "build:js": "NODE_OPTIONS='--experimental-wasm-modules' vite build && node scripts/create-inline.mjs",
+    "build:js": "NODE_OPTIONS='--experimental-wasm-modules' vite build && node scripts/create-inline.mjs && tsc -p tsconfig.build.json",
     "build": "npm run build:wasm && npm run build:js",
     "prebuild": "npm run build:wasm",
     "prepublishOnly": "npm run build",

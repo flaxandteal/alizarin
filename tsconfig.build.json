@@ -6,7 +6,8 @@
     "declarationDir": "./dist",
     "emitDeclarationOnly": true,
     "allowImportingTsExtensions": false,
+    "rootDir": "js",
     "noCheck": true
   },
-  "include": ["src/main.ts"]
+  "include": ["js"]
 }
