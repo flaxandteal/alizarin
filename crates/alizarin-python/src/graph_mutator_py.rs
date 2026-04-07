@@ -499,6 +499,153 @@ impl PyOntologyValidator {
     }
 }
 
+/// Build a graph and collections from the 3-CSV model format.
+///
+/// Parses graph.csv, nodes.csv, and collections.csv, validates them,
+/// and builds the graph via the standard mutation pipeline.
+///
+/// Args:
+///     graph_csv: Contents of graph.csv
+///     nodes_csv: Contents of nodes.csv
+///     rdm_namespace: RDM namespace string (UUID or URL) for deterministic ID generation
+///     collections_csv: Contents of collections.csv (optional)
+///     autocreate_card: Whether to auto-create cards for nodegroups (default True)
+///     autocreate_widget: Whether to auto-create widgets for nodes (default True)
+///
+/// Returns:
+///     JSON string containing { "graph": <graph>, "collections": [<collection>, ...] }
+#[pyfunction]
+#[pyo3(signature = (graph_csv, nodes_csv, rdm_namespace, collections_csv=None, autocreate_card=true, autocreate_widget=true))]
+fn build_graph_from_model_csvs(
+    graph_csv: &str,
+    nodes_csv: &str,
+    rdm_namespace: &str,
+    collections_csv: Option<&str>,
+    autocreate_card: bool,
+    autocreate_widget: bool,
+) -> PyResult<String> {
+    use alizarin_core::csv_model_loader;
+
+    let options = MutatorOptions {
+        autocreate_card,
+        autocreate_widget,
+        ontology_validator: None,
+    };
+
+    let (graph, collections) = csv_model_loader::build_graph_from_model_csvs(
+        graph_csv,
+        nodes_csv,
+        collections_csv,
+        rdm_namespace,
+        options,
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e)))?;
+
+    let result = serde_json::json!({
+        "graph": graph,
+        "collections": collections,
+    });
+
+    serde_json::to_string(&result).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize result: {}",
+            e
+        ))
+    })
+}
+
+/// Validate 3-CSV model files without building.
+///
+/// Args:
+///     graph_csv: Contents of graph.csv
+///     nodes_csv: Contents of nodes.csv
+///     collections_csv: Contents of collections.csv (optional)
+///
+/// Returns:
+///     JSON string containing array of { level, file, line, message } diagnostics
+#[pyfunction]
+#[pyo3(signature = (graph_csv, nodes_csv, collections_csv=None))]
+fn validate_model_csvs(
+    graph_csv: &str,
+    nodes_csv: &str,
+    collections_csv: Option<&str>,
+) -> PyResult<String> {
+    use alizarin_core::csv_model_loader;
+
+    let diagnostics =
+        csv_model_loader::validate_model_csvs_from_strings(graph_csv, nodes_csv, collections_csv);
+
+    serde_json::to_string(&diagnostics).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize diagnostics: {}",
+            e
+        ))
+    })
+}
+
+/// Build resource instances from a business data CSV.
+///
+/// Resolves node aliases to UUIDs from the graph, concept labels to UUIDs
+/// from the collections. Generates deterministic UUIDs for resources and tiles.
+///
+/// Args:
+///     csv_data: The CSV string with ResourceID as first column, node aliases as remaining columns
+///     graph_json: JSON string of the built StaticGraph
+///     collections_json: JSON string of the built collections array
+///     default_language: Default language code (default "en")
+///     strict_concepts: Whether to error on unresolved concept labels (default true)
+///
+/// Returns:
+///     JSON string: { "business_data": { "resources": [...] } }
+#[pyfunction]
+#[pyo3(signature = (csv_data, graph_json, collections_json, default_language="en", strict_concepts=true))]
+fn build_resources_from_business_csv(
+    csv_data: &str,
+    graph_json: &str,
+    collections_json: &str,
+    default_language: &str,
+    strict_concepts: bool,
+) -> PyResult<String> {
+    use alizarin_core::csv_business_data_loader;
+
+    let graph: alizarin_core::graph::StaticGraph =
+        serde_json::from_str(graph_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse graph JSON: {}",
+                e
+            ))
+        })?;
+
+    let collections: Vec<alizarin_core::skos::SkosCollection> =
+        serde_json::from_str(collections_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse collections JSON: {}",
+                e
+            ))
+        })?;
+
+    let options = csv_business_data_loader::BusinessDataCsvOptions {
+        default_language: default_language.to_string(),
+        strict_concepts,
+    };
+
+    let resources = csv_business_data_loader::build_resources_from_business_csv(
+        csv_data,
+        &graph,
+        &collections,
+        options,
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{}", e)))?;
+
+    let wrapped = csv_business_data_loader::wrap_business_data(&resources);
+    serde_json::to_string(&wrapped).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize result: {}",
+            e
+        ))
+    })
+}
+
 /// Register graph mutator functions with the Python module
 pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(apply_mutations_from_json, m)?)?;
@@ -511,6 +658,9 @@ pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_mutation_schema, m)?)?;
     m.add_function(wrap_pyfunction!(build_graph_from_instructions, m)?)?;
     m.add_function(wrap_pyfunction!(build_graph_from_csv, m)?)?;
+    m.add_function(wrap_pyfunction!(build_graph_from_model_csvs, m)?)?;
+    m.add_function(wrap_pyfunction!(validate_model_csvs, m)?)?;
+    m.add_function(wrap_pyfunction!(build_resources_from_business_csv, m)?)?;
     m.add_class::<PyOntologyValidator>()?;
     Ok(())
 }

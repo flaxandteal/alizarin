@@ -48,6 +48,7 @@
     "lint": "eslint js --ext .ts",
     "dev": "NODE_OPTIONS='--experimental-wasm-modules' vite serve .",
     "validate": "NODE_OPTIONS='--experimental-wasm-modules' node validate-graphs.mjs",
+    "validate:csvs": "NODE_OPTIONS='--experimental-wasm-modules' node scripts/validate-model-csvs.mjs",
     "version:sync": "./scripts/sync-version.sh",
     "version:set": "./scripts/sync-version.sh"
   },

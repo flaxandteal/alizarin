@@ -335,3 +335,125 @@ pub fn apply_mutations_create(
         .map(StaticGraph::from)
         .map_err(|e| JsValue::from_str(&e))
 }
+
+/// Build a graph and collections from the 3-CSV model format.
+///
+/// Parses graph.csv, nodes.csv, and collections.csv, validates them,
+/// and builds the graph via the standard mutation pipeline.
+///
+/// # Arguments
+/// * `graph_csv` - Contents of graph.csv
+/// * `nodes_csv` - Contents of nodes.csv
+/// * `collections_csv` - Contents of collections.csv (optional, pass null/undefined if none)
+/// * `rdm_namespace` - RDM namespace string (UUID or URL) for deterministic ID generation
+///
+/// # Returns
+/// JSON string containing `{ "graph": <graph>, "collections": [<collection>, ...], "diagnostics": [...] }`
+#[wasm_bindgen(js_name = buildGraphFromModelCsvs)]
+pub fn build_graph_from_model_csvs(
+    graph_csv: &str,
+    nodes_csv: &str,
+    collections_csv: Option<String>,
+    rdm_namespace: &str,
+) -> Result<JsValue, JsValue> {
+    use alizarin_core::csv_model_loader;
+
+    let result = csv_model_loader::build_graph_from_model_csvs(
+        graph_csv,
+        nodes_csv,
+        collections_csv.as_deref(),
+        rdm_namespace,
+        MutatorOptions::default(),
+    );
+
+    match result {
+        Ok((graph, collections)) => {
+            let json = serde_json::json!({
+                "graph": graph,
+                "collections": collections,
+            });
+            // Use JSON.parse rather than serde_wasm_bindgen::to_value to ensure
+            // plain JS objects (serde_wasm_bindgen produces Map objects for
+            // serde_json::Value).
+            let json_str = serde_json::to_string(&json)
+                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))?;
+            js_sys::JSON::parse(&json_str)
+                .map_err(|_| JsValue::from_str("Failed to parse serialized JSON"))
+        }
+        Err(e) => Err(JsValue::from_str(&format!("{}", e))),
+    }
+}
+
+/// Validate 3-CSV model files without building.
+///
+/// Returns diagnostics as a JSON array of `{ level, file, line, message }`.
+#[wasm_bindgen(js_name = validateModelCsvs)]
+pub fn validate_model_csvs(
+    graph_csv: &str,
+    nodes_csv: &str,
+    collections_csv: Option<String>,
+) -> Result<JsValue, JsValue> {
+    use alizarin_core::csv_model_loader;
+
+    let diagnostics = csv_model_loader::validate_model_csvs_from_strings(
+        graph_csv,
+        nodes_csv,
+        collections_csv.as_deref(),
+    );
+
+    serde_wasm_bindgen::to_value(&diagnostics)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+/// Build resource instances from a business data CSV.
+///
+/// Resolves node aliases to UUIDs from the graph, concept labels to UUIDs
+/// from the collections. Generates deterministic UUIDs for resources and tiles.
+///
+/// # Arguments
+/// * `csv_data` - The CSV string with ResourceID as first column, node aliases as remaining columns
+/// * `graph_json` - JSON string of the built StaticGraph (from buildGraphFromModelCsvs)
+/// * `collections_json` - JSON string of the built collections array (from buildGraphFromModelCsvs)
+/// * `default_language` - Default language code (optional, defaults to "en")
+/// * `strict_concepts` - Whether to error on unresolved concept labels (optional, defaults to true)
+///
+/// # Returns
+/// JSON object: `{ "business_data": { "resources": [...] } }`
+#[wasm_bindgen(js_name = buildResourcesFromBusinessCsv)]
+pub fn build_resources_from_business_csv(
+    csv_data: &str,
+    graph_json: &str,
+    collections_json: &str,
+    default_language: Option<String>,
+    strict_concepts: Option<bool>,
+) -> Result<JsValue, JsValue> {
+    use alizarin_core::csv_business_data_loader;
+
+    let graph: alizarin_core::graph::StaticGraph = serde_json::from_str(graph_json)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse graph JSON: {}", e)))?;
+
+    let collections: Vec<alizarin_core::skos::SkosCollection> =
+        serde_json::from_str(collections_json)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse collections JSON: {}", e)))?;
+
+    let options = csv_business_data_loader::BusinessDataCsvOptions {
+        default_language: default_language.unwrap_or_else(|| "en".to_string()),
+        strict_concepts: strict_concepts.unwrap_or(true),
+    };
+
+    match csv_business_data_loader::build_resources_from_business_csv(
+        csv_data,
+        &graph,
+        &collections,
+        options,
+    ) {
+        Ok(resources) => {
+            let wrapped = csv_business_data_loader::wrap_business_data(&resources);
+            let json_str = serde_json::to_string(&wrapped)
+                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))?;
+            js_sys::JSON::parse(&json_str)
+                .map_err(|_| JsValue::from_str("Failed to parse serialized JSON"))
+        }
+        Err(e) => Err(JsValue::from_str(&format!("{}", e))),
+    }
+}

@@ -4,6 +4,8 @@ import { RDM, ResolveLabelsOptions, registerResolvableDatatype, unregisterResolv
 import { ResourceModelWrapper, WKRM, graphManager, staticStore, GraphManager, GraphMutator, getWasmTimings } from "./graphManager";
 import * as staticTypes from "./static-types";
 import { CollectionMutator } from "./collectionMutator";
+import { buildGraphFromModelCsvs, validateModelCsvs, buildResourcesFromBusinessCsv } from "./csvModelLoader";
+import type { CsvModelDiagnostic, CsvModelBuildResult, BusinessDataResult } from "./csvModelLoader";
 import * as utils from "./utils";
 import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
@@ -28,8 +30,22 @@ tracing.registerWasmTimingGetter(getWasmTimings);
 let _wasmReadyResolve: () => void;
 const wasmReady = new Promise<void>(resolve => { _wasmReadyResolve = resolve; });
 
-// Auto-init after a microtask, giving consumers a chance to call setWasmURL() synchronously
-Promise.resolve().then(() => initWasm().then(_wasmReadyResolve));
+// Hook into initWasm so that wasmReady resolves on ANY successful call —
+// not just the auto-init. This is critical for consumers like alizarin-loader
+// that poison the auto-init URL and retry with a valid one: extensions
+// (@alizarin/clm, @alizarin/filelist) do wasmReady.then(...) to register
+// handlers, so wasmReady must resolve once WASM is actually available.
+const _origInitWasm = initWasm;
+const _wrappedInitWasm = async function() {
+  await _origInitWasm();
+  _wasmReadyResolve();
+};
+// Replace the export binding
+Object.defineProperty(_wrappedInitWasm, 'name', { value: 'initWasm' });
+
+// Auto-init after a microtask, giving consumers a chance to call setWasmURL() synchronously.
+// Failure is silently swallowed — consumers that poison the URL will call initWasm() again.
+Promise.resolve().then(() => _wrappedInitWasm().catch(() => {}));
 
 const AlizarinModel = viewModels.ResourceInstanceViewModel;
 const setCurrentLanguage = utils.setCurrentLanguage;
@@ -40,6 +56,9 @@ const getValueFromPathSync = utils.getValueFromPathSync;
 export type {
   IStringKeyedObject,
   ResolveLabelsOptions,
+  CsvModelDiagnostic,
+  CsvModelBuildResult,
+  BusinessDataResult,
 };
 export {
   AlizarinModel,
@@ -64,7 +83,7 @@ export {
   GraphMutator,
   setCurrentLanguage,
   getCurrentLanguage,
-  initWasm,
+  _wrappedInitWasm as initWasm,
   setWasmURL,
   wasmReady,
   ensureWasmRdmCache,
@@ -81,6 +100,10 @@ export {
   collectionsToSkosXml,
   // Collection mutator
   CollectionMutator,
+  // CSV model loader
+  buildGraphFromModelCsvs,
+  validateModelCsvs,
+  buildResourcesFromBusinessCsv,
   // Extension function
   registerExtensionHandler,
   // Low-level WASM wrappers for direct resource access

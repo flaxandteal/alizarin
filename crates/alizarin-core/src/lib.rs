@@ -1,4 +1,6 @@
 pub mod card_traversal;
+pub mod csv_business_data_loader;
+pub mod csv_model_loader;
 /// Alizarin Core Library
 ///
 /// Platform-agnostic core functionality that can be used from:
@@ -282,4 +284,16 @@ pub use extension_type_registry::{
 pub use registry::{
     has_extension_type_handler, list_extension_type_handlers, register_extension_type_handler,
     render_extension_display, unregister_extension_type_handler,
+};
+
+// CSV model loader (3-CSV format: graph.csv, nodes.csv, collections.csv)
+pub use csv_model_loader::{
+    build_graph_from_model_csvs, model_csvs_to_collections, model_csvs_to_instructions,
+    parse_model_csvs, validate_model_csvs, validate_model_csvs_from_strings, CollectionRow,
+    CsvModelDiagnostic, CsvModelError, DiagnosticLevel, GraphRow, ModelCsvBundle, NodeRow,
+};
+
+// CSV business data loader
+pub use csv_business_data_loader::{
+    build_resources_from_business_csv, wrap_business_data, BusinessDataCsvOptions,
 };

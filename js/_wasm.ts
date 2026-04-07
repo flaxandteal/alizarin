@@ -188,12 +188,17 @@ export async function initWasm() {
       }
     } else {
       // In browser environment, use async init with fetch
-      console.log('[alizarin] Initializing WASM in browser environment', { init, wasmURL });
+      // Short-circuit if the URL is clearly not a real WASM source (e.g. the
+      // 'data:,' poison used by consumers to suppress auto-init).
+      if (wasmURL === 'data:,' || wasmURL === '') {
+        throw new Error('[alizarin] WASM URL not configured');
+      }
+      console.debug('[alizarin] Initializing WASM in browser environment', { wasmURL });
       try {
-        await init(wasmURL);
+        await init({ module_or_path: wasmURL });
         console.log('[alizarin] WASM initialized successfully in browser');
       } catch (error) {
-        console.error('[alizarin] Failed to initialize WASM in browser:', error);
+        console.debug('[alizarin] Failed to initialize WASM in browser:', error);
         throw error;
       }
     }
