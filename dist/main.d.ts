@@ -4,8 +4,8 @@ import { RDM, ResolveLabelsOptions, registerResolvableDatatype, unregisterResolv
 import { ResourceModelWrapper, WKRM, graphManager, staticStore, GraphManager, GraphMutator } from "./graphManager";
 import * as staticTypes from "./static-types";
 import { CollectionMutator } from "./collectionMutator";
-import { buildGraphFromModelCsvs, validateModelCsvs } from "./csvModelLoader";
-import type { CsvModelDiagnostic, CsvModelBuildResult } from "./csvModelLoader";
+import { buildGraphFromModelCsvs, validateModelCsvs, buildResourcesFromBusinessCsv } from "./csvModelLoader";
+import type { CsvModelDiagnostic, CsvModelBuildResult, BusinessDataResult } from "./csvModelLoader";
 import * as utils from "./utils";
 import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
@@ -24,5 +24,5 @@ declare const getCurrentLanguage: typeof utils.getCurrentLanguage;
 declare const slugify: typeof utils.slugify;
 declare const getValueFromPath: typeof utils.getValueFromPath;
 declare const getValueFromPathSync: typeof utils.getValueFromPathSync;
-export type { IStringKeyedObject, ResolveLabelsOptions, CsvModelDiagnostic, CsvModelBuildResult, };
-export { AlizarinModel, client, graphManager, GraphManager, staticTypes, utils, slugify, getValueFromPath, getValueFromPathSync, viewModels, staticStore, RDM, registerResolvableDatatype, unregisterResolvableDatatype, renderers, interfaces, WKRM, nodeConfig, ResourceModelWrapper, GraphMutator, setCurrentLanguage, getCurrentLanguage, _wrappedInitWasm as initWasm, setWasmURL, wasmReady, ensureWasmRdmCache, resetTimingStats, getTimingStats, logTimingStats, tracing, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, CollectionMutator, buildGraphFromModelCsvs, validateModelCsvs, registerExtensionHandler, newWASMResourceInstanceWrapperForResource, WASMResourceModelWrapper, };
+export type { IStringKeyedObject, ResolveLabelsOptions, CsvModelDiagnostic, CsvModelBuildResult, BusinessDataResult, };
+export { AlizarinModel, client, graphManager, GraphManager, staticTypes, utils, slugify, getValueFromPath, getValueFromPathSync, viewModels, staticStore, RDM, registerResolvableDatatype, unregisterResolvableDatatype, renderers, interfaces, WKRM, nodeConfig, ResourceModelWrapper, GraphMutator, setCurrentLanguage, getCurrentLanguage, _wrappedInitWasm as initWasm, setWasmURL, wasmReady, ensureWasmRdmCache, resetTimingStats, getTimingStats, logTimingStats, tracing, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, CollectionMutator, buildGraphFromModelCsvs, validateModelCsvs, buildResourcesFromBusinessCsv, registerExtensionHandler, newWASMResourceInstanceWrapperForResource, WASMResourceModelWrapper, };

@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use crate::node_config::NodeConfigManager;
 use crate::type_serialization::{
-    serialize_value, ExternalResolver, SerializationContext, SerializationMode,
-    SerializationOptions,
+    serialize_value, ExternalResolver, ResourceDisplayResolver, SerializationContext,
+    SerializationMode, SerializationOptions,
 };
 use crate::{StaticNode, StaticTile};
 
@@ -326,12 +326,14 @@ impl PseudoValueCore {
         language: &str,
         node_config_manager: Option<&NodeConfigManager>,
         external_resolver: Option<&dyn ExternalResolver>,
+        resource_resolver: Option<&dyn ResourceDisplayResolver>,
     ) -> Value {
         let opts = SerializationOptions::display(language);
         let node_config = node_config_manager.and_then(|ncm| ncm.get(&self.node.nodeid));
         let ser_ctx = SerializationContext {
             node_config,
             external_resolver,
+            resource_resolver,
             extension_registry: None,
         };
         self.serialize_own_value(&opts, Some(&ser_ctx))

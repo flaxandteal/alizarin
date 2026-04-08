@@ -1412,6 +1412,13 @@ pub struct ResourceRegistry {
     inner: CoreStaticResourceRegistry,
 }
 
+impl ResourceRegistry {
+    /// Get the inner core registry (for internal Rust use)
+    pub(crate) fn inner(&self) -> &CoreStaticResourceRegistry {
+        &self.inner
+    }
+}
+
 #[pymethods]
 impl ResourceRegistry {
     #[new]

@@ -1068,15 +1068,18 @@ impl PseudoValue {
         rdm_cache: &crate::rdm_cache_wasm::WasmRdmCache,
         node_config_manager: &crate::node_config_wasm::WasmNodeConfigManager,
         language: Option<String>,
+        resource_registry: &crate::graph::StaticResourceRegistry,
     ) -> JsValue {
         let inner = self.inner.borrow();
         let lang = language.unwrap_or_else(|| "en".to_string());
         let rcache = rdm_cache.inner();
         let ncm = node_config_manager.inner();
+        let core_registry = resource_registry.inner();
         let result = inner.core.serialize_display(
             &lang,
             Some(ncm),
             Some(rcache as &dyn alizarin_core::type_serialization::ExternalResolver),
+            Some(core_registry as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
         );
         serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
     }

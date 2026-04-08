@@ -501,7 +501,7 @@ impl PyResourceInstanceWrapperCore {
     ///     max_depth: Max recursion depth (None = unlimited, 0 = this card only)
     ///     language: Language code for display labels (defaults to "en")
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (card_id, node_config_manager=None, parent_tile_id=None, parent_nodegroup_id=None, max_depth=None, language=None))]
+    #[pyo3(signature = (card_id, node_config_manager=None, parent_tile_id=None, parent_nodegroup_id=None, max_depth=None, language=None, resource_registry=None))]
     fn serialize_card_display(
         &self,
         py: Python,
@@ -511,6 +511,7 @@ impl PyResourceInstanceWrapperCore {
         parent_nodegroup_id: Option<String>,
         max_depth: Option<usize>,
         language: Option<String>,
+        resource_registry: Option<&crate::ResourceRegistry>,
     ) -> PyResult<PyObject> {
         let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
@@ -534,10 +535,13 @@ impl PyResourceInstanceWrapperCore {
 
         let global_rdm = rdm_cache_py::get_global_rdm_cache();
         let rdm_inner = global_rdm.as_ref().map(|c| c.inner());
+        let core_registry = resource_registry.map(|r| r.inner());
         let ser_ctx = alizarin_core::type_serialization::SerializationContext {
             node_config: None,
             external_resolver: rdm_inner
                 .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+            resource_resolver: core_registry
+                .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
             extension_registry: None,
         };
 
@@ -573,13 +577,14 @@ impl PyResourceInstanceWrapperCore {
     ///     node_config_manager: PyNodeConfigManager for domain value / boolean label lookups
     ///     max_depth: Max recursion depth (None = unlimited, 0 = root cards only)
     ///     language: Language code for display labels (defaults to "en")
-    #[pyo3(signature = (node_config_manager=None, max_depth=None, language=None))]
+    #[pyo3(signature = (node_config_manager=None, max_depth=None, language=None, resource_registry=None))]
     fn serialize_root_cards_display(
         &self,
         py: Python,
         node_config_manager: Option<&PyNodeConfigManager>,
         max_depth: Option<usize>,
         language: Option<String>,
+        resource_registry: Option<&crate::ResourceRegistry>,
     ) -> PyResult<PyObject> {
         let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
@@ -603,10 +608,13 @@ impl PyResourceInstanceWrapperCore {
 
         let global_rdm = rdm_cache_py::get_global_rdm_cache();
         let rdm_inner = global_rdm.as_ref().map(|c| c.inner());
+        let core_registry = resource_registry.map(|r| r.inner());
         let ser_ctx = alizarin_core::type_serialization::SerializationContext {
             node_config: None,
             external_resolver: rdm_inner
                 .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+            resource_resolver: core_registry
+                .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
             extension_registry: None,
         };
 
@@ -644,12 +652,13 @@ impl PyResourceInstanceWrapperCore {
     /// Args:
     ///     node_config_manager: Optional PyNodeConfigManager for domain/boolean lookups
     ///     language: Language code for display labels (defaults to "en")
-    #[pyo3(signature = (node_config_manager=None, language=None))]
+    #[pyo3(signature = (node_config_manager=None, language=None, resource_registry=None))]
     fn to_display_json(
         &self,
         py: Python,
         node_config_manager: Option<&crate::node_config_py::PyNodeConfigManager>,
         language: Option<String>,
+        resource_registry: Option<&crate::ResourceRegistry>,
     ) -> PyResult<PyObject> {
         let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
@@ -684,11 +693,14 @@ impl PyResourceInstanceWrapperCore {
         let global_rdm = rdm_cache_py::get_global_rdm_cache();
         let rdm_inner = global_rdm.as_ref().map(|c| c.inner());
         let ncm = node_config_manager.map(|m| m.inner());
+        let core_registry = resource_registry.map(|r| r.inner());
 
         let ser_ctx = alizarin_core::type_serialization::SerializationContext {
             node_config: None,
             external_resolver: rdm_inner
                 .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+            resource_resolver: core_registry
+                .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
             extension_registry: None,
         };
 

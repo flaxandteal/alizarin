@@ -3075,6 +3075,13 @@ impl StaticResource {
 #[wasm_bindgen]
 pub struct StaticResourceRegistry(CoreStaticResourceRegistry);
 
+impl StaticResourceRegistry {
+    /// Get the inner core registry (for internal Rust use)
+    pub(crate) fn inner(&self) -> &CoreStaticResourceRegistry {
+        &self.0
+    }
+}
+
 #[wasm_bindgen]
 impl StaticResourceRegistry {
     #[wasm_bindgen(constructor)]

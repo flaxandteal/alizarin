@@ -6,7 +6,7 @@
  */
 import { INodeConfig } from './interfaces';
 import { StaticNode, StaticDomainValue, StaticGraph } from './static-types';
-import { WasmNodeConfigBoolean, WasmNodeConfigConcept, WasmNodeConfigDomain, WasmNodeConfigReference } from '../pkg/alizarin';
+import { WasmNodeConfigManager, WasmNodeConfigBoolean, WasmNodeConfigConcept, WasmNodeConfigDomain, WasmNodeConfigReference } from '../pkg/alizarin';
 declare class StaticNodeConfigBoolean implements INodeConfig {
     private _wasm;
     constructor(wasmConfig: WasmNodeConfigBoolean);
@@ -49,6 +49,7 @@ declare class NodeConfigManager {
     private _cache;
     private _graphsLoaded;
     private getWasmManager;
+    get wasmManager(): WasmNodeConfigManager;
     loadFromGraph(graph: StaticGraph): void;
     retrieve(node: StaticNode): NodeConfigType | null;
     private getConfigFromWasm;

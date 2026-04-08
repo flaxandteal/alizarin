@@ -10,6 +10,9 @@ import {
 import { StaticTile, StaticNode, StaticResource, StaticResourceReference } from "../static-types";
 import { AttrPromise } from "../utils";
 import { recordWasmTiming } from '../wasmTiming';
+import { getGlobalWasmRdmCache } from '../_wasm';
+import { nodeConfigManager } from '../nodeConfig';
+import { staticStore } from '../staticStore';
 import { viewContext, DEFAULT_LANGUAGE } from "./types";
 import { ResourceInstanceCacheEntry, ResourceDescriptors } from "./cacheEntries";
 
@@ -186,8 +189,10 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
 
       t0 = performance.now();
       const lang = language || DEFAULT_LANGUAGE;
-      rootJson = this.$.wasmWrapper.toDisplayJsonSimple(lang);
-      recordWasmTiming("forDisplayJson: toDisplayJsonSimple", performance.now() - t0);
+      const rdmCache = getGlobalWasmRdmCache();
+      const ncm = nodeConfigManager.wasmManager;
+      rootJson = this.$.wasmWrapper.toDisplayJson(rdmCache, ncm, lang, staticStore.registry);
+      recordWasmTiming("forDisplayJson: toDisplayJson", performance.now() - t0);
     }
     recordWasmTiming("forDisplayJson total (viewModels)", performance.now() - forJsonStart);
 

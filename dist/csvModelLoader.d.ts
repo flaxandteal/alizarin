@@ -38,3 +38,22 @@ export declare function buildGraphFromModelCsvs(graphCsv: string, nodesCsv: stri
  * @returns Array of diagnostics (errors and warnings)
  */
 export declare function validateModelCsvs(graphCsv: string, nodesCsv: string, collectionsCsv?: string): CsvModelDiagnostic[];
+export interface BusinessDataResult {
+    business_data: {
+        resources: any[];
+    };
+}
+/**
+ * Build resource instances from a business data CSV.
+ *
+ * Columns are node aliases (not UUIDs). Concept values are labels
+ * resolved against the collections. ResourceIDs generate deterministic UUIDs.
+ *
+ * @param csvData - Business data CSV with ResourceID as first column
+ * @param graph - Built graph JSON (from buildGraphFromModelCsvs)
+ * @param collections - Built collections array (from buildGraphFromModelCsvs)
+ * @param defaultLanguage - Default language code (default "en")
+ * @param strictConcepts - Error on unresolved concept labels (default true)
+ * @returns Business data wrapper with resources array
+ */
+export declare function buildResourcesFromBusinessCsv(csvData: string, graph: any, collections: any[], defaultLanguage?: string, strictConcepts?: boolean): BusinessDataResult;

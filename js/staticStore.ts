@@ -113,7 +113,7 @@ class StaticStore {
         const resourceId = resource.resourceinstance.resourceinstanceid;
 
         // Add to registry first (this consumes the resource)
-        this.registry.mergeFromResources([resource], true, false);
+        this.registry.mergeFromResources([resource], true, true);
 
         // Get fresh copy from registry to yield (the original is now consumed)
         const fresh = this.registry.getFull(resourceId);
@@ -143,7 +143,7 @@ class StaticStore {
       const resourceId = resource.resourceinstance.resourceinstanceid;
       // mergeFromResources CONSUMES the resource (transfers ownership to Rust),
       // so we must get a fresh copy from the registry after merging
-      this.registry.mergeFromResources([resource], true, false);
+      this.registry.mergeFromResources([resource], true, true);
       // Get fresh copy from registry using the actual resourceinstanceid
       const fresh = this.registry.getFull(resourceId);
       if (!fresh) {
@@ -235,7 +235,7 @@ class StaticStore {
       const resourceId = resource.resourceinstance.resourceinstanceid;
       // mergeFromResources CONSUMES the resource (transfers ownership to Rust),
       // so we must get a fresh copy from the registry after merging
-      this.registry.mergeFromResources([resource], true, false);
+      this.registry.mergeFromResources([resource], true, true);
       // Get fresh copy from registry using the actual resourceinstanceid
       const fresh = this.registry.getFull(resourceId);
       if (!fresh) {

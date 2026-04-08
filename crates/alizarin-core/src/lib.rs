@@ -137,8 +137,9 @@ pub use type_serialization::{
     serialize_url,
     // Dispatcher functions
     serialize_value,
-    // Context and resolver
+    // Context and resolvers
     ExternalResolver,
+    ResourceDisplayResolver,
     SerializationContext,
     // Options and result
     SerializationMode,

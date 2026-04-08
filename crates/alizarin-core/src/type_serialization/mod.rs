@@ -49,7 +49,7 @@ pub use strings::{
 };
 
 // =============================================================================
-// External Resolver Trait
+// External Resolver Traits
 // =============================================================================
 
 /// Trait for resolving external data during serialization.
@@ -71,6 +71,20 @@ pub trait ExternalResolver: Send + Sync {
     ) -> Option<String>;
 }
 
+/// Trait for resolving resource-instance UUIDs to display names.
+///
+/// Implemented by `StaticResourceRegistry` in `graph::resources`.
+/// Used during display/search serialization of resource-instance and
+/// resource-instance-list nodes.
+pub trait ResourceDisplayResolver: Send + Sync {
+    /// Resolve a resource instance UUID to its display name.
+    ///
+    /// # Arguments
+    /// * `resource_id` - The resource instance UUID
+    /// * `language` - Language code for the display name
+    fn resolve_resource_display(&self, resource_id: &str, language: &str) -> Option<String>;
+}
+
 // =============================================================================
 // Serialization Context
 // =============================================================================
@@ -86,6 +100,8 @@ pub struct SerializationContext<'a> {
     pub node_config: Option<&'a NodeConfig>,
     /// External data lookup (e.g., RDM cache for concept labels).
     pub external_resolver: Option<&'a dyn ExternalResolver>,
+    /// Resource display resolver (e.g., StaticResourceRegistry for resource-instance names).
+    pub resource_resolver: Option<&'a dyn ResourceDisplayResolver>,
     /// Unified extension registry for custom datatypes.
     pub extension_registry: Option<&'a ExtensionTypeRegistry>,
 }
@@ -96,6 +112,7 @@ impl<'a> SerializationContext<'a> {
         SerializationContext {
             node_config: None,
             external_resolver: None,
+            resource_resolver: None,
             extension_registry: None,
         }
     }
@@ -106,6 +123,7 @@ impl<'a> SerializationContext<'a> {
         SerializationContext {
             node_config,
             external_resolver: self.external_resolver,
+            resource_resolver: self.resource_resolver,
             extension_registry: self.extension_registry,
         }
     }
@@ -205,9 +223,9 @@ pub fn serialize_value(
         "concept" | "concept-value" => serialize_concept(tile_data, options, ctx),
         "concept-list" => serialize_concept_list(tile_data, options, ctx),
 
-        // Resource types
-        "resource-instance" => serialize_resource_instance(tile_data, options),
-        "resource-instance-list" => serialize_resource_instance_list(tile_data, options),
+        // Resource types (need resource_resolver for display/search)
+        "resource-instance" => serialize_resource_instance(tile_data, options, ctx),
+        "resource-instance-list" => serialize_resource_instance_list(tile_data, options, ctx),
 
         // Semantic nodes don't have leaf values
         "semantic" => SerializationResult::success(Value::Null),
@@ -384,6 +402,7 @@ mod tests {
         let ctx = SerializationContext {
             node_config: None,
             external_resolver: None,
+            resource_resolver: None,
             extension_registry: Some(&registry),
         };
 
@@ -438,6 +457,7 @@ mod tests {
         let ctx = SerializationContext {
             node_config: None,
             external_resolver: None,
+            resource_resolver: None,
             extension_registry: Some(&registry),
         };
 
@@ -493,6 +513,7 @@ mod tests {
         let ctx = SerializationContext {
             node_config: None,
             external_resolver: None,
+            resource_resolver: None,
             extension_registry: Some(&registry),
         };
 
@@ -548,6 +569,7 @@ mod tests {
         let ctx = SerializationContext {
             node_config: None,
             external_resolver: None,
+            resource_resolver: None,
             extension_registry: Some(&registry),
         };
 

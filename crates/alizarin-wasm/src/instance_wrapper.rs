@@ -1,4 +1,4 @@
-use crate::graph::{StaticResource, StaticResourceDescriptors};
+use crate::graph::{StaticResource, StaticResourceDescriptors, StaticResourceRegistry};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -1321,6 +1321,7 @@ impl WASMResourceInstanceWrapper {
         parent_nodegroup_id: Option<String>,
         max_depth: Option<usize>,
         language: Option<String>,
+        resource_registry: &StaticResourceRegistry,
     ) -> Result<JsValue, JsValue> {
         let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
 
@@ -1341,10 +1342,14 @@ impl WASMResourceInstanceWrapper {
         let opts = alizarin_core::SerializationOptions::display(&lang);
         let rcache = rdm_cache.inner();
         let ncm = node_config_manager.inner();
+        let core_registry = resource_registry.inner();
         let ser_ctx = alizarin_core::type_serialization::SerializationContext {
             node_config: None,
             external_resolver: Some(
                 rcache as &dyn alizarin_core::type_serialization::ExternalResolver,
+            ),
+            resource_resolver: Some(
+                core_registry as &dyn alizarin_core::type_serialization::ResourceDisplayResolver,
             ),
             extension_registry: None,
         };
@@ -1382,6 +1387,7 @@ impl WASMResourceInstanceWrapper {
         node_config_manager: &WasmNodeConfigManager,
         max_depth: Option<usize>,
         language: Option<String>,
+        resource_registry: &StaticResourceRegistry,
     ) -> Result<JsValue, JsValue> {
         let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
 
@@ -1402,10 +1408,14 @@ impl WASMResourceInstanceWrapper {
         let opts = alizarin_core::SerializationOptions::display(&lang);
         let rcache = rdm_cache.inner();
         let ncm = node_config_manager.inner();
+        let core_registry = resource_registry.inner();
         let ser_ctx = alizarin_core::type_serialization::SerializationContext {
             node_config: None,
             external_resolver: Some(
                 rcache as &dyn alizarin_core::type_serialization::ExternalResolver,
+            ),
+            resource_resolver: Some(
+                core_registry as &dyn alizarin_core::type_serialization::ResourceDisplayResolver,
             ),
             extension_registry: None,
         };
@@ -1541,10 +1551,12 @@ impl WASMResourceInstanceWrapper {
         rdm_cache: &WasmRdmCache,
         node_config_manager: &WasmNodeConfigManager,
         language: Option<String>,
+        resource_registry: &StaticResourceRegistry,
     ) -> Result<JsValue, JsValue> {
         self.to_display_json_impl(
             Some(rdm_cache.inner()),
             Some(node_config_manager.inner()),
+            Some(resource_registry.inner()),
             language,
         )
     }
@@ -1556,7 +1568,7 @@ impl WASMResourceInstanceWrapper {
     /// the basic JSON output (UUIDs won't be resolved to labels).
     #[wasm_bindgen(js_name = toDisplayJsonSimple)]
     pub fn to_display_json_simple(&self, language: Option<String>) -> Result<JsValue, JsValue> {
-        self.to_display_json_impl(None, None, language)
+        self.to_display_json_impl(None, None, None, language)
     }
 
     /// Internal implementation for toDisplayJson variants.
@@ -1568,6 +1580,7 @@ impl WASMResourceInstanceWrapper {
         &self,
         rdm_cache: Option<&RdmCache>,
         node_config_manager: Option<&NodeConfigManager>,
+        resource_registry: Option<&alizarin_core::StaticResourceRegistry>,
         language: Option<String>,
     ) -> Result<JsValue, JsValue> {
         let start = now_ms();
@@ -1607,11 +1620,13 @@ impl WASMResourceInstanceWrapper {
 
         let lang = language.unwrap_or_else(|| "en".to_string());
 
-        // Build SerializationContext with external resolver for concept lookups
+        // Build SerializationContext with resolvers for concept and resource lookups
         let ser_ctx = alizarin_core::type_serialization::SerializationContext {
             node_config: None, // Set per-node at leaf serialization
             external_resolver: rdm_cache
                 .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+            resource_resolver: resource_registry
+                .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
             extension_registry: None, // Extensions dispatched via global registry in serialize_value
         };
 

@@ -1068,6 +1068,25 @@ impl StaticResourceRegistry {
     }
 }
 
+impl crate::type_serialization::ResourceDisplayResolver for StaticResourceRegistry {
+    fn resolve_resource_display(&self, resource_id: &str, _language: &str) -> Option<String> {
+        let summary = self.get_summary(resource_id)?;
+        // Try descriptors.name first, fall back to summary.name
+        if let Some(ref descriptors) = summary.descriptors {
+            if let Some(ref name) = descriptors.name {
+                if !name.is_empty() {
+                    return Some(name.clone());
+                }
+            }
+        }
+        if !summary.name.is_empty() {
+            Some(summary.name)
+        } else {
+            None
+        }
+    }
+}
+
 /// Result of merging multiple resources (single resourceinstanceid)
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct MergeResult {

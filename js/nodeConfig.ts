@@ -146,6 +146,10 @@ class NodeConfigManager {
     return this._wasmManager;
   }
 
+  get wasmManager(): WasmNodeConfigManager {
+    return this.getWasmManager();
+  }
+
   loadFromGraph(graph: StaticGraph): void {
     const graphId = graph.graphid;
     if (this._graphsLoaded.has(graphId)) return;

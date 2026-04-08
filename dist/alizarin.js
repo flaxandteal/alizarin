@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-let AlizarinModel, CollectionMutator, GraphManager, GraphMutator, RDM, ResourceModelWrapper, WASMResourceModelWrapper, WKRM, buildGraphFromModelCsvs, client, collectionToSkosXml, collectionsToSkosXml, ensureWasmRdmCache, getCurrentLanguage, getTimingStats, getValueFromPath, getValueFromPathSync, graphManager, _wrappedInitWasm, interfaces, logTimingStats, newWASMResourceInstanceWrapperForResource, nodeConfig, parseSkosXml, parseSkosXmlToCollection, registerExtensionHandler, registerResolvableDatatype, renderers, resetTimingStats, setCurrentLanguage, setWasmURL, slugify, staticStore, staticTypes, index, unregisterResolvableDatatype, utils, validateModelCsvs, version, viewModels, wasmReady;
+let AlizarinModel, CollectionMutator, GraphManager, GraphMutator, RDM, ResourceModelWrapper, WASMResourceModelWrapper, WKRM, buildGraphFromModelCsvs, buildResourcesFromBusinessCsv, client, collectionToSkosXml, collectionsToSkosXml, ensureWasmRdmCache, getCurrentLanguage, getTimingStats, getValueFromPath, getValueFromPathSync, graphManager, _wrappedInitWasm, interfaces, logTimingStats, newWASMResourceInstanceWrapperForResource, nodeConfig, parseSkosXml, parseSkosXmlToCollection, registerExtensionHandler, registerResolvableDatatype, renderers, resetTimingStats, setCurrentLanguage, setWasmURL, slugify, staticStore, staticTypes, index, unregisterResolvableDatatype, utils, validateModelCsvs, version, viewModels, wasmReady;
 let __tla = (async () => {
   var _a, _b, _c, _d, _e, _f;
   const REGEX = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/i;
@@ -677,6 +677,49 @@ ${val.stack}`;
     const ret = wasm.getRscvTimings();
     return ret;
   }
+  function buildResourcesFromBusinessCsv$1(csv_data, graph_json, collections_json, default_language, strict_concepts) {
+    const ptr0 = passStringToWasm0(csv_data, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(graph_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passStringToWasm0(collections_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len2 = WASM_VECTOR_LEN;
+    var ptr3 = isLikeNone(default_language) ? 0 : passStringToWasm0(default_language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len3 = WASM_VECTOR_LEN;
+    const ret = wasm.buildResourcesFromBusinessCsv(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, isLikeNone(strict_concepts) ? 16777215 : strict_concepts ? 1 : 0);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function validateModelCsvs$1(graph_csv, nodes_csv, collections_csv) {
+    const ptr0 = passStringToWasm0(graph_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(nodes_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    var ptr2 = isLikeNone(collections_csv) ? 0 : passStringToWasm0(collections_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len2 = WASM_VECTOR_LEN;
+    const ret = wasm.validateModelCsvs(ptr0, len0, ptr1, len1, ptr2, len2);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function buildGraphFromModelCsvs$1(graph_csv, nodes_csv, collections_csv, rdm_namespace) {
+    const ptr0 = passStringToWasm0(graph_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(nodes_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    var ptr2 = isLikeNone(collections_csv) ? 0 : passStringToWasm0(collections_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len2 = WASM_VECTOR_LEN;
+    const ptr3 = passStringToWasm0(rdm_namespace, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len3 = WASM_VECTOR_LEN;
+    const ret = wasm.buildGraphFromModelCsvs(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
   parseSkosXmlToCollection = function(xml_content, base_uri) {
     const ptr0 = passStringToWasm0(xml_content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
@@ -749,34 +792,6 @@ ${val.stack}`;
       throw takeFromExternrefTable0(ret[0]);
     }
   };
-  function validateModelCsvs$1(graph_csv, nodes_csv, collections_csv) {
-    const ptr0 = passStringToWasm0(graph_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(nodes_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    var ptr2 = isLikeNone(collections_csv) ? 0 : passStringToWasm0(collections_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len2 = WASM_VECTOR_LEN;
-    const ret = wasm.validateModelCsvs(ptr0, len0, ptr1, len1, ptr2, len2);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function buildGraphFromModelCsvs$1(graph_csv, nodes_csv, collections_csv, rdm_namespace) {
-    const ptr0 = passStringToWasm0(graph_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(nodes_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    var ptr2 = isLikeNone(collections_csv) ? 0 : passStringToWasm0(collections_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len2 = WASM_VECTOR_LEN;
-    const ptr3 = passStringToWasm0(rdm_namespace, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len3 = WASM_VECTOR_LEN;
-    const ret = wasm.buildGraphFromModelCsvs(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
   function buildAliasToCollectionMap(graph_json, resolvable_datatypes, config_keys) {
     const ptr0 = passStringToWasm0(graph_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
@@ -814,10 +829,10 @@ ${val.stack}`;
     return v1;
   }
   function __wbg_adapter_8(arg0, arg1, arg2) {
-    wasm.closure192_externref_shim(arg0, arg1, arg2);
+    wasm.closure190_externref_shim(arg0, arg1, arg2);
   }
-  function __wbg_adapter_775(arg0, arg1, arg2, arg3) {
-    wasm.closure561_externref_shim(arg0, arg1, arg2, arg3);
+  function __wbg_adapter_776(arg0, arg1, arg2, arg3) {
+    wasm.closure557_externref_shim(arg0, arg1, arg2, arg3);
   }
   typeof FinalizationRegistry === "undefined" ? {} : new FinalizationRegistry((ptr) => wasm.__wbg_exampleedgewrapper_free(ptr >>> 0, 1));
   const ExampleNodegroupWrapperFinalization = typeof FinalizationRegistry === "undefined" ? {
@@ -1250,12 +1265,13 @@ ${val.stack}`;
       const ret = wasm.pseudovalue_tileDataJson(this.__wbg_ptr);
       return ret;
     }
-    toDisplayValue(rdm_cache, node_config_manager, language) {
+    toDisplayValue(rdm_cache, node_config_manager, language, resource_registry) {
       _assertClass(rdm_cache, WasmRdmCache);
       _assertClass(node_config_manager, WasmNodeConfigManager);
       var ptr0 = isLikeNone(language) ? 0 : passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
-      const ret = wasm.pseudovalue_toDisplayValue(this.__wbg_ptr, rdm_cache.__wbg_ptr, node_config_manager.__wbg_ptr, ptr0, len0);
+      _assertClass(resource_registry, StaticResourceRegistry);
+      const ret = wasm.pseudovalue_toDisplayValue(this.__wbg_ptr, rdm_cache.__wbg_ptr, node_config_manager.__wbg_ptr, ptr0, len0, resource_registry.__wbg_ptr);
       return ret;
     }
     getChildNodeId(index2) {
@@ -3823,12 +3839,13 @@ ${val.stack}`;
     setTileLoader(loader) {
       wasm.wasmresourceinstancewrapper_setTileLoader(this.__wbg_ptr, loader);
     }
-    toDisplayJson(rdm_cache, node_config_manager, language) {
+    toDisplayJson(rdm_cache, node_config_manager, language, resource_registry) {
       _assertClass(rdm_cache, WasmRdmCache);
       _assertClass(node_config_manager, WasmNodeConfigManager);
       var ptr0 = isLikeNone(language) ? 0 : passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_toDisplayJson(this.__wbg_ptr, rdm_cache.__wbg_ptr, node_config_manager.__wbg_ptr, ptr0, len0);
+      _assertClass(resource_registry, StaticResourceRegistry);
+      const ret = wasm.wasmresourceinstancewrapper_toDisplayJson(this.__wbg_ptr, rdm_cache.__wbg_ptr, node_config_manager.__wbg_ptr, ptr0, len0, resource_registry.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
       }
@@ -3939,7 +3956,7 @@ ${val.stack}`;
       wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
       return v2;
     }
-    serializeCardDisplay(card_id, rdm_cache, node_config_manager, parent_tile_id, parent_nodegroup_id, max_depth, language) {
+    serializeCardDisplay(card_id, rdm_cache, node_config_manager, parent_tile_id, parent_nodegroup_id, max_depth, language, resource_registry) {
       const ptr0 = passStringToWasm0(card_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       _assertClass(rdm_cache, WasmRdmCache);
@@ -3950,7 +3967,8 @@ ${val.stack}`;
       var len2 = WASM_VECTOR_LEN;
       var ptr3 = isLikeNone(language) ? 0 : passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len3 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_serializeCardDisplay(this.__wbg_ptr, ptr0, len0, rdm_cache.__wbg_ptr, node_config_manager.__wbg_ptr, ptr1, len1, ptr2, len2, isLikeNone(max_depth) ? 4294967297 : max_depth >>> 0, ptr3, len3);
+      _assertClass(resource_registry, StaticResourceRegistry);
+      const ret = wasm.wasmresourceinstancewrapper_serializeCardDisplay(this.__wbg_ptr, ptr0, len0, rdm_cache.__wbg_ptr, node_config_manager.__wbg_ptr, ptr1, len1, ptr2, len2, isLikeNone(max_depth) ? 4294967297 : max_depth >>> 0, ptr3, len3, resource_registry.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
       }
@@ -4001,12 +4019,13 @@ ${val.stack}`;
       }
       return takeFromExternrefTable0(ret[0]);
     }
-    serializeRootCardsDisplay(rdm_cache, node_config_manager, max_depth, language) {
+    serializeRootCardsDisplay(rdm_cache, node_config_manager, max_depth, language, resource_registry) {
       _assertClass(rdm_cache, WasmRdmCache);
       _assertClass(node_config_manager, WasmNodeConfigManager);
       var ptr0 = isLikeNone(language) ? 0 : passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_serializeRootCardsDisplay(this.__wbg_ptr, rdm_cache.__wbg_ptr, node_config_manager.__wbg_ptr, isLikeNone(max_depth) ? 4294967297 : max_depth >>> 0, ptr0, len0);
+      _assertClass(resource_registry, StaticResourceRegistry);
+      const ret = wasm.wasmresourceinstancewrapper_serializeRootCardsDisplay(this.__wbg_ptr, rdm_cache.__wbg_ptr, node_config_manager.__wbg_ptr, isLikeNone(max_depth) ? 4294967297 : max_depth >>> 0, ptr0, len0, resource_registry.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
       }
@@ -5285,7 +5304,7 @@ ${val.stack}`;
           const a = state0.a;
           state0.a = 0;
           try {
-            return __wbg_adapter_775(a, state0.b, arg02, arg12);
+            return __wbg_adapter_776(a, state0.b, arg02, arg12);
           } finally {
             state0.a = a;
           }
@@ -5413,7 +5432,7 @@ ${val.stack}`;
           const a = state0.a;
           state0.a = 0;
           try {
-            return __wbg_adapter_775(a, state0.b, arg02, arg12);
+            return __wbg_adapter_776(a, state0.b, arg02, arg12);
           } finally {
             state0.a = a;
           }
@@ -5706,6 +5725,10 @@ ${val.stack}`;
       const ret = getStringFromWasm0(arg0, arg1);
       return ret;
     };
+    imports.wbg.__wbindgen_cast_3654745d9df73f51 = function(arg0, arg1) {
+      const ret = makeMutClosure(arg0, arg1, 179, __wbg_adapter_8);
+      return ret;
+    };
     imports.wbg.__wbindgen_cast_4625c577ab2ec9ee = function(arg0) {
       const ret = BigInt.asUintN(64, arg0);
       return ret;
@@ -5720,10 +5743,6 @@ ${val.stack}`;
     };
     imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function(arg0) {
       const ret = arg0;
-      return ret;
-    };
-    imports.wbg.__wbindgen_cast_ede756e72b60c866 = function(arg0, arg1) {
-      const ret = makeMutClosure(arg0, arg1, 181, __wbg_adapter_8);
       return ret;
     };
     imports.wbg.__wbindgen_init_externref_table = function() {
@@ -7303,7 +7322,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
           const resourceId = resource.resourceinstance.resourceinstanceid;
           this.registry.mergeFromResources([
             resource
-          ], true, false);
+          ], true, true);
           const fresh = this.registry.getFull(resourceId);
           if (fresh) {
             yield fresh;
@@ -7322,7 +7341,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         const resourceId = resource.resourceinstance.resourceinstanceid;
         this.registry.mergeFromResources([
           resource
-        ], true, false);
+        ], true, true);
         const fresh = this.registry.getFull(resourceId);
         if (!fresh) {
           throw new Error(`Resource ${id} (${resourceId}) was merged but not found in registry`);
@@ -7377,7 +7396,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         const resourceId = resource.resourceinstance.resourceinstanceid;
         this.registry.mergeFromResources([
           resource
-        ], true, false);
+        ], true, true);
         const fresh = this.registry.getFull(resourceId);
         if (!fresh) {
           throw new Error(`Resource ${id} (${resourceId}) was merged but not found in registry`);
@@ -7689,6 +7708,167 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
   function getWasmTimings() {
     return wasmTimings;
   }
+  class StaticNodeConfigBoolean {
+    constructor(wasmConfig) {
+      __publicField(this, "_wasm");
+      this._wasm = wasmConfig;
+    }
+    get i18n_properties() {
+      return [];
+    }
+    get falseLabel() {
+      return this._wasm.falseLabel;
+    }
+    get trueLabel() {
+      return this._wasm.trueLabel;
+    }
+    getLabel(value, language) {
+      return this._wasm.getLabel(value, language) ?? void 0;
+    }
+  }
+  class StaticNodeConfigConcept {
+    constructor(wasmConfig) {
+      __publicField(this, "_wasm");
+      this._wasm = wasmConfig;
+    }
+    get rdmCollection() {
+      return this._wasm.rdmCollection;
+    }
+  }
+  class StaticNodeConfigReference {
+    constructor(wasmConfig) {
+      __publicField(this, "_wasm");
+      this._wasm = wasmConfig;
+    }
+    get controlledList() {
+      return this._wasm.controlledList;
+    }
+    get rdmCollection() {
+      return this._wasm.rdmCollection;
+    }
+    get multiValue() {
+      return this._wasm.multiValue;
+    }
+    getCollectionId() {
+      return this._wasm.getCollectionId() ?? void 0;
+    }
+  }
+  class StaticNodeConfigDomain {
+    constructor(wasmConfig) {
+      __publicField(this, "_wasm");
+      __publicField(this, "_optionsCache", null);
+      this._wasm = wasmConfig;
+    }
+    get i18n_config() {
+      return {};
+    }
+    get options() {
+      if (!this._optionsCache) {
+        this._optionsCache = this._wasm.options.map((opt) => new StaticDomainValue({
+          id: opt.id,
+          selected: opt.selected,
+          text: opt.text
+        }));
+      }
+      return this._optionsCache;
+    }
+    getSelected() {
+      const wasmSelected = this._wasm.getSelected();
+      if (!wasmSelected) return void 0;
+      return new StaticDomainValue({
+        id: wasmSelected.id,
+        selected: wasmSelected.selected,
+        text: wasmSelected.text
+      });
+    }
+    valueFromId(id) {
+      const wasmValue = this._wasm.valueFromId(id);
+      if (!wasmValue) return void 0;
+      return new StaticDomainValue({
+        id: wasmValue.id,
+        selected: wasmValue.selected,
+        text: wasmValue.text
+      });
+    }
+  }
+  class NodeConfigManager {
+    constructor() {
+      __publicField(this, "_wasmManager", null);
+      __publicField(this, "_cache", /* @__PURE__ */ new Map());
+      __publicField(this, "_graphsLoaded", /* @__PURE__ */ new Set());
+    }
+    getWasmManager() {
+      if (!this._wasmManager) {
+        this._wasmManager = new WasmNodeConfigManager();
+      }
+      return this._wasmManager;
+    }
+    get wasmManager() {
+      return this.getWasmManager();
+    }
+    loadFromGraph(graph) {
+      const graphId = graph.graphid;
+      if (this._graphsLoaded.has(graphId)) return;
+      this.getWasmManager().fromGraph(graph);
+      this._graphsLoaded.add(graphId);
+    }
+    retrieve(node) {
+      const { nodeid, datatype } = node;
+      if (this._cache.has(nodeid)) {
+        return this._cache.get(nodeid) ?? null;
+      }
+      const config = this.getWasmManager().hasConfig(nodeid) ? this.getConfigFromWasm(nodeid, datatype) : null;
+      this._cache.set(nodeid, config);
+      return config;
+    }
+    getConfigFromWasm(nodeid, datatype) {
+      const wasmManager = this.getWasmManager();
+      switch (datatype) {
+        case "boolean": {
+          const wasm2 = wasmManager.getBoolean(nodeid);
+          return wasm2 ? new StaticNodeConfigBoolean(wasm2) : null;
+        }
+        case "domain-value":
+        case "domain-value-list": {
+          const wasm2 = wasmManager.getDomain(nodeid);
+          return wasm2 ? new StaticNodeConfigDomain(wasm2) : null;
+        }
+        case "concept":
+        case "concept-list": {
+          const wasm2 = wasmManager.getConcept(nodeid);
+          return wasm2 ? new StaticNodeConfigConcept(wasm2) : null;
+        }
+        case "reference": {
+          const wasm2 = wasmManager.getReference(nodeid);
+          return wasm2 ? new StaticNodeConfigReference(wasm2) : null;
+        }
+        default:
+          return null;
+      }
+    }
+    clear() {
+      this._cache.clear();
+      this._graphsLoaded.clear();
+      if (this._wasmManager) {
+        this._wasmManager.clear();
+      }
+    }
+    hasGraph(graphId) {
+      return this._graphsLoaded.has(graphId);
+    }
+  }
+  const nodeConfigManager = new NodeConfigManager();
+  nodeConfig = Object.freeze(Object.defineProperty({
+    __proto__: null,
+    NodeConfigManager,
+    StaticNodeConfigBoolean,
+    StaticNodeConfigConcept,
+    StaticNodeConfigDomain,
+    StaticNodeConfigReference,
+    nodeConfigManager
+  }, Symbol.toStringTag, {
+    value: "Module"
+  }));
   _c = Symbol.toPrimitive;
   const _ResourceInstanceViewModel = class _ResourceInstanceViewModel {
     constructor(id, modelWrapper, instanceWrapperFactory, cacheEntry) {
@@ -7885,8 +8065,10 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         recordWasmTiming("forDisplayJson: populate", performance.now() - t0);
         t0 = performance.now();
         const lang = language || DEFAULT_LANGUAGE;
-        rootJson = this.$.wasmWrapper.toDisplayJsonSimple(lang);
-        recordWasmTiming("forDisplayJson: toDisplayJsonSimple", performance.now() - t0);
+        const rdmCache = getGlobalWasmRdmCache();
+        const ncm = nodeConfigManager.wasmManager;
+        rootJson = this.$.wasmWrapper.toDisplayJson(rdmCache, ncm, lang, staticStore.registry);
+        recordWasmTiming("forDisplayJson: toDisplayJson", performance.now() - t0);
       }
       recordWasmTiming("forDisplayJson total (viewModels)", performance.now() - forJsonStart);
       if (!cascade && this.__cacheEntry) {
@@ -8366,164 +8548,6 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       return this.valueOf();
     }
   }
-  class StaticNodeConfigBoolean {
-    constructor(wasmConfig) {
-      __publicField(this, "_wasm");
-      this._wasm = wasmConfig;
-    }
-    get i18n_properties() {
-      return [];
-    }
-    get falseLabel() {
-      return this._wasm.falseLabel;
-    }
-    get trueLabel() {
-      return this._wasm.trueLabel;
-    }
-    getLabel(value, language) {
-      return this._wasm.getLabel(value, language) ?? void 0;
-    }
-  }
-  class StaticNodeConfigConcept {
-    constructor(wasmConfig) {
-      __publicField(this, "_wasm");
-      this._wasm = wasmConfig;
-    }
-    get rdmCollection() {
-      return this._wasm.rdmCollection;
-    }
-  }
-  class StaticNodeConfigReference {
-    constructor(wasmConfig) {
-      __publicField(this, "_wasm");
-      this._wasm = wasmConfig;
-    }
-    get controlledList() {
-      return this._wasm.controlledList;
-    }
-    get rdmCollection() {
-      return this._wasm.rdmCollection;
-    }
-    get multiValue() {
-      return this._wasm.multiValue;
-    }
-    getCollectionId() {
-      return this._wasm.getCollectionId() ?? void 0;
-    }
-  }
-  class StaticNodeConfigDomain {
-    constructor(wasmConfig) {
-      __publicField(this, "_wasm");
-      __publicField(this, "_optionsCache", null);
-      this._wasm = wasmConfig;
-    }
-    get i18n_config() {
-      return {};
-    }
-    get options() {
-      if (!this._optionsCache) {
-        this._optionsCache = this._wasm.options.map((opt) => new StaticDomainValue({
-          id: opt.id,
-          selected: opt.selected,
-          text: opt.text
-        }));
-      }
-      return this._optionsCache;
-    }
-    getSelected() {
-      const wasmSelected = this._wasm.getSelected();
-      if (!wasmSelected) return void 0;
-      return new StaticDomainValue({
-        id: wasmSelected.id,
-        selected: wasmSelected.selected,
-        text: wasmSelected.text
-      });
-    }
-    valueFromId(id) {
-      const wasmValue = this._wasm.valueFromId(id);
-      if (!wasmValue) return void 0;
-      return new StaticDomainValue({
-        id: wasmValue.id,
-        selected: wasmValue.selected,
-        text: wasmValue.text
-      });
-    }
-  }
-  class NodeConfigManager {
-    constructor() {
-      __publicField(this, "_wasmManager", null);
-      __publicField(this, "_cache", /* @__PURE__ */ new Map());
-      __publicField(this, "_graphsLoaded", /* @__PURE__ */ new Set());
-    }
-    getWasmManager() {
-      if (!this._wasmManager) {
-        this._wasmManager = new WasmNodeConfigManager();
-      }
-      return this._wasmManager;
-    }
-    loadFromGraph(graph) {
-      const graphId = graph.graphid;
-      if (this._graphsLoaded.has(graphId)) return;
-      this.getWasmManager().fromGraph(graph);
-      this._graphsLoaded.add(graphId);
-    }
-    retrieve(node) {
-      const { nodeid, datatype } = node;
-      if (this._cache.has(nodeid)) {
-        return this._cache.get(nodeid) ?? null;
-      }
-      const config = this.getWasmManager().hasConfig(nodeid) ? this.getConfigFromWasm(nodeid, datatype) : null;
-      this._cache.set(nodeid, config);
-      return config;
-    }
-    getConfigFromWasm(nodeid, datatype) {
-      const wasmManager = this.getWasmManager();
-      switch (datatype) {
-        case "boolean": {
-          const wasm2 = wasmManager.getBoolean(nodeid);
-          return wasm2 ? new StaticNodeConfigBoolean(wasm2) : null;
-        }
-        case "domain-value":
-        case "domain-value-list": {
-          const wasm2 = wasmManager.getDomain(nodeid);
-          return wasm2 ? new StaticNodeConfigDomain(wasm2) : null;
-        }
-        case "concept":
-        case "concept-list": {
-          const wasm2 = wasmManager.getConcept(nodeid);
-          return wasm2 ? new StaticNodeConfigConcept(wasm2) : null;
-        }
-        case "reference": {
-          const wasm2 = wasmManager.getReference(nodeid);
-          return wasm2 ? new StaticNodeConfigReference(wasm2) : null;
-        }
-        default:
-          return null;
-      }
-    }
-    clear() {
-      this._cache.clear();
-      this._graphsLoaded.clear();
-      if (this._wasmManager) {
-        this._wasmManager.clear();
-      }
-    }
-    hasGraph(graphId) {
-      return this._graphsLoaded.has(graphId);
-    }
-  }
-  const nodeConfigManager = new NodeConfigManager();
-  nodeConfig = Object.freeze(Object.defineProperty({
-    __proto__: null,
-    NodeConfigManager,
-    StaticNodeConfigBoolean,
-    StaticNodeConfigConcept,
-    StaticNodeConfigDomain,
-    StaticNodeConfigReference,
-    nodeConfigManager
-  }, Symbol.toStringTag, {
-    value: "Module"
-  }));
   class BooleanViewModel extends Boolean {
     constructor(value, config) {
       super(value);
@@ -11043,6 +11067,9 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
   validateModelCsvs = function(graphCsv, nodesCsv, collectionsCsv) {
     return validateModelCsvs$1(graphCsv, nodesCsv, collectionsCsv ?? null);
   };
+  buildResourcesFromBusinessCsv = function(csvData, graph, collections, defaultLanguage, strictConcepts) {
+    return buildResourcesFromBusinessCsv$1(csvData, JSON.stringify(graph), JSON.stringify(collections), defaultLanguage ?? null, strictConcepts ?? null);
+  };
   class Cleanable extends String {
     constructor() {
       super(...arguments);
@@ -11311,6 +11338,7 @@ export {
   WKRM,
   __tla,
   buildGraphFromModelCsvs,
+  buildResourcesFromBusinessCsv,
   client,
   collectionToSkosXml,
   collectionsToSkosXml,
