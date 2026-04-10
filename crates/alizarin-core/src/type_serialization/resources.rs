@@ -314,4 +314,56 @@ mod tests {
         assert!(!result.is_error());
         assert_eq!(result.value, json!("Resolved Name"));
     }
+
+    struct MultiResolver;
+    impl ResourceDisplayResolver for MultiResolver {
+        fn resolve_resource_display(&self, resource_id: &str, _language: &str) -> Option<String> {
+            match resource_id {
+                "uuid-123" => Some("Resolved One".to_string()),
+                "uuid-456" => Some("Resolved Two".to_string()),
+                _ => None,
+            }
+        }
+    }
+
+    #[test]
+    fn test_resource_instance_list_multi_element_with_resolver() {
+        let resolver = MultiResolver;
+        let ctx = SerializationContext {
+            resource_resolver: Some(&resolver),
+            ..Default::default()
+        };
+        let tile_data = json!([
+            {"resourceId": "uuid-123"},
+            {"resourceId": "uuid-456"}
+        ]);
+        let options = SerializationOptions::display("en");
+
+        let result = serialize_resource_instance_list(&tile_data, &options, &ctx);
+        assert!(!result.is_error());
+        assert_eq!(
+            result.value,
+            json!(["Resolved One", "Resolved Two"]),
+            "multi-element list should resolve each resourceId via resolver"
+        );
+    }
+
+    #[test]
+    fn test_resource_instance_list_multi_element_partial_resolve() {
+        let resolver = MultiResolver;
+        let ctx = SerializationContext {
+            resource_resolver: Some(&resolver),
+            ..Default::default()
+        };
+        let tile_data = json!([
+            {"resourceId": "uuid-123"},
+            {"resourceId": "unknown-uuid"}
+        ]);
+        let options = SerializationOptions::display("en");
+
+        let result = serialize_resource_instance_list(&tile_data, &options, &ctx);
+        assert!(!result.is_error());
+        // First resolves; second falls back to UUID since no displayName/descriptors
+        assert_eq!(result.value, json!(["Resolved One", "unknown-uuid"]),);
+    }
 }

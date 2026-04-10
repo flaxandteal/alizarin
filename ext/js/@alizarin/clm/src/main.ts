@@ -77,39 +77,39 @@ function getReferenceValueByLabelFromCollection(collection: any, label: string):
 
 // WASM initialization is deferred - registrations that need it use wasmReady.then()
 
-// Helper to unwrap nested arrays/view models and find a reference object
-function unwrapToReference(value: any): any {
-  if (!value) return null;
-
-  // If it's a ReferenceValueViewModel (extends String with _ref property)
-  if (value._ref) {
-    const ref = value._ref;
-    // _ref might have toJSON method
-    if (typeof ref.toJSON === 'function') {
-      return ref.toJSON();
+// Helper to flatten nested arrays/view models into a list of reference objects.
+// Handles ReferenceValueViewModels (with _ref), arrays, raw reference objects,
+// __needs_rdm_label_lookup markers, and JSON-string-encoded refs.
+function flattenToReferences(value: any): any[] {
+  const items: any[] = [];
+  const visit = (val: any) => {
+    if (!val) return;
+    if (val._ref) {
+      const ref = val._ref;
+      const refObj = typeof ref.toJSON === 'function' ? ref.toJSON() : ref;
+      if (refObj && (refObj.labels || refObj.__needs_rdm_label_lookup)) {
+        items.push(refObj);
+      }
+      return;
     }
-    return ref;
-  }
-
-  // If it's a ReferenceListViewModel (extends Array), get first item
-  if (Array.isArray(value)) {
-    if (value.length === 0) return null;
-    return unwrapToReference(value[0]);
-  }
-
-  // If it has labels, it's already a reference object
-  if (value.labels) return value;
-
-  // If it's a string, it might be JSON - try parsing
-  if (typeof value === 'string') {
-    try {
-      return unwrapToReference(JSON.parse(value));
-    } catch {
-      return null;
+    if (Array.isArray(val)) {
+      val.forEach(visit);
+      return;
     }
-  }
-
-  return value;
+    if (val.__needs_rdm_label_lookup && val.label) {
+      items.push(val);
+      return;
+    }
+    if (val.labels) {
+      items.push(val);
+      return;
+    }
+    if (typeof val === 'string') {
+      try { visit(JSON.parse(val)); } catch { /* not JSON */ }
+    }
+  };
+  visit(value);
+  return items;
 }
 
 // Helper to render display string from a single reference object
@@ -142,48 +142,14 @@ function renderReferenceDisplay(data: any, language: string): string | null {
 
 // Register extension handlers after WASM is ready
 wasmReady.then(() => {
+  // The 'reference' datatype handles both single and multi-value references
+  // (the latter is configured via the node's `multiValue` config flag).
+  // There is no separate 'reference-list' datatype in Arches.
   registerExtensionHandler('reference', {
     renderDisplay: (tileData: any, language: string) => {
       if (!tileData) return null;
-      const data = unwrapToReference(tileData);
-      return renderReferenceDisplay(data, language);
-    },
-  });
 
-  registerExtensionHandler('reference-list', {
-    renderDisplay: (tileData: any, language: string) => {
-      if (!tileData) return null;
-
-      // Flatten nested arrays/view models to get all reference items
-      let items: any[] = [];
-      const flatten = (val: any) => {
-        if (!val) return;
-        if (val._ref) {
-          const ref = val._ref;
-          const refObj = typeof ref.toJSON === 'function' ? ref.toJSON() : ref;
-          if (refObj && (refObj.labels || refObj.__needs_rdm_label_lookup)) {
-            items.push(refObj);
-          }
-          return;
-        }
-        if (Array.isArray(val)) {
-          val.forEach(flatten);
-          return;
-        }
-        if (val.__needs_rdm_label_lookup && val.label) {
-          items.push(val);
-          return;
-        }
-        if (val.labels) {
-          items.push(val);
-          return;
-        }
-        if (typeof val === 'string') {
-          try { flatten(JSON.parse(val)); } catch {}
-        }
-      };
-      flatten(tileData);
-
+      const items = flattenToReferences(tileData);
       if (items.length === 0) return null;
 
       const displayStrings = items
