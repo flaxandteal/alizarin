@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen::JsCast;
 use wasm_wrapper_derive::wasm_wrapper;
 
 // Import core types
@@ -218,9 +219,7 @@ impl StaticGraphMeta {
         if let Some(val) = self.nodes {
             obj.insert("nodes".to_string(), json!(val));
         }
-        if let Some(ref val) = self.ontology_id {
-            obj.insert("ontology_id".to_string(), json!(val));
-        }
+        crate::utils::insert_classes_json(&mut obj, "ontology_id", self.ontology_id.as_ref());
         if let Some(ref val) = self.publication {
             obj.insert("publication".to_string(), json!(val));
         }
@@ -399,14 +398,19 @@ impl StaticGraphMeta {
         self.nodes = value;
     }
 
+    /// Get the ontology IDs attached to this graph. Returns a plain string
+    /// for single-ontology graphs (legacy Arches shape), an array of strings
+    /// for multi-ontology graphs, or `null`.
     #[wasm_bindgen(js_name = getOntologyId)]
-    pub fn get_ontology_id(&self) -> Option<String> {
-        self.ontology_id.clone()
+    pub fn get_ontology_id(&self) -> JsValue {
+        crate::utils::classes_to_js_value(self.0.ontology_id.as_ref())
     }
 
+    /// Set the ontology IDs for this graph. Accepts a JS string, a JS array
+    /// of strings, `null`, or `undefined`.
     #[wasm_bindgen(js_name = setOntologyId)]
-    pub fn set_ontology_id(&mut self, value: Option<String>) {
-        self.ontology_id = value;
+    pub fn set_ontology_id(&mut self, value: JsValue) {
+        self.0.ontology_id = crate::utils::parse_js_class_list(value);
     }
 
     #[wasm_bindgen(js_name = getPublication)]
@@ -547,9 +551,7 @@ impl StaticNode {
             obj.insert("nodegroup_id".to_string(), json!(val));
         }
         obj.insert("nodeid".to_string(), json!(self.nodeid));
-        if let Some(ref val) = self.ontologyclass {
-            obj.insert("ontologyclass".to_string(), json!(val));
-        }
+        crate::utils::insert_classes_json(&mut obj, "ontologyclass", self.0.ontologyclass.as_ref());
         if let Some(ref val) = self.parentproperty {
             obj.insert("parentproperty".to_string(), json!(val));
         }
@@ -707,14 +709,19 @@ impl StaticNode {
         self.nodeid = value;
     }
 
+    /// Get the ontology class list. Returns a JS string when exactly one
+    /// class is set (back-compat), a JS array when multiple are declared,
+    /// or `null` when none.
     #[wasm_bindgen(getter = ontologyclass)]
-    pub fn get_ontologyclass(&self) -> Option<String> {
-        self.ontologyclass.clone()
+    pub fn get_ontologyclass(&self) -> JsValue {
+        crate::utils::classes_to_js_value(self.0.ontologyclass.as_ref())
     }
 
+    /// Set the ontology class list. Accepts a JS string, a JS array of
+    /// strings, `null`, or `undefined`. Empty/blank entries are stripped.
     #[wasm_bindgen(setter = ontologyclass)]
-    pub fn set_ontologyclass(&mut self, value: Option<String>) {
-        self.ontologyclass = value;
+    pub fn set_ontologyclass(&mut self, value: JsValue) {
+        self.0.ontologyclass = crate::utils::parse_js_class_list(value);
     }
 
     #[wasm_bindgen(getter = parentproperty)]
@@ -2251,9 +2258,7 @@ impl StaticGraph {
         obj.insert("name".to_string(), json!(self.name));
         obj.insert("nodegroups".to_string(), json!(self.nodegroups));
         obj.insert("nodes".to_string(), json!(self.nodes));
-        if let Some(ref val) = self.ontology_id {
-            obj.insert("ontology_id".to_string(), json!(val));
-        }
+        crate::utils::insert_classes_json(&mut obj, "ontology_id", self.ontology_id.as_ref());
         if let Some(ref val) = self.publication {
             obj.insert("publication".to_string(), json!(val));
         }

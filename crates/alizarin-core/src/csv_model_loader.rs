@@ -142,6 +142,17 @@ const VALID_DATATYPES: &[&str] = &[
 
 const CRM_PREFIX: &str = "http://www.cidoc-crm.org/cidoc-crm/";
 
+/// Split a CSV `ontology_class` cell into individual URIs. Accepts pipe-separated
+/// values so a single model can declare classes from more than one ontology.
+/// Empty entries and whitespace are trimmed out.
+fn split_class_cell(raw: &str) -> Vec<String> {
+    raw.split('|')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect()
+}
+
 fn get_field<'a>(
     record: &'a csv::StringRecord,
     headers: &csv::StringRecord,
@@ -489,17 +500,18 @@ pub fn validate_model_csvs(bundle: &ModelCsvBundle) -> Vec<CsvModelDiagnostic> {
             });
         }
 
-        // Ontology URI prefix
-        if !node.ontology_class.starts_with(CRM_PREFIX) && !node.ontology_class.is_empty() {
-            diagnostics.push(CsvModelDiagnostic {
-                level: DiagnosticLevel::Warning,
-                file: "nodes.csv".to_string(),
-                line: Some(line),
-                message: format!(
-                    "ontology_class \"{}\" does not use CIDOC-CRM prefix",
-                    node.ontology_class
-                ),
-            });
+        // Ontology URI prefix — warn per class if any are outside CIDOC-CRM.
+        // Multi-class cells use `|` as separator so each entry is checked
+        // independently. This stays a warning so non-CRM ontologies are allowed.
+        for class in split_class_cell(&node.ontology_class) {
+            if !class.starts_with(CRM_PREFIX) {
+                diagnostics.push(CsvModelDiagnostic {
+                    level: DiagnosticLevel::Warning,
+                    file: "nodes.csv".to_string(),
+                    line: Some(line),
+                    message: format!("ontology_class \"{}\" does not use CIDOC-CRM prefix", class),
+                });
+            }
         }
         if !node.parent_property.starts_with(CRM_PREFIX) && !node.parent_property.is_empty() {
             diagnostics.push(CsvModelDiagnostic {
@@ -628,15 +640,17 @@ pub fn validate_model_csvs(bundle: &ModelCsvBundle) -> Vec<CsvModelDiagnostic> {
         }
     }
 
-    // Graph-level ontology check
+    // Graph-level ontology check — warn per class, allow pipe-separated lists.
     if let Some(ref oc) = bundle.graph.ontology_class {
-        if !oc.starts_with(CRM_PREFIX) {
-            diagnostics.push(CsvModelDiagnostic {
-                level: DiagnosticLevel::Warning,
-                file: "graph.csv".to_string(),
-                line: None,
-                message: format!("ontology_class \"{}\" does not use CIDOC-CRM prefix", oc),
-            });
+        for class in split_class_cell(oc) {
+            if !class.starts_with(CRM_PREFIX) {
+                diagnostics.push(CsvModelDiagnostic {
+                    level: DiagnosticLevel::Warning,
+                    file: "graph.csv".to_string(),
+                    line: None,
+                    message: format!("ontology_class \"{}\" does not use CIDOC-CRM prefix", class),
+                });
+            }
         }
     }
 
@@ -675,7 +689,17 @@ pub fn model_csvs_to_instructions(
     let mut create = GraphInstruction::new("create_model", &root_alias, "");
     create = create.with_str("name", &bundle.graph.name);
     if let Some(ref oc) = bundle.graph.ontology_class {
-        create = create.with_str("ontology_class", oc);
+        let classes = split_class_cell(oc);
+        if classes.len() == 1 {
+            create = create.with_str("ontology_class", &classes[0]);
+        } else if !classes.is_empty() {
+            create = create.with_param(
+                "ontology_class",
+                serde_json::Value::Array(
+                    classes.into_iter().map(serde_json::Value::String).collect(),
+                ),
+            );
+        }
     }
     instructions.push(create);
 
@@ -696,7 +720,18 @@ pub fn model_csvs_to_instructions(
         instr = instr.with_str("name", &node.name);
         instr = instr.with_str("datatype", &node.datatype);
         instr = instr.with_str("cardinality", &node.cardinality);
-        instr = instr.with_str("ontology_class", &node.ontology_class);
+        // Multi-class cells are pipe-separated; pass as array when more than one.
+        let classes = split_class_cell(&node.ontology_class);
+        if classes.len() == 1 {
+            instr = instr.with_str("ontology_class", &classes[0]);
+        } else if !classes.is_empty() {
+            instr = instr.with_param(
+                "ontology_class",
+                serde_json::Value::Array(
+                    classes.into_iter().map(serde_json::Value::String).collect(),
+                ),
+            );
+        }
         instr = instr.with_str("parent_property", &node.parent_property);
 
         if let Some(ref desc) = node.description {

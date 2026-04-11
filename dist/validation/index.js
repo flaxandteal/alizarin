@@ -82,7 +82,21 @@ const definitions$2 = {
         pattern: "^#[0-9a-f]{6}$"
       },
       ontology_id: {
-        type: "string"
+        oneOf: [
+          {
+            type: "string"
+          },
+          {
+            type: "array",
+            items: {
+              type: "string"
+            },
+            minItems: 1
+          },
+          {
+            type: "null"
+          }
+        ]
       },
       template_id: {
         $ref: "#/definitions/uuid"
@@ -212,9 +226,20 @@ const definitions$2 = {
         type: "boolean"
       },
       ontologyclass: {
-        type: [
-          "string",
-          "null"
+        oneOf: [
+          {
+            type: "string"
+          },
+          {
+            type: "array",
+            items: {
+              type: "string"
+            },
+            minItems: 1
+          },
+          {
+            type: "null"
+          }
         ]
       },
       alias: {

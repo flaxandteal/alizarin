@@ -543,7 +543,7 @@ class GraphMutator {
     });
   }
 
-  addSemanticNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options: {
+  addSemanticNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options: {
     exportable?: boolean,
     fieldname?: string,
     hascustomalias?: boolean;
@@ -567,7 +567,7 @@ class GraphMutator {
     );
   }
 
-  addConceptNode(parentAlias: string | null, alias: string, name: string, collection: StaticCollection, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options: {
+  addConceptNode(parentAlias: string | null, alias: string, name: string, collection: StaticCollection, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options: {
     is_list?: boolean,
     exportable?: boolean,
     fieldname?: string,
@@ -654,7 +654,7 @@ class GraphMutator {
     });
   }
 
-  addStringNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options: {
+  addStringNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options: {
     exportable?: boolean,
     fieldname?: string,
     hascustomalias?: boolean;
@@ -699,7 +699,7 @@ class GraphMutator {
     return this;
   }
 
-  _addGenericNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', datatype: string, ontologyClass: string, parentProperty: string, description?: string, options: {
+  _addGenericNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', datatype: string, ontologyClass: string | string[], parentProperty: string, description?: string, options: {
     exportable?: boolean,
     fieldname?: string,
     hascustomalias?: boolean;

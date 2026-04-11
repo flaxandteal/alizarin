@@ -37,8 +37,10 @@ pub struct StaticGraphMeta {
     pub nodegroups: Option<u32>,
     #[serde(default)]
     pub nodes: Option<u32>,
-    #[serde(default)]
-    pub ontology_id: Option<String>,
+    /// Ontology IDs used by this graph. Accepts a single string or an array
+    /// of strings on the wire.
+    #[serde(default, with = "super::serde_helpers::optional_string_or_vec")]
+    pub ontology_id: Option<Vec<String>>,
     #[serde(default)]
     pub publication: Option<HashMap<String, Option<String>>>,
     #[serde(default)]

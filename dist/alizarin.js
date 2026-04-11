@@ -58,6 +58,13 @@ let __tla = (async () => {
     bytes = hash(bytes);
     bytes[6] = bytes[6] & 15 | version2;
     bytes[8] = bytes[8] & 63 | 128;
+    if (buf) {
+      offset = offset || 0;
+      for (let i = 0; i < 16; ++i) {
+        buf[offset + i] = bytes[i];
+      }
+      return buf;
+    }
     return unsafeStringify(bytes);
   }
   const randomUUID = typeof crypto !== "undefined" && crypto.randomUUID && crypto.randomUUID.bind(crypto);
@@ -155,7 +162,7 @@ let __tla = (async () => {
     return Uint8Array.of(H[0] >> 24, H[0] >> 16, H[0] >> 8, H[0], H[1] >> 24, H[1] >> 16, H[1] >> 8, H[1], H[2] >> 24, H[2] >> 16, H[2] >> 8, H[2], H[3] >> 24, H[3] >> 16, H[3] >> 8, H[3], H[4] >> 24, H[4] >> 16, H[4] >> 8, H[4]);
   }
   function v5(value, namespace, buf, offset) {
-    return v35(80, sha1, value, namespace);
+    return v35(80, sha1, value, namespace, buf, offset);
   }
   v5.DNS = DNS;
   v5.URL = URL$1;
@@ -468,6 +475,24 @@ let __tla = (async () => {
     ptr = ptr >>> 0;
     return decodeText(ptr, len);
   }
+  function logError(f2, args) {
+    try {
+      return f2.apply(this, args);
+    } catch (e) {
+      let error = function() {
+        try {
+          return e instanceof Error ? `${e.message}
+
+Stack:
+${e.stack}` : e.toString();
+        } catch (_) {
+          return "<failed to stringify thrown value>";
+        }
+      }();
+      console.error("wasm-bindgen: imported JS function that was not marked as `catch` threw an error:", error);
+      throw e;
+    }
+  }
   let WASM_VECTOR_LEN = 0;
   const cachedTextEncoder = new TextEncoder();
   if (!("encodeInto" in cachedTextEncoder)) {
@@ -481,6 +506,7 @@ let __tla = (async () => {
     };
   }
   function passStringToWasm0(arg, malloc, realloc) {
+    if (typeof arg !== "string") throw new Error(`expected a string argument, found ${typeof arg}`);
     if (realloc === void 0) {
       const buf = cachedTextEncoder.encode(arg);
       const ptr2 = malloc(buf.length, 1) >>> 0;
@@ -504,6 +530,7 @@ let __tla = (async () => {
       ptr = realloc(ptr, len, len = offset + arg.length * 3, 1) >>> 0;
       const view = getUint8ArrayMemory0().subarray(ptr + offset, ptr + len);
       const ret = cachedTextEncoder.encodeInto(arg, view);
+      if (ret.read !== arg.length) throw new Error("failed to pass whole string");
       offset += ret.written;
       ptr = realloc(ptr, len, offset, 1) >>> 0;
     }
@@ -530,12 +557,23 @@ let __tla = (async () => {
       wasm.__wbindgen_exn_store(idx);
     }
   }
+  function _assertBoolean(n) {
+    if (typeof n !== "boolean") {
+      throw new Error(`expected a boolean argument, found ${typeof n}`);
+    }
+  }
+  function _assertNum(n) {
+    if (typeof n !== "number") throw new Error(`expected a number argument, found ${typeof n}`);
+  }
   function getArrayU8FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
   }
   function isLikeNone(x) {
     return x === void 0 || x === null;
+  }
+  function _assertBigInt(n) {
+    if (typeof n !== "bigint") throw new Error(`expected a bigint argument, found ${typeof n}`);
   }
   function debugString(val) {
     const type = typeof val;
@@ -627,16 +665,6 @@ ${val.stack}`;
     CLOSURE_DTORS.register(real, state, state);
     return real;
   }
-  function _assertClass(instance, klass) {
-    if (!(instance instanceof klass)) {
-      throw new Error(`expected instance of ${klass.name}`);
-    }
-  }
-  function takeFromExternrefTable0(idx) {
-    const value = wasm.__wbindgen_export_4.get(idx);
-    wasm.__externref_table_dealloc(idx);
-    return value;
-  }
   function getArrayJsValueFromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     const mem = getDataViewMemory0();
@@ -647,17 +675,21 @@ ${val.stack}`;
     wasm.__externref_drop_slice(ptr, len);
     return result;
   }
-  function passArrayJsValueToWasm0(array, malloc) {
-    const ptr = malloc(array.length * 4, 4) >>> 0;
-    for (let i = 0; i < array.length; i++) {
-      const add = addToExternrefTable0(array[i]);
-      getDataViewMemory0().setUint32(ptr + 4 * i, add, true);
+  function _assertClass(instance, klass) {
+    if (!(instance instanceof klass)) {
+      throw new Error(`expected instance of ${klass.name}`);
     }
-    WASM_VECTOR_LEN = array.length;
-    return ptr;
+  }
+  function takeFromExternrefTable0(idx) {
+    const value = wasm.__wbindgen_export_4.get(idx);
+    wasm.__externref_table_dealloc(idx);
+    return value;
   }
   newWASMResourceInstanceWrapperForResource = function(resource) {
     _assertClass(resource, StaticResource);
+    if (resource.__wbg_ptr === 0) {
+      throw new Error("Attempt to use a moved value");
+    }
     const ret = wasm.newWASMResourceInstanceWrapperForResource(resource.__wbg_ptr);
     if (ret[2]) {
       throw takeFromExternrefTable0(ret[1]);
@@ -673,52 +705,14 @@ ${val.stack}`;
     }
     return WASMResourceInstanceWrapper.__wrap(ret[0]);
   }
-  function getRscvTimings() {
-    const ret = wasm.getRscvTimings();
-    return ret;
-  }
-  function validateModelCsvs$1(graph_csv, nodes_csv, collections_csv) {
-    const ptr0 = passStringToWasm0(graph_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(nodes_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    var ptr2 = isLikeNone(collections_csv) ? 0 : passStringToWasm0(collections_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len2 = WASM_VECTOR_LEN;
-    const ret = wasm.validateModelCsvs(ptr0, len0, ptr1, len1, ptr2, len2);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
+  function passArrayJsValueToWasm0(array, malloc) {
+    const ptr = malloc(array.length * 4, 4) >>> 0;
+    for (let i = 0; i < array.length; i++) {
+      const add = addToExternrefTable0(array[i]);
+      getDataViewMemory0().setUint32(ptr + 4 * i, add, true);
     }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function buildResourcesFromBusinessCsv$1(csv_data, graph_json, collections_json, default_language, strict_concepts) {
-    const ptr0 = passStringToWasm0(csv_data, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(graph_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ptr2 = passStringToWasm0(collections_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len2 = WASM_VECTOR_LEN;
-    var ptr3 = isLikeNone(default_language) ? 0 : passStringToWasm0(default_language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len3 = WASM_VECTOR_LEN;
-    const ret = wasm.buildResourcesFromBusinessCsv(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, isLikeNone(strict_concepts) ? 16777215 : strict_concepts ? 1 : 0);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function buildGraphFromModelCsvs$1(graph_csv, nodes_csv, collections_csv, rdm_namespace) {
-    const ptr0 = passStringToWasm0(graph_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(nodes_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    var ptr2 = isLikeNone(collections_csv) ? 0 : passStringToWasm0(collections_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len2 = WASM_VECTOR_LEN;
-    const ptr3 = passStringToWasm0(rdm_namespace, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len3 = WASM_VECTOR_LEN;
-    const ret = wasm.buildGraphFromModelCsvs(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
+    WASM_VECTOR_LEN = array.length;
+    return ptr;
   }
   collectionsToSkosXml = function(collections_js, base_uri) {
     let deferred3_0;
@@ -740,6 +734,17 @@ ${val.stack}`;
     } finally {
       wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
+  };
+  parseSkosXmlToCollection = function(xml_content, base_uri) {
+    const ptr0 = passStringToWasm0(xml_content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.parseSkosXmlToCollection(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
   };
   parseSkosXml = function(xml_content, base_uri) {
     const ptr0 = passStringToWasm0(xml_content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -773,17 +778,6 @@ ${val.stack}`;
       wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
   };
-  parseSkosXmlToCollection = function(xml_content, base_uri) {
-    const ptr0 = passStringToWasm0(xml_content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.parseSkosXmlToCollection(ptr0, len0, ptr1, len1);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  };
   registerExtensionHandler = function(datatype, options) {
     const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
@@ -792,8 +786,64 @@ ${val.stack}`;
       throw takeFromExternrefTable0(ret[0]);
     }
   };
+  function buildGraphFromModelCsvs$1(graph_csv, nodes_csv, collections_csv, rdm_namespace) {
+    const ptr0 = passStringToWasm0(graph_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(nodes_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    var ptr2 = isLikeNone(collections_csv) ? 0 : passStringToWasm0(collections_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len2 = WASM_VECTOR_LEN;
+    const ptr3 = passStringToWasm0(rdm_namespace, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len3 = WASM_VECTOR_LEN;
+    const ret = wasm.buildGraphFromModelCsvs(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function buildResourcesFromBusinessCsv$1(csv_data, graph_json, collections_json, default_language, strict_concepts) {
+    const ptr0 = passStringToWasm0(csv_data, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(graph_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passStringToWasm0(collections_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len2 = WASM_VECTOR_LEN;
+    var ptr3 = isLikeNone(default_language) ? 0 : passStringToWasm0(default_language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len3 = WASM_VECTOR_LEN;
+    if (!isLikeNone(strict_concepts)) {
+      _assertBoolean(strict_concepts);
+    }
+    const ret = wasm.buildResourcesFromBusinessCsv(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, isLikeNone(strict_concepts) ? 16777215 : strict_concepts ? 1 : 0);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function validateModelCsvs$1(graph_csv, nodes_csv, collections_csv) {
+    const ptr0 = passStringToWasm0(graph_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(nodes_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    var ptr2 = isLikeNone(collections_csv) ? 0 : passStringToWasm0(collections_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len2 = WASM_VECTOR_LEN;
+    const ret = wasm.validateModelCsvs(ptr0, len0, ptr1, len1, ptr2, len2);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function getRscvTimings() {
+    const ret = wasm.getRscvTimings();
+    return ret;
+  }
   function getDefaultConfigKeys() {
     const ret = wasm.getDefaultConfigKeys();
+    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v1;
+  }
+  function getDefaultResolvableDatatypes() {
+    const ret = wasm.getDefaultResolvableDatatypes();
     var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
     return v1;
@@ -822,17 +872,20 @@ ${val.stack}`;
     }
     return takeFromExternrefTable0(ret[0]);
   }
-  function getDefaultResolvableDatatypes() {
-    const ret = wasm.getDefaultResolvableDatatypes();
-    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-    return v1;
+  function __wbg_adapter_12(arg0, arg1, arg2) {
+    _assertNum(arg0);
+    _assertNum(arg1);
+    wasm.closure230_externref_shim(arg0, arg1, arg2);
   }
-  function __wbg_adapter_6(arg0, arg1, arg2) {
-    wasm.closure190_externref_shim(arg0, arg1, arg2);
+  function __wbg_adapter_764(arg0, arg1, arg2, arg3) {
+    _assertNum(arg0);
+    _assertNum(arg1);
+    wasm.closure986_externref_shim(arg0, arg1, arg2, arg3);
   }
-  function __wbg_adapter_776(arg0, arg1, arg2, arg3) {
-    wasm.closure557_externref_shim(arg0, arg1, arg2, arg3);
+  function __wbg_adapter_799(arg0, arg1, arg2, arg3) {
+    _assertNum(arg0);
+    _assertNum(arg1);
+    wasm.closure987_externref_shim(arg0, arg1, arg2, arg3);
   }
   typeof FinalizationRegistry === "undefined" ? {} : new FinalizationRegistry((ptr) => wasm.__wbg_exampleedgewrapper_free(ptr >>> 0, 1));
   const ExampleNodegroupWrapperFinalization = typeof FinalizationRegistry === "undefined" ? {
@@ -860,21 +913,31 @@ ${val.stack}`;
       wasm.__wbg_examplenodegroupwrapper_free(ptr, 0);
     }
     get cardinality() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.examplenodegroupwrapper_get_cardinality(this.__wbg_ptr);
       return ret;
     }
     get nodegroupid() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.examplenodegroupwrapper_get_nodegroupid(this.__wbg_ptr);
       return ret;
     }
     set cardinality(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.examplenodegroupwrapper_set_cardinality(this.__wbg_ptr, value);
     }
     get parentnodegroup_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.examplenodegroupwrapper_get_parentnodegroup_id(this.__wbg_ptr);
       return ret;
     }
     set parentnodegroup_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.examplenodegroupwrapper_set_parentnodegroup_id(this.__wbg_ptr, value);
     }
     constructor(json_data) {
@@ -887,10 +950,14 @@ ${val.stack}`;
       return this;
     }
     copy() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.examplenodegroupwrapper_copy(this.__wbg_ptr);
       return ExampleNodegroupWrapper.__wrap(ret);
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.examplenodegroupwrapper_toJSON(this.__wbg_ptr);
       return ret;
     }
@@ -903,6 +970,9 @@ ${val.stack}`;
     }
   } : new FinalizationRegistry((ptr) => wasm.__wbg_pseudolist_free(ptr >>> 0, 1));
   let PseudoList$1 = class PseudoList2 {
+    constructor() {
+      throw new Error("cannot invoke `new` directly");
+    }
     static __wrap(ptr) {
       ptr = ptr >>> 0;
       const obj = Object.create(PseudoList2.prototype);
@@ -924,6 +994,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.pseudolist_nodeAlias(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -933,28 +1005,41 @@ ${val.stack}`;
       }
     }
     isIterable() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudolist_isIterable(this.__wbg_ptr);
       return ret !== 0;
     }
     get totalValues() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudolist_totalValues(this.__wbg_ptr);
       return ret >>> 0;
     }
     getAllValues() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudolist_getAllValues(this.__wbg_ptr);
       var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
       wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
       return v1;
     }
     getValue(value_index) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      _assertNum(value_index);
       const ret = wasm.pseudolist_getValue(this.__wbg_ptr, value_index);
       return ret === 0 ? void 0 : PseudoValue$1.__wrap(ret);
     }
     get isLoaded() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudolist_isLoaded(this.__wbg_ptr);
       return ret !== 0;
     }
     get isSingle() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudolist_isSingle(this.__wbg_ptr);
       return ret !== 0;
     }
@@ -967,6 +1052,9 @@ ${val.stack}`;
     }
   } : new FinalizationRegistry((ptr) => wasm.__wbg_pseudonode_free(ptr >>> 0, 1));
   class PseudoNode {
+    constructor() {
+      throw new Error("cannot invoke `new` directly");
+    }
     static __wrap(ptr) {
       ptr = ptr >>> 0;
       const obj = Object.create(PseudoNode.prototype);
@@ -985,6 +1073,8 @@ ${val.stack}`;
       wasm.__wbg_pseudonode_free(ptr, 0);
     }
     get config() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_config(this.__wbg_ptr);
       return ret;
     }
@@ -992,6 +1082,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.pseudonode_get_nodeid(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -1001,6 +1093,8 @@ ${val.stack}`;
       }
     }
     isIterable() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_isIterable(this.__wbg_ptr);
       return ret !== 0;
     }
@@ -1008,6 +1102,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.pseudonode_get_datatype(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -1020,6 +1116,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.pseudonode_get_graph_id(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -1029,69 +1127,103 @@ ${val.stack}`;
       }
     }
     get isInner() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_is_inner(this.__wbg_ptr);
       return ret !== 0;
     }
     get isOuter() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_is_outer(this.__wbg_ptr);
       return ret !== 0;
     }
     get fieldname() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_fieldname(this.__wbg_ptr);
       return ret;
     }
     get istopnode() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_istopnode(this.__wbg_ptr);
       return ret !== 0;
     }
     get sortorder() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_sortorder(this.__wbg_ptr);
       return ret === 4294967297 ? void 0 : ret;
     }
     get exportable() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_exportable(this.__wbg_ptr);
       return ret !== 0;
     }
     get isrequired() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_isrequired(this.__wbg_ptr);
       return ret !== 0;
     }
     get childNodes() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_child_nodes(this.__wbg_ptr);
       return ret;
     }
     get description() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_description(this.__wbg_ptr);
       return ret;
     }
     get parentNode() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_parent_node(this.__wbg_ptr);
       return ret;
     }
     set parentNode(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.pseudonode_set_parent_node(this.__wbg_ptr, value);
     }
     get isCollector() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_is_collector(this.__wbg_ptr);
       return ret !== 0;
     }
     get issearchable() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_issearchable(this.__wbg_ptr);
       return ret !== 0;
     }
     get nodegroup_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_nodegroup_id(this.__wbg_ptr);
       return ret;
     }
     get ontologyclass() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_ontologyclass(this.__wbg_ptr);
       return ret;
     }
     get hascustomalias() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_hascustomalias(this.__wbg_ptr);
       return ret !== 0;
     }
     get parentproperty() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_parentproperty(this.__wbg_ptr);
       return ret;
     }
@@ -1099,6 +1231,8 @@ ${val.stack}`;
       let deferred2_0;
       let deferred2_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.pseudonode_getNodePlaceholder(this.__wbg_ptr);
         var ptr1 = ret[0];
         var len1 = ret[1];
@@ -1115,14 +1249,20 @@ ${val.stack}`;
       }
     }
     get childNodeAliases() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_child_node_aliases(this.__wbg_ptr);
       return ret;
     }
     get sourcebranchpublicationId() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_sourcebranchpublication_id(this.__wbg_ptr);
       return ret;
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_toJSON(this.__wbg_ptr);
       return ret;
     }
@@ -1130,6 +1270,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.pseudonode_get_name(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -1139,18 +1281,26 @@ ${val.stack}`;
       }
     }
     get node() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_node(this.__wbg_ptr);
       return ret;
     }
     get size() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_size(this.__wbg_ptr);
       return ret >>> 0;
     }
     get alias() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_alias(this.__wbg_ptr);
       return ret;
     }
     get inner() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudonode_get_inner(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -1166,6 +1316,9 @@ ${val.stack}`;
     }
   } : new FinalizationRegistry((ptr) => wasm.__wbg_pseudovalue_free(ptr >>> 0, 1));
   let PseudoValue$1 = class PseudoValue2 {
+    constructor() {
+      throw new Error("cannot invoke `new` directly");
+    }
     static __wrap(ptr) {
       ptr = ptr >>> 0;
       const obj = Object.create(PseudoValue2.prototype);
@@ -1184,14 +1337,20 @@ ${val.stack}`;
       wasm.__wbg_pseudovalue_free(ptr, 0);
     }
     get exportable() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_exportable(this.__wbg_ptr);
       return ret !== 0;
     }
     get isrequired() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_isrequired(this.__wbg_ptr);
       return ret !== 0;
     }
     get nodeAlias() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_nodeAlias(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -1201,37 +1360,55 @@ ${val.stack}`;
       return v1;
     }
     set parent(parent) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.pseudovalue_set_parent(this.__wbg_ptr, parent);
     }
     get description() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_description(this.__wbg_ptr);
       return ret;
     }
     get independent() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_independent(this.__wbg_ptr);
       return ret !== 0;
     }
     isIterable() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_isIterable(this.__wbg_ptr);
       return ret !== 0;
     }
     toSnapshot() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_toSnapshot(this.__wbg_ptr);
       return ret;
     }
     get isCollector() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_isCollector(this.__wbg_ptr);
       return ret !== 0;
     }
     get issearchable() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_issearchable(this.__wbg_ptr);
       return ret !== 0;
     }
     get nodegroupId() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_nodegroupId(this.__wbg_ptr);
       return ret;
     }
     updateValue(get_view_model) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_updateValue(this.__wbg_ptr, get_view_model);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -1239,42 +1416,70 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     get valueLoaded() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_valueLoaded(this.__wbg_ptr);
       return ret;
     }
     hasTileData() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_hasTileData(this.__wbg_ptr);
       return ret !== 0;
     }
     get ontologyclass() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_ontologyclass(this.__wbg_ptr);
       return ret;
     }
     setTileData(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.pseudovalue_setTileData(this.__wbg_ptr, value);
     }
     get hascustomalias() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_hascustomalias(this.__wbg_ptr);
       return ret !== 0;
     }
     get parentproperty() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_parentproperty(this.__wbg_ptr);
       return ret;
     }
     get tileDataJson() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_tileDataJson(this.__wbg_ptr);
       return ret;
     }
     toDisplayValue(rdm_cache, node_config_manager, language, resource_registry) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(rdm_cache, WasmRdmCache);
+      if (rdm_cache.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       _assertClass(node_config_manager, WasmNodeConfigManager);
+      if (node_config_manager.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr0 = isLikeNone(language) ? 0 : passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       _assertClass(resource_registry, StaticResourceRegistry);
+      if (resource_registry.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       const ret = wasm.pseudovalue_toDisplayValue(this.__wbg_ptr, rdm_cache.__wbg_ptr, node_config_manager.__wbg_ptr, ptr0, len0, resource_registry.__wbg_ptr);
       return ret;
     }
     getChildNodeId(index2) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      _assertNum(index2);
       const ret = wasm.pseudovalue_getChildNodeId(this.__wbg_ptr, index2);
       let v1;
       if (ret[0] !== 0) {
@@ -1284,10 +1489,14 @@ ${val.stack}`;
       return v1;
     }
     get childNodeAliases() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_childNodeAliases(this.__wbg_ptr);
       return ret;
     }
     get childNodeIdsCount() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_childNodeIdsCount(this.__wbg_ptr);
       return ret >>> 0;
     }
@@ -1295,6 +1504,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.pseudovalue_name(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -1304,33 +1515,49 @@ ${val.stack}`;
       }
     }
     get node() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_node(this.__wbg_ptr);
       return StaticNode.__wrap(ret);
     }
     get size() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_size(this.__wbg_ptr);
       return ret >>> 0;
     }
     get tile() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_tile(this.__wbg_ptr);
       return ret;
     }
     get alias() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_alias(this.__wbg_ptr);
       return ret;
     }
     clear() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.pseudovalue_clear(this.__wbg_ptr);
     }
     get value() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_value(this.__wbg_ptr);
       return ret;
     }
     get config() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_config(this.__wbg_ptr);
       return ret;
     }
     get parent() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_parent(this.__wbg_ptr);
       return ret;
     }
@@ -1338,6 +1565,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.pseudovalue_nodeId(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -1347,6 +1576,8 @@ ${val.stack}`;
       }
     }
     get tileId() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_tileId(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -1356,6 +1587,8 @@ ${val.stack}`;
       return v1;
     }
     get accessed() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_accessed(this.__wbg_ptr);
       return ret !== 0;
     }
@@ -1363,6 +1596,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.pseudovalue_datatype(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -1375,6 +1610,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.pseudovalue_graphId(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -1384,29 +1621,43 @@ ${val.stack}`;
       }
     }
     get hasTile() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_hasTile(this.__wbg_ptr);
       return ret !== 0;
     }
     get isInner() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_isInner(this.__wbg_ptr);
       return ret !== 0;
     }
     get isOuter() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_isOuter(this.__wbg_ptr);
       return ret !== 0;
     }
     set tile(tile) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.pseudovalue_set_tile(this.__wbg_ptr, tile);
     }
     get fieldname() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_fieldname(this.__wbg_ptr);
       return ret;
     }
     get inner() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_inner(this.__wbg_ptr);
       return ret === 0 ? void 0 : PseudoValue2.__wrap(ret);
     }
     getValue(get_view_model) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_getValue(this.__wbg_ptr, get_view_model);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -1414,14 +1665,20 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     get istopnode() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_istopnode(this.__wbg_ptr);
       return ret !== 0;
     }
     get sortorder() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_sortorder(this.__wbg_ptr);
       return ret;
     }
     get tileData() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.pseudovalue_tileData(this.__wbg_ptr);
       return ret;
     }
@@ -1452,126 +1709,202 @@ ${val.stack}`;
       wasm.__wbg_staticcard_free(ptr, 0);
     }
     get active() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_active(this.__wbg_ptr);
       return ret;
     }
     get cardid() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_cardid(this.__wbg_ptr);
       return ret;
     }
     get config() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_config(this.__wbg_ptr);
       return ret;
     }
     set active(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcard_set_active(this.__wbg_ptr, value);
     }
     set cardid(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcard_set_cardid(this.__wbg_ptr, value);
     }
     set config(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcard_set_config(this.__wbg_ptr, value);
     }
     get visible() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_visible(this.__wbg_ptr);
       return ret;
     }
     set visible(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcard_set_visible(this.__wbg_ptr, value);
     }
     get cssclass() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_cssclass(this.__wbg_ptr);
       return ret;
     }
     get graph_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_graph_id(this.__wbg_ptr);
       return ret;
     }
     get helptext() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_helptext(this.__wbg_ptr);
       return StaticTranslatableString.__wrap(ret);
     }
     set cssclass(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcard_set_cssclass(this.__wbg_ptr, value);
     }
     set graph_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcard_set_graph_id(this.__wbg_ptr, value);
     }
     set helptext(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(value, StaticTranslatableString);
+      if (value.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr0 = value.__destroy_into_raw();
       wasm.staticcard_set_helptext(this.__wbg_ptr, ptr0);
     }
     get helptitle() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_helptitle(this.__wbg_ptr);
       return StaticTranslatableString.__wrap(ret);
     }
     get sortorder() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_sortorder(this.__wbg_ptr);
       return ret;
     }
     set helptitle(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(value, StaticTranslatableString);
+      if (value.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr0 = value.__destroy_into_raw();
       wasm.staticcard_set_helptitle(this.__wbg_ptr, ptr0);
     }
     set sortorder(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcard_set_sortorder(this.__wbg_ptr, value);
     }
     get constraints() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_constraints(this.__wbg_ptr);
       return ret;
     }
     get description() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_description(this.__wbg_ptr);
       return ret === 0 ? void 0 : StaticTranslatableString.__wrap(ret);
     }
     get helpenabled() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_helpenabled(this.__wbg_ptr);
       return ret;
     }
     get is_editable() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_is_editable(this.__wbg_ptr);
       return ret;
     }
     set constraints(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcard_set_constraints(this.__wbg_ptr, value);
     }
     set description(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       let ptr0 = 0;
       if (!isLikeNone(value)) {
         _assertClass(value, StaticTranslatableString);
+        if (value.__wbg_ptr === 0) {
+          throw new Error("Attempt to use a moved value");
+        }
         ptr0 = value.__destroy_into_raw();
       }
       wasm.staticcard_set_description(this.__wbg_ptr, ptr0);
     }
     set helpenabled(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcard_set_helpenabled(this.__wbg_ptr, value);
     }
     set is_editable(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcard_set_is_editable(this.__wbg_ptr, value);
     }
     get component_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_component_id(this.__wbg_ptr);
       return ret;
     }
     get instructions() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_instructions(this.__wbg_ptr);
       return StaticTranslatableString.__wrap(ret);
     }
     get nodegroup_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_nodegroup_id(this.__wbg_ptr);
       return ret;
     }
     set component_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcard_set_component_id(this.__wbg_ptr, value);
     }
     set instructions(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(value, StaticTranslatableString);
+      if (value.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr0 = value.__destroy_into_raw();
       wasm.staticcard_set_instructions(this.__wbg_ptr, ptr0);
     }
     set nodegroup_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcard_set_nodegroup_id(this.__wbg_ptr, value);
     }
     constructor(json_data) {
@@ -1584,15 +1917,24 @@ ${val.stack}`;
       return this;
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_toJSON(this.__wbg_ptr);
       return ret;
     }
     get name() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcard_get_name(this.__wbg_ptr);
       return StaticTranslatableString.__wrap(ret);
     }
     set name(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(value, StaticTranslatableString);
+      if (value.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr0 = value.__destroy_into_raw();
       wasm.staticcard_set_name(this.__wbg_ptr, ptr0);
     }
@@ -1623,45 +1965,69 @@ ${val.stack}`;
       wasm.__wbg_staticcardsxnodesxwidgets_free(ptr, 0);
     }
     get config() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcardsxnodesxwidgets_get_config(this.__wbg_ptr);
       return ret;
     }
     set config(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcardsxnodesxwidgets_set_config(this.__wbg_ptr, value);
     }
     get card_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcardsxnodesxwidgets_get_card_id(this.__wbg_ptr);
       return ret;
     }
     get node_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcardsxnodesxwidgets_get_node_id(this.__wbg_ptr);
       return ret;
     }
     get visible() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcardsxnodesxwidgets_get_visible(this.__wbg_ptr);
       return ret;
     }
     set card_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcardsxnodesxwidgets_set_card_id(this.__wbg_ptr, value);
     }
     set node_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcardsxnodesxwidgets_set_node_id(this.__wbg_ptr, value);
     }
     set visible(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcardsxnodesxwidgets_set_visible(this.__wbg_ptr, value);
     }
     get sortorder() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcardsxnodesxwidgets_get_sortorder(this.__wbg_ptr);
       return ret;
     }
     get widget_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcardsxnodesxwidgets_get_widget_id(this.__wbg_ptr);
       return ret;
     }
     set sortorder(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcardsxnodesxwidgets_set_sortorder(this.__wbg_ptr, value);
     }
     set widget_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcardsxnodesxwidgets_set_widget_id(this.__wbg_ptr, value);
     }
     constructor(json_data) {
@@ -1674,22 +2040,35 @@ ${val.stack}`;
       return this;
     }
     get id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcardsxnodesxwidgets_get_id(this.__wbg_ptr);
       return ret;
     }
     set id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticcardsxnodesxwidgets_set_id(this.__wbg_ptr, value);
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcardsxnodesxwidgets_toJSON(this.__wbg_ptr);
       return ret;
     }
     get label() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticcardsxnodesxwidgets_get_label(this.__wbg_ptr);
       return StaticTranslatableString.__wrap(ret);
     }
     set label(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(value, StaticTranslatableString);
+      if (value.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr0 = value.__destroy_into_raw();
       wasm.staticcardsxnodesxwidgets_set_label(this.__wbg_ptr, ptr0);
     }
@@ -1713,24 +2092,36 @@ ${val.stack}`;
       wasm.__wbg_staticconstraint_free(ptr, 0);
     }
     get card_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticconstraint_get_card_id(this.__wbg_ptr);
       return ret;
     }
     set card_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticconstraint_set_card_id(this.__wbg_ptr, value);
     }
     get constraintid() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticconstraint_get_constraintid(this.__wbg_ptr);
       return ret;
     }
     set constraintid(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticconstraint_set_constraintid(this.__wbg_ptr, value);
     }
     get uniquetoallinstances() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticconstraint_get_uniquetoallinstances(this.__wbg_ptr);
       return ret;
     }
     set uniquetoallinstances(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticconstraint_set_uniquetoallinstances(this.__wbg_ptr, value);
     }
     constructor(json_data) {
@@ -1743,14 +2134,20 @@ ${val.stack}`;
       return this;
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticconstraint_toJSON(this.__wbg_ptr);
       return ret;
     }
     get nodes() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticconstraint_get_nodes(this.__wbg_ptr);
       return ret;
     }
     set nodes(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticconstraint_set_nodes(this.__wbg_ptr, value);
     }
   }
@@ -1783,6 +2180,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.staticedge_get_edgeid(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -1795,6 +2194,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.staticedge_get_graph_id(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -1804,6 +2205,8 @@ ${val.stack}`;
       }
     }
     get description() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticedge_get_description(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -1816,6 +2219,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.staticedge_get_rangenode_id(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -1828,6 +2233,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.staticedge_get_domainnode_id(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -1837,6 +2244,8 @@ ${val.stack}`;
       }
     }
     get ontologyproperty() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticedge_get_ontologyproperty(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -1855,14 +2264,20 @@ ${val.stack}`;
       return this;
     }
     copy() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticedge_copy(this.__wbg_ptr);
       return StaticEdge.__wrap(ret);
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticedge_toJSON(this.__wbg_ptr);
       return ret;
     }
     get name() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticedge_get_name(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -1898,24 +2313,36 @@ ${val.stack}`;
       wasm.__wbg_staticfunctionsxgraphs_free(ptr, 0);
     }
     get config() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticfunctionsxgraphs_get_config(this.__wbg_ptr);
       return ret;
     }
     set config(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticfunctionsxgraphs_set_config(this.__wbg_ptr, value);
     }
     get graph_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticfunctionsxgraphs_get_graph_id(this.__wbg_ptr);
       return ret;
     }
     set graph_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticfunctionsxgraphs_set_graph_id(this.__wbg_ptr, value);
     }
     get function_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticfunctionsxgraphs_get_function_id(this.__wbg_ptr);
       return ret;
     }
     set function_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticfunctionsxgraphs_set_function_id(this.__wbg_ptr, value);
     }
     constructor(json_data) {
@@ -1928,17 +2355,25 @@ ${val.stack}`;
       return this;
     }
     copy() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticfunctionsxgraphs_copy(this.__wbg_ptr);
       return StaticFunctionsXGraphs.__wrap(ret);
     }
     get id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticfunctionsxgraphs_get_id(this.__wbg_ptr);
       return ret;
     }
     set id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticfunctionsxgraphs_set_id(this.__wbg_ptr, value);
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticfunctionsxgraphs_toJSON(this.__wbg_ptr);
       return ret;
     }
@@ -1969,6 +2404,8 @@ ${val.stack}`;
       wasm.__wbg_staticgraph_free(ptr, 0);
     }
     get author() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_author(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -1978,10 +2415,14 @@ ${val.stack}`;
       return v1;
     }
     get config() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_config(this.__wbg_ptr);
       return ret;
     }
     getSchema() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_getSchema(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -1992,6 +2433,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.staticgraph_get_graphid(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -2001,6 +2444,8 @@ ${val.stack}`;
       }
     }
     get version() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_version(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2010,10 +2455,14 @@ ${val.stack}`;
       return v1;
     }
     get subtitle() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_subtitle(this.__wbg_ptr);
       return StaticTranslatableString.__wrap(ret);
     }
     get iconclass() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_iconclass(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2023,34 +2472,53 @@ ${val.stack}`;
       return v1;
     }
     get isresource() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_isresource(this.__wbg_ptr);
       return ret === 16777215 ? void 0 : ret !== 0;
     }
     get nodegroups() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_nodegroups(this.__wbg_ptr);
       return ret;
     }
     pushNodegroup(nodegroup) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(nodegroup, StaticNodegroup);
+      if (nodegroup.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr0 = nodegroup.__destroy_into_raw();
       wasm.staticgraph_pushNodegroup(this.__wbg_ptr, ptr0);
     }
     set nodegroups(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticgraph_set_nodegroups(this.__wbg_ptr, value);
     }
     get description() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_description(this.__wbg_ptr);
       return StaticTranslatableString.__wrap(ret);
     }
     get is_editable() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_is_editable(this.__wbg_ptr);
       return ret;
     }
     get ontology_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_ontology_id(this.__wbg_ptr);
       return ret;
     }
     get template_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_template_id(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2069,30 +2537,42 @@ ${val.stack}`;
       return StaticGraph.__wrap(ret[0]);
     }
     get jsonldcontext() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_jsonldcontext(this.__wbg_ptr);
       return ret;
     }
     getNodeById(id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(id) ? 0 : passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.staticgraph_getNodeById(this.__wbg_ptr, ptr0, len0);
       return ret;
     }
     get deploymentdate() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_deploymentdate(this.__wbg_ptr);
       return ret;
     }
     get deploymentfile() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_deploymentfile(this.__wbg_ptr);
       return ret;
     }
     getNodeByAlias(alias) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(alias) ? 0 : passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.staticgraph_getNodeByAlias(this.__wbg_ptr, ptr0, len0);
       return ret;
     }
     setDescriptorTemplate(descriptor_type, string_template) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(descriptor_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       const ptr1 = passStringToWasm0(string_template, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -2103,22 +2583,35 @@ ${val.stack}`;
       }
     }
     pushCardXNodeXWidget(cxnxw) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(cxnxw, StaticCardsXNodesXWidgets);
+      if (cxnxw.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr0 = cxnxw.__destroy_into_raw();
       wasm.staticgraph_pushCardXNodeXWidget(this.__wbg_ptr, ptr0);
     }
     get cards_x_nodes_x_widgets() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_cards_x_nodes_x_widgets(this.__wbg_ptr);
       return ret;
     }
     set cards_x_nodes_x_widgets(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticgraph_set_cards_x_nodes_x_widgets(this.__wbg_ptr, value);
     }
     get relatable_resource_model_ids() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_relatable_resource_model_ids(this.__wbg_ptr);
       return ret;
     }
     get resource_2_resource_constraints() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_resource_2_resource_constraints(this.__wbg_ptr);
       return ret;
     }
@@ -2132,63 +2625,102 @@ ${val.stack}`;
       return this;
     }
     copy() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_copy(this.__wbg_ptr);
       return StaticGraph.__wrap(ret);
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_toJSON(this.__wbg_ptr);
       return ret;
     }
     get name() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_name(this.__wbg_ptr);
       return StaticTranslatableString.__wrap(ret);
     }
     get root() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_root(this.__wbg_ptr);
       return StaticNode.__wrap(ret);
     }
     get slug() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_slug(this.__wbg_ptr);
       return ret;
     }
     get cards() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_cards(this.__wbg_ptr);
       return ret;
     }
     get color() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_color(this.__wbg_ptr);
       return ret;
     }
     get edges() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_edges(this.__wbg_ptr);
       return ret;
     }
     get nodes() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraph_get_nodes(this.__wbg_ptr);
       return ret;
     }
     pushCard(card) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(card, StaticCard);
+      if (card.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr0 = card.__destroy_into_raw();
       wasm.staticgraph_pushCard(this.__wbg_ptr, ptr0);
     }
     pushEdge(edge) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(edge, StaticEdge);
+      if (edge.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr0 = edge.__destroy_into_raw();
       wasm.staticgraph_pushEdge(this.__wbg_ptr, ptr0);
     }
     pushNode(node) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(node, StaticNode);
+      if (node.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr0 = node.__destroy_into_raw();
       wasm.staticgraph_pushNode(this.__wbg_ptr, ptr0);
     }
     set cards(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticgraph_set_cards(this.__wbg_ptr, value);
     }
     set edges(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticgraph_set_edges(this.__wbg_ptr, value);
     }
     set nodes(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticgraph_set_nodes(this.__wbg_ptr, value);
     }
   }
@@ -2218,6 +2750,8 @@ ${val.stack}`;
       wasm.__wbg_staticgraphmeta_free(ptr, 0);
     }
     getAuthor() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getAuthor(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2227,6 +2761,8 @@ ${val.stack}`;
       return v1;
     }
     setAuthor(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       wasm.staticgraphmeta_setAuthor(this.__wbg_ptr, ptr0, len0);
@@ -2235,6 +2771,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.staticgraphmeta_get_graphid(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -2244,6 +2782,8 @@ ${val.stack}`;
       }
     }
     getVersion() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getVersion(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2253,28 +2793,41 @@ ${val.stack}`;
       return v1;
     }
     set graphid(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       wasm.staticgraphmeta_set_graphid(this.__wbg_ptr, ptr0, len0);
     }
     setVersion(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       wasm.staticgraphmeta_setVersion(this.__wbg_ptr, ptr0, len0);
     }
     get subtitle() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_get_subtitle(this.__wbg_ptr);
       return ret === 0 ? void 0 : StaticTranslatableString.__wrap(ret);
     }
     set subtitle(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       let ptr0 = 0;
       if (!isLikeNone(value)) {
         _assertClass(value, StaticTranslatableString);
+        if (value.__wbg_ptr === 0) {
+          throw new Error("Attempt to use a moved value");
+        }
         ptr0 = value.__destroy_into_raw();
       }
       wasm.staticgraphmeta_set_subtitle(this.__wbg_ptr, ptr0);
     }
     getIconClass() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getIconClass(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2284,42 +2837,61 @@ ${val.stack}`;
       return v1;
     }
     setIconClass(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       wasm.staticgraphmeta_setIconClass(this.__wbg_ptr, ptr0, len0);
     }
     getIsResource() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getIsResource(this.__wbg_ptr);
       return ret === 16777215 ? void 0 : ret !== 0;
     }
     getNodeGroups() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getNodeGroups(this.__wbg_ptr);
       return ret === 4294967297 ? void 0 : ret;
     }
     setIsResource(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      if (!isLikeNone(value)) {
+        _assertBoolean(value);
+      }
       wasm.staticgraphmeta_setIsResource(this.__wbg_ptr, isLikeNone(value) ? 16777215 : value ? 1 : 0);
     }
     setNodeGroups(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      if (!isLikeNone(value)) {
+        _assertNum(value);
+      }
       wasm.staticgraphmeta_setNodeGroups(this.__wbg_ptr, isLikeNone(value) ? 4294967297 : value >>> 0);
     }
     get description() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_get_description(this.__wbg_ptr);
       return ret === 0 ? void 0 : StaticTranslatableString.__wrap(ret);
     }
     getIsEditable() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getIsEditable(this.__wbg_ptr);
       return ret === 16777215 ? void 0 : ret !== 0;
     }
     getOntologyId() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getOntologyId(this.__wbg_ptr);
-      let v1;
-      if (ret[0] !== 0) {
-        v1 = getStringFromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
-      }
-      return v1;
+      return ret;
     }
     getPublication() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getPublication(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -2327,28 +2899,42 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     set description(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       let ptr0 = 0;
       if (!isLikeNone(value)) {
         _assertClass(value, StaticTranslatableString);
+        if (value.__wbg_ptr === 0) {
+          throw new Error("Attempt to use a moved value");
+        }
         ptr0 = value.__destroy_into_raw();
       }
       wasm.staticgraphmeta_set_description(this.__wbg_ptr, ptr0);
     }
     setIsEditable(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      if (!isLikeNone(value)) {
+        _assertBoolean(value);
+      }
       wasm.staticgraphmeta_setIsEditable(this.__wbg_ptr, isLikeNone(value) ? 16777215 : value ? 1 : 0);
     }
     setOntologyId(value) {
-      var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len0 = WASM_VECTOR_LEN;
-      wasm.staticgraphmeta_setOntologyId(this.__wbg_ptr, ptr0, len0);
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      wasm.staticgraphmeta_setOntologyId(this.__wbg_ptr, value);
     }
     setPublication(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_setPublication(this.__wbg_ptr, value);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
       }
     }
     getJsonLdContext() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getJsonLdContext(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -2356,12 +2942,16 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     setJsonLdContext(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_setJsonLdContext(this.__wbg_ptr, value);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
       }
     }
     get author() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_get_author_property(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2371,17 +2961,28 @@ ${val.stack}`;
       return v1;
     }
     get isresource() {
-      const ret = wasm.staticgraphmeta_getIsResource(this.__wbg_ptr);
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      const ret = wasm.staticgraphmeta_get_isresource_property(this.__wbg_ptr);
       return ret === 16777215 ? void 0 : ret !== 0;
     }
     getCardsXNodesXWidgets() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getCardsXNodesXWidgets(this.__wbg_ptr);
       return ret === 4294967297 ? void 0 : ret;
     }
     setCardsXNodesXWidgets(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      if (!isLikeNone(value)) {
+        _assertNum(value);
+      }
       wasm.staticgraphmeta_setCardsXNodesXWidgets(this.__wbg_ptr, isLikeNone(value) ? 4294967297 : value >>> 0);
     }
     getRelatableResourceModelIds() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getRelatableResourceModelIds(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -2389,12 +2990,16 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     setRelatableResourceModelIds(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_setRelatableResourceModelIds(this.__wbg_ptr, value);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
       }
     }
     getResource2ResourceConstraints() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getResource2ResourceConstraints(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -2402,6 +3007,8 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     setResource2ResourceConstraints(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_setResource2ResourceConstraints(this.__wbg_ptr, value);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
@@ -2417,18 +3024,26 @@ ${val.stack}`;
       return this;
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_toJSON(this.__wbg_ptr);
       return ret;
     }
     get name() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_get_name(this.__wbg_ptr);
       return ret === 0 ? void 0 : StaticTranslatableString.__wrap(ret);
     }
     getRoot() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getRoot(this.__wbg_ptr);
       return ret === 0 ? void 0 : StaticNode.__wrap(ret);
     }
     get slug() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_get_slug(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2438,31 +3053,47 @@ ${val.stack}`;
       return v1;
     }
     set name(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       let ptr0 = 0;
       if (!isLikeNone(value)) {
         _assertClass(value, StaticTranslatableString);
+        if (value.__wbg_ptr === 0) {
+          throw new Error("Attempt to use a moved value");
+        }
         ptr0 = value.__destroy_into_raw();
       }
       wasm.staticgraphmeta_set_name(this.__wbg_ptr, ptr0);
     }
     setRoot(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       let ptr0 = 0;
       if (!isLikeNone(value)) {
         _assertClass(value, StaticNode);
+        if (value.__wbg_ptr === 0) {
+          throw new Error("Attempt to use a moved value");
+        }
         ptr0 = value.__destroy_into_raw();
       }
       wasm.staticgraphmeta_setRoot(this.__wbg_ptr, ptr0);
     }
     set slug(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       wasm.staticgraphmeta_set_slug(this.__wbg_ptr, ptr0, len0);
     }
     getCards() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getCards(this.__wbg_ptr);
       return ret === 4294967297 ? void 0 : ret;
     }
     getColor() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getColor(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2472,25 +3103,46 @@ ${val.stack}`;
       return v1;
     }
     getEdges() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getEdges(this.__wbg_ptr);
       return ret === 4294967297 ? void 0 : ret;
     }
     getNodes() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticgraphmeta_getNodes(this.__wbg_ptr);
       return ret === 4294967297 ? void 0 : ret;
     }
     setCards(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      if (!isLikeNone(value)) {
+        _assertNum(value);
+      }
       wasm.staticgraphmeta_setCards(this.__wbg_ptr, isLikeNone(value) ? 4294967297 : value >>> 0);
     }
     setColor(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       wasm.staticgraphmeta_setColor(this.__wbg_ptr, ptr0, len0);
     }
     setEdges(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      if (!isLikeNone(value)) {
+        _assertNum(value);
+      }
       wasm.staticgraphmeta_setEdges(this.__wbg_ptr, isLikeNone(value) ? 4294967297 : value >>> 0);
     }
     setNodes(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      if (!isLikeNone(value)) {
+        _assertNum(value);
+      }
       wasm.staticgraphmeta_setNodes(this.__wbg_ptr, isLikeNone(value) ? 4294967297 : value >>> 0);
     }
   }
@@ -2520,6 +3172,8 @@ ${val.stack}`;
       wasm.__wbg_staticnode_free(ptr, 0);
     }
     getConfig() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_getConfig(this.__wbg_ptr);
       return ret;
     }
@@ -2527,6 +3181,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.staticnode_get_nodeid(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -2536,9 +3192,13 @@ ${val.stack}`;
       }
     }
     setConfig(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticnode_setConfig(this.__wbg_ptr, value);
     }
     set nodeid(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       wasm.staticnode_set_nodeid(this.__wbg_ptr, ptr0, len0);
@@ -2547,6 +3207,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.staticnode_get_datatype(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -2559,6 +3221,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.staticnode_get_graph_id(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -2568,16 +3232,22 @@ ${val.stack}`;
       }
     }
     set datatype(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       wasm.staticnode_set_datatype(this.__wbg_ptr, ptr0, len0);
     }
     set graph_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       wasm.staticnode_set_graph_id(this.__wbg_ptr, ptr0, len0);
     }
     get fieldname() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_fieldname(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2587,22 +3257,36 @@ ${val.stack}`;
       return v1;
     }
     get istopnode() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_istopnode(this.__wbg_ptr);
       return ret !== 0;
     }
     get sortorder() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_sortorder(this.__wbg_ptr);
       return ret === 4294967297 ? void 0 : ret;
     }
     set fieldname(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       wasm.staticnode_set_fieldname(this.__wbg_ptr, ptr0, len0);
     }
     set istopnode(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      _assertBoolean(value);
       wasm.staticnode_set_istopnode(this.__wbg_ptr, value);
     }
     set sortorder(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      if (!isLikeNone(value)) {
+        _assertNum(value);
+      }
       wasm.staticnode_set_sortorder(this.__wbg_ptr, isLikeNone(value) ? 4294967297 : value >> 0);
     }
     static compare(node_a, node_b) {
@@ -2610,40 +3294,63 @@ ${val.stack}`;
       return ret;
     }
     get exportable() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_exportable(this.__wbg_ptr);
       return ret !== 0;
     }
     get isrequired() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_isrequired(this.__wbg_ptr);
       return ret !== 0;
     }
     set exportable(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      _assertBoolean(value);
       wasm.staticnode_set_exportable(this.__wbg_ptr, value);
     }
     set isrequired(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      _assertBoolean(value);
       wasm.staticnode_set_isrequired(this.__wbg_ptr, value);
     }
     get description() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_description(this.__wbg_ptr);
       return ret === 0 ? void 0 : StaticTranslatableString.__wrap(ret);
     }
     set description(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       let ptr0 = 0;
       if (!isLikeNone(value)) {
         _assertClass(value, StaticTranslatableString);
+        if (value.__wbg_ptr === 0) {
+          throw new Error("Attempt to use a moved value");
+        }
         ptr0 = value.__destroy_into_raw();
       }
       wasm.staticnode_set_description(this.__wbg_ptr, ptr0);
     }
     get is_collector() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_is_collector(this.__wbg_ptr);
       return ret !== 0;
     }
     get issearchable() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_issearchable(this.__wbg_ptr);
       return ret !== 0;
     }
     get nodegroup_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_nodegroup_id(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2653,35 +3360,44 @@ ${val.stack}`;
       return v1;
     }
     set is_collector(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      _assertBoolean(value);
       wasm.staticnode_set_is_collector(this.__wbg_ptr, value);
     }
     set issearchable(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      _assertBoolean(value);
       wasm.staticnode_set_issearchable(this.__wbg_ptr, value);
     }
     set nodegroup_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       wasm.staticnode_set_nodegroup_id(this.__wbg_ptr, ptr0, len0);
     }
     get ontologyclass() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_ontologyclass(this.__wbg_ptr);
-      let v1;
-      if (ret[0] !== 0) {
-        v1 = getStringFromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
-      }
-      return v1;
+      return ret;
     }
     set ontologyclass(value) {
-      var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len0 = WASM_VECTOR_LEN;
-      wasm.staticnode_set_ontologyclass(this.__wbg_ptr, ptr0, len0);
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      wasm.staticnode_set_ontologyclass(this.__wbg_ptr, value);
     }
     get hascustomalias() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_hascustomalias(this.__wbg_ptr);
       return ret !== 0;
     }
     get parentproperty() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_parentproperty(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2691,21 +3407,32 @@ ${val.stack}`;
       return v1;
     }
     set hascustomalias(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      _assertBoolean(value);
       wasm.staticnode_set_hascustomalias(this.__wbg_ptr, value);
     }
     set parentproperty(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       wasm.staticnode_set_parentproperty(this.__wbg_ptr, ptr0, len0);
     }
     get config() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_config_property(this.__wbg_ptr);
       return ret;
     }
     set config(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticnode_set_config_property(this.__wbg_ptr, value);
     }
     get sourcebranchpublication_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_sourcebranchpublication_id(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2715,6 +3442,8 @@ ${val.stack}`;
       return v1;
     }
     set sourcebranchpublication_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       wasm.staticnode_set_sourcebranchpublication_id(this.__wbg_ptr, ptr0, len0);
@@ -2729,10 +3458,14 @@ ${val.stack}`;
       return this;
     }
     copy() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_copy(this.__wbg_ptr);
       return StaticNode.__wrap(ret);
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_toJSON(this.__wbg_ptr);
       return ret;
     }
@@ -2740,6 +3473,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.staticnode_get_name(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -2749,11 +3484,15 @@ ${val.stack}`;
       }
     }
     set name(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       wasm.staticnode_set_name(this.__wbg_ptr, ptr0, len0);
     }
     get alias() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnode_get_alias(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2763,6 +3502,8 @@ ${val.stack}`;
       return v1;
     }
     set alias(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       wasm.staticnode_set_alias(this.__wbg_ptr, ptr0, len0);
@@ -2794,6 +3535,8 @@ ${val.stack}`;
       wasm.__wbg_staticnodegroup_free(ptr, 0);
     }
     get cardinality() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnodegroup_get_cardinality(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -2806,6 +3549,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.staticnodegroup_get_nodegroupid(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -2815,24 +3560,34 @@ ${val.stack}`;
       }
     }
     set cardinality(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       wasm.staticnodegroup_set_cardinality(this.__wbg_ptr, ptr0, len0);
     }
     set nodegroupid(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       wasm.staticnodegroup_set_nodegroupid(this.__wbg_ptr, ptr0, len0);
     }
     get legacygroupid() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnodegroup_get_legacygroupid(this.__wbg_ptr);
       return ret;
     }
     get parentnodegroup_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnodegroup_get_parentnodegroup_id(this.__wbg_ptr);
       return ret;
     }
     set parentnodegroup_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       wasm.staticnodegroup_set_parentnodegroup_id(this.__wbg_ptr, ptr0, len0);
@@ -2847,10 +3602,14 @@ ${val.stack}`;
       return this;
     }
     copy() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnodegroup_copy(this.__wbg_ptr);
       return StaticNodegroup.__wrap(ret);
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticnodegroup_toJSON(this.__wbg_ptr);
       return ret;
     }
@@ -2881,24 +3640,36 @@ ${val.stack}`;
       wasm.__wbg_staticpublication_free(ptr, 0);
     }
     get graph_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticpublication_get_graph_id(this.__wbg_ptr);
       return ret;
     }
     set graph_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticpublication_set_graph_id(this.__wbg_ptr, value);
     }
     get publicationid() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticpublication_get_publicationid(this.__wbg_ptr);
       return ret;
     }
     set publicationid(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticpublication_set_publicationid(this.__wbg_ptr, value);
     }
     get published_time() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticpublication_get_published_time(this.__wbg_ptr);
       return ret;
     }
     set published_time(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticpublication_set_published_time(this.__wbg_ptr, value);
     }
     constructor(json_data) {
@@ -2911,18 +3682,26 @@ ${val.stack}`;
       return this;
     }
     copy() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticpublication_copy(this.__wbg_ptr);
       return StaticPublication.__wrap(ret);
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticpublication_toJSON(this.__wbg_ptr);
       return ret;
     }
     get notes() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticpublication_get_notes(this.__wbg_ptr);
       return ret;
     }
     set notes(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       wasm.staticpublication_set_notes(this.__wbg_ptr, ptr0, len0);
@@ -2960,21 +3739,32 @@ ${val.stack}`;
       wasm.__wbg_staticresource_free(ptr, 0);
     }
     get __scopes() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresource_get_scopes(this.__wbg_ptr);
       return ret;
     }
     set __scopes(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticresource_set_scopes(this.__wbg_ptr, value);
     }
     static fromSummary(summary) {
       _assertClass(summary, StaticResourceSummary);
+      if (summary.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       const ret = wasm.staticresource_fromSummary(summary.__wbg_ptr);
       return StaticResource.__wrap(ret);
     }
     set metadata(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticresource_set_metadata(this.__wbg_ptr, value);
     }
     get tilesLoaded() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresource_tiles_loaded(this.__wbg_ptr);
       return ret !== 0;
     }
@@ -2988,6 +3778,8 @@ ${val.stack}`;
       return StaticResource.__wrap(ret[0]);
     }
     get resourceinstance() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresource_resourceinstance(this.__wbg_ptr);
       return StaticResourceMetadata.__wrap(ret);
     }
@@ -3012,29 +3804,43 @@ ${val.stack}`;
       return this;
     }
     copy() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresource_copy(this.__wbg_ptr);
       return StaticResource.__wrap(ret);
     }
     get tiles() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresource_tiles(this.__wbg_ptr);
       return ret;
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresource_toJSON(this.__wbg_ptr);
       return ret;
     }
     get metadata() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresource_metadata(this.__wbg_ptr);
       return ret;
     }
     get __cache() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresource_get_cache(this.__wbg_ptr);
       return ret;
     }
     set __cache(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticresource_set_cache(this.__wbg_ptr, value);
     }
     set tiles(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticresource_set_tiles(this.__wbg_ptr, value);
     }
   }
@@ -3064,15 +3870,21 @@ ${val.stack}`;
       wasm.__wbg_staticresourcedescriptors_free(ptr, 0);
     }
     set mapPopup(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(value) ? 0 : passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       wasm.staticresourcedescriptors_set_map_popup(this.__wbg_ptr, ptr0, len0);
     }
     get description() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcedescriptors_get_description(this.__wbg_ptr);
       return ret;
     }
     set description(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticresourcedescriptors_set_description(this.__wbg_ptr, value);
     }
     constructor(json_data) {
@@ -3085,6 +3897,8 @@ ${val.stack}`;
       return this;
     }
     copy() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcedescriptors_copy(this.__wbg_ptr);
       return StaticResourceDescriptors.__wrap(ret);
     }
@@ -3093,28 +3907,42 @@ ${val.stack}`;
       return StaticResourceDescriptors.__wrap(ret);
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcedescriptors_toJSON(this.__wbg_ptr);
       return ret;
     }
     get name() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcedescriptors_get_name(this.__wbg_ptr);
       return ret;
     }
     get slug() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcedescriptors_get_slug(this.__wbg_ptr);
       return ret;
     }
     isEmpty() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcedescriptors_isEmpty(this.__wbg_ptr);
       return ret !== 0;
     }
     set name(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticresourcedescriptors_set_name(this.__wbg_ptr, value);
     }
     set slug(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.staticresourcedescriptors_set_slug(this.__wbg_ptr, value);
     }
     get mapPopup() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcedescriptors_map_popup(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -3150,38 +3978,56 @@ ${val.stack}`;
       wasm.__wbg_staticresourcemetadata_free(ptr, 0);
     }
     get descriptors() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcemetadata_descriptors(this.__wbg_ptr);
       return StaticResourceDescriptors.__wrap(ret);
     }
     get graph_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcemetadata_get_graph_id(this.__wbg_ptr);
       return ret;
     }
     get legacyid() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcemetadata_get_legacyid(this.__wbg_ptr);
       return ret;
     }
     get createdtime() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcemetadata_get_createdtime(this.__wbg_ptr);
       return ret;
     }
     get lastmodified() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcemetadata_get_lastmodified(this.__wbg_ptr);
       return ret;
     }
     get publication_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcemetadata_get_publication_id(this.__wbg_ptr);
       return ret;
     }
     get principaluser_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcemetadata_get_principaluser_id(this.__wbg_ptr);
       return ret;
     }
     get resourceinstanceid() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcemetadata_get_resourceinstanceid(this.__wbg_ptr);
       return ret;
     }
     get graph_publication_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcemetadata_get_graph_publication_id(this.__wbg_ptr);
       return ret;
     }
@@ -3195,14 +4041,20 @@ ${val.stack}`;
       return this;
     }
     copy() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcemetadata_copy(this.__wbg_ptr);
       return StaticResourceMetadata.__wrap(ret);
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcemetadata_toJSON(this.__wbg_ptr);
       return ret;
     }
     get name() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcemetadata_get_name(this.__wbg_ptr);
       return ret;
     }
@@ -3233,10 +4085,14 @@ ${val.stack}`;
       wasm.__wbg_staticresourcereference_free(ptr, 0);
     }
     get graph_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcereference_get_graph_id(this.__wbg_ptr);
       return ret;
     }
     get type() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcereference_resource_type(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -3255,18 +4111,26 @@ ${val.stack}`;
       return this;
     }
     copy() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcereference_copy(this.__wbg_ptr);
       return StaticResourceReference.__wrap(ret);
     }
     get meta() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcereference_meta(this.__wbg_ptr);
       return ret;
     }
     get root() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcereference_root(this.__wbg_ptr);
       return ret;
     }
     get title() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcereference_title(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -3276,10 +4140,14 @@ ${val.stack}`;
       return v1;
     }
     get id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcereference_get_id(this.__wbg_ptr);
       return ret;
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcereference_toJSON(this.__wbg_ptr);
       return ret;
     }
@@ -3303,18 +4171,24 @@ ${val.stack}`;
       wasm.__wbg_staticresourceregistry_free(ptr, 0);
     }
     getSummary(resource_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(resource_id) ? 0 : passStringToWasm0(resource_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.staticresourceregistry_getSummary(this.__wbg_ptr, ptr0, len0);
       return ret === 0 ? void 0 : StaticResourceSummary.__wrap(ret);
     }
     getAllFull() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourceregistry_getAllFull(this.__wbg_ptr);
       var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
       wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
       return v1;
     }
     getGraphId(resource_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(resource_id) ? 0 : passStringToWasm0(resource_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.staticresourceregistry_getGraphId(this.__wbg_ptr, ptr0, len0);
@@ -3326,9 +4200,23 @@ ${val.stack}`;
       return v2;
     }
     populateCaches(resources, graph, enrich_relationships, strict, recompute_descriptors) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passArrayJsValueToWasm0(resources, wasm.__wbindgen_malloc);
       const len0 = WASM_VECTOR_LEN;
       _assertClass(graph, StaticGraph);
+      if (graph.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
+      if (!isLikeNone(enrich_relationships)) {
+        _assertBoolean(enrich_relationships);
+      }
+      if (!isLikeNone(strict)) {
+        _assertBoolean(strict);
+      }
+      if (!isLikeNone(recompute_descriptors)) {
+        _assertBoolean(recompute_descriptors);
+      }
       const ret = wasm.staticresourceregistry_populateCaches(this.__wbg_ptr, ptr0, len0, graph.__wbg_ptr, isLikeNone(enrich_relationships) ? 16777215 : enrich_relationships ? 1 : 0, isLikeNone(strict) ? 16777215 : strict ? 1 : 0, isLikeNone(recompute_descriptors) ? 16777215 : recompute_descriptors ? 1 : 0);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -3336,6 +4224,8 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     insertFromJson(summary_json) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(summary_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       const ret = wasm.staticresourceregistry_insertFromJson(this.__wbg_ptr, ptr0, len0);
@@ -3344,12 +4234,25 @@ ${val.stack}`;
       }
     }
     mergeFromResources(resources, store_full, include_caches) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passArrayJsValueToWasm0(resources, wasm.__wbindgen_malloc);
       const len0 = WASM_VECTOR_LEN;
+      if (!isLikeNone(store_full)) {
+        _assertBoolean(store_full);
+      }
+      if (!isLikeNone(include_caches)) {
+        _assertBoolean(include_caches);
+      }
       wasm.staticresourceregistry_mergeFromResources(this.__wbg_ptr, ptr0, len0, isLikeNone(store_full) ? 16777215 : store_full ? 1 : 0, isLikeNone(include_caches) ? 16777215 : include_caches ? 1 : 0);
     }
     getNodeValuesIndex(graph, node_identifier) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(graph, StaticGraph);
+      if (graph.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       const ptr0 = passStringToWasm0(node_identifier, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       const ret = wasm.staticresourceregistry_getNodeValuesIndex(this.__wbg_ptr, graph.__wbg_ptr, ptr0, len0);
@@ -3359,6 +4262,8 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     getAllFullForGraph(graph_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(graph_id) ? 0 : passStringToWasm0(graph_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.staticresourceregistry_getAllFullForGraph(this.__wbg_ptr, ptr0, len0);
@@ -3367,17 +4272,39 @@ ${val.stack}`;
       return v2;
     }
     mergeFromResourcesJson(resources_json, store_full, include_caches) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(resources_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
+      if (!isLikeNone(store_full)) {
+        _assertBoolean(store_full);
+      }
+      if (!isLikeNone(include_caches)) {
+        _assertBoolean(include_caches);
+      }
       const ret = wasm.staticresourceregistry_mergeFromResourcesJson(this.__wbg_ptr, ptr0, len0, isLikeNone(store_full) ? 16777215 : store_full ? 1 : 0, isLikeNone(include_caches) ? 16777215 : include_caches ? 1 : 0);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
       }
     }
     populateCachesFromJson(resources_json, graph, enrich_relationships, strict, recompute_descriptors) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(resources_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       _assertClass(graph, StaticGraph);
+      if (graph.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
+      if (!isLikeNone(enrich_relationships)) {
+        _assertBoolean(enrich_relationships);
+      }
+      if (!isLikeNone(strict)) {
+        _assertBoolean(strict);
+      }
+      if (!isLikeNone(recompute_descriptors)) {
+        _assertBoolean(recompute_descriptors);
+      }
       const ret = wasm.staticresourceregistry_populateCachesFromJson(this.__wbg_ptr, ptr0, len0, graph.__wbg_ptr, isLikeNone(enrich_relationships) ? 16777215 : enrich_relationships ? 1 : 0, isLikeNone(strict) ? 16777215 : strict ? 1 : 0, isLikeNone(recompute_descriptors) ? 16777215 : recompute_descriptors ? 1 : 0);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -3385,9 +4312,17 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     getValueToResourcesIndex(graph, node_identifier, flatten_localized) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(graph, StaticGraph);
+      if (graph.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       const ptr0 = passStringToWasm0(node_identifier, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
+      if (!isLikeNone(flatten_localized)) {
+        _assertBoolean(flatten_localized);
+      }
       const ret = wasm.staticresourceregistry_getValueToResourcesIndex(this.__wbg_ptr, graph.__wbg_ptr, ptr0, len0, isLikeNone(flatten_localized) ? 16777215 : flatten_localized ? 1 : 0);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -3401,32 +4336,47 @@ ${val.stack}`;
       return this;
     }
     insert(summary) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(summary, StaticResourceSummary);
+      if (summary.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       wasm.staticresourceregistry_insert(this.__wbg_ptr, summary.__wbg_ptr);
     }
     get length() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourceregistry_length(this.__wbg_ptr);
       return ret >>> 0;
     }
     contains(resource_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(resource_id) ? 0 : passStringToWasm0(resource_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.staticresourceregistry_contains(this.__wbg_ptr, ptr0, len0);
       return ret !== 0;
     }
     getFull(resource_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(resource_id) ? 0 : passStringToWasm0(resource_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.staticresourceregistry_getFull(this.__wbg_ptr, ptr0, len0);
       return ret === 0 ? void 0 : StaticResource.__wrap(ret);
     }
     hasFull(resource_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(resource_id) ? 0 : passStringToWasm0(resource_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.staticresourceregistry_hasFull(this.__wbg_ptr, ptr0, len0);
       return ret !== 0;
     }
     get isEmpty() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourceregistry_is_empty(this.__wbg_ptr);
       return ret !== 0;
     }
@@ -3457,19 +4407,28 @@ ${val.stack}`;
       wasm.__wbg_staticresourcesummary_free(ptr, 0);
     }
     get descriptors() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcesummary_descriptors(this.__wbg_ptr);
       return ret === 0 ? void 0 : StaticResourceDescriptors.__wrap(ret);
     }
     toMetadata() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcesummary_toMetadata(this.__wbg_ptr);
       return StaticResourceMetadata.__wrap(ret);
     }
     get graph_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcesummary_get_graph_id(this.__wbg_ptr);
       return ret;
     }
     static fromResource(resource) {
       _assertClass(resource, StaticResource);
+      if (resource.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       const ret = wasm.staticresourcesummary_fromResource(resource.__wbg_ptr);
       return StaticResourceSummary.__wrap(ret);
     }
@@ -3483,6 +4442,8 @@ ${val.stack}`;
       return StaticResourceSummary.__wrap(ret[0]);
     }
     get resourceinstanceid() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcesummary_get_resourceinstanceid(this.__wbg_ptr);
       return ret;
     }
@@ -3507,18 +4468,26 @@ ${val.stack}`;
       return v2;
     }
     copy() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcesummary_copy(this.__wbg_ptr);
       return StaticResourceSummary.__wrap(ret);
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcesummary_toJSON(this.__wbg_ptr);
       return ret;
     }
     get name() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcesummary_get_name(this.__wbg_ptr);
       return ret;
     }
     get metadata() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.staticresourcesummary_metadata(this.__wbg_ptr);
       return ret;
     }
@@ -3555,23 +4524,33 @@ ${val.stack}`;
       wasm.__wbg_statictile_free(ptr, 0);
     }
     get tileid() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.statictile_get_tileid(this.__wbg_ptr);
       return ret;
     }
     set tileid(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.statictile_set_tileid(this.__wbg_ptr, value);
     }
     get sortorder() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.statictile_get_sortorder(this.__wbg_ptr);
       return ret;
     }
     set sortorder(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.statictile_set_sortorder(this.__wbg_ptr, value);
     }
     get nodegroup_id() {
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.statictile_get_nodegroup_id(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -3581,28 +4560,40 @@ ${val.stack}`;
       }
     }
     set nodegroup_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       wasm.statictile_set_nodegroup_id(this.__wbg_ptr, ptr0, len0);
     }
     get parenttile_id() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.statictile_get_parenttile_id(this.__wbg_ptr);
       return ret;
     }
     set parenttile_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.statictile_set_parenttile_id(this.__wbg_ptr, value);
     }
     get provisionaledits() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.statictile_get_provisionaledits(this.__wbg_ptr);
       return ret;
     }
     set provisionaledits(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.statictile_set_provisionaledits(this.__wbg_ptr, value);
     }
     get resourceinstance_id() {
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.statictile_get_resourceinstance_id(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -3612,6 +4603,8 @@ ${val.stack}`;
       }
     }
     set resourceinstance_id(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       wasm.statictile_set_resourceinstance_id(this.__wbg_ptr, ptr0, len0);
@@ -3626,24 +4619,34 @@ ${val.stack}`;
       return this;
     }
     copy() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.statictile_copy(this.__wbg_ptr);
       return StaticTile.__wrap(ret);
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.statictile_toJSON(this.__wbg_ptr);
       return ret;
     }
     get data() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.statictile_get_data(this.__wbg_ptr);
       return ret;
     }
     set data(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.statictile_set_data(this.__wbg_ptr, value);
     }
     ensureId() {
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.statictile_ensureId(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -3653,7 +4656,9 @@ ${val.stack}`;
       }
     }
     intoCore() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
       const ptr = this.__destroy_into_raw();
+      _assertNum(ptr);
       const ret = wasm.statictile_intoCore(ptr);
       return ret;
     }
@@ -3687,6 +4692,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.statictranslatablestring_toString(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -3696,6 +4703,8 @@ ${val.stack}`;
       }
     }
     get translations() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.statictranslatablestring_get_translations(this.__wbg_ptr);
       return ret;
     }
@@ -3708,10 +4717,14 @@ ${val.stack}`;
       return this;
     }
     copy() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.statictranslatablestring_copy(this.__wbg_ptr);
       return StaticTranslatableString.__wrap(ret);
     }
     toJSON() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.statictranslatablestring_toJSON(this.__wbg_ptr);
       return ret;
     }
@@ -3719,6 +4732,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.statictranslatablestring_get_lang(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -3736,6 +4751,9 @@ ${val.stack}`;
     }
   } : new FinalizationRegistry((ptr) => wasm.__wbg_wasmresourceinstancewrapper_free(ptr >>> 0, 1));
   class WASMResourceInstanceWrapper {
+    constructor() {
+      throw new Error("cannot invoke `new` directly");
+    }
     static __wrap(ptr) {
       ptr = ptr >>> 0;
       const obj = Object.create(WASMResourceInstanceWrapper.prototype);
@@ -3754,6 +4772,8 @@ ${val.stack}`;
       wasm.__wbg_wasmresourceinstancewrapper_free(ptr, 0);
     }
     toResource() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourceinstancewrapper_toResource(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -3761,10 +4781,14 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     tilesLoaded() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourceinstancewrapper_tilesLoaded(this.__wbg_ptr);
       return ret !== 0;
     }
     getTileData(tile_id, node_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(tile_id) ? 0 : passStringToWasm0(tile_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       var ptr1 = isLikeNone(node_id) ? 0 : passStringToWasm0(node_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -3776,22 +4800,31 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     loadTiles(tiles_js) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourceinstancewrapper_loadTiles(this.__wbg_ptr, tiles_js);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
       }
     }
     getTileCount() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourceinstancewrapper_getTileCount(this.__wbg_ptr);
       return ret >>> 0;
     }
     serializeCard(card_id, parent_tile_id, parent_nodegroup_id, max_depth) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(card_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       var ptr1 = isLikeNone(parent_tile_id) ? 0 : passStringToWasm0(parent_tile_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len1 = WASM_VECTOR_LEN;
       var ptr2 = isLikeNone(parent_nodegroup_id) ? 0 : passStringToWasm0(parent_nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len2 = WASM_VECTOR_LEN;
+      if (!isLikeNone(max_depth)) {
+        _assertNum(max_depth);
+      }
       const ret = wasm.wasmresourceinstancewrapper_serializeCard(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, isLikeNone(max_depth) ? 4294967297 : max_depth >>> 0);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -3799,12 +4832,17 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     appendTiles(tiles_js) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourceinstancewrapper_appendTiles(this.__wbg_ptr, tiles_js);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
       }
     }
     getDescriptors(recompute) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      _assertBoolean(recompute);
       const ret = wasm.wasmresourceinstancewrapper_getDescriptors(this.__wbg_ptr, recompute);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -3812,6 +4850,8 @@ ${val.stack}`;
       return StaticResourceDescriptors.__wrap(ret[0]);
     }
     getResourceId() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourceinstancewrapper_getResourceId(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -3821,30 +4861,52 @@ ${val.stack}`;
       return v1;
     }
     getRootPseudo() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourceinstancewrapper_getRootPseudo(this.__wbg_ptr);
       return ret === 0 ? void 0 : PseudoValue$1.__wrap(ret);
     }
     getTileLoader() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourceinstancewrapper_getTileLoader(this.__wbg_ptr);
       return ret;
     }
     loadTilesWasm(tiles, assume_tiles_comprehensive_for_nodegroup) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passArrayJsValueToWasm0(tiles, wasm.__wbindgen_malloc);
       const len0 = WASM_VECTOR_LEN;
+      if (!isLikeNone(assume_tiles_comprehensive_for_nodegroup)) {
+        _assertBoolean(assume_tiles_comprehensive_for_nodegroup);
+      }
       const ret = wasm.wasmresourceinstancewrapper_loadTilesWasm(this.__wbg_ptr, ptr0, len0, isLikeNone(assume_tiles_comprehensive_for_nodegroup) ? 16777215 : assume_tiles_comprehensive_for_nodegroup ? 1 : 0);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
       }
     }
     setTileLoader(loader) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.wasmresourceinstancewrapper_setTileLoader(this.__wbg_ptr, loader);
     }
     toDisplayJson(rdm_cache, node_config_manager, language, resource_registry) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(rdm_cache, WasmRdmCache);
+      if (rdm_cache.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       _assertClass(node_config_manager, WasmNodeConfigManager);
+      if (node_config_manager.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr0 = isLikeNone(language) ? 0 : passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       _assertClass(resource_registry, StaticResourceRegistry);
+      if (resource_registry.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       const ret = wasm.wasmresourceinstancewrapper_toDisplayJson(this.__wbg_ptr, rdm_cache.__wbg_ptr, node_config_manager.__wbg_ptr, ptr0, len0, resource_registry.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -3852,8 +4914,12 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     ensureNodegroup(all_values_js, all_nodegroups_js, nodegroup_id, add_if_missing, nodegroup_permissions_js, do_implied_nodegroups) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
+      _assertBoolean(add_if_missing);
+      _assertBoolean(do_implied_nodegroups);
       const ret = wasm.wasmresourceinstancewrapper_ensureNodegroup(this.__wbg_ptr, all_values_js, all_nodegroups_js, ptr0, len0, add_if_missing, nodegroup_permissions_js, do_implied_nodegroups);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -3861,29 +4927,42 @@ ${val.stack}`;
       return WasmEnsureNodegroupResult.__wrap(ret[0]);
     }
     getAllTileIds() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourceinstancewrapper_getAllTileIds(this.__wbg_ptr);
       var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
       wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
       return v1;
     }
     cachePseudoList(alias, wasm_list) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       _assertClass(wasm_list, PseudoList$1);
+      if (wasm_list.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr1 = wasm_list.__destroy_into_raw();
       wasm.wasmresourceinstancewrapper_cachePseudoList(this.__wbg_ptr, ptr0, len0, ptr1);
     }
     getCachedPseudo(alias) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(alias) ? 0 : passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourceinstancewrapper_getCachedPseudo(this.__wbg_ptr, ptr0, len0);
       return ret === 0 ? void 0 : PseudoList$1.__wrap(ret);
     }
     makePseudoValue(alias, tile_id, is_permitted, is_single) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       var ptr1 = isLikeNone(tile_id) ? 0 : passStringToWasm0(tile_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len1 = WASM_VECTOR_LEN;
+      _assertBoolean(is_permitted);
+      _assertBoolean(is_single);
       const ret = wasm.wasmresourceinstancewrapper_makePseudoValue(this.__wbg_ptr, ptr0, len0, ptr1, len1, is_permitted, is_single);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -3891,16 +4970,25 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     cachePseudoValue(alias, wasm_value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       _assertClass(wasm_value, PseudoValue$1);
+      if (wasm_value.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr1 = wasm_value.__destroy_into_raw();
       wasm.wasmresourceinstancewrapper_cachePseudoValue(this.__wbg_ptr, ptr0, len0, ptr1);
     }
     clearPseudoCache() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.wasmresourceinstancewrapper_clearPseudoCache(this.__wbg_ptr);
     }
     getValuesAtPath(path) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourceinstancewrapper_getValuesAtPath(this.__wbg_ptr, ptr0, len0);
@@ -3910,22 +4998,33 @@ ${val.stack}`;
       return PseudoList$1.__wrap(ret[0]);
     }
     getNodegroupCount() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourceinstancewrapper_getNodegroupCount(this.__wbg_ptr);
       return ret >>> 0;
     }
     isNodegroupLoaded(nodegroup_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(nodegroup_id) ? 0 : passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourceinstancewrapper_isNodegroupLoaded(this.__wbg_ptr, ptr0, len0);
       return ret !== 0;
     }
     pruneResourceTiles() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourceinstancewrapper_pruneResourceTiles(this.__wbg_ptr);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
       }
     }
     serializeRootCards(max_depth) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      if (!isLikeNone(max_depth)) {
+        _assertNum(max_depth);
+      }
       const ret = wasm.wasmresourceinstancewrapper_serializeRootCards(this.__wbg_ptr, isLikeNone(max_depth) ? 4294967297 : max_depth >>> 0);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -3933,6 +5032,8 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     findSemanticChildren(parent_tile_id, parent_node_id, parent_nodegroup_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(parent_tile_id) ? 0 : passStringToWasm0(parent_tile_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ptr1 = passStringToWasm0(parent_node_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -3946,8 +5047,13 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     nodegroupIdsForCard(card_id, max_depth) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(card_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
+      if (!isLikeNone(max_depth)) {
+        _assertNum(max_depth);
+      }
       const ret = wasm.wasmresourceinstancewrapper_nodegroupIdsForCard(this.__wbg_ptr, ptr0, len0, isLikeNone(max_depth) ? 4294967297 : max_depth >>> 0);
       if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
@@ -3957,17 +5063,31 @@ ${val.stack}`;
       return v2;
     }
     serializeCardDisplay(card_id, rdm_cache, node_config_manager, parent_tile_id, parent_nodegroup_id, max_depth, language, resource_registry) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(card_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       _assertClass(rdm_cache, WasmRdmCache);
+      if (rdm_cache.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       _assertClass(node_config_manager, WasmNodeConfigManager);
+      if (node_config_manager.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr1 = isLikeNone(parent_tile_id) ? 0 : passStringToWasm0(parent_tile_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len1 = WASM_VECTOR_LEN;
       var ptr2 = isLikeNone(parent_nodegroup_id) ? 0 : passStringToWasm0(parent_nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len2 = WASM_VECTOR_LEN;
+      if (!isLikeNone(max_depth)) {
+        _assertNum(max_depth);
+      }
       var ptr3 = isLikeNone(language) ? 0 : passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len3 = WASM_VECTOR_LEN;
       _assertClass(resource_registry, StaticResourceRegistry);
+      if (resource_registry.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       const ret = wasm.wasmresourceinstancewrapper_serializeCardDisplay(this.__wbg_ptr, ptr0, len0, rdm_cache.__wbg_ptr, node_config_manager.__wbg_ptr, ptr1, len1, ptr2, len2, isLikeNone(max_depth) ? 4294967297 : max_depth >>> 0, ptr3, len3, resource_registry.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -3975,6 +5095,8 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     toDisplayJsonSimple(language) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(language) ? 0 : passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourceinstancewrapper_toDisplayJsonSimple(this.__wbg_ptr, ptr0, len0);
@@ -3984,19 +5106,31 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     hasTilesForNodegroup(nodegroup_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourceinstancewrapper_hasTilesForNodegroup(this.__wbg_ptr, ptr0, len0);
       return ret !== 0;
     }
     loadTilesFromResource(resource, assume_tiles_comprehensive_for_nodegroup) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(resource, StaticResource);
+      if (resource.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
+      if (!isLikeNone(assume_tiles_comprehensive_for_nodegroup)) {
+        _assertBoolean(assume_tiles_comprehensive_for_nodegroup);
+      }
       const ret = wasm.wasmresourceinstancewrapper_loadTilesFromResource(this.__wbg_ptr, resource.__wbg_ptr, isLikeNone(assume_tiles_comprehensive_for_nodegroup) ? 16777215 : assume_tiles_comprehensive_for_nodegroup ? 1 : 0);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
       }
     }
     getTileIdsByNodegroup(nodegroup_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(nodegroup_id) ? 0 : passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourceinstancewrapper_getTileIdsByNodegroup(this.__wbg_ptr, ptr0, len0);
@@ -4005,12 +5139,16 @@ ${val.stack}`;
       return v2;
     }
     tryAcquireNodegroupLock(nodegroup_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourceinstancewrapper_tryAcquireNodegroupLock(this.__wbg_ptr, ptr0, len0);
       return ret !== 0;
     }
     requestTilesForNodegroup(_nodegroup_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(_nodegroup_id) ? 0 : passStringToWasm0(_nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourceinstancewrapper_requestTilesForNodegroup(this.__wbg_ptr, ptr0, len0);
@@ -4020,11 +5158,25 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     serializeRootCardsDisplay(rdm_cache, node_config_manager, max_depth, language, resource_registry) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(rdm_cache, WasmRdmCache);
+      if (rdm_cache.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       _assertClass(node_config_manager, WasmNodeConfigManager);
+      if (node_config_manager.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
+      if (!isLikeNone(max_depth)) {
+        _assertNum(max_depth);
+      }
       var ptr0 = isLikeNone(language) ? 0 : passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       _assertClass(resource_registry, StaticResourceRegistry);
+      if (resource_registry.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       const ret = wasm.wasmresourceinstancewrapper_serializeRootCardsDisplay(this.__wbg_ptr, rdm_cache.__wbg_ptr, node_config_manager.__wbg_ptr, isLikeNone(max_depth) ? 4294967297 : max_depth >>> 0, ptr0, len0, resource_registry.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -4032,6 +5184,8 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     getAllSemanticChildValues(parent_tile_id, parent_node_id, parent_nodegroup_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(parent_tile_id) ? 0 : passStringToWasm0(parent_tile_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ptr1 = passStringToWasm0(parent_node_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -4045,6 +5199,8 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     getSemanticChildValue(parent_tile_id, parent_node_id, parent_nodegroup_id, child_alias) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(parent_tile_id) ? 0 : passStringToWasm0(parent_tile_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ptr1 = passStringToWasm0(parent_node_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -4060,6 +5216,8 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     retrieveSemanticChildValue(parent_tile_id, parent_node_id, parent_nodegroup_id, child_alias) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(parent_tile_id) ? 0 : passStringToWasm0(parent_tile_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ptr1 = passStringToWasm0(parent_node_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -4072,12 +5230,16 @@ ${val.stack}`;
       return ret;
     }
     isNodegroupLoadedOrLoading(nodegroup_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(nodegroup_id) ? 0 : passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourceinstancewrapper_isNodegroupLoadedOrLoading(this.__wbg_ptr, ptr0, len0);
       return ret !== 0;
     }
     valuesFromResourceNodegroup(existing_values_js, nodegroup_tile_ids, nodegroup_id, _node_objs_js, _edges_js) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passArrayJsValueToWasm0(nodegroup_tile_ids, wasm.__wbindgen_malloc);
       const len0 = WASM_VECTOR_LEN;
       const ptr1 = passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -4089,6 +5251,8 @@ ${val.stack}`;
       return WasmValuesFromNodegroupResult.__wrap(ret[0]);
     }
     getMissingNodegroupsForChildren(parent_node_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(parent_node_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourceinstancewrapper_getMissingNodegroupsForChildren(this.__wbg_ptr, ptr0, len0);
@@ -4100,9 +5264,13 @@ ${val.stack}`;
       return v2;
     }
     release() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.wasmresourceinstancewrapper_release(this.__wbg_ptr);
     }
     toJson() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourceinstancewrapper_toJson(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -4113,6 +5281,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.wasmresourceinstancewrapper_getName(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -4122,6 +5292,8 @@ ${val.stack}`;
       }
     }
     getTile(tile_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(tile_id) ? 0 : passStringToWasm0(tile_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourceinstancewrapper_getTile(this.__wbg_ptr, ptr0, len0);
@@ -4131,6 +5303,9 @@ ${val.stack}`;
       return StaticTile.__wrap(ret[0]);
     }
     populate(lazy, nodegroup_ids, root_node_alias) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      _assertBoolean(lazy);
       const ptr0 = passArrayJsValueToWasm0(nodegroup_ids, wasm.__wbindgen_malloc);
       const len0 = WASM_VECTOR_LEN;
       const ptr1 = passStringToWasm0(root_node_alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -4142,9 +5317,14 @@ ${val.stack}`;
       return WasmPopulateResult.__wrap(ret[0]);
     }
     setLazy(lazy) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      _assertBoolean(lazy);
       wasm.wasmresourceinstancewrapper_setLazy(this.__wbg_ptr, lazy);
     }
     toTiles() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourceinstancewrapper_toTiles(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -4178,12 +5358,16 @@ ${val.stack}`;
       wasm.__wbg_wasmresourcemodelwrapper_free(ptr, 0);
     }
     build_nodes() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_build_nodes(this.__wbg_ptr);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
       }
     }
     pruneGraph(keep_functions) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(keep_functions) ? 0 : passArrayJsValueToWasm0(keep_functions, wasm.__wbindgen_malloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourcemodelwrapper_pruneGraph(this.__wbg_ptr, ptr0, len0);
@@ -4195,6 +5379,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.wasmresourcemodelwrapper_getGraphId(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -4204,6 +5390,8 @@ ${val.stack}`;
       }
     }
     getRootNode() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_getRootNode(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -4211,14 +5399,20 @@ ${val.stack}`;
       return StaticNode.__wrap(ret[0]);
     }
     get edges() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_get_edges_prop(this.__wbg_ptr);
       return ret;
     }
     get nodes() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_get_nodes_prop(this.__wbg_ptr);
       return ret;
     }
     getChildNodes(node_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(node_id) ? 0 : passStringToWasm0(node_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourcemodelwrapper_getChildNodes(this.__wbg_ptr, ptr0, len0);
@@ -4228,12 +5422,18 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     setGraphEdges(edges) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.wasmresourcemodelwrapper_setGraphEdges(this.__wbg_ptr, edges);
     }
     setGraphNodes(nodes) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.wasmresourcemodelwrapper_setGraphNodes(this.__wbg_ptr, nodes);
     }
     getNodeObjects() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_getNodeObjects(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -4241,6 +5441,8 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     getNodegroupIds() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_getNodegroupIds(this.__wbg_ptr);
       if (ret[3]) {
         throw takeFromExternrefTable0(ret[2]);
@@ -4250,6 +5452,8 @@ ${val.stack}`;
       return v1;
     }
     createPseudoNode(child_node) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(child_node) ? 0 : passStringToWasm0(child_node, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourcemodelwrapper_createPseudoNode(this.__wbg_ptr, ptr0, len0);
@@ -4262,6 +5466,8 @@ ${val.stack}`;
       let deferred3_0;
       let deferred3_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         var ptr0 = isLikeNone(nodegroup_id) ? 0 : passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len0 = WASM_VECTOR_LEN;
         const ret = wasm.wasmresourcemodelwrapper_getNodegroupName(this.__wbg_ptr, ptr0, len0);
@@ -4280,6 +5486,8 @@ ${val.stack}`;
       }
     }
     createPseudoValue(alias, tile, parent) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(alias) ? 0 : passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourcemodelwrapper_createPseudoValue(this.__wbg_ptr, ptr0, len0, tile, parent);
@@ -4289,6 +5497,8 @@ ${val.stack}`;
       return PseudoValue$1.__wrap(ret[0]);
     }
     get nodegroups() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_get_nodegroups_prop(this.__wbg_ptr);
       return ret;
     }
@@ -4299,10 +5509,17 @@ ${val.stack}`;
       return ret !== 0;
     }
     setGraphNodegroups(nodegroups) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.wasmresourcemodelwrapper_setGraphNodegroups(this.__wbg_ptr, nodegroups);
     }
     buildNodesForGraph(graph) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(graph, StaticGraph);
+      if (graph.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       const ret = wasm.wasmresourcemodelwrapper_buildNodesForGraph(this.__wbg_ptr, graph.__wbg_ptr);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
@@ -4315,6 +5532,8 @@ ${val.stack}`;
       return ret === 0 ? void 0 : WASMResourceModelWrapper.__wrap(ret);
     }
     getNodegroupObjects() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_getNodegroupObjects(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -4322,6 +5541,8 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     getChildNodeAliases(node_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(node_id) ? 0 : passStringToWasm0(node_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourcemodelwrapper_getChildNodeAliases(this.__wbg_ptr, ptr0, len0);
@@ -4336,6 +5557,8 @@ ${val.stack}`;
       let deferred3_0;
       let deferred3_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         var ptr0 = isLikeNone(alias) ? 0 : passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         var len0 = WASM_VECTOR_LEN;
         const ret = wasm.wasmresourcemodelwrapper_getNodeIdFromAlias(this.__wbg_ptr, ptr0, len0);
@@ -4354,11 +5577,16 @@ ${val.stack}`;
       }
     }
     isNodegroupPermitted(nodegroup_id, _tile) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       let ptr1 = 0;
       if (!isLikeNone(_tile)) {
         _assertClass(_tile, StaticTile);
+        if (_tile.__wbg_ptr === 0) {
+          throw new Error("Attempt to use a moved value");
+        }
         ptr1 = _tile.__destroy_into_raw();
       }
       const ret = wasm.wasmresourcemodelwrapper_isNodegroupPermitted(this.__wbg_ptr, ptr0, len0, ptr1);
@@ -4368,6 +5596,8 @@ ${val.stack}`;
       return ret[0] !== 0;
     }
     getNodeObjectFromId(id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(id) ? 0 : passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourcemodelwrapper_getNodeObjectFromId(this.__wbg_ptr, ptr0, len0);
@@ -4377,13 +5607,20 @@ ${val.stack}`;
       return StaticNode.__wrap(ret[0]);
     }
     get nodesByAlias() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_get_nodes_by_alias_prop(this.__wbg_ptr);
       return ret;
     }
     createPseudoNodeChild(child_node, parent_pseudo) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(child_node, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       _assertClass(parent_pseudo, PseudoNode);
+      if (parent_pseudo.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       const ret = wasm.wasmresourcemodelwrapper_createPseudoNodeChild(this.__wbg_ptr, ptr0, len0, parent_pseudo.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -4391,6 +5628,8 @@ ${val.stack}`;
       return PseudoNode.__wrap(ret[0]);
     }
     getPermittedNodegroups() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_getPermittedNodegroups(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -4398,12 +5637,16 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     setPermittedNodegroups(permissions) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_setPermittedNodegroups(this.__wbg_ptr, permissions);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
       }
     }
     getNodeObjectsByAlias() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_getNodeObjectsByAlias(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -4411,6 +5654,8 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     getNodeObjectFromAlias(alias) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(alias) ? 0 : passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourcemodelwrapper_getNodeObjectFromAlias(this.__wbg_ptr, ptr0, len0);
@@ -4420,21 +5665,35 @@ ${val.stack}`;
       return StaticNode.__wrap(ret[0]);
     }
     setDefaultAllowAllNodegroups(default_allow) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      _assertBoolean(default_allow);
       wasm.wasmresourcemodelwrapper_setDefaultAllowAllNodegroups(this.__wbg_ptr, default_allow);
     }
     constructor(wkrm, graph, default_allow) {
       _assertClass(wkrm, WKRM);
+      if (wkrm.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       _assertClass(graph, StaticGraph);
+      if (graph.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
+      _assertBoolean(default_allow);
       const ret = wasm.wasmresourcemodelwrapper_new(wkrm.__wbg_ptr, graph.__wbg_ptr, default_allow);
       this.__wbg_ptr = ret >>> 0;
       WASMResourceModelWrapperFinalization.register(this, this.__wbg_ptr, this);
       return this;
     }
     get wkrm() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_get_wkrm(this.__wbg_ptr);
       return WKRM.__wrap(ret);
     }
     getEdges() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_getEdges(this.__wbg_ptr);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
@@ -4442,11 +5701,18 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     get graph() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmresourcemodelwrapper_get_graph(this.__wbg_ptr);
       return StaticGraph.__wrap(ret);
     }
     set graph(graph) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(graph, StaticGraph);
+      if (graph.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       var ptr0 = graph.__destroy_into_raw();
       wasm.wasmresourcemodelwrapper_set_graph(this.__wbg_ptr, ptr0);
     }
@@ -4480,6 +5746,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.wkrm_get_graph_id(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -4489,6 +5757,8 @@ ${val.stack}`;
       }
     }
     set graphId(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       wasm.wkrm_set_graph_id(this.__wbg_ptr, ptr0, len0);
@@ -4497,6 +5767,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.wkrm_get_model_name(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -4506,6 +5778,8 @@ ${val.stack}`;
       }
     }
     set modelName(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       wasm.wkrm_set_model_name(this.__wbg_ptr, ptr0, len0);
@@ -4514,6 +5788,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.wkrm_get_model_class_name(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -4523,6 +5799,8 @@ ${val.stack}`;
       }
     }
     set modelClassName(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       wasm.wkrm_set_model_class_name(this.__wbg_ptr, ptr0, len0);
@@ -4537,10 +5815,14 @@ ${val.stack}`;
       return this;
     }
     get meta() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wkrm_get_meta(this.__wbg_ptr);
       return StaticGraphMeta.__wrap(ret);
     }
     set meta(value) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.wkrm_set_meta(this.__wbg_ptr, value);
     }
   };
@@ -4553,6 +5835,9 @@ ${val.stack}`;
     }
   } : new FinalizationRegistry((ptr) => wasm.__wbg_wasmensurenodegroupresult_free(ptr >>> 0, 1));
   class WasmEnsureNodegroupResult {
+    constructor() {
+      throw new Error("cannot invoke `new` directly");
+    }
     static __wrap(ptr) {
       ptr = ptr >>> 0;
       const obj = Object.create(WasmEnsureNodegroupResult.prototype);
@@ -4571,26 +5856,36 @@ ${val.stack}`;
       wasm.__wbg_wasmensurenodegroupresult_free(ptr, 0);
     }
     getAllValues() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmensurenodegroupresult_getAllValues(this.__wbg_ptr);
       return ret;
     }
     getValueAliases() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmensurenodegroupresult_getValueAliases(this.__wbg_ptr);
       var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
       wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
       return v1;
     }
     get allNodegroupsMap() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmensurenodegroupresult_all_nodegroups_map(this.__wbg_ptr);
       return ret;
     }
     get impliedNodegroups() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmensurenodegroupresult_implied_nodegroups(this.__wbg_ptr);
       var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
       wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
       return v1;
     }
     getValue(alias) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(alias) ? 0 : passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmensurenodegroupresult_getValue(this.__wbg_ptr, ptr0, len0);
@@ -4605,6 +5900,9 @@ ${val.stack}`;
     }
   } : new FinalizationRegistry((ptr) => wasm.__wbg_wasmnodeconfigboolean_free(ptr >>> 0, 1));
   class WasmNodeConfigBoolean {
+    constructor() {
+      throw new Error("cannot invoke `new` directly");
+    }
     static __wrap(ptr) {
       ptr = ptr >>> 0;
       const obj = Object.create(WasmNodeConfigBoolean.prototype);
@@ -4623,14 +5921,21 @@ ${val.stack}`;
       wasm.__wbg_wasmnodeconfigboolean_free(ptr, 0);
     }
     get trueLabel() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmnodeconfigboolean_trueLabel(this.__wbg_ptr);
       return ret;
     }
     get falseLabel() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmnodeconfigboolean_falseLabel(this.__wbg_ptr);
       return ret;
     }
     getLabel(value, language) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
+      _assertBoolean(value);
       const ptr0 = passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmnodeconfigboolean_getLabel(this.__wbg_ptr, value, ptr0, len0);
@@ -4650,6 +5955,9 @@ ${val.stack}`;
     }
   } : new FinalizationRegistry((ptr) => wasm.__wbg_wasmnodeconfigconcept_free(ptr >>> 0, 1));
   class WasmNodeConfigConcept {
+    constructor() {
+      throw new Error("cannot invoke `new` directly");
+    }
     static __wrap(ptr) {
       ptr = ptr >>> 0;
       const obj = Object.create(WasmNodeConfigConcept.prototype);
@@ -4671,6 +5979,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.wasmnodeconfigconcept_rdmCollection(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -4688,6 +5998,9 @@ ${val.stack}`;
     }
   } : new FinalizationRegistry((ptr) => wasm.__wbg_wasmnodeconfigdomain_free(ptr >>> 0, 1));
   class WasmNodeConfigDomain {
+    constructor() {
+      throw new Error("cannot invoke `new` directly");
+    }
     static __wrap(ptr) {
       ptr = ptr >>> 0;
       const obj = Object.create(WasmNodeConfigDomain.prototype);
@@ -4706,20 +6019,28 @@ ${val.stack}`;
       wasm.__wbg_wasmnodeconfigdomain_free(ptr, 0);
     }
     getSelected() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmnodeconfigdomain_getSelected(this.__wbg_ptr);
       return ret === 0 ? void 0 : WasmStaticDomainValue.__wrap(ret);
     }
     valueFromId(id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmnodeconfigdomain_valueFromId(this.__wbg_ptr, ptr0, len0);
       return ret === 0 ? void 0 : WasmStaticDomainValue.__wrap(ret);
     }
     getOptionIds() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmnodeconfigdomain_getOptionIds(this.__wbg_ptr);
       return ret;
     }
     get options() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmnodeconfigdomain_options(this.__wbg_ptr);
       return ret;
     }
@@ -4743,40 +6064,57 @@ ${val.stack}`;
       wasm.__wbg_wasmnodeconfigmanager_free(ptr, 0);
     }
     fromGraph(graph) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       _assertClass(graph, StaticGraph);
+      if (graph.__wbg_ptr === 0) {
+        throw new Error("Attempt to use a moved value");
+      }
       wasm.wasmnodeconfigmanager_fromGraph(this.__wbg_ptr, graph.__wbg_ptr);
     }
     getDomain(nodeid) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(nodeid) ? 0 : passStringToWasm0(nodeid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmnodeconfigmanager_getDomain(this.__wbg_ptr, ptr0, len0);
       return ret === 0 ? void 0 : WasmNodeConfigDomain.__wrap(ret);
     }
     hasConfig(nodeid) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(nodeid) ? 0 : passStringToWasm0(nodeid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmnodeconfigmanager_hasConfig(this.__wbg_ptr, ptr0, len0);
       return ret !== 0;
     }
     getBoolean(nodeid) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(nodeid) ? 0 : passStringToWasm0(nodeid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmnodeconfigmanager_getBoolean(this.__wbg_ptr, ptr0, len0);
       return ret === 0 ? void 0 : WasmNodeConfigBoolean.__wrap(ret);
     }
     getConcept(nodeid) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(nodeid) ? 0 : passStringToWasm0(nodeid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmnodeconfigmanager_getConcept(this.__wbg_ptr, ptr0, len0);
       return ret === 0 ? void 0 : WasmNodeConfigConcept.__wrap(ret);
     }
     getReference(nodeid) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(nodeid) ? 0 : passStringToWasm0(nodeid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmnodeconfigmanager_getReference(this.__wbg_ptr, ptr0, len0);
       return ret === 0 ? void 0 : WasmNodeConfigReference.__wrap(ret);
     }
     fromGraphJson(graph_json) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(graph_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmnodeconfigmanager_fromGraphJson(this.__wbg_ptr, ptr0, len0);
@@ -4785,6 +6123,8 @@ ${val.stack}`;
       }
     }
     getConfigType(nodeid) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(nodeid) ? 0 : passStringToWasm0(nodeid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmnodeconfigmanager_getConfigType(this.__wbg_ptr, ptr0, len0);
@@ -4796,6 +6136,8 @@ ${val.stack}`;
       return v2;
     }
     lookupDomainValue(nodeid, value_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(nodeid) ? 0 : passStringToWasm0(nodeid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       var ptr1 = isLikeNone(value_id) ? 0 : passStringToWasm0(value_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -4810,9 +6152,13 @@ ${val.stack}`;
       return this;
     }
     clear() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.wasmnodeconfigmanager_clear(this.__wbg_ptr);
     }
     get length() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmnodeconfigmanager_length(this.__wbg_ptr);
       return ret >>> 0;
     }
@@ -4825,6 +6171,9 @@ ${val.stack}`;
     }
   } : new FinalizationRegistry((ptr) => wasm.__wbg_wasmnodeconfigreference_free(ptr >>> 0, 1));
   class WasmNodeConfigReference {
+    constructor() {
+      throw new Error("cannot invoke `new` directly");
+    }
     static __wrap(ptr) {
       ptr = ptr >>> 0;
       const obj = Object.create(WasmNodeConfigReference.prototype);
@@ -4843,6 +6192,8 @@ ${val.stack}`;
       wasm.__wbg_wasmnodeconfigreference_free(ptr, 0);
     }
     get multiValue() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmnodeconfigreference_multiValue(this.__wbg_ptr);
       return ret !== 0;
     }
@@ -4850,6 +6201,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.wasmnodeconfigreference_rdmCollection(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -4862,6 +6215,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.wasmnodeconfigreference_controlledList(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -4871,6 +6226,8 @@ ${val.stack}`;
       }
     }
     getCollectionId() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmnodeconfigreference_getCollectionId(this.__wbg_ptr);
       let v1;
       if (ret[0] !== 0) {
@@ -4889,6 +6246,9 @@ ${val.stack}`;
     }
   } : new FinalizationRegistry((ptr) => wasm.__wbg_wasmpopulateresult_free(ptr >>> 0, 1));
   class WasmPopulateResult {
+    constructor() {
+      throw new Error("cannot invoke `new` directly");
+    }
     static __wrap(ptr) {
       ptr = ptr >>> 0;
       const obj = Object.create(WasmPopulateResult.prototype);
@@ -4907,24 +6267,34 @@ ${val.stack}`;
       wasm.__wbg_wasmpopulateresult_free(ptr, 0);
     }
     get allValuesMap() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmpopulateresult_all_values_map(this.__wbg_ptr);
       return ret;
     }
     getAllValues() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmpopulateresult_getAllValues(this.__wbg_ptr);
       return ret;
     }
     getValueAliases() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmpopulateresult_getValueAliases(this.__wbg_ptr);
       var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
       wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
       return v1;
     }
     get allNodegroupsMap() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmpopulateresult_all_nodegroups_map(this.__wbg_ptr);
       return ret;
     }
     getValue(alias) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(alias) ? 0 : passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmpopulateresult_getValue(this.__wbg_ptr, ptr0, len0);
@@ -4950,6 +6320,8 @@ ${val.stack}`;
       wasm.__wbg_wasmrdmcache_free(ptr, 0);
     }
     lookupLabel(collection_id, concept_id, language) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(collection_id) ? 0 : passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       var ptr1 = isLikeNone(concept_id) ? 0 : passStringToWasm0(concept_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -4965,6 +6337,8 @@ ${val.stack}`;
       return v42;
     }
     lookupValue(collection_id, value_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(collection_id) ? 0 : passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       var ptr1 = isLikeNone(value_id) ? 0 : passStringToWasm0(value_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -4976,6 +6350,8 @@ ${val.stack}`;
       return takeFromExternrefTable0(ret[0]);
     }
     getParentId(collection_id, concept_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(collection_id) ? 0 : passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       var ptr1 = isLikeNone(concept_id) ? 0 : passStringToWasm0(concept_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -4989,12 +6365,16 @@ ${val.stack}`;
       return v3;
     }
     hasCollection(collection_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(collection_id) ? 0 : passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmrdmcache_hasCollection(this.__wbg_ptr, ptr0, len0);
       return ret !== 0;
     }
     lookupConcept(collection_id, concept_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(collection_id) ? 0 : passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       var ptr1 = isLikeNone(concept_id) ? 0 : passStringToWasm0(concept_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -5009,8 +6389,11 @@ ${val.stack}`;
       let deferred3_0;
       let deferred3_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ptr0 = passStringToWasm0(tree_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
+        _assertBoolean(strict);
         const ret = wasm.wasmrdmcache_resolveLabels(this.__wbg_ptr, ptr0, len0, alias_to_collection, strict);
         var ptr2 = ret[0];
         var len2 = ret[1];
@@ -5027,6 +6410,8 @@ ${val.stack}`;
       }
     }
     validateValue(collection_id, value_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(collection_id) ? 0 : passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       var ptr1 = isLikeNone(value_id) ? 0 : passStringToWasm0(value_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -5035,18 +6420,24 @@ ${val.stack}`;
       return ret !== 0;
     }
     removeCollection(collection_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmrdmcache_removeCollection(this.__wbg_ptr, ptr0, len0);
       return ret !== 0;
     }
     getCollectionIds() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmrdmcache_getCollectionIds(this.__wbg_ptr);
       var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
       wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
       return v1;
     }
     addCollectionFromJson(collection_id, concepts_json) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       const ptr1 = passStringToWasm0(concepts_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -5057,6 +6448,8 @@ ${val.stack}`;
       }
     }
     getConceptIdForValue(collection_id, value_id) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       var ptr0 = isLikeNone(collection_id) ? 0 : passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       var ptr1 = isLikeNone(value_id) ? 0 : passStringToWasm0(value_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -5076,9 +6469,13 @@ ${val.stack}`;
       return this;
     }
     clear() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       wasm.wasmrdmcache_clear(this.__wbg_ptr);
     }
     get length() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmrdmcache_length(this.__wbg_ptr);
       return ret >>> 0;
     }
@@ -5092,6 +6489,9 @@ ${val.stack}`;
     }
   } : new FinalizationRegistry((ptr) => wasm.__wbg_wasmstaticdomainvalue_free(ptr >>> 0, 1));
   class WasmStaticDomainValue {
+    constructor() {
+      throw new Error("cannot invoke `new` directly");
+    }
     static __wrap(ptr) {
       ptr = ptr >>> 0;
       const obj = Object.create(WasmStaticDomainValue.prototype);
@@ -5113,6 +6513,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.wasmstaticdomainvalue_id(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -5122,6 +6524,8 @@ ${val.stack}`;
       }
     }
     lang(language) {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ptr0 = passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmstaticdomainvalue_lang(this.__wbg_ptr, ptr0, len0);
@@ -5133,6 +6537,8 @@ ${val.stack}`;
       return v2;
     }
     get text() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmstaticdomainvalue_text(this.__wbg_ptr);
       return ret;
     }
@@ -5140,6 +6546,8 @@ ${val.stack}`;
       let deferred1_0;
       let deferred1_1;
       try {
+        if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+        _assertNum(this.__wbg_ptr);
         const ret = wasm.wasmstaticdomainvalue_display(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
@@ -5149,6 +6557,8 @@ ${val.stack}`;
       }
     }
     get selected() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmstaticdomainvalue_selected(this.__wbg_ptr);
       return ret !== 0;
     }
@@ -5161,6 +6571,9 @@ ${val.stack}`;
     }
   } : new FinalizationRegistry((ptr) => wasm.__wbg_wasmvaluesfromnodegroupresult_free(ptr >>> 0, 1));
   class WasmValuesFromNodegroupResult {
+    constructor() {
+      throw new Error("cannot invoke `new` directly");
+    }
     static __wrap(ptr) {
       ptr = ptr >>> 0;
       const obj = Object.create(WasmValuesFromNodegroupResult.prototype);
@@ -5179,10 +6592,14 @@ ${val.stack}`;
       wasm.__wbg_wasmvaluesfromnodegroupresult_free(ptr, 0);
     }
     getAllValues() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmvaluesfromnodegroupresult_getAllValues(this.__wbg_ptr);
       return ret;
     }
     get impliedNodegroups() {
+      if (this.__wbg_ptr == 0) throw new Error("Attempt to use a moved value");
+      _assertNum(this.__wbg_ptr);
       const ret = wasm.wasmvaluesfromnodegroupresult_implied_nodegroups(this.__wbg_ptr);
       var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
       wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
@@ -5226,20 +6643,26 @@ ${val.stack}`;
   function __wbg_get_imports() {
     const imports = {};
     imports.wbg = {};
-    imports.wbg.__wbg_Error_e17e777aac105295 = function(arg0, arg1) {
-      const ret = Error(getStringFromWasm0(arg0, arg1));
-      return ret;
+    imports.wbg.__wbg_Error_e17e777aac105295 = function() {
+      return logError(function(arg0, arg1) {
+        const ret = Error(getStringFromWasm0(arg0, arg1));
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_Number_998bea33bd87c3e0 = function(arg0) {
-      const ret = Number(arg0);
-      return ret;
+    imports.wbg.__wbg_Number_998bea33bd87c3e0 = function() {
+      return logError(function(arg0) {
+        const ret = Number(arg0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_String_8f0eb39a4a4c2f66 = function(arg0, arg1) {
-      const ret = String(arg1);
-      const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len1 = WASM_VECTOR_LEN;
-      getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-      getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+    imports.wbg.__wbg_String_8f0eb39a4a4c2f66 = function() {
+      return logError(function(arg0, arg1) {
+        const ret = String(arg1);
+        const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
+        getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+      }, arguments);
     };
     imports.wbg.__wbg_call_13410aac570ffff7 = function() {
       return handleError(function(arg0, arg1) {
@@ -5265,71 +6688,92 @@ ${val.stack}`;
         return ret;
       }, arguments);
     };
-    imports.wbg.__wbg_clearMarks_26eb6dd3c50d2ef9 = function(arg0, arg1) {
-      performance.clearMarks(getStringFromWasm0(arg0, arg1));
+    imports.wbg.__wbg_clearMarks_26eb6dd3c50d2ef9 = function() {
+      return logError(function(arg0, arg1) {
+        performance.clearMarks(getStringFromWasm0(arg0, arg1));
+      }, arguments);
     };
-    imports.wbg.__wbg_crypto_574e78ad8b13b65f = function(arg0) {
-      const ret = arg0.crypto;
-      return ret;
+    imports.wbg.__wbg_crypto_574e78ad8b13b65f = function() {
+      return logError(function(arg0) {
+        const ret = arg0.crypto;
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_done_75ed0ee6dd243d9d = function(arg0) {
-      const ret = arg0.done;
-      return ret;
+    imports.wbg.__wbg_done_75ed0ee6dd243d9d = function() {
+      return logError(function(arg0) {
+        const ret = arg0.done;
+        _assertBoolean(ret);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_entries_2be2f15bd5554996 = function(arg0) {
-      const ret = Object.entries(arg0);
-      return ret;
+    imports.wbg.__wbg_entries_2be2f15bd5554996 = function() {
+      return logError(function(arg0) {
+        const ret = Object.entries(arg0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_error_7534b8e9a36f1ab4 = function(arg0, arg1) {
-      let deferred0_0;
-      let deferred0_1;
-      try {
-        deferred0_0 = arg0;
-        deferred0_1 = arg1;
-        console.error(getStringFromWasm0(arg0, arg1));
-      } finally {
-        wasm.__wbindgen_free(deferred0_0, deferred0_1, 1);
-      }
+    imports.wbg.__wbg_error_7534b8e9a36f1ab4 = function() {
+      return logError(function(arg0, arg1) {
+        let deferred0_0;
+        let deferred0_1;
+        try {
+          deferred0_0 = arg0;
+          deferred0_1 = arg1;
+          console.error(getStringFromWasm0(arg0, arg1));
+        } finally {
+          wasm.__wbindgen_free(deferred0_0, deferred0_1, 1);
+        }
+      }, arguments);
     };
-    imports.wbg.__wbg_error_99981e16d476aa5c = function(arg0) {
-      console.error(arg0);
+    imports.wbg.__wbg_error_99981e16d476aa5c = function() {
+      return logError(function(arg0) {
+        console.error(arg0);
+      }, arguments);
     };
-    imports.wbg.__wbg_forEach_859dfd887a0f866c = function(arg0, arg1, arg2) {
-      try {
-        var state0 = {
-          a: arg1,
-          b: arg2
-        };
-        var cb0 = (arg02, arg12) => {
-          const a = state0.a;
-          state0.a = 0;
-          try {
-            return __wbg_adapter_776(a, state0.b, arg02, arg12);
-          } finally {
-            state0.a = a;
-          }
-        };
-        arg0.forEach(cb0);
-      } finally {
-        state0.a = state0.b = 0;
-      }
+    imports.wbg.__wbg_forEach_859dfd887a0f866c = function() {
+      return logError(function(arg0, arg1, arg2) {
+        try {
+          var state0 = {
+            a: arg1,
+            b: arg2
+          };
+          var cb0 = (arg02, arg12) => {
+            const a = state0.a;
+            state0.a = 0;
+            try {
+              return __wbg_adapter_799(a, state0.b, arg02, arg12);
+            } finally {
+              state0.a = a;
+            }
+          };
+          arg0.forEach(cb0);
+        } finally {
+          state0.a = state0.b = 0;
+        }
+      }, arguments);
     };
-    imports.wbg.__wbg_from_88bc52ce20ba6318 = function(arg0) {
-      const ret = Array.from(arg0);
-      return ret;
+    imports.wbg.__wbg_from_88bc52ce20ba6318 = function() {
+      return logError(function(arg0) {
+        const ret = Array.from(arg0);
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_getRandomValues_b8f5dbd5f3995a9e = function() {
       return handleError(function(arg0, arg1) {
         arg0.getRandomValues(arg1);
       }, arguments);
     };
-    imports.wbg.__wbg_getTime_6bb3f64e0f18f817 = function(arg0) {
-      const ret = arg0.getTime();
-      return ret;
+    imports.wbg.__wbg_getTime_6bb3f64e0f18f817 = function() {
+      return logError(function(arg0) {
+        const ret = arg0.getTime();
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_get_0da715ceaecea5c8 = function(arg0, arg1) {
-      const ret = arg0[arg1 >>> 0];
-      return ret;
+    imports.wbg.__wbg_get_0da715ceaecea5c8 = function() {
+      return logError(function(arg0, arg1) {
+        const ret = arg0[arg1 >>> 0];
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_get_458e874b43b18b25 = function() {
       return handleError(function(arg0, arg1) {
@@ -5337,135 +6781,189 @@ ${val.stack}`;
         return ret;
       }, arguments);
     };
-    imports.wbg.__wbg_getwithrefkey_1dc361bd10053bfe = function(arg0, arg1) {
-      const ret = arg0[arg1];
-      return ret;
+    imports.wbg.__wbg_getwithrefkey_1dc361bd10053bfe = function() {
+      return logError(function(arg0, arg1) {
+        const ret = arg0[arg1];
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_has_b89e451f638123e3 = function() {
       return handleError(function(arg0, arg1) {
         const ret = Reflect.has(arg0, arg1);
+        _assertBoolean(ret);
         return ret;
       }, arguments);
     };
-    imports.wbg.__wbg_instanceof_ArrayBuffer_67f3012529f6a2dd = function(arg0) {
-      let result;
-      try {
-        result = arg0 instanceof ArrayBuffer;
-      } catch (_) {
-        result = false;
-      }
-      const ret = result;
-      return ret;
+    imports.wbg.__wbg_instanceof_ArrayBuffer_67f3012529f6a2dd = function() {
+      return logError(function(arg0) {
+        let result;
+        try {
+          result = arg0 instanceof ArrayBuffer;
+        } catch (_) {
+          result = false;
+        }
+        const ret = result;
+        _assertBoolean(ret);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_instanceof_Map_ebb01a5b6b5ffd0b = function(arg0) {
-      let result;
-      try {
-        result = arg0 instanceof Map;
-      } catch (_) {
-        result = false;
-      }
-      const ret = result;
-      return ret;
+    imports.wbg.__wbg_instanceof_Map_ebb01a5b6b5ffd0b = function() {
+      return logError(function(arg0) {
+        let result;
+        try {
+          result = arg0 instanceof Map;
+        } catch (_) {
+          result = false;
+        }
+        const ret = result;
+        _assertBoolean(ret);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_instanceof_Uint8Array_9a8378d955933db7 = function(arg0) {
-      let result;
-      try {
-        result = arg0 instanceof Uint8Array;
-      } catch (_) {
-        result = false;
-      }
-      const ret = result;
-      return ret;
+    imports.wbg.__wbg_instanceof_Uint8Array_9a8378d955933db7 = function() {
+      return logError(function(arg0) {
+        let result;
+        try {
+          result = arg0 instanceof Uint8Array;
+        } catch (_) {
+          result = false;
+        }
+        const ret = result;
+        _assertBoolean(ret);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_isArray_030cce220591fb41 = function(arg0) {
-      const ret = Array.isArray(arg0);
-      return ret;
+    imports.wbg.__wbg_isArray_030cce220591fb41 = function() {
+      return logError(function(arg0) {
+        const ret = Array.isArray(arg0);
+        _assertBoolean(ret);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_isSafeInteger_1c0d1af5542e102a = function(arg0) {
-      const ret = Number.isSafeInteger(arg0);
-      return ret;
+    imports.wbg.__wbg_isSafeInteger_1c0d1af5542e102a = function() {
+      return logError(function(arg0) {
+        const ret = Number.isSafeInteger(arg0);
+        _assertBoolean(ret);
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_iterator_f370b34483c71a1c = function() {
-      const ret = Symbol.iterator;
-      return ret;
+      return logError(function() {
+        const ret = Symbol.iterator;
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_length_186546c51cd61acd = function(arg0) {
-      const ret = arg0.length;
-      return ret;
+    imports.wbg.__wbg_length_186546c51cd61acd = function() {
+      return logError(function(arg0) {
+        const ret = arg0.length;
+        _assertNum(ret);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_length_6bb7e81f9d7713e4 = function(arg0) {
-      const ret = arg0.length;
-      return ret;
+    imports.wbg.__wbg_length_6bb7e81f9d7713e4 = function() {
+      return logError(function(arg0) {
+        const ret = arg0.length;
+        _assertNum(ret);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_log_6c7b5f4f00b8ce3f = function(arg0) {
-      console.log(arg0);
+    imports.wbg.__wbg_log_6c7b5f4f00b8ce3f = function() {
+      return logError(function(arg0) {
+        console.log(arg0);
+      }, arguments);
     };
-    imports.wbg.__wbg_mark_d274154b9f14c726 = function(arg0, arg1) {
-      performance.mark(getStringFromWasm0(arg0, arg1));
+    imports.wbg.__wbg_mark_d274154b9f14c726 = function() {
+      return logError(function(arg0, arg1) {
+        performance.mark(getStringFromWasm0(arg0, arg1));
+      }, arguments);
     };
-    imports.wbg.__wbg_measure_34ad1d09589c687a = function(arg0, arg1, arg2) {
-      performance.measure(getStringFromWasm0(arg0, arg1), arg2);
+    imports.wbg.__wbg_measure_34ad1d09589c687a = function() {
+      return logError(function(arg0, arg1, arg2) {
+        performance.measure(getStringFromWasm0(arg0, arg1), arg2);
+      }, arguments);
     };
-    imports.wbg.__wbg_msCrypto_a61aeb35a24c1329 = function(arg0) {
-      const ret = arg0.msCrypto;
-      return ret;
+    imports.wbg.__wbg_msCrypto_a61aeb35a24c1329 = function() {
+      return logError(function(arg0) {
+        const ret = arg0.msCrypto;
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_new0_b0a0a38c201e6df5 = function() {
-      const ret = /* @__PURE__ */ new Date();
-      return ret;
+      return logError(function() {
+        const ret = /* @__PURE__ */ new Date();
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_new_19c25a3f2fa63a02 = function() {
-      const ret = new Object();
-      return ret;
+      return logError(function() {
+        const ret = new Object();
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_new_1f3a344cf3123716 = function() {
-      const ret = new Array();
-      return ret;
-    };
-    imports.wbg.__wbg_new_2e3c58a15f39f5f9 = function(arg0, arg1) {
-      try {
-        var state0 = {
-          a: arg0,
-          b: arg1
-        };
-        var cb0 = (arg02, arg12) => {
-          const a = state0.a;
-          state0.a = 0;
-          try {
-            return __wbg_adapter_776(a, state0.b, arg02, arg12);
-          } finally {
-            state0.a = a;
-          }
-        };
-        const ret = new Promise(cb0);
+      return logError(function() {
+        const ret = new Array();
         return ret;
-      } finally {
-        state0.a = state0.b = 0;
-      }
+      }, arguments);
+    };
+    imports.wbg.__wbg_new_2e3c58a15f39f5f9 = function() {
+      return logError(function(arg0, arg1) {
+        try {
+          var state0 = {
+            a: arg0,
+            b: arg1
+          };
+          var cb0 = (arg02, arg12) => {
+            const a = state0.a;
+            state0.a = 0;
+            try {
+              return __wbg_adapter_764(a, state0.b, arg02, arg12);
+            } finally {
+              state0.a = a;
+            }
+          };
+          const ret = new Promise(cb0);
+          return ret;
+        } finally {
+          state0.a = state0.b = 0;
+        }
+      }, arguments);
     };
     imports.wbg.__wbg_new_2ff1f68f3676ea53 = function() {
-      const ret = /* @__PURE__ */ new Map();
-      return ret;
+      return logError(function() {
+        const ret = /* @__PURE__ */ new Map();
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_new_638ebfaedbf32a5e = function(arg0) {
-      const ret = new Uint8Array(arg0);
-      return ret;
+    imports.wbg.__wbg_new_638ebfaedbf32a5e = function() {
+      return logError(function(arg0) {
+        const ret = new Uint8Array(arg0);
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_new_8a6f238a6ece86ea = function() {
-      const ret = new Error();
-      return ret;
+      return logError(function() {
+        const ret = new Error();
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_newnoargs_254190557c45b4ec = function(arg0, arg1) {
-      const ret = new Function(getStringFromWasm0(arg0, arg1));
-      return ret;
+    imports.wbg.__wbg_newnoargs_254190557c45b4ec = function() {
+      return logError(function(arg0, arg1) {
+        const ret = new Function(getStringFromWasm0(arg0, arg1));
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_newwithlength_a167dcc7aaa3ba77 = function(arg0) {
-      const ret = new Uint8Array(arg0 >>> 0);
-      return ret;
+    imports.wbg.__wbg_newwithlength_a167dcc7aaa3ba77 = function() {
+      return logError(function(arg0) {
+        const ret = new Uint8Array(arg0 >>> 0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_next_5b3530e612fde77d = function(arg0) {
-      const ret = arg0.next;
-      return ret;
+    imports.wbg.__wbg_next_5b3530e612fde77d = function() {
+      return logError(function(arg0) {
+        const ret = arg0.next;
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_next_692e82279131b03c = function() {
       return handleError(function(arg0) {
@@ -5473,13 +6971,17 @@ ${val.stack}`;
         return ret;
       }, arguments);
     };
-    imports.wbg.__wbg_node_905d3e251edff8a2 = function(arg0) {
-      const ret = arg0.node;
-      return ret;
+    imports.wbg.__wbg_node_905d3e251edff8a2 = function() {
+      return logError(function(arg0) {
+        const ret = arg0.node;
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_now_fdbeb5c8c02c5851 = function() {
-      const ret = performance.now();
-      return ret;
+      return logError(function() {
+        const ret = performance.now();
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_parse_442f5ba02e5eaf8b = function() {
       return handleError(function(arg0, arg1) {
@@ -5487,31 +6989,46 @@ ${val.stack}`;
         return ret;
       }, arguments);
     };
-    imports.wbg.__wbg_process_dc0fbacc7c1c06f7 = function(arg0) {
-      const ret = arg0.process;
-      return ret;
+    imports.wbg.__wbg_process_dc0fbacc7c1c06f7 = function() {
+      return logError(function(arg0) {
+        const ret = arg0.process;
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_prototypesetcall_3d4a26c1ed734349 = function(arg0, arg1, arg2) {
-      Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), arg2);
+    imports.wbg.__wbg_prototypesetcall_3d4a26c1ed734349 = function() {
+      return logError(function(arg0, arg1, arg2) {
+        Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), arg2);
+      }, arguments);
     };
-    imports.wbg.__wbg_pseudolist_new = function(arg0) {
-      const ret = PseudoList$1.__wrap(arg0);
-      return ret;
+    imports.wbg.__wbg_pseudolist_new = function() {
+      return logError(function(arg0) {
+        const ret = PseudoList$1.__wrap(arg0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_pseudovalue_new = function(arg0) {
-      const ret = PseudoValue$1.__wrap(arg0);
-      return ret;
+    imports.wbg.__wbg_pseudovalue_new = function() {
+      return logError(function(arg0) {
+        const ret = PseudoValue$1.__wrap(arg0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_push_330b2eb93e4e1212 = function(arg0, arg1) {
-      const ret = arg0.push(arg1);
-      return ret;
+    imports.wbg.__wbg_push_330b2eb93e4e1212 = function() {
+      return logError(function(arg0, arg1) {
+        const ret = arg0.push(arg1);
+        _assertNum(ret);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_queueMicrotask_25d0739ac89e8c88 = function(arg0) {
-      queueMicrotask(arg0);
+    imports.wbg.__wbg_queueMicrotask_25d0739ac89e8c88 = function() {
+      return logError(function(arg0) {
+        queueMicrotask(arg0);
+      }, arguments);
     };
-    imports.wbg.__wbg_queueMicrotask_4488407636f5bf24 = function(arg0) {
-      const ret = arg0.queueMicrotask;
-      return ret;
+    imports.wbg.__wbg_queueMicrotask_4488407636f5bf24 = function() {
+      return logError(function(arg0) {
+        const ret = arg0.queueMicrotask;
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_randomFillSync_ac0988aba3254290 = function() {
       return handleError(function(arg0, arg1) {
@@ -5524,88 +7041,129 @@ ${val.stack}`;
         return ret;
       }, arguments);
     };
-    imports.wbg.__wbg_resolve_4055c623acdd6a1b = function(arg0) {
-      const ret = Promise.resolve(arg0);
-      return ret;
+    imports.wbg.__wbg_resolve_4055c623acdd6a1b = function() {
+      return logError(function(arg0) {
+        const ret = Promise.resolve(arg0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_set_3f1d0b984ed272ed = function(arg0, arg1, arg2) {
-      arg0[arg1] = arg2;
+    imports.wbg.__wbg_set_3f1d0b984ed272ed = function() {
+      return logError(function(arg0, arg1, arg2) {
+        arg0[arg1] = arg2;
+      }, arguments);
     };
     imports.wbg.__wbg_set_453345bcda80b89a = function() {
       return handleError(function(arg0, arg1, arg2) {
         const ret = Reflect.set(arg0, arg1, arg2);
+        _assertBoolean(ret);
         return ret;
       }, arguments);
     };
-    imports.wbg.__wbg_set_90f6c0f7bd8c0415 = function(arg0, arg1, arg2) {
-      arg0[arg1 >>> 0] = arg2;
+    imports.wbg.__wbg_set_90f6c0f7bd8c0415 = function() {
+      return logError(function(arg0, arg1, arg2) {
+        arg0[arg1 >>> 0] = arg2;
+      }, arguments);
     };
-    imports.wbg.__wbg_set_b7f1cf4fae26fe2a = function(arg0, arg1, arg2) {
-      const ret = arg0.set(arg1, arg2);
-      return ret;
+    imports.wbg.__wbg_set_b7f1cf4fae26fe2a = function() {
+      return logError(function(arg0, arg1, arg2) {
+        const ret = arg0.set(arg1, arg2);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_stack_0ed75d68575b0f3c = function(arg0, arg1) {
-      const ret = arg1.stack;
-      const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len1 = WASM_VECTOR_LEN;
-      getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
-      getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+    imports.wbg.__wbg_stack_0ed75d68575b0f3c = function() {
+      return logError(function(arg0, arg1) {
+        const ret = arg1.stack;
+        const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
+        getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
+      }, arguments);
     };
     imports.wbg.__wbg_static_accessor_GLOBAL_8921f820c2ce3f12 = function() {
-      const ret = typeof global === "undefined" ? null : global;
-      return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+      return logError(function() {
+        const ret = typeof global === "undefined" ? null : global;
+        return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+      }, arguments);
     };
     imports.wbg.__wbg_static_accessor_GLOBAL_THIS_f0a4409105898184 = function() {
-      const ret = typeof globalThis === "undefined" ? null : globalThis;
-      return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+      return logError(function() {
+        const ret = typeof globalThis === "undefined" ? null : globalThis;
+        return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+      }, arguments);
     };
     imports.wbg.__wbg_static_accessor_SELF_995b214ae681ff99 = function() {
-      const ret = typeof self === "undefined" ? null : self;
-      return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+      return logError(function() {
+        const ret = typeof self === "undefined" ? null : self;
+        return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+      }, arguments);
     };
     imports.wbg.__wbg_static_accessor_WINDOW_cde3890479c675ea = function() {
-      const ret = typeof window === "undefined" ? null : window;
-      return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+      return logError(function() {
+        const ret = typeof window === "undefined" ? null : window;
+        return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);
+      }, arguments);
     };
-    imports.wbg.__wbg_staticcard_new = function(arg0) {
-      const ret = StaticCard.__wrap(arg0);
-      return ret;
+    imports.wbg.__wbg_staticcard_new = function() {
+      return logError(function(arg0) {
+        const ret = StaticCard.__wrap(arg0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_staticcardsxnodesxwidgets_new = function(arg0) {
-      const ret = StaticCardsXNodesXWidgets.__wrap(arg0);
-      return ret;
+    imports.wbg.__wbg_staticcardsxnodesxwidgets_new = function() {
+      return logError(function(arg0) {
+        const ret = StaticCardsXNodesXWidgets.__wrap(arg0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_staticedge_new = function(arg0) {
-      const ret = StaticEdge.__wrap(arg0);
-      return ret;
+    imports.wbg.__wbg_staticedge_new = function() {
+      return logError(function(arg0) {
+        const ret = StaticEdge.__wrap(arg0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_staticnode_new = function(arg0) {
-      const ret = StaticNode.__wrap(arg0);
-      return ret;
+    imports.wbg.__wbg_staticnode_new = function() {
+      return logError(function(arg0) {
+        const ret = StaticNode.__wrap(arg0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_staticnodegroup_new = function(arg0) {
-      const ret = StaticNodegroup.__wrap(arg0);
-      return ret;
+    imports.wbg.__wbg_staticnodegroup_new = function() {
+      return logError(function(arg0) {
+        const ret = StaticNodegroup.__wrap(arg0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_staticresource_new = function(arg0) {
-      const ret = StaticResource.__wrap(arg0);
-      return ret;
+    imports.wbg.__wbg_staticresource_new = function() {
+      return logError(function(arg0) {
+        const ret = StaticResource.__wrap(arg0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_staticresource_unwrap = function(arg0) {
-      const ret = StaticResource.__unwrap(arg0);
-      return ret;
+    imports.wbg.__wbg_staticresource_unwrap = function() {
+      return logError(function(arg0) {
+        const ret = StaticResource.__unwrap(arg0);
+        _assertNum(ret);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_staticresourcesummary_new = function(arg0) {
-      const ret = StaticResourceSummary.__wrap(arg0);
-      return ret;
+    imports.wbg.__wbg_staticresourcesummary_new = function() {
+      return logError(function(arg0) {
+        const ret = StaticResourceSummary.__wrap(arg0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_statictile_new = function(arg0) {
-      const ret = StaticTile.__wrap(arg0);
-      return ret;
+    imports.wbg.__wbg_statictile_new = function() {
+      return logError(function(arg0) {
+        const ret = StaticTile.__wrap(arg0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_statictile_unwrap = function(arg0) {
-      const ret = StaticTile.__unwrap(arg0);
-      return ret;
+    imports.wbg.__wbg_statictile_unwrap = function() {
+      return logError(function(arg0) {
+        const ret = StaticTile.__unwrap(arg0);
+        _assertNum(ret);
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_stringify_b98c93d0a190446a = function() {
       return handleError(function(arg0) {
@@ -5613,42 +7171,62 @@ ${val.stack}`;
         return ret;
       }, arguments);
     };
-    imports.wbg.__wbg_subarray_70fd07feefe14294 = function(arg0, arg1, arg2) {
-      const ret = arg0.subarray(arg1 >>> 0, arg2 >>> 0);
-      return ret;
+    imports.wbg.__wbg_subarray_70fd07feefe14294 = function() {
+      return logError(function(arg0, arg1, arg2) {
+        const ret = arg0.subarray(arg1 >>> 0, arg2 >>> 0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_then_b33a773d723afa3e = function(arg0, arg1, arg2) {
-      const ret = arg0.then(arg1, arg2);
-      return ret;
+    imports.wbg.__wbg_then_b33a773d723afa3e = function() {
+      return logError(function(arg0, arg1, arg2) {
+        const ret = arg0.then(arg1, arg2);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_then_e22500defe16819f = function(arg0, arg1) {
-      const ret = arg0.then(arg1);
-      return ret;
+    imports.wbg.__wbg_then_e22500defe16819f = function() {
+      return logError(function(arg0, arg1) {
+        const ret = arg0.then(arg1);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_value_dd9372230531eade = function(arg0) {
-      const ret = arg0.value;
-      return ret;
+    imports.wbg.__wbg_value_dd9372230531eade = function() {
+      return logError(function(arg0) {
+        const ret = arg0.value;
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_versions_c01dfd4722a88165 = function(arg0) {
-      const ret = arg0.versions;
-      return ret;
+    imports.wbg.__wbg_versions_c01dfd4722a88165 = function() {
+      return logError(function(arg0) {
+        const ret = arg0.versions;
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbg_warn_e2ada06313f92f09 = function(arg0) {
-      console.warn(arg0);
+    imports.wbg.__wbg_warn_e2ada06313f92f09 = function() {
+      return logError(function(arg0) {
+        console.warn(arg0);
+      }, arguments);
     };
-    imports.wbg.__wbg_wasmstaticdomainvalue_new = function(arg0) {
-      const ret = WasmStaticDomainValue.__wrap(arg0);
-      return ret;
+    imports.wbg.__wbg_wasmstaticdomainvalue_new = function() {
+      return logError(function(arg0) {
+        const ret = WasmStaticDomainValue.__wrap(arg0);
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_wbindgenbigintgetasi64_ac743ece6ab9bba1 = function(arg0, arg1) {
       const v = arg1;
       const ret = typeof v === "bigint" ? v : void 0;
+      if (!isLikeNone(ret)) {
+        _assertBigInt(ret);
+      }
       getDataViewMemory0().setBigInt64(arg0 + 8 * 1, isLikeNone(ret) ? BigInt(0) : ret, true);
       getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
     };
     imports.wbg.__wbg_wbindgenbooleanget_3fe6f642c7d97746 = function(arg0) {
       const v = arg0;
       const ret = typeof v === "boolean" ? v : void 0;
+      if (!isLikeNone(ret)) {
+        _assertBoolean(ret);
+      }
       return isLikeNone(ret) ? 16777215 : ret ? 1 : 0;
     };
     imports.wbg.__wbg_wbindgencbdrop_eb10308566512b88 = function(arg0) {
@@ -5658,6 +7236,7 @@ ${val.stack}`;
         return true;
       }
       const ret = false;
+      _assertBoolean(ret);
       return ret;
     };
     imports.wbg.__wbg_wbindgendebugstring_99ef257a3ddda34d = function(arg0, arg1) {
@@ -5669,46 +7248,61 @@ ${val.stack}`;
     };
     imports.wbg.__wbg_wbindgenin_d7a1ee10933d2d55 = function(arg0, arg1) {
       const ret = arg0 in arg1;
+      _assertBoolean(ret);
       return ret;
     };
     imports.wbg.__wbg_wbindgenisbigint_ecb90cc08a5a9154 = function(arg0) {
       const ret = typeof arg0 === "bigint";
+      _assertBoolean(ret);
       return ret;
     };
     imports.wbg.__wbg_wbindgenisfunction_8cee7dce3725ae74 = function(arg0) {
       const ret = typeof arg0 === "function";
+      _assertBoolean(ret);
       return ret;
     };
     imports.wbg.__wbg_wbindgenisnull_f3037694abe4d97a = function(arg0) {
       const ret = arg0 === null;
+      _assertBoolean(ret);
       return ret;
     };
     imports.wbg.__wbg_wbindgenisobject_307a53c6bd97fbf8 = function(arg0) {
       const val = arg0;
       const ret = typeof val === "object" && val !== null;
+      _assertBoolean(ret);
       return ret;
     };
     imports.wbg.__wbg_wbindgenisstring_d4fa939789f003b0 = function(arg0) {
       const ret = typeof arg0 === "string";
+      _assertBoolean(ret);
       return ret;
     };
     imports.wbg.__wbg_wbindgenisundefined_c4b71d073b92f3c5 = function(arg0) {
       const ret = arg0 === void 0;
+      _assertBoolean(ret);
       return ret;
     };
     imports.wbg.__wbg_wbindgenjsvaleq_e6f2ad59ccae1b58 = function(arg0, arg1) {
       const ret = arg0 === arg1;
+      _assertBoolean(ret);
       return ret;
     };
     imports.wbg.__wbg_wbindgenjsvallooseeq_9bec8c9be826bed1 = function(arg0, arg1) {
       const ret = arg0 == arg1;
+      _assertBoolean(ret);
       return ret;
     };
     imports.wbg.__wbg_wbindgennumberget_f74b4c7525ac05cb = function(arg0, arg1) {
       const obj = arg1;
       const ret = typeof obj === "number" ? obj : void 0;
+      if (!isLikeNone(ret)) {
+        _assertNum(ret);
+      }
       getDataViewMemory0().setFloat64(arg0 + 8 * 1, isLikeNone(ret) ? 0 : ret, true);
       getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
+    };
+    imports.wbg.__wbg_wbindgenrethrow_01815c9239d70cc2 = function(arg0) {
+      throw arg0;
     };
     imports.wbg.__wbg_wbindgenstringget_0f16a6ddddef376f = function(arg0, arg1) {
       const obj = arg1;
@@ -5721,29 +7315,41 @@ ${val.stack}`;
     imports.wbg.__wbg_wbindgenthrow_451ec1a8469d7eb6 = function(arg0, arg1) {
       throw new Error(getStringFromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbindgen_cast_2241b6af4c4b2941 = function(arg0, arg1) {
-      const ret = getStringFromWasm0(arg0, arg1);
-      return ret;
+    imports.wbg.__wbindgen_cast_2241b6af4c4b2941 = function() {
+      return logError(function(arg0, arg1) {
+        const ret = getStringFromWasm0(arg0, arg1);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbindgen_cast_3654745d9df73f51 = function(arg0, arg1) {
-      const ret = makeMutClosure(arg0, arg1, 179, __wbg_adapter_6);
-      return ret;
+    imports.wbg.__wbindgen_cast_4625c577ab2ec9ee = function() {
+      return logError(function(arg0) {
+        const ret = BigInt.asUintN(64, arg0);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbindgen_cast_4625c577ab2ec9ee = function(arg0) {
-      const ret = BigInt.asUintN(64, arg0);
-      return ret;
+    imports.wbg.__wbindgen_cast_9ae0607507abb057 = function() {
+      return logError(function(arg0) {
+        const ret = arg0;
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbindgen_cast_9ae0607507abb057 = function(arg0) {
-      const ret = arg0;
-      return ret;
+    imports.wbg.__wbindgen_cast_cb9088102bce6b30 = function() {
+      return logError(function(arg0, arg1) {
+        const ret = getArrayU8FromWasm0(arg0, arg1);
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbindgen_cast_cb9088102bce6b30 = function(arg0, arg1) {
-      const ret = getArrayU8FromWasm0(arg0, arg1);
-      return ret;
+    imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function() {
+      return logError(function(arg0) {
+        const ret = arg0;
+        return ret;
+      }, arguments);
     };
-    imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function(arg0) {
-      const ret = arg0;
-      return ret;
+    imports.wbg.__wbindgen_cast_f12d008ba111d720 = function() {
+      return logError(function(arg0, arg1) {
+        const ret = makeMutClosure(arg0, arg1, 229, __wbg_adapter_12);
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbindgen_init_externref_table = function() {
       const table = wasm.__wbindgen_export_4;
@@ -6458,7 +8064,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       "name": typeof nameForRust === "string" ? nameForRust : nameForRust.en || Object.values(nameForRust)[0] || "",
       "nodegroup_id": null,
       "nodeid": graphid,
-      "ontologyclass": props.ontology_id || null,
+      "ontologyclass": Array.isArray(props.ontology_id) ? props.ontology_id.length > 0 ? props.ontology_id[0] : null : props.ontology_id || null,
       "parentproperty": null,
       "sortorder": 0,
       "sourcebranchpublication_id": null

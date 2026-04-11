@@ -87,7 +87,7 @@ declare class GraphMutator {
     });
     _generateUuidv5(key: string): string;
     _generateEdge(fromNode: string, toNode: string, ontologyProperty: string, name?: string, description?: string): StaticEdge;
-    addSemanticNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options?: {
+    addSemanticNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options?: {
         exportable?: boolean;
         fieldname?: string;
         hascustomalias?: boolean;
@@ -99,7 +99,7 @@ declare class GraphMutator {
     }, config?: {
         [key: string]: any;
     }): this;
-    addConceptNode(parentAlias: string | null, alias: string, name: string, collection: StaticCollection, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options?: {
+    addConceptNode(parentAlias: string | null, alias: string, name: string, collection: StaticCollection, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options?: {
         is_list?: boolean;
         exportable?: boolean;
         fieldname?: string;
@@ -127,7 +127,7 @@ declare class GraphMutator {
     }, config?: {
         [key: string]: any;
     }): void;
-    addStringNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string, parentProperty: string, description?: string, options?: {
+    addStringNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options?: {
         exportable?: boolean;
         fieldname?: string;
         hascustomalias?: boolean;
@@ -140,7 +140,7 @@ declare class GraphMutator {
         [key: string]: any;
     }): this;
     _addNodegroup(parentAlias: string | null, nodegroupId: string, cardinality: 'n' | '1', name?: StaticTranslatableString): this;
-    _addGenericNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', datatype: string, ontologyClass: string, parentProperty: string, description?: string, options?: {
+    _addGenericNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', datatype: string, ontologyClass: string | string[], parentProperty: string, description?: string, options?: {
         exportable?: boolean;
         fieldname?: string;
         hascustomalias?: boolean;

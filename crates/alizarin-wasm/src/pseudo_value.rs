@@ -1198,13 +1198,11 @@ impl PseudoValue {
         obj.into()
     }
 
-    /// Get the node's ontologyclass
+    /// Get the node's ontologyclass. Returns a plain string for single-class
+    /// nodes (legacy Arches shape), an array for multi-class nodes, or `null`.
     #[wasm_bindgen(getter, js_name = ontologyclass)]
     pub fn ontologyclass(&self) -> JsValue {
-        match &self.inner.borrow().core.node.ontologyclass {
-            Some(s) => JsValue::from_str(s),
-            None => JsValue::NULL,
-        }
+        crate::utils::classes_to_js_value(self.inner.borrow().core.node.ontologyclass.as_ref())
     }
 
     /// Get the node's fieldname

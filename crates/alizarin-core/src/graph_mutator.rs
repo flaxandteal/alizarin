@@ -42,7 +42,10 @@
 //! - `name` (String): Display name
 //! - `cardinality` (Cardinality): `One` or `N` - determines if nodegroup is created
 //! - `datatype` (String): Node datatype (e.g., "string", "number", "concept", "semantic")
-//! - `ontology_class` (String): Ontology class URI
+//! - `ontology_class` (String | Vec<String>): Ontology class URI(s). Accepts
+//!   a single string or an array; multi-class nodes are validated such that
+//!   the property must be valid for at least one `(parent_class, child_class)`
+//!   pair in the Cartesian product.
 //! - `parent_property` (String): Ontology property for edge to parent
 //! - `description` (Option<String>): Node description
 //! - `config` (Option<Value>): Node configuration JSON
@@ -124,7 +127,8 @@
 //! **Parameters:**
 //! - `node_id` (String): Node ID or alias to update
 //! - `name` (Option<String>): New display name
-//! - `ontology_class` (Option<String>): New ontology class
+//! - `ontology_class` (Option<String | Vec<String>>): New ontology class(es).
+//!   Accepts a single string or an array on the wire.
 //! - `parent_property` (Option<String>): New parent property
 //! - `description` (Option<String>): New description
 //! - `config` (Option<Value>): Config to merge into existing
@@ -876,7 +880,10 @@ pub struct AddNodeParams {
     pub name: String,
     pub cardinality: Cardinality,
     pub datatype: String,
-    pub ontology_class: String,
+    /// Ontology class URI(s). Accepts a single string or an array; an empty
+    /// vec means "no ontology class".
+    #[serde(default, with = "crate::graph::serde_helpers::optional_string_or_vec")]
+    pub ontology_class: Option<Vec<String>>,
     pub parent_property: String,
     pub description: Option<String>,
     pub config: Option<serde_json::Value>,
@@ -1055,9 +1062,15 @@ pub struct UpdateNodeParams {
     /// New name (if provided)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// New ontology class (if provided)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ontology_class: Option<String>,
+    /// New ontology class(es) (if provided). `None` means "no change";
+    /// an empty list, or a list of only blank entries, clears the field.
+    /// Accepts a single string or an array on the wire.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "crate::graph::serde_helpers::optional_string_or_vec"
+    )]
+    pub ontology_class: Option<Vec<String>>,
     /// New parent property (if provided)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_property: Option<String>,
@@ -1097,9 +1110,15 @@ pub struct ChangeNodeTypeParams {
     /// New name (if provided)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// New ontology class (if provided)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ontology_class: Option<String>,
+    /// New ontology class(es) (if provided). `None` means "no change";
+    /// an empty list, or a list of only blank entries, clears the field.
+    /// Accepts a single string or an array on the wire.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "crate::graph::serde_helpers::optional_string_or_vec"
+    )]
+    pub ontology_class: Option<Vec<String>>,
     /// New parent property (if provided)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_property: Option<String>,
@@ -1148,8 +1167,10 @@ pub struct CreateGraphParams {
     pub is_resource: bool,
     /// Alias for the root node
     pub root_alias: String,
-    /// Ontology class URI for the root node
-    pub root_ontology_class: String,
+    /// Ontology class URI(s) for the root node. Accepts a single string or
+    /// an array; an empty list (or `null`) means no ontology class.
+    #[serde(default, with = "crate::graph::serde_helpers::optional_string_or_vec")]
+    pub root_ontology_class: Option<Vec<String>>,
     /// Optional custom graph ID (otherwise generated deterministically)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graph_id: Option<String>,
@@ -1462,6 +1483,30 @@ impl Default for MutatorOptions {
     }
 }
 
+/// Normalise a single-class `&str` argument into the `Option<Vec<String>>`
+/// form used by mutation params. An empty or all-whitespace string becomes
+/// `None` (i.e. "no ontology class"); any non-empty value becomes a
+/// single-element list. Use direct `Some(vec![...])` for multi-class nodes.
+fn normalise_class_arg(class: &str) -> Option<Vec<String>> {
+    sanitize_class_list(Some(vec![class.to_string()]))
+}
+
+/// Filter out blank entries from an optional class list. Returns `None` if
+/// the result is empty.
+fn sanitize_class_list(list: Option<Vec<String>>) -> Option<Vec<String>> {
+    match list {
+        None => None,
+        Some(v) => {
+            let cleaned: Vec<String> = v.into_iter().filter(|s| !s.trim().is_empty()).collect();
+            if cleaned.is_empty() {
+                None
+            } else {
+                Some(cleaned)
+            }
+        }
+    }
+}
+
 // =============================================================================
 // Graph Mutator (Builder Pattern)
 // =============================================================================
@@ -1736,13 +1781,14 @@ impl GraphMutator {
         options: NodeOptions,
         config: Option<serde_json::Value>,
     ) {
+        let ontology_class = normalise_class_arg(ontology_class);
         self.mutations.push(GraphMutation::AddNode(AddNodeParams {
             parent_alias: parent_alias.map(String::from),
             alias: alias.to_string(),
             name: name.to_string(),
             cardinality,
             datatype: datatype.to_string(),
-            ontology_class: ontology_class.to_string(),
+            ontology_class,
             parent_property: parent_property.to_string(),
             description: description.map(String::from),
             config,
@@ -1899,17 +1945,16 @@ fn apply_add_node(
     };
     let parent_nodeid = parent.nodeid.clone();
     let parent_nodegroup_id = parent.nodegroup_id.clone();
-    let parent_ontologyclass = parent.ontologyclass.clone();
+    let parent_classes: Vec<String> = parent.ontologyclass.clone().unwrap_or_default();
+
+    // Normalise incoming class list (strip blank entries, collapse to None if empty).
+    let node_classes: Option<Vec<String>> = sanitize_class_list(params.ontology_class);
 
     // Validate ontology class and property if validator is present
     if let Some(ref validator) = options.ontology_validator {
-        if !params.ontology_class.is_empty() {
+        if let Some(ref classes) = node_classes {
             validator
-                .validate_edge(
-                    parent_ontologyclass.as_deref().unwrap_or(""),
-                    &params.parent_property,
-                    &params.ontology_class,
-                )
+                .validate_edge_multi(&parent_classes, &params.parent_property, classes)
                 .map_err(MutationError::OntologyValidation)?;
         }
     }
@@ -1996,7 +2041,7 @@ fn apply_add_node(
         sortorder: Some(params.options.sortorder.unwrap_or(0)),
         config,
         parentproperty: Some(params.parent_property.clone()),
-        ontologyclass: Some(params.ontology_class),
+        ontologyclass: node_classes,
         description: params
             .description
             .map(|d| StaticTranslatableString::from_string(&d)),
@@ -2536,13 +2581,23 @@ fn apply_update_node(
 
     let node_id = node.nodeid.clone();
 
-    // Validate ontology class if validator is present and class is being changed
+    // Normalise incoming class list. The outer `Option` preserves the
+    // "don't change" semantic (None from the caller), while the inner
+    // `Option<Vec<String>>` follows `sanitize_class_list`: blank-only or
+    // empty lists collapse to None (i.e. "clear the class").
+    let class_update: Option<Option<Vec<String>>> =
+        params.ontology_class.map(|v| sanitize_class_list(Some(v)));
+
+    // Validate ontology class if validator is present and class is being changed.
+    // Every class in the new list must be known to the ontology.
     if let Some(ref validator) = options.ontology_validator {
-        if let Some(ref new_class) = params.ontology_class {
-            if !new_class.is_empty() && !validator.is_valid_class(new_class) {
-                return Err(MutationError::OntologyValidation(
-                    crate::ontology::OntologyValidationDetail::UnknownClass(new_class.clone()),
-                ));
+        if let Some(Some(ref classes)) = class_update {
+            for c in classes {
+                if !validator.is_valid_class(c) {
+                    return Err(MutationError::OntologyValidation(
+                        crate::ontology::OntologyValidationDetail::UnknownClass(c.clone()),
+                    ));
+                }
             }
         }
     }
@@ -2558,12 +2613,8 @@ fn apply_update_node(
     if let Some(name) = params.name {
         node_mut.name = name;
     }
-    if let Some(ontology_class) = params.ontology_class {
-        node_mut.ontologyclass = if ontology_class.is_empty() {
-            None
-        } else {
-            Some(ontology_class)
-        };
+    if let Some(new_classes) = class_update {
+        node_mut.ontologyclass = new_classes;
     }
     if let Some(parent_property) = params.parent_property {
         node_mut.parentproperty = if parent_property.is_empty() {
@@ -2643,12 +2694,8 @@ fn apply_change_node_type(
     if let Some(name) = params.name {
         node_mut.name = name;
     }
-    if let Some(ontology_class) = params.ontology_class {
-        node_mut.ontologyclass = if ontology_class.is_empty() {
-            None
-        } else {
-            Some(ontology_class)
-        };
+    if let Some(classes) = params.ontology_class {
+        node_mut.ontologyclass = sanitize_class_list(Some(classes));
     }
     if let Some(parent_property) = params.parent_property {
         node_mut.parentproperty = if parent_property.is_empty() {
@@ -3989,7 +4036,7 @@ pub fn apply_mutations_create_from_json(
                         &params.name,
                         &params.root_alias,
                         params.is_resource,
-                        Some(&params.root_ontology_class),
+                        params.root_ontology_class.as_deref(),
                     );
 
                     // Override graph ID if provided
@@ -4164,20 +4211,23 @@ pub fn mutations_to_json(mutations: &[GraphMutation]) -> Result<String, String> 
 /// * `name` - The name of the graph (used for display and UUID generation)
 /// * `root_alias` - Alias for the root node (used to reference it in mutations)
 /// * `is_resource` - Whether this is a resource model (true) or branch (false)
-/// * `ontology_class` - Optional ontology class URI for the root node
+/// * `ontology_classes` - Optional ontology class URI(s) for the root node.
+///   Accepts a slice so callers with a single class or a `Vec<String>` can both
+///   use this with minimal ceremony.
 ///
 /// # Example
 /// ```rust,ignore
 /// use alizarin_core::graph_mutator::{create_skeleton_graph, apply_mutations, Cardinality};
 ///
-/// let graph = create_skeleton_graph("Person", "person", true, Some("http://example.org/Person"));
+/// let classes = vec!["http://example.org/Person".to_string()];
+/// let graph = create_skeleton_graph("Person", "person", true, Some(classes.as_slice()));
 /// // Now add nodes using apply_mutations...
 /// ```
 pub fn create_skeleton_graph(
     name: &str,
     root_alias: &str,
     is_resource: bool,
-    ontology_class: Option<&str>,
+    ontology_classes: Option<&[String]>,
 ) -> StaticGraph {
     // Generate deterministic graph ID from name
     let graphid = generate_uuid_v5(("skeleton", None), name);
@@ -4194,6 +4244,18 @@ pub fn create_skeleton_graph(
         serde_json::Value::String(root_nodeid.clone())
     };
     let root_is_collector = !is_resource;
+
+    // Serialise the ontology class list: None/empty -> null, single -> string,
+    // multi -> array. Matches the `optional_string_or_vec` serde helper round-trip.
+    let ontology_class_json = match ontology_classes {
+        None | Some([]) => serde_json::Value::Null,
+        Some([single]) => serde_json::Value::String(single.clone()),
+        Some(list) => serde_json::Value::Array(
+            list.iter()
+                .map(|s| serde_json::Value::String(s.clone()))
+                .collect(),
+        ),
+    };
 
     // Build graph as JSON to handle private fields correctly
     let graph_json = serde_json::json!({
@@ -4217,7 +4279,7 @@ pub fn create_skeleton_graph(
             "sortorder": 0,
             "istopnode": true,
             "issearchable": true,
-            "ontologyclass": ontology_class
+            "ontologyclass": ontology_class_json.clone()
         }],
         "root": {
             "nodeid": root_nodeid,
@@ -4232,7 +4294,7 @@ pub fn create_skeleton_graph(
             "sortorder": 0,
             "istopnode": true,
             "issearchable": true,
-            "ontologyclass": ontology_class
+            "ontologyclass": ontology_class_json.clone()
         },
         "nodegroups": [],
         "edges": [],
@@ -4325,6 +4387,21 @@ impl GraphInstruction {
         self.get_str(key).unwrap_or_else(|| default.to_string())
     }
 
+    /// Helper to read a param as a class list. Accepts either a single string
+    /// or an array of strings. Returns `None` when the key is missing or the
+    /// resulting list is empty/blank.
+    fn get_class_list(&self, key: &str) -> Option<Vec<String>> {
+        let raw: Vec<String> = match self.params.get(key)? {
+            serde_json::Value::String(s) => vec![s.clone()],
+            serde_json::Value::Array(arr) => arr
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect(),
+            _ => return None,
+        };
+        sanitize_class_list(Some(raw))
+    }
+
     /// Resolve a subgraph from either `params.subgraph` (inline JSON) or
     /// `object` (graph ID looked up from the global registry).
     fn resolve_subgraph(&self) -> Result<StaticGraph, MutationError> {
@@ -4392,7 +4469,7 @@ impl GraphInstruction {
                     name: self.get_str_or("name", &self.object),
                     cardinality,
                     datatype: self.get_str_or("datatype", "semantic"),
-                    ontology_class: self.get_str_or("ontology_class", ""),
+                    ontology_class: self.get_class_list("ontology_class"),
                     parent_property: self.get_str_or("parent_property", ""),
                     description: self.get_str("description"),
                     config: self.params.get("config").cloned(),
@@ -4542,7 +4619,7 @@ impl GraphInstruction {
             "update_node" => Ok(GraphMutation::UpdateNode(UpdateNodeParams {
                 node_id: self.subject.clone(),
                 name: self.get_str("name"),
-                ontology_class: self.get_str("ontology_class"),
+                ontology_class: self.get_class_list("ontology_class"),
                 parent_property: self.get_str("parent_property"),
                 description: self.get_str("description"),
                 config: self.params.get("config").cloned(),
@@ -4578,7 +4655,7 @@ impl GraphInstruction {
                     node_id: self.subject.clone(),
                     datatype,
                     name: self.get_str("name"),
-                    ontology_class: self.get_str("ontology_class"),
+                    ontology_class: self.get_class_list("ontology_class"),
                     parent_property: self.get_str("parent_property"),
                     description: self.get_str("description"),
                     config: self.params.get("config").cloned(),
@@ -4751,11 +4828,11 @@ impl GraphInstruction {
 
         let root_alias = &self.subject;
         let name = self.get_str_or("name", root_alias);
-        let ontology_class = self.get_str("ontology_class");
+        let ontology_classes = self.get_class_list("ontology_class");
 
         // If object is provided, use it as the graphid override
         let mut graph =
-            create_skeleton_graph(&name, root_alias, is_resource, ontology_class.as_deref());
+            create_skeleton_graph(&name, root_alias, is_resource, ontology_classes.as_deref());
 
         // Override graphid if object is provided and non-empty
         if !self.object.is_empty() {
@@ -5073,26 +5150,42 @@ pub fn get_mutation_schema() -> serde_json::Value {
             ]
         },
         "CreateGraphParams": {
-            "required": ["name", "is_resource", "root_alias", "root_ontology_class"],
+            "required": ["name", "is_resource", "root_alias"],
             "properties": {
                 "name": { "type": "string", "description": "Name for the graph" },
                 "is_resource": { "type": "boolean", "description": "Whether this is a resource model (true) or branch (false)" },
                 "root_alias": { "type": "string", "description": "Alias for the root node" },
-                "root_ontology_class": { "type": "string", "description": "Ontology class URI for the root node" },
+                "root_ontology_class": {
+                    "oneOf": [
+                        { "type": "string" },
+                        { "type": "array", "items": { "type": "string" } },
+                        { "type": "null" }
+                    ],
+                    "nullable": true,
+                    "description": "Ontology class URI(s) for the root node. Accepts a single string or an array of strings."
+                },
                 "graph_id": { "type": "string", "nullable": true, "description": "Optional custom graph ID" },
                 "author": { "type": "string", "nullable": true, "description": "Optional author" },
                 "description": { "type": "string", "nullable": true, "description": "Optional description" }
             }
         },
         "AddNodeParams": {
-            "required": ["alias", "name", "cardinality", "datatype", "ontology_class", "parent_property"],
+            "required": ["alias", "name", "cardinality", "datatype", "parent_property"],
             "properties": {
                 "parent_alias": { "type": "string", "nullable": true },
                 "alias": { "type": "string" },
                 "name": { "type": "string" },
                 "cardinality": { "enum": ["One", "N"] },
                 "datatype": { "type": "string", "examples": ["semantic", "string", "number", "date", "boolean", "concept", "concept-list"] },
-                "ontology_class": { "type": "string" },
+                "ontology_class": {
+                    "oneOf": [
+                        { "type": "string" },
+                        { "type": "array", "items": { "type": "string" } },
+                        { "type": "null" }
+                    ],
+                    "nullable": true,
+                    "description": "Ontology class URI(s) for the node. Accepts a single string or an array of strings."
+                },
                 "parent_property": { "type": "string" },
                 "description": { "type": "string", "nullable": true },
                 "config": { "type": "object", "nullable": true },
@@ -5356,7 +5449,7 @@ mod tests {
             name: "Test".to_string(),
             cardinality: Cardinality::One,
             datatype: "string".to_string(),
-            ontology_class: "E41".to_string(),
+            ontology_class: Some(vec!["E41".to_string()]),
             parent_property: "P1".to_string(),
             description: None,
             config: None,
@@ -5999,7 +6092,7 @@ mod tests {
             sortorder: Some(3),
             config: HashMap::new(),
             parentproperty: None,
-            ontologyclass: Some("E41_Appellation".to_string()),
+            ontologyclass: Some(vec!["E41_Appellation".to_string()]),
             description: None,
             fieldname: None,
             hascustomalias: false,
@@ -6151,7 +6244,7 @@ mod tests {
             sortorder: Some(1),
             config: HashMap::new(),
             parentproperty: None,
-            ontologyclass: Some("E55_Type".to_string()),
+            ontologyclass: Some(vec!["E55_Type".to_string()]),
             description: None,
             fieldname: None,
             hascustomalias: false,
@@ -6199,7 +6292,7 @@ mod tests {
             sortorder: Some(1),
             config: HashMap::new(),
             parentproperty: None,
-            ontologyclass: Some("E55_Type".to_string()),
+            ontologyclass: Some(vec!["E55_Type".to_string()]),
             description: None,
             fieldname: None,
             hascustomalias: false,
@@ -6248,7 +6341,7 @@ mod tests {
             sortorder: Some(1),
             config: HashMap::new(),
             parentproperty: None,
-            ontologyclass: Some("E41_Appellation".to_string()),
+            ontologyclass: Some(vec!["E41_Appellation".to_string()]),
             description: None,
             fieldname: None,
             hascustomalias: false,
@@ -6322,7 +6415,7 @@ mod tests {
             sortorder: Some(1),
             config: HashMap::new(),
             parentproperty: None,
-            ontologyclass: Some("E55_Type".to_string()),
+            ontologyclass: Some(vec!["E55_Type".to_string()]),
             description: None,
             fieldname: None,
             hascustomalias: false,
@@ -6371,7 +6464,7 @@ mod tests {
             sortorder: Some(1),
             config: HashMap::new(),
             parentproperty: None,
-            ontologyclass: Some("E55_Type".to_string()),
+            ontologyclass: Some(vec!["E55_Type".to_string()]),
             description: None,
             fieldname: None,
             hascustomalias: false,
@@ -6413,8 +6506,8 @@ mod tests {
 
     #[test]
     fn test_create_skeleton_graph() {
-        let graph =
-            create_skeleton_graph("Person", "person", true, Some("http://example.org/Person"));
+        let classes = vec!["http://example.org/Person".to_string()];
+        let graph = create_skeleton_graph("Person", "person", true, Some(classes.as_slice()));
 
         // Check basic structure
         assert!(!graph.graphid.is_empty());
@@ -6431,7 +6524,7 @@ mod tests {
         );
         assert_eq!(
             graph.root.ontologyclass,
-            Some("http://example.org/Person".to_string())
+            Some(vec!["http://example.org/Person".to_string()])
         );
 
         // Check nodes vector includes root
@@ -6644,7 +6737,7 @@ mod tests {
         assert_eq!(graph.root.alias, Some("person".to_string()));
         assert_eq!(
             graph.root.ontologyclass,
-            Some("http://example.org/Person".to_string())
+            Some(vec!["http://example.org/Person".to_string()])
         );
         assert_eq!(graph.slug, Some("person".to_string()));
         assert!(
@@ -6826,7 +6919,7 @@ mod tests {
                 name: "Field 1".to_string(),
                 cardinality: Cardinality::N,
                 datatype: "string".to_string(),
-                ontology_class: String::new(),
+                ontology_class: None,
                 parent_property: String::new(),
                 description: None,
                 config: None,
@@ -6903,7 +6996,7 @@ mod tests {
                 name: "Field 1".to_string(),
                 cardinality: Cardinality::N,
                 datatype: "string".to_string(),
-                ontology_class: String::new(),
+                ontology_class: None,
                 parent_property: String::new(),
                 description: None,
                 config: None,
@@ -7018,7 +7111,7 @@ mod tests {
                 name: "Field 1".to_string(),
                 cardinality: Cardinality::N,
                 datatype: "string".to_string(),
-                ontology_class: String::new(),
+                ontology_class: None,
                 parent_property: String::new(),
                 description: None,
                 config: None,
@@ -7107,7 +7200,7 @@ mod tests {
                 name: "Parent Field".to_string(),
                 cardinality: Cardinality::N,
                 datatype: "semantic".to_string(),
-                ontology_class: String::new(),
+                ontology_class: None,
                 parent_property: String::new(),
                 description: None,
                 config: None,
@@ -7126,7 +7219,7 @@ mod tests {
                 name: "Child Field".to_string(),
                 cardinality: Cardinality::One,
                 datatype: "string".to_string(),
-                ontology_class: String::new(),
+                ontology_class: None,
                 parent_property: String::new(),
                 description: None,
                 config: None,
@@ -7200,7 +7293,7 @@ mod tests {
                 name: "My Field".to_string(),
                 cardinality: Cardinality::N,
                 datatype: "string".to_string(),
-                ontology_class: String::new(),
+                ontology_class: None,
                 parent_property: String::new(),
                 description: None,
                 config: None,
@@ -7238,7 +7331,7 @@ mod tests {
                 name: "Original Name".to_string(),
                 cardinality: Cardinality::N,
                 datatype: "string".to_string(),
-                ontology_class: String::new(),
+                ontology_class: None,
                 parent_property: String::new(),
                 description: None,
                 config: None,
@@ -7254,7 +7347,7 @@ mod tests {
             GraphMutation::UpdateNode(UpdateNodeParams {
                 node_id: "field1".to_string(),
                 name: Some("Updated Name".to_string()),
-                ontology_class: Some("http://example.org/Class".to_string()),
+                ontology_class: Some(vec!["http://example.org/Class".to_string()]),
                 parent_property: None,
                 description: Some("A description".to_string()),
                 config: None,
@@ -7272,7 +7365,7 @@ mod tests {
         assert_eq!(node.name, "Updated Name");
         assert_eq!(
             node.ontologyclass,
-            Some("http://example.org/Class".to_string())
+            Some(vec!["http://example.org/Class".to_string()])
         );
         assert!(node.description.is_some());
         assert!(node.isrequired);
@@ -7321,7 +7414,7 @@ mod tests {
                 name: "Field 1".to_string(),
                 cardinality: Cardinality::N,
                 datatype: "semantic".to_string(),
-                ontology_class: String::new(),
+                ontology_class: None,
                 parent_property: String::new(),
                 description: None,
                 config: None,
@@ -7368,7 +7461,7 @@ mod tests {
                 name: "Field 1".to_string(),
                 cardinality: Cardinality::N,
                 datatype: "string".to_string(),
-                ontology_class: String::new(),
+                ontology_class: None,
                 parent_property: String::new(),
                 description: None,
                 config: None,
@@ -7423,7 +7516,7 @@ mod tests {
                 name: "Old Name".to_string(),
                 cardinality: Cardinality::N,
                 datatype: "string".to_string(),
-                ontology_class: String::new(),
+                ontology_class: None,
                 parent_property: String::new(),
                 description: None,
                 config: None,
@@ -7469,7 +7562,7 @@ mod tests {
                 name: "Field 1".to_string(),
                 cardinality: Cardinality::N,
                 datatype: "string".to_string(),
-                ontology_class: String::new(),
+                ontology_class: None,
                 parent_property: String::new(),
                 description: None,
                 config: None,
@@ -7487,7 +7580,7 @@ mod tests {
                 name: "Field 2".to_string(),
                 cardinality: Cardinality::N,
                 datatype: "string".to_string(),
-                ontology_class: String::new(),
+                ontology_class: None,
                 parent_property: String::new(),
                 description: None,
                 config: None,
@@ -7526,7 +7619,7 @@ mod tests {
                 name: "My Field".to_string(),
                 cardinality: Cardinality::N,
                 datatype: "string".to_string(),
-                ontology_class: String::new(),
+                ontology_class: None,
                 parent_property: String::new(),
                 description: None,
                 config: None,
@@ -7564,7 +7657,7 @@ mod tests {
                 name: "Old Name".to_string(),
                 cardinality: Cardinality::N,
                 datatype: "string".to_string(),
-                ontology_class: String::new(),
+                ontology_class: None,
                 parent_property: String::new(),
                 description: None,
                 config: None,

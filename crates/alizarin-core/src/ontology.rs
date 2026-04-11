@@ -333,6 +333,52 @@ impl OntologyValidator {
         })
     }
 
+    /// Validate an edge where either side may be multi-classed.
+    ///
+    /// Returns `Ok(())` if at least one `(domain, range)` class pair is valid
+    /// for `property`. This matches the RDF reading: a node typed as A and B
+    /// may use any property whose domain is satisfied by either type.
+    ///
+    /// Empty slices, empty `property`, or empty class entries cause validation
+    /// to be skipped (mirrors the backward-compat behaviour of [`validate_edge`]).
+    /// If no combination passes, the "most informative" error is returned,
+    /// ranked as: `InvalidRangeForProperty` > `InvalidDomainForProperty` >
+    /// `UnknownProperty` > `UnknownClass`.
+    pub fn validate_edge_multi(
+        &self,
+        domain_classes: &[String],
+        property: &str,
+        range_classes: &[String],
+    ) -> Result<(), OntologyValidationDetail> {
+        if property.is_empty() {
+            return Ok(());
+        }
+        // Skip blank entries to match the rest of the codebase's
+        // `!s.trim().is_empty()` filtering convention.
+        let is_nonblank = |s: &&String| !s.trim().is_empty();
+        if !domain_classes.iter().any(|s| is_nonblank(&s))
+            || !range_classes.iter().any(|s| is_nonblank(&s))
+        {
+            return Ok(());
+        }
+
+        let mut best_err: Option<OntologyValidationDetail> = None;
+        for d in domain_classes.iter().filter(is_nonblank) {
+            for r in range_classes.iter().filter(is_nonblank) {
+                match self.validate_edge(d, property, r) {
+                    Ok(()) => return Ok(()),
+                    Err(err) => {
+                        best_err = Some(match best_err.take() {
+                            None => err,
+                            Some(prev) => pick_more_informative(prev, err),
+                        });
+                    }
+                }
+            }
+        }
+        Err(best_err.expect("non-blank pairs were attempted"))
+    }
+
     /// Get the number of known classes (useful for diagnostics).
     pub fn class_count(&self) -> usize {
         self.known_classes.len()
@@ -341,6 +387,28 @@ impl OntologyValidator {
     /// Get the number of classes that have rules (useful for diagnostics).
     pub fn rules_count(&self) -> usize {
         self.class_rules.len()
+    }
+}
+
+/// Rank of a validation error for selecting the most informative message.
+/// Higher rank = more specific/helpful.
+fn error_rank(detail: &OntologyValidationDetail) -> u8 {
+    match detail {
+        OntologyValidationDetail::UnknownClass(_) => 0,
+        OntologyValidationDetail::UnknownProperty(_) => 1,
+        OntologyValidationDetail::InvalidDomainForProperty { .. } => 2,
+        OntologyValidationDetail::InvalidRangeForProperty { .. } => 3,
+    }
+}
+
+fn pick_more_informative(
+    a: OntologyValidationDetail,
+    b: OntologyValidationDetail,
+) -> OntologyValidationDetail {
+    if error_rank(&b) > error_rank(&a) {
+        b
+    } else {
+        a
     }
 }
 
@@ -690,6 +758,75 @@ mod tests {
                 "http://example.org/test/A",
                 "http://example.org/test/P1_relates_to",
                 ""
+            )
+            .is_ok());
+    }
+
+    #[test]
+    fn test_multi_class_edge_any_match() {
+        let validator = OntologyValidator::from_rdfs_xml(&[MINIMAL_ONTOLOGY]).unwrap();
+
+        // Parent typed as A and D (D is unrelated). P1 has domain A, range D.
+        // Domain-side match on A, range-side D — should pass.
+        let domains = vec![
+            "http://example.org/test/A".to_string(),
+            "http://example.org/test/D".to_string(),
+        ];
+        let ranges = vec!["http://example.org/test/D".to_string()];
+        assert!(validator
+            .validate_edge_multi(&domains, "http://example.org/test/P1_relates_to", &ranges)
+            .is_ok());
+    }
+
+    #[test]
+    fn test_multi_class_edge_all_fail() {
+        let validator = OntologyValidator::from_rdfs_xml(&[MINIMAL_ONTOLOGY]).unwrap();
+
+        // P1 has domain A, range D. Parent typed only as D (not a valid domain).
+        // Child typed only as A (not a valid range). Should fail.
+        let domains = vec!["http://example.org/test/D".to_string()];
+        let ranges = vec!["http://example.org/test/A".to_string()];
+        let result = validator.validate_edge_multi(
+            &domains,
+            "http://example.org/test/P1_relates_to",
+            &ranges,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_multi_class_edge_prefers_informative_error() {
+        let validator = OntologyValidator::from_rdfs_xml(&[MINIMAL_ONTOLOGY]).unwrap();
+
+        // One pair has an unknown class, another has a valid domain but invalid range.
+        // The more informative error (InvalidRangeForProperty) should win.
+        let domains = vec![
+            "banana".to_string(),
+            "http://example.org/test/A".to_string(),
+        ];
+        let ranges = vec!["http://example.org/test/B".to_string()];
+        let result = validator.validate_edge_multi(
+            &domains,
+            "http://example.org/test/P1_relates_to",
+            &ranges,
+        );
+        match result {
+            Err(OntologyValidationDetail::InvalidRangeForProperty { .. }) => {}
+            other => panic!("Expected InvalidRangeForProperty, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_multi_class_edge_empty_skips() {
+        let validator = OntologyValidator::from_rdfs_xml(&[MINIMAL_ONTOLOGY]).unwrap();
+        assert!(validator
+            .validate_edge_multi(&[], "http://example.org/test/P1_relates_to", &[])
+            .is_ok());
+        assert!(validator
+            .validate_edge_multi(
+                &["".to_string()],
+                "http://example.org/test/P1_relates_to",
+                &["http://example.org/test/D".to_string()]
             )
             .is_ok());
     }

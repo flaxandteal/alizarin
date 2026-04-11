@@ -45,8 +45,11 @@ pub struct StaticGraph {
     pub slug: Option<String>,
     #[serde(default)]
     pub is_editable: Option<bool>,
-    #[serde(default)]
-    pub ontology_id: Option<String>,
+    /// Ontology IDs used by this graph. Accepts a single string or an array
+    /// of strings on the wire; a single-element list is serialised as a plain
+    /// string for round-trip compatibility with upstream Arches.
+    #[serde(default, with = "super::serde_helpers::optional_string_or_vec")]
+    pub ontology_id: Option<Vec<String>>,
     #[serde(default)]
     pub template_id: Option<String>,
     #[serde(default)]

@@ -23,6 +23,7 @@ mod meta;
 mod nodes;
 mod prune;
 mod resources;
+pub(crate) mod serde_helpers;
 mod static_graph;
 mod tile;
 mod translatable;

@@ -465,10 +465,18 @@ fn draw_detail_pane(f: &mut Frame, app: &mut App, area: Rect) {
         ]));
 
         if let Some(ref onto) = node.ontologyclass {
-            lines.push(Line::from(vec![
-                Span::styled("Ontology: ", Style::default().fg(Color::Cyan)),
-                Span::styled(onto, Style::default().fg(Color::DarkGray)),
-            ]));
+            if !onto.is_empty() {
+                let label = if onto.len() == 1 {
+                    "Ontology: "
+                } else {
+                    "Ontologies: "
+                };
+                let joined = onto.join(", ");
+                lines.push(Line::from(vec![
+                    Span::styled(label, Style::default().fg(Color::Cyan)),
+                    Span::styled(joined, Style::default().fg(Color::DarkGray)),
+                ]));
+            }
         }
 
         if let Some(ref desc) = node.description {

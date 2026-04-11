@@ -20,7 +20,7 @@ declare function createStaticGraph(props: {
         [key: string]: any;
     } | null;
     name: string | StaticTranslatableString;
-    ontology_id?: string | null;
+    ontology_id?: string | string[] | null;
     relatable_resource_model_ids?: Array<string>;
     resource_2_resource_constraints?: Array<any> | null;
     slug?: string | null;

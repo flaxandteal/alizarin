@@ -76,7 +76,17 @@ export declare const schemas: {
                         pattern: string;
                     };
                     ontology_id: {
-                        type: string;
+                        oneOf: ({
+                            type: string;
+                            items?: undefined;
+                            minItems?: undefined;
+                        } | {
+                            type: string;
+                            items: {
+                                type: string;
+                            };
+                            minItems: number;
+                        })[];
                     };
                     template_id: {
                         $ref: string;
@@ -184,7 +194,17 @@ export declare const schemas: {
                         type: string;
                     };
                     ontologyclass: {
-                        type: string[];
+                        oneOf: ({
+                            type: string;
+                            items?: undefined;
+                            minItems?: undefined;
+                        } | {
+                            type: string;
+                            items: {
+                                type: string;
+                            };
+                            minItems: number;
+                        })[];
                     };
                     alias: {
                         type: string[];

@@ -136,8 +136,10 @@ impl PseudoNode {
             let wasm_desc = crate::graph::StaticTranslatableString(description.clone());
             js_sys::Reflect::set(&obj, &"description".into(), &wasm_desc.to_json()).ok();
         }
-        if let Some(ref ontologyclass) = self.node.ontologyclass {
-            js_sys::Reflect::set(&obj, &"ontologyclass".into(), &ontologyclass.clone().into()).ok();
+        // Serialise ontology classes using the shared Arches wire-shape helper.
+        let classes_js = crate::utils::classes_to_js_value(self.node.ontologyclass.as_ref());
+        if !classes_js.is_null() {
+            js_sys::Reflect::set(&obj, &"ontologyclass".into(), &classes_js).ok();
         }
         if let Some(ref nodegroup_id) = self.node.nodegroup_id {
             js_sys::Reflect::set(&obj, &"nodegroup_id".into(), &nodegroup_id.clone().into()).ok();
@@ -234,10 +236,7 @@ impl PseudoNode {
 
     #[wasm_bindgen(getter = ontologyclass)]
     pub fn get_ontologyclass(&self) -> JsValue {
-        match &self.node.ontologyclass {
-            Some(s) => JsValue::from_str(s),
-            None => JsValue::NULL,
-        }
+        crate::utils::classes_to_js_value(self.node.ontologyclass.as_ref())
     }
 
     #[wasm_bindgen(getter = nodegroup_id)]

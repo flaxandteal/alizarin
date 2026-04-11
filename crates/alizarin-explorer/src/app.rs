@@ -149,7 +149,7 @@ pub struct TreeNode {
     pub has_children: bool,
     pub is_collector: bool,
     pub is_required: bool,
-    pub ontologyclass: Option<String>,
+    pub ontologyclass: Option<Vec<String>>,
     pub description: Option<String>,
     /// Whether this node matches the current search (for highlighting)
     pub matches_search: bool,

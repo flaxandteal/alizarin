@@ -44,7 +44,7 @@ function createStaticGraph(props: {
     isresource?: boolean,
     jsonldcontext?: string | {[key: string]: any} | null,
     name: string | StaticTranslatableString,
-    ontology_id?: string | null,
+    ontology_id?: string | string[] | null,
     relatable_resource_model_ids?: Array<string>,
     resource_2_resource_constraints?: Array<any> | null,
     slug?: string | null,
@@ -86,7 +86,7 @@ function createStaticGraph(props: {
       "name": typeof nameForRust === 'string' ? nameForRust : (nameForRust.en || Object.values(nameForRust)[0] || ''),
       "nodegroup_id": null,
       "nodeid": graphid,
-      "ontologyclass": props.ontology_id || null,
+      "ontologyclass": props.ontology_id ?? null,
       "parentproperty": null,
       "sortorder": 0,
       "sourcebranchpublication_id": null
