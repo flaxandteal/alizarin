@@ -260,7 +260,10 @@ class TestGetMutationSchema:
         params = schema["CreateGraphParams"]
         assert "name" in params["required"]
         assert "root_alias" in params["required"]
-        assert "root_ontology_class" in params["required"]
+        # root_ontology_class is optional since multi-class support landed:
+        # models can be created without declaring a single root CRM class.
+        assert "root_ontology_class" not in params["required"]
+        assert "root_ontology_class" in params["properties"]
 
 
 if __name__ == "__main__":

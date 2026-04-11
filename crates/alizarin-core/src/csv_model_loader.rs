@@ -138,6 +138,8 @@ const VALID_DATATYPES: &[&str] = &[
     "domain-value",
     "domain-value-list",
     "file-list",
+    "resource-instance",
+    "resource-instance-list",
 ];
 
 const CRM_PREFIX: &str = "http://www.cidoc-crm.org/cidoc-crm/";
@@ -625,15 +627,21 @@ pub fn validate_model_csvs(bundle: &ModelCsvBundle) -> Vec<CsvModelDiagnostic> {
         }
     }
 
-    // Cross-reference: nodes.csv collection_name → collections.csv
+    // Cross-reference: nodes.csv collection_name → collections.csv.
+    //
+    // Warning (not Error) because many Arches projects load concept collections from
+    // external SKOS XML at RDM-load time rather than declaring them inline in the
+    // model CSVs. In that workflow a node can legitimately reference a collection by
+    // name without a matching row here; the real rdmCollection UUID is resolved at
+    // Arches startup from the SKOS import, not from this CSV.
     for cn in &collection_refs {
         if !collection_names.contains(cn) {
             diagnostics.push(CsvModelDiagnostic {
-                level: DiagnosticLevel::Error,
+                level: DiagnosticLevel::Warning,
                 file: "nodes.csv".to_string(),
                 line: None,
                 message: format!(
-                    "references collection \"{}\" but it is not defined in collections.csv",
+                    "references collection \"{}\" but it is not defined in collections.csv (expected if loaded from external SKOS)",
                     cn
                 ),
             });
@@ -1112,14 +1120,13 @@ nonexistent,child,Child,string,1,http://www.cidoc-crm.org/cidoc-crm/E62_String,h
 
     #[test]
     fn test_missing_collection() {
+        // Missing collection refs are warnings (not errors) — see validate_model_csvs
+        // for the rationale (external SKOS imports are a valid workflow).
         let nodes_with_concept = r#"parent_alias,alias,name,datatype,cardinality,ontology_class,parent_property,collection_name
 ,my_type,Type,concept,1,http://www.cidoc-crm.org/cidoc-crm/E55_Type,http://www.cidoc-crm.org/cidoc-crm/P2_has_type,Missing Collection"#;
         let diags = validate_model_csvs_from_strings(GRAPH_CSV, nodes_with_concept, None);
-        assert!(
-            diags
-                .iter()
-                .any(|d| d.message.contains("Missing Collection")
-                    && d.level == DiagnosticLevel::Error)
-        );
+        assert!(diags.iter().any(
+            |d| d.message.contains("Missing Collection") && d.level == DiagnosticLevel::Warning
+        ));
     }
 }
