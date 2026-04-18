@@ -5,8 +5,13 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
 use alizarin_core::extension_type_registry::ExtensionTypeRegistry;
+use alizarin_core::graph_mutator::MutatorOptions;
+use alizarin_core::skos::SkosCollection;
 use alizarin_core::type_serialization::SerializationContext;
-use alizarin_core::{PrebuildLoader, StaticGraph, StaticResource, StaticResourceRegistry};
+use alizarin_core::{
+    build_graph_from_model_csvs, build_resources_from_business_csv, wrap_business_data,
+    PrebuildLoader, StaticGraph, StaticResource, StaticResourceRegistry,
+};
 
 // ============================================================================
 // Extension registry (shared across all calls)
@@ -305,4 +310,77 @@ impl NapiStaticResourceRegistry {
     pub fn has_full(&self, resource_id: String) -> bool {
         self.inner.has_full(&resource_id)
     }
+}
+
+// ============================================================================
+// CSV model and business data loading
+// ============================================================================
+
+fn csv_err(e: alizarin_core::CsvModelError) -> napi::Error {
+    let msgs: Vec<String> = e
+        .diagnostics
+        .iter()
+        .map(|d| {
+            if let Some(line) = d.line {
+                format!("{:?}: {}:{}: {}", d.level, d.file, line, d.message)
+            } else {
+                format!("{:?}: {}: {}", d.level, d.file, d.message)
+            }
+        })
+        .collect();
+    napi::Error::from_reason(msgs.join("\n"))
+}
+
+/// Build a StaticGraph from model CSVs (graph.csv, nodes.csv, optional collections.csv).
+///
+/// Returns the graph as a JSON string. The `rdm_namespace` is used for
+/// deterministic ID generation (typically a UUID or URL).
+#[napi]
+pub fn build_graph_from_csvs(
+    graph_csv: String,
+    nodes_csv: String,
+    collections_csv: Option<String>,
+    rdm_namespace: String,
+) -> Result<serde_json::Value> {
+    let (graph, collections) = build_graph_from_model_csvs(
+        &graph_csv,
+        &nodes_csv,
+        collections_csv.as_deref(),
+        &rdm_namespace,
+        MutatorOptions::default(),
+    )
+    .map_err(csv_err)?;
+
+    let graph_json =
+        serde_json::to_value(&graph).map_err(|e| napi::Error::from_reason(e.to_string()))?;
+    let collections_json =
+        serde_json::to_value(&collections).map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+    Ok(serde_json::json!({
+        "graph": graph_json,
+        "collections": collections_json,
+    }))
+}
+
+/// Build StaticResources from a business data CSV, given a graph JSON string
+/// and collections JSON string (as returned by `buildGraphFromCsvs`).
+///
+/// Returns the resources wrapped in the `{ business_data: { resources: [...] } }`
+/// format expected by PrebuildLoader.
+#[napi]
+pub fn build_business_data_from_csv(
+    csv_data: String,
+    graph_json: String,
+    collections_json: String,
+) -> Result<serde_json::Value> {
+    let graph: StaticGraph = serde_json::from_str(&graph_json)
+        .map_err(|e| napi::Error::from_reason(format!("Invalid graph JSON: {e}")))?;
+    let collections: Vec<SkosCollection> = serde_json::from_str(&collections_json)
+        .map_err(|e| napi::Error::from_reason(format!("Invalid collections JSON: {e}")))?;
+
+    let resources =
+        build_resources_from_business_csv(&csv_data, &graph, &collections, Default::default())
+            .map_err(csv_err)?;
+
+    Ok(wrap_business_data(&resources))
 }

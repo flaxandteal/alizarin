@@ -310,8 +310,10 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { NapiPrebuildLoader, NapiStaticGraph, NapiStaticResourceRegistry } = nativeBinding
+const { NapiPrebuildLoader, NapiStaticGraph, NapiStaticResourceRegistry, buildGraphFromCsvs, buildBusinessDataFromCsv } = nativeBinding
 
 module.exports.NapiPrebuildLoader = NapiPrebuildLoader
 module.exports.NapiStaticGraph = NapiStaticGraph
 module.exports.NapiStaticResourceRegistry = NapiStaticResourceRegistry
+module.exports.buildGraphFromCsvs = buildGraphFromCsvs
+module.exports.buildBusinessDataFromCsv = buildBusinessDataFromCsv
