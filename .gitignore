@@ -42,3 +42,4 @@ debug_*.js
 
 # Screenshots (accidental commits)
 Screenshot*.png
+*.node

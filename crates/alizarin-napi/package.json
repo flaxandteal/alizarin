@@ -1,0 +1,24 @@
+{
+  "name": "@alizarin/napi",
+  "version": "0.2.1-alpha.58",
+  "license": "AGPL-3.0-or-later",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "napi": {
+    "name": "alizarin-napi",
+    "triples": {
+      "defaults": true
+    }
+  },
+  "scripts": {
+    "artifacts": "napi artifacts",
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "prepublishOnly": "napi prepublish -t npm",
+    "version": "napi version",
+    "test": "node --test __test__/*.mjs"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0"
+  }
+}

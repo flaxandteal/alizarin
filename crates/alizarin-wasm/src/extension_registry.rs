@@ -15,7 +15,10 @@
 //! });
 //! ```
 
-use alizarin_core::{CoercionResult, ExtensionError, ExtensionTypeHandler, HandlerCapabilities};
+use alizarin_core::{
+    CoercionResult, ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry,
+    HandlerCapabilities,
+};
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -83,12 +86,6 @@ pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<()
         );
     });
 
-    // Also register into the global core registry so build_descriptors etc. can use it
-    alizarin_core::register_extension_type_handler(
-        datatype,
-        Arc::new(JsExtensionTypeHandler::new(datatype.to_string())),
-    );
-
     Ok(())
 }
 
@@ -104,7 +101,6 @@ pub fn unregister_extension_handler(datatype: &str) {
     JS_TYPE_HANDLERS.with(|handlers| {
         handlers.borrow_mut().remove(datatype);
     });
-    alizarin_core::unregister_extension_type_handler(datatype);
 }
 
 /// Get the list of registered extension handler datatypes.
@@ -118,6 +114,30 @@ pub fn get_registered_extension_handlers() -> js_sys::Array {
         }
         arr
     })
+}
+
+/// Build a fresh extension registry from JS-registered handlers.
+///
+/// Only includes handlers dynamically registered from JS via `registerExtensionHandler`.
+/// Extension crates (e.g. CLM, file-list) must register themselves from JS.
+pub fn build_extension_registry() -> ExtensionTypeRegistry {
+    let mut registry = ExtensionTypeRegistry::new();
+
+    JS_TYPE_HANDLERS.with(|handlers| {
+        for datatype in handlers.borrow().keys() {
+            registry.register(
+                datatype.clone(),
+                Arc::new(JsExtensionTypeHandler::new(datatype.clone())),
+            );
+        }
+    });
+
+    registry
+}
+
+/// Check if any extension handlers are registered from JS.
+pub fn has_registered_handlers() -> bool {
+    JS_TYPE_HANDLERS.with(|handlers| !handlers.borrow().is_empty())
 }
 
 /// A type handler that delegates to JS callbacks.

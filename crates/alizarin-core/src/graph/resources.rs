@@ -983,9 +983,11 @@ impl StaticResourceRegistry {
         Ok(index)
     }
 
-    /// Build an inverted index from node values to resource IDs.
+    /// Build an inverted index from node display values to resource IDs.
     ///
-    /// Useful for looking up resources by a field value (e.g., find resource by external ID).
+    /// Uses the type serialization infrastructure to extract display strings,
+    /// which handles built-in types (string, concept, domain-value, etc.) and
+    /// extension-registered types (reference, etc.) via the global registry.
     ///
     /// # Arguments
     /// * `graph` - The graph to use for node lookup
@@ -993,7 +995,7 @@ impl StaticResourceRegistry {
     /// * `flatten_localized` - If true, extract string from localized values {"en": "value"}
     ///
     /// # Returns
-    /// * `Ok(HashMap<String, Vec<String>>)` - Map from value to list of resource_ids
+    /// * `Ok(HashMap<String, Vec<String>>)` - Map from display value to list of resource_ids
     /// * `Err(String)` - Error if node not found
     pub fn get_value_to_resources_index(
         &self,
@@ -1001,6 +1003,38 @@ impl StaticResourceRegistry {
         node_identifier: &str,
         flatten_localized: bool,
     ) -> Result<HashMap<String, Vec<String>>, String> {
+        self.get_value_to_resources_index_with_context(
+            graph,
+            node_identifier,
+            flatten_localized,
+            None,
+        )
+    }
+
+    /// Build an inverted index from node display values to resource IDs,
+    /// with an explicit serialization context for resolvers and extensions.
+    ///
+    /// # Arguments
+    /// * `graph` - The graph to use for node lookup
+    /// * `node_identifier` - Node alias or node ID to extract values for
+    /// * `flatten_localized` - If true, extract string from localized values {"en": "value"}
+    /// * `ctx` - Optional serialization context (resolvers, extension registry)
+    ///
+    /// # Returns
+    /// * `Ok(HashMap<String, Vec<String>>)` - Map from display value to list of resource_ids
+    /// * `Err(String)` - Error if node not found
+    pub fn get_value_to_resources_index_with_context(
+        &self,
+        graph: &super::StaticGraph,
+        node_identifier: &str,
+        flatten_localized: bool,
+        ctx: Option<&crate::type_serialization::SerializationContext>,
+    ) -> Result<HashMap<String, Vec<String>>, String> {
+        use crate::node_config::NodeConfigManager;
+        use crate::type_serialization::{
+            serialize_value, SerializationContext, SerializationOptions,
+        };
+
         // Find the node by alias or ID
         let node = graph
             .nodes
@@ -1014,10 +1048,28 @@ impl StaticResourceRegistry {
             })?;
 
         let node_id = &node.nodeid;
+        let datatype = &node.datatype;
         let nodegroup_id = node
             .nodegroup_id
             .as_ref()
             .ok_or_else(|| format!("Node '{}' has no nodegroup_id", node_identifier))?;
+
+        // Build node config from graph for this node's datatype
+        let mut ncm = NodeConfigManager::new();
+        ncm.build_from_graph(graph);
+        let node_config = ncm.get(node_id);
+
+        let language = if flatten_localized { "en" } else { "" };
+        let opts = SerializationOptions::display(language);
+
+        let empty_ctx = SerializationContext::empty();
+        let base_ctx = ctx.unwrap_or(&empty_ctx);
+        let ser_ctx = SerializationContext {
+            node_config,
+            external_resolver: base_ctx.external_resolver,
+            resource_resolver: base_ctx.resource_resolver,
+            extension_registry: base_ctx.extension_registry,
+        };
 
         let mut index: HashMap<String, Vec<String>> = HashMap::new();
 
@@ -1034,28 +1086,12 @@ impl StaticResourceRegistry {
                 for tile in tiles {
                     if tile.nodegroup_id.as_str() == nodegroup_id {
                         if let Some(value) = tile.data.get(node_id) {
-                            // Convert value to string key
-                            let key = if flatten_localized {
-                                // Try to extract from localized format
-                                // Handles both {"en": "value"} and {"en": {"value": "value", "direction": "ltr"}}
-                                if let Some(obj) = value.as_object() {
-                                    obj.get("en").or_else(|| obj.values().next()).and_then(|v| {
-                                        v.as_str().map(|s| s.to_string()).or_else(|| {
-                                            v.as_object()
-                                                .and_then(|inner| inner.get("value"))
-                                                .and_then(|val| val.as_str())
-                                                .map(|s| s.to_string())
-                                        })
-                                    })
-                                } else {
-                                    value.as_str().map(|s| s.to_string())
-                                }
-                            } else {
-                                // Use JSON representation as key
-                                Some(value.to_string())
-                            };
-
-                            if let Some(k) = key {
+                            let result = serialize_value(datatype, value, &opts, Some(&ser_ctx));
+                            if result.is_error() {
+                                continue;
+                            }
+                            let keys = extract_display_keys(&result.value);
+                            for k in keys {
                                 index.entry(k).or_default().push(resource_id.clone());
                             }
                         }
@@ -1065,6 +1101,167 @@ impl StaticResourceRegistry {
         }
 
         Ok(index)
+    }
+
+    /// Extract values from one node in tiles where another node matches a filter.
+    ///
+    /// Both nodes must be in the same nodegroup. For each tile in that nodegroup,
+    /// the filter node's display value is checked against `filter_values`. If any
+    /// filter value appears in the display string, the extract node's raw JSON
+    /// value is included in the results.
+    ///
+    /// # Arguments
+    /// * `graph` - The graph for node lookup
+    /// * `filter_node` - Alias or ID of the node to filter on
+    /// * `filter_values` - Display values that pass the filter (matched as substrings of comma-separated tags)
+    /// * `extract_node` - Alias or ID of the node whose values to extract
+    /// * `flatten_localized` - If true, flatten localized values for the filter node
+    ///
+    /// # Returns
+    /// A `Vec<serde_json::Value>` of raw values from the extract node for matching tiles.
+    #[allow(clippy::too_many_arguments)]
+    pub fn get_filtered_tile_values(
+        &self,
+        graph: &super::StaticGraph,
+        filter_node: &str,
+        filter_values: &[&str],
+        extract_node: &str,
+        flatten_localized: bool,
+        ctx: Option<&crate::type_serialization::SerializationContext>,
+        required_scope: Option<&str>,
+    ) -> Result<Vec<serde_json::Value>, String> {
+        use crate::node_config::NodeConfigManager;
+        use crate::type_serialization::{
+            serialize_value, SerializationContext, SerializationOptions,
+        };
+
+        let find_node = |identifier: &str| {
+            graph
+                .nodes
+                .iter()
+                .find(|n| n.alias.as_deref() == Some(identifier) || n.nodeid == identifier)
+                .ok_or_else(|| {
+                    format!("Node '{}' not found in graph {}", identifier, graph.graphid)
+                })
+        };
+
+        let filter = find_node(filter_node)?;
+        let extract = find_node(extract_node)?;
+
+        let filter_node_id = &filter.nodeid;
+        let filter_datatype = &filter.datatype;
+        let filter_nodegroup_id = filter
+            .nodegroup_id
+            .as_ref()
+            .ok_or_else(|| format!("Node '{}' has no nodegroup_id", filter_node))?;
+
+        let extract_node_id = &extract.nodeid;
+        let extract_nodegroup_id = extract
+            .nodegroup_id
+            .as_ref()
+            .ok_or_else(|| format!("Node '{}' has no nodegroup_id", extract_node))?;
+
+        if filter_nodegroup_id != extract_nodegroup_id {
+            return Err(format!(
+                "Filter node '{}' (nodegroup {}) and extract node '{}' (nodegroup {}) are not in the same nodegroup",
+                filter_node, filter_nodegroup_id, extract_node, extract_nodegroup_id
+            ));
+        }
+
+        let mut ncm = NodeConfigManager::new();
+        ncm.build_from_graph(graph);
+        let node_config = ncm.get(filter_node_id);
+
+        let language = if flatten_localized { "en" } else { "" };
+        let opts = SerializationOptions::display(language);
+
+        let empty_ctx = SerializationContext::empty();
+        let base_ctx = ctx.unwrap_or(&empty_ctx);
+        let ser_ctx = SerializationContext {
+            node_config,
+            external_resolver: base_ctx.external_resolver,
+            resource_resolver: base_ctx.resource_resolver,
+            extension_registry: base_ctx.extension_registry,
+        };
+
+        let mut results: Vec<serde_json::Value> = Vec::new();
+
+        for (_, resource) in self.iter_full() {
+            if resource.resourceinstance.graph_id != graph.graphid {
+                continue;
+            }
+
+            // Check resource-level scope if required
+            if let Some(scope) = required_scope {
+                let has_scope = resource
+                    .scopes
+                    .as_ref()
+                    .and_then(|s| s.as_array())
+                    .map(|arr| arr.iter().any(|v| v.as_str() == Some(scope)))
+                    .unwrap_or(false);
+                if !has_scope {
+                    continue;
+                }
+            }
+
+            if let Some(ref tiles) = resource.tiles {
+                for tile in tiles {
+                    if tile.nodegroup_id.as_str() != filter_nodegroup_id.as_str() {
+                        continue;
+                    }
+
+                    // Check filter node value
+                    let matches = if let Some(filter_value) = tile.data.get(filter_node_id) {
+                        let result =
+                            serialize_value(filter_datatype, filter_value, &opts, Some(&ser_ctx));
+                        if result.is_error() {
+                            false
+                        } else {
+                            let keys = extract_display_keys(&result.value);
+                            keys.iter().any(|display| {
+                                let tags: Vec<&str> =
+                                    display.split(',').map(|t| t.trim()).collect();
+                                filter_values.iter().any(|fv| tags.contains(fv))
+                            })
+                        }
+                    } else {
+                        false
+                    };
+
+                    if matches {
+                        if let Some(extract_value) = tile.data.get(extract_node_id) {
+                            results.push(extract_value.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(results)
+    }
+}
+
+/// Extract string keys from a serialized display value.
+///
+/// Handles:
+/// - String: returns the single string
+/// - Array of strings: returns each string element
+/// - Array of objects: tries to extract string values from each
+/// - Null: returns empty
+/// - Other: uses JSON representation as key
+fn extract_display_keys(value: &serde_json::Value) -> Vec<String> {
+    match value {
+        serde_json::Value::String(s) => vec![s.clone()],
+        serde_json::Value::Array(arr) => arr
+            .iter()
+            .filter_map(|v| match v {
+                serde_json::Value::String(s) => Some(s.clone()),
+                serde_json::Value::Null => None,
+                other => Some(other.to_string()),
+            })
+            .collect(),
+        serde_json::Value::Null => vec![],
+        other => vec![other.to_string()],
     }
 }
 

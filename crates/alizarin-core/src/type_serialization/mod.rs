@@ -195,12 +195,6 @@ pub fn serialize_value(
             return result;
         }
     }
-    // Fall back to global registry (handlers registered at init by extensions)
-    if let Ok(global_registry) = crate::registry::global_extension_registry() {
-        if let Some(result) = try_extension(&global_registry) {
-            return result;
-        }
-    }
 
     match datatype {
         // Pass-through types

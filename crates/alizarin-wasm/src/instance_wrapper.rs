@@ -928,7 +928,13 @@ impl WASMResourceInstanceWrapper {
         let indexed_graph = IndexedGraph::new(graph);
 
         // Compute descriptors using the Rust implementation
-        let descriptors = indexed_graph.build_descriptors(&tiles_vec);
+        let ext_registry = crate::extension_registry::build_extension_registry();
+        let descriptors = indexed_graph.build_descriptors_with_context(
+            &tiles_vec,
+            &mut Vec::new(),
+            None,
+            Some(&ext_registry),
+        );
 
         Ok(StaticResourceDescriptors(descriptors))
     }
@@ -1343,6 +1349,7 @@ impl WASMResourceInstanceWrapper {
         let rcache = rdm_cache.inner();
         let ncm = node_config_manager.inner();
         let core_registry = resource_registry.inner();
+        let ext_registry = crate::extension_registry::build_extension_registry();
         let ser_ctx = alizarin_core::type_serialization::SerializationContext {
             node_config: None,
             external_resolver: Some(
@@ -1351,7 +1358,7 @@ impl WASMResourceInstanceWrapper {
             resource_resolver: Some(
                 core_registry as &dyn alizarin_core::type_serialization::ResourceDisplayResolver,
             ),
-            extension_registry: None,
+            extension_registry: Some(&ext_registry),
         };
 
         let result = alizarin_core::serialize_card(
@@ -1409,6 +1416,7 @@ impl WASMResourceInstanceWrapper {
         let rcache = rdm_cache.inner();
         let ncm = node_config_manager.inner();
         let core_registry = resource_registry.inner();
+        let ext_registry = crate::extension_registry::build_extension_registry();
         let ser_ctx = alizarin_core::type_serialization::SerializationContext {
             node_config: None,
             external_resolver: Some(
@@ -1417,7 +1425,7 @@ impl WASMResourceInstanceWrapper {
             resource_resolver: Some(
                 core_registry as &dyn alizarin_core::type_serialization::ResourceDisplayResolver,
             ),
-            extension_registry: None,
+            extension_registry: Some(&ext_registry),
         };
 
         let result = alizarin_core::serialize_root_cards(
@@ -1621,13 +1629,14 @@ impl WASMResourceInstanceWrapper {
         let lang = language.unwrap_or_else(|| "en".to_string());
 
         // Build SerializationContext with resolvers for concept and resource lookups
+        let ext_registry = crate::extension_registry::build_extension_registry();
         let ser_ctx = alizarin_core::type_serialization::SerializationContext {
             node_config: None, // Set per-node at leaf serialization
             external_resolver: rdm_cache
                 .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
             resource_resolver: resource_registry
                 .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
-            extension_registry: None, // Extensions dispatched via global registry in serialize_value
+            extension_registry: Some(&ext_registry),
         };
 
         // Build display-mode VisitorContext — same path as toJson() but with display options

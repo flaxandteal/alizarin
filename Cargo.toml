@@ -1,10 +1,13 @@
 [workspace]
 members = [
     "crates/alizarin-core",
+    "crates/alizarin-clm-core",
+    "crates/alizarin-filelist-core",
     "crates/alizarin-wasm",
     "crates/alizarin-python",
     "crates/alizarin-explorer",
     "crates/alizarin-extension-api",
+    "crates/alizarin-napi",
     "crates/wasm-wrapper-derive",
 ]
 exclude = [

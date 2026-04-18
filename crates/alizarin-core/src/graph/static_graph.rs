@@ -725,7 +725,7 @@ impl IndexedGraph {
     /// # Returns
     /// Populated StaticResourceDescriptors with name, description, map_popup fields
     pub fn build_descriptors(&self, tiles: &[StaticTile]) -> StaticResourceDescriptors {
-        self.build_descriptors_with_diagnostics(tiles, &mut Vec::new(), None)
+        self.build_descriptors_with_context(tiles, &mut Vec::new(), None, None)
     }
 
     /// Build descriptors with diagnostic warnings for silent failure cases
@@ -734,6 +734,17 @@ impl IndexedGraph {
         tiles: &[StaticTile],
         warnings: &mut Vec<String>,
         cache: Option<&super::resources::ResourceCache>,
+    ) -> StaticResourceDescriptors {
+        self.build_descriptors_with_context(tiles, warnings, cache, None)
+    }
+
+    /// Build descriptors with full context (diagnostics, cache, extension registry)
+    pub fn build_descriptors_with_context(
+        &self,
+        tiles: &[StaticTile],
+        warnings: &mut Vec<String>,
+        cache: Option<&super::resources::ResourceCache>,
+        extension_registry: Option<&crate::extension_type_registry::ExtensionTypeRegistry>,
     ) -> StaticResourceDescriptors {
         // Get descriptor config from graph with diagnostics
         let config = match self.get_descriptor_config_with_diagnostics(warnings) {
@@ -790,6 +801,7 @@ impl IndexedGraph {
                         &node.nodeid,
                         &node.datatype,
                         cache,
+                        extension_registry,
                     ) {
                         template = template.replace(placeholder, &value);
                     } else {
@@ -926,6 +938,7 @@ impl IndexedGraph {
         node_id: &str,
         datatype: &str,
         cache: Option<&super::resources::ResourceCache>,
+        extension_registry: Option<&crate::extension_type_registry::ExtensionTypeRegistry>,
     ) -> Option<String> {
         // For resource-instance / resource-instance-list, look up display names from __cache
         // (mirrors how TS ViewModels use __cache entries with title for display)
@@ -946,10 +959,10 @@ impl IndexedGraph {
         for tile in tiles {
             if let Some(value) = tile.data.get(node_id) {
                 // 1. Try extension render_display (optional — not all extensions have it)
-                if let Ok(Some(display)) =
-                    crate::registry::render_extension_display(datatype, value, "en")
-                {
-                    return Some(display);
+                if let Some(registry) = extension_registry {
+                    if let Ok(Some(display)) = registry.render_display(datatype, value, "en") {
+                        return Some(display);
+                    }
                 }
 
                 // 2. Try built-in type serialization

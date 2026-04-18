@@ -19,6 +19,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 alizarin-extension-api = { path = "../../../crates/alizarin-extension-api" }
 alizarin-core = { path = "../../../crates/alizarin-core", optional = true }
+alizarin-filelist-core = { path = "../../../crates/alizarin-filelist-core" }
 
 [dev-dependencies]
 alizarin-core = { path = "../../../crates/alizarin-core" }

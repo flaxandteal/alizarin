@@ -1,0 +1,20 @@
+[package]
+name = "alizarin-napi"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license = "AGPL-3.0-or-later"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+alizarin-core = { path = "../alizarin-core", features = ["multi-threaded"] }
+alizarin-clm-core = { path = "../alizarin-clm-core" }
+alizarin-filelist-core = { path = "../alizarin-filelist-core" }
+napi = { version = "2", features = ["napi6", "serde-json"] }
+napi-derive = "2"
+serde_json = "1.0"
+
+[build-dependencies]
+napi-build = "2"

@@ -1,4 +1,3 @@
-#![allow(deprecated)]
 /// RDM (Reference Data Manager) Cache for concept collections.
 ///
 /// This module provides Python bindings that wrap core types from alizarin-core:

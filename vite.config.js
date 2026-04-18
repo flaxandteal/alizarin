@@ -54,6 +54,14 @@ export default defineConfig({
     topLevelAwait(),
     externalizeWasmPlugin(),
   ],
+  resolve: {
+    alias: {
+      // Extensions (@alizarin/clm, @alizarin/filelist) import from 'alizarin'.
+      // Alias it to the local source so the 'full' entry bundles everything
+      // into a single module instance.
+      'alizarin': resolve(__dirname, 'js/main.ts'),
+    },
+  },
   optimizeDeps: {
     exclude: ['./pkg', 'alizarin'],
   },
@@ -68,12 +76,16 @@ export default defineConfig({
     lib: {
       entry: {
         alizarin: resolve(__dirname, "js/main.ts"),
+        'alizarin.full': resolve(__dirname, "js/full.ts"),
         'validation/index': resolve(__dirname, "js/validation/index.ts"),
       },
       name: "Alizarin",
       fileName: (format, entryName) => {
         if (entryName.includes('validation')) {
           return `${entryName}.js`;
+        }
+        if (entryName === 'alizarin.full') {
+          return 'alizarin.full.js';
         }
         return format === 'es' ? 'alizarin.js' : 'alizarin.umd.cjs';
       },

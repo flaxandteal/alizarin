@@ -27,8 +27,14 @@
       "import": "./dist/alizarin.js",
       "require": "./dist/alizarin.umd.cjs"
     },
+    "./full": {
+      "import": "./dist/alizarin.full.js"
+    },
     "./inline": {
       "import": "./dist/alizarin.inline.js"
+    },
+    "./inline-full": {
+      "import": "./dist/alizarin.inline-full.js"
     },
     "./validation": {
       "import": "./dist/validation/index.js",

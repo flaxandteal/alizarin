@@ -1023,7 +1023,7 @@ impl App {
             match source {
                 BusinessDataSource::BusinessData => {
                     // Get files first
-                    let files = match loader.find_business_data_files(&graph_id) {
+                    let files = match loader.find_business_data_files() {
                         Ok(f) => f,
                         Err(e) => {
                             let _ = tx.send(LoaderMessage::Error(e.to_string()));

@@ -109,6 +109,7 @@ pub use type_coercion::{
     coerce_url,
     // Dispatcher and result
     coerce_value,
+    coerce_value_with_registry,
     // Language configuration
     get_current_language,
     set_current_language,
@@ -279,12 +280,6 @@ pub use string_utils::{camel_to_snake, snake_to_camel, transform_keys_to_snake};
 // Extension type registry (unified handler infrastructure for WASM/Python)
 pub use extension_type_registry::{
     ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities,
-};
-
-// Global extension type handler registry
-pub use registry::{
-    has_extension_type_handler, list_extension_type_handlers, register_extension_type_handler,
-    render_extension_display, unregister_extension_type_handler,
 };
 
 // CSV model loader (3-CSV format: graph.csv, nodes.csv, collections.csv)

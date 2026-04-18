@@ -55,6 +55,7 @@ pub fn tree_to_tiles_enhanced(
     // Convert tree to tiles (with optional id_key for deterministic UUID)
     // Default to random_ids=true for backward compat; batch functions default to false (slug-based)
     let id_key_ref = id_key.as_deref();
+    let ext_registry = crate::extension_registry::build_extension_registry();
     let result = tree_to_tiles_with_options(
         &tree,
         graph,
@@ -62,7 +63,8 @@ pub fn tree_to_tiles_enhanced(
         id_key_ref,
         false,
         random_ids.unwrap_or(true),
-        false,
+        true,
+        Some(&ext_registry),
     );
 
     match result {
@@ -255,6 +257,7 @@ pub fn batch_trees_to_tiles(
     let graph_id = graph.graph_id();
     let mut resources = Vec::new();
     let mut errors = Vec::new();
+    let ext_registry = crate::extension_registry::build_extension_registry();
 
     // Process each tree
     for (i, tree) in trees.iter_mut().enumerate() {
@@ -281,7 +284,8 @@ pub fn batch_trees_to_tiles(
             id_key_ref,
             false,
             random_ids.unwrap_or(false),
-            false,
+            true,
+            Some(&ext_registry),
         );
 
         match result {

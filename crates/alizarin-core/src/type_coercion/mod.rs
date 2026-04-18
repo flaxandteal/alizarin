@@ -25,6 +25,8 @@ mod strings;
 
 use serde_json::Value;
 
+use crate::extension_type_registry::ExtensionTypeRegistry;
+
 // Re-export core types
 pub use config::{get_current_language, set_current_language, DEFAULT_LANGUAGE};
 pub use helpers::value_type_name;
@@ -39,13 +41,28 @@ pub use strings::{coerce_geojson, coerce_string, coerce_url};
 
 /// Coerce a value based on datatype.
 ///
-/// This is the main entry point for type coercion.
+/// This is the main entry point for type coercion. For extension type support,
+/// use [`coerce_value_with_registry`] instead.
 ///
 /// Config parameter usage by type:
 /// - string: `{"language": "en"}` - language for wrapping plain strings
 /// - boolean: `{"trueLabel": {...}, "falseLabel": {...}}` - labels for display
 /// - domain-value/domain-value-list: `{"options": [...]}` - domain options for lookup
 pub fn coerce_value(datatype: &str, value: &Value, config: Option<&Value>) -> CoercionResult {
+    coerce_value_with_registry(datatype, value, config, None)
+}
+
+/// Coerce a value based on datatype, with optional extension registry.
+///
+/// When the datatype is not handled by core, the extension registry is consulted.
+/// If a handler is found that supports coercion, it is used. Otherwise, the value
+/// passes through unchanged.
+pub fn coerce_value_with_registry(
+    datatype: &str,
+    value: &Value,
+    config: Option<&Value>,
+    extension_registry: Option<&ExtensionTypeRegistry>,
+) -> CoercionResult {
     match datatype {
         // Phase 1: Simple scalars
         "number" => coerce_number(value),
@@ -72,6 +89,14 @@ pub fn coerce_value(datatype: &str, value: &Value, config: Option<&Value>) -> Co
         "resource-instance" => coerce_resource_instance(value, config),
         "resource-instance-list" => coerce_resource_instance_list(value, config),
         _ => {
+            // Check extension registry for a handler
+            if let Some(registry) = extension_registry {
+                match registry.coerce(datatype, value, config) {
+                    Ok(Some(result)) => return result,
+                    Ok(None) => {} // No handler or handler doesn't support coercion
+                    Err(e) => return CoercionResult::error(e.message),
+                }
+            }
             // Unknown type - pass through unchanged but flag as passthrough
             CoercionResult::success_passthrough(value.clone())
         }
@@ -232,5 +257,71 @@ mod tests {
         let result2 = coerce_domain_value_list(&result1.tile_data, None);
         assert!(!result2.is_error());
         assert_eq!(result2.tile_data, result1.tile_data);
+    }
+
+    // Extension registry tests
+    mod registry_coercion {
+        use super::*;
+        use crate::extension_type_registry::{
+            ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities,
+        };
+        use std::sync::Arc;
+
+        struct FakeHandler;
+
+        impl ExtensionTypeHandler for FakeHandler {
+            fn capabilities(&self) -> HandlerCapabilities {
+                HandlerCapabilities::coercion_only()
+            }
+
+            fn coerce(
+                &self,
+                value: &Value,
+                _config: Option<&Value>,
+            ) -> Result<CoercionResult, ExtensionError> {
+                Ok(CoercionResult::success(
+                    json!({ "coerced": value }),
+                    json!({ "display": value }),
+                ))
+            }
+        }
+
+        #[test]
+        fn test_extension_handler_used_for_unknown_type() {
+            let mut registry = ExtensionTypeRegistry::new();
+            registry.register("custom-ext", Arc::new(FakeHandler));
+
+            let result =
+                coerce_value_with_registry("custom-ext", &json!("hello"), None, Some(&registry));
+            assert!(!result.is_error());
+            assert!(!result.passthrough);
+            assert_eq!(result.tile_data, json!({ "coerced": "hello" }));
+        }
+
+        #[test]
+        fn test_no_registry_falls_through_to_passthrough() {
+            let result = coerce_value_with_registry("custom-ext", &json!("hello"), None, None);
+            assert!(result.passthrough);
+        }
+
+        #[test]
+        fn test_registry_without_handler_falls_through() {
+            let registry = ExtensionTypeRegistry::new();
+            let result =
+                coerce_value_with_registry("custom-ext", &json!("hello"), None, Some(&registry));
+            assert!(result.passthrough);
+        }
+
+        #[test]
+        fn test_core_types_not_affected_by_registry() {
+            let mut registry = ExtensionTypeRegistry::new();
+            // Register a handler for "number" — it should be ignored since core handles it
+            registry.register("number", Arc::new(FakeHandler));
+
+            let result = coerce_value_with_registry("number", &json!(42), None, Some(&registry));
+            assert!(!result.is_error());
+            // Core handler produces tile_data = 42, not {"coerced": 42}
+            assert_eq!(result.tile_data, json!(42));
+        }
     }
 }

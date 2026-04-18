@@ -13,6 +13,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::extension_type_registry::ExtensionTypeRegistry;
 use crate::graph::{IndexedGraph, StaticGraph};
 use crate::graph::{StaticResource, StaticResourceMetadata};
 use crate::graph_mutator::generate_uuid_v5;
@@ -22,7 +23,7 @@ use crate::pseudo_value_core::{
 };
 use crate::registry::is_list_datatype;
 use crate::string_utils::snake_to_camel;
-use crate::type_coercion::coerce_value;
+use crate::type_coercion::coerce_value_with_registry;
 use crate::{StaticNode, StaticTile};
 
 /// Wrapper for business data import/export format
@@ -382,7 +383,7 @@ pub fn tree_to_tiles(
     strict: bool,
     id_key: Option<&str>,
 ) -> Result<BusinessDataWrapper, String> {
-    tree_to_tiles_with_options(json, graph, strict, id_key, false, true, false)
+    tree_to_tiles_with_options(json, graph, strict, id_key, false, true, false, None)
 }
 
 /// Convert tree to tiles with camelCase key support.
@@ -392,6 +393,9 @@ pub fn tree_to_tiles(
 /// are preserved unchanged.
 /// * `has_extension_handlers` - If true, unknown datatypes are allowed through (extensions
 ///   will handle them post-coercion). If false in strict mode, unknown datatypes produce errors.
+/// * `extension_registry` - Optional extension type registry for coercing extension types.
+///   When provided, extension handlers are consulted for unknown datatypes during coercion.
+#[allow(clippy::too_many_arguments)]
 pub fn tree_to_tiles_with_options(
     json: &Value,
     graph: &StaticGraph,
@@ -400,6 +404,7 @@ pub fn tree_to_tiles_with_options(
     from_camel: bool,
     random_ids: bool,
     has_extension_handlers: bool,
+    extension_registry: Option<&ExtensionTypeRegistry>,
 ) -> Result<BusinessDataWrapper, String> {
     let trees = extract_tree_resources(json)?;
 
@@ -414,6 +419,7 @@ pub fn tree_to_tiles_with_options(
             from_camel,
             random_ids,
             has_extension_handlers,
+            extension_registry,
         )?;
         resources.push(resource);
     }
@@ -439,6 +445,7 @@ fn extract_tree_resources(json: &Value) -> Result<Vec<Value>, String> {
 }
 
 /// Convert a single tree to StaticResource
+#[allow(clippy::too_many_arguments)]
 fn single_tree_to_resource(
     json: &Value,
     graph: &StaticGraph,
@@ -447,6 +454,7 @@ fn single_tree_to_resource(
     from_camel: bool,
     random_ids: bool,
     has_extension_handlers: bool,
+    extension_registry: Option<&ExtensionTypeRegistry>,
 ) -> Result<StaticResource, String> {
     let obj = json
         .as_object()
@@ -525,6 +533,7 @@ fn single_tree_to_resource(
         strict,
         from_camel,
         has_extension_handlers,
+        extension_registry,
     )?;
 
     // Track visited aliases to prevent O(n²) duplicate traversal
@@ -565,7 +574,8 @@ fn single_tree_to_resource(
 
     // Calculate descriptors from tiles
     let indexed = IndexedGraph::new(graph.clone());
-    let descriptors = indexed.build_descriptors(&tiles);
+    let descriptors =
+        indexed.build_descriptors_with_context(&tiles, &mut Vec::new(), None, extension_registry);
 
     // If no explicit ID or id_key, derive resource ID from slug descriptor
     let resource_id = if needs_slug_id {
@@ -632,6 +642,7 @@ fn build_pseudo_values_from_json(
     strict: bool,
     from_camel: bool,
     has_extension_handlers: bool,
+    extension_registry: Option<&ExtensionTypeRegistry>,
 ) -> Result<(), String> {
     let child_ids = edges.get(&current_node.nodeid).cloned().unwrap_or_default();
 
@@ -768,6 +779,7 @@ fn build_pseudo_values_from_json(
                             },
                             parent_tile_id,
                             sortorder,
+                            extension_registry,
                         );
 
                         values.push(pv);
@@ -784,6 +796,7 @@ fn build_pseudo_values_from_json(
                             strict,
                             from_camel,
                             has_extension_handlers,
+                            extension_registry,
                         )?;
                     }
                 } else {
@@ -803,6 +816,7 @@ fn build_pseudo_values_from_json(
                         sortorder,
                         strict,
                         has_extension_handlers,
+                        extension_registry,
                     )?;
                     values.push(pv);
                 }
@@ -841,6 +855,7 @@ fn build_pseudo_values_from_json(
                 },
                 parent_tile_id,
                 Some(0),
+                extension_registry,
             );
 
             values.push(pv);
@@ -857,6 +872,7 @@ fn build_pseudo_values_from_json(
                 strict,
                 from_camel,
                 has_extension_handlers,
+                extension_registry,
             )?;
         } else {
             // Single leaf value gets sortorder 0 (primary)
@@ -876,6 +892,7 @@ fn build_pseudo_values_from_json(
                 Some(0),
                 strict,
                 has_extension_handlers,
+                extension_registry,
             )?;
             values.push(pv);
         }
@@ -909,6 +926,7 @@ fn create_pseudo_value_from_json(
     shared_tile: Option<Arc<StaticTile>>,
     parent_tile_id: Option<&String>,
     sortorder: Option<i32>,
+    extension_registry: Option<&ExtensionTypeRegistry>,
 ) -> (PseudoValueCore, Arc<StaticTile>) {
     let tile = shared_tile.unwrap_or_else(|| {
         let tile_id = uuid::Uuid::new_v4().to_string();
@@ -925,7 +943,12 @@ fn create_pseudo_value_from_json(
     let tile_data = json_obj
         .get("_")
         .map(|value| {
-            let coerced = coerce_value(&node.datatype, value, config.as_ref());
+            let coerced = coerce_value_with_registry(
+                &node.datatype,
+                value,
+                config.as_ref(),
+                extension_registry,
+            );
             if !coerced.is_null() && coerced.error.is_none() {
                 coerced.tile_data
             } else {
@@ -958,6 +981,7 @@ fn create_pseudo_value_from_leaf(
     sortorder: Option<i32>,
     strict: bool,
     has_extension_handlers: bool,
+    extension_registry: Option<&ExtensionTypeRegistry>,
 ) -> Result<(PseudoValueCore, Arc<StaticTile>), String> {
     let tile = shared_tile.unwrap_or_else(|| {
         let tile_id = uuid::Uuid::new_v4().to_string();
@@ -976,7 +1000,12 @@ fn create_pseudo_value_from_leaf(
         .and_then(|obj| obj.get("_").or_else(|| obj.get("_value")))
         .unwrap_or(json_value);
 
-    let coerced = coerce_value(&node.datatype, value_to_coerce, config.as_ref());
+    let coerced = coerce_value_with_registry(
+        &node.datatype,
+        value_to_coerce,
+        config.as_ref(),
+        extension_registry,
+    );
 
     // In strict mode, report coercion errors
     if strict {
@@ -2062,10 +2091,12 @@ mod tests {
         });
 
         // random_ids=false → slug-based UUID5
-        let result1 = tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false)
-            .expect("First conversion failed");
-        let result2 = tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false)
-            .expect("Second conversion failed");
+        let result1 =
+            tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false, None)
+                .expect("First conversion failed");
+        let result2 =
+            tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false, None)
+                .expect("Second conversion failed");
 
         let id1 = &result1.business_data.resources[0]
             .resourceinstance
@@ -2091,10 +2122,12 @@ mod tests {
             "name": {"en": {"value": "Resource Beta", "direction": "ltr"}}
         });
 
-        let result1 = tree_to_tiles_with_options(&tree1, &graph, false, None, false, false, false)
-            .expect("First conversion failed");
-        let result2 = tree_to_tiles_with_options(&tree2, &graph, false, None, false, false, false)
-            .expect("Second conversion failed");
+        let result1 =
+            tree_to_tiles_with_options(&tree1, &graph, false, None, false, false, false, None)
+                .expect("First conversion failed");
+        let result2 =
+            tree_to_tiles_with_options(&tree2, &graph, false, None, false, false, false, None)
+                .expect("Second conversion failed");
 
         let id1 = &result1.business_data.resources[0]
             .resourceinstance
@@ -2120,7 +2153,8 @@ mod tests {
         });
 
         // random_ids=false, no id_key, no slug configured → error
-        let result = tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false);
+        let result =
+            tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false, None);
 
         assert!(result.is_err(), "Should error without slug configured");
         let err = result.unwrap_err();
@@ -2142,8 +2176,9 @@ mod tests {
         });
 
         // random_ids=true → should succeed even without slug
-        let result = tree_to_tiles_with_options(&tree, &graph, false, None, false, true, false)
-            .expect("random_ids=true should not require slug");
+        let result =
+            tree_to_tiles_with_options(&tree, &graph, false, None, false, true, false, None)
+                .expect("random_ids=true should not require slug");
 
         let id = &result.business_data.resources[0]
             .resourceinstance
@@ -2162,8 +2197,9 @@ mod tests {
         });
 
         // Even with random_ids=false, explicit ID should win
-        let result = tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false)
-            .expect("Explicit ID should work");
+        let result =
+            tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false, None)
+                .expect("Explicit ID should work");
 
         let id = &result.business_data.resources[0]
             .resourceinstance
@@ -2181,9 +2217,17 @@ mod tests {
         });
 
         // With id_key provided, slug should not be used
-        let result =
-            tree_to_tiles_with_options(&tree, &graph, false, Some("my-key"), false, false, false)
-                .expect("id_key should work");
+        let result = tree_to_tiles_with_options(
+            &tree,
+            &graph,
+            false,
+            Some("my-key"),
+            false,
+            false,
+            false,
+            None,
+        )
+        .expect("id_key should work");
 
         let id = &result.business_data.resources[0]
             .resourceinstance
@@ -2203,8 +2247,9 @@ mod tests {
             "name": {"en": {"value": "Tile Patch Test", "direction": "ltr"}}
         });
 
-        let result = tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false)
-            .expect("Conversion failed");
+        let result =
+            tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false, None)
+                .expect("Conversion failed");
 
         let resource = &result.business_data.resources[0];
         let resource_id = &resource.resourceinstance.resourceinstanceid;
@@ -2308,7 +2353,8 @@ mod tests {
             "name": {"en": {"value": "Test", "direction": "ltr"}}
         });
 
-        let result = tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false);
+        let result =
+            tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false, None);
 
         assert!(result.is_err(), "Should error on unresolved placeholder");
         let err = result.unwrap_err();

@@ -1,4 +1,3 @@
-#![allow(deprecated)]
 /// Python bindings for Alizarin
 ///
 /// This provides Python bindings for:
@@ -30,12 +29,33 @@ use alizarin_extension_api::{
 use std::ffi::c_void;
 
 // Extension type registry (unified infrastructure)
-use alizarin_core::{ExtensionError, ExtensionTypeHandler, HandlerCapabilities};
+use alizarin_core::{
+    ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities,
+};
 
 lazy_static::lazy_static! {
     /// Global registry of extension type handlers
     static ref TYPE_HANDLERS: RwLock<HashMap<String, RegisteredHandler>> =
         RwLock::new(HashMap::new());
+}
+
+/// Build a fresh extension registry from dynamically registered PyCapsule handlers.
+///
+/// Extensions register via PyCapsule (e.g. `import alizarin_clm` registers the
+/// "reference" handler). This function wraps those C ABI handlers as
+/// `PyExtensionTypeHandler` instances in an `ExtensionTypeRegistry`.
+fn build_extension_registry() -> ExtensionTypeRegistry {
+    let mut registry = ExtensionTypeRegistry::new();
+
+    let handlers = TYPE_HANDLERS.read().unwrap();
+    for type_name in handlers.keys() {
+        registry.register(
+            type_name.clone(),
+            Arc::new(PyExtensionTypeHandler::new(type_name.clone())),
+        );
+    }
+
+    registry
 }
 
 /// Internal representation of a registered handler
@@ -488,12 +508,6 @@ fn register_type_handler(capsule: &PyCapsule) -> PyResult<()> {
                 resolve_markers_fn: info.resolve_markers_fn,
                 free_resolve_markers_fn: info.free_resolve_markers_fn,
             },
-        );
-
-        // Also register into the global core registry so build_descriptors etc. can use it
-        alizarin_core::register_extension_type_handler(
-            &type_name,
-            Arc::new(PyExtensionTypeHandler::new(type_name.clone())),
         );
 
         let features = match (has_display, has_markers) {
@@ -1147,8 +1161,7 @@ fn json_tree_to_tiles(
     // Call shared Rust conversion function with from_camel support
     // This handles camelCase keys at lookup time, preserving value structures
     let id_key_ref = id_key.as_deref();
-    let handlers = TYPE_HANDLERS.read().unwrap();
-    let has_extensions = !handlers.is_empty();
+    let ext_registry = build_extension_registry();
     let mut business_data = tree_to_tiles_with_options(
         &tree,
         &graph,
@@ -1156,7 +1169,8 @@ fn json_tree_to_tiles(
         id_key_ref,
         from_camel,
         false,
-        has_extensions,
+        true, // core handlers always registered
+        Some(&ext_registry),
     )
     .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
@@ -1167,15 +1181,18 @@ fn json_tree_to_tiles(
         }
     }
 
-    // Apply extension coercion if handlers are registered
-    if has_extensions {
-        let node_lookup = build_node_lookup(&graph);
-        let core_cache: Option<Arc<CoreRdmCache>> =
-            rdm_cache_py::get_global_rdm_cache().map(|cache| Arc::new(cache.inner().clone()));
+    // Apply extension coercion via C ABI handlers if any are registered
+    {
+        let handlers = TYPE_HANDLERS.read().unwrap();
+        if !handlers.is_empty() {
+            let node_lookup = build_node_lookup(&graph);
+            let core_cache: Option<Arc<CoreRdmCache>> =
+                rdm_cache_py::get_global_rdm_cache().map(|cache| Arc::new(cache.inner().clone()));
 
-        for resource in &mut business_data.business_data.resources {
-            apply_extension_coercion(resource, &node_lookup, &handlers, &core_cache, strict, 0)
-                .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+            for resource in &mut business_data.business_data.resources {
+                apply_extension_coercion(resource, &node_lookup, &handlers, &core_cache, strict, 0)
+                    .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+            }
         }
     }
 
@@ -1279,6 +1296,11 @@ fn batch_trees_to_tiles(
     };
 
     let has_extension_handlers = !skip_extensions;
+    let ext_registry = if !skip_extensions {
+        Some(build_extension_registry())
+    } else {
+        None
+    };
 
     let results: Vec<Result<serde_json::Value, String>> = trees
         .into_par_iter()
@@ -1305,6 +1327,7 @@ fn batch_trees_to_tiles(
                 from_camel,
                 random_ids,
                 has_extension_handlers,
+                ext_registry.as_ref(),
             )
             .map_err(|e| format!("Tree {}: {}", i, e))?;
 
@@ -1815,9 +1838,8 @@ impl TreeToTilesIterator {
             }
         }
 
-        // Check for extension handlers
-        let handlers = TYPE_HANDLERS.read().unwrap();
-        let has_extensions = !handlers.is_empty();
+        // Build extension registry with core + PyCapsule handlers
+        let ext_registry = build_extension_registry();
 
         // Convert tree to tiles with from_camel support
         // This handles camelCase keys at lookup time, preserving value structures
@@ -1828,7 +1850,8 @@ impl TreeToTilesIterator {
             id_key,
             self.from_camel,
             self.random_ids,
-            has_extensions,
+            true, // core handlers always registered
+            Some(&ext_registry),
         );
 
         let output = match result {
@@ -1840,33 +1863,35 @@ impl TreeToTilesIterator {
                         resource.scopes = Some(scopes_val.clone());
                     }
 
-                    // Apply extension coercion if handlers are registered
-                    if has_extensions {
-                        let node_lookup = build_node_lookup(&self.graph);
-                        let core_cache: Option<Arc<CoreRdmCache>> =
-                            rdm_cache_py::get_global_rdm_cache()
-                                .map(|cache| Arc::new(cache.inner().clone()));
+                    // Apply extension coercion via C ABI handlers if registered
+                    let ext_error: Option<String> = {
+                        let handlers = TYPE_HANDLERS.read().unwrap();
+                        if !handlers.is_empty() {
+                            let node_lookup = build_node_lookup(&self.graph);
+                            let core_cache: Option<Arc<CoreRdmCache>> =
+                                rdm_cache_py::get_global_rdm_cache()
+                                    .map(|cache| Arc::new(cache.inner().clone()));
 
-                        if let Err(e) = apply_extension_coercion(
-                            &mut resource,
-                            &node_lookup,
-                            &handlers,
-                            &core_cache,
-                            self.strict,
-                            i,
-                        ) {
-                            serde_json::json!({
-                                "resource": null,
-                                "error": e,
-                                "index": i
-                            })
+                            apply_extension_coercion(
+                                &mut resource,
+                                &node_lookup,
+                                &handlers,
+                                &core_cache,
+                                self.strict,
+                                i,
+                            )
+                            .err()
                         } else {
-                            serde_json::json!({
-                                "resource": resource,
-                                "error": null,
-                                "index": i
-                            })
+                            None
                         }
+                    };
+
+                    if let Some(e) = ext_error {
+                        serde_json::json!({
+                            "resource": null,
+                            "error": e,
+                            "index": i
+                        })
                     } else {
                         serde_json::json!({
                             "resource": resource,

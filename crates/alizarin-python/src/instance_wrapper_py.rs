@@ -536,13 +536,14 @@ impl PyResourceInstanceWrapperCore {
         let global_rdm = rdm_cache_py::get_global_rdm_cache();
         let rdm_inner = global_rdm.as_ref().map(|c| c.inner());
         let core_registry = resource_registry.map(|r| r.inner());
+        let ext_registry = crate::build_extension_registry();
         let ser_ctx = alizarin_core::type_serialization::SerializationContext {
             node_config: None,
             external_resolver: rdm_inner
                 .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
             resource_resolver: core_registry
                 .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
-            extension_registry: None,
+            extension_registry: Some(&ext_registry),
         };
 
         let ncm = node_config_manager.map(|m| m.inner());
@@ -609,13 +610,14 @@ impl PyResourceInstanceWrapperCore {
         let global_rdm = rdm_cache_py::get_global_rdm_cache();
         let rdm_inner = global_rdm.as_ref().map(|c| c.inner());
         let core_registry = resource_registry.map(|r| r.inner());
+        let ext_registry = crate::build_extension_registry();
         let ser_ctx = alizarin_core::type_serialization::SerializationContext {
             node_config: None,
             external_resolver: rdm_inner
                 .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
             resource_resolver: core_registry
                 .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
-            extension_registry: None,
+            extension_registry: Some(&ext_registry),
         };
 
         let ncm = node_config_manager.map(|m| m.inner());
@@ -695,13 +697,14 @@ impl PyResourceInstanceWrapperCore {
         let ncm = node_config_manager.map(|m| m.inner());
         let core_registry = resource_registry.map(|r| r.inner());
 
+        let ext_registry = crate::build_extension_registry();
         let ser_ctx = alizarin_core::type_serialization::SerializationContext {
             node_config: None,
             external_resolver: rdm_inner
                 .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
             resource_resolver: core_registry
                 .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
-            extension_registry: None,
+            extension_registry: Some(&ext_registry),
         };
 
         let ctx = alizarin_core::pseudo_value_core::VisitorContext {

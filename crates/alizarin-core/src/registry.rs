@@ -9,7 +9,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
-use crate::extension_type_registry::{ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry};
 use crate::StaticGraph;
 
 lazy_static::lazy_static! {
@@ -43,11 +42,7 @@ lazy_static::lazy_static! {
     static ref WIDGET_REGISTRY: RwLock<HashMap<String, RegisteredWidget>> =
         RwLock::new(HashMap::new());
 
-    /// Global extension type handler registry.
-    /// Python/WASM register handlers here at extension init time.
-    /// Core code (e.g., build_descriptors) reads from here to render display values.
-    static ref EXTENSION_TYPE_REGISTRY: RwLock<ExtensionTypeRegistry> =
-        RwLock::new(ExtensionTypeRegistry::new());
+
 }
 
 /// A dynamically registered widget definition.
@@ -287,68 +282,6 @@ pub fn registered_widgets() -> Vec<String> {
 // ============================================================================
 // Extension Type Handler Registry
 // ============================================================================
-
-/// Get a read guard to the global extension type registry.
-///
-/// Used by `serialize_value` to check extension handlers during serialization.
-pub fn global_extension_registry() -> Result<
-    std::sync::RwLockReadGuard<'static, ExtensionTypeRegistry>,
-    std::sync::PoisonError<std::sync::RwLockReadGuard<'static, ExtensionTypeRegistry>>,
-> {
-    EXTENSION_TYPE_REGISTRY.read()
-}
-
-/// Register an extension type handler globally.
-///
-/// Called by Python/WASM when extensions register their type handlers.
-/// Core code (e.g., `build_descriptors`) uses `render_extension_display`
-/// to get display strings for extension datatypes.
-pub fn register_extension_type_handler(datatype: &str, handler: Arc<dyn ExtensionTypeHandler>) {
-    if let Ok(mut registry) = EXTENSION_TYPE_REGISTRY.write() {
-        registry.register(datatype, handler);
-    }
-}
-
-/// Unregister an extension type handler.
-pub fn unregister_extension_type_handler(datatype: &str) {
-    if let Ok(mut registry) = EXTENSION_TYPE_REGISTRY.write() {
-        registry.unregister(datatype);
-    }
-}
-
-/// Render a display value using a registered extension handler.
-///
-/// Returns `Ok(Some(string))` if an extension handler produced a display string,
-/// `Ok(None)` if no handler is registered for this datatype,
-/// `Err` if the handler failed.
-pub fn render_extension_display(
-    datatype: &str,
-    tile_data: &serde_json::Value,
-    language: &str,
-) -> Result<Option<String>, ExtensionError> {
-    match EXTENSION_TYPE_REGISTRY.read() {
-        Ok(registry) => registry.render_display(datatype, tile_data, language),
-        Err(_) => Ok(None),
-    }
-}
-
-/// Check if an extension type handler is registered for a datatype.
-pub fn has_extension_type_handler(datatype: &str) -> bool {
-    EXTENSION_TYPE_REGISTRY
-        .read()
-        .ok()
-        .map(|registry| registry.has(datatype))
-        .unwrap_or(false)
-}
-
-/// Get all registered extension type handler datatype names.
-pub fn list_extension_type_handlers() -> Vec<String> {
-    EXTENSION_TYPE_REGISTRY
-        .read()
-        .ok()
-        .map(|registry| registry.list().into_iter().map(String::from).collect())
-        .unwrap_or_default()
-}
 
 #[cfg(test)]
 mod tests {

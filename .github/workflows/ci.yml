@@ -99,3 +99,42 @@ jobs:
       - run: npm run build:js
       - run: npm test
       - run: npx eslint js --ext .ts
+
+  # NAPI native Node.js addon
+  napi:
+    name: NAPI Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-napi-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install napi-rs CLI
+        working-directory: crates/alizarin-napi
+        run: npm install
+
+      - name: Build NAPI addon
+        working-directory: crates/alizarin-napi
+        run: npm run build
+
+      - name: Run NAPI tests
+        working-directory: crates/alizarin-napi
+        run: npm test

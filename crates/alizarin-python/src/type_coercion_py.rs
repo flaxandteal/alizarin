@@ -2,7 +2,6 @@
 //!
 //! These wrappers expose the platform-agnostic type coercion logic
 //! from alizarin-core to Python via PyO3.
-#![allow(deprecated)]
 use crate::python_json::{json_to_python, python_to_json};
 use alizarin_core::type_coercion::{
     // Phase 3

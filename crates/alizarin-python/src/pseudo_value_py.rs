@@ -1,4 +1,3 @@
-#![allow(deprecated)]
 use crate::python_json::{json_to_python, python_to_json};
 /// PyO3 bindings for PseudoValueCore/PseudoListCore from alizarin-core
 ///

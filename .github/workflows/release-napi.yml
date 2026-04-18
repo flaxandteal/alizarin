@@ -1,0 +1,162 @@
+name: Release NAPI Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v0.0.1-alpha.1)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build NAPI - ${{ matrix.settings.target }}
+    runs-on: ${{ matrix.settings.host }}
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - host: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: alizarin-napi.linux-x64-gnu.node
+          - host: macos-latest
+            target: aarch64-apple-darwin
+            artifact: alizarin-napi.darwin-arm64.node
+          - host: macos-13
+            target: x86_64-apple-darwin
+            artifact: alizarin-napi.darwin-x64.node
+          - host: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: alizarin-napi.win32-x64-msvc.node
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.settings.target }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install napi-rs CLI
+        working-directory: crates/alizarin-napi
+        run: npm install
+
+      - name: Build NAPI addon
+        working-directory: crates/alizarin-napi
+        run: npx napi build --platform --release --target ${{ matrix.settings.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: napi-${{ matrix.settings.target }}
+          path: crates/alizarin-napi/${{ matrix.settings.artifact }}
+          if-no-found: error
+
+  test:
+    name: Test NAPI
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Download linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: napi-x86_64-unknown-linux-gnu
+          path: crates/alizarin-napi
+
+      - name: Run tests
+        working-directory: crates/alizarin-napi
+        run: node --test __test__/*.mjs
+
+  release:
+    name: Create Release Artifacts
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Stage native binaries
+        run: |
+          for dir in artifacts/napi-*/; do
+            cp "$dir"/*.node crates/alizarin-napi/
+          done
+          echo "Native binaries:"
+          ls -lh crates/alizarin-napi/*.node
+
+      - name: Install napi-rs CLI
+        working-directory: crates/alizarin-napi
+        run: npm install
+
+      - name: Generate JS binding
+        working-directory: crates/alizarin-napi
+        run: npx napi artifacts
+
+      - name: Create tarball
+        working-directory: crates/alizarin-napi
+        run: npm pack
+
+      - name: Get version from tag or input
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          files: |
+            crates/alizarin-napi/*.tgz
+            crates/alizarin-napi/*.node
+          body: |
+            ## @alizarin/napi ${{ steps.get_version.outputs.version }}
+
+            Native Node.js bindings for alizarin-core.
+
+            ### Installation
+
+            ```bash
+            npm install https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/alizarin-napi-${{ steps.get_version.outputs.version }}.tgz
+            ```
+
+            ### Included platforms
+
+            - Linux x64 (GNU)
+            - macOS ARM64 (Apple Silicon)
+            - macOS x64 (Intel)
+            - Windows x64 (MSVC)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

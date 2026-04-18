@@ -47,7 +47,7 @@ struct BusinessDataResourceInstance {
     graph_id: String,
     name: String,
     #[serde(default)]
-    descriptors: Option<LanguageNestedDescriptors>,
+    descriptors: Option<FlexibleDescriptors>,
     #[serde(default)]
     createdtime: Option<String>,
     #[serde(default)]
@@ -62,21 +62,53 @@ struct BusinessDataResourceInstance {
     graph_publication_id: Option<String>,
 }
 
-/// Language-nested descriptors (e.g., { "en": { "name": "...", ... } })
-#[derive(Debug, Deserialize)]
-#[serde(transparent)]
-struct LanguageNestedDescriptors {
-    languages: HashMap<String, StaticResourceDescriptors>,
+/// Descriptors that may appear in either format:
+/// - Language-nested (Arches export): `{"en": {"name": "...", "slug": "..."}}`
+/// - Flat (alizarin's own output): `{"name": "...", "slug": "..."}`
+#[derive(Debug)]
+struct FlexibleDescriptors {
+    resolved: StaticResourceDescriptors,
 }
 
-impl LanguageNestedDescriptors {
-    /// Get descriptors for the preferred language (default: "en")
-    fn get_for_lang(&self, lang: &str) -> Option<StaticResourceDescriptors> {
-        self.languages
-            .get(lang)
-            .or_else(|| self.languages.get("en"))
-            .or_else(|| self.languages.values().next())
-            .cloned()
+impl FlexibleDescriptors {
+    fn get_for_lang(&self, _lang: &str) -> Option<StaticResourceDescriptors> {
+        if self.resolved.is_empty() {
+            None
+        } else {
+            Some(self.resolved.clone())
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for FlexibleDescriptors {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = serde_json::Value::deserialize(deserializer)?;
+
+        // Try flat format first: {"name": "...", "slug": "..."}
+        if let Ok(flat) = serde_json::from_value::<StaticResourceDescriptors>(value.clone()) {
+            if !flat.is_empty() {
+                return Ok(FlexibleDescriptors { resolved: flat });
+            }
+        }
+
+        // Try language-nested: {"en": {"name": "...", ...}}
+        if let Ok(nested) =
+            serde_json::from_value::<HashMap<String, StaticResourceDescriptors>>(value)
+        {
+            let resolved = nested
+                .get("en")
+                .or_else(|| nested.values().next())
+                .cloned()
+                .unwrap_or_default();
+            return Ok(FlexibleDescriptors { resolved });
+        }
+
+        Ok(FlexibleDescriptors {
+            resolved: StaticResourceDescriptors::default(),
+        })
     }
 }
 
@@ -161,7 +193,7 @@ struct BusinessDataResourceInstanceFull {
     graph_id: String,
     name: String,
     #[serde(default)]
-    descriptors: Option<LanguageNestedDescriptors>,
+    descriptors: Option<FlexibleDescriptors>,
     #[serde(default)]
     createdtime: Option<String>,
     #[serde(default)]
@@ -380,7 +412,7 @@ impl PrebuildLoader {
     }
 
     /// Find all business data JSON files (searches recursively)
-    pub fn find_business_data_files(&self, _graph_id: &str) -> Result<Vec<PathBuf>, LoaderError> {
+    pub fn find_business_data_files(&self) -> Result<Vec<PathBuf>, LoaderError> {
         let business_data_dir = self.root_path.join("business_data");
         if !business_data_dir.exists() {
             return Ok(Vec::new());
@@ -435,7 +467,7 @@ impl PrebuildLoader {
         offset: usize,
         limit: usize,
     ) -> Result<(Vec<StaticResourceSummary>, bool), LoaderError> {
-        let files = self.find_business_data_files(graph_id)?;
+        let files = self.find_business_data_files()?;
         let mut all_summaries = Vec::new();
 
         for file in &files {
@@ -461,7 +493,7 @@ impl PrebuildLoader {
 
     /// Get total count of resources for a graph (without loading all data)
     pub fn count_resources_for_graph(&self, graph_id: &str) -> Result<usize, LoaderError> {
-        let files = self.find_business_data_files(graph_id)?;
+        let files = self.find_business_data_files()?;
         let mut count = 0;
 
         for file in &files {
@@ -496,7 +528,7 @@ impl PrebuildLoader {
         &self,
         graph_id: &str,
     ) -> Result<Vec<(PathBuf, usize)>, LoaderError> {
-        let files = self.find_business_data_files(graph_id)?;
+        let files = self.find_business_data_files()?;
         let mut result = Vec::with_capacity(files.len());
 
         for file in files {
@@ -509,6 +541,48 @@ impl PrebuildLoader {
         Ok(result)
     }
 
+    /// Load all full resources (with tiles) from a single business_data file.
+    ///
+    /// Like `load_resource_summaries_from_file` but returns `StaticResource`
+    /// with tiles and resolved descriptors. Useful for bulk index building.
+    pub fn load_full_resources_from_file(
+        &self,
+        path: &Path,
+        graph_id: &str,
+    ) -> Result<Vec<StaticResource>, LoaderError> {
+        let content = fs::read_to_string(path)?;
+        let file_data: BusinessDataFileFull = serde_json::from_str(&content)?;
+
+        let resources: Vec<StaticResource> = file_data
+            .business_data
+            .resources
+            .into_iter()
+            .filter(|r| r.resourceinstance.graph_id == graph_id)
+            .map(|r| r.to_static_resource())
+            .collect();
+
+        Ok(resources)
+    }
+
+    /// Load all full resources (with tiles) from a single business_data file,
+    /// across all graphs. Reads and parses the file only once.
+    pub fn load_all_full_resources_from_file(
+        &self,
+        path: &Path,
+    ) -> Result<Vec<StaticResource>, LoaderError> {
+        let content = fs::read_to_string(path)?;
+        let file_data: BusinessDataFileFull = serde_json::from_str(&content)?;
+
+        let resources: Vec<StaticResource> = file_data
+            .business_data
+            .resources
+            .into_iter()
+            .map(|r| r.to_static_resource())
+            .collect();
+
+        Ok(resources)
+    }
+
     /// Load a full StaticResource by its resourceinstanceid
     /// Searches through all business_data files to find the resource
     pub fn load_full_resource(
@@ -516,7 +590,7 @@ impl PrebuildLoader {
         resource_id: &str,
         graph_id: &str,
     ) -> Result<StaticResource, LoaderError> {
-        let files = self.find_business_data_files(graph_id)?;
+        let files = self.find_business_data_files()?;
 
         for file in &files {
             let content = fs::read_to_string(file)?;

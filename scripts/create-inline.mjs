@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 
 /**
- * Post-build script: creates dist/alizarin.inline.js as a thin wrapper
- * that re-exports everything from alizarin.js after setting the WASM URL
- * to an inline base64 data URI.
+ * Post-build script: creates inline wrappers that set the WASM URL to a
+ * base64 data URI, then re-export from the corresponding non-inline build.
  *
- * This approach ensures alizarin and alizarin/inline share the same module
- * instance — so extensions like @alizarin/clm that import from 'alizarin'
- * register into the same state that consumers of 'alizarin/inline' see.
+ * Produces:
+ *   dist/alizarin.inline.js      — core only (re-exports alizarin.js)
+ *   dist/alizarin.inline-full.js — core + extensions (re-exports alizarin.full.js)
  *
  * The microtask deferral in main.ts ensures setWasmURL() runs before initWasm().
  */
@@ -20,8 +19,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const distDir = resolve(__dirname, '../dist');
 
 const wasmPath = resolve(distDir, 'alizarin_bg.wasm');
-const outPath = resolve(distDir, 'alizarin.inline.js');
-
 if (!existsSync(wasmPath)) {
   console.error(`[create-inline] ${wasmPath} not found — run vite build first`);
   process.exit(1);
@@ -29,16 +26,27 @@ if (!existsSync(wasmPath)) {
 
 const wasm = readFileSync(wasmPath);
 const dataUri = `data:application/wasm;base64,${wasm.toString('base64')}`;
+const wasmSizeMB = (wasm.length / 1024 / 1024).toFixed(2);
 
-const wrapper = `// Auto-generated wrapper — sets inline WASM URL then re-exports from alizarin.js.
-// Both 'alizarin' and 'alizarin/inline' share the same module instance.
-import { setWasmURL } from './alizarin.js';
+const variants = [
+  { source: 'alizarin.js',      out: 'alizarin.inline.js',      label: 'core' },
+  { source: 'alizarin.full.js', out: 'alizarin.inline-full.js', label: 'core + extensions' },
+];
+
+for (const { source, out, label } of variants) {
+  const sourcePath = resolve(distDir, source);
+  if (!existsSync(sourcePath)) {
+    console.warn(`[create-inline] ${source} not found, skipping ${out}`);
+    continue;
+  }
+
+  const wrapper = `// Auto-generated wrapper (${label}) — sets inline WASM URL then re-exports.
+import { setWasmURL } from './${source}';
 setWasmURL('${dataUri}');
-export * from './alizarin.js';
+export * from './${source}';
 `;
 
-writeFileSync(outPath, wrapper);
-
-const wasmSizeMB = (wasm.length / 1024 / 1024).toFixed(2);
-const wrapperSizeKB = (wrapper.length / 1024).toFixed(0);
-console.log(`[create-inline] Created alizarin.inline.js wrapper (${wrapperSizeKB} KB, WASM ${wasmSizeMB} MB inline)`);
+  writeFileSync(resolve(distDir, out), wrapper);
+  const sizeKB = (wrapper.length / 1024).toFixed(0);
+  console.log(`[create-inline] Created ${out} (${sizeKB} KB, WASM ${wasmSizeMB} MB inline)`);
+}

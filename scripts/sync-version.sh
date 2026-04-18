@@ -78,6 +78,17 @@ for py_init in "$ROOT_DIR"/python/*/alizarin/__init__.py "$ROOT_DIR"/crates/aliz
     fi
 done
 
+# Update NAPI package.json
+if [ -f "$ROOT_DIR/crates/alizarin-napi/package.json" ]; then
+    node -e "
+        const fs = require('fs');
+        const pkg = JSON.parse(fs.readFileSync('$ROOT_DIR/crates/alizarin-napi/package.json', 'utf8'));
+        pkg.version = '$VERSION';
+        fs.writeFileSync('$ROOT_DIR/crates/alizarin-napi/package.json', JSON.stringify(pkg, null, 2) + '\n');
+    "
+    echo "  ✓ crates/alizarin-napi/package.json"
+fi
+
 # Update all JS extensions in ext/js/@alizarin/*/package.json
 for ext_pkg in "$ROOT_DIR"/ext/js/@alizarin/*/package.json; do
     if [ -f "$ext_pkg" ]; then
