@@ -25,7 +25,7 @@ jobs:
           - host: macos-latest
             target: aarch64-apple-darwin
             artifact: alizarin-napi.darwin-arm64.node
-          - host: macos-13
+          - host: macos-15-intel
             target: x86_64-apple-darwin
             artifact: alizarin-napi.darwin-x64.node
           - host: windows-latest
