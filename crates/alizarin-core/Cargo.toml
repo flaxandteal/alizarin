@@ -3,7 +3,12 @@ name = "alizarin-core"
 version = "0.2.1-alpha.61"
 authors = ["Phil Weir <phil.weir@flaxandteal.co.uk>"]
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license = "AGPL-3.0-or-later"
+description = "Core data structures and algorithms for Arches heritage graph and tile processing"
+repository = "https://github.com/flaxandteal/alizarin"
+homepage = "https://github.com/flaxandteal/alizarin"
+keywords = ["arches", "heritage", "rdf", "graph"]
+categories = ["data-structures"]
 
 [features]
 default = []
