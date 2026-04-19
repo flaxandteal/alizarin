@@ -1160,8 +1160,15 @@ fn json_tree_to_tiles(
 
     // Call shared Rust conversion function with from_camel support
     // This handles camelCase keys at lookup time, preserving value structures
+    // NOTE: We pass None for extension registry here because extension coercion
+    // (+ marker resolution) is handled separately by apply_extension_coercion below.
+    // Passing the registry here would cause double coercion — the first pass creates
+    // marker objects that the second pass can't re-coerce.
     let id_key_ref = id_key.as_deref();
-    let ext_registry = build_extension_registry();
+    let has_extension_handlers = {
+        let handlers = TYPE_HANDLERS.read().unwrap();
+        !handlers.is_empty()
+    };
     let mut business_data = tree_to_tiles_with_options(
         &tree,
         &graph,
@@ -1169,8 +1176,8 @@ fn json_tree_to_tiles(
         id_key_ref,
         from_camel,
         false,
-        true, // core handlers always registered
-        Some(&ext_registry),
+        has_extension_handlers,
+        None,
     )
     .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
@@ -1296,11 +1303,6 @@ fn batch_trees_to_tiles(
     };
 
     let has_extension_handlers = !skip_extensions;
-    let ext_registry = if !skip_extensions {
-        Some(build_extension_registry())
-    } else {
-        None
-    };
 
     let results: Vec<Result<serde_json::Value, String>> = trees
         .into_par_iter()
@@ -1319,6 +1321,9 @@ fn batch_trees_to_tiles(
             // Get id_key for this tree (if id_keys array provided)
             let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
+            // NOTE: Pass None for extension registry — extension coercion + marker
+            // resolution is handled by apply_extension_coercion below. Passing the
+            // registry here would cause double coercion.
             let business_data = tree_to_tiles_with_options(
                 &tree,
                 &graph,
@@ -1327,7 +1332,7 @@ fn batch_trees_to_tiles(
                 from_camel,
                 random_ids,
                 has_extension_handlers,
-                ext_registry.as_ref(),
+                None,
             )
             .map_err(|e| format!("Tree {}: {}", i, e))?;
 
@@ -1838,11 +1843,14 @@ impl TreeToTilesIterator {
             }
         }
 
-        // Build extension registry with core + PyCapsule handlers
-        let ext_registry = build_extension_registry();
-
         // Convert tree to tiles with from_camel support
         // This handles camelCase keys at lookup time, preserving value structures
+        // NOTE: Pass None for extension registry — extension coercion + marker
+        // resolution is handled by apply_extension_coercion below.
+        let has_extension_handlers = {
+            let handlers = TYPE_HANDLERS.read().unwrap();
+            !handlers.is_empty()
+        };
         let result = tree_to_tiles_with_options(
             &tree,
             &self.graph,
@@ -1850,8 +1858,8 @@ impl TreeToTilesIterator {
             id_key,
             self.from_camel,
             self.random_ids,
-            true, // core handlers always registered
-            Some(&ext_registry),
+            has_extension_handlers,
+            None,
         );
 
         let output = match result {
