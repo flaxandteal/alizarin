@@ -671,6 +671,7 @@ use alizarin_core::{
     merge_resources as core_merge_resources,
     // Label resolution
     resolve_labels as core_resolve_labels,
+    resource_tiles_to_tree,
     tiles_to_tree,
     tree_to_tiles_with_options,
     // Permission rules
@@ -678,6 +679,8 @@ use alizarin_core::{
     StaticGraph as AlizarinCoreStaticGraph,
     StaticNode as AlizarinStaticNode,
     StaticResource as AlizarinStaticResource,
+    StaticResourceDescriptors as AlizarinStaticResourceDescriptors,
+    StaticResourceMetadata as AlizarinStaticResourceMetadata,
     // Resource registry for relationship resolution
     StaticResourceRegistry as CoreStaticResourceRegistry,
     StaticResourceSummary as CoreStaticResourceSummary,
@@ -827,6 +830,81 @@ fn tiles_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
     })?;
 
     // Parse as Python dict
+    let json_module = py.import_bound("json")?;
+    let py_dict = json_module.call_method1("loads", (py_str,))?;
+
+    Ok(py_dict.to_object(py))
+}
+
+/// Build a tree from pre-extracted tiles (no resource wrapper needed).
+///
+/// This is the pluggable entry point for tile sources other than Arches JSON —
+/// tiles can come from JSON strings, msgpack blobs, network, etc.
+/// The caller provides tiles; alizarin provides schema-aware tree building.
+///
+/// Args:
+///     tiles_json: JSON array of tile objects
+///     resource_id: Resource instance ID
+///     graph_id: Must be registered via register_graph()
+///
+/// Returns:
+///     Nested dict structure representing the resource tree
+#[pyfunction]
+#[pyo3(signature = (tiles_json, resource_id, graph_id))]
+fn build_tree_from_tiles(
+    py: Python,
+    tiles_json: String,
+    resource_id: String,
+    graph_id: String,
+) -> PyResult<PyObject> {
+    // Parse tiles
+    let tiles: Vec<AlizarinStaticTile> = serde_json::from_str(&tiles_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse tiles: {}", e))
+    })?;
+
+    // Get graph from registry
+    let graph = get_registered_graph(&graph_id)?;
+
+    // Build a minimal metadata struct
+    let metadata = AlizarinStaticResourceMetadata {
+        descriptors: AlizarinStaticResourceDescriptors {
+            name: None,
+            description: None,
+            map_popup: None,
+            slug: None,
+        },
+        graph_id: graph_id.clone(),
+        name: resource_id.clone(),
+        resourceinstanceid: resource_id.clone(),
+        publication_id: None,
+        principaluser_id: None,
+        legacyid: None,
+        graph_publication_id: None,
+        createdtime: None,
+        lastmodified: None,
+    };
+
+    // Call the now-public core function
+    let json_tree = resource_tiles_to_tree(&tiles, &metadata, &graph)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+
+    // Attach metadata
+    let mut result = json_tree;
+    if let serde_json::Value::Object(ref mut map) = result {
+        map.insert(
+            "resourceinstanceid".to_string(),
+            serde_json::Value::String(resource_id),
+        );
+        map.insert("graph_id".to_string(), serde_json::Value::String(graph_id));
+    }
+
+    // Convert to Python dict
+    let py_str = serde_json::to_string(&result).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize result: {}",
+            e
+        ))
+    })?;
     let json_module = py.import_bound("json")?;
     let py_dict = json_module.call_method1("loads", (py_str,))?;
 
@@ -2767,6 +2845,7 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
 
     // Low-level tree conversion functions (for compatibility)
     m.add_function(wrap_pyfunction!(tiles_to_json_tree, m)?)?;
+    m.add_function(wrap_pyfunction!(build_tree_from_tiles, m)?)?;
     m.add_function(wrap_pyfunction!(json_tree_to_tiles, m)?)?;
 
     // Batch conversion functions (parallel processing with Rayon)

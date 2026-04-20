@@ -101,7 +101,7 @@ pub fn tiles_to_tree(input: &Value, graph: &StaticGraph) -> Result<Value, String
 }
 
 /// Convert a single resource's tiles to tree format
-fn resource_tiles_to_tree(
+pub fn resource_tiles_to_tree(
     tiles: &[StaticTile],
     metadata: &StaticResourceMetadata,
     graph: &StaticGraph,
