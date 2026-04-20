@@ -23,6 +23,7 @@ register_graph: Optional[Any] = None
 get_graph_json: Optional[Any] = None
 get_graph_schema: Optional[Any] = None
 tiles_to_json_tree: Optional[Any] = None
+build_tree_from_tiles: Optional[Any] = None
 json_tree_to_tiles: Optional[Any] = None
 batch_trees_to_tiles: Optional[Any] = None
 batch_tiles_to_trees: Optional[Any] = None
@@ -41,6 +42,7 @@ try:
     get_graph_json = _alizarin_rust.get_graph_json
     get_graph_schema = _alizarin_rust.get_graph_schema
     tiles_to_json_tree = _alizarin_rust.tiles_to_json_tree
+    build_tree_from_tiles = _alizarin_rust.build_tree_from_tiles
     json_tree_to_tiles = _alizarin_rust.json_tree_to_tiles
     batch_trees_to_tiles = _alizarin_rust.batch_trees_to_tiles
     batch_tiles_to_trees = _alizarin_rust.batch_tiles_to_trees
@@ -364,7 +366,7 @@ is_valid_uuid = _alizarin_rust.is_valid_uuid
 # Version
 # =============================================================================
 
-__version__ = "0.2.1-alpha.63"
+__version__ = "0.2.1-alpha.64"
 
 # =============================================================================
 # Exports
@@ -379,6 +381,7 @@ __all__ = [
     "get_graph_schema",
     # Core Rust functions
     "tiles_to_json_tree",
+    "build_tree_from_tiles",
     "json_tree_to_tiles",
     "batch_trees_to_tiles",
     "batch_tiles_to_trees",

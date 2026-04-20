@@ -10,13 +10,13 @@ pub struct StaticTile {
     pub data: HashMap<String, serde_json::Value>,
     pub nodegroup_id: String,
     pub resourceinstance_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tileid: Option<String>,
     #[serde(default)]
     pub parenttile_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provisionaledits: Option<Vec<serde_json::Value>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sortorder: Option<i32>,
 }
 

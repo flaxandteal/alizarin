@@ -178,11 +178,9 @@ pub fn serialize_value(
                     }
                 }
             }
-            SerializationMode::Display => {
-                if caps.can_render_display {
-                    if let Ok(Some(label)) = handler.render_display(tile_data, &options.language) {
-                        return Some(SerializationResult::success(Value::String(label)));
-                    }
+            SerializationMode::Display if caps.can_render_display => {
+                if let Ok(Some(label)) = handler.render_display(tile_data, &options.language) {
+                    return Some(SerializationResult::success(Value::String(label)));
                 }
             }
             _ => {}

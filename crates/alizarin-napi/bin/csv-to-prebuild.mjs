@@ -102,6 +102,20 @@ for (const modelDir of modelDirs) {
   writeFileSync(graphOutPath, JSON.stringify(graph, null, 2));
   console.log(`    wrote ${graphOutPath}`);
 
+  // Write collection files for Sparnatural concept extraction.
+  // build_sparnatural_assets.py reads from reference_data/collections/{id}.json
+  if (Array.isArray(collections) && collections.length > 0) {
+    const colDir = join(outputDir, 'reference_data', 'collections');
+    mkdirSync(colDir, { recursive: true });
+    for (const col of collections) {
+      const colId = col.id;
+      if (!colId) continue;
+      const colPath = join(colDir, `${colId}.json`);
+      writeFileSync(colPath, JSON.stringify(col, null, 2));
+      console.log(`    collection: ${colId} -> ${colPath}`);
+    }
+  }
+
   // Look for matching business data CSV
   // Try: business_data/<modelName>.csv
   const bdCsvPath = join(businessDataDir, `${modelName}.csv`);

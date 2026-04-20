@@ -26,6 +26,7 @@ pub mod rdm_namespace;
 pub mod registry;
 pub mod skos;
 pub mod string_utils;
+pub mod tile_source;
 pub mod type_coercion;
 pub mod type_serialization;
 
@@ -162,8 +163,8 @@ pub use card_traversal::{
 
 // JSON conversion (tiles <-> tree)
 pub use json_conversion::{
-    create_static_resource, tiles_to_tree, tree_to_tiles, tree_to_tiles_with_options, BusinessData,
-    BusinessDataWrapper,
+    build_tree_from_tiles, create_static_resource, resource_tiles_to_tree, tiles_to_tree,
+    tree_to_tiles, tree_to_tiles_with_options, BusinessData, BusinessDataWrapper,
 };
 
 // Pseudo value core types (for JSON conversion)
@@ -181,6 +182,9 @@ pub use instance_wrapper_core::{
 
 // Path resolution (dot-separated path → nodegroup tiles)
 pub use path_resolution::{resolve_path_segments, PathError, PathResolutionInfo};
+
+// Tile source trait (pluggable tile backends)
+pub use tile_source::{TileSource, TileSourceError};
 
 // RDM cache types
 pub use rdm_cache::{RdmCache, RdmCollection, RdmConcept};

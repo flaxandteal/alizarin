@@ -833,6 +833,41 @@ fn tiles_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
     Ok(py_dict.to_object(py))
 }
 
+/// Build a tree from pre-extracted tiles (no resource wrapper needed).
+///
+/// Thin shim around `alizarin_core::build_tree_from_tiles` — all logic
+/// lives in core so NAPI/WASM consumers get the same function for free.
+///
+/// Args:
+///     tiles_json: JSON array of tile objects
+///     resource_id: Resource instance ID
+///     graph_id: Must be registered via register_graph()
+///
+/// Returns:
+///     Nested dict structure representing the resource tree
+#[pyfunction]
+#[pyo3(signature = (tiles_json, resource_id, graph_id))]
+fn build_tree_from_tiles(
+    py: Python,
+    tiles_json: String,
+    resource_id: String,
+    graph_id: String,
+) -> PyResult<PyObject> {
+    let result = alizarin_core::build_tree_from_tiles(&tiles_json, &resource_id, &graph_id)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+
+    let py_str = serde_json::to_string(&result).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to serialize result: {}",
+            e
+        ))
+    })?;
+    let json_module = py.import_bound("json")?;
+    let py_dict = json_module.call_method1("loads", (py_str,))?;
+
+    Ok(py_dict.to_object(py))
+}
+
 /// Convert tiles to a card-structured tree.
 ///
 /// Groups data by the card/widget hierarchy (UI structure) rather than by
@@ -2767,6 +2802,7 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
 
     // Low-level tree conversion functions (for compatibility)
     m.add_function(wrap_pyfunction!(tiles_to_json_tree, m)?)?;
+    m.add_function(wrap_pyfunction!(build_tree_from_tiles, m)?)?;
     m.add_function(wrap_pyfunction!(json_tree_to_tiles, m)?)?;
 
     // Batch conversion functions (parallel processing with Rayon)

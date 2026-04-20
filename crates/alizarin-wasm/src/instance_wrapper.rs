@@ -27,6 +27,7 @@ use alizarin_core::StaticNodegroup;
 use alizarin_core::StaticResourceMetadata as CoreStaticResourceMetadata;
 use alizarin_core::StaticTile as CoreStaticTile;
 use alizarin_core::StaticTile;
+use alizarin_core::TileSource;
 use js_sys::Map as JsMap;
 // ============================================================================
 // Error types for semantic child value retrieval
@@ -290,6 +291,10 @@ pub struct WASMResourceInstanceWrapper {
     tile_loader: RefCell<Option<js_sys::Function>>,
     /// Whether this instance uses lazy tile loading
     lazy: RefCell<bool>,
+    /// Optional compiled-in tile source (checked before tile_loader JS callback).
+    /// Set via Rust-only `set_tile_source()` when both alizarin and a tile
+    /// backend (e.g. Rós Madair) are compiled into the same binary.
+    tile_source: RefCell<Option<Arc<dyn TileSource>>>,
 }
 
 /// Phase 4g: Track loading state to prevent race conditions
@@ -546,6 +551,19 @@ impl ResourceInstanceWrapperCore {
 }
 
 impl WASMResourceInstanceWrapper {
+    /// Set a compiled-in tile source. Checked before the JS tile_loader callback.
+    ///
+    /// This is a Rust-only method (not exposed to JS). Use it when both alizarin
+    /// and a tile backend are compiled into the same WASM/NAPI binary.
+    pub fn set_tile_source(&self, source: Arc<dyn TileSource>) {
+        *self.tile_source.borrow_mut() = Some(source);
+    }
+
+    /// Remove the compiled-in tile source.
+    pub fn clear_tile_source(&self) {
+        *self.tile_source.borrow_mut() = None;
+    }
+
     /// Helper to access the model core from registry (immutable) - WASM version
     fn with_model_core<F, R>(&self, f: F) -> Result<R, JsValue>
     where
@@ -707,6 +725,7 @@ impl WASMResourceInstanceWrapper {
         WASMResourceInstanceWrapper {
             core: RefCell::new(ResourceInstanceWrapperCore::new_from_graph_id(graph_id)),
             tile_loader: RefCell::new(None),
+            tile_source: RefCell::new(None),
             lazy: RefCell::new(false),
         }
     }
@@ -715,6 +734,7 @@ impl WASMResourceInstanceWrapper {
         WASMResourceInstanceWrapper {
             core: RefCell::new(ResourceInstanceWrapperCore::new_from_resource(resource)),
             tile_loader: RefCell::new(None),
+            tile_source: RefCell::new(None),
             lazy: RefCell::new(false),
         }
     }
@@ -3024,85 +3044,114 @@ impl WASMResourceInstanceWrapper {
             Err(SemanticChildError::TilesNotLoaded { nodegroup_id }) => {
                 let block_start = now_ms();
 
-                // Need to load tiles for this nodegroup
-                let t0 = now_ms();
-                let loader = self
-                    .tile_loader
-                    .borrow()
-                    .clone()
-                    .ok_or_else(|| JsValue::from_str("No tile loader set for lazy loading"))?;
-
-                // Call the tile loader with the nodegroup ID (or null for all tiles)
-                let nodegroup_js = if is_lazy {
-                    JsValue::from_str(&nodegroup_id)
-                } else {
-                    JsValue::NULL
+                // Fast path: try compiled-in TileSource before JS callback
+                let tile_source_result = {
+                    let source_ref = self.tile_source.borrow();
+                    if let Some(source) = source_ref.as_ref() {
+                        let resource_id = self
+                            .core
+                            .borrow()
+                            .resource_instance
+                            .as_ref()
+                            .map(|r| r.resourceinstanceid.clone());
+                        resource_id
+                            .as_ref()
+                            .map(|rid| source.load_tiles(rid, Some(&nodegroup_id)))
+                    } else {
+                        None
+                    }
                 };
 
-                let promise = loader.call1(&JsValue::NULL, &nodegroup_js).map_err(|e| {
-                    JsValue::from_str(&format!("Failed to call tile loader: {:?}", e))
-                })?;
-                record_timing("loader_call", now_ms() - t0);
+                let used_tile_source = if let Some(source_result) = tile_source_result {
+                    match source_result {
+                        Ok(core_tiles) => {
+                            record_timing("tile_source_load", now_ms() - block_start);
+                            self.append_tiles(core_tiles, true)?;
+                            true
+                        }
+                        Err(alizarin_core::TileSourceError::ResourceNotFound { .. }) => {
+                            // Resource not in this source — fall through to JS callback
+                            false
+                        }
+                        Err(e) => {
+                            // Hard error — propagate rather than masking
+                            return Err(JsValue::from_str(&format!("TileSource error: {}", e)));
+                        }
+                    }
+                } else {
+                    false
+                };
 
-                // Await the promise
-                let t1 = now_ms();
-                let tiles_js = JsFuture::from(js_sys::Promise::from(promise))
-                    .await
-                    .map_err(|e| JsValue::from_str(&format!("Tile loader failed: {:?}", e)))?;
-                record_timing("loader_await", now_ms() - t1);
+                if !used_tile_source {
+                    // Fallback: JS tile_loader callback (existing async path)
+                    let t0 = now_ms();
+                    let loader =
+                        self.tile_loader.borrow().clone().ok_or_else(|| {
+                            JsValue::from_str("No tile loader set for lazy loading")
+                        })?;
 
-                // Convert JS array of WASM StaticTile wrappers to Vec<CoreStaticTile>
-                // Fast path: if tiles are WASM StaticTile objects, extract inner directly
-                // Slow path: deserialize from JSON for plain objects
-                let t2 = now_ms();
-                let tiles_array = js_sys::Array::from(&tiles_js);
-                let mut core_tiles: Vec<StaticTile> = Vec::new();
-
-                for i in 0..tiles_array.length() {
-                    let tile_js = tiles_array.get(i);
-
-                    // Fast path disabled - FromWasmAbi::from_abi takes ownership of the pointer
-                    // which causes double-free when the JS object is also dropped.
-                    // TODO: Implement proper cloning or use RefFromWasmAbi for borrowing.
-                    // if let Some(wasm_tile) = WasmStaticTile::try_from_js(tile_js.clone()) {
-                    //     core_tiles.push(wasm_tile.into_inner());
-                    //     continue;
-                    // }
-
-                    // Slow path: try direct deserialization
-                    if let Ok(tile) = serde_wasm_bindgen::from_value::<StaticTile>(tile_js.clone())
-                    {
-                        core_tiles.push(tile);
+                    let nodegroup_js = if is_lazy {
+                        JsValue::from_str(&nodegroup_id)
                     } else {
-                        // Fallback: try toJSON() if direct deserialization fails
-                        let to_json_fn =
-                            js_sys::Reflect::get(&tile_js, &JsValue::from_str("toJSON"))
-                                .ok()
-                                .filter(|v| v.is_function());
+                        JsValue::NULL
+                    };
 
-                        if let Some(func) = to_json_fn {
-                            if let Ok(func) = func.dyn_into::<js_sys::Function>() {
-                                if let Ok(json_value) = func.call0(&tile_js) {
-                                    if let Ok(tile) =
-                                        serde_wasm_bindgen::from_value::<StaticTile>(json_value)
-                                    {
-                                        core_tiles.push(tile);
-                                        continue;
+                    let promise = loader.call1(&JsValue::NULL, &nodegroup_js).map_err(|e| {
+                        JsValue::from_str(&format!("Failed to call tile loader: {:?}", e))
+                    })?;
+                    record_timing("loader_call", now_ms() - t0);
+
+                    let t1 = now_ms();
+                    let tiles_js = JsFuture::from(js_sys::Promise::from(promise))
+                        .await
+                        .map_err(|e| JsValue::from_str(&format!("Tile loader failed: {:?}", e)))?;
+                    record_timing("loader_await", now_ms() - t1);
+
+                    // Convert JS array to Vec<CoreStaticTile>
+                    let t2 = now_ms();
+                    let tiles_array = js_sys::Array::from(&tiles_js);
+                    let mut core_tiles: Vec<StaticTile> = Vec::new();
+
+                    for i in 0..tiles_array.length() {
+                        let tile_js = tiles_array.get(i);
+
+                        // Fast path disabled - FromWasmAbi::from_abi takes ownership of the pointer
+                        // which causes double-free when the JS object is also dropped.
+                        // TODO: Implement proper cloning or use RefFromWasmAbi for borrowing.
+
+                        if let Ok(tile) =
+                            serde_wasm_bindgen::from_value::<StaticTile>(tile_js.clone())
+                        {
+                            core_tiles.push(tile);
+                        } else {
+                            let to_json_fn =
+                                js_sys::Reflect::get(&tile_js, &JsValue::from_str("toJSON"))
+                                    .ok()
+                                    .filter(|v| v.is_function());
+
+                            if let Some(func) = to_json_fn {
+                                if let Ok(func) = func.dyn_into::<js_sys::Function>() {
+                                    if let Ok(json_value) = func.call0(&tile_js) {
+                                        if let Ok(tile) =
+                                            serde_wasm_bindgen::from_value::<StaticTile>(json_value)
+                                        {
+                                            core_tiles.push(tile);
+                                            continue;
+                                        }
                                     }
                                 }
                             }
+                            web_sys::console::log_1(&format!("[retrieve_semantic_children] Warning: could not convert tile {} to CoreStaticTile", i).into());
                         }
-                        web_sys::console::log_1(&format!("[retrieve_semantic_children] Warning: could not convert tile {} to CoreStaticTile", i).into());
                     }
+                    record_timing("tile_conversion", now_ms() - t2);
+
+                    let t3 = now_ms();
+                    self.append_tiles(core_tiles, true)?;
+                    record_timing("append_tiles", now_ms() - t3);
                 }
-                record_timing("tile_conversion", now_ms() - t2);
 
-                // Use append_tiles to add these tiles without clearing existing ones
-                let t3 = now_ms();
-                self.append_tiles(core_tiles, true)?;
-                record_timing("append_tiles", now_ms() - t3);
-
-                // Mark this nodegroup as loaded even if no tiles were returned
+                // Mark nodegroup as loaded
                 let t4 = now_ms();
                 {
                     let core_ref = self.core.borrow();
@@ -3151,10 +3200,7 @@ impl WASMResourceInstanceWrapper {
                         let wasm_value = PseudoValue::from_rust(pseudo_value);
                         Ok(wasm_value.into())
                     }
-                    Ok(SemanticChildResult::Empty) => {
-                        // Return null for empty - consistent with non-retry path
-                        Ok(JsValue::NULL)
-                    }
+                    Ok(SemanticChildResult::Empty) => Ok(JsValue::NULL),
                     Err(e) => Err(JsValue::from_str(&e.to_string())),
                 }
             }

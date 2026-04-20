@@ -163,11 +163,9 @@ fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, app: &mut A
                                     app.bd_tile_enter_search_mode();
                                 }
                             }
-                            KeyCode::Char('s') => {
+                            KeyCode::Char('s') if app.current_tab == app::Tab::BusinessData => {
                                 // Toggle data source in Business Data tab
-                                if app.current_tab == app::Tab::BusinessData {
-                                    app.bd_toggle_source();
-                                }
+                                app.bd_toggle_source();
                             }
                             KeyCode::Tab => app.next_tab(),
                             KeyCode::BackTab => app.prev_tab(),

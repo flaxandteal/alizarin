@@ -101,7 +101,7 @@ pub fn tiles_to_tree(input: &Value, graph: &StaticGraph) -> Result<Value, String
 }
 
 /// Convert a single resource's tiles to tree format
-fn resource_tiles_to_tree(
+pub fn resource_tiles_to_tree(
     tiles: &[StaticTile],
     metadata: &StaticResourceMetadata,
     graph: &StaticGraph,
@@ -173,6 +173,46 @@ fn resource_tiles_to_tree(
     }
 
     Ok(tree)
+}
+
+/// Build a tree from pre-extracted tiles without needing a full StaticResource wrapper.
+///
+/// This is the pluggable entry point for tile sources other than Arches JSON —
+/// tiles can come from JSON strings, msgpack blobs, network, etc.
+/// The caller provides tiles as JSON; alizarin provides schema-aware tree building.
+///
+/// The graph must already be registered via [`crate::register_graph_owned`].
+pub fn build_tree_from_tiles(
+    tiles_json: &str,
+    resource_id: &str,
+    graph_id: &str,
+) -> Result<Value, String> {
+    let tiles: Vec<StaticTile> =
+        serde_json::from_str(tiles_json).map_err(|e| format!("Failed to parse tiles: {e}"))?;
+
+    let graph = crate::get_graph(graph_id).ok_or_else(|| {
+        format!("Graph '{graph_id}' not registered. Call register_graph() first.")
+    })?;
+
+    let metadata = StaticResourceMetadata {
+        descriptors: crate::graph::StaticResourceDescriptors {
+            name: None,
+            description: None,
+            map_popup: None,
+            slug: None,
+        },
+        graph_id: graph_id.to_string(),
+        name: resource_id.to_string(),
+        resourceinstanceid: resource_id.to_string(),
+        publication_id: None,
+        principaluser_id: None,
+        legacyid: None,
+        graph_publication_id: None,
+        createdtime: None,
+        lastmodified: None,
+    };
+
+    resource_tiles_to_tree(&tiles, &metadata, &graph)
 }
 
 /// Extract resources from input (handles both wrapper format and single resource)
