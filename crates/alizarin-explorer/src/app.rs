@@ -488,10 +488,8 @@ impl App {
 
     pub fn on_enter(&mut self) {
         match self.current_tab {
-            Tab::Graphs => {
-                if self.graphs_view == GraphsView::List {
-                    self.enter_tree_view();
-                }
+            Tab::Graphs if self.graphs_view == GraphsView::List => {
+                self.enter_tree_view();
             }
             Tab::BusinessData => match self.bd_view {
                 BusinessDataView::GraphList => {
@@ -510,10 +508,8 @@ impl App {
 
     pub fn on_escape(&mut self) {
         match self.current_tab {
-            Tab::Graphs => {
-                if self.graphs_view == GraphsView::Tree {
-                    self.graphs_view = GraphsView::List;
-                }
+            Tab::Graphs if self.graphs_view == GraphsView::Tree => {
+                self.graphs_view = GraphsView::List;
             }
             Tab::BusinessData => {
                 if self.bd_search_mode {
