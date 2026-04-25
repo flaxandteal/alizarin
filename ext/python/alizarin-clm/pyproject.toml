@@ -4,11 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "alizarin-clm"
-version = "0.2.1a65"
+version = "0.2.1a66"
 description = "CLM (Controlled List Manager) extension for Alizarin"
 requires-python = ">=3.9"
 dependencies = [
-    "alizarin>=0.2.1a65",
+    "alizarin>=0.2.1a66",
 ]
 
 [project.optional-dependencies]
