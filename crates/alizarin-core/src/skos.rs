@@ -339,11 +339,12 @@ pub fn parse_skos_to_collections(
         if let Some(labels) = data.labels.get(uri) {
             for (pred, value, lang) in labels {
                 if pred == SKOS_PREF_LABEL {
+                    let (label_id, label_value) = parse_arches_label(value, &id, lang);
                     pref_labels.insert(
                         lang.clone(),
                         SkosValue {
-                            id: generate_value_id(&id, lang, value),
-                            value: value.clone(),
+                            id: label_id,
+                            value: label_value,
                         },
                     );
                 }
@@ -354,11 +355,12 @@ pub fn parse_skos_to_collections(
         if pref_labels.is_empty() {
             if let Some(labels) = data.labels.get(uri) {
                 if let Some((_, value, lang)) = labels.first() {
+                    let (label_id, label_value) = parse_arches_label(value, &id, lang);
                     pref_labels.insert(
                         lang.clone(),
                         SkosValue {
-                            id: generate_value_id(&id, lang, value),
-                            value: value.clone(),
+                            id: label_id,
+                            value: label_value,
                         },
                     );
                 }
