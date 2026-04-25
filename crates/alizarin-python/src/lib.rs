@@ -2718,22 +2718,28 @@ fn batch_merge_resources(
 /// Each file is read from disk, parsed, and the raw JSON is freed before the next file
 /// is processed. Only the accumulated StaticResource structs persist between files.
 ///
+/// If output_path is provided, writes the result directly to a JSON file from Rust
+/// (avoiding the large Python dict conversion) and returns only warnings.
+///
 /// Args:
 ///     file_paths: List of paths to JSON files containing resources
-///     chunk_size: Number of files to process per merge batch (default 10)
+///     chunk_size: Number of files to merge per flush (default 1 = flush after every file)
 ///     recompute_descriptors: If True, recomputes descriptors in a final pass
 ///     strict: If True (default), raises ValueError on conflicting data
+///     output_path: If provided, writes result JSON to this path and returns warnings only
 ///
 /// Returns:
-///     Dict with 'resources' and 'warnings'
+///     If output_path is None: Dict with 'resources' and 'warnings'
+///     If output_path is set: Dict with 'warnings' and 'output_path'
 #[pyfunction]
-#[pyo3(signature = (file_paths, chunk_size=10, recompute_descriptors=true, strict=true))]
+#[pyo3(signature = (file_paths, chunk_size=1, recompute_descriptors=true, strict=true, output_path=None))]
 fn streamed_merge_from_files(
     py: Python,
     file_paths: Vec<String>,
     chunk_size: usize,
     recompute_descriptors: bool,
     strict: bool,
+    output_path: Option<String>,
 ) -> PyResult<PyObject> {
     let mut accumulator = MergeAccumulator::new(chunk_size, strict);
 
@@ -2755,7 +2761,58 @@ fn streamed_merge_from_files(
     }
 
     let result = accumulator.finish(recompute_descriptors);
-    batch_merge_result_to_py(py, result)
+
+    if let Some(ref error) = result.error {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            error.clone(),
+        ));
+    }
+
+    if let Some(ref out_path) = output_path {
+        // Write directly to file from Rust — serializes straight from the structs
+        // to disk, avoiding any intermediate serde_json::Value or Python dict.
+        let file = std::fs::File::create(out_path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                "Failed to create output file '{}': {}",
+                out_path, e
+            ))
+        })?;
+        let writer = std::io::BufWriter::new(file);
+
+        #[derive(serde::Serialize)]
+        struct BusinessDataWrapper<'a> {
+            business_data: ResourcesWrapper<'a>,
+        }
+        #[derive(serde::Serialize)]
+        struct ResourcesWrapper<'a> {
+            resources: &'a [AlizarinStaticResource],
+        }
+
+        let wrapper = BusinessDataWrapper {
+            business_data: ResourcesWrapper {
+                resources: &result.resources,
+            },
+        };
+        serde_json::to_writer_pretty(writer, &wrapper).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                "Failed to write output file '{}': {}",
+                out_path, e
+            ))
+        })?;
+
+        let warnings_output = serde_json::json!({
+            "warnings": result.warnings,
+            "output_path": out_path,
+        });
+        pythonize::pythonize(py, &warnings_output).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert warnings to Python: {}",
+                e
+            ))
+        })
+    } else {
+        batch_merge_result_to_py(py, result)
+    }
 }
 
 /// Convert a BatchMergeResult to a Python dict.
