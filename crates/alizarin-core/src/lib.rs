@@ -37,12 +37,14 @@ pub use graph::{
     find_root_node,
     is_iterable_datatype,
     merge_resources,
+    parse_resources_from_json_str,
     // Graph pruning
     prune_graph,
     BatchMergeResult,
     GraphWrapper,
     IndexedGraph,
     // Resource merging
+    MergeAccumulator,
     MergeResult,
     // Resource registry for relationship resolution
     PopulateCachesResult,

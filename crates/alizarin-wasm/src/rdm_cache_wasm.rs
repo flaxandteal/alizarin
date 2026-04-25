@@ -257,6 +257,26 @@ impl WasmRdmCache {
             .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
     }
 
+    /// Add collection(s) from SKOS RDF/XML.
+    ///
+    /// Parses the XML, converts each ConceptScheme/Collection to an
+    /// RdmCollection, and inserts them into the cache.  Returns the
+    /// list of collection IDs that were added.
+    ///
+    /// This is the XML counterpart to `addCollectionFromJson` — use it
+    /// as a fallback when the JSON endpoint is unavailable.
+    #[wasm_bindgen(js_name = addCollectionsFromSkosXml)]
+    pub fn add_collections_from_skos_xml(
+        &mut self,
+        xml_content: &str,
+        base_uri: &str,
+    ) -> Result<Vec<String>, JsError> {
+        use alizarin_core::skos::parse_skos_to_collections;
+        let collections =
+            parse_skos_to_collections(xml_content, base_uri).map_err(|e| JsError::new(&e))?;
+        Ok(self.inner.add_from_skos_collections(&collections))
+    }
+
     /// Clear all cached collections
     #[wasm_bindgen]
     pub fn clear(&mut self) {

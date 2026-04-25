@@ -29,6 +29,7 @@ batch_trees_to_tiles: Optional[Any] = None
 batch_tiles_to_trees: Optional[Any] = None
 merge_resources: Optional[Any] = None
 batch_merge_resources: Optional[Any] = None
+streamed_merge_from_files: Optional[Any] = None
 TreeToTilesIterator: Optional[Any] = None
 ResourceRegistry: Optional[Any] = None
 resolve_labels_in_tree: Optional[Any] = None
@@ -48,6 +49,7 @@ try:
     batch_tiles_to_trees = _alizarin_rust.batch_tiles_to_trees
     merge_resources = _alizarin_rust.merge_resources
     batch_merge_resources = _alizarin_rust.batch_merge_resources
+    streamed_merge_from_files = _alizarin_rust.streamed_merge_from_files
     TreeToTilesIterator = _alizarin_rust.TreeToTilesIterator
     ResourceRegistry = _alizarin_rust.ResourceRegistry
     resolve_labels_in_tree = _alizarin_rust.resolve_labels_in_tree
@@ -388,6 +390,7 @@ __all__ = [
     "batch_tiles_to_trees",
     "merge_resources",
     "batch_merge_resources",
+    "streamed_merge_from_files",
     "chunked_merge_resources",
     "TreeToTilesIterator",
     "ResourceRegistry",

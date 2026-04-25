@@ -1381,13 +1381,13 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
         }
 
         // Handle scopes: warn if different, use first non-None value
-        if let Some(ref scopes) = resource.scopes {
+        if let Some(scopes) = resource.scopes {
             match &merged_scopes {
                 None => {
-                    merged_scopes = Some(scopes.clone());
+                    merged_scopes = Some(scopes);
                     first_scopes_index = Some(i);
                 }
-                Some(existing) if existing != scopes => {
+                Some(existing) if existing != &scopes => {
                     warnings.push(format!(
                         "Scopes mismatch: resource {} has different scopes than resource {} (using first)",
                         i, first_scopes_index.unwrap_or(0)
@@ -1399,8 +1399,8 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
 
         // Merge cache entries (first wins for conflicts)
         // Cache is now keyed by tileId -> nodeId -> entry
-        if let Some(ref cache_json) = resource.cache {
-            if let Ok(cache) = serde_json::from_value::<ResourceCache>(cache_json.clone()) {
+        if let Some(cache_json) = resource.cache {
+            if let Ok(cache) = serde_json::from_value::<ResourceCache>(cache_json) {
                 for (tile_id, node_entries) in cache {
                     let tile_cache = merged_cache.entry(tile_id).or_default();
                     for (node_id, entry) in node_entries {
@@ -1441,6 +1441,163 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
         },
         warnings,
     })
+}
+
+/// Parse a JSON string into a Vec of StaticResources.
+///
+/// Accepts multiple formats:
+/// - An array of resources: `[{resourceinstance: ...}, ...]`
+/// - A BusinessDataWrapper: `{business_data: {resources: [...]}}`
+/// - A single resource: `{resourceinstance: ..., tiles: [...]}`
+///
+/// Takes ownership of the parsed JSON value internally to avoid cloning.
+pub fn parse_resources_from_json_str(json_str: &str) -> Result<Vec<StaticResource>, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(json_str).map_err(|e| format!("Failed to parse JSON: {}", e))?;
+
+    match value {
+        serde_json::Value::Array(_) => serde_json::from_value(value)
+            .map_err(|e| format!("Failed to parse resource array: {}", e)),
+        serde_json::Value::Object(mut map) => {
+            if let Some(bd) = map.remove("business_data") {
+                if let serde_json::Value::Object(mut bd_map) = bd {
+                    if let Some(resources) = bd_map.remove("resources") {
+                        serde_json::from_value(resources)
+                            .map_err(|e| format!("Failed to parse business_data.resources: {}", e))
+                    } else {
+                        Err("business_data missing 'resources' field".to_string())
+                    }
+                } else {
+                    Err("business_data is not an object".to_string())
+                }
+            } else if map.contains_key("resourceinstance") {
+                let resource: StaticResource =
+                    serde_json::from_value(serde_json::Value::Object(map))
+                        .map_err(|e| format!("Failed to parse as single resource: {}", e))?;
+                Ok(vec![resource])
+            } else {
+                Err(
+                    "Unrecognized format - expected array, BusinessDataWrapper, or StaticResource"
+                        .to_string(),
+                )
+            }
+        }
+        _ => Err("Expected array or object".to_string()),
+    }
+}
+
+/// Stateful accumulator for memory-efficient incremental resource merging.
+///
+/// Accepts resources in chunks (as JSON strings or pre-parsed), merges them
+/// progressively, and produces a final `BatchMergeResult`. Only the accumulated
+/// `StaticResource` structs persist between chunks — input JSON strings can be
+/// dropped by the caller after each `add_json` call.
+///
+/// Platform-agnostic: the caller controls where data comes from (files, network, etc.).
+pub struct MergeAccumulator {
+    accumulated: Vec<StaticResource>,
+    warnings: Vec<String>,
+    chunk_size: usize,
+    strict: bool,
+    pending: Vec<Vec<StaticResource>>,
+    error: Option<String>,
+}
+
+impl MergeAccumulator {
+    pub fn new(chunk_size: usize, strict: bool) -> Self {
+        Self {
+            accumulated: Vec::new(),
+            warnings: Vec::new(),
+            chunk_size: if chunk_size == 0 { 10 } else { chunk_size },
+            strict,
+            pending: Vec::new(),
+            error: None,
+        }
+    }
+
+    /// Feed a JSON string. The string is parsed and can be dropped by the caller afterward.
+    /// Returns Err if parsing fails or a previous error was recorded.
+    pub fn add_json(&mut self, json_str: &str) -> Result<(), String> {
+        if let Some(ref e) = self.error {
+            return Err(format!("Accumulator already in error state: {}", e));
+        }
+        let resources = parse_resources_from_json_str(json_str)?;
+        self.pending.push(resources);
+        if self.pending.len() >= self.chunk_size {
+            self.flush()?;
+        }
+        Ok(())
+    }
+
+    /// Feed pre-parsed resources directly.
+    pub fn add_resources(&mut self, resources: Vec<StaticResource>) -> Result<(), String> {
+        if let Some(ref e) = self.error {
+            return Err(format!("Accumulator already in error state: {}", e));
+        }
+        self.pending.push(resources);
+        if self.pending.len() >= self.chunk_size {
+            self.flush()?;
+        }
+        Ok(())
+    }
+
+    /// Merge pending batches into the accumulated result.
+    fn flush(&mut self) -> Result<(), String> {
+        if self.pending.is_empty() {
+            return Ok(());
+        }
+
+        let mut batches: Vec<Vec<StaticResource>> = Vec::new();
+        if !self.accumulated.is_empty() {
+            batches.push(std::mem::take(&mut self.accumulated));
+        }
+        batches.append(&mut self.pending);
+
+        let result = batch_merge_resources(batches, false, self.strict);
+
+        self.warnings.extend(result.warnings);
+        if let Some(error) = result.error {
+            self.error = Some(error.clone());
+            self.accumulated = result.resources;
+            return Err(error);
+        }
+        self.accumulated = result.resources;
+        Ok(())
+    }
+
+    /// Flush remaining pending batches, optionally recompute descriptors, and return the result.
+    pub fn finish(mut self, recompute_descriptors: bool) -> BatchMergeResult {
+        if let Err(e) = self.flush() {
+            return BatchMergeResult {
+                resources: self.accumulated,
+                warnings: self.warnings,
+                error: Some(e),
+            };
+        }
+
+        if recompute_descriptors && !self.accumulated.is_empty() {
+            let result = batch_merge_resources(
+                vec![std::mem::take(&mut self.accumulated)],
+                true,
+                self.strict,
+            );
+            self.warnings.extend(result.warnings);
+            if let Some(ref error) = result.error {
+                return BatchMergeResult {
+                    resources: result.resources,
+                    warnings: self.warnings,
+                    error: Some(error.clone()),
+                };
+            }
+            self.accumulated = result.resources;
+        }
+
+        BatchMergeResult {
+            resources: self.accumulated,
+            warnings: self.warnings,
+            error: None,
+        }
+    }
 }
 
 /// Batch merge resources from multiple sources, grouping by resourceinstanceid

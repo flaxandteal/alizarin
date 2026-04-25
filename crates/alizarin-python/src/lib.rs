@@ -669,10 +669,12 @@ use alizarin_core::{
     // Semantic child matching
     matches_semantic_child as core_matches_semantic_child,
     merge_resources as core_merge_resources,
+    parse_resources_from_json_str as core_parse_resources,
     // Label resolution
     resolve_labels as core_resolve_labels,
     tiles_to_tree,
     tree_to_tiles_with_options,
+    MergeAccumulator,
     // Permission rules
     PermissionRule,
     StaticGraph as AlizarinCoreStaticGraph,
@@ -2685,6 +2687,8 @@ fn merge_resources(py: Python, resources_json: String) -> PyResult<PyObject> {
 ///     batches_json: List of JSON strings containing resources in any supported format
 ///     recompute_descriptors: If True, recomputes descriptors from merged tiles using
 ///         graphs from the registry. Graphs must be registered first.
+///     strict: If True (default), raises ValueError on conflicting data when unifying
+///         cardinality-1 tiles.
 ///
 /// Returns:
 ///     Dict with 'resources' (list of merged StaticResources) and 'warnings' (list of warnings)
@@ -2696,71 +2700,69 @@ fn batch_merge_resources(
     recompute_descriptors: bool,
     strict: bool,
 ) -> PyResult<PyObject> {
-    // Parse each batch string into Vec<StaticResource>
     let mut resource_batches: Vec<Vec<AlizarinStaticResource>> = Vec::new();
     for (i, batch_str) in batches_json.iter().enumerate() {
-        // Try to parse as JSON value first to determine format
-        let value: serde_json::Value = serde_json::from_str(batch_str).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to parse batch {}: {}",
-                i, e
-            ))
+        let batch = core_parse_resources(batch_str).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Batch {}: {}", i, e))
         })?;
-
-        let batch: Vec<AlizarinStaticResource> = match &value {
-            // Array of resources
-            serde_json::Value::Array(_) => serde_json::from_value(value).map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                    "Batch {}: Failed to parse as resource array: {}",
-                    i, e
-                ))
-            })?,
-            // Object - could be BusinessDataWrapper or single resource
-            serde_json::Value::Object(map) => {
-                if let Some(bd) = map.get("business_data") {
-                    // BusinessDataWrapper format
-                    if let Some(resources) = bd.get("resources") {
-                        serde_json::from_value(resources.clone()).map_err(|e| {
-                            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                                "Batch {}: Failed to parse business_data.resources: {}",
-                                i, e
-                            ))
-                        })?
-                    } else {
-                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                            "Batch {}: business_data missing 'resources' field",
-                            i
-                        )));
-                    }
-                } else if map.contains_key("resourceinstance") {
-                    // Single StaticResource
-                    let resource: AlizarinStaticResource =
-                        serde_json::from_value(value).map_err(|e| {
-                            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                                "Batch {}: Failed to parse as single resource: {}",
-                                i, e
-                            ))
-                        })?;
-                    vec![resource]
-                } else {
-                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                        format!("Batch {}: Unrecognized format - expected array, BusinessDataWrapper, or StaticResource", i)
-                    ));
-                }
-            }
-            _ => {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                    "Batch {}: Expected array or object, got {:?}",
-                    i, value
-                )));
-            }
-        };
-
         resource_batches.push(batch);
     }
 
     let result = core_batch_merge_resources(resource_batches, recompute_descriptors, strict);
+    batch_merge_result_to_py(py, result)
+}
 
+/// Merge resources from multiple JSON files, reading one file at a time.
+///
+/// Memory-efficient alternative to loading all files and calling batch_merge_resources.
+/// Each file is read from disk, parsed, and the raw JSON is freed before the next file
+/// is processed. Only the accumulated StaticResource structs persist between files.
+///
+/// Args:
+///     file_paths: List of paths to JSON files containing resources
+///     chunk_size: Number of files to process per merge batch (default 10)
+///     recompute_descriptors: If True, recomputes descriptors in a final pass
+///     strict: If True (default), raises ValueError on conflicting data
+///
+/// Returns:
+///     Dict with 'resources' and 'warnings'
+#[pyfunction]
+#[pyo3(signature = (file_paths, chunk_size=10, recompute_descriptors=true, strict=true))]
+fn streamed_merge_from_files(
+    py: Python,
+    file_paths: Vec<String>,
+    chunk_size: usize,
+    recompute_descriptors: bool,
+    strict: bool,
+) -> PyResult<PyObject> {
+    let mut accumulator = MergeAccumulator::new(chunk_size, strict);
+
+    for (i, path) in file_paths.iter().enumerate() {
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyIOError, _>(format!(
+                "Failed to read file '{}' (index {}): {}",
+                path, i, e
+            ))
+        })?;
+
+        accumulator.add_json(&content).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse file '{}' (index {}): {}",
+                path, i, e
+            ))
+        })?;
+        // `content` dropped here — raw JSON string freed before next file
+    }
+
+    let result = accumulator.finish(recompute_descriptors);
+    batch_merge_result_to_py(py, result)
+}
+
+/// Convert a BatchMergeResult to a Python dict.
+fn batch_merge_result_to_py(
+    py: Python,
+    result: alizarin_core::BatchMergeResult,
+) -> PyResult<PyObject> {
     if let Some(ref error) = result.error {
         return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
             error.clone(),
@@ -2819,6 +2821,7 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     // Resource merging (combine tiles from multiple resources)
     m.add_function(wrap_pyfunction!(merge_resources, m)?)?;
     m.add_function(wrap_pyfunction!(batch_merge_resources, m)?)?;
+    m.add_function(wrap_pyfunction!(streamed_merge_from_files, m)?)?;
 
     // Label resolution (resolve concept labels to UUIDs before conversion)
     m.add_function(wrap_pyfunction!(resolve_labels_in_tree, m)?)?;
