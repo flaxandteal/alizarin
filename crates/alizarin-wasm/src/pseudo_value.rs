@@ -145,6 +145,20 @@ pub(crate) struct PseudoListInner {
 }
 
 impl PseudoListInner {
+    /// Create from a PseudoListCore, wrapping each value with WASM runtime state.
+    pub fn from_core(core: alizarin_core::PseudoListCore) -> Self {
+        PseudoListInner {
+            node_alias: core.node_alias,
+            values: core
+                .values
+                .into_iter()
+                .map(|v| PseudoValueInner::from_core(v, None))
+                .collect(),
+            is_loaded: core.is_loaded,
+            is_single: core.is_single,
+        }
+    }
+
     /// Convert to a PseudoListCore (for use with card_traversal functions).
     /// Extracts only the data fields, dropping WASM-specific runtime state.
     pub fn to_core(&self) -> alizarin_core::PseudoListCore {
@@ -169,24 +183,25 @@ pub(crate) struct NodegroupResult {
 }
 
 impl PseudoValueInner {
-    /// Create a new PseudoValueInner from a node and optional tile
+    /// Create a new PseudoValueInner from a node and optional tile.
     ///
-    /// PORT: js/pseudos.ts PseudoValue constructor (lines 112-144)
-    /// PORT: js/pseudos.ts makePseudoCls() function (lines 435-484)
+    /// Delegates inner/outer construction to PseudoValueCore, then wraps
+    /// with WASM-specific runtime state.
     pub fn from_node_and_tile(
         node: Arc<StaticNode>,
         tile: Option<Arc<StaticTile>>,
         tile_data: Option<serde_json::Value>,
         child_node_ids: Vec<String>,
     ) -> Self {
-        // Delegate to new() with no parent and is_inner=false
-        // This ensures inner/outer pattern is properly applied
-        Self::new(node, tile, tile_data, None, child_node_ids, false)
+        let core = PseudoValueCore::from_node_and_tile(node, tile, tile_data, child_node_ids);
+        Self::from_core(core, None)
     }
 
-    /// Create a new PseudoValueInner with full configuration
+    /// Create a new PseudoValueInner with full configuration (parent + is_inner).
     ///
-    /// PORT: js/pseudos.ts PseudoValue constructor with inner/outer handling
+    /// For non-inner values, delegates to PseudoValueCore for inner/outer construction.
+    /// For inner values (is_inner_flag=true), constructs directly since inner/outer
+    /// is already handled by the parent.
     pub fn new(
         node: Arc<StaticNode>,
         tile: Option<Arc<StaticTile>>,
@@ -195,55 +210,45 @@ impl PseudoValueInner {
         child_node_ids: Vec<String>,
         is_inner_flag: bool,
     ) -> Self {
-        let independent = tile.is_none();
-
-        // PORT: js/pseudos.ts:467-470 - create inner if has children and not semantic
-        let has_children = !child_node_ids.is_empty();
-        let is_semantic = node.datatype == "semantic";
-        let should_have_inner = has_children && !is_semantic && !is_inner_flag;
-
-        let inner = if should_have_inner {
-            // Create inner PseudoValue with same node but marked as inner
-            let inner_core = PseudoValueCore {
-                node: node.clone(),
-                child_node_ids: child_node_ids.clone(),
-                is_collector: node.is_collector,
-                inner: None,    // core.inner unused
-                is_inner: true, // This IS the inner
+        if is_inner_flag {
+            // Inner values are constructed directly — no recursive inner/outer
+            let independent = tile.is_none();
+            let core = PseudoValueCore {
+                node,
+                child_node_ids,
+                is_collector: false,
+                inner: None,
+                is_inner: true,
                 tile: tile.clone(),
-                tile_data: None, // Inner doesn't get tile_data directly
+                tile_data: None,
                 independent,
-                original_tile: tile.clone(),
+                original_tile: tile,
             };
-            Some(Box::new(PseudoValueInner {
-                core: inner_core,
+            PseudoValueInner {
+                core,
                 inner: None,
                 value: None,
-                parent: parent.clone(),
+                parent,
                 value_loaded: Some(false),
                 accessed: false,
-            }))
+            }
         } else {
-            None
-        };
+            let core = PseudoValueCore::from_node_and_tile(node, tile, tile_data, child_node_ids);
+            Self::from_core(core, parent)
+        }
+    }
 
-        let core = PseudoValueCore {
-            node,
-            // Outer gets empty child_node_ids if it has inner (children go through inner)
-            child_node_ids: if inner.is_some() {
-                vec![]
-            } else {
-                child_node_ids
-            },
-            is_collector: false,
-            inner: None, // core.inner unused, we use our own
-            is_inner: is_inner_flag,
-            tile: tile.clone(),
-            tile_data,
-            independent,
-            original_tile: tile,
-        };
-
+    /// Wrap a PseudoValueCore with WASM-specific runtime state.
+    ///
+    /// Recursively wraps core's inner (if present) so the WASM inner/outer
+    /// shadowing stays consistent with core's structural decision.
+    pub fn from_core(core: PseudoValueCore, parent: Option<JsValue>) -> Self {
+        let inner = core.inner.as_ref().map(|inner_core| {
+            Box::new(PseudoValueInner::from_core(
+                (**inner_core).clone(),
+                parent.clone(),
+            ))
+        });
         PseudoValueInner {
             core,
             inner,
@@ -399,55 +404,6 @@ impl PseudoListInner {
             is_loaded: true,
             is_single,
         }
-    }
-
-    /// Create from multiple tiles for the same node (collector pattern)
-    ///
-    /// PORT: js/graphManager.ts ensureNodegroup recipe processing
-    /// PORT: js/pseudos.ts:452-461 - collector node handling
-    /// When a node is a collector (is_collector=true) with multiple tiles,
-    /// group them into a PseudoList
-    ///
-    /// is_single: true if this should unwrap to a single value (cardinality-1 node)
-    pub fn from_node_tiles(
-        node: Arc<StaticNode>,
-        tiles: Vec<Option<Arc<StaticTile>>>,
-        edges: &std::collections::HashMap<String, Vec<String>>,
-        parent: Option<JsValue>,
-        is_single: bool,
-    ) -> Self {
-        let mut values = Vec::new();
-
-        // PORT: js/pseudos.ts:466 - get child node IDs once (same for all tiles)
-        let child_node_ids = edges.get(&node.nodeid).cloned().unwrap_or_default();
-
-        for tile_opt in tiles {
-            // PORT: Extract tile data for this specific tile
-            let tile_data = tile_opt
-                .as_ref()
-                .and_then(|t| t.data.get(&node.nodeid))
-                .cloned();
-
-            // PORT: js/pseudos.ts:471 - create PseudoValue with childNodes metadata
-            // Use new() which handles inner/outer pattern
-            let mut value = PseudoValueInner::new(
-                Arc::clone(&node),
-                tile_opt,
-                tile_data,
-                parent.clone(),
-                child_node_ids.clone(),
-                false,
-            );
-            value.core.is_collector = node.is_collector;
-
-            values.push(value);
-        }
-
-        Self::from_values_with_cardinality(
-            node.alias.clone().unwrap_or_default(),
-            values,
-            is_single,
-        )
     }
 
     /// Get all values across

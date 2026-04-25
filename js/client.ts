@@ -389,36 +389,19 @@ class ArchesClientLocal extends ArchesClient {
         }
         this.__loadedFileCache[graphId].push(file);
       }
-      const response = JSON.parse(await fs.promises.readFile(file, "utf8"));
       const source = file;
-      // const read = fs.createReadStream(file, { encoding: "utf8" });
-      // let buffer = '';
-      // let bufferLength = 0;
-      // const response: IStringKeyedObject = await (new Promise(resolve => {
-      //   read.pipe(bfj.unpipe((error: string, data: string) => {
-      //     if (error) {
-      //       throw Error(error);
-      //     }
-      //     return data;
-      //   })).on('data', (data: string) => {
-      //     const bl = Math.floor(buffer.length / 1000);
-      //     bufferLength = bl;
-      //     buffer += data;
-      //   }).on('end', () => {
-      //     resolve(JSON.parse(buffer));
-      //   });
-      // }));
-
-      const resourceSet: StaticResource[] = response.business_data.resources
-        .filter((resource: any) => graphId === resource.resourceinstance.graph_id)
-        .map((resource: any) => {
-          // Properly instantiate StaticResource from plain JSON
-          const sr = new StaticResource(resource);
-          sr.__source = source;
-          return sr;
-        });
-      resources.push(...(limit ? resourceSet.slice(0, limit) : resourceSet));
-      if (limit && resources.length > limit) {
+      const response = JSON.parse(await fs.promises.readFile(file, "utf8"));
+      const resourceSet = response.business_data.resources
+        .filter((resource: any) => graphId === resource.resourceinstance.graph_id);
+      for (const resource of resourceSet) {
+        const sr = new StaticResource(resource);
+        sr.__source = source;
+        resources.push(sr);
+        if (limit && resources.length >= limit) {
+          break;
+        }
+      }
+      if (limit && resources.length >= limit) {
         break;
       }
     }
@@ -437,11 +420,9 @@ class ArchesClientLocal extends ArchesClient {
       : await result;
     for await (const file of files) {
       const response = JSON.parse(await fs.promises.readFile(file, "utf8"));
-      const resourceSet: StaticResource[] = response.business_data.resources.filter(
-        (resource: StaticResource) => graphId === resource.resourceinstance.graph_id
+      const resourceSet = response.business_data.resources.filter(
+        (resource: any) => graphId === resource.resourceinstance.graph_id
       );
-      
-      // Convert full resources to summaries (extract metadata only)
       for (const resource of resourceSet) {
         const summary = new StaticResourceSummary({
           resourceinstanceid: resource.resourceinstance.resourceinstanceid,
@@ -455,10 +436,9 @@ class ArchesClientLocal extends ArchesClient {
           graph_publication_id: resource.resourceinstance.graph_publication_id
         });
         summaries.push(summary);
-      }
-      
-      if (limit && summaries.length >= limit) {
-        return summaries.slice(0, limit);
+        if (limit && summaries.length >= limit) {
+          return summaries.slice(0, limit);
+        }
       }
     }
     return limit ? summaries.slice(0, limit) : summaries;

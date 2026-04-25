@@ -11,6 +11,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use crate::path_resolution::{resolve_path_segments, PathError, PathResolutionInfo};
+use crate::permissions::PermissionRule;
 use crate::pseudo_value_core::{PseudoListCore, PseudoValueCore};
 use crate::{StaticNode, StaticNodegroup, StaticResourceMetadata, StaticTile};
 
@@ -147,14 +148,48 @@ pub trait ModelAccess {
     /// Get all nodegroups by ID
     fn get_nodegroups(&self) -> Option<&HashMap<String, Arc<StaticNodegroup>>>;
 
-    /// Get the root node of the graph
-    fn get_root_node(&self) -> Result<Arc<StaticNode>, String>;
+    /// Get the root node of the graph (node with no nodegroup_id).
+    /// Default implementation derives from `get_nodes()`.
+    fn get_root_node(&self) -> Result<Arc<StaticNode>, String> {
+        let nodes = self
+            .get_nodes()
+            .ok_or_else(|| "Nodes not initialized".to_string())?;
+        for node in nodes.values() {
+            if node.nodegroup_id.is_none()
+                || node
+                    .nodegroup_id
+                    .as_ref()
+                    .map(|s| s.is_empty())
+                    .unwrap_or(true)
+            {
+                return Ok(Arc::clone(node));
+            }
+        }
+        Err("Could not find root node".to_string())
+    }
 
-    /// Get child nodes for a parent node
-    fn get_child_nodes(&self, node_id: &str) -> Result<HashMap<String, Arc<StaticNode>>, String>;
+    /// Get child nodes for a parent node, keyed by alias.
+    /// Default implementation derives from `get_edges()` and `get_nodes()`.
+    fn get_child_nodes(&self, node_id: &str) -> Result<HashMap<String, Arc<StaticNode>>, String> {
+        let edges = self.get_edges().ok_or("Edges not initialized")?;
+        let nodes = self.get_nodes().ok_or("Nodes not initialized")?;
+        let child_ids = edges.get(node_id).cloned().unwrap_or_default();
+        let mut children = HashMap::new();
+        for child_id in child_ids {
+            if let Some(node) = nodes.get(&child_id) {
+                if let Some(ref alias) = node.alias {
+                    if !alias.is_empty() {
+                        children.insert(alias.clone(), Arc::clone(node));
+                    }
+                }
+            }
+        }
+        Ok(children)
+    }
 
-    /// Get permitted nodegroups (nodegroup_id -> is_permitted)
-    fn get_permitted_nodegroups(&self) -> HashMap<String, bool>;
+    /// Get permitted nodegroups as permission rules.
+    /// Each rule may be a simple boolean or a conditional (per-tile) filter.
+    fn get_permitted_nodegroups(&self) -> HashMap<String, PermissionRule>;
 }
 
 // =============================================================================
@@ -278,12 +313,319 @@ pub fn matches_semantic_child(
     false
 }
 
+/// Resolve a dot-separated path through the graph model and return matching tiles.
+///
+/// This is the shared implementation for path-based tile access. Takes tile storage
+/// and nodegroup index as parameters so it can be called by any wrapper (core, WASM,
+/// Python) with its own tile store.
+///
+/// If `filter_tile_id` is provided, only tiles matching the parent-child relationship
+/// are included (using `matches_semantic_child`).
+pub fn resolve_and_filter_tiles(
+    path: &str,
+    model: &dyn ModelAccess,
+    tiles_store: &HashMap<String, StaticTile>,
+    nodegroup_index: &HashMap<String, Vec<String>>,
+    filter_tile_id: Option<&str>,
+) -> Result<(PathResolutionInfo, Vec<StaticTile>), PathError> {
+    let root_node = model
+        .get_root_node()
+        .map_err(PathError::ModelNotInitialized)?;
+    let nodes = model
+        .get_nodes()
+        .ok_or_else(|| PathError::ModelNotInitialized("Nodes not initialized".into()))?;
+    let edges = model
+        .get_edges()
+        .ok_or_else(|| PathError::ModelNotInitialized("Edges not initialized".into()))?;
+    let nodegroups = model.get_nodegroups();
+
+    let info = resolve_path_segments(path, &root_node, nodes, edges, nodegroups)?;
+
+    let tile_ids = nodegroup_index
+        .get(&info.nodegroup_id)
+        .cloned()
+        .unwrap_or_default();
+
+    let tiles: Vec<StaticTile> = if let Some(filter_id) = filter_tile_id {
+        let filter_id_string = filter_id.to_string();
+        let parent_ng = info.parent_nodegroup_id.as_ref();
+        tile_ids
+            .iter()
+            .filter_map(|tid| {
+                tiles_store.get(tid).and_then(|t| {
+                    if matches_semantic_child(
+                        Some(&filter_id_string),
+                        parent_ng,
+                        &info.target_node,
+                        t,
+                    ) {
+                        Some(t.clone())
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect()
+    } else {
+        tile_ids
+            .iter()
+            .filter_map(|tid| tiles_store.get(tid).cloned())
+            .collect()
+    };
+
+    Ok((info, tiles))
+}
+
 // =============================================================================
 // Core resource instance wrapper
 // =============================================================================
 
 /// Type alias for alias -> (node, tiles) mapping used in values_from_resource_nodegroup
 type AliasTilesMap = HashMap<String, (Arc<StaticNode>, Vec<Option<Arc<StaticTile>>>)>;
+
+/// Create a PseudoListCore from a node and its tiles (standalone version).
+pub fn create_pseudo_list_from_tiles(
+    node: Arc<StaticNode>,
+    tiles: Vec<Option<Arc<StaticTile>>>,
+    edges: &HashMap<String, Vec<String>>,
+    is_single: bool,
+) -> PseudoListCore {
+    let alias = node.alias.clone().unwrap_or_default();
+    let child_node_ids = edges.get(&node.nodeid).cloned().unwrap_or_default();
+
+    let values: Vec<PseudoValueCore> = tiles
+        .into_iter()
+        .map(|tile| {
+            let tile_data = tile
+                .as_ref()
+                .and_then(|t| t.data.get(&node.nodeid).cloned());
+
+            PseudoValueCore::from_node_and_tile(
+                Arc::clone(&node),
+                tile,
+                tile_data,
+                child_node_ids.clone(),
+            )
+        })
+        .collect();
+
+    PseudoListCore::from_values_with_cardinality(alias, values, is_single)
+}
+
+/// Standalone values_from_resource_nodegroup — processes tiles and creates PseudoListCore
+/// entries for each node alias in the nodegroup.
+///
+/// Extracted from `ResourceInstanceWrapperCore::values_from_resource_nodegroup` so that
+/// WASM (and other bindings) can call this directly with their own tile store.
+pub fn values_from_resource_nodegroup(
+    existing_values: &HashMap<String, Option<bool>>,
+    nodegroup_tile_ids: &[String],
+    nodegroup_id: &str,
+    model: &dyn ModelAccess,
+    tiles_store: &HashMap<String, StaticTile>,
+) -> Result<ValuesFromNodegroupResult, SemanticChildError> {
+    let node_objs = model.get_nodes().ok_or_else(|| {
+        SemanticChildError::ModelNotInitialized("Model nodes not initialized".to_string())
+    })?;
+    let edges = model.get_edges().ok_or_else(|| {
+        SemanticChildError::ModelNotInitialized("Model edges not initialized".to_string())
+    })?;
+    let reverse_edges = model.get_reverse_edges().ok_or_else(|| {
+        SemanticChildError::ModelNotInitialized("Model reverse edges not initialized".to_string())
+    })?;
+    let nodes_by_nodegroup = model.get_nodes_by_nodegroup().ok_or_else(|| {
+        SemanticChildError::ModelNotInitialized(
+            "Model nodes-by-nodegroup not initialized".to_string(),
+        )
+    })?;
+    let nodegroups = model.get_nodegroups();
+
+    let mut values: HashMap<String, PseudoListCore> = HashMap::new();
+    let mut implied_nodegroups: HashSet<String> = HashSet::new();
+    let mut implied_nodes: HashMap<(String, String), (Arc<StaticNode>, Arc<StaticTile>)> =
+        HashMap::new();
+    let mut tile_nodes_seen: HashSet<(String, String)> = HashSet::new();
+
+    let mut alias_tiles: AliasTilesMap = HashMap::new();
+    let nodegroup_nodes = nodes_by_nodegroup.get(nodegroup_id);
+
+    for tile_id in nodegroup_tile_ids {
+        let tile = if tile_id.is_empty() {
+            None
+        } else {
+            tiles_store.get(tile_id).map(|t| Arc::new(t.clone()))
+        };
+        let tile_nodegroup_id = tile.as_ref().map(|t| t.nodegroup_id.clone());
+
+        if let Some(nodes_in_ng) = nodegroup_nodes {
+            for node in nodes_in_ng.iter() {
+                let alias = match &node.alias {
+                    Some(a) if !a.is_empty() => a.clone(),
+                    _ => continue,
+                };
+
+                if !tile_id.is_empty() {
+                    tile_nodes_seen.insert((node.nodeid.clone(), tile_id.clone()));
+                }
+
+                if let Some(Some(true)) = existing_values.get(&alias) {
+                    continue;
+                }
+
+                let entry = alias_tiles
+                    .entry(alias.clone())
+                    .or_insert_with(|| (Arc::clone(node), Vec::new()));
+                entry.1.push(tile.clone());
+
+                if let Some(parent_ids) = reverse_edges.get(&node.nodeid) {
+                    if let Some(parent_id) = parent_ids.first() {
+                        if let Some(domain_node) = node_objs.get(parent_id) {
+                            if let Some(ref domain_ng_id) = domain_node.nodegroup_id {
+                                if !domain_ng_id.is_empty() && domain_ng_id != nodegroup_id {
+                                    implied_nodegroups.insert(domain_ng_id.clone());
+                                }
+                                if let Some(ref tile_ng_id) = tile_nodegroup_id {
+                                    if domain_ng_id == tile_ng_id
+                                        && domain_ng_id != &domain_node.nodeid
+                                        && !tile_id.is_empty()
+                                    {
+                                        let key = (domain_node.nodeid.clone(), tile_id.clone());
+                                        if let Some(t) = tile.as_ref() {
+                                            implied_nodes.entry(key).or_insert_with(|| {
+                                                (Arc::clone(domain_node), Arc::clone(t))
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Process implied nodes
+    for (_key, (node, tile)) in implied_nodes.iter() {
+        if let Some(tid) = tile.tileid.as_ref() {
+            let key = (node.nodeid.clone(), tid.clone());
+            if !tile_nodes_seen.contains(&key) {
+                let alias = match &node.alias {
+                    Some(a) if !a.is_empty() => a.clone(),
+                    _ => continue,
+                };
+                tile_nodes_seen.insert(key);
+                if existing_values.get(&alias) != Some(&Some(true)) {
+                    let entry = alias_tiles
+                        .entry(alias.clone())
+                        .or_insert_with(|| (Arc::clone(node), Vec::new()));
+                    entry.1.push(Some(Arc::clone(tile)));
+                }
+            }
+        }
+    }
+
+    // Convert to PseudoListCore
+    for (alias, (node, tiles)) in alias_tiles {
+        let is_single = is_node_single_cardinality(&node, nodegroups);
+        let pseudo_list = create_pseudo_list_from_tiles(node, tiles, edges, is_single);
+        values.insert(alias, pseudo_list);
+    }
+
+    Ok(ValuesFromNodegroupResult {
+        values,
+        implied_nodegroups: implied_nodegroups.into_iter().collect(),
+    })
+}
+
+/// Standalone ensure_nodegroup — processes a single nodegroup and returns structured values.
+///
+/// Extracted from `ResourceInstanceWrapperCore::ensure_nodegroup` so that WASM
+/// (and other bindings) can call this directly with their own tile store.
+#[allow(clippy::too_many_arguments)]
+pub fn ensure_nodegroup(
+    all_values_map: &HashMap<String, Option<bool>>,
+    all_nodegroups: &mut HashMap<String, bool>,
+    nodegroup_id: &str,
+    add_if_missing: bool,
+    nodegroup_permissions: &HashMap<String, PermissionRule>,
+    do_implied_nodegroups: bool,
+    model: &dyn ModelAccess,
+    tiles_store: &HashMap<String, StaticTile>,
+) -> Result<EnsureNodegroupResult, SemanticChildError> {
+    let sentinel = all_nodegroups.get(nodegroup_id);
+    let should_process = match sentinel {
+        Some(&false) => true,
+        Some(&true) => false,
+        None => add_if_missing,
+    };
+
+    let mut all_values: HashMap<String, PseudoListCore> = HashMap::new();
+    let mut implied_nodegroups_set: HashSet<String> = HashSet::new();
+
+    if should_process {
+        let mut nodegroup_tiles: Vec<String> = Vec::new();
+
+        for (tile_id, tile) in tiles_store.iter() {
+            if tile.nodegroup_id == nodegroup_id {
+                let permitted = nodegroup_permissions
+                    .get(&tile.nodegroup_id)
+                    .map(|rule| rule.permits_tile(tile))
+                    .unwrap_or(true);
+                if permitted {
+                    nodegroup_tiles.push(tile_id.clone());
+                }
+            }
+        }
+
+        if nodegroup_tiles.is_empty() && add_if_missing {
+            nodegroup_tiles.push(String::new());
+        }
+
+        let values_result = values_from_resource_nodegroup(
+            all_values_map,
+            &nodegroup_tiles,
+            nodegroup_id,
+            model,
+            tiles_store,
+        )?;
+
+        for (alias, pseudo_list) in values_result.values {
+            all_values.insert(alias, pseudo_list);
+        }
+        for ng in values_result.implied_nodegroups.iter() {
+            implied_nodegroups_set.insert(ng.clone());
+        }
+
+        all_nodegroups.insert(nodegroup_id.to_string(), true);
+
+        if do_implied_nodegroups && !implied_nodegroups_set.is_empty() {
+            let implied_list: Vec<String> = implied_nodegroups_set.iter().cloned().collect();
+            for implied_ng in implied_list.iter() {
+                let implied_result = ensure_nodegroup(
+                    all_values_map,
+                    all_nodegroups,
+                    implied_ng,
+                    true,
+                    nodegroup_permissions,
+                    true,
+                    model,
+                    tiles_store,
+                )?;
+                for (alias, pseudo_list) in implied_result.values {
+                    all_values.insert(alias, pseudo_list);
+                }
+            }
+            implied_nodegroups_set.clear();
+        }
+    }
+
+    Ok(EnsureNodegroupResult {
+        values: all_values,
+        implied_nodegroups: implied_nodegroups_set.into_iter().collect(),
+        all_nodegroups_map: all_nodegroups.clone(),
+    })
+}
 
 /// Core resource instance wrapper - platform-agnostic business logic
 ///
@@ -414,10 +756,10 @@ impl ResourceInstanceWrapperCore {
         }
     }
 
-    /// Build pseudo values from tiles for a nodegroup
+    /// Build pseudo values from tiles for a nodegroup.
     ///
-    /// This is the core algorithm that processes tiles and creates PseudoListCore
-    /// entries for each node alias in the nodegroup.
+    /// Delegates to the standalone `values_from_resource_nodegroup` function,
+    /// passing this wrapper's tile store.
     pub fn values_from_resource_nodegroup(
         &self,
         existing_values: &HashMap<String, Option<bool>>,
@@ -425,32 +767,6 @@ impl ResourceInstanceWrapperCore {
         nodegroup_id: &str,
         model: &dyn ModelAccess,
     ) -> Result<ValuesFromNodegroupResult, SemanticChildError> {
-        let node_objs = model.get_nodes().ok_or_else(|| {
-            SemanticChildError::ModelNotInitialized("Model nodes not initialized".to_string())
-        })?;
-        let edges = model.get_edges().ok_or_else(|| {
-            SemanticChildError::ModelNotInitialized("Model edges not initialized".to_string())
-        })?;
-        let reverse_edges = model.get_reverse_edges().ok_or_else(|| {
-            SemanticChildError::ModelNotInitialized(
-                "Model reverse edges not initialized".to_string(),
-            )
-        })?;
-        let nodes_by_nodegroup = model.get_nodes_by_nodegroup().ok_or_else(|| {
-            SemanticChildError::ModelNotInitialized(
-                "Model nodes-by-nodegroup not initialized".to_string(),
-            )
-        })?;
-        let nodegroups = model.get_nodegroups();
-
-        let mut values: HashMap<String, PseudoListCore> = HashMap::new();
-        let mut implied_nodegroups: HashSet<String> = HashSet::new();
-
-        // Track implied nodes (parent nodes in same nodegroup that need pseudo values)
-        let mut implied_nodes: HashMap<(String, String), (Arc<StaticNode>, Arc<StaticTile>)> =
-            HashMap::new();
-        let mut tile_nodes_seen: HashSet<(String, String)> = HashSet::new();
-
         let tiles_store = match &self.tiles {
             Some(t) => t,
             None => {
@@ -460,140 +776,19 @@ impl ResourceInstanceWrapperCore {
                 });
             }
         };
-
-        // Build a map of alias -> (node, tiles)
-        let mut alias_tiles: AliasTilesMap = HashMap::new();
-
-        // Get nodes for this nodegroup
-        let nodegroup_nodes = nodes_by_nodegroup.get(nodegroup_id);
-
-        for tile_id in nodegroup_tile_ids {
-            let tile = if tile_id.is_empty() {
-                None
-            } else {
-                tiles_store.get(tile_id).map(|t| Arc::new(t.clone()))
-            };
-            let tile_nodegroup_id = tile.as_ref().map(|t| t.nodegroup_id.clone());
-
-            if let Some(nodes_in_ng) = nodegroup_nodes {
-                for node in nodes_in_ng.iter() {
-                    let alias = match &node.alias {
-                        Some(a) if !a.is_empty() => a.clone(),
-                        _ => continue,
-                    };
-
-                    // Track seen (nodeid, tileid) combinations
-                    if !tile_id.is_empty() {
-                        tile_nodes_seen.insert((node.nodeid.clone(), tile_id.clone()));
-                    }
-
-                    // Skip if already exists as truthy
-                    if let Some(Some(true)) = existing_values.get(&alias) {
-                        continue;
-                    }
-
-                    // Add to alias_tiles
-                    let entry = alias_tiles
-                        .entry(alias.clone())
-                        .or_insert_with(|| (Arc::clone(node), Vec::new()));
-                    entry.1.push(tile.clone());
-
-                    // Check for implied nodegroups (parent in different nodegroup)
-                    if let Some(parent_ids) = reverse_edges.get(&node.nodeid) {
-                        if let Some(parent_id) = parent_ids.first() {
-                            if let Some(domain_node) = node_objs.get(parent_id) {
-                                if let Some(ref domain_ng_id) = domain_node.nodegroup_id {
-                                    if !domain_ng_id.is_empty() && domain_ng_id != nodegroup_id {
-                                        implied_nodegroups.insert(domain_ng_id.clone());
-                                    }
-
-                                    // Check for implied nodes (same nodegroup, parent node)
-                                    if let Some(ref tile_ng_id) = tile_nodegroup_id {
-                                        if domain_ng_id == tile_ng_id
-                                            && domain_ng_id != &domain_node.nodeid
-                                            && !tile_id.is_empty()
-                                        {
-                                            let key = (domain_node.nodeid.clone(), tile_id.clone());
-                                            if let Some(t) = tile.as_ref() {
-                                                implied_nodes.entry(key).or_insert_with(|| {
-                                                    (Arc::clone(domain_node), Arc::clone(t))
-                                                });
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Process implied nodes
-        for (_key, (node, tile)) in implied_nodes.iter() {
-            if let Some(tid) = tile.tileid.as_ref() {
-                let key = (node.nodeid.clone(), tid.clone());
-                if !tile_nodes_seen.contains(&key) {
-                    let alias = match &node.alias {
-                        Some(a) if !a.is_empty() => a.clone(),
-                        _ => continue,
-                    };
-
-                    tile_nodes_seen.insert(key);
-
-                    if existing_values.get(&alias) != Some(&Some(true)) {
-                        let entry = alias_tiles
-                            .entry(alias.clone())
-                            .or_insert_with(|| (Arc::clone(node), Vec::new()));
-                        entry.1.push(Some(Arc::clone(tile)));
-                    }
-                }
-            }
-        }
-
-        // Convert to PseudoListCore
-        for (alias, (node, tiles)) in alias_tiles {
-            let is_single = is_node_single_cardinality(&node, nodegroups);
-            let pseudo_list = Self::create_pseudo_list_from_tiles(node, tiles, edges, is_single);
-            values.insert(alias, pseudo_list);
-        }
-
-        Ok(ValuesFromNodegroupResult {
-            values,
-            implied_nodegroups: implied_nodegroups.into_iter().collect(),
-        })
+        values_from_resource_nodegroup(
+            existing_values,
+            nodegroup_tile_ids,
+            nodegroup_id,
+            model,
+            tiles_store,
+        )
     }
 
-    /// Create a PseudoListCore from a node and its tiles
-    fn create_pseudo_list_from_tiles(
-        node: Arc<StaticNode>,
-        tiles: Vec<Option<Arc<StaticTile>>>,
-        edges: &HashMap<String, Vec<String>>,
-        is_single: bool,
-    ) -> PseudoListCore {
-        let alias = node.alias.clone().unwrap_or_default();
-        let child_node_ids = edges.get(&node.nodeid).cloned().unwrap_or_default();
-
-        let values: Vec<PseudoValueCore> = tiles
-            .into_iter()
-            .map(|tile| {
-                let tile_data = tile
-                    .as_ref()
-                    .and_then(|t| t.data.get(&node.nodeid).cloned());
-
-                PseudoValueCore::from_node_and_tile(
-                    Arc::clone(&node),
-                    tile,
-                    tile_data,
-                    child_node_ids.clone(),
-                )
-            })
-            .collect();
-
-        PseudoListCore::from_values_with_cardinality(alias, values, is_single)
-    }
-
-    /// Process a single nodegroup and return structured values
+    /// Process a single nodegroup and return structured values.
+    ///
+    /// Delegates to the standalone `ensure_nodegroup` function,
+    /// passing this wrapper's tile store.
     #[allow(clippy::too_many_arguments)]
     pub fn ensure_nodegroup(
         &self,
@@ -601,94 +796,30 @@ impl ResourceInstanceWrapperCore {
         all_nodegroups: &mut HashMap<String, bool>,
         nodegroup_id: &str,
         add_if_missing: bool,
-        nodegroup_permissions: &HashMap<String, bool>,
+        nodegroup_permissions: &HashMap<String, PermissionRule>,
         do_implied_nodegroups: bool,
         model: &dyn ModelAccess,
     ) -> Result<EnsureNodegroupResult, SemanticChildError> {
-        // Check sentinel state
-        let sentinel = all_nodegroups.get(nodegroup_id);
-        let should_process = match sentinel {
-            Some(&false) => true,   // force reload
-            Some(&true) => false,   // already loaded
-            None => add_if_missing, // key doesn't exist
+        let tiles_store = match &self.tiles {
+            Some(t) => t,
+            None => {
+                return Ok(EnsureNodegroupResult {
+                    values: HashMap::new(),
+                    implied_nodegroups: Vec::new(),
+                    all_nodegroups_map: all_nodegroups.clone(),
+                });
+            }
         };
-
-        let mut all_values: HashMap<String, PseudoListCore> = HashMap::new();
-        let mut implied_nodegroups_set: HashSet<String> = HashSet::new();
-
-        if should_process {
-            // Filter tiles by nodegroup_id and permissions
-            let mut nodegroup_tiles: Vec<String> = Vec::new();
-
-            if let Some(tiles) = &self.tiles {
-                for (tile_id, tile) in tiles.iter() {
-                    if tile.nodegroup_id == nodegroup_id {
-                        let permitted = nodegroup_permissions
-                            .get(&tile.nodegroup_id)
-                            .copied()
-                            .unwrap_or(true);
-                        if permitted {
-                            nodegroup_tiles.push(tile_id.clone());
-                        }
-                    }
-                }
-            }
-
-            // If no tiles and addIfMissing, use empty string to indicate null tile
-            if nodegroup_tiles.is_empty() && add_if_missing {
-                nodegroup_tiles.push(String::new());
-            }
-
-            // Call values_from_resource_nodegroup
-            let values_result = self.values_from_resource_nodegroup(
-                all_values_map,
-                &nodegroup_tiles,
-                nodegroup_id,
-                model,
-            )?;
-
-            // Merge structured values
-            for (alias, pseudo_list) in values_result.values {
-                all_values.insert(alias, pseudo_list);
-            }
-
-            // Collect implied nodegroups
-            for ng in values_result.implied_nodegroups.iter() {
-                implied_nodegroups_set.insert(ng.clone());
-            }
-
-            // Mark nodegroup as loaded
-            all_nodegroups.insert(nodegroup_id.to_string(), true);
-
-            // Recursive processing of implied nodegroups
-            if do_implied_nodegroups && !implied_nodegroups_set.is_empty() {
-                let implied_list: Vec<String> = implied_nodegroups_set.iter().cloned().collect();
-
-                for implied_ng in implied_list.iter() {
-                    let implied_result = self.ensure_nodegroup(
-                        all_values_map,
-                        all_nodegroups,
-                        implied_ng,
-                        true,
-                        nodegroup_permissions,
-                        true,
-                        model,
-                    )?;
-
-                    for (alias, pseudo_list) in implied_result.values {
-                        all_values.insert(alias, pseudo_list);
-                    }
-                }
-
-                implied_nodegroups_set.clear();
-            }
-        }
-
-        Ok(EnsureNodegroupResult {
-            values: all_values,
-            implied_nodegroups: implied_nodegroups_set.into_iter().collect(),
-            all_nodegroups_map: all_nodegroups.clone(),
-        })
+        ensure_nodegroup(
+            all_values_map,
+            all_nodegroups,
+            nodegroup_id,
+            add_if_missing,
+            nodegroup_permissions,
+            do_implied_nodegroups,
+            model,
+            tiles_store,
+        )
     }
 
     /// Main populate implementation
@@ -954,37 +1085,51 @@ impl ResourceInstanceWrapperCore {
         resolve_path_segments(path, &root_node, nodes, edges, nodegroups)
     }
 
+    /// Resolve a path and return the resolution info plus matching tiles.
+    ///
+    /// Delegates to the standalone `resolve_and_filter_tiles` function,
+    /// passing this wrapper's tile store and nodegroup index.
+    pub fn resolve_and_filter_tiles(
+        &self,
+        path: &str,
+        model: &dyn ModelAccess,
+        filter_tile_id: Option<&str>,
+    ) -> Result<(PathResolutionInfo, Vec<StaticTile>), PathError> {
+        let tiles_store = self.tiles.as_ref().ok_or(PathError::TilesNotInitialized)?;
+        resolve_and_filter_tiles(
+            path,
+            model,
+            tiles_store,
+            &self.nodegroup_index,
+            filter_tile_id,
+        )
+    }
+
     /// Resolve a dot-separated path and return a PseudoListCore for the target node.
     ///
     /// This is the main entry point for path-based value access. It walks the graph
     /// model to find the target node, then retrieves matching tiles from the store
     /// and builds a PseudoListCore — all without materializing the full tree.
+    ///
+    /// If `filter_tile_id` is provided, only tiles that match the parent-child
+    /// relationship for that tile are included (using `matches_semantic_child`).
     pub fn get_values_at_path(
         &self,
         path: &str,
         model: &dyn ModelAccess,
+        filter_tile_id: Option<&str>,
     ) -> Result<PseudoListCore, PathError> {
-        let info = self.resolve_path(path, model)?;
+        let (info, tiles) = self.resolve_and_filter_tiles(path, model, filter_tile_id)?;
 
         let edges = model
             .get_edges()
             .ok_or_else(|| PathError::ModelNotInitialized("Edges not initialized".into()))?;
 
-        // Get tiles for the target's nodegroup
-        let tiles_store = self.tiles.as_ref().ok_or(PathError::TilesNotInitialized)?;
-        let tile_ids = self
-            .nodegroup_index
-            .get(&info.nodegroup_id)
-            .cloned()
-            .unwrap_or_default();
-
-        let tiles: Vec<Option<Arc<StaticTile>>> = tile_ids
-            .iter()
-            .filter_map(|tid| tiles_store.get(tid).map(|t| Some(Arc::new(t.clone()))))
-            .collect();
+        let tiles_wrapped: Vec<Option<Arc<StaticTile>>> =
+            tiles.into_iter().map(|t| Some(Arc::new(t))).collect();
 
         let pseudo_list =
-            Self::create_pseudo_list_from_tiles(info.target_node, tiles, edges, info.is_single);
+            create_pseudo_list_from_tiles(info.target_node, tiles_wrapped, edges, info.is_single);
 
         Ok(pseudo_list)
     }

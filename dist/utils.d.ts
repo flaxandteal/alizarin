@@ -40,6 +40,4 @@ declare function buildResourceDescriptors(graph: StaticGraph, nodes: Map<string,
  * This avoids expensive JsValue iteration and type checking in Rust
  */
 declare function serializeValuesMap(map: Map<string, any>): Record<string, boolean | null>;
-declare function getValueFromPathSync(asset: any, path: string): any;
-declare function getValueFromPath(asset: any, path: string): Promise<any>;
-export { getValueFromPath, getValueFromPathSync, slugify, AttrPromise, getCurrentLanguage, generateUuidv5, setCurrentLanguage, buildResourceDescriptors, DESCRIPTOR_FUNCTION_ID, serializeValuesMap };
+export { slugify, AttrPromise, getCurrentLanguage, generateUuidv5, setCurrentLanguage, buildResourceDescriptors, DESCRIPTOR_FUNCTION_ID, serializeValuesMap };

@@ -7,9 +7,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
 // Use the new unified tracing infrastructure
-use crate::tracing::{
-    now_ms, record_timing, record_timing_sampled, should_sample, DEFAULT_SAMPLE_RATE,
-};
+use crate::tracing::{now_ms, record_timing};
 // WASM wrapper type aliases for return types
 use crate::graph::StaticTile as WasmStaticTile;
 // Core types for internal storage (avoid WASM wrapper overhead)
@@ -22,8 +20,6 @@ use alizarin_core::is_node_single_cardinality;
 use alizarin_core::matches_semantic_child as matches_semantic_child_core;
 use alizarin_core::node_config::NodeConfigManager;
 use alizarin_core::rdm_cache::RdmCache;
-use alizarin_core::StaticNode;
-use alizarin_core::StaticNodegroup;
 use alizarin_core::StaticResourceMetadata as CoreStaticResourceMetadata;
 use alizarin_core::StaticTile as CoreStaticTile;
 use alizarin_core::StaticTile;
@@ -264,14 +260,6 @@ pub struct ResourceInstanceWrapperCore {
     // Cache of PseudoValues (alias -> PseudoListInner)
     // This allows Rust to own the authoritative data and bindings to create lightweight wrappers
     pub(crate) pseudo_cache: Rc<RefCell<HashMap<String, PseudoListInner>>>,
-
-    // Cached Arc references to model indices - avoids cloning on every nodegroup access
-    // These are populated once on first access and shared across all calls
-    pub(crate) cached_nodes: Option<Arc<HashMap<String, Arc<StaticNode>>>>,
-    pub(crate) cached_edges: Option<Arc<HashMap<String, Vec<String>>>>,
-    pub(crate) cached_reverse_edges: Option<Arc<HashMap<String, Vec<String>>>>,
-    pub(crate) cached_nodes_by_nodegroup: Option<Arc<HashMap<String, Vec<Arc<StaticNode>>>>>,
-    pub(crate) cached_nodegroups: Option<Arc<HashMap<String, Arc<StaticNodegroup>>>>,
 }
 
 /// Rust-side WASM resource instance wrapper
@@ -309,30 +297,13 @@ pub(crate) enum LoadState {
 impl ResourceInstanceWrapperCore {
     /// Create a new core from graph ID
     pub fn new_from_graph_id(graph_id: String) -> Self {
-        // Ensure nodes are built and cache Arc refs to model indices
-        let (
-            cached_nodes,
-            cached_edges,
-            cached_reverse_edges,
-            cached_nodes_by_nodegroup,
-            cached_nodegroups,
-        ) = crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
+        // Ensure nodes are built in the model (needed for ModelAccess trait)
+        crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
             if let Some(core_arc) = registry.borrow().get(&graph_id) {
                 let mut core = core_arc.borrow_mut();
-                // Only build if not already built
                 if core.get_nodes_internal().is_none() {
                     core.build_nodes().ok();
                 }
-                // Get Arc refs to all indices (cheap refcount increment)
-                (
-                    core.get_nodes_arc(),
-                    core.get_edges_arc(),
-                    core.get_reverse_edges_arc(),
-                    core.get_nodes_by_nodegroup_arc(),
-                    core.get_nodegroups_arc(),
-                )
-            } else {
-                (None, None, None, None, None)
             }
         });
 
@@ -343,11 +314,6 @@ impl ResourceInstanceWrapperCore {
             nodegroup_index: HashMap::new(),
             loaded_nodegroups: Rc::new(RefCell::new(HashMap::new())),
             pseudo_cache: Rc::new(RefCell::new(HashMap::new())),
-            cached_nodes,
-            cached_edges,
-            cached_reverse_edges,
-            cached_nodes_by_nodegroup,
-            cached_nodegroups,
         }
     }
 
@@ -2090,124 +2056,58 @@ impl WASMResourceInstanceWrapper {
     /// without serialization overhead. We cannot sensibly store the all_nodegroups
     /// or all_values_map, as these represent the state of the dependent language's
     /// viewModels (which may not exist or be ready, for example).
+    /// Delegates to core's standalone `ensure_nodegroup`, then wraps
+    /// the PseudoListCore results as PseudoListInner for WASM consumption.
     fn ensure_nodegroup_internal(
         &self,
         all_values_map: &HashMap<String, Option<bool>>,
         all_nodegroups: &mut HashMap<String, bool>,
         nodegroup_id: &str,
         add_if_missing: bool,
-        nodegroup_permissions: &HashMap<String, bool>,
+        nodegroup_permissions: &HashMap<String, alizarin_core::PermissionRule>,
         do_implied_nodegroups: bool,
     ) -> Result<EnsureNodegroupResult, JsValue> {
-        use std::collections::{HashMap, HashSet};
         let fn_start = now_ms();
 
-        // Check sentinel state (line 314)
-        let sentinel = all_nodegroups.get(nodegroup_id);
-        let should_process = match sentinel {
-            Some(&false) => true,   // sentinel === false (force reload)
-            Some(&true) => false,   // sentinel === true (already loaded)
-            None => add_if_missing, // sentinel === undefined (key doesn't exist)
+        let core_ref = self.core.borrow();
+        let tiles_store = match core_ref.tiles.as_ref() {
+            Some(t) => t,
+            None => {
+                return Ok(EnsureNodegroupResult {
+                    values: std::collections::HashMap::new(),
+                    implied_nodegroups: Vec::new(),
+                    all_nodegroups_map: all_nodegroups.clone(),
+                });
+            }
         };
 
-        // PORT: Phase 4c - Changed from Vec<PseudoRecipe> to HashMap<String, PseudoListInner>
-        // PORT: js/graphManager.ts:350 - newValues is a Map<string, PseudoValue | PseudoList>
-        let mut all_values: HashMap<String, PseudoListInner> = HashMap::new();
-        let mut implied_nodegroups_set: HashSet<String> = HashSet::new();
+        let core_result: alizarin_core::EnsureNodegroupResult =
+            core_ref.with_model_core(|model| {
+                alizarin_core::ensure_nodegroup(
+                    all_values_map,
+                    all_nodegroups,
+                    nodegroup_id,
+                    add_if_missing,
+                    nodegroup_permissions,
+                    do_implied_nodegroups,
+                    model,
+                    tiles_store,
+                )
+                .map_err(|e| JsValue::from_str(&format!("{:?}", e)))
+            })?;
 
-        if should_process {
-            // Filter tiles by nodegroup_id and permissions (lines 326-328)
-            // Phase 4h: Compute tile permission from nodegroup permission
-            let t0 = now_ms();
-            let mut nodegroup_tiles: Vec<String> = Vec::new();
+        // Wrap PseudoListCore → PseudoListInner
+        let values = core_result
+            .values
+            .into_iter()
+            .map(|(alias, list_core)| (alias, PseudoListInner::from_core(list_core)))
+            .collect();
 
-            // If tiles aren't loaded, treat as empty (will trigger tile loading callback if set)
-            if let Some(tiles) = self.core.borrow().tiles.as_ref() {
-                for (tile_id, tile) in tiles.iter() {
-                    if tile.nodegroup_id == nodegroup_id {
-                        // Phase 4h: Look up permission by tile's nodegroup_id
-                        let permitted = nodegroup_permissions
-                            .get(&tile.nodegroup_id)
-                            .copied()
-                            .unwrap_or(true);
-                        if permitted {
-                            nodegroup_tiles.push(tile_id.clone());
-                        }
-                    }
-                }
-            }
-            record_timing("eng: filter tiles", now_ms() - t0);
-
-            // If no tiles and addIfMissing, use empty string to indicate null tile (lines 329-330)
-            if nodegroup_tiles.is_empty() && add_if_missing {
-                nodegroup_tiles.push(String::new());
-            }
-
-            // Call values_from_resource_nodegroup_internal (line 332)
-            // PORT: Phase 4c - Use structured values directly (no recipe conversion)
-            // PORT: js/graphManager.ts:352 - iterating over result and adding to newValues
-            let t1 = now_ms();
-            let values_result = self.values_from_resource_nodegroup_internal(
-                all_values_map.clone(),
-                nodegroup_tiles,
-                nodegroup_id,
-            )?;
-            record_timing(
-                "eng: values_from_resource_nodegroup_internal",
-                now_ms() - t1,
-            );
-
-            // Merge structured values into all_values
-            // PORT: js/graphManager.ts:353-355 - newValues.set(recipe.nodeAlias, makePseudoCls(...))
-            for (alias, pseudo_list) in values_result.values {
-                all_values.insert(alias, pseudo_list);
-            }
-
-            // Collect implied nodegroups (lines 347-349)
-            for ng in values_result.implied_nodegroups.iter() {
-                implied_nodegroups_set.insert(ng.clone());
-            }
-
-            // Mark nodegroup as loaded (line 350)
-            all_nodegroups.insert(nodegroup_id.to_string(), true);
-
-            // Recursive processing of implied nodegroups (lines 355-373)
-            if do_implied_nodegroups && !implied_nodegroups_set.is_empty() {
-                let implied_list: Vec<String> = implied_nodegroups_set.iter().cloned().collect();
-
-                for implied_ng in implied_list.iter() {
-                    // Recursive call to internal version - NO serialization!
-                    let implied_result = self.ensure_nodegroup_internal(
-                        all_values_map,
-                        all_nodegroups,
-                        implied_ng,
-                        true, // addIfMissing = true for implied
-                        nodegroup_permissions,
-                        true, // doImpliedNodegroups = true
-                    )?;
-
-                    // Merge implied values (lines 369-371)
-                    // PORT: Phase 4c - Merge PseudoListInner values instead of recipes
-                    // PORT: js/graphManager.ts:369-371 - merging newValues from recursive call
-                    for (alias, pseudo_list) in implied_result.values {
-                        all_values.insert(alias, pseudo_list);
-                    }
-
-                    // Update all_nodegroups from recursive call (already mutated in place!)
-                    // No need to deserialize and merge - we passed &mut all_nodegroups
-                }
-
-                // Clear implied set after processing (line 373)
-                implied_nodegroups_set.clear();
-            }
-        }
-
-        // Return structured result
-        record_timing("eng: total", now_ms() - fn_start);
+        record_timing("eng: total (delegated to core)", now_ms() - fn_start);
         Ok(EnsureNodegroupResult {
-            values: all_values,
-            implied_nodegroups: implied_nodegroups_set.into_iter().collect(),
-            all_nodegroups_map: all_nodegroups.clone(),
+            values,
+            implied_nodegroups: core_result.implied_nodegroups,
+            all_nodegroups_map: core_result.all_nodegroups_map,
         })
     }
 
@@ -2241,13 +2141,20 @@ impl WASMResourceInstanceWrapper {
             })?;
 
         // Phase 4h: Deserialize nodegroup permissions
-        let nodegroup_permissions: HashMap<String, bool> =
+        // JS sends HashMap<String, bool> — convert to PermissionRule at the boundary.
+        // Non-boolean values (if any slip through) are flattened to false with a warning.
+        let bool_permissions: HashMap<String, bool> =
             serde_wasm_bindgen::from_value(nodegroup_permissions_js).map_err(|e| {
                 JsValue::from_str(&format!(
                     "Failed to deserialize nodegroup_permissions: {:?}",
                     e
                 ))
             })?;
+        let nodegroup_permissions: HashMap<String, alizarin_core::PermissionRule> =
+            bool_permissions
+                .into_iter()
+                .map(|(k, v)| (k, alizarin_core::PermissionRule::Boolean(v)))
+                .collect();
 
         // Call internal implementation with Rust-native types
         let result = self.ensure_nodegroup_internal(
@@ -2281,10 +2188,14 @@ impl WASMResourceInstanceWrapper {
     ) -> Result<WasmPopulateResult, JsValue> {
         let populate_start = now_ms();
 
-        // Get nodegroup permissions directly from the model (already set via setPermittedNodegroups)
+        // Get nodegroup permissions from model via ModelAccess trait (returns PermissionRule,
+        // not flattened bools, so per-tile conditional filtering works correctly)
         let t0 = now_ms();
-        let nodegroup_permissions: HashMap<String, bool> =
-            self.with_model_core_mut(|core| Ok(core.get_permitted_nodegroups()))?;
+        let nodegroup_permissions: HashMap<String, alizarin_core::PermissionRule> = self
+            .with_model_core(|core| {
+                use alizarin_core::ModelAccess;
+                Ok(core.get_permitted_nodegroups())
+            })?;
         record_timing("populate: get permissions from model", now_ms() - t0);
 
         // Check if pseudo_cache has been populated (not just tiles loaded).
@@ -2476,8 +2387,8 @@ impl WASMResourceInstanceWrapper {
         })
     }
 
-    /// PORT: graphManager.ts lines 505-643
-    /// Simplified implementation - builds PseudoListInner directly without recipe intermediate
+    /// Delegates to core's standalone `values_from_resource_nodegroup`, then wraps
+    /// the PseudoListCore results as PseudoListInner for WASM consumption.
     fn values_from_resource_nodegroup_internal(
         &self,
         existing_values: HashMap<String, Option<bool>>,
@@ -2486,36 +2397,7 @@ impl WASMResourceInstanceWrapper {
     ) -> Result<ValuesFromNodegroupResult, JsValue> {
         let fn_start = now_ms();
 
-        // Use cached Arc refs from instance (no cloning needed - just Arc::clone which is cheap)
         let core_ref = self.core.borrow();
-        let node_objs_wasm = core_ref
-            .cached_nodes
-            .as_ref()
-            .ok_or_else(|| JsValue::from_str("Model nodes not cached"))?;
-        let edges = core_ref
-            .cached_edges
-            .as_ref()
-            .ok_or_else(|| JsValue::from_str("Model edges not cached"))?;
-        let reverse_edges = core_ref
-            .cached_reverse_edges
-            .as_ref()
-            .ok_or_else(|| JsValue::from_str("Model reverse edges not cached"))?;
-        let nodes_by_nodegroup = core_ref
-            .cached_nodes_by_nodegroup
-            .as_ref()
-            .ok_or_else(|| JsValue::from_str("Model nodes-by-nodegroup not cached"))?;
-
-        let mut values: HashMap<String, PseudoListInner> = HashMap::new();
-        let mut implied_nodegroups: HashSet<String> = HashSet::new();
-
-        // PORT: impliedNodes - parent nodes in same nodegroup that need pseudo values
-        // Key: (nodeid, tileid) tuple
-        let mut implied_nodes: HashMap<(String, String), (Arc<StaticNode>, Arc<StaticTile>)> =
-            HashMap::new();
-        // Track which (nodeid, tileid) combinations we've already processed
-        let mut tile_nodes_seen: HashSet<(String, String)> = HashSet::new();
-
-        // Collect tiles for this nodegroup (core_ref already borrowed above)
         let tiles_store = match core_ref.tiles.as_ref() {
             Some(t) => t,
             None => {
@@ -2526,173 +2408,28 @@ impl WASMResourceInstanceWrapper {
             }
         };
 
-        // Build a map of alias -> (core node, tiles)
-        type AliasTilesMap = HashMap<String, (Arc<StaticNode>, Vec<Option<Arc<StaticTile>>>)>;
-        let mut alias_tiles: AliasTilesMap = HashMap::new();
+        let core_result = core_ref.with_model_core(|model| {
+            alizarin_core::values_from_resource_nodegroup(
+                &existing_values,
+                &nodegroup_tile_ids,
+                nodegroup_id,
+                model,
+                tiles_store,
+            )
+            .map_err(|e| JsValue::from_str(&format!("{:?}", e)))
+        })?;
 
-        // Helper to add a pseudo for a node
-        let mut add_to_alias_tiles =
-            |node: &Arc<StaticNode>, tile: Option<Arc<StaticTile>>, tile_id: Option<&String>| {
-                let alias = node.alias.clone().unwrap_or_default();
-                if alias.is_empty() {
-                    return;
-                }
+        // Wrap PseudoListCore → PseudoListInner
+        let values = core_result
+            .values
+            .into_iter()
+            .map(|(alias, list_core)| (alias, PseudoListInner::from_core(list_core)))
+            .collect();
 
-                // Track that we've seen this (nodeid, tileid) combination
-                if let Some(tid) = tile_id {
-                    tile_nodes_seen.insert((node.nodeid.clone(), tid.clone()));
-                }
-
-                // Skip if already exists as truthy
-                if let Some(Some(true)) = existing_values.get(&alias) {
-                    return;
-                }
-
-                let entry = alias_tiles
-                    .entry(alias.clone())
-                    .or_insert_with(|| (Arc::clone(node), Vec::new()));
-                entry.1.push(tile.clone());
-            };
-
-        let t1 = now_ms();
-        // Get nodes for this nodegroup directly from index (O(1) vs O(all_nodes))
-        let nodegroup_nodes = nodes_by_nodegroup.get(nodegroup_id);
-
-        for tile_id in &nodegroup_tile_ids {
-            let tile = if tile_id.is_empty() {
-                None
-            } else {
-                tiles_store.get(tile_id).map(|t| Arc::new(t.clone()))
-            };
-            let tile_nodegroup_id = tile.as_ref().map(|t| t.nodegroup_id.clone());
-
-            // Iterate only nodes in this nodegroup (using pre-built index)
-            if let Some(nodes_in_ng) = nodegroup_nodes {
-                for node_wasm in nodes_in_ng.iter() {
-                    // Add pseudo for this node (sampled timing to reduce overhead)
-                    let do_sample = should_sample("vfrn: add_to_alias_tiles", DEFAULT_SAMPLE_RATE);
-                    let t1b = if do_sample { now_ms() } else { 0.0 };
-                    add_to_alias_tiles(
-                        node_wasm,
-                        tile.clone(),
-                        if tile_id.is_empty() {
-                            None
-                        } else {
-                            Some(tile_id)
-                        },
-                    );
-                    if do_sample {
-                        record_timing_sampled(
-                            "vfrn: add_to_alias_tiles",
-                            now_ms() - t1b,
-                            DEFAULT_SAMPLE_RATE,
-                        );
-                    }
-
-                    // Use reverse_edges for O(1) parent lookup instead of O(edges) scan
-                    // PORT: lines 523-540 of old TS
-                    let do_sample_parent =
-                        should_sample("vfrn: parent_lookup", DEFAULT_SAMPLE_RATE);
-                    let t_parent = if do_sample_parent { now_ms() } else { 0.0 };
-
-                    if let Some(parent_ids) = reverse_edges.get(&node_wasm.nodeid) {
-                        // Only process first parent (like TS "break" behavior)
-                        if let Some(parent_id) = parent_ids.first() {
-                            if let Some(domain_node) = node_objs_wasm.get(parent_id) {
-                                if let Some(ref domain_ng_id) = domain_node.nodegroup_id {
-                                    // Check for implied nodegroups (different nodegroup)
-                                    if !domain_ng_id.is_empty() && domain_ng_id != nodegroup_id {
-                                        implied_nodegroups.insert(domain_ng_id.clone());
-                                    }
-
-                                    // PORT: Check for implied nodes (same nodegroup, parent node)
-                                    // Condition: domain node is in same nodegroup as tile,
-                                    // domain node is NOT the nodegroup root (nodegroup_id != nodeid),
-                                    // and we haven't already processed this (nodeid, tileid) combo
-                                    if let Some(ref tile_ng_id) = tile_nodegroup_id {
-                                        if domain_ng_id == tile_ng_id
-                                            && domain_ng_id != &domain_node.nodeid
-                                            && !tile_id.is_empty()
-                                        {
-                                            let key = (domain_node.nodeid.clone(), tile_id.clone());
-                                            if let Some(t) = tile.as_ref() {
-                                                implied_nodes.entry(key).or_insert_with(|| {
-                                                    (Arc::clone(domain_node), Arc::clone(t))
-                                                });
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if do_sample_parent {
-                        record_timing_sampled(
-                            "vfrn: parent_lookup",
-                            now_ms() - t_parent,
-                            DEFAULT_SAMPLE_RATE,
-                        );
-                    }
-                }
-            }
-        }
-        record_timing("vfrn: tile+node loop (O(tiles*nodes_in_ng))", now_ms() - t1);
-
-        // PORT: Process implied nodes (lines 599-609)
-        // These are parent semantic nodes that share the same tile
-        // Note: We inline the add_to_alias_tiles logic here to avoid borrow checker issues
-        let t2 = now_ms();
-        for (_key, (node, tile)) in implied_nodes.iter() {
-            let tile_id = tile.tileid.as_ref();
-            // Only add if we haven't seen this (nodeid, tileid) combination yet
-            if let Some(tid) = tile_id {
-                let key = (node.nodeid.clone(), tid.clone());
-                if !tile_nodes_seen.contains(&key) {
-                    // Inline add_to_alias_tiles logic
-                    let alias = node.alias.clone().unwrap_or_default();
-                    if !alias.is_empty() {
-                        // Track that we've seen this (nodeid, tileid) combination
-                        tile_nodes_seen.insert(key);
-
-                        // Skip if already exists as truthy
-                        if existing_values.get(&alias) != Some(&Some(true)) {
-                            let entry = alias_tiles
-                                .entry(alias.clone())
-                                .or_insert_with(|| (Arc::clone(node), Vec::new()));
-                            entry.1.push(Some(Arc::clone(tile)));
-                        }
-                    }
-                }
-            }
-        }
-        record_timing("vfrn: implied nodes loop", now_ms() - t2);
-
-        // Get nodegroups for cardinality check (use cached ref - no cloning)
-        let t3 = now_ms();
-        let nodegroups = core_ref.cached_nodegroups.as_ref();
-        record_timing("vfrn: get nodegroups (cached)", now_ms() - t3);
-
-        // Convert to PseudoListInner
-        let t4 = now_ms();
-        for (alias, (node, tiles)) in alias_tiles {
-            let is_single = is_node_single_cardinality(&node, nodegroups.map(|v| &**v));
-
-            // Sampled timing for from_node_tiles (hot loop)
-            let do_sample = should_sample("vfrn: from_node_tiles", DEFAULT_SAMPLE_RATE);
-            let t4b = if do_sample { now_ms() } else { 0.0 };
-            let pseudo_list = PseudoListInner::from_node_tiles(node, tiles, edges, None, is_single);
-            if do_sample {
-                record_timing_sampled("vfrn: from_node_tiles", now_ms() - t4b, DEFAULT_SAMPLE_RATE);
-            }
-            values.insert(alias, pseudo_list);
-        }
-        record_timing("vfrn: convert to PseudoListInner", now_ms() - t4);
-
-        record_timing("vfrn: total", now_ms() - fn_start);
+        record_timing("vfrn: total (delegated to core)", now_ms() - fn_start);
         Ok(ValuesFromNodegroupResult {
             values,
-            implied_nodegroups: implied_nodegroups.into_iter().collect(),
+            implied_nodegroups: core_result.implied_nodegroups,
         })
     }
 
@@ -2873,65 +2610,60 @@ impl WASMResourceInstanceWrapper {
     ///
     /// Parameters:
     /// - path: Dot-separated path of node aliases (e.g. "building.name" or ".building.name")
+    /// - filter_tile_id: Optional parent tile ID to filter results by parent-child relationship
     ///
     /// Returns: PseudoList for the target node, or throws on invalid path
     #[wasm_bindgen(js_name = getValuesAtPath)]
-    pub fn get_values_at_path(&self, path: &str) -> Result<PseudoList, JsValue> {
-        // Get model data needed for path resolution
-        let (root_node, nodes, edges, nodegroups) = self.with_model_core_mut(|core| {
-            let root = core.get_root_node().map_err(|e| JsValue::from_str(&e))?;
-            let nodes = core
-                .get_nodes_internal()
-                .ok_or_else(|| JsValue::from_str("Nodes not initialized"))?
-                .clone();
-            let edges = core
-                .get_edges_internal()
-                .ok_or_else(|| JsValue::from_str("Edges not initialized"))?
-                .clone();
-            let nodegroups = core.get_nodegroups_internal().cloned();
-            Ok((root, nodes, edges, nodegroups))
+    pub fn get_values_at_path(
+        &self,
+        path: &str,
+        filter_tile_id: Option<String>,
+    ) -> Result<PseudoList, JsValue> {
+        // Borrow core once — avoid double-borrow of the RefCell
+        let core_ref = self.core.borrow();
+
+        // Ensure model caches are built
+        core_ref.with_model_core_mut(|model_core| {
+            model_core
+                .ensure_caches_built()
+                .map_err(|e| JsValue::from_str(&e))
         })?;
 
-        // Resolve path to target node info
-        let info = alizarin_core::resolve_path_segments(
-            path,
-            &root_node,
-            &nodes,
-            &edges,
-            nodegroups.as_ref(),
-        )
-        .map_err(|e| JsValue::from_str(&e.to_string()))?;
-
-        // Get tiles for the target's nodegroup from WASM tile store
-        let core_ref = self.core.borrow();
         let tiles_store = core_ref
             .tiles
             .as_ref()
             .ok_or_else(|| JsValue::from_str("Tiles not initialized"))?;
-        let tile_ids = core_ref
-            .nodegroup_index
-            .get(&info.nodegroup_id)
-            .cloned()
-            .unwrap_or_default();
 
-        // Build PseudoValueInner for each tile
-        let mut values = Vec::new();
-        for tile_id in &tile_ids {
-            if let Some(tile) = tiles_store.get(tile_id) {
-                let tile_arc = Arc::new(tile.clone());
+        // Delegate path resolution and tile filtering to core's standalone function
+        let (info, tiles) = core_ref.with_model_core(|model| {
+            alizarin_core::resolve_and_filter_tiles(
+                path,
+                model,
+                tiles_store,
+                &core_ref.nodegroup_index,
+                filter_tile_id.as_deref(),
+            )
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+        })?;
+
+        drop(core_ref);
+
+        // Build PseudoValueInner from core results — inner/outer handled by PseudoValueCore
+        let values: Vec<PseudoValueInner> = tiles
+            .into_iter()
+            .map(|tile| {
                 let tile_data = tile.data.get(&info.target_node.nodeid).cloned();
-                let pseudo_value = PseudoValueInner::from_node_and_tile(
+                let tile_arc = Arc::new(tile);
+                PseudoValueInner::from_node_and_tile(
                     Arc::clone(&info.target_node),
                     Some(tile_arc),
                     tile_data,
                     info.child_node_ids.clone(),
-                );
-                values.push(pseudo_value);
-            }
-        }
+                )
+            })
+            .collect();
 
         let alias = info.target_node.alias.clone().unwrap_or_default();
-
         let pseudo_list =
             PseudoListInner::from_values_with_cardinality(alias, values, info.is_single);
         Ok(PseudoList::from_rust(pseudo_list))

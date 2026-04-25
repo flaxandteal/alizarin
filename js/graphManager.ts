@@ -232,6 +232,11 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     return this.wasmWrapper.getDescriptors(update);
   }
 
+  getValuesAtPath(path: string, filterTileId?: string) {
+    const rustValue = this.wasmWrapper.getValuesAtPath(path, filterTileId);
+    return wrapRustPseudo(rustValue, this.wkri, this.model);
+  }
+
   addPseudo(childNode: StaticNode, tile: StaticTile | null): IPseudo {
     const key = childNode.alias;
     if (!key) {

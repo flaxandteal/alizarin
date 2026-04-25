@@ -74,7 +74,7 @@ pub use graph::{
 };
 
 // Loader
-pub use loader::{LoaderError, PrebuildInfo, PrebuildLoader};
+pub use loader::{parse_business_data_bytes, LoaderError, PrebuildInfo, PrebuildLoader};
 
 // Interner types
 #[cfg(feature = "multi-threaded")]
@@ -175,9 +175,11 @@ pub use pseudo_value_core::{
 
 // Instance wrapper core types (for populate, semantic traversal)
 pub use instance_wrapper_core::{
-    is_node_single_cardinality, is_node_single_cardinality_with, matches_semantic_child,
-    EnsureNodegroupResult, LoadState, ModelAccess, PopulateResult, ResourceInstanceWrapperCore,
-    SemanticChildError, SemanticChildResult, ValuesFromNodegroupResult,
+    create_pseudo_list_from_tiles, ensure_nodegroup, is_node_single_cardinality,
+    is_node_single_cardinality_with, matches_semantic_child, resolve_and_filter_tiles,
+    values_from_resource_nodegroup, EnsureNodegroupResult, LoadState, ModelAccess, PopulateResult,
+    ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult,
+    ValuesFromNodegroupResult,
 };
 
 // Path resolution (dot-separated path → nodegroup tiles)
@@ -187,7 +189,7 @@ pub use path_resolution::{resolve_path_segments, PathError, PathResolutionInfo};
 pub use tile_source::{TileSource, TileSourceError};
 
 // RDM cache types
-pub use rdm_cache::{RdmCache, RdmCollection, RdmConcept};
+pub use rdm_cache::{skos_to_rdm_collection, RdmCache, RdmCollection, RdmConcept};
 
 // RDM namespace utilities (deterministic UUID generation)
 pub use rdm_namespace::{

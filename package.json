@@ -28,12 +28,15 @@
       "require": "./dist/alizarin.umd.cjs"
     },
     "./full": {
+      "types": "./dist/main.d.ts",
       "import": "./dist/alizarin.full.js"
     },
     "./inline": {
+      "types": "./dist/main.d.ts",
       "import": "./dist/alizarin.inline.js"
     },
     "./inline-full": {
+      "types": "./dist/main.d.ts",
       "import": "./dist/alizarin.inline-full.js"
     },
     "./validation": {

@@ -2988,6 +2988,26 @@ impl StaticResource {
         }
     }
 
+    /// Set a single key in a tile's data map, mutating in place without cloning.
+    /// Returns true if the tile was found and updated, false otherwise.
+    #[wasm_bindgen(js_name = setTileDataForNode)]
+    pub fn set_tile_data_for_node(&mut self, tile_id: &str, node_id: &str, value: JsValue) -> bool {
+        if let Some(tiles) = &mut self.0.tiles {
+            for tile in tiles.iter_mut() {
+                if tile.tileid.as_deref() == Some(tile_id) {
+                    match serde_wasm_bindgen::from_value::<serde_json::Value>(value) {
+                        Ok(json_val) => {
+                            tile.data.insert(node_id.to_string(), json_val);
+                            return true;
+                        }
+                        Err(_) => return false,
+                    }
+                }
+            }
+        }
+        false
+    }
+
     #[wasm_bindgen(getter)]
     pub fn metadata(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&self.0.metadata).unwrap_or(JsValue::NULL)
@@ -3236,6 +3256,65 @@ impl StaticResourceRegistry {
             store_full.unwrap_or(false),
             include_caches.unwrap_or(true),
         );
+    }
+
+    /// Load a business_data file from raw bytes, parse it entirely in Rust,
+    /// and merge the resources into this registry. Returns a lightweight JS
+    /// array of `{ resourceinstanceid, graph_id, isPublic }` objects for
+    /// enumeration — no full resource data crosses to V8.
+    ///
+    /// Callers pass in the result of `fs.readFile(path)` (a Buffer / Uint8Array).
+    ///
+    /// @param bytes - Raw file content (business_data JSON as bytes)
+    /// @param storeFull - If true, store full resources; if false, store only summaries
+    /// @param includeCaches - If true, also merge related resources from __cache
+    /// @returns Array of { resourceinstanceid, graph_id, isPublic } objects
+    #[wasm_bindgen(js_name = loadFromBusinessDataBytes)]
+    pub fn load_from_business_data_bytes(
+        &mut self,
+        bytes: &[u8],
+        store_full: Option<bool>,
+        include_caches: Option<bool>,
+    ) -> Result<JsValue, JsValue> {
+        let resources = alizarin_core::parse_business_data_bytes(bytes)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse business data: {}", e)))?;
+
+        // Collect lightweight refs before merge_from_resources consumes.
+        // Use a concrete struct — serde_wasm_bindgen 0.6 doesn't handle
+        // serde_json::Value correctly (serializes as empty objects).
+        #[derive(serde::Serialize)]
+        struct ResourceRef {
+            resourceinstanceid: String,
+            graph_id: String,
+            #[serde(rename = "isPublic")]
+            is_public: bool,
+        }
+
+        let refs: Vec<ResourceRef> = resources
+            .iter()
+            .map(|r| {
+                let is_public = r
+                    .scopes
+                    .as_ref()
+                    .and_then(|s| s.as_array())
+                    .map(|arr| arr.iter().any(|v| v.as_str() == Some("public")))
+                    .unwrap_or(false);
+                ResourceRef {
+                    resourceinstanceid: r.resourceinstance.resourceinstanceid.clone(),
+                    graph_id: r.resourceinstance.graph_id.clone(),
+                    is_public,
+                }
+            })
+            .collect();
+
+        self.0.merge_from_resources(
+            &resources,
+            store_full.unwrap_or(true),
+            include_caches.unwrap_or(true),
+        );
+
+        serde_wasm_bindgen::to_value(&refs)
+            .map_err(|e| JsValue::from_str(&format!("Failed to serialize refs: {}", e)))
     }
 
     /// Populate __cache on resources with summaries for referenced resources

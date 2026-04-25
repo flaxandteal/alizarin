@@ -577,6 +577,103 @@ impl RdmCache {
 }
 
 // =============================================================================
+// SKOS → RDM Conversion
+// =============================================================================
+
+use crate::skos::{SkosCollection, SkosConcept};
+
+impl RdmCache {
+    /// Convert a `SkosCollection` to an `RdmCollection` and add it to the cache.
+    ///
+    /// Returns the collection ID.
+    pub fn add_from_skos_collection(&mut self, skos: &SkosCollection) -> String {
+        let rdm = skos_to_rdm_collection(skos);
+        let id = rdm.id.clone();
+        self.add_collection(rdm);
+        id
+    }
+
+    /// Add multiple SKOS collections to the cache.
+    ///
+    /// Returns the list of collection IDs added.
+    pub fn add_from_skos_collections(&mut self, collections: &[SkosCollection]) -> Vec<String> {
+        collections
+            .iter()
+            .map(|skos| self.add_from_skos_collection(skos))
+            .collect()
+    }
+}
+
+/// Convert a `SkosCollection` (parsed from SKOS XML or JSON) to an `RdmCollection`
+/// suitable for label lookups.
+///
+/// Walks the hierarchical `concepts` tree recursively, setting broader/narrower
+/// relationships. Falls back to `all_concepts` for flat structures.
+pub fn skos_to_rdm_collection(skos: &SkosCollection) -> RdmCollection {
+    let mut rdm = RdmCollection::with_name(
+        skos.id.clone(),
+        skos.pref_labels
+            .get("en")
+            .map(|v| v.value.clone())
+            .unwrap_or_else(|| skos.id.clone()),
+    );
+
+    fn add_concept_recursive(
+        rdm: &mut RdmCollection,
+        skos_concept: &SkosConcept,
+        parent_id: Option<&str>,
+    ) {
+        let mut pref_label: HashMap<String, RdmValue> = HashMap::new();
+        for (lang, skos_value) in &skos_concept.pref_labels {
+            pref_label.insert(
+                lang.clone(),
+                RdmValue::new(skos_value.id.clone(), skos_value.value.clone()),
+            );
+        }
+
+        let narrower: Vec<String> = skos_concept
+            .children
+            .as_ref()
+            .map(|children| children.iter().map(|c| c.id.clone()).collect())
+            .unwrap_or_default();
+
+        let broader = parent_id.map(|p| vec![p.to_string()]).unwrap_or_default();
+
+        let rdm_concept = RdmConcept {
+            id: skos_concept.id.clone(),
+            pref_label,
+            alt_labels: HashMap::new(),
+            broader,
+            narrower,
+            scope_note: HashMap::new(),
+        };
+
+        rdm.add_concept(rdm_concept);
+
+        if let Some(ref children) = skos_concept.children {
+            for child in children {
+                add_concept_recursive(rdm, child, Some(&skos_concept.id));
+            }
+        }
+    }
+
+    for skos_concept in skos.concepts.values() {
+        add_concept_recursive(&mut rdm, skos_concept, None);
+    }
+
+    // Fallback for flat structures (all_concepts without hierarchy)
+    if rdm.is_empty() && !skos.all_concepts.is_empty() {
+        for skos_concept in skos.all_concepts.values() {
+            if !rdm.has_concept(&skos_concept.id) {
+                add_concept_recursive(&mut rdm, skos_concept, None);
+            }
+        }
+    }
+
+    rdm
+}
+
+// =============================================================================
 // ExternalResolver Implementation
 // =============================================================================
 

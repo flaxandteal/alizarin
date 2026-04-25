@@ -234,7 +234,11 @@ pub struct TileBuilderContext<'a> {
 }
 
 impl PseudoValueCore {
-    /// Create a new PseudoValueCore from a node and optional tile
+    /// Create a new PseudoValueCore from a node and optional tile.
+    ///
+    /// Handles inner/outer split: if the node has children and is not semantic,
+    /// an inner PseudoValueCore is created to hold the child traversal path.
+    /// The outer gets the tile_data; the inner gets the child_node_ids.
     pub fn from_node_and_tile(
         node: Arc<StaticNode>,
         tile: Option<Arc<StaticTile>>,
@@ -242,11 +246,38 @@ impl PseudoValueCore {
         child_node_ids: Vec<String>,
     ) -> Self {
         let independent = tile.is_none();
+
+        let has_children = !child_node_ids.is_empty();
+        let is_semantic = node.datatype == "semantic";
+        let should_have_inner = has_children && !is_semantic;
+
+        let inner = if should_have_inner {
+            Some(Box::new(PseudoValueCore {
+                node: node.clone(),
+                child_node_ids: child_node_ids.clone(),
+                is_collector: node.is_collector,
+                inner: None,
+                is_inner: true,
+                tile: tile.clone(),
+                tile_data: None, // Inner doesn't get tile_data
+                independent,
+                original_tile: tile.clone(),
+            }))
+        } else {
+            None
+        };
+
         PseudoValueCore {
             node,
-            child_node_ids,
+            // Outer gets empty child_node_ids if it has inner
+            // (children traverse through inner instead)
+            child_node_ids: if inner.is_some() {
+                vec![]
+            } else {
+                child_node_ids
+            },
             is_collector: false,
-            inner: None,
+            inner,
             is_inner: false,
             tile: tile.clone(),
             tile_data,

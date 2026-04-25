@@ -2,6 +2,7 @@ import { ArchesClient, ArchesClientRemote } from './client';
 import { staticStore } from './staticStore';
 import { CardComponent, Widget } from './cards';
 import { StaticTranslatableString, StaticCollection, StaticConstraint, StaticEdge, StaticTile, StaticGraph, StaticNode, StaticNodegroup, StaticResource, StaticResourceSummary } from "./static-types";
+import { PseudoValue, PseudoUnavailable } from "./pseudos.ts";
 import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper } from "../pkg/alizarin";
 import { SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
@@ -46,6 +47,7 @@ export declare class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implement
     loadNodes(aliases: Array<string>): Promise<void>;
     getName(update?: boolean): string;
     getDescriptors(update?: boolean): import("./static-types").StaticResourceDescriptors;
+    getValuesAtPath(path: string, filterTileId?: string): PseudoValue<any> | PseudoUnavailable | import("./pseudos.ts").PseudoList;
     addPseudo(childNode: StaticNode, tile: StaticTile | null): IPseudo;
     allEntries(): MapIterator<[string, Array<IPseudo> | false | null]>;
     keys(): Promise<any>;

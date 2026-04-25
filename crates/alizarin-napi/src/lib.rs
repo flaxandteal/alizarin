@@ -90,16 +90,6 @@ impl NapiPrebuildLoader {
         serde_json::to_value(&resources).map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
-    /// Load all full resources from a single business data file (all graphs).
-    #[napi]
-    pub fn load_all_full_resources_from_file(&self, path: String) -> Result<serde_json::Value> {
-        let resources = self
-            .inner
-            .load_all_full_resources_from_file(std::path::Path::new(&path))
-            .map_err(loader_err)?;
-        serde_json::to_value(&resources).map_err(|e| napi::Error::from_reason(e.to_string()))
-    }
-
     /// Find all business data JSON files in the prebuild directory.
     #[napi]
     pub fn find_business_data_files(&self) -> Result<Vec<String>> {

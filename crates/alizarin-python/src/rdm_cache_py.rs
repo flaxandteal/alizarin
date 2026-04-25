@@ -148,12 +148,48 @@ pub fn add_from_skos_xml_to_global_cache(
             *guard = Some(RdmCache::default());
         }
         if let Some(ref mut cache) = *guard {
-            for skos_coll in skos_collections {
-                let rdm_collection = RdmCache::skos_to_rdm_collection(&skos_coll);
-                let id = rdm_collection.id.clone();
-                cache.inner.add_collection(rdm_collection);
-                added_ids.push(id);
-            }
+            added_ids = cache.inner.add_from_skos_collections(&skos_collections);
+        }
+    }
+
+    Ok(added_ids)
+}
+
+/// Add collections from SKOS JSON directly to the global RDM cache.
+///
+/// Accepts a JSON string containing either a single SkosCollection or an
+/// array of SkosCollections (as produced by `concept_hierarchy.json` or
+/// Arches `reference_data/collections/*.json`).
+///
+/// Args:
+///     json_content: JSON string (single SkosCollection or array)
+///
+/// Returns:
+///     List of collection IDs that were added
+///
+/// Example:
+///     ids = add_from_skos_json_to_global_cache(json_string)
+#[pyfunction]
+pub fn add_from_skos_json_to_global_cache(json_content: &str) -> PyResult<Vec<String>> {
+    let skos_collections: Vec<SkosCollection> =
+        if let Ok(single) = serde_json::from_str::<SkosCollection>(json_content) {
+            vec![single]
+        } else if let Ok(multi) = serde_json::from_str::<Vec<SkosCollection>>(json_content) {
+            multi
+        } else {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Failed to parse JSON as SkosCollection or Vec<SkosCollection>",
+            ));
+        };
+
+    let mut added_ids = Vec::new();
+
+    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
+        if guard.is_none() {
+            *guard = Some(RdmCache::default());
+        }
+        if let Some(ref mut cache) = *guard {
+            added_ids = cache.inner.add_from_skos_collections(&skos_collections);
         }
     }
 
@@ -1497,78 +1533,6 @@ impl RdmCache {
     pub fn inner_mut(&mut self) -> &mut CoreRdmCache {
         &mut self.inner
     }
-
-    /// Convert SKOS collection to RDM collection
-    fn skos_to_rdm_collection(skos: &SkosCollection) -> CoreRdmCollection {
-        let mut rdm = CoreRdmCollection::with_name(
-            skos.id.clone(),
-            skos.pref_labels
-                .get("en")
-                .map(|v| v.value.clone())
-                .unwrap_or_else(|| skos.id.clone()),
-        );
-
-        // Recursive function to add a concept and its children
-        // parent_id is None for top-level concepts
-        fn add_concept_recursive(
-            rdm: &mut CoreRdmCollection,
-            skos_concept: &SkosConcept,
-            parent_id: Option<&str>,
-        ) {
-            let mut pref_label: HashMap<String, CoreRdmValue> = HashMap::new();
-            for (lang, skos_value) in &skos_concept.pref_labels {
-                // Use the existing value ID from SKOS
-                pref_label.insert(
-                    lang.clone(),
-                    CoreRdmValue::new(skos_value.id.clone(), skos_value.value.clone()),
-                );
-            }
-
-            // Extract narrower IDs from children
-            let narrower: Vec<String> = skos_concept
-                .children
-                .as_ref()
-                .map(|children| children.iter().map(|c| c.id.clone()).collect())
-                .unwrap_or_default();
-
-            // Set broader to parent if this is a child concept
-            let broader = parent_id.map(|p| vec![p.to_string()]).unwrap_or_default();
-
-            let rdm_concept = CoreRdmConcept {
-                id: skos_concept.id.clone(),
-                pref_label,
-                alt_labels: HashMap::new(),
-                broader,
-                narrower,
-                scope_note: HashMap::new(),
-            };
-
-            rdm.add_concept(rdm_concept);
-
-            // Recursively add children with this concept as parent
-            if let Some(ref children) = skos_concept.children {
-                for child in children {
-                    add_concept_recursive(rdm, child, Some(&skos_concept.id));
-                }
-            }
-        }
-
-        // Add all top-level concepts (and their children recursively)
-        for skos_concept in skos.concepts.values() {
-            add_concept_recursive(&mut rdm, skos_concept, None);
-        }
-
-        // Also add from all_concepts if not already added (fallback for flat structures)
-        if rdm.is_empty() && !skos.all_concepts.is_empty() {
-            for skos_concept in skos.all_concepts.values() {
-                if !rdm.has_concept(&skos_concept.id) {
-                    add_concept_recursive(&mut rdm, skos_concept, None);
-                }
-            }
-        }
-
-        rdm
-    }
 }
 
 #[pymethods]
@@ -1723,16 +1687,7 @@ impl RdmCache {
             ))
         })?;
 
-        let mut added_ids = Vec::new();
-
-        for skos_coll in skos_collections {
-            let rdm_collection = Self::skos_to_rdm_collection(&skos_coll);
-            let id = rdm_collection.id.clone();
-            self.inner.add_collection(rdm_collection);
-            added_ids.push(id);
-        }
-
-        Ok(added_ids)
+        Ok(self.inner.add_from_skos_collections(&skos_collections))
     }
 
     /// Get a collection by ID
@@ -2007,6 +1962,7 @@ pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(has_global_rdm_cache, m)?)?;
     m.add_function(wrap_pyfunction!(add_collection_to_global_cache, m)?)?;
     m.add_function(wrap_pyfunction!(add_from_skos_xml_to_global_cache, m)?)?;
+    m.add_function(wrap_pyfunction!(add_from_skos_json_to_global_cache, m)?)?;
     m.add_function(wrap_pyfunction!(update_collection_in_global_cache, m)?)?;
     m.add_function(wrap_pyfunction!(
         update_collection_nested_in_global_cache,

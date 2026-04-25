@@ -22,6 +22,10 @@ pub enum PathError {
         segment: String,
         parent_alias: Option<String>,
     },
+    /// `_` was used on a node that is not a collector (no inner/outer split)
+    UnderscoreOnNonCollector { node_alias: String },
+    /// `*` was used on a single-cardinality node
+    StarOnSingleCardinality { node_alias: String },
     /// The target node has no nodegroup_id
     NoNodegroup { node_alias: String },
     /// Model data (nodes, edges, etc.) was not available
@@ -47,6 +51,20 @@ impl std::fmt::Display for PathError {
                 } else {
                     write!(f, "No child with alias '{}' found under root node", segment)
                 }
+            }
+            PathError::UnderscoreOnNonCollector { node_alias } => {
+                write!(
+                    f,
+                    "'_' used on node '{}' which is not a collector (no inner/outer split)",
+                    node_alias
+                )
+            }
+            PathError::StarOnSingleCardinality { node_alias } => {
+                write!(
+                    f,
+                    "'*' used on node '{}' which is single-cardinality",
+                    node_alias
+                )
             }
             PathError::NoNodegroup { node_alias } => {
                 write!(f, "Node '{}' has no nodegroup_id", node_alias)
@@ -82,6 +100,8 @@ pub struct PathResolutionInfo {
     pub target_node: Arc<StaticNode>,
     /// The nodegroup the target node belongs to
     pub nodegroup_id: String,
+    /// The nodegroup of the parent (penultimate) node in the path, if any
+    pub parent_nodegroup_id: Option<String>,
     /// Child node IDs of the target (from edges)
     pub child_node_ids: Vec<String>,
     /// Whether this node is single-cardinality
@@ -123,8 +143,29 @@ pub fn resolve_path_segments(
     }
 
     let mut current_node = Arc::clone(root_node);
+    let mut parent_nodegroup_id: Option<String> = None;
 
     for segment in &segments {
+        // "_" navigates into the inner part of a collector's inner/outer split.
+        // At graph level this is a no-op, but validate the node is actually a collector.
+        if *segment == "_" {
+            if !current_node.is_collector {
+                return Err(PathError::UnderscoreOnNonCollector {
+                    node_alias: current_node.alias.clone().unwrap_or_default(),
+                });
+            }
+            continue;
+        }
+        // "*" asserts cardinality-N. Validate the node is not single-cardinality.
+        if *segment == "*" {
+            if is_node_single_cardinality(&current_node, nodegroups) {
+                return Err(PathError::StarOnSingleCardinality {
+                    node_alias: current_node.alias.clone().unwrap_or_default(),
+                });
+            }
+            continue;
+        }
+
         // Get children of the current node
         let child_ids = edges.get(&current_node.nodeid).cloned().unwrap_or_default();
 
@@ -139,6 +180,7 @@ pub fn resolve_path_segments(
             })
         });
 
+        parent_nodegroup_id = current_node.nodegroup_id.clone();
         current_node = matched.ok_or_else(|| PathError::AliasNotFound {
             segment: segment.to_string(),
             parent_alias: current_node.alias.clone(),
@@ -162,6 +204,7 @@ pub fn resolve_path_segments(
     Ok(PathResolutionInfo {
         target_node: current_node,
         nodegroup_id,
+        parent_nodegroup_id,
         child_node_ids,
         is_single,
     })
@@ -431,5 +474,75 @@ mod tests {
 
         let err = resolve_path_segments("child", &root, &nodes, &edges, None).unwrap_err();
         assert!(matches!(err, PathError::NoNodegroup { .. }));
+    }
+
+    // =========================================================================
+    // Tests for _ and * segment handling
+    // =========================================================================
+
+    #[test]
+    fn test_underscore_skipped_on_collector() {
+        let (root, nodes, edges, nodegroups) = setup_graph();
+        // address is a collector — "building.address._.city" should resolve to city
+        let result = resolve_path_segments(
+            "building.address._.city",
+            &root,
+            &nodes,
+            &edges,
+            Some(&nodegroups),
+        )
+        .unwrap();
+        assert_eq!(result.target_node.alias.as_deref(), Some("city"));
+        assert_eq!(result.nodegroup_id, "ng-address");
+    }
+
+    #[test]
+    fn test_underscore_errors_on_non_collector() {
+        let (root, nodes, edges, nodegroups) = setup_graph();
+        // building is NOT a collector — "building._.name" should error
+        let err =
+            resolve_path_segments("building._.name", &root, &nodes, &edges, Some(&nodegroups))
+                .unwrap_err();
+        assert!(matches!(err, PathError::UnderscoreOnNonCollector { .. }));
+    }
+
+    #[test]
+    fn test_star_skipped_on_multi_cardinality() {
+        let (root, nodes, edges, nodegroups) = setup_graph();
+        // address is a collector (multi-cardinality) — "building.address.*.city" should work
+        let result = resolve_path_segments(
+            "building.address.*.city",
+            &root,
+            &nodes,
+            &edges,
+            Some(&nodegroups),
+        )
+        .unwrap();
+        assert_eq!(result.target_node.alias.as_deref(), Some("city"));
+    }
+
+    #[test]
+    fn test_star_errors_on_single_cardinality() {
+        let (root, nodes, edges, nodegroups) = setup_graph();
+        // building has nodegroup cardinality "1" — "building.*.name" should error
+        let err =
+            resolve_path_segments("building.*.name", &root, &nodes, &edges, Some(&nodegroups))
+                .unwrap_err();
+        assert!(matches!(err, PathError::StarOnSingleCardinality { .. }));
+    }
+
+    #[test]
+    fn test_star_and_underscore_combined() {
+        let (root, nodes, edges, nodegroups) = setup_graph();
+        // address is collector + multi — both * and _ should be valid
+        let result = resolve_path_segments(
+            "building.address.*._.city",
+            &root,
+            &nodes,
+            &edges,
+            Some(&nodegroups),
+        )
+        .unwrap();
+        assert_eq!(result.target_node.alias.as_deref(), Some("city"));
     }
 }

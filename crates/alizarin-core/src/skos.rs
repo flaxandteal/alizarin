@@ -57,6 +57,7 @@ pub struct SkosConcept {
 /// A simple value with id
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkosValue {
+    #[serde(default)]
     pub id: String,
     pub value: String,
 }
@@ -72,6 +73,9 @@ pub enum SkosNodeType {
 }
 
 /// A parsed SKOS collection/concept scheme
+///
+/// Deserializes from both the canonical format (with `__allConcepts`, `__values`)
+/// and the Arches pkg format (with only `concepts` and no internal fields).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkosCollection {
     pub id: String,
@@ -88,10 +92,11 @@ pub struct SkosCollection {
     pub node_type: SkosNodeType,
     /// For ConceptScheme: hierarchical concepts (top-level with children)
     /// For Collection: flat member concepts (no hierarchy)
+    #[serde(default)]
     pub concepts: HashMap<String, SkosConcept>,
-    #[serde(rename = "__allConcepts")]
+    #[serde(rename = "__allConcepts", default)]
     pub all_concepts: HashMap<String, SkosConcept>,
-    #[serde(rename = "__values")]
+    #[serde(rename = "__values", default)]
     pub values: HashMap<String, SkosValue>,
 }
 

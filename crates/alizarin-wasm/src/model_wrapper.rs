@@ -306,6 +306,14 @@ impl ResourceModelWrapperCore {
         self.permitted_nodegroups = Some(rules);
     }
 
+    /// Ensure all lazy caches are built. Call before using `ModelAccess` trait methods.
+    pub fn ensure_caches_built(&mut self) -> Result<(), String> {
+        if self.nodes.is_none() {
+            self.build_nodes()?;
+        }
+        Ok(())
+    }
+
     // Internal accessors for Rust code
     pub fn get_nodes_by_alias_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
         self.nodes_by_alias.as_ref().map(|arc| arc.as_ref())
@@ -458,6 +466,46 @@ impl ResourceModelWrapperCore {
         self.nodes_by_nodegroup = None;
 
         Ok(())
+    }
+}
+
+/// ModelAccess implementation for ResourceModelWrapperCore.
+/// Requires `ensure_caches_built()` to have been called first;
+/// returns None/Err if caches are not yet initialized.
+impl alizarin_core::ModelAccess for ResourceModelWrapperCore {
+    fn get_nodes(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
+        self.get_nodes_internal()
+    }
+
+    fn get_edges(&self) -> Option<&HashMap<String, Vec<String>>> {
+        self.get_edges_internal()
+    }
+
+    fn get_reverse_edges(&self) -> Option<&HashMap<String, Vec<String>>> {
+        self.get_reverse_edges_internal()
+    }
+
+    fn get_nodes_by_nodegroup(&self) -> Option<&HashMap<String, Vec<Arc<StaticNode>>>> {
+        self.get_nodes_by_nodegroup_internal()
+    }
+
+    fn get_nodegroups(&self) -> Option<&HashMap<String, Arc<StaticNodegroup>>> {
+        self.get_nodegroups_internal()
+    }
+
+    fn get_permitted_nodegroups(&self) -> HashMap<String, alizarin_core::PermissionRule> {
+        if let Some(ref permitted) = self.permitted_nodegroups {
+            return permitted.clone();
+        }
+        // Default: all nodegroups permitted
+        let mut permissions = HashMap::new();
+        if let Some(ref nodegroups) = self.nodegroups {
+            for key in nodegroups.keys() {
+                permissions.insert(key.clone(), PermissionRule::Boolean(true));
+            }
+        }
+        permissions.insert(String::new(), PermissionRule::Boolean(true));
+        permissions
     }
 }
 

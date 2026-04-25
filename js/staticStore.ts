@@ -87,21 +87,17 @@ class StaticStore {
       const remaining = limit ? limit - count : undefined;
       const resourcesJSON = await this.archesClient.getResources(graphId, remaining || 0, !useCache);
 
-      for (let resourceJSON of resourcesJSON) {
+      for (const resourceJSON of resourcesJSON) {
         if (limit && count >= limit) return;
 
         // Skip if already yielded from registry
-        const id = resourceJSON.resourceinstanceid ||
-          (resourceJSON as any).resourceinstance?.resourceinstanceid;
+        const id = resourceJSON.resourceinstance?.resourceinstanceid;
         if (id && yielded.has(id)) continue;
 
         // Load full resource if we got a summary
         let resource: StaticResource;
         if (resourceJSON instanceof StaticResource) {
           resource = resourceJSON;
-        } else if (resourceJSON.resourceinstanceid) {
-          // It's a summary, load the full resource
-          resource = await this.archesClient.getResource(resourceJSON.resourceinstanceid);
         } else {
           // Plain JSON object, wrap in StaticResource
           resource = new StaticResource(resourceJSON);

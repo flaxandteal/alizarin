@@ -1,8 +1,8 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-import { w as wasmReady, r as registerExtensionHandler, C as CUSTOM_DATATYPES, g as getCurrentLanguage, a as registerResolvableDatatype, n as nodeConfigManager, R as RDM } from "./main-4szcqT5b.js";
-import { A, K, G, p, o, P, W, L, N, c, I, J, y, t, B, e, f, b, _, l, D, O, m, F, H, k, z, q, x, d, i, s, E, j, u, M, v, h } from "./main-4szcqT5b.js";
+import { w as wasmReady, r as registerExtensionHandler, C as CUSTOM_DATATYPES, g as getCurrentLanguage, a as registerResolvableDatatype, n as nodeConfigManager, R as RDM } from "./main-BtTeQ-9t.js";
+import { A, I, G, m, l, N, W, J, L, c, F, H, t, p, y, b, _, j, z, M, k, D, E, i, x, o, q, d, f, s, B, h, u, K, v, e } from "./main-BtTeQ-9t.js";
 class FileListItem {
   constructor(data) {
     __publicField(this, "accepted");
@@ -753,45 +753,43 @@ CUSTOM_DATATYPES.set("reference", ReferenceMergedDataType);
 registerResolvableDatatype("reference");
 export {
   A as AlizarinModel,
-  K as CollectionMutator,
+  I as CollectionMutator,
   G as GraphManager,
-  p as GraphMutator,
+  m as GraphMutator,
   RDM,
-  o as ResourceModelWrapper,
-  P as WASMResourceModelWrapper,
+  l as ResourceModelWrapper,
+  N as WASMResourceModelWrapper,
   W as WKRM,
-  L as buildGraphFromModelCsvs,
-  N as buildResourcesFromBusinessCsv,
+  J as buildGraphFromModelCsvs,
+  L as buildResourcesFromBusinessCsv,
   c as client,
-  I as collectionToSkosXml,
-  J as collectionsToSkosXml,
-  y as ensureWasmRdmCache,
-  t as getCurrentLanguage,
-  B as getTimingStats,
-  e as getValueFromPath,
-  f as getValueFromPathSync,
+  F as collectionToSkosXml,
+  H as collectionsToSkosXml,
+  t as ensureWasmRdmCache,
+  p as getCurrentLanguage,
+  y as getTimingStats,
   b as graphManager,
   _ as initWasm,
-  l as interfaces,
-  D as logTimingStats,
-  O as newWASMResourceInstanceWrapperForResource,
-  m as nodeConfig,
-  F as parseSkosXml,
-  H as parseSkosXmlToCollection,
+  j as interfaces,
+  z as logTimingStats,
+  M as newWASMResourceInstanceWrapperForResource,
+  k as nodeConfig,
+  D as parseSkosXml,
+  E as parseSkosXmlToCollection,
   registerExtensionHandler,
   registerResolvableDatatype,
-  k as renderers,
-  z as resetTimingStats,
-  q as setCurrentLanguage,
-  x as setWasmURL,
+  i as renderers,
+  x as resetTimingStats,
+  o as setCurrentLanguage,
+  q as setWasmURL,
   d as slugify,
-  i as staticStore,
+  f as staticStore,
   s as staticTypes,
-  E as tracing,
-  j as unregisterResolvableDatatype,
+  B as tracing,
+  h as unregisterResolvableDatatype,
   u as utils,
-  M as validateModelCsvs,
+  K as validateModelCsvs,
   v as version,
-  h as viewModels,
+  e as viewModels,
   wasmReady
 };

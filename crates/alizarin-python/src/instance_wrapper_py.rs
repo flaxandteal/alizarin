@@ -8,9 +8,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use alizarin_core::{
-    ModelAccess, PopulateResult as CorePopulateResult, PseudoListCore, PseudoValueCore,
-    ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult, StaticGraph, StaticNode,
-    StaticNodegroup, StaticResourceMetadata, StaticTile,
+    ModelAccess, PermissionRule, PopulateResult as CorePopulateResult, PseudoListCore,
+    PseudoValueCore, ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult,
+    StaticGraph, StaticNode, StaticNodegroup, StaticResourceMetadata, StaticTile,
 };
 
 use crate::node_config_py::PyNodeConfigManager;
@@ -29,7 +29,7 @@ struct RegistryModelAccess {
     nodes_by_nodegroup: HashMap<String, Vec<Arc<StaticNode>>>,
     nodegroups: HashMap<String, Arc<StaticNodegroup>>,
     root_node_id: String,
-    permitted_nodegroups: HashMap<String, bool>,
+    permitted_nodegroups: HashMap<String, PermissionRule>,
 }
 
 impl RegistryModelAccess {
@@ -91,7 +91,7 @@ impl RegistryModelAccess {
     }
 
     /// Set permitted nodegroups
-    fn set_permitted_nodegroups(&mut self, permissions: HashMap<String, bool>) {
+    fn set_permitted_nodegroups(&mut self, permissions: HashMap<String, PermissionRule>) {
         self.permitted_nodegroups = permissions;
     }
 }
@@ -138,7 +138,7 @@ impl ModelAccess for RegistryModelAccess {
         Ok(children)
     }
 
-    fn get_permitted_nodegroups(&self) -> HashMap<String, bool> {
+    fn get_permitted_nodegroups(&self) -> HashMap<String, PermissionRule> {
         self.permitted_nodegroups.clone()
     }
 }
@@ -229,7 +229,11 @@ impl PyResourceInstanceWrapperCore {
     ///     permissions: Dict of nodegroup_id -> is_permitted
     fn set_permitted_nodegroups(&mut self, permissions: HashMap<String, bool>) -> PyResult<()> {
         if let Some(ref mut model_access) = self.model_access {
-            model_access.set_permitted_nodegroups(permissions);
+            let rules = permissions
+                .into_iter()
+                .map(|(k, v)| (k, PermissionRule::Boolean(v)))
+                .collect();
+            model_access.set_permitted_nodegroups(rules);
         }
         Ok(())
     }
@@ -348,6 +352,7 @@ impl PyResourceInstanceWrapperCore {
     }
 
     /// Resolve a dot-separated path and return a PseudoList for the target node.
+    /// Resolve a dot-separated path and return matching tile values.
     ///
     /// Walks the graph edges matching node aliases at each path segment (e.g. "building.name"),
     /// then retrieves matching tiles for the target node's nodegroup. Avoids full tree
@@ -355,17 +360,23 @@ impl PyResourceInstanceWrapperCore {
     ///
     /// Args:
     ///     path: Dot-separated path of node aliases (e.g. "building.name")
+    ///     filter_tile_id: Optional parent tile ID to filter results by parent-child relationship
     ///
     /// Returns:
     ///     RustPseudoList for the target node
-    fn get_values_at_path(&self, path: &str) -> PyResult<PyPseudoList> {
+    #[pyo3(signature = (path, filter_tile_id=None))]
+    fn get_values_at_path(
+        &self,
+        path: &str,
+        filter_tile_id: Option<&str>,
+    ) -> PyResult<PyPseudoList> {
         let model = self.model_access.as_ref().ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Model not initialized")
         })?;
 
         let result = self
             .inner
-            .get_values_at_path(path, model)
+            .get_values_at_path(path, model, filter_tile_id)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
         Ok(PyPseudoList::from_core(result))

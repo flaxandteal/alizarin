@@ -184,6 +184,8 @@ struct BusinessDataResourceFull {
     tiles: Option<Vec<StaticTile>>,
     #[serde(default)]
     metadata: Option<HashMap<String, String>>,
+    #[serde(default, rename = "__scopes")]
+    scopes: Option<serde_json::Value>,
 }
 
 /// Full resource instance for loading
@@ -234,7 +236,7 @@ impl BusinessDataResourceFull {
             tiles: self.tiles.clone(),
             metadata: self.metadata.clone().unwrap_or_default(),
             cache: None,
-            scopes: None,
+            scopes: self.scopes.clone(),
             tiles_loaded: Some(true),
         }
     }
@@ -894,4 +896,24 @@ mod tests {
         assert_eq!(graph.is_active, Some(true));
         assert_eq!(graph.has_unpublished_changes, Some(false));
     }
+}
+
+// =============================================================================
+// Standalone helpers for WASM / napi callers
+// =============================================================================
+
+/// Parse a `{ business_data: { resources: [...] } }` JSON blob (as raw bytes)
+/// into `StaticResource`s. Uses the same internal parsing types as
+/// `PrebuildLoader` so there is no duplication.
+///
+/// This is the function WASM and napi crates call so that the heavy JSON
+/// parsing stays entirely in Rust — callers only pass in a byte buffer.
+pub fn parse_business_data_bytes(bytes: &[u8]) -> Result<Vec<StaticResource>, LoaderError> {
+    let file_data: BusinessDataFileFull = serde_json::from_slice(bytes)?;
+    Ok(file_data
+        .business_data
+        .resources
+        .into_iter()
+        .map(|r| r.to_static_resource())
+        .collect())
 }
