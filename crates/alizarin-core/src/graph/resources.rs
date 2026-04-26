@@ -1358,7 +1358,6 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
             for tile in tiles {
                 if let Some(ref tileid) = tile.tileid {
                     if seen_tileids.contains(tileid) {
-                        warnings.push(format!("Duplicate tileid '{}' skipped", tileid));
                         continue;
                     }
                     seen_tileids.insert(tileid.clone());
@@ -1838,13 +1837,8 @@ pub fn unify_cardinality_one_tiles(
             tiles_to_remove.insert(idx);
         }
 
-        if tile_indices.len() > 1 {
-            warnings.push(format!(
-                "Unified cardinality-1 nodegroup '{}': kept 1 tile, removed {} duplicate(s)",
-                nodegroup_id,
-                tile_indices.len() - 1
-            ));
-        }
+        // Conflict and error warnings are emitted during the data merge below.
+        // Routine unification (no conflicts) is silent.
     }
 
     // Merge data into canonical tiles

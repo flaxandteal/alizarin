@@ -192,10 +192,21 @@ class ArchesClientRemoteStatic extends ArchesClient {
   }
 
   async getCollection(collectionId: string): Promise<StaticCollection> {
-    const response = await fetch(
-      `${this.archesUrl}/${this.collectionIdToFile(collectionId)}`,
-    );
-    return await response.json();
+    const jsonUrl = `${this.archesUrl}/${this.collectionIdToFile(collectionId)}`;
+    const response = await fetch(jsonUrl);
+    if (response.ok) {
+      return await response.json();
+    }
+    // JSON not available — try SKOS XML fallback
+    const xmlUrl = jsonUrl.replace(/\.json$/, '.xml');
+    const xmlResponse = await fetch(xmlUrl);
+    if (!xmlResponse.ok) {
+      throw new Error(`Collection ${collectionId} not found (tried JSON and XML)`);
+    }
+    const xmlText = await xmlResponse.text();
+    const { parseSkosXmlToCollection, getRdmNamespaceRaw } = await import("../pkg/alizarin");
+    const baseUri = getRdmNamespaceRaw() || xmlResponse.url;
+    return parseSkosXmlToCollection(xmlText, baseUri);
   }
 
   async getResources(
@@ -360,11 +371,18 @@ class ArchesClientLocal extends ArchesClient {
 
   async getCollection(collectionId: string): Promise<StaticCollection> {
     const fs = await this.ensureFs();
-    const response = await fs.promises.readFile(
-      this.collectionIdToFile(collectionId),
-      "utf8",
-    );
-    return await JSON.parse(response);
+    const jsonPath = this.collectionIdToFile(collectionId);
+    try {
+      const response = await fs.promises.readFile(jsonPath, "utf8");
+      return JSON.parse(response);
+    } catch {
+      // JSON not available — try SKOS XML fallback
+      const xmlPath = jsonPath.replace(/\.json$/, '.xml');
+      const xmlContent = await fs.promises.readFile(xmlPath, "utf8");
+      const { parseSkosXmlToCollection, getRdmNamespaceRaw } = await import("../pkg/alizarin");
+      const baseUri = getRdmNamespaceRaw() || "http://localhost/";
+      return parseSkosXmlToCollection(xmlContent, baseUri);
+    }
   }
 
   async getResources(

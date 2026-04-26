@@ -44,6 +44,7 @@ use alizarin_core::rdm_namespace::{
 // Thread-local storage for global namespace (WASM is single-threaded)
 thread_local! {
     static GLOBAL_RDM_NAMESPACE: RefCell<Option<Uuid>> = const { RefCell::new(None) };
+    static GLOBAL_RDM_NAMESPACE_RAW: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 /// Set the global RDM namespace for deterministic UUID generation.
@@ -69,6 +70,9 @@ pub fn set_rdm_namespace(namespace: &str) -> Result<(), JsError> {
     GLOBAL_RDM_NAMESPACE.with(|ns| {
         *ns.borrow_mut() = Some(uuid);
     });
+    GLOBAL_RDM_NAMESPACE_RAW.with(|ns| {
+        *ns.borrow_mut() = Some(namespace.to_string());
+    });
 
     Ok(())
 }
@@ -79,6 +83,17 @@ pub fn set_rdm_namespace(namespace: &str) -> Result<(), JsError> {
 #[wasm_bindgen(js_name = getRdmNamespace)]
 pub fn get_rdm_namespace() -> Option<String> {
     GLOBAL_RDM_NAMESPACE.with(|ns| ns.borrow().map(|u| u.to_string()))
+}
+
+/// Get the original namespace string passed to setRdmNamespace.
+///
+/// Unlike getRdmNamespace which returns the derived UUID, this returns
+/// the raw input (URL or UUID string). Useful as an RDF base URI.
+///
+/// @returns The original namespace string, or undefined if not set
+#[wasm_bindgen(js_name = getRdmNamespaceRaw)]
+pub fn get_rdm_namespace_raw() -> Option<String> {
+    GLOBAL_RDM_NAMESPACE_RAW.with(|ns| ns.borrow().clone())
 }
 
 /// Check if a global RDM namespace is set.
@@ -93,6 +108,9 @@ pub fn has_rdm_namespace() -> bool {
 #[wasm_bindgen(js_name = clearRdmNamespace)]
 pub fn clear_rdm_namespace() {
     GLOBAL_RDM_NAMESPACE.with(|ns| {
+        *ns.borrow_mut() = None;
+    });
+    GLOBAL_RDM_NAMESPACE_RAW.with(|ns| {
         *ns.borrow_mut() = None;
     });
 }
