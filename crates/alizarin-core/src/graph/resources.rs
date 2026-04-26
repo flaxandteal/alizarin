@@ -1987,8 +1987,7 @@ mod tests {
 
         let tiles = result.resource.tiles.unwrap();
         assert_eq!(tiles.len(), 3); // tile-b counted once
-        assert_eq!(result.warnings.len(), 1);
-        assert!(result.warnings[0].contains("tile-b"));
+        assert!(result.warnings.is_empty()); // duplicate skipping is silent
     }
 
     #[test]

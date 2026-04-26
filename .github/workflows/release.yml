@@ -193,6 +193,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Publish alizarin-core to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          cargo publish -p alizarin-core --allow-dirty
+        continue-on-error: true
+
       - name: Output installation instructions
         run: |
           echo "::notice::Release created! Install with: npm install ${{ github.repository }}#${{ steps.get_version.outputs.version }}"
