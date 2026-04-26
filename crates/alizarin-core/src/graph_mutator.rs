@@ -1040,6 +1040,15 @@ pub struct DeleteFunctionParams {
     pub function_mapping_id: String,
 }
 
+/// Parameters for setting a descriptor template on the graph's descriptor function
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetDescriptorTemplateParams {
+    /// Descriptor type (e.g. "name", "slug", "description", "map_popup")
+    pub descriptor_type: String,
+    /// String template with <Node Name> placeholders (e.g. "<First Name> <Last Name>")
+    pub string_template: String,
+}
+
 /// Parameters for deleting a node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeleteNodeParams {
@@ -1416,6 +1425,8 @@ pub enum GraphMutation {
     RenameNode(RenameNodeParams),
     /// Rename/update graph metadata (name, description, subtitle, author)
     RenameGraph(RenameGraphParams),
+    /// Set a descriptor template (name, slug, etc.) on the graph's descriptor function
+    SetDescriptorTemplate(SetDescriptorTemplateParams),
     /// Create a new graph from scratch (only valid as first mutation in apply_mutations_create)
     CreateGraph(CreateGraphParams),
     /// Extension mutation - delegated to a registered handler
@@ -1450,6 +1461,8 @@ impl GraphMutation {
             GraphMutation::RenameNode(_) => MutationConformance::AlwaysConformant,
             // Graph metadata update - valid for both
             GraphMutation::RenameGraph(_) => MutationConformance::AlwaysConformant,
+            // Descriptor template - valid for both branches and models
+            GraphMutation::SetDescriptorTemplate(_) => MutationConformance::AlwaysConformant,
             // CreateGraph - not a standard mutation, only valid in apply_mutations_create
             GraphMutation::CreateGraph(_) => MutationConformance::NonConformant,
             // Extension mutations - conformance is specified in params
@@ -1907,6 +1920,7 @@ fn apply_mutation_with_extensions(
         GraphMutation::ChangeCardinality(params) => apply_change_cardinality(graph, params),
         GraphMutation::RenameNode(params) => apply_rename_node(graph, params),
         GraphMutation::RenameGraph(params) => apply_rename_graph(graph, params),
+        GraphMutation::SetDescriptorTemplate(params) => apply_set_descriptor_template(graph, params),
         GraphMutation::CreateGraph(_) => {
             Err(MutationError::Other(
                 "CreateGraph cannot be used as a regular mutation. Use apply_mutations_create_from_json instead.".to_string()
@@ -2402,6 +2416,15 @@ fn apply_delete_function(
     }
 
     Ok(())
+}
+
+fn apply_set_descriptor_template(
+    graph: &mut StaticGraph,
+    params: SetDescriptorTemplateParams,
+) -> Result<(), MutationError> {
+    graph
+        .set_descriptor_template(&params.descriptor_type, &params.string_template)
+        .map_err(MutationError::Other)
 }
 
 fn apply_delete_node(
@@ -4610,6 +4633,12 @@ impl GraphInstruction {
             "delete_function" => Ok(GraphMutation::DeleteFunction(DeleteFunctionParams {
                 function_mapping_id: self.subject.clone(),
             })),
+            "set_descriptor_template" => Ok(GraphMutation::SetDescriptorTemplate(
+                SetDescriptorTemplateParams {
+                    descriptor_type: self.subject.clone(),
+                    string_template: self.object.clone(),
+                },
+            )),
             "delete_node" => Ok(GraphMutation::DeleteNode(DeleteNodeParams {
                 node_id: self.subject.clone(),
             })),
@@ -5146,8 +5175,16 @@ pub fn get_mutation_schema() -> serde_json::Value {
                 { "AddEdge": { "$ref": "#/AddEdgeParams" } },
                 { "AddCard": { "$ref": "#/AddCardParams" } },
                 { "AddWidgetToCard": { "$ref": "#/AddWidgetParams" } },
-                { "CreateGraph": { "$ref": "#/CreateGraphParams" } }
+                { "CreateGraph": { "$ref": "#/CreateGraphParams" } },
+                { "SetDescriptorTemplate": { "$ref": "#/SetDescriptorTemplateParams" } }
             ]
+        },
+        "SetDescriptorTemplateParams": {
+            "required": ["descriptor_type", "string_template"],
+            "properties": {
+                "descriptor_type": { "type": "string", "description": "Descriptor type (e.g. 'name', 'slug', 'description', 'map_popup')" },
+                "string_template": { "type": "string", "description": "String template with <Node Name> placeholders" }
+            }
         },
         "CreateGraphParams": {
             "required": ["name", "is_resource", "root_alias"],
