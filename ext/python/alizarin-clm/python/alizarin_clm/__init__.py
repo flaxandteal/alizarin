@@ -581,8 +581,8 @@ def _register_list_datatype() -> bool:
         return True
     except ImportError:
         return False
-    except Exception:
-        return False
+    except Exception as e:
+        raise RuntimeError(f"Failed to register CLM list datatype: {e}") from e
 
 
 def _register_widgets() -> bool:
@@ -621,8 +621,8 @@ def _register_widgets() -> bool:
         return True
     except ImportError:
         return False
-    except Exception:
-        return False
+    except Exception as e:
+        raise RuntimeError(f"Failed to register CLM widgets: {e}") from e
 
 
 # Auto-register on import
