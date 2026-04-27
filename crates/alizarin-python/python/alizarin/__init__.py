@@ -287,22 +287,13 @@ from .node_config import (
 # Extension Registration (for CLM and other extensions)
 # =============================================================================
 
-register_type_handler = None
-has_type_handler = None
-coerce_with_extension = None
-has_display_renderer = None
-render_display_with_extension = None
-
-try:
-    from . import alizarin as _alizarin_rust
-    if hasattr(_alizarin_rust, 'register_type_handler'):
-        register_type_handler = _alizarin_rust.register_type_handler
-        has_type_handler = _alizarin_rust.has_type_handler
-        coerce_with_extension = _alizarin_rust.coerce_with_extension
-        has_display_renderer = _alizarin_rust.has_display_renderer
-        render_display_with_extension = _alizarin_rust.render_display_with_extension
-except (ImportError, AttributeError):
-    pass
+from . import alizarin as _alizarin_rust
+register_type_handler = _alizarin_rust.register_type_handler
+has_type_handler = _alizarin_rust.has_type_handler
+coerce_with_extension = _alizarin_rust.coerce_with_extension
+has_display_renderer = _alizarin_rust.has_display_renderer
+render_display_with_extension = _alizarin_rust.render_display_with_extension
+get_registered_extension_handlers = _alizarin_rust.get_registered_extension_handlers
 
 # =============================================================================
 # Graph Mutation API (JSON-based mutations)
@@ -480,6 +471,7 @@ __all__ = [
     "coerce_with_extension",
     "has_display_renderer",
     "render_display_with_extension",
+    "get_registered_extension_handlers",
     # List Datatype Registry
     "register_list_datatype",
     "is_list_datatype",
