@@ -1,4 +1,4 @@
-import { StaticGraphMeta, StaticGraph, StaticResource, StaticResourceSummary, StaticTile } from "./static-types";
+import { StaticGraphMeta, StaticGraph, StaticResource, StaticResourceSummary, StaticResourceRegistry, StaticTile } from "./static-types";
 import { StaticCollection } from "./rdm";
 
 class GraphResult {
@@ -16,6 +16,8 @@ class GraphResult {
 }
 
 abstract class ArchesClient {
+  registry: StaticResourceRegistry | null = null;
+
   abstract getGraphs(): Promise<GraphResult>;
 
   abstract getGraph(graph: StaticGraphMeta): Promise<StaticGraph | null>;
@@ -390,8 +392,11 @@ class ArchesClientLocal extends ArchesClient {
     limit: number | null,
     reloadIfSeen: boolean
   ): Promise<StaticResource[]> {
+    if (!this.registry) {
+      throw new Error('ArchesClientLocal requires a StaticResourceRegistry — set via staticStore');
+    }
     const fs = await this.ensureFs();
-    const resources = [];
+    const resources: StaticResource[] = [];
     const result = this.graphIdToResourcesFiles(graphId);
     const files = (typeof result[Symbol.asyncIterator] === 'function' || typeof result[Symbol.iterator] === 'function')
       ? result
@@ -407,16 +412,21 @@ class ArchesClientLocal extends ArchesClient {
         }
         this.__loadedFileCache[graphId].push(file);
       }
-      const source = file;
-      const response = JSON.parse(await fs.promises.readFile(file, "utf8"));
-      const resourceSet = response.business_data.resources
-        .filter((resource: any) => graphId === resource.resourceinstance.graph_id);
-      for (const resource of resourceSet) {
-        const sr = new StaticResource(resource);
-        sr.__source = source;
-        resources.push(sr);
-        if (limit && resources.length >= limit) {
-          break;
+      // Read as raw bytes — no UTF-8 string, no V8 string length limit.
+      // Parsing happens entirely in Rust via loadFromBusinessDataBytes.
+      const buffer = await fs.promises.readFile(file);
+      const bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+      const refs: Array<{ resourceinstanceid: string; graph_id: string; isPublic: boolean }> =
+        this.registry.loadFromBusinessDataBytes(bytes, true, true);
+
+      for (const ref of refs) {
+        if (ref.graph_id !== graphId) continue;
+        const sr = this.registry.getFull(ref.resourceinstanceid);
+        if (sr) {
+          resources.push(sr);
+          if (limit && resources.length >= limit) {
+            break;
+          }
         }
       }
       if (limit && resources.length >= limit) {
@@ -430,32 +440,29 @@ class ArchesClientLocal extends ArchesClient {
     graphId: string,
     limit: number,
   ): Promise<StaticResourceSummary[]> {
+    if (!this.registry) {
+      throw new Error('ArchesClientLocal requires a StaticResourceRegistry — set via staticStore');
+    }
     const fs = await this.ensureFs();
-    const summaries = [];
+    const summaries: StaticResourceSummary[] = [];
     const result = this.graphIdToResourcesFiles(graphId);
     const files = (typeof result[Symbol.asyncIterator] === 'function' || typeof result[Symbol.iterator] === 'function')
       ? result
       : await result;
     for await (const file of files) {
-      const response = JSON.parse(await fs.promises.readFile(file, "utf8"));
-      const resourceSet = response.business_data.resources.filter(
-        (resource: any) => graphId === resource.resourceinstance.graph_id
-      );
-      for (const resource of resourceSet) {
-        const summary = new StaticResourceSummary({
-          resourceinstanceid: resource.resourceinstance.resourceinstanceid,
-          graph_id: resource.resourceinstance.graph_id,
-          name: resource.resourceinstance.name,
-          descriptors: resource.resourceinstance.descriptors,
-          metadata: resource.metadata || {},
-          publication_id: resource.resourceinstance.publication_id,
-          principaluser_id: resource.resourceinstance.principaluser_id,
-          legacyid: resource.resourceinstance.legacyid,
-          graph_publication_id: resource.resourceinstance.graph_publication_id
-        });
-        summaries.push(summary);
-        if (limit && summaries.length >= limit) {
-          return summaries.slice(0, limit);
+      const buffer = await fs.promises.readFile(file);
+      const bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+      const refs: Array<{ resourceinstanceid: string; graph_id: string; isPublic: boolean }> =
+        this.registry.loadFromBusinessDataBytes(bytes, false, true);
+
+      for (const ref of refs) {
+        if (ref.graph_id !== graphId) continue;
+        const summary = this.registry.getSummary(ref.resourceinstanceid);
+        if (summary) {
+          summaries.push(summary);
+          if (limit && summaries.length >= limit) {
+            return summaries;
+          }
         }
       }
     }

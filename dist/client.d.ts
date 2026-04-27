@@ -1,4 +1,4 @@
-import { StaticGraphMeta, StaticGraph, StaticResource, StaticResourceSummary, StaticTile } from "./static-types";
+import { StaticGraphMeta, StaticGraph, StaticResource, StaticResourceSummary, StaticResourceRegistry, StaticTile } from "./static-types";
 import { StaticCollection } from "./rdm";
 declare class GraphResult {
     models: {
@@ -7,6 +7,7 @@ declare class GraphResult {
     constructor(jsonData: GraphResult);
 }
 declare abstract class ArchesClient {
+    registry: StaticResourceRegistry | null;
     abstract getGraphs(): Promise<GraphResult>;
     abstract getGraph(graph: StaticGraphMeta): Promise<StaticGraph | null>;
     abstract getGraphByIdOnly(graphId: string): Promise<StaticGraph | null>;

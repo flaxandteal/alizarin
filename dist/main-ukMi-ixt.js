@@ -584,6 +584,14 @@ ${val.stack}`;
     WASM_VECTOR_LEN = arg.length;
     return ptr;
   }
+  newWASMResourceInstanceWrapperForResource = function(resource) {
+    _assertClass(resource, StaticResource);
+    const ret = wasm.newWASMResourceInstanceWrapperForResource(resource.__wbg_ptr);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return WASMResourceInstanceWrapper.__wrap(ret[0]);
+  };
   function newWASMResourceInstanceWrapperForModel(graph_id) {
     const ptr0 = passStringToWasm0(graph_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
@@ -593,14 +601,6 @@ ${val.stack}`;
     }
     return WASMResourceInstanceWrapper.__wrap(ret[0]);
   }
-  newWASMResourceInstanceWrapperForResource = function(resource) {
-    _assertClass(resource, StaticResource);
-    const ret = wasm.newWASMResourceInstanceWrapperForResource(resource.__wbg_ptr);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return WASMResourceInstanceWrapper.__wrap(ret[0]);
-  };
   registerExtensionHandler = function(datatype, options) {
     const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
@@ -624,6 +624,19 @@ ${val.stack}`;
     }
     return takeFromExternrefTable0(ret[0]);
   }
+  function validateModelCsvs$1(graph_csv, nodes_csv, collections_csv) {
+    const ptr0 = passStringToWasm0(graph_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(nodes_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    var ptr2 = isLikeNone(collections_csv) ? 0 : passStringToWasm0(collections_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len2 = WASM_VECTOR_LEN;
+    const ret = wasm.validateModelCsvs(ptr0, len0, ptr1, len1, ptr2, len2);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
   function buildResourcesFromBusinessCsv$1(csv_data, graph_json, collections_json, default_language, strict_concepts) {
     const ptr0 = passStringToWasm0(csv_data, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
@@ -634,19 +647,6 @@ ${val.stack}`;
     var ptr3 = isLikeNone(default_language) ? 0 : passStringToWasm0(default_language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     var len3 = WASM_VECTOR_LEN;
     const ret = wasm.buildResourcesFromBusinessCsv(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, isLikeNone(strict_concepts) ? 16777215 : strict_concepts ? 1 : 0);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function validateModelCsvs$1(graph_csv, nodes_csv, collections_csv) {
-    const ptr0 = passStringToWasm0(graph_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(nodes_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    var ptr2 = isLikeNone(collections_csv) ? 0 : passStringToWasm0(collections_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len2 = WASM_VECTOR_LEN;
-    const ret = wasm.validateModelCsvs(ptr0, len0, ptr1, len1, ptr2, len2);
     if (ret[2]) {
       throw takeFromExternrefTable0(ret[1]);
     }
@@ -682,6 +682,17 @@ ${val.stack}`;
       wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
   };
+  parseSkosXmlToCollection = function(xml_content, base_uri) {
+    const ptr0 = passStringToWasm0(xml_content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.parseSkosXmlToCollection(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  };
   collectionToSkosXml = function(collection_js, base_uri) {
     let deferred3_0;
     let deferred3_1;
@@ -714,17 +725,6 @@ ${val.stack}`;
     }
     return takeFromExternrefTable0(ret[0]);
   };
-  parseSkosXmlToCollection = function(xml_content, base_uri) {
-    const ptr0 = passStringToWasm0(xml_content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.parseSkosXmlToCollection(ptr0, len0, ptr1, len1);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  };
   function getDefaultConfigKeys() {
     const ret = wasm.getDefaultConfigKeys();
     var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
@@ -744,6 +744,12 @@ ${val.stack}`;
     }
     return takeFromExternrefTable0(ret[0]);
   }
+  function getDefaultResolvableDatatypes() {
+    const ret = wasm.getDefaultResolvableDatatypes();
+    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v1;
+  }
   function findNeededCollections(tree_json, alias_to_collection) {
     const ptr0 = passStringToWasm0(tree_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
@@ -755,21 +761,15 @@ ${val.stack}`;
     wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
     return v2;
   }
-  function getDefaultResolvableDatatypes() {
-    const ret = wasm.getDefaultResolvableDatatypes();
-    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-    return v1;
-  }
   function getRscvTimings() {
     const ret = wasm.getRscvTimings();
     return ret;
   }
-  function __wbg_adapter_10(arg0, arg1, arg2) {
+  function __wbg_adapter_14(arg0, arg1, arg2) {
     wasm.closure190_externref_shim(arg0, arg1, arg2);
   }
   function __wbg_adapter_782(arg0, arg1, arg2, arg3) {
-    wasm.closure579_externref_shim(arg0, arg1, arg2, arg3);
+    wasm.closure580_externref_shim(arg0, arg1, arg2, arg3);
   }
   typeof FinalizationRegistry === "undefined" ? {} : new FinalizationRegistry((ptr) => wasm.__wbg_exampleedgewrapper_free(ptr >>> 0, 1));
   const ExampleNodegroupWrapperFinalization = typeof FinalizationRegistry === "undefined" ? {
@@ -5220,7 +5220,7 @@ ${val.stack}`;
         return ret;
       }, arguments);
     };
-    imports.wbg.__wbg_clearMarks_ca401028f9f49b40 = function(arg0, arg1) {
+    imports.wbg.__wbg_clearMarks_87af834a17e2f8aa = function(arg0, arg1) {
       performance.clearMarks(getStringFromWasm0(arg0, arg1));
     };
     imports.wbg.__wbg_crypto_574e78ad8b13b65f = function(arg0) {
@@ -5355,10 +5355,10 @@ ${val.stack}`;
     imports.wbg.__wbg_log_6c7b5f4f00b8ce3f = function(arg0) {
       console.log(arg0);
     };
-    imports.wbg.__wbg_mark_11a71747eef01da3 = function(arg0, arg1) {
+    imports.wbg.__wbg_mark_9dd0b2b663bc78e0 = function(arg0, arg1) {
       performance.mark(getStringFromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbg_measure_5cfc7ca3d44b1a17 = function(arg0, arg1, arg2) {
+    imports.wbg.__wbg_measure_902bf580611c5ba1 = function(arg0, arg1, arg2) {
       performance.measure(getStringFromWasm0(arg0, arg1), arg2);
     };
     imports.wbg.__wbg_msCrypto_a61aeb35a24c1329 = function(arg0) {
@@ -5432,7 +5432,7 @@ ${val.stack}`;
       const ret = arg0.node;
       return ret;
     };
-    imports.wbg.__wbg_now_64ca38af5cf73c62 = function() {
+    imports.wbg.__wbg_now_5024dca7c55e4db6 = function() {
       const ret = performance.now();
       return ret;
     };
@@ -5681,7 +5681,7 @@ ${val.stack}`;
       return ret;
     };
     imports.wbg.__wbindgen_cast_3fe450c291da00fc = function(arg0, arg1) {
-      const ret = makeMutClosure(arg0, arg1, 189, __wbg_adapter_10);
+      const ret = makeMutClosure(arg0, arg1, 189, __wbg_adapter_14);
       return ret;
     };
     imports.wbg.__wbindgen_cast_4625c577ab2ec9ee = function(arg0) {
@@ -6890,6 +6890,9 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
     }
   }
   class ArchesClient {
+    constructor() {
+      __publicField(this, "registry", null);
+    }
   }
   class ArchesClientRemote extends ArchesClient {
     constructor(archesUrl) {
@@ -7115,6 +7118,9 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       }
     }
     async getResources(graphId, limit, reloadIfSeen) {
+      if (!this.registry) {
+        throw new Error("ArchesClientLocal requires a StaticResourceRegistry \u2014 set via staticStore");
+      }
       const fs = await this.ensureFs();
       const resources = [];
       const result = this.graphIdToResourcesFiles(graphId);
@@ -7130,15 +7136,17 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
           }
           this.__loadedFileCache[graphId].push(file);
         }
-        const source = file;
-        const response = JSON.parse(await fs.promises.readFile(file, "utf8"));
-        const resourceSet = response.business_data.resources.filter((resource) => graphId === resource.resourceinstance.graph_id);
-        for (const resource of resourceSet) {
-          const sr = new StaticResource(resource);
-          sr.__source = source;
-          resources.push(sr);
-          if (limit && resources.length >= limit) {
-            break;
+        const buffer = await fs.promises.readFile(file);
+        const bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+        const refs = this.registry.loadFromBusinessDataBytes(bytes, true, true);
+        for (const ref of refs) {
+          if (ref.graph_id !== graphId) continue;
+          const sr = this.registry.getFull(ref.resourceinstanceid);
+          if (sr) {
+            resources.push(sr);
+            if (limit && resources.length >= limit) {
+              break;
+            }
           }
         }
         if (limit && resources.length >= limit) {
@@ -7148,28 +7156,25 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       return resources;
     }
     async getResourceSummaries(graphId, limit) {
+      if (!this.registry) {
+        throw new Error("ArchesClientLocal requires a StaticResourceRegistry \u2014 set via staticStore");
+      }
       const fs = await this.ensureFs();
       const summaries = [];
       const result = this.graphIdToResourcesFiles(graphId);
       const files = typeof result[Symbol.asyncIterator] === "function" || typeof result[Symbol.iterator] === "function" ? result : await result;
       for await (const file of files) {
-        const response = JSON.parse(await fs.promises.readFile(file, "utf8"));
-        const resourceSet = response.business_data.resources.filter((resource) => graphId === resource.resourceinstance.graph_id);
-        for (const resource of resourceSet) {
-          const summary = new StaticResourceSummary({
-            resourceinstanceid: resource.resourceinstance.resourceinstanceid,
-            graph_id: resource.resourceinstance.graph_id,
-            name: resource.resourceinstance.name,
-            descriptors: resource.resourceinstance.descriptors,
-            metadata: resource.metadata || {},
-            publication_id: resource.resourceinstance.publication_id,
-            principaluser_id: resource.resourceinstance.principaluser_id,
-            legacyid: resource.resourceinstance.legacyid,
-            graph_publication_id: resource.resourceinstance.graph_publication_id
-          });
-          summaries.push(summary);
-          if (limit && summaries.length >= limit) {
-            return summaries.slice(0, limit);
+        const buffer = await fs.promises.readFile(file);
+        const bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+        const refs = this.registry.loadFromBusinessDataBytes(bytes, false, true);
+        for (const ref of refs) {
+          if (ref.graph_id !== graphId) continue;
+          const summary = this.registry.getSummary(ref.resourceinstanceid);
+          if (summary) {
+            summaries.push(summary);
+            if (limit && summaries.length >= limit) {
+              return summaries;
+            }
           }
         }
       }
@@ -7302,9 +7307,18 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
   class StaticStore {
     constructor(registry) {
       __publicField(this, "_registry", null);
-      __publicField(this, "archesClient", null);
+      __publicField(this, "_archesClient", null);
       if (registry) {
         this._registry = registry;
+      }
+    }
+    get archesClient() {
+      return this._archesClient;
+    }
+    set archesClient(client2) {
+      this._archesClient = client2;
+      if (client2) {
+        client2.registry = this.registry;
       }
     }
     get registry() {
@@ -7315,6 +7329,9 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
     }
     set registry(registry) {
       this._registry = registry;
+      if (this._archesClient) {
+        this._archesClient.registry = registry;
+      }
     }
     async getMeta(id, onlyIfCached = true) {
       const summary = this.registry.getSummary(id);
@@ -7342,23 +7359,19 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       }
       if (this.archesClient && (!limit || count < limit)) {
         const remaining = limit ? limit - count : void 0;
-        const resourcesJSON = await this.archesClient.getResources(graphId, remaining || 0, !useCache);
-        for (const resourceJSON of resourcesJSON) {
+        const resources = await this.archesClient.getResources(graphId, remaining || 0, !useCache);
+        for (const resource of resources) {
           if (limit && count >= limit) return;
-          const id = (_a2 = resourceJSON.resourceinstance) == null ? void 0 : _a2.resourceinstanceid;
+          const id = (_a2 = resource.resourceinstance) == null ? void 0 : _a2.resourceinstanceid;
           if (id && yielded.has(id)) continue;
-          let resource;
-          if (resourceJSON instanceof StaticResource) {
-            resource = resourceJSON;
-          } else {
-            resource = new StaticResource(resourceJSON);
-          }
           if (resource.resourceinstance.graph_id !== graphId) continue;
-          const resourceId = resource.resourceinstance.resourceinstanceid;
-          this.registry.mergeFromResources([
-            resource
-          ], true, true);
-          const fresh = this.registry.getFull(resourceId);
+          if (!this.registry.hasFull(id)) {
+            const wrapped = resource instanceof StaticResource ? resource : new StaticResource(resource);
+            this.registry.mergeFromResources([
+              wrapped
+            ], true, true);
+          }
+          const fresh = this.registry.getFull(id);
           if (fresh) {
             yield fresh;
             count++;
@@ -7397,13 +7410,14 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       }
       if (this.archesClient && (!limit || count < limit)) {
         const remaining = limit ? limit - count : 0;
-        const summariesJSON = await this.archesClient.getResourceSummaries(graphId, remaining);
-        for (const summaryJSON of summariesJSON) {
+        const summaries = await this.archesClient.getResourceSummaries(graphId, remaining);
+        for (const summary of summaries) {
           if (limit && count >= limit) return;
-          const summary = new StaticResourceSummary(summaryJSON);
           if (summary.graph_id !== graphId) continue;
           if (yielded.has(summary.resourceinstanceid)) continue;
-          this.registry.insert(summary);
+          if (!this.registry.contains(summary.resourceinstanceid)) {
+            this.registry.insert(summary);
+          }
           yield summary;
           count++;
         }
@@ -11342,7 +11356,7 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}
   }, Symbol.toStringTag, {
     value: "Module"
   }));
-  version = "0.2.1-alpha.67";
+  version = "0.2.1-alpha.71";
   registerAlizarinTimingGetter(getTimingStats);
   registerWasmTimingGetter(getWasmTimings);
   let _wasmReadyResolve;

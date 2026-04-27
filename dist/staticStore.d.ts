@@ -10,8 +10,10 @@ import { StaticResource, StaticResourceSummary, StaticResourceMetadata, StaticRe
  */
 declare class StaticStore {
     private _registry;
-    archesClient: ArchesClient | null;
+    private _archesClient;
     constructor(registry?: StaticResourceRegistry);
+    get archesClient(): ArchesClient | null;
+    set archesClient(client: ArchesClient | null);
     /**
      * Get or create the registry (lazy initialization for WASM timing)
      */

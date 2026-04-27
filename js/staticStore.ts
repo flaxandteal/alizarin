@@ -17,11 +17,22 @@ import {
  */
 class StaticStore {
   private _registry: StaticResourceRegistry | null = null;
-  archesClient: ArchesClient | null = null;
+  private _archesClient: ArchesClient | null = null;
 
   constructor(registry?: StaticResourceRegistry) {
     if (registry) {
       this._registry = registry;
+    }
+  }
+
+  get archesClient(): ArchesClient | null {
+    return this._archesClient;
+  }
+
+  set archesClient(client: ArchesClient | null) {
+    this._archesClient = client;
+    if (client) {
+      client.registry = this.registry;
     }
   }
 
@@ -40,6 +51,10 @@ class StaticStore {
    */
   set registry(registry: StaticResourceRegistry) {
     this._registry = registry;
+    // Keep client's registry reference in sync
+    if (this._archesClient) {
+      this._archesClient.registry = registry;
+    }
   }
 
   /**
@@ -85,34 +100,22 @@ class StaticStore {
     // Second: load remaining via archesClient if available
     if (this.archesClient && (!limit || count < limit)) {
       const remaining = limit ? limit - count : undefined;
-      const resourcesJSON = await this.archesClient.getResources(graphId, remaining || 0, !useCache);
+      const resources = await this.archesClient.getResources(graphId, remaining || 0, !useCache);
 
-      for (const resourceJSON of resourcesJSON) {
+      for (const resource of resources) {
         if (limit && count >= limit) return;
 
-        // Skip if already yielded from registry
-        const id = resourceJSON.resourceinstance?.resourceinstanceid;
+        const id = resource.resourceinstance?.resourceinstanceid;
         if (id && yielded.has(id)) continue;
-
-        // Load full resource if we got a summary
-        let resource: StaticResource;
-        if (resourceJSON instanceof StaticResource) {
-          resource = resourceJSON;
-        } else {
-          // Plain JSON object, wrap in StaticResource
-          resource = new StaticResource(resourceJSON);
-        }
-
         if (resource.resourceinstance.graph_id !== graphId) continue;
 
-        // Get the resource ID before merging (merge consumes the resource)
-        const resourceId = resource.resourceinstance.resourceinstanceid;
+        // If not already in registry (remote clients), merge first
+        if (!this.registry.hasFull(id)) {
+          const wrapped = resource instanceof StaticResource ? resource : new StaticResource(resource);
+          this.registry.mergeFromResources([wrapped], true, true);
+        }
 
-        // Add to registry first (this consumes the resource)
-        this.registry.mergeFromResources([resource], true, true);
-
-        // Get fresh copy from registry to yield (the original is now consumed)
-        const fresh = this.registry.getFull(resourceId);
+        const fresh = this.registry.getFull(id);
         if (fresh) {
           yield fresh;
           count++;
@@ -173,19 +176,17 @@ class StaticStore {
     // Second: load summaries via archesClient if available
     if (this.archesClient && (!limit || count < limit)) {
       const remaining = limit ? limit - count : 0;
-      const summariesJSON = await this.archesClient.getResourceSummaries(graphId, remaining);
+      const summaries = await this.archesClient.getResourceSummaries(graphId, remaining);
 
-      for (const summaryJSON of summariesJSON) {
+      for (const summary of summaries) {
         if (limit && count >= limit) return;
-
-        const summary = new StaticResourceSummary(summaryJSON);
         if (summary.graph_id !== graphId) continue;
-
-        // Skip if already yielded from registry
         if (yielded.has(summary.resourceinstanceid)) continue;
 
-        // Add to registry as summary only
-        this.registry.insert(summary);
+        // Ensure in registry (remote clients may not have stored yet)
+        if (!this.registry.contains(summary.resourceinstanceid)) {
+          this.registry.insert(summary);
+        }
 
         yield summary;
         count++;
