@@ -1326,28 +1326,6 @@ impl StaticTile {
     pub fn into_inner(self) -> CoreStaticTile {
         self.0
     }
-
-    /// Try to extract a StaticTile from a JsValue
-    /// Returns None if the value is not a valid StaticTile wrapper
-    pub fn try_from_js(val: JsValue) -> Option<StaticTile> {
-        // Check if this is a StaticTile by looking for __wbg_ptr
-        // This is how wasm_bindgen identifies its own structs
-        if js_sys::Reflect::has(&val, &JsValue::from_str("__wbg_ptr")).unwrap_or(false) {
-            // Try to interpret as StaticTile - this is safe if the check passed
-            // and the object was created by our WASM module
-            use wasm_bindgen::convert::FromWasmAbi;
-            let ptr = js_sys::Reflect::get(&val, &JsValue::from_str("__wbg_ptr"))
-                .ok()?
-                .as_f64()? as u32;
-            if ptr == 0 {
-                return None;
-            }
-            // SAFETY: We've verified this is a WASM-created object with valid pointer
-            Some(unsafe { StaticTile::from_abi(ptr) })
-        } else {
-            None
-        }
-    }
 }
 
 #[wasm_bindgen]
