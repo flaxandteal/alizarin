@@ -230,6 +230,7 @@ declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     loadFullResource(id: string): Promise<RIVM>;
     findStatic(id: string): Promise<StaticResource>;
     find(id: string, lazy?: boolean, pruneTiles?: boolean): Promise<RIVM>;
+    setDefaultAllowAllNodegroups(defaultAllow: boolean): void;
     setPermittedNodegroups(permissions: Map<string, PermissionValue>): void;
     getPermittedNodegroups(): Map<string, PermissionValue>;
     isNodegroupPermitted(nodegroupId: string, _tile: StaticTile | null): boolean;

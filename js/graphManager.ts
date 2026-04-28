@@ -1142,6 +1142,13 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     return x;
   }
 
+  setDefaultAllowAllNodegroups(defaultAllow: boolean) {
+    this.pruneTiles = !defaultAllow;
+    if (typeof this._backend.setDefaultAllowAllNodegroups === 'function') {
+      this._backend.setDefaultAllowAllNodegroups(defaultAllow);
+    }
+  }
+
   // Supports both boolean and conditional permission rules
   setPermittedNodegroups(permissions: Map<string, PermissionValue>) {
     const nodegroups = this.getNodegroupObjects();
