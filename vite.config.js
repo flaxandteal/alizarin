@@ -96,8 +96,10 @@ export default defineConfig({
         'fs',
         'path',
         'url',
+        'module',
         'ajv',
         'ajv-formats',
+        '@alizarin/napi',
       ],
       output: {
         // Preserve WASM filename without hash for predictable imports
