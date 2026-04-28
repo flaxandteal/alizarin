@@ -34,6 +34,7 @@ export declare class NapiNodeConfigManager {
   buildFromGraph(graph: NapiStaticGraph): void
 }
 export declare class NapiPseudoValue {
+  get node(): any
   get nodeId(): string | null
   get nodeAlias(): string | null
   get datatype(): string

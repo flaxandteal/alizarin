@@ -133,6 +133,11 @@ impl NapiPseudoValue {
     // -- Node metadata getters --
 
     #[napi(getter)]
+    pub fn node(&self) -> serde_json::Value {
+        serde_json::to_value(&*self.inner.node).unwrap_or(serde_json::Value::Null)
+    }
+
+    #[napi(getter)]
     pub fn node_id(&self) -> Option<String> {
         Some(self.inner.node.nodeid.clone())
     }
@@ -1271,9 +1276,10 @@ impl NapiResourceModelWrapper {
     /// NapiResourceInstanceWrapper can look it up by graph_id.
     #[napi(constructor)]
     pub fn new(graph_json: String, default_allow: bool) -> Result<Self> {
-        let graph: StaticGraph = serde_json::from_str(&graph_json)
+        let mut graph: StaticGraph = serde_json::from_str(&graph_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid graph JSON: {}", e)))?;
 
+        graph.build_indices();
         let graph_id = graph.graphid.clone();
         let graph_arc = Arc::new(graph);
 
@@ -1295,7 +1301,9 @@ impl NapiResourceModelWrapper {
     pub fn from_graph(graph: &crate::NapiStaticGraph, default_allow: bool) -> Result<Self> {
         let inner = graph.inner_ref();
         let graph_id = inner.graphid.clone();
-        let graph_arc = Arc::new(inner.clone());
+        let mut cloned = inner.clone();
+        cloned.build_indices();
+        let graph_arc = Arc::new(cloned);
 
         alizarin_core::register_graph(&graph_id, Arc::clone(&graph_arc));
 

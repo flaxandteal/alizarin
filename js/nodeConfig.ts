@@ -7,6 +7,7 @@
 
 import { INodeConfig } from './interfaces';
 import { StaticNode, StaticDomainValue, StaticGraph } from './static-types';
+import { getBackend } from './backend';
 import {
   WasmNodeConfigManager,
   WasmNodeConfigBoolean,
@@ -134,28 +135,46 @@ type NodeConfigType = StaticNodeConfigBoolean | StaticNodeConfigConcept |
                       StaticNodeConfigDomain | StaticNodeConfigReference;
 
 class NodeConfigManager {
-  // Lazy initialization - WASM manager created on first use (after WASM is ready)
-  private _wasmManager: WasmNodeConfigManager | null = null;
+  // Lazy initialization - manager created on first use (after backend is ready)
+  private _backendManager: any = null;
   private _cache = new Map<string, NodeConfigType | null>();
   private _graphsLoaded = new Set<string>();
 
-  private getWasmManager(): WasmNodeConfigManager {
-    if (!this._wasmManager) {
-      this._wasmManager = new WasmNodeConfigManager();
+  private getBackendManager(): any {
+    if (!this._backendManager) {
+      if (getBackend() === 'napi') {
+        // Dynamic import to avoid hard dependency on napi module at parse time
+        const napi = (globalThis as any).__alizarin_napi;
+        if (napi) {
+          this._backendManager = new napi.NapiNodeConfigManager();
+        } else {
+          // Fallback: try WASM
+          this._backendManager = new WasmNodeConfigManager();
+        }
+      } else {
+        this._backendManager = new WasmNodeConfigManager();
+      }
     }
-    return this._wasmManager;
+    return this._backendManager;
   }
 
-  get wasmManager(): WasmNodeConfigManager {
-    return this.getWasmManager();
+  /** The backend-native manager (WASM or NAPI). Used by forDisplayJson. */
+  get wasmManager(): any {
+    return this.getBackendManager();
   }
 
   loadFromGraph(graph: StaticGraph): void {
     const graphId = graph.graphid;
     if (this._graphsLoaded.has(graphId)) return;
 
-    // Use direct graph loading (avoids JSON stringify/parse round-trip)
-    this.getWasmManager().fromGraph(graph);
+    const mgr = this.getBackendManager();
+    if (typeof mgr.fromGraph === 'function') {
+      // WASM path: direct graph loading
+      mgr.fromGraph(graph);
+    } else if (typeof mgr.buildFromGraphJson === 'function') {
+      // NAPI path: needs JSON string
+      mgr.buildFromGraphJson(JSON.stringify(graph));
+    }
     this._graphsLoaded.add(graphId);
   }
 
@@ -166,7 +185,8 @@ class NodeConfigManager {
       return this._cache.get(nodeid) ?? null;
     }
 
-    const config = this.getWasmManager().hasConfig(nodeid)
+    const mgr = this.getBackendManager();
+    const config = (typeof mgr.hasConfig === 'function' && mgr.hasConfig(nodeid))
       ? this.getConfigFromWasm(nodeid, datatype)
       : null;
 
@@ -175,7 +195,7 @@ class NodeConfigManager {
   }
 
   private getConfigFromWasm(nodeid: string, datatype: string): NodeConfigType | null {
-    const wasmManager = this.getWasmManager();
+    const wasmManager = this.getBackendManager();
     switch (datatype) {
       case 'boolean': {
         const wasm = wasmManager.getBoolean(nodeid);
@@ -203,8 +223,8 @@ class NodeConfigManager {
   clear(): void {
     this._cache.clear();
     this._graphsLoaded.clear();
-    if (this._wasmManager) {
-      this._wasmManager.clear();
+    if (this._backendManager && typeof this._backendManager.clear === 'function') {
+      this._backendManager.clear();
     }
   }
 

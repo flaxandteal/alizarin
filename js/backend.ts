@@ -68,6 +68,8 @@ function getNapiModule(): any {
 export function setNapiModule(mod: any) {
   _napiModule = mod;
   _backend = 'napi';
+  // Expose for modules that can't import backend.ts without circular deps
+  (globalThis as any).__alizarin_napi = mod;
 }
 
 // ============================================================================
@@ -119,6 +121,47 @@ export function createResourceRegistry(): any {
   }
   const { StaticResourceRegistry } = getWasmModule();
   return new StaticResourceRegistry();
+}
+
+// ============================================================================
+// RDM cache factory
+// ============================================================================
+
+let _rdmCache: any = null;
+
+/**
+ * Get or create a backend-appropriate RDM cache.
+ * In WASM mode returns WasmRdmCache; in NAPI mode returns NapiRdmCache.
+ */
+export function getRdmCache(): any {
+  if (_rdmCache) return _rdmCache;
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    _rdmCache = new napi.NapiRdmCache();
+  } else {
+    const { RdmCache } = getWasmModule();
+    _rdmCache = new RdmCache();
+  }
+  return _rdmCache;
+}
+
+let _nodeConfigManager: any = null;
+
+/**
+ * Get or create a backend-appropriate node config manager.
+ */
+export function getNodeConfigManager(): any {
+  if (_nodeConfigManager) return _nodeConfigManager;
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    _nodeConfigManager = new napi.NapiNodeConfigManager();
+  } else {
+    const { NodeConfigManager } = getWasmModule();
+    _nodeConfigManager = new NodeConfigManager();
+  }
+  return _nodeConfigManager;
 }
 
 // ============================================================================

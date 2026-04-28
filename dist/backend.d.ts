@@ -41,6 +41,15 @@ export declare function createInstanceWrapperForModel(graphId: string): any;
  */
 export declare function createResourceRegistry(): any;
 /**
+ * Get or create a backend-appropriate RDM cache.
+ * In WASM mode returns WasmRdmCache; in NAPI mode returns NapiRdmCache.
+ */
+export declare function getRdmCache(): any;
+/**
+ * Get or create a backend-appropriate node config manager.
+ */
+export declare function getNodeConfigManager(): any;
+/**
  * Create a model wrapper backend (graph schema operations).
  * Returns either a WASMResourceModelWrapper or NapiResourceModelWrapper.
  *

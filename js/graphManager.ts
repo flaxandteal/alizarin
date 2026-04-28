@@ -79,17 +79,19 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     this.scopes = resource ? resource.__scopes : undefined;
     this.metadata = resource ? resource.metadata : undefined;
 
-    // Set lazy mode
-    t0 = performance.now();
-    this.wasmWrapper.setLazy(lazy);
-    recordWasmTiming("setLazy", performance.now() - t0);
+    // Set lazy mode (NAPI instance wrapper manages tiles internally)
+    if (typeof this.wasmWrapper.setLazy === 'function') {
+      t0 = performance.now();
+      this.wasmWrapper.setLazy(lazy);
+      recordWasmTiming("setLazy", performance.now() - t0);
+    }
 
     // Set up tile loader callback
-    if (resource) {
+    if (resource && typeof this.wasmWrapper.setTileLoader === 'function') {
       // Create a tile loader that loads from staticStore API
       const resourceId = resource.resourceinstance.resourceinstanceid;
       t0 = performance.now();
-      this.wasmWrapper.setTileLoader((nodegroupId) => {
+      this.wasmWrapper.setTileLoader((nodegroupId: string) => {
         // If nodegroupId is null/undefined, load all tiles
         // Otherwise load tiles for specific nodegroup
         const tiles = staticStore.loadTiles(resourceId, nodegroupId);
@@ -100,12 +102,15 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
 
     // Load tiles into Rust if we have any - regardless of lazy mode,
     // if tiles are already present we should use them
-    t0 = performance.now();
-    const tilesLoaded = this.wasmWrapper.tilesLoaded();
-    recordWasmTiming("tilesLoaded (constructor)", performance.now() - t0);
+    let tilesLoaded = false;
+    if (typeof this.wasmWrapper.tilesLoaded === 'function') {
+      t0 = performance.now();
+      tilesLoaded = this.wasmWrapper.tilesLoaded();
+      recordWasmTiming("tilesLoaded (constructor)", performance.now() - t0);
+    }
 
     // Use loadTilesFromResource to avoid expensive tiles getter (which creates N WASM wrappers)
-    if (!tilesLoaded && resource && resource.tilesLoaded) {
+    if (!tilesLoaded && resource && resource.tilesLoaded && typeof this.wasmWrapper.loadTilesFromResource === 'function') {
       try {
         t0 = performance.now();
         this.wasmWrapper.loadTilesFromResource(resource, assumeTilesComprehensiveForNodegroup);

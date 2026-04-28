@@ -6,7 +6,7 @@
  */
 import { INodeConfig } from './interfaces';
 import { StaticNode, StaticDomainValue, StaticGraph } from './static-types';
-import { WasmNodeConfigManager, WasmNodeConfigBoolean, WasmNodeConfigConcept, WasmNodeConfigDomain, WasmNodeConfigReference } from '../pkg/alizarin';
+import { WasmNodeConfigBoolean, WasmNodeConfigConcept, WasmNodeConfigDomain, WasmNodeConfigReference } from '../pkg/alizarin';
 declare class StaticNodeConfigBoolean implements INodeConfig {
     private _wasm;
     constructor(wasmConfig: WasmNodeConfigBoolean);
@@ -45,11 +45,12 @@ declare class StaticNodeConfigDomain implements INodeConfig {
 }
 type NodeConfigType = StaticNodeConfigBoolean | StaticNodeConfigConcept | StaticNodeConfigDomain | StaticNodeConfigReference;
 declare class NodeConfigManager {
-    private _wasmManager;
+    private _backendManager;
     private _cache;
     private _graphsLoaded;
-    private getWasmManager;
-    get wasmManager(): WasmNodeConfigManager;
+    private getBackendManager;
+    /** The backend-native manager (WASM or NAPI). Used by forDisplayJson. */
+    get wasmManager(): any;
     loadFromGraph(graph: StaticGraph): void;
     retrieve(node: StaticNode): NodeConfigType | null;
     private getConfigFromWasm;
