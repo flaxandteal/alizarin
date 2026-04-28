@@ -1,7 +1,7 @@
 import * as client from "./client";
 import * as interfaces from "./interfaces";
 import { RDM, ResolveLabelsOptions, registerResolvableDatatype, unregisterResolvableDatatype } from "./rdm";
-import { ResourceModelWrapper, WKRM, graphManager, staticStore, GraphManager, GraphMutator, getWasmTimings } from "./graphManager";
+import { ResourceModelWrapper, createWKRM, getWKRMClass, graphManager, staticStore, GraphManager, GraphMutator, getWasmTimings } from "./graphManager";
 import * as staticTypes from "./static-types";
 import { CollectionMutator } from "./collectionMutator";
 import { buildGraphFromModelCsvs, validateModelCsvs, buildResourcesFromBusinessCsv } from "./csvModelLoader";
@@ -11,7 +11,8 @@ import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
 import { initWasm, setWasmURL, ensureWasmRdmCache, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerExtensionHandler } from "./_wasm";
-import { newWASMResourceInstanceWrapperForResource, WASMResourceModelWrapper } from "../pkg/alizarin";
+import { setBackend, setNapiModule, getBackend, autoDetectBackend, createResourceRegistry } from "./backend";
+import type { BackendType } from "./backend";
 import { resetTimingStats, getTimingStats, logTimingStats } from "./semantic";
 import * as tracing from "./tracing";
 import { IStringKeyedObject } from "./interfaces";
@@ -73,7 +74,9 @@ export {
   unregisterResolvableDatatype,
   renderers,
   interfaces,
-  WKRM,
+  // WKRM factory (replaces direct WASM WKRM import)
+  createWKRM,
+  getWKRMClass,
   nodeConfig,
   ResourceModelWrapper,
   GraphMutator,
@@ -102,7 +105,12 @@ export {
   buildResourcesFromBusinessCsv,
   // Extension function
   registerExtensionHandler,
-  // Low-level WASM wrappers for direct resource access
-  newWASMResourceInstanceWrapperForResource,
-  WASMResourceModelWrapper,
+  // Backend selection (WASM vs NAPI)
+  setBackend,
+  setNapiModule,
+  getBackend,
+  autoDetectBackend,
+  createResourceRegistry,
 };
+
+export type { BackendType };

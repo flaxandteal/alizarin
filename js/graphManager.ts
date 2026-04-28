@@ -17,9 +17,9 @@ import {
   StaticGraphMeta
 } from "./static-types";
 import { PseudoValue, PseudoUnavailable, wrapRustPseudo } from "./pseudos.ts";
-import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper, newWASMResourceInstanceWrapperForResource, newWASMResourceInstanceWrapperForModel } from "../pkg/alizarin";
+import { createInstanceWrapperForResource, createInstanceWrapperForModel, createResourceModelWrapper, createWKRM, getBackend } from "./backend";
 import { ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
-import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
+import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, IModelWrapperBackend, IWKRM, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
 import { nodeConfigManager } from "./nodeConfig.ts";
 import { generateUuidv5, AttrPromise } from "./utils";
 
@@ -39,7 +39,7 @@ class ConfigurationOptions {
 export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrapper<RIVM> {
   wkri: RIVM;
   model: ResourceModelWrapper<RIVM>;
-  wasmWrapper: WASMResourceInstanceWrapper;
+  wasmWrapper: any; // WASMResourceInstanceWrapper or NapiResourceInstanceWrapper
   resource?: StaticResource;
 
   // Local cache for wrapped pseudo values (replaces ValueList)
@@ -63,15 +63,15 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     this.model = model;
     this.pruneTiles = pruneTiles;
 
-    // Initialize WASM wrapper for tile management
+    // Initialize wrapper for tile management (WASM or NAPI depending on backend)
     let t0 = performance.now();
     if (resource) {
-      this.wasmWrapper = newWASMResourceInstanceWrapperForResource(resource);
+      this.wasmWrapper = createInstanceWrapperForResource(resource);
       this.resource = resource;
-      recordWasmTiming("newWASMResourceInstanceWrapperForResource", performance.now() - t0);
+      recordWasmTiming("createInstanceWrapperForResource", performance.now() - t0);
     } else {
-      this.wasmWrapper = newWASMResourceInstanceWrapperForModel(model.wkrm.graphId);
-      recordWasmTiming("newWASMResourceInstanceWrapperForModel", performance.now() - t0);
+      this.wasmWrapper = createInstanceWrapperForModel(model.wkrm.graphId);
+      recordWasmTiming("createInstanceWrapperForModel", performance.now() - t0);
     }
 
     this._pseudoCache = new Map();
@@ -822,19 +822,152 @@ class GraphMutator {
   }
 }
 
-// WASMResourceModelWrapper is now imported from WASM
-
-class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWrapper {
+/**
+ * ResourceModelWrapper — graph schema access with backend delegation.
+ *
+ * Stores a backend wrapper (_backend) that is either a WASMResourceModelWrapper
+ * or NapiResourceModelWrapper, and delegates node/edge/nodegroup/permission
+ * operations to it. WKRM metadata is stored locally.
+ */
+class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
+  private _backend: IModelWrapperBackend;
+  wkrm: IWKRM;
   viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>;
   // Supports both boolean and conditional permission rules
   permittedNodegroups?: Map<string, PermissionValue>;
   pruneTiles: boolean = true;
 
-  constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow: boolean) {
-    super(wkrm, graph, defaultAllow);
+  // Cached copies of backend data (to avoid repeated cross-boundary calls)
+  private _nodes: Map<string, StaticNode> | null = null;
+  private _nodesByAlias: Map<string, StaticNode> | null = null;
+  private _edges: Map<string, string[]> | null = null;
+  private _nodegroups: Map<string, StaticNodegroup> | null = null;
+
+  constructor(wkrm: IWKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow: boolean = false) {
+    this.wkrm = wkrm;
+    this._backend = createResourceModelWrapper(wkrm, graph, defaultAllow);
     this.pruneTiles = !defaultAllow;
     this.viewModelClass = viewModelClass;
   }
+
+  // =========================================================================
+  // Backend-delegated properties
+  // =========================================================================
+
+  get graph(): StaticGraph {
+    return this._backend.graph;
+  }
+
+  set graph(g: StaticGraph) {
+    this._backend.graph = typeof g === 'string' ? g : JSON.stringify(g);
+    this._clearCaches();
+  }
+
+  get nodes(): Map<string, StaticNode> | null {
+    if (!this._nodes) {
+      const raw = this._backend.nodes;
+      if (raw) this._nodes = raw instanceof Map ? raw : new Map(Object.entries(raw));
+    }
+    return this._nodes;
+  }
+
+  get nodesByAlias(): Map<string, StaticNode> | null {
+    if (!this._nodesByAlias) {
+      const raw = this._backend.nodesByAlias;
+      if (raw) this._nodesByAlias = raw instanceof Map ? raw : new Map(Object.entries(raw));
+    }
+    return this._nodesByAlias;
+  }
+
+  get edges(): Map<string, string[]> | null {
+    if (!this._edges) {
+      const raw = this._backend.edges;
+      if (raw) this._edges = raw instanceof Map ? raw : new Map(Object.entries(raw));
+    }
+    return this._edges;
+  }
+
+  get nodegroups(): Map<string, StaticNodegroup> | null {
+    if (!this._nodegroups) {
+      const raw = this._backend.nodegroups;
+      if (raw) this._nodegroups = raw instanceof Map ? raw : new Map(Object.entries(raw));
+    }
+    return this._nodegroups;
+  }
+
+  private _clearCaches() {
+    this._nodes = null;
+    this._nodesByAlias = null;
+    this._edges = null;
+    this._nodegroups = null;
+  }
+
+  // =========================================================================
+  // Delegated methods
+  // =========================================================================
+
+  getRootNode(): StaticNode {
+    return this._backend.getRootNode();
+  }
+
+  getChildNodes(nodeId: string): Map<string, StaticNode> {
+    const raw = this._backend.getChildNodes(nodeId);
+    return raw instanceof Map ? raw : new Map(Object.entries(raw));
+  }
+
+  getChildNodeAliases(nodeId: string): string[] {
+    return this._backend.getChildNodeAliases(nodeId);
+  }
+
+  getGraphId(): string {
+    return this._backend.getGraphId?.() ?? this.wkrm.graphId;
+  }
+
+  getNodeObjectFromAlias(alias: string): StaticNode {
+    return this._backend.getNodeObjectFromAlias(alias);
+  }
+
+  getNodeObjectFromId(id: string): StaticNode {
+    return this._backend.getNodeObjectFromId(id);
+  }
+
+  getNodeIdFromAlias(alias: string): string {
+    return this._backend.getNodeIdFromAlias(alias);
+  }
+
+  getNodegroupIds(): string[] {
+    return this._backend.getNodegroupIds();
+  }
+
+  getNodegroupName(nodegroupId: string): string {
+    return this._backend.getNodegroupName(nodegroupId);
+  }
+
+  // PseudoNode creation — only available in WASM mode (used for NodeViewModel)
+  createPseudoNode(alias?: string): any {
+    if (typeof this._backend.createPseudoNode === 'function') {
+      return this._backend.createPseudoNode(alias);
+    }
+    throw new Error('createPseudoNode not available in current backend');
+  }
+
+  createPseudoNodeChild(childNode: string, parent: any): any {
+    if (typeof this._backend.createPseudoNodeChild === 'function') {
+      return this._backend.createPseudoNodeChild(childNode, parent);
+    }
+    throw new Error('createPseudoNodeChild not available in current backend');
+  }
+
+  createPseudoValue(alias: string | undefined, tile: any, parent: any): any {
+    if (typeof this._backend.createPseudoValue === 'function') {
+      return this._backend.createPseudoValue(alias, tile, parent);
+    }
+    throw new Error('createPseudoValue not available in current backend');
+  }
+
+  // =========================================================================
+  // Methods with TS-level logic
+  // =========================================================================
 
   getRoot(): NodeViewModel {
     const node = this.getRootNode();
@@ -843,8 +976,21 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
   }
 
   buildNodes() {
-    const graph = this.graph ?? graphManager.getGraph(this.wkrm.graphId);
-    return this.buildNodesForGraph(graph);
+    // WASM backend's buildNodes() is actually buildNodesForGraph(graph) on the
+    // raw WASMResourceModelWrapper; NAPI's buildNodes() is a no-op (caches
+    // built eagerly in constructor). Use backend type to dispatch correctly.
+    if (getBackend() === 'napi') {
+      this._backend.buildNodes();
+    } else {
+      // WASM: the raw class uses buildNodesForGraph(graph)
+      const backend = this._backend as any;
+      if (typeof backend.buildNodesForGraph === 'function') {
+        backend.buildNodesForGraph(this._backend.graph);
+      } else {
+        this._backend.buildNodes();
+      }
+    }
+    this._clearCaches();
   }
 
   getNodeObjects(): Map<string, StaticNode> {
@@ -927,9 +1073,9 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
   }
 
   pruneGraph(keepFunctions?: string[]): undefined {
-    // Call Rust implementation via WASM wrapper
-    // Rust handles all graph filtering logic based on permitted nodegroups
-    super.pruneGraph(keepFunctions);
+    // Delegate to backend (WASM or NAPI) for graph filtering
+    this._backend.pruneGraph(keepFunctions);
+    this._clearCaches();
   }
 
   getPruneTiles(pruneTiles?: boolean) {
@@ -1022,8 +1168,12 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
       return [resolvedKey, value];
     }));
 
-    // Also propagate to WASM for pruneGraph to work correctly
-    super.setPermittedNodegroups(this.permittedNodegroups);
+    // Propagate to backend for pruneGraph to work correctly
+    // WASM backend accepts Map (js_sys::Map); NAPI backend accepts plain object (serde)
+    const permsForBackend = getBackend() === 'napi'
+      ? Object.fromEntries(this.permittedNodegroups)
+      : this.permittedNodegroups;
+    this._backend.setPermittedNodegroups(permsForBackend);
   }
 
   // Defaults to visible, which helps reduce the risk of false sense of security
@@ -1143,7 +1293,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWr
 
 function makeResourceModelWrapper<T extends IRIVM<T>>(
   viewModelClass: ResourceInstanceViewModelConstructor<T> | undefined,
-  wkrm: WKRM,
+  wkrm: IWKRM,
   graph: StaticGraph,
   defaultAllow: boolean
 ): ResourceInstanceViewModelConstructor<T> {
@@ -1173,13 +1323,13 @@ class GraphManager {
   // These are hydrated graphs - for metadata-only versions
   // of graphs, using wkrms[*].meta
   graphs: Map<string, ResourceModelWrapper<any>>;
-  wkrms: Map<string, WKRM>;
+  wkrms: Map<string, IWKRM>;
   defaultAllow: boolean = false;
 
   constructor(archesClient: ArchesClient) {
     this.archesClient = archesClient;
     this.graphs = new Map<string, ResourceModelWrapper<any>>();
-    this.wkrms = new Map<string, WKRM>();
+    this.wkrms = new Map<string, IWKRM>();
   }
 
   getPruneTiles(pruneTiles?: boolean) {
@@ -1215,7 +1365,7 @@ class GraphManager {
         meta = new StaticGraphMeta(meta);
       }
       meta.graphid = meta.graphid || graphId;
-      const wkrm = new WKRM(meta);
+      const wkrm = createWKRM(meta);
       this.wkrms.set(wkrm.modelClassName, wkrm);
     });
     if (configurationOptions.eagerLoadGraphs) {
@@ -1318,4 +1468,6 @@ class GraphManager {
 const graphManager = new GraphManager(archesClient);
 viewContext.graphManager = graphManager;
 
-export { GraphManager, graphManager, ArchesClientRemote, staticStore, WKRM, WASMResourceModelWrapper, ResourceModelWrapper, GraphMutator };
+// Re-export WKRM factory and class getter from backend
+export { createWKRM, getWKRMClass } from "./backend";
+export { GraphManager, graphManager, ArchesClientRemote, staticStore, ResourceModelWrapper, GraphMutator };

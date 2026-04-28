@@ -1,6 +1,6 @@
 import { test, beforeAll } from "vitest";
 import { assert } from 'chai';
-import { WKRM } from '../js/graphManager';
+import { createWKRM } from '../js/graphManager';
 import { StaticGraphMeta } from '../js/static-types';
 import { initWasmForTests } from './wasm-init';
 
@@ -21,7 +21,7 @@ test("WKRM > constructor > should create instance with basic meta", () => {
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.isDefined(wkrm);
   assert.equal(wkrm.graphId, "test-graph-123");
@@ -40,7 +40,7 @@ test("WKRM > constructor > should convert slug with underscores to PascalCase", 
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.equal(wkrm.modelClassName, "TestGraphModel");
 });
@@ -55,7 +55,7 @@ test("WKRM > constructor > should convert slug with hyphens to PascalCase", () =
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.equal(wkrm.modelClassName, "TestGraphModel");
 });
@@ -70,7 +70,7 @@ test("WKRM > constructor > should convert slug with spaces to PascalCase", () =>
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.equal(wkrm.modelClassName, "TestGraphModel");
 });
@@ -85,7 +85,7 @@ test("WKRM > constructor > should handle mixed separators in slug", () => {
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.equal(wkrm.modelClassName, "TestGraphModelName");
 });
@@ -100,7 +100,7 @@ test("WKRM > constructor > should ensure first character is uppercase", () => {
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.equal(wkrm.modelClassName, "MyModel");
 });
@@ -115,7 +115,7 @@ test("WKRM > constructor > should handle single word slug", () => {
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.equal(wkrm.modelClassName, "Group");
 });
@@ -129,7 +129,7 @@ test("WKRM > constructor > should use modelName as fallback when slug is missing
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.equal(wkrm.modelClassName, "MyTestGraph");
 });
@@ -142,7 +142,7 @@ test("WKRM > constructor > should use 'Unnamed' when name is missing", () => {
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.equal(wkrm.modelName, "Unnamed");
   assert.equal(wkrm.modelClassName, "Unnamed");
@@ -158,7 +158,7 @@ test("WKRM > constructor > should handle slug with leading underscore", () => {
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.equal(wkrm.modelClassName, "PrivateModel");
 });
@@ -173,7 +173,7 @@ test("WKRM > constructor > should handle slug with trailing underscore", () => {
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.equal(wkrm.modelClassName, "TestModel");
 });
@@ -188,7 +188,7 @@ test("WKRM > constructor > should handle slug with consecutive separators", () =
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   // Consecutive separators result in empty strings after split,
   // which don't get capitalized
@@ -205,7 +205,7 @@ test("WKRM > constructor > should preserve existing PascalCase in slug", () => {
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.equal(wkrm.modelClassName, "MyCustomModel");
 });
@@ -220,7 +220,7 @@ test("WKRM > constructor > should handle real-world example: Group", () => {
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.equal(wkrm.modelName, "Group");
   assert.equal(wkrm.modelClassName, "Group");
@@ -237,7 +237,7 @@ test("WKRM > constructor > should handle real-world example: Historical Event", 
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.equal(wkrm.modelName, "Historical Event");
   assert.equal(wkrm.modelClassName, "HistoricalEvent");
@@ -253,7 +253,7 @@ test("WKRM > constructor > should handle numbers in slug", () => {
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   assert.equal(wkrm.modelClassName, "TestModelV2");
 });
@@ -268,7 +268,7 @@ test("WKRM > constructor > should handle special characters that aren't undersco
     extra_fields: {}
   });
 
-  const wkrm = new WKRM(meta);
+  const wkrm = createWKRM(meta);
 
   // Special characters other than _ and - are not replaced, just PascalCased
   assert.equal(wkrm.modelClassName, "Test@model#name");

@@ -805,7 +805,7 @@ impl std::fmt::Display for MutationError {
                 write!(f, "Nodegroup already has a card: {}", ng)
             }
             MutationError::NoWidgetForDatatype(dt) => {
-                write!(f, "No default widget for datatype: {}", dt)
+                write!(f, "No default widget for datatype: {} (is the relevant extension loaded? e.g. import alizarin_clm)", dt)
             }
             MutationError::WidgetNotFound(name) => write!(f, "Widget not found: {}", name),
             MutationError::JsonError(msg) => write!(f, "JSON error: {}", msg),

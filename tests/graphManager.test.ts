@@ -1,7 +1,8 @@
 import { test, beforeAll } from "vitest";
 import { assert } from 'chai';
 import { createStaticGraph, StaticCollection, StaticConcept, StaticNode, StaticNodegroup, StaticGraph, StaticGraphMeta } from '../js/static-types';
-import { ResourceModelWrapper, GraphMutator, WKRM } from '../js/graphManager';
+import { ResourceModelWrapper, GraphMutator, createWKRM } from '../js/graphManager';
+import { IWKRM } from '../js/interfaces';
 import { initWasmForTests } from './wasm-init';
 import * as GroupJSON from "./data/models/Group.json";
 
@@ -10,7 +11,7 @@ beforeAll(async () => {
 });
 
 // Helper function to create a WKRM instance for testing
-function createTestWKRM(graph: StaticGraph): WKRM {
+function createTestWKRM(graph: StaticGraph): IWKRM {
   const meta = new StaticGraphMeta({
     graphid: graph.graphid,
     name: graph.name || "Test Graph",
@@ -19,7 +20,7 @@ function createTestWKRM(graph: StaticGraph): WKRM {
     resource_2_resource_constraints: [],
     extra_fields: {}
   });
-  return new WKRM(meta);
+  return createWKRM(meta);
 }
 
 test("ResourceModelWrapper > buildNodes > should cache nodes, edges, and nodegroups", () => {

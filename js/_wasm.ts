@@ -1,5 +1,7 @@
 import init, { initSync, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString, WasmRdmCache, getRscvTimings, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerExtensionHandler } from "../pkg/alizarin";
+import * as wasmPkg from "../pkg/alizarin";
 import { registerRustTimingGetter } from "./tracing";
+import { setWasmModule } from "./backend";
 let wasmURL: string = (() => {
   try {
     return new URL("../pkg/alizarin_bg.wasm", import.meta.url).href;
@@ -105,6 +107,7 @@ export async function initWasm() {
       new StaticTranslatableString('test');
       console.log('[alizarin] WASM already available from another module instance');
       wasmInitialized = true;
+      setWasmModule(wasmPkg);
       return;
     } catch {
       // WASM not initialized yet, continue with normal initialization
@@ -121,6 +124,7 @@ export async function initWasm() {
           const wasmBuffer = Buffer.from(base64Data, 'base64');
           initSync({ module: wasmBuffer });
           wasmInitialized = true;
+          setWasmModule(wasmPkg);
           console.log('[alizarin] WASM initialized from inline data URI in Node.js');
 
           applyPrototypePatches();
@@ -164,12 +168,14 @@ export async function initWasm() {
         try {
           initSync({ module: wasmBuffer });
           wasmInitialized = true;
+          setWasmModule(wasmPkg);
           console.log('[alizarin] WASM initialized successfully in Node.js');
         } catch (initError) {
           const initMsg = initError instanceof Error ? initError.message : String(initError);
           if (initMsg.includes('memory already initialized') || initMsg.includes('unreachable')) {
             console.log('[alizarin] WASM already initialized (detected during initSync), continuing');
             wasmInitialized = true;
+            setWasmModule(wasmPkg);
             return;
           }
           throw initError;
@@ -181,6 +187,7 @@ export async function initWasm() {
           // WASM is already initialized from another import context - this is fine
           console.log('[alizarin] WASM already initialized (from another import), continuing');
           wasmInitialized = true;
+          setWasmModule(wasmPkg);
           return;
         }
         console.error('Failed to initialize WASM in Node.js:', error);
@@ -210,6 +217,7 @@ export async function initWasm() {
     registerRustTimingGetter(getRscvTimings);
 
     wasmInitialized = true;
+    setWasmModule(wasmPkg);
   }
 }
 

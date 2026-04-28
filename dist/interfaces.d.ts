@@ -64,6 +64,43 @@ interface IWKRM {
     graphId: string;
     meta: StaticGraphMeta;
 }
+/**
+ * Backend interface for graph schema operations.
+ * Implemented by both WASMResourceModelWrapper and NapiResourceModelWrapper.
+ *
+ * This is the contract that the TS ResourceModelWrapper delegates to.
+ * WASM returns JS Maps from getters; NAPI returns plain objects.
+ * The TS layer normalizes to Maps via the ResourceModelWrapper property getters.
+ */
+interface IModelWrapperBackend {
+    graph: any;
+    readonly nodes: Map<string, StaticNode> | Record<string, StaticNode> | null;
+    readonly nodesByAlias: Map<string, StaticNode> | Record<string, StaticNode> | null;
+    readonly edges: Map<string, string[]> | Record<string, string[]> | null;
+    readonly nodegroups: Map<string, StaticNodegroup> | Record<string, StaticNodegroup> | null;
+    buildNodes(): void;
+    getGraphId(): string;
+    getRootNode(): StaticNode;
+    getNodeObjects(): Map<string, StaticNode> | Record<string, StaticNode>;
+    getNodeObjectsByAlias(): Map<string, StaticNode> | Record<string, StaticNode>;
+    getNodeObjectFromAlias(alias: string): StaticNode;
+    getNodeObjectFromId(id: string): StaticNode;
+    getChildNodes(nodeId: string): Map<string, StaticNode> | Record<string, StaticNode>;
+    getChildNodeAliases(nodeId: string): string[];
+    getNodeIdFromAlias(alias: string): string;
+    getEdges(): Map<string, string[]> | Record<string, string[]>;
+    getNodegroupObjects(): Map<string, StaticNodegroup> | Record<string, StaticNodegroup>;
+    getNodegroupIds(): string[];
+    getNodegroupName(nodegroupId: string): string;
+    setPermittedNodegroups(permissions: any): void;
+    getPermittedNodegroups(): Map<string, boolean> | Record<string, boolean>;
+    isNodegroupPermitted(nodegroupId: string, tile?: StaticTile | null): boolean;
+    setDefaultAllowAllNodegroups?(defaultAllow: boolean): void;
+    pruneGraph(keepFunctions?: string[]): void;
+    createPseudoNode?(alias?: string | null): any;
+    createPseudoNodeChild?(childNode: string, parent: any): any;
+    createPseudoValue?(alias: string | null | undefined, tile: any, parent: any): any;
+}
 interface IModelWrapper<T extends IRIVM<T>> {
     all(params: {
         limit?: number;
@@ -105,4 +142,4 @@ interface ISemantic extends IViewModel {
 interface IGraphManager {
     getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean): Promise<T>;
 }
-export type { ConditionalPermission, PermissionValue, ISemantic, ResourceInstanceViewModelConstructor, GetMeta, IInstanceWrapper, IModelWrapper, IRIVM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo, INodeConfig, IGraphManager };
+export type { ConditionalPermission, PermissionValue, ISemantic, ResourceInstanceViewModelConstructor, GetMeta, IInstanceWrapper, IModelWrapper, IModelWrapperBackend, IRIVM, IWKRM, IStringKeyedObject, IReferenceDataManager, IViewModel, IPseudo, INodeConfig, IGraphManager };

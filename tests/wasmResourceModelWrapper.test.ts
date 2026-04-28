@@ -1,7 +1,8 @@
 import { test, beforeAll } from "vitest";
 import { assert } from 'chai';
 import { createStaticGraph, StaticNode, StaticNodegroup, StaticGraph, StaticGraphMeta } from '../js/static-types';
-import { WASMResourceModelWrapper, GraphMutator, WKRM } from '../js/graphManager';
+import { WASMResourceModelWrapper, WKRM } from '../pkg/alizarin';
+import { GraphMutator } from '../js/graphManager';
 import { initWasmForTests } from './wasm-init';
 import * as GroupJSON from "./data/models/Group.json";
 

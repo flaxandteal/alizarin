@@ -6,6 +6,7 @@ import {
   StaticResourceRegistry,
   StaticTile,
 } from "./static-types";
+import { createResourceRegistry } from "./backend";
 
 /**
  * StaticStore - Thin wrapper around StaticResourceRegistry with optional archesClient fallback
@@ -41,7 +42,7 @@ class StaticStore {
    */
   get registry(): StaticResourceRegistry {
     if (!this._registry) {
-      this._registry = new StaticResourceRegistry();
+      this._registry = createResourceRegistry();
     }
     return this._registry;
   }

@@ -1,3 +1,5 @@
+mod instance_wrapper_napi;
+
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
@@ -131,6 +133,12 @@ pub struct NapiStaticGraph {
     inner: StaticGraph,
 }
 
+impl NapiStaticGraph {
+    pub(crate) fn inner_ref(&self) -> &StaticGraph {
+        &self.inner
+    }
+}
+
 #[napi]
 impl NapiStaticGraph {
     /// Parse a graph from a JSON string (the file content, not a file path).
@@ -148,6 +156,12 @@ impl NapiStaticGraph {
     #[napi(getter)]
     pub fn name(&self) -> serde_json::Value {
         serde_json::to_value(&self.inner.name).unwrap_or(serde_json::Value::Null)
+    }
+
+    /// Register this graph in the global registry so NapiResourceInstanceWrapper can use it.
+    #[napi]
+    pub fn register(&self) {
+        alizarin_core::register_graph_owned(self.inner.clone());
     }
 }
 
@@ -187,6 +201,48 @@ impl NapiStaticResourceRegistry {
         self.inner
             .merge_from_resources(&resources, store_full.unwrap_or(true), true);
         Ok(())
+    }
+
+    /// Load a business_data file from raw bytes (Buffer), parse entirely in Rust,
+    /// merge into this registry, and return lightweight refs.
+    ///
+    /// Equivalent to the WASM `loadFromBusinessDataBytes` but runs natively —
+    /// no WASM linear memory limit, and panics produce real stack traces.
+    #[napi]
+    pub fn load_from_business_data_bytes(
+        &mut self,
+        bytes: Buffer,
+        store_full: Option<bool>,
+        include_caches: Option<bool>,
+    ) -> Result<Vec<serde_json::Value>> {
+        let resources = alizarin_core::parse_business_data_bytes(&bytes).map_err(|e| {
+            napi::Error::from_reason(format!("Failed to parse business data: {}", e))
+        })?;
+
+        let store_full = store_full.unwrap_or(true);
+        let include_caches = include_caches.unwrap_or(true);
+
+        let refs: Vec<serde_json::Value> = resources
+            .iter()
+            .map(|r| {
+                let is_public = r
+                    .scopes
+                    .as_ref()
+                    .and_then(|s| s.as_array())
+                    .map(|arr| arr.iter().any(|v| v.as_str() == Some("public")))
+                    .unwrap_or(false);
+                serde_json::json!({
+                    "resourceinstanceid": r.resourceinstance.resourceinstanceid,
+                    "graph_id": r.resourceinstance.graph_id,
+                    "isPublic": is_public,
+                })
+            })
+            .collect();
+
+        self.inner
+            .merge_from_resources(&resources, store_full, include_caches);
+
+        Ok(refs)
     }
 
     /// Insert full resources from a business_data JSON file string.
@@ -299,6 +355,22 @@ impl NapiStaticResourceRegistry {
     #[napi]
     pub fn has_full(&self, resource_id: String) -> bool {
         self.inner.has_full(&resource_id)
+    }
+
+    /// Get the full resource (with tiles) as a JSON object, or null if only summary stored.
+    #[napi]
+    pub fn get_full(&self, resource_id: String) -> Option<serde_json::Value> {
+        self.inner
+            .get_full(&resource_id)
+            .and_then(|r| serde_json::to_value(r).ok())
+    }
+
+    /// Get a summary for a resource (works for both summary and full entries), or null if unknown.
+    #[napi]
+    pub fn get_summary(&self, resource_id: String) -> Option<serde_json::Value> {
+        self.inner
+            .get_summary(&resource_id)
+            .and_then(|s| serde_json::to_value(&s).ok())
     }
 }
 

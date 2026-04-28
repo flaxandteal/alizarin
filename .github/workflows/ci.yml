@@ -110,6 +110,11 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
       - name: Cache Rust dependencies
         uses: actions/cache@v4
@@ -121,6 +126,12 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-napi-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache Node dependencies
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-node-napi-${{ hashFiles('**/package-lock.json') }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -138,3 +149,14 @@ jobs:
       - name: Run NAPI tests
         working-directory: crates/alizarin-napi
         run: npm test
+
+      # Dual-backend tests: run the TS ResourceModelWrapper tests against NAPI
+      - name: Build WASM (needed for static-types in dual-backend tests)
+        working-directory: crates/alizarin-wasm
+        run: wasm-pack build --target web --out-dir ../../pkg --out-name alizarin --dev
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Run dual-backend tests (NAPI)
+        run: npx vitest run --config vitest.napi.config.js --testTimeout 30000

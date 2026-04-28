@@ -3,9 +3,8 @@ import { staticStore } from './staticStore';
 import { CardComponent, Widget } from './cards';
 import { StaticTranslatableString, StaticCollection, StaticConstraint, StaticEdge, StaticTile, StaticGraph, StaticNode, StaticNodegroup, StaticResource, StaticResourceSummary } from "./static-types";
 import { PseudoValue, PseudoUnavailable } from "./pseudos.ts";
-import { WKRM, WASMResourceModelWrapper, WASMResourceInstanceWrapper } from "../pkg/alizarin";
 import { SemanticViewModel, NodeViewModel } from "./viewModels.ts";
-import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
+import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, IWKRM, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
 import { AttrPromise } from "./utils";
 import { recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings } from './wasmTiming';
 export { recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings };
@@ -18,7 +17,7 @@ declare class ConfigurationOptions {
 export declare class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInstanceWrapper<RIVM> {
     wkri: RIVM;
     model: ResourceModelWrapper<RIVM>;
-    wasmWrapper: WASMResourceInstanceWrapper;
+    wasmWrapper: any;
     resource?: StaticResource;
     private _pseudoCache;
     cache: {
@@ -46,7 +45,7 @@ export declare class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implement
     setDefaultPseudo(key: string, value: any): Promise<any>;
     loadNodes(aliases: Array<string>): Promise<void>;
     getName(update?: boolean): string;
-    getDescriptors(update?: boolean): import("./static-types").StaticResourceDescriptors;
+    getDescriptors(update?: boolean): any;
     getValuesAtPath(path: string, filterTileId?: string): PseudoValue<any> | PseudoUnavailable | import("./pseudos.ts").PseudoList;
     addPseudo(childNode: StaticNode, tile: StaticTile | null): IPseudo;
     allEntries(): MapIterator<[string, Array<IPseudo> | false | null]>;
@@ -163,11 +162,43 @@ declare class GraphMutator {
     }): GraphMutator;
     apply(): StaticGraph;
 }
-declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> extends WASMResourceModelWrapper {
+/**
+ * ResourceModelWrapper — graph schema access with backend delegation.
+ *
+ * Stores a backend wrapper (_backend) that is either a WASMResourceModelWrapper
+ * or NapiResourceModelWrapper, and delegates node/edge/nodegroup/permission
+ * operations to it. WKRM metadata is stored locally.
+ */
+declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
+    private _backend;
+    wkrm: IWKRM;
     viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>;
     permittedNodegroups?: Map<string, PermissionValue>;
     pruneTiles: boolean;
-    constructor(wkrm: WKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow: boolean);
+    private _nodes;
+    private _nodesByAlias;
+    private _edges;
+    private _nodegroups;
+    constructor(wkrm: IWKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow?: boolean);
+    get graph(): StaticGraph;
+    set graph(g: StaticGraph);
+    get nodes(): Map<string, StaticNode> | null;
+    get nodesByAlias(): Map<string, StaticNode> | null;
+    get edges(): Map<string, string[]> | null;
+    get nodegroups(): Map<string, StaticNodegroup> | null;
+    private _clearCaches;
+    getRootNode(): StaticNode;
+    getChildNodes(nodeId: string): Map<string, StaticNode>;
+    getChildNodeAliases(nodeId: string): string[];
+    getGraphId(): string;
+    getNodeObjectFromAlias(alias: string): StaticNode;
+    getNodeObjectFromId(id: string): StaticNode;
+    getNodeIdFromAlias(alias: string): string;
+    getNodegroupIds(): string[];
+    getNodegroupName(nodegroupId: string): string;
+    createPseudoNode(alias?: string): any;
+    createPseudoNodeChild(childNode: string, parent: any): any;
+    createPseudoValue(alias: string | undefined, tile: any, parent: any): any;
     getRoot(): NodeViewModel;
     buildNodes(): void;
     getNodeObjects(): Map<string, StaticNode>;
@@ -212,7 +243,7 @@ declare class GraphManager {
     _initialized: boolean;
     archesClient: ArchesClient;
     graphs: Map<string, ResourceModelWrapper<any>>;
-    wkrms: Map<string, WKRM>;
+    wkrms: Map<string, IWKRM>;
     defaultAllow: boolean;
     constructor(archesClient: ArchesClient);
     getPruneTiles(pruneTiles?: boolean): boolean;
@@ -223,4 +254,5 @@ declare class GraphManager {
     getGraph(graphId: string): StaticGraph;
 }
 declare const graphManager: GraphManager;
-export { GraphManager, graphManager, ArchesClientRemote, staticStore, WKRM, WASMResourceModelWrapper, ResourceModelWrapper, GraphMutator };
+export { createWKRM, getWKRMClass } from "./backend";
+export { GraphManager, graphManager, ArchesClientRemote, staticStore, ResourceModelWrapper, GraphMutator };

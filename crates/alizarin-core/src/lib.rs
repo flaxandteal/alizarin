@@ -10,6 +10,7 @@ pub mod csv_model_loader;
 /// - Other languages via C FFI
 pub mod extension_type_registry;
 pub mod graph;
+pub mod graph_model_access;
 pub mod graph_mutator;
 pub mod instance_wrapper_core;
 pub mod interner;
@@ -183,6 +184,9 @@ pub use instance_wrapper_core::{
     ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult,
     ValuesFromNodegroupResult,
 };
+
+// Platform-agnostic ModelAccess from StaticGraph (used by Python, NAPI, etc.)
+pub use graph_model_access::GraphModelAccess;
 
 // Path resolution (dot-separated path → nodegroup tiles)
 pub use path_resolution::{resolve_path_segments, PathError, PathResolutionInfo};

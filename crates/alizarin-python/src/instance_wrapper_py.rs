@@ -5,12 +5,11 @@
 /// as the WASM implementation.
 use pyo3::prelude::*;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use alizarin_core::{
-    ModelAccess, PermissionRule, PopulateResult as CorePopulateResult, PseudoListCore,
+    GraphModelAccess, PermissionRule, PopulateResult as CorePopulateResult, PseudoListCore,
     PseudoValueCore, ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult,
-    StaticGraph, StaticNode, StaticNodegroup, StaticResourceMetadata, StaticTile,
+    StaticResourceMetadata, StaticTile,
 };
 
 use crate::node_config_py::PyNodeConfigManager;
@@ -18,130 +17,12 @@ use crate::pseudo_value_py::{PyPseudoList, PyPseudoValue};
 use crate::rdm_cache_py;
 
 // =============================================================================
-// ModelAccess implementation using registered graphs
+// ModelAccess — uses GraphModelAccess from alizarin-core
 // =============================================================================
 
-/// ModelAccess implementation that uses the graph registry
-struct RegistryModelAccess {
-    nodes: HashMap<String, Arc<StaticNode>>,
-    edges: HashMap<String, Vec<String>>,
-    reverse_edges: HashMap<String, Vec<String>>,
-    nodes_by_nodegroup: HashMap<String, Vec<Arc<StaticNode>>>,
-    nodegroups: HashMap<String, Arc<StaticNodegroup>>,
-    root_node_id: String,
-    permitted_nodegroups: HashMap<String, PermissionRule>,
-}
-
-impl RegistryModelAccess {
-    /// Build from a registered graph
-    fn from_graph(graph: &StaticGraph) -> Self {
-        let mut nodes: HashMap<String, Arc<StaticNode>> = HashMap::new();
-        let mut edges: HashMap<String, Vec<String>> = HashMap::new();
-        let mut reverse_edges: HashMap<String, Vec<String>> = HashMap::new();
-        let mut nodes_by_nodegroup: HashMap<String, Vec<Arc<StaticNode>>> = HashMap::new();
-        let mut nodegroups: HashMap<String, Arc<StaticNodegroup>> = HashMap::new();
-        let mut root_node_id = String::new();
-
-        // Build node index
-        for node in &graph.nodes {
-            let arc_node = Arc::new(node.clone());
-            nodes.insert(node.nodeid.clone(), Arc::clone(&arc_node));
-
-            // Track root node
-            if node.istopnode {
-                root_node_id = node.nodeid.clone();
-            }
-
-            // Index by nodegroup
-            if let Some(ref ng_id) = node.nodegroup_id {
-                nodes_by_nodegroup
-                    .entry(ng_id.clone())
-                    .or_default()
-                    .push(Arc::clone(&arc_node));
-            }
-        }
-
-        // Build edge indices from graph edges
-        for edge in &graph.edges {
-            let parent_id = edge.domainnode_id.clone();
-            let child_id = edge.rangenode_id.clone();
-
-            edges
-                .entry(parent_id.clone())
-                .or_default()
-                .push(child_id.clone());
-
-            reverse_edges.entry(child_id).or_default().push(parent_id);
-        }
-
-        // Build nodegroup index
-        for ng in &graph.nodegroups {
-            nodegroups.insert(ng.nodegroupid.clone(), Arc::new(ng.clone()));
-        }
-
-        RegistryModelAccess {
-            nodes,
-            edges,
-            reverse_edges,
-            nodes_by_nodegroup,
-            nodegroups,
-            root_node_id,
-            permitted_nodegroups: HashMap::new(),
-        }
-    }
-
-    /// Set permitted nodegroups
-    fn set_permitted_nodegroups(&mut self, permissions: HashMap<String, PermissionRule>) {
-        self.permitted_nodegroups = permissions;
-    }
-}
-
-impl ModelAccess for RegistryModelAccess {
-    fn get_nodes(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
-        Some(&self.nodes)
-    }
-
-    fn get_edges(&self) -> Option<&HashMap<String, Vec<String>>> {
-        Some(&self.edges)
-    }
-
-    fn get_reverse_edges(&self) -> Option<&HashMap<String, Vec<String>>> {
-        Some(&self.reverse_edges)
-    }
-
-    fn get_nodes_by_nodegroup(&self) -> Option<&HashMap<String, Vec<Arc<StaticNode>>>> {
-        Some(&self.nodes_by_nodegroup)
-    }
-
-    fn get_nodegroups(&self) -> Option<&HashMap<String, Arc<StaticNodegroup>>> {
-        Some(&self.nodegroups)
-    }
-
-    fn get_root_node(&self) -> Result<Arc<StaticNode>, String> {
-        self.nodes
-            .get(&self.root_node_id)
-            .cloned()
-            .ok_or_else(|| "Root node not found".to_string())
-    }
-
-    fn get_child_nodes(&self, node_id: &str) -> Result<HashMap<String, Arc<StaticNode>>, String> {
-        let child_ids = self.edges.get(node_id).cloned().unwrap_or_default();
-
-        let mut children = HashMap::new();
-        for child_id in child_ids {
-            if let Some(node) = self.nodes.get(&child_id) {
-                if let Some(ref alias) = node.alias {
-                    children.insert(alias.clone(), Arc::clone(node));
-                }
-            }
-        }
-        Ok(children)
-    }
-
-    fn get_permitted_nodegroups(&self) -> HashMap<String, PermissionRule> {
-        self.permitted_nodegroups.clone()
-    }
-}
+// GraphModelAccess (imported from alizarin_core) provides the ModelAccess
+// implementation built from a StaticGraph. Previously this was a local
+// RegistryModelAccess struct with identical logic.
 
 // =============================================================================
 // PyResourceInstanceWrapperCore - Python wrapper
@@ -154,7 +35,7 @@ impl ModelAccess for RegistryModelAccess {
 #[pyclass(name = "RustResourceInstanceWrapperCore")]
 pub struct PyResourceInstanceWrapperCore {
     inner: ResourceInstanceWrapperCore,
-    model_access: Option<RegistryModelAccess>,
+    model_access: Option<GraphModelAccess>,
     graph_id: String,
 }
 
@@ -175,7 +56,7 @@ impl PyResourceInstanceWrapperCore {
         })?;
 
         // Build model access
-        let model_access = RegistryModelAccess::from_graph(&graph);
+        let model_access = GraphModelAccess::from_graph(&graph);
 
         Ok(PyResourceInstanceWrapperCore {
             inner: ResourceInstanceWrapperCore::new(graph_id.clone()),
