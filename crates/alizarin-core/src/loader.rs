@@ -184,6 +184,8 @@ struct BusinessDataResourceFull {
     tiles: Option<Vec<StaticTile>>,
     #[serde(default)]
     metadata: Option<HashMap<String, String>>,
+    #[serde(default, rename = "__cache")]
+    cache: Option<serde_json::Value>,
     #[serde(default, rename = "__scopes")]
     scopes: Option<serde_json::Value>,
 }
@@ -235,7 +237,7 @@ impl BusinessDataResourceFull {
             },
             tiles: self.tiles.clone(),
             metadata: self.metadata.clone().unwrap_or_default(),
-            cache: None,
+            cache: self.cache.clone(),
             scopes: self.scopes.clone(),
             tiles_loaded: Some(true),
         }

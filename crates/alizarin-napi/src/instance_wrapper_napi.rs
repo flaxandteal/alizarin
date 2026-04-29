@@ -601,6 +601,25 @@ impl NapiResourceInstanceWrapper {
         serde_json::to_string(&tiles).map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
+    /// Prune tiles to only keep those in permitted nodegroups.
+    #[napi(js_name = "pruneResourceTiles")]
+    pub fn prune_resource_tiles(&mut self) -> Result<()> {
+        let tiles = self
+            .inner
+            .tiles
+            .take()
+            .ok_or_else(|| napi::Error::from_reason("Tiles not initialized".to_string()))?;
+        let pruned: HashMap<String, StaticTile> = tiles
+            .into_iter()
+            .filter(|(_id, tile)| {
+                self.model_access
+                    .is_nodegroup_permitted(&tile.nodegroup_id, true)
+            })
+            .collect();
+        self.inner.tiles = Some(pruned);
+        Ok(())
+    }
+
     #[napi]
     pub fn tiles_loaded(&self) -> bool {
         self.inner
