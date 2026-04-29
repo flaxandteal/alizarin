@@ -487,4 +487,47 @@ describe('NapiResourceInstanceWrapper methods', () => {
     // Should not throw
     wrapper.setLazy(true);
   });
+
+  it('exportTilesJson returns valid JSON array of tiles', () => {
+    const wrapper = new NapiResourceInstanceWrapper(graphId);
+    wrapper.loadTilesFromResource(resource);
+
+    const json = wrapper.exportTilesJson();
+    assert.equal(typeof json, 'string');
+
+    const tiles = JSON.parse(json);
+    assert.ok(Array.isArray(tiles), 'parsed result should be an array');
+    assert.ok(tiles.length > 0, 'should have tiles');
+
+    // Each tile should have tileid and data
+    for (const tile of tiles) {
+      assert.ok(tile.tileid || tile.tileid === null, 'tile should have tileid field');
+      assert.ok('data' in tile, 'tile should have data field');
+    }
+  });
+
+  it('exportTilesJson reflects setTileDataForNode mutations', () => {
+    const wrapper = new NapiResourceInstanceWrapper(graphId);
+    wrapper.loadTilesFromResource(resource);
+
+    const tileIds = wrapper.getAllTileIds();
+    const tileId = tileIds[0];
+
+    // Mutate a tile
+    wrapper.setTileDataForNode(tileId, 'test-node-id', [{ name: 'mutated.jpg' }]);
+
+    // Export and verify mutation is present
+    const tiles = JSON.parse(wrapper.exportTilesJson());
+    const mutatedTile = tiles.find(t => t.tileid === tileId);
+    assert.ok(mutatedTile, 'mutated tile should be in export');
+    assert.deepEqual(mutatedTile.data['test-node-id'], [{ name: 'mutated.jpg' }]);
+  });
+
+  it('exportTilesJson returns empty array when no tiles loaded', () => {
+    const wrapper = new NapiResourceInstanceWrapper(graphId);
+    const json = wrapper.exportTilesJson();
+    const tiles = JSON.parse(json);
+    assert.ok(Array.isArray(tiles), 'should be an array');
+    assert.equal(tiles.length, 0, 'should be empty');
+  });
 });

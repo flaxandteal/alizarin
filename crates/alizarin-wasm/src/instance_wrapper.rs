@@ -240,6 +240,12 @@ impl WasmPopulateResult {
 /// Core resource instance wrapper - WASM-independent business logic
 /// Contains all tile storage, indexing, and business logic
 /// Can be used from WASM, Python, or other bindings
+///
+/// TODO(priority): This duplicates alizarin-core::ResourceInstanceWrapperCore.
+/// The only reason they diverged is Rc<RefCell> (WASM, single-threaded) vs
+/// Arc<Mutex> (core, thread-safe for NAPI/Python). Unify them ASAP — either
+/// via a generic concurrency parameter or feature-gated type aliases — so
+/// methods like set_tile_data_for_node don't need to be added in two places.
 pub struct ResourceInstanceWrapperCore {
     // Graph ID to look up model core from registry
     pub(crate) graph_id: String,
@@ -357,6 +363,23 @@ impl ResourceInstanceWrapperCore {
             let mut core_borrow = core_arc.borrow_mut();
             f(&mut core_borrow)
         })
+    }
+
+    /// Set a single node's data in a tile, mutating in place.
+    /// Returns true if the tile was found and updated, false otherwise.
+    pub(crate) fn set_tile_data_for_node(
+        &mut self,
+        tile_id: &str,
+        node_id: &str,
+        value: serde_json::Value,
+    ) -> bool {
+        if let Some(tiles) = &mut self.tiles {
+            if let Some(tile) = tiles.get_mut(tile_id) {
+                tile.data.insert(node_id.to_string(), value);
+                return true;
+            }
+        }
+        false
     }
 
     /// Pure Rust implementation of get_semantic_child_value
@@ -827,6 +850,19 @@ impl WASMResourceInstanceWrapper {
         }
     }
 
+    /// Set a single node's data in a tile on the wrapper's own tile store.
+    /// Returns true if the tile was found and updated, false otherwise.
+    #[wasm_bindgen(js_name = setTileDataForNode)]
+    pub fn set_tile_data_for_node(&self, tile_id: &str, node_id: &str, value: JsValue) -> bool {
+        match serde_wasm_bindgen::from_value::<serde_json::Value>(value) {
+            Ok(json_val) => self
+                .core
+                .borrow_mut()
+                .set_tile_data_for_node(tile_id, node_id, json_val),
+            Err(_) => false,
+        }
+    }
+
     #[wasm_bindgen(js_name = getResourceId)]
     pub fn get_resource_id(&self) -> Option<String> {
         self.core
@@ -939,6 +975,20 @@ impl WASMResourceInstanceWrapper {
                 .unwrap_or_default(),
             None => Vec::new(),
         }
+    }
+
+    /// Export all tiles as a JSON string.
+    /// Returns the wrapper's current tile state (including any mutations from setTileDataForNode).
+    /// Returned as a string for fast boundary crossing — call JSON.parse() on the JS side.
+    #[wasm_bindgen(js_name = exportTilesJson)]
+    pub fn export_tiles_json(&self) -> Result<String, JsValue> {
+        let core = self.core.borrow();
+        let tiles: Vec<&CoreStaticTile> = core
+            .tiles
+            .as_ref()
+            .map(|t| t.values().collect())
+            .unwrap_or_default();
+        serde_json::to_string(&tiles).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Get all tile IDs that have been loaded (and passed filtering)

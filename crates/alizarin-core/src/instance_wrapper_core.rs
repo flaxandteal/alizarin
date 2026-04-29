@@ -630,7 +630,12 @@ pub fn ensure_nodegroup(
 /// Core resource instance wrapper - platform-agnostic business logic
 ///
 /// Contains all tile storage, indexing, and business logic.
-/// Can be used from WASM, Python, or other bindings.
+/// Used by NAPI and Python bindings. WASM has a parallel copy in
+/// alizarin-wasm::instance_wrapper::ResourceInstanceWrapperCore that uses
+/// Rc<RefCell> instead of Arc<Mutex>.
+///
+/// TODO(priority): Unify the WASM copy with this struct so methods like
+/// set_tile_data_for_node don't need to be maintained in two places.
 pub struct ResourceInstanceWrapperCore {
     /// Graph ID to look up model
     pub graph_id: String,
@@ -713,6 +718,23 @@ impl ResourceInstanceWrapperCore {
     /// Get a tile by ID
     pub fn get_tile(&self, tile_id: &str) -> Option<&StaticTile> {
         self.tiles.as_ref().and_then(|t| t.get(tile_id))
+    }
+
+    /// Set a single node's data in a tile, mutating in place.
+    /// Returns true if the tile was found and updated, false otherwise.
+    pub fn set_tile_data_for_node(
+        &mut self,
+        tile_id: &str,
+        node_id: &str,
+        value: serde_json::Value,
+    ) -> bool {
+        if let Some(tiles) = &mut self.tiles {
+            if let Some(tile) = tiles.get_mut(tile_id) {
+                tile.data.insert(node_id.to_string(), value);
+                return true;
+            }
+        }
+        false
     }
 
     /// Get tiles for a nodegroup

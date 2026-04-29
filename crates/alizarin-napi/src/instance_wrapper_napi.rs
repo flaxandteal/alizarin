@@ -587,6 +587,20 @@ impl NapiResourceInstanceWrapper {
         self.inner.tiles.as_ref().map(|t| t.len()).unwrap_or(0) as u32
     }
 
+    /// Export all tiles as a JSON string.
+    /// Returns the wrapper's current tile state (including any mutations from setTileDataForNode).
+    /// Returned as a string for fast boundary crossing — call JSON.parse() on the JS side.
+    #[napi]
+    pub fn export_tiles_json(&self) -> Result<String> {
+        let tiles: Vec<&StaticTile> = self
+            .inner
+            .tiles
+            .as_ref()
+            .map(|t| t.values().collect())
+            .unwrap_or_default();
+        serde_json::to_string(&tiles).map_err(|e| napi::Error::from_reason(e.to_string()))
+    }
+
     #[napi]
     pub fn tiles_loaded(&self) -> bool {
         self.inner
@@ -644,13 +658,7 @@ impl NapiResourceInstanceWrapper {
         node_id: String,
         value: serde_json::Value,
     ) -> bool {
-        if let Some(tiles) = &mut self.inner.tiles {
-            if let Some(tile) = tiles.get_mut(&tile_id) {
-                tile.data.insert(node_id, value);
-                return true;
-            }
-        }
-        false
+        self.inner.set_tile_data_for_node(&tile_id, &node_id, value)
     }
 
     #[napi]

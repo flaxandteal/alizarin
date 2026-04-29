@@ -87,6 +87,28 @@ impl PyResourceInstanceWrapperCore {
         Ok(())
     }
 
+    /// Set a single node's data in a tile, mutating in place.
+    /// Returns true if the tile was found and updated, false otherwise.
+    ///
+    /// Args:
+    ///     tile_id: The tile ID
+    ///     node_id: The node ID
+    ///     value_json: JSON string of the value to set
+    fn set_tile_data_for_node(
+        &mut self,
+        tile_id: &str,
+        node_id: &str,
+        value_json: &str,
+    ) -> PyResult<bool> {
+        let value: serde_json::Value = serde_json::from_str(value_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse value JSON: {}",
+                e
+            ))
+        })?;
+        Ok(self.inner.set_tile_data_for_node(tile_id, node_id, value))
+    }
+
     /// Set resource metadata
     ///
     /// Args:

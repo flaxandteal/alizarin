@@ -102,6 +102,12 @@ export declare class NapiResourceInstanceWrapper {
   /** Append tiles incrementally (for lazy loading). */
   appendTiles(tilesJs: any): void
   getTileCount(): number
+  /**
+   * Export all tiles as a JSON string.
+   * Returns the wrapper's current tile state (including any mutations from setTileDataForNode).
+   * Returned as a string for fast boundary crossing — call JSON.parse() on the JS side.
+   */
+  exportTilesJson(): string
   tilesLoaded(): boolean
   getAllTileIds(): Array<string>
   getTileIdsByNodegroup(nodegroupId?: string | undefined | null): Array<string>
