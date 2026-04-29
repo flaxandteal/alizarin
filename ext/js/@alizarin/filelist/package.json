@@ -1,6 +1,6 @@
 {
   "name": "@alizarin/filelist",
-  "version": "0.2.1-alpha.78",
+  "version": "0.2.1-alpha.79",
   "description": "Alizarin display serializers and view models for file-list datatypes",
   "license": "AGPL-3.0",
   "author": "Phil Weir <phil.weir@flaxandteal.co.uk>",
@@ -18,7 +18,7 @@
     "test": "cd ../../../.. && npm test -- ext/js/@alizarin/filelist/tests/filelist.test.ts"
   },
   "peerDependencies": {
-    "alizarin": "0.2.1-alpha.78"
+    "alizarin": "0.2.1-alpha.79"
   },
   "devDependencies": {
     "alizarin": "file:../../../..",
