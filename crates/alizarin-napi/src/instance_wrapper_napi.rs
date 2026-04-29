@@ -215,7 +215,7 @@ impl NapiPseudoValue {
     }
 
     #[napi(getter)]
-    pub fn tile_data_json(&self) -> serde_json::Value {
+    pub fn tile_data(&self) -> serde_json::Value {
         self.inner
             .tile_data
             .clone()
@@ -633,6 +633,24 @@ impl NapiResourceInstanceWrapper {
             .get_tile(&tile_id)
             .and_then(|t| t.data.get(&node_id).cloned())
             .unwrap_or(serde_json::Value::Null)
+    }
+
+    /// Set a single node's data in a tile, mutating in place.
+    /// Returns true if the tile was found and updated.
+    #[napi]
+    pub fn set_tile_data_for_node(
+        &mut self,
+        tile_id: String,
+        node_id: String,
+        value: serde_json::Value,
+    ) -> bool {
+        if let Some(tiles) = &mut self.inner.tiles {
+            if let Some(tile) = tiles.get_mut(&tile_id) {
+                tile.data.insert(node_id, value);
+                return true;
+            }
+        }
+        false
     }
 
     #[napi]

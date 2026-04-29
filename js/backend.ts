@@ -52,13 +52,12 @@ export function getBackend(): BackendType {
  */
 function getNapiModule(): any {
   if (_napiModule) return _napiModule;
-  try {
-    // Native addons need CJS require() — ESM import() is async and callers are sync
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require('@alizarin/napi');
-  } catch {
-    return null;
+  // Check globalThis in case setNapiModule was called from another module instance
+  if ((globalThis as any).__alizarin_napi) {
+    _napiModule = (globalThis as any).__alizarin_napi;
+    return _napiModule;
   }
+  return null;
 }
 
 /**

@@ -6946,11 +6946,11 @@ ${val.stack}`;
   };
   function getNapiModule() {
     if (_napiModule) return _napiModule;
-    try {
-      return require("@alizarin/napi");
-    } catch {
-      return null;
+    if (globalThis.__alizarin_napi) {
+      _napiModule = globalThis.__alizarin_napi;
+      return _napiModule;
     }
+    return null;
   }
   setNapiModule = function(mod) {
     _napiModule = mod;
@@ -12283,7 +12283,7 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}
   }, Symbol.toStringTag, {
     value: "Module"
   }));
-  version = "0.2.1-alpha.76";
+  version = "0.2.1-alpha.77";
   registerAlizarinTimingGetter(getTimingStats);
   registerWasmTimingGetter(getWasmTimings);
   let _wasmReadyResolve;

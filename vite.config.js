@@ -96,7 +96,6 @@ export default defineConfig({
         'fs',
         'path',
         'url',
-        'module',
         'ajv',
         'ajv-formats',
         '@alizarin/napi',

@@ -50,7 +50,7 @@ export declare class NapiPseudoValue {
   get description(): any
   get name(): any
   get tileId(): string | null
-  get tileDataJson(): any
+  get tileData(): any
   get valueLoaded(): boolean
   hasTileData(): boolean
   setTileData(value: any): void
@@ -107,6 +107,11 @@ export declare class NapiResourceInstanceWrapper {
   getTileIdsByNodegroup(nodegroupId?: string | undefined | null): Array<string>
   getTile(tileId: string): any
   getTileData(tileId: string, nodeId: string): any
+  /**
+   * Set a single node's data in a tile, mutating in place.
+   * Returns true if the tile was found and updated.
+   */
+  setTileDataForNode(tileId: string, nodeId: string, value: any): boolean
   hasTilesForNodegroup(nodegroupId: string): boolean
   getNodegroupCount(): number
   setLazy(lazy: boolean): void

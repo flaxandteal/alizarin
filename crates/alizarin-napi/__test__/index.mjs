@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { NapiPrebuildLoader, NapiStaticGraph, NapiStaticResourceRegistry, NapiResourceModelWrapper } from '../index.js';
+import { NapiPrebuildLoader, NapiStaticGraph, NapiStaticResourceRegistry, NapiResourceModelWrapper, NapiResourceInstanceWrapper } from '../index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEST_DATA = path.resolve(__dirname, '..', '..', '..', 'tests');
@@ -324,5 +324,167 @@ describe('NapiResourceModelWrapper', () => {
     // Should not throw
     wrapper.buildNodes();
     assert.ok(Object.keys(wrapper.nodes).length > 0, 'nodes still accessible after buildNodes');
+  });
+});
+
+// =============================================================================
+// NapiPseudoValue property names
+// Regression: NAPI once exposed tileDataJson instead of tileData,
+// and was missing the .node getter.
+// =============================================================================
+
+describe('NapiPseudoValue property names', () => {
+  // Register the graph and load a resource with tiles
+  const groupJson = fs.readFileSync(
+    path.join(TEST_DATA, 'data', 'models', 'Group.json'),
+    'utf-8'
+  );
+  const graphData = JSON.parse(groupJson);
+  const graphStr = JSON.stringify(graphData.graph[0]);
+
+  const resourceJson = fs.readFileSync(
+    path.join(TEST_DATA, 'definitions', 'resources', '_07883c9e-b25c-11e9-975a-a4d18cec433a.json'),
+    'utf-8'
+  );
+  const resourceData = JSON.parse(resourceJson);
+  const resource = resourceData.business_data.resources[0];
+
+  // Create model wrapper (registers graph)
+  const _modelWrapper = new NapiResourceModelWrapper(graphStr, true);
+
+  // Create instance wrapper and load tiles
+  const instanceWrapper = new NapiResourceInstanceWrapper(resource.resourceinstance.graph_id);
+  instanceWrapper.loadTilesFromResource(resource);
+
+  // Get a PseudoList and PseudoValue
+  const pseudoList = instanceWrapper.getValuesAtPath('basic_info.name');
+  const pseudoValue = pseudoList.getValue(0);
+
+  it('exposes tileData (not tileDataJson)', () => {
+    assert.ok(pseudoValue, 'pseudoValue should exist');
+    // Must be .tileData, not .tileDataJson
+    assert.notEqual(pseudoValue.tileData, undefined, 'tileData should be defined');
+  });
+
+  it('exposes tileId', () => {
+    const tileId = pseudoValue.tileId;
+    if (tileId != null) {
+      assert.equal(typeof tileId, 'string');
+    }
+  });
+
+  it('exposes nodeId', () => {
+    assert.equal(typeof pseudoValue.nodeId, 'string');
+  });
+
+  it('exposes nodeAlias', () => {
+    if (pseudoValue.nodeAlias != null) {
+      assert.equal(typeof pseudoValue.nodeAlias, 'string');
+    }
+  });
+
+  it('exposes datatype', () => {
+    assert.equal(typeof pseudoValue.datatype, 'string');
+  });
+
+  it('exposes node as object with datatype', () => {
+    const node = pseudoValue.node;
+    assert.ok(node, 'node should be defined');
+    assert.equal(typeof node, 'object');
+    assert.ok(node.datatype, 'node.datatype should be defined');
+    assert.equal(typeof node.datatype, 'string');
+  });
+
+  it('exposes nodegroupId', () => {
+    if (pseudoValue.nodegroupId != null) {
+      assert.equal(typeof pseudoValue.nodegroupId, 'string');
+    }
+  });
+
+  it('exposes isCollector (boolean)', () => {
+    assert.equal(typeof pseudoValue.isCollector, 'boolean');
+  });
+
+  it('exposes sortorder', () => {
+    // sortorder can be number or null — just verify it doesn't throw
+    const _sortorder = pseudoValue.sortorder;
+    assert.ok(true);
+  });
+
+  it('exposes valueLoaded (boolean)', () => {
+    assert.equal(typeof pseudoValue.valueLoaded, 'boolean');
+  });
+});
+
+// =============================================================================
+// NapiResourceInstanceWrapper methods
+// Regression: NAPI was missing setTileDataForNode, tilesLoaded, setLazy.
+// =============================================================================
+
+describe('NapiResourceInstanceWrapper methods', () => {
+  const groupJson = fs.readFileSync(
+    path.join(TEST_DATA, 'data', 'models', 'Group.json'),
+    'utf-8'
+  );
+  const graphData = JSON.parse(groupJson);
+  const graphStr = JSON.stringify(graphData.graph[0]);
+  const graphId = graphData.graph[0].graphid;
+
+  const resourceJson = fs.readFileSync(
+    path.join(TEST_DATA, 'definitions', 'resources', '_07883c9e-b25c-11e9-975a-a4d18cec433a.json'),
+    'utf-8'
+  );
+  const resourceData = JSON.parse(resourceJson);
+  const resource = resourceData.business_data.resources[0];
+
+  // Ensure graph is registered
+  const _modelWrapper = new NapiResourceModelWrapper(graphStr, true);
+
+  it('has setTileDataForNode method', () => {
+    const wrapper = new NapiResourceInstanceWrapper(graphId);
+    wrapper.loadTilesFromResource(resource);
+    assert.equal(typeof wrapper.setTileDataForNode, 'function');
+  });
+
+  it('setTileDataForNode mutates tile data', () => {
+    const wrapper = new NapiResourceInstanceWrapper(graphId);
+    wrapper.loadTilesFromResource(resource);
+
+    const tileIds = wrapper.getAllTileIds();
+    assert.ok(tileIds.length > 0, 'should have tiles');
+    const tileId = tileIds[0];
+
+    // Set data and verify it was stored
+    const result = wrapper.setTileDataForNode(tileId, 'test-node-id', [{ name: 'test.jpg' }]);
+    assert.equal(result, true);
+
+    // Read it back
+    const data = wrapper.getTileData(tileId, 'test-node-id');
+    assert.deepEqual(data, [{ name: 'test.jpg' }]);
+  });
+
+  it('has tilesLoaded method', () => {
+    const wrapper = new NapiResourceInstanceWrapper(graphId);
+    assert.equal(typeof wrapper.tilesLoaded, 'function');
+    assert.equal(wrapper.tilesLoaded(), false);
+
+    wrapper.loadTilesFromResource(resource);
+    assert.equal(wrapper.tilesLoaded(), true);
+  });
+
+  it('has toJson method', () => {
+    const wrapper = new NapiResourceInstanceWrapper(graphId);
+    wrapper.loadTilesFromResource(resource);
+    assert.equal(typeof wrapper.toJson, 'function');
+    // toJson requires populate() first; just verify the method exists
+    // and that calling it without populate gives a meaningful error
+    assert.throws(() => wrapper.toJson(), /populate/i);
+  });
+
+  it('has setLazy method', () => {
+    const wrapper = new NapiResourceInstanceWrapper(graphId);
+    assert.equal(typeof wrapper.setLazy, 'function');
+    // Should not throw
+    wrapper.setLazy(true);
   });
 });
