@@ -1990,4 +1990,165 @@ mod tests {
         assert!(child_labels.contains(&"Child One"));
         assert!(child_labels.contains(&"Child Two"));
     }
+
+    /// Test that loading a collections.xml (with only member references) and a separate
+    /// concepts.xml (with full concept definitions) results in a collection that has
+    /// fully-resolved concepts with labels.
+    ///
+    /// This simulates the real-world Arches pattern where collections and concepts
+    /// are exported as separate XML files.
+    #[test]
+    fn test_cross_file_collection_concept_resolution() {
+        // collections.xml: defines the collection with member URIs but NO concept details
+        const COLLECTIONS_XML: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:skos="http://www.w3.org/2004/02/skos/core#">
+  <skos:Collection rdf:about="http://localhost:8000/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee">
+    <skos:prefLabel xml:lang="en">My Test Collection</skos:prefLabel>
+    <skos:member>
+      <skos:Concept rdf:about="http://localhost:8000/11111111-1111-1111-1111-111111111111"/>
+    </skos:member>
+    <skos:member>
+      <skos:Concept rdf:about="http://localhost:8000/22222222-2222-2222-2222-222222222222"/>
+    </skos:member>
+  </skos:Collection>
+</rdf:RDF>"#;
+
+        // concepts.xml: defines the concepts with full labels
+        const CONCEPTS_XML: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:skos="http://www.w3.org/2004/02/skos/core#">
+  <skos:Concept rdf:about="http://localhost:8000/11111111-1111-1111-1111-111111111111">
+    <skos:prefLabel xml:lang="en">Alpha Concept</skos:prefLabel>
+  </skos:Concept>
+  <skos:Concept rdf:about="http://localhost:8000/22222222-2222-2222-2222-222222222222">
+    <skos:prefLabel xml:lang="en">Beta Concept</skos:prefLabel>
+  </skos:Concept>
+</rdf:RDF>"#;
+
+        let base_uri = "http://localhost:8000/";
+
+        // Parse collections.xml first
+        let collections = parse_skos_to_collections(COLLECTIONS_XML, base_uri).unwrap();
+        assert_eq!(collections.len(), 1, "Should find one collection");
+
+        let collection = &collections[0];
+        assert_eq!(collection.node_type, SkosNodeType::Collection);
+
+        // The collection references 2 member concepts as bare stubs
+        // (no labels, just rdf:about URIs). Parser can only see one file.
+        assert_eq!(
+            collection.concepts.len(),
+            2,
+            "Collection should have 2 member concepts (bare stubs)"
+        );
+
+        // Verify they are indeed bare (no labels from the collection XML alone)
+        let labels: Vec<&str> = collection
+            .concepts
+            .values()
+            .filter_map(|c| c.pref_labels.get("en").map(|l| l.value.as_str()))
+            .collect();
+        assert!(
+            labels.is_empty(),
+            "Parser should produce bare concepts when definitions are in a separate file"
+        );
+
+        // Test the RDM cache cross-file enrichment path:
+        // Load collections.xml into cache, then load concepts.xml,
+        // and verify the collection gets enriched.
+        use crate::rdm_cache::RdmCache;
+
+        let mut cache = RdmCache::default();
+
+        // Load collections first
+        let coll_parsed = parse_skos_to_collections(COLLECTIONS_XML, base_uri).unwrap();
+        cache.add_from_skos_collections(&coll_parsed);
+
+        // Load concepts second
+        let concepts_parsed = parse_skos_to_collections(CONCEPTS_XML, base_uri).unwrap();
+        cache.add_from_skos_collections(&concepts_parsed);
+
+        // The collection should now be able to resolve concept labels
+        let collection_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        let alpha_id = "11111111-1111-1111-1111-111111111111";
+        let beta_id = "22222222-2222-2222-2222-222222222222";
+
+        let alpha_label = cache.lookup_label(collection_id, alpha_id, "en");
+        let beta_label = cache.lookup_label(collection_id, beta_id, "en");
+
+        assert_eq!(
+            alpha_label,
+            Some("Alpha Concept".to_string()),
+            "Cache should resolve Alpha Concept label after loading concepts.xml"
+        );
+        assert_eq!(
+            beta_label,
+            Some("Beta Concept".to_string()),
+            "Cache should resolve Beta Concept label after loading concepts.xml"
+        );
+    }
+
+    /// Same as above but with the reverse loading order:
+    /// concepts.xml loaded first, then collections.xml.
+    /// The collection should still get enriched concepts.
+    #[test]
+    fn test_cross_file_collection_concept_resolution_reverse_order() {
+        const COLLECTIONS_XML: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:skos="http://www.w3.org/2004/02/skos/core#">
+  <skos:Collection rdf:about="http://localhost:8000/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee">
+    <skos:prefLabel xml:lang="en">My Test Collection</skos:prefLabel>
+    <skos:member>
+      <skos:Concept rdf:about="http://localhost:8000/11111111-1111-1111-1111-111111111111"/>
+    </skos:member>
+    <skos:member>
+      <skos:Concept rdf:about="http://localhost:8000/22222222-2222-2222-2222-222222222222"/>
+    </skos:member>
+  </skos:Collection>
+</rdf:RDF>"#;
+
+        const CONCEPTS_XML: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:skos="http://www.w3.org/2004/02/skos/core#">
+  <skos:Concept rdf:about="http://localhost:8000/11111111-1111-1111-1111-111111111111">
+    <skos:prefLabel xml:lang="en">Alpha Concept</skos:prefLabel>
+  </skos:Concept>
+  <skos:Concept rdf:about="http://localhost:8000/22222222-2222-2222-2222-222222222222">
+    <skos:prefLabel xml:lang="en">Beta Concept</skos:prefLabel>
+  </skos:Concept>
+</rdf:RDF>"#;
+
+        let base_uri = "http://localhost:8000/";
+        use crate::rdm_cache::RdmCache;
+
+        let mut cache = RdmCache::default();
+
+        // Load concepts FIRST
+        let concepts_parsed = parse_skos_to_collections(CONCEPTS_XML, base_uri).unwrap();
+        cache.add_from_skos_collections(&concepts_parsed);
+
+        // Load collections SECOND (has bare member references)
+        let coll_parsed = parse_skos_to_collections(COLLECTIONS_XML, base_uri).unwrap();
+        cache.add_from_skos_collections(&coll_parsed);
+
+        // The collection should have enriched concepts from the already-cached data
+        let collection_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        let alpha_id = "11111111-1111-1111-1111-111111111111";
+        let beta_id = "22222222-2222-2222-2222-222222222222";
+
+        let alpha_label = cache.lookup_label(collection_id, alpha_id, "en");
+        let beta_label = cache.lookup_label(collection_id, beta_id, "en");
+
+        assert_eq!(
+            alpha_label,
+            Some("Alpha Concept".to_string()),
+            "Cache should resolve Alpha Concept label when concepts loaded first"
+        );
+        assert_eq!(
+            beta_label,
+            Some("Beta Concept".to_string()),
+            "Cache should resolve Beta Concept label when concepts loaded first"
+        );
+    }
 }

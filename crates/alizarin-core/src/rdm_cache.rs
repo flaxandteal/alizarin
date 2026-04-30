@@ -595,12 +595,124 @@ impl RdmCache {
 
     /// Add multiple SKOS collections to the cache.
     ///
+    /// After adding, enriches any existing collections that have bare concept stubs
+    /// (concepts with no labels) if the newly-added data provides labels for those
+    /// concept IDs. This handles the common Arches pattern where collections.xml and
+    /// concepts.xml are separate files.
+    ///
     /// Returns the list of collection IDs added.
     pub fn add_from_skos_collections(&mut self, collections: &[SkosCollection]) -> Vec<String> {
-        collections
+        let added_ids: Vec<String> = collections
             .iter()
             .map(|skos| self.add_from_skos_collection(skos))
-            .collect()
+            .collect();
+
+        // Cross-collection enrichment: if any existing collection has bare concepts
+        // (no labels), and a newly-added collection has the same concept ID with labels,
+        // copy the labels across.
+        self.enrich_bare_concepts(&added_ids);
+
+        added_ids
+    }
+
+    /// Enrich bare concepts across all collections.
+    ///
+    /// A "bare concept" is one that exists in a collection (as a member reference)
+    /// but has no pref_labels — typically because it was loaded from a collections.xml
+    /// that only declared member URIs without inline concept definitions.
+    ///
+    /// This checks bidirectionally: newly-added collections can enrich existing ones,
+    /// and existing collections can enrich newly-added ones.
+    fn enrich_bare_concepts(&mut self, newly_added_ids: &[String]) {
+        // Build a global lookup of concept_id -> labels from ALL collections
+        let mut concept_labels: HashMap<String, HashMap<String, RdmValue>> = HashMap::new();
+
+        for coll in self.collections.values() {
+            for (concept_id, concept) in &coll.concepts {
+                if !concept.pref_label.is_empty() {
+                    concept_labels
+                        .entry(concept_id.clone())
+                        .or_insert_with(|| concept.pref_label.clone());
+                }
+            }
+        }
+
+        if concept_labels.is_empty() {
+            return;
+        }
+
+        // Find and enrich bare concepts in all collections that were involved
+        // (either newly added or existing ones that reference newly-added concepts)
+        let all_collection_ids: Vec<String> = self.collections.keys().cloned().collect();
+        for coll_id in &all_collection_ids {
+            let needs_enrichment: Vec<String> = {
+                if let Some(coll) = self.collections.get(coll_id) {
+                    coll.concepts
+                        .iter()
+                        .filter(|(_, concept)| concept.pref_label.is_empty())
+                        .filter(|(id, _)| concept_labels.contains_key(*id))
+                        .map(|(id, _)| id.clone())
+                        .collect()
+                } else {
+                    vec![]
+                }
+            };
+
+            if needs_enrichment.is_empty() {
+                continue;
+            }
+
+            // Only enrich if this collection is newly added OR if it references
+            // concepts from a newly-added collection
+            let dominated_by_new = newly_added_ids.contains(coll_id)
+                || needs_enrichment
+                    .iter()
+                    .any(|cid| self.concept_in_collections(cid, newly_added_ids));
+
+            if !dominated_by_new {
+                continue;
+            }
+
+            if let Some(coll) = self.collections.get_mut(coll_id) {
+                for concept_id in needs_enrichment {
+                    if let Some(labels) = concept_labels.get(&concept_id) {
+                        // Build value index entries first
+                        let mut new_index_entries: Vec<(String, String, String)> = Vec::new();
+                        let mut enriched_labels = labels.clone();
+                        for (lang, value) in enriched_labels.iter_mut() {
+                            value.concept_id = concept_id.clone();
+                            value.language = lang.clone();
+                            new_index_entries.push((
+                                value.id.clone(),
+                                concept_id.clone(),
+                                lang.clone(),
+                            ));
+                        }
+
+                        // Apply to concept
+                        if let Some(concept) = coll.get_concept_mut(&concept_id) {
+                            concept.pref_label = enriched_labels;
+                        }
+
+                        // Update value index
+                        for (value_id, cid, lang) in new_index_entries {
+                            coll.value_index.insert(value_id, (cid, lang));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Check if a concept ID exists (with labels) in any of the specified collections.
+    fn concept_in_collections(&self, concept_id: &str, collection_ids: &[String]) -> bool {
+        collection_ids.iter().any(|coll_id| {
+            self.collections
+                .get(coll_id)
+                .and_then(|c| c.get_concept(concept_id))
+                .map(|concept| !concept.pref_label.is_empty())
+                .unwrap_or(false)
+        })
     }
 }
 
