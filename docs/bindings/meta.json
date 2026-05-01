@@ -1,0 +1,10 @@
+{
+  "title": "Bindings",
+  "pages": [
+    "index",
+    "javascript",
+    "napi",
+    "python",
+    "rust"
+  ]
+}

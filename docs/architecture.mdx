@@ -69,6 +69,27 @@ console.log(person.birthDate); // Typed, parsed values
                                    └─────────────┘    └──────────────┘
 ```
 
+## Multi-Binding Architecture
+
+Alizarin is built as a Rust core (`alizarin-core`) with language-specific bindings:
+
+```
+                    alizarin-core (Rust)
+                   /        |         \
+           alizarin-wasm  alizarin-napi  alizarin-python
+           (wasm-bindgen) (napi-rs)      (PyO3)
+               |              |              |
+          JS/TS ORM      Node.js native   Python module
+         (browser+Node)   (Node.js only)  (pip install)
+```
+
+- **JS/TS (WASM)**: Full ORM layer with `GraphManager`, view models, and client abstractions. Works in browsers and Node.js.
+- **JS/TS (NAPI)**: Alternative native backend for the same ORM — swap in for better performance on Node.js.
+- **Python**: Direct function exports for tile conversion, graph mutation, RDM caching, and SKOS parsing. Used by [AORM](https://github.com/flaxandteal/arches-orm/) and ETL pipelines.
+- **Rust**: The core crate, usable directly for maximum performance or for building new bindings.
+
+See [Bindings](/docs/bindings) for detailed API documentation per language.
+
 ## Key Design Patterns
 
 1. **Proxy Pattern**: ES6 Proxies enable transparent property access on view models

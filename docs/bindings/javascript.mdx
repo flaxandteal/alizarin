@@ -1,0 +1,94 @@
+---
+title: JavaScript / TypeScript
+description: WASM-powered ORM for browser and Node.js
+---
+
+The primary Alizarin binding. A full ORM layer over Arches graph data, powered by a WASM core compiled from Rust.
+
+## Installation
+
+```bash
+npm install alizarin
+```
+
+Works in browsers and Node.js. Node.js requires `--experimental-wasm-modules`.
+
+## Quick Example
+
+```typescript
+import { ArchesClientRemoteStatic, GraphManager } from 'alizarin';
+
+const client = new ArchesClientRemoteStatic('/data');
+const gm = new GraphManager(client);
+
+// Load a graph model and query resources
+const Person = await gm.loadGraph('Person');
+const people = await Person.all();
+
+for (const person of people) {
+  console.log(person.forename);       // StringViewModel
+  console.log(person.birthDate);      // DateViewModel
+  console.log(person.role?.prefLabel); // ConceptValueViewModel
+}
+```
+
+## API Surface
+
+### Clients
+
+| Class | Description |
+|-------|-------------|
+| `ArchesClientRemote` | Connects to a live Arches REST API |
+| `ArchesClientRemoteStatic` | Loads from pre-exported static JSON files |
+| `ArchesClientLocal` | Loads from local filesystem (Node.js only) |
+
+### Core ORM
+
+| Class | Description |
+|-------|-------------|
+| `GraphManager` | Central registry for graphs, resources and client |
+| `ResourceModelWrapper` | ORM wrapper: `.all()`, `.get()`, `.create()` |
+| `ResourceInstanceViewModel` | Proxy-based property access on resource instances |
+| `GraphMutator` | Fluent API for programmatic graph schema changes |
+
+### View Models
+
+| Class | Arches datatype |
+|-------|----------------|
+| `StringViewModel` | `string` |
+| `NumberViewModel` | `number` |
+| `DateViewModel` | `date` |
+| `ConceptValueViewModel` | `concept`, `concept-list` |
+| `GeojsonFeatureCollectionViewModel` | `geojson-feature-collection` |
+| `ResourceInstanceListViewModel` | `resource-instance-list` |
+| `SemanticViewModel` | Nested nodegroup structures |
+| `BooleanViewModel` | `boolean` |
+| `EDTFViewModel` | `edtf` |
+| `UrlViewModel` | `url` |
+
+### Utilities
+
+| Function | Description |
+|----------|-------------|
+| `buildGraphFromModelCsvs()` | Build a graph definition from CSV files |
+| `validateModelCsvs()` | Validate CSV model definitions |
+| `buildResourcesFromBusinessCsv()` | Create resource instances from CSV data |
+| `parseSkosXml()` | Parse SKOS RDF/XML vocabularies |
+| `setCurrentLanguage()` / `getCurrentLanguage()` | i18n control |
+| `setWasmURL()` | Customise WASM binary location |
+| `wasmReady` | Promise that resolves when WASM is initialised |
+
+## Backend Selection
+
+By default, the WASM backend is used. In Node.js, you can switch to the [NAPI backend](/docs/bindings/napi) for better performance:
+
+```typescript
+import { setBackend } from 'alizarin';
+setBackend('napi');
+```
+
+## Further Reading
+
+- [Quickstart](/docs/quickstart) — working example with sample data
+- [Graph Mutations](/docs/mutations) — programmatic schema changes
+- [Source code](https://github.com/flaxandteal/alizarin/tree/main/js)

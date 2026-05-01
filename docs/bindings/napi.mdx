@@ -1,0 +1,90 @@
+---
+title: Node.js Native (NAPI)
+description: High-performance native addon for Node.js
+---
+
+The NAPI binding provides a native Node.js addon built with `napi-rs`. It serves as an alternative backend for the JS/TS ORM, offering better performance for large datasets and avoiding WASM overhead.
+
+## Installation
+
+Platform-specific binaries are available from [GitHub Releases](https://github.com/flaxandteal/alizarin/releases). The NAPI addon is not published to npm — download the `.node` file for your platform.
+
+Supported platforms:
+- Linux x64
+- macOS ARM64 (Apple Silicon)
+- macOS x64
+- Windows x64
+
+## Using as a JS/TS Backend
+
+The NAPI backend is used through the same JS/TS ORM API. Switch backends with:
+
+```typescript
+import { setBackend, setNapiModule } from 'alizarin';
+
+// Load the native addon
+const napi = require('./alizarin.linux-x64-gnu.node');
+setNapiModule(napi);
+setBackend('napi');
+
+// Now all ORM operations use native code
+const Person = await gm.loadGraph('Person');
+const people = await Person.all(); // native speed
+```
+
+## Direct NAPI API
+
+The NAPI module also exposes lower-level classes for direct use without the ORM layer:
+
+### Classes
+
+| Class | Description |
+|-------|-------------|
+| `NapiPrebuildLoader` | Load graphs and resources from a prebuild directory |
+| `NapiStaticGraph` | Parse and register graph definitions |
+| `NapiStaticResourceRegistry` | Index and query resources with native performance |
+
+### NapiPrebuildLoader
+
+```javascript
+const loader = new NapiPrebuildLoader('/path/to/prebuild');
+const graphs = loader.loadAllGraphs();
+const resources = loader.loadFullResourcesFromFile('path.json', graphId);
+console.log(loader.getInfo());
+```
+
+### NapiStaticResourceRegistry
+
+```javascript
+const registry = new NapiStaticResourceRegistry();
+registry.mergeFromResourcesJson(resourcesJson, true);
+
+// Build indexes for fast lookups
+const index = registry.getValueToResourcesIndex(graph, nodeId, true);
+const filtered = registry.getFilteredTileValues(
+  graph, filterNodeId, filterValues, extractNodeId, true, null
+);
+```
+
+### Module Functions
+
+| Function | Description |
+|----------|-------------|
+| `buildGraphFromCsvs()` | Build graph definition from CSV strings |
+| `buildBusinessDataFromCsv()` | Build resource instances from CSV data |
+
+## When to Use NAPI vs WASM
+
+| | WASM | NAPI |
+|-|------|------|
+| **Runtime** | Browser + Node.js | Node.js only |
+| **Install** | `npm install` (bundled) | Platform binary |
+| **Performance** | Good | Better (native) |
+| **Memory** | Limited by WASM linear memory | Full system memory |
+| **Dataset size** | Small to medium | Any size |
+| **Use case** | Frontend, SSG, prototyping | ETL, batch processing, production pipelines |
+
+## Further Reading
+
+- [JavaScript binding](/docs/bindings/javascript) — the ORM layer that NAPI powers
+- [Source code](https://github.com/flaxandteal/alizarin/tree/main/crates/alizarin-napi)

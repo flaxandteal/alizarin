@@ -1,0 +1,80 @@
+---
+title: Rust Core
+description: The shared engine behind all Alizarin bindings
+---
+
+`alizarin-core` is the pure Rust crate that powers all other bindings. Use it directly when you need maximum performance, want to embed Alizarin in a Rust application, or are building a new language binding.
+
+## Installation
+
+```toml
+[dependencies]
+alizarin-core = "0.2"
+```
+
+The crate is published to [crates.io](https://crates.io/crates/alizarin-core).
+
+## Quick Example
+
+```rust
+use alizarin_core::json_conversion::{tiles_to_tree, tree_to_tiles_with_options};
+use alizarin_core::graph::StaticGraph;
+
+// Parse a graph definition
+let graph: StaticGraph = serde_json::from_str(&graph_json)?;
+
+// Convert tiles to a JSON tree
+let tree = tiles_to_tree(&resource, &graph, &interner)?;
+
+// Convert back
+let tiles = tree_to_tiles_with_options(&tree, &resource_id, &graph, &options)?;
+```
+
+## Key Types
+
+| Type | Module | Description |
+|------|--------|-------------|
+| `StaticGraph` | `graph` | Complete graph definition with nodes, edges, cards |
+| `StaticNode` | `graph` | A single node in the graph |
+| `StaticResource` | `graph` | Resource instance with tiles |
+| `StaticResourceRegistry` | `registry` | Indexed collection of resources |
+| `PrebuildLoader` | `loader` | Load graphs and resources from a prebuild directory |
+| `RdmCache` | `rdm_cache` | Reference data concept cache |
+| `Interner` | `interner` | String interning for memory-efficient UUID handling |
+| `NodeConfig` | `node_config` | Per-node configuration and coercion settings |
+| `ExtensionTypeRegistry` | `extension_type_registry` | Custom datatype handler registration |
+
+## Key Functions
+
+| Function | Module | Description |
+|----------|--------|-------------|
+| `tiles_to_tree()` | `json_conversion` | Convert tiles to nested JSON |
+| `tree_to_tiles_with_options()` | `json_conversion` | Convert JSON tree back to tiles |
+| `build_tree_from_tiles()` | `json_conversion` | Build tree from pre-extracted tiles |
+| `parse_resources_from_json_str()` | `graph` | Parse business data JSON |
+| `merge_resources()` | `graph` | Merge two resource tile sets |
+| `build_graph_from_model_csvs()` | `csv_model_loader` | Build graph from CSV definitions |
+| `build_resources_from_business_csv()` | `csv_business_data_loader` | Build resources from CSV |
+| `resolve_labels()` | `label_resolution` | Resolve label strings to concept UUIDs |
+| `prune_graph()` | `graph` | Remove unused nodes from a graph |
+
+## Module Overview
+
+The crate is organised into ~37 public modules. The most commonly used:
+
+- **`graph`** — Core data structures (`StaticGraph`, `StaticNode`, `StaticEdge`, etc.)
+- **`json_conversion`** — Tile/tree bidirectional conversion
+- **`graph_mutator`** — Programmatic graph schema modification
+- **`csv_model_loader`** / **`csv_business_data_loader`** — CSV-based graph and data loading
+- **`rdm_cache`** / **`rdm_namespace`** — Reference data management
+- **`skos`** — SKOS RDF/XML parsing and serialization
+- **`type_coercion`** — Multi-phase value coercion across Arches datatypes
+- **`registry`** — Resource indexing and lookup
+- **`loader`** — Prebuild directory loading
+- **`label_resolution`** — Resolve human labels to concept UUIDs
+- **`extension_type_registry`** — Plugin system for custom datatypes
+
+## Further Reading
+
+- [Architecture](/docs/architecture) — how the Rust core fits into the overall system
+- [Source code](https://github.com/flaxandteal/alizarin/tree/main/crates/alizarin-core)

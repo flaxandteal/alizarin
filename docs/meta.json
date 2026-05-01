@@ -1,0 +1,17 @@
+{
+  "pages": [
+    "index",
+    "quickstart",
+    "installation",
+    "background",
+    "architecture",
+    "---Guides---",
+    "graphs",
+    "mutations",
+    "api",
+    "---Bindings---",
+    "bindings",
+    "---Reference---",
+    "llm-reference"
+  ]
+}

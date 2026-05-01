@@ -1,0 +1,104 @@
+---
+title: Python
+description: PyO3 bindings for data pipelines and Arches integration
+---
+
+The Python binding exposes `alizarin-core` functionality via PyO3. It provides tile/JSON conversion, graph mutation, RDM caching, SKOS parsing, and extension support — the same operations used by [AORM](https://github.com/flaxandteal/arches-orm/) and Arches-adjacent tooling.
+
+## Installation
+
+```bash
+pip install alizarin
+```
+
+Wheels are available for Python 3.9–3.13 on Linux, macOS and Windows.
+
+## Quick Example
+
+```python
+import alizarin
+import json
+
+# Register a graph
+with open("graph.json") as f:
+    graph_json = f.read()
+alizarin.register_graph(graph_json)
+
+# Convert tiles to a nested JSON tree
+with open("resource.json") as f:
+    resource_json = f.read()
+tree = alizarin.tiles_to_json_tree(resource_json)
+print(json.loads(tree))
+
+# Convert back to tiles
+tiles = alizarin.json_tree_to_tiles(
+    tree, resource_id, graph_id,
+    from_camel=True, strict=False
+)
+```
+
+## API Surface
+
+### JSON Conversion
+
+| Function | Description |
+|----------|-------------|
+| `tiles_to_json_tree(resource_json)` | Tiles to nested JSON tree |
+| `build_tree_from_tiles(tiles_json, resource_id, graph_id)` | Pre-extracted tiles to tree |
+| `cards_to_json_tree(resource_json)` | Tiles to card-structured tree |
+| `json_tree_to_tiles(tree, resource_id, graph_id, ...)` | Tree back to tiles format |
+| `batch_trees_to_tiles(trees, graph_id, ...)` | Parallel batch conversion |
+
+### Graph & Resource Registry
+
+| Function | Description |
+|----------|-------------|
+| `register_graph(graph_json)` | Register a graph for lookups |
+| `register_all_graphs(graphs_json)` | Batch register multiple graphs |
+| `get_graph(graph_id)` | Retrieve registered graph |
+| `parse_resources_from_json(resources_json)` | Parse business data |
+| `merge_resources(a, b, graph_id, resolver)` | Merge two resource tile sets |
+| `batch_merge_resources(resources, graph_id, resolver)` | Parallel merge |
+| `create_resource_registry()` | Create empty registry |
+
+### Graph Mutations
+
+| Function | Description |
+|----------|-------------|
+| `mutate_graph_add_node(graph, nodegroup_id, config)` | Add a node |
+| `mutate_graph_remove_node(graph, node_id)` | Remove a node |
+| `mutate_graph_rename_node(graph, node_id, new_name)` | Rename a node |
+| `mutate_graph_add_edge(graph, parent_id, child_id)` | Add an edge |
+| `mutate_graph_remove_edge(graph, parent_id, child_id)` | Remove an edge |
+| `mutate_graph_remove_nodegroup(graph, nodegroup_id)` | Remove a nodegroup |
+
+### RDM (Reference Data)
+
+| Function | Description |
+|----------|-------------|
+| `set_global_rdm_cache(cache)` | Set global concept cache |
+| `ensure_rdm_cache_populated(collection_json)` | Populate cache from collection |
+| `rdm_lookup_by_id(collection_id, concept_id)` | Look up concept by ID |
+| `rdm_lookup_by_label(collection_id, label)` | Look up concept by label |
+
+### SKOS Vocabularies
+
+| Function | Description |
+|----------|-------------|
+| `parse_skos_xml(xml)` | Parse SKOS RDF/XML |
+| `parse_skos_xml_to_collection(xml)` | Parse to collection object |
+| `collection_to_skos_xml(json)` | Serialize to RDF/XML |
+| `collections_to_skos_xml(json)` | Batch serialize |
+
+### Extension System
+
+| Function | Description |
+|----------|-------------|
+| `register_type_handler(capsule)` | Register custom datatype handler |
+| `coerce_with_extension(type_name, value, config)` | Call extension coercion |
+| `register_widget_for_datatype(datatype, widget)` | Map datatype to widget |
+
+## Further Reading
+
+- [Graph Mutations](/docs/mutations) — CSV-based mutation format (works with Python API)
+- [Source code](https://github.com/flaxandteal/alizarin/tree/main/crates/alizarin-python)

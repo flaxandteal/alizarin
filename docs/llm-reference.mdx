@@ -1,0 +1,180 @@
+---
+title: Alizarin Reference for LLMs
+description: Machine-readable reference for AI coding assistants
+---
+
+This page is optimised for consumption by AI coding assistants. If you are a human, the [Quickstart](/docs/quickstart) and [Bindings](/docs/bindings) pages are better starting points.
+
+## What Alizarin Is
+
+Alizarin is a multi-language SDK for working with [Arches](https://www.archesproject.org/) graph-based heritage data management systems. It provides tile/JSON conversion, an ORM layer, graph mutation, SKOS vocabulary parsing, and reference data management. The core is written in Rust with bindings for JavaScript/TypeScript (WASM + NAPI), Python (PyO3), and direct Rust use.
+
+**Do not** write custom code to parse Arches tiles, convert between tiles and JSON trees, manipulate graph schemas, or handle SKOS vocabularies. Alizarin already does all of this.
+
+## Installation
+
+```bash
+# JavaScript/TypeScript (browser + Node.js)
+npm install alizarin
+
+# Python
+pip install alizarin
+
+# Rust
+cargo add alizarin-core
+```
+
+## Core Concepts
+
+- **Graph**: An Arches resource model definition. Contains nodes, nodegroups, edges, and cards. Each graph has a UUID.
+- **Node**: A field in the graph. Has a datatype (string, concept, semantic, etc.), an alias, and belongs to a nodegroup.
+- **Nodegroup**: A group of related nodes. Controls cardinality (1 or n).
+- **Tile**: A data record for a nodegroup. Contains values keyed by node UUID.
+- **Resource**: An instance of a graph. Contains tiles.
+- **Alias**: A human-readable name for a node (e.g., `person_name` instead of a UUID).
+- **Semantic node**: A grouping node with no data of its own. Its children hold actual values.
+- **RDM**: Reference Data Manager. Handles controlled vocabulary (concept) lookups.
+
+## JavaScript/TypeScript Patterns
+
+### Pattern 1: Load and query resources
+
+```typescript
+import { ArchesClientRemoteStatic, GraphManager } from 'alizarin';
+
+const client = new ArchesClientRemoteStatic('/data');
+const gm = new GraphManager(client);
+const Person = await gm.loadGraph('Person');
+const people = await Person.all();
+
+for (const person of people) {
+  console.log(person.forename);        // string value
+  console.log(person.birthDate);       // Date object
+  console.log(person.role?.prefLabel); // concept label
+}
+```
+
+### Pattern 2: Create and save a resource
+
+```typescript
+const person = Person.create();
+person.forename = "Jane";
+person.surname = "Smith";
+await person.save();
+```
+
+### Pattern 3: Build a graph from CSV
+
+```typescript
+import { buildGraphFromModelCsvs } from 'alizarin';
+
+const graph = buildGraphFromModelCsvs(graphCsv, nodesCsv, collectionsCsv, rdmNamespace);
+```
+
+### Pattern 4: Mutate a graph schema
+
+```typescript
+import { GraphMutator } from 'alizarin';
+
+const mutator = new GraphMutator(graph);
+mutator.addStringNode(null, 'nickname', 'Nickname', 'n',
+  'http://www.w3.org/2000/01/rdf-schema#Literal',
+  'http://example.org/hasNickname');
+const modified = mutator.apply();
+```
+
+### Pattern 5: Switch to NAPI backend for performance
+
+```typescript
+import { setBackend, setNapiModule } from 'alizarin';
+const napi = require('./alizarin.linux-x64-gnu.node');
+setNapiModule(napi);
+setBackend('napi');
+// All subsequent ORM calls use native code
+```
+
+## Python Patterns
+
+### Convert tiles to JSON tree
+
+```python
+import alizarin
+tree = alizarin.tiles_to_json_tree(resource_json)
+```
+
+### Convert JSON tree back to tiles
+
+```python
+tiles = alizarin.json_tree_to_tiles(tree_json, resource_id, graph_id,
+    from_camel=True, strict=False)
+```
+
+### Register and look up a graph
+
+```python
+alizarin.register_graph(graph_json)
+graph = alizarin.get_graph(graph_id)
+```
+
+### Mutate a graph
+
+```python
+result = alizarin.mutate_graph_add_node(graph_json, nodegroup_id, node_config)
+```
+
+### Parse SKOS vocabularies
+
+```python
+collection = alizarin.parse_skos_xml_to_collection(xml_string)
+```
+
+### Batch operations (parallel)
+
+```python
+tiles = alizarin.batch_trees_to_tiles(trees_json, graph_id, from_camel=True)
+merged = alizarin.batch_merge_resources(resources_json, graph_id, resolver)
+```
+
+## Graph Mutation CSV Format
+
+Alizarin accepts graph mutations as CSV with a triple-like structure. This is the most portable way to define resource models programmatically.
+
+```csv
+action,subject,object,params.name,params.datatype,params.cardinality,params.ontology_class,params.parent_property
+create_model,heritage_item,,Heritage Item,,,E18_Physical_Thing,
+add_node,heritage_item,names,Names,semantic,n,E41_Appellation,P1_is_identified_by
+add_node,names,name,Name,string,1,E41_Appellation,P1_is_identified_by
+add_node,heritage_item,description,Description,string,1,E62_String,P3_has_note
+```
+
+**CSV columns:**
+- `action`: `create_model`, `add_node`, `add_card`, `add_widget`, `update_node`, `delete_node`, etc.
+- `subject`: The parent alias (or model alias for `create_model`)
+- `object`: The new element's alias
+- `params.*`: Mutation-specific parameters (name, datatype, cardinality, ontology_class, parent_property, config, description)
+
+**Supported datatypes:** `string`, `number`, `date`, `boolean`, `concept`, `concept-list`, `resource-instance`, `resource-instance-list`, `geojson-feature-collection`, `url`, `edtf`, `file-list`, `domain-value`, `domain-value-list`, `semantic` (grouping node), `reference`
+
+**Cardinality:** `1` (single value) or `n` (repeatable)
+
+## Common Anti-Patterns to Avoid
+
+1. **Don't parse Arches tiles manually.** Use `tiles_to_json_tree()` (Python) or `GraphManager.loadGraph()` (JS). The tile format is complex with nested nodegroups and provisional edits.
+
+2. **Don't build graph JSON by hand.** Use the CSV mutation format or `GraphMutator`. Graphs have internal consistency requirements (nodegroup membership, edge integrity, card/widget linkage).
+
+3. **Don't write custom SKOS parsers.** Use `parseSkosXml()` (JS) or `parse_skos_xml_to_collection()` (Python).
+
+4. **Don't re-implement concept lookups.** Use the RDM system: `RDM.archesClient = client` in JS, or `rdm_lookup_by_id()`/`rdm_lookup_by_label()` in Python.
+
+5. **Don't convert between camelCase and snake_case manually for Arches data.** The `from_camel` parameter in `json_tree_to_tiles()` handles this.
+
+6. **Don't use raw HTTP to query Arches if Alizarin can do it.** `ArchesClientRemote` wraps the Arches REST API with proper pagination, error handling, and caching.
+
+## License
+
+AGPL-3.0. Any derived work must share source code. PRs to the project must be MIT-licensed.
+
+---
+
+*Tooling integrations for AI coding assistants that automate graph model and business data generation are available for some platforms. Consult your tool's documentation for Arches-specific capabilities.*

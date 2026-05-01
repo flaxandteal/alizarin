@@ -1,0 +1,60 @@
+---
+title: Bindings Overview
+description: Alizarin is available for JavaScript, Python and Rust
+---
+
+Alizarin is built as a Rust core with bindings for multiple languages and runtimes. All bindings share the same underlying graph engine (`alizarin-core`), so behaviour is consistent across platforms.
+
+## Which binding should I use?
+
+| Binding | Runtime | Install | Best for |
+|---------|---------|---------|----------|
+| [JS/TS (WASM)](/docs/bindings/javascript) | Browser, Node.js | `npm install alizarin` | Frontend apps, SSG, general Node.js |
+| [Node.js (NAPI)](/docs/bindings/napi) | Node.js only | Platform-specific `.node` binary | High-throughput Node.js, large datasets |
+| [Python](/docs/bindings/python) | Python 3.9+ | `pip install alizarin` | ETL pipelines, Arches integration, scripting |
+| [Rust](/docs/bindings/rust) | Native | `cargo add alizarin-core` | Custom tooling, embedding, maximum performance |
+
+## Architecture
+
+All bindings wrap `alizarin-core`, a pure Rust crate that handles:
+
+- Graph parsing and traversal
+- Tile-to-JSON and JSON-to-tile conversion
+- Type coercion across Arches datatypes
+- SKOS/RDF vocabulary parsing
+- Label resolution and RDM caching
+- Graph mutation operations
+
+```
+                    alizarin-core (Rust)
+                   /        |         \
+           alizarin-wasm  alizarin-napi  alizarin-python
+           (wasm-bindgen) (napi-rs)      (PyO3)
+               |              |              |
+          JS/TS ORM      Node.js native   Python module
+         (browser+Node)   (Node.js only)  (pip install)
+```
+
+The JS/TS binding adds an ORM layer (`GraphManager`, `ResourceModelWrapper`, view models) on top of the WASM core. The NAPI binding provides a native alternative backend for the same JS/TS ORM. Python and Rust expose the core functions directly.
+
+## Backend Selection (JS/TS)
+
+The JS/TS package supports two backends — WASM and NAPI — with identical API:
+
+```typescript
+import { setBackend, autoDetectBackend } from 'alizarin';
+
+// Auto-detect: uses NAPI if available, falls back to WASM
+autoDetectBackend();
+
+// Or explicitly choose:
+setBackend('wasm');  // Browser-compatible, ~2MB WASM binary
+setBackend('napi');  // Node.js only, native speed, no WASM overhead
+```
+
+<Cards>
+  <Card title="JavaScript / TypeScript" href="/docs/bindings/javascript" />
+  <Card title="Node.js Native (NAPI)" href="/docs/bindings/napi" />
+  <Card title="Python" href="/docs/bindings/python" />
+  <Card title="Rust" href="/docs/bindings/rust" />
+</Cards>
