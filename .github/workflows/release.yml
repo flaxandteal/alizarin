@@ -33,7 +33,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
-          registry-url: 'https://npm.pkg.github.com'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Cache Rust dependencies
         uses: actions/cache@v4
@@ -192,6 +192,17 @@ jobs:
             See commits since last release for details.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to npm
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          if echo "$VERSION" | grep -qE '(alpha|beta)'; then
+            npm publish --tag alpha
+          else
+            npm publish
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish alizarin-core to crates.io
         env:
