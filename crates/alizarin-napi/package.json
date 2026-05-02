@@ -23,5 +23,10 @@
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0"
+  },
+  "optionalDependencies": {
+    "@alizarin/napi-win32-x64-msvc": "0.2.1-alpha.83",
+    "@alizarin/napi-darwin-x64": "0.2.1-alpha.83",
+    "@alizarin/napi-linux-x64-gnu": "0.2.1-alpha.83"
   }
 }
