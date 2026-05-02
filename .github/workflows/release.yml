@@ -16,6 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
 
     steps:
       - name: Checkout
@@ -38,7 +39,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: '22.x'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Cache Rust dependencies
@@ -199,16 +200,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish to npm
+      - name: Publish to npm (Trusted Publishing)
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           if echo "$VERSION" | grep -qE '(alpha|beta)'; then
-            npm publish --tag alpha
+            TAG="--tag alpha"
           else
-            npm publish
+            TAG=""
           fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+          # Publish main alizarin package
+          npm publish --provenance --access public $TAG
+
+          # Publish @alizarin/* extensions
+          for ext_dir in ext/js/@alizarin/*/; do
+            [ -d "$ext_dir/dist" ] || continue
+            ext_name=$(basename "$ext_dir")
+            echo "=== Publishing @alizarin/$ext_name ==="
+            cd "$ext_dir"
+            npm publish --provenance --access public $TAG
+            cd - > /dev/null
+          done
 
       - name: Publish alizarin-core to crates.io
         env:
