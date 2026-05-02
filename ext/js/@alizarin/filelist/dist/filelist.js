@@ -1,4 +1,4 @@
-import { registerDisplaySerializer, utils, viewModels, wasmReady } from "alizarin";
+import { registerExtensionHandler, utils, viewModels, wasmReady } from "alizarin";
 var FileListItem = class {
 	accepted;
 	alt_text;
@@ -45,7 +45,7 @@ var FileListItem = class {
 	}
 };
 wasmReady.then(() => {
-	registerDisplaySerializer("file-list", (e, n) => e ? Array.isArray(e) ? e.length === 0 ? null : e.map((e) => !e || typeof e != "object" ? null : new FileListItem(e).toDisplayString(n)).filter((e) => e !== null).join(", ") : typeof e == "object" && e ? new FileListItem(e).toDisplayString(n) : null : null);
+	registerExtensionHandler("file-list", { renderDisplay: (e, n) => e ? Array.isArray(e) ? e.length === 0 ? null : e.map((e) => !e || typeof e != "object" ? null : new FileListItem(e).toDisplayString(n)).filter((e) => e !== null).join(", ") : typeof e == "object" && e ? new FileListItem(e).toDisplayString(n) : null : null });
 });
 var FileItemViewModel = class extends String {
 	_ = void 0;

@@ -1,6 +1,6 @@
 {
   "name": "alizarin",
-  "version": "0.2.1-alpha.81",
+  "version": "0.2.1-alpha.82",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "files": [
@@ -47,10 +47,11 @@
   "scripts": {
     "build:wasm": "wasm-pack build crates/alizarin-wasm --target web --out-dir ../../pkg --out-name alizarin --release",
     "build:wasm:dev": "wasm-pack build crates/alizarin-wasm --target web --out-dir ../../pkg --out-name alizarin --dev",
+    "build:wasm:release": "npm run build:wasm && wasm-opt -Os -o pkg/alizarin_bg.wasm pkg/alizarin_bg.wasm",
     "build:js": "NODE_OPTIONS='--experimental-wasm-modules' vite build && node scripts/create-inline.mjs && tsc -p tsconfig.build.json",
     "build": "npm run build:wasm && npm run build:js",
-    "prebuild": "npm run build:wasm",
-    "prepublishOnly": "npm run build",
+    "build:release": "npm run build:wasm:release && npm run build:js",
+    "prepublishOnly": "npm run build:release",
     "test": "NODE_OPTIONS='--experimental-wasm-modules' vitest --run",
     "test:watch": "NODE_OPTIONS='--experimental-wasm-modules' vitest",
     "test:ui": "NODE_OPTIONS='--experimental-wasm-modules' vitest --ui",

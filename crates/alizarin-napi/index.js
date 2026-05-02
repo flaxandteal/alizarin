@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { NapiRdmCache, NapiNodeConfigManager, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiEnsureNodegroupResult, NapiValuesFromNodegroupResult, NapiResourceInstanceWrapper, NapiResourceModelWrapper, NapiPrebuildLoader, NapiStaticGraph, NapiStaticResourceRegistry, buildGraphFromCsvs, buildBusinessDataFromCsv } = nativeBinding
+const { NapiRdmCache, NapiNodeConfigManager, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiEnsureNodegroupResult, NapiValuesFromNodegroupResult, NapiResourceInstanceWrapper, NapiResourceModelWrapper, NapiPrebuildLoader, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, buildGraphFromCsvs, buildBusinessDataFromCsv, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers } = nativeBinding
 
 module.exports.NapiRdmCache = NapiRdmCache
 module.exports.NapiNodeConfigManager = NapiNodeConfigManager
@@ -322,7 +322,13 @@ module.exports.NapiValuesFromNodegroupResult = NapiValuesFromNodegroupResult
 module.exports.NapiResourceInstanceWrapper = NapiResourceInstanceWrapper
 module.exports.NapiResourceModelWrapper = NapiResourceModelWrapper
 module.exports.NapiPrebuildLoader = NapiPrebuildLoader
+module.exports.NapiPrebuildExporter = NapiPrebuildExporter
 module.exports.NapiStaticGraph = NapiStaticGraph
 module.exports.NapiStaticResourceRegistry = NapiStaticResourceRegistry
 module.exports.buildGraphFromCsvs = buildGraphFromCsvs
 module.exports.buildBusinessDataFromCsv = buildBusinessDataFromCsv
+module.exports.extensionCoerce = extensionCoerce
+module.exports.extensionRenderDisplay = extensionRenderDisplay
+module.exports.extensionResolveMarkers = extensionResolveMarkers
+module.exports.hasExtensionHandler = hasExtensionHandler
+module.exports.getRegisteredExtensionHandlers = getRegisteredExtensionHandlers

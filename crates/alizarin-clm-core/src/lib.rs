@@ -279,9 +279,11 @@ impl ExtensionTypeHandler for ReferenceTypeHandler {
         value: &Value,
         config: Option<&Value>,
     ) -> Result<CoercionResult, ExtensionError> {
-        let node_config: ReferenceNodeConfig = config
-            .map(|c| serde_json::from_value(c.clone()).unwrap_or_default())
-            .unwrap_or_default();
+        let node_config: ReferenceNodeConfig = match config {
+            Some(c) => serde_json::from_value(c.clone())
+                .map_err(|e| ExtensionError::new(format!("Invalid CLM node config: {}", e)))?,
+            None => ReferenceNodeConfig::default(),
+        };
 
         match coerce_reference_value(value, &node_config) {
             Ok((tile_data, display_value)) => Ok(CoercionResult::success(tile_data, display_value)),

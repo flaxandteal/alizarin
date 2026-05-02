@@ -107,7 +107,7 @@ impl PseudoNode {
     pub fn get_node(&self) -> JsValue {
         let obj = js_sys::Object::new();
 
-        // Set all fields on the JavaScript object
+        // SILENT: Reflect::set on Object::new() cannot fail (not frozen/proxied).
         js_sys::Reflect::set(&obj, &"nodeid".into(), &self.node.nodeid.clone().into()).ok();
         js_sys::Reflect::set(&obj, &"name".into(), &self.node.name.clone().into()).ok();
         js_sys::Reflect::set(&obj, &"datatype".into(), &self.node.datatype.clone().into()).ok();
@@ -165,6 +165,8 @@ impl PseudoNode {
         }
 
         // Convert config HashMap to plain JavaScript object
+        // SILENT: serde_json::Value -> JsValue can't fail (already valid JSON);
+        // Reflect::set on Object::new() can't fail.
         let config_obj = js_sys::Object::new();
         for (key, value) in &self.node.config {
             let js_value = serde_wasm_bindgen::to_value(value).unwrap_or(JsValue::NULL);

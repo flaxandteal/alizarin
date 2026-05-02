@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -3078,6 +3078,15 @@ impl StaticResource {
 #[wasm_bindgen]
 pub struct StaticResourceRegistry(CoreStaticResourceRegistry);
 
+/// Output of populate_caches for direct JS serialization (avoids serde_json::json! intermediate).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PopulateCachesOutput<'a> {
+    resources: &'a [CoreStaticResource],
+    unknown_references: &'a [alizarin_core::UnknownReference],
+    has_unknown: bool,
+}
+
 impl StaticResourceRegistry {
     /// Get the inner core registry (for internal Rust use)
     pub(crate) fn inner(&self) -> &CoreStaticResourceRegistry {
@@ -3330,13 +3339,14 @@ impl StaticResourceRegistry {
             )
             .map_err(|e| JsValue::from_str(&e))?;
 
-        let output = serde_json::json!({
-            "resources": resources,
-            "unknownReferences": result.unknown_references,
-            "hasUnknown": result.has_unknown_references(),
-        });
-
-        serde_wasm_bindgen::to_value(&output)
+        let output = PopulateCachesOutput {
+            resources: &resources,
+            unknown_references: &result.unknown_references,
+            has_unknown: result.has_unknown_references(),
+        };
+        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        output
+            .serialize(&serializer)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
     }
 
@@ -3369,14 +3379,14 @@ impl StaticResourceRegistry {
             )
             .map_err(|e| JsValue::from_str(&e))?;
 
-        // Return both the modified resources and the result info
-        let output = serde_json::json!({
-            "resources": core_resources,
-            "unknownReferences": result.unknown_references,
-            "hasUnknown": result.has_unknown_references(),
-        });
-
-        serde_wasm_bindgen::to_value(&output)
+        let output = PopulateCachesOutput {
+            resources: &core_resources,
+            unknown_references: &result.unknown_references,
+            has_unknown: result.has_unknown_references(),
+        };
+        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        output
+            .serialize(&serializer)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
     }
 

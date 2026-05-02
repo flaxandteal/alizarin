@@ -7,6 +7,28 @@ use alizarin_core::{
     StaticResource,
 };
 use serde_json::Value;
+
+#[derive(serde::Serialize)]
+struct BatchBusinessData {
+    resources: Vec<StaticResource>,
+}
+
+#[derive(serde::Serialize)]
+struct BatchResult<'a> {
+    business_data: BatchBusinessData,
+    errors: &'a [String],
+    error_count: usize,
+}
+
+#[derive(serde::Serialize)]
+struct BatchTilesToTreesResult<'a> {
+    success: bool,
+    results: &'a [Value],
+    count: usize,
+    errors: &'a [String],
+    error_count: usize,
+}
+
 /// Batch conversion functions for WASM - parallel processing
 ///
 /// This module provides batch conversion functions that process multiple resources
@@ -255,8 +277,8 @@ pub fn batch_trees_to_tiles(
     }
 
     let graph_id = graph.graph_id();
-    let mut resources = Vec::new();
-    let mut errors = Vec::new();
+    let mut resources: Vec<alizarin_core::StaticResource> = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
     let ext_registry = crate::extension_registry::build_extension_registry();
 
     // Process each tree
@@ -290,12 +312,8 @@ pub fn batch_trees_to_tiles(
 
         match result {
             Ok(business_data) => {
-                // Extract first resource (full StaticResource with resourceinstance metadata)
                 if let Some(resource) = business_data.business_data.resources.into_iter().next() {
-                    match serde_json::to_value(&resource) {
-                        Ok(resource_value) => resources.push(resource_value),
-                        Err(e) => errors.push(format!("Tree {}: Failed to serialize: {}", i, e)),
-                    }
+                    resources.push(resource);
                 } else {
                     errors.push(format!("Tree {}: No resources returned", i));
                 }
@@ -313,14 +331,9 @@ pub fn batch_trees_to_tiles(
     if id_keys.is_none() && !random_ids.unwrap_or(false) {
         let mut seen_slugs: std::collections::HashMap<String, usize> =
             std::collections::HashMap::new();
-        for (i, resource_value) in resources.iter().enumerate() {
-            if let Some(slug) = resource_value
-                .get("resourceinstance")
-                .and_then(|ri| ri.get("descriptors"))
-                .and_then(|d| d.get("slug"))
-                .and_then(|s| s.as_str())
-            {
-                if let Some(prev_idx) = seen_slugs.insert(slug.to_string(), i) {
+        for (i, resource) in resources.iter().enumerate() {
+            if let Some(ref slug) = resource.resourceinstance.descriptors.slug {
+                if let Some(prev_idx) = seen_slugs.insert(slug.clone(), i) {
                     let err_msg =
                         format!("Duplicate slug '{}' on trees {} and {}", slug, prev_idx, i);
                     if strict {
@@ -332,17 +345,17 @@ pub fn batch_trees_to_tiles(
         }
     }
 
-    // Return BusinessDataWrapper format with errors alongside
-    let output = serde_json::json!({
-        "business_data": {
-            "resources": resources
-        },
-        "errors": errors,
-        "error_count": errors.len()
-    });
+    // Serialize directly to JS — no intermediate serde_json::Value
+    let output = BatchResult {
+        business_data: BatchBusinessData { resources },
+        errors: &errors,
+        error_count: errors.len(),
+    };
 
-    // Convert to JS value
-    serde_wasm_bindgen::to_value(&output)
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    use serde::Serialize;
+    output
+        .serialize(&serializer)
         .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
 }
 
@@ -433,25 +446,19 @@ pub fn batch_tiles_to_trees(
         }
     }
 
-    // Return result based on strict mode
-    let output = if errors.is_empty() {
-        serde_json::json!({
-            "success": true,
-            "results": results,
-            "count": results.len()
-        })
-    } else {
-        serde_json::json!({
-            "success": false,
-            "results": results,
-            "count": results.len(),
-            "errors": errors,
-            "error_count": errors.len()
-        })
+    // Serialize directly to JS — no intermediate serde_json::Value
+    let output = BatchTilesToTreesResult {
+        success: errors.is_empty(),
+        results: &results,
+        count: results.len(),
+        errors: &errors,
+        error_count: errors.len(),
     };
 
-    // Convert to JS value
-    serde_wasm_bindgen::to_value(&output)
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    use serde::Serialize;
+    output
+        .serialize(&serializer)
         .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
 }
 
@@ -472,11 +479,10 @@ pub fn merge_resources_wasm(resources_json: &str) -> Result<JsValue, JsValue> {
 
     match merge_resources(resources) {
         Ok(result) => {
-            let output = serde_json::json!({
-                "resource": result.resource,
-                "warnings": result.warnings
-            });
-            serde_wasm_bindgen::to_value(&output)
+            let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+            use serde::Serialize;
+            result
+                .serialize(&serializer)
                 .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
         }
         Err(e) => Err(JsValue::from_str(&e)),
@@ -576,11 +582,10 @@ pub fn batch_merge_resources_wasm(
         return Err(JsValue::from_str(error));
     }
 
-    let output = serde_json::json!({
-        "resources": result.resources,
-        "warnings": result.warnings
-    });
-    serde_wasm_bindgen::to_value(&output)
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    use serde::Serialize;
+    result
+        .serialize(&serializer)
         .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
 }
 

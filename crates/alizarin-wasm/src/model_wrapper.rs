@@ -8,11 +8,10 @@ use crate::graph::StaticNode as WasmStaticNode;
 use crate::graph::StaticNodegroup as WasmStaticNodegroup;
 use crate::graph::StaticTile as WasmStaticTile;
 // Use core types for internal storage
-use alizarin_core::{StaticEdge, StaticGraph, StaticNode, StaticNodegroup, StaticTile};
+use alizarin_core::{StaticGraph, StaticNode, StaticNodegroup, StaticTile};
 // Permission rules from core
+use alizarin_core::GraphModelAccess;
 pub use alizarin_core::PermissionRule;
-// Graph pruning from core
-use alizarin_core::prune_graph as core_prune_graph;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -28,484 +27,204 @@ thread_local! {
         RefCell::new(HashMap::new());
 }
 
-// Core struct without WASM bindings - contains all the logic
-// Uses core types internally for platform independence
+// Core struct without WASM bindings - delegates graph indexing to GraphModelAccess
 #[derive(Clone)]
 pub struct ResourceModelWrapperCore {
     wkrm: WKRM,
-    graph: Arc<StaticGraph>, // Core StaticGraph
-
-    // Caches - these are built lazily (all core types)
-    // Wrapped in Arc for cheap sharing with instance wrappers (avoids cloning on every access)
-    edges: Option<Arc<HashMap<String, Vec<String>>>>,
-    nodes: Option<Arc<HashMap<String, Arc<StaticNode>>>>,
-    nodegroups: Option<Arc<HashMap<String, Arc<StaticNodegroup>>>>,
-    nodes_by_alias: Option<Arc<HashMap<String, Arc<StaticNode>>>>,
-    // Reverse edge index: child_node_id -> list of parent_node_ids
-    // Built alongside edges in build_nodes() for O(1) parent lookups
-    reverse_edges: Option<Arc<HashMap<String, Vec<String>>>>,
-    // Nodes grouped by nodegroup_id for efficient per-nodegroup iteration
-    // Key: nodegroup_id, Value: list of nodes in that nodegroup
-    nodes_by_nodegroup: Option<Arc<HashMap<String, Vec<Arc<StaticNode>>>>>,
-
-    /// Permission rules per nodegroup - supports both boolean and conditional rules
-    pub(crate) permitted_nodegroups: Option<HashMap<String, PermissionRule>>,
-    pub(crate) default_allow: bool,
+    pub(crate) model_access: GraphModelAccess,
 }
 
 impl ResourceModelWrapperCore {
     pub fn new(wkrm: WKRM, graph: Arc<StaticGraph>, default_allow: bool) -> Self {
         ResourceModelWrapperCore {
             wkrm,
-            graph,
-            edges: None,
-            nodes: None,
-            nodegroups: None,
-            nodes_by_alias: None,
-            reverse_edges: None,
-            nodes_by_nodegroup: None,
-            permitted_nodegroups: None,
-            default_allow,
+            model_access: GraphModelAccess::new(graph, default_allow),
         }
     }
 
-    pub fn get_root_node(&mut self) -> Result<Arc<StaticNode>, String> {
-        // Ensure nodes cache is built
-        if self.nodes.is_none() {
-            self.build_nodes()?;
-        }
+    // =========================================================================
+    // Forwarding methods — keep the existing API surface so callers
+    // (WASMResourceModelWrapper, instance_wrapper) need minimal changes
+    // =========================================================================
 
-        // Search through nodes cache to find root node
-        if let Some(ref nodes) = self.nodes {
-            for node in nodes.values() {
-                if node.nodegroup_id.is_none()
-                    || node
-                        .nodegroup_id
-                        .as_ref()
-                        .map(|s| s.is_empty())
-                        .unwrap_or(true)
-                {
-                    // Return Arc clone - cheap reference count increment
-                    return Ok(Arc::clone(node));
-                }
-            }
-        }
-
-        Err(format!(
-            "COULD NOT FIND ROOT NODE FOR {}. Does the graph {} still exist?",
-            self.wkrm.get_model_class_name(),
-            self.graph.graph_id()
-        ))
+    pub fn ensure_built(&mut self) -> Result<(), String> {
+        self.model_access.ensure_built()
     }
 
     pub fn build_nodes(&mut self) -> Result<(), String> {
-        let graph = Arc::clone(&self.graph);
-        self.build_nodes_for_graph(&graph)
+        self.model_access.ensure_built()
     }
 
     pub fn build_nodes_for_graph(&mut self, graph: &StaticGraph) -> Result<(), String> {
-        if self.nodes.is_some() || self.nodegroups.is_some() {
-            return Err("Cache should never try and rebuild nodes when non-empty".to_string());
-        }
-
-        let mut edges_map: HashMap<String, Vec<String>> = HashMap::new();
-        let mut reverse_edges_map: HashMap<String, Vec<String>> = HashMap::new();
-        let mut nodes_map: HashMap<String, Arc<StaticNode>> = HashMap::new();
-        let mut nodegroups_map: HashMap<String, Arc<StaticNodegroup>> = HashMap::new();
-        let mut nodes_by_nodegroup_map: HashMap<String, Vec<Arc<StaticNode>>> = HashMap::new();
-
-        // Build nodes map
-        for node in graph.nodes.iter() {
-            let mut node_copy = node.clone();
-            // Ensure root node (node without nodegroup_id) has alias set
-            if (node_copy.nodegroup_id.is_none()
-                || node_copy
-                    .nodegroup_id
-                    .as_ref()
-                    .map(|s| s.is_empty())
-                    .unwrap_or(false))
-                && node_copy.alias.is_none()
-            {
-                node_copy.alias = Some(String::new());
-            }
-            let node_arc = Arc::new(node_copy);
-            nodes_map.insert(node_arc.nodeid.clone(), Arc::clone(&node_arc));
-
-            // Build nodes-by-nodegroup index
-            let ng_id = node_arc.nodegroup_id.clone().unwrap_or_default();
-            nodes_by_nodegroup_map
-                .entry(ng_id)
-                .or_default()
-                .push(node_arc);
-        }
-
-        // Build nodegroups map from nodes with nodegroup_id
-        for node in graph.nodes.iter() {
-            if let Some(ref nodegroup_id) = node.nodegroup_id {
-                if !nodegroup_id.is_empty() && !nodegroups_map.contains_key(nodegroup_id) {
-                    // Create a minimal StaticNodegroup
-                    nodegroups_map.insert(
-                        nodegroup_id.clone(),
-                        Arc::new(StaticNodegroup {
-                            cardinality: Some("n".to_string()),
-                            legacygroupid: None,
-                            nodegroupid: nodegroup_id.clone(),
-                            parentnodegroup_id: None,
-                            grouping_node_id: None,
-                        }),
-                    );
-                }
-            }
-        }
-
-        // Merge with actual nodegroups from graph
-        for nodegroup in graph.nodegroups.iter() {
-            nodegroups_map.insert(nodegroup.nodegroupid.clone(), Arc::new(nodegroup.clone()));
-        }
-
-        // Build edges map AND reverse edges map in single pass
-        for edge in graph.edges.iter() {
-            // Forward: parent -> children
-            edges_map
-                .entry(edge.domainnode_id.clone())
-                .or_default()
-                .push(edge.rangenode_id.clone());
-            // Reverse: child -> parents (for O(1) parent lookups)
-            reverse_edges_map
-                .entry(edge.rangenode_id.clone())
-                .or_default()
-                .push(edge.domainnode_id.clone());
-        }
-
-        // Build nodes by alias map
-        let mut nodes_by_alias_map: HashMap<String, Arc<StaticNode>> = HashMap::new();
-        for (_, node) in nodes_map.iter() {
-            if let Some(ref alias) = node.alias {
-                if !alias.is_empty() {
-                    nodes_by_alias_map.insert(alias.clone(), Arc::clone(node));
-                    continue;
-                }
-            };
-            nodes_by_alias_map.insert(String::new(), Arc::clone(node));
-        }
-
-        self.nodes = Some(Arc::new(nodes_map));
-        self.nodegroups = Some(Arc::new(nodegroups_map));
-        self.edges = Some(Arc::new(edges_map));
-        self.reverse_edges = Some(Arc::new(reverse_edges_map));
-        self.nodes_by_alias = Some(Arc::new(nodes_by_alias_map));
-        self.nodes_by_nodegroup = Some(Arc::new(nodes_by_nodegroup_map));
-
+        self.model_access.rebuild_from_graph(graph);
         Ok(())
+    }
+
+    pub fn get_root_node(&mut self) -> Result<Arc<StaticNode>, String> {
+        self.model_access.get_root_node_mut()
     }
 
     pub fn get_child_nodes(
         &mut self,
         node_id: &str,
     ) -> Result<HashMap<String, Arc<StaticNode>>, String> {
-        if self.nodes.is_none() {
-            self.build_nodes()?;
-        }
-        let mut child_nodes: HashMap<String, Arc<StaticNode>> = HashMap::new();
-
-        if let Some(ref edges) = self.edges {
-            if let Some(child_ids) = edges.get(node_id) {
-                if let Some(ref nodes) = self.nodes {
-                    for child_id in child_ids {
-                        if let Some(node) = nodes.get(child_id) {
-                            if let Some(ref alias) = node.alias {
-                                if !alias.is_empty() {
-                                    child_nodes.insert(alias.clone(), Arc::clone(node));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(child_nodes)
-    }
-
-    /// Get permitted nodegroups as boolean map (for backward compatibility)
-    /// Conditional rules are converted to true (nodegroup is permitted, tiles filtered)
-    pub fn get_permitted_nodegroups(&mut self) -> HashMap<String, bool> {
-        if let Some(ref permitted) = self.permitted_nodegroups {
-            // Convert PermissionRule to bool for backward compatibility
-            return permitted
-                .iter()
-                .map(|(k, v)| (k.clone(), v.permits_nodegroup()))
-                .collect();
-        }
-
-        // Initialize with all nodegroups permitted
-        let mut permissions = HashMap::new();
-
-        if let Some(ref nodegroups) = self.nodegroups {
-            for key in nodegroups.keys() {
-                permissions.insert(key.clone(), PermissionRule::Boolean(true));
-            }
-        }
-
-        // Root node must be accessible
-        permissions.insert(String::new(), PermissionRule::Boolean(true));
-
-        // Store it
-        self.permitted_nodegroups = Some(permissions.clone());
-
-        // Return as bool map
-        permissions
-            .iter()
-            .map(|(k, v)| (k.clone(), v.permits_nodegroup()))
-            .collect()
-    }
-
-    /// Check if a nodegroup is permitted (for graph pruning, etc.)
-    /// Conditional rules return true (nodegroup permitted, tiles filtered separately)
-    pub fn is_nodegroup_permitted(&self, nodegroup_id: &str) -> bool {
-        if let Some(ref permissions) = self.permitted_nodegroups {
-            return permissions
-                .get(nodegroup_id)
-                .map(|rule| rule.permits_nodegroup())
-                .unwrap_or(false);
-        }
-        self.default_allow
-    }
-
-    /// Check if a specific tile is permitted by its nodegroup's permission rule
-    pub fn is_tile_permitted(&self, tile: &StaticTile) -> bool {
-        if let Some(ref permissions) = self.permitted_nodegroups {
-            return permissions
-                .get(&tile.nodegroup_id)
-                .map(|rule| rule.permits_tile(tile))
-                .unwrap_or(self.default_allow);
-        }
-        self.default_allow
-    }
-
-    /// Get the permission rule for a nodegroup (for tile filtering)
-    pub fn get_permission_rule(&self, nodegroup_id: &str) -> Option<&PermissionRule> {
-        self.permitted_nodegroups.as_ref()?.get(nodegroup_id)
-    }
-
-    pub fn set_default_allow_all_nodegroups(&mut self, default_allow: bool) {
-        self.default_allow = default_allow;
-    }
-
-    /// Set permitted nodegroups with full PermissionRule support
-    pub fn set_permitted_nodegroups_rules(&mut self, permissions: HashMap<String, PermissionRule>) {
-        self.permitted_nodegroups = Some(permissions);
-    }
-
-    /// Set permitted nodegroups from boolean map (backward compatibility)
-    pub fn set_permitted_nodegroups(&mut self, permissions: HashMap<String, bool>) {
-        let rules: HashMap<String, PermissionRule> = permissions
-            .into_iter()
-            .map(|(k, v)| (k, PermissionRule::Boolean(v)))
-            .collect();
-        self.permitted_nodegroups = Some(rules);
-    }
-
-    /// Ensure all lazy caches are built. Call before using `ModelAccess` trait methods.
-    pub fn ensure_caches_built(&mut self) -> Result<(), String> {
-        if self.nodes.is_none() {
-            self.build_nodes()?;
-        }
-        Ok(())
-    }
-
-    // Internal accessors for Rust code
-    pub fn get_nodes_by_alias_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
-        self.nodes_by_alias.as_ref().map(|arc| arc.as_ref())
-    }
-
-    pub fn get_nodes_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
-        self.nodes.as_ref().map(|arc| arc.as_ref())
-    }
-
-    pub fn get_edges_internal(&self) -> Option<&HashMap<String, Vec<String>>> {
-        self.edges.as_ref().map(|arc| arc.as_ref())
-    }
-
-    /// Get reverse edges (child_id -> parent_ids) for O(1) parent lookups
-    pub fn get_reverse_edges_internal(&self) -> Option<&HashMap<String, Vec<String>>> {
-        self.reverse_edges.as_ref().map(|arc| arc.as_ref())
-    }
-
-    /// Get nodes grouped by nodegroup_id for efficient per-nodegroup iteration
-    pub fn get_nodes_by_nodegroup_internal(
-        &self,
-    ) -> Option<&HashMap<String, Vec<Arc<StaticNode>>>> {
-        self.nodes_by_nodegroup.as_ref().map(|arc| arc.as_ref())
-    }
-
-    pub fn get_nodegroups_internal(&self) -> Option<&HashMap<String, Arc<StaticNodegroup>>> {
-        self.nodegroups.as_ref().map(|arc| arc.as_ref())
-    }
-
-    /// Get Arc-wrapped nodes for cheap sharing (just increments refcount)
-    pub fn get_nodes_arc(&self) -> Option<Arc<HashMap<String, Arc<StaticNode>>>> {
-        self.nodes.as_ref().map(Arc::clone)
-    }
-
-    /// Get Arc-wrapped edges for cheap sharing
-    pub fn get_edges_arc(&self) -> Option<Arc<HashMap<String, Vec<String>>>> {
-        self.edges.as_ref().map(Arc::clone)
-    }
-
-    /// Get Arc-wrapped reverse edges for cheap sharing
-    pub fn get_reverse_edges_arc(&self) -> Option<Arc<HashMap<String, Vec<String>>>> {
-        self.reverse_edges.as_ref().map(Arc::clone)
-    }
-
-    /// Get Arc-wrapped nodes-by-nodegroup for cheap sharing
-    pub fn get_nodes_by_nodegroup_arc(&self) -> Option<Arc<HashMap<String, Vec<Arc<StaticNode>>>>> {
-        self.nodes_by_nodegroup.as_ref().map(Arc::clone)
-    }
-
-    /// Get Arc-wrapped nodegroups for cheap sharing
-    pub fn get_nodegroups_arc(&self) -> Option<Arc<HashMap<String, Arc<StaticNodegroup>>>> {
-        self.nodegroups.as_ref().map(Arc::clone)
+        self.model_access.get_child_nodes_mut(node_id)
     }
 
     pub fn get_node_objects(&mut self) -> Result<&HashMap<String, Arc<StaticNode>>, String> {
-        if self.nodes.is_none() {
-            self.build_nodes()?;
-        }
-        self.nodes
-            .as_ref()
-            .map(|arc| arc.as_ref())
-            .ok_or_else(|| "Could not build nodes".to_string())
+        self.model_access.get_node_objects()
     }
 
     pub fn get_node_objects_by_alias(
         &mut self,
     ) -> Result<&HashMap<String, Arc<StaticNode>>, String> {
-        if self.nodes_by_alias.is_none() {
-            self.build_nodes()?;
-        }
-        self.nodes_by_alias
-            .as_ref()
-            .map(|arc| arc.as_ref())
-            .ok_or_else(|| "Could not build nodes".to_string())
+        self.model_access.get_node_objects_by_alias()
     }
 
     pub fn get_edges(&mut self) -> Result<&HashMap<String, Vec<String>>, String> {
-        if self.edges.is_none() {
-            self.build_nodes()?;
-        }
-        self.edges
-            .as_ref()
-            .map(|arc| arc.as_ref())
-            .ok_or_else(|| "Could not build edges".to_string())
+        self.model_access.get_edges()
     }
 
     pub fn get_nodegroup_objects(
         &mut self,
     ) -> Result<&HashMap<String, Arc<StaticNodegroup>>, String> {
-        if self.nodegroups.is_none() {
-            self.build_nodes()?;
-        }
-        self.nodegroups
-            .as_ref()
-            .map(|arc| arc.as_ref())
-            .ok_or_else(|| "Could not build nodegroups".to_string())
+        self.model_access.get_nodegroup_objects()
     }
 
+    // Internal accessors (no lazy build)
+    pub fn get_nodes_by_alias_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
+        self.model_access.get_nodes_by_alias_internal()
+    }
+
+    pub fn get_nodes_internal(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
+        self.model_access.get_nodes_internal()
+    }
+
+    pub fn get_edges_internal(&self) -> Option<&HashMap<String, Vec<String>>> {
+        self.model_access.get_edges_internal()
+    }
+
+    pub fn get_reverse_edges_internal(&self) -> Option<&HashMap<String, Vec<String>>> {
+        self.model_access.get_reverse_edges_internal()
+    }
+
+    pub fn get_nodes_by_nodegroup_internal(
+        &self,
+    ) -> Option<&HashMap<String, Vec<Arc<StaticNode>>>> {
+        self.model_access.get_nodes_by_nodegroup_internal()
+    }
+
+    pub fn get_nodegroups_internal(&self) -> Option<&HashMap<String, Arc<StaticNodegroup>>> {
+        self.model_access.get_nodegroups_internal()
+    }
+
+    // Arc accessors
+    pub fn get_nodes_arc(&self) -> Option<Arc<HashMap<String, Arc<StaticNode>>>> {
+        self.model_access.get_nodes_arc()
+    }
+
+    pub fn get_edges_arc(&self) -> Option<Arc<HashMap<String, Vec<String>>>> {
+        self.model_access.get_edges_arc()
+    }
+
+    pub fn get_reverse_edges_arc(&self) -> Option<Arc<HashMap<String, Vec<String>>>> {
+        self.model_access.get_reverse_edges_arc()
+    }
+
+    pub fn get_nodes_by_nodegroup_arc(&self) -> Option<Arc<HashMap<String, Vec<Arc<StaticNode>>>>> {
+        self.model_access.get_nodes_by_nodegroup_arc()
+    }
+
+    pub fn get_nodegroups_arc(&self) -> Option<Arc<HashMap<String, Arc<StaticNodegroup>>>> {
+        self.model_access.get_nodegroups_arc()
+    }
+
+    // Permission methods
+    pub fn get_permitted_nodegroups(&mut self) -> HashMap<String, bool> {
+        self.model_access.get_permitted_nodegroups_bool()
+    }
+
+    pub fn is_nodegroup_permitted(&self, nodegroup_id: &str) -> bool {
+        self.model_access.is_nodegroup_permitted(nodegroup_id)
+    }
+
+    pub fn is_tile_permitted(&self, tile: &StaticTile) -> bool {
+        self.model_access.is_tile_permitted(tile)
+    }
+
+    pub fn get_permission_rule(&self, nodegroup_id: &str) -> Option<&PermissionRule> {
+        self.model_access.get_permission_rule(nodegroup_id)
+    }
+
+    pub fn set_default_allow_all_nodegroups(&mut self, default_allow: bool) {
+        self.model_access.set_default_allow(default_allow);
+    }
+
+    pub fn set_permitted_nodegroups_rules(&mut self, permissions: HashMap<String, PermissionRule>) {
+        self.model_access
+            .set_permitted_nodegroups_rules(permissions);
+    }
+
+    pub fn set_permitted_nodegroups(&mut self, permissions: HashMap<String, bool>) {
+        self.model_access.set_permitted_nodegroups_bool(permissions);
+    }
+
+    // Graph mutation
     pub fn set_graph_nodes(&mut self, nodes: Vec<StaticNode>) {
-        let mut graph = (*self.graph).clone();
-        graph.nodes = nodes;
-        self.graph = Arc::new(graph);
+        self.model_access.set_graph_nodes(nodes);
     }
 
-    pub fn set_graph_edges(&mut self, edges: Vec<StaticEdge>) {
-        let mut graph = (*self.graph).clone();
-        graph.edges = edges;
-        self.graph = Arc::new(graph);
+    pub fn set_graph_edges(&mut self, edges: Vec<alizarin_core::StaticEdge>) {
+        self.model_access.set_graph_edges(edges);
     }
 
     pub fn set_graph_nodegroups(&mut self, nodegroups: Vec<StaticNodegroup>) {
-        let mut graph = (*self.graph).clone();
-        graph.nodegroups = nodegroups;
-        self.graph = Arc::new(graph);
+        self.model_access.set_graph_nodegroups(nodegroups);
     }
 
+    pub fn set_graph(&mut self, graph: StaticGraph) {
+        self.model_access.set_graph(Arc::new(graph));
+    }
+
+    pub fn prune_graph(&mut self, keep_functions: Option<Vec<String>>) -> Result<(), String> {
+        self.model_access.prune_graph(keep_functions.as_deref())
+    }
+
+    // Graph/WKRM access
     pub fn get_wkrm(&self) -> &WKRM {
         &self.wkrm
     }
 
     pub fn get_graph(&self) -> &StaticGraph {
-        &self.graph
-    }
-
-    pub fn set_graph(&mut self, graph: StaticGraph) {
-        self.graph = Arc::new(graph);
-    }
-
-    /// Prune graph to only include permitted nodegroups and their dependencies
-    /// Filters nodes, edges, cards, nodegroups, and functions based on permissions
-    /// Returns error if graph is malformed or has cycles
-    ///
-    /// Delegates to `alizarin_core::prune_graph` for the actual pruning logic.
-    pub fn prune_graph(&mut self, keep_functions: Option<Vec<String>>) -> Result<(), String> {
-        // Create permission check closure that captures self
-        let is_permitted = |ng_id: &str| self.is_nodegroup_permitted(ng_id);
-
-        // Delegate to core prune_graph function
-        let keep_fns_ref = keep_functions.as_deref();
-        let pruned =
-            core_prune_graph(&self.graph, is_permitted, keep_fns_ref).map_err(|e| e.to_string())?;
-
-        // Update the graph and clear caches to force rebuild
-        self.graph = Arc::new(pruned);
-        self.nodes = None;
-        self.edges = None;
-        self.nodegroups = None;
-        self.nodes_by_alias = None;
-        self.reverse_edges = None;
-        self.nodes_by_nodegroup = None;
-
-        Ok(())
+        self.model_access.get_graph()
     }
 }
 
 /// ModelAccess implementation for ResourceModelWrapperCore.
-/// Requires `ensure_caches_built()` to have been called first;
-/// returns None/Err if caches are not yet initialized.
+/// Delegates to the inner GraphModelAccess.
 impl alizarin_core::ModelAccess for ResourceModelWrapperCore {
     fn get_nodes(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
-        self.get_nodes_internal()
+        self.model_access.get_nodes_internal()
     }
 
     fn get_edges(&self) -> Option<&HashMap<String, Vec<String>>> {
-        self.get_edges_internal()
+        self.model_access.get_edges_internal()
     }
 
     fn get_reverse_edges(&self) -> Option<&HashMap<String, Vec<String>>> {
-        self.get_reverse_edges_internal()
+        self.model_access.get_reverse_edges_internal()
     }
 
     fn get_nodes_by_nodegroup(&self) -> Option<&HashMap<String, Vec<Arc<StaticNode>>>> {
-        self.get_nodes_by_nodegroup_internal()
+        self.model_access.get_nodes_by_nodegroup_internal()
     }
 
     fn get_nodegroups(&self) -> Option<&HashMap<String, Arc<StaticNodegroup>>> {
-        self.get_nodegroups_internal()
+        self.model_access.get_nodegroups_internal()
     }
 
     fn get_permitted_nodegroups(&self) -> HashMap<String, alizarin_core::PermissionRule> {
-        if let Some(ref permitted) = self.permitted_nodegroups {
-            return permitted.clone();
-        }
-        // Default: all nodegroups permitted
-        let mut permissions = HashMap::new();
-        if let Some(ref nodegroups) = self.nodegroups {
-            for key in nodegroups.keys() {
-                permissions.insert(key.clone(), PermissionRule::Boolean(true));
-            }
-        }
-        permissions.insert(String::new(), PermissionRule::Boolean(true));
-        permissions
+        alizarin_core::ModelAccess::get_permitted_nodegroups(&self.model_access)
     }
 }
 
@@ -632,13 +351,7 @@ impl WASMResourceModelWrapper {
         parent_pseudo: Option<&PseudoNode>,
     ) -> Result<PseudoNode, JsValue> {
         // Ensure nodes cache is built
-        self.with_core_mut(|core| {
-            if core.nodes.is_none() {
-                core.build_nodes().map_err(|e| JsValue::from_str(&e))
-            } else {
-                Ok(())
-            }
-        })?;
+        self.with_core_mut(|core| core.ensure_built().map_err(|e| JsValue::from_str(&e)))?;
 
         // Get the node (Arc<StaticNode>) either by alias or as root
         let arc_node: Arc<StaticNode> = if let Some(parent) = parent_pseudo {
@@ -706,13 +419,7 @@ impl WASMResourceModelWrapper {
         parent: JsValue,
     ) -> Result<PseudoValue, JsValue> {
         // Ensure nodes cache is built
-        self.with_core_mut(|core| {
-            if core.nodes.is_none() {
-                core.build_nodes().map_err(|e| JsValue::from_str(&e))
-            } else {
-                Ok(())
-            }
-        })?;
+        self.with_core_mut(|core| core.ensure_built().map_err(|e| JsValue::from_str(&e)))?;
 
         // Get the node by alias or as root
         let arc_node: Arc<StaticNode> = if let Some(key_str) = alias {
@@ -1046,30 +753,18 @@ impl WASMResourceModelWrapper {
     /// Parse a conditional permission rule from a JS object
     /// Expected format: { path: ".data.uuid.field", allowed: ["value1", "value2"] }
     fn parse_conditional_rule(value: &JsValue) -> Result<PermissionRule, String> {
-        // Get the "path" property
+        // Extract path from JS object
         let path = js_sys::Reflect::get(value, &JsValue::from_str("path"))
-            .map_err(|_| "failed to read 'path' property")?;
+            .map_err(|_| "failed to read 'path' property".to_string())?;
         let path_str = path.as_string().ok_or("'path' must be a string")?;
 
-        if path_str.is_empty() {
-            return Err("'path' cannot be empty".to_string());
-        }
-
-        // Get the "allowed" property (should be an array)
+        // Extract allowed array from JS object
         let allowed = js_sys::Reflect::get(value, &JsValue::from_str("allowed"))
-            .map_err(|_| "failed to read 'allowed' property")?;
-
+            .map_err(|_| "failed to read 'allowed' property".to_string())?;
         if !js_sys::Array::is_array(&allowed) {
             return Err("'allowed' must be an array".to_string());
         }
-
         let allowed_array = js_sys::Array::from(&allowed);
-
-        if allowed_array.length() == 0 {
-            return Err("'allowed' array cannot be empty".to_string());
-        }
-
-        // Convert to HashSet<String>
         let mut allowed_set = HashSet::new();
         for i in 0..allowed_array.length() {
             let item = allowed_array.get(i);
@@ -1083,10 +778,8 @@ impl WASMResourceModelWrapper {
             }
         }
 
-        Ok(PermissionRule::Conditional {
-            path: path_str,
-            allowed: allowed_set,
-        })
+        // Delegate validation and construction to core
+        PermissionRule::conditional(path_str, allowed_set)
     }
 
     pub fn build_nodes(&mut self) -> Result<(), JsValue> {

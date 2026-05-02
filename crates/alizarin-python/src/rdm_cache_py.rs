@@ -12,7 +12,7 @@
 /// - UUID generation from labels
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::RwLock;
 use uuid::Uuid;
 
@@ -29,10 +29,7 @@ use alizarin_core::rdm_namespace::{
 };
 
 // SKOS parser and serializer from core crate
-use alizarin_core::skos::{
-    collection_to_skos_xml, parse_skos_to_collections, SkosCollection, SkosConcept, SkosNodeType,
-    SkosValue,
-};
+use alizarin_core::skos::{collection_to_skos_xml, parse_skos_to_collections, SkosCollection};
 
 // For get_current_language
 use alizarin_core::type_coercion::get_current_language;
@@ -1321,7 +1318,12 @@ impl RdmCollection {
         for (lang, rdm_value) in sorted_labels {
             // Use the existing value ID from RdmValue, or generate one
             let value_id = if rdm_value.id.is_empty() || rdm_value.id == "__pending__" {
-                generate_skos_value_id(&concept.id, lang, &rdm_value.value)
+                alizarin_core::rdm_namespace::generate_value_uuid(
+                    &concept.id,
+                    &rdm_value.value,
+                    lang,
+                )
+                .to_string()
             } else {
                 rdm_value.id.clone()
             };
@@ -1368,132 +1370,8 @@ impl RdmCollection {
 // RDM ↔ SKOS Conversion
 // =============================================================================
 
-/// Generate a value ID for SKOS format (delegates to rdm_namespace UUID5).
-fn generate_skos_value_id(concept_id: &str, lang: &str, value: &str) -> String {
-    alizarin_core::rdm_namespace::generate_value_uuid(concept_id, value, lang).to_string()
-}
-
-/// Convert RdmCollection to SkosCollection for serialization
-fn rdm_to_skos_collection(rdm: &CoreRdmCollection, node_type: &str) -> SkosCollection {
-    // Build collection pref_labels
-    let mut collection_pref_labels = HashMap::new();
-    if let Some(ref name) = rdm.name {
-        collection_pref_labels.insert(
-            "en".to_string(),
-            SkosValue {
-                id: generate_skos_value_id(&rdm.id, "en", name),
-                value: name.clone(),
-            },
-        );
-    }
-
-    // Convert all concepts (flat list first) - using public API
-    let mut all_skos_concepts: HashMap<String, SkosConcept> = HashMap::new();
-    let mut all_narrower_ids: HashSet<String> = HashSet::new();
-
-    for concept_id in rdm.get_concept_ids() {
-        if let Some(rdm_concept) = rdm.get_concept(concept_id) {
-            // Convert pref_labels to SkosValue format
-            let mut pref_labels = HashMap::new();
-            for (lang, rdm_value) in &rdm_concept.pref_label {
-                // Use existing value ID from RdmValue, or generate one
-                let value_id = if rdm_value.id.is_empty() || rdm_value.id == "__pending__" {
-                    generate_skos_value_id(concept_id, lang, &rdm_value.value)
-                } else {
-                    rdm_value.id.clone()
-                };
-                pref_labels.insert(
-                    lang.clone(),
-                    SkosValue {
-                        id: value_id,
-                        value: rdm_value.value.clone(),
-                    },
-                );
-            }
-
-            let skos_concept = SkosConcept {
-                id: concept_id.clone(),
-                uri: None, // No URI in RDM format
-                pref_labels,
-                source: Some(concept_id.clone()),
-                sort_order: None, // No sort order in RDM format
-                children: None,   // Will be built hierarchically later (for ConceptScheme only)
-            };
-
-            all_skos_concepts.insert(concept_id.clone(), skos_concept);
-
-            // Collect all narrower IDs (only relevant for ConceptScheme)
-            all_narrower_ids.extend(rdm_concept.narrower.iter().cloned());
-        }
-    }
-
-    // Determine node type
-    let skos_node_type = if node_type == "Collection" {
-        SkosNodeType::Collection
-    } else {
-        SkosNodeType::ConceptScheme
-    };
-
-    // Build hierarchy for both ConceptScheme and Collection types
-    // (Collections use member for membership but concepts can have narrower/broader)
-    let mut hierarchy: HashMap<String, SkosConcept> = HashMap::new();
-
-    for concept_id in rdm.get_concept_ids() {
-        if !all_narrower_ids.contains(concept_id) {
-            // This is a top-level concept
-            if let Some(concept_with_children) =
-                build_concept_tree(concept_id, &all_skos_concepts, rdm)
-            {
-                hierarchy.insert(concept_id.clone(), concept_with_children);
-            }
-        }
-    }
-
-    // If no hierarchy, just use all concepts as top-level
-    let top_level_concepts = if hierarchy.is_empty() {
-        all_skos_concepts.clone()
-    } else {
-        hierarchy
-    };
-
-    SkosCollection {
-        id: rdm.id.clone(),
-        uri: None,
-        pref_labels: collection_pref_labels,
-        alt_labels: HashMap::new(),
-        scope_notes: HashMap::new(),
-        node_type: skos_node_type,
-        concepts: top_level_concepts,
-        all_concepts: all_skos_concepts,
-        values: HashMap::new(),
-    }
-}
-
-/// Build a concept tree recursively from RDM narrower relationships
-fn build_concept_tree(
-    concept_id: &str,
-    all_concepts: &HashMap<String, SkosConcept>,
-    rdm_collection: &CoreRdmCollection,
-) -> Option<SkosConcept> {
-    let mut concept = all_concepts.get(concept_id)?.clone();
-
-    // Get narrower concepts from RDM using public API
-    if let Some(rdm_concept) = rdm_collection.get_concept(concept_id) {
-        if !rdm_concept.narrower.is_empty() {
-            let mut children = Vec::new();
-            for child_id in &rdm_concept.narrower {
-                if let Some(child) = build_concept_tree(child_id, all_concepts, rdm_collection) {
-                    children.push(child);
-                }
-            }
-            if !children.is_empty() {
-                concept.children = Some(children);
-            }
-        }
-    }
-
-    Some(concept)
-}
+// rdm_to_skos_collection is provided by alizarin_core::rdm_to_skos_collection
+use alizarin_core::rdm_to_skos_collection;
 
 // =============================================================================
 // RDM Cache

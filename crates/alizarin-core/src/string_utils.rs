@@ -124,6 +124,37 @@ pub fn transform_keys_to_snake(value: Value) -> Value {
     }
 }
 
+/// Recursively sort all object keys in a JSON value for deterministic output.
+///
+/// Ensures git-friendly diffs: the same logical data always produces
+/// the same byte-level JSON string.
+///
+/// # Examples
+///
+/// ```
+/// use alizarin_core::string_utils::sort_json_keys;
+/// use serde_json::json;
+///
+/// let input = json!({"z": 1, "a": {"c": 3, "b": 2}});
+/// let sorted = sort_json_keys(input);
+/// assert_eq!(serde_json::to_string(&sorted).unwrap(), r#"{"a":{"b":2,"c":3},"z":1}"#);
+/// ```
+pub fn sort_json_keys(value: Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut entries: Vec<_> = map.into_iter().collect();
+            entries.sort_by(|(a, _), (b, _)| a.cmp(b));
+            let sorted: serde_json::Map<String, Value> = entries
+                .into_iter()
+                .map(|(k, v)| (k, sort_json_keys(v)))
+                .collect();
+            Value::Object(sorted)
+        }
+        Value::Array(arr) => Value::Array(arr.into_iter().map(sort_json_keys).collect()),
+        other => other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

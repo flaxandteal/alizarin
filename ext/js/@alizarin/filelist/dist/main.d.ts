@@ -69,8 +69,8 @@ declare class FileListItem {
 declare class FileItemViewModel extends String implements IViewModel {
     _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: IPseudo | undefined;
-    describeField: () => any;
-    describeFieldGroup: () => any;
+    describeField: () => string | null;
+    describeFieldGroup: () => string | null;
     _file: FileListItem;
     constructor(file: FileListItem);
     forJson(): Promise<FileListItemData>;
@@ -87,8 +87,8 @@ declare class FileItemViewModel extends String implements IViewModel {
 declare class FileListViewModel extends Array<FileItemViewModel | Promise<FileItemViewModel | null> | null> implements IViewModel {
     _: IViewModel | Promise<IViewModel> | undefined;
     __parentPseudo: IPseudo | undefined;
-    describeField: () => any;
-    describeFieldGroup: () => any;
+    describeField: () => string | null;
+    describeFieldGroup: () => string | null;
     _value: Promise<(FileItemViewModel | null)[]> | null;
     forJson(): Promise<(FileListItemData | null)[] | null>;
     /**

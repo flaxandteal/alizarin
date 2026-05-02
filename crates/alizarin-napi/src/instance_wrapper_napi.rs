@@ -21,7 +21,6 @@ use alizarin_core::instance_wrapper_core::{
 };
 use alizarin_core::node_config::NodeConfigManager;
 use alizarin_core::permissions::PermissionRule;
-use alizarin_core::prune_graph as core_prune_graph;
 use alizarin_core::pseudo_value_core::{PseudoListCore, PseudoValueCore, VisitorContext};
 use alizarin_core::rdm_cache::RdmCache;
 use alizarin_core::type_serialization::{SerializationContext, SerializationOptions};
@@ -497,7 +496,6 @@ impl NapiValuesFromNodegroupResult {
 pub struct NapiResourceInstanceWrapper {
     inner: ResourceInstanceWrapperCore,
     model_access: GraphModelAccess,
-    graph: Arc<StaticGraph>,
     lazy: bool,
 }
 
@@ -524,7 +522,6 @@ impl NapiResourceInstanceWrapper {
         Ok(NapiResourceInstanceWrapper {
             inner: core,
             model_access,
-            graph,
             lazy: false,
         })
     }
@@ -611,10 +608,7 @@ impl NapiResourceInstanceWrapper {
             .ok_or_else(|| napi::Error::from_reason("Tiles not initialized".to_string()))?;
         let pruned: HashMap<String, StaticTile> = tiles
             .into_iter()
-            .filter(|(_id, tile)| {
-                self.model_access
-                    .is_nodegroup_permitted(&tile.nodegroup_id, true)
-            })
+            .filter(|(_id, tile)| self.model_access.is_nodegroup_permitted(&tile.nodegroup_id))
             .collect();
         self.inner.tiles = Some(pruned);
         Ok(())
@@ -782,22 +776,22 @@ impl NapiResourceInstanceWrapper {
     }
 
     #[napi]
-    pub fn get_name(&self) -> serde_json::Value {
-        self.inner
-            .resource_instance
-            .as_ref()
-            .and_then(|ri| serde_json::to_value(&ri.name).ok())
-            .unwrap_or(serde_json::Value::Null)
+    pub fn get_name(&self) -> Result<serde_json::Value> {
+        match self.inner.resource_instance.as_ref() {
+            Some(ri) => serde_json::to_value(&ri.name)
+                .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e))),
+            None => Ok(serde_json::Value::Null),
+        }
     }
 
     #[napi]
-    pub fn get_descriptors(&self, _recompute: bool) -> serde_json::Value {
+    pub fn get_descriptors(&self, _recompute: bool) -> Result<serde_json::Value> {
         // For now return cached descriptors; recompute=true could be supported later
-        self.inner
-            .resource_instance
-            .as_ref()
-            .and_then(|ri| serde_json::to_value(&ri.descriptors).ok())
-            .unwrap_or(serde_json::Value::Null)
+        match self.inner.resource_instance.as_ref() {
+            Some(ri) => serde_json::to_value(&ri.descriptors)
+                .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e))),
+            None => Ok(serde_json::Value::Null),
+        }
     }
 
     // =========================================================================
@@ -1210,13 +1204,13 @@ impl NapiResourceInstanceWrapper {
 
         // Build graph indices for VisitorContext
         let nodes_by_alias = self
-            .graph
-            .nodes_by_alias_arc()
-            .ok_or_else(|| napi::Error::from_reason("Graph nodes_by_alias not built"))?;
+            .model_access
+            .get_nodes_by_alias_arc()
+            .ok_or_else(|| napi::Error::from_reason("Nodes by alias not built"))?;
         let edges = self
-            .graph
-            .edges_map()
-            .ok_or_else(|| napi::Error::from_reason("Graph edges_map not built"))?;
+            .model_access
+            .get_edges_arc()
+            .ok_or_else(|| napi::Error::from_reason("Edges not built"))?;
 
         let ext_reg = ext_registry();
 
@@ -1231,8 +1225,8 @@ impl NapiResourceInstanceWrapper {
 
         let ctx = VisitorContext {
             pseudo_cache: &*cache,
-            nodes_by_alias,
-            edges,
+            nodes_by_alias: &nodes_by_alias,
+            edges: &edges,
             depth: 0,
             max_depth: 50,
             serialization_options: options,
@@ -1307,10 +1301,7 @@ impl From<&PseudoListCore> for NapiPseudoListJson {
 /// model wrapper via the backend abstraction.
 #[napi]
 pub struct NapiResourceModelWrapper {
-    graph: Arc<StaticGraph>,
     model_access: GraphModelAccess,
-    permitted_nodegroups: Option<HashMap<String, PermissionRule>>,
-    default_allow: bool,
 }
 
 #[napi]
@@ -1331,14 +1322,9 @@ impl NapiResourceModelWrapper {
         // Register in core graph registry
         alizarin_core::register_graph(&graph_id, Arc::clone(&graph_arc));
 
-        let model_access = GraphModelAccess::from_graph(&graph_arc);
+        let model_access = GraphModelAccess::new_eager(graph_arc, default_allow);
 
-        Ok(NapiResourceModelWrapper {
-            graph: graph_arc,
-            model_access,
-            permitted_nodegroups: None,
-            default_allow,
-        })
+        Ok(NapiResourceModelWrapper { model_access })
     }
 
     /// Create from an already-loaded NapiStaticGraph.
@@ -1352,14 +1338,9 @@ impl NapiResourceModelWrapper {
 
         alizarin_core::register_graph(&graph_id, Arc::clone(&graph_arc));
 
-        let model_access = GraphModelAccess::from_graph(&graph_arc);
+        let model_access = GraphModelAccess::new_eager(graph_arc, default_allow);
 
-        Ok(NapiResourceModelWrapper {
-            graph: graph_arc,
-            model_access,
-            permitted_nodegroups: None,
-            default_allow,
-        })
+        Ok(NapiResourceModelWrapper { model_access })
     }
 
     // =========================================================================
@@ -1368,7 +1349,7 @@ impl NapiResourceModelWrapper {
 
     #[napi(js_name = "getGraphId")]
     pub fn get_graph_id(&self) -> String {
-        self.graph.graphid.clone()
+        self.model_access.get_graph().graphid.clone()
     }
 
     // =========================================================================
@@ -1377,16 +1358,15 @@ impl NapiResourceModelWrapper {
 
     #[napi(getter)]
     pub fn graph(&self) -> Result<serde_json::Value> {
-        serde_json::to_value(&*self.graph).map_err(|e| napi::Error::from_reason(e.to_string()))
+        serde_json::to_value(self.model_access.get_graph())
+            .map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
     #[napi(setter)]
     pub fn set_graph(&mut self, graph_json: String) -> Result<()> {
         let graph: StaticGraph = serde_json::from_str(&graph_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid graph JSON: {}", e)))?;
-        let graph_arc = Arc::new(graph);
-        self.model_access.rebuild_from_graph(&graph_arc);
-        self.graph = graph_arc;
+        self.model_access.rebuild_from_graph(&graph);
         Ok(())
     }
 
@@ -1405,7 +1385,6 @@ impl NapiResourceModelWrapper {
         let graph: StaticGraph = serde_json::from_str(&graph_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid graph JSON: {}", e)))?;
         self.model_access.rebuild_from_graph(&graph);
-        self.graph = Arc::new(graph);
         Ok(())
     }
 
@@ -1443,7 +1422,10 @@ impl NapiResourceModelWrapper {
     /// Get all nodes indexed by alias.
     #[napi(js_name = "getNodeObjectsByAlias")]
     pub fn get_node_objects_by_alias(&self) -> Result<HashMap<String, serde_json::Value>> {
-        let nodes = self.model_access.get_nodes_by_alias();
+        let nodes = self
+            .model_access
+            .get_nodes_by_alias()
+            .ok_or_else(|| napi::Error::from_reason("Nodes by alias not available"))?;
         let mut result = HashMap::new();
         for (k, v) in nodes {
             result.insert(
@@ -1457,7 +1439,10 @@ impl NapiResourceModelWrapper {
     /// Get a single node by alias.
     #[napi(js_name = "getNodeObjectFromAlias")]
     pub fn get_node_object_from_alias(&self, alias: String) -> Result<serde_json::Value> {
-        let nodes = self.model_access.get_nodes_by_alias();
+        let nodes = self
+            .model_access
+            .get_nodes_by_alias()
+            .ok_or_else(|| napi::Error::from_reason("Nodes by alias not available"))?;
         let node = nodes.get(&alias).ok_or_else(|| {
             napi::Error::from_reason(format!("Node not found for alias: {}", alias))
         })?;
@@ -1562,7 +1547,10 @@ impl NapiResourceModelWrapper {
     /// Get node ID from alias.
     #[napi(js_name = "getNodeIdFromAlias")]
     pub fn get_node_id_from_alias(&self, alias: String) -> Result<String> {
-        let nodes = self.model_access.get_nodes_by_alias();
+        let nodes = self
+            .model_access
+            .get_nodes_by_alias()
+            .ok_or_else(|| napi::Error::from_reason("Nodes by alias not available"))?;
         let node = nodes.get(&alias).ok_or_else(|| {
             napi::Error::from_reason(format!("Node not found for alias: {}", alias))
         })?;
@@ -1600,25 +1588,13 @@ impl NapiResourceModelWrapper {
     /// Get permitted nodegroups as boolean map.
     #[napi(js_name = "getPermittedNodegroups")]
     pub fn get_permitted_nodegroups(&self) -> HashMap<String, bool> {
-        if let Some(ref perms) = self.permitted_nodegroups {
-            return perms
-                .iter()
-                .map(|(k, v)| (k.clone(), v.permits_nodegroup()))
-                .collect();
-        }
         self.model_access.get_permitted_nodegroups_bool()
     }
 
     /// Check if a nodegroup is permitted.
     #[napi(js_name = "isNodegroupPermitted")]
     pub fn is_nodegroup_permitted(&self, nodegroup_id: String) -> bool {
-        if let Some(ref perms) = self.permitted_nodegroups {
-            return perms
-                .get(&nodegroup_id)
-                .map(|rule| rule.permits_nodegroup())
-                .unwrap_or(self.default_allow);
-        }
-        self.default_allow
+        self.model_access.is_nodegroup_permitted(&nodegroup_id)
     }
 
     /// Set permitted nodegroups. Accepts an object with boolean values or
@@ -1626,14 +1602,13 @@ impl NapiResourceModelWrapper {
     #[napi(js_name = "setPermittedNodegroups")]
     pub fn set_permitted_nodegroups(&mut self, permissions: serde_json::Value) -> Result<()> {
         let perms = Self::parse_permission_value(&permissions)?;
-        self.model_access.set_permitted_nodegroups(perms.clone());
-        self.permitted_nodegroups = Some(perms);
+        self.model_access.set_permitted_nodegroups_rules(perms);
         Ok(())
     }
 
     #[napi(js_name = "setDefaultAllowAllNodegroups")]
     pub fn set_default_allow_all_nodegroups(&mut self, default_allow: bool) {
-        self.default_allow = default_allow;
+        self.model_access.set_default_allow(default_allow);
     }
 
     // =========================================================================
@@ -1644,10 +1619,7 @@ impl NapiResourceModelWrapper {
     pub fn set_graph_nodes(&mut self, nodes_json: String) -> Result<()> {
         let nodes: Vec<StaticNode> = serde_json::from_str(&nodes_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid nodes JSON: {}", e)))?;
-        let mut graph = (*self.graph).clone();
-        graph.nodes = nodes;
-        self.graph = Arc::new(graph);
-        self.model_access.rebuild_from_graph(&self.graph);
+        self.model_access.set_graph_nodes(nodes);
         Ok(())
     }
 
@@ -1655,10 +1627,7 @@ impl NapiResourceModelWrapper {
     pub fn set_graph_edges(&mut self, edges_json: String) -> Result<()> {
         let edges: Vec<StaticEdge> = serde_json::from_str(&edges_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid edges JSON: {}", e)))?;
-        let mut graph = (*self.graph).clone();
-        graph.edges = edges;
-        self.graph = Arc::new(graph);
-        self.model_access.rebuild_from_graph(&self.graph);
+        self.model_access.set_graph_edges(edges);
         Ok(())
     }
 
@@ -1666,10 +1635,7 @@ impl NapiResourceModelWrapper {
     pub fn set_graph_nodegroups(&mut self, nodegroups_json: String) -> Result<()> {
         let nodegroups: Vec<StaticNodegroup> = serde_json::from_str(&nodegroups_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid nodegroups JSON: {}", e)))?;
-        let mut graph = (*self.graph).clone();
-        graph.nodegroups = nodegroups;
-        self.graph = Arc::new(graph);
-        self.model_access.rebuild_from_graph(&self.graph);
+        self.model_access.set_graph_nodegroups(nodegroups);
         Ok(())
     }
 
@@ -1680,13 +1646,10 @@ impl NapiResourceModelWrapper {
     /// Prune graph to only include permitted nodegroups and their dependencies.
     #[napi(js_name = "pruneGraph")]
     pub fn prune_graph(&mut self, keep_functions: Option<Vec<String>>) -> Result<()> {
-        let is_permitted = |ng_id: &str| self.is_nodegroup_permitted(ng_id.to_string());
         let keep_fns_ref = keep_functions.as_deref();
-        let pruned = core_prune_graph(&self.graph, is_permitted, keep_fns_ref)
-            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
-        self.graph = Arc::new(pruned);
-        self.model_access.rebuild_from_graph(&self.graph);
-        Ok(())
+        self.model_access
+            .prune_graph(keep_fns_ref)
+            .map_err(napi::Error::from_reason)
     }
 }
 
@@ -1706,26 +1669,24 @@ impl NapiResourceModelWrapper {
                 let path = obj
                     .get("path")
                     .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        napi::Error::from_reason(format!(
-                            "Conditional rule for '{}' must have a string 'path'",
-                            key
-                        ))
-                    })?
-                    .to_string();
+                    .map(String::from)
+                    .unwrap_or_default();
                 let allowed = obj
                     .get("allowed")
                     .and_then(|v| v.as_array())
-                    .ok_or_else(|| {
-                        napi::Error::from_reason(format!(
-                            "Conditional rule for '{}' must have an array 'allowed'",
-                            key
-                        ))
-                    })?
-                    .iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect::<HashSet<String>>();
-                perms.insert(key.clone(), PermissionRule::Conditional { path, allowed });
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect::<HashSet<String>>()
+                    })
+                    .unwrap_or_default();
+                let rule = PermissionRule::conditional(path, allowed).map_err(|e| {
+                    napi::Error::from_reason(format!(
+                        "Invalid conditional rule for '{}': {}",
+                        key, e
+                    ))
+                })?;
+                perms.insert(key.clone(), rule);
             } else {
                 return Err(napi::Error::from_reason(format!(
                     "Invalid permission value for '{}': expected boolean or {{path, allowed}}",

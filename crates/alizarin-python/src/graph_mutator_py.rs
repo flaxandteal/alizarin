@@ -294,7 +294,8 @@ fn has_extension_mutation(name: &str) -> PyResult<bool> {
 /// Returns:
 ///     List of registered mutation names
 #[pyfunction]
-fn list_extension_mutations() -> PyResult<Vec<String>> {
+#[pyo3(name = "list_extension_mutations")]
+fn get_registered_extension_mutations() -> PyResult<Vec<String>> {
     let registry = EXTENSION_REGISTRY.lock().map_err(|_| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
             "Failed to acquire extension registry lock",
@@ -653,7 +654,7 @@ pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(apply_mutations_with_extensions, m)?)?;
     m.add_function(wrap_pyfunction!(register_extension_mutation, m)?)?;
     m.add_function(wrap_pyfunction!(has_extension_mutation, m)?)?;
-    m.add_function(wrap_pyfunction!(list_extension_mutations, m)?)?;
+    m.add_function(wrap_pyfunction!(get_registered_extension_mutations, m)?)?;
     m.add_function(wrap_pyfunction!(generate_uuid_v5, m)?)?;
     m.add_function(wrap_pyfunction!(get_mutation_schema, m)?)?;
     m.add_function(wrap_pyfunction!(build_graph_from_instructions, m)?)?;

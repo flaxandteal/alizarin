@@ -232,14 +232,14 @@ impl WasmRdmCache {
     /// @param treeJson - JSON string of the tree to resolve
     /// @param aliasToCollection - Map<string, string> mapping node aliases to collection IDs
     /// @param strict - If true, return error for unresolved labels
-    /// @returns JSON string with labels resolved to UUIDs
+    /// @returns Resolved tree object with labels replaced by UUIDs
     #[wasm_bindgen(js_name = resolveLabels)]
     pub fn resolve_labels(
         &self,
         tree_json: &str,
         alias_to_collection: JsValue,
         strict: bool,
-    ) -> Result<String, JsError> {
+    ) -> Result<JsValue, JsError> {
         use alizarin_core::label_resolution;
         use std::collections::HashMap;
 
@@ -253,8 +253,10 @@ impl WasmRdmCache {
         let resolved = label_resolution::resolve_labels(tree, &alias_map, &self.inner, strict)
             .map_err(|e| JsError::new(&e.message))?;
 
-        serde_json::to_string(&resolved)
-            .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
+        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+        resolved
+            .serialize(&serializer)
+            .map_err(|e| JsError::new(&format!("Failed to convert result: {}", e)))
     }
 
     /// Add collection(s) from SKOS RDF/XML.

@@ -95,14 +95,14 @@ impl ConceptLookup for TableLookup {
 /// @param aliasToCollection - Map<string, string> from buildAliasToCollectionMap
 /// @param lookupTable - Map<collectionId, Map<label, conceptId>> built from collections
 /// @param strict - If true, return error for unresolved labels
-/// @returns JSON string with labels resolved to UUIDs
+/// @returns Resolved tree object with labels replaced by UUIDs
 #[wasm_bindgen(js_name = resolveLabelsWithLookup)]
 pub fn wasm_resolve_labels_with_lookup(
     tree_json: &str,
     alias_to_collection: JsValue,
     lookup_table: JsValue,
     strict: bool,
-) -> Result<String, JsError> {
+) -> Result<JsValue, JsError> {
     let tree: serde_json::Value = serde_json::from_str(tree_json)
         .map_err(|e| JsError::new(&format!("Invalid tree JSON: {}", e)))?;
 
@@ -118,8 +118,11 @@ pub fn wasm_resolve_labels_with_lookup(
     let resolved = label_resolution::resolve_labels(tree, &alias_map, &lookup, strict)
         .map_err(|e| JsError::new(&e.message))?;
 
-    serde_json::to_string(&resolved)
-        .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    use serde::Serialize;
+    resolved
+        .serialize(&serializer)
+        .map_err(|e| JsError::new(&format!("Failed to convert result: {}", e)))
 }
 
 /// Check if a string is a valid UUID.

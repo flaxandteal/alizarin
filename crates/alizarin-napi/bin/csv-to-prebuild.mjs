@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* global process, console */
 
 // Convert a CSV-based model directory into PrebuildLoader-compatible JSON.
 //

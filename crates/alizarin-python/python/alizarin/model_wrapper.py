@@ -50,7 +50,6 @@ class ResourceModelWrapper(Generic[RIVM]):
     Attributes:
         wkrm: Well-Known Resource Model metadata
         graph: The StaticGraph
-        use_rust_cache: Whether to use Rust-side caching
         nodes: Node cache (ID -> StaticNode)
         edges: Edge cache (domain_node_id -> list of edges)
         nodegroups: Nodegroup cache (ID -> StaticNodegroup)
@@ -59,19 +58,18 @@ class ResourceModelWrapper(Generic[RIVM]):
     __slots__ = (
         "wkrm",
         "graph",
-        "use_rust_cache",
         "nodes",
         "edges",
         "nodegroups",
         "_permitted_nodegroups",
         "_nodes_by_alias",
+        "_rust_model",
     )
 
     def __init__(
         self,
         wkrm: IWKRM,
         graph: StaticGraph,
-        use_rust_cache: bool = False,
     ) -> None:
         """
         Initialize ResourceModelWrapper.
@@ -79,11 +77,9 @@ class ResourceModelWrapper(Generic[RIVM]):
         Args:
             wkrm: Well-Known Resource Model metadata
             graph: The StaticGraph for this model
-            use_rust_cache: Whether to use Rust-side caching
         """
         self.wkrm: IWKRM = wkrm
         self.graph: StaticGraph = graph
-        self.use_rust_cache: bool = use_rust_cache
 
         # Caches
         self.nodes: Optional[Dict[str, StaticNode]] = None
@@ -94,11 +90,25 @@ class ResourceModelWrapper(Generic[RIVM]):
         # Permissions
         self._permitted_nodegroups: Dict[str, PermissionValue] = {}
 
+        # Rust-side model wrapper for delegation
+        self._rust_model: Any = None
+        self._init_rust_model()
+
+    def _init_rust_model(self) -> None:
+        """Initialize the Rust-side PyResourceModelWrapper for delegation.
+
+        Ensures the graph is registered in the Rust registry, then creates
+        the Rust-side wrapper.
+        """
+        from . import register_graph, PyResourceModelWrapper
+        # Ensure graph is registered (idempotent if already registered)
+        register_graph(json.dumps(self.graph.to_dict()))
+        self._rust_model = PyResourceModelWrapper(self.graph.graphid)
+
     @classmethod
     def from_graph_id(
         cls,
         graph_id: str,
-        use_rust_cache: bool = True,
     ) -> "ResourceModelWrapper[RIVM]":
         """
         Create a ResourceModelWrapper from a registered graph ID.
@@ -108,13 +118,11 @@ class ResourceModelWrapper(Generic[RIVM]):
 
         Args:
             graph_id: The graph ID returned by register_graph()
-            use_rust_cache: Whether to use Rust-side caching (default True)
 
         Returns:
             A fully initialized ResourceModelWrapper with nodes built
 
         Raises:
-            RuntimeError: If the Rust extension is not loaded
             ValueError: If the graph ID is not found
 
         Example:
@@ -127,9 +135,6 @@ class ResourceModelWrapper(Generic[RIVM]):
         from .static_types import StaticGraph
         from .graph_manager import WKRM
 
-        if get_graph_json is None:
-            raise RuntimeError("Alizarin Rust extension not loaded")
-
         graph_json_str = get_graph_json(graph_id)
         if graph_json_str is None:
             raise ValueError(f"Graph not found for ID: {graph_id}")
@@ -138,7 +143,7 @@ class ResourceModelWrapper(Generic[RIVM]):
         graph = StaticGraph.from_dict(graph_data)
         wkrm = WKRM.from_meta(graph.meta)
 
-        model = cls(wkrm, graph, use_rust_cache=use_rust_cache)
+        model = cls(wkrm, graph)
         model.build_nodes()
         return model
 
@@ -443,18 +448,17 @@ class ResourceModelWrapper(Generic[RIVM]):
             )
 
         self._permitted_nodegroups = permissions.copy()
+        self._rust_model.set_permitted_nodegroups(permissions)
 
     def is_nodegroup_permitted(
         self,
         nodegroup_id: Optional[str],
-        tile: Optional[StaticTile],
+        tile: Optional[StaticTile] = None,
     ) -> bool:
         """
         Check if a nodegroup/tile is permitted.
 
-        For boolean permissions, returns the boolean value.
-        For conditional permissions, evaluates the tile data path and checks
-        if the value is in the allowed set.
+        Delegates to the Rust-side GraphModelAccess for evaluation.
 
         Args:
             nodegroup_id: The nodegroup ID to check
@@ -465,178 +469,33 @@ class ResourceModelWrapper(Generic[RIVM]):
         """
         ng_id = nodegroup_id or ""
 
-        # Check direct permission
-        if ng_id not in self._permitted_nodegroups:
-            # Default to permitted
-            return True
+        if tile is not None:
+            tile_json = json.dumps(tile.to_dict() if hasattr(tile, "to_dict") else tile)
+            return self._rust_model.is_tile_permitted(ng_id, tile_json)
 
-        permission = self._permitted_nodegroups[ng_id]
-
-        # Simple boolean permission
-        if isinstance(permission, bool):
-            return permission
-
-        # Conditional permission - need tile data
-        if tile is None:
-            # For nodegroup-level checks (no tile), conditional permissions allow
-            # the nodegroup itself, individual tiles will be filtered
-            return True
-
-        # Evaluate the path against the tile
-        path = permission.get("path", "")
-        allowed = set(permission.get("allowed", []))
-
-        value = self._evaluate_tile_path(tile, path)
-        permitted = value is not None and value in allowed
-
-        # Debug logging for conditional filtering
-        tile_id = getattr(tile, "tileid", None) or "(no id)"
-        logger.debug(
-            "[alizarin] Conditional filter: nodegroup=%s, tile=%s, path=%s, value=%r, allowed=%r, permitted=%s",
-            ng_id, tile_id, path, value, allowed, permitted
-        )
-
-        if value is None:
-            # Path doesn't resolve - deny by default
-            return False
-
-        return permitted
-
-    @staticmethod
-    def _evaluate_tile_path(tile: StaticTile, path: str) -> Optional[str]:
-        """
-        Evaluate a JSON path against a tile's data.
-
-        Path format: ".data.uuid.field.subfield" or "data.uuid.field.subfield"
-        Returns the string value at that path, or None if not found/not a string.
-        """
-        path = path.lstrip(".")
-        segments = path.split(".")
-
-        if not segments:
-            return None
-
-        # Start navigation - first segment should be "data" for tile data
-        tile_data = getattr(tile, "data", None) or {}
-
-        if segments[0] == "data":
-            if len(segments) < 2:
-                return None
-            # Get the node's data by the next segment (node_id/uuid)
-            current = tile_data.get(segments[1])
-            start_idx = 2
-        else:
-            # Direct path into data - treat first segment as node_id
-            current = tile_data.get(segments[0])
-            start_idx = 1
-
-        if current is None:
-            return None
-
-        # Navigate remaining segments
-        for segment in segments[start_idx:]:
-            if isinstance(current, dict):
-                current = current.get(segment)
-            else:
-                return None
-            if current is None:
-                return None
-
-        # Extract string value
-        if isinstance(current, str):
-            return current
-
-        # Try common nested patterns (e.g., {"en": "value"})
-        if isinstance(current, dict):
-            for key in ("en", "value", "label", "name"):
-                if key in current and isinstance(current[key], str):
-                    return current[key]
-
-        return None
+        return self._rust_model.is_nodegroup_permitted(ng_id)
 
     def prune_graph(self, user: Optional[Any] = None) -> None:
         """
         Remove unpermitted nodes, edges, nodegroups, and cards from the graph.
 
-        Matches TypeScript ResourceModelWrapper.pruneGraph
+        Delegates to Rust-side GraphModelAccess.prune_graph().
 
         Args:
             user: Optional user for permission checking (unused)
         """
-        nodes = self.get_node_objects()
+        self._rust_model.prune_graph(None)
 
-        # Determine which nodes to keep
-        nodes_to_keep: Set[str] = set()
+        # Refresh Python-side graph from Rust export and rebuild caches
+        graph_data = self._rust_model.export_graph()
+        from .static_types import StaticGraph
+        self.graph = StaticGraph.from_dict(graph_data)
 
-        # Always keep root
-        nodes_to_keep.add(self.graph.root.nodeid)
-
-        # Keep permitted nodes and their ancestors
-        for node in nodes.values():
-            ng_id = node.nodegroup_id or ""
-
-            if self.is_nodegroup_permitted(ng_id, None):
-                # Keep this node
-                nodes_to_keep.add(node.nodeid)
-
-                # Keep all ancestors
-                self._add_ancestors(node.nodeid, nodes_to_keep)
-
-        # Filter graph components
-        self.graph.nodes = [
-            n for n in self.graph.nodes
-            if n.nodeid in nodes_to_keep
-        ]
-        self.graph.edges = [
-            e for e in self.graph.edges
-            if e.domainnode_id in nodes_to_keep and e.rangenode_id in nodes_to_keep
-        ]
-
-        # Filter nodegroups - keep if any node in it is kept
-        kept_nodegroup_ids = {
-            n.nodegroup_id
-            for n in self.graph.nodes
-            if n.nodegroup_id
-        }
-        self.graph.nodegroups = [
-            ng for ng in self.graph.nodegroups
-            if ng.nodegroupid in kept_nodegroup_ids
-        ]
-
-        # Filter cards
-        if self.graph.cards:
-            self.graph.cards = [
-                c for c in self.graph.cards
-                if c.nodegroup_id in kept_nodegroup_ids
-            ]
-
-        # Rebuild caches
         self.nodes = None
         self.edges = None
         self.nodegroups = None
         self._nodes_by_alias = None
         self.build_nodes()
-
-    def _add_ancestors(
-        self,
-        node_id: str,
-        nodes_to_keep: Set[str],
-    ) -> None:
-        """
-        Recursively add all ancestor nodes.
-
-        Args:
-            node_id: Starting node ID
-            nodes_to_keep: Set to add ancestors to
-        """
-        edges = self.get_edges()
-
-        # Find edges where this node is the range (child)
-        for domain_id, edge_list in edges.items():
-            for edge in edge_list:
-                if edge.rangenode_id == node_id and domain_id not in nodes_to_keep:
-                    nodes_to_keep.add(domain_id)
-                    self._add_ancestors(domain_id, nodes_to_keep)
 
     def export_graph(self) -> StaticGraph:
         """

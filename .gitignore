@@ -32,6 +32,7 @@ tmp/
 __pycache__/
 *.pyc
 *.so
+*.whl
 
 # Vite temp files
 vite.config.js.timestamp-*.mjs

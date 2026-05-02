@@ -1,6 +1,7 @@
 pub mod card_traversal;
 pub mod csv_business_data_loader;
 pub mod csv_model_loader;
+pub mod exporter;
 /// Alizarin Core Library
 ///
 /// Platform-agnostic core functionality that can be used from:
@@ -78,6 +79,15 @@ pub use graph::{
 
 // Loader
 pub use loader::{parse_business_data_bytes, LoaderError, PrebuildInfo, PrebuildLoader};
+
+// Exporter
+pub use exporter::{
+    build_prebuild_export, export_all_graphs, export_collections, export_graphs,
+    export_single_collection, ExportError, ExportFile, PrebuildExportData,
+};
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use exporter::fs_writer::{export_prebuild_to_directory, write_to_directory};
 
 // Interner types
 #[cfg(feature = "multi-threaded")]
@@ -195,7 +205,9 @@ pub use path_resolution::{resolve_path_segments, PathError, PathResolutionInfo};
 pub use tile_source::{TileSource, TileSourceError};
 
 // RDM cache types
-pub use rdm_cache::{skos_to_rdm_collection, RdmCache, RdmCollection, RdmConcept};
+pub use rdm_cache::{
+    rdm_to_skos_collection, skos_to_rdm_collection, RdmCache, RdmCollection, RdmConcept,
+};
 
 // RDM namespace utilities (deterministic UUID generation)
 pub use rdm_namespace::{
@@ -263,8 +275,8 @@ pub use ontology::{OntologyConfig, OntologyError, OntologyValidationDetail, Onto
 
 // Graph registry (for looking up graphs by graph_id)
 pub use registry::{
-    clear_registry, get_graph, is_graph_registered, register_graph, register_graph_owned,
-    registry_size, unregister_graph,
+    clear_registry, get_graph, get_registered_graph_ids, is_graph_registered, register_graph,
+    register_graph_owned, registry_size, unregister_graph,
 };
 
 // List datatype registry (for datatypes where array IS the value)
@@ -287,7 +299,7 @@ pub use registry::{
 pub use permissions::{evaluate_tile_path, PermissionRule};
 
 // String utilities
-pub use string_utils::{camel_to_snake, snake_to_camel, transform_keys_to_snake};
+pub use string_utils::{camel_to_snake, snake_to_camel, sort_json_keys, transform_keys_to_snake};
 
 // Extension type registry (unified handler infrastructure for WASM/Python)
 pub use extension_type_registry::{

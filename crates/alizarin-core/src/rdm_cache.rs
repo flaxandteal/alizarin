@@ -580,7 +580,7 @@ impl RdmCache {
 // SKOS → RDM Conversion
 // =============================================================================
 
-use crate::skos::{SkosCollection, SkosConcept};
+use crate::skos::{SkosCollection, SkosConcept, SkosNodeType, SkosValue};
 
 impl RdmCache {
     /// Convert a `SkosCollection` to an `RdmCollection` and add it to the cache.
@@ -783,6 +783,127 @@ pub fn skos_to_rdm_collection(skos: &SkosCollection) -> RdmCollection {
     }
 
     rdm
+}
+
+/// Convert an `RdmCollection` to a `SkosCollection` for SKOS XML serialization.
+///
+/// This is the inverse of `skos_to_rdm_collection`. The `node_type` parameter
+/// determines whether the output uses `skos:ConceptScheme` (with narrower/broader)
+/// or `skos:Collection` (with member relations, Arches-compatible).
+pub fn rdm_to_skos_collection(rdm: &RdmCollection, node_type: &str) -> SkosCollection {
+    use std::collections::HashSet;
+
+    // Build collection pref_labels
+    let mut collection_pref_labels = HashMap::new();
+    if let Some(ref name) = rdm.name {
+        collection_pref_labels.insert(
+            "en".to_string(),
+            SkosValue {
+                id: generate_value_uuid(&rdm.id, name, "en").to_string(),
+                value: name.clone(),
+            },
+        );
+    }
+
+    // Convert all concepts (flat list first)
+    let mut all_skos_concepts: HashMap<String, SkosConcept> = HashMap::new();
+    let mut all_narrower_ids: HashSet<String> = HashSet::new();
+
+    for concept_id in rdm.get_concept_ids() {
+        if let Some(rdm_concept) = rdm.get_concept(concept_id) {
+            let mut pref_labels = HashMap::new();
+            for (lang, rdm_value) in &rdm_concept.pref_label {
+                let value_id = if rdm_value.id.is_empty() || rdm_value.id == "__pending__" {
+                    generate_value_uuid(concept_id, &rdm_value.value, lang).to_string()
+                } else {
+                    rdm_value.id.clone()
+                };
+                pref_labels.insert(
+                    lang.clone(),
+                    SkosValue {
+                        id: value_id,
+                        value: rdm_value.value.clone(),
+                    },
+                );
+            }
+
+            let skos_concept = SkosConcept {
+                id: concept_id.clone(),
+                uri: None,
+                pref_labels,
+                source: Some(concept_id.clone()),
+                sort_order: None,
+                children: None,
+            };
+
+            all_skos_concepts.insert(concept_id.clone(), skos_concept);
+            all_narrower_ids.extend(rdm_concept.narrower.iter().cloned());
+        }
+    }
+
+    let skos_node_type = if node_type == "Collection" {
+        SkosNodeType::Collection
+    } else {
+        SkosNodeType::ConceptScheme
+    };
+
+    // Build hierarchy — top-level concepts are those not in any narrower list
+    let mut hierarchy: HashMap<String, SkosConcept> = HashMap::new();
+
+    for concept_id in rdm.get_concept_ids() {
+        if !all_narrower_ids.contains(concept_id) {
+            if let Some(concept_with_children) =
+                build_concept_tree_from_rdm(concept_id, &all_skos_concepts, rdm)
+            {
+                hierarchy.insert(concept_id.clone(), concept_with_children);
+            }
+        }
+    }
+
+    let top_level_concepts = if hierarchy.is_empty() {
+        all_skos_concepts.clone()
+    } else {
+        hierarchy
+    };
+
+    SkosCollection {
+        id: rdm.id.clone(),
+        uri: None,
+        pref_labels: collection_pref_labels,
+        alt_labels: HashMap::new(),
+        scope_notes: HashMap::new(),
+        node_type: skos_node_type,
+        concepts: top_level_concepts,
+        all_concepts: all_skos_concepts,
+        values: HashMap::new(),
+    }
+}
+
+/// Build a concept tree recursively from RDM narrower relationships.
+fn build_concept_tree_from_rdm(
+    concept_id: &str,
+    all_concepts: &HashMap<String, SkosConcept>,
+    rdm_collection: &RdmCollection,
+) -> Option<SkosConcept> {
+    let mut concept = all_concepts.get(concept_id)?.clone();
+
+    if let Some(rdm_concept) = rdm_collection.get_concept(concept_id) {
+        if !rdm_concept.narrower.is_empty() {
+            let mut children = Vec::new();
+            for child_id in &rdm_concept.narrower {
+                if let Some(child) =
+                    build_concept_tree_from_rdm(child_id, all_concepts, rdm_collection)
+                {
+                    children.push(child);
+                }
+            }
+            if !children.is_empty() {
+                concept.children = Some(children);
+            }
+        }
+    }
+
+    Some(concept)
 }
 
 // =============================================================================

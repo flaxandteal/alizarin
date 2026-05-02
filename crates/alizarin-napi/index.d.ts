@@ -18,6 +18,28 @@ export declare function buildGraphFromCsvs(graphCsv: string, nodesCsv: string, c
  * format expected by PrebuildLoader.
  */
 export declare function buildBusinessDataFromCsv(csvData: string, graphJson: string, collectionsJson: string): any
+/**
+ * Coerce a value using the registered extension handler for the given datatype.
+ *
+ * Returns `{ tileData, displayValue }` or null if no handler is registered.
+ */
+export declare function extensionCoerce(datatype: string, value: any, config?: any | undefined | null): any | null
+/**
+ * Render a display string for tile data using the extension handler.
+ *
+ * Returns the display string, or null if no handler or no display.
+ */
+export declare function extensionRenderDisplay(datatype: string, tileData: any, language: string): string | null
+/**
+ * Resolve markers in tile data using the extension handler.
+ *
+ * Returns the resolved tile data value.
+ */
+export declare function extensionResolveMarkers(datatype: string, tileData: any, language: string): any
+/** Check if an extension handler is registered for the given datatype. */
+export declare function hasExtensionHandler(datatype: string): boolean
+/** List all registered extension handler datatypes. */
+export declare function getRegisteredExtensionHandlers(): Array<string>
 export declare class NapiRdmCache {
   constructor()
   /** Load collections from a SKOS JSON string. */
@@ -108,6 +130,8 @@ export declare class NapiResourceInstanceWrapper {
    * Returned as a string for fast boundary crossing — call JSON.parse() on the JS side.
    */
   exportTilesJson(): string
+  /** Prune tiles to only keep those in permitted nodegroups. */
+  pruneResourceTiles(): void
   tilesLoaded(): boolean
   getAllTileIds(): Array<string>
   getTileIdsByNodegroup(nodegroupId?: string | undefined | null): Array<string>
@@ -240,6 +264,26 @@ export declare class NapiPrebuildLoader {
   getInfo(): any
   /** Count resources for a given graph ID. */
   countResourcesForGraph(graphId: string): number
+}
+export declare class NapiPrebuildExporter {
+  constructor()
+  /**
+   * Export registered graphs to a directory.
+   *
+   * Classifies graphs as resource_models or branches based on `isresource`,
+   * writes as `{"graph": [graph_data]}` JSON files with sorted keys.
+   */
+  exportGraphs(graphIds: Array<string>, outDir: string): Array<string>
+  /** Export all registered graphs to a directory. */
+  exportAllGraphs(outDir: string): Array<string>
+  /**
+   * Build complete export data as JSON (without writing to filesystem).
+   *
+   * Returns an object with `files` array of `{relativePath, content}` entries.
+   */
+  buildExportData(graphIds: Array<string> | undefined | null, baseUri: string): any
+  /** Get IDs of all registered graphs. */
+  getRegisteredGraphIds(): Array<string>
 }
 export declare class NapiStaticGraph {
   /** Parse a graph from a JSON string (the file content, not a file path). */

@@ -175,7 +175,7 @@ def test_prune_graph_filters_unpermitted_nodegroups():
     wkrm = WKRM(meta)
 
     # Create wrapper
-    wrapper = ResourceModelWrapper(wkrm, graph, False)
+    wrapper = ResourceModelWrapper(wkrm, graph)
 
     # Set permissions: only child1 is permitted
     permissions = {
@@ -308,7 +308,7 @@ def test_prune_graph_preserves_parent_nodes():
     }
     wkrm = WKRM(meta)
 
-    wrapper = ResourceModelWrapper(wkrm, graph, False)
+    wrapper = ResourceModelWrapper(wkrm, graph)
 
     # Only permit the child, not the parent nodegroup
     permissions = {

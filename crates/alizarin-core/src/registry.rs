@@ -6,6 +6,11 @@
 ///
 /// Uses RwLock for thread-safe access, allowing multiple concurrent readers
 /// or exclusive write access. This works correctly with rayon's parallel iterators.
+///
+/// SILENT: All `.ok()` calls on RwLock operations are deliberate — a poisoned
+/// lock means another thread panicked while holding it. Propagating that panic
+/// cross-thread isn't useful; returning a sensible default (None, false, empty)
+/// lets the caller handle the "not found" case normally.
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
@@ -124,6 +129,15 @@ pub fn registry_size() -> usize {
         .ok()
         .map(|registry| registry.len())
         .unwrap_or(0)
+}
+
+/// Get all registered graph IDs
+pub fn get_registered_graph_ids() -> Vec<String> {
+    GRAPH_REGISTRY
+        .read()
+        .ok()
+        .map(|registry| registry.keys().cloned().collect())
+        .unwrap_or_default()
 }
 
 // ============================================================================

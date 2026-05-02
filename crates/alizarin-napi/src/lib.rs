@@ -125,6 +125,90 @@ impl NapiPrebuildLoader {
 }
 
 // ============================================================================
+// NapiPrebuildExporter
+// ============================================================================
+
+fn exporter_err(e: alizarin_core::ExportError) -> napi::Error {
+    napi::Error::from_reason(e.to_string())
+}
+
+#[napi]
+#[derive(Default)]
+pub struct NapiPrebuildExporter {}
+
+#[napi]
+impl NapiPrebuildExporter {
+    #[napi(constructor)]
+    pub fn new() -> Self {
+        NapiPrebuildExporter {}
+    }
+
+    /// Export registered graphs to a directory.
+    ///
+    /// Classifies graphs as resource_models or branches based on `isresource`,
+    /// writes as `{"graph": [graph_data]}` JSON files with sorted keys.
+    #[napi]
+    pub fn export_graphs(&self, graph_ids: Vec<String>, out_dir: String) -> Result<Vec<String>> {
+        let data = alizarin_core::export_graphs(&graph_ids).map_err(exporter_err)?;
+        let export_data = alizarin_core::PrebuildExportData {
+            graph_files: data,
+            ..Default::default()
+        };
+        alizarin_core::write_to_directory(&export_data, std::path::Path::new(&out_dir))
+            .map_err(exporter_err)
+    }
+
+    /// Export all registered graphs to a directory.
+    #[napi]
+    pub fn export_all_graphs(&self, out_dir: String) -> Result<Vec<String>> {
+        let data = alizarin_core::export_all_graphs().map_err(exporter_err)?;
+        let export_data = alizarin_core::PrebuildExportData {
+            graph_files: data,
+            ..Default::default()
+        };
+        alizarin_core::write_to_directory(&export_data, std::path::Path::new(&out_dir))
+            .map_err(exporter_err)
+    }
+
+    /// Build complete export data as JSON (without writing to filesystem).
+    ///
+    /// Returns an object with `files` array of `{relativePath, content}` entries.
+    #[napi]
+    pub fn build_export_data(
+        &self,
+        graph_ids: Option<Vec<String>>,
+        base_uri: String,
+    ) -> Result<serde_json::Value> {
+        let ids = graph_ids.as_deref();
+        let data =
+            alizarin_core::build_prebuild_export(ids, None, &base_uri).map_err(exporter_err)?;
+
+        let files: Vec<serde_json::Value> = data
+            .all_files()
+            .iter()
+            .map(|f| {
+                serde_json::json!({
+                    "relativePath": f.relative_path,
+                    "content": f.content,
+                })
+            })
+            .collect();
+
+        Ok(serde_json::json!({
+            "files": files,
+            "graphFileCount": data.graph_files.len(),
+            "referenceDataFileCount": data.reference_data_files.len(),
+        }))
+    }
+
+    /// Get IDs of all registered graphs.
+    #[napi]
+    pub fn get_registered_graph_ids(&self) -> Vec<String> {
+        alizarin_core::get_registered_graph_ids()
+    }
+}
+
+// ============================================================================
 // NapiStaticGraph
 // ============================================================================
 
@@ -359,18 +443,24 @@ impl NapiStaticResourceRegistry {
 
     /// Get the full resource (with tiles) as a JSON object, or null if only summary stored.
     #[napi]
-    pub fn get_full(&self, resource_id: String) -> Option<serde_json::Value> {
-        self.inner
-            .get_full(&resource_id)
-            .and_then(|r| serde_json::to_value(r).ok())
+    pub fn get_full(&self, resource_id: String) -> Result<Option<serde_json::Value>> {
+        match self.inner.get_full(&resource_id) {
+            Some(r) => serde_json::to_value(r)
+                .map(Some)
+                .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e))),
+            None => Ok(None),
+        }
     }
 
     /// Get a summary for a resource (works for both summary and full entries), or null if unknown.
     #[napi]
-    pub fn get_summary(&self, resource_id: String) -> Option<serde_json::Value> {
-        self.inner
-            .get_summary(&resource_id)
-            .and_then(|s| serde_json::to_value(&s).ok())
+    pub fn get_summary(&self, resource_id: String) -> Result<Option<serde_json::Value>> {
+        match self.inner.get_summary(&resource_id) {
+            Some(s) => serde_json::to_value(&s)
+                .map(Some)
+                .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e))),
+            None => Ok(None),
+        }
     }
 }
 
@@ -445,4 +535,77 @@ pub fn build_business_data_from_csv(
             .map_err(csv_err)?;
 
     Ok(wrap_business_data(&resources))
+}
+
+// ============================================================================
+// Extension handler direct access
+// ============================================================================
+
+/// Coerce a value using the registered extension handler for the given datatype.
+///
+/// Returns `{ tileData, displayValue }` or null if no handler is registered.
+#[napi(js_name = "extensionCoerce")]
+pub fn extension_coerce(
+    datatype: String,
+    value: serde_json::Value,
+    config: Option<serde_json::Value>,
+) -> Result<Option<serde_json::Value>> {
+    let registry = extension_registry();
+    match registry.coerce(&datatype, &value, config.as_ref()) {
+        Ok(Some(result)) => {
+            let output = serde_json::json!({
+                "tileData": result.tile_data,
+                "displayValue": result.display_value,
+            });
+            Ok(Some(output))
+        }
+        Ok(None) => Ok(None),
+        Err(e) => Err(napi::Error::from_reason(e.message)),
+    }
+}
+
+/// Render a display string for tile data using the extension handler.
+///
+/// Returns the display string, or null if no handler or no display.
+#[napi(js_name = "extensionRenderDisplay")]
+pub fn extension_render_display(
+    datatype: String,
+    tile_data: serde_json::Value,
+    language: String,
+) -> Result<Option<String>> {
+    let registry = extension_registry();
+    registry
+        .render_display(&datatype, &tile_data, &language)
+        .map_err(|e| napi::Error::from_reason(e.message))
+}
+
+/// Resolve markers in tile data using the extension handler.
+///
+/// Returns the resolved tile data value.
+#[napi(js_name = "extensionResolveMarkers")]
+pub fn extension_resolve_markers(
+    datatype: String,
+    tile_data: serde_json::Value,
+    language: String,
+) -> Result<serde_json::Value> {
+    let registry = extension_registry();
+    registry
+        .resolve_markers(&datatype, &tile_data, &language)
+        .map_err(|e| napi::Error::from_reason(e.message))
+}
+
+/// Check if an extension handler is registered for the given datatype.
+#[napi(js_name = "hasExtensionHandler")]
+pub fn has_extension_handler(datatype: String) -> bool {
+    extension_registry().has(&datatype)
+}
+
+/// List all registered extension handler datatypes.
+#[napi(js_name = "getRegisteredExtensionHandlers")]
+pub fn get_registered_extension_handlers() -> Vec<String> {
+    extension_registry()
+        .list()
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect()
 }

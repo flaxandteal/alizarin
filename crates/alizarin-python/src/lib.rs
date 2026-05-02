@@ -480,7 +480,8 @@ unsafe extern "C" fn rdm_has_collection(
 /// After registration, the handler can be called directly from Rust without
 /// crossing the Python boundary.
 #[pyfunction]
-fn register_type_handler(capsule: &PyCapsule) -> PyResult<()> {
+#[pyo3(name = "register_type_handler")]
+fn register_extension_handler(capsule: &PyCapsule) -> PyResult<()> {
     let ptr = capsule.pointer() as *const TypeHandlerInfo;
 
     // SAFETY: ptr comes from PyCapsule::pointer(), which returns the pointer set by the
@@ -524,7 +525,8 @@ fn register_type_handler(capsule: &PyCapsule) -> PyResult<()> {
 
 /// Check if a type handler is registered
 #[pyfunction]
-fn has_type_handler(type_name: &str) -> bool {
+#[pyo3(name = "has_type_handler")]
+fn has_extension_handler(type_name: &str) -> bool {
     TYPE_HANDLERS.read().unwrap().contains_key(type_name)
 }
 
@@ -674,6 +676,8 @@ use alizarin_core::{
     resolve_labels as core_resolve_labels,
     tiles_to_tree,
     tree_to_tiles_with_options,
+    // Graph model access
+    GraphModelAccess,
     MergeAccumulator,
     // Permission rules
     PermissionRule,
@@ -820,19 +824,15 @@ fn tiles_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
         map.insert("graph_id".to_string(), serde_json::Value::String(graph_id));
     }
 
-    // Convert to Python dict
-    let py_str = serde_json::to_string(&result).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-            "Failed to serialize result: {}",
-            e
-        ))
-    })?;
-
-    // Parse as Python dict
-    let json_module = py.import_bound("json")?;
-    let py_dict = json_module.call_method1("loads", (py_str,))?;
-
-    Ok(py_dict.to_object(py))
+    // Convert to Python dict directly
+    pythonize::pythonize(py, &result)
+        .map(|obj| obj.into())
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert result to Python: {}",
+                e
+            ))
+        })
 }
 
 /// Build a tree from pre-extracted tiles (no resource wrapper needed).
@@ -858,16 +858,14 @@ fn build_tree_from_tiles(
     let result = alizarin_core::build_tree_from_tiles(&tiles_json, &resource_id, &graph_id)
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
-    let py_str = serde_json::to_string(&result).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-            "Failed to serialize result: {}",
-            e
-        ))
-    })?;
-    let json_module = py.import_bound("json")?;
-    let py_dict = json_module.call_method1("loads", (py_str,))?;
-
-    Ok(py_dict.to_object(py))
+    pythonize::pythonize(py, &result)
+        .map(|obj| obj.into())
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert result to Python: {}",
+                e
+            ))
+        })
 }
 
 /// Convert tiles to a card-structured tree.
@@ -943,17 +941,14 @@ fn cards_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
         map.insert("graph_id".to_string(), serde_json::Value::String(graph_id));
     }
 
-    let py_str = serde_json::to_string(&result).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-            "Failed to serialize result: {}",
-            e
-        ))
-    })?;
-
-    let json_module = py.import_bound("json")?;
-    let py_dict = json_module.call_method1("loads", (py_str,))?;
-
-    Ok(py_dict.to_object(py))
+    pythonize::pythonize(py, &result)
+        .map(|obj| obj.into())
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert result to Python: {}",
+                e
+            ))
+        })
 }
 
 // =============================================================================
@@ -1241,18 +1236,14 @@ fn json_tree_to_tiles(
     }
 
     // Return full BusinessDataWrapper structure: {business_data: {resources: [...]}}
-    let result_json = serde_json::to_string(&business_data).map_err(|e| {
-        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-            "Failed to serialize result: {}",
-            e
-        ))
-    })?;
-
-    // Parse as Python dict
-    let json_module = py.import_bound("json")?;
-    let py_dict = json_module.call_method1("loads", (result_json,))?;
-
-    Ok(py_dict.to_object(py))
+    pythonize::pythonize(py, &business_data)
+        .map(|obj| obj.into())
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert result to Python: {}",
+                e
+            ))
+        })
 }
 
 /// Batch convert multiple JSON trees to tiles in parallel.
@@ -2120,8 +2111,7 @@ fn batch_tiles_to_trees(py: Python, resources_json: String, strict: bool) -> PyR
 /// Graph must be registered via register_graph first.
 #[pyclass]
 struct PyResourceModelWrapper {
-    graph: std::sync::Arc<AlizarinCoreStaticGraph>,
-    permitted_nodegroups: HashMap<String, PermissionRule>,
+    model_access: GraphModelAccess,
 }
 
 #[pymethods]
@@ -2132,9 +2122,85 @@ impl PyResourceModelWrapper {
         let graph = get_registered_graph(&graph_id)?;
 
         Ok(PyResourceModelWrapper {
-            graph,
-            permitted_nodegroups: HashMap::new(),
+            model_access: GraphModelAccess::new_eager(graph, true),
         })
+    }
+
+    /// Build index caches (nodes, edges, nodegroups, etc.)
+    /// Call after construction or after graph mutation.
+    fn build_nodes(&mut self) -> PyResult<()> {
+        self.model_access.ensure_built().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to build nodes: {}",
+                e
+            ))
+        })
+    }
+
+    /// Get child nodes for a given node ID, keyed by alias.
+    /// Returns a dict of {alias: node_json}.
+    fn get_child_nodes(&self, py: Python, node_id: &str) -> PyResult<PyObject> {
+        let children = self.model_access.get_child_nodes(node_id);
+        let dict = pyo3::types::PyDict::new_bound(py);
+        for (alias, node) in &children {
+            let node_json = serde_json::to_string(node.as_ref()).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to serialize node: {}",
+                    e
+                ))
+            })?;
+            dict.set_item(alias, node_json)?;
+        }
+        Ok(dict.to_object(py))
+    }
+
+    /// Get all nodes as a dict of {node_id: node_json}.
+    #[pyo3(name = "get_nodes")]
+    fn get_node_objects(&self, py: Python) -> PyResult<PyObject> {
+        let dict = pyo3::types::PyDict::new_bound(py);
+        if let Some(nodes) = alizarin_core::ModelAccess::get_nodes(&self.model_access) {
+            for (id, node) in nodes {
+                let node_json = serde_json::to_string(node.as_ref()).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Failed to serialize node: {}",
+                        e
+                    ))
+                })?;
+                dict.set_item(id, node_json)?;
+            }
+        }
+        Ok(dict.to_object(py))
+    }
+
+    /// Get all edges as a dict of {node_id: [child_node_id, ...]}.
+    fn get_edges(&self, py: Python) -> PyResult<PyObject> {
+        let dict = pyo3::types::PyDict::new_bound(py);
+        if let Some(edges) = alizarin_core::ModelAccess::get_edges(&self.model_access) {
+            for (id, children) in edges {
+                let py_list =
+                    pyo3::types::PyList::new_bound(py, children.iter().map(|s| s.as_str()));
+                dict.set_item(id, py_list)?;
+            }
+        }
+        Ok(dict.to_object(py))
+    }
+
+    /// Get nodes indexed by alias as a dict of {alias: node_json}.
+    #[pyo3(name = "get_nodes_by_alias")]
+    fn get_node_objects_by_alias(&self, py: Python) -> PyResult<PyObject> {
+        let dict = pyo3::types::PyDict::new_bound(py);
+        if let Some(nodes_by_alias) = self.model_access.get_nodes_by_alias() {
+            for (alias, node) in nodes_by_alias {
+                let node_json = serde_json::to_string(node.as_ref()).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "Failed to serialize node: {}",
+                        e
+                    ))
+                })?;
+                dict.set_item(alias, node_json)?;
+            }
+        }
+        Ok(dict.to_object(py))
     }
 
     /// Set permitted nodegroups with support for both boolean and conditional rules.
@@ -2146,69 +2212,14 @@ impl PyResourceModelWrapper {
     ///
     /// Raises ValueError if any permission rule is invalid.
     fn set_permitted_nodegroups(&mut self, py: Python, permissions: PyObject) -> PyResult<()> {
-        use pyo3::types::PyDict;
-
-        let dict = permissions.downcast_bound::<PyDict>(py).map_err(|_| {
-            PyErr::new::<pyo3::exceptions::PyTypeError, _>("permissions must be a dict")
-        })?;
-
-        let mut perms: HashMap<String, PermissionRule> = HashMap::new();
-        let mut errors: Vec<String> = Vec::new();
-
-        for (key, value) in dict.iter() {
-            let key_str: String = key
-                .extract()
-                .map_err(|_| {
-                    errors.push(format!("Invalid key (not a string): {:?}", key));
-                })
-                .unwrap_or_default();
-
-            if key_str.is_empty() && !errors.is_empty() {
-                continue;
-            }
-
-            // Check if it's a boolean
-            if let Ok(bool_val) = value.extract::<bool>() {
-                perms.insert(key_str, PermissionRule::Boolean(bool_val));
-                continue;
-            }
-
-            // Check if it's a dict (conditional permission)
-            if let Ok(cond_dict) = value.downcast::<PyDict>() {
-                match Self::parse_conditional_rule(cond_dict) {
-                    Ok(rule) => {
-                        perms.insert(key_str, rule);
-                    }
-                    Err(e) => {
-                        errors.push(format!("Invalid conditional rule for '{}': {}", key_str, e));
-                    }
-                }
-                continue;
-            }
-
-            errors.push(format!(
-                "Invalid permission value for '{}': expected bool or {{path, allowed}} dict",
-                key_str
-            ));
-        }
-
-        if !errors.is_empty() {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Permission validation errors:\n  - {}",
-                errors.join("\n  - ")
-            )));
-        }
-
-        self.permitted_nodegroups = perms;
+        let perms = instance_wrapper_py::parse_permissions_dict(py, &permissions)?;
+        self.model_access.set_permitted_nodegroups_rules(perms);
         Ok(())
     }
 
     /// Check if a nodegroup is permitted (for nodegroup-level filtering)
     fn is_nodegroup_permitted(&self, nodegroup_id: &str) -> bool {
-        self.permitted_nodegroups
-            .get(nodegroup_id)
-            .map(|rule| rule.permits_nodegroup())
-            .unwrap_or(true)
+        self.model_access.is_nodegroup_permitted(nodegroup_id)
     }
 
     /// Check if a specific tile is permitted by the permission rules.
@@ -2227,98 +2238,58 @@ impl PyResourceModelWrapper {
             ))
         })?;
 
-        let result = match self.permitted_nodegroups.get(nodegroup_id) {
-            Some(rule) => {
-                let permitted = rule.permits_tile(&tile);
+        let result = self.model_access.is_tile_permitted(&tile);
 
-                // Debug logging for conditional filtering
-                if let PermissionRule::Conditional { path, allowed } = rule {
-                    let tile_id = tile.tileid.as_deref().unwrap_or("(no id)");
-                    let value = evaluate_tile_path(&tile, path);
+        // Debug logging for conditional filtering
+        if let Some(rule) = self.model_access.get_permission_rule(nodegroup_id) {
+            if let PermissionRule::Conditional { path, allowed } = rule {
+                let tile_id = tile.tileid.as_deref().unwrap_or("(no id)");
+                let value = evaluate_tile_path(&tile, path);
 
-                    // Log via Python's logging module
-                    if let Ok(logging) = py.import_bound("logging") {
-                        if let Ok(logger) = logging.call_method1("getLogger", ("alizarin",)) {
-                            let _ = logger.call_method1("debug",
-                                (format!(
-                                    "[alizarin] Conditional filter: nodegroup={}, tile={}, path={}, value={:?}, allowed={:?}, permitted={}",
-                                    nodegroup_id, tile_id, path, value, allowed, permitted
-                                ),)
-                            );
-                        }
+                if let Ok(logging) = py.import_bound("logging") {
+                    if let Ok(logger) = logging.call_method1("getLogger", ("alizarin",)) {
+                        let _ = logger.call_method1("debug",
+                            (format!(
+                                "[alizarin] Conditional filter: nodegroup={}, tile={}, path={}, value={:?}, allowed={:?}, permitted={}",
+                                nodegroup_id, tile_id, path, value, allowed, result
+                            ),)
+                        );
                     }
                 }
-
-                permitted
             }
-            None => true, // Default to permitted
-        };
+        }
 
         Ok(result)
     }
 
+    /// Prune graph to only include permitted nodegroups.
+    fn prune_graph(&mut self, keep_functions: Option<Vec<String>>) -> PyResult<()> {
+        self.model_access
+            .prune_graph(keep_functions.as_deref())
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                    "Failed to prune graph: {}",
+                    e
+                ))
+            })
+    }
+
     /// Export graph as JSON
     fn export_graph(&self, py: Python) -> PyResult<PyObject> {
-        let graph_json = serde_json::to_string(&*self.graph).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to serialize graph: {}",
-                e
-            ))
-        })?;
-
-        let json_module = py.import_bound("json")?;
-        let py_dict = json_module.call_method1("loads", (graph_json,))?;
-        Ok(py_dict.to_object(py))
+        let graph = self.model_access.get_graph();
+        pythonize::pythonize(py, graph)
+            .map(|obj| obj.into())
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Failed to convert graph to Python: {}",
+                    e
+                ))
+            })
     }
 }
 
-impl PyResourceModelWrapper {
-    /// Parse a conditional permission rule from a Python dict
-    /// Expected format: {"path": ".data.uuid.field", "allowed": ["value1", "value2"]}
-    fn parse_conditional_rule(
-        dict: &Bound<'_, pyo3::types::PyDict>,
-    ) -> Result<PermissionRule, String> {
-        use std::collections::HashSet;
-
-        // Get the "path" property
-        let path = dict
-            .get_item("path")
-            .map_err(|_| "failed to read 'path' key")?
-            .ok_or("'path' key is required")?;
-        let path_str: String = path.extract().map_err(|_| "'path' must be a string")?;
-
-        if path_str.is_empty() {
-            return Err("'path' cannot be empty".to_string());
-        }
-
-        // Get the "allowed" property (should be a list)
-        let allowed = dict
-            .get_item("allowed")
-            .map_err(|_| "failed to read 'allowed' key")?
-            .ok_or("'allowed' key is required")?;
-        let allowed_list = allowed
-            .downcast::<pyo3::types::PyList>()
-            .map_err(|_| "'allowed' must be a list")?;
-
-        if allowed_list.is_empty() {
-            return Err("'allowed' list cannot be empty".to_string());
-        }
-
-        // Convert to HashSet<String>
-        let mut allowed_set = HashSet::new();
-        for (i, item) in allowed_list.iter().enumerate() {
-            let s: String = item
-                .extract()
-                .map_err(|_| format!("'allowed[{}]' must be a string", i))?;
-            allowed_set.insert(s);
-        }
-
-        Ok(PermissionRule::Conditional {
-            path: path_str,
-            allowed: allowed_set,
-        })
-    }
-}
+// parse_conditional_rule removed — permission parsing is now centralised
+// in instance_wrapper_py::parse_permissions_dict
 
 /// Static method: Check if a tile/node matches as a semantic child
 ///
@@ -2547,26 +2518,8 @@ fn widget_mappings() -> Vec<(String, String)> {
     alizarin_core::widget_mappings()
 }
 
-/// Recursively sort all object keys in a JSON value for deterministic output.
-fn sort_json_keys(value: serde_json::Value) -> serde_json::Value {
-    match value {
-        serde_json::Value::Object(map) => {
-            // Collect keys and sort them
-            let mut entries: Vec<_> = map.into_iter().collect();
-            entries.sort_by(|(a, _), (b, _)| a.cmp(b));
-            // Recursively sort nested values
-            let sorted: serde_json::Map<String, serde_json::Value> = entries
-                .into_iter()
-                .map(|(k, v)| (k, sort_json_keys(v)))
-                .collect();
-            serde_json::Value::Object(sorted)
-        }
-        serde_json::Value::Array(arr) => {
-            serde_json::Value::Array(arr.into_iter().map(sort_json_keys).collect())
-        }
-        other => other,
-    }
-}
+// sort_json_keys is provided by alizarin_core::sort_json_keys
+use alizarin_core::sort_json_keys;
 
 /// Get the JSON representation of a registered graph.
 ///
@@ -2838,6 +2791,88 @@ fn batch_merge_result_to_py(
     })
 }
 
+// ============================================================================
+// Prebuild Exporter
+// ============================================================================
+
+/// Export registered graphs to a directory.
+///
+/// Classifies graphs as resource_models or branches based on `isresource`,
+/// writes as `{"graph": [graph_data]}` JSON files with deterministically sorted keys.
+#[pyfunction]
+#[pyo3(signature = (graph_ids, out_dir))]
+fn export_graphs_to_dir(graph_ids: Vec<String>, out_dir: String) -> PyResult<Vec<String>> {
+    let files = alizarin_core::export_graphs(&graph_ids)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+    let export_data = alizarin_core::PrebuildExportData {
+        graph_files: files,
+        ..Default::default()
+    };
+    alizarin_core::write_to_directory(&export_data, std::path::Path::new(&out_dir))
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+/// Export all registered graphs to a directory.
+#[pyfunction]
+#[pyo3(signature = (out_dir,))]
+fn export_all_graphs_to_dir(out_dir: String) -> PyResult<Vec<String>> {
+    let files = alizarin_core::export_all_graphs()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+    let export_data = alizarin_core::PrebuildExportData {
+        graph_files: files,
+        ..Default::default()
+    };
+    alizarin_core::write_to_directory(&export_data, std::path::Path::new(&out_dir))
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+/// Export RDM collections from the global cache as SKOS XML files.
+#[pyfunction]
+#[pyo3(signature = (out_dir, base_uri))]
+fn export_collections_to_dir(out_dir: String, base_uri: String) -> PyResult<Vec<String>> {
+    let cache = rdm_cache_py::get_global_rdm_cache().ok_or_else(|| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+            "Global RDM cache not set. Call set_global_rdm_cache() first.",
+        )
+    })?;
+
+    let files = alizarin_core::export_collections(cache.inner(), &base_uri)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    let export_data = alizarin_core::PrebuildExportData {
+        reference_data_files: files,
+        ..Default::default()
+    };
+    alizarin_core::write_to_directory(&export_data, std::path::Path::new(&out_dir))
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+/// Export a complete prebuild package (graphs + collections) to a directory.
+#[pyfunction]
+#[pyo3(signature = (out_dir, base_uri, graph_ids=None))]
+fn export_prebuild(
+    out_dir: String,
+    base_uri: String,
+    graph_ids: Option<Vec<String>>,
+) -> PyResult<Vec<String>> {
+    let rdm_cache = rdm_cache_py::get_global_rdm_cache();
+    let core_cache = rdm_cache.as_ref().map(|c| c.inner().clone());
+
+    alizarin_core::export_prebuild_to_directory(
+        graph_ids.as_deref(),
+        core_cache.as_ref(),
+        &base_uri,
+        std::path::Path::new(&out_dir),
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+}
+
+/// Get IDs of all registered graphs.
+#[pyfunction]
+fn get_registered_graph_ids() -> Vec<String> {
+    alizarin_core::get_registered_graph_ids()
+}
+
 /// Python module definition
 #[pymodule]
 fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -2846,6 +2881,13 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_graph_json, m)?)?;
     m.add_function(wrap_pyfunction!(get_graph_schema, m)?)?;
     m.add_function(wrap_pyfunction!(set_descriptor_template, m)?)?;
+    m.add_function(wrap_pyfunction!(get_registered_graph_ids, m)?)?;
+
+    // Prebuild exporter
+    m.add_function(wrap_pyfunction!(export_graphs_to_dir, m)?)?;
+    m.add_function(wrap_pyfunction!(export_all_graphs_to_dir, m)?)?;
+    m.add_function(wrap_pyfunction!(export_collections_to_dir, m)?)?;
+    m.add_function(wrap_pyfunction!(export_prebuild, m)?)?;
 
     // List datatype registry (for datatypes where array IS the value)
     m.add_function(wrap_pyfunction!(register_list_datatype, m)?)?;
@@ -2890,8 +2932,8 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(matches_semantic_child, m)?)?;
 
     // Extension type handler registration
-    m.add_function(wrap_pyfunction!(register_type_handler, m)?)?;
-    m.add_function(wrap_pyfunction!(has_type_handler, m)?)?;
+    m.add_function(wrap_pyfunction!(register_extension_handler, m)?)?;
+    m.add_function(wrap_pyfunction!(has_extension_handler, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_with_extension, m)?)?;
     m.add_function(wrap_pyfunction!(has_display_renderer, m)?)?;
     m.add_function(wrap_pyfunction!(render_display_with_extension, m)?)?;

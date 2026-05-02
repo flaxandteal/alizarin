@@ -148,12 +148,20 @@ pub trait ModelAccess {
     /// Get all nodegroups by ID
     fn get_nodegroups(&self) -> Option<&HashMap<String, Arc<StaticNodegroup>>>;
 
-    /// Get the root node of the graph (node with no nodegroup_id).
-    /// Default implementation derives from `get_nodes()`.
+    /// Get the root node of the graph.
+    /// Default implementation prefers `istopnode`, with fallback to
+    /// scanning for nodes with no `nodegroup_id`.
     fn get_root_node(&self) -> Result<Arc<StaticNode>, String> {
         let nodes = self
             .get_nodes()
             .ok_or_else(|| "Nodes not initialized".to_string())?;
+        // Prefer istopnode
+        for node in nodes.values() {
+            if node.istopnode {
+                return Ok(Arc::clone(node));
+            }
+        }
+        // Fallback: node with no nodegroup_id
         for node in nodes.values() {
             if node.nodegroup_id.is_none()
                 || node

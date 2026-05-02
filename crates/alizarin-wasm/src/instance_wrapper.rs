@@ -25,54 +25,8 @@ use alizarin_core::StaticTile as CoreStaticTile;
 use alizarin_core::StaticTile;
 use alizarin_core::TileSource;
 use js_sys::Map as JsMap;
-// ============================================================================
-// Error types for semantic child value retrieval
-// ============================================================================
-
-/// Error type for get_semantic_child_value operations
-#[derive(Debug, Clone)]
-pub enum SemanticChildError {
-    /// Tiles for the required nodegroup have not been loaded yet
-    TilesNotLoaded { nodegroup_id: String },
-    /// Child node not found
-    ChildNotFound { alias: String },
-    /// Tiles storage not initialized
-    TilesNotInitialized,
-    /// Model not initialized
-    ModelNotInitialized(String),
-    /// Other error
-    Other(String),
-}
-
-impl std::fmt::Display for SemanticChildError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SemanticChildError::TilesNotLoaded { nodegroup_id } => {
-                write!(f, "Tiles not loaded for nodegroup: {}", nodegroup_id)
-            }
-            SemanticChildError::ChildNotFound { alias } => {
-                write!(f, "Child node not found: {}", alias)
-            }
-            SemanticChildError::TilesNotInitialized => {
-                write!(f, "Tiles not initialized")
-            }
-            SemanticChildError::ModelNotInitialized(msg) => {
-                write!(f, "Model not initialized: {}", msg)
-            }
-            SemanticChildError::Other(msg) => {
-                write!(f, "{}", msg)
-            }
-        }
-    }
-}
-
-impl std::error::Error for SemanticChildError {}
-
-impl From<String> for SemanticChildError {
-    fn from(s: String) -> Self {
-        SemanticChildError::Other(s)
-    }
-}
+// Re-export from core to avoid duplication
+pub use alizarin_core::SemanticChildError;
 
 /// Result of get_semantic_child_value - either values or an indication that none exist
 #[derive(Debug)]
@@ -291,14 +245,8 @@ pub struct WASMResourceInstanceWrapper {
     tile_source: RefCell<Option<Arc<dyn TileSource>>>,
 }
 
-/// Phase 4g: Track loading state to prevent race conditions
-#[derive(Clone, Debug, PartialEq)]
-#[allow(dead_code)]
-pub(crate) enum LoadState {
-    NotLoaded,
-    Loading,
-    Loaded,
-}
+// Re-export from core to avoid duplication
+pub(crate) use alizarin_core::LoadState;
 
 impl ResourceInstanceWrapperCore {
     /// Create a new core from graph ID
@@ -307,9 +255,7 @@ impl ResourceInstanceWrapperCore {
         crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
             if let Some(core_arc) = registry.borrow().get(&graph_id) {
                 let mut core = core_arc.borrow_mut();
-                if core.get_nodes_internal().is_none() {
-                    core.build_nodes().ok();
-                }
+                core.ensure_built().ok();
             }
         });
 
@@ -620,15 +566,19 @@ impl WASMResourceInstanceWrapper {
         // This allows conditional filtering based on tile data values
         let permission_rules: Option<HashMap<String, PermissionRule>> = self
             .with_model_core(|model_core| {
-                // Clone permission rules if they exist - one-time cost at load time
-                Ok(model_core.permitted_nodegroups.clone())
+                let rules = model_core.model_access.get_permitted_nodegroups_rules();
+                if rules.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(rules.clone()))
+                }
             })
             .ok()
             .flatten();
 
         // Get default_allow from model
         let default_allow: bool = self
-            .with_model_core(|model_core| Ok(model_core.default_allow))
+            .with_model_core(|model_core| Ok(model_core.model_access.get_default_allow()))
             .unwrap_or(true);
 
         {
@@ -2674,9 +2624,7 @@ impl WASMResourceInstanceWrapper {
 
         // Ensure model caches are built
         core_ref.with_model_core_mut(|model_core| {
-            model_core
-                .ensure_caches_built()
-                .map_err(|e| JsValue::from_str(&e))
+            model_core.ensure_built().map_err(|e| JsValue::from_str(&e))
         })?;
 
         let tiles_store = core_ref

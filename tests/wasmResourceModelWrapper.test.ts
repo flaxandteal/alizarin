@@ -173,10 +173,10 @@ test("WASMResourceModelWrapper > buildNodesForGraph > should error when trying t
 
   wrapper.buildNodesForGraph(graph);
 
-  // Try to build again should throw
-  assert.throws(() => {
+  // Rebuilding should be idempotent (invalidates + rebuilds caches)
+  assert.doesNotThrow(() => {
     wrapper.buildNodesForGraph(graph);
-  }, "Cache should never try and rebuild nodes when non-empty");
+  }, "Rebuilding nodes should be idempotent");
 });
 
 // ============================================================================

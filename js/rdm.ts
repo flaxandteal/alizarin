@@ -198,13 +198,11 @@ class ReferenceDataManager {
     }
 
     // Use Rust cache to resolve labels (no JS lookup table needed)
-    const resolvedJson = cache.resolveLabels(
+    return cache.resolveLabels(
       treeJson,
       aliasToCollection,
       strict
-    );
-
-    return JSON.parse(resolvedJson) as T;
+    ) as T;
   }
 }
 

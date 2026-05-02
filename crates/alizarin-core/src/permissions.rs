@@ -26,6 +26,20 @@ pub enum PermissionRule {
 }
 
 impl PermissionRule {
+    /// Construct a conditional permission rule from pre-extracted path and allowed values.
+    ///
+    /// Platform bindings extract these from their native types (JsValue, serde_json, PyDict)
+    /// and call this for validation. Validates that path is non-empty and allowed is non-empty.
+    pub fn conditional(path: String, allowed: HashSet<String>) -> Result<Self, String> {
+        if path.is_empty() {
+            return Err("'path' cannot be empty".to_string());
+        }
+        if allowed.is_empty() {
+            return Err("'allowed' set cannot be empty".to_string());
+        }
+        Ok(PermissionRule::Conditional { path, allowed })
+    }
+
     /// Check if this rule permits the nodegroup itself (not tile-level)
     /// Boolean rules return their value; Conditional rules return true
     /// (the nodegroup is permitted, individual tiles may be filtered)
@@ -315,6 +329,32 @@ mod tests {
         };
 
         assert!(!rule2.permits_tile(&tile)); // Second label has "Title", not "Description"
+    }
+
+    #[test]
+    fn test_conditional_constructor_valid() {
+        let mut allowed = HashSet::new();
+        allowed.insert("Hotel/Inn".to_string());
+        let rule = PermissionRule::conditional(".data.node1.label".into(), allowed);
+        assert!(rule.is_ok());
+        assert!(rule.unwrap().permits_nodegroup());
+    }
+
+    #[test]
+    fn test_conditional_constructor_empty_path() {
+        let mut allowed = HashSet::new();
+        allowed.insert("value".to_string());
+        let rule = PermissionRule::conditional(String::new(), allowed);
+        assert!(rule.is_err());
+        assert!(rule.unwrap_err().contains("path"));
+    }
+
+    #[test]
+    fn test_conditional_constructor_empty_allowed() {
+        let allowed = HashSet::new();
+        let rule = PermissionRule::conditional(".data.node1.label".into(), allowed);
+        assert!(rule.is_err());
+        assert!(rule.unwrap_err().contains("allowed"));
     }
 
     #[test]

@@ -1,4 +1,5 @@
 pub mod batch_conversion;
+pub mod exporter_wasm;
 pub mod extension_registry;
 pub mod graph;
 pub mod graph_mutator_wasm;

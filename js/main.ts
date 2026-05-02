@@ -45,8 +45,11 @@ const _wrappedInitWasm = async function() {
 Object.defineProperty(_wrappedInitWasm, 'name', { value: 'initWasm' });
 
 // Auto-init after a microtask, giving consumers a chance to call setWasmURL() synchronously.
-// Failure is silently swallowed — consumers that poison the URL will call initWasm() again.
-Promise.resolve().then(() => _wrappedInitWasm().catch(() => {}));
+// SILENT: initial auto-init failure is expected when URL hasn't been configured yet.
+// Consumers must call initWasm() explicitly if auto-init fails (e.g. after setWasmURL()).
+Promise.resolve().then(() => _wrappedInitWasm().catch((e) => {
+  console.debug("[alizarin] Auto-init WASM deferred:", e?.message || e);
+}));
 
 const AlizarinModel = viewModels.ResourceInstanceViewModel;
 const setCurrentLanguage = utils.setCurrentLanguage;

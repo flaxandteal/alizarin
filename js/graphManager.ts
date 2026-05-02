@@ -111,13 +111,9 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
 
     // Use loadTilesFromResource to avoid expensive tiles getter (which creates N WASM wrappers)
     if (!tilesLoaded && resource && resource.tilesLoaded && typeof this.wasmWrapper.loadTilesFromResource === 'function') {
-      try {
-        t0 = performance.now();
-        this.wasmWrapper.loadTilesFromResource(resource, assumeTilesComprehensiveForNodegroup);
-        recordWasmTiming("loadTilesFromResource", performance.now() - t0);
-      } catch (e) {
-        console.error("Failed to load tiles into WASM:", e);
-      }
+      t0 = performance.now();
+      this.wasmWrapper.loadTilesFromResource(resource, assumeTilesComprehensiveForNodegroup);
+      recordWasmTiming("loadTilesFromResource", performance.now() - t0);
     }
 
     if (pruneTiles && resource) {
@@ -130,35 +126,17 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
 
   async ensureTilesLoaded(): Promise<void> {
     if (!this.wasmWrapper.tilesLoaded()) {
-      // First try to use the resource we already have (avoids registry/disk lookup)
+      // Use in-memory resource if available (avoids registry/disk lookup)
       if (this.resource && this.resource.tiles && this.resource.tiles.length > 0) {
-        try {
-          this.wasmWrapper.loadTilesFromResource(this.resource, true);
-          return;
-        } catch (e) {
-          console.error("Failed to load tiles from existing resource:", e);
-          // Fall through to registry lookup
-        }
+        this.wasmWrapper.loadTilesFromResource(this.resource, true);
+        return;
       }
 
-      // Fallback: try to load from staticStore registry
+      // Otherwise fetch from staticStore registry
       const resourceId = this.wasmWrapper.getResourceId();
-      try {
-        const fullResource = await staticStore.ensureFullResource(resourceId);
-        if (fullResource && fullResource.tilesLoaded) {
-          try {
-            this.wasmWrapper.loadTilesFromResource(fullResource, true);
-          } catch (e) {
-            console.error("Failed to load tiles from resource:", e);
-            // Fallback to loading tiles through getter (slower but works)
-            const tiles = fullResource.tiles || [];
-            this.wasmWrapper.loadTilesWasm(tiles, true);
-          }
-        }
-      } catch (e) {
-        // ensureFullResource failed - resource might not be in registry
-        // This can happen if the resource was loaded directly without going through staticStore
-        console.warn(`Could not load tiles for resource ${resourceId} from registry:`, e);
+      const fullResource = await staticStore.ensureFullResource(resourceId);
+      if (fullResource && fullResource.tilesLoaded) {
+        this.wasmWrapper.loadTilesFromResource(fullResource, true);
       }
     }
   }

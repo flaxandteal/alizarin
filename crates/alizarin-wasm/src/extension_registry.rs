@@ -55,19 +55,32 @@ struct JsHandlerCallbacks {
 #[wasm_bindgen(js_name = registerExtensionHandler)]
 pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<(), JsValue> {
     let coerce_fn = js_sys::Reflect::get(&options, &JsValue::from_str("coerce"))
-        .ok()
-        .filter(|v| v.is_function())
-        .map(|v| v.dyn_into::<js_sys::Function>().unwrap());
+        .map_err(|_| JsValue::from_str("options must be an object (failed to read 'coerce')"))?;
+    let coerce_fn = if coerce_fn.is_function() {
+        Some(coerce_fn.dyn_into::<js_sys::Function>().unwrap())
+    } else {
+        None
+    };
 
     let render_display_fn = js_sys::Reflect::get(&options, &JsValue::from_str("renderDisplay"))
-        .ok()
-        .filter(|v| v.is_function())
-        .map(|v| v.dyn_into::<js_sys::Function>().unwrap());
+        .map_err(|_| {
+            JsValue::from_str("options must be an object (failed to read 'renderDisplay')")
+        })?;
+    let render_display_fn = if render_display_fn.is_function() {
+        Some(render_display_fn.dyn_into::<js_sys::Function>().unwrap())
+    } else {
+        None
+    };
 
     let resolve_markers_fn = js_sys::Reflect::get(&options, &JsValue::from_str("resolveMarkers"))
-        .ok()
-        .filter(|v| v.is_function())
-        .map(|v| v.dyn_into::<js_sys::Function>().unwrap());
+        .map_err(|_| {
+        JsValue::from_str("options must be an object (failed to read 'resolveMarkers')")
+    })?;
+    let resolve_markers_fn = if resolve_markers_fn.is_function() {
+        Some(resolve_markers_fn.dyn_into::<js_sys::Function>().unwrap())
+    } else {
+        None
+    };
 
     if coerce_fn.is_none() && render_display_fn.is_none() && resolve_markers_fn.is_none() {
         return Err(JsValue::from_str(
@@ -193,40 +206,89 @@ impl ExtensionTypeHandler for JsExtensionTypeHandler {
             if let Some(cbs) = handlers.get(&self.datatype) {
                 if let Some(ref coerce_fn) = cbs.coerce_fn {
                     // Convert value to JsValue
-                    let js_value = match serde_json::to_string(value) {
-                        Ok(json) => js_sys::JSON::parse(&json).unwrap_or(JsValue::NULL),
-                        Err(_) => JsValue::NULL,
-                    };
+                    let js_value = serde_json::to_string(value)
+                        .map_err(|e| {
+                            ExtensionError::new(format!("Failed to serialize value: {}", e))
+                        })
+                        .and_then(|json| {
+                            js_sys::JSON::parse(&json).map_err(|_| {
+                                ExtensionError::new(
+                                    "Failed to parse serialized value as JS".to_string(),
+                                )
+                            })
+                        })?;
 
                     let js_config = match config {
-                        Some(c) => match serde_json::to_string(c) {
-                            Ok(json) => js_sys::JSON::parse(&json).unwrap_or(JsValue::NULL),
-                            Err(_) => JsValue::NULL,
-                        },
+                        Some(c) => {
+                            let json = serde_json::to_string(c).map_err(|e| {
+                                ExtensionError::new(format!("Failed to serialize config: {}", e))
+                            })?;
+                            js_sys::JSON::parse(&json).map_err(|_| {
+                                ExtensionError::new(
+                                    "Failed to parse serialized config as JS".to_string(),
+                                )
+                            })?
+                        }
                         None => JsValue::NULL,
                     };
 
                     // Call JS coerce function
                     match coerce_fn.call2(&JsValue::NULL, &js_value, &js_config) {
                         Ok(result) => {
-                            // Extract tileData and displayValue from result
-                            let tile_data =
+                            let tile_data_js =
                                 js_sys::Reflect::get(&result, &JsValue::from_str("tileData"))
-                                    .ok()
-                                    .and_then(|v| {
-                                        let json = js_sys::JSON::stringify(&v).ok()?.as_string()?;
-                                        serde_json::from_str(&json).ok()
-                                    })
-                                    .unwrap_or_else(|| value.clone());
+                                    .map_err(|_| {
+                                        ExtensionError::new(
+                                            "Failed to get tileData from coerce result".to_string(),
+                                        )
+                                    })?;
+                            let tile_data_json = js_sys::JSON::stringify(&tile_data_js)
+                                .map_err(|_| {
+                                    ExtensionError::new(
+                                        "Failed to stringify coerce tileData".to_string(),
+                                    )
+                                })?
+                                .as_string()
+                                .ok_or_else(|| {
+                                    ExtensionError::new(
+                                        "Coerce tileData stringify returned non-string".to_string(),
+                                    )
+                                })?;
+                            let tile_data: Value =
+                                serde_json::from_str(&tile_data_json).map_err(|e| {
+                                    ExtensionError::new(format!(
+                                        "Failed to parse coerce tileData: {}",
+                                        e
+                                    ))
+                                })?;
 
-                            let display_value =
+                            let display_value_js =
                                 js_sys::Reflect::get(&result, &JsValue::from_str("displayValue"))
-                                    .ok()
-                                    .and_then(|v| {
-                                        let json = js_sys::JSON::stringify(&v).ok()?.as_string()?;
-                                        serde_json::from_str(&json).ok()
-                                    })
-                                    .unwrap_or_else(|| tile_data.clone());
+                                    .map_err(|_| {
+                                    ExtensionError::new(
+                                        "Failed to get displayValue from coerce result".to_string(),
+                                    )
+                                })?;
+                            let display_value_json = js_sys::JSON::stringify(&display_value_js)
+                                .map_err(|_| {
+                                    ExtensionError::new(
+                                        "Failed to stringify coerce displayValue".to_string(),
+                                    )
+                                })?
+                                .as_string()
+                                .ok_or_else(|| {
+                                    ExtensionError::new(
+                                        "Coerce displayValue stringify returned non-string"
+                                            .to_string(),
+                                    )
+                                })?;
+                            let display_value: Value = serde_json::from_str(&display_value_json)
+                                .map_err(|e| {
+                                    ExtensionError::new(format!(
+                                        "Failed to parse coerce displayValue: {}",
+                                        e
+                                    ))
+                                })?;
 
                             Ok(CoercionResult::success(tile_data, display_value))
                         }
@@ -256,10 +318,17 @@ impl ExtensionTypeHandler for JsExtensionTypeHandler {
 
             if let Some(cbs) = handlers.get(&self.datatype) {
                 if let Some(ref render_fn) = cbs.render_display_fn {
-                    let js_tile_data = match serde_json::to_string(tile_data) {
-                        Ok(json) => js_sys::JSON::parse(&json).unwrap_or(JsValue::NULL),
-                        Err(_) => JsValue::NULL,
-                    };
+                    let js_tile_data = serde_json::to_string(tile_data)
+                        .map_err(|e| {
+                            ExtensionError::new(format!("Failed to serialize tile_data: {}", e))
+                        })
+                        .and_then(|json| {
+                            js_sys::JSON::parse(&json).map_err(|_| {
+                                ExtensionError::new(
+                                    "Failed to parse serialized tile_data as JS".to_string(),
+                                )
+                            })
+                        })?;
 
                     let js_language = JsValue::from_str(language);
 
@@ -270,7 +339,10 @@ impl ExtensionTypeHandler for JsExtensionTypeHandler {
                             } else if let Some(s) = result.as_string() {
                                 Ok(Some(s))
                             } else {
-                                Ok(None)
+                                Err(ExtensionError::new(
+                                    "renderDisplay must return a string, null, or undefined"
+                                        .to_string(),
+                                ))
                             }
                         }
                         Err(e) => {
@@ -295,28 +367,38 @@ impl ExtensionTypeHandler for JsExtensionTypeHandler {
 
             if let Some(cbs) = handlers.get(&self.datatype) {
                 if let Some(ref resolve_fn) = cbs.resolve_markers_fn {
-                    let js_tile_data = match serde_json::to_string(tile_data) {
-                        Ok(json) => js_sys::JSON::parse(&json).unwrap_or(JsValue::NULL),
-                        Err(_) => JsValue::NULL,
-                    };
+                    let js_tile_data = serde_json::to_string(tile_data)
+                        .map_err(|e| {
+                            ExtensionError::new(format!("Failed to serialize tile_data: {}", e))
+                        })
+                        .and_then(|json| {
+                            js_sys::JSON::parse(&json).map_err(|_| {
+                                ExtensionError::new(
+                                    "Failed to parse serialized tile_data as JS".to_string(),
+                                )
+                            })
+                        })?;
 
                     let js_language = JsValue::from_str(language);
 
                     match resolve_fn.call2(&JsValue::NULL, &js_tile_data, &js_language) {
                         Ok(result) => {
                             let json = js_sys::JSON::stringify(&result)
-                                .ok()
-                                .and_then(|s| s.as_string());
+                                .map_err(|_| {
+                                    ExtensionError::new(
+                                        "Failed to stringify resolveMarkers result".to_string(),
+                                    )
+                                })?
+                                .as_string()
+                                .ok_or_else(|| {
+                                    ExtensionError::new(
+                                        "resolveMarkers result was not a string".to_string(),
+                                    )
+                                })?;
 
-                            match json {
-                                Some(j) => serde_json::from_str(&j).map_err(|e| {
-                                    ExtensionError::new(format!(
-                                        "Failed to parse resolved data: {}",
-                                        e
-                                    ))
-                                }),
-                                None => Ok(tile_data.clone()),
-                            }
+                            serde_json::from_str(&json).map_err(|e| {
+                                ExtensionError::new(format!("Failed to parse resolved data: {}", e))
+                            })
                         }
                         Err(e) => {
                             let msg = e

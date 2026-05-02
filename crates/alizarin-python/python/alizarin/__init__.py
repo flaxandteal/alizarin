@@ -34,6 +34,7 @@ TreeToTilesIterator: Optional[Any] = None
 ResourceRegistry: Optional[Any] = None
 resolve_labels_in_tree: Optional[Any] = None
 set_descriptor_template: Optional[Any] = None
+PyResourceModelWrapper: Optional[Any] = None
 _alizarin_rust: Optional[Any] = None
 
 try:
@@ -54,6 +55,7 @@ try:
     ResourceRegistry = _alizarin_rust.ResourceRegistry
     resolve_labels_in_tree = _alizarin_rust.resolve_labels_in_tree
     set_descriptor_template = _alizarin_rust.set_descriptor_template
+    PyResourceModelWrapper = _alizarin_rust.PyResourceModelWrapper
 except (ImportError, AttributeError):
     # Rust module not yet compiled - functions will remain None
     pass
@@ -237,7 +239,7 @@ from .graph_manager import (
 from .model_wrapper import ResourceModelWrapper
 
 
-def load_model(graph_id: str, use_rust_cache: bool = True) -> ResourceModelWrapper:
+def load_model(graph_id: str) -> ResourceModelWrapper:
     """
     Load a ResourceModelWrapper from a registered graph ID.
 
@@ -246,7 +248,6 @@ def load_model(graph_id: str, use_rust_cache: bool = True) -> ResourceModelWrapp
 
     Args:
         graph_id: The graph ID returned by register_graph()
-        use_rust_cache: Whether to use Rust-side caching (default True)
 
     Returns:
         A fully initialized ResourceModelWrapper with nodes built
@@ -257,7 +258,7 @@ def load_model(graph_id: str, use_rust_cache: bool = True) -> ResourceModelWrapp
         >>> model = alizarin.load_model(graph_id)
         >>> # model is ready to use
     """
-    return ResourceModelWrapper.from_graph_id(graph_id, use_rust_cache=use_rust_cache)
+    return ResourceModelWrapper.from_graph_id(graph_id)
 
 # =============================================================================
 # Instance Wrapper (matching TypeScript graphManager.ts)
@@ -360,7 +361,7 @@ is_valid_uuid = _alizarin_rust.is_valid_uuid
 # Version
 # =============================================================================
 
-__version__ = "0.2.1-alpha.81"
+__version__ = "0.2.1-alpha.82"
 
 # =============================================================================
 # Exports
