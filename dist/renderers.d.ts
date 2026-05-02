@@ -19,6 +19,7 @@ declare abstract class BaseRenderer {
     abstract renderBoolean(value: boolean | BooleanViewModel, _depth: number): Promise<any>;
     abstract renderNumber(value: number | NumberViewModel, _depth: number): Promise<any>;
     abstract renderUrl(value: UrlViewModel, _depth: number): Promise<any>;
+    renderExtension: ((value: any, _depth: number) => Promise<any>) | undefined;
     renderValue(value: any, depth: number): Promise<any>;
 }
 declare class Renderer extends BaseRenderer {
@@ -50,6 +51,7 @@ declare class MarkdownRenderer extends Renderer {
         domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined;
         resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined;
         nodeToUrl: ((value: string) => string) | undefined;
+        extensionToMarkdown: ((value: any, _depth: number) => Promise<any>) | undefined;
     });
     renderUrl(value: UrlViewModel, _depth: number): Promise<any>;
     renderDomainValue(domainValue: DomainValueViewModel, _: number): Promise<any>;

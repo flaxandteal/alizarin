@@ -26,6 +26,7 @@ abstract class BaseRenderer {
   abstract renderBoolean(value: boolean | BooleanViewModel, _depth: number): Promise<any>;
   abstract renderNumber(value: number | NumberViewModel, _depth: number): Promise<any>;
   abstract renderUrl(value: UrlViewModel, _depth: number): Promise<any>;
+  renderExtension: ((value: any, _depth: number) => Promise<any>) | undefined;
 
   async renderValue(value: any, depth: number): Promise<any> {
     if (value === null) {
@@ -57,20 +58,28 @@ abstract class BaseRenderer {
       newValue = this.renderBlock(await value.forJson(), depth);
     } else if (value instanceof UrlViewModel) {
       newValue = this.renderUrl(await value, depth);
-    } else if (value instanceof String && typeof value?.forJson === 'function') {
-      // Extension ViewModel that extends String (e.g., ReferenceValueViewModel)
-      // Use toString() for display, not forJson() which returns raw data
-      newValue = value.toString();
-    } else if (typeof value?.getDisplay === 'function') {
-      // Extension ViewModel with async display method
-      newValue = await value.getDisplay();
-    } else if (typeof value?.forJson === 'function') {
-      // Custom ViewModel from extension - use forJson to get serializable data
-      newValue = this.renderBlock(await value.forJson(), depth);
-    } else if (value instanceof Object) {
-      newValue = this.renderBlock(value, depth);
     } else {
-      newValue = value;
+      if (this.renderExtension) {
+        const extensionRendered = this.renderExtension(value, depth);
+        if (extensionRendered !== undefined) {
+          return extensionRendered;
+        }
+      }
+      if (value instanceof String && typeof value?.forJson === 'function') {
+        // Extension ViewModel that extends String (e.g., ReferenceValueViewModel)
+        // Use toString() for display, not forJson() which returns raw data
+        newValue = value.toString();
+      } else if (typeof value?.getDisplay === 'function') {
+        // Extension ViewModel with async display method
+        newValue = await value.getDisplay();
+      } else if (typeof value?.forJson === 'function') {
+        // Custom ViewModel from extension - use forJson to get serializable data
+        newValue = this.renderBlock(await value.forJson(), depth);
+      } else if (value instanceof Object) {
+        newValue = this.renderBlock(value, depth);
+      } else {
+        newValue = value;
+      }
     }
     return newValue;
   }
@@ -143,6 +152,7 @@ class MarkdownRenderer extends Renderer {
     domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined,
     resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined,
     nodeToUrl: ((value: string) => string) | undefined,
+    extensionToMarkdown: ((value: any, _depth: number) => Promise<any>) | undefined,
   }) {
     super();
     this.conceptValueToUrl = callbacks.conceptValueToUrl;
@@ -150,6 +160,7 @@ class MarkdownRenderer extends Renderer {
     this.domainValueToUrl = callbacks.domainValueToUrl;
     this.resourceReferenceToUrl = callbacks.resourceReferenceToUrl;
     this.nodeToUrl = callbacks.nodeToUrl;
+    this.renderExtension = callbacks.extensionToMarkdown;
   }
 
   async renderUrl(value: UrlViewModel, _depth: number): Promise<any> {

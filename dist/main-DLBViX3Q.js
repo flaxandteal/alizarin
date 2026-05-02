@@ -12166,6 +12166,9 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
     }
   }
   class BaseRenderer {
+    constructor() {
+      __publicField(this, "renderExtension");
+    }
     async render(asset) {
       if (!asset.$) {
         throw Error("Cannot render unloaded asset - do you want to await asset.retrieve()?");
@@ -12203,16 +12206,24 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         newValue = this.renderBlock(await value.forJson(), depth);
       } else if (value instanceof UrlViewModel) {
         newValue = this.renderUrl(await value, depth);
-      } else if (value instanceof String && typeof (value == null ? void 0 : value.forJson) === "function") {
-        newValue = value.toString();
-      } else if (typeof (value == null ? void 0 : value.getDisplay) === "function") {
-        newValue = await value.getDisplay();
-      } else if (typeof (value == null ? void 0 : value.forJson) === "function") {
-        newValue = this.renderBlock(await value.forJson(), depth);
-      } else if (value instanceof Object) {
-        newValue = this.renderBlock(value, depth);
       } else {
-        newValue = value;
+        if (this.renderExtension) {
+          const extensionRendered = this.renderExtension(value, depth);
+          if (extensionRendered !== void 0) {
+            return extensionRendered;
+          }
+        }
+        if (value instanceof String && typeof (value == null ? void 0 : value.forJson) === "function") {
+          newValue = value.toString();
+        } else if (typeof (value == null ? void 0 : value.getDisplay) === "function") {
+          newValue = await value.getDisplay();
+        } else if (typeof (value == null ? void 0 : value.forJson) === "function") {
+          newValue = this.renderBlock(await value.forJson(), depth);
+        } else if (value instanceof Object) {
+          newValue = this.renderBlock(value, depth);
+        } else {
+          newValue = value;
+        }
       }
       return newValue;
     }
@@ -12272,6 +12283,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       this.domainValueToUrl = callbacks.domainValueToUrl;
       this.resourceReferenceToUrl = callbacks.resourceReferenceToUrl;
       this.nodeToUrl = callbacks.nodeToUrl;
+      this.renderExtension = callbacks.extensionToMarkdown;
     }
     async renderUrl(value, _depth) {
       const text = `[${value}](${value})`;
