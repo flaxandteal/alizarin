@@ -35,6 +35,9 @@ ResourceRegistry: Optional[Any] = None
 resolve_labels_in_tree: Optional[Any] = None
 set_descriptor_template: Optional[Any] = None
 PyResourceModelWrapper: Optional[Any] = None
+import_prebuild: Optional[Any] = None
+export_prebuild: Optional[Any] = None
+get_registered_graph_ids: Optional[Any] = None
 _alizarin_rust: Optional[Any] = None
 
 try:
@@ -56,6 +59,9 @@ try:
     resolve_labels_in_tree = _alizarin_rust.resolve_labels_in_tree
     set_descriptor_template = _alizarin_rust.set_descriptor_template
     PyResourceModelWrapper = _alizarin_rust.PyResourceModelWrapper
+    import_prebuild = _alizarin_rust.import_prebuild
+    export_prebuild = _alizarin_rust.export_prebuild
+    get_registered_graph_ids = _alizarin_rust.get_registered_graph_ids
 except (ImportError, AttributeError):
     # Rust module not yet compiled - functions will remain None
     pass
@@ -361,7 +367,7 @@ is_valid_uuid = _alizarin_rust.is_valid_uuid
 # Version
 # =============================================================================
 
-__version__ = "0.2.1-alpha.83"
+__version__ = "0.2.1-alpha.84"
 
 # =============================================================================
 # Exports
@@ -517,4 +523,8 @@ __all__ = [
     "build_graph_from_csv",
     # Ontology Validation
     "OntologyValidator",
+    # Prebuild import/export
+    "import_prebuild",
+    "export_prebuild",
+    "get_registered_graph_ids",
 ]

@@ -44,9 +44,10 @@ fn loader_err(e: alizarin_core::LoaderError) -> napi::Error {
 }
 
 // ============================================================================
-// NapiPrebuildLoader
+// NapiPrebuildLoader — deprecated, use importPrebuild() instead
 // ============================================================================
 
+/// @deprecated Use the standalone `importPrebuild()` function instead.
 #[napi]
 pub struct NapiPrebuildLoader {
     inner: PrebuildLoader,
@@ -109,6 +110,7 @@ impl NapiPrebuildLoader {
             "hasBusinessData": info.has_business_data,
             "hasReferenceData": info.has_reference_data,
             "hasIndexTemplates": info.has_index_templates,
+            "hasOntologies": info.has_ontologies,
             "graphFiles": info.graph_files.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
         }))
     }
@@ -121,6 +123,31 @@ impl NapiPrebuildLoader {
             .count_resources_for_graph(&graph_id)
             .map_err(loader_err)?;
         Ok(count as u32)
+    }
+
+    /// Load all SKOS XML collections from reference_data/collections/.
+    /// Returns parsed collections as a JSON array.
+    #[napi]
+    pub fn load_collections(&self, base_uri: String) -> Result<serde_json::Value> {
+        let collections = self.inner.load_collections(&base_uri).map_err(loader_err)?;
+        serde_json::to_value(&collections).map_err(|e| napi::Error::from_reason(e.to_string()))
+    }
+
+    /// Find ontology directories (subdirectories of ontologies/ with ontology_config.json).
+    #[napi]
+    pub fn find_ontology_dirs(&self) -> Result<Vec<String>> {
+        let dirs = self.inner.find_ontology_dirs().map_err(loader_err)?;
+        Ok(dirs.into_iter().map(|p| p.display().to_string()).collect())
+    }
+
+    /// Load ontology config from a specific ontology directory.
+    #[napi]
+    pub fn load_ontology_config(&self, ontology_dir: String) -> Result<serde_json::Value> {
+        let config = self
+            .inner
+            .load_ontology_config(std::path::Path::new(&ontology_dir))
+            .map_err(loader_err)?;
+        serde_json::to_value(&config).map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 }
 
@@ -608,4 +635,53 @@ pub fn get_registered_extension_handlers() -> Vec<String> {
         .into_iter()
         .map(|s| s.to_string())
         .collect()
+}
+
+// ============================================================================
+// Prebuild import (high-level convenience)
+// ============================================================================
+
+/// Import a prebuild/pkg directory: register graphs, load SKOS collections,
+/// and load ontology configs.
+///
+/// 1. Loads and registers all graphs from graphs/resource_models/ and graphs/branches/
+/// 2. Parses SKOS XML from reference_data/collections/ and returns parsed collections
+/// 3. Loads ontology configs from ontologies/ (if present)
+///
+/// Returns `{ graphIds, collections, ontologyConfigs }`.
+#[napi(js_name = "importPrebuild")]
+pub fn import_prebuild(prebuild_dir: String, base_uri: String) -> Result<serde_json::Value> {
+    let loader = PrebuildLoader::new(&prebuild_dir).map_err(loader_err)?;
+
+    // 1. Load and register graphs
+    let graphs = loader.load_all_graphs().map_err(loader_err)?;
+    let graph_ids: Vec<String> = graphs
+        .into_iter()
+        .map(|g| {
+            let id = g.graphid.clone();
+            alizarin_core::register_graph_owned(g);
+            id
+        })
+        .collect();
+
+    // 2. Load SKOS collections
+    let collections = loader.load_collections(&base_uri).map_err(loader_err)?;
+    let collections_json =
+        serde_json::to_value(&collections).map_err(|e| napi::Error::from_reason(e.to_string()))?;
+
+    // 3. Load ontology configs
+    let ontology_dirs = loader.find_ontology_dirs().map_err(loader_err)?;
+    let mut ontology_configs = Vec::new();
+    for dir in &ontology_dirs {
+        let config = loader.load_ontology_config(dir).map_err(loader_err)?;
+        ontology_configs.push(
+            serde_json::to_value(&config).map_err(|e| napi::Error::from_reason(e.to_string()))?,
+        );
+    }
+
+    Ok(serde_json::json!({
+        "graphIds": graph_ids,
+        "collections": collections_json,
+        "ontologyConfigs": ontology_configs,
+    }))
 }

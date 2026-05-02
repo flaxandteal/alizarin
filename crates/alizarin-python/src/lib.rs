@@ -2867,6 +2867,73 @@ fn export_prebuild(
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
+/// Import a prebuild/pkg directory: register graphs, load SKOS collections, and load ontologies.
+///
+/// This is the inverse of `export_prebuild`. It reads the directory structure and:
+/// 1. Loads and registers all graphs from graphs/resource_models/ and graphs/branches/
+/// 2. Parses SKOS XML from reference_data/collections/ and adds to the global RDM cache
+/// 3. Loads ontology RDFS files from ontologies/ (if present) and returns a validator
+///
+/// Args:
+///     prebuild_dir: Path to the prebuild or pkg directory
+///     base_uri: Base URI for SKOS XML parsing (default: "http://localhost:8000/")
+///
+/// Returns:
+///     dict with keys:
+///         graph_ids (list[str]): IDs of registered graphs
+///         collection_ids (list[str]): IDs of loaded collections
+///         ontology_validator (OntologyValidator | None): validator if ontologies were found
+#[pyfunction]
+#[pyo3(signature = (prebuild_dir, base_uri="http://localhost:8000/"))]
+fn import_prebuild(py: Python, prebuild_dir: String, base_uri: &str) -> PyResult<PyObject> {
+    let loader = alizarin_core::PrebuildLoader::new(&prebuild_dir)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+    // 1. Load and register graphs
+    let graphs = loader
+        .load_all_graphs()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+    let graph_ids: Vec<String> = graphs
+        .into_iter()
+        .map(|g| {
+            let id = g.graphid.clone();
+            alizarin_core::register_graph_owned(g);
+            id
+        })
+        .collect();
+
+    // 2. Load SKOS collections into global RDM cache
+    let collections = loader
+        .load_collections(base_uri)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+    let collection_ids = if !collections.is_empty() {
+        rdm_cache_py::add_skos_collections_to_global_cache(&collections)
+    } else {
+        Vec::new()
+    };
+
+    // 3. Load ontology validator (if ontologies/ exists)
+    let ontology_dirs = loader
+        .find_ontology_dirs()
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+    let ontology_validator: Option<graph_mutator_py::PyOntologyValidator> =
+        if let Some(dir) = ontology_dirs.first() {
+            let validator = loader
+                .load_ontology_validator(dir)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+            Some(graph_mutator_py::PyOntologyValidator::from_inner(validator))
+        } else {
+            None
+        };
+
+    // Build result dict
+    let dict = pyo3::types::PyDict::new(py);
+    dict.set_item("graph_ids", graph_ids)?;
+    dict.set_item("collection_ids", collection_ids)?;
+    dict.set_item("ontology_validator", ontology_validator.into_py(py))?;
+    Ok(dict.into())
+}
+
 /// Get IDs of all registered graphs.
 #[pyfunction]
 fn get_registered_graph_ids() -> Vec<String> {
@@ -2883,11 +2950,12 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(set_descriptor_template, m)?)?;
     m.add_function(wrap_pyfunction!(get_registered_graph_ids, m)?)?;
 
-    // Prebuild exporter
+    // Prebuild exporter / importer
     m.add_function(wrap_pyfunction!(export_graphs_to_dir, m)?)?;
     m.add_function(wrap_pyfunction!(export_all_graphs_to_dir, m)?)?;
     m.add_function(wrap_pyfunction!(export_collections_to_dir, m)?)?;
     m.add_function(wrap_pyfunction!(export_prebuild, m)?)?;
+    m.add_function(wrap_pyfunction!(import_prebuild, m)?)?;
 
     // List datatype registry (for datatypes where array IS the value)
     m.add_function(wrap_pyfunction!(register_list_datatype, m)?)?;

@@ -7,6 +7,8 @@ use crate::graph::{
     IndexedGraph, StaticGraph, StaticResource, StaticResourceDescriptors, StaticResourceMetadata,
     StaticResourceSummary, StaticTile,
 };
+use crate::ontology::{OntologyConfig, OntologyValidator};
+use crate::skos::{parse_skos_to_collections, SkosCollection};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use serde::Deserialize;
@@ -286,6 +288,7 @@ pub struct PrebuildInfo {
     pub has_business_data: bool,
     pub has_reference_data: bool,
     pub has_index_templates: bool,
+    pub has_ontologies: bool,
     pub graph_files: Vec<PathBuf>,
 }
 
@@ -313,6 +316,7 @@ impl PrebuildLoader {
         let business_data_dir = self.root_path.join("business_data");
         let reference_data_dir = self.root_path.join("reference_data");
         let index_templates_dir = self.root_path.join("indexTemplates");
+        let ontologies_dir = self.root_path.join("ontologies");
 
         let graph_files = if graphs_dir.exists() {
             self.find_graph_files(&graphs_dir)?
@@ -326,6 +330,7 @@ impl PrebuildLoader {
             has_business_data: business_data_dir.exists(),
             has_reference_data: reference_data_dir.exists(),
             has_index_templates: index_templates_dir.exists(),
+            has_ontologies: ontologies_dir.exists(),
             graph_files,
         })
     }
@@ -413,6 +418,127 @@ impl PrebuildLoader {
     /// Get the root path
     pub fn root_path(&self) -> &Path {
         &self.root_path
+    }
+
+    // =========================================================================
+    // Collection (SKOS XML) Loading
+    // =========================================================================
+
+    /// Find all SKOS XML files across the reference_data subdirectories:
+    /// concepts/, collections/, controlled_lists/, and staging/.
+    pub fn find_collection_files(&self) -> Result<Vec<PathBuf>, LoaderError> {
+        let reference_data = self.root_path.join("reference_data");
+        if !reference_data.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut files = Vec::new();
+        for subdir in &["concepts", "collections", "controlled_lists", "staging"] {
+            let dir = reference_data.join(subdir);
+            if !dir.is_dir() {
+                continue;
+            }
+            for entry in fs::read_dir(&dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.extension().map(|e| e == "xml").unwrap_or(false) {
+                    files.push(path);
+                }
+            }
+        }
+        files.sort();
+        Ok(files)
+    }
+
+    /// Load all SKOS XML collections from reference_data/
+    pub fn load_collections(&self, base_uri: &str) -> Result<Vec<SkosCollection>, LoaderError> {
+        let files = self.find_collection_files()?;
+        let mut collections = Vec::new();
+
+        for file in &files {
+            let content = fs::read_to_string(file)?;
+            match parse_skos_to_collections(&content, base_uri) {
+                Ok(mut parsed) => collections.append(&mut parsed),
+                Err(e) => {
+                    eprintln!(
+                        "Warning: Failed to parse collection {}: {}",
+                        file.display(),
+                        e
+                    );
+                }
+            }
+        }
+
+        Ok(collections)
+    }
+
+    // =========================================================================
+    // Ontology Loading
+    // =========================================================================
+
+    /// Find ontology subdirectories (those containing ontology_config.json)
+    pub fn find_ontology_dirs(&self) -> Result<Vec<PathBuf>, LoaderError> {
+        let ontologies_dir = self.root_path.join("ontologies");
+        if !ontologies_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut dirs = Vec::new();
+        for entry in fs::read_dir(&ontologies_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() && path.join("ontology_config.json").exists() {
+                dirs.push(path);
+            }
+        }
+        Ok(dirs)
+    }
+
+    /// Load an ontology config from a directory containing ontology_config.json
+    pub fn load_ontology_config(&self, ontology_dir: &Path) -> Result<OntologyConfig, LoaderError> {
+        let config_path = ontology_dir.join("ontology_config.json");
+        let content = fs::read_to_string(&config_path)?;
+        serde_json::from_str(&content).map_err(LoaderError::from)
+    }
+
+    /// Load an OntologyValidator from a directory containing ontology_config.json
+    /// and RDFS XML files. Reads the base file and all extensions listed in config.
+    pub fn load_ontology_validator(
+        &self,
+        ontology_dir: &Path,
+    ) -> Result<OntologyValidator, LoaderError> {
+        let config = self.load_ontology_config(ontology_dir)?;
+
+        // Read base file + extensions in order
+        let mut xml_contents = Vec::new();
+        let base_path = ontology_dir.join(&config.base);
+        xml_contents.push(fs::read_to_string(&base_path).map_err(|e| {
+            LoaderError::IoError(std::io::Error::new(
+                e.kind(),
+                format!(
+                    "Failed to read ontology base file {}: {}",
+                    base_path.display(),
+                    e
+                ),
+            ))
+        })?);
+
+        for ext in &config.extensions {
+            let ext_path = ontology_dir.join(ext);
+            xml_contents.push(fs::read_to_string(&ext_path).map_err(|e| {
+                LoaderError::IoError(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "Failed to read ontology extension {}: {}",
+                        ext_path.display(),
+                        e
+                    ),
+                ))
+            })?);
+        }
+
+        let refs: Vec<&str> = xml_contents.iter().map(|s| s.as_str()).collect();
+        OntologyValidator::from_rdfs_xml(&refs).map_err(|e| LoaderError::GraphError(e.to_string()))
     }
 
     /// Find all business data JSON files (searches recursively)

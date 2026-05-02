@@ -451,6 +451,12 @@ pub struct PyOntologyValidator {
     inner: OntologyValidator,
 }
 
+impl PyOntologyValidator {
+    pub fn from_inner(validator: OntologyValidator) -> Self {
+        Self { inner: validator }
+    }
+}
+
 #[pymethods]
 impl PyOntologyValidator {
     /// Load an ontology validator from one or more RDFS/XML file paths.

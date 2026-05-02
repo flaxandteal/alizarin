@@ -77,6 +77,20 @@ pub fn get_global_rdm_cache() -> Option<RdmCache> {
     GLOBAL_RDM_CACHE.read().ok().and_then(|guard| guard.clone())
 }
 
+/// Add already-parsed SKOS collections to the global RDM cache.
+/// Creates the cache if it doesn't exist. Returns the list of collection IDs added.
+pub fn add_skos_collections_to_global_cache(collections: &[SkosCollection]) -> Vec<String> {
+    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
+        if guard.is_none() {
+            *guard = Some(RdmCache::default());
+        }
+        if let Some(ref mut cache) = *guard {
+            return cache.inner.add_from_skos_collections(collections);
+        }
+    }
+    Vec::new()
+}
+
 /// Clear the global RDM cache.
 #[pyfunction]
 pub fn clear_global_rdm_cache() {
