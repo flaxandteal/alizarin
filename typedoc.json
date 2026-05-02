@@ -2,7 +2,7 @@
   "entryPoints": ["js"],
   "entryPointStrategy": "expand",
   "tsconfig": "tsconfig.typedoc.json",
-  "plugin": ["typedoc-plugin-markdown", "typedoc-plugin-frontmatter"],
+  "plugin": ["typedoc-plugin-markdown"],
   "outputFileStrategy": "modules",
   "fileExtension": ".mdx",
   "expandObjects": true,

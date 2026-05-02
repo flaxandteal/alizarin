@@ -156,10 +156,11 @@ pub fn export_all_graphs() -> Result<Vec<ExportFile>, ExportError> {
     export_graphs(&ids)
 }
 
-/// Export RDM collections as SKOS XML files.
+/// Export RDM collections as SKOS ConceptScheme XML files.
 ///
-/// Iterates all collections in the cache, converts each to SKOS XML.
-/// Uses `"Collection"` as the default node type (Arches pkg convention).
+/// Iterates all collections in the cache, converts each to SKOS XML
+/// as a ConceptScheme and writes to `reference_data/controlled_lists/`.
+/// This format is compatible with the `arches_controlled_lists` importer.
 pub fn export_collections(
     rdm_cache: &RdmCache,
     base_uri: &str,
@@ -168,7 +169,7 @@ pub fn export_collections(
 
     for collection_id in rdm_cache.get_collection_ids() {
         if let Some(collection) = rdm_cache.get_collection(&collection_id) {
-            let file = export_single_collection(collection, base_uri, "Collection")?;
+            let file = export_single_collection(collection, base_uri, "ConceptScheme")?;
             files.push(file);
         }
     }
@@ -189,7 +190,7 @@ pub fn export_single_collection(
     let xml = collection_to_skos_xml(&skos, base_uri);
 
     Ok(ExportFile {
-        relative_path: format!("reference_data/collections/{}.xml", collection.id),
+        relative_path: format!("reference_data/controlled_lists/{}.xml", collection.id),
         content: xml,
     })
 }
@@ -363,7 +364,7 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert!(files[0]
             .relative_path
-            .contains("reference_data/collections/"));
+            .contains("reference_data/controlled_lists/"));
         assert!(files[0].content.contains("xml"));
         assert!(files[0].content.contains("Concept One"));
     }
