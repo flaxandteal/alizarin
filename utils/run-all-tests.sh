@@ -84,7 +84,7 @@ test_python() {
     fi
     local activate="source '$venv/bin/activate'"
     run_section "Python build" bash -c \
-        "$activate && cd crates/alizarin-python && maturin build --release --out dist"
+        "$activate && cd crates/alizarin-python && rm -f dist/*.whl && maturin build --release --out dist"
     run_section "Python install" bash -c \
         "$activate && pip install --force-reinstall crates/alizarin-python/dist/*.whl"
     run_section "Python tests" bash -c \
@@ -117,7 +117,7 @@ test_ext_py() {
         [ -d "$ext_dir" ] || continue
         ext_name=$(basename "$ext_dir")
         run_section "Py ext: $ext_name build" bash -c \
-            "$activate && cd '$ext_dir' && maturin build --release --out dist"
+            "$activate && cd '$ext_dir' && rm -f dist/*.whl && maturin build --release --out dist"
         run_section "Py ext: $ext_name install" bash -c \
             "$activate && pip install --no-deps --force-reinstall '$ext_dir'/dist/*.whl"
         if [ -d "$ext_dir/tests" ]; then
