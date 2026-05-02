@@ -200,6 +200,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@latest
+
       - name: Publish to npm (Trusted Publishing)
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
