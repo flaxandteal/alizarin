@@ -43,6 +43,33 @@ describe("testing api", () => {
       const groups: Group[] = await Groups.all({ pruneTiles: false });
 
       assert(groups[0].constructor.name.toString() === "Group");
+      const root = await groups[0].$.getRootViewModel();
+      console.log("root node alias:", root.__node?.alias);
+      const childAliases = groups[0].$.model.getChildNodeAliases(root.__node.nodeid);
+      console.log("root child aliases:", childAliases);
+      const wasmWrapper = groups[0].$.wasmWrapper;
+      // Debug: check tiles
+      console.log("tiles loaded:", wasmWrapper.tilesLoaded);
+      console.log("tile count:", wasmWrapper.getTileIds?.()?.length || 'N/A');
+      const tileIds = wasmWrapper.getTileIds?.();
+      if (tileIds) {
+        console.log("tile IDs:", tileIds);
+        for (const tid of tileIds) {
+          const ng = wasmWrapper.getNodegroupForTile?.(tid);
+          console.log(`  tile ${tid}: nodegroup=${ng}`);
+        }
+      }
+      // Debug: check nodegroup index
+      console.log("loaded nodegroups:", wasmWrapper.getLoadedNodegroups?.());
+
+      const rustValue = wasmWrapper.getSemanticChildValue(
+        null,
+        root.__node.nodeid,
+        root.__node.nodegroup_id || null,
+        'basic_info'
+      );
+      console.log("rustValue from getSemanticChildValue:", rustValue);
+      console.log("rustValue type:", typeof rustValue, rustValue?.constructor?.name);
       const basic_info = await groups[0].basic_info;
       console.log("basic_info (awaited):", basic_info);
       console.log("basic_info.length:", basic_info.length);

@@ -1,5 +1,6 @@
 {
-  "entryPoints": ["js/main.ts"],
+  "entryPoints": ["js"],
+  "entryPointStrategy": "expand",
   "tsconfig": "tsconfig.typedoc.json",
   "plugin": ["typedoc-plugin-markdown", "typedoc-plugin-frontmatter"],
   "outputFileStrategy": "modules",
@@ -10,5 +11,6 @@
   "hidePageHeader": true,
   "hideBreadcrumbs": true,
   "excludePrivate": true,
-  "excludeInternal": true
+  "excludeInternal": true,
+  "skipErrorChecking": true
 }
