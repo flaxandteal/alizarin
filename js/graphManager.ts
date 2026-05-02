@@ -1365,7 +1365,7 @@ class GraphManager {
     this._initialized = true;
   }
 
-  async loadGraph<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow: boolean=false): Promise<ResourceModelWrapper<RIVM>> {
+  async loadGraph<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow: boolean=true): Promise<ResourceModelWrapper<RIVM>> {
     let modelClassName: string;
     if (typeof modelClass == 'string') {
       modelClassName = modelClass;
@@ -1408,7 +1408,7 @@ class GraphManager {
     return model.prototype.__;
   }
 
-  async get<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow: boolean=false): Promise<ResourceModelWrapper<RIVM>> {
+  async get<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow: boolean=true): Promise<ResourceModelWrapper<RIVM>> {
     let modelClassName: string;
     if (typeof modelClass == 'string') {
       modelClassName = modelClass;
