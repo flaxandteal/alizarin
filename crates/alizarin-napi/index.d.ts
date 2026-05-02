@@ -40,6 +40,17 @@ export declare function extensionResolveMarkers(datatype: string, tileData: any,
 export declare function hasExtensionHandler(datatype: string): boolean
 /** List all registered extension handler datatypes. */
 export declare function getRegisteredExtensionHandlers(): Array<string>
+/**
+ * Import a prebuild/pkg directory: register graphs, load SKOS collections,
+ * and load ontology configs.
+ *
+ * 1. Loads and registers all graphs from graphs/resource_models/ and graphs/branches/
+ * 2. Parses SKOS XML from reference_data/collections/ into the global RDM cache
+ * 3. Loads ontology configs from ontologies/ (if present)
+ *
+ * Returns `{ graphIds, collectionIds, collections, ontologyConfigs }`.
+ */
+export declare function importPrebuild(prebuildDir: string, baseUri: string): any
 export declare class NapiRdmCache {
   constructor()
   /** Load collections from a SKOS JSON string. */
@@ -160,8 +171,12 @@ export declare class NapiResourceInstanceWrapper {
   valuesFromResourceNodegroup(existingValuesJs: any, nodegroupTileIds: Array<string>, nodegroupId: string): NapiValuesFromNodegroupResult
   /** Resolve a dot-separated path and return a PseudoList. */
   getValuesAtPath(path: string): NapiPseudoList
-  /** Get semantic child value for a parent/child relationship. */
-  getSemanticChildValue(parentTileId: string | undefined | null, parentNodeId: string, parentNodegroupId: string | undefined | null, childAlias: string): any
+  /**
+   * Get semantic child value for a parent/child relationship.
+   * Returns a NapiPseudoList (or null for empty). Singles are wrapped in a
+   * single-element list so the JS `wrapRustPseudo` path works uniformly.
+   */
+  getSemanticChildValue(parentTileId: string | undefined | null, parentNodeId: string, parentNodegroupId: string | undefined | null, childAlias: string): NapiPseudoList | null
   /** Get all semantic child values for a parent node. */
   getAllSemanticChildValues(parentTileId: string | undefined | null, parentNodeId: string, parentNodegroupId?: string | undefined | null): any
   /** Find all semantic children of a parent node (returns map of alias → tile IDs). */
@@ -246,24 +261,6 @@ export declare class NapiResourceModelWrapper {
   setGraphNodegroups(nodegroupsJson: string): void
   /** Prune graph to only include permitted nodegroups and their dependencies. */
   pruneGraph(keepFunctions?: Array<string> | undefined | null): void
-}
-export declare class NapiPrebuildLoader {
-  constructor(path: string)
-  /** Load a single graph from a JSON file path (relative to prebuild root or absolute). */
-  loadGraph(path: string): NapiStaticGraph
-  /** Load all graphs from prebuild/graphs/resource_models/ */
-  loadAllGraphs(): Array<NapiStaticGraph>
-  /**
-   * Load full resources (with tiles) from a single business data file,
-   * filtered by graph ID.
-   */
-  loadFullResourcesFromFile(path: string, graphId: string): any
-  /** Find all business data JSON files in the prebuild directory. */
-  findBusinessDataFiles(): Array<string>
-  /** Get prebuild directory info. */
-  getInfo(): any
-  /** Count resources for a given graph ID. */
-  countResourcesForGraph(graphId: string): number
 }
 export declare class NapiPrebuildExporter {
   constructor()

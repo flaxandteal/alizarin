@@ -216,6 +216,18 @@ impl GraphModelAccess {
         self.nodegroups = Some(Arc::new(nodegroups));
         self.root_node_id = Some(root_node_id);
 
+        // Pre-populate default permissions if none were explicitly set,
+        // so get_permitted_nodegroups() can return a cheap clone instead
+        // of rebuilding a HashMap on every call.
+        if self.permitted_nodegroups.is_empty() {
+            for key in self.nodegroups.as_ref().unwrap().keys() {
+                self.permitted_nodegroups
+                    .insert(key.clone(), PermissionRule::Boolean(self.default_allow));
+            }
+            self.permitted_nodegroups
+                .insert(String::new(), PermissionRule::Boolean(true));
+        }
+
         Ok(())
     }
 
@@ -477,18 +489,7 @@ impl GraphModelAccess {
 
     /// Get permitted nodegroups as a boolean map (for backward compat).
     pub fn get_permitted_nodegroups_bool(&self) -> HashMap<String, bool> {
-        if self.permitted_nodegroups.is_empty() {
-            // Default: all nodegroups permitted
-            if let Some(ref ngs) = self.nodegroups {
-                let mut perms: HashMap<String, bool> =
-                    ngs.keys().map(|k| (k.clone(), true)).collect();
-                perms.insert(String::new(), true);
-                return perms;
-            }
-            let mut perms = HashMap::new();
-            perms.insert(String::new(), true);
-            return perms;
-        }
+        // Defaults are pre-populated in build_indices(), so just convert.
         self.permitted_nodegroups
             .iter()
             .map(|(k, v)| (k.clone(), v.permits_nodegroup()))
@@ -551,17 +552,8 @@ impl ModelAccess for GraphModelAccess {
     }
 
     fn get_permitted_nodegroups(&self) -> HashMap<String, PermissionRule> {
-        if self.permitted_nodegroups.is_empty() {
-            // Default: all nodegroups permitted
-            let mut permissions = HashMap::new();
-            if let Some(ref ngs) = self.nodegroups {
-                for key in ngs.keys() {
-                    permissions.insert(key.clone(), PermissionRule::Boolean(true));
-                }
-            }
-            permissions.insert(String::new(), PermissionRule::Boolean(true));
-            return permissions;
-        }
+        // Defaults are pre-populated in build_indices(), so this is always a
+        // cheap clone rather than rebuilding on every call.
         self.permitted_nodegroups.clone()
     }
 }

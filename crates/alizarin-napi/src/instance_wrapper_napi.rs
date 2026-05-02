@@ -906,6 +906,8 @@ impl NapiResourceInstanceWrapper {
     // =========================================================================
 
     /// Get semantic child value for a parent/child relationship.
+    /// Returns a NapiPseudoList (or null for empty). Singles are wrapped in a
+    /// single-element list so the JS `wrapRustPseudo` path works uniformly.
     #[napi]
     pub fn get_semantic_child_value(
         &self,
@@ -913,7 +915,7 @@ impl NapiResourceInstanceWrapper {
         parent_node_id: String,
         parent_nodegroup_id: Option<String>,
         child_alias: String,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<Option<NapiPseudoList>> {
         let result = self
             .inner
             .get_semantic_child_value(
@@ -926,15 +928,18 @@ impl NapiResourceInstanceWrapper {
             .map_err(sc_err)?;
 
         match result {
-            SemanticChildResult::List(list) => {
-                Ok(serde_json::to_value(NapiPseudoListJson::from(&list))
-                    .unwrap_or(serde_json::Value::Null))
-            }
+            SemanticChildResult::List(list) => Ok(Some(NapiPseudoList { inner: list })),
             SemanticChildResult::Single(val) => {
-                Ok(serde_json::to_value(NapiPseudoValueJson::from(&val))
-                    .unwrap_or(serde_json::Value::Null))
+                // Wrap single value in a PseudoListCore so JS sees a uniform interface
+                let list = alizarin_core::PseudoListCore {
+                    node_alias: val.node.alias.clone().unwrap_or_default(),
+                    is_single: true,
+                    is_loaded: true,
+                    values: vec![val],
+                };
+                Ok(Some(NapiPseudoList { inner: list }))
             }
-            SemanticChildResult::Empty => Ok(serde_json::Value::Null),
+            SemanticChildResult::Empty => Ok(None),
         }
     }
 
