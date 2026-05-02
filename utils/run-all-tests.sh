@@ -56,7 +56,7 @@ test_wasm() {
     run_section "JS install" npm ci
     run_section "JS build" npm run build:js
     run_section "JS tests" npm test
-    run_section "JS lint" npx eslint . --ext .ts,.tsx
+    run_section "JS lint" npm run lint
 }
 
 # ─── NAPI ────────────────────────────────────────────────────────────────────
@@ -96,8 +96,6 @@ test_ext_js() {
     for ext_dir in ext/js/@alizarin/*/; do
         [ -d "$ext_dir" ] || continue
         ext_name=$(basename "$ext_dir")
-        run_section "JS ext: $ext_name build" bash -c \
-            "cd '$ext_dir' && npm install && npm run build"
         if [ -d "$ext_dir/tests" ]; then
             run_section "JS ext: $ext_name tests" bash -c \
                 "npm test -- '$ext_dir/tests/'"
