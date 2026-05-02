@@ -315,6 +315,91 @@ impl WasmRdmCache {
     }
 }
 
+// =============================================================================
+// Global RDM Cache (delegates to alizarin_core)
+// =============================================================================
+
+/// Set the global RDM cache from a WasmRdmCache instance.
+#[wasm_bindgen(js_name = setGlobalRdmCache)]
+pub fn set_global_rdm_cache(cache: &WasmRdmCache) {
+    alizarin_core::set_global_rdm_cache(cache.inner.clone());
+}
+
+/// Check if a global RDM cache has been set.
+#[wasm_bindgen(js_name = hasGlobalRdmCache)]
+pub fn has_global_rdm_cache() -> bool {
+    alizarin_core::has_global_rdm_cache()
+}
+
+/// Clear the global RDM cache.
+#[wasm_bindgen(js_name = clearGlobalRdmCache)]
+pub fn clear_global_rdm_cache() {
+    alizarin_core::clear_global_rdm_cache();
+}
+
+/// Add SKOS XML collections to the global RDM cache (auto-creates if needed).
+#[wasm_bindgen(js_name = addToGlobalRdmCacheFromSkosXml)]
+pub fn add_to_global_rdm_cache_from_skos_xml(
+    xml_content: &str,
+    base_uri: &str,
+) -> Result<Vec<String>, JsError> {
+    alizarin_core::add_to_global_rdm_cache_from_skos_xml(xml_content, base_uri)
+        .map_err(|e| JsError::new(&e))
+}
+
+/// Add a JSON collection to the global RDM cache (auto-creates if needed).
+#[wasm_bindgen(js_name = addCollectionToGlobalRdmCache)]
+pub fn add_collection_to_global_rdm_cache(
+    collection_id: &str,
+    concepts_json: &str,
+) -> Result<(), JsError> {
+    alizarin_core::ensure_global_rdm_cache(|cache| {
+        cache
+            .add_collection_from_json(collection_id, concepts_json)
+            .map_err(|e| JsError::new(&e))
+    })
+}
+
+/// Remove a collection from the global RDM cache.
+#[wasm_bindgen(js_name = removeFromGlobalRdmCache)]
+pub fn remove_from_global_rdm_cache(collection_id: &str) -> bool {
+    alizarin_core::with_global_rdm_cache_mut(|cache| cache.remove_collection(collection_id))
+        .unwrap_or(false)
+}
+
+/// Lookup a label in the global RDM cache.
+#[wasm_bindgen(js_name = globalRdmLookupLabel)]
+pub fn global_rdm_lookup_label(
+    collection_id: &str,
+    concept_id: &str,
+    language: &str,
+) -> Option<String> {
+    alizarin_core::with_global_rdm_cache(|cache| {
+        cache.lookup_label(collection_id, concept_id, language)
+    })
+    .flatten()
+}
+
+/// Check if a collection exists in the global RDM cache.
+#[wasm_bindgen(js_name = globalRdmHasCollection)]
+pub fn global_rdm_has_collection(collection_id: &str) -> bool {
+    alizarin_core::with_global_rdm_cache(|cache| cache.has_collection(collection_id))
+        .unwrap_or(false)
+}
+
+/// Get parent concept ID from the global RDM cache.
+#[wasm_bindgen(js_name = globalRdmGetParentId)]
+pub fn global_rdm_get_parent_id(collection_id: &str, concept_id: &str) -> Option<String> {
+    alizarin_core::with_global_rdm_cache(|cache| cache.get_parent_id(collection_id, concept_id))
+        .flatten()
+}
+
+/// Get all collection IDs from the global RDM cache.
+#[wasm_bindgen(js_name = globalRdmGetCollectionIds)]
+pub fn global_rdm_get_collection_ids() -> Vec<String> {
+    alizarin_core::with_global_rdm_cache(|cache| cache.get_collection_ids()).unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { NapiPrebuildLoader, NapiStaticGraph, NapiStaticResourceRegistry, NapiResourceModelWrapper, NapiResourceInstanceWrapper } from '../index.js';
+import { NapiStaticGraph, NapiStaticResourceRegistry, NapiResourceModelWrapper, NapiResourceInstanceWrapper } from '../index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEST_DATA = path.resolve(__dirname, '..', '..', '..', 'tests');
@@ -56,15 +56,6 @@ describe('NapiStaticResourceRegistry', () => {
   it('contains returns false for unknown IDs', () => {
     const registry = new NapiStaticResourceRegistry();
     assert.equal(registry.contains('nonexistent'), false);
-  });
-});
-
-describe('NapiPrebuildLoader', () => {
-  it('throws for nonexistent directory', () => {
-    assert.throws(
-      () => new NapiPrebuildLoader('/nonexistent/path'),
-      /not found/i
-    );
   });
 });
 

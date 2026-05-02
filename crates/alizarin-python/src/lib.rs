@@ -2886,50 +2886,18 @@ fn export_prebuild(
 #[pyfunction]
 #[pyo3(signature = (prebuild_dir, base_uri="http://localhost:8000/"))]
 fn import_prebuild(py: Python, prebuild_dir: String, base_uri: &str) -> PyResult<PyObject> {
-    let loader = alizarin_core::PrebuildLoader::new(&prebuild_dir)
+    let result = alizarin_core::import_prebuild(&prebuild_dir, base_uri)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
-    // 1. Load and register graphs
-    let graphs = loader
-        .load_all_graphs()
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-    let graph_ids: Vec<String> = graphs
+    let ontology_validator: Option<graph_mutator_py::PyOntologyValidator> = result
+        .ontology_validators
         .into_iter()
-        .map(|g| {
-            let id = g.graphid.clone();
-            alizarin_core::register_graph_owned(g);
-            id
-        })
-        .collect();
+        .next()
+        .map(graph_mutator_py::PyOntologyValidator::from_inner);
 
-    // 2. Load SKOS collections into global RDM cache
-    let collections = loader
-        .load_collections(base_uri)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-    let collection_ids = if !collections.is_empty() {
-        rdm_cache_py::add_skos_collections_to_global_cache(&collections)
-    } else {
-        Vec::new()
-    };
-
-    // 3. Load ontology validator (if ontologies/ exists)
-    let ontology_dirs = loader
-        .find_ontology_dirs()
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-    let ontology_validator: Option<graph_mutator_py::PyOntologyValidator> =
-        if let Some(dir) = ontology_dirs.first() {
-            let validator = loader
-                .load_ontology_validator(dir)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-            Some(graph_mutator_py::PyOntologyValidator::from_inner(validator))
-        } else {
-            None
-        };
-
-    // Build result dict
     let dict = pyo3::types::PyDict::new(py);
-    dict.set_item("graph_ids", graph_ids)?;
-    dict.set_item("collection_ids", collection_ids)?;
+    dict.set_item("graph_ids", result.graph_ids)?;
+    dict.set_item("collection_ids", result.collection_ids)?;
     dict.set_item("ontology_validator", ontology_validator.into_py(py))?;
     Ok(dict.into())
 }

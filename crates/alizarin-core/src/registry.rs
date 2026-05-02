@@ -14,6 +14,8 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
+use crate::rdm_cache::RdmCache;
+use crate::skos::{parse_skos_to_collections, SkosCollection};
 use crate::StaticGraph;
 
 lazy_static::lazy_static! {
@@ -22,6 +24,11 @@ lazy_static::lazy_static! {
     /// Uses RwLock for thread-safe access across parallel threads
     static ref GRAPH_REGISTRY: RwLock<HashMap<String, Arc<StaticGraph>>> =
         RwLock::new(HashMap::new());
+
+    /// Global RDM (Reference Data Manager) cache for concept collections.
+    /// Used by label resolution, display rendering, and other functions that
+    /// need concept lookups without passing a cache explicitly.
+    static ref GLOBAL_RDM_CACHE: RwLock<Option<RdmCache>> = RwLock::new(None);
 
     /// Registry of datatypes where the array IS the value (list types).
     /// For these datatypes, arrays should NOT be iterated over during tree-to-tiles conversion.
@@ -294,8 +301,89 @@ pub fn registered_widgets() -> Vec<String> {
 }
 
 // ============================================================================
-// Extension Type Handler Registry
+// Global RDM Cache
 // ============================================================================
+
+/// Replace the global RDM cache with the given cache.
+pub fn set_global_rdm_cache(cache: RdmCache) {
+    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
+        *guard = Some(cache);
+    }
+}
+
+/// Get a clone of the global RDM cache, if set.
+pub fn get_global_rdm_cache() -> Option<RdmCache> {
+    GLOBAL_RDM_CACHE.read().ok().and_then(|guard| guard.clone())
+}
+
+/// Check if a global RDM cache has been set.
+pub fn has_global_rdm_cache() -> bool {
+    GLOBAL_RDM_CACHE
+        .read()
+        .ok()
+        .map(|guard| guard.is_some())
+        .unwrap_or(false)
+}
+
+/// Clear the global RDM cache.
+pub fn clear_global_rdm_cache() {
+    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
+        *guard = None;
+    }
+}
+
+/// Run a closure with a read reference to the global RDM cache.
+/// Returns None if no cache is set or the lock is poisoned.
+pub fn with_global_rdm_cache<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&RdmCache) -> R,
+{
+    GLOBAL_RDM_CACHE
+        .read()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(f))
+}
+
+/// Run a closure with a mutable reference to the global RDM cache.
+/// Returns None if no cache is set or the lock is poisoned.
+pub fn with_global_rdm_cache_mut<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&mut RdmCache) -> R,
+{
+    GLOBAL_RDM_CACHE
+        .write()
+        .ok()
+        .and_then(|mut guard| guard.as_mut().map(f))
+}
+
+/// Run a closure with a mutable reference to the global RDM cache,
+/// creating it if it doesn't exist.
+pub fn ensure_global_rdm_cache<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut RdmCache) -> R,
+{
+    let mut guard = GLOBAL_RDM_CACHE.write().expect("RDM cache lock poisoned");
+    if guard.is_none() {
+        *guard = Some(RdmCache::default());
+    }
+    f(guard.as_mut().unwrap())
+}
+
+/// Add parsed SKOS collections to the global RDM cache (auto-creates if needed).
+/// Returns the list of collection IDs added.
+pub fn add_to_global_rdm_cache_from_skos(collections: &[SkosCollection]) -> Vec<String> {
+    ensure_global_rdm_cache(|cache| cache.add_from_skos_collections(collections))
+}
+
+/// Parse SKOS XML and add to the global RDM cache (auto-creates if needed).
+/// Returns the list of collection IDs added.
+pub fn add_to_global_rdm_cache_from_skos_xml(
+    xml_content: &str,
+    base_uri: &str,
+) -> Result<Vec<String>, String> {
+    let collections = parse_skos_to_collections(xml_content, base_uri)?;
+    Ok(add_to_global_rdm_cache_from_skos(&collections))
+}
 
 #[cfg(test)]
 mod tests {

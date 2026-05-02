@@ -1045,3 +1045,55 @@ pub fn parse_business_data_bytes(bytes: &[u8]) -> Result<Vec<StaticResource>, Lo
         .map(|r| r.to_static_resource())
         .collect())
 }
+
+/// Result of importing a prebuild/pkg directory.
+pub struct ImportPrebuildResult {
+    pub graph_ids: Vec<String>,
+    pub collection_ids: Vec<String>,
+    pub collections: Vec<SkosCollection>,
+    pub ontology_validators: Vec<OntologyValidator>,
+    pub ontology_configs: Vec<OntologyConfig>,
+}
+
+/// Import a prebuild/pkg directory: register graphs in the global graph registry,
+/// load SKOS collections into the global RDM cache, and load ontology validators.
+///
+/// This is the inverse of `export_prebuild`. It reads the directory structure and:
+/// 1. Loads and registers all graphs from `graphs/resource_models/` and `graphs/branches/`
+/// 2. Parses SKOS XML from `reference_data/collections/` and adds to the global RDM cache
+/// 3. Loads ontology RDFS files from `ontologies/` (if present)
+pub fn import_prebuild(path: &str, base_uri: &str) -> Result<ImportPrebuildResult, LoaderError> {
+    let loader = PrebuildLoader::new(path)?;
+
+    // 1. Load and register graphs
+    let graphs = loader.load_all_graphs()?;
+    let graph_ids: Vec<String> = graphs
+        .into_iter()
+        .map(|g| {
+            let id = g.graphid.clone();
+            crate::register_graph_owned(g);
+            id
+        })
+        .collect();
+
+    // 2. Load SKOS collections into global RDM cache
+    let collections = loader.load_collections(base_uri)?;
+    let collection_ids = crate::add_to_global_rdm_cache_from_skos(&collections);
+
+    // 3. Load ontology validators and configs
+    let ontology_dirs = loader.find_ontology_dirs()?;
+    let mut ontology_validators = Vec::new();
+    let mut ontology_configs = Vec::new();
+    for dir in &ontology_dirs {
+        ontology_configs.push(loader.load_ontology_config(dir)?);
+        ontology_validators.push(loader.load_ontology_validator(dir)?);
+    }
+
+    Ok(ImportPrebuildResult {
+        graph_ids,
+        collection_ids,
+        collections,
+        ontology_validators,
+        ontology_configs,
+    })
+}

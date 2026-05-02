@@ -41,13 +41,8 @@ use alizarin_core::label_resolution::{
 };
 
 // =============================================================================
-// Global RDM Cache Singleton
+// Global RDM Cache — delegates to alizarin_core's global
 // =============================================================================
-
-lazy_static::lazy_static! {
-    /// Global RDM cache singleton for automatic label resolution
-    static ref GLOBAL_RDM_CACHE: RwLock<Option<RdmCache>> = RwLock::new(None);
-}
 
 /// Set the global RDM cache for automatic label resolution.
 ///
@@ -55,78 +50,46 @@ lazy_static::lazy_static! {
 /// resolve label strings to UUIDs using this cache.
 ///
 /// Note: This clones the cache, so you can continue using the original.
-///
-/// Example:
-///     cache = RustRdmCache()
-///     cache.add_collection(my_collection)
-///     set_global_rdm_cache(cache)
-///
-///     # Now json_tree_to_tiles will auto-resolve labels
-///     result = json_tree_to_tiles(tree_json, ...)
-///     # cache is still usable here
 #[pyfunction]
 pub fn set_global_rdm_cache(cache: &RdmCache) {
-    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
-        *guard = Some(cache.clone());
-    }
+    alizarin_core::set_global_rdm_cache(cache.inner.clone());
 }
 
 /// Get a clone of the global RDM cache, if set.
 #[pyfunction]
 pub fn get_global_rdm_cache() -> Option<RdmCache> {
-    GLOBAL_RDM_CACHE.read().ok().and_then(|guard| guard.clone())
+    alizarin_core::get_global_rdm_cache().map(|core_cache| RdmCache {
+        inner: core_cache,
+        loader: None,
+    })
 }
 
-/// Add already-parsed SKOS collections to the global RDM cache.
-/// Creates the cache if it doesn't exist. Returns the list of collection IDs added.
+/// (Crate-internal) Add already-parsed SKOS collections to the global RDM cache.
 pub fn add_skos_collections_to_global_cache(collections: &[SkosCollection]) -> Vec<String> {
-    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
-        if guard.is_none() {
-            *guard = Some(RdmCache::default());
-        }
-        if let Some(ref mut cache) = *guard {
-            return cache.inner.add_from_skos_collections(collections);
-        }
-    }
-    Vec::new()
+    alizarin_core::add_to_global_rdm_cache_from_skos(collections)
 }
 
 /// Clear the global RDM cache.
 #[pyfunction]
 pub fn clear_global_rdm_cache() {
-    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
-        *guard = None;
-    }
+    alizarin_core::clear_global_rdm_cache();
 }
 
 /// Check if a global RDM cache is set.
 #[pyfunction]
 pub fn has_global_rdm_cache() -> bool {
-    GLOBAL_RDM_CACHE
-        .read()
-        .ok()
-        .map(|guard| guard.is_some())
-        .unwrap_or(false)
+    alizarin_core::has_global_rdm_cache()
 }
 
 /// Add a collection directly to the global RDM cache.
 ///
 /// This modifies the global cache in-place. If no global cache exists,
 /// creates one first.
-///
-/// Example:
-///     collection = RustRdmCollection.from_labels("Test", ["A", "B"])
-///     add_collection_to_global_cache(collection)
 #[pyfunction]
 pub fn add_collection_to_global_cache(collection: RdmCollection) {
-    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
-        if guard.is_none() {
-            *guard = Some(RdmCache::default());
-        }
-        if let Some(ref mut cache) = *guard {
-            cache.inner.add_collection(collection.into_inner());
-        }
-    }
+    alizarin_core::ensure_global_rdm_cache(|cache| {
+        cache.add_collection(collection.into_inner());
+    });
 }
 
 /// Add collections from SKOS XML directly to the global RDM cache.
@@ -140,30 +103,14 @@ pub fn add_collection_to_global_cache(collection: RdmCollection) {
 ///
 /// Returns:
 ///     List of collection IDs that were added
-///
-/// Example:
-///     ids = add_from_skos_xml_to_global_cache(xml_string, "http://example.org/")
 #[pyfunction]
 pub fn add_from_skos_xml_to_global_cache(
     xml_content: &str,
     base_uri: &str,
 ) -> PyResult<Vec<String>> {
-    let skos_collections = parse_skos_to_collections(xml_content, base_uri).map_err(|e| {
+    alizarin_core::add_to_global_rdm_cache_from_skos_xml(xml_content, base_uri).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse SKOS XML: {}", e))
-    })?;
-
-    let mut added_ids = Vec::new();
-
-    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
-        if guard.is_none() {
-            *guard = Some(RdmCache::default());
-        }
-        if let Some(ref mut cache) = *guard {
-            added_ids = cache.inner.add_from_skos_collections(&skos_collections);
-        }
-    }
-
-    Ok(added_ids)
+    })
 }
 
 /// Add collections from SKOS JSON directly to the global RDM cache.
@@ -177,9 +124,6 @@ pub fn add_from_skos_xml_to_global_cache(
 ///
 /// Returns:
 ///     List of collection IDs that were added
-///
-/// Example:
-///     ids = add_from_skos_json_to_global_cache(json_string)
 #[pyfunction]
 pub fn add_from_skos_json_to_global_cache(json_content: &str) -> PyResult<Vec<String>> {
     let skos_collections: Vec<SkosCollection> =
@@ -193,18 +137,9 @@ pub fn add_from_skos_json_to_global_cache(json_content: &str) -> PyResult<Vec<St
             ));
         };
 
-    let mut added_ids = Vec::new();
-
-    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
-        if guard.is_none() {
-            *guard = Some(RdmCache::default());
-        }
-        if let Some(ref mut cache) = *guard {
-            added_ids = cache.inner.add_from_skos_collections(&skos_collections);
-        }
-    }
-
-    Ok(added_ids)
+    Ok(alizarin_core::add_to_global_rdm_cache_from_skos(
+        &skos_collections,
+    ))
 }
 
 /// Merge additional flat labels into a collection in the global RDM cache.
@@ -227,33 +162,22 @@ pub fn update_collection_in_global_cache(
     collection_id: String,
     labels: Vec<PyObject>,
 ) -> PyResult<usize> {
-    let core_coll = {
-        let guard = GLOBAL_RDM_CACHE.read().map_err(|_| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Failed to read global RDM cache")
-        })?;
-        let cache = guard.as_ref().ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Global RDM cache not set")
-        })?;
-        cache
-            .inner
-            .get_collection(&collection_id)
+    let core_coll =
+        alizarin_core::with_global_rdm_cache(|cache| cache.get_collection(&collection_id).cloned())
+            .flatten()
             .ok_or_else(|| {
                 PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                     "Collection '{}' not found in global cache",
                     collection_id
                 ))
-            })?
-            .clone()
-    };
+            })?;
 
     let mut wrapper = RdmCollection::from_core(core_coll);
     let added = wrapper.update_from_labels(py, labels)?;
 
-    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
-        if let Some(ref mut cache) = *guard {
-            cache.inner.add_collection(wrapper.into_inner());
-        }
-    }
+    alizarin_core::ensure_global_rdm_cache(|cache| {
+        cache.add_collection(wrapper.into_inner());
+    });
     Ok(added)
 }
 
@@ -277,33 +201,22 @@ pub fn update_collection_nested_in_global_cache(
     collection_id: String,
     structure: &Bound<'_, PyDict>,
 ) -> PyResult<usize> {
-    let core_coll = {
-        let guard = GLOBAL_RDM_CACHE.read().map_err(|_| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Failed to read global RDM cache")
-        })?;
-        let cache = guard.as_ref().ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Global RDM cache not set")
-        })?;
-        cache
-            .inner
-            .get_collection(&collection_id)
+    let core_coll =
+        alizarin_core::with_global_rdm_cache(|cache| cache.get_collection(&collection_id).cloned())
+            .flatten()
             .ok_or_else(|| {
                 PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                     "Collection '{}' not found in global cache",
                     collection_id
                 ))
-            })?
-            .clone()
-    };
+            })?;
 
     let mut wrapper = RdmCollection::from_core(core_coll);
     let added = wrapper.update_from_nested_labels(py, structure)?;
 
-    if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
-        if let Some(ref mut cache) = *guard {
-            cache.inner.add_collection(wrapper.into_inner());
-        }
-    }
+    alizarin_core::ensure_global_rdm_cache(|cache| {
+        cache.add_collection(wrapper.into_inner());
+    });
     Ok(added)
 }
 

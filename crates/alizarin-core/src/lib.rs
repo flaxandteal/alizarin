@@ -78,7 +78,10 @@ pub use graph::{
 };
 
 // Loader
-pub use loader::{parse_business_data_bytes, LoaderError, PrebuildInfo, PrebuildLoader};
+pub use loader::{
+    import_prebuild, parse_business_data_bytes, ImportPrebuildResult, LoaderError, PrebuildInfo,
+    PrebuildLoader,
+};
 
 // Exporter
 pub use exporter::{
@@ -293,6 +296,13 @@ pub use registry::{
 // Widget registry (for extension widget definitions)
 pub use registry::{
     get_registered_widget, register_widget, registered_widgets, unregister_widget, RegisteredWidget,
+};
+
+// Global RDM cache (for concept lookups across FFI targets)
+pub use registry::{
+    add_to_global_rdm_cache_from_skos, add_to_global_rdm_cache_from_skos_xml,
+    clear_global_rdm_cache, ensure_global_rdm_cache, get_global_rdm_cache, has_global_rdm_cache,
+    set_global_rdm_cache, with_global_rdm_cache, with_global_rdm_cache_mut,
 };
 
 // Permission rules (for conditional tile filtering)
