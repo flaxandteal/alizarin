@@ -3,6 +3,11 @@
   "version": "0.2.1-alpha.83",
   "description": "Alizarin display serializers for CLM reference datatypes",
   "license": "AGPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/flaxandteal/alizarin",
+    "directory": "ext/js/@alizarin/clm"
+  },
   "author": "Phil Weir <phil.weir@flaxandteal.co.uk>",
   "type": "module",
   "main": "./dist/clm.js",
