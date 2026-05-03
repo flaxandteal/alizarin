@@ -54,16 +54,7 @@ for (const person of people) {
 }
 ```
 
-### Pattern 2: Create and save a resource
-
-```typescript
-const person = Person.create();
-person.forename = "Jane";
-person.surname = "Smith";
-await person.save();
-```
-
-### Pattern 3: Build a graph from CSV
+### Pattern 2: Build a graph from CSV
 
 ```typescript
 import { buildGraphFromModelCsvs } from 'alizarin';
@@ -71,7 +62,7 @@ import { buildGraphFromModelCsvs } from 'alizarin';
 const graph = buildGraphFromModelCsvs(graphCsv, nodesCsv, collectionsCsv, rdmNamespace);
 ```
 
-### Pattern 4: Mutate a graph schema
+### Pattern 3: Mutate a graph schema
 
 ```typescript
 import { GraphMutator } from 'alizarin';
@@ -83,11 +74,11 @@ mutator.addStringNode(null, 'nickname', 'Nickname', 'n',
 const modified = mutator.apply();
 ```
 
-### Pattern 5: Switch to NAPI backend for performance
+### Pattern 4: Switch to NAPI backend for performance
 
 ```typescript
 import { setBackend, setNapiModule } from 'alizarin';
-const napi = require('./alizarin.linux-x64-gnu.node');
+const napi = require('@alizarin/napi');
 setNapiModule(napi);
 setBackend('napi');
 // All subsequent ORM calls use native code
@@ -113,26 +104,26 @@ tiles = alizarin.json_tree_to_tiles(tree_json, resource_id, graph_id,
 
 ```python
 alizarin.register_graph(graph_json)
-graph = alizarin.get_graph(graph_id)
+graph = alizarin.get_graph_json(graph_id)
 ```
 
 ### Mutate a graph
 
 ```python
-result = alizarin.mutate_graph_add_node(graph_json, nodegroup_id, node_config)
+result = alizarin.apply_mutations_from_json(graph_json, mutations_json)
 ```
 
 ### Parse SKOS vocabularies
 
 ```python
-collection = alizarin.parse_skos_xml_to_collection(xml_string)
+collection = alizarin.parse_skos_xml_to_collection(xml_string, base_uri)
 ```
 
 ### Batch operations (parallel)
 
 ```python
 tiles = alizarin.batch_trees_to_tiles(trees_json, graph_id, from_camel=True)
-merged = alizarin.batch_merge_resources(resources_json, graph_id, resolver)
+merged = alizarin.batch_merge_resources(resources_json)
 ```
 
 ## Graph Mutation CSV Format
@@ -165,7 +156,7 @@ add_node,heritage_item,description,Description,string,1,E62_String,P3_has_note
 
 3. **Don't write custom SKOS parsers.** Use `parseSkosXml()` (JS) or `parse_skos_xml_to_collection()` (Python).
 
-4. **Don't re-implement concept lookups.** Use the RDM system: `RDM.archesClient = client` in JS, or `rdm_lookup_by_id()`/`rdm_lookup_by_label()` in Python.
+4. **Don't re-implement concept lookups.** Use the RDM system: `RDM.archesClient = client` in JS, or `add_from_skos_xml_to_global_cache()`/`resolve_labels()` in Python.
 
 5. **Don't convert between camelCase and snake_case manually for Arches data.** The `from_camel` parameter in `json_tree_to_tiles()` handles this.
 

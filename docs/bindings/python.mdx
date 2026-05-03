@@ -45,58 +45,91 @@ tiles = alizarin.json_tree_to_tiles(
 |----------|-------------|
 | `tiles_to_json_tree(resource_json)` | Tiles to nested JSON tree |
 | `build_tree_from_tiles(tiles_json, resource_id, graph_id)` | Pre-extracted tiles to tree |
+| `batch_tiles_to_trees(...)` | Parallel batch tiles-to-tree conversion |
 | `cards_to_json_tree(resource_json)` | Tiles to card-structured tree |
-| `json_tree_to_tiles(tree, resource_id, graph_id, ...)` | Tree back to tiles format |
-| `batch_trees_to_tiles(trees, graph_id, ...)` | Parallel batch conversion |
+| `json_tree_to_tiles(tree, resource_id, graph_id, from_camel, strict, rdm_cache, id_key, scopes)` | Tree back to tiles format |
+| `batch_trees_to_tiles(trees, graph_id, from_camel, strict, ...)` | Parallel batch conversion |
+| `resolve_labels_in_tree(...)` | Resolve human labels to concept UUIDs in a tree |
 
 ### Graph & Resource Registry
 
 | Function | Description |
 |----------|-------------|
 | `register_graph(graph_json)` | Register a graph for lookups |
-| `register_all_graphs(graphs_json)` | Batch register multiple graphs |
-| `get_graph(graph_id)` | Retrieve registered graph |
-| `parse_resources_from_json(resources_json)` | Parse business data |
-| `merge_resources(a, b, graph_id, resolver)` | Merge two resource tile sets |
-| `batch_merge_resources(resources, graph_id, resolver)` | Parallel merge |
-| `create_resource_registry()` | Create empty registry |
+| `get_registered_graph_ids()` | List all registered graph IDs |
+| `get_graph_json(graph_id)` | Retrieve registered graph as JSON |
+| `get_graph_schema(graph_id)` | Retrieve registered graph schema |
+| `merge_resources(a, b, ...)` | Merge two resource tile sets |
+| `batch_merge_resources(resources, ...)` | Parallel merge |
+| `streamed_merge_from_files(...)` | Stream-merge resources from files |
+| `chunked_merge_resources(json_strings, chunk_size, ...)` | Memory-efficient batch merge |
+| `ResourceRegistry` | Class: create and manage a resource registry |
 
 ### Graph Mutations
 
+All mutations are applied via JSON requests — see [Graph Mutations](/docs/mutations) for the full format.
+
 | Function | Description |
 |----------|-------------|
-| `mutate_graph_add_node(graph, nodegroup_id, config)` | Add a node |
-| `mutate_graph_remove_node(graph, node_id)` | Remove a node |
-| `mutate_graph_rename_node(graph, node_id, new_name)` | Rename a node |
-| `mutate_graph_add_edge(graph, parent_id, child_id)` | Add an edge |
-| `mutate_graph_remove_edge(graph, parent_id, child_id)` | Remove an edge |
-| `mutate_graph_remove_nodegroup(graph, nodegroup_id)` | Remove a nodegroup |
+| `apply_mutations_from_json(graph_json, mutations_json)` | Apply mutations to a graph |
+| `apply_mutations_create(...)` | Apply mutations that create a new graph |
+| `apply_mutations_with_extensions(graph_json, mutations_json)` | Apply mutations including extension mutations |
+| `register_extension_mutation(name, handler, conformance)` | Register a custom mutation handler |
+| `has_extension_mutation(name)` | Check if an extension mutation is registered |
+| `list_extension_mutations()` | List all registered extension mutations |
+| `get_mutation_schema()` | Get mutation schema documentation |
+| `generate_uuid_v5(group_type, key, group_id)` | Generate deterministic UUIDs |
+| `build_graph_from_instructions(...)` | Build graph from instruction list |
+| `build_graph_from_csv(...)` | Build graph from CSV definitions |
 
 ### RDM (Reference Data)
 
 | Function | Description |
 |----------|-------------|
 | `set_global_rdm_cache(cache)` | Set global concept cache |
-| `ensure_rdm_cache_populated(collection_json)` | Populate cache from collection |
-| `rdm_lookup_by_id(collection_id, concept_id)` | Look up concept by ID |
-| `rdm_lookup_by_label(collection_id, label)` | Look up concept by label |
+| `get_global_rdm_cache()` | Get global concept cache |
+| `has_global_rdm_cache()` | Check if global cache exists |
+| `clear_global_rdm_cache()` | Clear global cache |
+| `add_collection_to_global_cache(...)` | Add a collection to the cache |
+| `add_from_skos_xml_to_global_cache(...)` | Parse SKOS XML and add to cache |
+| `add_from_skos_json_to_global_cache(...)` | Parse SKOS JSON and add to cache |
+| `resolve_labels(...)` | Resolve concept labels to UUIDs |
+| `get_needed_collections(...)` | Get collection IDs needed by a graph |
+| `set_rdm_namespace(...)` / `get_rdm_namespace()` | Configure RDM namespace for UUID generation |
 
 ### SKOS Vocabularies
 
 | Function | Description |
 |----------|-------------|
-| `parse_skos_xml(xml)` | Parse SKOS RDF/XML |
-| `parse_skos_xml_to_collection(xml)` | Parse to collection object |
-| `collection_to_skos_xml(json)` | Serialize to RDF/XML |
-| `collections_to_skos_xml(json)` | Batch serialize |
+| `parse_skos_xml(xml, base_uri)` | Parse SKOS RDF/XML |
+| `parse_skos_xml_to_collection(xml, base_uri)` | Parse to single collection object |
+| `skos_collection_to_xml(collection_json, base_uri)` | Serialize collection to RDF/XML |
+| `skos_collections_to_xml(collections_json, base_uri)` | Batch serialize collections |
 
 ### Extension System
 
 | Function | Description |
 |----------|-------------|
 | `register_type_handler(capsule)` | Register custom datatype handler |
+| `has_type_handler(type_name)` | Check if a type handler is registered |
 | `coerce_with_extension(type_name, value, config)` | Call extension coercion |
+| `render_display_with_extension(...)` | Call extension display renderer |
 | `register_widget_for_datatype(datatype, widget)` | Map datatype to widget |
+| `get_widget_for_datatype(datatype)` | Get widget for a datatype |
+| `register_list_datatype(datatype)` | Register a datatype as list-valued |
+
+### Prebuild Import/Export
+
+| Function | Description |
+|----------|-------------|
+| `import_prebuild(prebuild_dir, base_uri)` | Load graphs, collections, and resources from a prebuild/pkg directory |
+| `export_prebuild(...)` | Export graphs, collections, and business data to a directory |
+
+### Ontology Validation
+
+| Class | Description |
+|-------|-------------|
+| `OntologyValidator` | Validate graph nodes against an ontology |
 
 ## Further Reading
 

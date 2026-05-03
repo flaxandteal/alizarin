@@ -46,8 +46,8 @@ for (const person of people) {
 
 | Class | Description |
 |-------|-------------|
-| `GraphManager` | Central registry for graphs, resources and client |
-| `ResourceModelWrapper` | ORM wrapper: `.all()`, `.get()`, `.create()` |
+| `GraphManager` | Central registry for graphs, resources and client. Use `.get()` / `.loadGraph()` to obtain a `ResourceModelWrapper`. |
+| `ResourceModelWrapper` | ORM wrapper: `.all()` to query resources |
 | `ResourceInstanceViewModel` | Proxy-based property access on resource instances |
 | `GraphMutator` | Fluent API for programmatic graph schema changes |
 
@@ -59,7 +59,7 @@ for (const person of people) {
 | `NumberViewModel` | `number` |
 | `DateViewModel` | `date` |
 | `ConceptValueViewModel` | `concept`, `concept-list` |
-| `GeojsonFeatureCollectionViewModel` | `geojson-feature-collection` |
+| `GeoJSONViewModel` | `geojson-feature-collection` |
 | `ResourceInstanceListViewModel` | `resource-instance-list` |
 | `SemanticViewModel` | Nested nodegroup structures |
 | `BooleanViewModel` | `boolean` |

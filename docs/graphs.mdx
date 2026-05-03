@@ -8,10 +8,7 @@ description: Modifying graphs on-the-fly
 ```typescript
 import { GraphMutator } from 'alizarin';
 
-// Load existing graph
-const graph = await client.getGraph('Person');
-
-// Create mutator
+// Create mutator from a loaded graph
 const mutator = new GraphMutator(graph);
 
 // Add a new string node

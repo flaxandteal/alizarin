@@ -7,13 +7,17 @@ The NAPI binding provides a native Node.js addon built with `napi-rs`. It serves
 
 ## Installation
 
-Platform-specific binaries are available from [GitHub Releases](https://github.com/flaxandteal/alizarin/releases). The NAPI addon is not published to npm — download the `.node` file for your platform.
+```bash
+npm install @alizarin/napi
+```
 
-Supported platforms:
+Pre-built binaries are included for:
 - Linux x64
 - macOS ARM64 (Apple Silicon)
 - macOS x64
 - Windows x64
+
+Pre-built binaries are also available from [GitHub Releases](https://github.com/flaxandteal/alizarin/releases).
 
 ## Using as a JS/TS Backend
 
@@ -23,7 +27,7 @@ The NAPI backend is used through the same JS/TS ORM API. Switch backends with:
 import { setBackend, setNapiModule } from 'alizarin';
 
 // Load the native addon
-const napi = require('./alizarin.linux-x64-gnu.node');
+const napi = require('@alizarin/napi');
 setNapiModule(napi);
 setBackend('napi');
 
@@ -40,17 +44,17 @@ The NAPI module also exposes lower-level classes for direct use without the ORM 
 
 | Class | Description |
 |-------|-------------|
-| `NapiPrebuildLoader` | Load graphs and resources from a prebuild directory |
 | `NapiStaticGraph` | Parse and register graph definitions |
 | `NapiStaticResourceRegistry` | Index and query resources with native performance |
+| `NapiPrebuildExporter` | Export graphs and resources to a prebuild directory |
+| `NapiRdmCache` | Reference data concept cache |
 
-### NapiPrebuildLoader
+### NapiStaticGraph
 
 ```javascript
-const loader = new NapiPrebuildLoader('/path/to/prebuild');
-const graphs = loader.loadAllGraphs();
-const resources = loader.loadFullResourcesFromFile('path.json', graphId);
-console.log(loader.getInfo());
+const graph = NapiStaticGraph.fromJsonString(graphJsonString);
+console.log(graph.graphId, graph.name);
+graph.register(); // register in global registry
 ```
 
 ### NapiStaticResourceRegistry
@@ -59,26 +63,48 @@ console.log(loader.getInfo());
 const registry = new NapiStaticResourceRegistry();
 registry.mergeFromResourcesJson(resourcesJson, true);
 
+// Or load from business data bytes (Buffer)
+const refs = registry.loadFromBusinessDataBytes(buffer, true);
+
 // Build indexes for fast lookups
 const index = registry.getValueToResourcesIndex(graph, nodeId, true);
 const filtered = registry.getFilteredTileValues(
   graph, filterNodeId, filterValues, extractNodeId, true, null
 );
+
+// Direct access
+const resource = registry.getFull(resourceId);
+const summary = registry.getSummary(resourceId);
+console.log(registry.length);
+```
+
+### Prebuild Import/Export
+
+```javascript
+// Import all graphs, collections, and resources from a prebuild directory
+const result = importPrebuild('/path/to/prebuild', 'http://localhost:8000/');
+
+// Export graphs to a directory
+const exporter = new NapiPrebuildExporter();
+exporter.exportAllGraphs('/path/to/output');
 ```
 
 ### Module Functions
 
 | Function | Description |
 |----------|-------------|
-| `buildGraphFromCsvs()` | Build graph definition from CSV strings |
-| `buildBusinessDataFromCsv()` | Build resource instances from CSV data |
+| `buildGraphFromCsvs(graphCsv, nodesCsv, collectionsCsv, rdmNamespace)` | Build graph definition from CSV strings |
+| `buildBusinessDataFromCsv(csvData, graphJson, collectionsJson)` | Build resource instances from CSV data |
+| `importPrebuild(prebuildDir, baseUri)` | Load graphs and resources from a prebuild directory |
+| `extensionCoerce(datatype, value, config)` | Call extension coercion |
+| `extensionRenderDisplay(datatype, tileData, language)` | Call extension display renderer |
 
 ## When to Use NAPI vs WASM
 
 | | WASM | NAPI |
 |-|------|------|
 | **Runtime** | Browser + Node.js | Node.js only |
-| **Install** | `npm install` (bundled) | Platform binary |
+| **Install** | `npm install alizarin` (bundled) | `npm install @alizarin/napi` |
 | **Performance** | Good | Better (native) |
 | **Memory** | Limited by WASM linear memory | Full system memory |
 | **Dataset size** | Small to medium | Any size |
