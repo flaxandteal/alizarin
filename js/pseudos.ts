@@ -2,6 +2,7 @@ import { StaticTile, StaticNode } from "./static-types";
 import { ISemantic, IViewModel, IPseudo, IRIVM } from "./interfaces";
 import { getViewModel } from "./viewModels";
 import { AttrPromise } from "./utils";
+import { createStaticTile } from "./backend";
 import { PseudoNode, WasmPseudoValue, WasmPseudoList } from '../pkg/alizarin';
 
 class PseudoUnavailable implements IPseudo {
@@ -328,7 +329,7 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     if (!this._wasm.tile) {
       const nodegroupId = snapshot.nodegroupId || "";
       const sortorder = snapshot.sortorder;
-      this._wasm.tile = new StaticTile({
+      this._wasm.tile = createStaticTile({
         nodegroup_id: nodegroupId,
         tileid: null,
         data: new Map<string, any>(),

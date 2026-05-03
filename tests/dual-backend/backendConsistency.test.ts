@@ -22,6 +22,8 @@ import {
   getBackend,
   createInstanceWrapperForModel,
   createResourceRegistry,
+  createStaticGraphMeta,
+  parseStaticGraph,
 } from '../../js/backend';
 import { IWKRM } from '../../js/interfaces';
 import { staticStore } from '../../js/staticStore';
@@ -32,10 +34,10 @@ import * as GroupResourceJSON from "../definitions/resources/_07883c9e-b25c-11e9
 // Helpers
 // ---------------------------------------------------------------------------
 
-function createTestWKRM(graph: StaticGraph): IWKRM {
-  const meta = new StaticGraphMeta({
-    graphid: graph.graphid,
-    name: graph.name || "Test Graph",
+function createTestWKRM(graphData: any): IWKRM {
+  const meta = createStaticGraphMeta({
+    graphid: graphData.graphid,
+    name: graphData.name || "Test Graph",
     slug: "test_graph",
     relatable_resource_model_ids: [],
     resource_2_resource_constraints: [],
@@ -53,14 +55,14 @@ let modelWrapper: ResourceModelWrapper<any>;
 let pseudoList: any;       // from getValuesAtPath
 let pseudoValue: any;      // first value in the list
 let resource: any;
-let graph: StaticGraph;
+let graph: any;
 
 describe(`Backend consistency [${getBackend()}]`, () => {
 
   beforeAll(() => {
-    // Load graph model
-    const graphData = (GroupJSON as any)["graph"][0];
-    graph = new StaticGraph(graphData);
+    // Load graph model — use backend-aware factory (no WASM constructor)
+    const graphJson = JSON.stringify(GroupJSON);
+    graph = parseStaticGraph(graphJson);
 
     // Create model wrapper (this also registers the graph for NAPI)
     const wkrm = createTestWKRM(graph);

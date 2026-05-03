@@ -50,7 +50,7 @@ export function getBackend(): BackendType {
 /**
  * Try to load the NAPI module. Returns null if unavailable.
  */
-function getNapiModule(): any {
+export function getNapiModule(): any {
   if (_napiModule) return _napiModule;
   // Check globalThis in case setNapiModule was called from another module instance
   if ((globalThis as any).__alizarin_napi) {
@@ -312,16 +312,95 @@ export function getWKRMClass(): any {
 // ============================================================================
 
 /**
- * Create a StaticGraphMeta instance.
- * In WASM mode wraps data in the Rust-backed class; in NAPI mode returns the
- * plain object (it's just a data bag — NAPI handles Rust access via its own bindings).
+ * Generic factory: create a WASM type instance, or return plain object in NAPI mode.
+ *
+ * ALL WASM types (StaticGraph, StaticNode, StaticTile, etc.) are serde wrappers
+ * that take a JS object, deserialize into Rust, and provide getters. In NAPI mode,
+ * we just use plain objects — NAPI stringifies them when it needs them in Rust.
  */
-export function createStaticGraphMeta(data: any): any {
+export function createWasmType(className: string, data: any): any {
   if (_backend === 'napi') {
     return data;
   }
-  const { StaticGraphMeta } = getWasmModule();
-  return new StaticGraphMeta(data);
+  const Cls = getWasmModule()[className];
+  if (!Cls) throw new Error(`Unknown WASM type: ${className}`);
+  return new Cls(data);
+}
+
+// Convenience wrappers for commonly-used types:
+
+export function createStaticGraphMeta(data: any): any {
+  return createWasmType('StaticGraphMeta', data);
+}
+
+export function createStaticGraph(data: any): any {
+  if (_backend === 'napi') {
+    // Add mutation methods that mirror the WASM StaticGraph API
+    const graph = { ...data };
+    graph.nodes = graph.nodes ? [...graph.nodes] : [];
+    graph.edges = graph.edges ? [...graph.edges] : [];
+    graph.nodegroups = graph.nodegroups ? [...graph.nodegroups] : [];
+    graph.cards = graph.cards ? [...(graph.cards || [])] : [];
+    graph.cards_x_nodes_x_widgets = graph.cards_x_nodes_x_widgets ? [...graph.cards_x_nodes_x_widgets] : [];
+    graph.pushNode = function(node: any) { this.nodes.push(node); };
+    graph.pushEdge = function(edge: any) { this.edges.push(edge); };
+    graph.pushNodegroup = function(ng: any) { this.nodegroups.push(ng); };
+    graph.pushCard = function(card: any) { this.cards.push(card); };
+    graph.pushCardXNodeXWidget = function(cxnxw: any) { this.cards_x_nodes_x_widgets.push(cxnxw); };
+    graph.copy = function() { return createStaticGraph(this); };
+    return graph;
+  }
+  const Cls = getWasmModule()['StaticGraph'];
+  if (!Cls) throw new Error('Unknown WASM type: StaticGraph');
+  return new Cls(data);
+}
+
+export function createStaticNode(data: any): any {
+  return createWasmType('StaticNode', data);
+}
+
+export function createStaticTile(data: any): any {
+  return createWasmType('StaticTile', data);
+}
+
+export function createStaticEdge(data: any): any {
+  return createWasmType('StaticEdge', data);
+}
+
+export function createStaticResource(data: any): any {
+  return createWasmType('StaticResource', data);
+}
+
+export function createStaticNodegroup(data: any): any {
+  return createWasmType('StaticNodegroup', data);
+}
+
+export function createStaticCard(data: any): any {
+  return createWasmType('StaticCard', data);
+}
+
+export function createStaticPublication(data: any): any {
+  return createWasmType('StaticPublication', data);
+}
+
+export function createStaticCardsXNodesXWidgets(data: any): any {
+  return createWasmType('StaticCardsXNodesXWidgets', data);
+}
+
+export function createStaticTranslatableString(data: any): any {
+  if (_backend === 'napi') {
+    // Plain object or string — mimic the interface consumers expect
+    if (typeof data === 'string') {
+      return { en: data, toString() { return data; }, toJSON() { return data; }, toStringDefault() { return data; } };
+    }
+    if (typeof data === 'object' && data !== null) {
+      const first = Object.values(data)[0] as string || '';
+      return { ...data, toString() { return (data as any)[Object.keys(data)[0]] || ''; }, toJSON() { return data; }, toStringDefault() { return first; } };
+    }
+    return { toString() { return String(data ?? ''); }, toJSON() { return data; }, toStringDefault() { return String(data ?? ''); } };
+  }
+  const { StaticTranslatableString } = getWasmModule();
+  return new StaticTranslatableString(data);
 }
 
 /**
@@ -354,18 +433,6 @@ export function parseStaticResources(jsonText: string): any[] {
   }
   const { StaticResource } = getWasmModule();
   return StaticResource.fromBusinessDataJsonString(jsonText);
-}
-
-/**
- * Create a StaticResource from a plain object.
- * In WASM mode wraps in the Rust class; in NAPI mode returns as-is.
- */
-export function createStaticResource(data: any): any {
-  if (_backend === 'napi') {
-    return data;
-  }
-  const { StaticResource } = getWasmModule();
-  return new StaticResource(data);
 }
 
 // ============================================================================

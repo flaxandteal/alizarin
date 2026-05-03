@@ -14,16 +14,15 @@ import { assert } from 'chai';
 import {
   createStaticGraph,
   StaticGraph,
-  StaticGraphMeta,
 } from '../../js/static-types';
 import { ResourceModelWrapper, GraphMutator, createWKRM } from '../../js/graphManager';
 import { IWKRM } from '../../js/interfaces';
-import { getBackend } from '../../js/backend';
+import { getBackend, createStaticGraphMeta, createStaticGraph as createStaticGraphRaw } from '../../js/backend';
 import * as GroupJSON from "../data/models/Group.json";
 
 // Helper: create a WKRM for a graph (backend-agnostic)
 function createTestWKRM(graph: StaticGraph): IWKRM {
-  const meta = new StaticGraphMeta({
+  const meta = createStaticGraphMeta({
     graphid: graph.graphid,
     name: graph.name || "Test Graph",
     slug: "test_graph",
@@ -360,7 +359,7 @@ describe(`ResourceModelWrapper [${getBackend()} backend]`, () => {
 
   test("Group model > should build and query nodes correctly", () => {
     const groupModel = (GroupJSON as any)["graph"][0];
-    const graph = new StaticGraph(groupModel);
+    const graph = createStaticGraphRaw(groupModel);
     const wrapper = wrapGraph(graph);
 
     // Verify key aliases exist
@@ -375,7 +374,7 @@ describe(`ResourceModelWrapper [${getBackend()} backend]`, () => {
 
   test("Group model > should return correct child nodes for root", () => {
     const groupModel = (GroupJSON as any)["graph"][0];
-    const graph = new StaticGraph(groupModel);
+    const graph = createStaticGraphRaw(groupModel);
     const wrapper = wrapGraph(graph);
 
     const root = wrapper.getRootNode();
@@ -466,7 +465,7 @@ describe(`ResourceModelWrapper [${getBackend()} backend]`, () => {
   // =========================================================================
 
   test("createWKRM > should create WKRM with correct properties", () => {
-    const meta = new StaticGraphMeta({
+    const meta = createStaticGraphMeta({
       graphid: "test-graph-123",
       name: "Test Graph",
       slug: "test_graph",
@@ -483,7 +482,7 @@ describe(`ResourceModelWrapper [${getBackend()} backend]`, () => {
   });
 
   test("createWKRM > should convert slug with underscores to PascalCase", () => {
-    const meta = new StaticGraphMeta({
+    const meta = createStaticGraphMeta({
       graphid: "test-graph-123",
       name: "Test Graph",
       slug: "historical_event",

@@ -1,7 +1,7 @@
 import { ArchesClient, ArchesClientRemote } from './client';
 import { staticStore } from './staticStore';
 import { CardComponent, Widget } from './cards';
-import { StaticTranslatableString, StaticCollection, StaticConstraint, StaticEdge, StaticTile, StaticGraph, StaticNode, StaticNodegroup, StaticResource, StaticResourceSummary } from "./static-types";
+import { StaticTranslatableString, StaticCollection, StaticConstraint, StaticTile, StaticGraph, StaticNode, StaticNodegroup, StaticResource, StaticResourceSummary } from "./static-types";
 import { PseudoValue, PseudoUnavailable } from "./pseudos.ts";
 import { SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, IWKRM, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
@@ -87,7 +87,7 @@ declare class GraphMutator {
         autocreateCard?: boolean;
     });
     _generateUuidv5(key: string): string;
-    _generateEdge(fromNode: string, toNode: string, ontologyProperty: string, name?: string, description?: string): StaticEdge;
+    _generateEdge(fromNode: string, toNode: string, ontologyProperty: string, name?: string, description?: string): any;
     addSemanticNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options?: {
         exportable?: boolean;
         fieldname?: string;

@@ -3,6 +3,12 @@ import { generateUuidv5 } from './utils';
 import { getCurrentLanguage, slugify } from './utils';
 import { getGlobalWasmRdmCache } from './_wasm';
 import {
+  createStaticGraph as _createStaticGraph,
+  createStaticNode,
+  createStaticTranslatableString,
+  createStaticPublication,
+} from './backend';
+import {
   StaticGraphMeta,
   StaticNode,
   StaticTranslatableString,
@@ -53,16 +59,15 @@ function createStaticGraph(props: {
     version?: string
   }, published: boolean=true): StaticGraph {
     const graphid = props.graphid || uuidv4();
-    const publication = published ? new StaticPublication({
+    const publication = published ? createStaticPublication({
       graph_id: graphid,
       notes: null,
       publicationid: uuidv4(),
       published_time: (new Date()).toISOString()
     }) : null;
-    // TODO: check name is not just string in upstream
     // Convert name to plain JS object for Rust deserialization
     let nameForRust;
-    if (props.name instanceof StaticTranslatableString) {
+    if (props.name && typeof props.name === 'object' && 'toJSON' in props.name) {
       nameForRust = props.name.toJSON();
     } else if (typeof props.name === 'string') {
       nameForRust = props.name;
@@ -70,7 +75,7 @@ function createStaticGraph(props: {
       throw Error(`Name of graph must be string or StaticTranslatableString, not ${props.name}`);
     }
     const alias = slugify(typeof nameForRust === 'string' ? nameForRust : JSON.stringify(nameForRust));
-    const root = new StaticNode({
+    const root = createStaticNode({
       "alias": alias,
       "config": {},
       "datatype": "semantic",
@@ -94,7 +99,7 @@ function createStaticGraph(props: {
 
     let subtitleForRust;
     if (props.subtitle) {
-      if (props.subtitle instanceof StaticTranslatableString) {
+      if (props.subtitle && typeof props.subtitle === 'object' && 'toJSON' in props.subtitle) {
         subtitleForRust = props.subtitle.toJSON();
       } else {
         subtitleForRust = props.subtitle;
@@ -103,7 +108,16 @@ function createStaticGraph(props: {
       subtitleForRust = '';
     }
 
-    return new StaticGraph({
+    const descriptionValue = props.description
+      ? (typeof props.description === 'object' && 'toJSON' in props.description
+          ? props.description
+          : createStaticTranslatableString(props.description))
+      : createStaticTranslatableString('');
+
+    // Use copy() if available (WASM), otherwise spread (NAPI plain object)
+    const rootCopy = typeof root.copy === 'function' ? root.copy() : { ...root };
+
+    return _createStaticGraph({
       author: props.author || '',
       cards: null,
       cards_x_nodes_x_widgets: null,
@@ -111,10 +125,7 @@ function createStaticGraph(props: {
       config: props.config || {},
       deploymentdate: props.deploymentdate || null,
       deploymentfile: props.deploymentfile || null,
-      description: props.description ? (
-        props.description instanceof StaticTranslatableString ?
-        props.description : new StaticTranslatableString(props.description)
-      ) : new StaticTranslatableString(''),
+      description: descriptionValue,
       edges: [],
       functions_x_graphs: [],
       graphid: graphid,
@@ -124,7 +135,7 @@ function createStaticGraph(props: {
       jsonldcontext: props.jsonldcontext || null,
       name: nameForRust,
       nodegroups: [],
-      nodes: root ? [root.copy()] : [],
+      nodes: root ? [rootCopy] : [],
       ontology_id: props.ontology_id || null,
       publication: publication,
       relatable_resource_model_ids: props.relatable_resource_model_ids || [],

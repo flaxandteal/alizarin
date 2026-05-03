@@ -5,9 +5,6 @@ import {
   StaticTranslatableString,
   StaticCollection,
   StaticConstraint,
-  StaticCard,
-  StaticEdge,
-  StaticCardsXNodesXWidgets,
   StaticTile,
   StaticGraph,
   StaticNode,
@@ -17,7 +14,20 @@ import {
   StaticGraphMeta
 } from "./static-types";
 import { PseudoValue, PseudoUnavailable, wrapRustPseudo } from "./pseudos.ts";
-import { createInstanceWrapperForResource, createInstanceWrapperForModel, createResourceModelWrapper, createWKRM, createStaticGraphMeta, getBackend } from "./backend";
+import {
+  createInstanceWrapperForResource,
+  createInstanceWrapperForModel,
+  createResourceModelWrapper,
+  createWKRM,
+  createStaticGraphMeta,
+  createStaticNode,
+  createStaticEdge,
+  createStaticCard,
+  createStaticNodegroup,
+  createStaticTranslatableString,
+  createStaticCardsXNodesXWidgets,
+  getBackend,
+} from "./backend";
 import { ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, IModelWrapperBackend, IWKRM, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
 import { nodeConfigManager } from "./nodeConfig.ts";
@@ -520,7 +530,7 @@ class GraphMutator {
 
   _generateEdge(fromNode: string, toNode: string, ontologyProperty: string, name?: string, description?: string) {
     const edgeId = this._generateUuidv5(`node-${fromNode}-${toNode}`);
-    return new StaticEdge({
+    return createStaticEdge({
       description: description || null,
       domainnode_id: fromNode,
       edgeid: edgeId,
@@ -598,19 +608,19 @@ class GraphMutator {
     visible?: boolean
   } = {}, config?: {[key: string]: any}) {
     const nodegroupId = typeof nodegroup === 'string' ? nodegroup : nodegroup.nodegroupid;
-    const cardName = name instanceof StaticTranslatableString ? name : new StaticTranslatableString(name);
+    const cardName = (typeof name === 'object' && name !== null && 'toJSON' in name) ? name : createStaticTranslatableString(name);
     const cardComponent = component || DEFAULT_CARD_COMPONENT;
     const helptext = options?.helptext && (
-      options.helptext instanceof StaticTranslatableString ?
-        options.helptext : new StaticTranslatableString(options.helptext)
+      (typeof options.helptext === 'object' && options.helptext !== null && 'toJSON' in options.helptext) ?
+        options.helptext : createStaticTranslatableString(options.helptext)
     );
     const helptitle = (options?.helptitle && (
-      options.helptitle instanceof StaticTranslatableString ?
-        options.helptitle : new StaticTranslatableString(options.helptitle)
+      (typeof options.helptitle === 'object' && options.helptitle !== null && 'toJSON' in options.helptitle) ?
+        options.helptitle : createStaticTranslatableString(options.helptitle)
     ));
     const instructions = (options?.instructions && (
-      options.instructions instanceof StaticTranslatableString ?
-        options.instructions : new StaticTranslatableString(options.instructions)
+      (typeof options.instructions === 'object' && options.instructions !== null && 'toJSON' in options.instructions) ?
+        options.instructions : createStaticTranslatableString(options.instructions)
     ));
     this.mutations.push((graph: StaticGraph) => {
       const cards = graph.cards || [];
@@ -618,7 +628,7 @@ class GraphMutator {
         throw Error(`This nodegroup, ${nodegroupId}, already has a card`);
       }
       const cardId = this._generateUuidv5(`card-ng-${nodegroupId}`);
-      const card = new StaticCard({
+      const card = createStaticCard({
         active: options.active === undefined ? true : options.active,
         cardid: cardId,
         component_id: cardComponent.id,
@@ -628,9 +638,9 @@ class GraphMutator {
         description: options.description || null,
         graph_id: graph.graphid,
         helpenabled: !!(options.helpenabled || (options.helpenabled === undefined && (helptext || helptitle))),
-        helptext: helptext || new StaticTranslatableString(''),
-        helptitle: helptitle || new StaticTranslatableString(''),
-        instructions: instructions || new StaticTranslatableString(''),
+        helptext: helptext || createStaticTranslatableString(''),
+        helptitle: helptitle || createStaticTranslatableString(''),
+        instructions: instructions || createStaticTranslatableString(''),
         is_editable: options.is_editable === undefined ? true : options.is_editable,
         name: cardName,
         nodegroup_id: nodegroupId,
@@ -672,7 +682,7 @@ class GraphMutator {
       if (!prnt) {
         throw Error(`Missing parent for nodegroup: ${parentAlias}`);
       }
-      const nodegroup = new StaticNodegroup({
+      const nodegroup = createStaticNodegroup({
         cardinality: cardinality,
         legacygroupid: null,
         nodegroupid: nodegroupId,
@@ -721,7 +731,7 @@ class GraphMutator {
     };
     if (cardinality === 'n' || parentAlias === null) {
       node.nodegroup_id = nodeId;
-      this._addNodegroup(parentAlias, node.nodegroup_id, cardinality, new StaticTranslatableString(name));
+      this._addNodegroup(parentAlias, node.nodegroup_id, cardinality, createStaticTranslatableString(name));
     }
     this.mutations.push((graph: StaticGraph) => {
       const prnt = parentAlias === null ? graph.root : graph.nodes.find(node => node.alias === parentAlias);
@@ -730,7 +740,7 @@ class GraphMutator {
       }
       // FIXME: we assume we are not adding a root node, but nowhere do we say this.
       node.nodegroup_id = node.nodegroup_id !== '' ? node.nodegroup_id : prnt.nodegroup_id || '';
-      const newNode = new StaticNode(node);
+      const newNode = createStaticNode(node);
       graph.pushNode(newNode);
       const edge = this._generateEdge(prnt.nodeid, nodeId, parentProperty);
       graph.pushEdge(edge);
@@ -776,11 +786,11 @@ class GraphMutator {
       if (card) {
         const cardXNodeXWidgetId = this._generateUuidv5(`cxnxw-${nodeId}-${widget.id}`);
 
-        const cardXNodeXWidget = new StaticCardsXNodesXWidgets({
+        const cardXNodeXWidget = createStaticCardsXNodesXWidgets({
           card_id: card.cardid,
           config: config,
           id: cardXNodeXWidgetId,
-          label: new StaticTranslatableString(name),
+          label: createStaticTranslatableString(name),
           node_id: nodeId,
           sortorder: options.sortorder || 0,
           visible: options.visible === undefined || options.visible,

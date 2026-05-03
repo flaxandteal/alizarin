@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-clm"
-version = "2.0.0-alpha.90"
+version = "2.0.0-alpha.91"
 edition = "2021"
 description = "CLM (Controlled List Manager) extension for Alizarin"
 

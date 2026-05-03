@@ -22,6 +22,10 @@ export declare function setWasmModule(mod: any): void;
 export declare function setBackend(backend: BackendType): void;
 export declare function getBackend(): BackendType;
 /**
+ * Try to load the NAPI module. Returns null if unavailable.
+ */
+export declare function getNapiModule(): any;
+/**
  * Register a pre-loaded NAPI module (for when require() path resolution
  * doesn't work, e.g., in bundled environments).
  */
@@ -83,11 +87,24 @@ export declare function createWKRM(meta: any): any;
  */
 export declare function getWKRMClass(): any;
 /**
- * Create a StaticGraphMeta instance.
- * In WASM mode wraps data in the Rust-backed class; in NAPI mode returns the
- * plain object (it's just a data bag — NAPI handles Rust access via its own bindings).
+ * Generic factory: create a WASM type instance, or return plain object in NAPI mode.
+ *
+ * ALL WASM types (StaticGraph, StaticNode, StaticTile, etc.) are serde wrappers
+ * that take a JS object, deserialize into Rust, and provide getters. In NAPI mode,
+ * we just use plain objects — NAPI stringifies them when it needs them in Rust.
  */
+export declare function createWasmType(className: string, data: any): any;
 export declare function createStaticGraphMeta(data: any): any;
+export declare function createStaticGraph(data: any): any;
+export declare function createStaticNode(data: any): any;
+export declare function createStaticTile(data: any): any;
+export declare function createStaticEdge(data: any): any;
+export declare function createStaticResource(data: any): any;
+export declare function createStaticNodegroup(data: any): any;
+export declare function createStaticCard(data: any): any;
+export declare function createStaticPublication(data: any): any;
+export declare function createStaticCardsXNodesXWidgets(data: any): any;
+export declare function createStaticTranslatableString(data: any): any;
 /**
  * Parse a JSON string into a StaticGraph.
  * In WASM mode uses the Rust parser; in NAPI mode just JSON.parse (NAPI
@@ -99,11 +116,6 @@ export declare function parseStaticGraph(jsonText: string): any;
  * In WASM mode uses the Rust bulk parser; in NAPI mode JSON.parse.
  */
 export declare function parseStaticResources(jsonText: string): any[];
-/**
- * Create a StaticResource from a plain object.
- * In WASM mode wraps in the Rust class; in NAPI mode returns as-is.
- */
-export declare function createStaticResource(data: any): any;
 /**
  * Auto-detect the best backend for the current environment.
  * Prefers NAPI in Node.js when available, falls back to WASM.

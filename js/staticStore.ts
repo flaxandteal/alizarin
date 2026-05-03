@@ -6,7 +6,7 @@ import {
   StaticResourceRegistry,
   StaticTile,
 } from "./static-types";
-import { createResourceRegistry } from "./backend";
+import { createResourceRegistry, createStaticResource } from "./backend";
 
 /**
  * StaticStore - Thin wrapper around StaticResourceRegistry with optional archesClient fallback
@@ -112,7 +112,7 @@ class StaticStore {
 
         // If not already in registry (remote clients), merge first
         if (!this.registry.hasFull(id)) {
-          const wrapped = resource instanceof StaticResource ? resource : new StaticResource(resource);
+          const wrapped = resource instanceof StaticResource ? resource : createStaticResource(resource);
           this.registry.mergeFromResources([wrapped], true, true);
         }
 
