@@ -230,8 +230,51 @@ export async function initWasm() {
 // Re-export WASM types for use in the rest of the codebase
 export { WasmStaticNode, WasmStaticGraphMeta, WasmRdmCache };
 
-// Re-export SKOS parsing and serialization functions
-export { parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml };
+// Backend-aware SKOS parsing and serialization re-exports
+import { getBackend, getNapiModule } from "./backend";
+
+function _parseSkosXml(xmlContent: string, baseUri?: string): any {
+  if (getBackend() === 'napi') {
+    const napi = getNapiModule();
+    if (napi?.parseSkosXml) return napi.parseSkosXml(xmlContent, baseUri || "http://localhost/");
+    throw new Error("parseSkosXml not available in NAPI binary");
+  }
+  return parseSkosXml(xmlContent, baseUri || "http://localhost/");
+}
+
+function _parseSkosXmlToCollection(xmlContent: string, baseUri?: string): any {
+  if (getBackend() === 'napi') {
+    const napi = getNapiModule();
+    if (napi?.parseSkosXmlToCollection) return napi.parseSkosXmlToCollection(xmlContent, baseUri || "http://localhost/");
+    throw new Error("parseSkosXmlToCollection not available in NAPI binary");
+  }
+  return parseSkosXmlToCollection(xmlContent, baseUri || "http://localhost/");
+}
+
+function _collectionToSkosXml(collection: any): string {
+  if (getBackend() === 'napi') {
+    const napi = getNapiModule();
+    if (napi?.collectionToSkosXml) return napi.collectionToSkosXml(collection);
+    throw new Error("collectionToSkosXml not available in NAPI binary");
+  }
+  return collectionToSkosXml(collection);
+}
+
+function _collectionsToSkosXml(collections: any[]): string {
+  if (getBackend() === 'napi') {
+    const napi = getNapiModule();
+    if (napi?.collectionsToSkosXml) return napi.collectionsToSkosXml(collections);
+    throw new Error("collectionsToSkosXml not available in NAPI binary");
+  }
+  return collectionsToSkosXml(collections);
+}
+
+export {
+  _parseSkosXml as parseSkosXml,
+  _parseSkosXmlToCollection as parseSkosXmlToCollection,
+  _collectionToSkosXml as collectionToSkosXml,
+  _collectionsToSkosXml as collectionsToSkosXml,
+};
 
 // Re-export extension registry function (delegates to backend).
 export { registerExtensionHandler } from "./backend";

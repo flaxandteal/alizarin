@@ -4,7 +4,7 @@
 /// the TypeScript ViewModel layer (ResourceInstanceWrapper / PseudoValue / PseudoList)
 /// can work with either backend.
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
@@ -115,6 +115,181 @@ impl NapiNodeConfigManager {
     pub fn build_from_graph(&mut self, graph: &crate::NapiStaticGraph) -> Result<()> {
         self.inner.build_from_graph(graph.inner_ref());
         Ok(())
+    }
+}
+
+// =============================================================================
+// NapiTileData — Map-like interface over HashMap<String, Value>
+// =============================================================================
+
+#[napi]
+pub struct NapiTileData {
+    entries: Arc<Mutex<HashMap<String, serde_json::Value>>>,
+}
+
+#[napi]
+impl NapiTileData {
+    #[napi]
+    pub fn has(&self, key: String) -> bool {
+        self.entries.lock().unwrap().contains_key(&key)
+    }
+
+    #[napi]
+    pub fn get(&self, key: String) -> serde_json::Value {
+        self.entries
+            .lock()
+            .unwrap()
+            .get(&key)
+            .cloned()
+            .unwrap_or(serde_json::Value::Null)
+    }
+
+    #[napi]
+    pub fn set(&mut self, key: String, value: serde_json::Value) {
+        self.entries.lock().unwrap().insert(key, value);
+    }
+
+    #[napi]
+    pub fn delete(&mut self, key: String) -> bool {
+        self.entries.lock().unwrap().remove(&key).is_some()
+    }
+
+    #[napi]
+    pub fn keys(&self) -> Vec<String> {
+        self.entries.lock().unwrap().keys().cloned().collect()
+    }
+}
+
+// =============================================================================
+// NapiStaticTile — Rust-owned tile with Map-like .data access
+// =============================================================================
+
+#[napi]
+pub struct NapiStaticTile {
+    tileid: Option<String>,
+    nodegroup_id: String,
+    sortorder: Option<i32>,
+    resourceinstance_id: String,
+    parenttile_id: Option<String>,
+    provisionaledits: Option<Vec<serde_json::Value>>,
+    data_store: Arc<Mutex<HashMap<String, serde_json::Value>>>,
+}
+
+#[napi]
+impl NapiStaticTile {
+    #[napi(constructor)]
+    pub fn new(
+        nodegroup_id: String,
+        tileid: Option<String>,
+        sortorder: Option<i32>,
+        resourceinstance_id: Option<String>,
+        parenttile_id: Option<String>,
+    ) -> Self {
+        NapiStaticTile {
+            tileid,
+            nodegroup_id,
+            sortorder,
+            resourceinstance_id: resourceinstance_id.unwrap_or_default(),
+            parenttile_id,
+            provisionaledits: None,
+            data_store: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    #[napi(getter)]
+    pub fn data(&self) -> NapiTileData {
+        NapiTileData {
+            entries: self.data_store.clone(),
+        }
+    }
+
+    /// Setter is a no-op — data is always accessed via the NapiTileData getter.
+    /// Exists to prevent TypeError in strict mode when JS does
+    /// `tile.data = tile.data || new Map()`.
+    #[napi(setter)]
+    pub fn set_data(&mut self, _value: serde_json::Value) {
+        // No-op: mutations go through NapiTileData.set/delete
+    }
+
+    #[napi(getter)]
+    pub fn tileid(&self) -> Option<String> {
+        self.tileid.clone()
+    }
+
+    #[napi(setter)]
+    pub fn set_tileid(&mut self, value: Option<String>) {
+        self.tileid = value;
+    }
+
+    #[napi(getter)]
+    pub fn nodegroup_id(&self) -> String {
+        self.nodegroup_id.clone()
+    }
+
+    #[napi(getter)]
+    pub fn sortorder(&self) -> Option<i32> {
+        self.sortorder
+    }
+
+    #[napi(getter)]
+    pub fn resourceinstance_id(&self) -> String {
+        self.resourceinstance_id.clone()
+    }
+
+    #[napi(getter)]
+    pub fn parenttile_id(&self) -> Option<String> {
+        self.parenttile_id.clone()
+    }
+
+    #[napi(setter)]
+    pub fn set_parenttile_id(&mut self, value: Option<String>) {
+        self.parenttile_id = value;
+    }
+
+    #[napi(getter)]
+    pub fn provisionaledits(&self) -> serde_json::Value {
+        match &self.provisionaledits {
+            Some(edits) => serde_json::to_value(edits).unwrap_or(serde_json::Value::Null),
+            None => serde_json::Value::Null,
+        }
+    }
+
+    /// Generate a tile ID if not already set.
+    #[napi(js_name = "ensureId")]
+    pub fn ensure_id(&mut self) -> String {
+        if self.tileid.is_none() {
+            self.tileid = Some(uuid::Uuid::new_v4().to_string());
+        }
+        self.tileid.clone().unwrap()
+    }
+}
+
+impl NapiStaticTile {
+    /// Convert to core StaticTile for storage in PseudoValueCore.
+    pub(crate) fn to_static_tile(&self) -> StaticTile {
+        let data = self.data_store.lock().unwrap().clone();
+        StaticTile {
+            tileid: self.tileid.clone(),
+            nodegroup_id: self.nodegroup_id.clone(),
+            sortorder: self.sortorder,
+            resourceinstance_id: self.resourceinstance_id.clone(),
+            parenttile_id: self.parenttile_id.clone(),
+            provisionaledits: self.provisionaledits.clone(),
+            data,
+        }
+    }
+
+    /// Create from a core StaticTile.
+    pub(crate) fn from_static_tile(tile: &StaticTile) -> Self {
+        NapiStaticTile {
+            tileid: tile.tileid.clone(),
+            nodegroup_id: tile.nodegroup_id.clone(),
+            sortorder: tile.sortorder,
+            resourceinstance_id: tile.resourceinstance_id.clone(),
+            parenttile_id: tile.parenttile_id.clone(),
+            provisionaledits: tile.provisionaledits.clone(),
+            data_store: Arc::new(Mutex::new(tile.data.clone())),
+        }
     }
 }
 
@@ -269,15 +444,17 @@ impl NapiPseudoValue {
     pub fn to_snapshot(&self) -> serde_json::Value {
         serde_json::json!({
             "nodeId": self.inner.node.nodeid,
+            "name": &self.inner.node.name,
             "alias": self.inner.node.alias,
             "datatype": &self.inner.node.datatype,
             "nodegroupId": self.inner.node.nodegroup_id,
+            "sortorder": self.inner.node.sortorder,
+            "isOuter": self.inner.is_outer(),
+            "isInner": self.inner.is_inner,
             "isCollector": self.inner.is_collector,
+            "accessed": false,
             "independent": self.inner.independent,
-            "exportable": self.inner.node.exportable,
-            "isrequired": self.inner.node.isrequired,
-            "issearchable": self.inner.node.issearchable,
-            "hascustomalias": self.inner.node.hascustomalias,
+            "hasTile": self.inner.tile.is_some(),
             "tileId": self.inner.tile.as_ref().and_then(|t| t.tileid.clone()),
             "tileData": &self.inner.tile_data,
             "valueLoaded": self.inner.tile.is_some(),
@@ -289,6 +466,45 @@ impl NapiPseudoValue {
     #[napi]
     pub fn clear(&mut self) {
         self.inner.tile_data = None;
+    }
+
+    // -- Tile getter/setter (NapiStaticTile, Rust-owned) --
+
+    #[napi(getter, js_name = "tile")]
+    pub fn get_tile(&self) -> Option<NapiStaticTile> {
+        self.inner
+            .tile
+            .as_ref()
+            .map(|t| NapiStaticTile::from_static_tile(t.as_ref()))
+    }
+
+    #[napi(setter, js_name = "tile")]
+    pub fn set_tile(&mut self, tile: Option<&NapiStaticTile>) {
+        match tile {
+            Some(t) => {
+                self.inner.tile = Some(Arc::new(t.to_static_tile()));
+            }
+            None => {
+                self.inner.tile = None;
+            }
+        }
+    }
+
+    // -- Inner (outer/inner pattern) --
+
+    /// Get the inner PseudoValueCore wrapped as NapiPseudoValue.
+    #[napi(getter)]
+    pub fn inner(&self) -> Option<NapiPseudoValue> {
+        self.inner
+            .inner
+            .as_ref()
+            .map(|i| NapiPseudoValue { inner: *i.clone() })
+    }
+
+    /// Returns null — value is managed JS-side via _cachedValue.
+    #[napi(getter)]
+    pub fn value(&self) -> serde_json::Value {
+        serde_json::Value::Null
     }
 }
 
@@ -530,19 +746,19 @@ impl NapiResourceInstanceWrapper {
     // Tile loading
     // =========================================================================
 
-    /// Load tiles from a JSON array.
+    /// Load tiles from a JSON string (single-pass deserialization).
     #[napi]
-    pub fn load_tiles(&mut self, tiles_js: serde_json::Value) -> Result<()> {
-        let tiles: Vec<StaticTile> = serde_json::from_value(tiles_js)
+    pub fn load_tiles(&mut self, tiles_json: String) -> Result<()> {
+        let tiles: Vec<StaticTile> = serde_json::from_str(&tiles_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid tiles JSON: {e}")))?;
         self.inner.load_tiles(tiles);
         Ok(())
     }
 
-    /// Load tiles directly from a StaticResource JSON.
+    /// Load tiles directly from a StaticResource JSON string (single-pass deserialization).
     #[napi]
-    pub fn load_tiles_from_resource(&mut self, resource_js: serde_json::Value) -> Result<()> {
-        let resource: StaticResource = serde_json::from_value(resource_js)
+    pub fn load_tiles_from_resource(&mut self, resource_json: String) -> Result<()> {
+        let resource: StaticResource = serde_json::from_str(&resource_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid resource JSON: {e}")))?;
 
         self.inner.resource_instance = Some(resource.resourceinstance.clone());

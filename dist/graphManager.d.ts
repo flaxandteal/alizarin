@@ -160,7 +160,7 @@ declare class GraphMutator {
         silentSkip?: boolean;
         visible?: boolean;
     }): GraphMutator;
-    apply(): StaticGraph;
+    apply(): import("../pkg/alizarin").StaticGraph;
 }
 /**
  * ResourceModelWrapper — graph schema access with backend delegation.

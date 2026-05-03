@@ -93,16 +93,47 @@ export function createInstanceWrapperForResource(resource: StaticResource, regis
     if (registry && typeof wrapper.loadFromRegistry === 'function') {
       const loaded = wrapper.loadFromRegistry(resourceId, registry);
       if (!loaded) {
-        // Fallback to JS round-trip if not found in registry
-        wrapper.loadTilesFromResource(resource);
+        // Fallback to JSON string pass-through
+        loadTilesFromResource(wrapper, resource);
       }
     } else {
-      wrapper.loadTilesFromResource(resource);
+      loadTilesFromResource(wrapper, resource);
     }
     return wrapper;
   }
   const { newWASMResourceInstanceWrapperForResource } = getWasmModule();
   return newWASMResourceInstanceWrapperForResource(resource);
+}
+
+/**
+ * Load tiles onto an instance wrapper from a resource object.
+ * In NAPI mode, stringifies the full resource for single-pass Rust deserialization.
+ * In WASM mode, if `resource` is a WasmStaticResource, passes it directly;
+ * otherwise falls back to loadTiles with the tiles array.
+ */
+export function loadTilesFromResource(wrapper: any, resource: any, assumeComprehensive?: boolean): void {
+  if (_backend === 'napi') {
+    wrapper.loadTilesFromResource(JSON.stringify(resource));
+  } else if (resource.constructor?.name === 'StaticResource') {
+    // WASM class instance — pass reference directly (no serialization)
+    wrapper.loadTilesFromResource(resource, assumeComprehensive);
+  } else {
+    // Plain JS object — use loadTiles with the tiles array
+    wrapper.loadTiles(resource.tiles || []);
+  }
+}
+
+/**
+ * Load tiles onto an instance wrapper from a tiles array.
+ * In NAPI mode, stringifies first for single-pass deserialization in Rust.
+ * In WASM mode, passes the JS array directly (serde_wasm_bindgen handles it).
+ */
+export function loadTiles(wrapper: any, tiles: any): void {
+  if (_backend === 'napi') {
+    wrapper.loadTiles(JSON.stringify(tiles));
+  } else {
+    wrapper.loadTiles(tiles);
+  }
 }
 
 /**
@@ -337,6 +368,16 @@ export function createStaticGraph(data: any): any {
   if (_backend === 'napi') {
     // Add mutation methods that mirror the WASM StaticGraph API
     const graph = { ...data };
+    // Wrap translatable string fields
+    if (graph.name != null && typeof graph.name !== 'function') {
+      graph.name = createStaticTranslatableString(graph.name);
+    }
+    if (graph.description != null && typeof graph.description !== 'function') {
+      graph.description = createStaticTranslatableString(graph.description);
+    }
+    if (graph.subtitle != null && typeof graph.subtitle !== 'function') {
+      graph.subtitle = createStaticTranslatableString(graph.subtitle);
+    }
     graph.nodes = graph.nodes ? [...graph.nodes] : [];
     graph.edges = graph.edges ? [...graph.edges] : [];
     graph.nodegroups = graph.nodegroups ? [...graph.nodegroups] : [];
@@ -348,6 +389,10 @@ export function createStaticGraph(data: any): any {
     graph.pushCard = function(card: any) { this.cards.push(card); };
     graph.pushCardXNodeXWidget = function(cxnxw: any) { this.cards_x_nodes_x_widgets.push(cxnxw); };
     graph.copy = function() { return createStaticGraph(this); };
+    graph.toJSON = function() {
+      const { pushNode: _pushNode, pushEdge: _pushEdge, pushNodegroup: _pushNodegroup, pushCard: _pushCard, pushCardXNodeXWidget: _pushCardXNodeXWidget, copy: _copy, toJSON: _toJSON, ...rest } = this;
+      return rest;
+    };
     return graph;
   }
   const Cls = getWasmModule()['StaticGraph'];
@@ -360,6 +405,26 @@ export function createStaticNode(data: any): any {
 }
 
 export function createStaticTile(data: any): any {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    const tile = new napi.NapiStaticTile(
+      data.nodegroup_id || "",
+      data.tileid || null,
+      data.sortorder ?? null,
+      data.resourceinstance_id || "",
+      data.parenttile_id || null,
+    );
+    // If initial data entries provided, populate them
+    if (data.data) {
+      const entries = data.data instanceof Map
+        ? data.data
+        : Object.entries(data.data || {});
+      for (const [key, value] of entries) {
+        tile.data.set(key, value);
+      }
+    }
+    return tile;
+  }
   return createWasmType('StaticTile', data);
 }
 

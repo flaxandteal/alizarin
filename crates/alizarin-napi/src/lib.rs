@@ -530,6 +530,35 @@ pub fn get_registered_extension_handlers() -> Vec<String> {
 }
 
 // ============================================================================
+// SKOS parsing
+// ============================================================================
+
+/// Parse SKOS RDF/XML and return all collections as a JSON array.
+#[napi(js_name = "parseSkosXml")]
+pub fn parse_skos_xml(xml_content: String, base_uri: String) -> Result<serde_json::Value> {
+    let collections = alizarin_core::skos::parse_skos_to_collections(&xml_content, &base_uri)
+        .map_err(napi::Error::from_reason)?;
+    serde_json::to_value(&collections).map_err(|e| napi::Error::from_reason(e.to_string()))
+}
+
+/// Parse SKOS RDF/XML and return a single collection (the first one found).
+#[napi(js_name = "parseSkosXmlToCollection")]
+pub fn parse_skos_xml_to_collection(
+    xml_content: String,
+    base_uri: String,
+) -> Result<serde_json::Value> {
+    let mut collections = alizarin_core::skos::parse_skos_to_collections(&xml_content, &base_uri)
+        .map_err(napi::Error::from_reason)?;
+    if collections.is_empty() {
+        return Err(napi::Error::from_reason(
+            "No SKOS ConceptScheme found in XML".to_string(),
+        ));
+    }
+    let collection = collections.remove(0);
+    serde_json::to_value(&collection).map_err(|e| napi::Error::from_reason(e.to_string()))
+}
+
+// ============================================================================
 // Prebuild import (high-level convenience)
 // ============================================================================
 

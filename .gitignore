@@ -37,6 +37,9 @@ __pycache__/
 # Vite temp files
 vite.config.js.timestamp-*.mjs
 
+# Benchmark results (generated)
+benchmarks/results-*.json
+
 # Debug artifacts
 debug_*.js
 

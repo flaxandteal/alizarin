@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-extension-api"
-version = "2.0.0-alpha.91"
+version = "2.0.0-alpha.93"
 edition = "2021"
 description = "C ABI types for Alizarin extensions"
 

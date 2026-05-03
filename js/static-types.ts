@@ -7,27 +7,70 @@ import {
   createStaticNode,
   createStaticTranslatableString,
   createStaticPublication,
+  createWasmType,
 } from './backend';
 import {
-  StaticGraphMeta,
-  StaticNode,
+  StaticGraphMeta as _WasmStaticGraphMeta,
+  StaticNode as _WasmStaticNode,
   StaticTranslatableString,
-  StaticNodegroup,
+  StaticNodegroup as _WasmStaticNodegroup,
   StaticConstraint,
-  StaticCard,
-  StaticCardsXNodesXWidgets,
+  StaticCard as _WasmStaticCard,
+  StaticCardsXNodesXWidgets as _WasmStaticCardsXNodesXWidgets,
   StaticFunctionsXGraphs,
   StaticPublication,
-  StaticTile,
-  StaticGraph,
-  StaticEdge,
+  StaticTile as _WasmStaticTile,
+  StaticGraph as _WasmStaticGraph,
+  StaticEdge as _WasmStaticEdge,
   StaticResourceDescriptors,
   StaticResourceMetadata,
   StaticResourceSummary,
   StaticResourceReference,
-  StaticResource,
+  StaticResource as _WasmStaticResource,
   StaticResourceRegistry,
 } from '../pkg/alizarin';
+
+// Backend-aware proxies: intercept `new` calls to route through the factory
+// in NAPI mode while preserving static methods (fromJsonString, fromSummary, etc.)
+// in WASM mode.
+function _proxyClass(WasmClass: any, factoryFn: (data: any) => any): any {
+  return new Proxy(WasmClass, {
+    construct(_target, args) {
+      return factoryFn(args[0]);
+    },
+    get(target, prop) {
+      // Static methods: in NAPI mode, some don't exist — let them pass through
+      return target[prop];
+    }
+  });
+}
+
+const StaticGraph: typeof _WasmStaticGraph = _proxyClass(_WasmStaticGraph, _createStaticGraph);
+type StaticGraph = _WasmStaticGraph;
+
+const StaticGraphMeta: typeof _WasmStaticGraphMeta = _proxyClass(_WasmStaticGraphMeta, (d: any) => createWasmType('StaticGraphMeta', d));
+type StaticGraphMeta = _WasmStaticGraphMeta;
+
+const StaticNode: typeof _WasmStaticNode = _proxyClass(_WasmStaticNode, createStaticNode);
+type StaticNode = _WasmStaticNode;
+
+const StaticEdge: typeof _WasmStaticEdge = _proxyClass(_WasmStaticEdge, (d: any) => createWasmType('StaticEdge', d));
+type StaticEdge = _WasmStaticEdge;
+
+const StaticTile: typeof _WasmStaticTile = _proxyClass(_WasmStaticTile, (d: any) => createWasmType('StaticTile', d));
+type StaticTile = _WasmStaticTile;
+
+const StaticResource: typeof _WasmStaticResource = _proxyClass(_WasmStaticResource, (d: any) => createWasmType('StaticResource', d));
+type StaticResource = _WasmStaticResource;
+
+const StaticNodegroup: typeof _WasmStaticNodegroup = _proxyClass(_WasmStaticNodegroup, (d: any) => createWasmType('StaticNodegroup', d));
+type StaticNodegroup = _WasmStaticNodegroup;
+
+const StaticCard: typeof _WasmStaticCard = _proxyClass(_WasmStaticCard, (d: any) => createWasmType('StaticCard', d));
+type StaticCard = _WasmStaticCard;
+
+const StaticCardsXNodesXWidgets: typeof _WasmStaticCardsXNodesXWidgets = _proxyClass(_WasmStaticCardsXNodesXWidgets, (d: any) => createWasmType('StaticCardsXNodesXWidgets', d));
+type StaticCardsXNodesXWidgets = _WasmStaticCardsXNodesXWidgets;
 
 interface IStaticDescriptorConfig {
   descriptor_types: {

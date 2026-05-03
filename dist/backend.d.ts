@@ -40,6 +40,19 @@ export declare function setNapiModule(mod: any): void;
  */
 export declare function createInstanceWrapperForResource(resource: StaticResource, registry?: any): any;
 /**
+ * Load tiles onto an instance wrapper from a resource object.
+ * In NAPI mode, stringifies the full resource for single-pass Rust deserialization.
+ * In WASM mode, if `resource` is a WasmStaticResource, passes it directly;
+ * otherwise falls back to loadTiles with the tiles array.
+ */
+export declare function loadTilesFromResource(wrapper: any, resource: any, assumeComprehensive?: boolean): void;
+/**
+ * Load tiles onto an instance wrapper from a tiles array.
+ * In NAPI mode, stringifies first for single-pass deserialization in Rust.
+ * In WASM mode, passes the JS array directly (serde_wasm_bindgen handles it).
+ */
+export declare function loadTiles(wrapper: any, tiles: any): void;
+/**
  * Create an instance wrapper for a model (no resource data yet).
  */
 export declare function createInstanceWrapperForModel(graphId: string): any;

@@ -1,4 +1,22 @@
-import { StaticGraphMeta, StaticNode, StaticTranslatableString, StaticNodegroup, StaticConstraint, StaticCard, StaticCardsXNodesXWidgets, StaticFunctionsXGraphs, StaticPublication, StaticTile, StaticGraph, StaticEdge, StaticResourceDescriptors, StaticResourceMetadata, StaticResourceSummary, StaticResourceReference, StaticResource, StaticResourceRegistry } from '../pkg/alizarin';
+import { StaticGraphMeta as _WasmStaticGraphMeta, StaticNode as _WasmStaticNode, StaticTranslatableString, StaticNodegroup as _WasmStaticNodegroup, StaticConstraint, StaticCard as _WasmStaticCard, StaticCardsXNodesXWidgets as _WasmStaticCardsXNodesXWidgets, StaticFunctionsXGraphs, StaticPublication, StaticTile as _WasmStaticTile, StaticGraph as _WasmStaticGraph, StaticEdge as _WasmStaticEdge, StaticResourceDescriptors, StaticResourceMetadata, StaticResourceSummary, StaticResourceReference, StaticResource as _WasmStaticResource, StaticResourceRegistry } from '../pkg/alizarin';
+declare const StaticGraph: typeof _WasmStaticGraph;
+type StaticGraph = _WasmStaticGraph;
+declare const StaticGraphMeta: typeof _WasmStaticGraphMeta;
+type StaticGraphMeta = _WasmStaticGraphMeta;
+declare const StaticNode: typeof _WasmStaticNode;
+type StaticNode = _WasmStaticNode;
+declare const StaticEdge: typeof _WasmStaticEdge;
+type StaticEdge = _WasmStaticEdge;
+declare const StaticTile: typeof _WasmStaticTile;
+type StaticTile = _WasmStaticTile;
+declare const StaticResource: typeof _WasmStaticResource;
+type StaticResource = _WasmStaticResource;
+declare const StaticNodegroup: typeof _WasmStaticNodegroup;
+type StaticNodegroup = _WasmStaticNodegroup;
+declare const StaticCard: typeof _WasmStaticCard;
+type StaticCard = _WasmStaticCard;
+declare const StaticCardsXNodesXWidgets: typeof _WasmStaticCardsXNodesXWidgets;
+type StaticCardsXNodesXWidgets = _WasmStaticCardsXNodesXWidgets;
 interface IStaticDescriptorConfig {
     descriptor_types: {
         nodegroup_id: string;

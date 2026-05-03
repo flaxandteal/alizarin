@@ -310,10 +310,12 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { NapiRdmCache, NapiNodeConfigManager, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiEnsureNodegroupResult, NapiValuesFromNodegroupResult, NapiResourceInstanceWrapper, NapiResourceModelWrapper, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, buildGraphFromCsvs, buildBusinessDataFromCsv, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, importPrebuild } = nativeBinding
+const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiEnsureNodegroupResult, NapiValuesFromNodegroupResult, NapiResourceInstanceWrapper, NapiResourceModelWrapper, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, buildGraphFromCsvs, buildBusinessDataFromCsv, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, importPrebuild } = nativeBinding
 
 module.exports.NapiRdmCache = NapiRdmCache
 module.exports.NapiNodeConfigManager = NapiNodeConfigManager
+module.exports.NapiTileData = NapiTileData
+module.exports.NapiStaticTile = NapiStaticTile
 module.exports.NapiPseudoValue = NapiPseudoValue
 module.exports.NapiPseudoList = NapiPseudoList
 module.exports.NapiPopulateResult = NapiPopulateResult
@@ -331,4 +333,6 @@ module.exports.extensionRenderDisplay = extensionRenderDisplay
 module.exports.extensionResolveMarkers = extensionResolveMarkers
 module.exports.hasExtensionHandler = hasExtensionHandler
 module.exports.getRegisteredExtensionHandlers = getRegisteredExtensionHandlers
+module.exports.parseSkosXml = parseSkosXml
+module.exports.parseSkosXmlToCollection = parseSkosXmlToCollection
 module.exports.importPrebuild = importPrebuild

@@ -40,6 +40,10 @@ export declare function extensionResolveMarkers(datatype: string, tileData: any,
 export declare function hasExtensionHandler(datatype: string): boolean
 /** List all registered extension handler datatypes. */
 export declare function getRegisteredExtensionHandlers(): Array<string>
+/** Parse SKOS RDF/XML and return all collections as a JSON array. */
+export declare function parseSkosXml(xmlContent: string, baseUri: string): any
+/** Parse SKOS RDF/XML and return a single collection (the first one found). */
+export declare function parseSkosXmlToCollection(xmlContent: string, baseUri: string): any
 /**
  * Import a prebuild/pkg directory: register graphs, load SKOS collections,
  * and load ontology configs.
@@ -65,6 +69,33 @@ export declare class NapiNodeConfigManager {
   buildFromGraphJson(graphJson: string): void
   /** Build node configs from a NapiStaticGraph. */
   buildFromGraph(graph: NapiStaticGraph): void
+}
+export declare class NapiTileData {
+  has(key: string): boolean
+  get(key: string): any
+  set(key: string, value: any): void
+  delete(key: string): boolean
+  keys(): Array<string>
+}
+export declare class NapiStaticTile {
+  constructor(nodegroupId: string, tileid?: string | undefined | null, sortorder?: number | undefined | null, resourceinstanceId?: string | undefined | null, parenttileId?: string | undefined | null)
+  get data(): NapiTileData
+  /**
+   * Setter is a no-op — data is always accessed via the NapiTileData getter.
+   * Exists to prevent TypeError in strict mode when JS does
+   * `tile.data = tile.data || new Map()`.
+   */
+  set data(value: any)
+  get tileid(): string | null
+  set tileid(value?: string | undefined | null)
+  get nodegroupId(): string
+  get sortorder(): number | null
+  get resourceinstanceId(): string
+  get parenttileId(): string | null
+  set parenttileId(value?: string | undefined | null)
+  get provisionaledits(): any
+  /** Generate a tile ID if not already set. */
+  ensureId(): string
 }
 export declare class NapiPseudoValue {
   get node(): any
@@ -96,6 +127,12 @@ export declare class NapiPseudoValue {
   toSnapshot(): any
   /** Clear tile data */
   clear(): void
+  get tile(): NapiStaticTile | null
+  set tile(tile?: NapiStaticTile | undefined | null)
+  /** Get the inner PseudoValueCore wrapped as NapiPseudoValue. */
+  get inner(): NapiPseudoValue | null
+  /** Returns null — value is managed JS-side via _cachedValue. */
+  get value(): any
 }
 export declare class NapiPseudoList {
   get nodeAlias(): string
@@ -128,10 +165,15 @@ export declare class NapiValuesFromNodegroupResult {
 export declare class NapiResourceInstanceWrapper {
   /** Create a wrapper for a given graph (must be registered). */
   constructor(graphId: string)
-  /** Load tiles from a JSON array. */
-  loadTiles(tilesJs: any): void
-  /** Load tiles directly from a StaticResource JSON. */
-  loadTilesFromResource(resourceJs: any): void
+  /** Load tiles from a JSON string (single-pass deserialization). */
+  loadTiles(tilesJson: string): void
+  /** Load tiles directly from a StaticResource JSON string (single-pass deserialization). */
+  loadTilesFromResource(resourceJson: string): void
+  /**
+   * Load tiles directly from a NapiStaticResourceRegistry by resource ID.
+   * This avoids the JS round-trip of serializing tiles to JS and back.
+   */
+  loadFromRegistry(resourceId: string, registry: NapiStaticResourceRegistry): boolean
   /** Append tiles incrementally (for lazy loading). */
   appendTiles(tilesJs: any): void
   getTileCount(): number

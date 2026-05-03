@@ -27,6 +27,7 @@ import {
   createStaticTranslatableString,
   createStaticCardsXNodesXWidgets,
   getBackend,
+  loadTilesFromResource,
 } from "./backend";
 import { ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, IModelWrapperBackend, IWKRM, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
@@ -122,7 +123,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     // Use loadTilesFromResource to avoid expensive tiles getter (which creates N WASM wrappers)
     if (!tilesLoaded && resource && resource.tilesLoaded && typeof this.wasmWrapper.loadTilesFromResource === 'function') {
       t0 = performance.now();
-      this.wasmWrapper.loadTilesFromResource(resource, assumeTilesComprehensiveForNodegroup);
+      loadTilesFromResource(this.wasmWrapper, resource, assumeTilesComprehensiveForNodegroup);
       recordWasmTiming("loadTilesFromResource", performance.now() - t0);
     }
 
@@ -138,7 +139,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     if (!this.wasmWrapper.tilesLoaded()) {
       // Use in-memory resource if available (avoids registry/disk lookup)
       if (this.resource && this.resource.tiles && this.resource.tiles.length > 0) {
-        this.wasmWrapper.loadTilesFromResource(this.resource, true);
+        loadTilesFromResource(this.wasmWrapper, this.resource, true);
         return;
       }
 
@@ -146,7 +147,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       const resourceId = this.wasmWrapper.getResourceId();
       const fullResource = await staticStore.ensureFullResource(resourceId);
       if (fullResource && fullResource.tilesLoaded) {
-        this.wasmWrapper.loadTilesFromResource(fullResource, true);
+        loadTilesFromResource(this.wasmWrapper, fullResource, true);
       }
     }
   }

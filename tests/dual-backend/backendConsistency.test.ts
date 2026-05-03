@@ -84,8 +84,8 @@ describe(`Backend consistency [${getBackend()}]`, () => {
     const resources = (GroupResourceJSON as any).business_data.resources;
     const tiles = resources[0]?.tiles || [];
     if (getBackend() === 'napi') {
-      // NAPI: loadTilesFromResource accepts plain JSON
-      wrapper.loadTilesFromResource(resources[0]);
+      // NAPI: loadTilesFromResource accepts JSON string (single-pass deserialization)
+      wrapper.loadTilesFromResource(JSON.stringify(resources[0]));
     } else {
       // WASM: loadTiles accepts plain JS tile array
       wrapper.loadTiles(tiles);

@@ -345,7 +345,7 @@ describe('NapiPseudoValue property names', () => {
 
   // Create instance wrapper and load tiles
   const instanceWrapper = new NapiResourceInstanceWrapper(resource.resourceinstance.graph_id);
-  instanceWrapper.loadTilesFromResource(resource);
+  instanceWrapper.loadTilesFromResource(JSON.stringify(resource));
 
   // Get a PseudoList and PseudoValue
   const pseudoList = instanceWrapper.getValuesAtPath('basic_info.name');
@@ -433,13 +433,13 @@ describe('NapiResourceInstanceWrapper methods', () => {
 
   it('has setTileDataForNode method', () => {
     const wrapper = new NapiResourceInstanceWrapper(graphId);
-    wrapper.loadTilesFromResource(resource);
+    wrapper.loadTilesFromResource(JSON.stringify(resource));
     assert.equal(typeof wrapper.setTileDataForNode, 'function');
   });
 
   it('setTileDataForNode mutates tile data', () => {
     const wrapper = new NapiResourceInstanceWrapper(graphId);
-    wrapper.loadTilesFromResource(resource);
+    wrapper.loadTilesFromResource(JSON.stringify(resource));
 
     const tileIds = wrapper.getAllTileIds();
     assert.ok(tileIds.length > 0, 'should have tiles');
@@ -459,13 +459,13 @@ describe('NapiResourceInstanceWrapper methods', () => {
     assert.equal(typeof wrapper.tilesLoaded, 'function');
     assert.equal(wrapper.tilesLoaded(), false);
 
-    wrapper.loadTilesFromResource(resource);
+    wrapper.loadTilesFromResource(JSON.stringify(resource));
     assert.equal(wrapper.tilesLoaded(), true);
   });
 
   it('has toJson method', () => {
     const wrapper = new NapiResourceInstanceWrapper(graphId);
-    wrapper.loadTilesFromResource(resource);
+    wrapper.loadTilesFromResource(JSON.stringify(resource));
     assert.equal(typeof wrapper.toJson, 'function');
     // toJson requires populate() first; just verify the method exists
     // and that calling it without populate gives a meaningful error
@@ -481,7 +481,7 @@ describe('NapiResourceInstanceWrapper methods', () => {
 
   it('exportTilesJson returns valid JSON array of tiles', () => {
     const wrapper = new NapiResourceInstanceWrapper(graphId);
-    wrapper.loadTilesFromResource(resource);
+    wrapper.loadTilesFromResource(JSON.stringify(resource));
 
     const json = wrapper.exportTilesJson();
     assert.equal(typeof json, 'string');
@@ -499,7 +499,7 @@ describe('NapiResourceInstanceWrapper methods', () => {
 
   it('exportTilesJson reflects setTileDataForNode mutations', () => {
     const wrapper = new NapiResourceInstanceWrapper(graphId);
-    wrapper.loadTilesFromResource(resource);
+    wrapper.loadTilesFromResource(JSON.stringify(resource));
 
     const tileIds = wrapper.getAllTileIds();
     const tileId = tileIds[0];
