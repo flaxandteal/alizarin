@@ -1,4 +1,4 @@
-import { StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, WasmRdmCache, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerExtensionHandler } from "../pkg/alizarin";
+import { StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, WasmRdmCache, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml } from "../pkg/alizarin";
 export declare function setWasmURL(url: string): void;
 /**
  * Get the global WASM RDM cache singleton.
@@ -20,4 +20,4 @@ export declare function ensureWasmRdmCache(): Promise<WasmRdmCache>;
 export declare function initWasm(): Promise<void>;
 export { WasmStaticNode, WasmStaticGraphMeta, WasmRdmCache };
 export { parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml };
-export { registerExtensionHandler };
+export { registerExtensionHandler } from "./backend";

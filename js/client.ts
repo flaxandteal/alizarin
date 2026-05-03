@@ -1,5 +1,6 @@
 import { StaticGraphMeta, StaticGraph, StaticResource, StaticResourceSummary, StaticResourceRegistry, StaticTile } from "./static-types";
 import { StaticCollection } from "./rdm";
+import { createStaticGraphMeta, parseStaticGraph, parseStaticResources, createStaticResource } from "./backend";
 
 class GraphResult {
   models: {[graphId: string]: StaticGraphMeta};
@@ -9,7 +10,7 @@ class GraphResult {
       Object.entries(jsonData.models).map(([k, v]) => {
         // Inject graphid from the key if not present in the value
         const data = { graphid: k, ...v };
-        return [k, new StaticGraphMeta(data)];
+        return [k, createStaticGraphMeta(data)];
       })
     );
   }
@@ -67,7 +68,7 @@ class ArchesClientRemote extends ArchesClient {
       `${this.archesUrl}/graphs/${graphId}?format=arches-json&gen=`,
     );
     const jsonText = await response.text();
-    return StaticGraph.fromJsonString(jsonText);
+    return parseStaticGraph(jsonText);
   }
 
   async getResource(resourceId: string): Promise<StaticResource> {
@@ -173,7 +174,7 @@ class ArchesClientRemoteStatic extends ArchesClient {
       `${this.archesUrl}/${this.graphToGraphFile(graph)}`,
     );
     const jsonText = await response.text();
-    return StaticGraph.fromJsonString(jsonText);
+    return parseStaticGraph(jsonText);
   }
 
   async getGraphByIdOnly(graphId: string): Promise<StaticGraph | null> {
@@ -181,14 +182,14 @@ class ArchesClientRemoteStatic extends ArchesClient {
       `${this.archesUrl}/${this.graphIdToGraphFile(graphId)}`,
     );
     const jsonText = await response.text();
-    return StaticGraph.fromJsonString(jsonText);
+    return parseStaticGraph(jsonText);
   }
 
   async getResource(resourceId: string): Promise<StaticResource> {
     const source = `${this.archesUrl}/${this.resourceIdToFile(resourceId)}`;
     const response = await fetch(source);
     const jsonText = await response.text();
-    const resource = StaticResource.fromJsonString(jsonText);
+    const resource = createStaticResource(JSON.parse(jsonText));
     resource.__source = source;
     return resource;
   }
@@ -226,7 +227,7 @@ class ArchesClientRemoteStatic extends ArchesClient {
       const response = await fetch(source);
       // Use bulk parsing in Rust - single JSON string copy, parses all resources at once
       const jsonText = await response.text();
-      const resourceSet: StaticResource[] = StaticResource.fromBusinessDataJsonString(jsonText);
+      const resourceSet: StaticResource[] = parseStaticResources(jsonText);
       for (const resource of resourceSet) {
         resource.__source = source;
       }
@@ -339,7 +340,7 @@ class ArchesClientLocal extends ArchesClient {
       graphFile,
       "utf8",
     );
-    return StaticGraph.fromJsonString(jsonText);
+    return parseStaticGraph(jsonText);
   }
 
   async getGraphByIdOnly(graphId: string): Promise<StaticGraph | null> {
@@ -352,7 +353,7 @@ class ArchesClientLocal extends ArchesClient {
       graphFile,
       "utf8",
     );
-    return StaticGraph.fromJsonString(jsonText);
+    return parseStaticGraph(jsonText);
   }
 
   async getResource(resourceId: string): Promise<StaticResource> {
@@ -362,11 +363,11 @@ class ArchesClientLocal extends ArchesClient {
       source,
       "utf8",
     );
-    const resource: StaticResource[] = JSON.parse(response)
+    const resource: StaticResource = JSON.parse(response)
       .business_data
       .resources
       .filter(resource => resource.resourceinstance.resourceinstanceid === resourceId)
-      .map(resource => new StaticResource(resource))[0];
+      .map(resource => createStaticResource(resource))[0];
     resource.__source = source;
     return resource;
   }

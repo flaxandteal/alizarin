@@ -1,4 +1,4 @@
-import init, { initSync, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString, WasmRdmCache, getRscvTimings, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerExtensionHandler } from "../pkg/alizarin";
+import init, { initSync, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString, WasmRdmCache, getRscvTimings, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml } from "../pkg/alizarin";
 import * as wasmPkg from "../pkg/alizarin";
 import { registerRustTimingGetter } from "./tracing";
 import { setWasmModule } from "./backend";
@@ -101,6 +101,12 @@ function applyPrototypePatches(): void {
 
 export async function initWasm() {
   if (!wasmInitialized) {
+    // Skip WASM entirely if NAPI backend is active — no need to load ~16MB binary
+    if (typeof process !== 'undefined' && process.env?.ALIZARIN_BACKEND?.toLowerCase() === 'napi') {
+      console.debug('[alizarin] Skipping WASM init (NAPI backend active)');
+      return;
+    }
+
     // Check if WASM is already available (initialized by another module instance)
     try {
       // Try to use a WASM export to see if it's already initialized
@@ -227,5 +233,5 @@ export { WasmStaticNode, WasmStaticGraphMeta, WasmRdmCache };
 // Re-export SKOS parsing and serialization functions
 export { parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml };
 
-// Re-export extension registry function
-export { registerExtensionHandler };
+// Re-export extension registry function (delegates to backend).
+export { registerExtensionHandler } from "./backend";

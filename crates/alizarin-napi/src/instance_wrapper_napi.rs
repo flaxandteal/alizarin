@@ -553,6 +553,27 @@ impl NapiResourceInstanceWrapper {
         Ok(())
     }
 
+    /// Load tiles directly from a NapiStaticResourceRegistry by resource ID.
+    /// This avoids the JS round-trip of serializing tiles to JS and back.
+    #[napi]
+    pub fn load_from_registry(
+        &mut self,
+        resource_id: String,
+        registry: &crate::NapiStaticResourceRegistry,
+    ) -> Result<bool> {
+        let resource = match registry.inner.get_full(&resource_id) {
+            Some(r) => r,
+            None => return Ok(false),
+        };
+
+        self.inner.resource_instance = Some(resource.resourceinstance.clone());
+
+        if let Some(tiles_vec) = &resource.tiles {
+            self.inner.load_tiles(tiles_vec.clone());
+        }
+        Ok(true)
+    }
+
     /// Append tiles incrementally (for lazy loading).
     #[napi]
     pub fn append_tiles(&mut self, tiles_js: serde_json::Value) -> Result<()> {

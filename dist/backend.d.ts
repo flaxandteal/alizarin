@@ -30,8 +30,11 @@ export declare function setNapiModule(mod: any): void;
  * Create an instance wrapper for a resource.
  * Returns either a WASMResourceInstanceWrapper or NapiResourceInstanceWrapper,
  * both of which share the same method interface.
+ *
+ * If registry is provided in NAPI mode, tiles are loaded directly from Rust
+ * (avoids the JS→Rust serialization round-trip for tile data).
  */
-export declare function createInstanceWrapperForResource(resource: StaticResource): any;
+export declare function createInstanceWrapperForResource(resource: StaticResource, registry?: any): any;
 /**
  * Create an instance wrapper for a model (no resource data yet).
  */
@@ -50,6 +53,18 @@ export declare function getRdmCache(): any;
  */
 export declare function getNodeConfigManager(): any;
 /**
+ * Register an extension handler for a custom datatype.
+ *
+ * In WASM mode, the handler (JS object with coerce/renderDisplay/resolveMarkers)
+ * is passed to Rust via wasm-bindgen.
+ *
+ * In NAPI mode, extension handlers are compiled into the native binary (Rust
+ * crates linked at build time). The JS call serves as activation — the NAPI
+ * module already has the Rust implementation, so the JS handler object is not
+ * needed. This keeps the hot path entirely in Rust without FFI boundary crossings.
+ */
+export declare function registerExtensionHandler(datatype: string, handler: any): void;
+/**
  * Create a model wrapper backend (graph schema operations).
  * Returns either a WASMResourceModelWrapper or NapiResourceModelWrapper.
  *
@@ -67,6 +82,28 @@ export declare function createWKRM(meta: any): any;
  * Get the WKRM class itself (for instanceof checks or direct construction).
  */
 export declare function getWKRMClass(): any;
+/**
+ * Create a StaticGraphMeta instance.
+ * In WASM mode wraps data in the Rust-backed class; in NAPI mode returns the
+ * plain object (it's just a data bag — NAPI handles Rust access via its own bindings).
+ */
+export declare function createStaticGraphMeta(data: any): any;
+/**
+ * Parse a JSON string into a StaticGraph.
+ * In WASM mode uses the Rust parser; in NAPI mode just JSON.parse (NAPI
+ * stringifies again when it needs the data in Rust).
+ */
+export declare function parseStaticGraph(jsonText: string): any;
+/**
+ * Parse a business_data JSON string into StaticResource[].
+ * In WASM mode uses the Rust bulk parser; in NAPI mode JSON.parse.
+ */
+export declare function parseStaticResources(jsonText: string): any[];
+/**
+ * Create a StaticResource from a plain object.
+ * In WASM mode wraps in the Rust class; in NAPI mode returns as-is.
+ */
+export declare function createStaticResource(data: any): any;
 /**
  * Auto-detect the best backend for the current environment.
  * Prefers NAPI in Node.js when available, falls back to WASM.

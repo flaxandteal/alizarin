@@ -1,3 +1,6 @@
+/// The version of alizarin-core (from Cargo.toml at compile time).
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod card_traversal;
 pub mod csv_business_data_loader;
 pub mod csv_model_loader;

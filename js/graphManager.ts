@@ -17,7 +17,7 @@ import {
   StaticGraphMeta
 } from "./static-types";
 import { PseudoValue, PseudoUnavailable, wrapRustPseudo } from "./pseudos.ts";
-import { createInstanceWrapperForResource, createInstanceWrapperForModel, createResourceModelWrapper, createWKRM, getBackend } from "./backend";
+import { createInstanceWrapperForResource, createInstanceWrapperForModel, createResourceModelWrapper, createWKRM, createStaticGraphMeta, getBackend } from "./backend";
 import { ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, IModelWrapperBackend, IWKRM, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
 import { nodeConfigManager } from "./nodeConfig.ts";
@@ -66,7 +66,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     // Initialize wrapper for tile management (WASM or NAPI depending on backend)
     let t0 = performance.now();
     if (resource) {
-      this.wasmWrapper = createInstanceWrapperForResource(resource);
+      this.wasmWrapper = createInstanceWrapperForResource(resource, staticStore.registry);
       this.resource = resource;
       recordWasmTiming("createInstanceWrapperForResource", performance.now() - t0);
     } else {
@@ -1352,7 +1352,7 @@ class GraphManager {
     }
     graphs.forEach(([graphId, meta]: [string, StaticGraphMeta]) => {
       if (!(meta instanceof StaticGraphMeta)) {
-        meta = new StaticGraphMeta(meta);
+        meta = createStaticGraphMeta(meta);
       }
       meta.graphid = meta.graphid || graphId;
       const wkrm = createWKRM(meta);

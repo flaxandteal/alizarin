@@ -47,6 +47,7 @@ Object.defineProperty(_wrappedInitWasm, 'name', { value: 'initWasm' });
 // Auto-init after a microtask, giving consumers a chance to call setWasmURL() synchronously.
 // SILENT: initial auto-init failure is expected when URL hasn't been configured yet.
 // Consumers must call initWasm() explicitly if auto-init fails (e.g. after setWasmURL()).
+// Note: initWasm() itself skips when ALIZARIN_BACKEND=napi.
 Promise.resolve().then(() => _wrappedInitWasm().catch((e) => {
   console.debug("[alizarin] Auto-init WASM deferred:", e?.message || e);
 }));

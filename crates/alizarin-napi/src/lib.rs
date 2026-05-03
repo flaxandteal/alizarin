@@ -174,7 +174,7 @@ impl NapiStaticGraph {
 
 #[napi]
 pub struct NapiStaticResourceRegistry {
-    inner: StaticResourceRegistry,
+    pub(crate) inner: StaticResourceRegistry,
 }
 
 impl Default for NapiStaticResourceRegistry {
