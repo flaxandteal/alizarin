@@ -1,9 +1,7 @@
 type AlizarinModule = typeof import('alizarin');
 
 async function run() {
-  const { AlizarinModel, graphManager, staticStore }: AlizarinModule = await import('alizarin');
-  // Preload so we do not need individual JSON files.
-  staticStore.cacheMetadataOnly = false;
+  const { AlizarinModel, graphManager }: AlizarinModule = await import('alizarin');
   class Person extends AlizarinModel<Person> {};
   (await graphManager.get("Session")).all();
   (await graphManager.get("Talk")).all();

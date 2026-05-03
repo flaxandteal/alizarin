@@ -8,9 +8,11 @@
 //! - **Data-building layer** (platform-agnostic): produces [`PrebuildExportData`]
 //! - **Directory-writing layer** (`fs_writer`, not available on WASM): writes to disk
 
-use crate::rdm_cache::{rdm_to_skos_collection, RdmCache, RdmCollection};
+use std::collections::HashSet;
+
+use crate::rdm_cache::{rdm_to_skos_collection_excluding, RdmCache, RdmCollection};
 use crate::registry::{get_graph, get_registered_graph_ids};
-use crate::skos::collection_to_skos_xml;
+use crate::skos::{collection_to_skos_xml, SkosConcept};
 use crate::string_utils::sort_json_keys;
 use crate::StaticGraph;
 
@@ -161,16 +163,31 @@ pub fn export_all_graphs() -> Result<Vec<ExportFile>, ExportError> {
 /// Iterates all collections in the cache, converts each to SKOS XML
 /// as a ConceptScheme and writes to `reference_data/controlled_lists/`.
 /// This format is compatible with the `arches_controlled_lists` importer.
+///
+/// Concepts that appear in multiple collections are only emitted once (in the
+/// first collection encountered, sorted by collection ID). This prevents
+/// duplicate-key errors when the CLM importer creates `ListItem` rows.
 pub fn export_collections(
     rdm_cache: &RdmCache,
     base_uri: &str,
 ) -> Result<Vec<ExportFile>, ExportError> {
     let mut files = Vec::new();
+    let mut seen_concept_ids: HashSet<String> = HashSet::new();
 
-    for collection_id in rdm_cache.get_collection_ids() {
-        if let Some(collection) = rdm_cache.get_collection(&collection_id) {
-            let file = export_single_collection(collection, base_uri, "ConceptScheme")?;
-            files.push(file);
+    let mut collection_ids = rdm_cache.get_collection_ids();
+    collection_ids.sort();
+
+    for collection_id in &collection_ids {
+        if let Some(collection) = rdm_cache.get_collection(collection_id) {
+            let file = export_single_collection_excluding(
+                collection,
+                base_uri,
+                "ConceptScheme",
+                &mut seen_concept_ids,
+            )?;
+            if let Some(file) = file {
+                files.push(file);
+            }
         }
     }
 
@@ -186,13 +203,53 @@ pub fn export_single_collection(
     base_uri: &str,
     node_type: &str,
 ) -> Result<ExportFile, ExportError> {
-    let skos = rdm_to_skos_collection(collection, node_type);
+    let skos = rdm_to_skos_collection_excluding(collection, node_type, &HashSet::new());
     let xml = collection_to_skos_xml(&skos, base_uri);
 
     Ok(ExportFile {
         relative_path: format!("reference_data/controlled_lists/{}.xml", collection.id),
         content: xml,
     })
+}
+
+/// Export a single collection, excluding already-seen concept IDs.
+///
+/// Adds this collection's concept IDs to `seen_concept_ids` after building.
+/// Returns `None` if the collection would be empty after exclusion.
+fn export_single_collection_excluding(
+    collection: &RdmCollection,
+    base_uri: &str,
+    node_type: &str,
+    seen_concept_ids: &mut HashSet<String>,
+) -> Result<Option<ExportFile>, ExportError> {
+    let skos = rdm_to_skos_collection_excluding(collection, node_type, seen_concept_ids);
+
+    // Collect all concept IDs from this collection (including nested children)
+    for concept in skos.concepts.values() {
+        collect_concept_ids(concept, seen_concept_ids);
+    }
+
+    // Skip empty collections
+    if skos.concepts.is_empty() {
+        return Ok(None);
+    }
+
+    let xml = collection_to_skos_xml(&skos, base_uri);
+
+    Ok(Some(ExportFile {
+        relative_path: format!("reference_data/controlled_lists/{}.xml", collection.id),
+        content: xml,
+    }))
+}
+
+/// Recursively collect all concept IDs from a concept tree.
+fn collect_concept_ids(concept: &SkosConcept, ids: &mut HashSet<String>) {
+    ids.insert(concept.id.clone());
+    if let Some(children) = &concept.children {
+        for child in children {
+            collect_concept_ids(child, ids);
+        }
+    }
 }
 
 /// Build a complete prebuild export from registered graphs and an RDM cache.

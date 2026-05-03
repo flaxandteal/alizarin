@@ -6,7 +6,7 @@
 //! The WASM bindings (alizarin-wasm) wrap this with WasmRdmCache for JavaScript interop.
 
 use serde::{Deserialize, Deserializer, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::rdm_namespace::generate_value_uuid;
 
@@ -791,8 +791,18 @@ pub fn skos_to_rdm_collection(skos: &SkosCollection) -> RdmCollection {
 /// determines whether the output uses `skos:ConceptScheme` (with narrower/broader)
 /// or `skos:Collection` (with member relations, Arches-compatible).
 pub fn rdm_to_skos_collection(rdm: &RdmCollection, node_type: &str) -> SkosCollection {
-    use std::collections::HashSet;
+    rdm_to_skos_collection_excluding(rdm, node_type, &HashSet::new())
+}
 
+/// Convert an [`RdmCollection`] to a [`SkosCollection`], excluding any concept
+/// IDs in `exclude_ids`. This is used during export to avoid emitting the same
+/// concept in multiple XML files (which causes duplicate-key errors in the
+/// `arches_controlled_lists` importer).
+pub fn rdm_to_skos_collection_excluding(
+    rdm: &RdmCollection,
+    node_type: &str,
+    exclude_ids: &HashSet<String>,
+) -> SkosCollection {
     // Build collection pref_labels
     let mut collection_pref_labels = HashMap::new();
     if let Some(ref name) = rdm.name {
@@ -805,11 +815,14 @@ pub fn rdm_to_skos_collection(rdm: &RdmCollection, node_type: &str) -> SkosColle
         );
     }
 
-    // Convert all concepts (flat list first)
+    // Convert all concepts (flat list first), skipping excluded IDs
     let mut all_skos_concepts: HashMap<String, SkosConcept> = HashMap::new();
     let mut all_narrower_ids: HashSet<String> = HashSet::new();
 
     for concept_id in rdm.get_concept_ids() {
+        if exclude_ids.contains(concept_id.as_str()) {
+            continue;
+        }
         if let Some(rdm_concept) = rdm.get_concept(concept_id) {
             let mut pref_labels = HashMap::new();
             for (lang, rdm_value) in &rdm_concept.pref_label {
@@ -847,13 +860,19 @@ pub fn rdm_to_skos_collection(rdm: &RdmCollection, node_type: &str) -> SkosColle
         SkosNodeType::ConceptScheme
     };
 
-    // Build hierarchy — top-level concepts are those not in any narrower list
+    // Build hierarchy — top-level concepts are those not in any narrower list.
+    // `placed` tracks concepts already claimed by a parent to avoid emitting
+    // the same concept under multiple parents (diamond hierarchies).
     let mut hierarchy: HashMap<String, SkosConcept> = HashMap::new();
+    let mut placed: HashSet<String> = HashSet::new();
 
     for concept_id in rdm.get_concept_ids() {
+        if exclude_ids.contains(concept_id.as_str()) {
+            continue;
+        }
         if !all_narrower_ids.contains(concept_id) {
             if let Some(concept_with_children) =
-                build_concept_tree_from_rdm(concept_id, &all_skos_concepts, rdm)
+                build_concept_tree_from_rdm(concept_id, &all_skos_concepts, rdm, &mut placed)
             {
                 hierarchy.insert(concept_id.clone(), concept_with_children);
             }
@@ -880,11 +899,20 @@ pub fn rdm_to_skos_collection(rdm: &RdmCollection, node_type: &str) -> SkosColle
 }
 
 /// Build a concept tree recursively from RDM narrower relationships.
+///
+/// `placed` tracks concept IDs already claimed by a parent, preventing the
+/// same concept from appearing under multiple parents (diamond hierarchies)
+/// which would produce duplicate `<skos:Concept>` elements in SKOS XML.
 fn build_concept_tree_from_rdm(
     concept_id: &str,
     all_concepts: &HashMap<String, SkosConcept>,
     rdm_collection: &RdmCollection,
+    placed: &mut HashSet<String>,
 ) -> Option<SkosConcept> {
+    if !placed.insert(concept_id.to_string()) {
+        return None; // already claimed by another parent
+    }
+
     let mut concept = all_concepts.get(concept_id)?.clone();
 
     if let Some(rdm_concept) = rdm_collection.get_concept(concept_id) {
@@ -892,7 +920,7 @@ fn build_concept_tree_from_rdm(
             let mut children = Vec::new();
             for child_id in &rdm_concept.narrower {
                 if let Some(child) =
-                    build_concept_tree_from_rdm(child_id, all_concepts, rdm_collection)
+                    build_concept_tree_from_rdm(child_id, all_concepts, rdm_collection, placed)
                 {
                     children.push(child);
                 }

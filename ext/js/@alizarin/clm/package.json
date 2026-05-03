@@ -1,6 +1,6 @@
 {
   "name": "@alizarin/clm",
-  "version": "2.0.0-alpha.88",
+  "version": "2.0.0-alpha.89",
   "description": "Alizarin display serializers for CLM reference datatypes",
   "license": "AGPL-3.0",
   "repository": {
@@ -23,7 +23,7 @@
     "test": "cd ../../../.. && npm test -- ext/js/@alizarin/clm/tests/clm.test.ts"
   },
   "peerDependencies": {
-    "alizarin": "2.0.0-alpha.88"
+    "alizarin": "2.0.0-alpha.89"
   },
   "devDependencies": {
     "alizarin": "file:../../../..",

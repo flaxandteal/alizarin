@@ -209,7 +209,8 @@ pub use tile_source::{TileSource, TileSourceError};
 
 // RDM cache types
 pub use rdm_cache::{
-    rdm_to_skos_collection, skos_to_rdm_collection, RdmCache, RdmCollection, RdmConcept,
+    rdm_to_skos_collection, rdm_to_skos_collection_excluding, skos_to_rdm_collection, RdmCache,
+    RdmCollection, RdmConcept,
 };
 
 // RDM namespace utilities (deterministic UUID generation)
