@@ -1,4 +1,4 @@
-import { UrlViewModel, DateViewModel, ResourceInstanceViewModel, DomainValueViewModel, ConceptValueViewModel, NonLocalizedStringViewModel, StringViewModel, SemanticViewModel, BooleanViewModel, NumberViewModel } from './viewModels';
+import { UrlViewModel, DateViewModel, ResourceInstanceViewModel, DomainValueViewModel, ConceptValueViewModel, NonLocalizedStringViewModel, StringViewModel, SemanticViewModel, BooleanViewModel, NumberViewModel, GeoJSONViewModel } from './viewModels';
 declare class Cleanable extends String {
     __clean: string | undefined;
 }
@@ -19,6 +19,7 @@ declare abstract class BaseRenderer {
     abstract renderBoolean(value: boolean | BooleanViewModel, _depth: number): Promise<any>;
     abstract renderNumber(value: number | NumberViewModel, _depth: number): Promise<any>;
     abstract renderUrl(value: UrlViewModel, _depth: number): Promise<any>;
+    abstract renderGeoJSON(value: GeoJSONViewModel, _depth: number): Promise<any>;
     renderExtension: ((value: any, _depth: number) => Promise<any>) | undefined;
     renderValue(value: any, depth: number): Promise<any>;
 }
@@ -32,6 +33,7 @@ declare class Renderer extends BaseRenderer {
     renderResourceReference(value: ResourceInstanceViewModel<any>, _depth: number): Promise<any>;
     renderSemantic(value: SemanticViewModel, depth: number): Promise<any>;
     renderUrl(value: UrlViewModel, _depth: number): Promise<any>;
+    renderGeoJSON(value: GeoJSONViewModel, depth: number): Promise<any>;
     renderBlock(block: {
         [key: string]: string;
     } | {
@@ -44,12 +46,14 @@ declare class MarkdownRenderer extends Renderer {
     dateToText: ((value: DateViewModel) => string) | undefined;
     domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined;
     resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined;
+    geojsonToUrl: ((value: GeoJSONViewModel) => string | Promise<string>) | undefined;
     nodeToUrl: ((value: string) => string) | undefined;
     constructor(callbacks: {
         conceptValueToUrl: ((value: ConceptValueViewModel) => string) | undefined;
         dateToText: ((value: DateViewModel) => string) | undefined;
         domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined;
         resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined;
+        geojsonToUrl?: ((value: GeoJSONViewModel) => string | Promise<string>) | undefined;
         nodeToUrl: ((value: string) => string) | undefined;
         extensionToMarkdown: ((value: any, _depth: number) => Promise<any>) | undefined;
     });
@@ -58,6 +62,7 @@ declare class MarkdownRenderer extends Renderer {
     renderDate(date: DateViewModel, _: number): Promise<any>;
     renderConceptValue(conceptValue: ConceptValueViewModel, _: number): Promise<any>;
     renderResourceReference(rivm: ResourceInstanceViewModel<any>, _: number): Promise<any>;
+    renderGeoJSON(geojson: GeoJSONViewModel, depth: number): Promise<any>;
 }
 declare class FlatMarkdownRenderer extends MarkdownRenderer {
     renderSemantic(vm: SemanticViewModel, depth: number): Promise<any>;

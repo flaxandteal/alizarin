@@ -1212,6 +1212,31 @@ pub struct RenameGraphParams {
 }
 
 // =============================================================================
+// Coppice Subgraph Mutation
+// =============================================================================
+
+/// Parameters for the coppice_subgraph mutation.
+///
+/// Sets `sourcebranchpublication_id` on an existing subtree by traversing from
+/// a root node (identified by alias) via edges. Stops at nodes already claimed
+/// by a different publication.
+///
+/// ## CSV Example
+///
+/// ```csv
+/// coppice_subgraph,monument_names,,,,,,,,,,bf05dedf-85d1-4e1b-8929-7cb42b534b87,,
+/// ```
+///
+/// **Instruction:** `coppice_subgraph` (subject: root_alias)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoppiceSubgraphParams {
+    /// Alias of the root node to start traversal from
+    pub subject: String,
+    /// The sourcebranchpublication_id to set on reachable nodes
+    pub publication_id: String,
+}
+
+// =============================================================================
 // Extension Mutations
 // =============================================================================
 
@@ -1429,6 +1454,8 @@ pub enum GraphMutation {
     SetDescriptorTemplate(SetDescriptorTemplateParams),
     /// Create a new graph from scratch (only valid as first mutation in apply_mutations_create)
     CreateGraph(CreateGraphParams),
+    /// Set sourcebranchpublication_id on a subtree rooted at a given alias
+    CoppiceSubgraph(CoppiceSubgraphParams),
     /// Extension mutation - delegated to a registered handler
     Extension(ExtensionMutationParams),
 }
@@ -1465,6 +1492,8 @@ impl GraphMutation {
             GraphMutation::SetDescriptorTemplate(_) => MutationConformance::AlwaysConformant,
             // CreateGraph - not a standard mutation, only valid in apply_mutations_create
             GraphMutation::CreateGraph(_) => MutationConformance::NonConformant,
+            // Coppice subgraph - valid for both branches and models
+            GraphMutation::CoppiceSubgraph(_) => MutationConformance::AlwaysConformant,
             // Extension mutations - conformance is specified in params
             GraphMutation::Extension(params) => params.conformance,
         }
@@ -1921,6 +1950,7 @@ fn apply_mutation_with_extensions(
         GraphMutation::RenameNode(params) => apply_rename_node(graph, params),
         GraphMutation::RenameGraph(params) => apply_rename_graph(graph, params),
         GraphMutation::SetDescriptorTemplate(params) => apply_set_descriptor_template(graph, params),
+        GraphMutation::CoppiceSubgraph(params) => apply_coppice_subgraph(graph, params),
         GraphMutation::CreateGraph(_) => {
             Err(MutationError::Other(
                 "CreateGraph cannot be used as a regular mutation. Use apply_mutations_create_from_json instead.".to_string()
@@ -2912,6 +2942,63 @@ fn apply_rename_graph(
         } else {
             Some(author)
         };
+    }
+
+    Ok(())
+}
+
+// =============================================================================
+// Coppice Subgraph
+// =============================================================================
+
+/// Set `sourcebranchpublication_id` on a subtree rooted at the node with the
+/// given alias. Traverses via edges (domain -> range), setting the publication
+/// ID on all reachable nodes that are unset or already match. Stops at nodes
+/// claimed by a different branch.
+fn apply_coppice_subgraph(
+    graph: &mut StaticGraph,
+    params: CoppiceSubgraphParams,
+) -> Result<(), MutationError> {
+    // Find root node by alias
+    let root_nodeid = graph
+        .nodes
+        .iter()
+        .find(|n| n.alias.as_deref() == Some(&params.subject))
+        .map(|n| n.nodeid.clone())
+        .ok_or_else(|| {
+            MutationError::NodeNotFound(format!(
+                "coppice_subgraph: node with alias '{}' not found",
+                params.subject
+            ))
+        })?;
+
+    // Build children map: domainnode_id -> [rangenode_id]
+    let mut children: HashMap<String, Vec<String>> = HashMap::new();
+    for edge in &graph.edges {
+        children
+            .entry(edge.domainnode_id.clone())
+            .or_default()
+            .push(edge.rangenode_id.clone());
+    }
+
+    // BFS from root
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back(root_nodeid);
+
+    while let Some(nid) = queue.pop_front() {
+        if let Some(node) = graph.nodes.iter_mut().find(|n| n.nodeid == nid) {
+            let existing = node.sourcebranchpublication_id.as_deref();
+            if existing.is_some() && existing != Some(&params.publication_id) {
+                // Claimed by a different branch — stop traversal here
+                continue;
+            }
+            node.sourcebranchpublication_id = Some(params.publication_id.clone());
+        }
+        if let Some(child_ids) = children.get(&nid) {
+            for child_id in child_ids {
+                queue.push_back(child_id.clone());
+            }
+        }
     }
 
     Ok(())
@@ -4764,6 +4851,17 @@ impl GraphInstruction {
                     author: self.get_str("author"),
                 }))
             }
+            "coppice_subgraph" => {
+                let publication_id = self.get_str("publication_id").ok_or_else(|| {
+                    MutationError::Other(
+                        "coppice_subgraph requires params.publication_id".to_string(),
+                    )
+                })?;
+                Ok(GraphMutation::CoppiceSubgraph(CoppiceSubgraphParams {
+                    subject: self.subject.clone(),
+                    publication_id,
+                }))
+            }
             // create_model and create_branch are handled separately via to_skeleton_graph()
             "create_model" | "create_branch" => Err(MutationError::InvalidSubgraph(format!(
                 "'{}' creates a new graph, use build_graph_from_instructions() instead",
@@ -4824,7 +4922,9 @@ impl GraphInstruction {
             "update_node" | "change_node_type" | "change_cardinality" => {
                 MutationConformance::BranchConformant
             }
-            "rename_node" | "rename_graph" => MutationConformance::AlwaysConformant,
+            "rename_node" | "rename_graph" | "coppice_subgraph" => {
+                MutationConformance::AlwaysConformant
+            }
             // Create operations
             "create_model" => MutationConformance::ModelConformant,
             "create_branch" => MutationConformance::BranchConformant,

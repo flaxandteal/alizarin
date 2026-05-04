@@ -17,6 +17,7 @@ export declare class GeoJSONViewModel implements IViewModel, IStringKeyedObject 
         [key: string]: any;
     });
     static __create(tile: StaticTile, node: StaticNode, value: any): GeoJSONViewModel | Promise<GeoJSONViewModel | null> | null;
+    toString(): string;
     forJson(): Promise<{
         [key: string]: any;
     }>;

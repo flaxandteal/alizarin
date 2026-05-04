@@ -13,7 +13,6 @@
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::collections::HashMap;
-use std::sync::RwLock;
 use uuid::Uuid;
 
 // Core types from alizarin-core
@@ -25,7 +24,6 @@ use alizarin_core::rdm_namespace::{
     generate_collection_uuid as core_generate_collection,
     generate_concept_uuid as core_generate_concept,
     labels_to_deterministic_string as core_labels_to_string,
-    parse_rdm_namespace as core_parse_namespace,
 };
 
 // SKOS parser and serializer from core crate
@@ -224,12 +222,6 @@ pub fn update_collection_nested_in_global_cache(
 // Global RDM Namespace for UUID Generation
 // =============================================================================
 
-lazy_static::lazy_static! {
-    /// Global namespace UUID for deterministic RDM ID generation.
-    /// Must be set before creating collections/concepts from labels.
-    static ref GLOBAL_RDM_NAMESPACE: RwLock<Option<Uuid>> = RwLock::new(None);
-}
-
 /// Set the global RDM namespace for deterministic UUID generation.
 ///
 /// This namespace is used when creating collections and concepts from labels
@@ -252,12 +244,8 @@ lazy_static::lazy_static! {
 ///     collection = RustRdmCollection.from_labels("MyCollection", ["A", "B"])
 #[pyfunction]
 pub fn set_rdm_namespace(namespace: &str) -> PyResult<()> {
-    let uuid =
-        core_parse_namespace(namespace).map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
-    if let Ok(mut guard) = GLOBAL_RDM_NAMESPACE.write() {
-        *guard = Some(uuid);
-    }
-    Ok(())
+    alizarin_core::set_rdm_namespace(namespace)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
 }
 
 /// Get the current global RDM namespace, if set.
@@ -266,42 +254,29 @@ pub fn set_rdm_namespace(namespace: &str) -> PyResult<()> {
 ///     The namespace UUID as a string, or None if not set
 #[pyfunction]
 pub fn get_rdm_namespace() -> Option<String> {
-    GLOBAL_RDM_NAMESPACE
-        .read()
-        .ok()
-        .and_then(|guard| guard.map(|u| u.to_string()))
+    alizarin_core::get_rdm_namespace().map(|u| u.to_string())
 }
 
 /// Check if a global RDM namespace is set.
 #[pyfunction]
 pub fn has_rdm_namespace() -> bool {
-    GLOBAL_RDM_NAMESPACE
-        .read()
-        .ok()
-        .map(|guard| guard.is_some())
-        .unwrap_or(false)
+    alizarin_core::has_rdm_namespace()
 }
 
 /// Clear the global RDM namespace.
 #[pyfunction]
 pub fn clear_rdm_namespace() {
-    if let Ok(mut guard) = GLOBAL_RDM_NAMESPACE.write() {
-        *guard = None;
-    }
+    alizarin_core::clear_rdm_namespace();
 }
 
 /// Get the global namespace or return an error if not set.
 fn get_required_namespace() -> PyResult<Uuid> {
-    GLOBAL_RDM_NAMESPACE
-        .read()
-        .ok()
-        .and_then(|guard| *guard)
-        .ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                "RDM namespace not set. Call set_rdm_namespace() before creating \
-                 collections or concepts from labels without explicit IDs.",
-            )
-        })
+    alizarin_core::get_rdm_namespace().ok_or_else(|| {
+        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+            "RDM namespace not set. Call set_rdm_namespace() before creating \
+             collections or concepts from labels without explicit IDs.",
+        )
+    })
 }
 
 /// Convert a label (string or multilingual dict) to a consistent string for UUID generation.

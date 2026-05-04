@@ -1,13 +1,56 @@
 //! RDM Namespace utilities for deterministic UUID generation.
 //!
-//! This module provides platform-agnostic functions for:
+//! This module provides:
 //! - Parsing namespace strings (UUID or URL)
 //! - Generating deterministic UUIDs for collections and concepts
-//!
-//! Platform-specific bindings (WASM, Python) handle global namespace storage.
+//! - Global namespace storage (used by import_prebuild and bindings)
 
 use std::collections::HashMap;
+use std::sync::RwLock;
 use uuid::Uuid;
+
+lazy_static::lazy_static! {
+    /// Global namespace UUID for deterministic RDM ID generation.
+    /// Must be set before creating collections/concepts from labels.
+    static ref GLOBAL_RDM_NAMESPACE: RwLock<Option<Uuid>> = RwLock::new(None);
+}
+
+/// Set the global RDM namespace for deterministic UUID generation.
+///
+/// This namespace is used when creating collections and concepts from labels
+/// without explicit IDs. Must be set before using from_labels, from_nested_labels,
+/// add_from_label, or add_child_from_label with auto-generated IDs.
+///
+/// Accepts either a UUID string or a URL (http/https), which is converted to
+/// a deterministic UUID5 using the standard URL namespace.
+pub fn set_rdm_namespace(namespace: &str) -> Result<(), String> {
+    let uuid = parse_rdm_namespace(namespace)?;
+    if let Ok(mut guard) = GLOBAL_RDM_NAMESPACE.write() {
+        *guard = Some(uuid);
+    }
+    Ok(())
+}
+
+/// Get the current global RDM namespace, if set.
+pub fn get_rdm_namespace() -> Option<Uuid> {
+    GLOBAL_RDM_NAMESPACE.read().ok().and_then(|guard| *guard)
+}
+
+/// Check if a global RDM namespace is set.
+pub fn has_rdm_namespace() -> bool {
+    GLOBAL_RDM_NAMESPACE
+        .read()
+        .ok()
+        .map(|guard| guard.is_some())
+        .unwrap_or(false)
+}
+
+/// Clear the global RDM namespace.
+pub fn clear_rdm_namespace() {
+    if let Ok(mut guard) = GLOBAL_RDM_NAMESPACE.write() {
+        *guard = None;
+    }
+}
 
 // =============================================================================
 // Namespace Parsing

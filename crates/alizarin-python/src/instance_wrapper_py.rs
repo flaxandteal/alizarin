@@ -377,6 +377,29 @@ impl PyResourceInstanceWrapperCore {
         Ok(PyPseudoList::from_core(result))
     }
 
+    /// Resolve a dot-separated path to its target node metadata without needing tiles.
+    ///
+    /// Returns a dict with { nodegroup_id, is_single, target_node_id } — enough
+    /// for the caller to lazy-load just that nodegroup's tiles.
+    fn resolve_path(&self, path: &str) -> PyResult<pyo3::Py<pyo3::types::PyDict>> {
+        let model = self.model_access.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Model not initialized")
+        })?;
+
+        let info = self
+            .inner
+            .resolve_path(path, model)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        pyo3::Python::with_gil(|py| {
+            let dict = pyo3::types::PyDict::new(py);
+            dict.set_item("nodegroup_id", &info.nodegroup_id)?;
+            dict.set_item("is_single", info.is_single)?;
+            dict.set_item("target_node_id", &info.target_node.nodeid)?;
+            Ok(dict.into())
+        })
+    }
+
     /// Get all nodegroup IDs that have tiles
     fn get_loaded_nodegroup_ids(&self) -> Vec<String> {
         self.inner.nodegroup_index.keys().cloned().collect()

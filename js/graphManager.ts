@@ -231,6 +231,41 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     return wrapRustPseudo(rustValue, this.wkri, this.model);
   }
 
+  /**
+   * Resolve a dot-separated path and return ViewModels, loading tiles lazily if needed.
+   *
+   * Unlike getValuesAtPath (sync, requires tiles pre-loaded), this is async and
+   * will load only the target nodegroup's tiles on demand via staticStore.
+   *
+   * Returns a single IViewModel for single-cardinality nodes, or a PseudoList
+   * (iterable of AttrPromise<IViewModel>) for multi-cardinality nodes.
+   */
+  async getViewModelsAtPath(path: string, filterTileId?: string): Promise<IViewModel | IPseudo | null> {
+    // Step 1: Resolve path to nodegroup (no tiles needed — only uses graph model)
+    const pathInfo = this.wasmWrapper.resolvePath(path);
+    const { nodegroupId } = pathInfo;
+
+    // Step 2: Ensure tiles for target nodegroup are loaded
+    if (!this.wasmWrapper.isNodegroupLoaded(nodegroupId)) {
+      const resourceId = this.wasmWrapper.getResourceId();
+      if (resourceId) {
+        const tiles = await staticStore.loadTiles(resourceId, nodegroupId);
+        if (tiles && tiles.length > 0) {
+          this.wasmWrapper.appendTiles(tiles);
+        }
+      } else {
+        return null;
+      }
+    }
+
+    // Step 3: getValuesAtPath will find tiles for this nodegroup
+    const pseudo = this.getValuesAtPath(path, filterTileId);
+    if (!pseudo) return null;
+
+    // Step 4: Resolve to ViewModels
+    return pseudo.getValue();
+  }
+
   addPseudo(childNode: StaticNode, tile: StaticTile | null): IPseudo {
     const key = childNode.alias;
     if (!key) {

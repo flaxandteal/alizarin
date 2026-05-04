@@ -130,6 +130,31 @@ export declare function parseStaticGraph(jsonText: string): any;
  */
 export declare function parseStaticResources(jsonText: string): any[];
 /**
+ * Build a mapping from node alias to collection ID based on graph definition.
+ * Backend-aware: calls WASM or NAPI implementation.
+ */
+export declare function buildAliasToCollectionMap(graphJson: string, resolvableDatatypes: string[], configKeys: string[]): Record<string, string>;
+/**
+ * Scan a JSON tree to find which collections are needed for resolution.
+ * Backend-aware: calls WASM or NAPI implementation.
+ */
+export declare function findNeededCollections(treeJson: string, aliasToCollection: Record<string, string>): string[];
+/**
+ * Check if a string is a valid UUID.
+ * Backend-aware: calls WASM or NAPI implementation.
+ */
+export declare function isValidUuid(s: string): boolean;
+/**
+ * Get the default resolvable datatypes.
+ * Backend-aware: calls WASM or NAPI implementation.
+ */
+export declare function getDefaultResolvableDatatypes(): string[];
+/**
+ * Get the default config keys for collection IDs.
+ * Backend-aware: calls WASM or NAPI implementation.
+ */
+export declare function getDefaultConfigKeys(): string[];
+/**
  * Auto-detect the best backend for the current environment.
  * Prefers NAPI in Node.js when available, falls back to WASM.
  */

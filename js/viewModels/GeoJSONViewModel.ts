@@ -75,6 +75,24 @@ export class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
     return str;
   }
 
+  toString(): string {
+    const val = this._value;
+    const type = val?.type || 'GeoJSON';
+    if (type === 'FeatureCollection' && Array.isArray(val.features)) {
+      const geomTypes = new Set(
+        val.features
+          .map((f: any) => f?.geometry?.type)
+          .filter(Boolean)
+      );
+      if (geomTypes.size > 0) {
+        return `${type} (${[...geomTypes].join(', ')})`;
+      }
+    } else if (type === 'Feature' && val.geometry?.type) {
+      return `${type} (${val.geometry.type})`;
+    }
+    return type;
+  }
+
   async forJson() {
     return await this._value;
   }

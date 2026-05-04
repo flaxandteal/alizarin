@@ -1,6 +1,6 @@
 import { StaticCollection, StaticGraph } from "./static-types";
 import { ArchesClient } from "./client";
-import { isValidUuid } from "../pkg/alizarin";
+import { isValidUuid } from "./backend";
 export { isValidUuid };
 /**
  * Register an additional datatype for label resolution.

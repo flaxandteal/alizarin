@@ -1,13 +1,13 @@
 import { StaticCollection, StaticGraph } from "./static-types";
 import { ArchesClient, archesClient } from "./client";
-import { getGlobalWasmRdmCache, hasGlobalWasmRdmCache } from "./_wasm";
 import {
+  getRdmCache,
   buildAliasToCollectionMap,
   findNeededCollections,
   isValidUuid,
   getDefaultResolvableDatatypes,
   getDefaultConfigKeys,
-} from "../pkg/alizarin";
+} from "./backend";
 
 // Re-export WASM utilities
 export { isValidUuid };
@@ -105,12 +105,10 @@ class ReferenceDataManager {
   clearCollection(id: string): void {
     this.collections.delete(id);
     // Also clear from Rust cache
-    if (hasGlobalWasmRdmCache()) {
-      try {
-        getGlobalWasmRdmCache().removeCollection(id);
-      } catch {
-        // Ignore errors - cache may not have this collection
-      }
+    try {
+      getRdmCache().removeCollection(id);
+    } catch {
+      // Ignore errors - cache may not be initialized yet
     }
   }
 
@@ -121,12 +119,10 @@ class ReferenceDataManager {
   clear(): void {
     this.collections.clear();
     // Also clear Rust cache
-    if (hasGlobalWasmRdmCache()) {
-      try {
-        getGlobalWasmRdmCache().clear();
-      } catch {
-        // Ignore errors
-      }
+    try {
+      getRdmCache().clear();
+    } catch {
+      // Ignore errors - cache may not be initialized yet
     }
   }
 
@@ -162,18 +158,16 @@ class ReferenceDataManager {
     ];
     const configKeys = [...getCollectionConfigKeys(), ...additionalConfigKeys];
 
-    // Serialize tree and graph for WASM
+    // Serialize tree and graph for Rust
     const treeJson = JSON.stringify(tree);
     const graphJson = JSON.stringify({ graph: [graph] });
 
     // Use Rust to build alias -> collection mapping
-    // WASM returns a Map, convert to plain object for consistency
-    const aliasToCollectionMap = buildAliasToCollectionMap(
+    const aliasToCollection = buildAliasToCollectionMap(
       graphJson,
       resolvableDatatypes,
       configKeys
-    ) as Map<string, string>;
-    const aliasToCollection: Record<string, string> = Object.fromEntries(aliasToCollectionMap);
+    );
 
     if (Object.keys(aliasToCollection).length === 0) {
       // No resolvable nodes, return tree unchanged
@@ -190,7 +184,7 @@ class ReferenceDataManager {
     const loadedCollections = await Promise.all(collectionPromises);
 
     // Ensure all collections are in the Rust cache
-    const cache = getGlobalWasmRdmCache();
+    const cache = getRdmCache();
     for (const collection of loadedCollections) {
       if (collection.ensureInCache) {
         collection.ensureInCache();

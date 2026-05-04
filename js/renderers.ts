@@ -26,6 +26,7 @@ abstract class BaseRenderer {
   abstract renderBoolean(value: boolean | BooleanViewModel, _depth: number): Promise<any>;
   abstract renderNumber(value: number | NumberViewModel, _depth: number): Promise<any>;
   abstract renderUrl(value: UrlViewModel, _depth: number): Promise<any>;
+  abstract renderGeoJSON(value: GeoJSONViewModel, _depth: number): Promise<any>;
   renderExtension: ((value: any, _depth: number) => Promise<any>) | undefined;
 
   async renderValue(value: any, depth: number): Promise<any> {
@@ -55,7 +56,7 @@ abstract class BaseRenderer {
     } else if (value instanceof NumberViewModel) {
       newValue = this.renderNumber(value, depth);
     } else if (value instanceof GeoJSONViewModel) {
-      newValue = this.renderBlock(await value.forJson(), depth);
+      newValue = this.renderGeoJSON(value, depth);
     } else if (value instanceof UrlViewModel) {
       newValue = this.renderUrl(await value, depth);
     } else {
@@ -122,6 +123,10 @@ class Renderer extends BaseRenderer {
     return value;
   }
 
+  async renderGeoJSON(value: GeoJSONViewModel, depth: number): Promise<any> {
+    return this.renderBlock(await value.forJson(), depth);
+  }
+
   renderBlock(block: {[key: string]: string} | {[key: string]: string}[], depth: number): any {
     const renderedBlock: {[key: string]: any} = {};
     const promises: Promise<void>[] = [];
@@ -144,6 +149,7 @@ class MarkdownRenderer extends Renderer {
   dateToText: ((value: DateViewModel) => string) | undefined
   domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined
   resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined
+  geojsonToUrl: ((value: GeoJSONViewModel) => string | Promise<string>) | undefined
   nodeToUrl: ((value: string) => string) | undefined
 
   constructor(callbacks: {
@@ -151,6 +157,7 @@ class MarkdownRenderer extends Renderer {
     dateToText: ((value: DateViewModel) => string) | undefined,
     domainValueToUrl: ((value: DomainValueViewModel) => string) | undefined,
     resourceReferenceToUrl: ((value: ResourceInstanceViewModel<any>) => string) | undefined,
+    geojsonToUrl?: ((value: GeoJSONViewModel) => string | Promise<string>) | undefined,
     nodeToUrl: ((value: string) => string) | undefined,
     extensionToMarkdown: ((value: any, _depth: number) => Promise<any>) | undefined,
   }) {
@@ -159,6 +166,7 @@ class MarkdownRenderer extends Renderer {
     this.dateToText = callbacks.dateToText;
     this.domainValueToUrl = callbacks.domainValueToUrl;
     this.resourceReferenceToUrl = callbacks.resourceReferenceToUrl;
+    this.geojsonToUrl = callbacks.geojsonToUrl;
     this.nodeToUrl = callbacks.nodeToUrl;
     this.renderExtension = callbacks.extensionToMarkdown;
   }
@@ -229,6 +237,18 @@ class MarkdownRenderer extends Renderer {
     </span>`.replace(/\n/g, ' ').trim());
     wrapper.__clean = rivm.toString();
     return wrapper;
+  }
+
+  override async renderGeoJSON(geojson: GeoJSONViewModel, depth: number): Promise<any> {
+    const label = geojson.toString();
+    const url = this.geojsonToUrl ? await this.geojsonToUrl(geojson) : null;
+    if (url) {
+      const text = `[${label}](${url})`;
+      const wrapper = new Cleanable(text);
+      wrapper.__clean = label;
+      return wrapper;
+    }
+    return this.renderBlock(await geojson.forJson(), depth);
   }
 }
 

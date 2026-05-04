@@ -253,6 +253,7 @@ pub enum LoaderError {
     JsonError(serde_json::Error),
     GraphError(String),
     NotFound(String),
+    Other(String),
 }
 
 impl std::fmt::Display for LoaderError {
@@ -262,6 +263,7 @@ impl std::fmt::Display for LoaderError {
             LoaderError::JsonError(e) => write!(f, "JSON error: {}", e),
             LoaderError::GraphError(s) => write!(f, "Graph error: {}", s),
             LoaderError::NotFound(s) => write!(f, "Not found: {}", s),
+            LoaderError::Other(s) => write!(f, "{}", s),
         }
     }
 }
@@ -1063,6 +1065,10 @@ pub struct ImportPrebuildResult {
 /// 2. Parses SKOS XML from `reference_data/collections/` and adds to the global RDM cache
 /// 3. Loads ontology RDFS files from `ontologies/` (if present)
 pub fn import_prebuild(path: &str, base_uri: &str) -> Result<ImportPrebuildResult, LoaderError> {
+    // Set the RDM namespace from base_uri for deterministic UUID generation
+    crate::set_rdm_namespace(base_uri)
+        .map_err(|e| LoaderError::Other(format!("Failed to set RDM namespace: {}", e)))?;
+
     let loader = PrebuildLoader::new(path)?;
 
     // 1. Load and register graphs

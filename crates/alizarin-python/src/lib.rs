@@ -825,14 +825,12 @@ fn tiles_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
     }
 
     // Convert to Python dict directly
-    pythonize::pythonize(py, &result)
-        .map(|obj| obj)
-        .map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to convert result to Python: {}",
-                e
-            ))
-        })
+    pythonize::pythonize(py, &result).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to convert result to Python: {}",
+            e
+        ))
+    })
 }
 
 /// Build a tree from pre-extracted tiles (no resource wrapper needed).
@@ -858,14 +856,12 @@ fn build_tree_from_tiles(
     let result = alizarin_core::build_tree_from_tiles(&tiles_json, &resource_id, &graph_id)
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
-    pythonize::pythonize(py, &result)
-        .map(|obj| obj)
-        .map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to convert result to Python: {}",
-                e
-            ))
-        })
+    pythonize::pythonize(py, &result).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to convert result to Python: {}",
+            e
+        ))
+    })
 }
 
 /// Convert tiles to a card-structured tree.
@@ -941,14 +937,12 @@ fn cards_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
         map.insert("graph_id".to_string(), serde_json::Value::String(graph_id));
     }
 
-    pythonize::pythonize(py, &result)
-        .map(|obj| obj)
-        .map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to convert result to Python: {}",
-                e
-            ))
-        })
+    pythonize::pythonize(py, &result).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to convert result to Python: {}",
+            e
+        ))
+    })
 }
 
 // =============================================================================
@@ -1236,14 +1230,12 @@ fn json_tree_to_tiles(
     }
 
     // Return full BusinessDataWrapper structure: {business_data: {resources: [...]}}
-    pythonize::pythonize(py, &business_data)
-        .map(|obj| obj)
-        .map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to convert result to Python: {}",
-                e
-            ))
-        })
+    pythonize::pythonize(py, &business_data).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+            "Failed to convert result to Python: {}",
+            e
+        ))
+    })
 }
 
 /// Batch convert multiple JSON trees to tiles in parallel.
@@ -2277,7 +2269,7 @@ impl PyResourceModelWrapper {
     /// Export graph as JSON
     fn export_graph(&self, py: Python) -> PyResult<PyObject> {
         let graph = self.model_access.get_graph();
-        pythonize::pythonize(py, graph).map(|obj| obj).map_err(|e| {
+        pythonize::pythonize(py, graph).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                 "Failed to convert graph to Python: {}",
                 e

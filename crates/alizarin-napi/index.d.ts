@@ -45,6 +45,24 @@ export declare function parseSkosXml(xmlContent: string, baseUri: string): any
 /** Parse SKOS RDF/XML and return a single collection (the first one found). */
 export declare function parseSkosXmlToCollection(xmlContent: string, baseUri: string): any
 /**
+ * Build a mapping from node alias to collection ID based on graph definition.
+ *
+ * Equivalent to WASM's `buildAliasToCollectionMap`.
+ */
+export declare function buildAliasToCollectionMap(graphJson: string, resolvableDatatypes?: Array<string> | undefined | null, configKeys?: Array<string> | undefined | null): Record<string, string>
+/**
+ * Scan a JSON tree to find which collections are needed for resolution.
+ *
+ * Equivalent to WASM's `findNeededCollections`.
+ */
+export declare function findNeededCollections(treeJson: string, aliasToCollection: Record<string, string>): Array<string>
+/** Check if a string is a valid UUID. */
+export declare function isValidUuid(s: string): boolean
+/** Get the default resolvable datatypes (concept, concept-list). */
+export declare function getDefaultResolvableDatatypes(): Array<string>
+/** Get the default config keys for collection IDs. */
+export declare function getDefaultConfigKeys(): Array<string>
+/**
  * Import a prebuild/pkg directory: register graphs, load SKOS collections,
  * and load ontology configs.
  *
@@ -62,6 +80,18 @@ export declare class NapiRdmCache {
   /** Load a single collection from JSON. */
   loadCollectionJson(jsonStr: string): void
   get collectionCount(): number
+  /** Check if a collection is already in the cache. */
+  hasCollection(collectionId: string): boolean
+  /** Add a collection from a JSON string of concepts. */
+  addCollectionFromJson(collectionId: string, jsonStr: string): void
+  /** Get the parent concept ID for a concept within a collection. */
+  getParentId(collectionId: string, conceptId: string): string | null
+  /** Remove a collection from the cache. */
+  removeCollection(collectionId: string): boolean
+  /** Clear all collections from the cache. */
+  clear(): void
+  /** Resolve labels to UUIDs using this cache for lookups. */
+  resolveLabels(treeJson: string, aliasToCollection: Record<string, string>, strict: boolean): any
 }
 export declare class NapiNodeConfigManager {
   constructor()
@@ -211,6 +241,13 @@ export declare class NapiResourceInstanceWrapper {
   ensureNodegroup(allValuesJs: any, allNodegroupsJs: any, nodegroupId: string, addIfMissing: boolean, nodegroupPermissionsJs: any, doImpliedNodegroups: boolean): NapiEnsureNodegroupResult
   /** Build pseudo values from tiles for a specific nodegroup. */
   valuesFromResourceNodegroup(existingValuesJs: any, nodegroupTileIds: Array<string>, nodegroupId: string): NapiValuesFromNodegroupResult
+  /**
+   * Resolve a dot-separated path to its target node metadata without needing tiles.
+   *
+   * Returns { nodegroupId, isSingle, targetNodeId } — enough for the JS layer to
+   * lazy-load just that nodegroup's tiles before calling getValuesAtPath.
+   */
+  resolvePath(path: string): any
   /** Resolve a dot-separated path and return a PseudoList. */
   getValuesAtPath(path: string): NapiPseudoList
   /**

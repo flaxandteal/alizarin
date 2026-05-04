@@ -559,6 +559,82 @@ pub fn parse_skos_xml_to_collection(
 }
 
 // ============================================================================
+// Label resolution utilities
+// ============================================================================
+
+/// Build a mapping from node alias to collection ID based on graph definition.
+///
+/// Equivalent to WASM's `buildAliasToCollectionMap`.
+#[napi(js_name = "buildAliasToCollectionMap")]
+pub fn build_alias_to_collection_map(
+    graph_json: String,
+    resolvable_datatypes: Option<Vec<String>>,
+    config_keys: Option<Vec<String>>,
+) -> Result<HashMap<String, String>> {
+    let graph: serde_json::Value = serde_json::from_str(&graph_json)
+        .map_err(|e| napi::Error::from_reason(format!("Invalid graph JSON: {e}")))?;
+
+    let config = alizarin_core::LabelResolutionConfig {
+        resolvable_datatypes: resolvable_datatypes.unwrap_or_else(|| {
+            alizarin_core::DEFAULT_RESOLVABLE_DATATYPES
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        }),
+        config_keys: config_keys.unwrap_or_else(|| {
+            alizarin_core::DEFAULT_CONFIG_KEYS
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        }),
+        strict: false,
+    };
+
+    Ok(alizarin_core::build_alias_to_collection_map(
+        &graph, &config,
+    ))
+}
+
+/// Scan a JSON tree to find which collections are needed for resolution.
+///
+/// Equivalent to WASM's `findNeededCollections`.
+#[napi(js_name = "findNeededCollections")]
+pub fn find_needed_collections(
+    tree_json: String,
+    alias_to_collection: HashMap<String, String>,
+) -> Result<Vec<String>> {
+    let tree: serde_json::Value = serde_json::from_str(&tree_json)
+        .map_err(|e| napi::Error::from_reason(format!("Invalid tree JSON: {e}")))?;
+
+    let needed = alizarin_core::find_needed_collections(&tree, &alias_to_collection);
+    Ok(needed.into_iter().collect())
+}
+
+/// Check if a string is a valid UUID.
+#[napi(js_name = "isValidUuid")]
+pub fn is_valid_uuid(s: String) -> bool {
+    alizarin_core::is_valid_uuid(&s)
+}
+
+/// Get the default resolvable datatypes (concept, concept-list).
+#[napi(js_name = "getDefaultResolvableDatatypes")]
+pub fn get_default_resolvable_datatypes() -> Vec<String> {
+    alizarin_core::DEFAULT_RESOLVABLE_DATATYPES
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Get the default config keys for collection IDs.
+#[napi(js_name = "getDefaultConfigKeys")]
+pub fn get_default_config_keys() -> Vec<String> {
+    alizarin_core::DEFAULT_CONFIG_KEYS
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
+// ============================================================================
 // Prebuild import (high-level convenience)
 // ============================================================================
 

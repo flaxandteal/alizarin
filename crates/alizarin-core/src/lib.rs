@@ -218,8 +218,9 @@ pub use rdm_cache::{
 
 // RDM namespace utilities (deterministic UUID generation)
 pub use rdm_namespace::{
-    generate_collection_uuid, generate_concept_uuid, generate_concept_uuid_from_str,
-    generate_value_uuid, labels_to_deterministic_string, parse_rdm_namespace,
+    clear_rdm_namespace, generate_collection_uuid, generate_concept_uuid,
+    generate_concept_uuid_from_str, generate_value_uuid, get_rdm_namespace, has_rdm_namespace,
+    labels_to_deterministic_string, parse_rdm_namespace, set_rdm_namespace,
 };
 
 // Graph mutator types (builder pattern for graph construction)

@@ -183,8 +183,8 @@ export function getRdmCache(): any {
     if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
     _rdmCache = new napi.NapiRdmCache();
   } else {
-    const { RdmCache } = getWasmModule();
-    _rdmCache = new RdmCache();
+    const { WasmRdmCache } = getWasmModule();
+    _rdmCache = new WasmRdmCache();
   }
   return _rdmCache;
 }
@@ -498,6 +498,90 @@ export function parseStaticResources(jsonText: string): any[] {
   }
   const { StaticResource } = getWasmModule();
   return StaticResource.fromBusinessDataJsonString(jsonText);
+}
+
+// ============================================================================
+// Label resolution utilities
+// ============================================================================
+
+/**
+ * Build a mapping from node alias to collection ID based on graph definition.
+ * Backend-aware: calls WASM or NAPI implementation.
+ */
+export function buildAliasToCollectionMap(
+  graphJson: string,
+  resolvableDatatypes: string[],
+  configKeys: string[]
+): Record<string, string> {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    return napi.buildAliasToCollectionMap(graphJson, resolvableDatatypes, configKeys);
+  }
+  const mod = getWasmModule();
+  // WASM returns a Map
+  const result = mod.buildAliasToCollectionMap(graphJson, resolvableDatatypes, configKeys);
+  if (result instanceof Map) return Object.fromEntries(result);
+  return result;
+}
+
+/**
+ * Scan a JSON tree to find which collections are needed for resolution.
+ * Backend-aware: calls WASM or NAPI implementation.
+ */
+export function findNeededCollections(
+  treeJson: string,
+  aliasToCollection: Record<string, string>
+): string[] {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    return napi.findNeededCollections(treeJson, aliasToCollection);
+  }
+  const mod = getWasmModule();
+  return mod.findNeededCollections(treeJson, aliasToCollection);
+}
+
+/**
+ * Check if a string is a valid UUID.
+ * Backend-aware: calls WASM or NAPI implementation.
+ */
+export function isValidUuid(s: string): boolean {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    return napi.isValidUuid(s);
+  }
+  const mod = getWasmModule();
+  return mod.isValidUuid(s);
+}
+
+/**
+ * Get the default resolvable datatypes.
+ * Backend-aware: calls WASM or NAPI implementation.
+ */
+export function getDefaultResolvableDatatypes(): string[] {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    return napi.getDefaultResolvableDatatypes();
+  }
+  const mod = getWasmModule();
+  return mod.getDefaultResolvableDatatypes();
+}
+
+/**
+ * Get the default config keys for collection IDs.
+ * Backend-aware: calls WASM or NAPI implementation.
+ */
+export function getDefaultConfigKeys(): string[] {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    return napi.getDefaultConfigKeys();
+  }
+  const mod = getWasmModule();
+  return mod.getDefaultConfigKeys();
 }
 
 // ============================================================================

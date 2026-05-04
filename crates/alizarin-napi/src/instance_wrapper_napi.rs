@@ -82,6 +82,64 @@ impl NapiRdmCache {
     pub fn collection_count(&self) -> u32 {
         self.inner.len() as u32
     }
+
+    /// Check if a collection is already in the cache.
+    #[napi]
+    pub fn has_collection(&self, collection_id: String) -> bool {
+        self.inner.has_collection(&collection_id)
+    }
+
+    /// Add a collection from a JSON string of concepts.
+    #[napi]
+    pub fn add_collection_from_json(
+        &mut self,
+        collection_id: String,
+        json_str: String,
+    ) -> Result<()> {
+        self.inner
+            .add_collection_from_json(&collection_id, &json_str)
+            .map_err(|e| napi::Error::from_reason(format!("Failed to add collection: {e}")))
+    }
+
+    /// Get the parent concept ID for a concept within a collection.
+    #[napi]
+    pub fn get_parent_id(&self, collection_id: String, concept_id: String) -> Option<String> {
+        self.inner.get_parent_id(&collection_id, &concept_id)
+    }
+
+    /// Remove a collection from the cache.
+    #[napi]
+    pub fn remove_collection(&mut self, collection_id: String) -> bool {
+        self.inner.remove_collection(&collection_id)
+    }
+
+    /// Clear all collections from the cache.
+    #[napi]
+    pub fn clear(&mut self) {
+        self.inner.clear();
+    }
+
+    /// Resolve labels to UUIDs using this cache for lookups.
+    #[napi]
+    pub fn resolve_labels(
+        &self,
+        tree_json: String,
+        alias_to_collection: HashMap<String, String>,
+        strict: bool,
+    ) -> Result<serde_json::Value> {
+        let tree: serde_json::Value = serde_json::from_str(&tree_json)
+            .map_err(|e| napi::Error::from_reason(format!("Invalid tree JSON: {e}")))?;
+
+        let resolved = alizarin_core::label_resolution::resolve_labels(
+            tree,
+            &alias_to_collection,
+            &self.inner,
+            strict,
+        )
+        .map_err(|e| napi::Error::from_reason(e.message))?;
+
+        Ok(resolved)
+    }
 }
 
 // =============================================================================
@@ -1127,6 +1185,23 @@ impl NapiResourceInstanceWrapper {
     // =========================================================================
     // Path resolution
     // =========================================================================
+
+    /// Resolve a dot-separated path to its target node metadata without needing tiles.
+    ///
+    /// Returns { nodegroupId, isSingle, targetNodeId } — enough for the JS layer to
+    /// lazy-load just that nodegroup's tiles before calling getValuesAtPath.
+    #[napi(js_name = "resolvePath")]
+    pub fn resolve_path(&self, path: String) -> Result<serde_json::Value> {
+        let info = self
+            .inner
+            .resolve_path(&path, &self.model_access)
+            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+        Ok(serde_json::json!({
+            "nodegroupId": info.nodegroup_id,
+            "isSingle": info.is_single,
+            "targetNodeId": info.target_node.nodeid,
+        }))
+    }
 
     /// Resolve a dot-separated path and return a PseudoList.
     #[napi]

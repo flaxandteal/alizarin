@@ -2602,6 +2602,39 @@ impl WASMResourceInstanceWrapper {
         }
     }
 
+    /// Resolve a dot-separated path to its target node metadata without needing tiles.
+    ///
+    /// Returns { nodegroupId, isSingle, targetNodeId } — enough for the JS layer to
+    /// lazy-load just that nodegroup's tiles before calling getValuesAtPath.
+    #[wasm_bindgen(js_name = resolvePath)]
+    pub fn resolve_path(&self, path: &str) -> Result<JsValue, JsValue> {
+        // Ensure model caches are built
+        self.with_model_core_mut(|model_core| {
+            model_core.ensure_built().map_err(|e| JsValue::from_str(&e))
+        })?;
+
+        let info = self.with_model_core(|model| {
+            use alizarin_core::ModelAccess;
+            let root_node = model.get_root_node().map_err(|e| JsValue::from_str(&e))?;
+            let nodes = model
+                .get_nodes()
+                .ok_or_else(|| JsValue::from_str("Nodes not initialized"))?;
+            let edges = model
+                .get_edges()
+                .ok_or_else(|| JsValue::from_str("Edges not initialized"))?;
+            let nodegroups = model.get_nodegroups();
+            alizarin_core::resolve_path_segments(path, &root_node, nodes, edges, nodegroups)
+                .map_err(|e| JsValue::from_str(&e.to_string()))
+        })?;
+
+        Ok(serde_wasm_bindgen::to_value(&serde_json::json!({
+            "nodegroupId": info.nodegroup_id,
+            "isSingle": info.is_single,
+            "targetNodeId": info.target_node.nodeid,
+        }))
+        .unwrap())
+    }
+
     /// Resolve a dot-separated path through the graph model and return a PseudoList.
     ///
     /// Walks the graph edges matching node aliases at each path segment (e.g. "building.name"),
