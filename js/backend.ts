@@ -588,6 +588,116 @@ export function getDefaultConfigKeys(): string[] {
 // Auto-detection
 // ============================================================================
 
+// ============================================================================
+// Memory diagnostics
+// ============================================================================
+
+export interface RegistryStats {
+  total: number;
+  full_count: number;
+  summary_count: number;
+  total_tiles: number;
+  cache_entries: number;
+  cache_bytes_est: number;
+  tile_bytes_est: number;
+}
+
+export interface MemoryUsage {
+  backend: BackendType;
+  /** V8 JS heap used, in bytes */
+  jsHeapUsed: number;
+  /** V8 JS heap total allocated, in bytes */
+  jsHeapTotal: number;
+  /** WASM linear memory size in bytes (WASM only, 0 for NAPI) */
+  wasmMemory: number;
+  /** Process resident set size in bytes (Node.js only, 0 in browser) */
+  rss: number;
+  /** Estimated native/Rust memory: rss - jsHeapTotal - wasmMemory (Node.js only) */
+  nativeEstimate: number;
+  /** Registry breakdown stats (if available) */
+  registry?: RegistryStats;
+}
+
+/**
+ * Get memory usage broken down by JS heap, WASM linear memory, and native (Rust) allocation.
+ *
+ * For WASM backend: arrayBuffers from process.memoryUsage() captures WASM linear memory.
+ * For NAPI backend: native Rust memory is estimated as RSS minus JS heap minus arrayBuffers.
+ *
+ * Pass a registry (staticStore.registry) to include Rust-side registry breakdown stats.
+ *
+ * Note: on Node.js, process.memoryUsage().arrayBuffers includes WASM linear memory
+ * since V8 tracks it as an external ArrayBuffer.
+ */
+export function getMemoryUsage(registry?: any): MemoryUsage {
+  let jsHeapUsed = 0;
+  let jsHeapTotal = 0;
+  let rss = 0;
+  let wasmMemory = 0;
+
+  // V8 heap stats (Node.js)
+  if (typeof process !== 'undefined' && process.memoryUsage) {
+    const mem = process.memoryUsage();
+    jsHeapUsed = mem.heapUsed;
+    jsHeapTotal = mem.heapTotal;
+    rss = mem.rss;
+    // arrayBuffers includes WASM linear memory on Node.js
+    if (_backend === 'wasm') {
+      wasmMemory = (mem as any).arrayBuffers || 0;
+    }
+  }
+
+  const nativeEstimate = Math.max(0, rss - jsHeapTotal - wasmMemory);
+
+  let registryStats: RegistryStats | undefined;
+  if (registry && typeof registry.memoryStats === 'function') {
+    try {
+      registryStats = registry.memoryStats();
+    } catch { /* ignore */ }
+  }
+
+  return {
+    backend: _backend,
+    jsHeapUsed,
+    jsHeapTotal,
+    wasmMemory,
+    rss,
+    nativeEstimate,
+    registry: registryStats,
+  };
+}
+
+/**
+ * Format memory usage as a compact human-readable string.
+ * Pass a registry (staticStore.registry) to include registry breakdown.
+ */
+export function formatMemoryUsage(memOrRegistry?: MemoryUsage | any): string {
+  let mem: MemoryUsage;
+  if (!memOrRegistry) {
+    mem = getMemoryUsage();
+  } else if (memOrRegistry.backend) {
+    mem = memOrRegistry as MemoryUsage;
+  } else {
+    // Assume it's a registry object — call getMemoryUsage with it
+    mem = getMemoryUsage(memOrRegistry);
+  }
+  const mb = (bytes: number) => (bytes / 1024 / 1024).toFixed(0);
+  let base: string;
+  if (mem.backend === 'wasm') {
+    base = `[mem] JS heap: ${mb(mem.jsHeapUsed)}/${mb(mem.jsHeapTotal)}MB | WASM: ${mb(mem.wasmMemory)}MB | RSS: ${mb(mem.rss)}MB`;
+  } else {
+    base = `[mem] JS heap: ${mb(mem.jsHeapUsed)}/${mb(mem.jsHeapTotal)}MB | native(est): ${mb(mem.nativeEstimate)}MB | RSS: ${mb(mem.rss)}MB`;
+  }
+  if (mem.registry) {
+    const r = mem.registry;
+    base += ` | registry: ${r.total} entries (${r.full_count} full, ${r.summary_count} summaries, ${r.total_tiles} tiles)`;
+    if (r.tile_bytes_est > 0 || r.cache_bytes_est > 0) {
+      base += ` | data est: tiles ~${mb(r.tile_bytes_est)}MB, __cache ~${mb(r.cache_bytes_est)}MB (${r.cache_entries} resources)`;
+    }
+  }
+  return base;
+}
+
 /**
  * Auto-detect the best backend for the current environment.
  * Prefers NAPI in Node.js when available, falls back to WASM.

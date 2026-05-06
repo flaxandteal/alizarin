@@ -1,8 +1,8 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-import { w as wasmReady, r as registerExtensionHandler, C as CUSTOM_DATATYPES, g as getCurrentLanguage, a as registerResolvableDatatype, n as nodeConfigManager, R as RDM } from "./main-DW5pY2OR.js";
-import { A, K, G, p, o, S, L, N, c, I, J, T, k, y, Q, t, B, l, b, _, j, D, m, F, H, i, z, O, q, P, x, d, f, s, E, h, u, M, v, e } from "./main-DW5pY2OR.js";
+import { w as wasmReady, r as registerExtensionHandler, C as CUSTOM_DATATYPES, g as getCurrentLanguage, a as registerResolvableDatatype, n as nodeConfigManager, R as RDM } from "./main-C5yc4Bak.js";
+import { A, K, G, p, o, S, L, N, c, I, J, T, k, y, V, Q, t, U, B, l, b, _, j, D, m, F, H, i, z, O, q, P, x, d, f, s, E, h, u, M, v, e } from "./main-C5yc4Bak.js";
 class FileListItem {
   constructor(data) {
     __publicField(this, "accepted");
@@ -767,8 +767,10 @@ export {
   T as createResourceRegistry,
   k as createWKRM,
   y as ensureWasmRdmCache,
+  V as formatMemoryUsage,
   Q as getBackend,
   t as getCurrentLanguage,
+  U as getMemoryUsage,
   B as getTimingStats,
   l as getWKRMClass,
   b as graphManager,

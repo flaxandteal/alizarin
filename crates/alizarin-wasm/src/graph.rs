@@ -3113,6 +3113,22 @@ impl StaticResourceRegistry {
         self.0.is_empty()
     }
 
+    /// Get diagnostic stats about registry contents (entry counts, tile counts, etc.)
+    #[wasm_bindgen(js_name = memoryStats)]
+    pub fn memory_stats(&self) -> Result<JsValue, JsValue> {
+        let stats = self.0.memory_stats();
+        serde_wasm_bindgen::to_value(&stats)
+            .map_err(|e| JsValue::from_str(&format!("Serialization failed: {}", e)))
+    }
+
+    /// Get detailed stats including estimated byte sizes (expensive — re-serializes all data)
+    #[wasm_bindgen(js_name = memoryStatsDetailed)]
+    pub fn memory_stats_detailed(&self) -> Result<JsValue, JsValue> {
+        let stats = self.0.memory_stats_detailed();
+        serde_wasm_bindgen::to_value(&stats)
+            .map_err(|e| JsValue::from_str(&format!("Serialization failed: {}", e)))
+    }
+
     /// Check if a resource ID is known
     /// Returns false if resource_id is null/undefined
     pub fn contains(&self, resource_id: Option<String>) -> bool {

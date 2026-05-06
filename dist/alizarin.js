@@ -1,4 +1,4 @@
-import { A, K, G, p, R, o, S, L, N, c, I, J, T, k, y, Q, t, B, l, b, _, j, D, m, F, H, r, a, i, z, O, q, P, x, d, f, s, E, h, u, M, v, e, w } from "./main-DW5pY2OR.js";
+import { A, K, G, p, R, o, S, L, N, c, I, J, T, k, y, V, Q, t, U, B, l, b, _, j, D, m, F, H, r, a, i, z, O, q, P, x, d, f, s, E, h, u, M, v, e, w } from "./main-C5yc4Bak.js";
 export {
   A as AlizarinModel,
   K as CollectionMutator,
@@ -15,8 +15,10 @@ export {
   T as createResourceRegistry,
   k as createWKRM,
   y as ensureWasmRdmCache,
+  V as formatMemoryUsage,
   Q as getBackend,
   t as getCurrentLanguage,
+  U as getMemoryUsage,
   B as getTimingStats,
   l as getWKRMClass,
   b as graphManager,

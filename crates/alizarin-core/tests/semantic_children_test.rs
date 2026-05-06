@@ -338,8 +338,10 @@ fn test_same_nodegroup_different_tile() {
     assert!(!matches, "Same nodegroup + different tile should NOT match");
 }
 
-/// Test Edge Case: null parent tile
-/// Should NOT match any branch
+/// Test: null parent tile + different nodegroup + null parenttile_id on child tile
+/// This is the root-node case (e.g. heritage_place root → threat_type).
+/// Root has no tile, so parent_tile_id is None. Child tile's parenttile_id is
+/// also None (top-level tile). Should match.
 #[test]
 fn test_null_parent_tile() {
     let parent_tile_id: Option<String> = None;
@@ -354,7 +356,7 @@ fn test_null_parent_tile() {
     let child_tile = create_test_tile(
         "tile-child",
         "ng-child",
-        None,
+        None, // parenttile_id is null — top-level tile
         vec![("node-child", JsonValue::String("test".to_string()))],
     );
 
@@ -365,11 +367,47 @@ fn test_null_parent_tile() {
         Some(&child_tile),
     );
 
-    // With null parent tile, Branch 1 and Branch 2 won't match
-    // But Branch 3 might match if different nodegroup + collector
+    // Root node (no tile) accessing child in different nodegroup where child tile
+    // has no parent tile — this should match (both are "top-level")
+    assert!(
+        matches,
+        "Null parent tile + null child parenttile_id (root-to-child case) should match"
+    );
+}
+
+/// Test: null parent tile + different nodegroup + NON-null parenttile_id on child tile
+/// This is a nested tile that belongs to some other parent — should NOT match
+/// when the current parent has no tile.
+#[test]
+fn test_null_parent_tile_with_nested_child_tile() {
+    let parent_tile_id: Option<String> = None;
+    let parent_node_id = "ng-parent";
+
+    let child_node = create_test_node(
+        "node-child",
+        "child_alias",
+        Some("ng-child".to_string()),
+        false,
+    );
+    let child_tile = create_test_tile(
+        "tile-child",
+        "ng-child",
+        Some("tile-some-other-parent".to_string()), // parenttile_id is set — nested tile
+        vec![("node-child", JsonValue::String("test".to_string()))],
+    );
+
+    let matches = matches_semantic_child(
+        parent_tile_id.as_ref(),
+        parent_node_id,
+        &child_node,
+        Some(&child_tile),
+    );
+
+    // Parent has no tile, but child tile explicitly references a different parent tile.
+    // This child tile belongs to a specific parent — it's not a root-level tile.
     assert!(
         !matches,
-        "Null parent tile + not collector should NOT match"
+        "Null parent tile + non-null child parenttile_id should NOT match"
     );
 }
 

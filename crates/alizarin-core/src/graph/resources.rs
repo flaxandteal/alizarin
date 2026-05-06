@@ -520,6 +520,20 @@ impl From<StaticResource> for ResourceEntry {
     }
 }
 
+/// Diagnostic stats for the resource registry
+#[derive(Clone, Debug, Serialize)]
+pub struct RegistryMemoryStats {
+    pub total: usize,
+    pub full_count: usize,
+    pub summary_count: usize,
+    pub total_tiles: usize,
+    pub cache_entries: usize,
+    /// Estimated bytes of __cache JSON across all full resources
+    pub cache_bytes_est: usize,
+    /// Estimated bytes of tile data JSON across all full resources
+    pub tile_bytes_est: usize,
+}
+
 /// In-memory registry of resources for relationship resolution and caching
 ///
 /// Stores either full resources or summaries, allowing memory-efficient storage
@@ -580,6 +594,65 @@ impl StaticResourceRegistry {
             .get(resource_id)
             .map(|e| e.is_full())
             .unwrap_or(false)
+    }
+
+    /// Get a breakdown of registry contents for memory diagnostics.
+    ///
+    /// Returns (total_entries, full_count, summary_count, total_tiles, total_cache_bytes)
+    /// where total_cache_bytes is an estimate of serialized __cache JSON size.
+    pub fn memory_stats(&self) -> RegistryMemoryStats {
+        let mut full_count: usize = 0;
+        let mut summary_count: usize = 0;
+        let mut total_tiles: usize = 0;
+        let mut cache_entries: usize = 0;
+
+        for entry in self.resources.values() {
+            match entry {
+                ResourceEntry::Full(r) => {
+                    full_count += 1;
+                    total_tiles += r.tiles.as_ref().map(|t| t.len()).unwrap_or(0);
+                    if r.cache.is_some() {
+                        cache_entries += 1;
+                    }
+                }
+                ResourceEntry::Summary(_) => {
+                    summary_count += 1;
+                }
+            }
+        }
+
+        RegistryMemoryStats {
+            total: self.resources.len(),
+            full_count,
+            summary_count,
+            total_tiles,
+            cache_entries,
+            cache_bytes_est: 0,
+            tile_bytes_est: 0,
+        }
+    }
+
+    /// Expensive version that estimates byte sizes by re-serializing.
+    /// Call once, not in a loop.
+    pub fn memory_stats_detailed(&self) -> RegistryMemoryStats {
+        let mut stats = self.memory_stats();
+        let mut cache_bytes_est: usize = 0;
+        let mut tile_bytes_est: usize = 0;
+
+        for entry in self.resources.values() {
+            if let ResourceEntry::Full(r) = entry {
+                if let Some(ref cache) = r.cache {
+                    cache_bytes_est += serde_json::to_string(cache).map(|s| s.len()).unwrap_or(0);
+                }
+                if let Some(ref tiles) = r.tiles {
+                    tile_bytes_est += serde_json::to_string(tiles).map(|s| s.len()).unwrap_or(0);
+                }
+            }
+        }
+
+        stats.cache_bytes_est = cache_bytes_est;
+        stats.tile_bytes_est = tile_bytes_est;
+        stats
     }
 
     /// Number of resources in the registry

@@ -402,4 +402,8 @@ export declare class NapiStaticResourceRegistry {
   getFull(resourceId: string): any | null
   /** Get a summary for a resource (works for both summary and full entries), or null if unknown. */
   getSummary(resourceId: string): any | null
+  /** Get diagnostic stats about registry contents (entry counts, tile counts, etc.) */
+  memoryStats(): any
+  /** Get detailed stats including estimated byte sizes (expensive — re-serializes all data) */
+  memoryStatsDetailed(): any
 }

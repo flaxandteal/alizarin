@@ -288,6 +288,11 @@ pub fn matches_semantic_child(
             if parent_matches {
                 return true;
             }
+        } else {
+            // Parent has no tile (e.g. root node) — match if child tile also has no parent tile
+            if tile.parenttile_id.is_none() {
+                return true;
+            }
         }
     }
 

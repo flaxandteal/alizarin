@@ -381,6 +381,22 @@ impl NapiStaticResourceRegistry {
             None => Ok(None),
         }
     }
+
+    /// Get diagnostic stats about registry contents (entry counts, tile counts, etc.)
+    #[napi]
+    pub fn memory_stats(&self) -> Result<serde_json::Value> {
+        let stats = self.inner.memory_stats();
+        serde_json::to_value(&stats)
+            .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
+    }
+
+    /// Get detailed stats including estimated byte sizes (expensive — re-serializes all data)
+    #[napi]
+    pub fn memory_stats_detailed(&self) -> Result<serde_json::Value> {
+        let stats = self.inner.memory_stats_detailed();
+        serde_json::to_value(&stats)
+            .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
+    }
 }
 
 // ============================================================================

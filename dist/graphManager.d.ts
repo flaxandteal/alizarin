@@ -47,6 +47,16 @@ export declare class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implement
     getName(update?: boolean): string;
     getDescriptors(update?: boolean): any;
     getValuesAtPath(path: string, filterTileId?: string): PseudoValue<any> | PseudoUnavailable | import("./pseudos.ts").PseudoList;
+    /**
+     * Resolve a dot-separated path and return ViewModels, loading tiles lazily if needed.
+     *
+     * Unlike getValuesAtPath (sync, requires tiles pre-loaded), this is async and
+     * will load only the target nodegroup's tiles on demand via staticStore.
+     *
+     * Returns a single IViewModel for single-cardinality nodes, or a PseudoList
+     * (iterable of AttrPromise<IViewModel>) for multi-cardinality nodes.
+     */
+    getViewModelsAtPath(path: string, filterTileId?: string): Promise<IViewModel | IPseudo | null>;
     addPseudo(childNode: StaticNode, tile: StaticTile | null): IPseudo;
     allEntries(): MapIterator<[string, Array<IPseudo> | false | null]>;
     keys(): Promise<any>;
