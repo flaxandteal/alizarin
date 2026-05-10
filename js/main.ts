@@ -11,7 +11,7 @@ import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
 import { initWasm, setWasmURL, ensureWasmRdmCache, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerExtensionHandler } from "./_wasm";
-import { setBackend, setNapiModule, getBackend, autoDetectBackend, createResourceRegistry, getMemoryUsage, formatMemoryUsage } from "./backend";
+import { setBackend, setNapiModule, setWasmModule, getBackend, autoDetectBackend, createResourceRegistry, getMemoryUsage, formatMemoryUsage, parseStaticGraph } from "./backend";
 import type { BackendType, MemoryUsage, RegistryStats } from "./backend";
 import { resetTimingStats, getTimingStats, logTimingStats } from "./semantic";
 import * as tracing from "./tracing";
@@ -112,9 +112,12 @@ export {
   // Backend selection (WASM vs NAPI)
   setBackend,
   setNapiModule,
+  setWasmModule,
   getBackend,
   autoDetectBackend,
   createResourceRegistry,
+  // Backend-aware graph parsing
+  parseStaticGraph,
   // Memory diagnostics
   getMemoryUsage,
   formatMemoryUsage,

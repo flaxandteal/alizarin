@@ -6,12 +6,16 @@
  * nodes.csv, collections.csv) and builds an Arches resource model graph
  * with SKOS collections.
  *
+ * When the NAPI backend is active, routes to native Rust implementations
+ * for better performance.
+ *
  * @module csvModelLoader
  */
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — generated WASM bindings
 import { buildGraphFromModelCsvs as wasmBuild, validateModelCsvs as wasmValidate, buildResourcesFromBusinessCsv as wasmBuildBusinessData } from '../pkg/alizarin';
+import { getBackend, getNapiModule } from './backend';
 
 export interface CsvModelDiagnostic {
   level: 'Error' | 'Warning';
@@ -41,6 +45,12 @@ export function buildGraphFromModelCsvs(
   rdmNamespace: string,
   collectionsCsv?: string,
 ): CsvModelBuildResult {
+  if (getBackend() === 'napi') {
+    const napi = getNapiModule();
+    if (napi?.buildGraphFromCsvs) {
+      return napi.buildGraphFromCsvs(graphCsv, nodesCsv, collectionsCsv ?? null, rdmNamespace);
+    }
+  }
   return wasmBuild(graphCsv, nodesCsv, collectionsCsv ?? null, rdmNamespace);
 }
 
@@ -86,6 +96,18 @@ export function buildResourcesFromBusinessCsv(
   defaultLanguage?: string,
   strictConcepts?: boolean,
 ): BusinessDataResult {
+  if (getBackend() === 'napi') {
+    const napi = getNapiModule();
+    if (napi?.buildBusinessDataFromCsv) {
+      return napi.buildBusinessDataFromCsv(
+        csvData,
+        JSON.stringify(graph),
+        JSON.stringify(collections),
+        defaultLanguage ?? 'en',
+        strictConcepts ?? null,
+      );
+    }
+  }
   return wasmBuildBusinessData(
     csvData,
     JSON.stringify(graph),

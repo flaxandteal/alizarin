@@ -443,30 +443,72 @@ impl PrebuildLoader {
             for entry in fs::read_dir(&dir)? {
                 let entry = entry?;
                 let path = entry.path();
-                if path.extension().map(|e| e == "xml").unwrap_or(false) {
+                let ext = path.extension().and_then(|e| e.to_str());
+                if ext == Some("xml") || ext == Some("json") {
                     files.push(path);
                 }
             }
         }
-        files.sort();
+        // Sort with XML before JSON so XML takes priority during dedup
+        files.sort_by(|a, b| {
+            let ext_order = |p: &PathBuf| -> u8 {
+                match p.extension().and_then(|e| e.to_str()) {
+                    Some("xml") => 0,
+                    _ => 1,
+                }
+            };
+            ext_order(a).cmp(&ext_order(b)).then_with(|| a.cmp(b))
+        });
         Ok(files)
     }
 
-    /// Load all SKOS XML collections from reference_data/
+    /// Load all SKOS collections from reference_data/ (XML and JSON).
+    ///
+    /// XML files are parsed via `parse_skos_to_collections`; JSON files
+    /// are deserialized directly as `SkosCollection`. When a collection
+    /// ID appears in both formats, the XML version takes priority.
     pub fn load_collections(&self, base_uri: &str) -> Result<Vec<SkosCollection>, LoaderError> {
         let files = self.find_collection_files()?;
         let mut collections = Vec::new();
+        let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         for file in &files {
             let content = fs::read_to_string(file)?;
-            match parse_skos_to_collections(&content, base_uri) {
-                Ok(mut parsed) => collections.append(&mut parsed),
-                Err(e) => {
-                    eprintln!(
-                        "Warning: Failed to parse collection {}: {}",
-                        file.display(),
-                        e
-                    );
+            let ext = file.extension().and_then(|e| e.to_str());
+
+            let parsed: Vec<SkosCollection> = match ext {
+                Some("xml") => match parse_skos_to_collections(&content, base_uri) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: Failed to parse XML collection {}: {}",
+                            file.display(),
+                            e
+                        );
+                        continue;
+                    }
+                },
+                Some("json") => {
+                    // Try as a single collection first, then as an array
+                    if let Ok(coll) = serde_json::from_str::<SkosCollection>(&content) {
+                        vec![coll]
+                    } else if let Ok(colls) = serde_json::from_str::<Vec<SkosCollection>>(&content)
+                    {
+                        colls
+                    } else {
+                        eprintln!(
+                            "Warning: Failed to parse JSON collection {}: not a valid SkosCollection",
+                            file.display(),
+                        );
+                        continue;
+                    }
+                }
+                _ => continue,
+            };
+
+            for coll in parsed {
+                if seen_ids.insert(coll.id.clone()) {
+                    collections.push(coll);
                 }
             }
         }

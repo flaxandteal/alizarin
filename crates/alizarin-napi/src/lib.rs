@@ -1,4 +1,5 @@
 mod instance_wrapper_napi;
+use instance_wrapper_napi::NapiRdmCache;
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -166,6 +167,21 @@ impl NapiStaticGraph {
     pub fn register(&self) {
         alizarin_core::register_graph_owned(self.inner.clone());
     }
+
+    /// Set a descriptor template for computing resource name/description/slug.
+    ///
+    /// Template placeholders use `<Node Name>` syntax, e.g. `"<Headword>"`.
+    /// Descriptor types: "name", "description", "slug".
+    #[napi(js_name = "setDescriptorTemplate")]
+    pub fn set_descriptor_template(
+        &mut self,
+        descriptor_type: String,
+        string_template: String,
+    ) -> Result<()> {
+        self.inner
+            .set_descriptor_template(&descriptor_type, &string_template)
+            .map_err(napi::Error::from_reason)
+    }
 }
 
 // ============================================================================
@@ -281,9 +297,12 @@ impl NapiStaticResourceRegistry {
         graph: &NapiStaticGraph,
         node_identifier: String,
         flatten_localized: Option<bool>,
+        rdm_cache: Option<&NapiRdmCache>,
     ) -> Result<HashMap<String, Vec<String>>> {
         let ctx = SerializationContext {
             extension_registry: Some(extension_registry()),
+            external_resolver: rdm_cache
+                .map(|r| r.inner() as &dyn alizarin_core::type_serialization::ExternalResolver),
             ..SerializationContext::empty()
         };
         self.inner
@@ -397,6 +416,47 @@ impl NapiStaticResourceRegistry {
         serde_json::to_value(&stats)
             .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
     }
+
+    /// Populate __cache on resources with summaries for referenced resources.
+    ///
+    /// Uses the graph to identify resource-instance nodes, then populates
+    /// cache entries for each referenced resource found in this registry.
+    ///
+    /// If `enrich_relationships` is true, also adds ontologyProperty to tile data.
+    /// If `recompute_descriptors` is true, recomputes resource name/description from
+    /// descriptor templates set on the graph.
+    ///
+    /// Returns `{ resources, unknownReferences, hasUnknown }`.
+    #[napi(js_name = "populateCachesFromJson")]
+    pub fn populate_caches_from_json(
+        &self,
+        resources_json: String,
+        graph: &NapiStaticGraph,
+        enrich_relationships: Option<bool>,
+        strict: Option<bool>,
+        recompute_descriptors: Option<bool>,
+    ) -> Result<serde_json::Value> {
+        let mut resources: Vec<StaticResource> = serde_json::from_str(&resources_json)
+            .map_err(|e| napi::Error::from_reason(format!("Failed to parse resources: {}", e)))?;
+
+        let result = self
+            .inner
+            .populate_caches(
+                &mut resources,
+                &graph.inner,
+                enrich_relationships.unwrap_or(true),
+                strict.unwrap_or(false),
+                recompute_descriptors.unwrap_or(false),
+            )
+            .map_err(napi::Error::from_reason)?;
+
+        let output = serde_json::json!({
+            "resources": resources,
+            "unknownReferences": result.unknown_references,
+            "hasUnknown": result.has_unknown_references(),
+        });
+        Ok(output)
+    }
 }
 
 // ============================================================================
@@ -459,15 +519,21 @@ pub fn build_business_data_from_csv(
     csv_data: String,
     graph_json: String,
     collections_json: String,
+    default_language: Option<String>,
+    strict_concepts: Option<bool>,
 ) -> Result<serde_json::Value> {
     let graph: StaticGraph = serde_json::from_str(&graph_json)
         .map_err(|e| napi::Error::from_reason(format!("Invalid graph JSON: {e}")))?;
     let collections: Vec<SkosCollection> = serde_json::from_str(&collections_json)
         .map_err(|e| napi::Error::from_reason(format!("Invalid collections JSON: {e}")))?;
 
-    let resources =
-        build_resources_from_business_csv(&csv_data, &graph, &collections, Default::default())
-            .map_err(csv_err)?;
+    let options = alizarin_core::csv_business_data_loader::BusinessDataCsvOptions {
+        default_language: default_language.unwrap_or_else(|| "en".to_string()),
+        strict_concepts: strict_concepts.unwrap_or(true),
+    };
+
+    let resources = build_resources_from_business_csv(&csv_data, &graph, &collections, options)
+        .map_err(csv_err)?;
 
     Ok(wrap_business_data(&resources))
 }
@@ -572,6 +638,37 @@ pub fn parse_skos_xml_to_collection(
     }
     let collection = collections.remove(0);
     serde_json::to_value(&collection).map_err(|e| napi::Error::from_reason(e.to_string()))
+}
+
+/// Serialize a single SkosCollection to SKOS RDF/XML.
+#[napi(js_name = "collectionToSkosXml")]
+pub fn collection_to_skos_xml_napi(
+    collection_json: serde_json::Value,
+    base_uri: String,
+) -> Result<String> {
+    let collection: SkosCollection = serde_json::from_value(collection_json).map_err(|e| {
+        napi::Error::from_reason(format!("Failed to deserialize collection: {}", e))
+    })?;
+    Ok(alizarin_core::skos::collection_to_skos_xml(
+        &collection,
+        &base_uri,
+    ))
+}
+
+/// Serialize multiple SkosCollections to SKOS RDF/XML.
+#[napi(js_name = "collectionsToSkosXml")]
+pub fn collections_to_skos_xml_napi(
+    collections_json: serde_json::Value,
+    base_uri: String,
+) -> Result<String> {
+    let collections: Vec<SkosCollection> =
+        serde_json::from_value(collections_json).map_err(|e| {
+            napi::Error::from_reason(format!("Failed to deserialize collections: {}", e))
+        })?;
+    Ok(alizarin_core::skos::collections_to_skos_xml(
+        &collections,
+        &base_uri,
+    ))
 }
 
 // ============================================================================

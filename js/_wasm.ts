@@ -1,7 +1,7 @@
 import init, { initSync, StaticNode as WasmStaticNode, StaticGraphMeta as WasmStaticGraphMeta, StaticTranslatableString, WasmRdmCache, getRscvTimings, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml } from "../pkg/alizarin";
 import * as wasmPkg from "../pkg/alizarin";
 import { registerRustTimingGetter } from "./tracing";
-import { setWasmModule } from "./backend";
+import { setWasmModule, getBackend, getNapiModule } from "./backend";
 let wasmURL: string = (() => {
   try {
     return new URL("../pkg/alizarin_bg.wasm", import.meta.url).href;
@@ -102,7 +102,8 @@ function applyPrototypePatches(): void {
 export async function initWasm() {
   if (!wasmInitialized) {
     // Skip WASM entirely if NAPI backend is active — no need to load ~16MB binary
-    if (typeof process !== 'undefined' && process.env?.ALIZARIN_BACKEND?.toLowerCase() === 'napi') {
+    if (getBackend() === 'napi' ||
+        (typeof process !== 'undefined' && process.env?.ALIZARIN_BACKEND?.toLowerCase() === 'napi')) {
       console.debug('[alizarin] Skipping WASM init (NAPI backend active)');
       return;
     }
@@ -231,7 +232,6 @@ export async function initWasm() {
 export { WasmStaticNode, WasmStaticGraphMeta, WasmRdmCache };
 
 // Backend-aware SKOS parsing and serialization re-exports
-import { getBackend, getNapiModule } from "./backend";
 
 function _parseSkosXml(xmlContent: string, baseUri?: string): any {
   if (getBackend() === 'napi') {
@@ -251,22 +251,24 @@ function _parseSkosXmlToCollection(xmlContent: string, baseUri?: string): any {
   return parseSkosXmlToCollection(xmlContent, baseUri || "http://localhost/");
 }
 
-function _collectionToSkosXml(collection: any): string {
+function _collectionToSkosXml(collection: any, baseUri?: string): string {
+  const uri = baseUri || "http://localhost/";
   if (getBackend() === 'napi') {
     const napi = getNapiModule();
-    if (napi?.collectionToSkosXml) return napi.collectionToSkosXml(collection);
+    if (napi?.collectionToSkosXml) return napi.collectionToSkosXml(collection, uri);
     throw new Error("collectionToSkosXml not available in NAPI binary");
   }
-  return collectionToSkosXml(collection);
+  return collectionToSkosXml(collection, uri);
 }
 
-function _collectionsToSkosXml(collections: any[]): string {
+function _collectionsToSkosXml(collections: any[], baseUri?: string): string {
+  const uri = baseUri || "http://localhost/";
   if (getBackend() === 'napi') {
     const napi = getNapiModule();
-    if (napi?.collectionsToSkosXml) return napi.collectionsToSkosXml(collections);
+    if (napi?.collectionsToSkosXml) return napi.collectionsToSkosXml(collections, uri);
     throw new Error("collectionsToSkosXml not available in NAPI binary");
   }
-  return collectionsToSkosXml(collections);
+  return collectionsToSkosXml(collections, uri);
 }
 
 export {

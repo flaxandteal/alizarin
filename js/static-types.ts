@@ -8,6 +8,7 @@ import {
   createStaticPublication,
   createWasmType,
   getRdmCache,
+  parseStaticGraph as _parseStaticGraph,
 } from './backend';
 import {
   StaticGraphMeta as _WasmStaticGraphMeta,

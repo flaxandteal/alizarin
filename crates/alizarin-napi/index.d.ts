@@ -17,7 +17,7 @@ export declare function buildGraphFromCsvs(graphCsv: string, nodesCsv: string, c
  * Returns the resources wrapped in the `{ business_data: { resources: [...] } }`
  * format expected by PrebuildLoader.
  */
-export declare function buildBusinessDataFromCsv(csvData: string, graphJson: string, collectionsJson: string): any
+export declare function buildBusinessDataFromCsv(csvData: string, graphJson: string, collectionsJson: string, defaultLanguage?: string | undefined | null, strictConcepts?: boolean | undefined | null): any
 /**
  * Coerce a value using the registered extension handler for the given datatype.
  *
@@ -44,6 +44,10 @@ export declare function getRegisteredExtensionHandlers(): Array<string>
 export declare function parseSkosXml(xmlContent: string, baseUri: string): any
 /** Parse SKOS RDF/XML and return a single collection (the first one found). */
 export declare function parseSkosXmlToCollection(xmlContent: string, baseUri: string): any
+/** Serialize a single SkosCollection to SKOS RDF/XML. */
+export declare function collectionToSkosXml(collectionJson: any, baseUri: string): string
+/** Serialize multiple SkosCollections to SKOS RDF/XML. */
+export declare function collectionsToSkosXml(collectionsJson: any, baseUri: string): string
 /**
  * Build a mapping from node alias to collection ID based on graph definition.
  *
@@ -193,8 +197,13 @@ export declare class NapiValuesFromNodegroupResult {
   get impliedNodegroups(): Array<string>
 }
 export declare class NapiResourceInstanceWrapper {
-  /** Create a wrapper for a given graph (must be registered). */
-  constructor(graphId: string)
+  /**
+   * Create a wrapper for a given graph (must be registered).
+   *
+   * If `resource_id` is provided, a minimal resource metadata is created so
+   * the tile-source fast path can look up tiles by resource.
+   */
+  constructor(graphId: string, resourceId?: string | undefined | null)
   /** Load tiles from a JSON string (single-pass deserialization). */
   loadTiles(tilesJson: string): void
   /** Load tiles directly from a StaticResource JSON string (single-pass deserialization). */
@@ -368,6 +377,13 @@ export declare class NapiStaticGraph {
   get name(): any
   /** Register this graph in the global registry so NapiResourceInstanceWrapper can use it. */
   register(): void
+  /**
+   * Set a descriptor template for computing resource name/description/slug.
+   *
+   * Template placeholders use `<Node Name>` syntax, e.g. `"<Headword>"`.
+   * Descriptor types: "name", "description", "slug".
+   */
+  setDescriptorTemplate(descriptorType: string, stringTemplate: string): void
 }
 export declare class NapiStaticResourceRegistry {
   constructor()
@@ -384,7 +400,7 @@ export declare class NapiStaticResourceRegistry {
   /** Insert full resources from a business_data JSON file string. */
   mergeFromBusinessDataJson(businessDataJson: string, storeFull?: boolean | undefined | null): void
   /** Build an inverted index: visibility value -> [resource IDs]. */
-  getValueToResourcesIndex(graph: NapiStaticGraph, nodeIdentifier: string, flattenLocalized?: boolean | undefined | null): Record<string, Array<string>>
+  getValueToResourcesIndex(graph: NapiStaticGraph, nodeIdentifier: string, flattenLocalized?: boolean | undefined | null, rdmCache?: NapiRdmCache | undefined | null): Record<string, Array<string>>
   /**
    * Extract values from one node in tiles where another node matches a filter.
    *
@@ -406,4 +422,17 @@ export declare class NapiStaticResourceRegistry {
   memoryStats(): any
   /** Get detailed stats including estimated byte sizes (expensive — re-serializes all data) */
   memoryStatsDetailed(): any
+  /**
+   * Populate __cache on resources with summaries for referenced resources.
+   *
+   * Uses the graph to identify resource-instance nodes, then populates
+   * cache entries for each referenced resource found in this registry.
+   *
+   * If `enrich_relationships` is true, also adds ontologyProperty to tile data.
+   * If `recompute_descriptors` is true, recomputes resource name/description from
+   * descriptor templates set on the graph.
+   *
+   * Returns `{ resources, unknownReferences, hasUnknown }`.
+   */
+  populateCachesFromJson(resourcesJson: string, graph: NapiStaticGraph, enrichRelationships?: boolean | undefined | null, strict?: boolean | undefined | null, recomputeDescriptors?: boolean | undefined | null): any
 }

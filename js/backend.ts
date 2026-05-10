@@ -138,15 +138,18 @@ export function loadTiles(wrapper: any, tiles: any): void {
 
 /**
  * Create an instance wrapper for a model (no resource data yet).
+ *
+ * If `resourceId` is provided, a minimal resource metadata is set so the
+ * tile-source fast path can look up tiles by resource.
  */
-export function createInstanceWrapperForModel(graphId: string): any {
+export function createInstanceWrapperForModel(graphId: string, resourceId?: string): any {
   if (_backend === 'napi') {
     const napi = getNapiModule();
     if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
-    return new napi.NapiResourceInstanceWrapper(graphId);
+    return new napi.NapiResourceInstanceWrapper(graphId, resourceId ?? null);
   }
   const { newWASMResourceInstanceWrapperForModel } = getWasmModule();
-  return newWASMResourceInstanceWrapperForModel(graphId);
+  return newWASMResourceInstanceWrapperForModel(graphId, resourceId ?? null);
 }
 
 // ============================================================================
@@ -475,8 +478,12 @@ export function createStaticTranslatableString(data: any): any {
  */
 export function parseStaticGraph(jsonText: string): any {
   if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (napi?.NapiStaticGraph?.fromJsonString) {
+      return napi.NapiStaticGraph.fromJsonString(jsonText);
+    }
+    // Fallback: plain object (pre-setDescriptorTemplate NAPI)
     const parsed = JSON.parse(jsonText);
-    // Handle the { graph: [...] } wrapper format
     if (parsed.graph && Array.isArray(parsed.graph) && parsed.graph.length === 1) {
       return parsed.graph[0];
     }

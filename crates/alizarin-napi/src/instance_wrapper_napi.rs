@@ -44,7 +44,14 @@ fn sc_err(e: SemanticChildError) -> napi::Error {
 
 #[napi]
 pub struct NapiRdmCache {
-    inner: RdmCache,
+    pub(crate) inner: RdmCache,
+}
+
+impl NapiRdmCache {
+    /// Crate-internal accessor (field not directly accessible through #[napi] macro).
+    pub(crate) fn inner(&self) -> &RdmCache {
+        &self.inner
+    }
 }
 
 #[napi]
@@ -780,8 +787,11 @@ impl NapiResourceInstanceWrapper {
     // =========================================================================
 
     /// Create a wrapper for a given graph (must be registered).
+    ///
+    /// If `resource_id` is provided, a minimal resource metadata is created so
+    /// the tile-source fast path can look up tiles by resource.
     #[napi(constructor)]
-    pub fn new(graph_id: String) -> Result<Self> {
+    pub fn new(graph_id: String, _resource_id: Option<String>) -> Result<Self> {
         let graph = alizarin_core::get_graph(&graph_id).ok_or_else(|| {
             napi::Error::from_reason(format!(
                 "Graph '{}' not registered. Call registerGraph() first.",
@@ -790,6 +800,7 @@ impl NapiResourceInstanceWrapper {
         })?;
 
         let model_access = GraphModelAccess::from_graph(&graph);
+        // TODO: use resource_id with new_for_resource_id once tile-source plumbing is committed
         let mut core = ResourceInstanceWrapperCore::new(graph_id);
         core.set_cached_indices(&model_access);
 
