@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-wasm"
-version = "2.0.0-alpha.95"
+version = "2.0.0-alpha.96"
 authors = ["Phil Weir <phil.weir@flaxandteal.co.uk>"]
 edition = "2021"
 description = "WASM bindings for Alizarin"
@@ -24,6 +24,7 @@ rio_xml = "0.8"
 oxiri = "0.2"
 regex-lite = "0.1"
 serde-wasm-bindgen = "0.6"
+rmp-serde = "1"
 uuid = { version = "1.0", features = ["v4", "wasm-bindgen"] }
 getrandom = { version = "0.2", features = ["js"] }
 once_cell = "1.19"
