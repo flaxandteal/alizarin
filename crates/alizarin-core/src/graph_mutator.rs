@@ -1156,6 +1156,40 @@ pub struct RenameNodeParams {
     /// New description (if provided)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Whether to also realign the card and widget label to match the new node name (default: true)
+    #[serde(default = "default_true")]
+    pub realign_card: bool,
+}
+
+/// Parameters for renaming/updating a card
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RenameCardParams {
+    /// Card ID or nodegroup ID — searches by card ID first, then by nodegroup_id
+    pub card_id: String,
+    /// Language code for name/description (defaults to "en")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// New name — applied to the specified language (or "en" by default).
+    /// Alternatively, provide `name_i18n` for a full translatable map.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Full translatable name map (e.g. {"en": "Name", "fr": "Nom"}).
+    /// Overrides `name` if both are provided.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name_i18n: Option<HashMap<String, String>>,
+    /// New description — applied to the specified language (or "en" by default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Full translatable description map. Overrides `description` if both provided.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description_i18n: Option<HashMap<String, String>>,
+}
+
+/// Parameters for realigning a card (and its widget label) to match the current node name
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RealignCardFromNodeParams {
+    /// Node alias (or node ID) whose name should be synced to its card and widget label
+    pub node_alias: String,
 }
 
 /// Parameters for changing a nodegroup's cardinality (1 <-> n)
@@ -1448,6 +1482,10 @@ pub enum GraphMutation {
     ChangeNodeType(ChangeNodeTypeParams),
     ChangeCardinality(ChangeCardinalityParams),
     RenameNode(RenameNodeParams),
+    /// Rename/update a card's display name and description
+    RenameCard(RenameCardParams),
+    /// Realign a card and widget label to match the current node name
+    RealignCardFromNode(RealignCardFromNodeParams),
     /// Rename/update graph metadata (name, description, subtitle, author)
     RenameGraph(RenameGraphParams),
     /// Set a descriptor template (name, slug, etc.) on the graph's descriptor function
@@ -1486,6 +1524,8 @@ impl GraphMutation {
             GraphMutation::ChangeNodeType(_) => MutationConformance::BranchConformant,
             GraphMutation::ChangeCardinality(_) => MutationConformance::BranchConformant,
             GraphMutation::RenameNode(_) => MutationConformance::AlwaysConformant,
+            GraphMutation::RenameCard(_) => MutationConformance::AlwaysConformant,
+            GraphMutation::RealignCardFromNode(_) => MutationConformance::AlwaysConformant,
             // Graph metadata update - valid for both
             GraphMutation::RenameGraph(_) => MutationConformance::AlwaysConformant,
             // Descriptor template - valid for both branches and models
@@ -1948,6 +1988,8 @@ fn apply_mutation_with_extensions(
         GraphMutation::ChangeNodeType(params) => apply_change_node_type(graph, params),
         GraphMutation::ChangeCardinality(params) => apply_change_cardinality(graph, params),
         GraphMutation::RenameNode(params) => apply_rename_node(graph, params),
+        GraphMutation::RenameCard(params) => apply_rename_card(graph, params),
+        GraphMutation::RealignCardFromNode(params) => apply_realign_card_from_node(graph, params),
         GraphMutation::RenameGraph(params) => apply_rename_graph(graph, params),
         GraphMutation::SetDescriptorTemplate(params) => apply_set_descriptor_template(graph, params),
         GraphMutation::CoppiceSubgraph(params) => apply_coppice_subgraph(graph, params),
@@ -2885,11 +2927,103 @@ fn apply_rename_node(
     if let Some(alias) = params.alias {
         node_mut.alias = if alias.is_empty() { None } else { Some(alias) };
     }
+    let name_changed = params.name.is_some();
     if let Some(name) = params.name {
         node_mut.name = name;
     }
     if let Some(description) = params.description {
         node_mut.description = Some(StaticTranslatableString::from_string(&description));
+    }
+
+    // Auto-realign card and widget label if name was changed
+    if name_changed && params.realign_card {
+        let _ = apply_realign_card_from_node(
+            graph,
+            RealignCardFromNodeParams {
+                node_alias: node_id,
+            },
+        );
+    }
+
+    Ok(())
+}
+
+fn apply_rename_card(
+    graph: &mut StaticGraph,
+    params: RenameCardParams,
+) -> Result<(), MutationError> {
+    let lang = params.language.unwrap_or_else(|| "en".to_string());
+
+    // Find card by card_id first, then by nodegroup_id
+    let card_mut = graph
+        .cards
+        .as_mut()
+        .and_then(|cards| {
+            cards
+                .iter_mut()
+                .find(|c| c.cardid == params.card_id || c.nodegroup_id == params.card_id)
+        })
+        .ok_or(MutationError::CardNotFound(params.card_id))?;
+
+    // Update name
+    if let Some(name_i18n) = params.name_i18n {
+        card_mut.name = StaticTranslatableString::from_translations(name_i18n, Some(lang.clone()));
+    } else if let Some(name) = params.name {
+        card_mut.name.translations.insert(lang.clone(), name);
+    }
+
+    // Update description
+    if let Some(desc_i18n) = params.description_i18n {
+        card_mut.description = Some(StaticTranslatableString::from_translations(
+            desc_i18n,
+            Some(lang),
+        ));
+    } else if let Some(desc) = params.description {
+        let description = card_mut
+            .description
+            .get_or_insert_with(StaticTranslatableString::empty);
+        description.translations.insert(lang, desc);
+    }
+
+    Ok(())
+}
+
+fn apply_realign_card_from_node(
+    graph: &mut StaticGraph,
+    params: RealignCardFromNodeParams,
+) -> Result<(), MutationError> {
+    // Find node by alias first, then by ID
+    let node = graph
+        .find_node_by_alias(&params.node_alias)
+        .or_else(|| graph.nodes.iter().find(|n| n.nodeid == params.node_alias))
+        .ok_or_else(|| MutationError::NodeNotFound(params.node_alias.clone()))?;
+
+    let node_name = node.name.clone();
+    let node_id = node.nodeid.clone();
+    let nodegroup_id = node
+        .nodegroup_id
+        .clone()
+        .ok_or_else(|| MutationError::NodegroupNotFound(params.node_alias.clone()))?;
+
+    // Update card name to match node name
+    if let Some(cards) = graph.cards.as_mut() {
+        if let Some(card) = cards.iter_mut().find(|c| c.nodegroup_id == nodegroup_id) {
+            card.name = StaticTranslatableString::from_string(&node_name);
+        }
+    }
+
+    // Update widget label for this node
+    if let Some(cxnxws) = graph.cards_x_nodes_x_widgets.as_mut() {
+        for cxnxw in cxnxws.iter_mut().filter(|c| c.node_id == node_id) {
+            cxnxw.label = StaticTranslatableString::from_string(&node_name);
+            // Also update the label in widget config if present
+            if let serde_json::Value::Object(ref mut map) = cxnxw.config {
+                map.insert(
+                    "label".to_string(),
+                    serde_json::Value::String(node_name.clone()),
+                );
+            }
+        }
     }
 
     Ok(())
@@ -4832,7 +4966,36 @@ impl GraphInstruction {
                 }),
                 name: self.get_str("name"),
                 description: self.get_str("description"),
+                realign_card: self
+                    .params
+                    .get("realign_card")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true),
             })),
+            "rename_card" => {
+                // name: either from params.name (simple string) or params.name_i18n (map)
+                // If object is set and name is not, treat object as the name (simple en string)
+                let name = self.get_str("name").or_else(|| {
+                    if self.object.is_empty() {
+                        None
+                    } else {
+                        Some(self.object.clone())
+                    }
+                });
+                Ok(GraphMutation::RenameCard(RenameCardParams {
+                    card_id: self.subject.clone(),
+                    language: self.get_str("language"),
+                    name,
+                    name_i18n: self.get_translatable_map("name_i18n"),
+                    description: self.get_str("description"),
+                    description_i18n: self.get_translatable_map("description_i18n"),
+                }))
+            }
+            "realign_card_from_node" => Ok(GraphMutation::RealignCardFromNode(
+                RealignCardFromNodeParams {
+                    node_alias: self.subject.clone(),
+                },
+            )),
             "rename_graph" => {
                 // Parse name: either from params.name (as map) or object (as simple en string)
                 let name = self.get_translatable_map("name").or_else(|| {
@@ -7119,6 +7282,278 @@ mod tests {
     }
 
     #[test]
+    fn test_rename_card_by_nodegroup_id() {
+        let mut graph = create_skeleton_graph("Test", "test", false, None);
+        let options = MutatorOptions::default();
+
+        // Add a node with cardinality N (auto-creates card)
+        apply_mutation(
+            &mut graph,
+            GraphMutation::AddNode(AddNodeParams {
+                parent_alias: Some("test".to_string()),
+                alias: "my_field".to_string(),
+                name: "My Field".to_string(),
+                cardinality: Cardinality::N,
+                datatype: "string".to_string(),
+                ontology_class: None,
+                parent_property: String::new(),
+                description: None,
+                config: None,
+                options: NodeOptions::default(),
+            }),
+            &options,
+        )
+        .unwrap();
+
+        // Card name should initially be "My Field"
+        let node = graph.find_node_by_alias("my_field").unwrap();
+        let ng_id = node.nodegroup_id.clone().unwrap();
+        let card = graph.find_card_by_nodegroup(&ng_id).unwrap();
+        assert_eq!(card.name.get("en"), "My Field");
+
+        // Rename card by nodegroup_id
+        apply_mutation(
+            &mut graph,
+            GraphMutation::RenameCard(RenameCardParams {
+                card_id: ng_id.clone(),
+                language: None,
+                name: Some("Renamed Card".to_string()),
+                name_i18n: None,
+                description: Some("A description".to_string()),
+                description_i18n: None,
+            }),
+            &options,
+        )
+        .unwrap();
+
+        let card = graph.find_card_by_nodegroup(&ng_id).unwrap();
+        assert_eq!(card.name.get("en"), "Renamed Card");
+        assert_eq!(
+            card.description.as_ref().unwrap().get("en"),
+            "A description"
+        );
+    }
+
+    #[test]
+    fn test_rename_card_multilingual() {
+        let mut graph = create_skeleton_graph("Test", "test", false, None);
+        let options = MutatorOptions::default();
+
+        apply_mutation(
+            &mut graph,
+            GraphMutation::AddNode(AddNodeParams {
+                parent_alias: Some("test".to_string()),
+                alias: "my_field".to_string(),
+                name: "My Field".to_string(),
+                cardinality: Cardinality::N,
+                datatype: "string".to_string(),
+                ontology_class: None,
+                parent_property: String::new(),
+                description: None,
+                config: None,
+                options: NodeOptions::default(),
+            }),
+            &options,
+        )
+        .unwrap();
+
+        let node = graph.find_node_by_alias("my_field").unwrap();
+        let ng_id = node.nodegroup_id.clone().unwrap();
+
+        // Rename with i18n map
+        let mut name_map = HashMap::new();
+        name_map.insert("en".to_string(), "English Name".to_string());
+        name_map.insert("fr".to_string(), "Nom Français".to_string());
+
+        apply_mutation(
+            &mut graph,
+            GraphMutation::RenameCard(RenameCardParams {
+                card_id: ng_id.clone(),
+                language: None,
+                name: None,
+                name_i18n: Some(name_map),
+                description: None,
+                description_i18n: None,
+            }),
+            &options,
+        )
+        .unwrap();
+
+        let card = graph.find_card_by_nodegroup(&ng_id).unwrap();
+        assert_eq!(card.name.get("en"), "English Name");
+        assert_eq!(card.name.get("fr"), "Nom Français");
+    }
+
+    #[test]
+    fn test_rename_card_specific_language() {
+        let mut graph = create_skeleton_graph("Test", "test", false, None);
+        let options = MutatorOptions::default();
+
+        apply_mutation(
+            &mut graph,
+            GraphMutation::AddNode(AddNodeParams {
+                parent_alias: Some("test".to_string()),
+                alias: "my_field".to_string(),
+                name: "My Field".to_string(),
+                cardinality: Cardinality::N,
+                datatype: "string".to_string(),
+                ontology_class: None,
+                parent_property: String::new(),
+                description: None,
+                config: None,
+                options: NodeOptions::default(),
+            }),
+            &options,
+        )
+        .unwrap();
+
+        let node = graph.find_node_by_alias("my_field").unwrap();
+        let ng_id = node.nodegroup_id.clone().unwrap();
+
+        // Add a French name without disturbing the English one
+        apply_mutation(
+            &mut graph,
+            GraphMutation::RenameCard(RenameCardParams {
+                card_id: ng_id.clone(),
+                language: Some("fr".to_string()),
+                name: Some("Mon Champ".to_string()),
+                name_i18n: None,
+                description: None,
+                description_i18n: None,
+            }),
+            &options,
+        )
+        .unwrap();
+
+        let card = graph.find_card_by_nodegroup(&ng_id).unwrap();
+        assert_eq!(card.name.get("en"), "My Field");
+        assert_eq!(card.name.get("fr"), "Mon Champ");
+    }
+
+    #[test]
+    fn test_rename_card_not_found() {
+        let mut graph = create_skeleton_graph("Test", "test", false, None);
+        let options = MutatorOptions::default();
+
+        let result = apply_mutation(
+            &mut graph,
+            GraphMutation::RenameCard(RenameCardParams {
+                card_id: "nonexistent".to_string(),
+                language: None,
+                name: Some("Whatever".to_string()),
+                name_i18n: None,
+                description: None,
+                description_i18n: None,
+            }),
+            &options,
+        );
+
+        assert!(matches!(result, Err(MutationError::CardNotFound(_))));
+    }
+
+    #[test]
+    fn test_realign_card_from_node() {
+        let mut graph = create_skeleton_graph("Test", "test", false, None);
+        let options = MutatorOptions::default();
+
+        // Add a node with cardinality N (auto-creates card + widget)
+        apply_mutation(
+            &mut graph,
+            GraphMutation::AddNode(AddNodeParams {
+                parent_alias: Some("test".to_string()),
+                alias: "my_field".to_string(),
+                name: "Original Name".to_string(),
+                cardinality: Cardinality::N,
+                datatype: "string".to_string(),
+                ontology_class: None,
+                parent_property: String::new(),
+                description: None,
+                config: None,
+                options: NodeOptions::default(),
+            }),
+            &options,
+        )
+        .unwrap();
+
+        // Verify initial state
+        let node = graph.find_node_by_alias("my_field").unwrap();
+        let ng_id = node.nodegroup_id.clone().unwrap();
+        let node_id = node.nodeid.clone();
+        assert_eq!(
+            graph.find_card_by_nodegroup(&ng_id).unwrap().name.get("en"),
+            "Original Name"
+        );
+        let widget = graph
+            .cards_x_nodes_x_widgets
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|c| c.node_id == node_id)
+            .unwrap();
+        assert_eq!(widget.label.get("en"), "Original Name");
+
+        // Rename the node with realign_card=false (card and widget stay stale)
+        apply_mutation(
+            &mut graph,
+            GraphMutation::RenameNode(RenameNodeParams {
+                node_id: "my_field".to_string(),
+                alias: None,
+                name: Some("Updated Name".to_string()),
+                description: None,
+                realign_card: false,
+            }),
+            &options,
+        )
+        .unwrap();
+
+        // Card still has old name
+        assert_eq!(
+            graph.find_card_by_nodegroup(&ng_id).unwrap().name.get("en"),
+            "Original Name"
+        );
+
+        // Realign
+        apply_mutation(
+            &mut graph,
+            GraphMutation::RealignCardFromNode(RealignCardFromNodeParams {
+                node_alias: "my_field".to_string(),
+            }),
+            &options,
+        )
+        .unwrap();
+
+        // Card and widget now match the node
+        assert_eq!(
+            graph.find_card_by_nodegroup(&ng_id).unwrap().name.get("en"),
+            "Updated Name"
+        );
+        let widget = graph
+            .cards_x_nodes_x_widgets
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|c| c.node_id == node_id)
+            .unwrap();
+        assert_eq!(widget.label.get("en"), "Updated Name");
+    }
+
+    #[test]
+    fn test_realign_card_from_node_not_found() {
+        let mut graph = create_skeleton_graph("Test", "test", false, None);
+        let options = MutatorOptions::default();
+
+        let result = apply_mutation(
+            &mut graph,
+            GraphMutation::RealignCardFromNode(RealignCardFromNodeParams {
+                node_alias: "nonexistent".to_string(),
+            }),
+            &options,
+        );
+
+        assert!(matches!(result, Err(MutationError::NodeNotFound(_))));
+    }
+
+    #[test]
     fn test_delete_widget() {
         // Build a graph with a widget
         let mut graph = create_skeleton_graph("Test", "test", false, None);
@@ -7671,6 +8106,7 @@ mod tests {
                 alias: Some("new_alias".to_string()),
                 name: Some("New Name".to_string()),
                 description: Some("New description".to_string()),
+                realign_card: true,
             }),
             &options,
         )
@@ -7735,6 +8171,7 @@ mod tests {
                 alias: Some("field2".to_string()),
                 name: None,
                 description: None,
+                realign_card: true,
             }),
             &options,
         );
