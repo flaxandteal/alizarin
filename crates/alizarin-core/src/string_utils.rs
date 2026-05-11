@@ -31,6 +31,12 @@ pub fn snake_to_camel(s: &str) -> String {
         }
     }
 
+    // Preserve trailing underscore (e.g. Arches uses `digitalFileS_` to avoid
+    // reserved-word collisions; the alias `digital_file_s_` must round-trip).
+    if capitalize_next {
+        result.push('_');
+    }
+
     result
 }
 
@@ -159,6 +165,27 @@ pub fn sort_json_keys(value: Value) -> Value {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_snake_to_camel_simple() {
+        assert_eq!(snake_to_camel("first_name"), "firstName");
+        assert_eq!(snake_to_camel("email_address"), "emailAddress");
+        assert_eq!(snake_to_camel("single"), "single");
+    }
+
+    #[test]
+    fn test_snake_to_camel_trailing_underscore() {
+        // Arches appends `_` to field names that clash with reserved words,
+        // e.g. `pages` -> node alias `page_s_`, camelCase `pageS_`.
+        assert_eq!(snake_to_camel("digital_file_s_"), "digitalFileS_");
+        assert_eq!(snake_to_camel("page_s_"), "pageS_");
+        // Round-trip: camel -> snake -> camel must be stable
+        assert_eq!(
+            snake_to_camel(&camel_to_snake("digitalFileS_")),
+            "digitalFileS_"
+        );
+        assert_eq!(snake_to_camel(&camel_to_snake("pageS_")), "pageS_");
+    }
 
     #[test]
     fn test_camel_to_snake_simple() {
