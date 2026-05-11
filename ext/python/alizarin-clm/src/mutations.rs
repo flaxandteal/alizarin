@@ -17,9 +17,11 @@ pub const REFERENCE_CHANGE_COLLECTION: &str = "clm.reference_change_collection";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReferenceChangeCollectionParams {
     /// Node ID or alias of the reference node to update
-    pub node_id: String,
+    #[serde(alias = "node_id")]
+    pub subject: String,
     /// New collection ID to set
-    pub collection_id: String,
+    #[serde(alias = "collection_id")]
+    pub object: String,
     /// Config key to use (defaults to "controlledList")
     #[serde(default = "default_config_key")]
     pub config_key: String,
@@ -37,8 +39,8 @@ fn default_config_key() -> String {
 ///
 /// ## Parameters
 ///
-/// - `node_id`: The node ID or alias of the reference node
-/// - `collection_id`: The UUID of the new controlled list
+/// - `subject`: The node ID or alias of the reference node (alias: `node_id`)
+/// - `object`: The UUID of the new controlled list (alias: `collection_id`)
 /// - `config_key`: The config key to update (default: "controlledList")
 ///
 /// ## Example
@@ -50,8 +52,8 @@ fn default_config_key() -> String {
 /// let mutation = GraphMutation::Extension(ExtensionMutationParams {
 ///     name: "clm.reference_change_collection".to_string(),
 ///     params: json!({
-///         "node_id": "my_reference_node",
-///         "collection_id": "new-collection-uuid"
+///         "subject": "my_reference_node",
+///         "object": "new-collection-uuid"
 ///     }),
 ///     conformance: MutationConformance::AlwaysConformant,
 /// });
@@ -72,12 +74,12 @@ impl ExtensionMutationHandler for ReferenceChangeCollectionHandler {
         // Find the node by ID or alias
         let node_id = {
             // Try to find by alias first
-            if let Some(node) = graph.find_node_by_alias(&params.node_id) {
+            if let Some(node) = graph.find_node_by_alias(&params.subject) {
                 node.nodeid.clone()
-            } else if graph.nodes.iter().any(|n| n.nodeid == params.node_id) {
-                params.node_id.clone()
+            } else if graph.nodes.iter().any(|n| n.nodeid == params.subject) {
+                params.subject.clone()
             } else {
-                return Err(MutationError::NodeNotFound(params.node_id));
+                return Err(MutationError::NodeNotFound(params.subject));
             }
         };
 
@@ -98,7 +100,7 @@ impl ExtensionMutationHandler for ReferenceChangeCollectionHandler {
         // Update the config with the new collection ID
         node.config.insert(
             params.config_key,
-            Value::String(params.collection_id),
+            Value::String(params.object),
         );
 
         Ok(())
@@ -464,7 +466,7 @@ mod tests {
             name: "Person Type".to_string(),
             cardinality: Cardinality::One,
             datatype: "reference".to_string(),
-            ontology_class: "E55_Type".to_string(),
+            ontology_class: Some(vec!["E55_Type".to_string()]),
             parent_property: "P2_has_type".to_string(),
             description: Some("Type of person".to_string()),
             config: Some(json!({

@@ -345,8 +345,8 @@ Change a reference node's controlled list collection.
     "Extension": {
         "name": "clm.reference_change_collection",
         "params": {
-            "node_id": "reference_node_alias",
-            "collection_id": "new-collection-uuid",
+            "subject": "reference_node_alias",
+            "object": "new-collection-uuid",
             "config_key": "controlledList"
         },
         "conformance": "AlwaysConformant"
@@ -355,8 +355,8 @@ Change a reference node's controlled list collection.
 ```
 
 **Parameters:**
-- `node_id` - Node alias or UUID (must be `reference` or `reference-list` type)
-- `collection_id` - New collection UUID
+- `subject` - Node alias or UUID (must be `reference` or `reference-list` type). Alias: `node_id`
+- `object` - New collection UUID. Alias: `collection_id`
 - `config_key` - Config key to update (default: `controlledList`, alternative: `rdmCollection`)
 
 **Usage with extensions:**
@@ -500,6 +500,18 @@ def instruction_to_mutation(instruction: dict) -> dict:
                 "collection_id": obj
             }
         }
+    elif action == "reference_change_collection":
+        return {
+            "Extension": {
+                "name": "clm.reference_change_collection",
+                "params": {
+                    "subject": subject,
+                    "object": obj,
+                    "config_key": params.get("config_key", "controlledList")
+                },
+                "conformance": "AlwaysConformant"
+            }
+        }
     elif action == "delete_node":
         return {"DeleteNode": {"node_id": subject}}
     # Add more mappings as needed...
@@ -563,6 +575,7 @@ result = alizarin.apply_mutations_from_json(graph_json, json.dumps(request))
 | `update_node` | node_alias | - | `name`, `ontology_class`, `description`, `config` |
 | `change_node_type` | node_alias | new_datatype | `name`, `ontology_class`, `config` |
 | `concept_change_collection` | node_alias | collection_id | - |
+| `reference_change_collection` | node_alias | collection_id | `config_key` |
 | `delete_node` | node_alias | - | - |
 | `delete_nodegroup` | nodegroup_id | - | - |
 | `delete_card` | card_id | - | - |

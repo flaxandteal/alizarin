@@ -502,8 +502,8 @@ def _reference_change_collection_handler(graph_json: str, params_json: str) -> s
     graph = json.loads(graph_json)
     params = json.loads(params_json)
 
-    node_id = params["node_id"]
-    collection_id = params["collection_id"]
+    node_id = params.get("subject") or params["node_id"]
+    collection_id = params.get("object") or params["collection_id"]
     config_key = params.get("config_key", "controlledList")
 
     # Find node by ID or alias
