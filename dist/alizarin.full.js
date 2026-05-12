@@ -1,8 +1,8 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-import { w as wasmReady, r as registerExtensionHandler, C as CUSTOM_DATATYPES, g as getCurrentLanguage, a as registerResolvableDatatype, n as nodeConfigManager, R as RDM } from "./main-C5yc4Bak.js";
-import { A, K, G, p, o, S, L, N, c, I, J, T, k, y, V, Q, t, U, B, l, b, _, j, D, m, F, H, i, z, O, q, P, x, d, f, s, E, h, u, M, v, e } from "./main-C5yc4Bak.js";
+import { w as wasmReady, r as registerExtensionHandler, C as CUSTOM_DATATYPES, g as getCurrentLanguage, a as registerResolvableDatatype, n as nodeConfigManager, R as RDM } from "./main-Bf082Zkw.js";
+import { A, K, G, p, o, T, L, N, c, I, J, U, k, y, X, S, t, W, B, l, b, _, j, D, m, F, H, V, i, z, O, q, P, Q, x, d, f, s, E, h, u, M, v, e } from "./main-Bf082Zkw.js";
 class FileListItem {
   constructor(data) {
     __publicField(this, "accepted");
@@ -758,19 +758,19 @@ export {
   p as GraphMutator,
   RDM,
   o as ResourceModelWrapper,
-  S as autoDetectBackend,
+  T as autoDetectBackend,
   L as buildGraphFromModelCsvs,
   N as buildResourcesFromBusinessCsv,
   c as client,
   I as collectionToSkosXml,
   J as collectionsToSkosXml,
-  T as createResourceRegistry,
+  U as createResourceRegistry,
   k as createWKRM,
   y as ensureWasmRdmCache,
-  V as formatMemoryUsage,
-  Q as getBackend,
+  X as formatMemoryUsage,
+  S as getBackend,
   t as getCurrentLanguage,
-  U as getMemoryUsage,
+  W as getMemoryUsage,
   B as getTimingStats,
   l as getWKRMClass,
   b as graphManager,
@@ -780,6 +780,7 @@ export {
   m as nodeConfig,
   F as parseSkosXml,
   H as parseSkosXmlToCollection,
+  V as parseStaticGraph,
   registerExtensionHandler,
   registerResolvableDatatype,
   i as renderers,
@@ -787,6 +788,7 @@ export {
   O as setBackend,
   q as setCurrentLanguage,
   P as setNapiModule,
+  Q as setWasmModule,
   x as setWasmURL,
   d as slugify,
   f as staticStore,

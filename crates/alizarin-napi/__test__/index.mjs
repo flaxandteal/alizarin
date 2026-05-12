@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { NapiStaticGraph, NapiStaticResourceRegistry, NapiResourceModelWrapper, NapiResourceInstanceWrapper } from '../index.js';
+import { NapiStaticGraph, NapiStaticResourceRegistry, NapiResourceModelWrapper, NapiResourceInstanceWrapper, NapiNodeConfigManager } from '../index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEST_DATA = path.resolve(__dirname, '..', '..', '..', 'tests');
@@ -520,5 +520,46 @@ describe('NapiResourceInstanceWrapper methods', () => {
     const tiles = JSON.parse(json);
     assert.ok(Array.isArray(tiles), 'should be an array');
     assert.equal(tiles.length, 0, 'should be empty');
+  });
+});
+
+// =============================================================================
+// NapiNodeConfigManager + NapiStaticGraph integration
+// Regression: loadFromGraph used JSON.stringify on a NapiStaticGraph, which
+// produced {} because NAPI class getters are not enumerable own properties.
+// The fix uses buildFromGraph (direct struct reference) instead.
+// =============================================================================
+
+describe('NapiNodeConfigManager', () => {
+  const personJson = fs.readFileSync(
+    path.join(TEST_DATA, 'data', 'models', 'Person.json'),
+    'utf-8'
+  );
+
+  it('buildFromGraph accepts a NapiStaticGraph without error', () => {
+    const graph = NapiStaticGraph.fromJsonString(personJson);
+    const ncm = new NapiNodeConfigManager();
+    // This is the path that failed when using JSON.stringify(napiGraph)
+    ncm.buildFromGraph(graph);
+  });
+
+  it('buildFromGraphJson fails on JSON.stringify of a NapiStaticGraph', () => {
+    const graph = NapiStaticGraph.fromJsonString(personJson);
+    const ncm = new NapiNodeConfigManager();
+    // Demonstrates the bug: NAPI objects don't stringify their getters
+    const stringified = JSON.stringify(graph);
+    assert.throws(
+      () => ncm.buildFromGraphJson(stringified),
+      /Failed to parse graph/i,
+      'JSON.stringify of NapiStaticGraph should produce invalid graph JSON'
+    );
+  });
+
+  it('buildFromGraphJson works with raw graph JSON', () => {
+    const parsed = JSON.parse(personJson);
+    const graphObj = parsed.graph ? parsed.graph[0] : parsed;
+    const ncm = new NapiNodeConfigManager();
+    // Raw JS object stringifies correctly
+    ncm.buildFromGraphJson(JSON.stringify(graphObj));
   });
 });

@@ -54,8 +54,11 @@ export declare function loadTilesFromResource(wrapper: any, resource: any, assum
 export declare function loadTiles(wrapper: any, tiles: any): void;
 /**
  * Create an instance wrapper for a model (no resource data yet).
+ *
+ * If `resourceId` is provided, a minimal resource metadata is set so the
+ * tile-source fast path can look up tiles by resource.
  */
-export declare function createInstanceWrapperForModel(graphId: string): any;
+export declare function createInstanceWrapperForModel(graphId: string, resourceId?: string): any;
 /**
  * Create a resource registry (for staticStore).
  */

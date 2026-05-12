@@ -6,6 +6,9 @@
  * nodes.csv, collections.csv) and builds an Arches resource model graph
  * with SKOS collections.
  *
+ * When the NAPI backend is active, routes to native Rust implementations
+ * for better performance.
+ *
  * @module csvModelLoader
  */
 export interface CsvModelDiagnostic {

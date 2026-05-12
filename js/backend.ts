@@ -257,7 +257,10 @@ export function createResourceModelWrapper(wkrm: any, graph: any, defaultAllow: 
   if (_backend === 'napi') {
     const napi = getNapiModule();
     if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
-    // NapiResourceModelWrapper takes graph JSON string + defaultAllow
+    // Prefer fromGraph when graph is already a NapiStaticGraph
+    if (typeof graph !== 'string' && napi.NapiResourceModelWrapper.fromGraph) {
+      return napi.NapiResourceModelWrapper.fromGraph(graph, defaultAllow);
+    }
     const graphJson = typeof graph === 'string' ? graph : JSON.stringify(graph);
     return new napi.NapiResourceModelWrapper(graphJson, defaultAllow);
   }

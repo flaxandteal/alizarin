@@ -164,15 +164,18 @@ class NodeConfigManager {
   }
 
   loadFromGraph(graph: StaticGraph): void {
-    const graphId = graph.graphid;
+    const graphId = graph.graphid ?? (graph as any).graphId;
     if (this._graphsLoaded.has(graphId)) return;
 
     const mgr = this.getBackendManager();
     if (typeof mgr.fromGraph === 'function') {
       // WASM path: direct graph loading
       mgr.fromGraph(graph);
+    } else if (typeof mgr.buildFromGraph === 'function') {
+      // NAPI path: pass NapiStaticGraph directly
+      mgr.buildFromGraph(graph);
     } else if (typeof mgr.buildFromGraphJson === 'function') {
-      // NAPI path: needs JSON string
+      // NAPI fallback: JSON string
       mgr.buildFromGraphJson(JSON.stringify(graph));
     }
     this._graphsLoaded.add(graphId);
