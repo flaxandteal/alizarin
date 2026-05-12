@@ -1,6 +1,6 @@
 {
   "name": "alizarin",
-  "version": "2.0.0-alpha.98",
+  "version": "2.0.0-alpha.99",
   "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
@@ -52,9 +52,11 @@
     "build:wasm": "wasm-pack build crates/alizarin-wasm --target web --out-dir ../../pkg --out-name alizarin --release",
     "build:wasm:dev": "wasm-pack build crates/alizarin-wasm --target web --out-dir ../../pkg --out-name alizarin --dev",
     "build:wasm:release": "npm run build:wasm && wasm-opt -Os -o pkg/alizarin_bg.wasm pkg/alizarin_bg.wasm",
+    "build:napi": "cd crates/alizarin-napi && npm run build",
+    "build:napi:debug": "cd crates/alizarin-napi && npm run build:debug",
     "build:js": "NODE_OPTIONS='--experimental-wasm-modules' vite build && node scripts/create-inline.mjs && tsc -p tsconfig.build.json",
-    "build": "npm run build:wasm && npm run build:js",
-    "build:release": "npm run build:wasm:release && npm run build:js",
+    "build": "npm run build:wasm && npm run build:napi && npm run build:js",
+    "build:release": "npm run build:wasm:release && npm run build:napi && npm run build:js",
     "prepublishOnly": "npm run build:release",
     "test": "NODE_OPTIONS='--experimental-wasm-modules' vitest --run",
     "test:watch": "NODE_OPTIONS='--experimental-wasm-modules' vitest",

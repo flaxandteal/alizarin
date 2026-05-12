@@ -7,6 +7,7 @@ import {
   isValidUuid,
   getDefaultResolvableDatatypes,
   getDefaultConfigKeys,
+  safeStringify,
 } from "./backend";
 
 // Re-export WASM utilities
@@ -160,7 +161,7 @@ class ReferenceDataManager {
 
     // Serialize tree and graph for Rust
     const treeJson = JSON.stringify(tree);
-    const graphJson = JSON.stringify({ graph: [graph] });
+    const graphJson = safeStringify({ graph: [graph] });
 
     // Use Rust to build alias -> collection mapping
     const aliasToCollection = buildAliasToCollectionMap(

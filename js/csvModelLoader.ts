@@ -15,7 +15,7 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — generated WASM bindings
 import { buildGraphFromModelCsvs as wasmBuild, validateModelCsvs as wasmValidate, buildResourcesFromBusinessCsv as wasmBuildBusinessData } from '../pkg/alizarin';
-import { getBackend, getNapiModule } from './backend';
+import { getBackend, getNapiModule, safeStringify } from './backend';
 
 export interface CsvModelDiagnostic {
   level: 'Error' | 'Warning';
@@ -101,8 +101,8 @@ export function buildResourcesFromBusinessCsv(
     if (napi?.buildBusinessDataFromCsv) {
       return napi.buildBusinessDataFromCsv(
         csvData,
-        JSON.stringify(graph),
-        JSON.stringify(collections),
+        safeStringify(graph),
+        safeStringify(collections),
         defaultLanguage ?? 'en',
         strictConcepts ?? null,
       );
@@ -110,8 +110,8 @@ export function buildResourcesFromBusinessCsv(
   }
   return wasmBuildBusinessData(
     csvData,
-    JSON.stringify(graph),
-    JSON.stringify(collections),
+    safeStringify(graph),
+    safeStringify(collections),
     defaultLanguage ?? null,
     strictConcepts ?? null,
   );

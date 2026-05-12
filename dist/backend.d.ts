@@ -31,6 +31,13 @@ export declare function getNapiModule(): any;
  */
 export declare function setNapiModule(mod: any): void;
 /**
+ * Safely serialize a value to JSON. NAPI class instances (e.g. NapiStaticGraph)
+ * have getter-only properties that are not enumerable, so JSON.stringify produces
+ * "{}". This helper detects that case and uses the NAPI object's own toJson/
+ * toJsonString method, or throws a clear error instead of silently producing "{}".
+ */
+export declare function safeStringify(value: any): string;
+/**
  * Create an instance wrapper for a resource.
  * Returns either a WASMResourceInstanceWrapper or NapiResourceInstanceWrapper,
  * both of which share the same method interface.

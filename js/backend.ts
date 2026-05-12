@@ -72,6 +72,33 @@ export function setNapiModule(mod: any) {
 }
 
 // ============================================================================
+// Safe serialization for NAPI objects
+// ============================================================================
+
+/**
+ * Safely serialize a value to JSON. NAPI class instances (e.g. NapiStaticGraph)
+ * have getter-only properties that are not enumerable, so JSON.stringify produces
+ * "{}". This helper detects that case and uses the NAPI object's own toJson/
+ * toJsonString method, or throws a clear error instead of silently producing "{}".
+ */
+export function safeStringify(value: any): string {
+  if (value === null || value === undefined) return JSON.stringify(value);
+  if (typeof value === 'string') return value;
+  // NAPI objects have a constructor from the native module — plain objects have Object
+  const isNapiObject = value.constructor &&
+    value.constructor.name !== 'Object' &&
+    value.constructor.name !== 'Array' &&
+    JSON.stringify(value) === '{}';
+  if (isNapiObject) {
+    throw new Error(
+      `Cannot JSON.stringify a ${value.constructor.name} instance — ` +
+      `NAPI class getters are not enumerable. Use a direct method instead.`
+    );
+  }
+  return JSON.stringify(value);
+}
+
+// ============================================================================
 // Instance wrapper factories
 // ============================================================================
 
@@ -258,10 +285,10 @@ export function createResourceModelWrapper(wkrm: any, graph: any, defaultAllow: 
     const napi = getNapiModule();
     if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
     // Prefer fromGraph when graph is already a NapiStaticGraph
-    if (typeof graph !== 'string' && napi.NapiResourceModelWrapper.fromGraph) {
+    if (napi.NapiStaticGraph && graph instanceof napi.NapiStaticGraph && napi.NapiResourceModelWrapper.fromGraph) {
       return napi.NapiResourceModelWrapper.fromGraph(graph, defaultAllow);
     }
-    const graphJson = typeof graph === 'string' ? graph : JSON.stringify(graph);
+    const graphJson = typeof graph === 'string' ? graph : safeStringify(graph);
     return new napi.NapiResourceModelWrapper(graphJson, defaultAllow);
   }
   const { WASMResourceModelWrapper } = getWasmModule();

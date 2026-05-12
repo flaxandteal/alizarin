@@ -7,7 +7,7 @@
 
 import { INodeConfig } from './interfaces';
 import { StaticNode, StaticDomainValue, StaticGraph } from './static-types';
-import { getBackend } from './backend';
+import { getBackend, getNapiModule, safeStringify } from './backend';
 import {
   WasmNodeConfigManager,
   WasmNodeConfigBoolean,
@@ -168,15 +168,17 @@ class NodeConfigManager {
     if (this._graphsLoaded.has(graphId)) return;
 
     const mgr = this.getBackendManager();
+    const napi = getNapiModule();
+    const isNapiGraph = napi?.NapiStaticGraph && graph instanceof napi.NapiStaticGraph;
     if (typeof mgr.fromGraph === 'function') {
       // WASM path: direct graph loading
       mgr.fromGraph(graph);
-    } else if (typeof mgr.buildFromGraph === 'function') {
+    } else if (isNapiGraph && typeof mgr.buildFromGraph === 'function') {
       // NAPI path: pass NapiStaticGraph directly
       mgr.buildFromGraph(graph);
     } else if (typeof mgr.buildFromGraphJson === 'function') {
-      // NAPI fallback: JSON string
-      mgr.buildFromGraphJson(JSON.stringify(graph));
+      // NAPI fallback: JSON string (plain object, not NAPI class)
+      mgr.buildFromGraphJson(safeStringify(graph));
     }
     this._graphsLoaded.add(graphId);
   }

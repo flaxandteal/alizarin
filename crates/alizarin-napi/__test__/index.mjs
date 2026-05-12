@@ -563,3 +563,42 @@ describe('NapiNodeConfigManager', () => {
     ncm.buildFromGraphJson(JSON.stringify(graphObj));
   });
 });
+
+// =============================================================================
+// NapiStaticGraph serialization guard
+// Regression: JSON.stringify(NapiStaticGraph) produces {} because NAPI class
+// getters are not enumerable own properties. Any code path that does
+// JSON.stringify(graph) where graph could be a NapiStaticGraph will break.
+// =============================================================================
+
+describe('NapiStaticGraph serialization', () => {
+  const groupJson = fs.readFileSync(
+    path.join(TEST_DATA, 'data', 'models', 'Group.json'),
+    'utf-8'
+  );
+
+  it('JSON.stringify of NapiStaticGraph produces empty object', () => {
+    const graph = NapiStaticGraph.fromJsonString(groupJson);
+    const stringified = JSON.stringify(graph);
+    // This documents the fundamental limitation: NAPI class instances
+    // do not serialize via JSON.stringify
+    assert.equal(stringified, '{}', 'NapiStaticGraph should stringify to {}');
+  });
+
+  it('NapiResourceModelWrapper.fromGraph accepts NapiStaticGraph directly', () => {
+    const graph = NapiStaticGraph.fromJsonString(groupJson);
+    // This is the correct NAPI path — no JSON.stringify needed
+    const wrapper = NapiResourceModelWrapper.fromGraph(graph, true);
+    assert.equal(wrapper.getGraphId(), '07883c9e-b25c-11e9-975a-a4d18cec433a');
+  });
+
+  it('NapiResourceModelWrapper constructor fails with JSON.stringify of NapiStaticGraph', () => {
+    const graph = NapiStaticGraph.fromJsonString(groupJson);
+    // Demonstrates the bug this regression test guards against
+    assert.throws(
+      () => new NapiResourceModelWrapper(JSON.stringify(graph), true),
+      /Invalid graph JSON/i,
+      'JSON.stringify of NapiStaticGraph should produce invalid input for constructor'
+    );
+  });
+});

@@ -28,6 +28,7 @@ import {
   createStaticCardsXNodesXWidgets,
   getBackend,
   loadTilesFromResource,
+  safeStringify,
 } from "./backend";
 import { ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, IModelWrapperBackend, IWKRM, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
@@ -888,7 +889,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   }
 
   set graph(g: StaticGraph) {
-    this._backend.graph = typeof g === 'string' ? g : JSON.stringify(g);
+    this._backend.graph = typeof g === 'string' ? g : safeStringify(g);
     this._clearCaches();
   }
 
