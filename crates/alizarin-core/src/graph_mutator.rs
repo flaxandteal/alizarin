@@ -3368,11 +3368,10 @@ fn apply_add_subgraph(
     }
 
     // 4. BUILD ID MAPPINGS
-    // Pre-generate all node mappings (excluding root)
+    // Remap all nodes including the branch root — matching Arches' append_branch
+    // which always keeps the branch root as a demoted (istopnode=false) node.
     for node in &subgraph.nodes {
-        if node.nodeid != root_node_id {
-            remapper.remap_node(&node.nodeid);
-        }
+        remapper.remap_node(&node.nodeid);
     }
 
     // Pre-generate all nodegroup mappings (excluding root's nodegroup)
@@ -3393,11 +3392,9 @@ fn apply_add_subgraph(
         }
     }
 
-    // Pre-generate edge mappings for edges NOT from root
+    // Pre-generate edge mappings for all edges (root→child edges are kept)
     for edge in &subgraph.edges {
-        if edge.domainnode_id != root_node_id {
-            remapper.remap_edge(&edge.edgeid);
-        }
+        remapper.remap_edge(&edge.edgeid);
     }
 
     // Pre-generate card mappings (including root-nodegroup cards, since
@@ -3408,20 +3405,20 @@ fn apply_add_subgraph(
         }
     }
 
-    // Pre-generate cxnxw mappings (excluding root's node)
+    // Pre-generate cxnxw mappings for all widgets
     if let Some(ref cxnxws) = subgraph.cards_x_nodes_x_widgets {
         for cxnxw in cxnxws {
-            if cxnxw.node_id != root_node_id {
-                remapper.remap_cxnxw(&cxnxw.id);
-            }
+            remapper.remap_cxnxw(&cxnxw.id);
         }
     }
 
-    // 5. ADD NODES (excluding root)
+    // 5. ADD ALL NODES
+    // Like Arches' append_branch, the branch root is always kept as a demoted
+    // node (istopnode=false). It becomes a collector (nodegroup_id = its own
+    // new nodeid) so that Arches' populate_null_nodegroups can discover it
+    // during import.
     for node in subgraph.nodes {
-        if node.nodeid == root_node_id {
-            continue;
-        }
+        let is_branch_root = node.nodeid == root_node_id;
 
         let new_node_id = remapper
             .get_node(&node.nodeid)
@@ -3431,14 +3428,19 @@ fn apply_add_subgraph(
             .clone();
 
         // Remap nodegroup_id
-        let new_nodegroup_id = node.nodegroup_id.as_ref().and_then(|ng_id| {
-            if *ng_id == root_nodegroup_id {
-                // Child of root's nodegroup -> use target's nodegroup
-                target_nodegroup_id.clone()
-            } else {
-                remapper.get_nodegroup(ng_id).cloned()
-            }
-        });
+        let new_nodegroup_id = if is_branch_root {
+            // Branch root becomes a collector: nodegroup_id = its own new nodeid
+            Some(new_node_id.clone())
+        } else {
+            node.nodegroup_id.as_ref().and_then(|ng_id| {
+                if *ng_id == root_nodegroup_id {
+                    // Was in root's nodegroup — point to the kept branch root's new ID
+                    remapper.get_node(&root_node_id).cloned()
+                } else {
+                    remapper.get_nodegroup(ng_id).cloned()
+                }
+            })
+        };
 
         let prefixed_name = if let Some(ref prefix) = params.name_prefix {
             format!("{} {}", prefix, node.name)
@@ -3473,9 +3475,25 @@ fn apply_add_subgraph(
         graph.push_node(new_node);
     }
 
-    // 6. ADD NODEGROUPS (excluding root's nodegroup)
+    // 6. ADD NODEGROUPS
+    // The root's nodegroup is remapped to the branch root's new node ID (since
+    // the branch root is now a collector in the target graph).
     for nodegroup in subgraph.nodegroups {
         if nodegroup.nodegroupid == root_nodegroup_id {
+            let new_root_id = remapper
+                .get_node(&root_node_id)
+                .ok_or_else(|| {
+                    MutationError::InvalidSubgraph("Branch root not mapped".to_string())
+                })?
+                .clone();
+            let new_ng = StaticNodegroup {
+                nodegroupid: new_root_id.clone(),
+                cardinality: nodegroup.cardinality.clone(),
+                parentnodegroup_id: target_nodegroup_id.clone(),
+                legacygroupid: nodegroup.legacygroupid.clone(),
+                grouping_node_id: Some(new_root_id),
+            };
+            graph.push_nodegroup(new_ng);
             continue;
         }
 
@@ -3492,8 +3510,8 @@ fn apply_add_subgraph(
         // Remap parentnodegroup_id
         let new_parent_ng_id = nodegroup.parentnodegroup_id.as_ref().and_then(|parent_id| {
             if *parent_id == root_nodegroup_id {
-                // Parent was root's nodegroup -> use target's nodegroup
-                target_nodegroup_id.clone()
+                // Parent was root's nodegroup — now points to the kept branch root
+                remapper.get_node(&root_node_id).cloned()
             } else {
                 remapper.get_nodegroup(parent_id).cloned()
             }
@@ -3515,44 +3533,39 @@ fn apply_add_subgraph(
         graph.push_nodegroup(new_nodegroup);
     }
 
-    // 7. ADD EDGES (excluding edges from root) and CREATE CONNECTING EDGES
+    // 7. ADD EDGES
+    // Create a connecting edge from target → branch root (like Arches' append_branch),
+    // then remap all branch-internal edges normally.
+    {
+        let new_root_id = remapper
+            .get_node(&root_node_id)
+            .ok_or_else(|| MutationError::InvalidSubgraph("Branch root not mapped".to_string()))?
+            .clone();
+        let connect_edge_id = generate_uuid_v5(
+            ("graph", Some(&graph.graphid)),
+            &format!(
+                "subgraph-connect-{}-{}-{}",
+                target_node_id, new_root_id, remapper.suffix
+            ),
+        );
+        let connect_edge = StaticEdge {
+            edgeid: connect_edge_id,
+            domainnode_id: target_node_id.clone(),
+            rangenode_id: new_root_id,
+            graph_id: graph.graphid.clone(),
+            name: None,
+            ontologyproperty: if ontology_property.is_empty() {
+                None
+            } else {
+                Some(ontology_property.clone())
+            },
+            description: None,
+            source_identifier_id: None,
+        };
+        graph.push_edge(connect_edge);
+    }
     for edge in subgraph.edges {
-        if edge.domainnode_id == root_node_id {
-            // This is an edge from root to a child - create a new edge from target to child
-            let child_node_id = remapper
-                .get_node(&edge.rangenode_id)
-                .ok_or_else(|| {
-                    MutationError::InvalidSubgraph(format!(
-                        "Child node {} not mapped",
-                        edge.rangenode_id
-                    ))
-                })?
-                .clone();
-
-            let new_edge_id = generate_uuid_v5(
-                ("graph", Some(&graph.graphid)),
-                &format!(
-                    "subgraph-connect-{}-{}-{}",
-                    target_node_id, child_node_id, remapper.suffix
-                ),
-            );
-
-            let new_edge = StaticEdge {
-                edgeid: new_edge_id,
-                domainnode_id: target_node_id.clone(),
-                rangenode_id: child_node_id,
-                graph_id: graph.graphid.clone(),
-                name: edge.name,
-                ontologyproperty: if ontology_property.is_empty() {
-                    edge.ontologyproperty
-                } else {
-                    Some(ontology_property.clone())
-                },
-                description: edge.description,
-                source_identifier_id: None,
-            };
-            graph.push_edge(new_edge);
-        } else {
+        {
             // Regular edge within the subgraph
             let new_edge_id = remapper
                 .edge_map
@@ -3596,7 +3609,7 @@ fn apply_add_subgraph(
         }
     }
 
-    // 8. ADD CARDS (root-nodegroup cards get reassigned to the target's nodegroup)
+    // 8. ADD CARDS (root-nodegroup cards get reassigned to the branch root's new nodegroup)
     if let Some(cards) = subgraph.cards {
         for card in cards {
             let new_card_id = remapper
@@ -3607,10 +3620,13 @@ fn apply_add_subgraph(
                 .clone();
 
             let new_ng_id = if card.nodegroup_id == root_nodegroup_id {
-                // Root-nodegroup card gets reassigned to the target node's nodegroup
-                target_nodegroup_id
+                // Root-nodegroup card points to the kept branch root's new nodegroup
+                remapper
+                    .get_node(&root_node_id)
+                    .ok_or_else(|| {
+                        MutationError::InvalidSubgraph("Branch root not mapped".to_string())
+                    })?
                     .clone()
-                    .unwrap_or_else(|| target_node_id.clone())
             } else {
                 remapper
                     .get_nodegroup(&card.nodegroup_id)
@@ -3667,13 +3683,9 @@ fn apply_add_subgraph(
         }
     }
 
-    // 9. ADD CARDS_X_NODES_X_WIDGETS (excluding root's)
+    // 9. ADD CARDS_X_NODES_X_WIDGETS (all, including branch root's)
     if let Some(cxnxws) = subgraph.cards_x_nodes_x_widgets {
         for cxnxw in cxnxws {
-            if cxnxw.node_id == root_node_id {
-                continue;
-            }
-
             let new_id = remapper
                 .cxnxw_map
                 .get(&cxnxw.id)
