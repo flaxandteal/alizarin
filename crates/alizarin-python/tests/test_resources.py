@@ -323,18 +323,34 @@ class TestResourceInstanceWrapperCore:
         )
         assert result is True
 
-    def test_no_match_different_nodegroup_without_parent_tile_id(self):
-        """Branch 1: Should not match if parent_tile_id is None."""
+    def test_matches_root_node_with_top_level_child_tile(self):
+        """Branch 1: Root node (no tile) + child tile with no parent tile — should match."""
         child_node = create_test_node("child", "child_alias", nodegroup_id="ng-child")
         tile = create_test_tile("tile-1", "ng-child", {})
 
         result = ResourceInstanceWrapperCore.matches_semantic_child(
-            parent_tile_id=None,  # No parent tile
+            parent_tile_id=None,  # No parent tile (root node)
             parent_nodegroup_id="ng-parent",
             child_node=child_node,
             tile=tile,
         )
-        # This should only match via Branch 3 (collector), which is not set
+        # Root node (no tile) accessing child in different nodegroup where child
+        # tile has no parent tile — both are top-level, so this should match
+        assert result is True
+
+    def test_no_match_root_node_with_nested_child_tile(self):
+        """Branch 1: Root node (no tile) + child tile with a parent tile — should NOT match."""
+        child_node = create_test_node("child", "child_alias", nodegroup_id="ng-child")
+        tile = create_test_tile("tile-1", "ng-child", {}, parenttile_id="tile-some-other-parent")
+
+        result = ResourceInstanceWrapperCore.matches_semantic_child(
+            parent_tile_id=None,  # No parent tile (root node)
+            parent_nodegroup_id="ng-parent",
+            child_node=child_node,
+            tile=tile,
+        )
+        # Parent has no tile, but child tile references a different parent —
+        # this child belongs to a specific parent, not the root
         assert result is False
 
     def test_matches_same_nodegroup_shared_tile(self):

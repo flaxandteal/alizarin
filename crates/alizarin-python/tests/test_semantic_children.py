@@ -220,22 +220,43 @@ def test_same_nodegroup_different_tile():
     ), "Same nodegroup + different tile should NOT match"
 
 
-# Test Edge Case: null parent tile
-# Should NOT match any branch (except collector)
+# Test: null parent tile + different nodegroup + null parenttile_id on child tile
+# This is the root-node case (e.g. heritage_place root -> threat_type).
+# Root has no tile, so parent_tile_id is None. Child tile's parenttile_id is
+# also None (top-level tile). Should match.
 def test_null_parent_tile():
-    """Null parent tile + not collector should NOT match"""
+    """Null parent tile + null child parenttile_id (root-to-child case) should match"""
     parent_tile_id = None
     parent_nodegroup_id = "ng-parent"
 
     child_node = create_test_node("node-child", "child_alias", "ng-child", False)
     child_tile = create_test_tile("tile-child", "ng-child", None)
 
+    assert matches_semantic_child(
+        parent_tile_id,
+        parent_nodegroup_id,
+        child_node,
+        child_tile
+    ), "Null parent tile + null child parenttile_id (root-to-child case) should match"
+
+
+# Test: null parent tile + different nodegroup + NON-null parenttile_id on child tile
+# This is a nested tile that belongs to some other parent — should NOT match
+# when the current parent has no tile.
+def test_null_parent_tile_with_nested_child_tile():
+    """Null parent tile + non-null child parenttile_id should NOT match"""
+    parent_tile_id = None
+    parent_nodegroup_id = "ng-parent"
+
+    child_node = create_test_node("node-child", "child_alias", "ng-child", False)
+    child_tile = create_test_tile("tile-child", "ng-child", "tile-some-other-parent")
+
     assert not matches_semantic_child(
         parent_tile_id,
         parent_nodegroup_id,
         child_node,
         child_tile
-    ), "Null parent tile + not collector should NOT match"
+    ), "Null parent tile + non-null child parenttile_id should NOT match"
 
 
 # Test Edge Case: null parent tile + collector

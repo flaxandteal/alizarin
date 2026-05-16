@@ -740,21 +740,29 @@ impl PrebuildLoader {
 
     /// Load all full resources (with tiles) from a single business_data file,
     /// across all graphs. Reads and parses the file only once.
+    ///
+    /// Supports two formats:
+    /// - Prebuild wrapper: `{ business_data: { resources: [...] } }`
+    /// - Bare resource: `{ resourceinstance: {...}, tiles: [...], ... }`
     pub fn load_all_full_resources_from_file(
         &self,
         path: &Path,
     ) -> Result<Vec<StaticResource>, LoaderError> {
         let content = fs::read_to_string(path)?;
-        let file_data: BusinessDataFileFull = serde_json::from_str(&content)?;
 
-        let resources: Vec<StaticResource> = file_data
-            .business_data
-            .resources
-            .into_iter()
-            .map(|r| r.to_static_resource())
-            .collect();
-
-        Ok(resources)
+        // Try the wrapper format first; fall back to a bare resource.
+        if let Ok(file_data) = serde_json::from_str::<BusinessDataFileFull>(&content) {
+            let resources: Vec<StaticResource> = file_data
+                .business_data
+                .resources
+                .into_iter()
+                .map(|r| r.to_static_resource())
+                .collect();
+            Ok(resources)
+        } else {
+            let resource: BusinessDataResourceFull = serde_json::from_str(&content)?;
+            Ok(vec![resource.to_static_resource()])
+        }
     }
 
     /// Load a full StaticResource by its resourceinstanceid
@@ -1074,20 +1082,28 @@ mod tests {
 // Standalone helpers for WASM / napi callers
 // =============================================================================
 
-/// Parse a `{ business_data: { resources: [...] } }` JSON blob (as raw bytes)
-/// into `StaticResource`s. Uses the same internal parsing types as
-/// `PrebuildLoader` so there is no duplication.
+/// Parse a business data JSON blob (as raw bytes) into `StaticResource`s.
+/// Uses the same internal parsing types as `PrebuildLoader` so there is no
+/// duplication.
+///
+/// Supports two formats:
+/// - Prebuild wrapper: `{ business_data: { resources: [...] } }`
+/// - Bare resource: `{ resourceinstance: {...}, tiles: [...], ... }`
 ///
 /// This is the function WASM and napi crates call so that the heavy JSON
 /// parsing stays entirely in Rust — callers only pass in a byte buffer.
 pub fn parse_business_data_bytes(bytes: &[u8]) -> Result<Vec<StaticResource>, LoaderError> {
-    let file_data: BusinessDataFileFull = serde_json::from_slice(bytes)?;
-    Ok(file_data
-        .business_data
-        .resources
-        .into_iter()
-        .map(|r| r.to_static_resource())
-        .collect())
+    if let Ok(file_data) = serde_json::from_slice::<BusinessDataFileFull>(bytes) {
+        Ok(file_data
+            .business_data
+            .resources
+            .into_iter()
+            .map(|r| r.to_static_resource())
+            .collect())
+    } else {
+        let resource: BusinessDataResourceFull = serde_json::from_slice(bytes)?;
+        Ok(vec![resource.to_static_resource()])
+    }
 }
 
 /// Result of importing a prebuild/pkg directory.
