@@ -82,7 +82,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       this.resource = resource;
       recordWasmTiming("createInstanceWrapperForResource", performance.now() - t0);
     } else {
-      this.wasmWrapper = createInstanceWrapperForModel(model.wkrm.graphId);
+      this.wasmWrapper = createInstanceWrapperForModel(model.wkrm.graphId, wkri.id);
       recordWasmTiming("createInstanceWrapperForModel", performance.now() - t0);
     }
 

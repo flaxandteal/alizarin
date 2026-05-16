@@ -3128,6 +3128,7 @@ impl WASMResourceInstanceWrapper {
 #[wasm_bindgen(js_name = newWASMResourceInstanceWrapperForModel)]
 pub fn new_wasm_resource_instance_wrapper_for_model(
     graph_id: &str,
+    resource_id: Option<String>,
 ) -> Result<WASMResourceInstanceWrapper, JsValue> {
     // Verify the model exists in the registry
     crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
@@ -3141,9 +3142,27 @@ pub fn new_wasm_resource_instance_wrapper_for_model(
     })?;
 
     // Create instance wrapper with the graph_id
-    Ok(WASMResourceInstanceWrapper::new_from_graph_id(
-        graph_id.to_string(),
-    ))
+    let wrapper = WASMResourceInstanceWrapper::new_from_graph_id(graph_id.to_string());
+
+    // If a resource_id is provided, set minimal resource metadata so the
+    // tile source can resolve this instance's tiles.
+    if let Some(rid) = resource_id {
+        use alizarin_core::graph::{StaticResourceDescriptors, StaticResourceMetadata};
+        wrapper.core.borrow_mut().resource_instance = Some(StaticResourceMetadata {
+            resourceinstanceid: rid,
+            graph_id: graph_id.to_string(),
+            name: String::new(),
+            descriptors: StaticResourceDescriptors::default(),
+            publication_id: None,
+            principaluser_id: None,
+            legacyid: None,
+            graph_publication_id: None,
+            createdtime: None,
+            lastmodified: None,
+        });
+    }
+
+    Ok(wrapper)
 }
 
 #[wasm_bindgen(js_name = newWASMResourceInstanceWrapperForResource)]

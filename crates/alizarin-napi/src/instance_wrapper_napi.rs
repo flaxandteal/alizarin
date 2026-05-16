@@ -791,7 +791,7 @@ impl NapiResourceInstanceWrapper {
     /// If `resource_id` is provided, a minimal resource metadata is created so
     /// the tile-source fast path can look up tiles by resource.
     #[napi(constructor)]
-    pub fn new(graph_id: String, _resource_id: Option<String>) -> Result<Self> {
+    pub fn new(graph_id: String, resource_id: Option<String>) -> Result<Self> {
         let graph = alizarin_core::get_graph(&graph_id).ok_or_else(|| {
             napi::Error::from_reason(format!(
                 "Graph '{}' not registered. Call registerGraph() first.",
@@ -800,9 +800,25 @@ impl NapiResourceInstanceWrapper {
         })?;
 
         let model_access = GraphModelAccess::from_graph(&graph);
-        // TODO: use resource_id with new_for_resource_id once tile-source plumbing is committed
-        let mut core = ResourceInstanceWrapperCore::new(graph_id);
+        let mut core = ResourceInstanceWrapperCore::new(graph_id.clone());
         core.set_cached_indices(&model_access);
+
+        // Set minimal resource metadata so tile source can resolve this instance.
+        if let Some(rid) = resource_id {
+            use alizarin_core::graph::{StaticResourceDescriptors, StaticResourceMetadata};
+            core.resource_instance = Some(StaticResourceMetadata {
+                resourceinstanceid: rid,
+                graph_id,
+                name: String::new(),
+                descriptors: StaticResourceDescriptors::default(),
+                publication_id: None,
+                principaluser_id: None,
+                legacyid: None,
+                graph_publication_id: None,
+                createdtime: None,
+                lastmodified: None,
+            });
+        }
 
         Ok(NapiResourceInstanceWrapper {
             inner: core,

@@ -5943,18 +5943,18 @@ mod tests {
         assert!(result.is_ok(), "AddSubgraph failed: {:?}", result.err());
 
         // Original graph had 1 node, subgraph has 3 (1 root + 2 children)
-        // We skip the root, so we add 2 nodes
-        assert_eq!(graph_clone.nodes.len(), 3); // 1 original + 2 from subgraph
+        // Branch root is kept as collector, so all 3 branch nodes are added
+        assert_eq!(graph_clone.nodes.len(), 4); // 1 original + 3 from subgraph
 
-        // Original had 1 nodegroup, subgraph has 2 (1 root + 1 child)
-        // We skip root's nodegroup, so we add 1
-        assert_eq!(graph_clone.nodegroups.len(), 2); // 1 original + 1 from subgraph
+        // Original had 1 nodegroup, subgraph has 2 (root + child)
+        // Branch root becomes a new collector nodegroup under the target's nodegroup
+        assert_eq!(graph_clone.nodegroups.len(), 3); // 1 original + 2 from subgraph
 
-        // Original had 0 edges, subgraph has 2 (1 from root, 1 internal)
-        // We skip edge from root, but create 1 connecting edge + 1 internal
-        assert_eq!(graph_clone.edges.len(), 2); // 1 connecting + 1 internal
+        // Original had 0 edges
+        // 1 connecting edge (target → branch root) + 2 internal
+        assert_eq!(graph_clone.edges.len(), 3);
 
-        // Original had 0 cards, subgraph has 1 (not for root's nodegroup)
+        // Original had 0 cards, subgraph has 1 (for non-root nodegroup)
         assert_eq!(graph_clone.cards_slice().len(), 1);
 
         // Subgraph had 2 cxnxw (both for non-root nodes)
@@ -6240,8 +6240,8 @@ mod tests {
         );
 
         let mutated = result.unwrap();
-        // Should have 3 nodes (1 original + 2 from subgraph)
-        assert_eq!(mutated.nodes.len(), 3);
+        // Should have 4 nodes (1 original + 3 from subgraph, branch root kept as collector)
+        assert_eq!(mutated.nodes.len(), 4);
 
         // With Arches-compatible behavior, aliases are preserved (no clash)
         // alias_suffix is only used for UUID generation
@@ -6294,11 +6294,11 @@ mod tests {
             result.err()
         );
 
-        // Should have added the branch nodes
+        // Should have added the branch nodes (branch root kept as collector)
         assert_eq!(
             graph_clone.nodes.len(),
-            3,
-            "Should have 3 nodes: root + 2 from branch"
+            4,
+            "Should have 4 nodes: root + 3 from branch (branch root kept as collector)"
         );
 
         // Verify sourcebranchpublication_id is set
@@ -6354,8 +6354,8 @@ mod tests {
             result.err()
         );
 
-        // Still should have 3 nodes
-        assert_eq!(graph_with_branch.nodes.len(), 3);
+        // Still should have 4 nodes (branch root kept as collector)
+        assert_eq!(graph_with_branch.nodes.len(), 4);
 
         // Check that the name was updated
         let child1 = graph_with_branch
@@ -6386,7 +6386,7 @@ mod tests {
         };
         let mut graph_with_branch = graph.deep_clone();
         apply_add_subgraph(&mut graph_with_branch, add_params).expect("Add should succeed");
-        assert_eq!(graph_with_branch.nodes.len(), 3);
+        assert_eq!(graph_with_branch.nodes.len(), 4);
 
         // Now update with an additional node
         let mut updated_subgraph = subgraph.deep_clone();
@@ -6433,10 +6433,10 @@ mod tests {
             result.err()
         );
 
-        // Should now have 4 nodes (root + 3 from branch)
+        // Should now have 5 nodes (root + branch_root + 2 children + child3)
         assert_eq!(
             graph_with_branch.nodes.len(),
-            4,
+            5,
             "Should have added new node"
         );
 
@@ -6465,7 +6465,7 @@ mod tests {
         };
         let mut graph_with_branch = graph.deep_clone();
         apply_add_subgraph(&mut graph_with_branch, add_params).expect("Add should succeed");
-        assert_eq!(graph_with_branch.nodes.len(), 3);
+        assert_eq!(graph_with_branch.nodes.len(), 4);
 
         // Now update with only child1 (remove child2)
         let mut updated_subgraph = subgraph.deep_clone();
@@ -6490,11 +6490,12 @@ mod tests {
             result.err()
         );
 
-        // Should now have 2 nodes (root + child1 only)
+        // Should now have 2 nodes — orphan removal strips child2 and the branch
+        // root (branch root is not in the updated subgraph's explicit node list)
         assert_eq!(
             graph_with_branch.nodes.len(),
             2,
-            "Orphaned child2 should be removed"
+            "Orphaned child2 and branch root should be removed"
         );
 
         // child2 should be gone
