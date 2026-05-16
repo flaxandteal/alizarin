@@ -157,6 +157,12 @@ impl NapiStaticGraph {
         self.inner.graphid.clone()
     }
 
+    /// Alias matching the WASM `graphid` property for backend consistency.
+    #[napi(getter, js_name = "graphid")]
+    pub fn graphid(&self) -> String {
+        self.inner.graphid.clone()
+    }
+
     #[napi(getter)]
     pub fn name(&self) -> serde_json::Value {
         serde_json::to_value(&self.inner.name).unwrap_or(serde_json::Value::Null)
