@@ -384,11 +384,15 @@ class ReferenceValueViewModel extends String implements IViewModel {
 
       if (val) {
         this._resolvedRef = new StaticReference(val as any);
-        // Update tile data if we have tile reference
+        // Update tile data if we have tile reference (always as one-element array)
         if (this._tile && this._nodeid) {
           const currentData = this._tile.data.get(this._nodeid);
-          if (!Array.isArray(currentData)) {
-            this._tile.data.set(this._nodeid, this._resolvedRef.toJSON());
+          if (Array.isArray(currentData) && currentData.length <= 1) {
+            // Replace the single-element array (may contain unresolved marker)
+            this._tile.data.set(this._nodeid, [this._resolvedRef.toJSON()]);
+          } else if (!Array.isArray(currentData)) {
+            // Legacy bare object — wrap into array
+            this._tile.data.set(this._nodeid, [this._resolvedRef.toJSON()]);
           }
         }
       }
@@ -441,10 +445,12 @@ class ReferenceValueViewModel extends String implements IViewModel {
     return null;
   }
 
-  // Convert to plain object for WASM tile data serialization
+  // Convert to one-element array for tile data serialization
+  // (even multiValue=false references use array format in tile data)
   async __asTileData(): Promise<any> {
     const ref = await this._resolvePending();
-    return ref && typeof ref.toJSON === 'function' ? ref.toJSON() : ref;
+    const plain = ref && typeof ref.toJSON === 'function' ? ref.toJSON() : ref;
+    return plain ? [plain] : null;
   }
 
   static async __create(
@@ -463,6 +469,11 @@ class ReferenceValueViewModel extends String implements IViewModel {
         tile.data.set(nodeid, null);
       }
       if (value !== null) {
+        // Unwrap single-element arrays (tile data is always stored as array,
+        // but ReferenceValueViewModel works with the inner value)
+        if (Array.isArray(value) && value.length === 1) {
+          value = value[0];
+        }
         if (value instanceof Promise) {
           return value.then((value) => {
             return ReferenceValueViewModel.__create(tile, node, value, _cacheEntry);
@@ -475,8 +486,8 @@ class ReferenceValueViewModel extends String implements IViewModel {
           ) {
             // UUID string - create lazy lookup (no fetch yet)
             const pendingLookup: PendingUuidLookup = { type: 'uuid', uuid: value, collectionId };
-            // Store the marker in tile data for now
-            tile.data.set(nodeid, { __needs_rdm_lookup: true, uuid: value });
+            // Store the marker in tile data for now (as one-element array)
+            tile.data.set(nodeid, [{ __needs_rdm_lookup: true, uuid: value }]);
             return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid, collectionId);
           } else {
             throw Error(
@@ -486,26 +497,26 @@ class ReferenceValueViewModel extends String implements IViewModel {
         } else if (typeof value === "object" && value !== null && value.__needs_rdm_lookup && value.uuid) {
           // UUID marked for RDM lookup by the coercion layer - create lazy lookup (no fetch yet)
           const pendingLookup: PendingUuidLookup = { type: 'uuid', uuid: value.uuid, collectionId };
-          // Keep the marker in tile data
-          tile.data.set(nodeid, value);
+          // Keep the marker in tile data (as one-element array)
+          tile.data.set(nodeid, [value]);
           return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid, collectionId);
         } else if (typeof value === "object" && value !== null && value.__needs_rdm_label_lookup && value.label) {
           // Label string marked for RDM lookup - create lazy lookup (no fetch yet)
           const lookupCollectionId = value.controlledList || collectionId;
           const pendingLookup: PendingLabelLookup = { type: 'label', label: value.label, collectionId: lookupCollectionId };
-          // Keep the marker in tile data
-          tile.data.set(nodeid, value);
+          // Keep the marker in tile data (as one-element array)
+          tile.data.set(nodeid, [value]);
           return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid, lookupCollectionId);
         } else if (Array.isArray(value) && value.length > 0 && "labels" in value[0]) {
           // Handle array of pre-formatted reference values from business data
           // For now, just use the first value
           const ref = new StaticReference(value[0]);
-          tile.data.set(nodeid, ref.toJSON());
+          tile.data.set(nodeid, [ref.toJSON()]);
           return new ReferenceValueViewModel(ref, undefined, undefined, undefined, collectionId);
         } else if (typeof value === "object" && value !== null && "labels" in value) {
           // Handle single pre-formatted reference value from business data
           const ref = new StaticReference(value);
-          tile.data.set(nodeid, ref.toJSON());
+          tile.data.set(nodeid, [ref.toJSON()]);
           return new ReferenceValueViewModel(ref, undefined, undefined, undefined, collectionId);
         } else {
           throw Error("Could not set reference from this data: " + JSON.stringify(value));

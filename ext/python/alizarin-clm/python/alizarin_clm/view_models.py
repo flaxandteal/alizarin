@@ -169,6 +169,11 @@ class ReferenceValueViewModel(str):
                 tile.data[nodeid] = None
 
             if value is not None:
+                # Unwrap single-element arrays (tile data is always stored as
+                # array, but ReferenceValueViewModel works with the inner value)
+                if isinstance(value, list) and len(value) == 1:
+                    value = value[0]
+
                 # Handle Promise/awaitable
                 if hasattr(value, '__await__'):
                     resolved = await value
@@ -195,7 +200,7 @@ class ReferenceValueViewModel(str):
                                 f"for {node.alias} in collection {collection_id}"
                             )
 
-                        tile.data[nodeid] = ref_value.to_dict() if ref_value else None
+                        tile.data[nodeid] = [ref_value.to_dict()] if ref_value else None
 
                         if not tile or not ref_value:
                             return None
@@ -211,7 +216,7 @@ class ReferenceValueViewModel(str):
                     if isinstance(value[0], dict) and 'labels' in value[0]:
                         # Array of pre-formatted reference values - use first
                         val = StaticReference.from_dict(value[0])
-                        tile.data[nodeid] = val.to_dict()
+                        tile.data[nodeid] = [val.to_dict()]
                     else:
                         # Single-element array
                         return await ReferenceValueViewModel._create(tile, node, value[0], cache_entry)
@@ -219,12 +224,12 @@ class ReferenceValueViewModel(str):
                 # Handle pre-formatted reference object
                 elif isinstance(value, dict) and 'labels' in value:
                     val = StaticReference.from_dict(value)
-                    tile.data[nodeid] = val.to_dict()
+                    tile.data[nodeid] = [val.to_dict()]
 
                 # Handle StaticReference directly
                 elif isinstance(value, StaticReference):
                     val = value
-                    tile.data[nodeid] = val.to_dict()
+                    tile.data[nodeid] = [val.to_dict()]
 
                 else:
                     raise ValueError(f"Could not set reference from this data: {json.dumps(value)}")
@@ -234,9 +239,9 @@ class ReferenceValueViewModel(str):
 
         return ReferenceValueViewModel(val, collection_id)
 
-    async def __asTileData(self) -> Optional[Dict[str, Any]]:
-        """Convert to tile data format."""
-        return self._ref.to_dict() if self._ref else None
+    async def __asTileData(self) -> Optional[List[Dict[str, Any]]]:
+        """Convert to tile data format (one-element array, matching multiValue=true format)."""
+        return [self._ref.to_dict()] if self._ref else None
 
 
 class ReferenceListViewModel(list):

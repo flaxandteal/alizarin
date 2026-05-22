@@ -146,7 +146,8 @@ pub fn coerce_reference_value(
 
     let (tile_data, resolved) = coerce_single(value, config)?;
 
-    if config.multi_value == Some(true) && !matches!(tile_data, Value::Array(_) | Value::Null) {
+    // Always wrap in array for tile data, even for multiValue=false
+    if !matches!(tile_data, Value::Array(_) | Value::Null) {
         Ok((json!([tile_data]), json!([resolved])))
     } else {
         Ok((tile_data, resolved))
@@ -364,10 +365,12 @@ mod tests {
         let value = json!("550e8400-e29b-41d4-a716-446655440000");
         let config = ReferenceNodeConfig::default();
         let (tile_data, _) = coerce_reference_value(&value, &config).unwrap();
+        // Even multiValue=false should produce a one-element array
+        assert!(tile_data.is_array());
+        let arr = tile_data.as_array().unwrap();
+        assert_eq!(arr.len(), 1);
         assert_eq!(
-            tile_data
-                .get("__needs_rdm_lookup")
-                .and_then(|v| v.as_bool()),
+            arr[0].get("__needs_rdm_lookup").and_then(|v| v.as_bool()),
             Some(true)
         );
     }
@@ -415,10 +418,11 @@ mod tests {
     }
 
     #[test]
-    fn test_multivalue_wraps() {
+    fn test_single_value_also_wraps() {
+        // Even multiValue=false produces array tile data
         let value = json!("550e8400-e29b-41d4-a716-446655440000");
         let config = ReferenceNodeConfig {
-            multi_value: Some(true),
+            multi_value: Some(false),
             ..Default::default()
         };
         let (tile_data, _) = coerce_reference_value(&value, &config).unwrap();
