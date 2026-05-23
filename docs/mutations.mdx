@@ -92,7 +92,7 @@ Add a new node to the graph.
 | `exportable` | boolean | Include in exports |
 | `fieldname` | string | Override field name |
 | `hascustomalias` | boolean | Has custom alias |
-| `is_collector` | boolean | Is a collector node |
+| `is_collector` | boolean | Force the node to own its own nodegroup (`nodeid == nodegroup_id`), matching Arches collector semantics. When `true`, a dedicated nodegroup is created even for cardinality-1 nodes. Defaults to `true` for semantic cardinality-N nodes. |
 | `isrequired` | boolean | Required field |
 | `issearchable` | boolean | Include in search |
 | `istopnode` | boolean | Is root node |
@@ -332,6 +332,108 @@ Delete a function mapping (functions_x_graphs entry).
 }
 ```
 
+### AddFunction
+
+Add a function mapping to the graph.
+
+```json
+{
+    "AddFunction": {
+        "function_id": "com.flaxandteal.app/descriptor",
+        "config": {"descriptor_types": {"name": {}, "slug": {}}}
+    }
+}
+```
+
+The `function_id` can be a UUID or an arbitrary string (converted to a deterministic UUID v5).
+
+### SetDescriptorTemplate
+
+Set or update a descriptor template on the graph's descriptor function.
+
+```json
+{
+    "SetDescriptorTemplate": {
+        "descriptor_type": "name",
+        "string_template": "<First Name> <Last Name>"
+    }
+}
+```
+
+Templates use `<Node Name>` placeholders that reference node display names.
+
+### ChangeCardinality
+
+Change a nodegroup's cardinality between single (`1`) and multiple (`n`).
+
+```json
+{
+    "ChangeCardinality": {
+        "node_id": "node_alias_or_uuid",
+        "cardinality": "n"
+    }
+}
+```
+
+The node must be the grouping node (collector) of its nodegroup.
+
+### RenameCard
+
+Rename a card's display name and/or description.
+
+```json
+{
+    "RenameCard": {
+        "card_id": "card-uuid-or-nodegroup-uuid",
+        "name": "New Card Name",
+        "language": "en"
+    }
+}
+```
+
+Looks up by card ID first, then by nodegroup ID. Supports full i18n via `name_i18n` and `description_i18n` maps.
+
+### RenameGraph
+
+Update a graph's name, description, subtitle, or author.
+
+```json
+{
+    "RenameGraph": {
+        "name": {"en": "New Name"},
+        "description": {"en": "Updated description"},
+        "author": "New Author"
+    }
+}
+```
+
+All fields are optional — only provided fields are updated.
+
+### RealignCardFromNode
+
+Sync a card's name and widget label to match the current node name.
+
+```json
+{
+    "RealignCardFromNode": {
+        "node_alias": "my_node"
+    }
+}
+```
+
+### CoppiceSubgraph
+
+Set `sourcebranchpublication_id` on a subtree, traversing from a root node via edges. Stops at nodes already claimed by a different publication.
+
+```json
+{
+    "CoppiceSubgraph": {
+        "subject": "root_node_alias",
+        "publication_id": "bf05dedf-85d1-4e1b-8929-7cb42b534b87"
+    }
+}
+```
+
 ## Extension Mutations
 
 Extensions can register custom mutations. For example, CLM provides:
@@ -432,165 +534,84 @@ Alizarin supports a row-based instruction format that maps naturally to CSV/spre
 | `object` | The target/new entity (alias, name, or ID) |
 | `params.*` | Additional parameters as extra columns |
 
+Parameters support **dot-notation** for nested values. For example, `params.options.is_collector` is parsed as `{"options": {"is_collector": true}}`, allowing node options to be set directly in CSV headers.
+
 ### CSV Structure
 
 ```csv
-action,subject,object,params.name,params.datatype,params.cardinality,params.ontology_class,params.parent_property
-create_model,heritage_item,,Heritage Item,,,E18_Physical_Thing,
-add_node,heritage_item,names,Names,semantic,n,E41_Appellation,P1_is_identified_by
-add_node,names,name,Name,string,1,E41_Appellation,P1_is_identified_by
-add_node,heritage_item,description,Description,string,1,E62_String,P3_has_note
+action,subject,object,params.name,params.datatype,params.cardinality,params.ontology_class,params.parent_property,params.options.is_collector
+create_model,heritage_item,,Heritage Item,,,E18_Physical_Thing,,
+add_node,heritage_item,names,Names,semantic,n,E41_Appellation,P1_is_identified_by,
+add_node,names,name,Name,string,1,E41_Appellation,P1_is_identified_by,
+add_node,heritage_item,impact,Impact,reference,1,E55_Type,P2_has_type,true
 ```
+
+In this example, the `impact` node gets `options.is_collector = true`, forcing it to own its own nodegroup despite having cardinality 1.
 
 ### Loading from CSV (Python)
 
-The instruction format maps to standard mutations. Here's how to load from CSV and apply:
+Alizarin provides built-in functions for CSV-based graph building. Use `build_graph_from_csv` to create a new graph from CSV, or `build_graph_from_instructions` to apply instruction lists to existing graphs:
 
 ```python
-import csv
-import json
 import alizarin
 
-def instruction_to_mutation(instruction: dict) -> dict:
-    """Convert an instruction to a mutation."""
-    action = instruction["action"]
-    subject = instruction.get("subject", "")
-    obj = instruction.get("object", "")
-    params = instruction.get("params", {})
+# Build a new graph from CSV
+with open("graph_definition.csv") as f:
+    csv_text = f.read()
 
-    # Map instruction actions to mutation types
-    if action == "add_node":
-        return {
-            "AddNode": {
-                "parent_alias": subject,
-                "alias": obj,
-                "name": params.get("name", obj),
-                "datatype": params.get("datatype", "string"),
-                "cardinality": params.get("cardinality", "1"),
-                "ontology_class": params.get("ontology_class", ""),
-                "parent_property": params.get("parent_property", ""),
-                "description": params.get("description"),
-                "config": json.loads(params["config"]) if params.get("config") else None,
-                "options": {}
-            }
-        }
-    elif action == "rename_node":
-        return {
-            "RenameNode": {
-                "node_id": subject,
-                "alias": obj if obj else None,
-                "name": params.get("name"),
-                "description": params.get("description")
-            }
-        }
-    elif action == "rename_graph":
-        name_val = params.get("name", obj)
-        return {
-            "RenameGraph": {
-                "name": {"en": name_val} if name_val else None,
-                "description": {"en": params["description"]} if params.get("description") else None,
-                "subtitle": {"en": params["subtitle"]} if params.get("subtitle") else None,
-                "author": params.get("author")
-            }
-        }
-    elif action == "concept_change_collection":
-        return {
-            "ConceptChangeCollection": {
-                "node_id": subject,
-                "collection_id": obj
-            }
-        }
-    elif action == "reference_change_collection":
-        return {
-            "Extension": {
-                "name": "clm.reference_change_collection",
-                "params": {
-                    "subject": subject,
-                    "object": obj,
-                    "config_key": params.get("config_key", "controlledList")
-                },
-                "conformance": "AlwaysConformant"
-            }
-        }
-    elif action == "delete_node":
-        return {"DeleteNode": {"node_id": subject}}
-    # Add more mappings as needed...
-    else:
-        raise ValueError(f"Unknown action: {action}")
+graph_json = alizarin.build_graph_from_csv(csv_text)
 
-def load_mutations_from_csv(filepath: str) -> list:
-    """Load mutations from a CSV file."""
-    mutations = []
+# Or load a registered graph and apply mutations from CSV
+# (use load_graph as the first instruction to mutate an existing graph)
+with open("graph_mutations.csv") as f:
+    mutation_csv = f.read()
 
-    with open(filepath, 'r') as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            # Skip create_model/create_branch (those create new graphs)
-            if row["action"] in ("create_model", "create_branch"):
-                continue
-
-            instruction = {
-                "action": row["action"],
-                "subject": row.get("subject", ""),
-                "object": row.get("object", ""),
-                "params": {}
-            }
-
-            # Extract params.* columns
-            for key, value in row.items():
-                if key.startswith("params.") and value:
-                    param_name = key[7:]  # Remove "params." prefix
-                    instruction["params"][param_name] = value
-
-            mutations.append(instruction_to_mutation(instruction))
-
-    return mutations
-
-# Load and apply mutations
-mutations = load_mutations_from_csv("graph_changes.csv")
-request = {
-    "mutations": mutations,
-    "options": {
-        "autocreate_card": True,
-        "autocreate_widget": True
-    }
-}
-
-result = alizarin.apply_mutations_from_json(graph_json, json.dumps(request))
+# First row: load_graph,<graph_id>,,...
+# Subsequent rows: add_node, rename_node, etc.
+result_json = alizarin.build_graph_from_csv(mutation_csv)
 ```
 
 ### Available Actions
 
 | Action | Subject | Object | Key Params |
 |--------|---------|--------|------------|
+| `load_graph` | graph_id | - | - |
 | `create_model` | root_alias | graphid (optional) | `name`, `ontology_class`, `slug` |
 | `create_branch` | root_alias | graphid (optional) | `name`, `ontology_class`, `slug` |
-| `add_node` | parent_alias | new_alias | `datatype`, `name`, `ontology_class`, `cardinality`, `parent_property` |
+| `add_node` | parent_alias | new_alias | `datatype`, `name`, `ontology_class`, `cardinality`, `parent_property`, `options.is_collector` |
 | `add_edge` | from_alias | to_alias | `ontology_property` |
 | `add_nodegroup` | node_alias | - | `cardinality` |
 | `add_card` | nodegroup_id | card_name | `component_id` |
 | `add_widget` | node_alias | - | `widget_id` |
+| `add_function` | function_id | - | `config` |
+| `set_descriptor_template` | descriptor_type | string_template | - |
 | `rename_node` | old_alias | new_alias | `name`, `description` |
+| `rename_card` | card_id | - | `name`, `description`, `language` |
 | `rename_graph` | graph_id | new_name | `description`, `subtitle`, `author` |
+| `realign_card_from_node` | node_alias | - | - |
 | `update_node` | node_alias | - | `name`, `ontology_class`, `description`, `config` |
 | `change_node_type` | node_alias | new_datatype | `name`, `ontology_class`, `config` |
+| `change_cardinality` | node_alias | `"1"` or `"n"` | - |
+| `coppice_subgraph` | root_alias | - | `publication_id` |
 | `concept_change_collection` | node_alias | collection_id | - |
 | `reference_change_collection` | node_alias | collection_id | `config_key` |
 | `delete_node` | node_alias | - | - |
 | `delete_nodegroup` | nodegroup_id | - | - |
 | `delete_card` | card_id | - | - |
+| `delete_function` | function_mapping_id | - | - |
 
-### Applying Mutations from CSV
+### Using `load_graph` to Mutate Existing Graphs
 
-```python
-# Example: Apply mutations loaded from CSV
-mutations = load_mutations_from_csv("changes.csv")
+The `load_graph` action loads a previously registered graph and applies subsequent CSV rows as mutations. This is how projects like quartz-graphs modify upstream Arches graphs:
 
-result = alizarin.apply_mutations_from_json(
-    graph_json,
-    json.dumps({"mutations": mutations, "options": {}})
-)
+```csv
+action,subject,object,params.name,params.datatype,params.cardinality,params.ontology_class,params.parent_property,params.options.is_collector
+load_graph,b9e0701e-5463-11e9-b5f5-000d3ab1e588,,,,,,,,
+rename_node,activity_type,,Condition,,,,,,
+add_node,area_assignment,impact,Impact,reference,1,E55_Type,P2_has_type,true
 ```
+
+The graph must be registered (via `alizarin.register_graph()` or `import_prebuild()`) before `load_graph` can find it.
 
 The CSV format is particularly useful for:
 - Bulk changes managed in spreadsheets

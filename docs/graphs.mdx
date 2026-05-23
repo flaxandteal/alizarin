@@ -3,6 +3,33 @@ title: Graph Manipulation
 description: Modifying graphs on-the-fly
 ---
 
+## Graph Structure
+
+An Arches graph is a tree of **nodes** organised into **nodegroups**. Understanding the relationship between nodes and nodegroups is key to working with mutations.
+
+### Nodes and Nodegroups
+
+Every node belongs to exactly one nodegroup (except the root node, which has no nodegroup). A nodegroup controls the **cardinality** of its member nodes — whether data can appear once (`1`) or multiple times (`n`).
+
+When a new node is added to a graph, alizarin decides whether it gets its own nodegroup or inherits its parent's. A node gets its own nodegroup when:
+
+- Its **cardinality is N** (repeatable data needs its own tile group)
+- Its **parent is the root** node (direct children of root always get their own nodegroup)
+- Its **`is_collector` option is `true`** (explicitly requested)
+
+Otherwise, the node shares its parent's nodegroup.
+
+### Collector Nodes
+
+A **collector** node is one whose `nodeid == nodegroup_id` — it "owns" its nodegroup. In Arches, `is_collector` is a computed property based on this equality.
+
+In alizarin, you can force a cardinality-1 node to be a collector by setting `options.is_collector = true` on `AddNode`. This is needed when the node must have its own tile group (e.g., because existing business data references its node ID as a nodegroup ID).
+
+```csv
+action,subject,object,params.name,params.datatype,params.cardinality,params.options.is_collector
+add_node,parent_group,impact,Impact,reference,1,true
+```
+
 ## Modifying Graph Schemas
 
 ```typescript
@@ -25,4 +52,6 @@ mutator.addStringNode(
 // Apply changes
 const modifiedGraph = mutator.apply();
 ```
+
+See [Graph Mutations](/docs/mutations) for the full mutation reference.
 

@@ -1,0 +1,220 @@
+---
+title: Prebuild Directory
+description: Directory structure for importing and exporting Arches data packages
+---
+
+Alizarin can import and export complete Arches data packages via a standard directory layout. This is the primary way to manage graph definitions, reference data, business data, and ontologies as version-controlled files.
+
+## Directory Layout
+
+```
+prebuild/
+├── graphs/
+│   ├── resource_models/        # Resource model graphs (isresource=true)
+│   │   └── *.json
+│   └── branches/               # Branch graphs (isresource=false)
+│       └── *.json
+├── business_data/              # Resource instance data (recursive)
+│   └── **/*.json
+├── reference_data/
+│   ├── collections/            # SKOS concept collections
+│   │   └── *.xml or *.json
+│   ├── controlled_lists/       # SKOS controlled lists (export target)
+│   │   └── *.xml
+│   ├── concepts/               # Individual SKOS concepts
+│   │   └── *.xml or *.json
+│   └── staging/                # Staging area for reference data
+│       └── *.xml or *.json
+├── ontologies/
+│   └── <name>/                 # One subdirectory per ontology
+│       ├── ontology_config.json
+│       └── *.xml               # RDFS/OWL base + extension files
+├── preindex/                   # Precomputed resource summaries
+│   └── *.pi
+├── system_settings/
+│   └── System_Settings.json
+├── preliminary_sql/            # SQL scripts run before loading
+│   └── *.sql
+├── post_sql/                   # SQL scripts run after loading
+│   └── *.sql
+└── package_config.json         # Package metadata
+```
+
+## Subdirectory Reference
+
+### `graphs/`
+
+Graph definitions split into two subdirectories based on the `isresource` flag.
+
+**Format:** JSON wrapper containing a single-element array:
+```json
+{
+    "graph": [
+        {
+            "graphid": "uuid",
+            "name": {"en": "Display Name"},
+            "isresource": true,
+            "nodes": [...],
+            "nodegroups": [...],
+            "edges": [...],
+            "cards": [...],
+            "cards_x_nodes_x_widgets": [...]
+        }
+    ]
+}
+```
+
+Files are named after the graph's display name (filesystem-safe). On import, all graphs are registered in the global registry.
+
+### `business_data/`
+
+Resource instance data. Files can be nested in subdirectories — the loader recursively collects all `.json` files.
+
+**Format:**
+```json
+{
+    "business_data": {
+        "resources": [
+            {
+                "resourceinstance": {
+                    "resourceinstanceid": "uuid",
+                    "graph_id": "graph-uuid",
+                    "name": "Display Name",
+                    "descriptors": {
+                        "en": {"name": "Name", "description": "...", "slug": "slug"}
+                    }
+                },
+                "tiles": [
+                    {
+                        "tileid": "uuid",
+                        "nodegroupid": "uuid",
+                        "resourceinstanceid": "uuid",
+                        "sortorder": 0,
+                        "data": {"node-uuid": "value", ...}
+                    }
+                ]
+            }
+        ]
+    }
+}
+```
+
+Bare resources (without the `business_data` wrapper) are also accepted.
+
+### `reference_data/`
+
+SKOS controlled vocabularies. The loader searches four subdirectories: `concepts/`, `collections/`, `controlled_lists/`, and `staging/`. Both XML (SKOS RDF/XML) and JSON formats are supported; XML files are prioritised when both exist.
+
+On export, collections are written to `reference_data/controlled_lists/` as SKOS ConceptScheme XML, with concepts deduplicated across collections.
+
+### `ontologies/`
+
+Each ontology lives in its own subdirectory containing an `ontology_config.json` and the referenced RDFS/OWL files.
+
+**`ontology_config.json`:**
+```json
+{
+    "base": "cidoc_crm_v6.2.xml",
+    "base_name": "CIDOC CRM v6.2",
+    "base_version": "6.2",
+    "base_id": "e6e8db47-2ccf-11e6-927e-b8f6b115d7dd",
+    "extensions": [
+        "CRMsci_v1.2.3.rdfs.xml",
+        "CRMarchaeo_v1.4.rdfs.xml"
+    ]
+}
+```
+
+The loader reads the base file and all extensions in order, building a unified ontology validator.
+
+### `preindex/`
+
+Precomputed resource summaries for fast pagination. Files use the `.pi` extension and contain either a JSON array or newline-delimited JSON (NDJSON), where each entry is a `StaticResourceSummary`.
+
+### `package_config.json`
+
+Standard Arches package metadata:
+```json
+{
+    "permitted_resource_relationships": [],
+    "business_data_load_order": []
+}
+```
+
+## Python API
+
+### Import
+
+```python
+import alizarin
+
+result = alizarin.import_prebuild("./prebuild", base_uri="http://localhost:8000/")
+# result = {
+#     "graph_ids": ["uuid1", "uuid2", ...],
+#     "collection_ids": ["uuid1", "uuid2", ...],
+#     "ontology_validator": OntologyValidator | None
+# }
+```
+
+This registers all graphs, loads SKOS collections into the global RDM cache, and creates an ontology validator if ontology files are present.
+
+### Export
+
+```python
+import alizarin
+
+# Export everything (all registered graphs + RDM cache)
+files_written = alizarin.export_prebuild(
+    "./output",
+    base_uri="http://localhost:8000/"
+)
+
+# Export specific graphs only
+files_written = alizarin.export_graphs_to_dir("./output", ["graph-uuid-1", "graph-uuid-2"])
+
+# Export all registered graphs
+files_written = alizarin.export_all_graphs_to_dir("./output")
+
+# Export RDM collections as SKOS XML
+files_written = alizarin.export_collections_to_dir("./output", base_uri="http://localhost:8000/")
+```
+
+### Round-trip workflow
+
+```python
+import alizarin
+
+# 1. Import existing prebuild
+result = alizarin.import_prebuild("./prebuild", "http://localhost:8000/")
+
+# 2. Modify a graph via CSV mutations
+with open("mutations.csv") as f:
+    modified_graph = alizarin.build_graph_from_csv(f.read())
+
+# 3. Register the modified graph
+alizarin.register_graph(modified_graph)
+
+# 4. Export the updated prebuild
+alizarin.export_prebuild("./prebuild", "http://localhost:8000/")
+```
+
+## NAPI (Node.js) API
+
+```typescript
+import { importPrebuild, NapiPrebuildExporter } from '@alizarin/napi';
+
+// Import
+const result = importPrebuild('./prebuild', 'http://localhost:8000/');
+// result.graphIds, result.collectionIds, result.collections, result.ontologyConfigs
+
+// Export
+const exporter = new NapiPrebuildExporter();
+const files = exporter.exportGraphs(['graph-uuid'], './output');
+const allFiles = exporter.exportAllGraphs('./output');
+```
+
+## Further Reading
+
+- [Graph Mutations](/docs/mutations) — CSV and JSON mutation formats
+- [Python Bindings](/docs/bindings/python) — full Python API surface
+- [NAPI Bindings](/docs/bindings/napi) — Node.js native bindings

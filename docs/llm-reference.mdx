@@ -28,7 +28,8 @@ cargo add alizarin-core
 
 - **Graph**: An Arches resource model definition. Contains nodes, nodegroups, edges, and cards. Each graph has a UUID.
 - **Node**: A field in the graph. Has a datatype (string, concept, semantic, etc.), an alias, and belongs to a nodegroup.
-- **Nodegroup**: A group of related nodes. Controls cardinality (1 or n).
+- **Nodegroup**: A group of related nodes. Controls cardinality (1 or n). A node whose `nodeid == nodegroup_id` is a **collector** node (owns its own nodegroup).
+- **Collector (is_collector)**: A node that owns its own nodegroup. In Arches, `is_collector` is the property `nodeid == nodegroup_id`. Set `options.is_collector = true` on `AddNode` to force nodegroup creation for cardinality-1 nodes.
 - **Tile**: A data record for a nodegroup. Contains values keyed by node UUID.
 - **Resource**: An instance of a graph. Contains tiles.
 - **Alias**: A human-readable name for a node (e.g., `person_name` instead of a UUID).
@@ -139,10 +140,10 @@ add_node,heritage_item,description,Description,string,1,E62_String,P3_has_note
 ```
 
 **CSV columns:**
-- `action`: `create_model`, `add_node`, `add_card`, `add_widget`, `update_node`, `delete_node`, etc.
-- `subject`: The parent alias (or model alias for `create_model`)
+- `action`: `load_graph`, `create_model`, `add_node`, `add_card`, `add_widget`, `add_function`, `set_descriptor_template`, `rename_node`, `rename_card`, `rename_graph`, `realign_card_from_node`, `update_node`, `change_node_type`, `change_cardinality`, `coppice_subgraph`, `concept_change_collection`, `reference_change_collection`, `delete_node`, `delete_nodegroup`, `delete_card`, `delete_function`
+- `subject`: The parent alias (or model alias for `create_model`, graph ID for `load_graph`)
 - `object`: The new element's alias
-- `params.*`: Mutation-specific parameters (name, datatype, cardinality, ontology_class, parent_property, config, description)
+- `params.*`: Mutation-specific parameters (name, datatype, cardinality, ontology_class, parent_property, config, description, publication_id, alias_prefix, name_prefix). Supports **dot-notation** for nested values (e.g., `params.options.is_collector` becomes `{"options": {"is_collector": true}}`).
 
 **Supported datatypes:** `string`, `number`, `date`, `boolean`, `concept`, `concept-list`, `resource-instance`, `resource-instance-list`, `geojson-feature-collection`, `url`, `edtf`, `file-list`, `domain-value`, `domain-value-list`, `semantic` (grouping node), `reference`
 

@@ -52,7 +52,7 @@
 //! - `options` (NodeOptions): Additional options (exportable, isrequired, etc.)
 //!
 //! **Behavior:**
-//! - Creates nodegroup if cardinality=N or parent is root
+//! - Creates nodegroup if cardinality=N, parent is root, or `options.is_collector=true`
 //! - Auto-creates card if `MutatorOptions.autocreate_card` is true
 //! - Auto-creates widget if `MutatorOptions.autocreate_widget` is true and datatype is not "semantic"
 //! - Creates edge from parent to new node
@@ -315,6 +315,94 @@
 //! **Error:** `CannotDeleteRootNode` if any affected node is root
 //!
 //! **Instruction:** `delete_nodegroup` (subject: nodegroup_id)
+//!
+//! ---
+//!
+//! ## Function & Descriptor Mutations
+//!
+//! ### AddFunction (ModelConformant)
+//!
+//! Adds a function mapping (functions_x_graphs entry) to the graph.
+//!
+//! **Parameters:**
+//! - `function_id` (String): Function ID — a UUID or an arbitrary string
+//!   (e.g. `"com.flaxandteal.app/my-func"`) which will be hashed to a
+//!   deterministic UUID v5.
+//! - `config` (Option<Value>): Configuration JSON for the function mapping
+//!
+//! **Instruction:** `add_function` (subject: function_id)
+//!
+//! ---
+//!
+//! ### SetDescriptorTemplate (AlwaysConformant)
+//!
+//! Sets or updates a descriptor template on the graph's descriptor function.
+//! The descriptor function is located (or created) automatically.
+//!
+//! **Parameters:**
+//! - `descriptor_type` (String): Descriptor type key (e.g. `"name"`, `"slug"`,
+//!   `"description"`, `"map_popup"`)
+//! - `string_template` (String): Template with `<Node Name>` placeholders
+//!   (e.g. `"<First Name> <Last Name>"`)
+//!
+//! **Instruction:** `set_descriptor_template` (subject: descriptor_type, object: string_template)
+//!
+//! ---
+//!
+//! ### RenameCard (AlwaysConformant)
+//!
+//! Changes a card's name and/or description. Supports both single-language and
+//! full i18n maps.
+//!
+//! **Parameters:**
+//! - `card_id` (String): Card ID or nodegroup ID (searches card ID first, then nodegroup)
+//! - `language` (Option<String>): Language code for `name`/`description` (default: `"en"`)
+//! - `name` (Option<String>): New name in the specified language
+//! - `name_i18n` (Option<Map>): Full translatable name map (overrides `name`)
+//! - `description` (Option<String>): New description in the specified language
+//! - `description_i18n` (Option<Map>): Full translatable description map
+//!
+//! **Instruction:** `rename_card` (subject: card_id, params.name: new_name)
+//!
+//! ---
+//!
+//! ### RenameGraph (AlwaysConformant)
+//!
+//! Updates a graph's name, description, subtitle, or author.
+//!
+//! **Parameters:**
+//! - `name` (Option<Map<String, String>>): New name (language -> value)
+//! - `description` (Option<Map<String, String>>): New description
+//! - `subtitle` (Option<Map<String, String>>): New subtitle
+//! - `author` (Option<String>): New author
+//!
+//! All fields are optional; only provided fields are updated.
+//!
+//! **Instruction:** `rename_graph` (subject: graph_id, params.name: new_name)
+//!
+//! ---
+//!
+//! ### RealignCardFromNode (AlwaysConformant)
+//!
+//! Syncs a card's name and widget label to match the current node name.
+//!
+//! **Parameters:**
+//! - `node_alias` (String): Alias of the node whose name should propagate
+//!
+//! **Instruction:** `realign_card_from_node` (subject: node_alias)
+//!
+//! ---
+//!
+//! ### CoppiceSubgraph (AlwaysConformant)
+//!
+//! Sets `sourcebranchpublication_id` on a subtree by traversing from a root
+//! node via edges. Stops at nodes already claimed by a different publication.
+//!
+//! **Parameters:**
+//! - `subject` (String): Alias of the root node to start traversal from
+//! - `publication_id` (String): The publication ID to set on reachable nodes
+//!
+//! **Instruction:** `coppice_subgraph` (subject: root_alias, params.publication_id: uuid)
 //!
 //! ---
 //!
@@ -890,16 +978,30 @@ pub struct AddNodeParams {
     pub options: NodeOptions,
 }
 
-/// Options for node creation
+/// Options for node creation.
+///
+/// These map to the per-node flags stored in Arches graph definitions.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NodeOptions {
+    /// Include this node's data in exports.
     pub exportable: Option<bool>,
+    /// Override the generated field name.
     pub fieldname: Option<String>,
+    /// Whether the node has a user-defined alias (as opposed to auto-generated).
     pub hascustomalias: Option<bool>,
+    /// Force this node to own its own nodegroup (`nodeid == nodegroup_id`),
+    /// matching Arches' collector semantics. When `true`, `AddNode` creates a
+    /// dedicated nodegroup even if the cardinality is `1` and the parent is not
+    /// root. Defaults to `Some(true)` for semantic nodes with cardinality N;
+    /// `None` otherwise.
     pub is_collector: Option<bool>,
+    /// Whether this field is required for data entry.
     pub isrequired: Option<bool>,
+    /// Whether this field is included in search indexes.
     pub issearchable: Option<bool>,
+    /// Whether this is the root (top) node of the graph.
     pub istopnode: Option<bool>,
+    /// Display order within the card/nodegroup.
     pub sortorder: Option<i32>,
 }
 
