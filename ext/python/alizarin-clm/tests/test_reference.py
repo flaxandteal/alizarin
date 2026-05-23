@@ -982,6 +982,9 @@ class TestRustCoercionIntegration:
         )
 
         tile_data = json.loads(tile_data_json)
+        assert isinstance(tile_data, list)
+        assert len(tile_data) == 1
+        tile_data = tile_data[0]
         assert tile_data.get("__needs_rdm_label_lookup") is True
         assert tile_data["label"] == "Item 1>1"
         assert tile_data["controlledList"] == "2730d609-3a8d-49dc-bf51-6ac34e80294a"
@@ -1010,6 +1013,9 @@ class TestRustCoercionIntegration:
         )
 
         tile_data = json.loads(tile_data_json)
+        assert isinstance(tile_data, list)
+        assert len(tile_data) == 1
+        tile_data = tile_data[0]
         assert tile_data.get("__needs_rdm_lookup") is True
         assert tile_data["uuid"] == uuid_val
 

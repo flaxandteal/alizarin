@@ -549,6 +549,9 @@ class TestDisplayTextWithUpdatedCollection:
         )
 
         tile_data = json.loads(tile_data_json)
+        assert isinstance(tile_data, list)
+        assert len(tile_data) == 1
+        tile_data = tile_data[0]
 
         # Should produce a label lookup marker pointing to the new collection
         assert tile_data.get("__needs_rdm_label_lookup") is True
