@@ -2305,14 +2305,22 @@ fn apply_add_edge(graph: &mut StaticGraph, params: AddEdgeParams) -> Result<(), 
 }
 
 fn apply_add_card(graph: &mut StaticGraph, params: AddCardParams) -> Result<(), MutationError> {
+    // Resolve alias to actual nodegroup ID: find a node by alias, then use its
+    // nodegroup_id.  Fall back to the raw string if no alias matches (it may
+    // already be a UUID).
+    let nodegroup_id = graph
+        .find_node_by_alias(&params.nodegroup_id)
+        .and_then(|n| n.nodegroup_id.clone())
+        .unwrap_or(params.nodegroup_id);
+
     // Check if card already exists for this nodegroup
-    if graph.find_card_by_nodegroup(&params.nodegroup_id).is_some() {
-        return Err(MutationError::CardAlreadyExists(params.nodegroup_id));
+    if graph.find_card_by_nodegroup(&nodegroup_id).is_some() {
+        return Err(MutationError::CardAlreadyExists(nodegroup_id));
     }
 
     let card_id = generate_uuid_v5(
         ("graph", Some(&graph.graphid)),
-        &format!("card-ng-{}", params.nodegroup_id),
+        &format!("card-ng-{}", nodegroup_id),
     );
 
     let card = StaticCard {
@@ -2341,7 +2349,7 @@ fn apply_add_card(graph: &mut StaticGraph, params: AddCardParams) -> Result<(), 
             .unwrap_or_else(StaticTranslatableString::empty),
         is_editable: params.options.is_editable,
         name: params.name,
-        nodegroup_id: params.nodegroup_id,
+        nodegroup_id,
         sortorder: Some(params.options.sortorder.unwrap_or(0)),
         visible: params.options.visible.unwrap_or(true),
         source_identifier_id: None,
