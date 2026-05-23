@@ -1033,6 +1033,17 @@ pub struct DeleteWidgetParams {
     pub widget_mapping_id: String,
 }
 
+/// Parameters for adding a function mapping to a graph
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddFunctionParams {
+    /// Function ID — either a UUID or an arbitrary string (e.g. "com.flaxandteal.app/my-func")
+    /// which will be converted to a deterministic UUID v5.
+    pub function_id: String,
+    /// Optional configuration for the function mapping
+    #[serde(default)]
+    pub config: Option<serde_json::Value>,
+}
+
 /// Parameters for deleting a function mapping (functions_x_graphs entry)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeleteFunctionParams {
@@ -1475,6 +1486,7 @@ pub enum GraphMutation {
     ConceptChangeCollection(ConceptChangeCollectionParams),
     DeleteCard(DeleteCardParams),
     DeleteWidget(DeleteWidgetParams),
+    AddFunction(AddFunctionParams),
     DeleteFunction(DeleteFunctionParams),
     DeleteNode(DeleteNodeParams),
     DeleteNodegroup(DeleteNodegroupParams),
@@ -1516,6 +1528,7 @@ impl GraphMutation {
             // Deletion operations - valid for both branches and models
             GraphMutation::DeleteCard(_) => MutationConformance::AlwaysConformant,
             GraphMutation::DeleteWidget(_) => MutationConformance::AlwaysConformant,
+            GraphMutation::AddFunction(_) => MutationConformance::ModelConformant,
             GraphMutation::DeleteFunction(_) => MutationConformance::AlwaysConformant,
             GraphMutation::DeleteNode(_) => MutationConformance::AlwaysConformant,
             GraphMutation::DeleteNodegroup(_) => MutationConformance::AlwaysConformant,
@@ -1981,6 +1994,7 @@ fn apply_mutation_with_extensions(
         GraphMutation::ConceptChangeCollection(params) => apply_concept_change_collection(graph, params),
         GraphMutation::DeleteCard(params) => apply_delete_card(graph, params),
         GraphMutation::DeleteWidget(params) => apply_delete_widget(graph, params),
+        GraphMutation::AddFunction(params) => apply_add_function(graph, params),
         GraphMutation::DeleteFunction(params) => apply_delete_function(graph, params),
         GraphMutation::DeleteNode(params) => apply_delete_node(graph, params),
         GraphMutation::DeleteNodegroup(params) => apply_delete_nodegroup(graph, params),
@@ -2054,55 +2068,59 @@ fn apply_add_node(
     // Determine nodegroup
     // All nodes except root must have a nodegroup. Create a new one if:
     // - Cardinality is N (multiple instances allowed), OR
-    // - Parent is root (direct children of root always get their own nodegroup)
-    let (nodegroup_id, created_new_nodegroup) =
-        if params.cardinality == Cardinality::N || parent.is_root() {
-            // Create new nodegroup for this node
-            let ng_id = node_id.clone();
+    // - Parent is root (direct children of root always get their own nodegroup), OR
+    // - is_collector is explicitly set (node should own its own nodegroup,
+    //   matching Arches behaviour where is_collector ≡ nodeid == nodegroup_id)
+    let (nodegroup_id, created_new_nodegroup) = if params.cardinality == Cardinality::N
+        || parent.is_root()
+        || params.options.is_collector == Some(true)
+    {
+        // Create new nodegroup for this node
+        let ng_id = node_id.clone();
 
-            // Add nodegroup
-            let nodegroup = StaticNodegroup {
-                nodegroupid: ng_id.clone(),
-                cardinality: Some(params.cardinality.as_str().to_string()),
-                parentnodegroup_id: parent_nodegroup_id.clone(),
-                legacygroupid: None,
-                grouping_node_id: None,
-            };
-            graph.push_nodegroup(nodegroup);
-
-            // Auto-create card if enabled
-            if options.autocreate_card {
-                let card_id = generate_uuid_v5(
-                    ("graph", Some(&graph.graphid)),
-                    &format!("card-ng-{}", ng_id),
-                );
-                let card = StaticCard {
-                    active: true,
-                    cardid: card_id,
-                    component_id: DEFAULT_CARD_COMPONENT_ID.to_string(),
-                    config: None,
-                    constraints: vec![],
-                    cssclass: None,
-                    description: None,
-                    graph_id: graph.graphid.clone(),
-                    helpenabled: false,
-                    helptext: StaticTranslatableString::empty(),
-                    helptitle: StaticTranslatableString::empty(),
-                    instructions: StaticTranslatableString::empty(),
-                    is_editable: Some(true),
-                    name: StaticTranslatableString::from_string(&params.name),
-                    nodegroup_id: ng_id.clone(),
-                    sortorder: Some(0),
-                    visible: true,
-                    source_identifier_id: None,
-                };
-                graph.push_card(card);
-            }
-
-            (Some(ng_id), true)
-        } else {
-            (parent_nodegroup_id, false)
+        // Add nodegroup
+        let nodegroup = StaticNodegroup {
+            nodegroupid: ng_id.clone(),
+            cardinality: Some(params.cardinality.as_str().to_string()),
+            parentnodegroup_id: parent_nodegroup_id.clone(),
+            legacygroupid: None,
+            grouping_node_id: None,
         };
+        graph.push_nodegroup(nodegroup);
+
+        // Auto-create card if enabled
+        if options.autocreate_card {
+            let card_id = generate_uuid_v5(
+                ("graph", Some(&graph.graphid)),
+                &format!("card-ng-{}", ng_id),
+            );
+            let card = StaticCard {
+                active: true,
+                cardid: card_id,
+                component_id: DEFAULT_CARD_COMPONENT_ID.to_string(),
+                config: None,
+                constraints: vec![],
+                cssclass: None,
+                description: None,
+                graph_id: graph.graphid.clone(),
+                helpenabled: false,
+                helptext: StaticTranslatableString::empty(),
+                helptitle: StaticTranslatableString::empty(),
+                instructions: StaticTranslatableString::empty(),
+                is_editable: Some(true),
+                name: StaticTranslatableString::from_string(&params.name),
+                nodegroup_id: ng_id.clone(),
+                sortorder: Some(0),
+                visible: true,
+                source_identifier_id: None,
+            };
+            graph.push_card(card);
+        }
+
+        (Some(ng_id), true)
+    } else {
+        (parent_nodegroup_id, false)
+    };
 
     // Build config - error if provided but invalid
     let config: HashMap<String, serde_json::Value> = match params.config {
@@ -2463,6 +2481,45 @@ fn apply_delete_widget(
     if let Some(ref mut cxnxws) = graph.cards_x_nodes_x_widgets {
         cxnxws.retain(|c| c.id != params.widget_mapping_id);
     }
+
+    Ok(())
+}
+
+/// Resolve a function ID: pass through UUIDs, derive UUID v5 from non-UUID strings.
+fn resolve_function_id(raw: &str) -> String {
+    if uuid::Uuid::parse_str(raw).is_ok() {
+        return raw.to_string();
+    }
+    uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, raw.as_bytes()).to_string()
+}
+
+fn apply_add_function(
+    graph: &mut StaticGraph,
+    params: AddFunctionParams,
+) -> Result<(), MutationError> {
+    use crate::graph::StaticFunctionsXGraphs;
+
+    let function_id = resolve_function_id(&params.function_id);
+    let fxg = graph.functions_x_graphs.get_or_insert_with(Vec::new);
+
+    if fxg
+        .iter()
+        .any(|f| f.function_id == function_id && f.graph_id == graph.graphid)
+    {
+        return Err(MutationError::Other(format!(
+            "Function {} already mapped to graph {}",
+            function_id, graph.graphid
+        )));
+    }
+
+    fxg.push(StaticFunctionsXGraphs {
+        id: uuid::Uuid::new_v4().to_string(),
+        function_id,
+        graph_id: graph.graphid.clone(),
+        config: params
+            .config
+            .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new())),
+    });
 
     Ok(())
 }
@@ -4729,29 +4786,20 @@ impl GraphInstruction {
                     parent_property: self.get_str_or("parent_property", ""),
                     description: self.get_str("description"),
                     config: self.params.get("config").cloned(),
-                    options: NodeOptions {
-                        is_collector: self
+                    options: {
+                        let mut opts: NodeOptions = self
                             .params
-                            .get("is_collector")
-                            .and_then(|v| v.as_bool())
-                            .or_else(|| {
-                                // Default: semantic nodes with cardinality N are collectors
-                                let dt = self.get_str_or("datatype", "semantic");
-                                if dt == "semantic" && cardinality == Cardinality::N {
-                                    Some(true)
-                                } else {
-                                    None
-                                }
-                            }),
-                        exportable: self.params.get("exportable").and_then(|v| v.as_bool()),
-                        isrequired: self.params.get("isrequired").and_then(|v| v.as_bool()),
-                        issearchable: self.params.get("issearchable").and_then(|v| v.as_bool()),
-                        sortorder: self
-                            .params
-                            .get("sortorder")
-                            .and_then(|v| v.as_i64())
-                            .map(|v| v as i32),
-                        ..NodeOptions::default()
+                            .get("options")
+                            .and_then(|v| serde_json::from_value(v.clone()).ok())
+                            .unwrap_or_default();
+                        // Default: semantic nodes with cardinality N are collectors
+                        if opts.is_collector.is_none() {
+                            let dt = self.get_str_or("datatype", "semantic");
+                            if dt == "semantic" && cardinality == Cardinality::N {
+                                opts.is_collector = Some(true);
+                            }
+                        }
+                        opts
                     },
                 }))
             }
@@ -4862,6 +4910,10 @@ impl GraphInstruction {
             })),
             "delete_widget" => Ok(GraphMutation::DeleteWidget(DeleteWidgetParams {
                 widget_mapping_id: self.subject.clone(),
+            })),
+            "add_function" => Ok(GraphMutation::AddFunction(AddFunctionParams {
+                function_id: self.subject.clone(),
+                config: self.params.get("config").cloned(),
             })),
             "delete_function" => Ok(GraphMutation::DeleteFunction(DeleteFunctionParams {
                 function_mapping_id: self.subject.clone(),
@@ -5086,8 +5138,10 @@ impl GraphInstruction {
             "add_node" | "add_edge" | "add_nodegroup" | "add_card" | "add_widget" => {
                 MutationConformance::BranchConformant
             }
-            // Subgraph operations - only valid for models
-            "add_subgraph" | "update_subgraph" => MutationConformance::ModelConformant,
+            // Subgraph and function operations - only valid for models
+            "add_subgraph" | "update_subgraph" | "add_function" => {
+                MutationConformance::ModelConformant
+            }
             // Collection changes - valid for both
             "concept_change_collection" => MutationConformance::AlwaysConformant,
             // Deletion operations - valid for both branches and models
@@ -5327,7 +5381,20 @@ pub fn parse_instructions_from_csv(csv_text: &str) -> Result<Vec<GraphInstructio
                     // Try to parse as JSON first (for config objects), fall back to string
                     let json_value = serde_json::from_str(value)
                         .unwrap_or(serde_json::Value::String(value.to_string()));
-                    params.insert(param_name.clone(), json_value);
+                    // Handle dot-notation (e.g. "options.is_collector") as nested objects
+                    let parts: Vec<&str> = param_name.splitn(2, '.').collect();
+                    if parts.len() == 2 {
+                        let outer = parts[0];
+                        let inner = parts[1];
+                        let nested = params
+                            .entry(outer.to_string())
+                            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+                        if let serde_json::Value::Object(ref mut map) = nested {
+                            map.insert(inner.to_string(), json_value);
+                        }
+                    } else {
+                        params.insert(param_name.clone(), json_value);
+                    }
                 }
             }
         }
@@ -7030,6 +7097,125 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_is_collector_option_creates_own_nodegroup() {
+        // A non-root child with cardinality 1 normally inherits its parent's
+        // nodegroup. Setting is_collector = true should give it its own.
+        let graph = create_skeleton_graph("Test", "test", true, None);
+
+        let instructions = vec![
+            // Parent semantic node (cardinality N → gets own nodegroup automatically)
+            GraphInstruction::new("add_node", "test", "parent_group")
+                .with_str("datatype", "semantic")
+                .with_str("cardinality", "n"),
+            // Child with cardinality 1 and is_collector: should get own nodegroup
+            GraphInstruction::new("add_node", "parent_group", "collector_child")
+                .with_str("datatype", "string")
+                .with_str("cardinality", "1")
+                .with_param("options", serde_json::json!({"is_collector": true})),
+            // Child with cardinality 1 without is_collector: inherits parent's nodegroup
+            GraphInstruction::new("add_node", "parent_group", "plain_child")
+                .with_str("datatype", "string")
+                .with_str("cardinality", "1"),
+        ];
+
+        let result = apply_instructions(&graph, instructions, MutatorOptions::default(), None);
+        assert!(result.is_ok(), "Instructions failed: {:?}", result.err());
+
+        let mutated = result.unwrap();
+        let parent = mutated
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("parent_group"))
+            .unwrap();
+        let collector = mutated
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("collector_child"))
+            .unwrap();
+        let plain = mutated
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("plain_child"))
+            .unwrap();
+
+        // Collector child: nodeid == nodegroup_id (Arches is_collector semantics)
+        assert_eq!(
+            collector.nodegroup_id.as_ref(),
+            Some(&collector.nodeid),
+            "is_collector node should have nodegroup_id == nodeid"
+        );
+        assert!(collector.is_collector, "is_collector flag should be set");
+
+        // Corresponding nodegroup entry must exist with correct parent
+        let collector_ng = mutated
+            .nodegroups
+            .iter()
+            .find(|ng| ng.nodegroupid == collector.nodeid);
+        assert!(
+            collector_ng.is_some(),
+            "Collector node must have a nodegroup entry"
+        );
+        assert_eq!(
+            collector_ng.unwrap().parentnodegroup_id,
+            parent.nodegroup_id,
+            "Collector nodegroup parent should be the parent's nodegroup"
+        );
+
+        // Plain child: inherits parent's nodegroup
+        assert_eq!(
+            plain.nodegroup_id, parent.nodegroup_id,
+            "Non-collector child should share parent's nodegroup"
+        );
+    }
+
+    #[test]
+    fn test_is_collector_via_csv_dot_notation() {
+        // CSV with params.options.is_collector should produce a collector node
+        let graph = create_skeleton_graph("Test", "test", true, None);
+
+        let csv = "\
+action,subject,object,params.name,params.datatype,params.cardinality,params.ontology_class,params.parent_property,params.options.is_collector
+add_node,test,parent_group,Parent,semantic,n,,,
+add_node,parent_group,impact,Impact,string,1,,,true
+add_node,parent_group,other,Other,string,1,,,
+";
+        let instructions = parse_instructions_from_csv(csv).expect("CSV should parse");
+        let result = apply_instructions(&graph, instructions, MutatorOptions::default(), None);
+        assert!(
+            result.is_ok(),
+            "CSV instructions failed: {:?}",
+            result.err()
+        );
+
+        let mutated = result.unwrap();
+        let impact = mutated
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("impact"))
+            .unwrap();
+        let other = mutated
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("other"))
+            .unwrap();
+        let parent = mutated
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("parent_group"))
+            .unwrap();
+
+        assert_eq!(
+            impact.nodegroup_id.as_ref(),
+            Some(&impact.nodeid),
+            "CSV is_collector node should have nodegroup_id == nodeid"
+        );
+        assert_eq!(
+            other.nodegroup_id, parent.nodegroup_id,
+            "Non-collector CSV node should share parent's nodegroup"
+        );
+    }
+
     // =========================================================================
     // Create Model/Branch Instruction Tests
     // =========================================================================
@@ -7630,6 +7816,241 @@ mod tests {
         );
 
         assert!(matches!(result, Err(MutationError::WidgetNotFound(_))));
+    }
+
+    #[test]
+    fn test_add_function_with_uuid() {
+        let mut graph = create_skeleton_graph("Test", "test", false, None);
+        let options = MutatorOptions::default();
+
+        apply_mutation(
+            &mut graph,
+            GraphMutation::AddFunction(AddFunctionParams {
+                function_id: "00b2d15a-fda0-4578-b79a-784e4138664b".to_string(),
+                config: Some(serde_json::json!({"key": "value"})),
+            }),
+            &options,
+        )
+        .unwrap();
+
+        let fxgs = graph.functions_x_graphs.as_ref().unwrap();
+        assert_eq!(fxgs.len(), 1);
+        assert_eq!(fxgs[0].function_id, "00b2d15a-fda0-4578-b79a-784e4138664b");
+        assert_eq!(fxgs[0].graph_id, graph.graphid);
+        assert_eq!(fxgs[0].config["key"], "value");
+    }
+
+    #[test]
+    fn test_add_function_with_non_uuid_string() {
+        let mut graph = create_skeleton_graph("Test", "test", false, None);
+        let options = MutatorOptions::default();
+
+        apply_mutation(
+            &mut graph,
+            GraphMutation::AddFunction(AddFunctionParams {
+                function_id: "com.flaxandteal.app/my-func".to_string(),
+                config: None,
+            }),
+            &options,
+        )
+        .unwrap();
+
+        let fxgs = graph.functions_x_graphs.as_ref().unwrap();
+        assert_eq!(fxgs.len(), 1);
+        // Should be a valid UUID (derived via v5)
+        assert!(uuid::Uuid::parse_str(&fxgs[0].function_id).is_ok());
+        // Should NOT be the raw string
+        assert_ne!(fxgs[0].function_id, "com.flaxandteal.app/my-func");
+        // Should be deterministic
+        let expected =
+            uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, b"com.flaxandteal.app/my-func")
+                .to_string();
+        assert_eq!(fxgs[0].function_id, expected);
+    }
+
+    #[test]
+    fn test_add_function_duplicate() {
+        let mut graph = create_skeleton_graph("Test", "test", false, None);
+        let options = MutatorOptions::default();
+
+        apply_mutation(
+            &mut graph,
+            GraphMutation::AddFunction(AddFunctionParams {
+                function_id: "00b2d15a-fda0-4578-b79a-784e4138664b".to_string(),
+                config: None,
+            }),
+            &options,
+        )
+        .unwrap();
+
+        let result = apply_mutation(
+            &mut graph,
+            GraphMutation::AddFunction(AddFunctionParams {
+                function_id: "00b2d15a-fda0-4578-b79a-784e4138664b".to_string(),
+                config: None,
+            }),
+            &options,
+        );
+
+        assert!(matches!(result, Err(MutationError::Other(_))));
+    }
+
+    #[test]
+    fn test_set_descriptor_template_with_non_default_function_allows_multi_nodegroup() {
+        use crate::graph::StaticFunctionsXGraphs;
+
+        let mut graph = create_skeleton_graph("Test", "test", true, None);
+        let options = MutatorOptions::default();
+
+        // Add two nodes in separate nodegroups
+        apply_mutation(
+            &mut graph,
+            GraphMutation::AddNode(AddNodeParams {
+                parent_alias: Some("test".to_string()),
+                alias: "name_node".to_string(),
+                name: "Name".to_string(),
+                datatype: "string".to_string(),
+                cardinality: Cardinality::One,
+                ontology_class: None,
+                parent_property: String::new(),
+                description: None,
+                config: None,
+                options: NodeOptions::default(),
+            }),
+            &options,
+        )
+        .unwrap();
+        apply_mutation(
+            &mut graph,
+            GraphMutation::AddNode(AddNodeParams {
+                parent_alias: Some("test".to_string()),
+                alias: "desc_node".to_string(),
+                name: "Description".to_string(),
+                datatype: "string".to_string(),
+                cardinality: Cardinality::One,
+                ontology_class: None,
+                parent_property: String::new(),
+                description: None,
+                config: None,
+                options: NodeOptions::default(),
+            }),
+            &options,
+        )
+        .unwrap();
+
+        // Verify the two nodes are in different nodegroups
+        let name_ng = graph
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("name_node"))
+            .unwrap()
+            .nodegroup_id
+            .as_ref()
+            .unwrap()
+            .clone();
+        let desc_ng = graph
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("desc_node"))
+            .unwrap()
+            .nodegroup_id
+            .as_ref()
+            .unwrap()
+            .clone();
+        assert_ne!(
+            name_ng, desc_ng,
+            "Test setup: nodes should be in different nodegroups"
+        );
+
+        // With default descriptor function, multi-nodegroup template should fail
+        let result = graph.set_descriptor_template("name", "<Name> - <Description>");
+        assert!(
+            result.is_err(),
+            "Default function should reject multi-nodegroup template"
+        );
+        assert!(result.unwrap_err().contains("expected exactly 1"));
+
+        // Add a non-default descriptor function (e.g. Multi-card Resource Descriptor)
+        let fxg = graph.functions_x_graphs.get_or_insert_with(Vec::new);
+        fxg.push(StaticFunctionsXGraphs {
+            config: serde_json::json!({}),
+            function_id: "00b2d15a-fda0-4578-b79a-784e4138664b".to_string(),
+            graph_id: graph.graphid.clone(),
+            id: "test-fxg-1".to_string(),
+        });
+
+        // With non-default function, multi-nodegroup template should succeed
+        let result = graph.set_descriptor_template("name", "<Name> - <Description>");
+        assert!(
+            result.is_ok(),
+            "Non-default function should allow multi-nodegroup template: {:?}",
+            result
+        );
+
+        // Verify the config was applied to the non-default function
+        let func = graph
+            .functions_x_graphs
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|f| f.function_id == "00b2d15a-fda0-4578-b79a-784e4138664b")
+            .expect("Non-default function should still exist");
+        let dt = func.config["descriptor_types"]["name"].as_object().unwrap();
+        assert_eq!(dt["string_template"], "<Name> - <Description>");
+    }
+
+    #[test]
+    fn test_set_descriptor_template_with_non_default_function_single_nodegroup() {
+        use crate::graph::StaticFunctionsXGraphs;
+
+        let mut graph = create_skeleton_graph("Test", "test", true, None);
+        let options = MutatorOptions::default();
+
+        // Add a node
+        apply_mutation(
+            &mut graph,
+            GraphMutation::AddNode(AddNodeParams {
+                parent_alias: Some("test".to_string()),
+                alias: "name_node".to_string(),
+                name: "Name".to_string(),
+                datatype: "string".to_string(),
+                cardinality: Cardinality::One,
+                ontology_class: None,
+                parent_property: String::new(),
+                description: None,
+                config: None,
+                options: NodeOptions::default(),
+            }),
+            &options,
+        )
+        .unwrap();
+
+        // Add a non-default function with empty config
+        let fxg = graph.functions_x_graphs.get_or_insert_with(Vec::new);
+        fxg.push(StaticFunctionsXGraphs {
+            config: serde_json::json!({}),
+            function_id: "00b2d15a-fda0-4578-b79a-784e4138664b".to_string(),
+            graph_id: graph.graphid.clone(),
+            id: "test-fxg-1".to_string(),
+        });
+
+        // Single-nodegroup template should also work with non-default function
+        let result = graph.set_descriptor_template("name", "<Name>");
+        assert!(
+            result.is_ok(),
+            "Non-default function should allow single-nodegroup template: {:?}",
+            result
+        );
+
+        let func = graph
+            .functions_x_graphs
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|f| f.function_id == "00b2d15a-fda0-4578-b79a-784e4138664b")
+            .expect("Non-default function should still exist");
+        let dt = func.config["descriptor_types"]["name"].as_object().unwrap();
+        assert_eq!(dt["string_template"], "<Name>");
     }
 
     #[test]

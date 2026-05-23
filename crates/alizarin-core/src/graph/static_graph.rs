@@ -563,7 +563,35 @@ impl StaticGraph {
             nodegroup_ids.insert(ng_id.clone());
         }
 
-        if nodegroup_ids.len() != 1 {
+        let fxg = self.functions_x_graphs.get_or_insert_with(Vec::new);
+
+        // Find existing descriptor function entry:
+        // 1. Exact match on the default descriptor function ID
+        // 2. Any function that already has descriptor_types config
+        // 3. Any function with empty/null config (e.g. just added via add_function)
+        let idx = fxg
+            .iter()
+            .position(|f| f.function_id == DESCRIPTOR_FUNCTION_ID)
+            .or_else(|| {
+                fxg.iter().position(|f| {
+                    f.config
+                        .as_object()
+                        .map_or(false, |c| c.contains_key("descriptor_types"))
+                })
+            })
+            .or_else(|| {
+                fxg.iter()
+                    .position(|f| f.config.is_null() || f.config == serde_json::json!({}))
+            });
+
+        // The default descriptor function requires all placeholders to be in
+        // a single nodegroup. Other descriptor functions (e.g. Multi-card
+        // Resource Descriptor) can span multiple nodegroups.
+        let is_default_function = idx
+            .map(|i| fxg[i].function_id == DESCRIPTOR_FUNCTION_ID)
+            .unwrap_or(true); // will create default if no match
+
+        if is_default_function && nodegroup_ids.len() != 1 {
             return Err(format!(
                 "Template placeholders span {} nodegroups ({:?}), expected exactly 1",
                 nodegroup_ids.len(),
@@ -571,19 +599,21 @@ impl StaticGraph {
             ));
         }
 
-        let nodegroup_id = nodegroup_ids.into_iter().next().unwrap();
+        let existing = idx.map(|i| &mut fxg[i]);
 
-        let fxg = self.functions_x_graphs.get_or_insert_with(Vec::new);
-
-        // Find existing descriptor function entry
-        let existing = fxg
-            .iter_mut()
-            .find(|f| f.function_id == DESCRIPTOR_FUNCTION_ID);
-
-        let entry = serde_json::json!({
-            "nodegroup_id": nodegroup_id,
-            "string_template": string_template,
-        });
+        let entry = if is_default_function || nodegroup_ids.len() == 1 {
+            let nodegroup_id = nodegroup_ids.into_iter().next().unwrap();
+            serde_json::json!({
+                "nodegroup_id": nodegroup_id,
+                "string_template": string_template,
+            })
+        } else {
+            let ids: Vec<String> = nodegroup_ids.into_iter().collect();
+            serde_json::json!({
+                "nodegroup_ids": ids,
+                "string_template": string_template,
+            })
+        };
 
         if let Some(func) = existing {
             if !func.config.is_object() {
@@ -771,33 +801,27 @@ impl IndexedGraph {
                 continue;
             }
 
-            // Find tiles for this nodegroup
-            let relevant_tiles: Vec<&StaticTile> = tiles
-                .iter()
-                .filter(|t| t.nodegroup_id == type_config.nodegroup_id)
-                .collect();
-
-            if relevant_tiles.is_empty() {
-                let tile_nodegroups: Vec<_> = tiles.iter().map(|t| &t.nodegroup_id).collect();
-                warnings.push(format!(
-                    "Descriptor '{}': No tiles match nodegroup_id '{}'. Available tile nodegroups: {:?}",
-                    descriptor_type, type_config.nodegroup_id, tile_nodegroups
-                ));
-                continue;
-            }
-
             // Replace each placeholder with actual value from tiles
             for placeholder in &placeholders {
-                // Remove < > from placeholder to get node name
                 let node_name = placeholder.trim_start_matches('<').trim_end_matches('>');
 
-                // Find node by name in this nodegroup
-                if let Some(node) =
-                    self.find_node_by_name_in_nodegroup(node_name, &type_config.nodegroup_id)
-                {
-                    // Extract value from tiles using the type serialization system
+                if let Some(node) = self.find_node_by_name(node_name) {
+                    let node_ng = match node.nodegroup_id.as_ref() {
+                        Some(ng) => ng,
+                        None => {
+                            warnings.push(format!(
+                                "Descriptor '{}': Node '{}' has no nodegroup_id",
+                                descriptor_type, node_name
+                            ));
+                            continue;
+                        }
+                    };
+                    let node_tiles: Vec<&StaticTile> = tiles
+                        .iter()
+                        .filter(|t| &t.nodegroup_id == node_ng)
+                        .collect();
                     if let Some(value) = Self::extract_display_value_from_tiles(
-                        &relevant_tiles,
+                        &node_tiles,
                         &node.nodeid,
                         &node.datatype,
                         cache,
@@ -806,27 +830,16 @@ impl IndexedGraph {
                         template = template.replace(placeholder, &value);
                     } else {
                         let available_keys: Vec<_> =
-                            relevant_tiles.iter().flat_map(|t| t.data.keys()).collect();
+                            node_tiles.iter().flat_map(|t| t.data.keys()).collect();
                         warnings.push(format!(
                             "Descriptor '{}': No value found for node '{}' (nodeid '{}') in tiles. Available data keys: {:?}",
                             descriptor_type, node_name, node.nodeid, available_keys
                         ));
                     }
                 } else {
-                    let nodes_in_nodegroup: Vec<_> = self
-                        .nodes_by_id
-                        .values()
-                        .filter(|n| {
-                            n.nodegroup_id
-                                .as_ref()
-                                .map(|id| id == &type_config.nodegroup_id)
-                                .unwrap_or(false)
-                        })
-                        .map(|n| &n.name)
-                        .collect();
                     warnings.push(format!(
-                        "Descriptor '{}': Node '{}' not found in nodegroup '{}'. Available nodes: {:?}",
-                        descriptor_type, node_name, type_config.nodegroup_id, nodes_in_nodegroup
+                        "Descriptor '{}': Node '{}' not found in graph",
+                        descriptor_type, node_name
                     ));
                 }
             }
@@ -860,25 +873,35 @@ impl IndexedGraph {
             }
         };
 
-        for func in functions_x_graphs {
-            if func.function_id == DESCRIPTOR_FUNCTION_ID {
-                // Parse config as DescriptorConfig
-                match serde_json::from_value::<DescriptorConfig>(func.config.clone()) {
-                    Ok(config) => return Some(config),
-                    Err(e) => {
-                        warnings.push(format!(
-                            "Failed to parse descriptor config: {}. Raw config: {}",
-                            e,
-                            serde_json::to_string(&func.config).unwrap_or_default()
-                        ));
-                        return None;
-                    }
+        // Find descriptor function: exact match on default ID, or any function
+        // with descriptor_types config (e.g. Multi-card Resource Descriptor).
+        let descriptor_func = functions_x_graphs
+            .iter()
+            .find(|f| f.function_id == DESCRIPTOR_FUNCTION_ID)
+            .or_else(|| {
+                functions_x_graphs.iter().find(|f| {
+                    f.config
+                        .as_object()
+                        .map_or(false, |c| c.contains_key("descriptor_types"))
+                })
+            });
+
+        if let Some(func) = descriptor_func {
+            match serde_json::from_value::<DescriptorConfig>(func.config.clone()) {
+                Ok(config) => return Some(config),
+                Err(e) => {
+                    warnings.push(format!(
+                        "Failed to parse descriptor config: {}. Raw config: {}",
+                        e,
+                        serde_json::to_string(&func.config).unwrap_or_default()
+                    ));
+                    return None;
                 }
             }
         }
 
         warnings.push(format!(
-            "No descriptor function found in functions_x_graphs (looking for function_id {}). Available function_ids: {:?}",
+            "No descriptor function found in functions_x_graphs (looking for function_id {} or descriptor_types config). Available function_ids: {:?}",
             DESCRIPTOR_FUNCTION_ID,
             functions_x_graphs.iter().map(|f| &f.function_id).collect::<Vec<_>>()
         ));
@@ -912,20 +935,9 @@ impl IndexedGraph {
         placeholders
     }
 
-    /// Find node by name within a specific nodegroup
-    fn find_node_by_name_in_nodegroup(
-        &self,
-        name: &str,
-        nodegroup_id: &str,
-    ) -> Option<&StaticNode> {
-        self.nodes_by_id.values().find(|node| {
-            node.name == name
-                && node
-                    .nodegroup_id
-                    .as_ref()
-                    .map(|id| id == nodegroup_id)
-                    .unwrap_or(false)
-        })
+    /// Find node by name (across all nodegroups)
+    fn find_node_by_name(&self, name: &str) -> Option<&StaticNode> {
+        self.nodes_by_id.values().find(|node| node.name == name)
     }
 
     /// Extract a display string from tiles for a given node, using:

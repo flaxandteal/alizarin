@@ -35,10 +35,38 @@ impl StaticResourceDescriptors {
 }
 
 /// Configuration for a single descriptor type (name, description, map_popup)
+///
+/// The default descriptor function stores a single `nodegroup_id` because all
+/// placeholders must come from the same nodegroup.  Non-default functions (such
+/// as the Multi-card Resource Descriptor) may reference nodes across multiple
+/// nodegroups, in which case `nodegroup_ids` is populated instead.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DescriptorTypeConfig {
-    pub nodegroup_id: String,
+    /// Single nodegroup (default descriptor function).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nodegroup_id: Option<String>,
+    /// Multiple nodegroups (non-default descriptor functions).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nodegroup_ids: Option<Vec<String>>,
     pub string_template: String,
+}
+
+impl DescriptorTypeConfig {
+    /// Return all nodegroup IDs referenced by this config.
+    pub fn all_nodegroup_ids(&self) -> Vec<&str> {
+        if let Some(ids) = &self.nodegroup_ids {
+            ids.iter().map(|s| s.as_str()).collect()
+        } else if let Some(id) = &self.nodegroup_id {
+            vec![id.as_str()]
+        } else {
+            vec![]
+        }
+    }
+
+    /// Whether this config spans multiple nodegroups.
+    pub fn is_multi_nodegroup(&self) -> bool {
+        self.nodegroup_ids.as_ref().is_some_and(|ids| ids.len() > 1)
+    }
 }
 
 /// Complete descriptor configuration from functions_x_graphs
@@ -197,5 +225,81 @@ mod tests {
         let parsed: StaticResourceDescriptors = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.name.as_deref(), Some("Test"));
         assert!(parsed.slug.is_none());
+    }
+
+    #[test]
+    fn test_build_descriptors_multi_nodegroup() {
+        // Build a graph with a non-default descriptor function using nodegroup_ids
+        let graph_json = serde_json::json!({
+            "graphid": "test-graph",
+            "name": {"en": "Test Graph"},
+            "root": {
+                "nodeid": "root-id",
+                "name": "Root",
+                "datatype": "semantic",
+                "graph_id": "test-graph"
+            },
+            "nodes": [
+                {
+                    "nodeid": "root-id",
+                    "name": "Root",
+                    "datatype": "semantic",
+                    "graph_id": "test-graph"
+                },
+                {
+                    "nodeid": "name-node-id",
+                    "name": "Name",
+                    "alias": "name",
+                    "datatype": "string",
+                    "nodegroup_id": "name-ng",
+                    "graph_id": "test-graph"
+                },
+                {
+                    "nodeid": "desc-node-id",
+                    "name": "Description",
+                    "alias": "description",
+                    "datatype": "string",
+                    "nodegroup_id": "desc-ng",
+                    "graph_id": "test-graph"
+                }
+            ],
+            "nodegroups": [
+                { "nodegroupid": "name-ng", "cardinality": "1" },
+                { "nodegroupid": "desc-ng", "cardinality": "1" }
+            ],
+            "edges": [
+                { "domainnode_id": "root-id", "rangenode_id": "name-node-id" },
+                { "domainnode_id": "root-id", "rangenode_id": "desc-node-id" }
+            ],
+            "functions_x_graphs": [
+                {
+                    "config": {
+                        "descriptor_types": {
+                            "name": {
+                                "nodegroup_ids": ["name-ng", "desc-ng"],
+                                "string_template": "<Name> - <Description>"
+                            }
+                        }
+                    },
+                    "function_id": "00b2d15a-fda0-4578-b79a-784e4138664b",
+                    "graph_id": "test-graph",
+                    "id": "fxg-1"
+                }
+            ]
+        });
+
+        let graph: StaticGraph = serde_json::from_value(graph_json).expect("test graph JSON");
+        let indexed = IndexedGraph::new(graph);
+
+        let tiles = vec![
+            make_tile("name-ng", "name-node-id", "Heritage Item 42"),
+            make_tile("desc-ng", "desc-node-id", "A fine building"),
+        ];
+
+        let descriptors = indexed.build_descriptors(&tiles);
+        assert_eq!(
+            descriptors.name.as_deref(),
+            Some("Heritage Item 42 - A fine building")
+        );
     }
 }
