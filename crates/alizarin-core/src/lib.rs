@@ -82,8 +82,8 @@ pub use graph::{
 
 // Loader
 pub use loader::{
-    import_prebuild, parse_business_data_bytes, ImportPrebuildResult, LoaderError, PrebuildInfo,
-    PrebuildLoader,
+    import_prebuild, load_collections_from_dir, load_ontology_xml_from_dir,
+    parse_business_data_bytes, ImportPrebuildResult, LoaderError, PrebuildInfo, PrebuildLoader,
 };
 
 // Exporter

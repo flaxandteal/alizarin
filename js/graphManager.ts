@@ -144,7 +144,20 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         return;
       }
 
-      // Otherwise fetch from staticStore registry
+      // If a tile loader callback is set, use ONLY that — no HTTP fallback.
+      // This prevents silent degradation from tile source to archesClient.
+      const tileLoader = typeof this.wasmWrapper.getTileLoader === 'function'
+        ? this.wasmWrapper.getTileLoader()
+        : null;
+      if (tileLoader) {
+        const tiles = await tileLoader(null);
+        if (tiles && tiles.length > 0) {
+          this.wasmWrapper.appendTiles(tiles);
+        }
+        return;
+      }
+
+      // No tile loader — fetch from staticStore registry via archesClient
       const resourceId = this.wasmWrapper.getResourceId();
       const fullResource = await staticStore.ensureFullResource(resourceId);
       if (fullResource && fullResource.tilesLoaded) {

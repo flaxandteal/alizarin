@@ -767,7 +767,8 @@ pub fn get_default_config_keys() -> Vec<String> {
 /// Returns `{ graphIds, collectionIds, collections, ontologyConfigs }`.
 #[napi(js_name = "importPrebuild")]
 pub fn import_prebuild(prebuild_dir: String, base_uri: String) -> Result<serde_json::Value> {
-    let result = alizarin_core::import_prebuild(&prebuild_dir, &base_uri).map_err(loader_err)?;
+    let result =
+        alizarin_core::import_prebuild(&prebuild_dir, &base_uri, None, None).map_err(loader_err)?;
 
     let collections_json = serde_json::to_value(&result.collections)
         .map_err(|e| napi::Error::from_reason(e.to_string()))?;

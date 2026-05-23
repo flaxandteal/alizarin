@@ -364,6 +364,50 @@ get_needed_collections = _alizarin_rust.get_needed_collections
 is_valid_uuid = _alizarin_rust.is_valid_uuid
 
 # =============================================================================
+# Build Pipeline Utilities
+# =============================================================================
+
+def process_mutation_csvs(
+    directory=".",
+    ontology_validator=None,
+    pattern=r"\d+_.*\.csv",
+    exclude_pattern=None,
+):
+    """Process numbered CSV mutation files from a directory.
+
+    Globs files matching pattern, processes each through build_graph_from_csv,
+    and registers the resulting graphs.
+
+    Args:
+        directory: Path to directory containing CSV files.
+        ontology_validator: Optional OntologyValidator for validation.
+        pattern: Regex pattern for CSV filenames (default: numbered files).
+        exclude_pattern: Optional regex pattern to exclude matching files.
+
+    Returns:
+        List of registered graph IDs.
+    """
+    import os
+    import re
+    from pathlib import Path
+
+    directory = Path(directory)
+    csv_files = sorted(
+        f for f in os.listdir(directory)
+        if re.match(pattern, f)
+        and (exclude_pattern is None or not re.match(exclude_pattern, f))
+    )
+
+    graph_ids = []
+    for csv_file in csv_files:
+        csv_text = (directory / csv_file).read_text()
+        graph_json = build_graph_from_csv(csv_text, ontology_validator=ontology_validator)
+        graph_id = register_graph(graph_json)
+        graph_ids.append(graph_id)
+    return graph_ids
+
+
+# =============================================================================
 # Version
 # =============================================================================
 
@@ -527,4 +571,6 @@ __all__ = [
     "import_prebuild",
     "export_prebuild",
     "get_registered_graph_ids",
+    # Build pipeline
+    "process_mutation_csvs",
 ]

@@ -545,15 +545,15 @@ impl PrebuildLoader {
         serde_json::from_str(&content).map_err(LoaderError::from)
     }
 
-    /// Load an OntologyValidator from a directory containing ontology_config.json
-    /// and RDFS XML files. Reads the base file and all extensions listed in config.
-    pub fn load_ontology_validator(
+    /// Collect ontology RDFS XML contents from a directory containing ontology_config.json.
+    /// Returns the raw XML strings (base file + extensions in order) without building
+    /// the validator, so they can be combined with extra ontology files.
+    pub fn collect_ontology_xml_contents(
         &self,
         ontology_dir: &Path,
-    ) -> Result<OntologyValidator, LoaderError> {
+    ) -> Result<Vec<String>, LoaderError> {
         let config = self.load_ontology_config(ontology_dir)?;
 
-        // Read base file + extensions in order
         let mut xml_contents = Vec::new();
         let base_path = ontology_dir.join(&config.base);
         xml_contents.push(fs::read_to_string(&base_path).map_err(|e| {
@@ -581,6 +581,16 @@ impl PrebuildLoader {
             })?);
         }
 
+        Ok(xml_contents)
+    }
+
+    /// Load an OntologyValidator from a directory containing ontology_config.json
+    /// and RDFS XML files. Reads the base file and all extensions listed in config.
+    pub fn load_ontology_validator(
+        &self,
+        ontology_dir: &Path,
+    ) -> Result<OntologyValidator, LoaderError> {
+        let xml_contents = self.collect_ontology_xml_contents(ontology_dir)?;
         let refs: Vec<&str> = xml_contents.iter().map(|s| s.as_str()).collect();
         OntologyValidator::from_rdfs_xml(&refs).map_err(|e| LoaderError::GraphError(e.to_string()))
     }
@@ -1115,14 +1125,122 @@ pub struct ImportPrebuildResult {
     pub ontology_configs: Vec<OntologyConfig>,
 }
 
+/// Load SKOS XML/JSON collections from an arbitrary directory.
+///
+/// Scans `dir` for `*.xml` and `*.json` files (non-recursive). XML files are
+/// parsed as SKOS; JSON files as serialized `SkosCollection`. Useful for loading
+/// extra reference data from directories outside the main pkg structure.
+pub fn load_collections_from_dir(
+    dir: &str,
+    base_uri: &str,
+) -> Result<Vec<SkosCollection>, LoaderError> {
+    let dir_path = Path::new(dir);
+    if !dir_path.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut files: Vec<PathBuf> = Vec::new();
+    for entry in fs::read_dir(dir_path)? {
+        let entry = entry?;
+        let path = entry.path();
+        let ext = path.extension().and_then(|e| e.to_str());
+        if ext == Some("xml") || ext == Some("json") {
+            files.push(path);
+        }
+    }
+    files.sort();
+
+    let mut collections = Vec::new();
+    let mut seen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for file in &files {
+        let content = fs::read_to_string(file)?;
+        let ext = file.extension().and_then(|e| e.to_str());
+
+        let parsed: Vec<SkosCollection> = match ext {
+            Some("xml") => match parse_skos_to_collections(&content, base_uri) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!(
+                        "Warning: Failed to parse XML collection {}: {}",
+                        file.display(),
+                        e
+                    );
+                    continue;
+                }
+            },
+            Some("json") => {
+                if let Ok(coll) = serde_json::from_str::<SkosCollection>(&content) {
+                    vec![coll]
+                } else if let Ok(colls) = serde_json::from_str::<Vec<SkosCollection>>(&content) {
+                    colls
+                } else {
+                    eprintln!(
+                        "Warning: Failed to parse JSON collection {}: not a valid SkosCollection",
+                        file.display(),
+                    );
+                    continue;
+                }
+            }
+            _ => continue,
+        };
+
+        for coll in parsed {
+            if seen_ids.insert(coll.id.clone()) {
+                collections.push(coll);
+            }
+        }
+    }
+
+    Ok(collections)
+}
+
+/// Load RDFS XML files from a directory (non-recursive, `*.xml` only).
+///
+/// Returns the file contents as strings, suitable for passing to
+/// `OntologyValidator::from_rdfs_xml`.
+pub fn load_ontology_xml_from_dir(dir: &str) -> Result<Vec<String>, LoaderError> {
+    let dir_path = Path::new(dir);
+    if !dir_path.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut files: Vec<PathBuf> = Vec::new();
+    for entry in fs::read_dir(dir_path)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) == Some("xml") {
+            files.push(path);
+        }
+    }
+    files.sort();
+
+    let mut contents = Vec::new();
+    for file in &files {
+        contents.push(fs::read_to_string(file).map_err(|e| {
+            LoaderError::IoError(std::io::Error::new(
+                e.kind(),
+                format!("Failed to read ontology file {}: {}", file.display(), e),
+            ))
+        })?);
+    }
+    Ok(contents)
+}
+
 /// Import a prebuild/pkg directory: register graphs in the global graph registry,
 /// load SKOS collections into the global RDM cache, and load ontology validators.
 ///
 /// This is the inverse of `export_prebuild`. It reads the directory structure and:
 /// 1. Loads and registers all graphs from `graphs/resource_models/` and `graphs/branches/`
 /// 2. Parses SKOS XML from `reference_data/collections/` and adds to the global RDM cache
-/// 3. Loads ontology RDFS files from `ontologies/` (if present)
-pub fn import_prebuild(path: &str, base_uri: &str) -> Result<ImportPrebuildResult, LoaderError> {
+/// 3. Optionally loads extra reference data from additional directories
+/// 4. Loads ontology RDFS files from `ontologies/` (if present), optionally merged with extras
+pub fn import_prebuild(
+    path: &str,
+    base_uri: &str,
+    extra_reference_data_dirs: Option<&[&str]>,
+    extra_ontology_dirs: Option<&[&str]>,
+) -> Result<ImportPrebuildResult, LoaderError> {
     // Set the RDM namespace from base_uri for deterministic UUID generation
     crate::set_rdm_namespace(base_uri)
         .map_err(|e| LoaderError::Other(format!("Failed to set RDM namespace: {}", e)))?;
@@ -1142,15 +1260,40 @@ pub fn import_prebuild(path: &str, base_uri: &str) -> Result<ImportPrebuildResul
 
     // 2. Load SKOS collections into global RDM cache
     let collections = loader.load_collections(base_uri)?;
-    let collection_ids = crate::add_to_global_rdm_cache_from_skos(&collections);
+    let mut collection_ids = crate::add_to_global_rdm_cache_from_skos(&collections);
 
-    // 3. Load ontology validators and configs
+    // 2b. Load extra reference data directories
+    if let Some(dirs) = extra_reference_data_dirs {
+        for dir in dirs {
+            let extra_collections = load_collections_from_dir(dir, base_uri)?;
+            let extra_ids = crate::add_to_global_rdm_cache_from_skos(&extra_collections);
+            collection_ids.extend(extra_ids);
+        }
+    }
+
+    // 3. Collect ontology XML contents from base pkg
     let ontology_dirs = loader.find_ontology_dirs()?;
-    let mut ontology_validators = Vec::new();
+    let mut all_xml_contents = Vec::new();
     let mut ontology_configs = Vec::new();
     for dir in &ontology_dirs {
         ontology_configs.push(loader.load_ontology_config(dir)?);
-        ontology_validators.push(loader.load_ontology_validator(dir)?);
+        all_xml_contents.extend(loader.collect_ontology_xml_contents(dir)?);
+    }
+
+    // 3b. Load extra ontology XML files
+    if let Some(extra_dirs) = extra_ontology_dirs {
+        for dir in extra_dirs {
+            all_xml_contents.extend(load_ontology_xml_from_dir(dir)?);
+        }
+    }
+
+    // 3c. Build single validator from combined ontology files
+    let mut ontology_validators = Vec::new();
+    if !all_xml_contents.is_empty() {
+        let refs: Vec<&str> = all_xml_contents.iter().map(|s| s.as_str()).collect();
+        let validator = OntologyValidator::from_rdfs_xml(&refs)
+            .map_err(|e| LoaderError::GraphError(e.to_string()))?;
+        ontology_validators.push(validator);
     }
 
     Ok(ImportPrebuildResult {

@@ -355,6 +355,103 @@ def info(graph: Path):
             click.echo(f"  {dt}: {count}")
 
 
+@cli.command()
+@click.option(
+    '--pkg-dir',
+    type=click.Path(exists=True, path_type=Path),
+    required=True,
+    help='Path to the base Arches package (e.g. arches-her/arches_her/pkg).'
+)
+@click.option(
+    '--base-uri',
+    type=str,
+    required=True,
+    help='Base URI for RDM namespace (e.g. https://example.com/).'
+)
+@click.option(
+    '--mutation-dir',
+    type=click.Path(exists=True, path_type=Path),
+    default='.',
+    help='Directory containing numbered CSV mutation files (default: current dir).'
+)
+@click.option(
+    '--output-dir',
+    type=click.Path(path_type=Path),
+    default='output',
+    help='Output directory for the built package (default: output).'
+)
+@click.option(
+    '--extra-reference-data',
+    multiple=True,
+    type=click.Path(exists=True),
+    help='Additional directories containing SKOS XML reference data. Can be repeated.'
+)
+@click.option(
+    '--extra-ontologies',
+    multiple=True,
+    type=click.Path(exists=True),
+    help='Additional directories containing RDFS XML ontology files. Can be repeated.'
+)
+@click.option(
+    '--no-ontology-validation',
+    is_flag=True,
+    default=False,
+    help='Disable ontology class/property validation.'
+)
+def build(
+    pkg_dir: Path,
+    base_uri: str,
+    mutation_dir: Path,
+    output_dir: Path,
+    extra_reference_data,
+    extra_ontologies,
+    no_ontology_validation: bool,
+):
+    """
+    Build an Arches package from CSV mutations.
+
+    Imports a base package, applies numbered CSV mutations, and exports
+    the result as an Arches-compatible package directory.
+
+    Example:
+        alizarin build --pkg-dir arches-her/arches_her/pkg \\
+            --base-uri https://example.com/ \\
+            --output-dir output
+    """
+    from . import import_prebuild, process_mutation_csvs, export_prebuild
+
+    if import_prebuild is None:
+        click.echo("Error: Rust extension not available. Please rebuild alizarin.", err=True)
+        sys.exit(1)
+
+    click.echo(f"Importing base package: {pkg_dir}")
+    result = import_prebuild(
+        str(pkg_dir),
+        base_uri,
+        extra_reference_data_dirs=list(extra_reference_data) or None,
+        extra_ontology_dirs=list(extra_ontologies) or None,
+    )
+
+    graph_ids = result["graph_ids"]
+    click.echo(f"  Loaded {len(graph_ids)} graphs, {len(result['collection_ids'])} collections")
+
+    validator = None if no_ontology_validation else result.get("ontology_validator")
+    if validator:
+        click.echo("  Ontology validation: enabled")
+
+    click.echo(f"\nProcessing mutations: {mutation_dir}")
+    mutation_ids = process_mutation_csvs(
+        str(mutation_dir),
+        ontology_validator=validator,
+    )
+    click.echo(f"  Applied {len(mutation_ids)} mutation files")
+    graph_ids.extend(mutation_ids)
+
+    click.echo(f"\nExporting to: {output_dir}")
+    files = export_prebuild(str(output_dir), base_uri, graph_ids)
+    click.echo(f"  Wrote {len(files)} files")
+
+
 def main():
     """Entry point for the CLI."""
     cli()

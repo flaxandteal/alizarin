@@ -2874,10 +2874,28 @@ fn export_prebuild(
 ///         collection_ids (list[str]): IDs of loaded collections
 ///         ontology_validator (OntologyValidator | None): validator if ontologies were found
 #[pyfunction]
-#[pyo3(signature = (prebuild_dir, base_uri="http://localhost:8000/"))]
-fn import_prebuild(py: Python, prebuild_dir: String, base_uri: &str) -> PyResult<PyObject> {
-    let result = alizarin_core::import_prebuild(&prebuild_dir, base_uri)
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+#[pyo3(signature = (prebuild_dir, base_uri="http://localhost:8000/", extra_reference_data_dirs=None, extra_ontology_dirs=None))]
+fn import_prebuild(
+    py: Python,
+    prebuild_dir: String,
+    base_uri: &str,
+    extra_reference_data_dirs: Option<Vec<String>>,
+    extra_ontology_dirs: Option<Vec<String>>,
+) -> PyResult<PyObject> {
+    let extra_ref_strs: Option<Vec<&str>> = extra_reference_data_dirs
+        .as_ref()
+        .map(|v| v.iter().map(|s| s.as_str()).collect());
+    let extra_ont_strs: Option<Vec<&str>> = extra_ontology_dirs
+        .as_ref()
+        .map(|v| v.iter().map(|s| s.as_str()).collect());
+
+    let result = alizarin_core::import_prebuild(
+        &prebuild_dir,
+        base_uri,
+        extra_ref_strs.as_deref(),
+        extra_ont_strs.as_deref(),
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
     let ontology_validator: Option<graph_mutator_py::PyOntologyValidator> = result
         .ontology_validators
