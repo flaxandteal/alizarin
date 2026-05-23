@@ -576,7 +576,7 @@ impl StaticGraph {
                 fxg.iter().position(|f| {
                     f.config
                         .as_object()
-                        .map_or(false, |c| c.contains_key("descriptor_types"))
+                        .is_some_and(|c| c.contains_key("descriptor_types"))
                 })
             })
             .or_else(|| {
@@ -882,7 +882,7 @@ impl IndexedGraph {
                 functions_x_graphs.iter().find(|f| {
                     f.config
                         .as_object()
-                        .map_or(false, |c| c.contains_key("descriptor_types"))
+                        .is_some_and(|c| c.contains_key("descriptor_types"))
                 })
             });
 
