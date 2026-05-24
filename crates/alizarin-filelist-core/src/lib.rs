@@ -42,16 +42,16 @@ pub struct FileListItem {
     #[serde(default)]
     pub accepted: bool,
 
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub alt_text: Option<LocalizedString>,
 
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attribution: Option<LocalizedString>,
 
     #[serde(default)]
     pub content: Option<String>,
 
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<LocalizedString>,
 
     #[serde(default)]
@@ -78,7 +78,7 @@ pub struct FileListItem {
     #[serde(default)]
     pub status: Option<String>,
 
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<LocalizedString>,
 
     #[serde(default, rename = "type")]
@@ -372,6 +372,33 @@ mod tests {
         let resolved = json!([{"name": "test.png"}]);
         let display = handler.render_display(&resolved, "en").unwrap();
         assert_eq!(display, Some("test.png".to_string()));
+    }
+
+    #[test]
+    fn test_null_metadata_fields_omitted_from_serialization() {
+        let file = FileListItem {
+            name: "test.png".to_string(),
+            title: None,
+            description: None,
+            alt_text: None,
+            attribution: None,
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&file).unwrap();
+        assert!(!json.as_object().unwrap().contains_key("title"));
+        assert!(!json.as_object().unwrap().contains_key("description"));
+        assert!(!json.as_object().unwrap().contains_key("alt_text"));
+        assert!(!json.as_object().unwrap().contains_key("attribution"));
+    }
+
+    #[test]
+    fn test_coerce_file_with_null_title() {
+        let value = json!({"name": "photo.jpg", "title": null, "description": null});
+        let (tile_data, _) = coerce_filelist_value(&value).unwrap();
+        let items = tile_data.as_array().unwrap();
+        assert_eq!(items.len(), 1);
+        assert!(!items[0].as_object().unwrap().contains_key("title"));
+        assert!(!items[0].as_object().unwrap().contains_key("description"));
     }
 
     #[test]

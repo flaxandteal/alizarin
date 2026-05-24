@@ -63,10 +63,10 @@ class FileListItem {
 
   constructor(data: FileListItemData) {
     this.accepted = data.accepted ?? false;
-    this.alt_text = data.alt_text;
-    this.attribution = data.attribution;
+    this.alt_text = data.alt_text ?? undefined;
+    this.attribution = data.attribution ?? undefined;
     this.content = data.content;
-    this.description = data.description;
+    this.description = data.description ?? undefined;
     this.file_id = data.file_id;
     this.index = data.index;
     this.last_modified = data.last_modified;
@@ -75,7 +75,7 @@ class FileListItem {
     this.selected = data.selected ?? false;
     this.size = data.size;
     this.status = data.status;
-    this.title = data.title;
+    this.title = data.title ?? undefined;
     this.type = data.type;
     this.url = data.url;
     this.renderer = data.renderer;
