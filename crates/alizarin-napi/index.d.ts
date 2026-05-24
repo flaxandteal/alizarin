@@ -17,7 +17,7 @@ export declare function buildGraphFromCsvs(graphCsv: string, nodesCsv: string, c
  * Returns the resources wrapped in the `{ business_data: { resources: [...] } }`
  * format expected by PrebuildLoader.
  */
-export declare function buildBusinessDataFromCsv(csvData: string, graphJson: string, collectionsJson: string, defaultLanguage?: string | undefined | null, strictConcepts?: boolean | undefined | null): any
+export declare function buildBusinessDataFromCsv(csvData: string, graphJson: string, collectionsJson: string, defaultLanguage?: string | undefined | null, strictConcepts?: boolean | undefined | null, uuidNamespace?: string | undefined | null): any
 /**
  * Coerce a value using the registered extension handler for the given datatype.
  *
@@ -374,6 +374,8 @@ export declare class NapiStaticGraph {
   /** Parse a graph from a JSON string (the file content, not a file path). */
   static fromJsonString(jsonStr: string): NapiStaticGraph
   get graphId(): string
+  /** Alias matching the WASM `graphid` property for backend consistency. */
+  get graphid(): string
   get name(): any
   /** Register this graph in the global registry so NapiResourceInstanceWrapper can use it. */
   register(): void
