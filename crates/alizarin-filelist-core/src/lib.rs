@@ -32,6 +32,64 @@ pub struct LocalizedStringValue {
 /// A map of language codes to localized string values.
 pub type LocalizedString = HashMap<String, LocalizedStringValue>;
 
+const DEFAULT_LANGUAGE: &str = "en";
+
+/// Deserialize a localized string field that may be null, a bare string, or a proper i18n dict.
+/// Bare strings are coerced to `{"en": {"value": "<string>", "direction": "ltr"}}`.
+fn deserialize_localized_string_lenient<'de, D>(
+    deserializer: D,
+) -> Result<Option<LocalizedString>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    struct LocalizedStringVisitor;
+
+    impl<'de> de::Visitor<'de> for LocalizedStringVisitor {
+        type Value = Option<LocalizedString>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("null, a string, or a localized string map")
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+            if v.is_empty() {
+                return Ok(None);
+            }
+            let mut map = HashMap::new();
+            map.insert(
+                DEFAULT_LANGUAGE.to_string(),
+                LocalizedStringValue {
+                    direction: "ltr".to_string(),
+                    value: v.to_string(),
+                },
+            );
+            Ok(Some(map))
+        }
+
+        fn visit_map<M: de::MapAccess<'de>>(self, map: M) -> Result<Self::Value, M::Error> {
+            let result: LocalizedString =
+                Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))?;
+            if result.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(result))
+            }
+        }
+    }
+
+    deserializer.deserialize_any(LocalizedStringVisitor)
+}
+
 // =============================================================================
 // FileListItem Type
 // =============================================================================
@@ -42,16 +100,28 @@ pub struct FileListItem {
     #[serde(default)]
     pub accepted: bool,
 
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_localized_string_lenient"
+    )]
     pub alt_text: Option<LocalizedString>,
 
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_localized_string_lenient"
+    )]
     pub attribution: Option<LocalizedString>,
 
     #[serde(default)]
     pub content: Option<String>,
 
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_localized_string_lenient"
+    )]
     pub description: Option<LocalizedString>,
 
     #[serde(default)]
@@ -78,7 +148,11 @@ pub struct FileListItem {
     #[serde(default)]
     pub status: Option<String>,
 
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_localized_string_lenient"
+    )]
     pub title: Option<LocalizedString>,
 
     #[serde(default, rename = "type")]
@@ -399,6 +473,29 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert!(!items[0].as_object().unwrap().contains_key("title"));
         assert!(!items[0].as_object().unwrap().contains_key("description"));
+    }
+
+    #[test]
+    fn test_coerce_file_with_bare_string_metadata() {
+        let value = json!({
+            "name": "photo.jpg",
+            "title": "My Photo",
+            "altText": "A nice photo",
+            "description": "Some description",
+            "attribution": "Photographer Name"
+        });
+        let (tile_data, _) = coerce_filelist_value(&value).unwrap();
+        let item = &tile_data.as_array().unwrap()[0];
+        let title = item.get("title").unwrap();
+        assert!(title.is_object());
+        assert_eq!(title["en"]["value"].as_str().unwrap(), "My Photo");
+        assert_eq!(title["en"]["direction"].as_str().unwrap(), "ltr");
+
+        let desc = item.get("description").unwrap();
+        assert_eq!(desc["en"]["value"].as_str().unwrap(), "Some description");
+
+        let attr = item.get("attribution").unwrap();
+        assert_eq!(attr["en"]["value"].as_str().unwrap(), "Photographer Name");
     }
 
     #[test]
