@@ -616,16 +616,49 @@ pub fn parse_skos_to_collections(
 
         // Get member concepts - find top-level concepts that are members
         // Collections use member for membership but concepts can have hierarchy via narrower/broader
+        // Arches sometimes uses skos:member on concepts within collections to express hierarchy
+        // (instead of skos:narrower), so we recursively expand member URIs and treat concept-level
+        // skos:member relationships as children.
         let mut concepts: HashMap<String, SkosConcept> = HashMap::new();
         if let Some(member_uris) = data.members.get(collection_uri) {
+            // Recursively expand member URIs: if a member concept itself has skos:member
+            // children, include those as members of the collection too
+            let mut all_member_uris: Vec<String> = member_uris.clone();
+            let mut seen: std::collections::HashSet<String> = member_uris.iter().cloned().collect();
+            let mut i = 0;
+            while i < all_member_uris.len() {
+                if let Some(nested) = data.members.get(&all_member_uris[i]) {
+                    for child in nested {
+                        if seen.insert(child.clone()) {
+                            all_member_uris.push(child.clone());
+                        }
+                    }
+                }
+                i += 1;
+            }
+
+            // Build extended children map: merge concept-level skos:member relationships
+            // into the narrower/broader hierarchy so build_concept_tree can find them
+            let mut collection_children_map = children_map.clone();
+            for uri in &all_member_uris {
+                if let Some(nested) = data.members.get(uri) {
+                    let entry = collection_children_map.entry(uri.clone()).or_default();
+                    for child in nested {
+                        if !entry.contains(child) {
+                            entry.push(child.clone());
+                        }
+                    }
+                }
+            }
+
             // Find member URIs that are top-level (not narrower of another member)
-            let member_set: std::collections::HashSet<&String> = member_uris.iter().collect();
-            let top_level_members: Vec<&String> = member_uris
+            let member_set: std::collections::HashSet<&String> = all_member_uris.iter().collect();
+            let top_level_members: Vec<&String> = all_member_uris
                 .iter()
                 .filter(|uri| {
                     // This is a top-level member if no other member has it as narrower
-                    !member_uris.iter().any(|other| {
-                        if let Some(children) = children_map.get(other.as_str()) {
+                    !all_member_uris.iter().any(|other| {
+                        if let Some(children) = collection_children_map.get(other.as_str()) {
                             children.contains(&(**uri).to_string())
                         } else {
                             false
@@ -635,9 +668,12 @@ pub fn parse_skos_to_collections(
                 .collect();
 
             for member_uri in top_level_members {
-                if let Some(concept) =
-                    build_concept_tree(member_uri, &all_concepts, &children_map, &data.sort_orders)
-                {
+                if let Some(concept) = build_concept_tree(
+                    member_uri,
+                    &all_concepts,
+                    &collection_children_map,
+                    &data.sort_orders,
+                ) {
                     // Filter children to only include those that are also members
                     let filtered_concept = filter_concept_tree_to_members(&concept, &member_set);
                     concepts.insert(filtered_concept.id.clone(), filtered_concept);
@@ -2149,6 +2185,189 @@ mod tests {
             beta_label,
             Some("Beta Concept".to_string()),
             "Cache should resolve Beta Concept label when concepts loaded first"
+        );
+    }
+
+    // ==========================================================================
+    // Nested skos:member on concepts within a collection
+    // ==========================================================================
+
+    /// Test that when a Collection uses skos:member on concepts (instead of
+    /// skos:narrower) to express hierarchy, the nested child concepts are still
+    /// included as members of the collection.
+    ///
+    /// This is the pattern Arches uses for e.g. the NIHED Protection Type collection:
+    /// ```xml
+    /// <skos:Collection>
+    ///   <skos:member>
+    ///     <skos:Concept rdf:about="parent">
+    ///       <skos:member rdf:resource="child1"/>
+    ///       <skos:member rdf:resource="child2"/>
+    ///     </skos:Concept>
+    ///   </skos:member>
+    /// </skos:Collection>
+    /// ```
+    #[test]
+    fn test_collection_with_nested_member_hierarchy() {
+        // Uses non-UUID identifiers — this test only checks SkosCollection parsing,
+        // not RdmCache (which needs UUID-format IDs).
+        const NESTED_MEMBER_XML: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:skos="http://www.w3.org/2004/02/skos/core#">
+  <skos:Collection rdf:about="http://localhost:8000/11111111-aaaa-bbbb-cccc-000000000000">
+    <skos:prefLabel xml:lang="en">Nested Member Collection</skos:prefLabel>
+    <skos:member>
+      <skos:Concept rdf:about="http://localhost:8000/22222222-aaaa-bbbb-cccc-000000000001">
+        <skos:member rdf:resource="http://localhost:8000/33333333-aaaa-bbbb-cccc-000000000001"/>
+        <skos:member rdf:resource="http://localhost:8000/33333333-aaaa-bbbb-cccc-000000000002"/>
+      </skos:Concept>
+    </skos:member>
+    <skos:member>
+      <skos:Concept rdf:about="http://localhost:8000/22222222-aaaa-bbbb-cccc-000000000002">
+        <skos:member rdf:resource="http://localhost:8000/33333333-aaaa-bbbb-cccc-000000000003"/>
+      </skos:Concept>
+    </skos:member>
+  </skos:Collection>
+  <skos:Concept rdf:about="http://localhost:8000/22222222-aaaa-bbbb-cccc-000000000001">
+    <skos:prefLabel xml:lang="en">Parent A</skos:prefLabel>
+  </skos:Concept>
+  <skos:Concept rdf:about="http://localhost:8000/22222222-aaaa-bbbb-cccc-000000000002">
+    <skos:prefLabel xml:lang="en">Parent B</skos:prefLabel>
+  </skos:Concept>
+  <skos:Concept rdf:about="http://localhost:8000/33333333-aaaa-bbbb-cccc-000000000001">
+    <skos:prefLabel xml:lang="en">Child A1</skos:prefLabel>
+  </skos:Concept>
+  <skos:Concept rdf:about="http://localhost:8000/33333333-aaaa-bbbb-cccc-000000000002">
+    <skos:prefLabel xml:lang="en">Child A2</skos:prefLabel>
+  </skos:Concept>
+  <skos:Concept rdf:about="http://localhost:8000/33333333-aaaa-bbbb-cccc-000000000003">
+    <skos:prefLabel xml:lang="en">Child B1</skos:prefLabel>
+  </skos:Concept>
+</rdf:RDF>"#;
+
+        let result = parse_skos_to_collections(NESTED_MEMBER_XML, "http://localhost:8000/");
+        assert!(result.is_ok());
+        let collections = result.unwrap();
+        assert_eq!(collections.len(), 1);
+        let collection = &collections[0];
+
+        // Should have 2 top-level concepts (Parent A, Parent B)
+        assert_eq!(
+            collection.concepts.len(),
+            2,
+            "Collection should have 2 top-level concepts"
+        );
+
+        // Parent A should have 2 children
+        let parent_a = collection
+            .concepts
+            .values()
+            .find(|c| c.pref_labels.get("en").map(|l| l.value.as_str()) == Some("Parent A"))
+            .expect("Parent A should be in the collection");
+        assert!(parent_a.children.is_some(), "Parent A should have children");
+        let children_a = parent_a.children.as_ref().unwrap();
+        assert_eq!(children_a.len(), 2, "Parent A should have 2 children");
+        let child_labels_a: Vec<&str> = children_a
+            .iter()
+            .map(|c| c.pref_labels["en"].value.as_str())
+            .collect();
+        assert!(child_labels_a.contains(&"Child A1"));
+        assert!(child_labels_a.contains(&"Child A2"));
+
+        // Parent B should have 1 child
+        let parent_b = collection
+            .concepts
+            .values()
+            .find(|c| c.pref_labels.get("en").map(|l| l.value.as_str()) == Some("Parent B"))
+            .expect("Parent B should be in the collection");
+        assert!(parent_b.children.is_some(), "Parent B should have children");
+        let children_b = parent_b.children.as_ref().unwrap();
+        assert_eq!(children_b.len(), 1);
+        assert_eq!(children_b[0].pref_labels["en"].value, "Child B1");
+    }
+
+    /// Test that nested member concepts can be found by label in the RDM cache.
+    /// Simulates the real Arches pattern: concepts defined in one XML file,
+    /// collection (with nested skos:member hierarchy) in another.
+    #[test]
+    fn test_nested_member_concepts_findable_by_label() {
+        use crate::rdm_cache::RdmCache;
+
+        // Concepts XML: defines concept scheme + concepts with labels
+        // (matches Arches nihed_protection_type.xml pattern)
+        const CONCEPT_XML: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:skos="http://www.w3.org/2004/02/skos/core#"
+         xmlns:dcterms="http://purl.org/dc/terms/">
+  <skos:ConceptScheme rdf:about="http://localhost:8000/99999999-0000-0000-0000-000000000001">
+    <skos:hasTopConcept>
+      <skos:Concept rdf:about="http://localhost:8000/aaaaaaaa-0000-0000-0000-000000000001">
+        <skos:prefLabel xml:lang="en">Category A</skos:prefLabel>
+        <skos:narrower rdf:resource="http://localhost:8000/bbbbbbbb-0000-0000-0000-000000000001"/>
+        <skos:narrower rdf:resource="http://localhost:8000/bbbbbbbb-0000-0000-0000-000000000002"/>
+        <skos:inScheme rdf:resource="http://localhost:8000/99999999-0000-0000-0000-000000000001"/>
+      </skos:Concept>
+    </skos:hasTopConcept>
+  </skos:ConceptScheme>
+  <skos:Concept rdf:about="http://localhost:8000/bbbbbbbb-0000-0000-0000-000000000001">
+    <skos:prefLabel xml:lang="en">Item One</skos:prefLabel>
+    <skos:inScheme rdf:resource="http://localhost:8000/99999999-0000-0000-0000-000000000001"/>
+  </skos:Concept>
+  <skos:Concept rdf:about="http://localhost:8000/bbbbbbbb-0000-0000-0000-000000000002">
+    <skos:prefLabel xml:lang="en">Item Two</skos:prefLabel>
+    <skos:inScheme rdf:resource="http://localhost:8000/99999999-0000-0000-0000-000000000001"/>
+  </skos:Concept>
+</rdf:RDF>"#;
+
+        // Collection XML: defines collection with nested member hierarchy
+        // (matches Arches C_nihed_protection_type.xml pattern)
+        const COLLECTION_XML: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:skos="http://www.w3.org/2004/02/skos/core#">
+  <skos:Collection rdf:about="http://localhost:8000/cccccccc-0000-0000-0000-000000000001">
+    <skos:prefLabel xml:lang="en">My Collection</skos:prefLabel>
+    <skos:member>
+      <skos:Concept rdf:about="http://localhost:8000/aaaaaaaa-0000-0000-0000-000000000001">
+        <skos:member rdf:resource="http://localhost:8000/bbbbbbbb-0000-0000-0000-000000000001"/>
+        <skos:member rdf:resource="http://localhost:8000/bbbbbbbb-0000-0000-0000-000000000002"/>
+      </skos:Concept>
+    </skos:member>
+  </skos:Collection>
+  <skos:Concept rdf:about="http://localhost:8000/bbbbbbbb-0000-0000-0000-000000000001"/>
+  <skos:Concept rdf:about="http://localhost:8000/bbbbbbbb-0000-0000-0000-000000000002"/>
+</rdf:RDF>"#;
+
+        let base_uri = "http://localhost:8000/";
+        let mut cache = RdmCache::default();
+
+        // Load concept definitions first (creates scheme with labeled concepts)
+        let concepts = parse_skos_to_collections(CONCEPT_XML, base_uri).unwrap();
+        cache.add_from_skos_collections(&concepts);
+
+        // Load collection with nested member hierarchy (creates collection with bare concepts)
+        let collections = parse_skos_to_collections(COLLECTION_XML, base_uri).unwrap();
+        cache.add_from_skos_collections(&collections);
+
+        let collection_id = "cccccccc-0000-0000-0000-000000000001";
+
+        // All concepts should be findable by label in the collection
+        // (enrichment should copy labels from the scheme)
+        let cat_a = cache.lookup_by_label(collection_id, "Category A");
+        assert!(
+            cat_a.is_some(),
+            "Category A should be findable by label in the collection"
+        );
+
+        let item_1 = cache.lookup_by_label(collection_id, "Item One");
+        assert!(
+            item_1.is_some(),
+            "Item One (nested member) should be findable by label in the collection"
+        );
+
+        let item_2 = cache.lookup_by_label(collection_id, "Item Two");
+        assert!(
+            item_2.is_some(),
+            "Item Two (nested member) should be findable by label in the collection"
         );
     }
 }
