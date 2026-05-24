@@ -634,6 +634,7 @@ fn build_resources_from_business_csv(
     let options = csv_business_data_loader::BusinessDataCsvOptions {
         default_language: default_language.to_string(),
         strict_concepts,
+        ..Default::default()
     };
 
     let resources = csv_business_data_loader::build_resources_from_business_csv(

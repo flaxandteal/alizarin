@@ -453,6 +453,19 @@ const ALIZARIN_NAMESPACE: &str = "1a79f1c8-9505-4bea-a18e-28a053f725ca";
 /// * `group` - A tuple of (type, optional_id) that forms the namespace
 /// * `key` - The key to hash within the namespace
 pub fn generate_uuid_v5(group: (&str, Option<&str>), key: &str) -> String {
+    generate_uuid_v5_with_ns(ALIZARIN_NAMESPACE, group, key)
+}
+
+/// Like [`generate_uuid_v5`] but accepts a custom base namespace UUID string.
+///
+/// Use this when building separate layers that share a graph model — each layer
+/// should use a distinct namespace so that deterministic tile IDs don't collide
+/// for the same resource + nodegroup + sortorder.
+pub fn generate_uuid_v5_with_ns(
+    base_namespace_str: &str,
+    group: (&str, Option<&str>),
+    key: &str,
+) -> String {
     // Build namespace from group
     let namespace_str = match group.1 {
         Some(id) => format!("{}/{}", group.0, id),
@@ -460,7 +473,7 @@ pub fn generate_uuid_v5(group: (&str, Option<&str>), key: &str) -> String {
     };
 
     // Create namespace UUID from base namespace + group
-    let base_namespace = Uuid::parse_str(ALIZARIN_NAMESPACE).expect("Invalid base namespace");
+    let base_namespace = Uuid::parse_str(base_namespace_str).expect("Invalid base namespace");
     let namespace = Uuid::new_v5(&base_namespace, namespace_str.as_bytes());
 
     // Generate final UUID from namespace + key

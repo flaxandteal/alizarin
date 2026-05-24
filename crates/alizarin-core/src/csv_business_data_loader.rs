@@ -36,7 +36,7 @@ use crate::graph::{
     StaticGraph, StaticNode, StaticResource, StaticResourceDescriptors, StaticResourceMetadata,
     StaticTile,
 };
-use crate::graph_mutator::generate_uuid_v5;
+use crate::graph_mutator::{generate_uuid_v5, generate_uuid_v5_with_ns};
 use crate::skos::SkosCollection;
 
 /// Options for business data CSV loading
@@ -46,6 +46,13 @@ pub struct BusinessDataCsvOptions {
     pub default_language: String,
     /// Whether to error on unresolved concept labels (default: true)
     pub strict_concepts: bool,
+    /// Override the base UUID v5 namespace for tile ID generation.
+    /// When building separate layers that share a graph model, each layer
+    /// should use a distinct namespace so tile IDs don't collide for the
+    /// same resource + nodegroup + sortorder. Resource IDs are unaffected
+    /// (they always use the default namespace so cross-layer lookup works).
+    /// If None, uses the default Alizarin namespace.
+    pub uuid_namespace: Option<String>,
 }
 
 impl Default for BusinessDataCsvOptions {
@@ -53,6 +60,7 @@ impl Default for BusinessDataCsvOptions {
         Self {
             default_language: "en".to_string(),
             strict_concepts: true,
+            uuid_namespace: None,
         }
     }
 }
@@ -529,6 +537,15 @@ pub fn build_resources_from_business_csv(
     // Build resources
     let mut resources: Vec<StaticResource> = Vec::new();
 
+    // Tile ID generator: uses custom namespace if provided, default otherwise.
+    // Resource IDs always use the default namespace so cross-layer lookup works.
+    let gen_tile_id = |group: (&str, Option<&str>), key: &str| -> String {
+        match &options.uuid_namespace {
+            Some(ns) => generate_uuid_v5_with_ns(ns, group, key),
+            None => generate_uuid_v5(group, key),
+        }
+    };
+
     for (resource_id, rows) in &resource_rows {
         let resourceinstanceid = generate_uuid_v5(("resource", Some(&graph.graphid)), resource_id);
 
@@ -621,7 +638,7 @@ pub fn build_resources_from_business_csv(
             if cardinality == "n" {
                 // Each entry (row) gets its own tile
                 for (sortorder, (_line, data)) in entries.iter().enumerate() {
-                    let tileid = generate_uuid_v5(
+                    let tileid = gen_tile_id(
                         ("tile", Some(&resourceinstanceid)),
                         &format!("{}/{}", ng_id, sortorder),
                     );
@@ -683,7 +700,7 @@ pub fn build_resources_from_business_csv(
                     }
                 }
 
-                let tileid = generate_uuid_v5(("tile", Some(&resourceinstanceid)), ng_id);
+                let tileid = gen_tile_id(("tile", Some(&resourceinstanceid)), ng_id);
 
                 let parenttile_id = parent_ng_id
                     .and_then(|png_id| parent_tile_ids.get(png_id).and_then(|ids| ids.first()))

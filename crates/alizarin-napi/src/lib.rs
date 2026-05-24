@@ -527,6 +527,7 @@ pub fn build_business_data_from_csv(
     collections_json: String,
     default_language: Option<String>,
     strict_concepts: Option<bool>,
+    uuid_namespace: Option<String>,
 ) -> Result<serde_json::Value> {
     let graph: StaticGraph = serde_json::from_str(&graph_json)
         .map_err(|e| napi::Error::from_reason(format!("Invalid graph JSON: {e}")))?;
@@ -536,6 +537,7 @@ pub fn build_business_data_from_csv(
     let options = alizarin_core::csv_business_data_loader::BusinessDataCsvOptions {
         default_language: default_language.unwrap_or_else(|| "en".to_string()),
         strict_concepts: strict_concepts.unwrap_or(true),
+        uuid_namespace,
     };
 
     let resources = build_resources_from_business_csv(&csv_data, &graph, &collections, options)

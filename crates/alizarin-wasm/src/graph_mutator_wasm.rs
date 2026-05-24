@@ -439,6 +439,7 @@ pub fn build_resources_from_business_csv(
     let options = csv_business_data_loader::BusinessDataCsvOptions {
         default_language: default_language.unwrap_or_else(|| "en".to_string()),
         strict_concepts: strict_concepts.unwrap_or(true),
+        uuid_namespace: None,
     };
 
     match csv_business_data_loader::build_resources_from_business_csv(

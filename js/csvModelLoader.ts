@@ -87,6 +87,7 @@ export interface BusinessDataResult {
  * @param collections - Built collections array (from buildGraphFromModelCsvs)
  * @param defaultLanguage - Default language code (default "en")
  * @param strictConcepts - Error on unresolved concept labels (default true)
+ * @param uuidNamespace - Override UUID v5 namespace for tile IDs (for layer isolation)
  * @returns Business data wrapper with resources array
  */
 export function buildResourcesFromBusinessCsv(
@@ -95,6 +96,7 @@ export function buildResourcesFromBusinessCsv(
   collections: any[],
   defaultLanguage?: string,
   strictConcepts?: boolean,
+  uuidNamespace?: string,
 ): BusinessDataResult {
   if (getBackend() === 'napi') {
     const napi = getNapiModule();
@@ -105,6 +107,7 @@ export function buildResourcesFromBusinessCsv(
         safeStringify(collections),
         defaultLanguage ?? 'en',
         strictConcepts ?? null,
+        uuidNamespace ?? null,
       );
     }
   }
