@@ -204,9 +204,15 @@ fn get_required_namespace() -> Result<Uuid, JsError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Tests that touch the global RDM namespace must not run in parallel.
+    static NAMESPACE_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_set_and_get_namespace() {
+        let _guard = NAMESPACE_LOCK.lock().unwrap();
+
         // Clear any existing state
         clear_rdm_namespace();
         assert!(!has_rdm_namespace());
@@ -234,6 +240,7 @@ mod tests {
 
     #[test]
     fn test_set_namespace_from_url() {
+        let _guard = NAMESPACE_LOCK.lock().unwrap();
         clear_rdm_namespace();
 
         set_rdm_namespace("http://example.org/rdm/").unwrap();
@@ -249,10 +256,13 @@ mod tests {
             get_rdm_namespace_raw(),
             Some("http://example.org/rdm/".to_string())
         );
+
+        clear_rdm_namespace();
     }
 
     #[test]
     fn test_generate_collection_uuid() {
+        let _guard = NAMESPACE_LOCK.lock().unwrap();
         clear_rdm_namespace();
         set_rdm_namespace("550e8400-e29b-41d4-a716-446655440000").unwrap();
 

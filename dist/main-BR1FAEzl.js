@@ -442,10 +442,10 @@ let __tla = (async () => {
     if (_backend === "napi") {
       const napi = getNapiModule();
       if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
-      return new napi.NapiResourceInstanceWrapper(graphId, null);
+      return new napi.NapiResourceInstanceWrapper(graphId, resourceId ?? null);
     }
     const { newWASMResourceInstanceWrapperForModel: newWASMResourceInstanceWrapperForModel2 } = getWasmModule();
-    return newWASMResourceInstanceWrapperForModel2(graphId, null);
+    return newWASMResourceInstanceWrapperForModel2(graphId, resourceId ?? null);
   }
   createResourceRegistry = function() {
     if (_backend === "napi") {
@@ -11286,7 +11286,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         this.resource = resource;
         recordWasmTiming("createInstanceWrapperForResource", performance.now() - t0);
       } else {
-        this.wasmWrapper = createInstanceWrapperForModel(model.wkrm.graphId);
+        this.wasmWrapper = createInstanceWrapperForModel(model.wkrm.graphId, wkri.id);
         recordWasmTiming("createInstanceWrapperForModel", performance.now() - t0);
       }
       this._pseudoCache = /* @__PURE__ */ new Map();
@@ -11329,6 +11329,14 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       if (!this.wasmWrapper.tilesLoaded()) {
         if (this.resource && this.resource.tiles && this.resource.tiles.length > 0) {
           loadTilesFromResource(this.wasmWrapper, this.resource, true);
+          return;
+        }
+        const tileLoader = typeof this.wasmWrapper.getTileLoader === "function" ? this.wasmWrapper.getTileLoader() : null;
+        if (tileLoader) {
+          const tiles = await tileLoader(null);
+          if (tiles && tiles.length > 0) {
+            this.wasmWrapper.appendTiles(tiles);
+          }
           return;
         }
         const resourceId = this.wasmWrapper.getResourceId();
@@ -12602,11 +12610,11 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
   validateModelCsvs = function(graphCsv, nodesCsv, collectionsCsv) {
     return validateModelCsvs$1(graphCsv, nodesCsv, collectionsCsv ?? null);
   };
-  buildResourcesFromBusinessCsv = function(csvData, graph, collections, defaultLanguage, strictConcepts) {
+  buildResourcesFromBusinessCsv = function(csvData, graph, collections, defaultLanguage, strictConcepts, uuidNamespace) {
     if (getBackend() === "napi") {
       const napi = getNapiModule();
       if (napi == null ? void 0 : napi.buildBusinessDataFromCsv) {
-        return napi.buildBusinessDataFromCsv(csvData, safeStringify(graph), safeStringify(collections), defaultLanguage ?? "en", strictConcepts ?? null);
+        return napi.buildBusinessDataFromCsv(csvData, safeStringify(graph), safeStringify(collections), defaultLanguage ?? "en", strictConcepts ?? null, uuidNamespace ?? null);
       }
     }
     return buildResourcesFromBusinessCsv$1(csvData, safeStringify(graph), safeStringify(collections), defaultLanguage ?? null, strictConcepts ?? null);
@@ -12872,7 +12880,7 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}
   }, Symbol.toStringTag, {
     value: "Module"
   }));
-  version = "2.0.0-alpha.99";
+  version = "2.0.0-alpha.108";
   registerAlizarinTimingGetter(getTimingStats);
   registerWasmTimingGetter(getWasmTimings);
   let _wasmReadyResolve;

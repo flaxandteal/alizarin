@@ -1,8 +1,8 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-import { w as wasmReady, r as registerExtensionHandler, C as CUSTOM_DATATYPES, g as getCurrentLanguage, a as registerResolvableDatatype, n as nodeConfigManager, R as RDM } from "./main-BP0_fx38.js";
-import { A, K, G, p, o, T, L, N, c, I, J, U, k, y, X, S, t, W, B, l, b, _, j, D, m, F, H, V, i, z, O, q, P, Q, x, d, f, s, E, h, u, M, v, e } from "./main-BP0_fx38.js";
+import { w as wasmReady, r as registerExtensionHandler, C as CUSTOM_DATATYPES, g as getCurrentLanguage, a as registerResolvableDatatype, n as nodeConfigManager, R as RDM } from "./main-BR1FAEzl.js";
+import { A, K, G, p, o, T, L, N, c, I, J, U, k, y, X, S, t, W, B, l, b, _, j, D, m, F, H, V, i, z, O, q, P, Q, x, d, f, s, E, h, u, M, v, e } from "./main-BR1FAEzl.js";
 class FileListItem {
   constructor(data) {
     __publicField(this, "accepted");
@@ -23,10 +23,10 @@ class FileListItem {
     __publicField(this, "url");
     __publicField(this, "renderer");
     this.accepted = data.accepted ?? false;
-    this.alt_text = data.alt_text;
-    this.attribution = data.attribution;
+    this.alt_text = data.alt_text ?? void 0;
+    this.attribution = data.attribution ?? void 0;
     this.content = data.content;
-    this.description = data.description;
+    this.description = data.description ?? void 0;
     this.file_id = data.file_id;
     this.index = data.index;
     this.last_modified = data.last_modified;
@@ -35,7 +35,7 @@ class FileListItem {
     this.selected = data.selected ?? false;
     this.size = data.size;
     this.status = data.status;
-    this.title = data.title;
+    this.title = data.title ?? void 0;
     this.type = data.type;
     this.url = data.url;
     this.renderer = data.renderer;
@@ -547,8 +547,10 @@ class ReferenceValueViewModel extends String {
         this._resolvedRef = new StaticReference(val);
         if (this._tile && this._nodeid) {
           const currentData = this._tile.data.get(this._nodeid);
-          if (!Array.isArray(currentData)) {
-            this._tile.data.set(this._nodeid, this._resolvedRef.toJSON());
+          if (Array.isArray(currentData) && currentData.length <= 1) {
+            this._tile.data.set(this._nodeid, [this._resolvedRef.toJSON()]);
+          } else if (!Array.isArray(currentData)) {
+            this._tile.data.set(this._nodeid, [this._resolvedRef.toJSON()]);
           }
         }
       }
@@ -590,10 +592,12 @@ class ReferenceValueViewModel extends String {
     }
     return null;
   }
-  // Convert to plain object for WASM tile data serialization
+  // Convert to one-element array for tile data serialization
+  // (even multiValue=false references use array format in tile data)
   async __asTileData() {
     const ref = await this._resolvePending();
-    return ref && typeof ref.toJSON === "function" ? ref.toJSON() : ref;
+    const plain = ref && typeof ref.toJSON === "function" ? ref.toJSON() : ref;
+    return plain ? [plain] : null;
   }
   static async __create(tile, node, value, _cacheEntry) {
     var _a, _b;
@@ -607,6 +611,9 @@ class ReferenceValueViewModel extends String {
         tile.data.set(nodeid, null);
       }
       if (value !== null) {
+        if (Array.isArray(value) && value.length === 1) {
+          value = value[0];
+        }
         if (value instanceof Promise) {
           return value.then((value2) => {
             return ReferenceValueViewModel.__create(tile, node, value2, _cacheEntry);
@@ -616,7 +623,7 @@ class ReferenceValueViewModel extends String {
             value
           )) {
             const pendingLookup = { type: "uuid", uuid: value, collectionId };
-            tile.data.set(nodeid, { __needs_rdm_lookup: true, uuid: value });
+            tile.data.set(nodeid, [{ __needs_rdm_lookup: true, uuid: value }]);
             return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid, collectionId);
           } else {
             throw Error(
@@ -625,20 +632,20 @@ class ReferenceValueViewModel extends String {
           }
         } else if (typeof value === "object" && value !== null && value.__needs_rdm_lookup && value.uuid) {
           const pendingLookup = { type: "uuid", uuid: value.uuid, collectionId };
-          tile.data.set(nodeid, value);
+          tile.data.set(nodeid, [value]);
           return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid, collectionId);
         } else if (typeof value === "object" && value !== null && value.__needs_rdm_label_lookup && value.label) {
           const lookupCollectionId = value.controlledList || collectionId;
           const pendingLookup = { type: "label", label: value.label, collectionId: lookupCollectionId };
-          tile.data.set(nodeid, value);
+          tile.data.set(nodeid, [value]);
           return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid, lookupCollectionId);
         } else if (Array.isArray(value) && value.length > 0 && "labels" in value[0]) {
           const ref = new StaticReference(value[0]);
-          tile.data.set(nodeid, ref.toJSON());
+          tile.data.set(nodeid, [ref.toJSON()]);
           return new ReferenceValueViewModel(ref, void 0, void 0, void 0, collectionId);
         } else if (typeof value === "object" && value !== null && "labels" in value) {
           const ref = new StaticReference(value);
-          tile.data.set(nodeid, ref.toJSON());
+          tile.data.set(nodeid, [ref.toJSON()]);
           return new ReferenceValueViewModel(ref, void 0, void 0, void 0, collectionId);
         } else {
           throw Error("Could not set reference from this data: " + JSON.stringify(value));
