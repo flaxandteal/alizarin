@@ -426,9 +426,38 @@ impl RdmCache {
         Ok(())
     }
 
-    /// Add a collection directly
+    /// Add a collection, merging with any existing collection that has the same ID.
+    ///
+    /// When merging:
+    /// - New concepts with labels always win over existing bare stubs (no labels).
+    /// - Existing concepts with labels are kept if the incoming concept is bare.
+    /// - If both have labels, the incoming concept wins (last-writer-wins).
+    /// - New concepts that don't exist yet are always added.
     pub fn add_collection(&mut self, collection: RdmCollection) {
-        self.collections.insert(collection.id.clone(), collection);
+        if let Some(existing) = self.collections.get_mut(&collection.id) {
+            // Merge: iterate over incoming concepts
+            for (concept_id, incoming_concept) in collection.concepts {
+                let incoming_has_labels = !incoming_concept.pref_label.is_empty();
+                let should_insert = match existing.concepts.get(&concept_id) {
+                    None => true, // New concept — always add
+                    Some(existing_concept) => {
+                        let existing_has_labels = !existing_concept.pref_label.is_empty();
+                        // Replace if incoming has labels, or if existing is also bare
+                        incoming_has_labels || !existing_has_labels
+                    }
+                };
+                if should_insert {
+                    existing.add_concept(incoming_concept);
+                }
+            }
+            // Merge top_concepts (deduplicated by add_concept)
+            // Update name if incoming has one
+            if collection.name.is_some() {
+                existing.name = collection.name;
+            }
+        } else {
+            self.collections.insert(collection.id.clone(), collection);
+        }
     }
 
     /// Check if a collection is loaded
