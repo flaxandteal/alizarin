@@ -90,6 +90,10 @@ jobs:
         working-directory: crates/alizarin-wasm
         run: wasm-pack build --target web --out-dir ../../pkg --out-name alizarin --dev
 
+      - name: Build filelist WASM
+        working-directory: ext/filelist/wasm
+        run: wasm-pack build --target web --dev
+
       - name: Use Node
         uses: actions/setup-node@v4
         with:
@@ -154,6 +158,10 @@ jobs:
       - name: Build WASM (needed for static-types in dual-backend tests)
         working-directory: crates/alizarin-wasm
         run: wasm-pack build --target web --out-dir ../../pkg --out-name alizarin --dev
+
+      - name: Build filelist WASM
+        working-directory: ext/filelist/wasm
+        run: wasm-pack build --target web --dev
 
       - name: Install root dependencies
         run: npm ci

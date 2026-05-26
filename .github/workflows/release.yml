@@ -66,16 +66,17 @@ jobs:
           echo "WASM build complete. Contents of pkg/:"
           ls -lh ../../pkg/
 
+      # Build WASM for JS extensions that have their own Rust crates
+      # Must happen before npm run build, as the full bundle inlines extension WASM
+      - name: Build filelist WASM
+        working-directory: ext/filelist/wasm
+        run: wasm-pack build --target web --release
+
       - name: Install Node dependencies
         run: npm ci
 
       - name: Build TypeScript/JavaScript bundle
         run: npm run build
-
-      # Build WASM for JS extensions that have their own Rust crates
-      - name: Build filelist WASM
-        working-directory: ext/filelist/wasm
-        run: wasm-pack build --target web --release
 
       # Build all JS extensions
       - name: Build JS extensions and create tarballs
@@ -234,7 +235,7 @@ jobs:
           # Publish main alizarin package
           npm publish --provenance --access public $TAG
 
-          # Publish @alizarin/* extensions
+          # Publish @alizarin/* extensions under ext/js/
           for ext_dir in ext/js/@alizarin/*/; do
             [ -d "$ext_dir/dist" ] || continue
             ext_name=$(basename "$ext_dir")
@@ -243,6 +244,14 @@ jobs:
             npm publish --provenance --access public $TAG
             cd - > /dev/null
           done
+
+          # Publish @alizarin/filelist from ext/filelist/js/
+          if [ -d "ext/filelist/js/dist" ]; then
+            echo "=== Publishing @alizarin/filelist ==="
+            cd ext/filelist/js
+            npm publish --provenance --access public $TAG
+            cd - > /dev/null
+          fi
 
       - name: Publish alizarin-core to crates.io
         env:
