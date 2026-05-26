@@ -72,9 +72,15 @@ jobs:
       - name: Build TypeScript/JavaScript bundle
         run: npm run build
 
+      # Build WASM for JS extensions that have their own Rust crates
+      - name: Build filelist WASM
+        working-directory: ext/filelist/wasm
+        run: wasm-pack build --target web --release
+
       # Build all JS extensions
       - name: Build JS extensions and create tarballs
         run: |
+          # Extensions under ext/js/@alizarin/
           for ext_dir in ext/js/@alizarin/*/; do
             ext_name=$(basename "$ext_dir")
             echo "=== Building @alizarin/$ext_name ==="
@@ -82,8 +88,18 @@ jobs:
             npm install
             npm run build
             npm pack
-            # Move tarball to root so it's found by the release upload
             mv alizarin-*.tgz ../../../../
+            cd - > /dev/null
+          done
+          # Extensions with own structure (e.g. ext/filelist/js/)
+          for ext_dir in ext/filelist/js; do
+            ext_name="filelist"
+            echo "=== Building @alizarin/$ext_name ==="
+            cd "$ext_dir"
+            npm install
+            npm run build
+            npm pack
+            mv alizarin-*.tgz ../../../
             cd - > /dev/null
           done
 

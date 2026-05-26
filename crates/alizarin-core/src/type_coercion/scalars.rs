@@ -158,11 +158,12 @@ pub fn coerce_date(value: &Value) -> CoercionResult {
     }
 }
 
-/// Validate and pass through an ISO 8601 date string.
+/// Validate and normalize an ISO 8601 date string.
 ///
-/// Accepts date-only, datetime, datetime with timezone, and datetime with
-/// milliseconds. Returns the original string if valid (Arches stores as-is).
-fn normalize_date_string(s: &str) -> Result<String, String> {
+/// Accepts date-only, datetime, datetime with timezone, datetime with
+/// milliseconds, and space-separated datetimes. Returns the normalized
+/// string (space separators replaced with T, UTC Z appended).
+pub fn normalize_date_string(s: &str) -> Result<String, String> {
     let s = s.trim();
     if s.is_empty() {
         return Err("Empty date string".to_string());

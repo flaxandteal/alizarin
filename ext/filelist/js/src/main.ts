@@ -1,5 +1,7 @@
 import { utils, viewModels, registerExtensionHandler, wasmReady } from "alizarin";
 import type { interfaces, staticTypes } from "alizarin";
+import { initSync, coerceFileList } from "../../wasm/pkg/alizarin_filelist_wasm";
+import wasmBytes from "../../wasm/pkg/alizarin_filelist_wasm_bg.wasm";
 type IPseudo = interfaces.IPseudo;
 type IViewModel = interfaces.IViewModel;
 type StaticTile = staticTypes.StaticTile;
@@ -166,7 +168,11 @@ class FileListItem {
 
 // Register the file-list extension handler (after WASM is ready)
 wasmReady.then(() => {
+  // Initialize the filelist WASM module (bytes are inlined by vite at build time)
+  initSync(wasmBytes);
+
   registerExtensionHandler('file-list', {
+    coerce: (value: unknown) => coerceFileList(value),
     renderDisplay: (tileData: unknown, language: string) => {
       if (!tileData) return null;
 

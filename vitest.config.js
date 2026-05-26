@@ -1,7 +1,23 @@
 import { resolve } from "path";
+import { readFileSync } from "fs";
 import { defineConfig } from "vitest/config";
 
+function wasmInlinePlugin() {
+  return {
+    name: 'wasm-inline',
+    enforce: 'pre',
+    load(id) {
+      if (id.endsWith('.wasm')) {
+        const bytes = readFileSync(id);
+        const base64 = bytes.toString('base64');
+        return `const base64 = "${base64}";\nconst bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));\nexport default bytes;`;
+      }
+    }
+  };
+}
+
 export default defineConfig({
+  plugins: [wasmInlinePlugin()],
   define: {
     __ALIZARIN_VERSION__: JSON.stringify("test"),
   },

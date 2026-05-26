@@ -38,6 +38,7 @@ use crate::graph::{
 };
 use crate::graph_mutator::{generate_uuid_v5, generate_uuid_v5_with_ns};
 use crate::skos::SkosCollection;
+use crate::type_coercion::normalize_date_string;
 
 /// Options for business data CSV loading
 #[derive(Debug, Clone)]
@@ -203,7 +204,10 @@ fn coerce_value(
                 None
             }
         },
-        "date" => Some(serde_json::Value::String(raw.to_string())),
+        "date" => {
+            let normalized = normalize_date_string(raw).unwrap_or_else(|_| raw.to_string());
+            Some(serde_json::Value::String(normalized))
+        }
         "boolean" => match raw.to_lowercase().as_str() {
             "true" | "yes" | "1" => Some(serde_json::Value::Bool(true)),
             "false" | "no" | "0" => Some(serde_json::Value::Bool(false)),

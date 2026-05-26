@@ -36,7 +36,9 @@ pub use result::CoercionResult;
 pub use domain::{coerce_boolean, coerce_domain_value, coerce_domain_value_list};
 pub use rdm::{coerce_concept_list, coerce_concept_value};
 pub use resources::{coerce_resource_instance, coerce_resource_instance_list};
-pub use scalars::{coerce_date, coerce_edtf, coerce_non_localized_string, coerce_number};
+pub use scalars::{
+    coerce_date, coerce_edtf, coerce_non_localized_string, coerce_number, normalize_date_string,
+};
 pub use strings::{coerce_geojson, coerce_string, coerce_url};
 
 /// Coerce a value based on datatype.

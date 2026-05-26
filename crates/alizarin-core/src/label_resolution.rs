@@ -15,7 +15,12 @@ use uuid::Uuid;
 /// Datatypes that support label resolution by default.
 /// Extension types (e.g. "reference") should register themselves
 /// via the extension handler mechanism rather than being listed here.
-pub const DEFAULT_RESOLVABLE_DATATYPES: &[&str] = &["concept", "concept-list"];
+pub const DEFAULT_RESOLVABLE_DATATYPES: &[&str] = &[
+    "concept",
+    "concept-list",
+    "domain-value",
+    "domain-value-list",
+];
 
 /// Config keys that hold collection IDs (in order of preference)
 pub const DEFAULT_CONFIG_KEYS: &[&str] = &["rdmCollection", "controlledList"];

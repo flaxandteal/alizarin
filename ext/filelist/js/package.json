@@ -6,7 +6,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/flaxandteal/alizarin",
-    "directory": "ext/js/@alizarin/filelist"
+    "directory": "ext/filelist/js"
   },
   "author": "Phil Weir <phil.weir@flaxandteal.co.uk>",
   "type": "module",
@@ -20,13 +20,13 @@
     "dev": "vite",
     "build": "vite build && tsc -p tsconfig.build.json",
     "preview": "vite preview",
-    "test": "cd ../../../.. && npm test -- ext/js/@alizarin/filelist/tests/filelist.test.ts"
+    "test": "cd ../../.. && npm test -- ext/filelist/js/tests/filelist.test.ts"
   },
   "peerDependencies": {
     "alizarin": "2.0.0-alpha.109"
   },
   "devDependencies": {
-    "alizarin": "file:../../../..",
+    "alizarin": "file:../../..",
     "typescript": "~5.9.3",
     "vite": "npm:rolldown-vite@7.2.5"
   },

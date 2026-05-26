@@ -1,0 +1,19 @@
+[package]
+name = "alizarin-filelist-wasm"
+version = "2.0.0-alpha.109"
+edition = "2021"
+description = "WASM bindings for alizarin-filelist-core"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+alizarin-filelist-core = { path = "../core" }
+wasm-bindgen = "0.2.84"
+serde-wasm-bindgen = "0.6"
+serde_json = "1.0"
+uuid = { version = "1.0", features = ["wasm-bindgen"] }
+getrandom = { version = "0.2", features = ["js"] }
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.34"

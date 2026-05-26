@@ -2,7 +2,6 @@
 members = [
     "crates/alizarin-core",
     "crates/alizarin-clm-core",
-    "crates/alizarin-filelist-core",
     "crates/alizarin-wasm",
     "crates/alizarin-python",
     "crates/alizarin-explorer",
@@ -11,8 +10,10 @@ members = [
     "crates/wasm-wrapper-derive",
 ]
 exclude = [
+    "ext/filelist/core",
+    "ext/filelist/wasm",
+    "ext/filelist/python",
     "ext/python/alizarin-clm",
-    "ext/python/alizarin-filelist",
 ]
 resolver = "2"
 

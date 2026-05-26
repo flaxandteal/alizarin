@@ -674,6 +674,7 @@ use alizarin_core::{
     parse_resources_from_json_str as core_parse_resources,
     // Label resolution
     resolve_labels as core_resolve_labels,
+    snake_to_camel,
     tiles_to_tree,
     tree_to_tiles_with_options,
     // Graph model access
@@ -1322,12 +1323,34 @@ fn batch_trees_to_tiles(
         None
     };
 
+    // Build alias→collection map for concept label resolution (same as json_tree_to_tiles)
+    let label_cache: Option<Arc<CoreRdmCache>> =
+        rdm_cache_py::get_global_rdm_cache().map(|cache| Arc::new(cache.inner().clone()));
+    let mut alias_map = build_alias_to_collection_from_graph(&graph);
+    // When from_camel is true, trees have camelCase keys but aliases are snake_case.
+    // Add camelCase variants so core_resolve_labels can match either form.
+    if from_camel {
+        let camel_entries: Vec<_> = alias_map
+            .iter()
+            .map(|(k, v)| (snake_to_camel(k), v.clone()))
+            .collect();
+        for (k, v) in camel_entries {
+            alias_map.insert(k, v);
+        }
+    }
+
     let has_extension_handlers = !skip_extensions;
 
     let results: Vec<Result<serde_json::Value, String>> = trees
         .into_par_iter()
         .enumerate()
         .map(|(i, mut tree)| {
+            // Resolve concept labels to UUIDs if an RDM cache is available
+            if let Some(ref cache) = label_cache {
+                tree = core_resolve_labels(tree, &alias_map, cache.as_ref(), strict)
+                    .map_err(|e| format!("Tree {}: {}", i, e.message))?;
+            }
+
             // Add graph_id to tree if not present
             if let serde_json::Value::Object(ref mut map) = tree {
                 if !map.contains_key("graph_id") {
