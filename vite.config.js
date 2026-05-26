@@ -6,6 +6,24 @@ import dts from 'vite-plugin-dts';
 import topLevelAwait from "vite-plugin-top-level-await";
 import pkg from './package.json' with { type: 'json' };
 
+// Inline extension .wasm files (e.g. filelist-wasm) as base64 Uint8Array bytes
+// so that the full bundle is self-contained for extension WASM modules.
+// The main alizarin WASM is handled separately by vite-plugin-wasm + externalizeWasmPlugin.
+function extensionWasmInlinePlugin() {
+  return {
+    name: 'extension-wasm-inline',
+    enforce: 'pre',
+    load(id) {
+      // Only inline extension WASM files, not the main alizarin WASM (pkg/alizarin_bg.wasm)
+      if (id.endsWith('.wasm') && !id.endsWith('/pkg/alizarin_bg.wasm')) {
+        const bytes = readFileSync(id);
+        const base64 = bytes.toString('base64');
+        return `const base64 = "${base64}";\nconst bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));\nexport default bytes;`;
+      }
+    }
+  };
+}
+
 // Workaround for Vite 5 library mode inlining all assets as base64 (vitejs/vite#4454).
 // vite-plugin-wasm generates `import url from "file.wasm?url"`, but Vite 5 lib mode
 // resolves ?url imports as base64 data URIs. This plugin replaces the inlined WASM
@@ -50,6 +68,7 @@ export default defineConfig({
   },
   plugins: [
     // dts({ rollupTypes: true }), // Temporarily disabled due to type errors
+    extensionWasmInlinePlugin(),
     wasm(),
     topLevelAwait(),
     externalizeWasmPlugin(),
