@@ -4312,13 +4312,11 @@ fn find_branch_nodes_by_traversal(
                     }
                 }
             }
-            Some(pub_id) => {
-                // Different branch publication ID - error
-                return Err(MutationError::InconsistentBranchPublication {
-                    expected: expected_branch_id.to_string(),
-                    found: Some(pub_id.clone()),
-                    node_id: node_id.clone(),
-                });
+            Some(_pub_id) => {
+                // Different branch publication ID — this node belongs to a
+                // different branch attached to the same parent. Skip it,
+                // just like nodes with no publication ID.
+                continue;
             }
             None => {
                 // No sourcebranchpublication_id - this node wasn't added via branch

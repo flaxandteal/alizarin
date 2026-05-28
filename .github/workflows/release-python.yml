@@ -148,9 +148,10 @@ jobs:
       - name: Build extension wheels (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
-          for ext_dir in ext/python/*/; do
-            ext_name=$(basename "$ext_dir")
-            echo "=== Building $ext_name ==="
+          for ext_dir in ext/python/*/ ext/*/python/; do
+            [ -d "$ext_dir" ] || continue
+            ext_name=$(basename "$(dirname "$ext_dir")")-$(basename "$ext_dir")
+            echo "=== Building $ext_dir ==="
             cd "$ext_dir"
             maturin build --release --out dist --interpreter python${{ matrix.python-version }} --target x86_64-unknown-linux-gnu
             cd - > /dev/null
@@ -159,9 +160,9 @@ jobs:
       - name: Build extension wheels (macOS/Windows)
         if: matrix.os != 'ubuntu-latest'
         run: |
-          for ext_dir in ext/python/*/; do
-            ext_name=$(basename "$ext_dir")
-            echo "=== Building $ext_name ==="
+          for ext_dir in ext/python/*/ ext/*/python/; do
+            [ -d "$ext_dir" ] || continue
+            echo "=== Building $ext_dir ==="
             cd "$ext_dir"
             maturin build --release --out dist
             cd - > /dev/null
@@ -172,7 +173,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: wheels-extensions-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: ext/python/*/dist/*.whl
+          path: |
+            ext/python/*/dist/*.whl
+            ext/*/python/dist/*.whl
 
   # Create GitHub release with all artifacts
   release:
