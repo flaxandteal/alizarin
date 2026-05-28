@@ -587,11 +587,13 @@ impl StaticGraph {
         // The default descriptor function requires all placeholders to be in
         // a single nodegroup. Other descriptor functions (e.g. Multi-card
         // Resource Descriptor) can span multiple nodegroups.
+        // Exception: slug is alizarin-specific (not in Arches) and can always
+        // span multiple nodegroups since evaluation handles it.
         let is_default_function = idx
             .map(|i| fxg[i].function_id == DESCRIPTOR_FUNCTION_ID)
             .unwrap_or(true); // will create default if no match
 
-        if is_default_function && nodegroup_ids.len() != 1 {
+        if is_default_function && nodegroup_ids.len() != 1 && descriptor_type != "slug" {
             return Err(format!(
                 "Template placeholders span {} nodegroups ({:?}), expected exactly 1",
                 nodegroup_ids.len(),
@@ -601,7 +603,7 @@ impl StaticGraph {
 
         let existing = idx.map(|i| &mut fxg[i]);
 
-        let entry = if is_default_function || nodegroup_ids.len() == 1 {
+        let entry = if nodegroup_ids.len() == 1 {
             let nodegroup_id = nodegroup_ids.into_iter().next().unwrap();
             serde_json::json!({
                 "nodegroup_id": nodegroup_id,

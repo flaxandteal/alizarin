@@ -322,10 +322,13 @@ impl RdmCollection {
     /// Find a concept by exact label match (case-insensitive)
     ///
     /// Searches pref_label and alt_labels across all languages.
-    /// Returns None if no match or multiple matches (ambiguous).
+    /// Returns the first match if found. When multiple concepts share the same
+    /// label (common in hierarchical collections like administrative areas),
+    /// a deterministic result is returned by selecting the concept with the
+    /// lexicographically smallest ID.
     pub fn find_by_label(&self, label: &str) -> Option<&RdmConcept> {
         let label_lower = label.trim().to_lowercase();
-        let matches: Vec<_> = self
+        let mut matches: Vec<_> = self
             .concepts
             .values()
             .filter(|c| {
@@ -338,12 +341,9 @@ impl RdmCollection {
             })
             .collect();
 
-        // Only return if exactly one match (unambiguous)
-        if matches.len() == 1 {
-            matches.into_iter().next()
-        } else {
-            None
-        }
+        // Sort by ID for deterministic results when multiple concepts share a label
+        matches.sort_by(|a, b| a.id.cmp(&b.id));
+        matches.into_iter().next()
     }
 
     /// Find all concepts by exact label match (case-insensitive)

@@ -112,22 +112,22 @@ fn is_valid_edtf(s: &str) -> bool {
 
 /// Coerce a value to a date.
 ///
-/// Accepts: ISO date string, null, object with 'en' key (legacy format)
-/// Returns: ISO date string or null
+/// Accepts: ISO date string, datetime string, null, object with 'en' key (legacy format)
+/// Returns: bare date string (YYYY-MM-DD) or null. Datetime inputs are truncated
+/// to date-only, since the Arches "date" datatype represents a calendar date.
 pub fn coerce_date(value: &Value) -> CoercionResult {
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
         Value::String(s) if s.is_empty() => CoercionResult::success_same(Value::Null),
         Value::String(s) => {
-            // Validate and normalize the date
             match normalize_date_string(s) {
                 Ok(normalized) => {
-                    let tile_val = Value::String(normalized.clone());
+                    let date_only = truncate_to_date(&normalized);
+                    let tile_val = Value::String(date_only);
                     CoercionResult::success(tile_val.clone(), tile_val)
                 }
                 Err(_) => {
                     // Be permissive - accept the string but note the issue
-                    // The JS Date constructor will handle parsing
                     CoercionResult::success_same(value.clone())
                 }
             }
@@ -138,10 +138,10 @@ pub fn coerce_date(value: &Value) -> CoercionResult {
                 if s.is_empty() {
                     CoercionResult::success_same(Value::Null)
                 } else {
-                    // Extract the 'en' value
                     match normalize_date_string(s) {
                         Ok(normalized) => {
-                            let tile_val = Value::String(normalized.clone());
+                            let date_only = truncate_to_date(&normalized);
+                            let tile_val = Value::String(date_only);
                             CoercionResult::success(tile_val.clone(), tile_val)
                         }
                         Err(_) => CoercionResult::success_same(Value::String(s.clone())),
@@ -156,6 +156,18 @@ pub fn coerce_date(value: &Value) -> CoercionResult {
             value_type_name(value)
         )),
     }
+}
+
+/// Truncate a normalized date/datetime string to date-only (YYYY-MM-DD).
+fn truncate_to_date(s: &str) -> String {
+    // Split on T or space to strip any time component
+    s.split('T')
+        .next()
+        .unwrap_or(s)
+        .split(' ')
+        .next()
+        .unwrap_or(s)
+        .to_string()
 }
 
 /// Validate and normalize an ISO 8601 date string.
@@ -183,6 +195,11 @@ pub fn normalize_date_string(s: &str) -> Result<String, String> {
     // 3. Datetime with space separator (2020-08-31 00:08:00) — normalize to T separator
     if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%.f") {
         return Ok(format!("{}Z", dt.format("%Y-%m-%dT%H:%M:%S")));
+    }
+
+    // 3b. Datetime with space separator and timezone (2020-08-31 00:08:00+00:00)
+    if let Ok(dt) = chrono::DateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S%z") {
+        return Ok(dt.format("%Y-%m-%dT%H:%M:%S%:z").to_string());
     }
 
     // 4. Date only (2023-05-15)
@@ -317,7 +334,7 @@ mod tests {
     fn test_coerce_date_iso_datetime() {
         let result = coerce_date(&json!("2023-05-15T10:30:00Z"));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!("2023-05-15T10:30:00Z"));
+        assert_eq!(result.tile_data, json!("2023-05-15"));
     }
 
     #[test]
@@ -345,13 +362,20 @@ mod tests {
     fn test_coerce_date_space_separator() {
         let result = coerce_date(&json!("2020-08-31 00:08:00"));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!("2020-08-31T00:08:00Z"));
+        assert_eq!(result.tile_data, json!("2020-08-31"));
     }
 
     #[test]
     fn test_coerce_date_space_separator_with_millis() {
         let result = coerce_date(&json!("2020-08-31 00:08:00.123"));
         assert!(!result.is_error());
-        assert_eq!(result.tile_data, json!("2020-08-31T00:08:00Z"));
+        assert_eq!(result.tile_data, json!("2020-08-31"));
+    }
+
+    #[test]
+    fn test_coerce_date_with_timezone_offset() {
+        let result = coerce_date(&json!("2020-08-31 00:08:00+00:00"));
+        assert!(!result.is_error());
+        assert_eq!(result.tile_data, json!("2020-08-31"));
     }
 }
