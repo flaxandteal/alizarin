@@ -192,12 +192,14 @@ jobs:
             Pop-Location
             # Run tests with isolated import mode to avoid source tree
             if (Test-Path "$($ext_dir.FullName)/tests") {
-              # Copy tests to temp and run from there to fully isolate from source
+              # Copy tests to temp and run from there to fully isolate from source.
+              # Push into the test dir itself to avoid Windows 8.3 short-path aliasing
+              # (e.g. RUNNER~1 vs runneradmin) which causes pytest conftest conflicts.
               $test_tmp = Join-Path $env:TEMP "alizarin_tests_$ext_name"
               if (Test-Path $test_tmp) { Remove-Item -Recurse -Force $test_tmp }
               Copy-Item -Recurse "$($ext_dir.FullName)/tests" $test_tmp
-              Push-Location $env:TEMP
-              pytest $test_tmp -v --import-mode=importlib
+              Push-Location $test_tmp
+              pytest . -v --import-mode=importlib --rootdir .
               if ($LASTEXITCODE -ne 0) { throw "Tests for $ext_name failed" }
               Pop-Location
             }
