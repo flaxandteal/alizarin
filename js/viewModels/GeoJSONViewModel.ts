@@ -61,6 +61,12 @@ export class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
       }
       if (value !== null) {
         tile.data.set(nodeid, value);
+        // Warn on out-of-range coordinates
+        const warnings = validateGeoJSONCoordinates(value);
+        const nodeLabel = node.alias || node.nodeid;
+        for (const w of warnings) {
+          console.warn(`Node '${nodeLabel}': ${w}`);
+        }
       }
     }
 
@@ -100,4 +106,46 @@ export class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
   __asTileData() {
     return this._value;
   }
+}
+
+/** Check coordinate positions for out-of-range lat/lng. */
+function checkCoordinateRanges(coords: any, warnings: string[]): void {
+  if (!Array.isArray(coords)) return;
+  // A position is [lng, lat, ...] — array of numbers
+  if (coords.length >= 2 && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+    const lng = coords[0];
+    const lat = coords[1];
+    if (lng < -180 || lng > 180) {
+      warnings.push(`GeoJSON coordinate longitude ${lng} is outside valid range (-180..180)`);
+    }
+    if (lat < -90 || lat > 90) {
+      warnings.push(`GeoJSON coordinate latitude ${lat} is outside valid range (-90..90)`);
+    }
+  } else {
+    // Nested array — recurse (LineString, Polygon rings, etc.)
+    for (const item of coords) {
+      checkCoordinateRanges(item, warnings);
+    }
+  }
+}
+
+/** Recursively validate coordinates in a GeoJSON object. */
+function validateGeoJSONCoordinates(value: any): string[] {
+  if (!value || typeof value !== 'object') return [];
+  const warnings: string[] = [];
+  const geoType = value.type;
+  if (geoType === 'FeatureCollection' && Array.isArray(value.features)) {
+    for (const f of value.features) {
+      warnings.push(...validateGeoJSONCoordinates(f));
+    }
+  } else if (geoType === 'Feature' && value.geometry) {
+    warnings.push(...validateGeoJSONCoordinates(value.geometry));
+  } else if (geoType === 'GeometryCollection' && Array.isArray(value.geometries)) {
+    for (const g of value.geometries) {
+      warnings.push(...validateGeoJSONCoordinates(g));
+    }
+  } else if (geoType && value.coordinates) {
+    checkCoordinateRanges(value.coordinates, warnings);
+  }
+  return warnings;
 }

@@ -69,6 +69,12 @@ impl WasmCoercionResult {
     pub fn is_null(&self) -> bool {
         self.inner.is_null()
     }
+
+    /// Get any warnings (non-fatal issues like out-of-range coordinates)
+    #[wasm_bindgen(getter, js_name = warnings)]
+    pub fn warnings(&self) -> Vec<String> {
+        self.inner.warnings.clone()
+    }
 }
 
 /// Coerce a value to a number

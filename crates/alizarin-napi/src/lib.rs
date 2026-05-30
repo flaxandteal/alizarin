@@ -562,10 +562,13 @@ pub fn extension_coerce(
     let registry = extension_registry();
     match registry.coerce(&datatype, &value, config.as_ref()) {
         Ok(Some(result)) => {
-            let output = serde_json::json!({
+            let mut output = serde_json::json!({
                 "tileData": result.tile_data,
                 "displayValue": result.display_value,
             });
+            if !result.warnings.is_empty() {
+                output["warnings"] = serde_json::json!(result.warnings);
+            }
             Ok(Some(output))
         }
         Ok(None) => Ok(None),

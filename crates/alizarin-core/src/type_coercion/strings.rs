@@ -124,6 +124,8 @@ pub fn coerce_url(value: &Value) -> CoercionResult {
 /// Tile data format: GeoJSON FeatureCollection, Feature, or Geometry object
 ///
 /// Validates basic GeoJSON structure (must be an object with 'type' field).
+/// Warns if any coordinates are outside valid WGS84 ranges
+/// (longitude: -180..180, latitude: -90..90).
 pub fn coerce_geojson(value: &Value) -> CoercionResult {
     match value {
         Value::Null => CoercionResult::success_same(Value::Null),
@@ -157,12 +159,83 @@ pub fn coerce_geojson(value: &Value) -> CoercionResult {
                 // Be permissive - some systems use custom types
             }
 
-            CoercionResult::success_same(value.clone())
+            // Check coordinate ranges
+            let mut warnings = Vec::new();
+            validate_geojson_coordinates(value, &mut warnings);
+
+            CoercionResult::success_same(value.clone()).with_warnings(warnings)
         }
         _ => CoercionResult::error(format!(
             "GeoJSON must be an object, got {:?}",
             value_type_name(value)
         )),
+    }
+}
+
+/// Recursively validate coordinates in a GeoJSON value.
+/// GeoJSON coordinates are [longitude, latitude, ...] — longitude in -180..180,
+/// latitude in -90..90.
+fn validate_geojson_coordinates(value: &Value, warnings: &mut Vec<String>) {
+    if let Value::Object(obj) = value {
+        let geo_type = obj.get("type").and_then(|t| t.as_str());
+        match geo_type {
+            Some("FeatureCollection") => {
+                if let Some(Value::Array(features)) = obj.get("features") {
+                    for feature in features {
+                        validate_geojson_coordinates(feature, warnings);
+                    }
+                }
+            }
+            Some("Feature") => {
+                if let Some(geom) = obj.get("geometry") {
+                    validate_geojson_coordinates(geom, warnings);
+                }
+            }
+            Some("GeometryCollection") => {
+                if let Some(Value::Array(geometries)) = obj.get("geometries") {
+                    for geom in geometries {
+                        validate_geojson_coordinates(geom, warnings);
+                    }
+                }
+            }
+            Some(_) => {
+                // Geometry type — check coordinates
+                if let Some(coords) = obj.get("coordinates") {
+                    check_coordinate_ranges(coords, warnings);
+                }
+            }
+            None => {}
+        }
+    }
+}
+
+/// Recursively check coordinate arrays for out-of-range values.
+/// A coordinate position is [longitude, latitude, ...].
+/// Nested arrays (e.g. polygon rings, multi-geometries) are traversed.
+fn check_coordinate_ranges(coords: &Value, warnings: &mut Vec<String>) {
+    if let Value::Array(arr) = coords {
+        // A position is an array of numbers: [lng, lat, ...]
+        if arr.len() >= 2 && arr[0].is_number() && arr[1].is_number() {
+            let lng = arr[0].as_f64().unwrap();
+            let lat = arr[1].as_f64().unwrap();
+            if !(-180.0..=180.0).contains(&lng) {
+                warnings.push(format!(
+                    "GeoJSON coordinate longitude {} is outside valid range (-180..180)",
+                    lng
+                ));
+            }
+            if !(-90.0..=90.0).contains(&lat) {
+                warnings.push(format!(
+                    "GeoJSON coordinate latitude {} is outside valid range (-90..90)",
+                    lat
+                ));
+            }
+        } else {
+            // Nested array — recurse (e.g. LineString, Polygon rings)
+            for item in arr {
+                check_coordinate_ranges(item, warnings);
+            }
+        }
     }
 }
 
@@ -354,5 +427,73 @@ mod tests {
     fn test_coerce_geojson_not_object() {
         let result = coerce_geojson(&json!("not an object"));
         assert!(result.is_error());
+    }
+
+    #[test]
+    fn test_coerce_geojson_valid_coordinates_no_warnings() {
+        let result = coerce_geojson(&json!({
+            "type": "Point",
+            "coordinates": [-5.93, 54.6]
+        }));
+        assert!(!result.is_error());
+        assert!(result.warnings.is_empty());
+    }
+
+    #[test]
+    fn test_coerce_geojson_out_of_range_longitude() {
+        let result = coerce_geojson(&json!({
+            "type": "Point",
+            "coordinates": [200.0, 54.6]
+        }));
+        assert!(!result.is_error());
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].contains("longitude"));
+        assert!(result.warnings[0].contains("200"));
+    }
+
+    #[test]
+    fn test_coerce_geojson_out_of_range_latitude() {
+        let result = coerce_geojson(&json!({
+            "type": "Point",
+            "coordinates": [-5.93, -100.0]
+        }));
+        assert!(!result.is_error());
+        assert_eq!(result.warnings.len(), 1);
+        assert!(result.warnings[0].contains("latitude"));
+    }
+
+    #[test]
+    fn test_coerce_geojson_feature_collection_nested_warnings() {
+        let result = coerce_geojson(&json!({
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [999.0, 999.0]
+                    },
+                    "properties": {}
+                }
+            ]
+        }));
+        assert!(!result.is_error());
+        assert_eq!(result.warnings.len(), 2); // both lng and lat out of range
+    }
+
+    #[test]
+    fn test_coerce_geojson_polygon_coordinates() {
+        let result = coerce_geojson(&json!({
+            "type": "Polygon",
+            "coordinates": [[
+                [-5.93, 54.6],
+                [-5.92, 54.6],
+                [-5.92, 54.61],
+                [-5.93, 54.61],
+                [-5.93, 54.6]
+            ]]
+        }));
+        assert!(!result.is_error());
+        assert!(result.warnings.is_empty());
     }
 }

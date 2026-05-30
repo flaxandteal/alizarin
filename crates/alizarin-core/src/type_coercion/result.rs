@@ -12,6 +12,9 @@ pub struct CoercionResult {
     pub display_value: Value,
     /// Error message if coercion failed
     pub error: Option<String>,
+    /// Non-fatal warnings (e.g. out-of-range coordinates)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
     /// True when the datatype was unknown and the value was passed through unchanged
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub passthrough: bool,
@@ -23,6 +26,7 @@ impl CoercionResult {
             tile_data,
             display_value,
             error: None,
+            warnings: vec![],
             passthrough: false,
         }
     }
@@ -32,6 +36,7 @@ impl CoercionResult {
             tile_data: value.clone(),
             display_value: value,
             error: None,
+            warnings: vec![],
             passthrough: false,
         }
     }
@@ -42,6 +47,7 @@ impl CoercionResult {
             tile_data: value.clone(),
             display_value: value,
             error: None,
+            warnings: vec![],
             passthrough: true,
         }
     }
@@ -51,8 +57,21 @@ impl CoercionResult {
             tile_data: Value::Null,
             display_value: Value::Null,
             error: Some(message.into()),
+            warnings: vec![],
             passthrough: false,
         }
+    }
+
+    /// Add a warning to this result
+    pub fn with_warning(mut self, message: impl Into<String>) -> Self {
+        self.warnings.push(message.into());
+        self
+    }
+
+    /// Add multiple warnings to this result
+    pub fn with_warnings(mut self, messages: Vec<String>) -> Self {
+        self.warnings.extend(messages);
+        self
     }
 
     pub fn is_error(&self) -> bool {

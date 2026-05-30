@@ -38,7 +38,7 @@ use crate::graph::{
 };
 use crate::graph_mutator::{generate_uuid_v5, generate_uuid_v5_with_ns};
 use crate::skos::SkosCollection;
-use crate::type_coercion::normalize_date_string;
+use crate::type_coercion::{coerce_geojson, normalize_date_string};
 
 /// Options for business data CSV loading
 #[derive(Debug, Clone)]
@@ -263,7 +263,32 @@ fn coerce_value(
             }
         }
         "geojson-feature-collection" => match serde_json::from_str::<serde_json::Value>(raw) {
-            Ok(v) => Some(v),
+            Ok(v) => {
+                let result = coerce_geojson(&v);
+                if result.is_error() {
+                    ctx.diagnostics.push(CsvModelDiagnostic {
+                        level: DiagnosticLevel::Error,
+                        file: "business_data.csv".to_string(),
+                        line: Some(ctx.line),
+                        message: format!(
+                            "Invalid GeoJSON for node '{}': {}",
+                            node_label,
+                            result.error.unwrap_or_default()
+                        ),
+                    });
+                    None
+                } else {
+                    for warning in &result.warnings {
+                        ctx.diagnostics.push(CsvModelDiagnostic {
+                            level: DiagnosticLevel::Warning,
+                            file: "business_data.csv".to_string(),
+                            line: Some(ctx.line),
+                            message: format!("Node '{}': {}", node_label, warning),
+                        });
+                    }
+                    Some(result.tile_data)
+                }
+            }
             Err(_) => {
                 ctx.diagnostics.push(CsvModelDiagnostic {
                     level: DiagnosticLevel::Error,
