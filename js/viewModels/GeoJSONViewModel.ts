@@ -61,12 +61,6 @@ export class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
       }
       if (value !== null) {
         tile.data.set(nodeid, value);
-        // Warn on out-of-range coordinates
-        const warnings = validateGeoJSONCoordinates(value);
-        const nodeLabel = node.alias || node.nodeid;
-        for (const w of warnings) {
-          console.warn(`Node '${nodeLabel}': ${w}`);
-        }
       }
     }
 
@@ -104,6 +98,11 @@ export class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
   }
 
   __asTileData() {
+    // Validate on write path (producing tile data for save)
+    const warnings = validateGeoJSONCoordinates(this._value);
+    for (const w of warnings) {
+      console.warn(`GeoJSON: ${w}`);
+    }
     return this._value;
   }
 }

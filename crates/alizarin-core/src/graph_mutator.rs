@@ -334,16 +334,32 @@
 //!
 //! ---
 //!
+//! ### SetDescriptorFunction (ModelConformant)
+//!
+//! Sets the descriptor function for the graph, replacing any existing
+//! `primarydescriptors`-type function. Adds the specified function and removes
+//! any other descriptor function (including the default).
+//!
+//! **Parameters:**
+//! - `function_id` (String): Function ID (UUID or arbitrary string hashed to UUID v5)
+//!
+//! **Instruction:** `set_descriptor_function` (subject: function_id)
+//!
+//! ---
+//!
 //! ### SetDescriptorTemplate (AlwaysConformant)
 //!
 //! Sets or updates a descriptor template on the graph's descriptor function.
 //! The descriptor function is located (or created) automatically.
+//! For non-default functions (e.g. multicard descriptor), templates use
+//! `<node_alias>` placeholders resolved at runtime. For the default function,
+//! templates use `<Node Name>` placeholders resolved at build time.
 //!
 //! **Parameters:**
 //! - `descriptor_type` (String): Descriptor type key (e.g. `"name"`, `"slug"`,
 //!   `"description"`, `"map_popup"`)
-//! - `string_template` (String): Template with `<Node Name>` placeholders
-//!   (e.g. `"<First Name> <Last Name>"`)
+//! - `string_template` (String): Template with `<Node Name>` or `<node_alias>` placeholders
+//!   (e.g. `"<First Name> <Last Name>"` or `"<monument_name>"`)
 //!
 //! **Instruction:** `set_descriptor_template` (subject: descriptor_type, object: string_template)
 //!
@@ -1148,6 +1164,14 @@ pub struct DeleteWidgetParams {
     pub widget_mapping_id: String,
 }
 
+/// Parameters for setting the descriptor function on a graph, replacing any existing one
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetDescriptorFunctionParams {
+    /// Function ID — either a UUID or an arbitrary string (e.g. "com.flaxandteal.app/my-func")
+    /// which will be converted to a deterministic UUID v5.
+    pub function_id: String,
+}
+
 /// Parameters for adding a function mapping to a graph
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddFunctionParams {
@@ -1602,6 +1626,8 @@ pub enum GraphMutation {
     DeleteCard(DeleteCardParams),
     DeleteWidget(DeleteWidgetParams),
     AddFunction(AddFunctionParams),
+    /// Set the descriptor function for this graph, removing any other descriptor functions
+    SetDescriptorFunction(SetDescriptorFunctionParams),
     DeleteFunction(DeleteFunctionParams),
     DeleteNode(DeleteNodeParams),
     DeleteNodegroup(DeleteNodegroupParams),
@@ -1644,6 +1670,7 @@ impl GraphMutation {
             GraphMutation::DeleteCard(_) => MutationConformance::AlwaysConformant,
             GraphMutation::DeleteWidget(_) => MutationConformance::AlwaysConformant,
             GraphMutation::AddFunction(_) => MutationConformance::ModelConformant,
+            GraphMutation::SetDescriptorFunction(_) => MutationConformance::ModelConformant,
             GraphMutation::DeleteFunction(_) => MutationConformance::AlwaysConformant,
             GraphMutation::DeleteNode(_) => MutationConformance::AlwaysConformant,
             GraphMutation::DeleteNodegroup(_) => MutationConformance::AlwaysConformant,
@@ -2110,6 +2137,7 @@ fn apply_mutation_with_extensions(
         GraphMutation::DeleteCard(params) => apply_delete_card(graph, params),
         GraphMutation::DeleteWidget(params) => apply_delete_widget(graph, params),
         GraphMutation::AddFunction(params) => apply_add_function(graph, params),
+        GraphMutation::SetDescriptorFunction(params) => apply_set_descriptor_function(graph, params),
         GraphMutation::DeleteFunction(params) => apply_delete_function(graph, params),
         GraphMutation::DeleteNode(params) => apply_delete_node(graph, params),
         GraphMutation::DeleteNodegroup(params) => apply_delete_nodegroup(graph, params),
@@ -2642,6 +2670,47 @@ fn apply_add_function(
         config: params
             .config
             .unwrap_or_else(|| serde_json::Value::Object(serde_json::Map::new())),
+    });
+
+    Ok(())
+}
+
+fn apply_set_descriptor_function(
+    graph: &mut StaticGraph,
+    params: SetDescriptorFunctionParams,
+) -> Result<(), MutationError> {
+    use crate::graph::StaticFunctionsXGraphs;
+    use crate::graph::DESCRIPTOR_FUNCTION_ID;
+
+    let function_id = resolve_function_id(&params.function_id);
+    let fxg = graph.functions_x_graphs.get_or_insert_with(Vec::new);
+
+    // Remove all existing descriptor functions (default and any others)
+    // A descriptor function is identified by either:
+    // - Being the well-known default descriptor function ID
+    // - Having descriptor_types in its config
+    fxg.retain(|f| {
+        if f.function_id == DESCRIPTOR_FUNCTION_ID {
+            return false;
+        }
+        if f.function_id == function_id {
+            return false; // Remove existing entry for this function too (will re-add)
+        }
+        if f.config
+            .as_object()
+            .is_some_and(|c| c.contains_key("descriptor_types"))
+        {
+            return false;
+        }
+        true
+    });
+
+    // Add the new descriptor function with empty config
+    fxg.push(StaticFunctionsXGraphs {
+        id: uuid::Uuid::new_v4().to_string(),
+        function_id,
+        graph_id: graph.graphid.clone(),
+        config: serde_json::Value::Object(serde_json::Map::new()),
     });
 
     Ok(())
@@ -5036,6 +5105,11 @@ impl GraphInstruction {
                 function_id: self.subject.clone(),
                 config: self.params.get("config").cloned(),
             })),
+            "set_descriptor_function" => Ok(GraphMutation::SetDescriptorFunction(
+                SetDescriptorFunctionParams {
+                    function_id: self.subject.clone(),
+                },
+            )),
             "delete_function" => Ok(GraphMutation::DeleteFunction(DeleteFunctionParams {
                 function_mapping_id: self.subject.clone(),
             })),
@@ -5260,7 +5334,7 @@ impl GraphInstruction {
                 MutationConformance::BranchConformant
             }
             // Subgraph and function operations - only valid for models
-            "add_subgraph" | "update_subgraph" | "add_function" => {
+            "add_subgraph" | "update_subgraph" | "add_function" | "set_descriptor_function" => {
                 MutationConformance::ModelConformant
             }
             // Collection changes - valid for both
@@ -8118,6 +8192,17 @@ add_node,parent_group,other,Other,string,1,,,
             .expect("Non-default function should still exist");
         let dt = func.config["descriptor_types"]["name"].as_object().unwrap();
         assert_eq!(dt["string_template"], "<Name> - <Description>");
+        // Non-default functions store empty nodegroup_id (resolved at runtime)
+        assert_eq!(dt["nodegroup_id"], "");
+        // Empty defaults seeded for other descriptor types
+        assert_eq!(
+            func.config["descriptor_types"]["description"]["string_template"],
+            ""
+        );
+        assert_eq!(
+            func.config["descriptor_types"]["map_popup"]["string_template"],
+            ""
+        );
     }
 
     #[test]

@@ -989,6 +989,16 @@ fn create_pseudo_value_from_json(
                 config.as_ref(),
                 extension_registry,
             );
+            // Surface coercion warnings
+            if !coerced.warnings.is_empty() {
+                let node_alias = node.alias.as_deref().unwrap_or(&node.nodeid);
+                for warning in &coerced.warnings {
+                    eprintln!(
+                        "Warning: node '{}' ({}): {}",
+                        node_alias, node.datatype, warning
+                    );
+                }
+            }
             if !coerced.is_null() && coerced.error.is_none() {
                 coerced.tile_data
             } else {
@@ -1046,6 +1056,17 @@ fn create_pseudo_value_from_leaf(
         config.as_ref(),
         extension_registry,
     );
+
+    // Surface coercion warnings (e.g. out-of-range coordinates)
+    if !coerced.warnings.is_empty() {
+        let node_alias = node.alias.as_deref().unwrap_or(&node.nodeid);
+        for warning in &coerced.warnings {
+            eprintln!(
+                "Warning: node '{}' ({}): {}",
+                node_alias, node.datatype, warning
+            );
+        }
+    }
 
     // In strict mode, report coercion errors
     if strict {

@@ -18,6 +18,8 @@ struct BatchResult<'a> {
     business_data: BatchBusinessData,
     errors: &'a [String],
     error_count: usize,
+    #[serde(skip_serializing_if = "<[String]>::is_empty")]
+    warnings: &'a [String],
 }
 
 #[derive(serde::Serialize)]
@@ -279,6 +281,7 @@ pub fn batch_trees_to_tiles(
     let graph_id = graph.graph_id();
     let mut resources: Vec<alizarin_core::StaticResource> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
+    let warnings: Vec<String> = Vec::new();
     let ext_registry = crate::extension_registry::build_extension_registry();
 
     // Process each tree
@@ -350,6 +353,7 @@ pub fn batch_trees_to_tiles(
         business_data: BatchBusinessData { resources },
         errors: &errors,
         error_count: errors.len(),
+        warnings: &warnings,
     };
 
     let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);

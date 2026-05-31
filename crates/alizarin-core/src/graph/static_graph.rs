@@ -539,86 +539,106 @@ impl StaticGraph {
         use crate::graph::StaticFunctionsXGraphs;
         use std::collections::HashSet;
 
-        // Extract placeholders and resolve nodegroup_id
-        let placeholders = IndexedGraph::extract_placeholders(string_template);
-        if placeholders.is_empty() {
-            return Err(format!(
-                "Template '{}' has no <Node Name> placeholders",
-                string_template
-            ));
-        }
-
-        let mut nodegroup_ids = HashSet::new();
-        for placeholder in &placeholders {
-            let node_name = placeholder.trim_start_matches('<').trim_end_matches('>');
-            let node = self
-                .nodes
-                .iter()
-                .find(|n| n.name == node_name)
-                .ok_or_else(|| format!("Node '{}' from template not found in graph", node_name))?;
-            let ng_id = node
-                .nodegroup_id
-                .as_ref()
-                .ok_or_else(|| format!("Node '{}' has no nodegroup_id", node_name))?;
-            nodegroup_ids.insert(ng_id.clone());
-        }
-
         let fxg = self.functions_x_graphs.get_or_insert_with(Vec::new);
 
         // Find existing descriptor function entry:
-        // 1. Exact match on the default descriptor function ID
-        // 2. Any function that already has descriptor_types config
-        // 3. Any function with empty/null config (e.g. just added via add_function)
+        // 1. Non-default function with empty/null config (just added via add_function,
+        //    intended to replace the default descriptor — e.g. multicard descriptor)
+        // 2. Non-default function that already has descriptor_types config
+        // 3. Exact match on the default descriptor function ID
         let idx = fxg
             .iter()
-            .position(|f| f.function_id == DESCRIPTOR_FUNCTION_ID)
+            .position(|f| {
+                f.function_id != DESCRIPTOR_FUNCTION_ID
+                    && (f.config.is_null() || f.config == serde_json::json!({}))
+            })
             .or_else(|| {
                 fxg.iter().position(|f| {
-                    f.config
-                        .as_object()
-                        .is_some_and(|c| c.contains_key("descriptor_types"))
+                    f.function_id != DESCRIPTOR_FUNCTION_ID
+                        && f.config
+                            .as_object()
+                            .is_some_and(|c| c.contains_key("descriptor_types"))
                 })
             })
             .or_else(|| {
                 fxg.iter()
-                    .position(|f| f.config.is_null() || f.config == serde_json::json!({}))
+                    .position(|f| f.function_id == DESCRIPTOR_FUNCTION_ID)
             });
 
-        // The default descriptor function requires all placeholders to be in
-        // a single nodegroup. Other descriptor functions (e.g. Multi-card
-        // Resource Descriptor) can span multiple nodegroups.
-        // Exception: slug is alizarin-specific (not in Arches) and can always
-        // span multiple nodegroups since evaluation handles it.
         let is_default_function = idx
             .map(|i| fxg[i].function_id == DESCRIPTOR_FUNCTION_ID)
             .unwrap_or(true); // will create default if no match
 
-        if is_default_function && nodegroup_ids.len() != 1 && descriptor_type != "slug" {
-            return Err(format!(
-                "Template placeholders span {} nodegroups ({:?}), expected exactly 1",
-                nodegroup_ids.len(),
-                nodegroup_ids
-            ));
-        }
+        // Non-default functions (e.g. multicard descriptor) resolve templates
+        // at runtime using node aliases — alizarin stores the template verbatim
+        // with empty nodegroup_id. Default function requires name-based resolution
+        // to a single nodegroup at build time.
+        let entry = if is_default_function {
+            let placeholders = IndexedGraph::extract_placeholders(string_template);
+            if placeholders.is_empty() {
+                return Err(format!(
+                    "Template '{}' has no <Node Name> placeholders",
+                    string_template
+                ));
+            }
 
-        let existing = idx.map(|i| &mut fxg[i]);
+            let mut nodegroup_ids = HashSet::new();
+            for placeholder in &placeholders {
+                let node_name = placeholder.trim_start_matches('<').trim_end_matches('>');
+                let node = self
+                    .nodes
+                    .iter()
+                    .find(|n| n.name == node_name)
+                    .ok_or_else(|| {
+                        format!("Node '{}' from template not found in graph", node_name)
+                    })?;
+                let ng_id = node
+                    .nodegroup_id
+                    .as_ref()
+                    .ok_or_else(|| format!("Node '{}' has no nodegroup_id", node_name))?;
+                nodegroup_ids.insert(ng_id.clone());
+            }
 
-        let entry = if nodegroup_ids.len() == 1 {
+            if nodegroup_ids.len() != 1 && descriptor_type != "slug" {
+                return Err(format!(
+                    "Template placeholders span {} nodegroups ({:?}), expected exactly 1",
+                    nodegroup_ids.len(),
+                    nodegroup_ids
+                ));
+            }
+
             let nodegroup_id = nodegroup_ids.into_iter().next().unwrap();
             serde_json::json!({
                 "nodegroup_id": nodegroup_id,
                 "string_template": string_template,
             })
         } else {
-            let ids: Vec<String> = nodegroup_ids.into_iter().collect();
+            // Non-default: store template as-is with empty nodegroup_id.
+            // The function resolves aliases at runtime.
             serde_json::json!({
-                "nodegroup_ids": ids,
+                "nodegroup_id": "",
                 "string_template": string_template,
             })
         };
 
+        let existing = idx.map(|i| &mut fxg[i]);
+
         if let Some(func) = existing {
-            if !func.config.is_object() {
+            let needs_seed = !func.config.is_object()
+                || !func
+                    .config
+                    .as_object()
+                    .is_some_and(|c| c.contains_key("descriptor_types"));
+            if needs_seed && !is_default_function {
+                // Seed all descriptor types with empty defaults for non-default functions
+                func.config = serde_json::json!({
+                    "descriptor_types": {
+                        "name": {"nodegroup_id": "", "string_template": ""},
+                        "description": {"nodegroup_id": "", "string_template": ""},
+                        "map_popup": {"nodegroup_id": "", "string_template": ""},
+                    }
+                });
+            } else if !func.config.is_object() {
                 func.config = serde_json::json!({"descriptor_types": {}});
             }
             let config = func.config.as_object_mut().unwrap();

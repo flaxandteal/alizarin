@@ -101,6 +101,11 @@ pub fn coerce_value_with_registry(
             }
             // Unknown type - pass through unchanged but flag as passthrough
             CoercionResult::success_passthrough(value.clone())
+                .with_warning(format!(
+                    "Datatype '{}' has no coercion handler — data passed through without validation. \
+                     Ensure the extension is registered (e.g. import alizarin_filelist for file-list).",
+                    datatype
+                ))
         }
     }
 }
