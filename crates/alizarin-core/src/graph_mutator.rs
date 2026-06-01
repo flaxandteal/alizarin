@@ -1708,6 +1708,10 @@ pub struct MutatorOptions {
     pub autocreate_widget: bool,
     /// Optional ontology validator for class/property validation
     pub ontology_validator: Option<crate::ontology::OntologyValidator>,
+    /// Skip stamping a new publication ID on the graph.
+    /// Useful when applying collection assignments to a branch that has
+    /// already been captured by a resource model via add_subgraph.
+    pub skip_publication: bool,
 }
 
 impl Default for MutatorOptions {
@@ -1716,6 +1720,7 @@ impl Default for MutatorOptions {
             autocreate_card: true,
             autocreate_widget: true,
             ontology_validator: None,
+            skip_publication: false,
         }
     }
 }
@@ -4433,6 +4438,7 @@ impl From<MutationRequestOptions> for MutatorOptions {
             autocreate_card: opts.autocreate_card,
             autocreate_widget: opts.autocreate_widget,
             ontology_validator: None,
+            skip_publication: false,
         }
     }
 }
@@ -4569,7 +4575,9 @@ pub fn apply_mutations_create_from_json(
 
                     // Apply remaining mutations to the new graph
                     if mutations.is_empty() {
-                        stamp_publication(&mut new_graph);
+                        if !options.skip_publication {
+                            stamp_publication(&mut new_graph);
+                        }
                         new_graph.build_indices();
                         Ok(new_graph)
                     } else {
@@ -4664,7 +4672,9 @@ pub fn apply_mutations_with_extensions(
     }
 
     // Stamp publication after applying mutations
-    stamp_publication(&mut result);
+    if !options.skip_publication {
+        stamp_publication(&mut result);
+    }
 
     result.build_indices();
     Ok(result)
@@ -5479,7 +5489,9 @@ pub fn build_graph_from_instructions_with_extensions(
     let remaining: Vec<GraphInstruction> = iter.collect();
     if remaining.is_empty() {
         let mut graph = graph;
-        stamp_publication(&mut graph);
+        if !options.skip_publication {
+            stamp_publication(&mut graph);
+        }
         return Ok(graph);
     }
 
@@ -8615,6 +8627,7 @@ add_node,parent_group,other,Other,string,1,,,
             autocreate_card: true,
             autocreate_widget: false,
             ontology_validator: None,
+            skip_publication: false,
         };
 
         // Add a semantic node (no widget)

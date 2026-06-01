@@ -404,17 +404,19 @@ fn build_graph_from_instructions(instructions_json: &str) -> PyResult<String> {
 /// Returns:
 ///     The built graph as JSON string
 #[pyfunction]
-#[pyo3(signature = (csv_text, autocreate_card=true, autocreate_widget=true, ontology_validator=None))]
+#[pyo3(signature = (csv_text, autocreate_card=true, autocreate_widget=true, ontology_validator=None, skip_publication=false))]
 fn build_graph_from_csv(
     csv_text: &str,
     autocreate_card: bool,
     autocreate_widget: bool,
     ontology_validator: Option<PyOntologyValidator>,
+    skip_publication: bool,
 ) -> PyResult<String> {
     let options = MutatorOptions {
         autocreate_card,
         autocreate_widget,
         ontology_validator: ontology_validator.map(|v| v.inner),
+        skip_publication,
     };
 
     let instructions = parse_instructions_from_csv(csv_text)
@@ -537,6 +539,7 @@ fn build_graph_from_model_csvs(
         autocreate_card,
         autocreate_widget,
         ontology_validator: None,
+        skip_publication: false,
     };
 
     let (graph, collections) = csv_model_loader::build_graph_from_model_csvs(
