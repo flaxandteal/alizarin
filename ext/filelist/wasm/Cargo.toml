@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-filelist-wasm"
-version = "2.0.0-alpha.115"
+version = "2.0.0-alpha.116"
 edition = "2021"
 description = "WASM bindings for alizarin-filelist-core"
 
