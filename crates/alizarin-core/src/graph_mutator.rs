@@ -1421,6 +1421,31 @@ pub struct CoppiceSubgraphParams {
 }
 
 // =============================================================================
+// Update Widget Config
+// =============================================================================
+
+/// Parameters for updating a widget's config (merging keys into existing config)
+///
+/// ## CSV Format
+///
+/// ```csv
+/// action,subject,object,params.config
+/// update_widget_config,location,,"{""centerX"": -5.93, ""centerY"": 54.59}"
+/// ```
+///
+/// - **subject**: node alias (or node ID) that the widget is attached to
+/// - **params.config**: JSON object whose keys are merged into the widget's existing config
+///
+/// **Instruction:** `update_widget_config` (subject: node_alias)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateWidgetConfigParams {
+    /// Node alias or node ID to find the widget mapping for
+    pub node_id: String,
+    /// Config keys to merge into the existing widget config
+    pub config: serde_json::Value,
+}
+
+// =============================================================================
 // Extension Mutations
 // =============================================================================
 
@@ -1647,6 +1672,8 @@ pub enum GraphMutation {
     CreateGraph(CreateGraphParams),
     /// Set sourcebranchpublication_id on a subtree rooted at a given alias
     CoppiceSubgraph(CoppiceSubgraphParams),
+    /// Merge config keys into an existing widget's config (found by node alias)
+    UpdateWidgetConfig(UpdateWidgetConfigParams),
     /// Extension mutation - delegated to a registered handler
     Extension(ExtensionMutationParams),
 }
@@ -1689,6 +1716,8 @@ impl GraphMutation {
             GraphMutation::CreateGraph(_) => MutationConformance::NonConformant,
             // Coppice subgraph - valid for both branches and models
             GraphMutation::CoppiceSubgraph(_) => MutationConformance::AlwaysConformant,
+            // Widget config update - valid for both branches and models
+            GraphMutation::UpdateWidgetConfig(_) => MutationConformance::AlwaysConformant,
             // Extension mutations - conformance is specified in params
             GraphMutation::Extension(params) => params.conformance,
         }
@@ -2155,6 +2184,7 @@ fn apply_mutation_with_extensions(
         GraphMutation::RenameGraph(params) => apply_rename_graph(graph, params),
         GraphMutation::SetDescriptorTemplate(params) => apply_set_descriptor_template(graph, params),
         GraphMutation::CoppiceSubgraph(params) => apply_coppice_subgraph(graph, params),
+        GraphMutation::UpdateWidgetConfig(params) => apply_update_widget_config(graph, params),
         GraphMutation::CreateGraph(_) => {
             Err(MutationError::Other(
                 "CreateGraph cannot be used as a regular mutation. Use apply_mutations_create_from_json instead.".to_string()
@@ -2636,6 +2666,46 @@ fn apply_delete_widget(
     // Remove the widget mapping
     if let Some(ref mut cxnxws) = graph.cards_x_nodes_x_widgets {
         cxnxws.retain(|c| c.id != params.widget_mapping_id);
+    }
+
+    Ok(())
+}
+
+fn apply_update_widget_config(
+    graph: &mut StaticGraph,
+    params: UpdateWidgetConfigParams,
+) -> Result<(), MutationError> {
+    // Resolve node by alias first, then by ID
+    let node_id = graph
+        .find_node_by_alias(&params.node_id)
+        .or_else(|| graph.nodes.iter().find(|n| n.nodeid == params.node_id))
+        .ok_or_else(|| MutationError::NodeNotFound(params.node_id.clone()))?
+        .nodeid
+        .clone();
+
+    // Find the widget mapping for this node
+    let cxnxw = graph
+        .cards_x_nodes_x_widgets
+        .as_mut()
+        .and_then(|cxnxws| cxnxws.iter_mut().find(|c| c.node_id == node_id))
+        .ok_or_else(|| {
+            MutationError::WidgetNotFound(format!("no widget for node {}", params.node_id))
+        })?;
+
+    // Merge provided config keys into existing config
+    if let serde_json::Value::Object(patch) = params.config {
+        if let serde_json::Value::Object(ref mut existing) = cxnxw.config {
+            for (key, value) in patch {
+                existing.insert(key, value);
+            }
+        } else {
+            // Existing config isn't an object — replace it
+            cxnxw.config = serde_json::Value::Object(patch);
+        }
+    } else {
+        return Err(MutationError::Other(
+            "update_widget_config: config must be a JSON object".to_string(),
+        ));
     }
 
     Ok(())
@@ -5282,6 +5352,17 @@ impl GraphInstruction {
                     subtitle: self.get_translatable_map("subtitle"),
                     author: self.get_str("author"),
                 }))
+            }
+            "update_widget_config" => {
+                let config = self.params.get("config").cloned().ok_or_else(|| {
+                    MutationError::Other("update_widget_config requires params.config".to_string())
+                })?;
+                Ok(GraphMutation::UpdateWidgetConfig(
+                    UpdateWidgetConfigParams {
+                        node_id: self.subject.clone(),
+                        config,
+                    },
+                ))
             }
             "coppice_subgraph" => {
                 let publication_id = self.get_str("publication_id").ok_or_else(|| {
