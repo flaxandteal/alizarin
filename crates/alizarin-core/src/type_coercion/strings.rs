@@ -159,11 +159,7 @@ pub fn coerce_geojson(value: &Value) -> CoercionResult {
                 // Be permissive - some systems use custom types
             }
 
-            // Check coordinate ranges
-            let mut warnings = Vec::new();
-            validate_geojson_coordinates(value, &mut warnings);
-
-            CoercionResult::success_same(value.clone()).with_warnings(warnings)
+            CoercionResult::success_same(value.clone())
         }
         _ => CoercionResult::error(format!(
             "GeoJSON must be an object, got {:?}",
@@ -175,7 +171,11 @@ pub fn coerce_geojson(value: &Value) -> CoercionResult {
 /// Recursively validate coordinates in a GeoJSON value.
 /// GeoJSON coordinates are [longitude, latitude, ...] — longitude in -180..180,
 /// latitude in -90..90.
-fn validate_geojson_coordinates(value: &Value, warnings: &mut Vec<String>) {
+///
+/// Not called on the default coercion path for performance. Available for
+/// explicit use (e.g. CSV loader, write-path validation).
+#[allow(dead_code)]
+pub(crate) fn validate_geojson_coordinates(value: &Value, warnings: &mut Vec<String>) {
     if let Value::Object(obj) = value {
         let geo_type = obj.get("type").and_then(|t| t.as_str());
         match geo_type {
@@ -212,6 +212,7 @@ fn validate_geojson_coordinates(value: &Value, warnings: &mut Vec<String>) {
 /// Recursively check coordinate arrays for out-of-range values.
 /// A coordinate position is [longitude, latitude, ...].
 /// Nested arrays (e.g. polygon rings, multi-geometries) are traversed.
+#[allow(dead_code)]
 fn check_coordinate_ranges(coords: &Value, warnings: &mut Vec<String>) {
     if let Value::Array(arr) = coords {
         // A position is an array of numbers: [lng, lat, ...]
@@ -440,45 +441,15 @@ mod tests {
     }
 
     #[test]
-    fn test_coerce_geojson_out_of_range_longitude() {
+    fn test_coerce_geojson_out_of_range_coordinates_no_validation() {
+        // Validation is skipped on the read/coercion path for performance.
+        // Out-of-range coordinates pass through without warnings.
         let result = coerce_geojson(&json!({
             "type": "Point",
-            "coordinates": [200.0, 54.6]
+            "coordinates": [200.0, -100.0]
         }));
         assert!(!result.is_error());
-        assert_eq!(result.warnings.len(), 1);
-        assert!(result.warnings[0].contains("longitude"));
-        assert!(result.warnings[0].contains("200"));
-    }
-
-    #[test]
-    fn test_coerce_geojson_out_of_range_latitude() {
-        let result = coerce_geojson(&json!({
-            "type": "Point",
-            "coordinates": [-5.93, -100.0]
-        }));
-        assert!(!result.is_error());
-        assert_eq!(result.warnings.len(), 1);
-        assert!(result.warnings[0].contains("latitude"));
-    }
-
-    #[test]
-    fn test_coerce_geojson_feature_collection_nested_warnings() {
-        let result = coerce_geojson(&json!({
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "geometry": {
-                        "type": "Point",
-                        "coordinates": [999.0, 999.0]
-                    },
-                    "properties": {}
-                }
-            ]
-        }));
-        assert!(!result.is_error());
-        assert_eq!(result.warnings.len(), 2); // both lng and lat out of range
+        assert!(result.warnings.is_empty());
     }
 
     #[test]

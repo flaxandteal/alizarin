@@ -1324,11 +1324,16 @@ fn batch_trees_to_tiles(
     };
 
     // Build alias→collection map for concept label resolution (same as json_tree_to_tiles)
-    let label_cache: Option<Arc<CoreRdmCache>> =
-        rdm_cache_py::get_global_rdm_cache().map(|cache| Arc::new(cache.inner().clone()));
-    let mut alias_map = build_alias_to_collection_from_graph(&graph);
+    let alias_map = build_alias_to_collection_from_graph(&graph);
+    // Only clone the RDM cache if there are actually resolvable fields in the graph
+    let label_cache: Option<Arc<CoreRdmCache>> = if alias_map.is_empty() {
+        None
+    } else {
+        rdm_cache_py::get_global_rdm_cache().map(|cache| Arc::new(cache.inner().clone()))
+    };
     // When from_camel is true, trees have camelCase keys but aliases are snake_case.
     // Add camelCase variants so core_resolve_labels can match either form.
+    let mut alias_map = alias_map;
     if from_camel {
         let camel_entries: Vec<_> = alias_map
             .iter()
