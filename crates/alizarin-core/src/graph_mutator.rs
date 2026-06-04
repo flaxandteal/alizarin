@@ -1373,6 +1373,10 @@ pub struct CreateGraphParams {
     /// Optional description
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Ontology ID(s) for the graph. Accepts a single string or an array.
+    /// This sets the graph-level ontology (distinct from node-level ontology classes).
+    #[serde(default, with = "crate::graph::serde_helpers::optional_string_or_vec")]
+    pub ontology_id: Option<Vec<String>>,
 }
 
 /// Parameters for renaming a graph (updating name, description, etc.)
@@ -4643,6 +4647,11 @@ pub fn apply_mutations_create_from_json(
                         new_graph.description = Some(StaticTranslatableString::from_string(&desc));
                     }
 
+                    // Set graph-level ontology_id if provided
+                    if params.ontology_id.is_some() {
+                        new_graph.ontology_id = params.ontology_id;
+                    }
+
                     // Apply remaining mutations to the new graph
                     if mutations.is_empty() {
                         if !options.skip_publication {
@@ -4845,6 +4854,7 @@ pub fn create_skeleton_graph(
         "graphid": graphid,
         "name": { "en": name },
         "isresource": is_resource,
+        "is_active": is_resource,
         "is_editable": true,
         "config": {},
         "template_id": "50000000-0000-0000-0000-000000000001",
@@ -4908,8 +4918,8 @@ pub fn create_skeleton_graph(
 ///
 /// | Action | Subject | Object | Key Params |
 /// |--------|---------|--------|------------|
-/// | `create_model` | root_alias | graphid (optional) | `name`, `ontology_class`, `slug` |
-/// | `create_branch` | root_alias | graphid (optional) | `name`, `ontology_class`, `slug` |
+/// | `create_model` | root_alias | graphid (optional) | `name`, `ontology_class`, `ontology_id`, `slug` |
+/// | `create_branch` | root_alias | graphid (optional) | `name`, `ontology_class`, `ontology_id`, `slug` |
 /// | `add_node` | parent_alias | new_alias | `datatype`, `name`, `ontology_class`, `cardinality`, `parent_property` |
 /// | `add_edge` | domain_alias | range_alias | `ontology_property` |
 /// | `add_nodegroup` | node_alias | (unused) | `cardinality` |
@@ -5477,6 +5487,12 @@ impl GraphInstruction {
         // If object is provided, use it as the graphid override
         let mut graph =
             create_skeleton_graph(&name, root_alias, is_resource, ontology_classes.as_deref());
+
+        // Set graph-level ontology_id if provided
+        let ontology_ids = self.get_class_list("ontology_id");
+        if ontology_ids.is_some() {
+            graph.ontology_id = ontology_ids;
+        }
 
         // Override graphid if object is provided and non-empty
         if !self.object.is_empty() {
