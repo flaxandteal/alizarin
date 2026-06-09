@@ -655,7 +655,10 @@ impl StaticGraph {
                 config: serde_json::json!({ "descriptor_types": dt_map }),
                 function_id: DESCRIPTOR_FUNCTION_ID.to_string(),
                 graph_id: self.graphid.clone(),
-                id: uuid::Uuid::new_v4().to_string(),
+                id: crate::graph_mutator::generate_uuid_v5(
+                    ("function", Some(&self.graphid)),
+                    DESCRIPTOR_FUNCTION_ID,
+                ),
             });
         }
 

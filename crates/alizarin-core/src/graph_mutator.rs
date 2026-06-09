@@ -2743,7 +2743,7 @@ fn apply_add_function(
     }
 
     fxg.push(StaticFunctionsXGraphs {
-        id: uuid::Uuid::new_v4().to_string(),
+        id: generate_uuid_v5(("function", Some(&graph.graphid)), &function_id),
         function_id,
         graph_id: graph.graphid.clone(),
         config: params
@@ -2786,7 +2786,7 @@ fn apply_set_descriptor_function(
 
     // Add the new descriptor function with empty config
     fxg.push(StaticFunctionsXGraphs {
-        id: uuid::Uuid::new_v4().to_string(),
+        id: generate_uuid_v5(("function", Some(&graph.graphid)), &function_id),
         function_id,
         graph_id: graph.graphid.clone(),
         config: serde_json::Value::Object(serde_json::Map::new()),
