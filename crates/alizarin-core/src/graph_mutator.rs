@@ -496,16 +496,46 @@ pub fn generate_uuid_v5_with_ns(
     Uuid::new_v5(&namespace, key.as_bytes()).to_string()
 }
 
-/// Convert a display name to a slug (lowercase, spaces to underscores)
+/// Convert a display name to a safe slug (lowercase, alphanumeric and underscores only).
+///
+/// Truncates to 80 characters by default.
 ///
 /// # Example
 /// ```
 /// use alizarin_core::graph_mutator::slugify;
 /// assert_eq!(slugify("Heritage Item"), "heritage_item");
 /// assert_eq!(slugify("My Test Graph"), "my_test_graph");
+/// assert_eq!(
+///     slugify("ABC-123  (https://a.b.example.com/abc4/234?etc=nme-123)"),
+///     "abc_123_https_a_b_example_com_abc4_234_etc_nme_123"
+/// );
 /// ```
 pub fn slugify(name: &str) -> String {
-    name.to_lowercase().replace(' ', "_")
+    slugify_with_max_length(name, 80)
+}
+
+pub fn slugify_with_max_length(name: &str, max_length: usize) -> String {
+    let mut result = String::with_capacity(name.len());
+    let mut prev_sep = true;
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() {
+            result.push(c.to_ascii_lowercase());
+            prev_sep = false;
+        } else if !prev_sep {
+            result.push('_');
+            prev_sep = true;
+        }
+    }
+    if result.ends_with('_') {
+        result.pop();
+    }
+    if result.len() > max_length {
+        result.truncate(max_length);
+        while result.ends_with('_') {
+            result.pop();
+        }
+    }
+    result
 }
 
 // =============================================================================
@@ -3131,10 +3161,8 @@ fn apply_change_node_type(
         node_mut.description = Some(StaticTranslatableString::from_string(&description));
     }
     if let Some(serde_json::Value::Object(map)) = params.config {
-        // Merge config into existing
-        for (k, v) in map {
-            node_mut.config.insert(k, v);
-        }
+        // Replace config — changing datatype means old config keys are stale
+        node_mut.config = map.into_iter().collect();
     }
 
     // Update options

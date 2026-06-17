@@ -31,6 +31,10 @@ describe('Utils', () => {
       expect(slug.length).toBeLessThanOrEqual(20);
     });
 
+    it('should handle strings containing URLs', () => {
+      expect(slugify('ABC-123  (https://a.b.example.com/abc4/234?etc=nme-123)')).toBe('abc-123-httpsabexamp');
+    });
+
     it('should handle empty strings', () => {
       expect(slugify('')).toBe('');
       expect(slugify(null)).toBe('null');
