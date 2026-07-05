@@ -286,6 +286,16 @@ impl WASMResourceModelWrapper {
 
         // Create and register the core in the WASM-specific registry
         let core = ResourceModelWrapperCore::new(wkrm.clone(), Arc::new(core_graph), default_allow);
+
+        // Also register in the core model permissions registry for cross-backend consistency
+        alizarin_core::register_model_permissions(
+            &graph_id,
+            alizarin_core::ModelPermissions {
+                default_allow,
+                permitted_nodegroups: core.model_access.get_permitted_nodegroups_rules().clone(),
+            },
+        );
+
         MODEL_REGISTRY.with(|registry| {
             registry
                 .borrow_mut()
@@ -691,6 +701,7 @@ impl WASMResourceModelWrapper {
     #[wasm_bindgen(js_name = setDefaultAllowAllNodegroups)]
     pub fn set_default_allow_all_nodegroups(&mut self, default_allow: bool) {
         self.with_core_mut(|core| core.set_default_allow_all_nodegroups(default_allow));
+        alizarin_core::update_model_default_allow(&self.graph_id, default_allow);
     }
 
     /// Set permitted nodegroups with support for both boolean and conditional rules.
@@ -745,7 +756,8 @@ impl WASMResourceModelWrapper {
             )));
         }
 
-        self.with_core_mut(|core| core.set_permitted_nodegroups_rules(perms));
+        self.with_core_mut(|core| core.set_permitted_nodegroups_rules(perms.clone()));
+        alizarin_core::update_model_permitted_nodegroups(&self.graph_id, perms);
 
         Ok(())
     }

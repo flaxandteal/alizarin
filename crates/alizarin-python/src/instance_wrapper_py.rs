@@ -7,6 +7,8 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::collections::{HashMap, HashSet};
 
+use std::sync::Arc;
+
 use alizarin_core::{
     GraphModelAccess, PermissionRule, PopulateResult as CorePopulateResult, PseudoListCore,
     PseudoValueCore, ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult,
@@ -150,8 +152,18 @@ impl PyResourceInstanceWrapperCore {
             ))
         })?;
 
-        // Build model access
-        let model_access = GraphModelAccess::from_graph(&graph);
+        // Inherit permissions from the model wrapper via the registry.
+        // Falls back to default_allow: true if no model has been registered.
+        let model_perms = alizarin_core::get_model_permissions(&graph_id);
+        let default_allow = model_perms
+            .as_ref()
+            .map(|p| p.default_allow)
+            .unwrap_or(true);
+        let mut model_access =
+            GraphModelAccess::new_eager(Arc::new((*graph).clone()), default_allow);
+        if let Some(perms) = model_perms {
+            model_access.set_permitted_nodegroups_rules(perms.permitted_nodegroups);
+        }
 
         Ok(PyResourceInstanceWrapperCore {
             inner: ResourceInstanceWrapperCore::new(graph_id.clone()),

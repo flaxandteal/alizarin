@@ -799,7 +799,20 @@ impl NapiResourceInstanceWrapper {
             ))
         })?;
 
-        let model_access = GraphModelAccess::from_graph(&graph);
+        // Inherit permissions from the model wrapper via the registry.
+        // Falls back to default_allow: true if no model has been registered
+        // (backward compat with direct construction).
+        let model_perms = alizarin_core::get_model_permissions(&graph_id);
+        let default_allow = model_perms
+            .as_ref()
+            .map(|p| p.default_allow)
+            .unwrap_or(true);
+        let mut model_access =
+            GraphModelAccess::new_eager(Arc::new((*graph).clone()), default_allow);
+        if let Some(perms) = model_perms {
+            model_access.set_permitted_nodegroups_rules(perms.permitted_nodegroups);
+        }
+
         let mut core = ResourceInstanceWrapperCore::new(graph_id.clone());
         core.set_cached_indices(&model_access);
 
@@ -1668,6 +1681,15 @@ impl NapiResourceModelWrapper {
 
         let model_access = GraphModelAccess::new_eager(graph_arc, default_allow);
 
+        // Register permissions so instance wrappers can inherit them
+        alizarin_core::register_model_permissions(
+            &graph_id,
+            alizarin_core::ModelPermissions {
+                default_allow,
+                permitted_nodegroups: model_access.get_permitted_nodegroups_rules().clone(),
+            },
+        );
+
         Ok(NapiResourceModelWrapper { model_access })
     }
 
@@ -1683,6 +1705,15 @@ impl NapiResourceModelWrapper {
         alizarin_core::register_graph(&graph_id, Arc::clone(&graph_arc));
 
         let model_access = GraphModelAccess::new_eager(graph_arc, default_allow);
+
+        // Register permissions so instance wrappers can inherit them
+        alizarin_core::register_model_permissions(
+            &graph_id,
+            alizarin_core::ModelPermissions {
+                default_allow,
+                permitted_nodegroups: model_access.get_permitted_nodegroups_rules().clone(),
+            },
+        );
 
         Ok(NapiResourceModelWrapper { model_access })
     }
@@ -1946,13 +1977,18 @@ impl NapiResourceModelWrapper {
     #[napi(js_name = "setPermittedNodegroups")]
     pub fn set_permitted_nodegroups(&mut self, permissions: serde_json::Value) -> Result<()> {
         let perms = Self::parse_permission_value(&permissions)?;
-        self.model_access.set_permitted_nodegroups_rules(perms);
+        let graph_id = self.model_access.get_graph().graphid.clone();
+        self.model_access
+            .set_permitted_nodegroups_rules(perms.clone());
+        alizarin_core::update_model_permitted_nodegroups(&graph_id, perms);
         Ok(())
     }
 
     #[napi(js_name = "setDefaultAllowAllNodegroups")]
     pub fn set_default_allow_all_nodegroups(&mut self, default_allow: bool) {
+        let graph_id = self.model_access.get_graph().graphid.clone();
         self.model_access.set_default_allow(default_allow);
+        alizarin_core::update_model_default_allow(&graph_id, default_allow);
     }
 
     // =========================================================================
