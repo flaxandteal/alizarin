@@ -14,6 +14,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
+use crate::permissions::PermissionRule;
 use crate::rdm_cache::RdmCache;
 use crate::skos::{parse_skos_to_collections, SkosCollection};
 use crate::StaticGraph;
@@ -54,7 +55,13 @@ lazy_static::lazy_static! {
     static ref WIDGET_REGISTRY: RwLock<HashMap<String, RegisteredWidget>> =
         RwLock::new(HashMap::new());
 
-
+    /// Model permissions registry.
+    /// Mirrors WASM's MODEL_REGISTRY pattern for NAPI/Python backends, which
+    /// construct instance wrappers independently of model wrappers.
+    /// Stores (default_allow, permitted_nodegroups) per graph_id so instance
+    /// wrappers can inherit the model's permission state at construction time.
+    static ref MODEL_PERMISSIONS_REGISTRY: RwLock<HashMap<String, ModelPermissions>> =
+        RwLock::new(HashMap::new());
 }
 
 /// A dynamically registered widget definition.
@@ -145,6 +152,111 @@ pub fn get_registered_graph_ids() -> Vec<String> {
         .ok()
         .map(|registry| registry.keys().cloned().collect())
         .unwrap_or_default()
+}
+
+// ============================================================================
+// Model Permissions Registry
+// ============================================================================
+
+/// Cached model permission state for instance wrapper construction.
+///
+/// NAPI/Python backends construct instance wrappers independently of model
+/// wrappers, so they need a way to look up the model's permission state.
+/// WASM avoids this via a thread-local MODEL_REGISTRY that instance wrappers
+/// reference directly.
+#[derive(Clone, Debug)]
+pub struct ModelPermissions {
+    pub default_allow: bool,
+    pub permitted_nodegroups: HashMap<String, PermissionRule>,
+}
+
+/// Register model permissions for a graph.
+pub fn register_model_permissions(graph_id: &str, perms: ModelPermissions) {
+    if let Ok(mut registry) = MODEL_PERMISSIONS_REGISTRY.write() {
+        registry.insert(graph_id.to_string(), perms);
+    }
+}
+
+/// Get model permissions for a graph.
+pub fn get_model_permissions(graph_id: &str) -> Option<ModelPermissions> {
+    MODEL_PERMISSIONS_REGISTRY
+        .read()
+        .ok()
+        .and_then(|registry| registry.get(graph_id).cloned())
+}
+
+/// Update just the default_allow for a graph's model permissions.
+pub fn update_model_default_allow(graph_id: &str, default_allow: bool) {
+    if let Ok(mut registry) = MODEL_PERMISSIONS_REGISTRY.write() {
+        if let Some(entry) = registry.get_mut(graph_id) {
+            entry.default_allow = default_allow;
+        }
+    }
+}
+
+/// Update just the permitted_nodegroups for a graph's model permissions.
+///
+/// Keys may be aliases (e.g. "images") or nodegroup UUIDs. Any alias keys
+/// are resolved to nodegroup IDs using the graph from GRAPH_REGISTRY so that
+/// downstream tile filtering (which matches on `tile.nodegroup_id`) works
+/// without per-tile alias resolution.
+pub fn update_model_permitted_nodegroups(graph_id: &str, rules: HashMap<String, PermissionRule>) {
+    let resolved = resolve_permission_keys(graph_id, rules);
+    if let Ok(mut registry) = MODEL_PERMISSIONS_REGISTRY.write() {
+        if let Some(entry) = registry.get_mut(graph_id) {
+            entry.permitted_nodegroups = resolved;
+        }
+    }
+}
+
+/// Resolve permission keys from aliases to nodegroup IDs where possible.
+///
+/// Builds an alias→nodegroup_id map from the graph (O(N) on nodes, done once
+/// at set-time). Keys that are already nodegroup IDs pass through unchanged.
+fn resolve_permission_keys(
+    graph_id: &str,
+    rules: HashMap<String, PermissionRule>,
+) -> HashMap<String, PermissionRule> {
+    let graph = match get_graph(graph_id) {
+        Some(g) => g,
+        None => return rules, // No graph registered, pass through as-is
+    };
+
+    // Build alias → nodegroup_id mapping from graph nodes
+    let alias_to_ng: HashMap<&str, &str> = graph
+        .nodes
+        .iter()
+        .filter_map(|n| match (n.alias.as_deref(), n.nodegroup_id.as_deref()) {
+            (Some(alias), Some(ng_id)) if !alias.is_empty() => Some((alias, ng_id)),
+            _ => None,
+        })
+        .collect();
+
+    rules
+        .into_iter()
+        .map(|(key, rule)| {
+            if let Some(&ng_id) = alias_to_ng.get(key.as_str()) {
+                (ng_id.to_string(), rule)
+            } else {
+                // Already a nodegroup ID, or unknown alias — pass through
+                (key, rule)
+            }
+        })
+        .collect()
+}
+
+/// Unregister model permissions for a graph.
+pub fn unregister_model_permissions(graph_id: &str) {
+    if let Ok(mut registry) = MODEL_PERMISSIONS_REGISTRY.write() {
+        registry.remove(graph_id);
+    }
+}
+
+/// Clear all model permissions from the registry.
+pub fn clear_model_permissions_registry() {
+    if let Ok(mut registry) = MODEL_PERMISSIONS_REGISTRY.write() {
+        registry.clear();
+    }
 }
 
 // ============================================================================
@@ -448,5 +560,61 @@ mod tests {
         let removed = unregister_graph("test-graph-3");
         assert!(removed.is_some());
         assert!(!is_graph_registered("test-graph-3"));
+    }
+
+    #[test]
+    fn test_model_permissions_register_and_get() {
+        let perms = ModelPermissions {
+            default_allow: false,
+            permitted_nodegroups: {
+                let mut m = HashMap::new();
+                m.insert("ng1".to_string(), PermissionRule::Boolean(true));
+                m.insert("ng2".to_string(), PermissionRule::Boolean(false));
+                m
+            },
+        };
+        register_model_permissions("test-perms-1", perms);
+
+        let retrieved = get_model_permissions("test-perms-1");
+        assert!(retrieved.is_some());
+        let retrieved = retrieved.unwrap();
+        assert!(!retrieved.default_allow);
+        assert_eq!(retrieved.permitted_nodegroups.len(), 2);
+
+        unregister_model_permissions("test-perms-1");
+        assert!(get_model_permissions("test-perms-1").is_none());
+    }
+
+    #[test]
+    fn test_model_permissions_update_default_allow() {
+        let perms = ModelPermissions {
+            default_allow: true,
+            permitted_nodegroups: HashMap::new(),
+        };
+        register_model_permissions("test-perms-2", perms);
+
+        update_model_default_allow("test-perms-2", false);
+        let retrieved = get_model_permissions("test-perms-2").unwrap();
+        assert!(!retrieved.default_allow);
+
+        unregister_model_permissions("test-perms-2");
+    }
+
+    #[test]
+    fn test_model_permissions_update_nodegroups() {
+        let perms = ModelPermissions {
+            default_allow: false,
+            permitted_nodegroups: HashMap::new(),
+        };
+        register_model_permissions("test-perms-3", perms);
+
+        let mut rules = HashMap::new();
+        rules.insert("ng-x".to_string(), PermissionRule::Boolean(true));
+        update_model_permitted_nodegroups("test-perms-3", rules);
+
+        let retrieved = get_model_permissions("test-perms-3").unwrap();
+        assert_eq!(retrieved.permitted_nodegroups.len(), 1);
+
+        unregister_model_permissions("test-perms-3");
     }
 }

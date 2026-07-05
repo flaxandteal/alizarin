@@ -287,6 +287,13 @@ pub use registry::{
     register_graph_owned, registry_size, unregister_graph,
 };
 
+// Model permissions registry (for NAPI/Python instance wrapper construction)
+pub use registry::{
+    clear_model_permissions_registry, get_model_permissions, register_model_permissions,
+    unregister_model_permissions, update_model_default_allow, update_model_permitted_nodegroups,
+    ModelPermissions,
+};
+
 // List datatype registry (for datatypes where array IS the value)
 pub use registry::{
     is_list_datatype, list_datatypes, register_list_datatype, unregister_list_datatype,

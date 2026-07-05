@@ -405,8 +405,15 @@ pub fn parse_skos_to_collections(
         .map(|(k, v)| (k, v.into_iter().collect()))
         .collect();
 
-    // Find top-level concepts (not narrower of anything)
-    let all_narrower: HashSet<String> = children_map.values().flatten().cloned().collect();
+    // Find top-level concepts (not narrower of another *concept*).
+    // Exclude scheme URIs from the parent set so that concepts listed as
+    // skos:narrower of their ConceptScheme are still treated as top-level.
+    let scheme_uri_set: HashSet<&String> = scheme_uris.iter().collect();
+    let all_narrower: HashSet<String> = children_map
+        .iter()
+        .filter(|(parent, _)| !scheme_uri_set.contains(parent))
+        .flat_map(|(_, children)| children.iter().cloned())
+        .collect();
 
     // Recursive function to build concept with children
     fn build_concept_tree(

@@ -875,8 +875,14 @@ impl IndexedGraph {
                 "description" => descriptors.description = Some(template),
                 "map_popup" => descriptors.map_popup = Some(template),
                 "slug" => {
-                    descriptors.slug =
-                        Some(crate::graph_mutator::slugify(&template).replace('_', "-"))
+                    // If template still contains unresolved <Placeholder> refs,
+                    // preserve the raw value so callers can detect and error.
+                    // slugify() would strip the angle brackets, hiding the problem.
+                    descriptors.slug = Some(if template.contains('<') {
+                        template.clone()
+                    } else {
+                        crate::graph_mutator::slugify(&template).replace('_', "-")
+                    })
                 }
                 _ => {} // Unknown descriptor type, ignore
             }

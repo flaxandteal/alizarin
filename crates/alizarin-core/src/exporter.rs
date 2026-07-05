@@ -178,6 +178,9 @@ pub fn export_collections(
 
     for collection_id in &collection_ids {
         if let Some(collection) = rdm_cache.get_collection(collection_id) {
+            if collection.is_empty() {
+                continue;
+            }
             let file = export_single_collection(collection, base_uri, "ConceptScheme")?;
             files.push(file);
         }
