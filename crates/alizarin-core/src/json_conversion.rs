@@ -448,10 +448,14 @@ pub fn tree_to_tiles_with_options(
 ) -> Result<BusinessDataWrapper, String> {
     let trees = extract_tree_resources(json)?;
 
+    // Look up model permissions once (O(1) registry read).
+    // Permissions are already keyed by nodegroup ID (resolved at set-time).
+    let perms = crate::get_model_permissions(&graph.graphid);
+
     let mut resources = Vec::new();
 
     for tree in trees {
-        let resource = single_tree_to_resource(
+        let mut resource = single_tree_to_resource(
             &tree,
             graph,
             strict,
@@ -461,6 +465,21 @@ pub fn tree_to_tiles_with_options(
             has_extension_handlers,
             extension_registry,
         )?;
+
+        // Filter tiles by permissions if set — O(1) per tile via HashMap lookup
+        if let Some(ref p) = perms {
+            if !p.permitted_nodegroups.is_empty() || !p.default_allow {
+                if let Some(ref mut tiles) = resource.tiles {
+                    tiles.retain(|tile| {
+                        p.permitted_nodegroups
+                            .get(&tile.nodegroup_id)
+                            .map(|rule| rule.permits_tile(tile))
+                            .unwrap_or(p.default_allow)
+                    });
+                }
+            }
+        }
+
         resources.push(resource);
     }
 

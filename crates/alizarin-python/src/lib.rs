@@ -2137,13 +2137,23 @@ struct PyResourceModelWrapper {
 #[pymethods]
 impl PyResourceModelWrapper {
     #[new]
-    fn new(graph_id: String) -> PyResult<Self> {
+    fn new(graph_id: String, default_allow: Option<bool>) -> PyResult<Self> {
         // Get graph from registry
         let graph = get_registered_graph(&graph_id)?;
+        let default_allow = default_allow.unwrap_or(true);
 
-        Ok(PyResourceModelWrapper {
-            model_access: GraphModelAccess::new_eager(graph, true),
-        })
+        let model_access = GraphModelAccess::new_eager(graph, default_allow);
+
+        // Register permissions so instance wrappers can inherit them
+        alizarin_core::register_model_permissions(
+            &graph_id,
+            alizarin_core::ModelPermissions {
+                default_allow,
+                permitted_nodegroups: model_access.get_permitted_nodegroups_rules().clone(),
+            },
+        );
+
+        Ok(PyResourceModelWrapper { model_access })
     }
 
     /// Build index caches (nodes, edges, nodegroups, etc.)
@@ -2233,7 +2243,10 @@ impl PyResourceModelWrapper {
     /// Raises ValueError if any permission rule is invalid.
     fn set_permitted_nodegroups(&mut self, py: Python, permissions: PyObject) -> PyResult<()> {
         let perms = instance_wrapper_py::parse_permissions_dict(py, &permissions)?;
-        self.model_access.set_permitted_nodegroups_rules(perms);
+        let graph_id = self.model_access.get_graph().graphid.clone();
+        self.model_access
+            .set_permitted_nodegroups_rules(perms.clone());
+        alizarin_core::update_model_permitted_nodegroups(&graph_id, perms);
         Ok(())
     }
 
