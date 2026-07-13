@@ -172,6 +172,7 @@ pub fn export_collections(
     base_uri: &str,
 ) -> Result<Vec<ExportFile>, ExportError> {
     let mut files = Vec::new();
+    let mut emitted_concept_ids: HashSet<String> = HashSet::new();
 
     let mut collection_ids = rdm_cache.get_collection_ids();
     collection_ids.sort();
@@ -181,8 +182,21 @@ pub fn export_collections(
             if collection.is_empty() {
                 continue;
             }
-            let file = export_single_collection(collection, base_uri, "ConceptScheme")?;
-            files.push(file);
+            let skos =
+                rdm_to_skos_collection_excluding(collection, "ConceptScheme", &emitted_concept_ids);
+            // Track all concept IDs emitted in this collection
+            for concept_id in skos.all_concepts.keys() {
+                emitted_concept_ids.insert(concept_id.clone());
+            }
+            // Skip collections left empty after exclusion
+            if skos.all_concepts.is_empty() {
+                continue;
+            }
+            let xml = collection_to_skos_xml(&skos, base_uri);
+            files.push(ExportFile {
+                relative_path: format!("reference_data/controlled_lists/{}.xml", collection.id),
+                content: xml,
+            });
         }
     }
 

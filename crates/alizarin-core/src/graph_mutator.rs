@@ -4917,7 +4917,18 @@ pub fn create_skeleton_graph(
             "issearchable": true,
             "ontologyclass": ontology_class_json.clone()
         },
-        "nodegroups": [],
+        // Branches need a nodegroup for the root collector node, mirroring
+        // Arches' populate_null_nodegroups / get_or_create_nodegroup behaviour.
+        // Resource models don't: their root has nodegroup_id = null.
+        "nodegroups": if is_resource { vec![] } else { vec![
+            serde_json::json!({
+                "nodegroupid": root_nodeid,
+                "cardinality": "1",
+                "parentnodegroup_id": serde_json::Value::Null,
+                "legacygroupid": serde_json::Value::Null,
+                "grouping_node_id": root_nodeid,
+            })
+        ]},
         "edges": [],
         "cards": [],
         "cards_x_nodes_x_widgets": [],
@@ -7269,6 +7280,20 @@ mod tests {
 
         assert_eq!(resource.isresource, Some(true));
         assert_eq!(branch.isresource, Some(false));
+
+        // Resource root has no nodegroup
+        assert!(resource.nodegroups.is_empty());
+        assert!(resource.root.nodegroup_id.is_none());
+
+        // Branch root is a collector with a matching nodegroup entry
+        assert_eq!(branch.nodegroups.len(), 1);
+        assert_eq!(
+            branch.root.nodegroup_id.as_deref(),
+            Some(branch.root.nodeid.as_str())
+        );
+        assert_eq!(branch.nodegroups[0].nodegroupid, branch.root.nodeid);
+        assert_eq!(branch.nodegroups[0].cardinality.as_deref(), Some("1"));
+        assert!(branch.nodegroups[0].parentnodegroup_id.is_none());
     }
 
     // =========================================================================
@@ -7604,6 +7629,10 @@ add_node,parent_group,other,Other,string,1,,,
         assert_eq!(graph.name.to_string_default(), "Addresses");
         assert_eq!(graph.root.alias, Some("addresses".to_string()));
         assert_eq!(graph.slug, Some("addresses-branch".to_string()));
+
+        // Branch must have a nodegroup for its root collector node
+        assert_eq!(graph.nodegroups.len(), 1);
+        assert_eq!(graph.nodegroups[0].nodegroupid, graph.root.nodeid);
     }
 
     #[test]
