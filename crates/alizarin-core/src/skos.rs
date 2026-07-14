@@ -2377,4 +2377,123 @@ mod tests {
             "Item Two (nested member) should be findable by label in the collection"
         );
     }
+
+    /// Test that a ConceptScheme using skos:narrower to reference its concepts
+    /// still produces a collection with those concepts. Previously, the parser
+    /// added scheme-to-concept narrower relationships to the `all_narrower` set,
+    /// causing the concepts to be excluded from the scheme's top-level set and
+    /// producing an empty collection.
+    #[test]
+    fn test_scheme_narrower_concepts_not_excluded() {
+        const SCHEME_XML: &str = r#"<?xml version="1.0" encoding="ASCII"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:skos="http://www.w3.org/2004/02/skos/core#">
+  <skos:Concept rdf:about="http://localhost:8000/aaaa1111-0000-0000-0000-000000000001">
+    <skos:prefLabel xml:lang="en">Concept Alpha</skos:prefLabel>
+    <skos:inScheme>
+      <skos:ConceptScheme rdf:about="http://localhost:8000/ssssssss-0000-0000-0000-000000000001">
+        <skos:prefLabel xml:lang="en">Test Scheme</skos:prefLabel>
+        <skos:narrower rdf:resource="http://localhost:8000/aaaa1111-0000-0000-0000-000000000001"/>
+        <skos:narrower rdf:resource="http://localhost:8000/aaaa2222-0000-0000-0000-000000000001"/>
+        <skos:hasTopConcept rdf:resource="http://localhost:8000/aaaa1111-0000-0000-0000-000000000001"/>
+        <skos:hasTopConcept rdf:resource="http://localhost:8000/aaaa2222-0000-0000-0000-000000000001"/>
+      </skos:ConceptScheme>
+    </skos:inScheme>
+  </skos:Concept>
+  <skos:Concept rdf:about="http://localhost:8000/aaaa2222-0000-0000-0000-000000000001">
+    <skos:prefLabel xml:lang="en">Concept Beta</skos:prefLabel>
+    <skos:inScheme rdf:resource="http://localhost:8000/ssssssss-0000-0000-0000-000000000001"/>
+  </skos:Concept>
+</rdf:RDF>"#;
+
+        let collections = parse_skos_to_collections(SCHEME_XML, "http://localhost:8000/").unwrap();
+
+        assert_eq!(collections.len(), 1, "Should produce one scheme collection");
+
+        let scheme = &collections[0];
+        assert_eq!(scheme.node_type, SkosNodeType::ConceptScheme);
+        assert_eq!(
+            scheme.concepts.len(),
+            2,
+            "Scheme should contain both concepts even though they are skos:narrower of the scheme"
+        );
+
+        let alpha = scheme
+            .concepts
+            .values()
+            .find(|c| c.pref_labels.get("en").map(|l| l.value.as_str()) == Some("Concept Alpha"));
+        let beta = scheme
+            .concepts
+            .values()
+            .find(|c| c.pref_labels.get("en").map(|l| l.value.as_str()) == Some("Concept Beta"));
+
+        assert!(alpha.is_some(), "Concept Alpha should be in the scheme");
+        assert!(beta.is_some(), "Concept Beta should be in the scheme");
+    }
+
+    /// End-to-end test: a ConceptScheme with skos:narrower concepts, loaded
+    /// separately from a Collection that references the same concept UUIDs as
+    /// bare stubs. The collection should be enriched with labels from the scheme.
+    #[test]
+    fn test_scheme_narrower_cross_file_enrichment() {
+        const SCHEME_XML: &str = r#"<?xml version="1.0" encoding="ASCII"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:skos="http://www.w3.org/2004/02/skos/core#">
+  <skos:Concept rdf:about="http://localhost:8000/aaaa1111-0000-0000-0000-000000000001">
+    <skos:prefLabel xml:lang="en">Vernacular</skos:prefLabel>
+    <skos:inScheme>
+      <skos:ConceptScheme rdf:about="http://localhost:8000/ssssssss-0000-0000-0000-000000000001">
+        <skos:prefLabel xml:lang="en">Test Characterization</skos:prefLabel>
+        <skos:narrower rdf:resource="http://localhost:8000/aaaa1111-0000-0000-0000-000000000001"/>
+        <skos:narrower rdf:resource="http://localhost:8000/aaaa2222-0000-0000-0000-000000000001"/>
+      </skos:ConceptScheme>
+    </skos:inScheme>
+  </skos:Concept>
+  <skos:Concept rdf:about="http://localhost:8000/aaaa2222-0000-0000-0000-000000000001">
+    <skos:prefLabel xml:lang="en">Industrial Archaeology</skos:prefLabel>
+    <skos:inScheme rdf:resource="http://localhost:8000/ssssssss-0000-0000-0000-000000000001"/>
+  </skos:Concept>
+</rdf:RDF>"#;
+
+        const COLLECTION_XML: &str = r#"<?xml version="1.0" encoding="ASCII"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:skos="http://www.w3.org/2004/02/skos/core#">
+  <skos:Collection rdf:about="http://localhost:8000/cccccccc-0000-0000-0000-000000000001">
+    <skos:prefLabel xml:lang="en">Test Characterization Collection</skos:prefLabel>
+    <skos:member>
+      <skos:Concept rdf:about="http://localhost:8000/aaaa1111-0000-0000-0000-000000000001"/>
+    </skos:member>
+    <skos:member>
+      <skos:Concept rdf:about="http://localhost:8000/aaaa2222-0000-0000-0000-000000000001"/>
+    </skos:member>
+  </skos:Collection>
+</rdf:RDF>"#;
+
+        use crate::rdm_cache::RdmCache;
+
+        let base_uri = "http://localhost:8000/";
+        let mut cache = RdmCache::default();
+
+        // Load scheme (concepts with labels) first
+        let scheme_parsed = parse_skos_to_collections(SCHEME_XML, base_uri).unwrap();
+        cache.add_from_skos_collections(&scheme_parsed);
+
+        // Load collection (bare member stubs) second
+        let coll_parsed = parse_skos_to_collections(COLLECTION_XML, base_uri).unwrap();
+        cache.add_from_skos_collections(&coll_parsed);
+
+        let collection_id = "cccccccc-0000-0000-0000-000000000001";
+
+        let vernacular = cache.lookup_by_label(collection_id, "Vernacular");
+        assert!(
+            vernacular.is_some(),
+            "Should resolve 'Vernacular' in the collection after cross-file enrichment from scheme"
+        );
+
+        let industrial = cache.lookup_by_label(collection_id, "Industrial Archaeology");
+        assert!(
+            industrial.is_some(),
+            "Should resolve 'Industrial Archaeology' in the collection after cross-file enrichment from scheme"
+        );
+    }
 }
