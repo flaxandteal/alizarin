@@ -90,6 +90,53 @@ pub fn add_collection_to_global_cache(collection: RdmCollection) {
     });
 }
 
+/// Compose one or more source collections into a target collection in the
+/// global RDM cache, removing the antecedent sources.
+///
+/// This is an RDM-cache operation (no CLM dependency). Distinct source
+/// collections (e.g. a Historic England base thesaurus and a separately-authored
+/// NIHED extension) are folded into a single target collection, and the
+/// antecedents are removed so that — when `export_collections` later emits SKOS
+/// XML into `reference_data/controlled_lists/` — each concept lives in exactly
+/// one list (single `inScheme`) and the `arches_controlled_lists` importer
+/// assigns it to exactly one List.
+///
+/// Args:
+///     target_id: ID of the composed list (created if it does not exist).
+///     target_name: Optional display name for the composed list.
+///     source_ids: IDs of the lists to fold in. A source equal to target_id is
+///         kept in place; all others are removed after merging.
+///
+/// Returns:
+///     Number of antecedent source lists removed.
+#[pyfunction]
+#[pyo3(signature = (target_id, source_ids, target_name=None))]
+pub fn compose_collections_in_global_cache(
+    target_id: String,
+    source_ids: Vec<String>,
+    target_name: Option<String>,
+) -> PyResult<usize> {
+    let removed = alizarin_core::ensure_global_rdm_cache(|cache| {
+        cache.compose_collections(&target_id, target_name.clone(), &source_ids)
+    });
+    Ok(removed)
+}
+
+/// Apply controlled-list compositions declared in a CSV to the global RDM cache.
+///
+/// The CSV-driven form of `compose_collections_in_global_cache`, so
+/// compositions can live in a reference-data mutation CSV. Columns (order
+/// independent; unknown columns such as a downstream `repoint` are ignored):
+/// `target` (required), `sources` (required, `;`-separated), `name` (optional;
+/// auto-derived if blank).
+///
+/// Returns the composed target id of each processed row.
+#[pyfunction]
+pub fn compose_collections_from_csv_in_global_cache(csv_text: &str) -> PyResult<Vec<String>> {
+    alizarin_core::ensure_global_rdm_cache(|cache| cache.apply_composition_csv(csv_text))
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))
+}
+
 /// Add collections from SKOS XML directly to the global RDM cache.
 ///
 /// This parses the SKOS XML and adds all collections to the global cache.
@@ -1746,6 +1793,14 @@ pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(update_collection_in_global_cache, m)?)?;
     m.add_function(wrap_pyfunction!(
         update_collection_nested_in_global_cache,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        compose_collections_in_global_cache,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        compose_collections_from_csv_in_global_cache,
         m
     )?)?;
 

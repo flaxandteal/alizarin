@@ -403,16 +403,42 @@ impl ResourceInstanceWrapperCore {
                 tiles.keys().cloned().collect()
             };
 
-        for tile_id in candidate_tile_ids {
-            if let Some(tile) = tiles.get(&tile_id) {
+        // DEBUG: log candidate count for geometry-like nodegroups
+        if child_alias == "geometry" {
+            web_sys::console::debug_3(
+                &format!("[RUST get_semantic_child_value] alias='{}' child_ng={:?} candidates={} parent_tile={:?} parent_ng={:?} is_semantic={} is_collector={}",
+                    child_alias,
+                    child_node.nodegroup_id,
+                    candidate_tile_ids.len(),
+                    parent_tile_id,
+                    parent_nodegroup_id,
+                    child_node.datatype == "semantic",
+                    child_node.is_collector,
+                ).into(),
+                &format!("total tiles in store: {}", tiles.len()).into(),
+                &format!("nodegroup_index keys: {:?}", self.nodegroup_index.keys().collect::<Vec<_>>()).into(),
+            );
+        }
+
+        for tile_id in &candidate_tile_ids {
+            if let Some(tile) = tiles.get(tile_id) {
                 // Check semantic parent-child relationship
-                if matches_semantic_child_core(
+                let matched = matches_semantic_child_core(
                     parent_tile_id,
                     parent_nodegroup_id,
                     &child_node,
                     tile,
-                ) {
-                    matching_tile_ids.push(tile_id);
+                );
+                // DEBUG: log each candidate for geometry
+                if child_alias == "geometry" {
+                    web_sys::console::debug_1(
+                        &format!("[RUST match] tile_id={} tile_ng={} tile_parent={:?} matched={}",
+                            tile_id, tile.nodegroup_id, tile.parenttile_id, matched
+                        ).into(),
+                    );
+                }
+                if matched {
+                    matching_tile_ids.push(tile_id.clone());
                 }
             }
         }

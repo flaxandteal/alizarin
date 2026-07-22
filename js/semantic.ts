@@ -88,9 +88,9 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
         if (k == "length") {
           throw Error("TODO");
         }
-        return new AttrPromise((resolve) => {
+        return new AttrPromise((resolve, reject) => {
           const p = object.__get(k);
-          p.then(resolve);
+          p.then(resolve, reject);
         });
       },
     });
@@ -136,11 +136,13 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
 
     // Step 3: Get all child values in a single sync batch call (no async boundary crossings)
     const t3 = performance.now();
+    console.debug(`[semantic.toObject] node="${this.__node.alias || this.__node.nodeid}" parent_tile_id="${this.__tile?.tileid || null}" parent_nodegroup_id="${this.__node.nodegroup_id || null}"`);
     const childValuesMap: Map<string, any> = wasmWrapper.getAllSemanticChildValues(
       this.__tile?.tileid || null,
       this.__node.nodeid,
       this.__node.nodegroup_id || null,
     );
+    console.debug(`[semantic.toObject] node="${this.__node.alias || this.__node.nodeid}" childValuesMap keys:`, [...childValuesMap.keys()], 'values:', [...childValuesMap.entries()].map(([k,v]) => `${k}: ${v?.constructor?.name} ${'getAllValues' in (v || {}) ? 'len=' + v.getAllValues?.()?.length : ''}`));
     timingStats.wasmCalls++;
     timingStats.wasmTotalMs += performance.now() - t3;
 
@@ -214,12 +216,14 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     const t0 = performance.now();
     try {
       // Sync call - returns immediately if tiles loaded, throws if not
+      console.debug(`[semantic.__getChildValue] key="${key}" parent_tile_id="${tile?.tileid || null}" parent_node_id="${node.nodeid}" parent_nodegroup_id="${node.nodegroup_id || null}" totalTiles=${wasmWrapper.getTileCount?.()} nodegroupCount=${wasmWrapper.getNodegroupCount?.()}`);
       rustValue = wasmWrapper.getSemanticChildValue(
         tile?.tileid || null,
         node.nodeid,
         node.nodegroup_id || null,
         key
       );
+      console.debug(`[semantic.__getChildValue] key="${key}" result:`, rustValue, 'type:', rustValue?.constructor?.name, 'getAllValues' in (rustValue || {}) ? `list length: ${rustValue.getAllValues?.()?.length}` : 'not a list');
       timingStats.wasmCalls++;
       timingStats.wasmTotalMs += performance.now() - t0;
     } catch (e: any) {

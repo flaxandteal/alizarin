@@ -555,6 +555,139 @@ impl RdmCache {
         self.collections.remove(collection_id).is_some()
     }
 
+    // (compose helpers `unwrap_json_label` / `source_display_name` are defined
+    // as free functions below this impl.)
+
+    /// Compose one or more source collections into a target collection, then
+    /// remove the source collections from the cache.
+    ///
+    /// This models a controlled-list composition: distinct source lists (e.g. a
+    /// Historic England base thesaurus and a separately-authored NIHED
+    /// extension) are folded into a single target list, and the antecedent
+    /// sources are dropped so they do not export as separate/competing
+    /// controlled lists. Because each concept then lives in exactly one
+    /// collection, the SKOS export emits it once (with a single `inScheme`) and
+    /// the arches_controlled_lists importer assigns it to exactly one List.
+    ///
+    /// - If `target_id` does not exist it is created (optionally named).
+    /// - Each source's concepts are merged into the target using the same
+    ///   additive semantics as [`add_collection`] (labeled concepts win over
+    ///   bare stubs).
+    /// - A source equal to `target_id` is left in place (the target may be one
+    ///   of its own antecedents); all other sources are removed.
+    ///
+    /// Returns the number of source collections removed.
+    pub fn compose_collections(
+        &mut self,
+        target_id: &str,
+        target_name: Option<String>,
+        source_ids: &[String],
+    ) -> usize {
+        // If no explicit name was given, derive one by joining the source
+        // collections' display names (in order) with " + " — e.g. a base
+        // thesaurus and a NIHED extension compose to
+        // "Evidence + NIHED Evidence Extension".
+        let resolved_name = target_name.or_else(|| {
+            let names: Vec<String> = source_ids
+                .iter()
+                .filter_map(|sid| self.collections.get(sid))
+                .filter_map(source_display_name)
+                .collect();
+            if names.is_empty() {
+                None
+            } else {
+                Some(names.join(" + "))
+            }
+        });
+
+        // Ensure the target exists (create empty if absent), applying the name.
+        match self.collections.get_mut(target_id) {
+            Some(existing) => {
+                if resolved_name.is_some() {
+                    existing.name = resolved_name.clone();
+                }
+            }
+            None => {
+                let mut created = RdmCollection::new(target_id.to_string());
+                created.name = resolved_name.clone();
+                self.collections.insert(target_id.to_string(), created);
+            }
+        }
+
+        let mut removed = 0;
+        for sid in source_ids {
+            if sid == target_id {
+                continue; // target is one of its own antecedents; keep it
+            }
+            // Fold the source's concepts into the target by relabelling a clone
+            // to the target id and reusing add_collection's merge. Clearing the
+            // name avoids overwriting the target's name with the source's.
+            if let Some(src) = self.collections.get(sid).cloned() {
+                let mut relabeled = src;
+                relabeled.id = target_id.to_string();
+                relabeled.name = None;
+                self.add_collection(relabeled);
+            }
+            if self.remove_collection(sid) {
+                removed += 1;
+            }
+        }
+        removed
+    }
+
+    /// Apply controlled-list compositions declared in a CSV to the cache.
+    ///
+    /// This is the CSV-driven form of [`compose_collections`], so compositions
+    /// can live in a reference-data mutation CSV alongside the graph mutations
+    /// rather than in imperative code.
+    ///
+    /// Header columns (order-independent; unknown columns are ignored, so a
+    /// `repoint` column for downstream node re-pointing may travel with it):
+    /// - `target` (required): id of the composed list;
+    /// - `sources` (required): `;`-separated source list ids to fold in;
+    /// - `name` (optional): display name; if blank it is auto-derived (see
+    ///   [`compose_collections`]).
+    ///
+    /// Returns the composed `target` id of each row processed. Rows with an
+    /// empty `target` are skipped.
+    pub fn apply_composition_csv(&mut self, csv_text: &str) -> Result<Vec<String>, String> {
+        let mut reader = csv::Reader::from_reader(csv_text.as_bytes());
+        let headers = reader
+            .headers()
+            .map_err(|e| format!("composition CSV: {}", e))?
+            .clone();
+        let col = |name: &str| headers.iter().position(|h| h.trim() == name);
+        let target_i =
+            col("target").ok_or_else(|| "composition CSV missing 'target' column".to_string())?;
+        let sources_i =
+            col("sources").ok_or_else(|| "composition CSV missing 'sources' column".to_string())?;
+        let name_i = col("name");
+
+        let mut composed = Vec::new();
+        for record in reader.records() {
+            let record = record.map_err(|e| format!("composition CSV: {}", e))?;
+            let target = record.get(target_i).unwrap_or("").trim();
+            if target.is_empty() {
+                continue;
+            }
+            let sources: Vec<String> = record
+                .get(sources_i)
+                .unwrap_or("")
+                .split(';')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let name = name_i
+                .and_then(|i| record.get(i))
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            self.compose_collections(target, name, &sources);
+            composed.push(target.to_string());
+        }
+        Ok(composed)
+    }
+
     /// Get the number of cached collections
     pub fn len(&self) -> usize {
         self.collections.len()
@@ -743,6 +876,47 @@ impl RdmCache {
                 .unwrap_or(false)
         })
     }
+}
+
+/// Unwrap an Arches-style JSON label literal to its plain value.
+///
+/// Collection names may be stored as `{"id": "...", "value": "Label"}` or a
+/// language map `{"en": {"value": "Label"}}` (depending on the loader path).
+/// Returns the plain `value`, or the input unchanged if it is not such a literal.
+fn unwrap_json_label(raw: &str) -> String {
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
+        if let Some(val) = v.get("value").and_then(|x| x.as_str()) {
+            return val.to_string();
+        }
+        if let Some(obj) = v.as_object() {
+            for sub in obj.values() {
+                if let Some(val) = sub.get("value").and_then(|x| x.as_str()) {
+                    return val.to_string();
+                }
+            }
+        }
+    }
+    raw.to_string()
+}
+
+/// Best-effort display name for a collection, used when composing list names.
+///
+/// Prefers the collection's own name (JSON-unwrapped); if that is missing or a
+/// placeholder (equal to the collection id), falls back to the label of the
+/// first top concept — e.g. the FISH Evidence list carries a placeholder name
+/// but its top concept is "Evidence".
+fn source_display_name(collection: &RdmCollection) -> Option<String> {
+    if let Some(name) = &collection.name {
+        let clean = unwrap_json_label(name);
+        if !clean.is_empty() && clean != collection.id {
+            return Some(clean);
+        }
+    }
+    collection
+        .top_concepts
+        .first()
+        .and_then(|cid| collection.concepts.get(cid))
+        .and_then(|c| c.get_label("en"))
 }
 
 /// Convert a `SkosCollection` (parsed from SKOS XML or JSON) to an `RdmCollection`
@@ -1305,5 +1479,129 @@ mod tests {
 
         // Non-existent concept
         assert_eq!(cache.get_parent_id("coll-1", "nonexistent"), None);
+    }
+
+    fn seed_base_and_ext(cache: &mut RdmCache) {
+        cache
+            .add_collection_from_json("base", r#"[{"id": "b1", "prefLabel": {"en": "Base One"}}]"#)
+            .unwrap();
+        cache
+            .add_collection_from_json("ext", r#"[{"id": "e1", "prefLabel": {"en": "Ext One"}}]"#)
+            .unwrap();
+    }
+
+    #[test]
+    fn test_compose_collections_basic() {
+        let mut cache = RdmCache::new();
+        seed_base_and_ext(&mut cache);
+
+        let removed = cache.compose_collections(
+            "composed",
+            Some("Composed".to_string()),
+            &["base".to_string(), "ext".to_string()],
+        );
+
+        assert_eq!(removed, 2, "both antecedents removed");
+        assert!(cache.has_collection("composed"));
+        assert!(!cache.has_collection("base"), "antecedent removed");
+        assert!(!cache.has_collection("ext"), "antecedent removed");
+        let composed = cache.get_collection("composed").unwrap();
+        assert!(composed.has_concept("b1"), "base concept merged in");
+        assert!(composed.has_concept("e1"), "ext concept merged in");
+        assert_eq!(composed.name, Some("Composed".to_string()));
+    }
+
+    #[test]
+    fn test_compose_collections_name_join() {
+        let mut cache = RdmCache::new();
+        seed_base_and_ext(&mut cache);
+        cache.get_collection_mut("base").unwrap().name = Some("Evidence".to_string());
+        cache.get_collection_mut("ext").unwrap().name = Some("NIHED Evidence Extension".to_string());
+
+        // name = None -> derived from the source names, joined with " + "
+        cache.compose_collections("composed", None, &["base".to_string(), "ext".to_string()]);
+
+        assert_eq!(
+            cache.get_collection("composed").unwrap().name,
+            Some("Evidence + NIHED Evidence Extension".to_string())
+        );
+    }
+
+    #[test]
+    fn test_compose_collections_name_falls_back_to_top_concept() {
+        // A source with a placeholder name (equal to its id) falls back to its
+        // top concept's label.
+        let mut cache = RdmCache::new();
+        cache
+            .add_collection_from_json("base", r#"[{"id": "b1", "prefLabel": {"en": "Base One"}}]"#)
+            .unwrap();
+        cache.get_collection_mut("base").unwrap().name = Some("base".to_string()); // placeholder
+
+        cache.compose_collections("composed", None, &["base".to_string()]);
+        assert_eq!(
+            cache.get_collection("composed").unwrap().name,
+            Some("Base One".to_string())
+        );
+    }
+
+    #[test]
+    fn test_compose_collections_keeps_target_when_it_is_a_source() {
+        let mut cache = RdmCache::new();
+        seed_base_and_ext(&mut cache);
+
+        // target is one of its own antecedents: kept in place, only ext removed
+        let removed =
+            cache.compose_collections("base", None, &["base".to_string(), "ext".to_string()]);
+
+        assert_eq!(removed, 1);
+        assert!(cache.has_collection("base"));
+        assert!(!cache.has_collection("ext"));
+        let base = cache.get_collection("base").unwrap();
+        assert!(base.has_concept("b1"));
+        assert!(base.has_concept("e1"));
+    }
+
+    #[test]
+    fn test_apply_composition_csv() {
+        let mut cache = RdmCache::new();
+        seed_base_and_ext(&mut cache);
+
+        // the 'repoint' column is unknown to alizarin and must be ignored
+        let csv = "target,sources,name,repoint\ncomposed,base;ext,My Composed,base\n";
+        let composed = cache.apply_composition_csv(csv).unwrap();
+
+        assert_eq!(composed, vec!["composed".to_string()]);
+        assert!(cache.has_collection("composed"));
+        assert!(!cache.has_collection("base"));
+        assert!(!cache.has_collection("ext"));
+        let c = cache.get_collection("composed").unwrap();
+        assert!(c.has_concept("b1"));
+        assert!(c.has_concept("e1"));
+        assert_eq!(c.name, Some("My Composed".to_string()));
+    }
+
+    #[test]
+    fn test_apply_composition_csv_blank_name_and_empty_rows() {
+        let mut cache = RdmCache::new();
+        seed_base_and_ext(&mut cache);
+        cache.get_collection_mut("base").unwrap().name = Some("Base".to_string());
+        cache.get_collection_mut("ext").unwrap().name = Some("Ext".to_string());
+
+        // blank name -> derived; a row with an empty target is skipped
+        let csv = "target,sources,name\ncomposed,base;ext,\n,x;y,\n";
+        let composed = cache.apply_composition_csv(csv).unwrap();
+
+        assert_eq!(composed, vec!["composed".to_string()]);
+        assert_eq!(
+            cache.get_collection("composed").unwrap().name,
+            Some("Base + Ext".to_string())
+        );
+    }
+
+    #[test]
+    fn test_apply_composition_csv_missing_required_column() {
+        let mut cache = RdmCache::new();
+        let err = cache.apply_composition_csv("target,name\nx,y\n").unwrap_err();
+        assert!(err.contains("sources"), "error names the missing column: {err}");
     }
 }

@@ -354,6 +354,8 @@ add_from_skos_xml_to_global_cache = _alizarin_rust.add_from_skos_xml_to_global_c
 add_from_skos_json_to_global_cache = _alizarin_rust.add_from_skos_json_to_global_cache
 update_collection_in_global_cache = _alizarin_rust.update_collection_in_global_cache
 update_collection_nested_in_global_cache = _alizarin_rust.update_collection_nested_in_global_cache
+compose_collections_in_global_cache = _alizarin_rust.compose_collections_in_global_cache
+compose_collections_from_csv_in_global_cache = _alizarin_rust.compose_collections_from_csv_in_global_cache
 # RDM namespace configuration for deterministic UUID generation
 set_rdm_namespace = _alizarin_rust.set_rdm_namespace
 get_rdm_namespace = _alizarin_rust.get_rdm_namespace
@@ -546,6 +548,8 @@ __all__ = [
     "add_from_skos_json_to_global_cache",
     "update_collection_in_global_cache",
     "update_collection_nested_in_global_cache",
+    "compose_collections_in_global_cache",
+    "compose_collections_from_csv_in_global_cache",
     # RDM Namespace (for deterministic UUID generation)
     "set_rdm_namespace",
     "get_rdm_namespace",

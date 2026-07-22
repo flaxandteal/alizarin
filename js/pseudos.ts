@@ -353,10 +353,12 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
       snapshot.datatype !== 'semantic'
     ) {
       data = currentTile.data.get(nodeid);
+      console.debug(`[_updateValueReal] READ FROM TILE alias=${snapshot.alias} nodeid=${nodeid} datatype=${snapshot.datatype} data=`, data);
     } else {
       // Use null if tileData is undefined (snapshot only includes tileData when present)
       // ViewModels expect null for "no data", not undefined
       data = snapshot.tileData ?? null;
+      console.debug(`[_updateValueReal] READ FROM SNAPSHOT alias=${snapshot.alias} nodeid=${nodeid} datatype=${snapshot.datatype} tileData=`, snapshot.tileData, `data=`, data, `hasTile=${!!currentTile} tileDataKeys=`, currentTile?.data ? [...currentTile.data.keys()] : 'N/A');
     }
 
     // Handle outer/inner data splitting

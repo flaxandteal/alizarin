@@ -33,7 +33,7 @@ declare class Renderer extends BaseRenderer {
     renderResourceReference(value: ResourceInstanceViewModel<any>, _depth: number): Promise<any>;
     renderSemantic(value: SemanticViewModel, depth: number): Promise<any>;
     renderUrl(value: UrlViewModel, _depth: number): Promise<any>;
-    renderGeoJSON(value: GeoJSONViewModel, depth: number): Promise<any>;
+    renderGeoJSON(value: GeoJSONViewModel, _depth: number): Promise<any>;
     renderBlock(block: {
         [key: string]: string;
     } | {
@@ -62,7 +62,7 @@ declare class MarkdownRenderer extends Renderer {
     renderDate(date: DateViewModel, _: number): Promise<any>;
     renderConceptValue(conceptValue: ConceptValueViewModel, _: number): Promise<any>;
     renderResourceReference(rivm: ResourceInstanceViewModel<any>, _: number): Promise<any>;
-    renderGeoJSON(geojson: GeoJSONViewModel, depth: number): Promise<any>;
+    renderGeoJSON(geojson: GeoJSONViewModel, _depth: number): Promise<any>;
 }
 declare class FlatMarkdownRenderer extends MarkdownRenderer {
     renderSemantic(vm: SemanticViewModel, depth: number): Promise<any>;

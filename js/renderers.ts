@@ -123,8 +123,8 @@ class Renderer extends BaseRenderer {
     return value;
   }
 
-  async renderGeoJSON(value: GeoJSONViewModel, depth: number): Promise<any> {
-    return this.renderBlock(await value.forJson(), depth);
+  async renderGeoJSON(value: GeoJSONViewModel, _depth: number): Promise<any> {
+    return await value.forJson();
   }
 
   renderBlock(block: {[key: string]: string} | {[key: string]: string}[], depth: number): any {
@@ -239,7 +239,7 @@ class MarkdownRenderer extends Renderer {
     return wrapper;
   }
 
-  override async renderGeoJSON(geojson: GeoJSONViewModel, depth: number): Promise<any> {
+  override async renderGeoJSON(geojson: GeoJSONViewModel, _depth: number): Promise<any> {
     const label = geojson.toString();
     const url = this.geojsonToUrl ? await this.geojsonToUrl(geojson) : null;
     if (url) {
@@ -248,7 +248,7 @@ class MarkdownRenderer extends Renderer {
       wrapper.__clean = label;
       return wrapper;
     }
-    return this.renderBlock(await geojson.forJson(), depth);
+    return await geojson.forJson();
   }
 }
 
