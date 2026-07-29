@@ -88,9 +88,9 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
         if (k == "length") {
           throw Error("TODO");
         }
-        return new AttrPromise((resolve) => {
+        return new AttrPromise((resolve, reject) => {
           const p = object.__get(k);
-          p.then(resolve);
+          p.then(resolve, reject);
         });
       },
     });
