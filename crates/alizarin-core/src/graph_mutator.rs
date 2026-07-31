@@ -929,6 +929,8 @@ pub enum MutationError {
     NodeHasDependentWidgets(String),
     /// Alias already exists
     AliasAlreadyExists(String),
+    /// Explicit node id already exists in the graph
+    NodeIdAlreadyExists(String),
     /// Invalid node config
     InvalidConfig { alias: String, error: String },
     /// Extension mutation not found in registry
@@ -994,6 +996,9 @@ impl std::fmt::Display for MutationError {
             MutationError::AliasAlreadyExists(alias) => {
                 write!(f, "Alias already exists: {}", alias)
             }
+            MutationError::NodeIdAlreadyExists(id) => {
+                write!(f, "Node id already exists: {}", id)
+            }
             MutationError::InvalidConfig { alias, error } => {
                 write!(f, "Invalid config for node '{}': {}", alias, error)
             }
@@ -1034,6 +1039,8 @@ pub struct AddNodeParams {
     pub parent_property: String,
     pub description: Option<String>,
     pub config: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nodeid: Option<String>,
     pub options: NodeOptions,
 }
 
@@ -1775,6 +1782,9 @@ pub struct MutatorOptions {
     /// Useful when applying collection assignments to a branch that has
     /// already been captured by a resource model via add_subgraph.
     pub skip_publication: bool,
+    /// Alias -> node id, used by `add_node` to reuse an existing node's id
+    /// instead of deriving one. Populated from `load_graph`'s `id_source`.
+    pub node_id_source: Option<HashMap<String, String>>,
 }
 
 impl Default for MutatorOptions {
@@ -1784,6 +1794,7 @@ impl Default for MutatorOptions {
             autocreate_widget: true,
             ontology_validator: None,
             skip_publication: false,
+            node_id_source: None,
         }
     }
 }
@@ -2097,6 +2108,7 @@ impl GraphMutator {
             parent_property: parent_property.to_string(),
             description: description.map(String::from),
             config,
+            nodeid: None,
             options,
         }));
     }
@@ -2271,11 +2283,24 @@ fn apply_add_node(
         }
     }
 
-    // Generate node ID
-    let node_id = generate_uuid_v5(
-        ("graph", Some(&graph.graphid)),
-        &format!("node-{}", params.alias),
-    );
+    let explicit_id = params.nodeid.clone().or_else(|| {
+        options
+            .node_id_source
+            .as_ref()
+            .and_then(|m| m.get(&params.alias).cloned())
+    });
+    let node_id = match explicit_id {
+        Some(id) => {
+            if graph.nodes.iter().any(|n| n.nodeid == id) {
+                return Err(MutationError::NodeIdAlreadyExists(id));
+            }
+            id
+        }
+        None => generate_uuid_v5(
+            ("graph", Some(&graph.graphid)),
+            &format!("node-{}", params.alias),
+        ),
+    };
 
     // Determine nodegroup
     // All nodes except root must have a nodegroup. Create a new one if:
@@ -4541,6 +4566,7 @@ impl From<MutationRequestOptions> for MutatorOptions {
             autocreate_widget: opts.autocreate_widget,
             ontology_validator: None,
             skip_publication: false,
+            node_id_source: None,
         }
     }
 }
@@ -5105,6 +5131,7 @@ impl GraphInstruction {
                     parent_property: self.get_str_or("parent_property", ""),
                     description: self.get_str("description"),
                     config: self.params.get("config").cloned(),
+                    nodeid: self.get_str("nodeid"),
                     options: {
                         let mut opts: NodeOptions = self
                             .params
@@ -5608,6 +5635,8 @@ pub fn build_graph_from_instructions_with_extensions(
         ));
     }
 
+    let mut options = options;
+
     let graph = if first.action == "load_graph" {
         let graph_id = &first.subject;
         let arc = crate::registry::get_graph(graph_id).ok_or_else(|| {
@@ -5616,6 +5645,21 @@ pub fn build_graph_from_instructions_with_extensions(
                 graph_id
             )
         })?;
+        if let Some(source_id) = first.get_str("id_source") {
+            let source = crate::registry::get_graph(&source_id).ok_or_else(|| {
+                format!(
+                    "id_source graph '{}' not found in registry. Call register_graph() first.",
+                    source_id
+                )
+            })?;
+            options.node_id_source = Some(
+                source
+                    .nodes
+                    .iter()
+                    .filter_map(|n| n.alias.clone().map(|a| (a, n.nodeid.clone())))
+                    .collect(),
+            );
+        }
         (*arc).clone()
     } else {
         first.to_skeleton_graph().map_err(|e| e.to_string())?
@@ -6066,6 +6110,75 @@ mod tests {
         // Since cardinality is One, no new card is created, so no widget
     }
 
+    fn id_test_params(alias: &str, nodeid: Option<&str>) -> AddNodeParams {
+        AddNodeParams {
+            parent_alias: None,
+            alias: alias.to_string(),
+            name: alias.to_string(),
+            cardinality: Cardinality::One,
+            datatype: "string".to_string(),
+            ontology_class: None,
+            parent_property: "P1_is_identified_by".to_string(),
+            description: None,
+            config: None,
+            nodeid: nodeid.map(String::from),
+            options: NodeOptions::default(),
+        }
+    }
+
+    #[test]
+    fn test_add_node_derives_id_by_default() {
+        let mut graph = create_test_graph();
+        let opts = MutatorOptions::default();
+        apply_add_node(&mut graph, id_test_params("derived", None), &opts).unwrap();
+
+        let node = graph.find_node_by_alias("derived").unwrap();
+        let expected = generate_uuid_v5(("graph", Some(&graph.graphid)), "node-derived");
+        assert_eq!(node.nodeid, expected);
+    }
+
+    #[test]
+    fn test_add_node_honours_explicit_id() {
+        let pinned = "7c639efc-fa6b-11ef-b578-ae394b224c56";
+        let mut graph = create_test_graph();
+        let opts = MutatorOptions::default();
+        let mut params = id_test_params("pinned", Some(pinned));
+        params.cardinality = Cardinality::N;
+        apply_add_node(&mut graph, params, &opts).unwrap();
+
+        let node = graph.find_node_by_alias("pinned").unwrap();
+        assert_eq!(node.nodeid, pinned);
+        // Arches collector semantics: the nodegroup reuses the node id, so pinning
+        // the node id pins the nodegroup id that tile data is stored against.
+        assert_eq!(node.nodegroup_id.as_deref(), Some(pinned));
+        assert!(graph.nodegroups.iter().any(|ng| ng.nodegroupid == pinned));
+    }
+
+    #[test]
+    fn test_add_node_resolves_id_from_source() {
+        let pinned = "de6b6af0-44e3-11ef-9114-0242ac120006";
+        let mut graph = create_test_graph();
+        let mut opts = MutatorOptions::default();
+        opts.node_id_source = Some(HashMap::from([("from_source".to_string(), pinned.to_string())]));
+
+        apply_add_node(&mut graph, id_test_params("from_source", None), &opts).unwrap();
+        assert_eq!(graph.find_node_by_alias("from_source").unwrap().nodeid, pinned);
+
+        // An alias the source does not know about still derives.
+        apply_add_node(&mut graph, id_test_params("unknown", None), &opts).unwrap();
+        let expected = generate_uuid_v5(("graph", Some(&graph.graphid)), "node-unknown");
+        assert_eq!(graph.find_node_by_alias("unknown").unwrap().nodeid, expected);
+    }
+
+    #[test]
+    fn test_add_node_explicit_id_collision_errors() {
+        let mut graph = create_test_graph();
+        let existing = graph.nodes[0].nodeid.clone();
+        let opts = MutatorOptions::default();
+        let result = apply_add_node(&mut graph, id_test_params("clash", Some(&existing)), &opts);
+        assert!(matches!(result, Err(MutationError::NodeIdAlreadyExists(_))));
+    }
+
     #[test]
     fn test_add_node_duplicate_alias_error() {
         let graph = create_test_graph();
@@ -6175,6 +6288,7 @@ mod tests {
             parent_property: "P1".to_string(),
             description: None,
             config: None,
+            nodeid: None,
             options: NodeOptions::default(),
         })];
 
@@ -7783,6 +7897,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -7859,6 +7974,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -7911,6 +8027,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -7961,6 +8078,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8029,6 +8147,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8132,6 +8251,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8276,6 +8396,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8293,6 +8414,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8391,6 +8513,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8493,6 +8616,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8582,6 +8706,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8601,6 +8726,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8675,6 +8801,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8713,6 +8840,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8782,6 +8910,7 @@ add_node,parent_group,other,Other,string,1,,,
             autocreate_widget: false,
             ontology_validator: None,
             skip_publication: false,
+            node_id_source: None,
         };
 
         // Add a semantic node (no widget)
@@ -8797,6 +8926,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8844,6 +8974,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8899,6 +9030,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8946,6 +9078,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -8964,6 +9097,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -9004,6 +9138,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,
@@ -9042,6 +9177,7 @@ add_node,parent_group,other,Other,string,1,,,
                 parent_property: String::new(),
                 description: None,
                 config: None,
+                nodeid: None,
                 options: NodeOptions::default(),
             }),
             &options,

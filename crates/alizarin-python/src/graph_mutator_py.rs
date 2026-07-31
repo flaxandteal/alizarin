@@ -417,6 +417,7 @@ fn build_graph_from_csv(
         autocreate_widget,
         ontology_validator: ontology_validator.map(|v| v.inner),
         skip_publication,
+        node_id_source: None,
     };
 
     let instructions = parse_instructions_from_csv(csv_text)
@@ -540,6 +541,7 @@ fn build_graph_from_model_csvs(
         autocreate_widget,
         ontology_validator: None,
         skip_publication: false,
+        node_id_source: None,
     };
 
     let (graph, collections) = csv_model_loader::build_graph_from_model_csvs(
