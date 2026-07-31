@@ -2409,20 +2409,31 @@ fn resolve_labels_in_tree(
 ///
 /// Args:
 ///     graph_json: Graph model as JSON string (can be direct object or {"graph": [...]})
+///     key: Optional registry key. Defaults to the graph's own graphid. Pass a
+///         distinct key to register a second copy of a graph that shares its
+///         graphid with one already registered — e.g. an original model kept
+///         only as an id source for load_graph's id_source.
 ///
 /// Returns:
-///     The graph_id that was registered
+///     The key the graph was registered under
 #[pyfunction]
-#[pyo3(signature = (graph_json,))]
-fn register_graph(graph_json: String) -> PyResult<String> {
+#[pyo3(signature = (graph_json, key=None))]
+fn register_graph(graph_json: String, key: Option<String>) -> PyResult<String> {
     let graph = AlizarinCoreStaticGraph::from_json_string(&graph_json).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse graph: {}", e))
     })?;
 
-    let graph_id = graph.graphid.clone();
-    alizarin_core::register_graph_owned(graph);
-
-    Ok(graph_id)
+    match key {
+        Some(k) => {
+            alizarin_core::register_graph(&k, std::sync::Arc::new(graph));
+            Ok(k)
+        }
+        None => {
+            let graph_id = graph.graphid.clone();
+            alizarin_core::register_graph_owned(graph);
+            Ok(graph_id)
+        }
+    }
 }
 
 /// Set a descriptor template on a registered graph.
