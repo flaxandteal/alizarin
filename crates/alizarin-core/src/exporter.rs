@@ -179,18 +179,32 @@ pub fn export_collections(
 
     for collection_id in &collection_ids {
         if let Some(collection) = rdm_cache.get_collection(collection_id) {
-            if collection.is_empty() {
-                continue;
-            }
+            // A collection with no members of its own is a deliberate empty
+            // placeholder: a `reference` node must point at *some* controlled
+            // list, and one may exist before its vocabulary does. Emit it so the
+            // list is present on import (an empty List is valid CLM); dropping it
+            // would leave the node pointing at a missing list.
+            let genuinely_empty = collection.is_empty();
             let skos =
                 rdm_to_skos_collection_excluding(collection, "ConceptScheme", &emitted_concept_ids);
             // Track all concept IDs emitted in this collection
             for concept_id in skos.all_concepts.keys() {
                 emitted_concept_ids.insert(concept_id.clone());
             }
-            // Skip collections left empty after exclusion
-            if skos.all_concepts.is_empty() {
+            // Skip collections emptied *only* by dedup exclusion — their concepts
+            // were claimed by an earlier collection, so emitting them would ship a
+            // duplicate empty list. A genuinely-empty placeholder is still emitted.
+            if skos.all_concepts.is_empty() && !genuinely_empty {
                 continue;
+            }
+            // Emitting an empty list is deliberate but rarely what you want — it
+            // usually means a vocabulary was never sourced. Warn so it is visible.
+            if skos.all_concepts.is_empty() {
+                eprintln!(
+                    "Warning: exporting empty controlled list {} ({}) with no concepts",
+                    collection.id,
+                    collection.name.as_deref().unwrap_or("unnamed"),
+                );
             }
             let xml = collection_to_skos_xml(&skos, base_uri);
             files.push(ExportFile {
@@ -393,6 +407,53 @@ mod tests {
             .contains("reference_data/controlled_lists/"));
         assert!(files[0].content.contains("xml"));
         assert!(files[0].content.contains("Concept One"));
+    }
+
+    #[test]
+    fn test_export_empty_placeholder_collection() {
+        // A genuinely-empty collection is a deliberate placeholder for a
+        // `reference` node whose vocabulary isn't defined yet; it must still
+        // export so the node points at a list that exists. Regression guard for
+        // the empty-skip removal in export_collections.
+        let mut cache = RdmCache::new();
+        cache
+            .add_collection_from_json("exporter-empty-1", "[]")
+            .unwrap();
+
+        let files = export_collections(&cache, "http://example.org/").unwrap();
+        assert_eq!(files.len(), 1, "empty placeholder collection should export");
+        assert!(files[0].relative_path.contains("exporter-empty-1"));
+    }
+
+    #[test]
+    fn test_dedup_emptied_collection_still_skipped() {
+        // A collection whose only concept is claimed by an earlier (smaller-id)
+        // collection is emptied by dedup exclusion, NOT genuinely empty, and must
+        // still be skipped so we don't ship a duplicate empty list.
+        let mut cache = RdmCache::new();
+        cache
+            .add_collection_from_json(
+                "aaaa-exporter-dedup",
+                r#"[{"id": "shared-concept", "prefLabel": {"en": "Shared"}}]"#,
+            )
+            .unwrap();
+        cache
+            .add_collection_from_json(
+                "bbbb-exporter-dedup",
+                r#"[{"id": "shared-concept", "prefLabel": {"en": "Shared"}}]"#,
+            )
+            .unwrap();
+
+        let files = export_collections(&cache, "http://example.org/").unwrap();
+        let paths: Vec<&String> = files.iter().map(|f| &f.relative_path).collect();
+        assert!(
+            paths.iter().any(|p| p.contains("aaaa-exporter-dedup")),
+            "the collection that keeps the concept should export"
+        );
+        assert!(
+            !paths.iter().any(|p| p.contains("bbbb-exporter-dedup")),
+            "a collection emptied only by dedup must still be skipped"
+        );
     }
 
     #[test]

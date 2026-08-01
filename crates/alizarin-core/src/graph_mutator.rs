@@ -4930,7 +4930,30 @@ pub fn create_skeleton_graph(
             })
         ]},
         "edges": [],
-        "cards": [],
+        // Branches get a card for the root nodegroup, mirroring Arches'
+        // Graph.new() which does CardModel.objects.create(nodegroup=...).
+        "cards": if is_resource { vec![] } else {
+            let card_id = generate_uuid_v5(
+                ("graph", Some(&graphid)),
+                &format!("card-ng-{}", root_nodeid),
+            );
+            vec![serde_json::json!({
+                "active": true,
+                "cardid": card_id,
+                "component_id": DEFAULT_CARD_COMPONENT_ID,
+                "constraints": [],
+                "graph_id": graphid,
+                "helpenabled": false,
+                "helptext": {},
+                "helptitle": {},
+                "instructions": {},
+                "is_editable": true,
+                "name": { "en": name },
+                "nodegroup_id": root_nodeid,
+                "sortorder": 0,
+                "visible": true
+            })]
+        },
         "cards_x_nodes_x_widgets": [],
         "functions_x_graphs": []
     });
