@@ -179,26 +179,21 @@ pub fn export_collections(
 
     for collection_id in &collection_ids {
         if let Some(collection) = rdm_cache.get_collection(collection_id) {
-            // A collection with no members of its own is a deliberate empty
-            // placeholder: a `reference` node must point at *some* controlled
-            // list, and one may exist before its vocabulary does. Emit it so the
-            // list is present on import (an empty List is valid CLM); dropping it
-            // would leave the node pointing at a missing list.
-            let genuinely_empty = collection.is_empty();
+            // rdm_to_skos_collection_excluding now CLONES concepts already emitted
+            // by an earlier list (see its doc) so a shared concept survives in
+            // every list rather than being dropped from all but the first.
             let skos =
                 rdm_to_skos_collection_excluding(collection, "ConceptScheme", &emitted_concept_ids);
-            // Track all concept IDs emitted in this collection
-            for concept_id in skos.all_concepts.keys() {
+            // Track the CANONICAL concept ids (the collection's own ids). The skos
+            // may carry clone ids for shared concepts, which must NOT drive the
+            // next list's clone decision — that keys on canonical identity.
+            for concept_id in collection.get_concept_ids() {
                 emitted_concept_ids.insert(concept_id.clone());
             }
-            // Skip collections emptied *only* by dedup exclusion — their concepts
-            // were claimed by an earlier collection, so emitting them would ship a
-            // duplicate empty list. A genuinely-empty placeholder is still emitted.
-            if skos.all_concepts.is_empty() && !genuinely_empty {
-                continue;
-            }
-            // Emitting an empty list is deliberate but rarely what you want — it
-            // usually means a vocabulary was never sourced. Warn so it is visible.
+            // With cloning, a collection is empty only if it genuinely has no
+            // members. Emit it anyway (a valid empty CLM list / deliberate
+            // placeholder), but warn — an empty list usually means a vocabulary
+            // was never sourced.
             if skos.all_concepts.is_empty() {
                 eprintln!(
                     "Warning: exporting empty controlled list {} ({}) with no concepts",
@@ -426,34 +421,89 @@ mod tests {
     }
 
     #[test]
-    fn test_dedup_emptied_collection_still_skipped() {
-        // A collection whose only concept is claimed by an earlier (smaller-id)
-        // collection is emptied by dedup exclusion, NOT genuinely empty, and must
-        // still be skipped so we don't ship a duplicate empty list.
+    fn test_shared_concept_cloned_into_both_lists() {
+        // A concept shared by two lists must survive in BOTH — CLM pins each
+        // ListItem to one List, so the later list emits a clone with a distinct
+        // id rather than dropping the concept (the old dedup behaviour).
         let mut cache = RdmCache::new();
         cache
             .add_collection_from_json(
-                "aaaa-exporter-dedup",
-                r#"[{"id": "shared-concept", "prefLabel": {"en": "Shared"}}]"#,
+                "aaaa-share-exporter",
+                r#"[{"id": "shared-concept", "prefLabel": {"en": "Antrim"}}]"#,
             )
             .unwrap();
         cache
             .add_collection_from_json(
-                "bbbb-exporter-dedup",
-                r#"[{"id": "shared-concept", "prefLabel": {"en": "Shared"}}]"#,
+                "bbbb-share-exporter",
+                r#"[{"id": "shared-concept", "prefLabel": {"en": "Antrim"}}]"#,
             )
             .unwrap();
 
         let files = export_collections(&cache, "http://example.org/").unwrap();
-        let paths: Vec<&String> = files.iter().map(|f| &f.relative_path).collect();
+        let content = |needle: &str| {
+            files
+                .iter()
+                .find(|f| f.relative_path.contains(needle))
+                .map(|f| f.content.clone())
+        };
+        let a = content("aaaa-share-exporter").expect("first list exports");
+        let b =
+            content("bbbb-share-exporter").expect("second list also exports (cloned, not dropped)");
+
+        // Both carry the label...
+        assert!(a.contains("Antrim") && b.contains("Antrim"));
+        // ...and both carry the CANONICAL id as their dcterms:identifier, so the
+        // importer gives both ListItems the same uri — identity is preserved.
         assert!(
-            paths.iter().any(|p| p.contains("aaaa-exporter-dedup")),
-            "the collection that keeps the concept should export"
+            a.contains("<dcterms:identifier>shared-concept</dcterms:identifier>"),
+            "first list identifies as the canonical concept"
         );
         assert!(
-            !paths.iter().any(|p| p.contains("bbbb-exporter-dedup")),
-            "a collection emptied only by dedup must still be skipped"
+            b.contains("<dcterms:identifier>shared-concept</dcterms:identifier>"),
+            "second list keeps the canonical identifier (shared uri), not a clone identity"
         );
+        // But their rdf:about (→ ListItem pk) differs: first canonical, second a clone.
+        assert!(a.contains("rdf:about=\"http://example.org/shared-concept\""));
+        assert!(
+            !b.contains("rdf:about=\"http://example.org/shared-concept\""),
+            "second list's concept has a distinct rdf:about so its ListItem pk won't collide"
+        );
+    }
+
+    #[test]
+    fn test_shared_hierarchy_cloned_with_structure() {
+        // A nested concept list incorporated into two collections must keep its
+        // parent/child structure in BOTH — the later (clone) copy included.
+        let mut cache = RdmCache::new();
+        let hier = r#"[
+            {"id":"parent-h","prefLabel":{"en":"Parent"},"narrower":["child-h"]},
+            {"id":"child-h","prefLabel":{"en":"Child"}}
+        ]"#;
+        cache
+            .add_collection_from_json("aaaa-hier-exporter", hier)
+            .unwrap();
+        cache
+            .add_collection_from_json("zzzz-hier-exporter", hier)
+            .unwrap();
+
+        let files = export_collections(&cache, "http://example.org/").unwrap();
+        let content = |needle: &str| {
+            files
+                .iter()
+                .find(|f| f.relative_path.contains(needle))
+                .map(|f| f.content.clone())
+                .expect("list exports")
+        };
+
+        // In BOTH lists the parent must nest the child (narrower relationship),
+        // not appear as two flat top-level concepts.
+        for list in ["aaaa-hier-exporter", "zzzz-hier-exporter"] {
+            let xml = content(list);
+            assert!(
+                xml.contains("skos:narrower"),
+                "{list} must preserve the parent→child hierarchy for its (possibly cloned) concepts"
+            );
+        }
     }
 
     #[test]

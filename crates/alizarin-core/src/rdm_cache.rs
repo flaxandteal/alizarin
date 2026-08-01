@@ -1004,7 +1004,7 @@ pub fn rdm_to_skos_collection(rdm: &RdmCollection, node_type: &str) -> SkosColle
 pub fn rdm_to_skos_collection_excluding(
     rdm: &RdmCollection,
     node_type: &str,
-    exclude_ids: &HashSet<String>,
+    already_emitted: &HashSet<String>,
 ) -> SkosCollection {
     // Build collection pref_labels
     let mut collection_pref_labels = HashMap::new();
@@ -1018,18 +1018,43 @@ pub fn rdm_to_skos_collection_excluding(
         );
     }
 
-    // Convert all concepts (flat list first), skipping excluded IDs
+    // Convert all concepts (flat list first). A concept whose canonical id was
+    // already emitted by an earlier-exported list is CLONED here — emitted with a
+    // distinct, deterministic per-(list, concept) `rdf:about` — rather than
+    // dropped. CLM pins each ListItem to one List, so a concept genuinely shared
+    // by two lists (e.g. "Antrim" in both County and Administrative Area) must
+    // become two ListItems.
+    //
+    // Why the clone id goes on `rdf:about` but NOT on identity: the CLM importer
+    // derives the ListItem primary key from `rdf:about`
+    // (`uuid5(baseuuid, rdf:about)`), so a shared `rdf:about` collides — hence the
+    // distinct clone. But it takes the ListItem *uri* from `dcterms:identifier`
+    // when present, and the model's uniqueness is per-`(list, uri)`. So the clone
+    // keeps the CANONICAL concept id as its `dcterms:identifier` (`source`): the
+    // two ListItems get distinct pks but the SAME uri, preserving "Antrim is
+    // Antrim" across lists instead of fragmenting it into two identities.
+    //
+    // Hierarchy is preserved for clones: a nested concept list incorporated into
+    // two collections keeps its parent/child structure in both (the second gets
+    // clone rdf:abouts throughout), because the map below is keyed by canonical id
+    // and the tree pass recurses on canonical `narrower` ids.
     let mut all_skos_concepts: HashMap<String, SkosConcept> = HashMap::new();
     let mut all_narrower_ids: HashSet<String> = HashSet::new();
 
     for concept_id in rdm.get_concept_ids() {
-        if exclude_ids.contains(concept_id.as_str()) {
-            continue;
-        }
         if let Some(rdm_concept) = rdm.get_concept(concept_id) {
+            let is_clone = already_emitted.contains(concept_id.as_str());
+            let emit_id = if is_clone {
+                generate_value_uuid(&rdm.id, concept_id, "clone").to_string()
+            } else {
+                concept_id.clone()
+            };
+
             let mut pref_labels = HashMap::new();
             for (lang, rdm_value) in &rdm_concept.pref_label {
-                let value_id = if rdm_value.id.is_empty() || rdm_value.id == "__pending__" {
+                let value_id = if is_clone {
+                    generate_value_uuid(&emit_id, &rdm_value.value, lang).to_string()
+                } else if rdm_value.id.is_empty() || rdm_value.id == "__pending__" {
                     generate_value_uuid(concept_id, &rdm_value.value, lang).to_string()
                 } else {
                     rdm_value.id.clone()
@@ -1044,14 +1069,21 @@ pub fn rdm_to_skos_collection_excluding(
             }
 
             let skos_concept = SkosConcept {
-                id: concept_id.clone(),
+                id: emit_id.clone(),
                 uri: None,
                 pref_labels,
+                // dcterms:identifier = canonical concept id (same across every list
+                // the concept appears in) → the importer sets ListItem.uri to it,
+                // so all copies share one identity while pks (from rdf:about) differ.
                 source: Some(concept_id.clone()),
                 sort_order: None,
                 children: None,
             };
 
+            // Key by CANONICAL id: the hierarchy pass recurses on canonical
+            // `narrower` ids, so it must resolve clones by their canonical id. The
+            // emitted rdf:about (clone or canonical) lives in SkosConcept.id, so
+            // the serialized structure carries the right per-list ids either way.
             all_skos_concepts.insert(concept_id.clone(), skos_concept);
             all_narrower_ids.extend(rdm_concept.narrower.iter().cloned());
         }
@@ -1070,9 +1102,10 @@ pub fn rdm_to_skos_collection_excluding(
     let mut placed: HashSet<String> = HashSet::new();
 
     for concept_id in rdm.get_concept_ids() {
-        if exclude_ids.contains(concept_id.as_str()) {
-            continue;
-        }
+        // Clones are NOT skipped here: a nested concept list shared by two
+        // collections must keep its structure in both. The tree is built from
+        // canonical ids (the map is keyed canonically) while each emitted node
+        // carries its own rdf:about (clone id for the later list).
         if !all_narrower_ids.contains(concept_id) {
             if let Some(concept_with_children) =
                 build_concept_tree_from_rdm(concept_id, &all_skos_concepts, rdm, &mut placed)
