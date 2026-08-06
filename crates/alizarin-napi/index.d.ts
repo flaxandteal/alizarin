@@ -279,7 +279,7 @@ export declare class NapiResourceInstanceWrapper {
   /** Serialize to JSON (tile_data mode — raw values). */
   toJson(): any
   /** Serialize to display JSON (resolved labels). */
-  toDisplayJson(rdmCache: NapiRdmCache, nodeConfigManager: NapiNodeConfigManager, language?: string | undefined | null): any
+  toDisplayJson(rdmCache: NapiRdmCache, nodeConfigManager: NapiNodeConfigManager, language?: string | undefined | null, resourceRegistry?: NapiStaticResourceRegistry | undefined | null): any
   /** Serialize to display JSON without RDM/config (basic labels only). */
   toDisplayJsonSimple(language?: string | undefined | null): any
   release(): void
