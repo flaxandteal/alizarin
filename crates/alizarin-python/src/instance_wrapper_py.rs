@@ -194,6 +194,26 @@ impl PyResourceInstanceWrapperCore {
         Ok(())
     }
 
+    /// Merge tiles into the wrapper, keeping already-loaded nodegroups.
+    ///
+    /// The incremental counterpart to `load_tiles` (which replaces): load one
+    /// nodegroup now, merge another on a later path touch, and both stay
+    /// queryable. Idempotent per `tileid`.
+    ///
+    /// Args:
+    ///     tiles_json: JSON string of tiles array
+    fn merge_tiles(&mut self, tiles_json: &str) -> PyResult<()> {
+        let tiles: Vec<StaticTile> = serde_json::from_str(tiles_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse tiles JSON: {}",
+                e
+            ))
+        })?;
+
+        self.inner.merge_tiles(tiles);
+        Ok(())
+    }
+
     /// Set a single node's data in a tile, mutating in place.
     /// Returns true if the tile was found and updated, false otherwise.
     ///

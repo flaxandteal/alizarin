@@ -725,6 +725,30 @@ impl ResourceInstanceWrapperCore {
         self.nodegroup_index = nodegroup_index;
     }
 
+    /// Merge tiles into the wrapper, keeping whatever is already loaded.
+    ///
+    /// Unlike [`load_tiles`](Self::load_tiles), which replaces the tile store,
+    /// this appends so a resource's nodegroups can be hydrated incrementally
+    /// (lazy per-nodegroup loading). A tile whose `tileid` is already present
+    /// is overwritten, so re-merging the same nodegroup is idempotent.
+    pub fn merge_tiles(&mut self, tiles: Vec<StaticTile>) {
+        let tiles_map = self.tiles.get_or_insert_with(HashMap::new);
+        for tile in tiles {
+            let tile_id = tile
+                .tileid
+                .clone()
+                .unwrap_or_else(|| format!("synthetic_{}", tiles_map.len()));
+            let entry = self
+                .nodegroup_index
+                .entry(tile.nodegroup_id.clone())
+                .or_default();
+            if !entry.contains(&tile_id) {
+                entry.push(tile_id.clone());
+            }
+            tiles_map.insert(tile_id, tile);
+        }
+    }
+
     /// Get a tile by ID
     pub fn get_tile(&self, tile_id: &str) -> Option<&StaticTile> {
         self.tiles.as_ref().and_then(|t| t.get(tile_id))
