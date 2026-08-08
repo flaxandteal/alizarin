@@ -47,7 +47,7 @@ pub use resources::{
     UnknownReference,
 };
 pub use static_graph::{GraphWrapper, IndexedGraph, StaticGraph};
-pub use tile::StaticTile;
+pub use tile::{canonical_tile_id, tile_namespace, StaticTile, TILE_NAMESPACE_URI};
 pub use translatable::StaticTranslatableString;
 
 /// Datatypes that represent iterable/list values

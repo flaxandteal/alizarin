@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::extension_type_registry::ExtensionTypeRegistry;
-use crate::graph::{IndexedGraph, StaticGraph};
+use crate::graph::{canonical_tile_id, IndexedGraph, StaticGraph};
 use crate::graph::{StaticResource, StaticResourceMetadata};
 use crate::graph_mutator::generate_uuid_v5;
 use crate::instance_wrapper_core::is_node_single_cardinality_with;
@@ -660,6 +660,14 @@ fn single_tree_to_resource(
         resource_id
     };
 
+    // Give every cardinality-1 tile its COMPOSABLE (deterministic) id.
+    //
+    // This must happen HERE, after `resource_id` is final: a slug-derived
+    // resource id is not known until the tiles exist (the slug is computed FROM
+    // them), and a root canonical id is keyed on the resource. Assigning at
+    // mint time would key root tiles on the throwaway temp id.
+    assign_canonical_tile_ids(&mut tiles, graph, &resource_id);
+
     // Use name from descriptors, or fallback to resourceinstanceid
     let name = descriptors
         .name
@@ -685,6 +693,85 @@ fn single_tree_to_resource(
         scopes: None,
         tiles_loaded: Some(true),
     })
+}
+
+/// Give every **cardinality-1** tile its canonical, derivable id.
+///
+/// This is where alizarin makes tile ids composable: it is the only tile path
+/// with a [`StaticGraph`], and therefore the only one that knows cardinality.
+/// The scheme, the key, and why both halves of that key are load-bearing are
+/// documented once, on [`canonical_tile_id`]. Only the mechanics are here.
+///
+/// * **Cardinality-1** -> canonical id. **Cardinality-n** -> keeps its v4.
+/// * **Unknown cardinality** (no nodegroup, or no `cardinality` set) -> keeps
+///   its v4. Conservative on purpose: deriving an id for a nodegroup that turns
+///   out to be multi-valued would hand every one of its tiles the SAME id, i.e.
+///   destroy data. Failing to derive one merely costs composability.
+/// * **Parents before children**, remapping each child's `parenttile_id` to its
+///   parent's new id on the way down: a child's id is keyed on its parent's,
+///   so the parent must be renamed first.
+fn assign_canonical_tile_ids(tiles: &mut [StaticTile], graph: &StaticGraph, resource_id: &str) {
+    let is_cardinality_one = |ng_id: &str| -> bool {
+        graph
+            .get_nodegroup_by_id(ng_id)
+            .and_then(|ng| ng.cardinality.clone())
+            .map(|c| c != "n")
+            .unwrap_or(false)
+    };
+
+    let mut children_of: HashMap<String, Vec<usize>> = HashMap::new();
+    let mut queue: std::collections::VecDeque<(usize, Option<String>)> = Default::default();
+
+    for (idx, tile) in tiles.iter().enumerate() {
+        match tile.parenttile_id.as_deref() {
+            Some(parent) if !parent.is_empty() => {
+                children_of.entry(parent.to_string()).or_default().push(idx);
+            }
+            _ => queue.push_back((idx, None)),
+        }
+    }
+
+    let mut visited: HashSet<usize> = HashSet::new();
+
+    while let Some((idx, new_parent_id)) = queue.pop_front() {
+        if !visited.insert(idx) {
+            continue;
+        }
+
+        let old_id = tiles[idx].tileid.clone();
+
+        if let Some(parent_id) = new_parent_id {
+            tiles[idx].parenttile_id = Some(parent_id);
+        }
+
+        let nodegroup_id = tiles[idx].nodegroup_id.clone();
+        let new_id = if is_cardinality_one(&nodegroup_id) {
+            let id = canonical_tile_id(
+                resource_id,
+                &nodegroup_id,
+                tiles[idx].parenttile_id.as_deref(),
+            );
+            tiles[idx].tileid = Some(id.clone());
+            id
+        } else {
+            match tiles[idx].tileid.clone() {
+                Some(id) => id,
+                None => {
+                    let id = uuid::Uuid::new_v4().to_string();
+                    tiles[idx].tileid = Some(id.clone());
+                    id
+                }
+            }
+        };
+
+        if let Some(old_id) = old_id {
+            if let Some(child_idxs) = children_of.get(&old_id) {
+                for &child_idx in child_idxs {
+                    queue.push_back((child_idx, Some(new_id.clone())));
+                }
+            }
+        }
+    }
 }
 
 /// Build PseudoValueCore tree from JSON and populate pseudo_cache
@@ -2421,6 +2508,249 @@ mod tests {
             err.contains("unresolved placeholder"),
             "Error should mention unresolved placeholder. Got: {}",
             err
+        );
+    }
+
+    // ========================================================================
+    // Composable (canonical) tile ids
+    //
+    // The property under test is the one the whole cross-layer override story
+    // rests on: an independently built layer, holding NO copy of the base data,
+    // can COMPUTE the id of a cardinality-1 tile and thereby address it.
+    // ========================================================================
+
+    const CANON_RESOURCE_ID: &str = "11111111-2222-3333-4444-555555555555";
+
+    /// Root -> `name` (cardinality 1)
+    ///      -> `contacts` (cardinality N)
+    ///           -> `phone` (cardinality 1)   <- sibling A, nested under a
+    ///           -> `email` (cardinality 1)   <- sibling B, cardinality-N parent
+    fn build_canonical_id_graph() -> StaticGraph {
+        let graph_json = serde_json::json!({
+            "graphid": "canon-graph",
+            "name": {"en": "Canonical Id Graph"},
+            "root": {
+                "nodeid": "root-id", "name": "Root", "alias": "root",
+                "datatype": "semantic", "graph_id": "canon-graph", "istopnode": true
+            },
+            "nodes": [
+                {
+                    "nodeid": "root-id", "name": "Root", "alias": "root",
+                    "datatype": "semantic", "graph_id": "canon-graph", "istopnode": true
+                },
+                {
+                    "nodeid": "name-ng", "name": "Name", "alias": "name",
+                    "datatype": "string", "nodegroup_id": "name-ng", "graph_id": "canon-graph"
+                },
+                {
+                    "nodeid": "contact-ng", "name": "Contacts", "alias": "contacts",
+                    "datatype": "semantic", "nodegroup_id": "contact-ng", "graph_id": "canon-graph"
+                },
+                {
+                    "nodeid": "phone-ng", "name": "Phone", "alias": "phone",
+                    "datatype": "string", "nodegroup_id": "phone-ng", "graph_id": "canon-graph"
+                },
+                {
+                    "nodeid": "email-ng", "name": "Email", "alias": "email",
+                    "datatype": "string", "nodegroup_id": "email-ng", "graph_id": "canon-graph"
+                }
+            ],
+            "nodegroups": [
+                { "nodegroupid": "name-ng", "cardinality": "1" },
+                { "nodegroupid": "contact-ng", "cardinality": "n" },
+                { "nodegroupid": "phone-ng", "cardinality": "1",
+                  "parentnodegroup_id": "contact-ng" },
+                { "nodegroupid": "email-ng", "cardinality": "1",
+                  "parentnodegroup_id": "contact-ng" }
+            ],
+            "edges": [
+                { "domainnode_id": "root-id", "rangenode_id": "name-ng" },
+                { "domainnode_id": "root-id", "rangenode_id": "contact-ng" },
+                { "domainnode_id": "contact-ng", "rangenode_id": "phone-ng" },
+                { "domainnode_id": "contact-ng", "rangenode_id": "email-ng" }
+            ]
+        });
+
+        let mut graph: StaticGraph = serde_json::from_value(graph_json).expect("canon graph JSON");
+        graph.build_indices();
+        graph
+    }
+
+    fn canonical_tree() -> Value {
+        serde_json::json!({
+            "graph_id": "canon-graph",
+            "resourceinstanceid": CANON_RESOURCE_ID,
+            "name": "Alpha",
+            "contacts": [
+                { "phone": "111", "email": "a@example.com" },
+                { "phone": "222", "email": "b@example.com" }
+            ]
+        })
+    }
+
+    fn convert_canonical_tree() -> Vec<StaticTile> {
+        let graph = build_canonical_id_graph();
+        let result = tree_to_tiles(&canonical_tree(), &graph, false, None)
+            .expect("canonical tree conversion");
+        result.business_data.resources[0]
+            .tiles
+            .clone()
+            .expect("tiles")
+    }
+
+    fn tiles_for<'a>(tiles: &'a [StaticTile], ng: &str) -> Vec<&'a StaticTile> {
+        tiles.iter().filter(|t| t.nodegroup_id == ng).collect()
+    }
+
+    fn uuid_version(id: &str) -> usize {
+        uuid::Uuid::parse_str(id)
+            .expect("valid uuid")
+            .get_version_num()
+    }
+
+    #[test]
+    fn tree_to_tiles_gives_cardinality_one_tiles_canonical_ids() {
+        let tiles = convert_canonical_tree();
+
+        let name_tiles = tiles_for(&tiles, "name-ng");
+        assert_eq!(name_tiles.len(), 1, "cardinality-1 nodegroup => one tile");
+
+        let name_id = name_tiles[0].tileid.as_deref().expect("name tileid");
+        assert_eq!(
+            uuid_version(name_id),
+            5,
+            "cardinality-1 => uuid5, not random"
+        );
+        assert!(
+            name_tiles[0].parenttile_id.is_none(),
+            "name is a root tile, its scope is the resource"
+        );
+        assert_eq!(
+            name_id,
+            canonical_tile_id(CANON_RESOURCE_ID, "name-ng", None),
+            "root cardinality-1 tile must be keyed on (resource, nodegroup)"
+        );
+    }
+
+    #[test]
+    fn tree_to_tiles_leaves_cardinality_n_tiles_random() {
+        let tiles = convert_canonical_tree();
+
+        let contacts = tiles_for(&tiles, "contact-ng");
+        assert_eq!(contacts.len(), 2, "two contacts in the tree");
+
+        for tile in &contacts {
+            let id = tile.tileid.as_deref().expect("contact tileid");
+            assert_eq!(
+                uuid_version(id),
+                4,
+                "cardinality-n keeps a RANDOM id: a standalone layer must not be \
+                 able to guess it, so it can only ADD to a multi-valued nodegroup"
+            );
+        }
+        assert_ne!(
+            contacts[0].tileid, contacts[1].tileid,
+            "distinct cardinality-n tiles"
+        );
+    }
+
+    #[test]
+    fn cardinality_one_under_cardinality_n_parent_is_keyed_per_parent_instance() {
+        let tiles = convert_canonical_tree();
+
+        let phones = tiles_for(&tiles, "phone-ng");
+        assert_eq!(
+            phones.len(),
+            2,
+            "one phone tile per contact instance, NOT one per resource"
+        );
+
+        for phone in &phones {
+            let parent = phone
+                .parenttile_id
+                .as_deref()
+                .expect("nested tile must be parented");
+            let id = phone.tileid.as_deref().expect("phone tileid");
+            assert_eq!(uuid_version(id), 5, "still cardinality-1 => canonical");
+            assert_eq!(
+                id,
+                canonical_tile_id(CANON_RESOURCE_ID, "phone-ng", Some(parent)),
+                "nested cardinality-1 tile is keyed on its PARENT INSTANCE"
+            );
+        }
+
+        assert_ne!(
+            phones[0].tileid, phones[1].tileid,
+            "one per parent instance, a (resource, nodegroup) key would have \
+             collapsed these two onto one id"
+        );
+    }
+
+    #[test]
+    fn sibling_cardinality_one_nodegroups_get_distinct_ids() {
+        let tiles = convert_canonical_tree();
+
+        let phones = tiles_for(&tiles, "phone-ng");
+        let emails = tiles_for(&tiles, "email-ng");
+        assert_eq!(emails.len(), 2);
+
+        for phone in &phones {
+            let parent = phone.parenttile_id.as_deref().expect("parent");
+            let sibling = emails
+                .iter()
+                .find(|e| e.parenttile_id.as_deref() == Some(parent))
+                .expect("each contact has a phone AND an email");
+
+            assert_ne!(
+                phone.tileid, sibling.tileid,
+                "sibling cardinality-1 nodegroups share a parent but are DISTINCT \
+                 tiles, the nodegroup must stay in the key"
+            );
+        }
+    }
+
+    #[test]
+    fn independently_generated_layers_agree_on_cardinality_one_tile_ids() {
+        let head_a = convert_canonical_tree();
+        let head_b = convert_canonical_tree();
+
+        let a_name = tiles_for(&head_a, "name-ng")[0].tileid.clone().expect("id");
+        let b_name = tiles_for(&head_b, "name-ng")[0].tileid.clone().expect("id");
+
+        assert_eq!(
+            a_name, b_name,
+            "the SAME logical root cardinality-1 tile, generated twice \
+             independently, must land on the SAME id"
+        );
+
+        assert_eq!(
+            a_name,
+            canonical_tile_id(CANON_RESOURCE_ID, "name-ng", None),
+            "a layer with no access to the base must be able to COMPUTE the id \
+             of the tile it wants to override"
+        );
+
+        let a_phone = tiles_for(&head_a, "phone-ng");
+        let b_phone = tiles_for(&head_b, "phone-ng");
+        let mut a_ids: Vec<_> = a_phone.iter().filter_map(|t| t.tileid.clone()).collect();
+        let mut b_ids: Vec<_> = b_phone.iter().filter_map(|t| t.tileid.clone()).collect();
+        a_ids.sort();
+        b_ids.sort();
+
+        // These nested ids are keyed on their cardinality-N parents, whose ids
+        // are RANDOM and so differ between the two heads. The children therefore
+        // differ too: correct and intended, not a defect.
+        assert_ne!(
+            a_ids, b_ids,
+            "children of a RANDOM-id cardinality-N parent differ between heads: \
+             addressable only by a holder of the parent tile"
+        );
+
+        // But given the parent, the derivation is exact.
+        let parent = a_phone[0].parenttile_id.as_deref().expect("parent");
+        assert_eq!(
+            a_phone[0].tileid.as_deref().unwrap(),
+            canonical_tile_id(CANON_RESOURCE_ID, "phone-ng", Some(parent)),
         );
     }
 }

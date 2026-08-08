@@ -42,12 +42,14 @@ pub mod type_serialization;
 pub use graph::{
     batch_merge_resources,
     build_backedges,
+    canonical_tile_id,
     find_root_node,
     is_iterable_datatype,
     merge_resources,
     parse_resources_from_json_str,
     // Graph pruning
     prune_graph,
+    tile_namespace,
     BatchMergeResult,
     GraphWrapper,
     IndexedGraph,
@@ -81,6 +83,7 @@ pub use graph::{
     StaticTranslatableString,
     UnknownReference,
     ITERABLE_DATATYPES,
+    TILE_NAMESPACE_URI,
 };
 
 // Loader
