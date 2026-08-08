@@ -543,15 +543,18 @@ pub fn build_business_data_from_csv(
         uuid_namespace,
     };
 
+    let reg = extension_registry();
     let resources = if let Some(rc) = rdm_cache {
         let ctx = SerializationContext {
             concept_lookup: Some(rc.inner() as &dyn ConceptLookup),
+            extension_registry: Some(reg),
             ..SerializationContext::empty()
         };
         build_resources_from_business_csv_with_context(
             &csv_data,
             &graph,
             &collections,
+            Some(reg),
             options,
             Some(&ctx),
         )

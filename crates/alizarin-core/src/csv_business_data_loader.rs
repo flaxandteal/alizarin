@@ -32,6 +32,7 @@
 use std::collections::HashMap;
 
 use crate::csv_model_loader::{CsvModelDiagnostic, CsvModelError, DiagnosticLevel};
+use crate::extension_type_registry::ExtensionTypeRegistry;
 use crate::graph::{
     StaticGraph, StaticNode, StaticResource, StaticResourceDescriptors, StaticResourceMetadata,
     StaticTile,
@@ -41,6 +42,7 @@ use crate::label_resolution::ConceptLookup;
 use crate::skos::SkosCollection;
 use crate::type_coercion::{coerce_geojson, normalize_date_string};
 use crate::type_serialization::SerializationContext;
+use serde_json::Value;
 
 /// Options for business data CSV loading
 #[derive(Debug, Clone)]
@@ -180,6 +182,8 @@ struct CoerceContext<'a> {
     diagnostics: &'a mut Vec<CsvModelDiagnostic>,
     line: usize,
     strict_concepts: bool,
+    /// Extension-datatype handlers; `None` = core-only coercion.
+    registry: Option<&'a ExtensionTypeRegistry>,
 }
 
 /// Convert a CSV cell value to the appropriate tile data value
@@ -319,6 +323,19 @@ fn coerce_value(
         }
         "semantic" => None,
         _ => {
+            // Extension datatypes core doesn't own (e.g. CLM `reference`):
+            // delegate to the registered handler's coerce, then resolve any
+            // RDM lookup markers it emits so we get bare concept UUIDs.
+            if let Some(reg) = ctx.registry {
+                let cfg = serde_json::Value::Object(node.config.clone().into_iter().collect());
+                if let Ok(Some(result)) = reg.coerce(
+                    datatype,
+                    &serde_json::Value::String(raw.to_string()),
+                    Some(&cfg),
+                ) {
+                    return Some(resolve_rdm_markers(result.tile_data, node, ctx));
+                }
+            }
             ctx.diagnostics.push(CsvModelDiagnostic {
                 level: DiagnosticLevel::Warning,
                 file: "business_data.csv".to_string(),
@@ -330,6 +347,46 @@ fn coerce_value(
             });
             Some(serde_json::Value::String(raw.to_string()))
         }
+    }
+}
+
+/// Resolve the RDM lookup markers an extension handler's `coerce` emits for
+/// unresolved labels (`{"__needs_rdm_label_lookup": true, "label": ...}`) into
+/// the bare concept UUID that indexing expects. A `{"__needs_rdm_lookup": true,
+/// "uuid": ...}` marker is already an id. Anything else passes through,
+/// recursing into arrays.
+fn resolve_rdm_markers(value: Value, node: &StaticNode, ctx: &mut CoerceContext<'_>) -> Value {
+    match value {
+        Value::Array(arr) => Value::Array(
+            arr.into_iter()
+                .map(|v| resolve_rdm_markers(v, node, ctx))
+                .collect(),
+        ),
+        Value::Object(ref obj)
+            if obj
+                .get("__needs_rdm_label_lookup")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false) =>
+        {
+            match obj.get("label").and_then(|v| v.as_str()) {
+                Some(label) => resolve_concept_label(label, node, ctx)
+                    .map(Value::String)
+                    .unwrap_or(value),
+                None => value,
+            }
+        }
+        Value::Object(ref obj)
+            if obj
+                .get("__needs_rdm_lookup")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false) =>
+        {
+            obj.get("uuid")
+                .and_then(|v| v.as_str())
+                .map(|s| Value::String(s.to_string()))
+                .unwrap_or(value)
+        }
+        other => other,
     }
 }
 
@@ -411,7 +468,14 @@ pub fn build_resources_from_business_csv(
     collections: &[SkosCollection],
     options: BusinessDataCsvOptions,
 ) -> Result<Vec<StaticResource>, CsvModelError> {
-    build_resources_from_business_csv_with_context(csv_data, graph, collections, options, None)
+    build_resources_from_business_csv_with_context(
+        csv_data,
+        graph,
+        collections,
+        None,
+        options,
+        None,
+    )
 }
 
 /// Build resources, resolving concept/reference labels to concept ids.
@@ -420,10 +484,14 @@ pub fn build_resources_from_business_csv(
 /// labels resolve through it, the same concept identity the read side later
 /// resolves back. When absent, resolution falls back to a lookup derived from
 /// `collections`.
+///
+/// When `registry` is provided, unknown datatypes are coerced via their
+/// extension handler instead of stored as bare strings.
 pub fn build_resources_from_business_csv_with_context(
     csv_data: &str,
     graph: &StaticGraph,
     collections: &[SkosCollection],
+    registry: Option<&ExtensionTypeRegistry>,
     options: BusinessDataCsvOptions,
     context: Option<&SerializationContext>,
 ) -> Result<Vec<StaticResource>, CsvModelError> {
@@ -647,6 +715,7 @@ pub fn build_resources_from_business_csv_with_context(
                     diagnostics: &mut diagnostics,
                     line: *line,
                     strict_concepts: options.strict_concepts,
+                    registry,
                 };
                 let value = coerce_value(raw, &mapping.node.datatype, language, node, &mut ctx);
 
