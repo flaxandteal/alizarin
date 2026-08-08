@@ -1743,7 +1743,7 @@ pub fn batch_merge_resources(
                 // Unify cardinality-1 tiles if we have the graph
                 if let Some(indexed) = indexed_graphs.get(&graph_id) {
                     if let Some(ref mut tiles) = resource.tiles {
-                        match unify_cardinality_one_tiles(tiles, indexed, strict) {
+                        match unify_cardinality_one_tiles(tiles, &indexed.graph, strict) {
                             Ok(unify_warnings) => {
                                 for warning in unify_warnings {
                                     all_warnings.push(format!("[{}] {}", resource_id, warning));
@@ -1832,13 +1832,13 @@ type TileDataMergeMap = HashMap<usize, Vec<(String, HashMap<String, serde_json::
 ///
 /// # Arguments
 /// * `tiles` - Mutable reference to the tiles vector
-/// * `indexed_graph` - The indexed graph for looking up nodegroup cardinality
+/// * `graph` - The static graph for looking up nodegroup cardinality
 ///
 /// # Returns
 /// * Vector of warning messages about unified tiles and data conflicts
 pub fn unify_cardinality_one_tiles(
     tiles: &mut Vec<StaticTile>,
-    indexed_graph: &crate::IndexedGraph,
+    graph: &super::StaticGraph,
     strict: bool,
 ) -> Result<Vec<String>, String> {
     use std::collections::BTreeMap;
@@ -1846,7 +1846,7 @@ pub fn unify_cardinality_one_tiles(
     let mut warnings = Vec::new();
 
     // Group tile indices by (nodegroup_id, parenttile_id).
-    // Cardinality-1 means one tile per parent context, not one tile total —
+    // Cardinality-1 means one tile per parent context, not one tile total,
     // tiles under different parent tiles are separate instances and must not be unified.
     let mut tiles_by_context: BTreeMap<(String, Option<String>), Vec<usize>> = BTreeMap::new();
     for (idx, tile) in tiles.iter().enumerate() {
@@ -1868,7 +1868,7 @@ pub fn unify_cardinality_one_tiles(
         }
 
         // Check cardinality
-        let nodegroup = match indexed_graph.graph.get_nodegroup_by_id(nodegroup_id) {
+        let nodegroup = match graph.get_nodegroup_by_id(nodegroup_id) {
             Some(ng) => ng,
             None => continue,
         };
@@ -2183,5 +2183,154 @@ mod tests {
         let tile_b = merged_cache.get("tile-b").unwrap();
         assert_eq!(tile_b.len(), 1);
         assert!(tile_b.contains_key("node-3"));
+    }
+
+    // ---- unify_cardinality_one_tiles: the LAYER COMPOSITION contract ----
+    //
+    // These are not incidental tests of a helper. Multi-layer composition IS
+    // this function: it gathers a resource from each layer TOPMOST-FIRST,
+    // concatenates, and calls this. Every guarantee the layer format makes
+    // about override-vs-merge is asserted here, and nowhere else.
+
+    fn layer_graph() -> super::super::StaticGraph {
+        let mut graph: super::super::StaticGraph = serde_json::from_value(serde_json::json!({
+            "graphid": "g",
+            "name": {"en": "G"},
+            "root": {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "g"},
+            "nodes": [{"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "g"}],
+            "nodegroups": [
+                {"nodegroupid": "single", "cardinality": "1"},
+                {"nodegroupid": "multi", "cardinality": "n"},
+                {"nodegroupid": "nested", "cardinality": "1", "parentnodegroup_id": "multi"},
+                {"nodegroupid": "childmulti", "cardinality": "n", "parentnodegroup_id": "single"}
+            ],
+            "edges": []
+        }))
+        .expect("layer test graph");
+        graph.build_indices();
+        graph
+    }
+
+    fn t(id: &str, ng: &str, parent: Option<&str>, data: &[(&str, i64)]) -> StaticTile {
+        StaticTile {
+            tileid: Some(id.to_string()),
+            nodegroup_id: ng.to_string(),
+            parenttile_id: parent.map(str::to_string),
+            resourceinstance_id: "r1".to_string(),
+            data: data
+                .iter()
+                .map(|(k, v)| (k.to_string(), serde_json::json!(v)))
+                .collect(),
+            provisionaledits: None,
+            sortorder: None,
+        }
+    }
+
+    /// The core layer guarantee: a cardinality-1 override is **FIELD-LEVEL**.
+    ///
+    /// Layers are partial, so an overlay that sets ONE node must not blank the
+    /// rest of its nodegroup. Topmost-first ordering + "first tile wins per key,
+    /// later tiles fill in absent keys" gives exactly that.
+    #[test]
+    fn cardinality_one_override_is_field_level_not_whole_tile() {
+        let graph = layer_graph();
+        let mut tiles = vec![
+            t("overlay", "single", None, &[("a", 9)]),
+            t("base", "single", None, &[("a", 1), ("b", 2)]),
+        ];
+        unify_cardinality_one_tiles(&mut tiles, &graph, false).expect("unify");
+
+        assert_eq!(tiles.len(), 1, "cardinality-1 scope must hold one tile");
+        let data = &tiles[0].data;
+        assert_eq!(
+            data["a"],
+            serde_json::json!(9),
+            "topmost layer wins the node it sets"
+        );
+        assert_eq!(
+            data["b"],
+            serde_json::json!(2),
+            "base fills the node the overlay omits"
+        );
+    }
+
+    #[test]
+    fn cardinality_n_tiles_are_never_collapsed() {
+        let graph = layer_graph();
+        let mut tiles = vec![
+            t("m1", "multi", None, &[("a", 1)]),
+            t("m2", "multi", None, &[("a", 2)]),
+        ];
+        unify_cardinality_one_tiles(&mut tiles, &graph, false).expect("unify");
+        assert_eq!(tiles.len(), 2, "cardinality-n must be an additive union");
+    }
+
+    /// Scope is `(nodegroup, parenttile)`, NOT nodegroup alone. A cardinality-1
+    /// nodegroup nested under a cardinality-n parent legitimately has one tile
+    /// PER PARENT.
+    #[test]
+    fn cardinality_one_is_scoped_per_parent_not_per_nodegroup() {
+        let graph = layer_graph();
+        let mut tiles = vec![
+            t("m1", "multi", None, &[]),
+            t("m2", "multi", None, &[]),
+            t("n1", "nested", Some("m1"), &[("a", 1)]),
+            t("n2", "nested", Some("m2"), &[("a", 2)]),
+        ];
+        unify_cardinality_one_tiles(&mut tiles, &graph, false).expect("unify");
+        assert_eq!(
+            tiles.len(),
+            4,
+            "one cardinality-1 tile per parent instance is legal; none may be dropped"
+        );
+    }
+
+    /// Overriding a cardinality-1 PARENT must not orphan its cardinality-n
+    /// children: they are re-parented onto the surviving tile.
+    #[test]
+    fn children_of_a_superseded_cardinality_one_tile_are_reparented() {
+        let graph = layer_graph();
+        let mut tiles = vec![
+            t("overlay", "single", None, &[("a", 9)]),
+            t("base", "single", None, &[("a", 1)]),
+            t("child", "childmulti", Some("base"), &[("x", 1)]),
+        ];
+        unify_cardinality_one_tiles(&mut tiles, &graph, false).expect("unify");
+
+        assert_eq!(tiles.len(), 2, "the base's cardinality-1 tile is absorbed");
+        let child = tiles
+            .iter()
+            .find(|t| t.nodegroup_id == "childmulti")
+            .expect("the child survives the override of its parent");
+        assert_eq!(
+            child.parenttile_id.as_deref(),
+            Some("overlay"),
+            "the child is re-parented onto the surviving tile, not orphaned"
+        );
+    }
+
+    // No unindexed-graph guard test: OnceLock lazy indices mean
+    // get_nodegroup_by_id always auto-builds, so the failure mode is impossible.
+
+    #[test]
+    fn a_cross_layer_conflict_warns_but_is_an_error_under_strict() {
+        let graph = layer_graph();
+        let pair = || {
+            vec![
+                t("overlay", "single", None, &[("a", 9)]),
+                t("base", "single", None, &[("a", 1)]),
+            ]
+        };
+
+        let mut lenient = pair();
+        let warnings = unify_cardinality_one_tiles(&mut lenient, &graph, false).expect("lenient");
+        assert_eq!(warnings.len(), 1, "the override is reported, not silent");
+        assert_eq!(lenient[0].data["a"], serde_json::json!(9));
+
+        let mut strict = pair();
+        assert!(
+            unify_cardinality_one_tiles(&mut strict, &graph, true).is_err(),
+            "strict must refuse to guess between two asserted values"
+        );
     }
 }
