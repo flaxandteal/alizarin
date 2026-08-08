@@ -1064,7 +1064,7 @@ impl NapiResourceInstanceWrapper {
     pub fn is_nodegroup_loaded_or_loading(&self, nodegroup_id: Option<String>) -> bool {
         match nodegroup_id {
             Some(id) => {
-                if let Ok(loaded) = self.inner.loaded_nodegroups.lock() {
+                if let Ok(loaded) = self.inner.loaded_nodegroups.read() {
                     matches!(
                         loaded.get(&id),
                         Some(LoadState::Loaded) | Some(LoadState::Loading)
@@ -1079,7 +1079,7 @@ impl NapiResourceInstanceWrapper {
 
     #[napi]
     pub fn try_acquire_nodegroup_lock(&self, nodegroup_id: String) -> bool {
-        if let Ok(mut loaded) = self.inner.loaded_nodegroups.lock() {
+        if let Ok(mut loaded) = self.inner.loaded_nodegroups.write() {
             let state = loaded.entry(nodegroup_id).or_insert(LoadState::NotLoaded);
             if *state == LoadState::NotLoaded {
                 *state = LoadState::Loading;
@@ -1436,7 +1436,7 @@ impl NapiResourceInstanceWrapper {
 
     #[napi]
     pub fn clear_pseudo_cache(&self) {
-        if let Ok(mut cache) = self.inner.pseudo_cache.lock() {
+        if let Ok(mut cache) = self.inner.pseudo_cache.write() {
             cache.clear();
         }
     }
@@ -1535,7 +1535,7 @@ impl NapiResourceInstanceWrapper {
         self.inner.tiles = None;
         self.inner.nodegroup_index.clear();
         self.clear_pseudo_cache();
-        if let Ok(mut loaded) = self.inner.loaded_nodegroups.lock() {
+        if let Ok(mut loaded) = self.inner.loaded_nodegroups.write() {
             loaded.clear();
         }
     }
@@ -1556,7 +1556,7 @@ impl NapiResourceInstanceWrapper {
         let cache = self
             .inner
             .pseudo_cache
-            .lock()
+            .read()
             .map_err(|_| napi::Error::from_reason("Failed to lock pseudo cache"))?;
 
         // Get root alias

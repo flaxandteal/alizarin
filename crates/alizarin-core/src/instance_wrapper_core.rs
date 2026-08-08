@@ -7,8 +7,9 @@
 ///
 /// The WASM and Python bindings wrap these types with platform-specific
 /// concerns (RefCell for WASM async, PyO3 for Python).
+use crate::shared_mut::SharedMut;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::path_resolution::{resolve_path_segments, PathError, PathResolutionInfo};
 use crate::permissions::PermissionRule;
@@ -643,12 +644,8 @@ pub fn ensure_nodegroup(
 /// Core resource instance wrapper - platform-agnostic business logic
 ///
 /// Contains all tile storage, indexing, and business logic.
-/// Used by NAPI and Python bindings. WASM has a parallel copy in
-/// alizarin-wasm::instance_wrapper::ResourceInstanceWrapperCore that uses
-/// Rc<RefCell> instead of Arc<Mutex>.
-///
-/// TODO(priority): Unify the WASM copy with this struct so methods like
-/// set_tile_data_for_node don't need to be maintained in two places.
+/// Used by NAPI, Python, and WASM bindings. SharedMut provides
+/// Rc<RefCell> on wasm32 and Arc<Mutex> on native targets.
 pub struct ResourceInstanceWrapperCore {
     /// Graph ID to look up model
     pub graph_id: String,
@@ -663,10 +660,10 @@ pub struct ResourceInstanceWrapperCore {
     pub nodegroup_index: HashMap<String, Vec<String>>,
 
     /// Track which nodegroups have been loaded/loading
-    pub loaded_nodegroups: Arc<Mutex<HashMap<String, LoadState>>>,
+    pub loaded_nodegroups: SharedMut<HashMap<String, LoadState>>,
 
     /// Cache of PseudoValues (alias -> PseudoListCore)
-    pub pseudo_cache: Arc<Mutex<HashMap<String, PseudoListCore>>>,
+    pub pseudo_cache: SharedMut<HashMap<String, PseudoListCore>>,
 
     /// Cached model indices - avoids repeated lookups
     pub cached_nodes: Option<Arc<HashMap<String, Arc<StaticNode>>>>,
@@ -684,8 +681,8 @@ impl ResourceInstanceWrapperCore {
             resource_instance: None,
             tiles: None,
             nodegroup_index: HashMap::new(),
-            loaded_nodegroups: Arc::new(Mutex::new(HashMap::new())),
-            pseudo_cache: Arc::new(Mutex::new(HashMap::new())),
+            loaded_nodegroups: SharedMut::new(HashMap::new()),
+            pseudo_cache: SharedMut::new(HashMap::new()),
             cached_nodes: None,
             cached_edges: None,
             cached_reverse_edges: None,
@@ -761,7 +758,7 @@ impl ResourceInstanceWrapperCore {
 
     /// Check if a nodegroup is loaded
     pub fn is_nodegroup_loaded(&self, nodegroup_id: &str) -> bool {
-        if let Ok(loaded) = self.loaded_nodegroups.lock() {
+        if let Ok(loaded) = self.loaded_nodegroups.read() {
             matches!(loaded.get(nodegroup_id), Some(LoadState::Loaded))
         } else {
             false
@@ -770,14 +767,14 @@ impl ResourceInstanceWrapperCore {
 
     /// Mark a nodegroup as loaded
     pub fn mark_nodegroup_loaded(&self, nodegroup_id: &str) {
-        if let Ok(mut loaded) = self.loaded_nodegroups.lock() {
+        if let Ok(mut loaded) = self.loaded_nodegroups.write() {
             loaded.insert(nodegroup_id.to_string(), LoadState::Loaded);
         }
     }
 
     /// Get a cached pseudo list by alias
     pub fn get_cached_pseudo(&self, alias: &str) -> Option<PseudoListCore> {
-        if let Ok(cache) = self.pseudo_cache.lock() {
+        if let Ok(cache) = self.pseudo_cache.read() {
             cache.get(alias).cloned()
         } else {
             None
@@ -786,7 +783,7 @@ impl ResourceInstanceWrapperCore {
 
     /// Store a pseudo list in the cache
     pub fn store_pseudo(&self, alias: String, pseudo_list: PseudoListCore) {
-        if let Ok(mut cache) = self.pseudo_cache.lock() {
+        if let Ok(mut cache) = self.pseudo_cache.write() {
             cache.insert(alias, pseudo_list);
         }
     }
@@ -870,7 +867,7 @@ impl ResourceInstanceWrapperCore {
         let nodegroup_permissions = model.get_permitted_nodegroups();
 
         // Check if pseudo_cache has been populated
-        let cache_len = if let Ok(cache) = self.pseudo_cache.lock() {
+        let cache_len = if let Ok(cache) = self.pseudo_cache.read() {
             cache.len()
         } else {
             0
@@ -879,7 +876,7 @@ impl ResourceInstanceWrapperCore {
 
         // Get already-loaded nodegroups
         let already_loaded: HashSet<String> = if cache_populated {
-            if let Ok(loaded) = self.loaded_nodegroups.lock() {
+            if let Ok(loaded) = self.loaded_nodegroups.read() {
                 loaded
                     .iter()
                     .filter(|(_, state)| **state == LoadState::Loaded)
@@ -915,7 +912,7 @@ impl ResourceInstanceWrapperCore {
         // Start with existing cache entries
         let mut all_structured_values: HashMap<String, PseudoListCore> =
             if !already_loaded.is_empty() {
-                if let Ok(cache) = self.pseudo_cache.lock() {
+                if let Ok(cache) = self.pseudo_cache.read() {
                     cache.clone()
                 } else {
                     HashMap::new()
@@ -1005,7 +1002,7 @@ impl ResourceInstanceWrapperCore {
         all_structured_values.insert(root_node_alias.to_string(), root_list);
 
         // Store all values in pseudo_cache
-        if let Ok(mut cache) = self.pseudo_cache.lock() {
+        if let Ok(mut cache) = self.pseudo_cache.write() {
             for (alias, pseudo_list) in all_structured_values.iter() {
                 cache.insert(alias.clone(), pseudo_list.clone());
             }

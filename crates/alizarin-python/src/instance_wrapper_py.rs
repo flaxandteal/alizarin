@@ -424,7 +424,7 @@ impl PyResourceInstanceWrapperCore {
 
     /// Get count of cached pseudos
     fn cache_size(&self) -> usize {
-        if let Ok(cache) = self.inner.pseudo_cache.lock() {
+        if let Ok(cache) = self.inner.pseudo_cache.read() {
             cache.len()
         } else {
             0
@@ -433,10 +433,10 @@ impl PyResourceInstanceWrapperCore {
 
     /// Clear the pseudo cache
     fn clear_cache(&self) {
-        if let Ok(mut cache) = self.inner.pseudo_cache.lock() {
+        if let Ok(mut cache) = self.inner.pseudo_cache.write() {
             cache.clear();
         }
-        if let Ok(mut loaded) = self.inner.loaded_nodegroups.lock() {
+        if let Ok(mut loaded) = self.inner.loaded_nodegroups.write() {
             loaded.clear();
         }
     }
@@ -473,7 +473,7 @@ impl PyResourceInstanceWrapperCore {
             )
         })?;
 
-        let cache = self.inner.pseudo_cache.lock().map_err(|e| {
+        let cache = self.inner.pseudo_cache.read().map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
         })?;
 
@@ -516,7 +516,7 @@ impl PyResourceInstanceWrapperCore {
             )
         })?;
 
-        let cache = self.inner.pseudo_cache.lock().map_err(|e| {
+        let cache = self.inner.pseudo_cache.read().map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
         })?;
 
@@ -567,7 +567,7 @@ impl PyResourceInstanceWrapperCore {
             )
         })?;
 
-        let cache = self.inner.pseudo_cache.lock().map_err(|e| {
+        let cache = self.inner.pseudo_cache.read().map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
         })?;
 
@@ -641,7 +641,7 @@ impl PyResourceInstanceWrapperCore {
             )
         })?;
 
-        let cache = self.inner.pseudo_cache.lock().map_err(|e| {
+        let cache = self.inner.pseudo_cache.read().map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
         })?;
 
@@ -721,7 +721,7 @@ impl PyResourceInstanceWrapperCore {
         let root_node = graph.root_node();
         let root_alias = root_node.alias.clone().unwrap_or_default();
 
-        let cache = self.inner.pseudo_cache.lock().map_err(|e| {
+        let cache = self.inner.pseudo_cache.read().map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
         })?;
 

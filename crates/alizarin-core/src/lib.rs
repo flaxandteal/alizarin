@@ -29,6 +29,7 @@ pub mod pseudo_value_core;
 pub mod rdm_cache;
 pub mod rdm_namespace;
 pub mod registry;
+pub mod shared_mut;
 pub mod skos;
 pub mod string_utils;
 pub mod tile_source;
