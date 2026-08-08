@@ -238,6 +238,8 @@ where
         pruned.functions_x_graphs = Some(Vec::new());
     }
 
+    pruned.invalidate_indices();
+
     Ok(pruned)
 }
 

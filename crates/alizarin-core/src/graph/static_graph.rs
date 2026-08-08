@@ -101,22 +101,19 @@ pub struct StaticGraph {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub functions_x_graphs: Option<Vec<StaticFunctionsXGraphs>>,
 
-    // Internal lookup tables (not serialized)
+    /// Internal lookup tables. Built lazily on first use, never serialized.
     #[serde(skip)]
-    node_by_id: Option<HashMap<String, usize>>,
-    #[serde(skip)]
-    node_by_alias: Option<HashMap<String, usize>>,
-    #[serde(skip)]
-    edges_map: Option<HashMap<String, Vec<String>>>,
-    #[serde(skip)]
-    nodes_by_nodegroup: Option<HashMap<String, Vec<usize>>>,
-    #[serde(skip)]
-    nodegroup_by_id: Option<HashMap<String, usize>>,
-    // Arc-wrapped node caches for pseudo_value infrastructure (avoids cloning on every conversion)
-    #[serde(skip)]
-    nodes_by_alias_arc: Option<HashMap<String, Arc<StaticNode>>>,
-    // Card hierarchy index (built when cards are present)
-    #[serde(skip)]
+    indices: std::sync::OnceLock<Indices>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct Indices {
+    node_by_id: HashMap<String, usize>,
+    node_by_alias: HashMap<String, usize>,
+    edges_map: HashMap<String, Vec<String>>,
+    nodes_by_nodegroup: HashMap<String, Vec<usize>>,
+    nodegroup_by_id: HashMap<String, usize>,
+    nodes_by_alias_arc: HashMap<String, Arc<StaticNode>>,
     card_index: Option<super::card_index::CardIndex>,
 }
 
@@ -142,8 +139,15 @@ impl StaticGraph {
         Ok(graph)
     }
 
-    /// Build the internal lookup indices
+    fn indices(&self) -> &Indices {
+        self.indices.get_or_init(|| self.compute_indices())
+    }
+
     pub fn build_indices(&mut self) {
+        self.invalidate_indices();
+    }
+
+    fn compute_indices(&self) -> Indices {
         let mut node_by_id = HashMap::new();
         let mut node_by_alias = HashMap::new();
         let mut nodes_by_nodegroup: HashMap<String, Vec<usize>> = HashMap::new();
@@ -165,7 +169,6 @@ impl StaticGraph {
             }
         }
 
-        // Build edges map (parent_nodeid -> child_nodeids)
         let mut edges_map: HashMap<String, Vec<String>> = HashMap::new();
         for edge in &self.edges {
             edges_map
@@ -174,13 +177,11 @@ impl StaticGraph {
                 .push(edge.rangenode_id.clone());
         }
 
-        // Build nodegroup index
         let mut nodegroup_by_id = HashMap::new();
         for (idx, ng) in self.nodegroups.iter().enumerate() {
             nodegroup_by_id.insert(ng.nodegroupid.clone(), idx);
         }
 
-        // Build Arc-wrapped nodes_by_alias for pseudo_value infrastructure
         let nodes_by_alias_arc: HashMap<String, Arc<StaticNode>> = self
             .nodes
             .iter()
@@ -192,37 +193,29 @@ impl StaticGraph {
             })
             .collect();
 
-        self.node_by_id = Some(node_by_id);
-        self.node_by_alias = Some(node_by_alias);
-        self.edges_map = Some(edges_map);
-        self.nodes_by_nodegroup = Some(nodes_by_nodegroup);
-        self.nodegroup_by_id = Some(nodegroup_by_id);
-        self.nodes_by_alias_arc = Some(nodes_by_alias_arc);
-
-        // Build card index when cards are present
-        if self.cards.is_some() {
-            self.card_index = Some(super::card_index::build_card_index(
+        let card_index = self.cards.is_some().then(|| {
+            super::card_index::build_card_index(
                 self.cards_slice(),
                 self.cards_x_nodes_x_widgets_slice(),
                 &self.nodegroups,
                 &self.nodes,
                 crate::graph_mutator::get_widget_name_by_id,
-            ));
+            )
+        });
+
+        Indices {
+            node_by_id,
+            node_by_alias,
+            edges_map,
+            nodes_by_nodegroup,
+            nodegroup_by_id,
+            nodes_by_alias_arc,
+            card_index,
         }
     }
 
-    /// Invalidate all internal lookup indices.
-    ///
-    /// This must be called after mutations that modify the nodes vector,
-    /// especially operations like `retain()` that shift element positions.
     pub fn invalidate_indices(&mut self) {
-        self.node_by_id = None;
-        self.node_by_alias = None;
-        self.edges_map = None;
-        self.nodes_by_nodegroup = None;
-        self.nodegroup_by_id = None;
-        self.nodes_by_alias_arc = None;
-        self.card_index = None;
+        self.indices = std::sync::OnceLock::new();
     }
 
     /// Get the root node
@@ -235,18 +228,16 @@ impl StaticGraph {
         self.nodes.get(idx)
     }
 
-    /// Get node by ID
     pub fn get_node_by_id(&self, id: &str) -> Option<&StaticNode> {
-        self.node_by_id
-            .as_ref()?
+        self.indices()
+            .node_by_id
             .get(id)
             .and_then(|&idx| self.nodes.get(idx))
     }
 
-    /// Get node by alias
     pub fn get_node_by_alias(&self, alias: &str) -> Option<&StaticNode> {
-        self.node_by_alias
-            .as_ref()?
+        self.indices()
+            .node_by_alias
             .get(alias)
             .and_then(|&idx| self.nodes.get(idx))
     }
@@ -307,28 +298,22 @@ impl StaticGraph {
         }
     }
 
-    /// Get edges map (parent_nodeid -> child_nodeids)
-    /// Returns None if indices haven't been built
     pub fn edges_map(&self) -> Option<&HashMap<String, Vec<String>>> {
-        self.edges_map.as_ref()
+        Some(&self.indices().edges_map)
     }
 
-    /// Get child node IDs for a given node
     pub fn get_child_ids(&self, node_id: &str) -> Option<&Vec<String>> {
-        self.edges_map.as_ref()?.get(node_id)
+        self.indices().edges_map.get(node_id)
     }
 
-    /// Get nodes by nodegroup (nodegroup_id -> node indices)
-    /// Returns None if indices haven't been built
     pub fn nodes_by_nodegroup(&self) -> Option<&HashMap<String, Vec<usize>>> {
-        self.nodes_by_nodegroup.as_ref()
+        Some(&self.indices().nodes_by_nodegroup)
     }
 
-    /// Get nodes in a specific nodegroup
     pub fn get_nodes_in_nodegroup(&self, nodegroup_id: &str) -> Vec<&StaticNode> {
-        self.nodes_by_nodegroup
-            .as_ref()
-            .and_then(|map| map.get(nodegroup_id))
+        self.indices()
+            .nodes_by_nodegroup
+            .get(nodegroup_id)
             .map(|indices| {
                 indices
                     .iter()
@@ -338,23 +323,19 @@ impl StaticGraph {
             .unwrap_or_default()
     }
 
-    /// Get nodegroup by ID
     pub fn get_nodegroup_by_id(&self, nodegroup_id: &str) -> Option<&StaticNodegroup> {
-        self.nodegroup_by_id
-            .as_ref()?
+        self.indices()
+            .nodegroup_by_id
             .get(nodegroup_id)
             .and_then(|&idx| self.nodegroups.get(idx))
     }
 
-    /// Get Arc-wrapped nodes by alias map (for pseudo_value infrastructure)
-    /// Returns None if indices haven't been built
     pub fn nodes_by_alias_arc(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
-        self.nodes_by_alias_arc.as_ref()
+        Some(&self.indices().nodes_by_alias_arc)
     }
 
-    /// Get Arc-wrapped node by alias
     pub fn get_node_arc_by_alias(&self, alias: &str) -> Option<Arc<StaticNode>> {
-        self.nodes_by_alias_arc.as_ref()?.get(alias).cloned()
+        self.indices().nodes_by_alias_arc.get(alias).cloned()
     }
 
     // =========================================================================
@@ -379,13 +360,13 @@ impl StaticGraph {
     /// Push a new edge to the graph
     pub fn push_edge(&mut self, edge: StaticEdge) {
         self.edges.push(edge);
-        self.edges_map = None;
+        self.invalidate_indices();
     }
 
     /// Push a new nodegroup to the graph
     pub fn push_nodegroup(&mut self, nodegroup: StaticNodegroup) {
         self.nodegroups.push(nodegroup);
-        self.nodegroup_by_id = None;
+        self.invalidate_indices();
     }
 
     /// Push a new card to the graph
@@ -413,9 +394,8 @@ impl StaticGraph {
         self.cards.as_deref().unwrap_or(&[])
     }
 
-    /// Get the card hierarchy index (None if graph has no cards)
     pub fn card_index(&self) -> Option<&super::card_index::CardIndex> {
-        self.card_index.as_ref()
+        self.indices().card_index.as_ref()
     }
 
     /// Get cards_x_nodes_x_widgets slice
@@ -1090,5 +1070,113 @@ impl IndexedGraph {
             }
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod lazy_index_tests {
+    use super::*;
+
+    fn deserialized_graph() -> StaticGraph {
+        serde_json::from_value(serde_json::json!({
+            "graphid": "g",
+            "name": {"en": "G"},
+            "root": {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "g"},
+            "nodes": [
+                {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "g"},
+                {"nodeid": "n1", "name": "N1", "alias": "n1", "datatype": "string",
+                 "nodegroup_id": "ng1", "graph_id": "g"}
+            ],
+            "nodegroups": [{"nodegroupid": "ng1", "cardinality": "1"}],
+            "edges": [{"edgeid": "e1", "domainnode_id": "root", "rangenode_id": "n1",
+                       "graph_id": "g"}]
+        }))
+        .expect("graph")
+    }
+
+    #[test]
+    fn a_graph_that_was_never_explicitly_indexed_answers_every_lookup() {
+        let graph = deserialized_graph();
+
+        assert!(graph.get_node_by_id("n1").is_some());
+        assert!(graph.get_node_by_alias("n1").is_some());
+        assert!(graph.get_nodegroup_by_id("ng1").is_some());
+        assert!(graph.get_node_arc_by_alias("n1").is_some());
+        assert_eq!(graph.get_child_ids("root"), Some(&vec!["n1".to_string()]));
+        assert_eq!(graph.get_nodes_in_nodegroup("ng1").len(), 1);
+        assert!(graph.edges_map().is_some());
+        assert!(graph.nodes_by_nodegroup().is_some());
+    }
+
+    #[test]
+    fn static_graph_remains_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<StaticGraph>();
+    }
+
+    #[test]
+    fn concurrent_first_lookups_agree() {
+        let graph = std::sync::Arc::new(deserialized_graph());
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let g = std::sync::Arc::clone(&graph);
+                std::thread::spawn(move || g.get_nodegroup_by_id("ng1").is_some())
+            })
+            .collect();
+        for h in handles {
+            assert!(
+                h.join().expect("thread"),
+                "every racing reader must see the index"
+            );
+        }
+    }
+
+    #[test]
+    fn a_lookup_that_misses_is_a_real_absence() {
+        let graph = deserialized_graph();
+        assert!(graph.get_node_by_id("nope").is_none());
+        assert!(graph.get_nodegroup_by_id("nope").is_none());
+    }
+
+    #[test]
+    fn a_mutation_is_visible_through_the_index() {
+        let mut graph = deserialized_graph();
+        assert!(graph.get_nodegroup_by_id("ng1").is_some());
+        assert!(graph.get_nodegroup_by_id("ng2").is_none());
+
+        graph.push_nodegroup(
+            serde_json::from_value(serde_json::json!({
+                "nodegroupid": "ng2", "cardinality": "n"
+            }))
+            .expect("nodegroup"),
+        );
+
+        assert!(
+            graph.get_nodegroup_by_id("ng2").is_some(),
+            "the pushed nodegroup must be visible: push_nodegroup invalidates"
+        );
+        assert!(
+            graph.get_nodegroup_by_id("ng1").is_some(),
+            "and the old one survives"
+        );
+    }
+
+    #[test]
+    fn removing_a_node_does_not_leave_the_index_pointing_at_the_wrong_one() {
+        let mut graph = deserialized_graph();
+        assert_eq!(
+            graph.get_node_by_id("n1").map(|n| n.nodeid.as_str()),
+            Some("n1")
+        );
+
+        graph.nodes.retain(|n| n.nodeid != "root");
+        graph.invalidate_indices();
+
+        assert_eq!(
+            graph.get_node_by_id("n1").map(|n| n.nodeid.as_str()),
+            Some("n1"),
+            "n1 must still resolve to n1 after the vector shifted under the index"
+        );
+        assert!(graph.get_node_by_id("root").is_none());
     }
 }

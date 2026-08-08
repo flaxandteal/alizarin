@@ -3291,6 +3291,8 @@ fn apply_rename_node(
         node_mut.description = Some(StaticTranslatableString::from_string(&description));
     }
 
+    graph.invalidate_indices();
+
     // Auto-realign card and widget label if name was changed
     if name_changed && params.realign_card {
         let _ = apply_realign_card_from_node(
@@ -3410,6 +3412,8 @@ fn apply_rename_graph(
             root_node.name = root_display_name;
             root_node.alias = Some(new_slug);
         }
+
+        graph.invalidate_indices();
     }
 
     // Update description if provided
@@ -3490,6 +3494,8 @@ fn apply_coppice_subgraph(
             }
         }
     }
+
+    graph.invalidate_indices();
 
     Ok(())
 }
@@ -4441,6 +4447,8 @@ fn apply_update_subgraph(
         if let Some(ref mut cxnxws) = graph.cards_x_nodes_x_widgets {
             cxnxws.retain(|c| !orphaned_node_ids.contains(&c.node_id));
         }
+
+        graph.invalidate_indices();
     }
 
     Ok(())
