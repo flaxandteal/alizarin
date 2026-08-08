@@ -9,7 +9,7 @@ import {
 } from "../interfaces";
 import { StaticTile, StaticNode, StaticResource, StaticResourceReference } from "../static-types";
 import { AttrPromise } from "../utils";
-import { recordWasmTiming } from '../wasmTiming';
+import { recordNativeTiming } from '../wasmTiming';
 import { getGlobalWasmRdmCache } from '../_wasm';
 import { getRdmCache, getBackend } from '../backend';
 import { nodeConfigManager } from '../nodeConfig';
@@ -114,17 +114,17 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
           throw new Error("Could not retrieve resource");
         }
       }
-      recordWasmTiming("forJson: retrieve check", performance.now() - t0);
+      recordNativeTiming("forJson: retrieve check", performance.now() - t0);
 
       t0 = performance.now();
       await this.$.populate(false);
-      recordWasmTiming("forJson: populate", performance.now() - t0);
+      recordNativeTiming("forJson: populate", performance.now() - t0);
 
       t0 = performance.now();
       rootJson = this.$.wasmWrapper.toJson();
-      recordWasmTiming("forJson: toJson", performance.now() - t0);
+      recordNativeTiming("forJson: toJson", performance.now() - t0);
     }
-    recordWasmTiming("forJson total (viewModels)", performance.now() - forJsonStart);
+    recordNativeTiming("forJson total (viewModels)", performance.now() - forJsonStart);
 
     if (!cascade && this.__cacheEntry) {
       return {
@@ -182,20 +182,20 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
           throw new Error("Could not retrieve resource");
         }
       }
-      recordWasmTiming("forDisplayJson: retrieve check", performance.now() - t0);
+      recordNativeTiming("forDisplayJson: retrieve check", performance.now() - t0);
 
       t0 = performance.now();
       await this.$.populate(false);
-      recordWasmTiming("forDisplayJson: populate", performance.now() - t0);
+      recordNativeTiming("forDisplayJson: populate", performance.now() - t0);
 
       t0 = performance.now();
       const lang = language || DEFAULT_LANGUAGE;
       const rdmCache = getBackend() === 'napi' ? getRdmCache() : getGlobalWasmRdmCache();
       const ncm = nodeConfigManager.wasmManager;
       rootJson = this.$.wasmWrapper.toDisplayJson(rdmCache, ncm, lang, staticStore.registry);
-      recordWasmTiming("forDisplayJson: toDisplayJson", performance.now() - t0);
+      recordNativeTiming("forDisplayJson: toDisplayJson", performance.now() - t0);
     }
-    recordWasmTiming("forDisplayJson total (viewModels)", performance.now() - forJsonStart);
+    recordNativeTiming("forDisplayJson total (viewModels)", performance.now() - forJsonStart);
 
     if (!cascade && this.__cacheEntry) {
       return {

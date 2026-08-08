@@ -6,8 +6,8 @@ import { PseudoValue, PseudoUnavailable } from "./pseudos.ts";
 import { SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, IWKRM, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
 import { AttrPromise } from "./utils";
-import { recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings } from './wasmTiming';
-export { recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings };
+import { recordNativeTiming, printNativeTimings, clearNativeTimings, getNativeTimings, recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings } from './wasmTiming';
+export { recordNativeTiming, printNativeTimings, clearNativeTimings, getNativeTimings, recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings };
 export type { ConditionalPermission, PermissionValue } from "./interfaces";
 declare class ConfigurationOptions {
     graphs: Array<string> | null | boolean;

@@ -8399,9 +8399,9 @@ ${val.stack}`;
       this.descriptors = descriptors || null;
     }
   }
-  const wasmTimings = /* @__PURE__ */ new Map();
-  function recordWasmTiming(label, ms) {
-    let stats = wasmTimings.get(label);
+  const nativeTimings = /* @__PURE__ */ new Map();
+  function recordNativeTiming(label, ms) {
+    let stats = nativeTimings.get(label);
     if (!stats) {
       stats = {
         count: 0,
@@ -8409,16 +8409,17 @@ ${val.stack}`;
         minMs: Infinity,
         maxMs: -Infinity
       };
-      wasmTimings.set(label, stats);
+      nativeTimings.set(label, stats);
     }
     stats.count++;
     stats.totalMs += ms;
     stats.minMs = Math.min(stats.minMs, ms);
     stats.maxMs = Math.max(stats.maxMs, ms);
   }
-  function getWasmTimings() {
-    return wasmTimings;
+  function getNativeTimings() {
+    return nativeTimings;
   }
+  const getWasmTimings = getNativeTimings;
   function generateId(length) {
     const chars = "0123456789abcdef";
     let result = "";
@@ -8843,10 +8844,10 @@ ${val.stack}`;
     }
     if (_getWasmTimings) {
       try {
-        const wasmTimings2 = _getWasmTimings();
-        if (wasmTimings2 && wasmTimings2.size > 0) {
+        const wasmTimings = _getWasmTimings();
+        if (wasmTimings && wasmTimings.size > 0) {
           const wasmStats = {};
-          wasmTimings2.forEach((value, key) => {
+          wasmTimings.forEach((value, key) => {
             wasmStats[key] = {
               count: value.count || 0,
               totalMs: value.totalMs || 0,
@@ -9404,15 +9405,15 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
             throw new Error("Could not retrieve resource");
           }
         }
-        recordWasmTiming("forJson: retrieve check", performance.now() - t0);
+        recordNativeTiming("forJson: retrieve check", performance.now() - t0);
         t0 = performance.now();
         await this.$.populate(false);
-        recordWasmTiming("forJson: populate", performance.now() - t0);
+        recordNativeTiming("forJson: populate", performance.now() - t0);
         t0 = performance.now();
         rootJson = this.$.wasmWrapper.toJson();
-        recordWasmTiming("forJson: toJson", performance.now() - t0);
+        recordNativeTiming("forJson: toJson", performance.now() - t0);
       }
-      recordWasmTiming("forJson total (viewModels)", performance.now() - forJsonStart);
+      recordNativeTiming("forJson total (viewModels)", performance.now() - forJsonStart);
       if (!cascade && this.__cacheEntry) {
         return {
           type: this.__cacheEntry.type,
@@ -9456,18 +9457,18 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
             throw new Error("Could not retrieve resource");
           }
         }
-        recordWasmTiming("forDisplayJson: retrieve check", performance.now() - t0);
+        recordNativeTiming("forDisplayJson: retrieve check", performance.now() - t0);
         t0 = performance.now();
         await this.$.populate(false);
-        recordWasmTiming("forDisplayJson: populate", performance.now() - t0);
+        recordNativeTiming("forDisplayJson: populate", performance.now() - t0);
         t0 = performance.now();
         const lang = language || DEFAULT_LANGUAGE;
         const rdmCache = getBackend() === "napi" ? getRdmCache() : getGlobalWasmRdmCache();
         const ncm = nodeConfigManager.wasmManager;
         rootJson = this.$.wasmWrapper.toDisplayJson(rdmCache, ncm, lang, staticStore.registry);
-        recordWasmTiming("forDisplayJson: toDisplayJson", performance.now() - t0);
+        recordNativeTiming("forDisplayJson: toDisplayJson", performance.now() - t0);
       }
-      recordWasmTiming("forDisplayJson total (viewModels)", performance.now() - forJsonStart);
+      recordNativeTiming("forDisplayJson total (viewModels)", performance.now() - forJsonStart);
       if (!cascade && this.__cacheEntry) {
         return {
           type: this.__cacheEntry.type,
@@ -11332,10 +11333,10 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       if (resource) {
         this.wasmWrapper = createInstanceWrapperForResource(resource, staticStore.registry);
         this.resource = resource;
-        recordWasmTiming("createInstanceWrapperForResource", performance.now() - t0);
+        recordNativeTiming("createInstanceWrapperForResource", performance.now() - t0);
       } else {
         this.wasmWrapper = createInstanceWrapperForModel(model.wkrm.graphId, wkri.id);
-        recordWasmTiming("createInstanceWrapperForModel", performance.now() - t0);
+        recordNativeTiming("createInstanceWrapperForModel", performance.now() - t0);
       }
       this._pseudoCache = /* @__PURE__ */ new Map();
       this.cache = resource ? resource.__cache : void 0;
@@ -11344,7 +11345,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       if (typeof this.wasmWrapper.setLazy === "function") {
         t0 = performance.now();
         this.wasmWrapper.setLazy(lazy);
-        recordWasmTiming("setLazy", performance.now() - t0);
+        recordNativeTiming("setLazy", performance.now() - t0);
       }
       if (resource && typeof this.wasmWrapper.setTileLoader === "function") {
         const resourceId = resource.resourceinstance.resourceinstanceid;
@@ -11353,25 +11354,25 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
           const tiles = staticStore.loadTiles(resourceId, nodegroupId);
           return tiles;
         });
-        recordWasmTiming("setTileLoader", performance.now() - t0);
+        recordNativeTiming("setTileLoader", performance.now() - t0);
       }
       let tilesLoaded = false;
       if (typeof this.wasmWrapper.tilesLoaded === "function") {
         t0 = performance.now();
         tilesLoaded = this.wasmWrapper.tilesLoaded();
-        recordWasmTiming("tilesLoaded (constructor)", performance.now() - t0);
+        recordNativeTiming("tilesLoaded (constructor)", performance.now() - t0);
       }
       if (!tilesLoaded && resource && resource.tilesLoaded && typeof this.wasmWrapper.loadTilesFromResource === "function") {
         t0 = performance.now();
         loadTilesFromResource(this.wasmWrapper, resource, assumeTilesComprehensiveForNodegroup);
-        recordWasmTiming("loadTilesFromResource", performance.now() - t0);
+        recordNativeTiming("loadTilesFromResource", performance.now() - t0);
       }
       if (pruneTiles && resource) {
         t0 = performance.now();
         this.pruneResourceTiles();
-        recordWasmTiming("pruneResourceTiles", performance.now() - t0);
+        recordNativeTiming("pruneResourceTiles", performance.now() - t0);
       }
-      recordWasmTiming("constructor total", performance.now() - constructorStart);
+      recordNativeTiming("constructor total", performance.now() - constructorStart);
     }
     async ensureTilesLoaded() {
       if (!this.wasmWrapper.tilesLoaded()) {
@@ -11565,11 +11566,11 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         if (!lazy) {
           let t02 = performance.now();
           const loaded = this.wasmWrapper.tilesLoaded();
-          recordWasmTiming("tilesLoaded (populate)", performance.now() - t02);
+          recordNativeTiming("tilesLoaded (populate)", performance.now() - t02);
           if (!loaded) {
             t02 = performance.now();
             await this.ensureTilesLoaded();
-            recordWasmTiming("ensureTilesLoaded", performance.now() - t02);
+            recordNativeTiming("ensureTilesLoaded", performance.now() - t02);
           }
         }
         const nodegroupIds = [
@@ -11577,7 +11578,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         ];
         const t0 = performance.now();
         const result = this.wasmWrapper.populate(lazy, nodegroupIds, rootNode.alias);
-        recordWasmTiming("populate (WASM)", performance.now() - t0);
+        recordNativeTiming("populate", performance.now() - t0);
         const allNodegroups = /* @__PURE__ */ new Map();
         const updatedNodegroups = result.allNodegroupsMap;
         if (updatedNodegroups instanceof Map) {
@@ -11594,7 +11595,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
           }
         }
         this._pseudoCache = /* @__PURE__ */ new Map();
-        recordWasmTiming("populate total", performance.now() - populateStart);
+        recordNativeTiming("populate total", performance.now() - populateStart);
       } catch (error) {
         const resourceId = ((_b2 = (_a2 = this.wasmWrapper).getResourceId) == null ? void 0 : _b2.call(_a2)) || "unknown";
         console.error(`[populate] Rust implementation failed for resource ${resourceId}:`, error);
@@ -12160,12 +12161,12 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
     fromStaticResource(resource, lazy = false, pruneTiles) {
       const start = performance.now();
       const wkri = this.makeInstance(resource.resourceinstance.resourceinstanceid, resource, pruneTiles, lazy);
-      recordWasmTiming("makeInstance", performance.now() - start);
+      recordNativeTiming("makeInstance", performance.now() - start);
       if (!wkri.$) {
         throw Error("Could not load resource from static definition");
       }
       const pop = wkri.$.populate(lazy).then(() => {
-        recordWasmTiming("fromStaticResource total", performance.now() - start);
+        recordNativeTiming("fromStaticResource total", performance.now() - start);
         return wkri;
       });
       return pop;
@@ -12928,7 +12929,7 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}
   }, Symbol.toStringTag, {
     value: "Module"
   }));
-  version = "2.0.0-alpha.121";
+  version = "2.0.0-alpha.125";
   registerAlizarinTimingGetter(getTimingStats);
   registerWasmTimingGetter(getWasmTimings);
   let _wasmReadyResolve;

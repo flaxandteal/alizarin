@@ -36,8 +36,8 @@ import { nodeConfigManager } from "./nodeConfig.ts";
 import { generateUuidv5, AttrPromise } from "./utils";
 
 // Import and re-export timing functions from dedicated module (avoids circular imports)
-import { recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings } from './wasmTiming';
-export { recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings };
+import { recordNativeTiming, printNativeTimings, clearNativeTimings, getNativeTimings, recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings } from './wasmTiming';
+export { recordNativeTiming, printNativeTimings, clearNativeTimings, getNativeTimings, recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings };
 
 // Re-export permission types for external use
 export type { ConditionalPermission, PermissionValue } from "./interfaces";
@@ -80,10 +80,10 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     if (resource) {
       this.wasmWrapper = createInstanceWrapperForResource(resource, staticStore.registry);
       this.resource = resource;
-      recordWasmTiming("createInstanceWrapperForResource", performance.now() - t0);
+      recordNativeTiming("createInstanceWrapperForResource", performance.now() - t0);
     } else {
       this.wasmWrapper = createInstanceWrapperForModel(model.wkrm.graphId, wkri.id);
-      recordWasmTiming("createInstanceWrapperForModel", performance.now() - t0);
+      recordNativeTiming("createInstanceWrapperForModel", performance.now() - t0);
     }
 
     this._pseudoCache = new Map();
@@ -95,7 +95,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     if (typeof this.wasmWrapper.setLazy === 'function') {
       t0 = performance.now();
       this.wasmWrapper.setLazy(lazy);
-      recordWasmTiming("setLazy", performance.now() - t0);
+      recordNativeTiming("setLazy", performance.now() - t0);
     }
 
     // Set up tile loader callback
@@ -109,7 +109,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         const tiles = staticStore.loadTiles(resourceId, nodegroupId);
         return tiles;
       });
-      recordWasmTiming("setTileLoader", performance.now() - t0);
+      recordNativeTiming("setTileLoader", performance.now() - t0);
     }
 
     // Load tiles into Rust if we have any - regardless of lazy mode,
@@ -118,22 +118,22 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     if (typeof this.wasmWrapper.tilesLoaded === 'function') {
       t0 = performance.now();
       tilesLoaded = this.wasmWrapper.tilesLoaded();
-      recordWasmTiming("tilesLoaded (constructor)", performance.now() - t0);
+      recordNativeTiming("tilesLoaded (constructor)", performance.now() - t0);
     }
 
     // Use loadTilesFromResource to avoid expensive tiles getter (which creates N WASM wrappers)
     if (!tilesLoaded && resource && resource.tilesLoaded && typeof this.wasmWrapper.loadTilesFromResource === 'function') {
       t0 = performance.now();
       loadTilesFromResource(this.wasmWrapper, resource, assumeTilesComprehensiveForNodegroup);
-      recordWasmTiming("loadTilesFromResource", performance.now() - t0);
+      recordNativeTiming("loadTilesFromResource", performance.now() - t0);
     }
 
     if (pruneTiles && resource) {
       t0 = performance.now();
       this.pruneResourceTiles();
-      recordWasmTiming("pruneResourceTiles", performance.now() - t0);
+      recordNativeTiming("pruneResourceTiles", performance.now() - t0);
     }
-    recordWasmTiming("constructor total", performance.now() - constructorStart);
+    recordNativeTiming("constructor total", performance.now() - constructorStart);
   }
 
   async ensureTilesLoaded(): Promise<void> {
@@ -453,11 +453,11 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         // Use tilesLoaded() to check Rust state, not this.resource.tiles (JS state).
         let t0 = performance.now();
         const loaded = this.wasmWrapper.tilesLoaded();
-        recordWasmTiming("tilesLoaded (populate)", performance.now() - t0);
+        recordNativeTiming("tilesLoaded (populate)", performance.now() - t0);
         if (!loaded) {
           t0 = performance.now();
           await this.ensureTilesLoaded();
-          recordWasmTiming("ensureTilesLoaded", performance.now() - t0);
+          recordNativeTiming("ensureTilesLoaded", performance.now() - t0);
         }
       }
 
@@ -472,7 +472,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
         nodegroupIds,
         rootNode.alias
       );
-      recordWasmTiming("populate (WASM)", performance.now() - t0);
+      recordNativeTiming("populate", performance.now() - t0);
 
       // Initialize allNodegroups from Rust result
       const allNodegroups: Map<string, boolean> = new Map();
@@ -494,7 +494,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // Clear local cache - Rust is now the source of truth
       this._pseudoCache = new Map();
 
-      recordWasmTiming("populate total", performance.now() - populateStart);
+      recordNativeTiming("populate total", performance.now() - populateStart);
     } catch (error) {
       const resourceId = this.wasmWrapper.getResourceId?.() || 'unknown';
       console.error(`[populate] Rust implementation failed for resource ${resourceId}:`, error);
@@ -1290,14 +1290,14 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
       pruneTiles,
       lazy
     );
-    recordWasmTiming("makeInstance", performance.now() - start);
+    recordNativeTiming("makeInstance", performance.now() - start);
 
     if (!wkri.$) {
       throw Error("Could not load resource from static definition");
     }
 
     const pop = wkri.$.populate(lazy).then(() => {
-      recordWasmTiming("fromStaticResource total", performance.now() - start);
+      recordNativeTiming("fromStaticResource total", performance.now() - start);
       return wkri;
     });
     return pop;

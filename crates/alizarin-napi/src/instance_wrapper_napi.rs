@@ -849,7 +849,11 @@ impl NapiResourceInstanceWrapper {
     pub fn load_tiles(&mut self, tiles_json: String) -> Result<()> {
         let tiles: Vec<StaticTile> = serde_json::from_str(&tiles_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid tiles JSON: {e}")))?;
-        self.inner.load_tiles(tiles);
+        let filtered: Vec<StaticTile> = tiles
+            .into_iter()
+            .filter(|tile| self.model_access.is_tile_permitted(tile))
+            .collect();
+        self.inner.load_tiles(filtered);
         Ok(())
     }
 
@@ -862,7 +866,11 @@ impl NapiResourceInstanceWrapper {
         self.inner.resource_instance = Some(resource.resourceinstance.clone());
 
         if let Some(tiles_vec) = resource.tiles {
-            self.inner.load_tiles(tiles_vec);
+            let filtered: Vec<StaticTile> = tiles_vec
+                .into_iter()
+                .filter(|tile| self.model_access.is_tile_permitted(tile))
+                .collect();
+            self.inner.load_tiles(filtered);
         }
         Ok(())
     }
@@ -883,7 +891,12 @@ impl NapiResourceInstanceWrapper {
         self.inner.resource_instance = Some(resource.resourceinstance.clone());
 
         if let Some(tiles_vec) = &resource.tiles {
-            self.inner.load_tiles(tiles_vec.clone());
+            let filtered: Vec<StaticTile> = tiles_vec
+                .iter()
+                .filter(|tile| self.model_access.is_tile_permitted(tile))
+                .cloned()
+                .collect();
+            self.inner.load_tiles(filtered);
         }
         Ok(true)
     }
@@ -943,7 +956,7 @@ impl NapiResourceInstanceWrapper {
             .ok_or_else(|| napi::Error::from_reason("Tiles not initialized".to_string()))?;
         let pruned: HashMap<String, StaticTile> = tiles
             .into_iter()
-            .filter(|(_id, tile)| self.model_access.is_nodegroup_permitted(&tile.nodegroup_id))
+            .filter(|(_id, tile)| self.model_access.is_tile_permitted(tile))
             .collect();
         self.inner.tiles = Some(pruned);
         Ok(())

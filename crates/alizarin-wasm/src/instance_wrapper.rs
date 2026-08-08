@@ -556,30 +556,19 @@ impl WASMResourceInstanceWrapper {
         append: bool,
         assume_tiles_comprehensive_for_nodegroup: bool,
     ) -> Result<(), JsValue> {
-        use alizarin_core::PermissionRule;
-
         self.check_tiles(&tiles)?;
 
         let lazy = *self.lazy.borrow();
 
-        // Get permission rules from model (cloned for use in filter)
-        // This allows conditional filtering based on tile data values
-        let permission_rules: Option<HashMap<String, PermissionRule>> = self
+        let filtered: Vec<StaticTile> = self
             .with_model_core(|model_core| {
-                let rules = model_core.model_access.get_permitted_nodegroups_rules();
-                if rules.is_empty() {
-                    Ok(None)
-                } else {
-                    Ok(Some(rules.clone()))
-                }
+                Ok(tiles
+                    .iter()
+                    .filter(|tile| model_core.model_access.is_tile_permitted(tile))
+                    .cloned()
+                    .collect())
             })
-            .ok()
-            .flatten();
-
-        // Get default_allow from model
-        let default_allow: bool = self
-            .with_model_core(|model_core| Ok(model_core.model_access.get_default_allow()))
-            .unwrap_or(true);
+            .unwrap_or(tiles);
 
         {
             let mut core = self.core.borrow_mut();
@@ -587,10 +576,7 @@ impl WASMResourceInstanceWrapper {
                 core.tiles = Some(HashMap::new());
             }
 
-            // In non-lazy mode and not appending, clear existing data (replacing all tiles)
-            // In lazy mode or when appending, add to existing tiles (incremental loading)
             if !lazy && !append {
-                // SAFETY: tiles is guaranteed Some by the initialization above
                 core.tiles
                     .as_mut()
                     .expect("tiles initialized above")
@@ -598,38 +584,20 @@ impl WASMResourceInstanceWrapper {
                 core.nodegroup_index.clear();
             }
 
-            // Store tiles and build index
-            for mut tile in tiles {
-                // Apply permission filter - skip tiles that don't pass conditional rules
-                if let Some(ref rules) = permission_rules {
-                    if let Some(rule) = rules.get(&tile.nodegroup_id) {
-                        if !rule.permits_tile(&tile) {
-                            continue; // Skip this tile - doesn't match permission criteria
-                        }
-                    } else if !default_allow {
-                        continue; // No rule and default is deny
-                    }
-                }
-
-                // Ensure tile has an ID
+            for mut tile in filtered {
                 let tile_id = tile.ensure_id();
                 let nodegroup_id = tile.nodegroup_id.clone();
 
-                // Add to nodegroup index
                 core.nodegroup_index
                     .entry(nodegroup_id.clone())
                     .or_default()
                     .push(tile_id.clone());
 
-                // Mark this nodegroup as loaded in loaded_nodegroups
-                // This consolidates tile tracking with nodegroup processing state
                 {
                     let mut loaded = core.loaded_nodegroups.borrow_mut();
                     loaded.insert(nodegroup_id, LoadState::Loaded);
                 }
 
-                // Store tile
-                // SAFETY: tiles is guaranteed Some by the initialization above
                 core.tiles
                     .as_mut()
                     .expect("tiles initialized above")
@@ -1069,7 +1037,7 @@ impl WASMResourceInstanceWrapper {
         let pruned_tiles: HashMap<String, StaticTile> = self.with_model_core(|core| {
             Ok(tiles
                 .into_iter()
-                .filter(|(_tile_id, tile)| core.is_nodegroup_permitted(&tile.nodegroup_id))
+                .filter(|(_tile_id, tile)| core.is_tile_permitted(tile))
                 .collect())
         })?;
 
