@@ -37,19 +37,10 @@ pub(crate) enum SemanticChildResult {
     Empty,
 }
 
-/// Result from values_from_resource_nodegroup
-/// Contains structured PseudoListInner values directly (no recipe intermediate)
-#[derive(Clone)]
-pub(crate) struct ValuesFromNodegroupResult {
-    /// Map of node alias → PseudoListInner (structured hierarchy)
-    pub values: HashMap<String, PseudoListInner>,
-    pub implied_nodegroups: Vec<String>,
-}
-
 /// WASM wrapper for ValuesFromNodegroupResult
 #[wasm_bindgen]
 pub struct WasmValuesFromNodegroupResult {
-    inner: ValuesFromNodegroupResult,
+    inner: alizarin_core::ValuesFromNodegroupResult,
 }
 
 #[wasm_bindgen]
@@ -58,8 +49,8 @@ impl WasmValuesFromNodegroupResult {
     #[wasm_bindgen(js_name = getAllValues)]
     pub fn get_all_values(&self) -> JsValue {
         let js_map = js_sys::Map::new();
-        for (alias, rust_list) in &self.inner.values {
-            let wasm_list = PseudoList::from_rust(rust_list.clone());
+        for (alias, core_list) in &self.inner.values {
+            let wasm_list = PseudoList::from_rust(PseudoListInner::from_core(core_list.clone()));
             js_map.set(&JsValue::from_str(alias), &wasm_list.into());
         }
         js_map.into()
@@ -71,20 +62,10 @@ impl WasmValuesFromNodegroupResult {
     }
 }
 
-/// Result from ensure_nodegroup
-/// PORT: Phase 4c - Now returns structured PseudoListInner values directly
-pub(crate) struct EnsureNodegroupResult {
-    /// Structured values by alias
-    /// PORT: Map of alias → PseudoListInner (js/graphManager.ts:350 - newValues Map)
-    pub values: HashMap<String, PseudoListInner>,
-    pub implied_nodegroups: Vec<String>,
-    pub all_nodegroups_map: HashMap<String, bool>,
-}
-
 // WASM wrapper for EnsureNodegroupResult
 #[wasm_bindgen]
 pub struct WasmEnsureNodegroupResult {
-    inner: EnsureNodegroupResult,
+    inner: alizarin_core::EnsureNodegroupResult,
 }
 
 #[wasm_bindgen]
@@ -104,7 +85,7 @@ impl WasmEnsureNodegroupResult {
         self.inner
             .values
             .get(&alias)
-            .map(|v| PseudoList::from_rust(v.clone()))
+            .map(|v| PseudoList::from_rust(PseudoListInner::from_core(v.clone())))
     }
 
     /// Get all values as a Map in a single boundary crossing
@@ -112,8 +93,8 @@ impl WasmEnsureNodegroupResult {
     #[wasm_bindgen(js_name = getAllValues)]
     pub fn get_all_values(&self) -> JsValue {
         let js_map = js_sys::Map::new();
-        for (alias, rust_list) in &self.inner.values {
-            let wasm_list = PseudoList::from_rust(rust_list.clone());
+        for (alias, core_list) in &self.inner.values {
+            let wasm_list = PseudoList::from_rust(PseudoListInner::from_core(core_list.clone()));
             js_map.set(&JsValue::from_str(alias), &wasm_list.into());
         }
         js_map.into()
@@ -132,20 +113,10 @@ impl WasmEnsureNodegroupResult {
     }
 }
 
-/// Internal result from populate with structured values
-/// PORT: Phase 4c - Matches js/graphManager.ts:724-729 (allValues, allNodegroups)
-pub(crate) struct PopulateResult {
-    /// Map of alias → PseudoListInner
-    pub values: HashMap<String, PseudoListInner>,
-    pub all_values_map: HashMap<String, Option<bool>>,
-    pub all_nodegroups_map: HashMap<String, bool>,
-}
-
 /// WASM wrapper for PopulateResult
-/// PORT: Phase 4c - Exposes structured values to JavaScript
 #[wasm_bindgen]
 pub struct WasmPopulateResult {
-    inner: PopulateResult,
+    inner: alizarin_core::PopulateResult,
 }
 
 #[wasm_bindgen]
@@ -163,7 +134,7 @@ impl WasmPopulateResult {
         self.inner
             .values
             .get(&alias)
-            .map(|v| PseudoList::from_rust(v.clone()))
+            .map(|v| PseudoList::from_rust(PseudoListInner::from_core(v.clone())))
     }
 
     /// Get all values as a Map in a single boundary crossing
@@ -171,8 +142,8 @@ impl WasmPopulateResult {
     #[wasm_bindgen(js_name = getAllValues)]
     pub fn get_all_values(&self) -> JsValue {
         let js_map = js_sys::Map::new();
-        for (alias, rust_list) in &self.inner.values {
-            let wasm_list = PseudoList::from_rust(rust_list.clone());
+        for (alias, core_list) in &self.inner.values {
+            let wasm_list = PseudoList::from_rust(PseudoListInner::from_core(core_list.clone()));
             js_map.set(&JsValue::from_str(alias), &wasm_list.into());
         }
         js_map.into()
@@ -1947,8 +1918,7 @@ impl WASMResourceInstanceWrapper {
     /// without serialization overhead. We cannot sensibly store the all_nodegroups
     /// or all_values_map, as these represent the state of the dependent language's
     /// viewModels (which may not exist or be ready, for example).
-    /// Delegates to core's standalone `ensure_nodegroup`, then wraps
-    /// the PseudoListCore results as PseudoListInner for WASM consumption.
+    /// Delegates to core's standalone `ensure_nodegroup`.
     fn ensure_nodegroup_internal(
         &self,
         all_values_map: &HashMap<String, Option<bool>>,
@@ -1957,49 +1927,37 @@ impl WASMResourceInstanceWrapper {
         add_if_missing: bool,
         nodegroup_permissions: &HashMap<String, alizarin_core::PermissionRule>,
         do_implied_nodegroups: bool,
-    ) -> Result<EnsureNodegroupResult, JsValue> {
+    ) -> Result<alizarin_core::EnsureNodegroupResult, JsValue> {
         let fn_start = now_ms();
 
         let core_ref = self.core.borrow();
         let tiles_store = match core_ref.tiles.as_ref() {
             Some(t) => t,
             None => {
-                return Ok(EnsureNodegroupResult {
-                    values: std::collections::HashMap::new(),
+                return Ok(alizarin_core::EnsureNodegroupResult {
+                    values: HashMap::new(),
                     implied_nodegroups: Vec::new(),
                     all_nodegroups_map: all_nodegroups.clone(),
                 });
             }
         };
 
-        let core_result: alizarin_core::EnsureNodegroupResult =
-            with_registry_model(&core_ref.graph_id, |model| {
-                alizarin_core::ensure_nodegroup(
-                    all_values_map,
-                    all_nodegroups,
-                    nodegroup_id,
-                    add_if_missing,
-                    nodegroup_permissions,
-                    do_implied_nodegroups,
-                    model,
-                    tiles_store,
-                )
-                .map_err(|e| JsValue::from_str(&format!("{:?}", e)))
-            })?;
-
-        // Wrap PseudoListCore → PseudoListInner
-        let values = core_result
-            .values
-            .into_iter()
-            .map(|(alias, list_core)| (alias, PseudoListInner::from_core(list_core)))
-            .collect();
+        let result = with_registry_model(&core_ref.graph_id, |model| {
+            alizarin_core::ensure_nodegroup(
+                all_values_map,
+                all_nodegroups,
+                nodegroup_id,
+                add_if_missing,
+                nodegroup_permissions,
+                do_implied_nodegroups,
+                model,
+                tiles_store,
+            )
+            .map_err(|e| JsValue::from_str(&format!("{:?}", e)))
+        })?;
 
         record_timing("eng: total (delegated to core)", now_ms() - fn_start);
-        Ok(EnsureNodegroupResult {
-            values,
-            implied_nodegroups: core_result.implied_nodegroups,
-            all_nodegroups_map: core_result.all_nodegroups_map,
-        })
+        Ok(result)
     }
 
     /// Complete ensureNodegroup implementation in Rust
@@ -2133,16 +2091,12 @@ impl WASMResourceInstanceWrapper {
         // Set root node alias to false (line 626)
         all_values.insert(root_node_alias.clone(), Some(false));
 
-        // Collect structured PseudoListInner values; start with existing cache entries
-        // for already-loaded nodegroups (cache stores PseudoListCore → convert).
-        let mut all_structured_values: HashMap<String, PseudoListInner> =
+        // Seed with existing cache entries for already-loaded nodegroups.
+        let mut all_structured_values: HashMap<String, alizarin_core::PseudoListCore> =
             if !already_loaded.is_empty() {
                 let core_ref = self.core.borrow();
                 let cache = core_ref.pseudo_cache.read().unwrap();
-                cache
-                    .iter()
-                    .map(|(k, v)| (k.clone(), PseudoListInner::from_core(v.clone())))
-                    .collect()
+                cache.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
             } else {
                 HashMap::new()
             };
@@ -2163,9 +2117,6 @@ impl WASMResourceInstanceWrapper {
                     false, // TODO RMV: doImpliedNodegroups = false for phase 1
                 )?;
 
-                // Collect structured values
-                // PORT: Phase 4c - Merge PseudoListInner values from ensure_nodegroup result
-                // PORT: js/graphManager.ts:669-720 - Processing result.recipes becomes iterating values
                 for (alias, pseudo_list) in result.values {
                     all_structured_values.insert(alias, pseudo_list);
                 }
@@ -2204,8 +2155,6 @@ impl WASMResourceInstanceWrapper {
                             true, // doImpliedNodegroups = true for phase 2
                         )?;
 
-                        // Collect structured values
-                        // PORT: Phase 4c - Merge structured values from implied nodegroup
                         for (alias, pseudo_list) in result.values {
                             all_structured_values.insert(alias, pseudo_list);
                         }
@@ -2238,41 +2187,37 @@ impl WASMResourceInstanceWrapper {
         // Get child node IDs for the root
         let child_node_ids = edges.get(&root_node.nodeid).cloned().unwrap_or_default();
 
-        // Create root pseudo value with no tile (using from_node_and_tile for proper initialization)
-        let root_pseudo = PseudoValueInner::from_node_and_tile(
+        // Create root pseudo value with no tile
+        let root_pseudo = alizarin_core::PseudoValueCore::from_node_and_tile(
             root_node,
-            None, // root has no tile
-            None, // root has no tile_data
+            None,
+            None,
             child_node_ids,
         );
 
-        // Create root pseudo list (single value, semantic node)
-        let root_list = PseudoListInner {
+        let root_list = alizarin_core::PseudoListCore {
             node_alias: root_node_alias.clone(),
             values: vec![root_pseudo],
             is_loaded: true,
             is_single: true,
         };
 
-        // Add root to structured values
         all_structured_values.insert(root_node_alias.clone(), root_list);
 
-        // Store all values in Rust's pseudo_cache so TS can query them later
+        // Store all values in Rust's pseudo_cache
         let t2 = now_ms();
         {
             let core_ref = self.core.borrow();
             let mut cache = core_ref.pseudo_cache.write().unwrap();
             for (alias, pseudo_list) in all_structured_values.iter() {
-                cache.insert(alias.clone(), pseudo_list.to_core());
+                cache.insert(alias.clone(), pseudo_list.clone());
             }
         }
         record_timing("populate: store in pseudo_cache", now_ms() - t2);
 
-        // PORT: Phase 4c - Return structured values wrapped in WasmPopulateResult
-        // PORT: js/graphManager.ts:724-729 - returning allValues and allNodegroups
         record_timing("populate: total (Rust)", now_ms() - populate_start);
         Ok(WasmPopulateResult {
-            inner: PopulateResult {
+            inner: alizarin_core::PopulateResult {
                 values: all_structured_values,
                 all_values_map: all_values,
                 all_nodegroups_map: all_nodegroups,
@@ -2280,28 +2225,27 @@ impl WASMResourceInstanceWrapper {
         })
     }
 
-    /// Delegates to core's standalone `values_from_resource_nodegroup`, then wraps
-    /// the PseudoListCore results as PseudoListInner for WASM consumption.
+    /// Delegates to core's standalone `values_from_resource_nodegroup`.
     fn values_from_resource_nodegroup_internal(
         &self,
         existing_values: HashMap<String, Option<bool>>,
         nodegroup_tile_ids: Vec<String>,
         nodegroup_id: &str,
-    ) -> Result<ValuesFromNodegroupResult, JsValue> {
+    ) -> Result<alizarin_core::ValuesFromNodegroupResult, JsValue> {
         let fn_start = now_ms();
 
         let core_ref = self.core.borrow();
         let tiles_store = match core_ref.tiles.as_ref() {
             Some(t) => t,
             None => {
-                return Ok(ValuesFromNodegroupResult {
+                return Ok(alizarin_core::ValuesFromNodegroupResult {
                     values: HashMap::new(),
                     implied_nodegroups: Vec::new(),
                 })
             }
         };
 
-        let core_result = with_registry_model(&core_ref.graph_id, |model| {
+        let result = with_registry_model(&core_ref.graph_id, |model| {
             alizarin_core::values_from_resource_nodegroup(
                 &existing_values,
                 &nodegroup_tile_ids,
@@ -2312,18 +2256,8 @@ impl WASMResourceInstanceWrapper {
             .map_err(|e| JsValue::from_str(&format!("{:?}", e)))
         })?;
 
-        // Wrap PseudoListCore → PseudoListInner
-        let values = core_result
-            .values
-            .into_iter()
-            .map(|(alias, list_core)| (alias, PseudoListInner::from_core(list_core)))
-            .collect();
-
         record_timing("vfrn: total (delegated to core)", now_ms() - fn_start);
-        Ok(ValuesFromNodegroupResult {
-            values,
-            implied_nodegroups: core_result.implied_nodegroups,
-        })
+        Ok(result)
     }
 
     /// WASM-exposed wrapper - returns structured values
