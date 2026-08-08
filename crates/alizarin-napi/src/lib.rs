@@ -9,11 +9,13 @@ use napi_derive::napi;
 
 use alizarin_core::extension_type_registry::ExtensionTypeRegistry;
 use alizarin_core::graph_mutator::MutatorOptions;
+use alizarin_core::label_resolution::ConceptLookup;
 use alizarin_core::skos::SkosCollection;
 use alizarin_core::type_serialization::SerializationContext;
 use alizarin_core::{
-    build_graph_from_model_csvs, build_resources_from_business_csv, wrap_business_data,
-    StaticGraph, StaticResource, StaticResourceRegistry,
+    build_graph_from_model_csvs, build_resources_from_business_csv,
+    build_resources_from_business_csv_with_context, wrap_business_data, StaticGraph,
+    StaticResource, StaticResourceRegistry,
 };
 
 // ============================================================================
@@ -528,6 +530,7 @@ pub fn build_business_data_from_csv(
     default_language: Option<String>,
     strict_concepts: Option<bool>,
     uuid_namespace: Option<String>,
+    rdm_cache: Option<&NapiRdmCache>,
 ) -> Result<serde_json::Value> {
     let graph: StaticGraph = serde_json::from_str(&graph_json)
         .map_err(|e| napi::Error::from_reason(format!("Invalid graph JSON: {e}")))?;
@@ -540,8 +543,22 @@ pub fn build_business_data_from_csv(
         uuid_namespace,
     };
 
-    let resources = build_resources_from_business_csv(&csv_data, &graph, &collections, options)
-        .map_err(csv_err)?;
+    let resources = if let Some(rc) = rdm_cache {
+        let ctx = SerializationContext {
+            concept_lookup: Some(rc.inner() as &dyn ConceptLookup),
+            ..SerializationContext::empty()
+        };
+        build_resources_from_business_csv_with_context(
+            &csv_data,
+            &graph,
+            &collections,
+            options,
+            Some(&ctx),
+        )
+    } else {
+        build_resources_from_business_csv(&csv_data, &graph, &collections, options)
+    }
+    .map_err(csv_err)?;
 
     Ok(wrap_business_data(&resources))
 }

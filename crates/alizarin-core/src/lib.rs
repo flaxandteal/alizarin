@@ -340,5 +340,6 @@ pub use csv_model_loader::{
 
 // CSV business data loader
 pub use csv_business_data_loader::{
-    build_resources_from_business_csv, wrap_business_data, BusinessDataCsvOptions,
+    build_resources_from_business_csv, build_resources_from_business_csv_with_context,
+    wrap_business_data, BusinessDataCsvOptions,
 };

@@ -1195,6 +1195,7 @@ impl WASMResourceInstanceWrapper {
             external_resolver: Some(
                 rcache as &dyn alizarin_core::type_serialization::ExternalResolver,
             ),
+            concept_lookup: None,
             resource_resolver: Some(
                 core_registry as &dyn alizarin_core::type_serialization::ResourceDisplayResolver,
             ),
@@ -1259,6 +1260,7 @@ impl WASMResourceInstanceWrapper {
             external_resolver: Some(
                 rcache as &dyn alizarin_core::type_serialization::ExternalResolver,
             ),
+            concept_lookup: None,
             resource_resolver: Some(
                 core_registry as &dyn alizarin_core::type_serialization::ResourceDisplayResolver,
             ),
@@ -1477,6 +1479,7 @@ impl WASMResourceInstanceWrapper {
             node_config: None,
             external_resolver: rdm_cache
                 .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+            concept_lookup: None,
             resource_resolver: resource_registry
                 .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
             extension_registry: Some(&ext_registry),

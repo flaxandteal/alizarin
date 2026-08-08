@@ -582,6 +582,7 @@ impl PyResourceInstanceWrapperCore {
             node_config: None,
             external_resolver: rdm_inner
                 .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+            concept_lookup: None,
             resource_resolver: core_registry
                 .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
             extension_registry: Some(&ext_registry),
@@ -656,6 +657,7 @@ impl PyResourceInstanceWrapperCore {
             node_config: None,
             external_resolver: rdm_inner
                 .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+            concept_lookup: None,
             resource_resolver: core_registry
                 .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
             extension_registry: Some(&ext_registry),
@@ -743,6 +745,7 @@ impl PyResourceInstanceWrapperCore {
             node_config: None,
             external_resolver: rdm_inner
                 .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+            concept_lookup: None,
             resource_resolver: core_registry
                 .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
             extension_registry: Some(&ext_registry),

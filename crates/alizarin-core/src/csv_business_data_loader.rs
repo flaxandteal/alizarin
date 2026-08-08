@@ -37,8 +37,10 @@ use crate::graph::{
     StaticTile,
 };
 use crate::graph_mutator::{generate_uuid_v5, generate_uuid_v5_with_ns};
+use crate::label_resolution::ConceptLookup;
 use crate::skos::SkosCollection;
 use crate::type_coercion::{coerce_geojson, normalize_date_string};
+use crate::type_serialization::SerializationContext;
 
 /// Options for business data CSV loading
 #[derive(Debug, Clone)]
@@ -171,6 +173,10 @@ fn merge_string_language(
 struct CoerceContext<'a> {
     collections: &'a [SkosCollection],
     concept_lookup: &'a HashMap<String, HashMap<String, String>>,
+    /// Shared SKOS RdmCache (label -> id). When present it is authoritative,
+    /// the same concept identity the read side resolves back, so it wins over
+    /// the collections-derived fallback.
+    external_lookup: Option<&'a dyn ConceptLookup>,
     diagnostics: &'a mut Vec<CsvModelDiagnostic>,
     line: usize,
     strict_concepts: bool,
@@ -340,19 +346,31 @@ fn resolve_concept_label(
         return Some(label.to_string());
     }
 
-    // Try to find via collection mapping
-    if let Some(coll_id) = find_node_collection_id(node, ctx.collections) {
-        if let Some(labels) = ctx.concept_lookup.get(&coll_id) {
+    let coll_id = find_node_collection_id(node, ctx.collections);
+
+    if let Some(ext) = ctx.external_lookup {
+        // Authoritative path: resolve through the shared SKOS RdmCache, scoped
+        // to the node's own collection. This is the same concept identity the
+        // read side resolves back, so no minting/mismatch.
+        if let Some(cid) = &coll_id {
+            if let Some(id) = ext.lookup_by_label(cid, label) {
+                return Some(id);
+            }
+        }
+    } else {
+        // Fallback (no shared cache): collections-derived lookup, node's
+        // collection first, then any collection.
+        if let Some(cid) = &coll_id {
+            if let Some(labels) = ctx.concept_lookup.get(cid) {
+                if let Some(concept_id) = labels.get(&lower) {
+                    return Some(concept_id.clone());
+                }
+            }
+        }
+        for labels in ctx.concept_lookup.values() {
             if let Some(concept_id) = labels.get(&lower) {
                 return Some(concept_id.clone());
             }
-        }
-    }
-
-    // Fallback: search all collections
-    for labels in ctx.concept_lookup.values() {
-        if let Some(concept_id) = labels.get(&lower) {
-            return Some(concept_id.clone());
         }
     }
 
@@ -393,6 +411,22 @@ pub fn build_resources_from_business_csv(
     collections: &[SkosCollection],
     options: BusinessDataCsvOptions,
 ) -> Result<Vec<StaticResource>, CsvModelError> {
+    build_resources_from_business_csv_with_context(csv_data, graph, collections, options, None)
+}
+
+/// Build resources, resolving concept/reference labels to concept ids.
+///
+/// When `context` carries a `concept_lookup` (the shared SKOS-backed RdmCache),
+/// labels resolve through it, the same concept identity the read side later
+/// resolves back. When absent, resolution falls back to a lookup derived from
+/// `collections`.
+pub fn build_resources_from_business_csv_with_context(
+    csv_data: &str,
+    graph: &StaticGraph,
+    collections: &[SkosCollection],
+    options: BusinessDataCsvOptions,
+    context: Option<&SerializationContext>,
+) -> Result<Vec<StaticResource>, CsvModelError> {
     let mut diagnostics: Vec<CsvModelDiagnostic> = Vec::new();
 
     // Build lookup indices
@@ -402,6 +436,7 @@ pub fn build_resources_from_business_csv(
         .filter_map(|n| n.alias.as_ref().map(|a| (a.clone(), n)))
         .collect();
 
+    let external_lookup = context.and_then(|c| c.concept_lookup);
     let concept_lookup = build_concept_lookup(collections);
 
     // Parse CSV
@@ -608,6 +643,7 @@ pub fn build_resources_from_business_csv(
                 let mut ctx = CoerceContext {
                     collections,
                     concept_lookup: &concept_lookup,
+                    external_lookup,
                     diagnostics: &mut diagnostics,
                     line: *line,
                     strict_concepts: options.strict_concepts,

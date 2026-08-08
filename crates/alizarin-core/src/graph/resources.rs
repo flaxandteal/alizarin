@@ -1140,6 +1140,7 @@ impl StaticResourceRegistry {
         let ser_ctx = SerializationContext {
             node_config,
             external_resolver: base_ctx.external_resolver,
+            concept_lookup: base_ctx.concept_lookup,
             resource_resolver: base_ctx.resource_resolver,
             extension_registry: base_ctx.extension_registry,
         };
@@ -1253,6 +1254,7 @@ impl StaticResourceRegistry {
         let ser_ctx = SerializationContext {
             node_config,
             external_resolver: base_ctx.external_resolver,
+            concept_lookup: base_ctx.concept_lookup,
             resource_resolver: base_ctx.resource_resolver,
             extension_registry: base_ctx.extension_registry,
         };

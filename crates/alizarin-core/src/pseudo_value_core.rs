@@ -364,6 +364,7 @@ impl PseudoValueCore {
         let ser_ctx = SerializationContext {
             node_config,
             external_resolver,
+            concept_lookup: None,
             resource_resolver,
             extension_registry: None,
         };

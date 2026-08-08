@@ -34,6 +34,7 @@ mod strings;
 use serde_json::Value;
 
 use crate::extension_type_registry::ExtensionTypeRegistry;
+use crate::label_resolution::ConceptLookup;
 use crate::node_config::NodeConfig;
 
 // Re-export core types
@@ -98,8 +99,13 @@ pub struct SerializationContext<'a> {
     /// Per-node config (domain options, boolean labels, concept collection).
     /// Set at leaf serialization, not at graph level.
     pub node_config: Option<&'a NodeConfig>,
-    /// External data lookup (e.g., RDM cache for concept labels).
+    /// External data lookup (e.g., RDM cache for concept labels), id -> label
+    /// (the deserialize/display direction).
     pub external_resolver: Option<&'a dyn ExternalResolver>,
+    /// Concept label -> id lookup (the serialize direction). When provided,
+    /// business data loading resolves labels to the same concept identity the
+    /// read side resolves back.
+    pub concept_lookup: Option<&'a dyn ConceptLookup>,
     /// Resource display resolver (e.g., StaticResourceRegistry for resource-instance names).
     pub resource_resolver: Option<&'a dyn ResourceDisplayResolver>,
     /// Unified extension registry for custom datatypes.
@@ -112,6 +118,7 @@ impl<'a> SerializationContext<'a> {
         SerializationContext {
             node_config: None,
             external_resolver: None,
+            concept_lookup: None,
             resource_resolver: None,
             extension_registry: None,
         }
@@ -123,6 +130,7 @@ impl<'a> SerializationContext<'a> {
         SerializationContext {
             node_config,
             external_resolver: self.external_resolver,
+            concept_lookup: self.concept_lookup,
             resource_resolver: self.resource_resolver,
             extension_registry: self.extension_registry,
         }
@@ -394,6 +402,7 @@ mod tests {
         let ctx = SerializationContext {
             node_config: None,
             external_resolver: None,
+            concept_lookup: None,
             resource_resolver: None,
             extension_registry: Some(&registry),
         };
@@ -449,6 +458,7 @@ mod tests {
         let ctx = SerializationContext {
             node_config: None,
             external_resolver: None,
+            concept_lookup: None,
             resource_resolver: None,
             extension_registry: Some(&registry),
         };
@@ -505,6 +515,7 @@ mod tests {
         let ctx = SerializationContext {
             node_config: None,
             external_resolver: None,
+            concept_lookup: None,
             resource_resolver: None,
             extension_registry: Some(&registry),
         };
@@ -561,6 +572,7 @@ mod tests {
         let ctx = SerializationContext {
             node_config: None,
             external_resolver: None,
+            concept_lookup: None,
             resource_resolver: None,
             extension_registry: Some(&registry),
         };

@@ -1589,6 +1589,7 @@ impl NapiResourceInstanceWrapper {
             node_config: None,
             external_resolver: rdm
                 .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+            concept_lookup: None,
             resource_resolver: resource_registry
                 .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
             extension_registry: Some(ext_reg),

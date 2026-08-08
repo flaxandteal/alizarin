@@ -44,7 +44,7 @@ impl std::error::Error for LabelResolutionError {}
 ///
 /// This trait abstracts over the actual collection storage (RdmCache in Python,
 /// StaticCollection in JS) so the resolution logic can be shared.
-pub trait ConceptLookup {
+pub trait ConceptLookup: Send + Sync {
     /// Look up a concept ID by its label in a specific collection.
     /// Returns None if not found or ambiguous.
     fn lookup_by_label(&self, collection_id: &str, label: &str) -> Option<String>;

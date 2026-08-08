@@ -144,6 +144,7 @@ mod tests {
         SerializationContext {
             node_config: Some(config),
             external_resolver: Some(resolver),
+            concept_lookup: None,
             resource_resolver: None,
             extension_registry: None,
         }
