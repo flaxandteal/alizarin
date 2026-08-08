@@ -24,9 +24,10 @@ pub mod core {
     pub use alizarin_core::*;
 }
 
+#[cfg(not(test))]
 use wasm_bindgen::prelude::*;
 
-// Called when the Wasm module is instantiated
+#[cfg(not(test))]
 #[wasm_bindgen(start)]
 fn main() -> Result<(), JsValue> {
     // Set panic hook for better error messages in development

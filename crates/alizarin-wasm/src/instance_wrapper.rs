@@ -1,7 +1,6 @@
 use crate::graph::{StaticResource, StaticResourceDescriptors, StaticResourceRegistry};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -20,7 +19,6 @@ use alizarin_core::is_node_single_cardinality;
 use alizarin_core::matches_semantic_child as matches_semantic_child_core;
 use alizarin_core::node_config::NodeConfigManager;
 use alizarin_core::rdm_cache::RdmCache;
-use alizarin_core::StaticResourceMetadata as CoreStaticResourceMetadata;
 use alizarin_core::StaticTile as CoreStaticTile;
 use alizarin_core::StaticTile;
 use alizarin_core::TileSource;
@@ -191,35 +189,56 @@ impl WasmPopulateResult {
     }
 }
 
-/// Core resource instance wrapper - WASM-independent business logic
-/// Contains all tile storage, indexing, and business logic
-/// Can be used from WASM, Python, or other bindings
-///
-/// TODO(priority): This duplicates alizarin-core::ResourceInstanceWrapperCore.
-/// The only reason they diverged is Rc<RefCell> (WASM, single-threaded) vs
-/// Arc<Mutex> (core, thread-safe for NAPI/Python). Unify them ASAP — either
-/// via a generic concurrency parameter or feature-gated type aliases — so
-/// methods like set_tile_data_for_node don't need to be added in two places.
-pub struct ResourceInstanceWrapperCore {
-    // Graph ID to look up model core from registry
-    pub(crate) graph_id: String,
+// The resource-instance STATE now lives in `alizarin_core::ResourceInstanceWrapperCore`
+// (shared with NAPI/Python; its pseudo_cache/loaded_nodegroups use the feature-gated
+// `SharedMut`, which is Rc<RefCell> on wasm32). The former WASM copy is gone. What
+// stays WASM-specific is the MODEL_REGISTRY binding (core has no registry) and the
+// lazy-load-aware semantic-child lookup — the two helpers and the extension trait
+// below.
 
-    // Resource ID
-    pub(crate) resource_instance: Option<CoreStaticResourceMetadata>,
+/// Access the model for `graph_id` from the WASM MODEL_REGISTRY (immutable). A free
+/// function (not a method) so a caller already holding a borrow of the resource core
+/// can pass its `graph_id` without re-borrowing it — avoiding a RefCell double-borrow.
+pub(crate) fn with_registry_model<F, R, E>(graph_id: &str, f: F) -> Result<R, E>
+where
+    F: FnOnce(&crate::model_wrapper::ResourceModelWrapperCore) -> Result<R, E>,
+    E: From<String>,
+{
+    crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
+        let registry_borrow = registry.borrow();
+        let core_arc = registry_borrow
+            .get(graph_id)
+            .ok_or_else(|| E::from(format!("Model not found in registry: {}", graph_id)))?;
+        let core_borrow = core_arc.borrow();
+        f(&core_borrow)
+    })
+}
 
-    // Core tile storage
-    pub(crate) tiles: Option<HashMap<String, CoreStaticTile>>,
+/// Access the model for `graph_id` from the MODEL_REGISTRY (mutable).
+pub(crate) fn with_registry_model_mut<F, R, E>(graph_id: &str, f: F) -> Result<R, E>
+where
+    F: FnOnce(&mut crate::model_wrapper::ResourceModelWrapperCore) -> Result<R, E>,
+    E: From<String>,
+{
+    crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
+        let registry_borrow = registry.borrow();
+        let core_arc = registry_borrow
+            .get(graph_id)
+            .ok_or_else(|| E::from(format!("Model not found in registry: {}", graph_id)))?;
+        let mut core_borrow = core_arc.borrow_mut();
+        f(&mut core_borrow)
+    })
+}
 
-    // Index: nodegroup_id -> list of tile_ids
-    pub(crate) nodegroup_index: HashMap<String, Vec<String>>,
-
-    // Track which nodegroups have been loaded/loading
-    // WASM is single-threaded, so we use Rc<RefCell<...>> instead of Arc<Mutex<...>>
-    pub(crate) loaded_nodegroups: Rc<RefCell<HashMap<String, LoadState>>>,
-
-    // Cache of PseudoValues (alias -> PseudoListInner)
-    // This allows Rust to own the authoritative data and bindings to create lightweight wrappers
-    pub(crate) pseudo_cache: Rc<RefCell<HashMap<String, PseudoListInner>>>,
+/// Build core's resource-instance state for `graph_id`, ensuring the model's node
+/// index is built first (the `ModelAccess` trait needs it).
+fn new_core(graph_id: String) -> alizarin_core::ResourceInstanceWrapperCore {
+    crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
+        if let Some(core_arc) = registry.borrow().get(&graph_id) {
+            core_arc.borrow_mut().ensure_built().ok();
+        }
+    });
+    alizarin_core::ResourceInstanceWrapperCore::new(graph_id)
 }
 
 /// Rust-side WASM resource instance wrapper
@@ -232,7 +251,7 @@ pub struct WASMResourceInstanceWrapper {
     /// Core implementation wrapped in RefCell for interior mutability
     /// This allows &self methods to mutate internal state, which is required
     /// for async wasm_bindgen functions that can't use &mut self without deadlocking
-    core: RefCell<ResourceInstanceWrapperCore>,
+    core: RefCell<alizarin_core::ResourceInstanceWrapperCore>,
     /// Optional callback for lazy-loading tiles per nodegroup
     /// Signature: (nodegroup_id: Option<string>) => Promise<StaticTile[]>
     /// None = load all tiles, Some(id) = load tiles for specific nodegroup
@@ -248,98 +267,25 @@ pub struct WASMResourceInstanceWrapper {
 // Re-export from core to avoid duplication
 pub(crate) use alizarin_core::LoadState;
 
-impl ResourceInstanceWrapperCore {
-    /// Create a new core from graph ID
-    pub fn new_from_graph_id(graph_id: String) -> Self {
-        // Ensure nodes are built in the model (needed for ModelAccess trait)
-        crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
-            if let Some(core_arc) = registry.borrow().get(&graph_id) {
-                let mut core = core_arc.borrow_mut();
-                core.ensure_built().ok();
-            }
-        });
+/// A WASM-specific extension of core's `ResourceInstanceWrapperCore`: the
+/// lazy-load-aware semantic-child lookup. Core's inherent `get_semantic_child_value`
+/// takes a `&dyn ModelAccess` and assumes tiles are present; the WASM path must
+/// instead resolve the model from MODEL_REGISTRY and signal `TilesNotLoaded` so the
+/// async wrapper knows to fetch-and-retry. Named `_lazy` to avoid shadowing core's.
+pub(crate) trait WasmInstanceCoreExt {
+    #[allow(clippy::too_many_arguments)]
+    fn get_semantic_child_value_lazy(
+        &self,
+        parent_tile_id: Option<&String>,
+        parent_node_id: &str,
+        parent_nodegroup_id: Option<&String>,
+        child_alias: &str,
+        loaded_nodegroups: Option<&HashSet<String>>,
+    ) -> Result<SemanticChildResult, SemanticChildError>;
+}
 
-        ResourceInstanceWrapperCore {
-            graph_id,
-            resource_instance: None,
-            tiles: None,
-            nodegroup_index: HashMap::new(),
-            loaded_nodegroups: Rc::new(RefCell::new(HashMap::new())),
-            pseudo_cache: Rc::new(RefCell::new(HashMap::new())),
-        }
-    }
-
-    /// Create a new core from resource
-    pub fn new_from_resource(resource: &StaticResource) -> Self {
-        // Access the inner core type through Deref
-        let mut core = Self::new_from_graph_id(resource.0.resourceinstance.graph_id.clone());
-        core.resource_instance = Some(resource.0.resourceinstance.clone());
-        core
-    }
-
-    /// Helper to access the model core from registry (immutable)
-    /// Generic error type for WASM-independent usage
-    fn with_model_core<F, R, E>(&self, f: F) -> Result<R, E>
-    where
-        F: FnOnce(&crate::model_wrapper::ResourceModelWrapperCore) -> Result<R, E>,
-        E: From<String>,
-    {
-        crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
-            let registry_borrow = registry.borrow();
-            let core_arc = registry_borrow.get(&self.graph_id).ok_or_else(|| {
-                E::from(format!("Model not found in registry: {}", self.graph_id))
-            })?;
-            let core_borrow = core_arc.borrow();
-            f(&core_borrow)
-        })
-    }
-
-    /// Helper to access the model core from registry (mutable)
-    /// Generic error type for WASM-independent usage
-    fn with_model_core_mut<F, R, E>(&self, f: F) -> Result<R, E>
-    where
-        F: FnOnce(&mut crate::model_wrapper::ResourceModelWrapperCore) -> Result<R, E>,
-        E: From<String>,
-    {
-        crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
-            let registry_borrow = registry.borrow();
-            let core_arc = registry_borrow.get(&self.graph_id).ok_or_else(|| {
-                E::from(format!("Model not found in registry: {}", self.graph_id))
-            })?;
-            let mut core_borrow = core_arc.borrow_mut();
-            f(&mut core_borrow)
-        })
-    }
-
-    /// Set a single node's data in a tile, mutating in place.
-    /// Returns true if the tile was found and updated, false otherwise.
-    pub(crate) fn set_tile_data_for_node(
-        &mut self,
-        tile_id: &str,
-        node_id: &str,
-        value: serde_json::Value,
-    ) -> bool {
-        if let Some(tiles) = &mut self.tiles {
-            if let Some(tile) = tiles.get_mut(tile_id) {
-                tile.data.insert(node_id.to_string(), value);
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Pure Rust implementation of get_semantic_child_value
-    /// Returns semantic child values for a given parent node and child alias.
-    ///
-    /// Parameters:
-    /// - parent_tile_id: The tileid of the parent semantic node (or None)
-    /// - parent_node_id: The nodeid of the parent semantic node
-    /// - parent_nodegroup_id: The nodegroup_id of the parent node (or None)
-    /// - child_alias: The alias of the specific child to retrieve
-    /// - loaded_nodegroups: Set of nodegroups that have been loaded (None = non-lazy mode, all loaded)
-    ///
-    /// Returns: SemanticChildResult or SemanticChildError
-    pub(crate) fn get_semantic_child_value(
+impl WasmInstanceCoreExt for alizarin_core::ResourceInstanceWrapperCore {
+    fn get_semantic_child_value_lazy(
         &self,
         parent_tile_id: Option<&String>,
         parent_node_id: &str,
@@ -347,22 +293,13 @@ impl ResourceInstanceWrapperCore {
         child_alias: &str,
         loaded_nodegroups: Option<&HashSet<String>>,
     ) -> Result<SemanticChildResult, SemanticChildError> {
-        // Get child nodes for this parent (needs mutable access for lazy init)
         #[allow(clippy::map_clone)]
-        let child_nodes = self.with_model_core_mut(|core| {
+        let child_nodes = with_registry_model_mut(&self.graph_id, |core| {
             core.get_child_nodes(parent_node_id)
                 .map_err(SemanticChildError::ModelNotInitialized)
                 .map(|map| map.clone())
         })?;
 
-        // Get edges for creating PseudoValues
-        // let edges = self.with_model_core(|core| {
-        //     core.get_edges_internal()
-        //         .ok_or_else(|| SemanticChildError::ModelNotInitialized("Model edges not initialized".to_string()))
-        //         .map(|map| map.clone())
-        // })?;
-
-        // Get the specific child node we're looking for (core type)
         let child_node = child_nodes
             .get(child_alias)
             .ok_or_else(|| SemanticChildError::ChildNotFound {
@@ -370,7 +307,6 @@ impl ResourceInstanceWrapperCore {
             })?
             .clone();
 
-        // Check if tiles are loaded for this child's nodegroup (lazy mode check)
         if let Some(loaded_ngs) = loaded_nodegroups {
             if let Some(ref child_nodegroup_id) = child_node.nodegroup_id {
                 if !loaded_ngs.contains(child_nodegroup_id) {
@@ -381,17 +317,11 @@ impl ResourceInstanceWrapperCore {
             }
         }
 
-        // Get tiles (must be initialized)
         let tiles = self
             .tiles
             .as_ref()
             .ok_or(SemanticChildError::TilesNotInitialized)?;
 
-        // Find all tiles that contain this child node with the correct semantic relationship
-        // Use nodegroup_index for O(1) lookup instead of O(n) tile scan
-        let mut matching_tile_ids: Vec<String> = Vec::new();
-
-        // Get candidate tile IDs from the nodegroup index
         let candidate_tile_ids: Vec<String> =
             if let Some(ref child_nodegroup_id) = child_node.nodegroup_id {
                 self.nodegroup_index
@@ -399,13 +329,12 @@ impl ResourceInstanceWrapperCore {
                     .cloned()
                     .unwrap_or_default()
             } else {
-                // No nodegroup_id on child node - fall back to scanning all tiles
                 tiles.keys().cloned().collect()
             };
 
+        let mut matching_tile_ids: Vec<String> = Vec::new();
         for tile_id in candidate_tile_ids {
             if let Some(tile) = tiles.get(&tile_id) {
-                // Check semantic parent-child relationship
                 if matches_semantic_child_core(
                     parent_tile_id,
                     parent_nodegroup_id,
@@ -417,18 +346,14 @@ impl ResourceInstanceWrapperCore {
             }
         }
 
-        // If no matching tiles, return Empty (not an error)
         if matching_tile_ids.is_empty() {
             return Ok(SemanticChildResult::Empty);
         }
 
-        // Sort tile IDs for deterministic ordering (important when is_single=true
-        // and there are multiple tiles for a cardinality-1 nodegroup)
         matching_tile_ids.sort();
 
         #[allow(clippy::map_clone)]
-        // Get edges and nodegroups for creating PseudoValues
-        let edges = self.with_model_core(|core| {
+        let edges = with_registry_model(&self.graph_id, |core| {
             core.get_edges_internal()
                 .ok_or_else(|| {
                     SemanticChildError::ModelNotInitialized(
@@ -438,15 +363,13 @@ impl ResourceInstanceWrapperCore {
                 .map(|map| map.clone())
         })?;
 
-        // Determine cardinality using the shared helper
-        let is_single = self.with_model_core::<_, _, SemanticChildError>(|core| {
+        let is_single = with_registry_model::<_, _, SemanticChildError>(&self.graph_id, |core| {
             Ok(is_node_single_cardinality(
                 &child_node,
                 core.get_nodegroups_internal(),
             ))
         })?;
 
-        // Create PseudoValues from the matching tiles
         let mut values = Vec::new();
         for tile_id in &matching_tile_ids {
             let tile = tiles
@@ -456,19 +379,15 @@ impl ResourceInstanceWrapperCore {
             let tile_data = tile.data.get(&child_node.nodeid);
             let child_ids = edges.get(&child_node.nodeid).cloned().unwrap_or_default();
 
-            let pseudo_value = PseudoValueInner::from_node_and_tile(
+            values.push(PseudoValueInner::from_node_and_tile(
                 Arc::clone(&child_node),
                 Some(Arc::new(tile.clone())),
                 tile_data.cloned(),
                 child_ids,
-            );
-
-            values.push(pseudo_value);
+            ));
         }
 
-        // Create PseudoList or single value based on cardinality and number of values
         if !is_single || values.len() > 1 {
-            // Return as PseudoList for multi-cardinality nodes or when multiple tiles match
             let pseudo_list = PseudoListInner::from_values_with_cardinality(
                 child_alias.to_string(),
                 values,
@@ -476,7 +395,6 @@ impl ResourceInstanceWrapperCore {
             );
             Ok(SemanticChildResult::List(pseudo_list))
         } else {
-            // Return single value if present, otherwise Empty
             match values.into_iter().next() {
                 Some(value) => Ok(SemanticChildResult::Single(value)),
                 None => Ok(SemanticChildResult::Empty),
@@ -504,7 +422,8 @@ impl WASMResourceInstanceWrapper {
     where
         F: FnOnce(&crate::model_wrapper::ResourceModelWrapperCore) -> Result<R, JsValue>,
     {
-        self.core.borrow().with_model_core(f)
+        let graph_id = self.core.borrow().graph_id.clone();
+        with_registry_model(&graph_id, f)
     }
 
     /// Helper to access the model core from registry (mutable) - WASM version
@@ -512,7 +431,8 @@ impl WASMResourceInstanceWrapper {
     where
         F: FnOnce(&mut crate::model_wrapper::ResourceModelWrapperCore) -> Result<R, JsValue>,
     {
-        self.core.borrow().with_model_core_mut(f)
+        let graph_id = self.core.borrow().graph_id.clone();
+        with_registry_model_mut(&graph_id, f)
     }
 
     fn check_tiles(&self, tiles: &Vec<StaticTile>) -> Result<(), JsValue> {
@@ -594,7 +514,7 @@ impl WASMResourceInstanceWrapper {
                     .push(tile_id.clone());
 
                 {
-                    let mut loaded = core.loaded_nodegroups.borrow_mut();
+                    let mut loaded = core.loaded_nodegroups.write().unwrap();
                     loaded.insert(nodegroup_id, LoadState::Loaded);
                 }
 
@@ -611,7 +531,7 @@ impl WASMResourceInstanceWrapper {
             self.with_model_core_mut(|model_core| {
                 if let Some(nodegroups) = model_core.get_nodegroups_internal() {
                     let core_ref = self.core.borrow();
-                    let mut loaded = core_ref.loaded_nodegroups.borrow_mut();
+                    let mut loaded = core_ref.loaded_nodegroups.write().unwrap();
                     for nodegroup_id in nodegroups.keys() {
                         loaded
                             .entry(nodegroup_id.clone())
@@ -630,7 +550,7 @@ impl WASMResourceInstanceWrapper {
 impl WASMResourceInstanceWrapper {
     pub(crate) fn new_from_graph_id(graph_id: String) -> WASMResourceInstanceWrapper {
         WASMResourceInstanceWrapper {
-            core: RefCell::new(ResourceInstanceWrapperCore::new_from_graph_id(graph_id)),
+            core: RefCell::new(new_core(graph_id)),
             tile_loader: RefCell::new(None),
             tile_source: RefCell::new(None),
             lazy: RefCell::new(false),
@@ -639,7 +559,11 @@ impl WASMResourceInstanceWrapper {
 
     pub(crate) fn new_from_resource(resource: &StaticResource) -> WASMResourceInstanceWrapper {
         WASMResourceInstanceWrapper {
-            core: RefCell::new(ResourceInstanceWrapperCore::new_from_resource(resource)),
+            core: RefCell::new({
+                let mut c = new_core(resource.0.resourceinstance.graph_id.clone());
+                c.resource_instance = Some(resource.0.resourceinstance.clone());
+                c
+            }),
             tile_loader: RefCell::new(None),
             tile_source: RefCell::new(None),
             lazy: RefCell::new(false),
@@ -708,7 +632,7 @@ impl WASMResourceInstanceWrapper {
         }
         // Lazy mode: check if this specific nodegroup has been loaded via loaded_nodegroups
         let core_ref = self.core.borrow();
-        let loaded = core_ref.loaded_nodegroups.borrow();
+        let loaded = core_ref.loaded_nodegroups.read().unwrap();
         matches!(loaded.get(&nodegroup_id), Some(LoadState::Loaded))
     }
 
@@ -975,7 +899,7 @@ impl WASMResourceInstanceWrapper {
             None => return false,
         };
         let core_ref = self.core.borrow();
-        let loaded = core_ref.loaded_nodegroups.borrow();
+        let loaded = core_ref.loaded_nodegroups.read().unwrap();
         matches!(
             loaded.get(&nodegroup_id),
             Some(LoadState::Loading) | Some(LoadState::Loaded)
@@ -987,7 +911,7 @@ impl WASMResourceInstanceWrapper {
     #[wasm_bindgen(js_name = tryAcquireNodegroupLock)]
     pub fn try_acquire_nodegroup_lock(&self, nodegroup_id: String) -> bool {
         let core_ref = self.core.borrow();
-        let mut loaded = core_ref.loaded_nodegroups.borrow_mut();
+        let mut loaded = core_ref.loaded_nodegroups.write().unwrap();
         match loaded.get(&nodegroup_id) {
             Some(LoadState::Loading) | Some(LoadState::Loaded) => false,
             _ => {
@@ -1005,10 +929,11 @@ impl WASMResourceInstanceWrapper {
         let alias = alias?;
         {
             let core_ref = self.core.borrow();
-            let cache = core_ref.pseudo_cache.borrow();
+            let cache = core_ref.pseudo_cache.read().unwrap();
             if let Some(pseudo_list) = cache.get(&alias) {
-                // Convert PseudoListInner to PseudoList
-                return Some(PseudoList::from_rust(pseudo_list.clone()));
+                return Some(PseudoList::from_rust(PseudoListInner::from_core(
+                    pseudo_list.clone(),
+                )));
             }
         }
         None
@@ -1020,8 +945,8 @@ impl WASMResourceInstanceWrapper {
         let rust_list = wasm_list.into_inner();
         {
             let core_ref = self.core.borrow();
-            let mut cache = core_ref.pseudo_cache.borrow_mut();
-            cache.insert(alias, rust_list);
+            let mut cache = core_ref.pseudo_cache.write().unwrap();
+            cache.insert(alias, rust_list.to_core());
         }
     }
 
@@ -1050,17 +975,17 @@ impl WASMResourceInstanceWrapper {
     #[wasm_bindgen(js_name = cachePseudoValue)]
     pub fn cache_pseudo_value(&self, alias: String, wasm_value: PseudoValue) {
         let rust_value = wasm_value.into_inner();
-        let node_alias = alias.clone(); // Use the provided alias
+        let node_alias = alias.clone();
         let rust_list = PseudoListInner {
             node_alias,
             values: vec![rust_value],
             is_loaded: true,
-            is_single: true, // Single value being cached
+            is_single: true,
         };
         {
             let core_ref = self.core.borrow();
-            let mut cache = core_ref.pseudo_cache.borrow_mut();
-            cache.insert(alias, rust_list);
+            let mut cache = core_ref.pseudo_cache.write().unwrap();
+            cache.insert(alias, rust_list.to_core());
         }
     }
 
@@ -1069,7 +994,7 @@ impl WASMResourceInstanceWrapper {
     pub fn clear_pseudo_cache(&self) {
         {
             let core_ref = self.core.borrow();
-            let mut cache = core_ref.pseudo_cache.borrow_mut();
+            let mut cache = core_ref.pseudo_cache.write().unwrap();
             cache.clear();
         }
     }
@@ -1092,14 +1017,14 @@ impl WASMResourceInstanceWrapper {
         // Clear pseudo cache
         {
             let core_ref = self.core.borrow();
-            let mut cache = core_ref.pseudo_cache.borrow_mut();
+            let mut cache = core_ref.pseudo_cache.write().unwrap();
             cache.clear();
         }
 
         // Clear loaded nodegroups tracking
         {
             let core_ref = self.core.borrow();
-            let mut loaded = core_ref.loaded_nodegroups.borrow_mut();
+            let mut loaded = core_ref.loaded_nodegroups.write().unwrap();
             loaded.clear();
         }
 
@@ -1124,13 +1049,12 @@ impl WASMResourceInstanceWrapper {
 
         // Need to hold borrow long enough for the lock
         let core_ref = self.core.borrow();
-        let cache = core_ref.pseudo_cache.borrow();
+        let cache = core_ref.pseudo_cache.read().unwrap();
 
-        // Look up root by its actual alias
-        let root_list = cache.get(&root_alias)?;
+        // Look up root by its actual alias; cache stores PseudoListCore.
+        let root_list_core = cache.get(&root_alias)?;
+        let root_list = PseudoListInner::from_core(root_list_core.clone());
 
-        // Return the first value (root should have exactly one)
-        // PORT: js/graphManager.ts:346-350 - if list, get first element
         if root_list.values.len() > 1 {
             web_sys::console::warn_1(&"Multiple root tiles found - returning first".into());
         }
@@ -1147,7 +1071,7 @@ impl WASMResourceInstanceWrapper {
     /// Returns an error if any nodegroups are not in Loaded state.
     fn check_tiles_loaded(&self, method_name: &str) -> Result<(), JsValue> {
         let core_ref = self.core.borrow();
-        let loaded_nodegroups = core_ref.loaded_nodegroups.borrow();
+        let loaded_nodegroups = core_ref.loaded_nodegroups.read().unwrap();
 
         if loaded_nodegroups.is_empty() {
             return Err(JsValue::from_str(&format!(
@@ -1208,11 +1132,8 @@ impl WASMResourceInstanceWrapper {
         // Convert WASM pseudo_cache to core types
         let core_cache: std::collections::HashMap<String, alizarin_core::PseudoListCore> = {
             let core_ref = self.core.borrow();
-            let cache = core_ref.pseudo_cache.borrow();
-            cache
-                .iter()
-                .map(|(k, v)| (k.clone(), v.to_core()))
-                .collect()
+            let cache = core_ref.pseudo_cache.read().unwrap();
+            cache.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
         };
 
         let result = alizarin_core::serialize_card(
@@ -1246,11 +1167,8 @@ impl WASMResourceInstanceWrapper {
 
         let core_cache: std::collections::HashMap<String, alizarin_core::PseudoListCore> = {
             let core_ref = self.core.borrow();
-            let cache = core_ref.pseudo_cache.borrow();
-            cache
-                .iter()
-                .map(|(k, v)| (k.clone(), v.to_core()))
-                .collect()
+            let cache = core_ref.pseudo_cache.read().unwrap();
+            cache.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
         };
 
         let result =
@@ -1291,11 +1209,8 @@ impl WASMResourceInstanceWrapper {
 
         let core_cache: std::collections::HashMap<String, alizarin_core::PseudoListCore> = {
             let core_ref = self.core.borrow();
-            let cache = core_ref.pseudo_cache.borrow();
-            cache
-                .iter()
-                .map(|(k, v)| (k.clone(), v.to_core()))
-                .collect()
+            let cache = core_ref.pseudo_cache.read().unwrap();
+            cache.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
         };
 
         let lang = language.unwrap_or_else(|| "en".to_string());
@@ -1358,11 +1273,8 @@ impl WASMResourceInstanceWrapper {
 
         let core_cache: std::collections::HashMap<String, alizarin_core::PseudoListCore> = {
             let core_ref = self.core.borrow();
-            let cache = core_ref.pseudo_cache.borrow();
-            cache
-                .iter()
-                .map(|(k, v)| (k.clone(), v.to_core()))
-                .collect()
+            let cache = core_ref.pseudo_cache.read().unwrap();
+            cache.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
         };
 
         let lang = language.unwrap_or_else(|| "en".to_string());
@@ -1459,14 +1371,17 @@ impl WASMResourceInstanceWrapper {
         // Check that all tiles have been loaded - fail fast if not
         self.check_tiles_loaded("toJson")?;
 
-        // Get the pseudo_cache (populated by populate())
+        // Get the pseudo_cache (populated by populate()). Stored as PseudoListCore;
+        // the WASM VisitorContext/to_json is PseudoListInner-based, so convert here.
         let core_ref = self.core.borrow();
-        let cache = core_ref.pseudo_cache.borrow();
+        let cache_core = core_ref.pseudo_cache.read().unwrap();
+        let cache: std::collections::HashMap<String, PseudoListInner> = cache_core
+            .iter()
+            .map(|(k, v)| (k.clone(), PseudoListInner::from_core(v.clone())))
+            .collect();
 
-        // Build visitor context with default tile_data serialization
         let ctx = VisitorContext::new(&cache, &nodes_by_alias, &edges);
 
-        // Look up the root pseudo from cache (created in populate())
         let root_list = cache.get(&root_alias).ok_or_else(|| {
             JsValue::from_str(&format!(
                 "Root pseudo not found in cache for alias '{}' - was populate() called?",
@@ -1474,7 +1389,6 @@ impl WASMResourceInstanceWrapper {
             ))
         })?;
 
-        // Use the root list's to_json - the root is a semantic node, so it traverses children
         let json = root_list.to_json(&ctx);
 
         // Convert serde_json::Value to JSON string, then parse to JS object
@@ -1576,16 +1490,20 @@ impl WASMResourceInstanceWrapper {
         // Check that all tiles have been loaded - fail fast if not
         self.check_tiles_loaded("toDisplayJson")?;
 
-        // Get the pseudo_cache (populated by populate())
+        // Get the pseudo_cache (populated by populate()). PseudoListCore → Inner
+        // for the WASM display VisitorContext below.
         let core_ref = self.core.borrow();
-        let cache = core_ref.pseudo_cache.borrow();
+        let cache_core = core_ref.pseudo_cache.read().unwrap();
+        let cache: std::collections::HashMap<String, PseudoListInner> = cache_core
+            .iter()
+            .map(|(k, v)| (k.clone(), PseudoListInner::from_core(v.clone())))
+            .collect();
 
         let lang = language.unwrap_or_else(|| "en".to_string());
 
-        // Build SerializationContext with resolvers for concept and resource lookups
         let ext_registry = crate::extension_registry::build_extension_registry();
         let ser_ctx = alizarin_core::type_serialization::SerializationContext {
-            node_config: None, // Set per-node at leaf serialization
+            node_config: None,
             external_resolver: rdm_cache
                 .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
             resource_resolver: resource_registry
@@ -1593,7 +1511,6 @@ impl WASMResourceInstanceWrapper {
             extension_registry: Some(&ext_registry),
         };
 
-        // Build display-mode VisitorContext — same path as toJson() but with display options
         let ctx = VisitorContext {
             pseudo_cache: &cache,
             nodes_by_alias: &nodes_by_alias,
@@ -1675,11 +1592,15 @@ impl WASMResourceInstanceWrapper {
                 .map(|map| map.clone())
         })?;
 
-        // Get the pseudo cache
+        // Get the pseudo cache (stored as PseudoListCore; the tile-collection
+        // context below is PseudoListInner-based, so convert at this boundary).
         let core_ref = self.core.borrow();
-        let cache = core_ref.pseudo_cache.borrow();
+        let cache_core = core_ref.pseudo_cache.read().unwrap();
+        let cache: std::collections::HashMap<String, PseudoListInner> = cache_core
+            .iter()
+            .map(|(k, v)| (k.clone(), PseudoListInner::from_core(v.clone())))
+            .collect();
 
-        // Build context for tile collection
         let ctx = TileBuilderContext {
             pseudo_cache: &cache,
             nodes_by_alias: &nodes_by_alias,
@@ -1689,7 +1610,6 @@ impl WASMResourceInstanceWrapper {
             max_depth: 50,
         };
 
-        // Get root from cache
         let root_list = cache.get(&root_alias).ok_or_else(|| {
             JsValue::from_str(&format!(
                 "Root pseudo not found in cache for alias '{}' - was populate() called?",
@@ -1766,11 +1686,15 @@ impl WASMResourceInstanceWrapper {
                 .map(|map| map.clone())
         })?;
 
-        // Get the pseudo cache
+        // Get the pseudo cache (stored as PseudoListCore; the tile-collection
+        // context below is PseudoListInner-based, so convert at this boundary).
         let core_ref = self.core.borrow();
-        let cache = core_ref.pseudo_cache.borrow();
+        let cache_core = core_ref.pseudo_cache.read().unwrap();
+        let cache: std::collections::HashMap<String, PseudoListInner> = cache_core
+            .iter()
+            .map(|(k, v)| (k.clone(), PseudoListInner::from_core(v.clone())))
+            .collect();
 
-        // Build context for tile collection
         let ctx = TileBuilderContext {
             pseudo_cache: &cache,
             nodes_by_alias: &nodes_by_alias,
@@ -1780,7 +1704,6 @@ impl WASMResourceInstanceWrapper {
             max_depth: 50,
         };
 
-        // Get root from cache
         let root_list = cache.get(&root_alias).ok_or_else(|| {
             JsValue::from_str(&format!(
                 "Root pseudo not found in cache for alias '{}' - was populate() called?",
@@ -1995,7 +1918,7 @@ impl WASMResourceInstanceWrapper {
             None => return false,
         };
         let core_ref = self.core.borrow();
-        let loaded = core_ref.loaded_nodegroups.borrow();
+        let loaded = core_ref.loaded_nodegroups.read().unwrap();
         matches!(loaded.get(&nodegroup_id), Some(LoadState::Loaded))
     }
 
@@ -2050,7 +1973,7 @@ impl WASMResourceInstanceWrapper {
         };
 
         let core_result: alizarin_core::EnsureNodegroupResult =
-            core_ref.with_model_core(|model| {
+            with_registry_model(&core_ref.graph_id, |model| {
                 alizarin_core::ensure_nodegroup(
                     all_values_map,
                     all_nodegroups,
@@ -2171,7 +2094,7 @@ impl WASMResourceInstanceWrapper {
         // loaded_nodegroups tracks tile loading, but pseudo_cache tracks populate().
         let cache_len = {
             let core_ref = self.core.borrow();
-            let cache = core_ref.pseudo_cache.borrow();
+            let cache = core_ref.pseudo_cache.read().unwrap();
             cache.len()
         };
         let cache_populated = cache_len > 1;
@@ -2179,7 +2102,7 @@ impl WASMResourceInstanceWrapper {
         // Only use optimization if cache was actually populated previously
         let already_loaded: HashSet<String> = if cache_populated {
             let core_ref = self.core.borrow();
-            let loaded = core_ref.loaded_nodegroups.borrow();
+            let loaded = core_ref.loaded_nodegroups.read().unwrap();
             loaded
                 .iter()
                 .filter(|(_, state)| **state == LoadState::Loaded)
@@ -2210,14 +2133,16 @@ impl WASMResourceInstanceWrapper {
         // Set root node alias to false (line 626)
         all_values.insert(root_node_alias.clone(), Some(false));
 
-        // PORT: Phase 4c - Collect structured PseudoListInner values instead of recipes
-        // PORT: js/graphManager.ts:668 - newValues is a Map<string, PseudoValue | PseudoList>
-        // Start with existing cache entries for already-loaded nodegroups
+        // Collect structured PseudoListInner values; start with existing cache entries
+        // for already-loaded nodegroups (cache stores PseudoListCore → convert).
         let mut all_structured_values: HashMap<String, PseudoListInner> =
             if !already_loaded.is_empty() {
                 let core_ref = self.core.borrow();
-                let cache = core_ref.pseudo_cache.borrow();
-                cache.clone()
+                let cache = core_ref.pseudo_cache.read().unwrap();
+                cache
+                    .iter()
+                    .map(|(k, v)| (k.clone(), PseudoListInner::from_core(v.clone())))
+                    .collect()
             } else {
                 HashMap::new()
             };
@@ -2336,9 +2261,9 @@ impl WASMResourceInstanceWrapper {
         let t2 = now_ms();
         {
             let core_ref = self.core.borrow();
-            let mut cache = core_ref.pseudo_cache.borrow_mut();
+            let mut cache = core_ref.pseudo_cache.write().unwrap();
             for (alias, pseudo_list) in all_structured_values.iter() {
-                cache.insert(alias.clone(), pseudo_list.clone());
+                cache.insert(alias.clone(), pseudo_list.to_core());
             }
         }
         record_timing("populate: store in pseudo_cache", now_ms() - t2);
@@ -2376,7 +2301,7 @@ impl WASMResourceInstanceWrapper {
             }
         };
 
-        let core_result = core_ref.with_model_core(|model| {
+        let core_result = with_registry_model(&core_ref.graph_id, |model| {
             alizarin_core::values_from_resource_nodegroup(
                 &existing_values,
                 &nodegroup_tile_ids,
@@ -2527,7 +2452,7 @@ impl WASMResourceInstanceWrapper {
         let is_lazy = *self.lazy.borrow();
         let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
             let core_ref = self.core.borrow();
-            let loaded = core_ref.loaded_nodegroups.borrow();
+            let loaded = core_ref.loaded_nodegroups.read().unwrap();
             Some(
                 loaded
                     .iter()
@@ -2540,7 +2465,7 @@ impl WASMResourceInstanceWrapper {
         };
 
         // Call core implementation
-        let result = self.core.borrow().get_semantic_child_value(
+        let result = self.core.borrow().get_semantic_child_value_lazy(
             parent_tile_id.as_ref(),
             &parent_node_id,
             parent_nodegroup_id.as_ref(),
@@ -2624,7 +2549,7 @@ impl WASMResourceInstanceWrapper {
         let core_ref = self.core.borrow();
 
         // Ensure model caches are built
-        core_ref.with_model_core_mut(|model_core| {
+        with_registry_model_mut(&core_ref.graph_id, |model_core| {
             model_core.ensure_built().map_err(|e| JsValue::from_str(&e))
         })?;
 
@@ -2634,7 +2559,7 @@ impl WASMResourceInstanceWrapper {
             .ok_or_else(|| JsValue::from_str("Tiles not initialized"))?;
 
         // Delegate path resolution and tile filtering to core's standalone function
-        let (info, tiles) = core_ref.with_model_core(|model| {
+        let (info, tiles) = with_registry_model(&core_ref.graph_id, |model| {
             alizarin_core::resolve_and_filter_tiles(
                 path,
                 model,
@@ -2693,9 +2618,9 @@ impl WASMResourceInstanceWrapper {
         // First check pseudo_cache - after populate() values are stored there
         {
             let core_ref = self.core.borrow();
-            let cache = core_ref.pseudo_cache.borrow();
-            if let Some(pseudo_list) = cache.get(&child_alias) {
-                // TODO: inefficient and cacheable on PseudoListInner
+            let cache = core_ref.pseudo_cache.read().unwrap();
+            if let Some(pseudo_list_core) = cache.get(&child_alias) {
+                let pseudo_list = PseudoListInner::from_core(pseudo_list_core.clone());
                 let nodegroup_id = self.with_model_core_mut(|core| {
                     Ok(core
                         .get_nodes_by_alias_internal()
@@ -2749,7 +2674,7 @@ impl WASMResourceInstanceWrapper {
         let is_lazy = *self.lazy.borrow();
         let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
             let core_ref = self.core.borrow();
-            let loaded = core_ref.loaded_nodegroups.borrow();
+            let loaded = core_ref.loaded_nodegroups.read().unwrap();
             Some(
                 loaded
                     .iter()
@@ -2762,7 +2687,7 @@ impl WASMResourceInstanceWrapper {
         };
 
         // First attempt - call core implementation
-        let result = self.core.borrow().get_semantic_child_value(
+        let result = self.core.borrow().get_semantic_child_value_lazy(
             parent_tile_id.as_ref(),
             &parent_node_id,
             parent_nodegroup_id.as_ref(),
@@ -2886,7 +2811,7 @@ impl WASMResourceInstanceWrapper {
                 let t4 = now_ms();
                 {
                     let core_ref = self.core.borrow();
-                    let mut loaded = core_ref.loaded_nodegroups.borrow_mut();
+                    let mut loaded = core_ref.loaded_nodegroups.write().unwrap();
                     loaded.insert(nodegroup_id.clone(), LoadState::Loaded);
                 }
                 record_timing("mark_loaded", now_ms() - t4);
@@ -2896,7 +2821,7 @@ impl WASMResourceInstanceWrapper {
                 let is_lazy = *self.lazy.borrow();
                 let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
                     let core_ref = self.core.borrow();
-                    let loaded = core_ref.loaded_nodegroups.borrow();
+                    let loaded = core_ref.loaded_nodegroups.read().unwrap();
                     Some(
                         loaded
                             .iter()
@@ -2910,7 +2835,7 @@ impl WASMResourceInstanceWrapper {
                 record_timing("snapshot_rebuild", now_ms() - t5);
 
                 let t6 = now_ms();
-                let retry_result = self.core.borrow().get_semantic_child_value(
+                let retry_result = self.core.borrow().get_semantic_child_value_lazy(
                     parent_tile_id.as_ref(),
                     &parent_node_id,
                     parent_nodegroup_id.as_ref(),
@@ -2974,7 +2899,7 @@ impl WASMResourceInstanceWrapper {
         // Get loaded nodegroups snapshot
         let loaded_nodegroups: HashSet<String> = {
             let core_ref = self.core.borrow();
-            let loaded = core_ref.loaded_nodegroups.borrow();
+            let loaded = core_ref.loaded_nodegroups.read().unwrap();
             loaded
                 .iter()
                 .filter(|(_, state)| **state == LoadState::Loaded)
@@ -3028,7 +2953,7 @@ impl WASMResourceInstanceWrapper {
         let is_lazy = *self.lazy.borrow();
         let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
             let core_ref = self.core.borrow();
-            let loaded = core_ref.loaded_nodegroups.borrow();
+            let loaded = core_ref.loaded_nodegroups.read().unwrap();
             Some(
                 loaded
                     .iter()
@@ -3053,7 +2978,7 @@ impl WASMResourceInstanceWrapper {
 
         // Get each child value and add to map
         for child_alias in child_nodes.keys() {
-            let result = self.core.borrow().get_semantic_child_value(
+            let result = self.core.borrow().get_semantic_child_value_lazy(
                 parent_tile_id.as_ref(),
                 &parent_node_id,
                 parent_nodegroup_id.as_ref(),
@@ -3155,3 +3080,39 @@ pub fn new_wasm_resource_instance_wrapper_for_resource(
 
 // Tests for this module are in tests/ directory
 // See tests/semantic_children_test.rs for semantic relationship testing
+
+#[cfg(test)]
+mod adoption_tests {
+    use super::*;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    #[wasm_bindgen_test]
+    fn pseudo_cache_round_trips_through_shared_mut() {
+        let w = WASMResourceInstanceWrapper::new_from_graph_id("test-graph".to_string());
+
+        let list = PseudoListInner {
+            node_alias: "greeting".to_string(),
+            values: vec![],
+            is_loaded: true,
+            is_single: true,
+        };
+        w.cache_pseudo_list("greeting".to_string(), PseudoList::from_rust(list));
+
+        assert!(
+            w.get_cached_pseudo(Some("greeting".to_string())).is_some(),
+            "a cached list must survive the SharedMut write→read round-trip"
+        );
+        assert!(
+            w.get_cached_pseudo(Some("absent".to_string())).is_none(),
+            "an uncached alias reads back as None, not a spurious hit"
+        );
+    }
+
+    #[wasm_bindgen_test]
+    fn semantic_child_lazy_is_reachable() {
+        use alizarin_core::ResourceInstanceWrapperCore;
+        let core = ResourceInstanceWrapperCore::new("unregistered-graph".to_string());
+        let result = core.get_semantic_child_value_lazy(None, "parent-node", None, "child", None);
+        assert!(result.is_err(), "an unregistered model is a clean error");
+    }
+}

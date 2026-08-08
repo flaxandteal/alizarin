@@ -1,3 +1,5 @@
+#![cfg_attr(target_arch = "wasm32", allow(irrefutable_let_patterns))]
+
 /// The version of alizarin-core (from Cargo.toml at compile time).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
