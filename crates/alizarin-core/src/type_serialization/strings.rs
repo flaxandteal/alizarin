@@ -16,23 +16,22 @@ pub fn serialize_string(tile_data: &Value, options: &SerializationOptions) -> Se
 
         Value::Object(lang_map) => {
             if options.is_display_like() {
-                // Display/SearchData mode - extract single language value
-                let lang = &options.language;
-
-                // Try exact language match first
-                if let Some(val) = lang_map.get(lang) {
-                    return SerializationResult::success(extract_string_value(val));
-                }
-
-                // Try base language (e.g., "en" for "en-US")
-                let base_lang = lang.split('-').next().unwrap_or(lang);
-                if base_lang != lang {
-                    if let Some(val) = lang_map.get(base_lang) {
+                // Display/SearchData mode - extract a single language value,
+                // walking the controlled preference chain (primary language then
+                // each fallback) before an arbitrary first-available pick.
+                for lang in options.language_chain() {
+                    if let Some(val) = lang_map.get(lang) {
                         return SerializationResult::success(extract_string_value(val));
+                    }
+                    let base_lang = lang.split('-').next().unwrap_or(lang);
+                    if base_lang != lang {
+                        if let Some(val) = lang_map.get(base_lang) {
+                            return SerializationResult::success(extract_string_value(val));
+                        }
                     }
                 }
 
-                // Fall back to first available language
+                // No preference matched - fall back to first available language
                 if let Some((_, val)) = lang_map.iter().next() {
                     return SerializationResult::success(extract_string_value(val));
                 }
@@ -194,6 +193,32 @@ mod tests {
         let result = serialize_string(&tile_data, &options);
         assert!(!result.is_error());
         assert_eq!(result.value, json!("Hello")); // Falls back to first available
+    }
+
+    #[test]
+    fn test_serialize_string_display_ordered_fallback_chain() {
+        let tile_data = json!({"en": "Hello", "ga": "Dia dhuit"});
+        let opts = SerializationOptions::display_seq(["gd", "ga", "en"]);
+        assert_eq!(
+            serialize_string(&tile_data, &opts).value,
+            json!("Dia dhuit"),
+            "the chain must prefer ga over en when gd is absent"
+        );
+
+        let opts_en = SerializationOptions::display_seq(["gd", "en", "ga"]);
+        assert_eq!(serialize_string(&tile_data, &opts_en).value, json!("Hello"));
+
+        let opts_none = SerializationOptions::display_seq(["fr", "de"]);
+        assert!(!serialize_string(&tile_data, &opts_none)
+            .value
+            .as_str()
+            .unwrap()
+            .is_empty());
+
+        assert_eq!(
+            serialize_string(&tile_data, &SerializationOptions::display("ga")).value,
+            json!("Dia dhuit")
+        );
     }
 
     #[test]

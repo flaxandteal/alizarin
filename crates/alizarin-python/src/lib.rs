@@ -190,6 +190,7 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
         &self,
         tile_data: &serde_json::Value,
         language: &str,
+        _ctx: Option<&alizarin_core::type_serialization::SerializationContext>,
     ) -> Result<Option<String>, ExtensionError> {
         let handlers = TYPE_HANDLERS.read().unwrap();
 

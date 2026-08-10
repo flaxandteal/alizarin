@@ -181,13 +181,17 @@ pub fn serialize_value(
                     }
                 }
                 if caps.can_render_display {
-                    if let Ok(Some(label)) = handler.render_display(tile_data, &options.language) {
+                    if let Ok(Some(label)) =
+                        handler.render_display(tile_data, &options.language, Some(ctx))
+                    {
                         return Some(SerializationResult::success(Value::String(label)));
                     }
                 }
             }
             SerializationMode::Display if caps.can_render_display => {
-                if let Ok(Some(label)) = handler.render_display(tile_data, &options.language) {
+                if let Ok(Some(label)) =
+                    handler.render_display(tile_data, &options.language, Some(ctx))
+                {
                     return Some(SerializationResult::success(Value::String(label)));
                 }
             }
@@ -382,6 +386,7 @@ mod tests {
                 &self,
                 _: &Value,
                 lang: &str,
+                _: Option<&SerializationContext>,
             ) -> Result<Option<String>, ExtensionError> {
                 Ok(Some(format!("displayed:{}", lang)))
             }
@@ -438,7 +443,12 @@ mod tests {
             ) -> Result<CoercionResult, ExtensionError> {
                 unimplemented!()
             }
-            fn render_display(&self, _: &Value, _: &str) -> Result<Option<String>, ExtensionError> {
+            fn render_display(
+                &self,
+                _: &Value,
+                _: &str,
+                _: Option<&SerializationContext>,
+            ) -> Result<Option<String>, ExtensionError> {
                 Ok(Some("display-fallback".to_string()))
             }
             fn render_search(&self, _: &Value, _: &str) -> Result<Option<Value>, ExtensionError> {
@@ -495,7 +505,12 @@ mod tests {
             ) -> Result<CoercionResult, ExtensionError> {
                 unimplemented!()
             }
-            fn render_display(&self, _: &Value, _: &str) -> Result<Option<String>, ExtensionError> {
+            fn render_display(
+                &self,
+                _: &Value,
+                _: &str,
+                _: Option<&SerializationContext>,
+            ) -> Result<Option<String>, ExtensionError> {
                 Ok(Some("should-not-use".to_string()))
             }
             fn render_search(&self, _: &Value, _: &str) -> Result<Option<Value>, ExtensionError> {
@@ -552,7 +567,12 @@ mod tests {
             ) -> Result<CoercionResult, ExtensionError> {
                 unimplemented!()
             }
-            fn render_display(&self, _: &Value, _: &str) -> Result<Option<String>, ExtensionError> {
+            fn render_display(
+                &self,
+                _: &Value,
+                _: &str,
+                _: Option<&SerializationContext>,
+            ) -> Result<Option<String>, ExtensionError> {
                 Ok(Some("should-not-use".to_string()))
             }
             fn render_search(&self, _: &Value, _: &str) -> Result<Option<Value>, ExtensionError> {

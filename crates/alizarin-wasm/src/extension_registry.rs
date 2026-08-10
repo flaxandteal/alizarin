@@ -312,6 +312,7 @@ impl ExtensionTypeHandler for JsExtensionTypeHandler {
         &self,
         tile_data: &Value,
         language: &str,
+        _ctx: Option<&alizarin_core::type_serialization::SerializationContext>,
     ) -> Result<Option<String>, ExtensionError> {
         JS_TYPE_HANDLERS.with(|handlers| {
             let handlers = handlers.borrow();

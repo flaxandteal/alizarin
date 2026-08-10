@@ -53,6 +53,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::type_coercion::CoercionResult;
+use crate::type_serialization::SerializationContext;
 
 /// Describes what capabilities an extension handler provides.
 ///
@@ -163,8 +164,11 @@ pub trait ExtensionTypeHandler: Send + Sync {
     /// Render tile data to a display string.
     ///
     /// # Arguments
-    /// * `tile_data` - The resolved tile data
+    /// * `tile_data` - The tile data (may be a resolved object, or a bare id /
+    ///   `__needs_rdm_lookup` marker that this handler resolves via `ctx`)
     /// * `language` - The language code for localization
+    /// * `ctx` - Optional serialization context, carrying the `ExternalResolver`
+    ///   and per-node config. `None` in contexts that render pre-resolved data.
     ///
     /// # Returns
     /// `Some(String)` if rendered, `None` to use default rendering
@@ -172,6 +176,7 @@ pub trait ExtensionTypeHandler: Send + Sync {
         &self,
         _tile_data: &Value,
         _language: &str,
+        _ctx: Option<&SerializationContext>,
     ) -> Result<Option<String>, ExtensionError> {
         // Default: no custom rendering
         Ok(None)
@@ -318,10 +323,11 @@ impl ExtensionTypeRegistry {
         datatype: &str,
         tile_data: &Value,
         language: &str,
+        ctx: Option<&SerializationContext>,
     ) -> Result<Option<String>, ExtensionError> {
         match self.handlers.get(datatype) {
             Some(handler) if handler.capabilities().can_render_display => {
-                handler.render_display(tile_data, language)
+                handler.render_display(tile_data, language, ctx)
             }
             _ => Ok(None),
         }
@@ -395,6 +401,7 @@ mod tests {
             &self,
             tile_data: &Value,
             _language: &str,
+            _ctx: Option<&SerializationContext>,
         ) -> Result<Option<String>, ExtensionError> {
             Ok(Some(format!("Display: {}", tile_data)))
         }
@@ -456,7 +463,7 @@ mod tests {
 
         let tile_data = serde_json::json!({"id": "123"});
         let result = registry
-            .render_display("test-type", &tile_data, "en")
+            .render_display("test-type", &tile_data, "en", None)
             .unwrap();
 
         assert!(result.is_some());
@@ -483,7 +490,7 @@ mod tests {
 
         // Display should work
         let display_result = registry
-            .render_display("display-only", &value, "en")
+            .render_display("display-only", &value, "en", None)
             .unwrap();
         assert!(display_result.is_some());
     }

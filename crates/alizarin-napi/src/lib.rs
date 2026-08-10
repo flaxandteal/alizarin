@@ -607,7 +607,7 @@ pub fn extension_render_display(
 ) -> Result<Option<String>> {
     let registry = extension_registry();
     registry
-        .render_display(&datatype, &tile_data, &language)
+        .render_display(&datatype, &tile_data, &language, None)
         .map_err(|e| napi::Error::from_reason(e.message))
 }
 

@@ -187,8 +187,9 @@ pub use card_traversal::{
 
 // JSON conversion (tiles <-> tree)
 pub use json_conversion::{
-    build_tree_from_tiles, create_static_resource, resource_tiles_to_tree, tiles_to_tree,
-    tree_to_tiles, tree_to_tiles_with_options, BusinessData, BusinessDataWrapper,
+    build_tree_from_tiles, create_static_resource, resource_tiles_to_tree,
+    resource_tiles_to_tree_with_context, tiles_to_tree, tree_to_tiles, tree_to_tiles_with_options,
+    BusinessData, BusinessDataWrapper,
 };
 
 // Pseudo value core types (for JSON conversion)

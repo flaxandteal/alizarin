@@ -21,8 +21,13 @@ pub enum SerializationMode {
 pub struct SerializationOptions {
     /// Output mode: TileData or Display
     pub mode: SerializationMode,
-    /// Language for display output (default: "en")
+    /// Primary language for display output (default: "en"). First in the
+    /// fallback chain; see [`SerializationOptions::language_chain`].
     pub language: String,
+    /// Ordered fallback languages tried after `language` when it is absent from
+    /// an i18n string map. Empty by default; only i18n `string` datatypes
+    /// consult it.
+    pub fallback_languages: Vec<String>,
     /// Include all language variants for strings (only in TileData mode)
     pub include_all_languages: bool,
     /// Flatten outer nodes when children are empty (default: true)
@@ -42,6 +47,7 @@ impl Default for SerializationOptions {
         Self {
             mode: SerializationMode::default(),
             language: String::new(),
+            fallback_languages: Vec::new(),
             include_all_languages: false,
             flatten_empty_outer_nodes: true,
             outer_value_key: "_".to_string(),
@@ -55,20 +61,38 @@ impl SerializationOptions {
         Self {
             mode: SerializationMode::TileData,
             language: "en".to_string(),
+            fallback_languages: Vec::new(),
             include_all_languages: true,
             flatten_empty_outer_nodes: true,
             outer_value_key: "_".to_string(),
         }
     }
 
-    /// Create options for display output
+    /// Create options for display output in a single language.
     pub fn display(language: impl Into<String>) -> Self {
         Self {
             mode: SerializationMode::Display,
             language: language.into(),
+            fallback_languages: Vec::new(),
             include_all_languages: false,
             flatten_empty_outer_nodes: true,
             outer_value_key: "_".to_string(),
+        }
+    }
+
+    /// Create options for display output with an ordered language preference
+    /// chain. The first entry is the primary `language`; the rest are
+    /// [`fallback_languages`](Self::fallback_languages), tried in order. An empty
+    /// slice defaults to `"en"`.
+    pub fn display_seq<S: Into<String>>(languages: impl IntoIterator<Item = S>) -> Self {
+        let mut it = languages.into_iter();
+        let language = it
+            .next()
+            .map(Into::into)
+            .unwrap_or_else(|| "en".to_string());
+        Self {
+            fallback_languages: it.map(Into::into).collect(),
+            ..Self::display(language)
         }
     }
 
@@ -77,10 +101,18 @@ impl SerializationOptions {
         Self {
             mode: SerializationMode::SearchData,
             language: language.into(),
+            fallback_languages: Vec::new(),
             include_all_languages: false,
             flatten_empty_outer_nodes: true,
             outer_value_key: "_".to_string(),
         }
+    }
+
+    /// The language preference chain: the primary `language` first, then each of
+    /// `fallback_languages` in order.
+    pub fn language_chain(&self) -> impl Iterator<Item = &str> {
+        std::iter::once(self.language.as_str())
+            .chain(self.fallback_languages.iter().map(String::as_str))
     }
 
     /// Check if we're in display mode

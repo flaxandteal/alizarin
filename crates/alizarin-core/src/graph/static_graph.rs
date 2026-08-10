@@ -877,7 +877,8 @@ impl StaticGraph {
         for tile in tiles {
             if let Some(value) = tile.data.get(node_id) {
                 if let Some(registry) = extension_registry {
-                    if let Ok(Some(display)) = registry.render_display(datatype, value, "en") {
+                    if let Ok(Some(display)) = registry.render_display(datatype, value, "en", None)
+                    {
                         return Some(display);
                     }
                 }

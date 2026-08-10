@@ -142,7 +142,14 @@ pub fn resource_tiles_to_tree(
         Value::Object(Map::new())
     };
 
-    // Add metadata to tree
+    attach_tree_metadata(&mut tree, metadata);
+
+    Ok(tree)
+}
+
+/// Attach the resource-level metadata keys (`resourceinstanceid`, `graph_id`,
+/// `_name`/`_description`/`_slug`, `legacyid`) onto a built tree root.
+fn attach_tree_metadata(tree: &mut Value, metadata: &StaticResourceMetadata) {
     if let Some(obj) = tree.as_object_mut() {
         obj.insert(
             "resourceinstanceid".to_string(),
@@ -170,6 +177,70 @@ pub fn resource_tiles_to_tree(
             }
         }
     }
+}
+
+/// Convert a single resource's tiles to a tree with a caller-supplied
+/// [`SerializationOptions`] + [`SerializationContext`] -- the context-aware
+/// counterpart of [`resource_tiles_to_tree`] (which pins TileData mode + an empty
+/// context and so returns raw stored values).
+pub fn resource_tiles_to_tree_with_context(
+    tiles: &[StaticTile],
+    metadata: &StaticResourceMetadata,
+    graph: &StaticGraph,
+    options: &crate::type_serialization::SerializationOptions,
+    ctx: &crate::type_serialization::SerializationContext,
+) -> Result<Value, String> {
+    use crate::node_config::NodeConfigManager;
+    use crate::type_serialization::SerializationContext;
+
+    let nodes_by_alias = graph
+        .nodes_by_alias_arc()
+        .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
+
+    let edges = graph
+        .edges_map()
+        .ok_or_else(|| "Graph indices not built - call build_indices() first".to_string())?;
+
+    let pseudo_cache = build_pseudo_cache_from_tiles(tiles, nodes_by_alias, graph, edges);
+
+    let root = graph.root_node();
+    let root_alias = root.alias.clone().unwrap_or_default();
+
+    let child_node_ids = graph
+        .get_child_ids(&root.nodeid)
+        .cloned()
+        .unwrap_or_default();
+
+    let root_pseudo =
+        PseudoValueCore::from_node_and_tile(Arc::new(root.clone()), None, None, child_node_ids);
+
+    let root_list =
+        PseudoListCore::from_values_with_cardinality(root_alias.clone(), vec![root_pseudo], true);
+
+    let mut full_cache = pseudo_cache;
+    full_cache.insert(root_alias.clone(), root_list.clone());
+
+    let mut node_config_manager = NodeConfigManager::new();
+    node_config_manager.build_from_graph(graph);
+
+    let mut visitor = VisitorContext::new(&full_cache, nodes_by_alias, edges);
+    visitor.serialization_options = options.clone();
+    visitor.serialization_context = SerializationContext {
+        node_config: None,
+        external_resolver: ctx.external_resolver,
+        concept_lookup: ctx.concept_lookup,
+        resource_resolver: ctx.resource_resolver,
+        extension_registry: ctx.extension_registry,
+    };
+    visitor.node_config_manager = Some(&node_config_manager);
+
+    let mut tree = if let Some(root_value) = root_list.values.first() {
+        root_value.to_json(&visitor)
+    } else {
+        Value::Object(Map::new())
+    };
+
+    attach_tree_metadata(&mut tree, metadata);
 
     Ok(tree)
 }

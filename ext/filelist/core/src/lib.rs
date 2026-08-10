@@ -350,6 +350,7 @@ impl ExtensionTypeHandler for FileListTypeHandler {
         &self,
         tile_data: &Value,
         language: &str,
+        _ctx: Option<&alizarin_core::type_serialization::SerializationContext>,
     ) -> Result<Option<String>, ExtensionError> {
         match render_filelist_display_value(tile_data, Some(language)) {
             Ok(s) if s.is_empty() => Ok(None),
@@ -444,7 +445,7 @@ mod tests {
         assert!(caps.can_render_display);
 
         let resolved = json!([{"name": "test.png"}]);
-        let display = handler.render_display(&resolved, "en").unwrap();
+        let display = handler.render_display(&resolved, "en", None).unwrap();
         assert_eq!(display, Some("test.png".to_string()));
     }
 
