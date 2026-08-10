@@ -1743,7 +1743,14 @@ pub fn batch_merge_resources(
                 // Unify cardinality-1 tiles if we have the graph
                 if let Some(indexed) = indexed_graphs.get(&graph_id) {
                     if let Some(ref mut tiles) = resource.tiles {
-                        match unify_cardinality_one_tiles(tiles, &indexed.graph, strict) {
+                        // Shard merge: PerNode, so two business-data files that each
+                        // carry part of a nodegroup union into one tile.
+                        match unify_cardinality_one_tiles(
+                            tiles,
+                            &indexed.graph,
+                            strict,
+                            TileMergeMode::PerNode,
+                        ) {
                             Ok(unify_warnings) => {
                                 for warning in unify_warnings {
                                     all_warnings.push(format!("[{}] {}", resource_id, warning));
@@ -1821,18 +1828,43 @@ pub fn batch_merge_resources(
 /// Type alias for tile data merge mapping: canonical_idx -> Vec<(source_tile_id, data)>
 type TileDataMergeMap = HashMap<usize, Vec<(String, HashMap<String, serde_json::Value>)>>;
 
+/// How a cardinality-1 scope with more than one tile is collapsed.
+///
+/// The scope identification, canonical-tile selection, child re-parenting and
+/// duplicate removal are IDENTICAL either way; only the treatment of the
+/// non-canonical tiles' *data* differs, so this is a single branch rather than a
+/// second function.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TileMergeMode {
+    /// **Per key.** The canonical (first) tile wins each key it sets; keys it
+    /// lacks are filled from the later tiles. This unions two *co-equal shards*
+    /// of a resource (the business-data merge, where different files may each
+    /// carry part of a nodegroup). Order decides conflicts, not completeness.
+    PerNode,
+    /// **Per nodegroup (whole-tile override).** The canonical (first) tile stands
+    /// alone; the later tiles are discarded entirely, keys and all. This is LAYER
+    /// composition, where a nodegroup is the atomic unit a layer replaces: a
+    /// partial overlay tile must NOT inherit the base's other fields, or query
+    /// (which sees the overlay owning the nodegroup) and hydration would diverge.
+    /// Pass the layers topmost-first so the canonical tile is the topmost one.
+    PerNodegroup,
+}
+
 /// Unify tiles for cardinality-1 nodegroups and update parenttile_id references.
 ///
 /// When merging resources from multiple sources, cardinality-1 nodegroups may end up
 /// with multiple tiles (one from each source). This function:
 /// 1. Identifies cardinality-1 nodegroups with multiple tiles
-/// 2. Keeps the first tile as canonical, merges data from duplicates
+/// 2. Keeps the first tile as canonical, combines the duplicates per `mode`
 /// 3. Updates parenttile_id references in child tiles to point to the canonical tile
 /// 4. Warns if there are conflicting data values
 ///
 /// # Arguments
 /// * `tiles` - Mutable reference to the tiles vector
-/// * `graph` - The static graph for looking up nodegroup cardinality
+/// * `graph` - The graph, for looking up nodegroup cardinality
+/// * `strict` - Return an error (rather than warn) on a data conflict
+/// * `mode` - Per-key fill-in ([`TileMergeMode::PerNode`]) vs whole-tile override
+///   ([`TileMergeMode::PerNodegroup`]); see that enum
 ///
 /// # Returns
 /// * Vector of warning messages about unified tiles and data conflicts
@@ -1840,6 +1872,7 @@ pub fn unify_cardinality_one_tiles(
     tiles: &mut Vec<StaticTile>,
     graph: &super::StaticGraph,
     strict: bool,
+    mode: TileMergeMode,
 ) -> Result<Vec<String>, String> {
     use std::collections::BTreeMap;
 
@@ -1941,8 +1974,10 @@ pub fn unify_cardinality_one_tiles(
                         warnings.push(format!("{} (keeping first)", msg));
                     }
                     // Keep existing value (first wins)
-                } else {
-                    // New key, add it
+                } else if mode == TileMergeMode::PerNode {
+                    // New key, add it. PerNode fills the canonical tile from the
+                    // shards. PerNodegroup does NOT: a whole-tile override must not
+                    // let the topmost overlay tile inherit fields it did not set.
                     canonical_tile.data.insert(key, value);
                 }
             }
@@ -2226,31 +2261,64 @@ mod tests {
         }
     }
 
-    /// The core layer guarantee: a cardinality-1 override is **FIELD-LEVEL**.
+    /// `PerNode`: a cardinality-1 collapse is **field-level**. The canonical
+    /// tile wins each key it sets, and keys it lacks are filled from the others.
     ///
-    /// Layers are partial, so an overlay that sets ONE node must not blank the
-    /// rest of its nodegroup. Topmost-first ordering + "first tile wins per key,
-    /// later tiles fill in absent keys" gives exactly that.
+    /// This is the SHARD-merge semantics (business-data files that each carry part
+    /// of a nodegroup union into one). Layer composition does NOT want this (see
+    /// `cardinality_one_pernodegroup_is_whole_tile_override`), which is exactly
+    /// why the mode is a parameter.
     #[test]
-    fn cardinality_one_override_is_field_level_not_whole_tile() {
+    fn cardinality_one_pernode_fills_absent_keys_from_later_tiles() {
         let graph = layer_graph();
         let mut tiles = vec![
-            t("overlay", "single", None, &[("a", 9)]),
-            t("base", "single", None, &[("a", 1), ("b", 2)]),
+            t("first", "single", None, &[("a", 9)]),
+            t("second", "single", None, &[("a", 1), ("b", 2)]),
         ];
-        unify_cardinality_one_tiles(&mut tiles, &graph, false).expect("unify");
+        unify_cardinality_one_tiles(&mut tiles, &graph, false, TileMergeMode::PerNode)
+            .expect("unify");
 
         assert_eq!(tiles.len(), 1, "cardinality-1 scope must hold one tile");
         let data = &tiles[0].data;
         assert_eq!(
             data["a"],
             serde_json::json!(9),
-            "topmost layer wins the node it sets"
+            "first wins the key it sets"
         );
         assert_eq!(
             data["b"],
             serde_json::json!(2),
-            "base fills the node the overlay omits"
+            "the key the first tile lacks is filled from the second"
+        );
+    }
+
+    /// `PerNodegroup`: a cardinality-1 collapse is **whole-tile override**. The
+    /// canonical tile stands alone and the others are discarded, keys and all.
+    ///
+    /// This is LAYER composition: a nodegroup is the atomic unit a layer replaces.
+    /// The overlay's tile REPLACES the base's; a field the base set but the overlay
+    /// omitted is GONE, not inherited.
+    #[test]
+    fn cardinality_one_pernodegroup_is_whole_tile_override() {
+        let graph = layer_graph();
+        let mut tiles = vec![
+            t("overlay", "single", None, &[("a", 9)]),
+            t("base", "single", None, &[("a", 1), ("b", 2)]),
+        ];
+        unify_cardinality_one_tiles(&mut tiles, &graph, false, TileMergeMode::PerNodegroup)
+            .expect("unify");
+
+        assert_eq!(tiles.len(), 1, "cardinality-1 scope must hold one tile");
+        let data = &tiles[0].data;
+        assert_eq!(
+            data["a"],
+            serde_json::json!(9),
+            "the overlay's value stands"
+        );
+        assert!(
+            !data.contains_key("b"),
+            "the base's `b` is DROPPED, a whole-nodegroup override does not \
+             inherit fields the overlay omitted"
         );
     }
 
@@ -2261,7 +2329,8 @@ mod tests {
             t("m1", "multi", None, &[("a", 1)]),
             t("m2", "multi", None, &[("a", 2)]),
         ];
-        unify_cardinality_one_tiles(&mut tiles, &graph, false).expect("unify");
+        unify_cardinality_one_tiles(&mut tiles, &graph, false, TileMergeMode::PerNode)
+            .expect("unify");
         assert_eq!(tiles.len(), 2, "cardinality-n must be an additive union");
     }
 
@@ -2277,7 +2346,8 @@ mod tests {
             t("n1", "nested", Some("m1"), &[("a", 1)]),
             t("n2", "nested", Some("m2"), &[("a", 2)]),
         ];
-        unify_cardinality_one_tiles(&mut tiles, &graph, false).expect("unify");
+        unify_cardinality_one_tiles(&mut tiles, &graph, false, TileMergeMode::PerNode)
+            .expect("unify");
         assert_eq!(
             tiles.len(),
             4,
@@ -2295,7 +2365,8 @@ mod tests {
             t("base", "single", None, &[("a", 1)]),
             t("child", "childmulti", Some("base"), &[("x", 1)]),
         ];
-        unify_cardinality_one_tiles(&mut tiles, &graph, false).expect("unify");
+        unify_cardinality_one_tiles(&mut tiles, &graph, false, TileMergeMode::PerNode)
+            .expect("unify");
 
         assert_eq!(tiles.len(), 2, "the base's cardinality-1 tile is absorbed");
         let child = tiles
@@ -2309,9 +2380,6 @@ mod tests {
         );
     }
 
-    // No unindexed-graph guard test: OnceLock lazy indices mean
-    // get_nodegroup_by_id always auto-builds, so the failure mode is impossible.
-
     #[test]
     fn a_cross_layer_conflict_warns_but_is_an_error_under_strict() {
         let graph = layer_graph();
@@ -2323,13 +2391,15 @@ mod tests {
         };
 
         let mut lenient = pair();
-        let warnings = unify_cardinality_one_tiles(&mut lenient, &graph, false).expect("lenient");
+        let warnings =
+            unify_cardinality_one_tiles(&mut lenient, &graph, false, TileMergeMode::PerNode)
+                .expect("lenient");
         assert_eq!(warnings.len(), 1, "the override is reported, not silent");
         assert_eq!(lenient[0].data["a"], serde_json::json!(9));
 
         let mut strict = pair();
         assert!(
-            unify_cardinality_one_tiles(&mut strict, &graph, true).is_err(),
+            unify_cardinality_one_tiles(&mut strict, &graph, true, TileMergeMode::PerNode).is_err(),
             "strict must refuse to guess between two asserted values"
         );
     }

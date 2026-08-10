@@ -44,7 +44,7 @@ pub use resources::{
     unify_cardinality_one_tiles, BatchMergeResult, MergeAccumulator, MergeResult,
     PopulateCachesResult, RelatedResourceEntry, ResourceCache, ResourceEntry, StaticResource,
     StaticResourceMetadata, StaticResourceReference, StaticResourceRegistry, StaticResourceSummary,
-    UnknownReference,
+    TileMergeMode, UnknownReference,
 };
 pub use static_graph::{GraphWrapper, IndexedGraph, StaticGraph};
 pub use tile::{canonical_tile_id, tile_namespace, StaticTile, TILE_NAMESPACE_URI};
