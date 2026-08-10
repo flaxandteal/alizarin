@@ -52,7 +52,6 @@ pub use graph::{
     tile_namespace,
     BatchMergeResult,
     GraphWrapper,
-    IndexedGraph,
     // Resource merging
     MergeAccumulator,
     MergeResult,

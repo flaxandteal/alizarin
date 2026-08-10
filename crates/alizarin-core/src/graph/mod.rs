@@ -14,7 +14,7 @@
 //! - `descriptors` - Resource descriptor configuration
 //! - `resources` - Resource types and metadata
 //! - `meta` - Lightweight graph metadata
-//! - `static_graph` - StaticGraph and IndexedGraph
+//! - `static_graph` - StaticGraph and its lazy self-indexing
 
 pub mod card_index;
 mod cards;
@@ -46,7 +46,7 @@ pub use resources::{
     StaticResourceMetadata, StaticResourceReference, StaticResourceRegistry, StaticResourceSummary,
     TileMergeMode, UnknownReference,
 };
-pub use static_graph::{GraphWrapper, IndexedGraph, StaticGraph};
+pub use static_graph::{GraphWrapper, StaticGraph};
 pub use tile::{canonical_tile_id, tile_namespace, StaticTile, TILE_NAMESPACE_URI};
 pub use translatable::StaticTranslatableString;
 

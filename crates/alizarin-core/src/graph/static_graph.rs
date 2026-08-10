@@ -1,4 +1,4 @@
-//! StaticGraph and IndexedGraph types.
+//! StaticGraph and its lazy self-indexing.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -304,6 +304,23 @@ impl StaticGraph {
 
     pub fn get_child_ids(&self, node_id: &str) -> Option<&Vec<String>> {
         self.indices().edges_map.get(node_id)
+    }
+
+    /// The child nodes of `node_id` (resolved through the lazy node index).
+    pub fn get_children(&self, node_id: &str) -> Vec<&StaticNode> {
+        self.get_child_ids(node_id)
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| self.get_node_by_id(id))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Whether `node_id` has any child nodes.
+    pub fn has_children(&self, node_id: &str) -> bool {
+        self.get_child_ids(node_id)
+            .is_some_and(|ids| !ids.is_empty())
     }
 
     pub fn nodes_by_nodegroup(&self) -> Option<&HashMap<String, Vec<usize>>> {
@@ -647,13 +664,12 @@ impl StaticGraph {
 }
 
 // ---------------------------------------------------------------------------
-// Descriptor building on StaticGraph, so it needs no graph clone.
+// Descriptor building.
 //
 // A resource's descriptors (name/description/map_popup/slug) are the descriptor
 // template rendered against its tiles. This needs only a name->node lookup (a
-// linear scan) and the graph's descriptor config, NEITHER of which needs a
-// precomputed index. Running it on `&StaticGraph` directly allocates nothing;
-// `IndexedGraph` keeps thin delegators (below) for its own callers.
+// linear scan) and the graph's descriptor config, neither of which needs a
+// precomputed index, so it runs on `&StaticGraph` directly, allocating nothing.
 // ---------------------------------------------------------------------------
 impl StaticGraph {
     /// Build resource descriptors (name/description/map_popup/slug) from tiles.
@@ -932,135 +948,6 @@ impl StaticGraph {
                 .map(|s| s.to_string()),
             _ => None,
         }
-    }
-}
-
-/// Graph with precomputed indices for efficient tree traversal
-pub struct IndexedGraph {
-    pub graph: StaticGraph,
-    /// node_id -> StaticNode
-    pub nodes_by_id: HashMap<String, StaticNode>,
-    /// node_id -> [child_node_ids]
-    pub children_by_node: HashMap<String, Vec<String>>,
-    /// alias -> StaticNode
-    pub nodes_by_alias: HashMap<String, StaticNode>,
-    /// nodegroup_id -> StaticNodegroup
-    pub nodegroups_by_id: HashMap<String, StaticNodegroup>,
-}
-
-impl IndexedGraph {
-    /// Create an indexed graph from a StaticGraph
-    pub fn new(graph: StaticGraph) -> Self {
-        let mut nodes_by_id = HashMap::new();
-        let mut nodes_by_alias = HashMap::new();
-        let mut children_by_node: HashMap<String, Vec<String>> = HashMap::new();
-        let mut nodegroups_by_id = HashMap::new();
-
-        for node in &graph.nodes {
-            nodes_by_id.insert(node.nodeid.clone(), node.clone());
-            if let Some(ref alias) = node.alias {
-                if !alias.is_empty() {
-                    nodes_by_alias.insert(alias.clone(), node.clone());
-                }
-            }
-        }
-
-        for edge in &graph.edges {
-            children_by_node
-                .entry(edge.domainnode_id.clone())
-                .or_default()
-                .push(edge.rangenode_id.clone());
-        }
-
-        for ng in &graph.nodegroups {
-            nodegroups_by_id.insert(ng.nodegroupid.clone(), ng.clone());
-        }
-
-        IndexedGraph {
-            graph,
-            nodes_by_id,
-            nodes_by_alias,
-            children_by_node,
-            nodegroups_by_id,
-        }
-    }
-
-    /// Get root node
-    pub fn get_root(&self) -> &StaticNode {
-        self.graph.get_root()
-    }
-
-    /// Get node by ID
-    pub fn get_node(&self, node_id: &str) -> Option<&StaticNode> {
-        self.nodes_by_id.get(node_id)
-    }
-
-    /// Get node by alias
-    pub fn get_node_by_alias(&self, alias: &str) -> Option<&StaticNode> {
-        self.nodes_by_alias.get(alias)
-    }
-
-    /// Get child nodes for a given node ID
-    pub fn get_children(&self, node_id: &str) -> Vec<&StaticNode> {
-        self.children_by_node
-            .get(node_id)
-            .map(|ids| {
-                ids.iter()
-                    .filter_map(|id| self.nodes_by_id.get(id))
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
-    /// Get child node IDs for a given node
-    pub fn get_child_ids(&self, node_id: &str) -> Vec<&String> {
-        self.children_by_node
-            .get(node_id)
-            .map(|v| v.iter().collect())
-            .unwrap_or_default()
-    }
-
-    /// Check if a node has children
-    pub fn has_children(&self, node_id: &str) -> bool {
-        self.children_by_node
-            .get(node_id)
-            .map(|v| !v.is_empty())
-            .unwrap_or(false)
-    }
-
-    /// Get the nodegroup for a node
-    pub fn get_nodegroup(&self, node: &StaticNode) -> Option<&StaticNodegroup> {
-        node.nodegroup_id
-            .as_ref()
-            .and_then(|id| self.nodegroups_by_id.get(id))
-    }
-
-    /// Delegates to [`StaticGraph::build_descriptors`].
-    pub fn build_descriptors(&self, tiles: &[StaticTile]) -> StaticResourceDescriptors {
-        self.graph.build_descriptors(tiles)
-    }
-
-    /// Delegates to [`StaticGraph::build_descriptors_with_diagnostics`].
-    pub fn build_descriptors_with_diagnostics(
-        &self,
-        tiles: &[StaticTile],
-        warnings: &mut Vec<String>,
-        cache: Option<&super::resources::ResourceCache>,
-    ) -> StaticResourceDescriptors {
-        self.graph
-            .build_descriptors_with_diagnostics(tiles, warnings, cache)
-    }
-
-    /// Delegates to [`StaticGraph::build_descriptors_with_context`].
-    pub fn build_descriptors_with_context(
-        &self,
-        tiles: &[StaticTile],
-        warnings: &mut Vec<String>,
-        cache: Option<&super::resources::ResourceCache>,
-        extension_registry: Option<&crate::extension_type_registry::ExtensionTypeRegistry>,
-    ) -> StaticResourceDescriptors {
-        self.graph
-            .build_descriptors_with_context(tiles, warnings, cache, extension_registry)
     }
 }
 

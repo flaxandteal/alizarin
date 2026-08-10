@@ -4,7 +4,7 @@
 //! directory structure used by starches-builder.
 
 use crate::graph::{
-    IndexedGraph, StaticGraph, StaticResource, StaticResourceDescriptors, StaticResourceMetadata,
+    StaticGraph, StaticResource, StaticResourceDescriptors, StaticResourceMetadata,
     StaticResourceSummary, StaticTile,
 };
 use crate::ontology::{OntologyConfig, OntologyValidator};
@@ -374,12 +374,6 @@ impl PrebuildLoader {
         StaticGraph::from_json_string(&content).map_err(LoaderError::GraphError)
     }
 
-    /// Load a single graph and create an indexed version
-    pub fn load_indexed_graph<P: AsRef<Path>>(&self, path: P) -> Result<IndexedGraph, LoaderError> {
-        let graph = self.load_graph(path)?;
-        Ok(IndexedGraph::new(graph))
-    }
-
     /// Load all graphs from the graphs directory
     pub fn load_all_graphs(&self) -> Result<Vec<StaticGraph>, LoaderError> {
         let info = self.get_info()?;
@@ -397,19 +391,10 @@ impl PrebuildLoader {
         Ok(graphs)
     }
 
-    /// Load all graphs and create indexed versions
-    pub fn load_all_indexed_graphs(&self) -> Result<Vec<IndexedGraph>, LoaderError> {
+    /// Load all graphs into a map keyed by graph ID.
+    pub fn load_graphs_by_id(&self) -> Result<HashMap<String, StaticGraph>, LoaderError> {
         let graphs = self.load_all_graphs()?;
-        Ok(graphs.into_iter().map(IndexedGraph::new).collect())
-    }
-
-    /// Load all graphs into a map keyed by graph ID
-    pub fn load_graphs_by_id(&self) -> Result<HashMap<String, IndexedGraph>, LoaderError> {
-        let graphs = self.load_all_indexed_graphs()?;
-        Ok(graphs
-            .into_iter()
-            .map(|g| (g.graph.graphid.clone(), g))
-            .collect())
+        Ok(graphs.into_iter().map(|g| (g.graphid.clone(), g)).collect())
     }
 
     /// Get the path to a specific subdirectory

@@ -1,7 +1,7 @@
 //! Application state and logic
 
 use alizarin_core::{
-    IndexedGraph, PrebuildInfo, PrebuildLoader, StaticNode, StaticNodegroup, StaticResource,
+    PrebuildInfo, PrebuildLoader, StaticGraph, StaticNode, StaticNodegroup, StaticResource,
     StaticResourceSummary, StaticTile,
 };
 use anyhow::Result;
@@ -164,7 +164,7 @@ pub struct App {
     pub current_tab: Tab,
 
     // Graphs tab state
-    pub graphs: Vec<IndexedGraph>,
+    pub graphs: Vec<StaticGraph>,
     pub graphs_loaded: bool,
     pub graph_list_selected: usize,
     pub graphs_view: GraphsView,
@@ -302,7 +302,7 @@ impl App {
     }
 
     fn load_graphs(&mut self) {
-        match self.loader.load_all_indexed_graphs() {
+        match self.loader.load_all_graphs() {
             Ok(graphs) => {
                 self.graphs = graphs;
             }
@@ -576,7 +576,7 @@ impl App {
     /// If `expand_all` is true, all nodes will be expanded (for search mode)
     fn collect_tree_nodes(
         node: &StaticNode,
-        graph: &IndexedGraph,
+        graph: &StaticGraph,
         depth: usize,
         expanded: bool,
         expand_all: bool,
@@ -657,7 +657,7 @@ impl App {
         let new_nodes: Vec<TreeNode> = {
             let graph = &self.graphs[self.graph_list_selected];
 
-            if graph.get_node(&node_id).is_none() {
+            if graph.get_node_by_id(&node_id).is_none() {
                 return;
             }
 
@@ -747,7 +747,7 @@ impl App {
         }
     }
 
-    pub fn selected_graph(&self) -> Option<&IndexedGraph> {
+    pub fn selected_graph(&self) -> Option<&StaticGraph> {
         self.graphs.get(self.graph_list_selected)
     }
 
@@ -760,7 +760,7 @@ impl App {
         let tree_node = self.selected_tree_node()?;
         let nodegroup_id = tree_node.nodegroup_id.as_ref()?;
         let graph = self.selected_graph()?;
-        graph.nodegroups_by_id.get(nodegroup_id)
+        graph.get_nodegroup_by_id(nodegroup_id)
     }
 
     /// Get all unique nodegroup IDs currently visible in the tree
@@ -1003,7 +1003,7 @@ impl App {
         self.bd_has_more = true;
 
         // Spawn background loader thread
-        let graph_id = self.graphs[self.bd_graph_selected].graph.graphid.clone();
+        let graph_id = self.graphs[self.bd_graph_selected].graphid.clone();
         self.bd_start_background_load(graph_id);
     }
 
@@ -1240,7 +1240,7 @@ impl App {
     }
 
     /// Get the selected graph for business data
-    pub fn bd_selected_graph(&self) -> Option<&IndexedGraph> {
+    pub fn bd_selected_graph(&self) -> Option<&StaticGraph> {
         self.graphs.get(self.bd_graph_selected)
     }
 
@@ -1282,7 +1282,7 @@ impl App {
             self.bd_has_more = true;
 
             // Start background loading with new source
-            let graph_id = self.graphs[self.bd_graph_selected].graph.graphid.clone();
+            let graph_id = self.graphs[self.bd_graph_selected].graphid.clone();
             self.bd_start_background_load(graph_id);
         }
     }
@@ -1300,7 +1300,7 @@ impl App {
         };
 
         let graph_id = match self.graphs.get(self.bd_graph_selected) {
-            Some(g) => g.graph.graphid.clone(),
+            Some(g) => g.graphid.clone(),
             None => return,
         };
 
@@ -1382,7 +1382,7 @@ impl App {
     /// Collect tile tree nodes recursively (static method to avoid borrow issues)
     fn collect_tile_tree_nodes(
         tile: &StaticTile,
-        graph: &Option<&IndexedGraph>,
+        graph: &Option<&StaticGraph>,
         children_by_parent: &std::collections::HashMap<Option<String>, Vec<StaticTile>>,
         depth: usize,
         expanded: bool,
@@ -1395,7 +1395,6 @@ impl App {
 
         // Get nodegroup info
         let nodegroup_name = graph
-            .graph
             .nodes
             .iter()
             .find(|n| n.nodegroup_id.as_ref() == Some(&tile.nodegroup_id) && n.is_collector)
@@ -1427,7 +1426,7 @@ impl App {
         // Add data values as children if expanded
         if expanded {
             for (node_id, value) in &tile.data {
-                let node = graph.nodes_by_id.get(node_id);
+                let node = graph.get_node_by_id(node_id);
                 let node_name = node
                     .map(|n| n.alias.clone().unwrap_or_else(|| n.name.clone()))
                     .unwrap_or_else(|| node_id.clone());
@@ -1476,7 +1475,7 @@ impl App {
     /// Collect tile tree nodes with explicit expansion state tracking
     fn collect_tile_tree_nodes_with_expanded(
         tile: &StaticTile,
-        graph: &Option<&IndexedGraph>,
+        graph: &Option<&StaticGraph>,
         children_by_parent: &std::collections::HashMap<Option<String>, Vec<StaticTile>>,
         expanded_set: &std::collections::HashSet<String>,
         depth: usize,
@@ -1489,7 +1488,6 @@ impl App {
 
         // Get nodegroup info
         let nodegroup_name = graph
-            .graph
             .nodes
             .iter()
             .find(|n| n.nodegroup_id.as_ref() == Some(&tile.nodegroup_id) && n.is_collector)
@@ -1527,7 +1525,7 @@ impl App {
         // Add data values as children if expanded
         if is_expanded {
             for (node_id, value) in &tile.data {
-                let node = graph.nodes_by_id.get(node_id);
+                let node = graph.get_node_by_id(node_id);
                 let node_name = node
                     .map(|n| n.alias.clone().unwrap_or_else(|| n.name.clone()))
                     .unwrap_or_else(|| node_id.clone());

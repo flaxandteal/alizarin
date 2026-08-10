@@ -134,10 +134,10 @@ fn draw_graphs_list(f: &mut Frame, app: &mut App, area: Rect) {
             };
 
             let cells = vec![
-                Cell::from(g.graph.display_name()),
-                Cell::from(truncate(&g.graph.graphid, 36)),
-                Cell::from(truncate(&g.graph.display_subtitle(), 30)),
-                Cell::from(truncate(&g.graph.display_author(), 20)),
+                Cell::from(g.display_name()),
+                Cell::from(truncate(&g.graphid, 36)),
+                Cell::from(truncate(&g.display_subtitle(), 30)),
+                Cell::from(truncate(&g.display_author(), 20)),
             ];
             Row::new(cells).style(style)
         })
@@ -291,12 +291,12 @@ fn get_tile_node_bg_color(
 fn draw_tree_pane(f: &mut Frame, app: &mut App, area: Rect) {
     let title = if app.search_mode {
         if let Some(g) = app.selected_graph() {
-            format!(" {} (searching...) ", g.graph.display_name())
+            format!(" {} (searching...) ", g.display_name())
         } else {
             " Tree View (searching...) ".to_string()
         }
     } else if let Some(g) = app.selected_graph() {
-        format!(" {} (Esc to go back, / to search) ", g.graph.display_name())
+        format!(" {} (Esc to go back, / to search) ", g.display_name())
     } else {
         " Tree View ".to_string()
     };
@@ -663,10 +663,7 @@ fn draw_bd_graph_list(f: &mut Frame, app: &mut App, area: Rect) {
                 Style::default()
             };
 
-            let cells = vec![
-                Cell::from(g.graph.display_name()),
-                Cell::from(g.graph.graphid.clone()),
-            ];
+            let cells = vec![Cell::from(g.display_name()), Cell::from(g.graphid.clone())];
             Row::new(cells).style(style)
         })
         .collect();
@@ -744,7 +741,7 @@ fn draw_bd_search_input(f: &mut Frame, app: &mut App, area: Rect) {
 fn draw_bd_list_pane(f: &mut Frame, app: &App, area: Rect) {
     let graph_name = app
         .bd_selected_graph()
-        .map(|g| g.graph.display_name())
+        .map(|g| g.display_name())
         .unwrap_or_else(|| "Unknown".to_string());
 
     // Build title
@@ -1063,7 +1060,7 @@ fn draw_bd_resource_detail(f: &mut Frame, app: &mut App, area: Rect) {
 fn draw_bd_resource_list_narrow(f: &mut Frame, app: &mut App, area: Rect) {
     let graph_name = app
         .bd_selected_graph()
-        .map(|g| g.graph.display_name())
+        .map(|g| g.display_name())
         .unwrap_or_else(|| "Unknown".to_string());
 
     let title = format!(" {} Resources ", graph_name);

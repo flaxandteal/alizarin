@@ -757,7 +757,7 @@ impl WASMResourceInstanceWrapper {
         // Get the graph from model core
         let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
 
-        // Descriptors build directly on the StaticGraph, no IndexedGraph clone.
+        // Descriptors build directly on the StaticGraph via lazy self-indexing.
         let ext_registry = crate::extension_registry::build_extension_registry();
         let descriptors = graph.build_descriptors_with_context(
             &tiles_vec,

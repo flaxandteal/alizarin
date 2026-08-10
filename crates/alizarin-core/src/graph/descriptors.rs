@@ -78,10 +78,10 @@ pub struct DescriptorConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{IndexedGraph, StaticGraph, StaticTile};
+    use crate::graph::{StaticGraph, StaticTile};
 
     /// Build a minimal graph via JSON deserialization with descriptor function config
-    fn build_test_graph(descriptor_types: Vec<(&str, &str, &str)>) -> IndexedGraph {
+    fn build_test_graph(descriptor_types: Vec<(&str, &str, &str)>) -> StaticGraph {
         let dt: HashMap<String, serde_json::Value> = descriptor_types
             .into_iter()
             .map(|(dtype, ng_id, template)| {
@@ -147,7 +147,7 @@ mod tests {
         });
 
         let graph: StaticGraph = serde_json::from_value(graph_json).expect("test graph JSON");
-        IndexedGraph::new(graph)
+        graph
     }
 
     fn make_tile(nodegroup_id: &str, node_id: &str, value: &str) -> StaticTile {
@@ -289,7 +289,7 @@ mod tests {
         });
 
         let graph: StaticGraph = serde_json::from_value(graph_json).expect("test graph JSON");
-        let indexed = IndexedGraph::new(graph);
+        let indexed = graph;
 
         let tiles = vec![
             make_tile("name-ng", "name-node-id", "Heritage Item 42"),

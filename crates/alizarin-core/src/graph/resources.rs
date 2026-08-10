@@ -835,8 +835,7 @@ impl StaticResourceRegistry {
             }
         }
 
-        // Recompute descriptors using the freshly-built caches, directly on the
-        // graph, no IndexedGraph clone.
+        // Recompute descriptors using the freshly-built caches.
         if recompute_descriptors {
             for resource in resources.iter_mut() {
                 let tiles = resource.tiles.as_deref().unwrap_or(&[]);
@@ -1717,8 +1716,8 @@ pub fn batch_merge_resources(
     let mut merged_resources = Vec::new();
     let mut all_warnings = Vec::new();
 
-    // Cache StaticGraphs per graph_id (used for both unification and
-    // descriptors); it self-indexes lazily, no IndexedGraph clone.
+    // Cache each model's StaticGraph by graph_id, so a batch touching many
+    // resources of one model fetches/clones its graph once, not per resource.
     let mut graph_cache: BTreeMap<String, StaticGraph> = BTreeMap::new();
 
     // Merge each group
