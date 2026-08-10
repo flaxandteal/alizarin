@@ -9407,11 +9407,16 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         }
         recordNativeTiming("forJson: retrieve check", performance.now() - t0);
         t0 = performance.now();
-        await this.$.populate(false);
-        recordNativeTiming("forJson: populate", performance.now() - t0);
-        t0 = performance.now();
-        rootJson = this.$.wasmWrapper.toJson();
-        recordNativeTiming("forJson: toJson", performance.now() - t0);
+        if (typeof this.$.wasmWrapper.toJsonFull === "function") {
+          rootJson = this.$.wasmWrapper.toJsonFull();
+          recordNativeTiming("forJson: toJsonFull", performance.now() - t0);
+        } else {
+          await this.$.populate(false);
+          recordNativeTiming("forJson: populate", performance.now() - t0);
+          t0 = performance.now();
+          rootJson = this.$.wasmWrapper.toJson();
+          recordNativeTiming("forJson: toJson", performance.now() - t0);
+        }
       }
       recordNativeTiming("forJson total (viewModels)", performance.now() - forJsonStart);
       if (!cascade && this.__cacheEntry) {
@@ -9458,15 +9463,20 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
           }
         }
         recordNativeTiming("forDisplayJson: retrieve check", performance.now() - t0);
-        t0 = performance.now();
-        await this.$.populate(false);
-        recordNativeTiming("forDisplayJson: populate", performance.now() - t0);
-        t0 = performance.now();
         const lang = language || DEFAULT_LANGUAGE;
         const rdmCache = getBackend() === "napi" ? getRdmCache() : getGlobalWasmRdmCache();
         const ncm = nodeConfigManager.wasmManager;
-        rootJson = this.$.wasmWrapper.toDisplayJson(rdmCache, ncm, lang, staticStore.registry);
-        recordNativeTiming("forDisplayJson: toDisplayJson", performance.now() - t0);
+        t0 = performance.now();
+        if (typeof this.$.wasmWrapper.toDisplayJsonFull === "function") {
+          rootJson = this.$.wasmWrapper.toDisplayJsonFull(rdmCache, ncm, lang);
+          recordNativeTiming("forDisplayJson: toDisplayJsonFull", performance.now() - t0);
+        } else {
+          await this.$.populate(false);
+          recordNativeTiming("forDisplayJson: populate", performance.now() - t0);
+          t0 = performance.now();
+          rootJson = this.$.wasmWrapper.toDisplayJson(rdmCache, ncm, lang, staticStore.registry);
+          recordNativeTiming("forDisplayJson: toDisplayJson", performance.now() - t0);
+        }
       }
       recordNativeTiming("forDisplayJson total (viewModels)", performance.now() - forJsonStart);
       if (!cascade && this.__cacheEntry) {

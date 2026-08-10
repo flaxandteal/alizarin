@@ -17,7 +17,7 @@ export declare function buildGraphFromCsvs(graphCsv: string, nodesCsv: string, c
  * Returns the resources wrapped in the `{ business_data: { resources: [...] } }`
  * format expected by PrebuildLoader.
  */
-export declare function buildBusinessDataFromCsv(csvData: string, graphJson: string, collectionsJson: string, defaultLanguage?: string | undefined | null, strictConcepts?: boolean | undefined | null, uuidNamespace?: string | undefined | null): any
+export declare function buildBusinessDataFromCsv(csvData: string, graphJson: string, collectionsJson: string, defaultLanguage?: string | undefined | null, strictConcepts?: boolean | undefined | null, uuidNamespace?: string | undefined | null, rdmCache?: NapiRdmCache | undefined | null): any
 /**
  * Coerce a value using the registered extension handler for the given datatype.
  *
@@ -279,7 +279,7 @@ export declare class NapiResourceInstanceWrapper {
   /** Serialize to JSON (tile_data mode — raw values). */
   toJson(): any
   /** Serialize to display JSON (resolved labels). */
-  toDisplayJson(rdmCache: NapiRdmCache, nodeConfigManager: NapiNodeConfigManager, language?: string | undefined | null): any
+  toDisplayJson(rdmCache: NapiRdmCache, nodeConfigManager: NapiNodeConfigManager, language?: string | undefined | null, resourceRegistry?: NapiStaticResourceRegistry | undefined | null): any
   /** Serialize to display JSON without RDM/config (basic labels only). */
   toDisplayJsonSimple(language?: string | undefined | null): any
   /**

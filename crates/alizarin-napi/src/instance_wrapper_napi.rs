@@ -1526,6 +1526,34 @@ impl NapiResourceInstanceWrapper {
         self.serialize_with_options(SerializationOptions::display(&lang), None, None, None)
     }
 
+    /// Populate (if needed) and serialize to display JSON in a single synchronous call.
+    ///
+    /// Combines `populate()` + `toDisplayJson()` to avoid the async microtask
+    /// overhead of calling them separately from JS.
+    #[napi]
+    pub fn to_display_json_full(
+        &self,
+        rdm_cache: &NapiRdmCache,
+        node_config_manager: &NapiNodeConfigManager,
+        language: Option<String>,
+    ) -> Result<serde_json::Value> {
+        self.ensure_populated()?;
+        let lang = language.unwrap_or_else(|| "en".to_string());
+        self.serialize_with_options(
+            SerializationOptions::display(&lang),
+            Some(&rdm_cache.inner),
+            Some(&node_config_manager.inner),
+            None,
+        )
+    }
+
+    /// Populate (if needed) and serialize to raw JSON in a single synchronous call.
+    #[napi]
+    pub fn to_json_full(&self) -> Result<serde_json::Value> {
+        self.ensure_populated()?;
+        self.serialize_with_options(SerializationOptions::tile_data(), None, None, None)
+    }
+
     // =========================================================================
     // Cleanup
     // =========================================================================
@@ -1546,6 +1574,40 @@ impl NapiResourceInstanceWrapper {
 // =============================================================================
 
 impl NapiResourceInstanceWrapper {
+    fn ensure_populated(&self) -> Result<()> {
+        let needs_populate = {
+            let cache = self
+                .inner
+                .pseudo_cache
+                .read()
+                .map_err(|_| napi::Error::from_reason("Failed to read pseudo cache"))?;
+            cache.len() <= 1
+        };
+
+        if needs_populate {
+            let root_node = self
+                .model_access
+                .get_root_node()
+                .map_err(napi::Error::from_reason)?;
+            let root_alias = root_node
+                .alias
+                .clone()
+                .ok_or_else(|| napi::Error::from_reason("Root node has no alias"))?;
+
+            let nodegroup_ids: Vec<String> = self
+                .model_access
+                .get_nodegroups()
+                .map(|ngs| ngs.keys().cloned().collect())
+                .unwrap_or_default();
+
+            self.inner
+                .populate(false, &nodegroup_ids, &root_alias, &self.model_access)
+                .map_err(sc_err)?;
+        }
+
+        Ok(())
+    }
+
     fn serialize_with_options(
         &self,
         options: SerializationOptions,
