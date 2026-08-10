@@ -835,16 +835,16 @@ impl StaticResourceRegistry {
             }
         }
 
-        // Recompute descriptors using the freshly-built caches
+        // Recompute descriptors using the freshly-built caches, directly on the
+        // graph, no IndexedGraph clone.
         if recompute_descriptors {
-            let indexed = super::static_graph::IndexedGraph::new(graph.clone());
             for resource in resources.iter_mut() {
                 let tiles = resource.tiles.as_deref().unwrap_or(&[]);
                 let cache: Option<ResourceCache> = resource
                     .cache
                     .as_ref()
                     .and_then(|v| serde_json::from_value(v.clone()).ok());
-                let descriptors = indexed.build_descriptors_with_diagnostics(
+                let descriptors = graph.build_descriptors_with_diagnostics(
                     tiles,
                     &mut Vec::new(),
                     cache.as_ref(),
@@ -1701,7 +1701,7 @@ pub fn batch_merge_resources(
     strict: bool,
 ) -> BatchMergeResult {
     use crate::registry::get_graph;
-    use crate::IndexedGraph;
+    use crate::StaticGraph;
     use std::collections::BTreeMap;
 
     // Group all resources by resourceinstanceid
@@ -1717,8 +1717,9 @@ pub fn batch_merge_resources(
     let mut merged_resources = Vec::new();
     let mut all_warnings = Vec::new();
 
-    // Cache IndexedGraphs by graph_id to avoid rebuilding for each resource
-    let mut indexed_graphs: BTreeMap<String, IndexedGraph> = BTreeMap::new();
+    // Cache StaticGraphs per graph_id (used for both unification and
+    // descriptors); it self-indexes lazily, no IndexedGraph clone.
+    let mut graph_cache: BTreeMap<String, StaticGraph> = BTreeMap::new();
 
     // Merge each group
     for (resource_id, resources) in grouped {
@@ -1732,22 +1733,20 @@ pub fn batch_merge_resources(
                 let mut resource = result.resource;
                 let graph_id = resource.resourceinstance.graph_id.clone();
 
-                // Get or create IndexedGraph for this graph_id (needed for both unification and descriptors)
-                if !indexed_graphs.contains_key(&graph_id) {
+                if !graph_cache.contains_key(&graph_id) {
                     if let Some(graph) = get_graph(&graph_id) {
-                        indexed_graphs
-                            .insert(graph_id.clone(), IndexedGraph::new((*graph).clone()));
+                        graph_cache.insert(graph_id.clone(), (*graph).clone());
                     }
                 }
 
                 // Unify cardinality-1 tiles if we have the graph
-                if let Some(indexed) = indexed_graphs.get(&graph_id) {
+                if let Some(cached_graph) = graph_cache.get(&graph_id) {
                     if let Some(ref mut tiles) = resource.tiles {
                         // Shard merge: PerNode, so two business-data files that each
                         // carry part of a nodegroup union into one tile.
                         match unify_cardinality_one_tiles(
                             tiles,
-                            &indexed.graph,
+                            cached_graph,
                             strict,
                             TileMergeMode::PerNode,
                         ) {
@@ -1772,16 +1771,14 @@ pub fn batch_merge_resources(
 
                 // Recompute descriptors if requested (graph already fetched above for unification)
                 if recompute_descriptors {
-                    if let Some(indexed) = indexed_graphs.get(&graph_id) {
-                        // Compute descriptors from merged tiles with diagnostics
+                    if let Some(cached_graph) = graph_cache.get(&graph_id) {
                         let tiles = resource.tiles.as_deref().unwrap_or(&[]);
                         let mut descriptor_warnings = Vec::new();
-                        // Deserialize __cache so resource-instance placeholders can resolve to titles
                         let cache: Option<ResourceCache> = resource
                             .cache
                             .as_ref()
                             .and_then(|v| serde_json::from_value(v.clone()).ok());
-                        let descriptors = indexed.build_descriptors_with_diagnostics(
+                        let descriptors = cached_graph.build_descriptors_with_diagnostics(
                             tiles,
                             &mut descriptor_warnings,
                             cache.as_ref(),

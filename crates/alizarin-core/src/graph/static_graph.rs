@@ -554,7 +554,7 @@ impl StaticGraph {
         // with empty nodegroup_id. Default function requires name-based resolution
         // to a single nodegroup at build time.
         let entry = if is_default_function {
-            let placeholders = IndexedGraph::extract_placeholders(string_template);
+            let placeholders = Self::extract_placeholders(string_template);
             if placeholders.is_empty() {
                 return Err(format!(
                     "Template '{}' has no <Node Name> placeholders",
@@ -646,6 +646,295 @@ impl StaticGraph {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Descriptor building on StaticGraph, so it needs no graph clone.
+//
+// A resource's descriptors (name/description/map_popup/slug) are the descriptor
+// template rendered against its tiles. This needs only a name->node lookup (a
+// linear scan) and the graph's descriptor config, NEITHER of which needs a
+// precomputed index. Running it on `&StaticGraph` directly allocates nothing;
+// `IndexedGraph` keeps thin delegators (below) for its own callers.
+// ---------------------------------------------------------------------------
+impl StaticGraph {
+    /// Build resource descriptors (name/description/map_popup/slug) from tiles.
+    pub fn build_descriptors(&self, tiles: &[StaticTile]) -> StaticResourceDescriptors {
+        self.build_descriptors_with_context(tiles, &mut Vec::new(), None, None)
+    }
+
+    /// Build descriptors, collecting diagnostic warnings for silent-failure cases.
+    pub fn build_descriptors_with_diagnostics(
+        &self,
+        tiles: &[StaticTile],
+        warnings: &mut Vec<String>,
+        cache: Option<&super::resources::ResourceCache>,
+    ) -> StaticResourceDescriptors {
+        self.build_descriptors_with_context(tiles, warnings, cache, None)
+    }
+
+    /// Build descriptors with full context (diagnostics, cache, extension registry).
+    pub fn build_descriptors_with_context(
+        &self,
+        tiles: &[StaticTile],
+        warnings: &mut Vec<String>,
+        cache: Option<&super::resources::ResourceCache>,
+        extension_registry: Option<&crate::extension_type_registry::ExtensionTypeRegistry>,
+    ) -> StaticResourceDescriptors {
+        let config = match self.get_descriptor_config_with_diagnostics(warnings) {
+            Some(c) => c,
+            None => {
+                return StaticResourceDescriptors::default();
+            }
+        };
+
+        let mut descriptors = StaticResourceDescriptors::default();
+
+        for (descriptor_type, type_config) in &config.descriptor_types {
+            let mut template = type_config.string_template.clone();
+
+            let placeholders = Self::extract_placeholders(&template);
+            if placeholders.is_empty() {
+                warnings.push(format!(
+                    "Descriptor '{}': No placeholders found in template '{}'",
+                    descriptor_type, template
+                ));
+                continue;
+            }
+
+            for placeholder in &placeholders {
+                let node_name = placeholder.trim_start_matches('<').trim_end_matches('>');
+
+                if let Some(node) = self.find_node_by_name(node_name) {
+                    let node_ng = match node.nodegroup_id.as_ref() {
+                        Some(ng) => ng,
+                        None => {
+                            warnings.push(format!(
+                                "Descriptor '{}': Node '{}' has no nodegroup_id",
+                                descriptor_type, node_name
+                            ));
+                            continue;
+                        }
+                    };
+                    let node_tiles: Vec<&StaticTile> = tiles
+                        .iter()
+                        .filter(|t| &t.nodegroup_id == node_ng)
+                        .collect();
+                    if let Some(value) = Self::extract_display_value_from_tiles(
+                        &node_tiles,
+                        &node.nodeid,
+                        &node.datatype,
+                        cache,
+                        extension_registry,
+                    ) {
+                        template = template.replace(placeholder, &value);
+                    } else {
+                        let available_keys: Vec<_> =
+                            node_tiles.iter().flat_map(|t| t.data.keys()).collect();
+                        warnings.push(format!(
+                            "Descriptor '{}': No value found for node '{}' (nodeid '{}') in tiles. Available data keys: {:?}",
+                            descriptor_type, node_name, node.nodeid, available_keys
+                        ));
+                    }
+                } else {
+                    warnings.push(format!(
+                        "Descriptor '{}': Node '{}' not found in graph",
+                        descriptor_type, node_name
+                    ));
+                }
+            }
+
+            match descriptor_type.as_str() {
+                "name" => descriptors.name = Some(template),
+                "description" => descriptors.description = Some(template),
+                "map_popup" => descriptors.map_popup = Some(template),
+                "slug" => {
+                    descriptors.slug = Some(if template.contains('<') {
+                        template.clone()
+                    } else {
+                        crate::graph_mutator::slugify(&template).replace('_', "-")
+                    })
+                }
+                _ => {}
+            }
+        }
+
+        descriptors
+    }
+
+    fn get_descriptor_config_with_diagnostics(
+        &self,
+        warnings: &mut Vec<String>,
+    ) -> Option<DescriptorConfig> {
+        let functions_x_graphs = match self.functions_x_graphs.as_ref() {
+            Some(fxg) => fxg,
+            None => {
+                warnings.push("Graph has no functions_x_graphs array".to_string());
+                return None;
+            }
+        };
+
+        let descriptor_func = functions_x_graphs
+            .iter()
+            .find(|f| f.function_id == DESCRIPTOR_FUNCTION_ID)
+            .or_else(|| {
+                functions_x_graphs.iter().find(|f| {
+                    f.config
+                        .as_object()
+                        .is_some_and(|c| c.contains_key("descriptor_types"))
+                })
+            });
+
+        if let Some(func) = descriptor_func {
+            match serde_json::from_value::<DescriptorConfig>(func.config.clone()) {
+                Ok(config) => return Some(config),
+                Err(e) => {
+                    warnings.push(format!(
+                        "Failed to parse descriptor config: {}. Raw config: {}",
+                        e,
+                        serde_json::to_string(&func.config).unwrap_or_default()
+                    ));
+                    return None;
+                }
+            }
+        }
+
+        warnings.push(format!(
+            "No descriptor function found in functions_x_graphs (looking for function_id {} or descriptor_types config). Available function_ids: {:?}",
+            DESCRIPTOR_FUNCTION_ID,
+            functions_x_graphs.iter().map(|f| &f.function_id).collect::<Vec<_>>()
+        ));
+        None
+    }
+
+    /// Extract placeholders like `<Node Name>` from a descriptor template.
+    pub fn extract_placeholders(template: &str) -> Vec<String> {
+        let mut placeholders = Vec::new();
+        let mut in_placeholder = false;
+        let mut current = String::new();
+
+        for ch in template.chars() {
+            if ch == '<' {
+                in_placeholder = true;
+                current.clear();
+                current.push(ch);
+            } else if ch == '>' && in_placeholder {
+                current.push(ch);
+                placeholders.push(current.clone());
+                in_placeholder = false;
+                current.clear();
+            } else if in_placeholder {
+                current.push(ch);
+            }
+        }
+
+        placeholders
+    }
+
+    /// Find a node by NAME (linear scan over all nodes, since placeholders
+    /// match on node name and there is no name index).
+    fn find_node_by_name(&self, name: &str) -> Option<&StaticNode> {
+        self.nodes.iter().find(|node| node.name == name)
+    }
+
+    /// Extract a display string from tiles for a given node, using cache lookup,
+    /// extension render_display, built-in serialize_display, then a raw-JSON fallback.
+    fn extract_display_value_from_tiles(
+        tiles: &[&StaticTile],
+        node_id: &str,
+        datatype: &str,
+        cache: Option<&super::resources::ResourceCache>,
+        extension_registry: Option<&crate::extension_type_registry::ExtensionTypeRegistry>,
+    ) -> Option<String> {
+        if let Some(cache) = cache {
+            if datatype == "resource-instance" || datatype == "resource-instance-list" {
+                for tile in tiles {
+                    if let Some(tile_id) = &tile.tileid {
+                        if let Some(node_entries) = cache.get(tile_id) {
+                            if let Some(entry) = node_entries.get(node_id) {
+                                return Self::display_from_cache_entry(entry);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for tile in tiles {
+            if let Some(value) = tile.data.get(node_id) {
+                if let Some(registry) = extension_registry {
+                    if let Ok(Some(display)) = registry.render_display(datatype, value, "en") {
+                        return Some(display);
+                    }
+                }
+
+                let result = crate::type_serialization::serialize_display(datatype, value, "en");
+                if !result.is_error() {
+                    match &result.value {
+                        serde_json::Value::String(s) if !s.is_empty() => return Some(s.clone()),
+                        serde_json::Value::Number(n) => return Some(n.to_string()),
+                        serde_json::Value::Bool(b) => return Some(b.to_string()),
+                        _ => {}
+                    }
+                }
+
+                if let Some(extracted) = Self::extract_string_from_json(value) {
+                    return Some(extracted);
+                }
+            }
+        }
+        None
+    }
+
+    fn display_from_cache_entry(entry: &super::resources::CacheEntry) -> Option<String> {
+        match entry {
+            super::resources::CacheEntry::Single(r) => r.title.clone(),
+            super::resources::CacheEntry::List(list) => {
+                let titles: Vec<&str> = list
+                    .entries
+                    .iter()
+                    .filter_map(|e| e.title.as_deref())
+                    .collect();
+                if titles.is_empty() {
+                    None
+                } else {
+                    Some(titles.join(", "))
+                }
+            }
+        }
+    }
+
+    /// Extract string value from JSON, handling language-nested objects.
+    fn extract_string_from_json(value: &serde_json::Value) -> Option<String> {
+        match value {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            serde_json::Value::Bool(b) => Some(b.to_string()),
+            serde_json::Value::Object(map) => Self::extract_lang_value(map, "en")
+                .or_else(|| map.values().find_map(Self::extract_single_lang_value)),
+            _ => None,
+        }
+    }
+
+    fn extract_lang_value(
+        map: &serde_json::Map<String, serde_json::Value>,
+        lang: &str,
+    ) -> Option<String> {
+        map.get(lang).and_then(Self::extract_single_lang_value)
+    }
+
+    /// Extract string from a single language value (direct string or Arches
+    /// `{"direction":..,"value":..}` format).
+    fn extract_single_lang_value(value: &serde_json::Value) -> Option<String> {
+        match value {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Object(obj) => obj
+                .get("value")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            _ => None,
+        }
+    }
+}
+
 /// Graph with precomputed indices for efficient tree traversal
 pub struct IndexedGraph {
     pub graph: StaticGraph,
@@ -667,7 +956,6 @@ impl IndexedGraph {
         let mut children_by_node: HashMap<String, Vec<String>> = HashMap::new();
         let mut nodegroups_by_id = HashMap::new();
 
-        // Index nodes by ID and alias
         for node in &graph.nodes {
             nodes_by_id.insert(node.nodeid.clone(), node.clone());
             if let Some(ref alias) = node.alias {
@@ -677,7 +965,6 @@ impl IndexedGraph {
             }
         }
 
-        // Index edges (domainnode_id -> rangenode_id)
         for edge in &graph.edges {
             children_by_node
                 .entry(edge.domainnode_id.clone())
@@ -685,7 +972,6 @@ impl IndexedGraph {
                 .push(edge.rangenode_id.clone());
         }
 
-        // Index nodegroups
         for ng in &graph.nodegroups {
             nodegroups_by_id.insert(ng.nodegroupid.clone(), ng.clone());
         }
@@ -749,31 +1035,23 @@ impl IndexedGraph {
             .and_then(|id| self.nodegroups_by_id.get(id))
     }
 
-    /// Build resource descriptors from tiles using graph configuration
-    ///
-    /// This replaces the TypeScript buildResourceDescriptors function, making
-    /// descriptor computation completely platform-independent.
-    ///
-    /// # Arguments
-    /// * `tiles` - The resource tiles containing data values
-    ///
-    /// # Returns
-    /// Populated StaticResourceDescriptors with name, description, map_popup fields
+    /// Delegates to [`StaticGraph::build_descriptors`].
     pub fn build_descriptors(&self, tiles: &[StaticTile]) -> StaticResourceDescriptors {
-        self.build_descriptors_with_context(tiles, &mut Vec::new(), None, None)
+        self.graph.build_descriptors(tiles)
     }
 
-    /// Build descriptors with diagnostic warnings for silent failure cases
+    /// Delegates to [`StaticGraph::build_descriptors_with_diagnostics`].
     pub fn build_descriptors_with_diagnostics(
         &self,
         tiles: &[StaticTile],
         warnings: &mut Vec<String>,
         cache: Option<&super::resources::ResourceCache>,
     ) -> StaticResourceDescriptors {
-        self.build_descriptors_with_context(tiles, warnings, cache, None)
+        self.graph
+            .build_descriptors_with_diagnostics(tiles, warnings, cache)
     }
 
-    /// Build descriptors with full context (diagnostics, cache, extension registry)
+    /// Delegates to [`StaticGraph::build_descriptors_with_context`].
     pub fn build_descriptors_with_context(
         &self,
         tiles: &[StaticTile],
@@ -781,295 +1059,8 @@ impl IndexedGraph {
         cache: Option<&super::resources::ResourceCache>,
         extension_registry: Option<&crate::extension_type_registry::ExtensionTypeRegistry>,
     ) -> StaticResourceDescriptors {
-        // Get descriptor config from graph with diagnostics
-        let config = match self.get_descriptor_config_with_diagnostics(warnings) {
-            Some(c) => c,
-            None => {
-                // Warning already added by get_descriptor_config_with_diagnostics
-                return StaticResourceDescriptors::default();
-            }
-        };
-
-        let mut descriptors = StaticResourceDescriptors::default();
-
-        // Process each descriptor type (name, description, map_popup)
-        for (descriptor_type, type_config) in &config.descriptor_types {
-            let mut template = type_config.string_template.clone();
-
-            // Extract placeholders from template (e.g., <Node Name>)
-            let placeholders = Self::extract_placeholders(&template);
-            if placeholders.is_empty() {
-                warnings.push(format!(
-                    "Descriptor '{}': No placeholders found in template '{}'",
-                    descriptor_type, template
-                ));
-                continue;
-            }
-
-            // Replace each placeholder with actual value from tiles
-            for placeholder in &placeholders {
-                let node_name = placeholder.trim_start_matches('<').trim_end_matches('>');
-
-                if let Some(node) = self.find_node_by_name(node_name) {
-                    let node_ng = match node.nodegroup_id.as_ref() {
-                        Some(ng) => ng,
-                        None => {
-                            warnings.push(format!(
-                                "Descriptor '{}': Node '{}' has no nodegroup_id",
-                                descriptor_type, node_name
-                            ));
-                            continue;
-                        }
-                    };
-                    let node_tiles: Vec<&StaticTile> = tiles
-                        .iter()
-                        .filter(|t| &t.nodegroup_id == node_ng)
-                        .collect();
-                    if let Some(value) = Self::extract_display_value_from_tiles(
-                        &node_tiles,
-                        &node.nodeid,
-                        &node.datatype,
-                        cache,
-                        extension_registry,
-                    ) {
-                        template = template.replace(placeholder, &value);
-                    } else {
-                        let available_keys: Vec<_> =
-                            node_tiles.iter().flat_map(|t| t.data.keys()).collect();
-                        warnings.push(format!(
-                            "Descriptor '{}': No value found for node '{}' (nodeid '{}') in tiles. Available data keys: {:?}",
-                            descriptor_type, node_name, node.nodeid, available_keys
-                        ));
-                    }
-                } else {
-                    warnings.push(format!(
-                        "Descriptor '{}': Node '{}' not found in graph",
-                        descriptor_type, node_name
-                    ));
-                }
-            }
-
-            // Assign to appropriate descriptor field
-            match descriptor_type.as_str() {
-                "name" => descriptors.name = Some(template),
-                "description" => descriptors.description = Some(template),
-                "map_popup" => descriptors.map_popup = Some(template),
-                "slug" => {
-                    // If template still contains unresolved <Placeholder> refs,
-                    // preserve the raw value so callers can detect and error.
-                    // slugify() would strip the angle brackets, hiding the problem.
-                    descriptors.slug = Some(if template.contains('<') {
-                        template.clone()
-                    } else {
-                        crate::graph_mutator::slugify(&template).replace('_', "-")
-                    })
-                }
-                _ => {} // Unknown descriptor type, ignore
-            }
-        }
-
-        descriptors
-    }
-
-    /// Extract descriptor config with diagnostic warnings
-    fn get_descriptor_config_with_diagnostics(
-        &self,
-        warnings: &mut Vec<String>,
-    ) -> Option<DescriptorConfig> {
-        let functions_x_graphs = match self.graph.functions_x_graphs.as_ref() {
-            Some(fxg) => fxg,
-            None => {
-                warnings.push("Graph has no functions_x_graphs array".to_string());
-                return None;
-            }
-        };
-
-        // Find descriptor function: exact match on default ID, or any function
-        // with descriptor_types config (e.g. Multi-card Resource Descriptor).
-        let descriptor_func = functions_x_graphs
-            .iter()
-            .find(|f| f.function_id == DESCRIPTOR_FUNCTION_ID)
-            .or_else(|| {
-                functions_x_graphs.iter().find(|f| {
-                    f.config
-                        .as_object()
-                        .is_some_and(|c| c.contains_key("descriptor_types"))
-                })
-            });
-
-        if let Some(func) = descriptor_func {
-            match serde_json::from_value::<DescriptorConfig>(func.config.clone()) {
-                Ok(config) => return Some(config),
-                Err(e) => {
-                    warnings.push(format!(
-                        "Failed to parse descriptor config: {}. Raw config: {}",
-                        e,
-                        serde_json::to_string(&func.config).unwrap_or_default()
-                    ));
-                    return None;
-                }
-            }
-        }
-
-        warnings.push(format!(
-            "No descriptor function found in functions_x_graphs (looking for function_id {} or descriptor_types config). Available function_ids: {:?}",
-            DESCRIPTOR_FUNCTION_ID,
-            functions_x_graphs.iter().map(|f| &f.function_id).collect::<Vec<_>>()
-        ));
-        None
-    }
-
-    /// Extract placeholders from template using regex pattern
-    /// Finds patterns like <Node Name> in the template string
-    pub fn extract_placeholders(template: &str) -> Vec<String> {
-        // Pattern matches: <[A-Za-z _-]+>
-        // For now, use a simple manual parser to avoid regex dependency
-        let mut placeholders = Vec::new();
-        let mut in_placeholder = false;
-        let mut current = String::new();
-
-        for ch in template.chars() {
-            if ch == '<' {
-                in_placeholder = true;
-                current.clear();
-                current.push(ch);
-            } else if ch == '>' && in_placeholder {
-                current.push(ch);
-                placeholders.push(current.clone());
-                in_placeholder = false;
-                current.clear();
-            } else if in_placeholder {
-                current.push(ch);
-            }
-        }
-
-        placeholders
-    }
-
-    /// Find node by name (across all nodegroups)
-    fn find_node_by_name(&self, name: &str) -> Option<&StaticNode> {
-        self.nodes_by_id.values().find(|node| node.name == name)
-    }
-
-    /// Extract a display string from tiles for a given node, using:
-    /// 1. Cache lookup (for resource-instance / resource-instance-list, uses titles from __cache)
-    /// 2. Extension render_display (for extension datatypes like "reference")
-    /// 3. Built-in serialize_display (for string, number, date, concept, etc.)
-    /// 4. Fallback to extract_string_from_json (language maps, Arches format)
-    fn extract_display_value_from_tiles(
-        tiles: &[&StaticTile],
-        node_id: &str,
-        datatype: &str,
-        cache: Option<&super::resources::ResourceCache>,
-        extension_registry: Option<&crate::extension_type_registry::ExtensionTypeRegistry>,
-    ) -> Option<String> {
-        // For resource-instance / resource-instance-list, look up display names from __cache
-        // (mirrors how TS ViewModels use __cache entries with title for display)
-        if let Some(cache) = cache {
-            if datatype == "resource-instance" || datatype == "resource-instance-list" {
-                for tile in tiles {
-                    if let Some(tile_id) = &tile.tileid {
-                        if let Some(node_entries) = cache.get(tile_id) {
-                            if let Some(entry) = node_entries.get(node_id) {
-                                return Self::display_from_cache_entry(entry);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        for tile in tiles {
-            if let Some(value) = tile.data.get(node_id) {
-                // 1. Try extension render_display (optional — not all extensions have it)
-                if let Some(registry) = extension_registry {
-                    if let Ok(Some(display)) = registry.render_display(datatype, value, "en") {
-                        return Some(display);
-                    }
-                }
-
-                // 2. Try built-in type serialization
-                let result = crate::type_serialization::serialize_display(datatype, value, "en");
-                if !result.is_error() {
-                    match &result.value {
-                        serde_json::Value::String(s) if !s.is_empty() => return Some(s.clone()),
-                        serde_json::Value::Number(n) => return Some(n.to_string()),
-                        serde_json::Value::Bool(b) => return Some(b.to_string()),
-                        _ => {}
-                    }
-                }
-
-                // 3. Fallback to raw JSON extraction (language maps, Arches format)
-                if let Some(extracted) = Self::extract_string_from_json(value) {
-                    return Some(extracted);
-                }
-            }
-        }
-        None
-    }
-
-    /// Extract display string from a cache entry (title, or comma-separated titles for lists)
-    fn display_from_cache_entry(entry: &super::resources::CacheEntry) -> Option<String> {
-        match entry {
-            super::resources::CacheEntry::Single(r) => r.title.clone(),
-            super::resources::CacheEntry::List(list) => {
-                let titles: Vec<&str> = list
-                    .entries
-                    .iter()
-                    .filter_map(|e| e.title.as_deref())
-                    .collect();
-                if titles.is_empty() {
-                    None
-                } else {
-                    Some(titles.join(", "))
-                }
-            }
-        }
-    }
-
-    /// Extract string value from JSON, handling language-nested objects
-    /// Handles:
-    /// - Simple strings: "value"
-    /// - Language objects: {"en": "value"}
-    /// - Arches localized strings: {"en": {"direction": "ltr", "value": "actual value"}}
-    fn extract_string_from_json(value: &serde_json::Value) -> Option<String> {
-        match value {
-            serde_json::Value::String(s) => Some(s.clone()),
-            serde_json::Value::Number(n) => Some(n.to_string()),
-            serde_json::Value::Bool(b) => Some(b.to_string()),
-            serde_json::Value::Object(map) => {
-                // Try to get language-specific value
-                Self::extract_lang_value(map, "en").or_else(|| {
-                    // Fallback to first available language
-                    map.values().find_map(Self::extract_single_lang_value)
-                })
-            }
-            _ => None,
-        }
-    }
-
-    /// Extract value for a specific language key
-    fn extract_lang_value(
-        map: &serde_json::Map<String, serde_json::Value>,
-        lang: &str,
-    ) -> Option<String> {
-        map.get(lang).and_then(Self::extract_single_lang_value)
-    }
-
-    /// Extract string from a single language value, handling both formats:
-    /// - Direct string: "value"
-    /// - Arches format: {"direction": "ltr", "value": "actual value"}
-    fn extract_single_lang_value(value: &serde_json::Value) -> Option<String> {
-        match value {
-            serde_json::Value::String(s) => Some(s.clone()),
-            serde_json::Value::Object(obj) => {
-                // Arches localized string format: {"direction": "...", "value": "..."}
-                obj.get("value")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            }
-            _ => None,
-        }
+        self.graph
+            .build_descriptors_with_context(tiles, warnings, cache, extension_registry)
     }
 }
 

@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::extension_type_registry::ExtensionTypeRegistry;
-use crate::graph::{canonical_tile_id, IndexedGraph, StaticGraph};
+use crate::graph::{canonical_tile_id, StaticGraph};
 use crate::graph::{StaticResource, StaticResourceMetadata};
 use crate::graph_mutator::generate_uuid_v5;
 use crate::instance_wrapper_core::is_node_single_cardinality_with;
@@ -45,8 +45,7 @@ pub fn create_static_resource(
     tiles: Vec<StaticTile>,
     graph: &StaticGraph,
 ) -> StaticResource {
-    let indexed = IndexedGraph::new(graph.clone());
-    let descriptors = indexed.build_descriptors(&tiles);
+    let descriptors = graph.build_descriptors(&tiles);
 
     // Use name from descriptors, or fallback to resourceinstanceid
     let name = descriptors
@@ -631,10 +630,9 @@ fn single_tree_to_resource(
         .map(|builder| builder.to_static_tile())
         .collect();
 
-    // Calculate descriptors from tiles
-    let indexed = IndexedGraph::new(graph.clone());
+    // Calculate descriptors from tiles, directly on &StaticGraph, no clone.
     let descriptors =
-        indexed.build_descriptors_with_context(&tiles, &mut Vec::new(), None, extension_registry);
+        graph.build_descriptors_with_context(&tiles, &mut Vec::new(), None, extension_registry);
 
     // If no explicit ID or id_key, derive resource ID from slug descriptor
     let resource_id = if needs_slug_id {
@@ -1260,8 +1258,7 @@ mod tests {
         tiles.push(tile);
 
         // Calculate descriptors
-        let indexed = IndexedGraph::new(graph.clone());
-        let descriptors = indexed.build_descriptors(&tiles);
+        let descriptors = graph.build_descriptors(&tiles);
         let name = descriptors
             .name
             .clone()

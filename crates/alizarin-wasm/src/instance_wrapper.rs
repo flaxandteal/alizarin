@@ -744,8 +744,6 @@ impl WASMResourceInstanceWrapper {
 
     /// Internal helper to compute descriptors without updating cache.
     fn compute_descriptors_internal(&self) -> Result<StaticResourceDescriptors, JsValue> {
-        use alizarin_core::IndexedGraph;
-
         // Get tiles - clone to release borrow
         let tiles_vec: Vec<_> = {
             let core_ref = self.core.borrow();
@@ -759,12 +757,9 @@ impl WASMResourceInstanceWrapper {
         // Get the graph from model core
         let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
 
-        // Create IndexedGraph for efficient descriptor building
-        let indexed_graph = IndexedGraph::new(graph);
-
-        // Compute descriptors using the Rust implementation
+        // Descriptors build directly on the StaticGraph, no IndexedGraph clone.
         let ext_registry = crate::extension_registry::build_extension_registry();
-        let descriptors = indexed_graph.build_descriptors_with_context(
+        let descriptors = graph.build_descriptors_with_context(
             &tiles_vec,
             &mut Vec::new(),
             None,
