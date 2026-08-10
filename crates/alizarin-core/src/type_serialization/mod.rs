@@ -56,7 +56,7 @@ pub use strings::{
 /// Trait for resolving external data during serialization.
 ///
 /// Currently used for concept label lookups from RDM cache.
-/// Platform bindings implement this — e.g., `impl ExternalResolver for RdmCache`.
+/// Platform bindings implement this - e.g., `impl ExternalResolver for RdmCache`.
 pub trait ExternalResolver: Send + Sync {
     /// Resolve a concept UUID to its display label.
     ///
@@ -92,7 +92,7 @@ pub trait ResourceDisplayResolver: Send + Sync {
 
 /// Context for serialization operations that require lookups.
 ///
-/// At the graph/tree level, `node_config` is None — it's set per-node at leaf
+/// At the graph/tree level, `node_config` is None - it's set per-node at leaf
 /// serialization time by looking up `NodeConfigManager::get(&node_id)`.
 /// `external_resolver` and `extension_registry` are shared across all nodes.
 pub struct SerializationContext<'a> {
@@ -189,6 +189,30 @@ pub fn serialize_value(
                 }
             }
             SerializationMode::Display if caps.can_render_display => {
+                // A multi-value reference must stay an array in the hydrated
+                // tree (one entry per concept) rather than collapse to a single
+                // joined display string. Gate on the node's multiValue flag,
+                // not array-ness, to keep single-value references scalar.
+                let multi_value = ctx
+                    .node_config
+                    .and_then(|nc| nc.as_reference())
+                    .map(|r| r.multi_value)
+                    .unwrap_or(false);
+                if multi_value {
+                    if let Value::Array(items) = tile_data {
+                        let labels: Vec<Value> = items
+                            .iter()
+                            .filter_map(|item| {
+                                handler
+                                    .render_display(item, &options.language, Some(ctx))
+                                    .ok()
+                                    .flatten()
+                                    .map(Value::String)
+                            })
+                            .collect();
+                        return Some(SerializationResult::success(Value::Array(labels)));
+                    }
+                }
                 if let Ok(Some(label)) =
                     handler.render_display(tile_data, &options.language, Some(ctx))
                 {
