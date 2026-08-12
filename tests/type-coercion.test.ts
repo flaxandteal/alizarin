@@ -183,11 +183,10 @@ describe('Type Coercion Integration Tests', () => {
       assertCoercionResult(result, '2024-01-15', '2024-01-15');
     });
 
-    it('should coerce a datetime string (preserves full value)', () => {
+    it('should coerce a datetime string (truncates to date-only)', () => {
       const result = coerceValue('date', '2024-01-15T10:30:00Z', dateNode()?.config);
 
-      // Date coercion preserves the full datetime string
-      assertCoercionResult(result, '2024-01-15T10:30:00Z', '2024-01-15T10:30:00Z');
+      assertCoercionResult(result, '2024-01-15', '2024-01-15');
     });
 
     it('should handle various date formats', () => {

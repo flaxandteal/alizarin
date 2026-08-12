@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "crates/alizarin-core",
-    "crates/alizarin-clm-core",
     "crates/alizarin-wasm",
     "crates/alizarin-python",
     "crates/alizarin-explorer",
@@ -13,7 +12,10 @@ exclude = [
     "ext/filelist/core",
     "ext/filelist/wasm",
     "ext/filelist/python",
-    "ext/python/alizarin-clm",
+    "ext/alizarin-clm/core",
+    "ext/alizarin-clm/python",
+    "ext/alizarin-pg/core",
+    "ext/alizarin-pg/python",
 ]
 resolver = "2"
 

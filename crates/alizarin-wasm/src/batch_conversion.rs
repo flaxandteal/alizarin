@@ -3,8 +3,7 @@ use crate::json_conversion::create_static_resource;
 use alizarin_core::cards_to_tree as core_cards_to_tree;
 use alizarin_core::tiles_to_tree as core_tiles_to_tree;
 use alizarin_core::{
-    batch_merge_resources, merge_resources, transform_keys_to_snake, tree_to_tiles_with_options,
-    StaticResource,
+    batch_merge_resources, merge_resources, transform_keys_to_snake, StaticResource,
 };
 use serde_json::Value;
 
@@ -59,46 +58,34 @@ pub fn tree_to_tiles_enhanced(
     id_key: Option<String>,
     random_ids: Option<bool>,
 ) -> Result<JsValue, JsValue> {
-    // Parse tree from JSON
-    let mut tree: Value = serde_json::from_str(tree_json)
+    let tree: Value = serde_json::from_str(tree_json)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse tree: {}", e)))?;
 
-    // Transform keys if requested
-    if from_camel {
-        tree = transform_keys_to_snake(tree);
-    }
-
-    // Add graph_id if not present
     let graph_id = graph.graph_id();
-    if let Value::Object(ref mut map) = tree {
-        if !map.contains_key("graph_id") {
-            map.insert("graph_id".to_string(), Value::String(graph_id.to_string()));
-        }
-    }
-
-    // Convert tree to tiles (with optional id_key for deterministic UUID)
-    // Default to random_ids=true for backward compat; batch functions default to false (slug-based)
-    let id_key_ref = id_key.as_deref();
     let ext_registry = crate::extension_registry::build_extension_registry();
-    let result = tree_to_tiles_with_options(
+
+    let resource = alizarin_core::convert_single_tree::<alizarin_core::RdmCache>(
         &tree,
         graph,
+        graph_id,
+        id_key.as_deref(),
+        from_camel,
         strict,
-        id_key_ref,
-        false,
         random_ids.unwrap_or(true),
-        true,
         Some(&ext_registry),
-    );
+        None,
+        true,
+    )
+    .map_err(|e| JsValue::from_str(&e))?;
 
-    match result {
-        Ok(business_data) => {
-            // Serialize to JS value
-            serde_wasm_bindgen::to_value(&business_data)
-                .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
-        }
-        Err(e) => Err(JsValue::from_str(&e)),
-    }
+    let wrapper = alizarin_core::BusinessDataWrapper {
+        business_data: alizarin_core::BusinessData {
+            resources: vec![resource],
+        },
+    };
+
+    serde_wasm_bindgen::to_value(&wrapper)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
 }
 
 /// Single tiles to tree conversion
@@ -284,43 +271,28 @@ pub fn batch_trees_to_tiles(
     let warnings: Vec<String> = Vec::new();
     let ext_registry = crate::extension_registry::build_extension_registry();
 
-    // Process each tree
     for (i, tree) in trees.iter_mut().enumerate() {
-        // Transform keys if requested
         if from_camel {
             *tree = transform_keys_to_snake(tree.clone());
         }
 
-        // Add graph_id to tree if not present
-        if let Value::Object(ref mut map) = tree {
-            if !map.contains_key("graph_id") {
-                map.insert("graph_id".to_string(), Value::String(graph_id.to_string()));
-            }
-        }
-
-        // Get id_key for this tree (if id_keys array provided)
         let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
-        // Convert tree to tiles (with optional id_key for deterministic UUID, or slug-based)
-        let result = tree_to_tiles_with_options(
+        let result = alizarin_core::convert_single_tree::<alizarin_core::RdmCache>(
             tree,
             graph,
-            strict,
+            graph_id,
             id_key_ref,
             false,
+            strict,
             random_ids.unwrap_or(false),
-            true,
             Some(&ext_registry),
+            None,
+            false,
         );
 
         match result {
-            Ok(business_data) => {
-                if let Some(resource) = business_data.business_data.resources.into_iter().next() {
-                    resources.push(resource);
-                } else {
-                    errors.push(format!("Tree {}: No resources returned", i));
-                }
-            }
+            Ok(resource) => resources.push(resource),
             Err(e) => {
                 errors.push(format!("Tree {}: {}", i, e));
                 if strict {

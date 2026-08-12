@@ -3,8 +3,8 @@
 //! This crate provides the core types and `ExtensionTypeHandler` implementation
 //! for the "file-list" datatype. It is used by:
 //! - `alizarin-napi` (Node.js bindings)
-//! - `ext/python/alizarin-filelist` (Python extension, via C ABI wrappers)
-//! - `ext/js/@alizarin/filelist` (WASM/JS extension, could replace TS reimplementation)
+//! - `ext/filelist/python` (Python extension, via C ABI wrappers)
+//! - `ext/filelist/js` (JS extension)
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

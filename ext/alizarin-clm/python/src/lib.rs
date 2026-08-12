@@ -120,178 +120,23 @@ mod python_module {
     }
 
     // =========================================================================
-    // Marker Resolution (C ABI callbacks for RDM lookups)
+    // Marker Resolution (delegates to core's resolve_reference_markers)
     // =========================================================================
 
-    /// Resolve a single reference value that may contain markers
-    fn resolve_single_reference(
-        value: &Value,
-        config: &ReferenceNodeConfig,
-        has_collection: HasCollectionFn,
-        lookup_by_id: ConceptLookupByIdFn,
-        lookup_by_label: ConceptLookupByLabelFn,
-        free_concept_json: FreeConceptJsonFn,
-        lookup_user_data: *mut c_void,
-    ) -> Result<Option<Value>, String> {
-        match value {
-            Value::Object(obj) => {
-                if obj.contains_key("__needs_rdm_lookup") {
-                    let uuid = obj.get("uuid")
-                        .and_then(|v| v.as_str())
-                        .ok_or("Missing uuid in __needs_rdm_lookup marker")?;
-
-                    let collection_id = config.get_collection_id()
-                        .ok_or("Missing collection ID for RDM lookup")?;
-
-                    let collection_exists = unsafe {
-                        has_collection(
-                            lookup_user_data,
-                            collection_id.as_ptr(),
-                            collection_id.len(),
-                        )
-                    };
-
-                    if !collection_exists {
-                        return Err(format!(
-                            "Collection '{}' not found in cache. Load the collection before resolving references.",
-                            collection_id
-                        ));
-                    }
-
-                    let mut concept_json_ptr: *mut u8 = std::ptr::null_mut();
-                    let mut concept_json_len: usize = 0;
-
-                    let found = unsafe {
-                        lookup_by_id(
-                            lookup_user_data,
-                            collection_id.as_ptr(),
-                            collection_id.len(),
-                            uuid.as_ptr(),
-                            uuid.len(),
-                            &mut concept_json_ptr,
-                            &mut concept_json_len,
-                        )
-                    };
-
-                    if !found || concept_json_ptr.is_null() {
-                        return Err(format!("Concept not found: {} in {}", uuid, collection_id));
-                    }
-
-                    let concept_json = unsafe {
-                        let slice = std::slice::from_raw_parts(concept_json_ptr, concept_json_len);
-                        let result = std::str::from_utf8(slice)
-                            .map_err(|e| format!("Invalid UTF-8 in concept JSON: {}", e))
-                            .and_then(|s| serde_json::from_str::<Value>(s)
-                                .map_err(|e| format!("Invalid concept JSON: {}", e)));
-                        free_concept_json(concept_json_ptr, concept_json_len);
-                        result
-                    }?;
-
-                    let reference = build_static_reference_from_concept(&concept_json, collection_id)?;
-                    return Ok(Some(serde_json::to_value(reference)
-                        .map_err(|e| format!("Failed to serialize reference: {}", e))?));
-                }
-
-                if obj.contains_key("__needs_rdm_label_lookup") {
-                    let label = obj.get("label")
-                        .and_then(|v| v.as_str())
-                        .ok_or("Missing label in __needs_rdm_label_lookup marker")?;
-
-                    let collection_id = config.get_collection_id()
-                        .ok_or("Missing collection ID for RDM label lookup")?;
-
-                    let collection_exists = unsafe {
-                        has_collection(
-                            lookup_user_data,
-                            collection_id.as_ptr(),
-                            collection_id.len(),
-                        )
-                    };
-
-                    if !collection_exists {
-                        return Err(format!(
-                            "Collection '{}' not found in cache. Load the collection before resolving references.",
-                            collection_id
-                        ));
-                    }
-
-                    let mut concept_json_ptr: *mut u8 = std::ptr::null_mut();
-                    let mut concept_json_len: usize = 0;
-
-                    let found = unsafe {
-                        lookup_by_label(
-                            lookup_user_data,
-                            collection_id.as_ptr(),
-                            collection_id.len(),
-                            label.as_ptr(),
-                            label.len(),
-                            &mut concept_json_ptr,
-                            &mut concept_json_len,
-                        )
-                    };
-
-                    if !found || concept_json_ptr.is_null() {
-                        return Err(format!("Concept not found by label: {} in {}", label, collection_id));
-                    }
-
-                    let concept_json = unsafe {
-                        let slice = std::slice::from_raw_parts(concept_json_ptr, concept_json_len);
-                        let result = std::str::from_utf8(slice)
-                            .map_err(|e| format!("Invalid UTF-8 in concept JSON: {}", e))
-                            .and_then(|s| serde_json::from_str::<Value>(s)
-                                .map_err(|e| format!("Invalid concept JSON: {}", e)));
-                        free_concept_json(concept_json_ptr, concept_json_len);
-                        result
-                    }?;
-
-                    let reference = build_static_reference_from_concept(&concept_json, collection_id)?;
-                    return Ok(Some(serde_json::to_value(reference)
-                        .map_err(|e| format!("Failed to serialize reference: {}", e))?));
-                }
-
-                Ok(None)
-            }
-
-            Value::Array(arr) => {
-                let mut modified = false;
-                let mut resolved_arr = Vec::with_capacity(arr.len());
-
-                for item in arr {
-                    match resolve_single_reference(
-                        item, config, has_collection, lookup_by_id, lookup_by_label, free_concept_json, lookup_user_data
-                    )? {
-                        Some(resolved) => {
-                            modified = true;
-                            resolved_arr.push(resolved);
-                        }
-                        None => {
-                            resolved_arr.push(item.clone());
-                        }
-                    }
-                }
-
-                if modified {
-                    Ok(Some(Value::Array(resolved_arr)))
-                } else {
-                    Ok(None)
-                }
-            }
-
-            _ => Ok(None),
-        }
-    }
-
-    /// C ABI marker resolution function for reference type
+    /// C ABI marker resolution function for reference type.
+    ///
+    /// Delegates to `alizarin_clm_core::resolve_reference_markers` which uses
+    /// the global RDM cache (set via `set_global_rdm_cache` on the Python side).
     unsafe extern "C" fn resolve_reference_markers(
         value_ptr: *const u8,
         value_len: usize,
-        config_ptr: *const u8,
-        config_len: usize,
-        has_collection: HasCollectionFn,
-        lookup_by_id: ConceptLookupByIdFn,
-        lookup_by_label: ConceptLookupByLabelFn,
-        free_concept_json: FreeConceptJsonFn,
-        lookup_user_data: *mut c_void,
+        lang_ptr: *const u8,
+        lang_len: usize,
+        _has_collection: HasCollectionFn,
+        _lookup_by_id: ConceptLookupByIdFn,
+        _lookup_by_label: ConceptLookupByLabelFn,
+        _free_concept_json: FreeConceptJsonFn,
+        _lookup_user_data: *mut c_void,
     ) -> ResolveMarkersResult {
         let value_slice = std::slice::from_raw_parts(value_ptr, value_len);
         let value_str = match std::str::from_utf8(value_slice) {
@@ -304,34 +149,21 @@ mod python_module {
             Err(e) => return ResolveMarkersResult::error(format!("Invalid JSON value: {}", e)),
         };
 
-        let config: ReferenceNodeConfig = if config_len > 0 && !config_ptr.is_null() {
-            let config_slice = std::slice::from_raw_parts(config_ptr, config_len);
-            let config_str = match std::str::from_utf8(config_slice) {
-                Ok(s) => s,
-                Err(_) => return ResolveMarkersResult::error("Invalid UTF-8 in config".to_string()),
-            };
-            serde_json::from_str::<ReferenceNodeConfig>(config_str).unwrap_or_default()
+        let language = if lang_len > 0 && !lang_ptr.is_null() {
+            std::str::from_utf8(std::slice::from_raw_parts(lang_ptr, lang_len)).unwrap_or("en")
         } else {
-            ReferenceNodeConfig::default()
+            "en"
         };
 
-        match resolve_single_reference(
-            &value,
-            &config,
-            has_collection,
-            lookup_by_id,
-            lookup_by_label,
-            free_concept_json,
-            lookup_user_data,
-        ) {
-            Ok(Some(resolved)) => {
-                match serde_json::to_vec(&resolved) {
-                    Ok(json) => ResolveMarkersResult::success(json),
-                    Err(e) => ResolveMarkersResult::error(format!("Failed to serialize resolved value: {}", e)),
-                }
+        let resolved = alizarin_clm_core::resolve_reference_markers(&value, language);
+
+        if resolved == value {
+            ResolveMarkersResult::unchanged()
+        } else {
+            match serde_json::to_vec(&resolved) {
+                Ok(json) => ResolveMarkersResult::success(json),
+                Err(e) => ResolveMarkersResult::error(format!("Failed to serialize resolved value: {}", e)),
             }
-            Ok(None) => ResolveMarkersResult::unchanged(),
-            Err(e) => ResolveMarkersResult::error(e),
         }
     }
 
@@ -427,7 +259,9 @@ mod tests {
 
         assert!(result.is_ok());
         let (tile_data, _) = result.unwrap();
-        assert_eq!(tile_data.get("__needs_rdm_lookup").and_then(|v| v.as_bool()), Some(true));
+        assert!(tile_data.is_array(), "Single value should be wrapped in array");
+        let first = &tile_data.as_array().unwrap()[0];
+        assert_eq!(first.get("__needs_rdm_lookup").and_then(|v| v.as_bool()), Some(true));
     }
 
     #[test]
@@ -493,7 +327,8 @@ mod tests {
             multi_value: Some(false),
         };
         let (tile_data, _) = coerce_reference_value(&value, &config_single).unwrap();
-        assert!(tile_data.is_object(), "Without multiValue, should return object");
+        assert!(tile_data.is_array(), "Single value always wrapped in array");
+        assert_eq!(tile_data.as_array().unwrap().len(), 1);
 
         let config_multi = ReferenceNodeConfig {
             controlled_list: Some("list-1".to_string()),

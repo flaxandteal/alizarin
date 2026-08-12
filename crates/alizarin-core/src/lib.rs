@@ -187,9 +187,9 @@ pub use card_traversal::{
 
 // JSON conversion (tiles <-> tree)
 pub use json_conversion::{
-    build_tree_from_tiles, create_static_resource, resource_tiles_to_tree,
-    resource_tiles_to_tree_with_context, tiles_to_tree, tree_to_tiles, tree_to_tiles_with_options,
-    BusinessData, BusinessDataWrapper,
+    build_tree_from_tiles, convert_single_tree, create_static_resource, resolve_extension_markers,
+    resource_tiles_to_tree, resource_tiles_to_tree_with_context, tiles_to_tree, tree_to_tiles,
+    tree_to_tiles_with_options, BusinessData, BusinessDataWrapper,
 };
 
 // Pseudo value core types (for JSON conversion)
@@ -321,6 +321,12 @@ pub use registry::{
     add_to_global_rdm_cache_from_skos, add_to_global_rdm_cache_from_skos_xml,
     clear_global_rdm_cache, ensure_global_rdm_cache, get_global_rdm_cache, has_global_rdm_cache,
     set_global_rdm_cache, with_global_rdm_cache, with_global_rdm_cache_mut,
+};
+
+// Global extension type registry (for extension crates like alizarin-pg)
+pub use registry::{
+    clear_global_extension_registry, get_global_extension_registry, has_global_extension_registry,
+    set_global_extension_registry,
 };
 
 // Permission rules (for conditional tile filtering)

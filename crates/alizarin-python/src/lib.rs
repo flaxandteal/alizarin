@@ -521,6 +521,8 @@ fn register_extension_handler(capsule: &PyCapsule) -> PyResult<()> {
         println!("Registered type handler for: {}{}", type_name, features);
     }
 
+    alizarin_core::set_global_extension_registry(build_extension_registry());
+
     Ok(())
 }
 
@@ -540,54 +542,45 @@ fn coerce_with_extension(
     value_json: &str,
     config_json: Option<&str>,
 ) -> PyResult<(String, String)> {
-    let handlers = TYPE_HANDLERS.read().unwrap();
+    let registry = build_extension_registry();
 
-    if let Some(handler) = handlers.get(type_name) {
-        let config = config_json.unwrap_or("null");
-
-        // SAFETY: Calling coerce_fn FFI function pointer registered via PyCapsule.
-        // The handler owns the result memory and we free it via handler.free_fn before
-        // returning. Pointers are valid UTF-8 JSON produced by the extension's Rust code.
-        unsafe {
-            let result = (handler.coerce_fn)(
-                value_json.as_ptr(),
-                value_json.len(),
-                config.as_ptr(),
-                config.len(),
-            );
-
-            if result.error_ptr.is_null() {
-                let tile_json = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
-                    result.json_ptr,
-                    result.json_len,
-                ))
-                .to_string();
-
-                let resolved_json = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
-                    result.resolved_ptr,
-                    result.resolved_len,
-                ))
-                .to_string();
-
-                (handler.free_fn)(result);
-                Ok((tile_json, resolved_json))
-            } else {
-                let error = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
-                    result.error_ptr,
-                    result.error_len,
-                ))
-                .to_string();
-
-                (handler.free_fn)(result);
-                Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(error))
-            }
-        }
-    } else {
-        Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+    if !registry.has(type_name) {
+        return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
             "No handler registered for type: {}",
             type_name
-        )))
+        )));
     }
+
+    let value: serde_json::Value = serde_json::from_str(value_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid JSON: {}", e))
+    })?;
+
+    let config: Option<serde_json::Value> = config_json
+        .filter(|s| *s != "null")
+        .map(|s| serde_json::from_str(s))
+        .transpose()
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid config JSON: {}", e))
+        })?;
+
+    let result = registry
+        .coerce(type_name, &value, config.as_ref())
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?
+        .ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Handler for type '{}' does not support coercion",
+                type_name
+            ))
+        })?;
+
+    let tile_json = serde_json::to_string(&result.tile_data).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to serialize: {}", e))
+    })?;
+    let resolved_json = serde_json::to_string(&result.display_value).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to serialize: {}", e))
+    })?;
+
+    Ok((tile_json, resolved_json))
 }
 
 /// Check if a type handler has display rendering support
@@ -611,54 +604,25 @@ fn render_display_with_extension(
     resolved_json: &str,
     lang: &str,
 ) -> PyResult<String> {
-    let handlers = TYPE_HANDLERS.read().unwrap();
+    let registry = build_extension_registry();
 
-    if let Some(handler) = handlers.get(type_name) {
-        if let (Some(render_fn), Some(free_fn)) =
-            (handler.render_display_fn, handler.free_display_fn)
-        {
-            // SAFETY: Calling render_display FFI function pointer registered via PyCapsule.
-            // The handler owns the result memory and we free it via free_fn before returning.
-            // Pointers are valid UTF-8 produced by the extension's Rust code (same process).
-            unsafe {
-                let result = render_fn(
-                    resolved_json.as_ptr(),
-                    resolved_json.len(),
-                    lang.as_ptr(),
-                    lang.len(),
-                );
-
-                if result.error_ptr.is_null() {
-                    let display = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
-                        result.display_ptr,
-                        result.display_len,
-                    ))
-                    .to_string();
-
-                    free_fn(result);
-                    Ok(display)
-                } else {
-                    let error = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
-                        result.error_ptr,
-                        result.error_len,
-                    ))
-                    .to_string();
-
-                    free_fn(result);
-                    Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(error))
-                }
-            }
-        } else {
-            Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
-                "Handler for type '{}' does not support display rendering",
-                type_name
-            )))
-        }
-    } else {
-        Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+    if !registry.has(type_name) {
+        return Err(PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
             "No handler registered for type: {}",
             type_name
-        )))
+        )));
+    }
+
+    let tile_data: serde_json::Value = serde_json::from_str(resolved_json).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid JSON: {}", e))
+    })?;
+
+    match registry.render_display(type_name, &tile_data, lang, None) {
+        Ok(Some(display)) => Ok(display),
+        Ok(None) => Ok(String::new()),
+        Err(e) => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            e.to_string(),
+        )),
     }
 }
 
@@ -677,7 +641,6 @@ use alizarin_core::{
     resolve_labels as core_resolve_labels,
     snake_to_camel,
     tiles_to_tree,
-    tree_to_tiles_with_options,
     // Graph model access
     GraphModelAccess,
     MergeAccumulator,
@@ -701,20 +664,18 @@ use alizarin_core::{
 /// extension-registered datatypes that have marker resolution support.
 fn build_alias_to_collection_from_graph(
     graph: &AlizarinCoreStaticGraph,
+    ext_registry: Option<&ExtensionTypeRegistry>,
 ) -> HashMap<String, String> {
     use std::collections::HashSet;
 
     let mut resolvable_set: HashSet<&str> = DEFAULT_RESOLVABLE_DATATYPES.iter().copied().collect();
 
-    // Include extension datatypes that have resolve_markers_fn
-    let handlers = TYPE_HANDLERS.read().unwrap();
-    let extension_types: Vec<String> = handlers
-        .iter()
-        .filter(|(_, h)| h.resolve_markers_fn.is_some())
-        .map(|(name, _)| name.clone())
-        .collect();
-    for dt in &extension_types {
-        resolvable_set.insert(dt.as_str());
+    if let Some(registry) = ext_registry {
+        for node in &graph.nodes {
+            if registry.has(&node.datatype) {
+                resolvable_set.insert(&node.datatype);
+            }
+        }
     }
 
     let mut alias_to_collection = HashMap::new();
@@ -947,169 +908,10 @@ fn cards_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
     })
 }
 
-// =============================================================================
-// Shared extension coercion helper
-// =============================================================================
-
-/// Build a node_id → (datatype, config) lookup from a graph's nodes.
-fn build_node_lookup(
-    graph: &AlizarinCoreStaticGraph,
-) -> std::collections::HashMap<String, (String, Option<serde_json::Value>)> {
-    let mut lookup = std::collections::HashMap::new();
-    for node in &graph.nodes {
-        let config_value = if node.config.is_empty() {
-            None
-        } else {
-            Some(serde_json::to_value(&node.config).unwrap_or(serde_json::Value::Null))
-        };
-        lookup.insert(node.nodeid.clone(), (node.datatype.clone(), config_value));
-    }
-    lookup
-}
-
-/// Apply registered extension coercion handlers to a resource's tiles.
+/// Convert nested JSON tree to tiled resource
 ///
-/// Iterates each tile's data, checks for registered extension handlers by datatype,
-/// calls coerce_fn (and optionally resolve_markers_fn), and replaces tile data values.
-///
-/// # Safety
-/// Calls FFI function pointers from registered extension handlers. See safety comments inline.
-fn apply_extension_coercion(
-    resource: &mut AlizarinStaticResource,
-    node_lookup: &std::collections::HashMap<String, (String, Option<serde_json::Value>)>,
-    handlers: &HashMap<String, RegisteredHandler>,
-    core_cache: &Option<Arc<CoreRdmCache>>,
-    strict: bool,
-    tree_index: usize,
-) -> Result<(), String> {
-    if let Some(ref mut tiles) = resource.tiles {
-        for tile in tiles.iter_mut() {
-            let mut new_data = std::collections::HashMap::new();
-            let mut _coercion_errors: Vec<String> = Vec::new();
-
-            for (node_id, value) in tile.data.iter() {
-                if let Some((datatype, config)) = node_lookup.get(node_id) {
-                    if let Some(handler) = handlers.get(datatype) {
-                        let value_json = serde_json::to_string(value)
-                            .map_err(|e| format!("Failed to serialize value: {}", e))?;
-                        let config_json = config
-                            .as_ref()
-                            .map(|c| serde_json::to_string(c).unwrap_or_default())
-                            .unwrap_or_else(|| "null".to_string());
-
-                        // SAFETY: Calling coerce_fn and optionally resolve_markers_fn FFI
-                        // function pointers registered via PyCapsule. All result memory is
-                        // freed via the corresponding free_fn before moving on. cache_ptr
-                        // points to an Arc<CoreRdmCache> kept alive by core_cache for the
-                        // duration of the call. RDM callback fn pointers are safe extern "C"
-                        // functions defined in this crate.
-                        unsafe {
-                            let result = (handler.coerce_fn)(
-                                value_json.as_ptr(),
-                                value_json.len(),
-                                config_json.as_ptr(),
-                                config_json.len(),
-                            );
-
-                            if result.error_ptr.is_null() {
-                                let tile_json = std::str::from_utf8_unchecked(
-                                    std::slice::from_raw_parts(result.json_ptr, result.json_len),
-                                );
-                                let mut coerced_value: serde_json::Value =
-                                    serde_json::from_str(tile_json).unwrap_or(value.clone());
-                                (handler.free_fn)(result);
-
-                                if let (Some(resolve_fn), Some(free_fn), Some(ref cache)) = (
-                                    handler.resolve_markers_fn,
-                                    handler.free_resolve_markers_fn,
-                                    core_cache,
-                                ) {
-                                    let coerced_json =
-                                        serde_json::to_string(&coerced_value).unwrap_or_default();
-                                    let cache_ptr = Arc::as_ptr(cache) as *mut c_void;
-
-                                    let resolve_result = resolve_fn(
-                                        coerced_json.as_ptr(),
-                                        coerced_json.len(),
-                                        config_json.as_ptr(),
-                                        config_json.len(),
-                                        rdm_has_collection,
-                                        rdm_lookup_by_id,
-                                        rdm_lookup_by_label,
-                                        free_concept_json,
-                                        cache_ptr,
-                                    );
-
-                                    if resolve_result.modified && !resolve_result.json_ptr.is_null()
-                                    {
-                                        let resolved_json = std::str::from_utf8_unchecked(
-                                            std::slice::from_raw_parts(
-                                                resolve_result.json_ptr,
-                                                resolve_result.json_len,
-                                            ),
-                                        );
-                                        if let Ok(resolved) = serde_json::from_str(resolved_json) {
-                                            coerced_value = resolved;
-                                        }
-                                        free_fn(resolve_result);
-                                    } else if !resolve_result.error_ptr.is_null() {
-                                        let error = std::str::from_utf8_unchecked(
-                                            std::slice::from_raw_parts(
-                                                resolve_result.error_ptr,
-                                                resolve_result.error_len,
-                                            ),
-                                        )
-                                        .to_string();
-                                        free_fn(resolve_result);
-
-                                        if strict {
-                                            return Err(format!(
-                                                "Tree {}, Node {}: Marker resolution failed: {}",
-                                                tree_index, node_id, error
-                                            ));
-                                        } else {
-                                            _coercion_errors.push(format!(
-                                                "Node {} marker resolution: {}",
-                                                node_id, error
-                                            ));
-                                        }
-                                    } else {
-                                        free_fn(resolve_result);
-                                    }
-                                }
-
-                                new_data.insert(node_id.clone(), coerced_value);
-                            } else {
-                                let error = std::str::from_utf8_unchecked(
-                                    std::slice::from_raw_parts(result.error_ptr, result.error_len),
-                                )
-                                .to_string();
-                                (handler.free_fn)(result);
-
-                                if strict {
-                                    return Err(format!(
-                                        "Tree {}, Node {}: Extension coercion failed: {}",
-                                        tree_index, node_id, error
-                                    ));
-                                } else {
-                                    _coercion_errors.push(format!("Node {}: {}", node_id, error));
-                                    new_data.insert(node_id.clone(), value.clone());
-                                }
-                            }
-                        }
-                    } else {
-                        new_data.insert(node_id.clone(), value.clone());
-                    }
-                } else {
-                    new_data.insert(node_id.clone(), value.clone());
-                }
-            }
-
-            tile.data = new_data;
-        }
-    }
-    Ok(())
-}
+/// Args:
+///     tree_json: Nested JSON tree as string
 
 /// Convert nested JSON tree to tiled resource
 ///
@@ -1144,12 +946,10 @@ fn json_tree_to_tiles(
     id_key: Option<String>,
     scopes: Option<String>,
 ) -> PyResult<PyObject> {
-    // Parse tree from JSON
     let mut tree: serde_json::Value = serde_json::from_str(&tree_json).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse tree: {}", e))
     })?;
 
-    // Parse scopes if provided
     let scopes_value: Option<serde_json::Value> = scopes
         .map(|s| serde_json::from_str(&s))
         .transpose()
@@ -1160,79 +960,73 @@ fn json_tree_to_tiles(
             ))
         })?;
 
-    // Get graph from registry
     let graph = get_registered_graph(&graph_id)?;
 
-    // Resolve labels to UUIDs if an RDM cache is available
-    // Use explicit cache if provided, otherwise try global cache
+    let ext_registry = build_extension_registry();
+    let ext_registry_ref = if ext_registry.is_empty() {
+        None
+    } else {
+        Some(&ext_registry)
+    };
+
     let global_cache = rdm_cache_py::get_global_rdm_cache();
-    let cache_to_use: Option<&rdm_cache_py::RdmCache> = rdm_cache.or(global_cache.as_ref());
+    let core_cache: Option<CoreRdmCache> = rdm_cache
+        .map(|c| c.inner().clone())
+        .or_else(|| global_cache.as_ref().map(|c| c.inner().clone()));
+    let core_cache_arc: Option<Arc<CoreRdmCache>> = core_cache.map(Arc::new);
 
-    if let Some(cache) = cache_to_use {
-        let alias_map = build_alias_to_collection_from_graph(&graph);
-        tree = core_resolve_labels(tree, &alias_map, cache, strict)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.message))?;
+    let mut alias_map = build_alias_to_collection_from_graph(&graph, ext_registry_ref);
+    if from_camel {
+        let camel_entries: Vec<_> = alias_map
+            .iter()
+            .map(|(k, v)| (snake_to_camel(k), v.clone()))
+            .collect();
+        for (k, v) in camel_entries {
+            alias_map.insert(k, v);
+        }
     }
+    let label_lookup = if !alias_map.is_empty() {
+        core_cache_arc
+            .as_ref()
+            .map(|cache| (&alias_map, cache.as_ref()))
+    } else {
+        None
+    };
 
-    // Add resourceinstanceid and graph_id to tree for new API
+    // Add resourceinstanceid (convert_single_tree handles graph_id)
     if let serde_json::Value::Object(ref mut map) = tree {
         map.insert(
             "resourceinstanceid".to_string(),
             serde_json::Value::String(resource_id.clone()),
         );
-        map.insert(
-            "graph_id".to_string(),
-            serde_json::Value::String(graph_id.clone()),
-        );
     }
 
-    // Call shared Rust conversion function with from_camel support
-    // This handles camelCase keys at lookup time, preserving value structures
-    // NOTE: We pass None for extension registry here because extension coercion
-    // (+ marker resolution) is handled separately by apply_extension_coercion below.
-    // Passing the registry here would cause double coercion — the first pass creates
-    // marker objects that the second pass can't re-coerce.
     let id_key_ref = id_key.as_deref();
-    let has_extension_handlers = {
-        let handlers = TYPE_HANDLERS.read().unwrap();
-        !handlers.is_empty()
-    };
-    let mut business_data = tree_to_tiles_with_options(
+    let mut resource = alizarin_core::convert_single_tree(
         &tree,
         &graph,
-        strict,
+        &graph_id,
         id_key_ref,
         from_camel,
+        strict,
         false,
-        has_extension_handlers,
-        None,
+        ext_registry_ref,
+        label_lookup,
+        true,
     )
     .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
-    // Set scopes on all resources if provided
     if let Some(ref scopes_val) = scopes_value {
-        for resource in &mut business_data.business_data.resources {
-            resource.scopes = Some(scopes_val.clone());
-        }
+        resource.scopes = Some(scopes_val.clone());
     }
 
-    // Apply extension coercion via C ABI handlers if any are registered
-    {
-        let handlers = TYPE_HANDLERS.read().unwrap();
-        if !handlers.is_empty() {
-            let node_lookup = build_node_lookup(&graph);
-            let core_cache: Option<Arc<CoreRdmCache>> =
-                rdm_cache_py::get_global_rdm_cache().map(|cache| Arc::new(cache.inner().clone()));
-
-            for resource in &mut business_data.business_data.resources {
-                apply_extension_coercion(resource, &node_lookup, &handlers, &core_cache, strict, 0)
-                    .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
-            }
+    let output = serde_json::json!({
+        "business_data": {
+            "resources": [resource]
         }
-    }
+    });
 
-    // Return full BusinessDataWrapper structure: {business_data: {resources: [...]}}
-    pythonize::pythonize(py, &business_data).map_err(|e| {
+    pythonize::pythonize(py, &output).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
             "Failed to convert result to Python: {}",
             e
@@ -1303,38 +1097,18 @@ fn batch_trees_to_tiles(
     // Get graph from registry
     let graph = get_registered_graph(&graph_id)?;
 
-    // Build node lookup and extension handler state only if extensions are enabled
-    let node_lookup: Option<
-        std::collections::HashMap<String, (String, Option<serde_json::Value>)>,
-    > = if !skip_extensions {
-        Some(build_node_lookup(&graph))
+    let ext_registry = if !skip_extensions {
+        Some(build_extension_registry())
     } else {
         None
     };
 
-    let handlers = if !skip_extensions {
-        Some(TYPE_HANDLERS.read().unwrap())
-    } else {
-        None
-    };
-
-    let core_cache: Option<Arc<CoreRdmCache>> = if !skip_extensions && resolve_markers {
-        rdm_cache_py::get_global_rdm_cache().map(|cache| Arc::new(cache.inner().clone()))
-    } else {
-        None
-    };
-
-    // Build alias→collection map for concept label resolution (same as json_tree_to_tiles)
-    let alias_map = build_alias_to_collection_from_graph(&graph);
-    // Only clone the RDM cache if there are actually resolvable fields in the graph
+    let mut alias_map = build_alias_to_collection_from_graph(&graph, ext_registry.as_ref());
     let label_cache: Option<Arc<CoreRdmCache>> = if alias_map.is_empty() {
         None
     } else {
         rdm_cache_py::get_global_rdm_cache().map(|cache| Arc::new(cache.inner().clone()))
     };
-    // When from_camel is true, trees have camelCase keys but aliases are snake_case.
-    // Add camelCase variants so core_resolve_labels can match either form.
-    let mut alias_map = alias_map;
     if from_camel {
         let camel_entries: Vec<_> = alias_map
             .iter()
@@ -1344,70 +1118,32 @@ fn batch_trees_to_tiles(
             alias_map.insert(k, v);
         }
     }
-
-    let has_extension_handlers = !skip_extensions;
+    let label_lookup = label_cache
+        .as_ref()
+        .map(|cache| (&alias_map, cache.as_ref()));
 
     let results: Vec<Result<serde_json::Value, String>> = trees
         .into_par_iter()
         .enumerate()
-        .map(|(i, mut tree)| {
-            // Resolve concept labels to UUIDs if an RDM cache is available
-            if let Some(ref cache) = label_cache {
-                tree = core_resolve_labels(tree, &alias_map, cache.as_ref(), strict)
-                    .map_err(|e| format!("Tree {}: {}", i, e.message))?;
-            }
-
-            // Add graph_id to tree if not present
-            if let serde_json::Value::Object(ref mut map) = tree {
-                if !map.contains_key("graph_id") {
-                    map.insert(
-                        "graph_id".to_string(),
-                        serde_json::Value::String(graph_id.clone()),
-                    );
-                }
-            }
-
-            // Get id_key for this tree (if id_keys array provided)
+        .map(|(i, tree)| {
             let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
 
-            // NOTE: Pass None for extension registry — extension coercion + marker
-            // resolution is handled by apply_extension_coercion below. Passing the
-            // registry here would cause double coercion.
-            let business_data = tree_to_tiles_with_options(
+            let mut resource = alizarin_core::convert_single_tree(
                 &tree,
                 &graph,
-                strict,
+                &graph_id,
                 id_key_ref,
                 from_camel,
+                strict,
                 random_ids,
-                has_extension_handlers,
-                None,
+                ext_registry.as_ref(),
+                label_lookup,
+                resolve_markers,
             )
             .map_err(|e| format!("Tree {}: {}", i, e))?;
 
-            // Extract first resource
-            let mut resource = business_data
-                .business_data
-                .resources
-                .into_iter()
-                .next()
-                .ok_or_else(|| format!("Tree {}: No resources returned", i))?;
-
-            // Set scopes if provided
             if let Some(ref scopes_val) = scopes_value {
                 resource.scopes = Some(scopes_val.clone());
-            }
-
-            // Apply extension coercion (unless skipped)
-            if let (Some(ref node_lookup), Some(ref handlers)) = (&node_lookup, &handlers) {
-                apply_extension_coercion(
-                    &mut resource,
-                    node_lookup,
-                    handlers,
-                    &core_cache,
-                    strict,
-                    i,
-                )?;
             }
 
             serde_json::to_value(&resource)
@@ -1799,6 +1535,7 @@ struct TreeToTilesIterator {
     scopes: Option<serde_json::Value>,
     random_ids: bool,
     index: usize,
+    ext_registry: Option<ExtensionTypeRegistry>,
 }
 
 #[pymethods]
@@ -1839,6 +1576,13 @@ impl TreeToTilesIterator {
             }
         }
 
+        let ext_registry = build_extension_registry();
+        let ext_registry = if ext_registry.is_empty() {
+            None
+        } else {
+            Some(ext_registry)
+        };
+
         Ok(TreeToTilesIterator {
             trees: tree_strings,
             graph,
@@ -1849,6 +1593,7 @@ impl TreeToTilesIterator {
             scopes: scopes_value,
             random_ids,
             index: 0,
+            ext_registry,
         })
     }
 
@@ -1866,9 +1611,7 @@ impl TreeToTilesIterator {
         let i = self.index;
         self.index += 1;
 
-        // Parse tree
-        let tree_result: Result<serde_json::Value, _> = serde_json::from_str(tree_str);
-        let mut tree = match tree_result {
+        let tree: serde_json::Value = match serde_json::from_str(tree_str) {
             Ok(t) => t,
             Err(e) => {
                 let output = serde_json::json!({
@@ -1882,87 +1625,27 @@ impl TreeToTilesIterator {
             }
         };
 
-        // Add graph_id to tree if not present
-        if let serde_json::Value::Object(ref mut map) = tree {
-            if !map.contains_key("graph_id") {
-                map.insert(
-                    "graph_id".to_string(),
-                    serde_json::Value::String(self.graph_id.clone()),
-                );
-            }
-        }
-
-        // Convert tree to tiles with from_camel support
-        // This handles camelCase keys at lookup time, preserving value structures
-        // NOTE: Pass None for extension registry — extension coercion + marker
-        // resolution is handled by apply_extension_coercion below.
-        let has_extension_handlers = {
-            let handlers = TYPE_HANDLERS.read().unwrap();
-            !handlers.is_empty()
-        };
-        let result = tree_to_tiles_with_options(
+        let output = match alizarin_core::convert_single_tree::<CoreRdmCache>(
             &tree,
             &self.graph,
-            self.strict,
+            &self.graph_id,
             id_key,
             self.from_camel,
+            self.strict,
             self.random_ids,
-            has_extension_handlers,
+            self.ext_registry.as_ref(),
             None,
-        );
-
-        let output = match result {
-            Ok(business_data) => {
-                if let Some(mut resource) = business_data.business_data.resources.into_iter().next()
-                {
-                    // Set scopes if provided
-                    if let Some(ref scopes_val) = self.scopes {
-                        resource.scopes = Some(scopes_val.clone());
-                    }
-
-                    // Apply extension coercion via C ABI handlers if registered
-                    let ext_error: Option<String> = {
-                        let handlers = TYPE_HANDLERS.read().unwrap();
-                        if !handlers.is_empty() {
-                            let node_lookup = build_node_lookup(&self.graph);
-                            let core_cache: Option<Arc<CoreRdmCache>> =
-                                rdm_cache_py::get_global_rdm_cache()
-                                    .map(|cache| Arc::new(cache.inner().clone()));
-
-                            apply_extension_coercion(
-                                &mut resource,
-                                &node_lookup,
-                                &handlers,
-                                &core_cache,
-                                self.strict,
-                                i,
-                            )
-                            .err()
-                        } else {
-                            None
-                        }
-                    };
-
-                    if let Some(e) = ext_error {
-                        serde_json::json!({
-                            "resource": null,
-                            "error": e,
-                            "index": i
-                        })
-                    } else {
-                        serde_json::json!({
-                            "resource": resource,
-                            "error": null,
-                            "index": i
-                        })
-                    }
-                } else {
-                    serde_json::json!({
-                        "resource": null,
-                        "error": format!("Tree {}: No resources returned", i),
-                        "index": i
-                    })
+            true,
+        ) {
+            Ok(mut resource) => {
+                if let Some(ref scopes_val) = self.scopes {
+                    resource.scopes = Some(scopes_val.clone());
                 }
+                serde_json::json!({
+                    "resource": resource,
+                    "error": null,
+                    "index": i
+                })
             }
             Err(e) => {
                 serde_json::json!({
@@ -2388,7 +2071,13 @@ fn resolve_labels_in_tree(
     let cache_to_use: Option<&rdm_cache_py::RdmCache> = rdm_cache.or(global_cache.as_ref());
 
     let resolved_tree = if let Some(cache) = cache_to_use {
-        let alias_map = build_alias_to_collection_from_graph(&graph);
+        let ext_registry = build_extension_registry();
+        let ext_registry_ref = if ext_registry.is_empty() {
+            None
+        } else {
+            Some(&ext_registry)
+        };
+        let alias_map = build_alias_to_collection_from_graph(&graph, ext_registry_ref);
         core_resolve_labels(tree, &alias_map, cache, strict)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.message))?
     } else {

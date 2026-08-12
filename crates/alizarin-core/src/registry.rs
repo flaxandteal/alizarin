@@ -14,6 +14,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
+use crate::extension_type_registry::ExtensionTypeRegistry;
 use crate::permissions::PermissionRule;
 use crate::rdm_cache::RdmCache;
 use crate::skos::{parse_skos_to_collections, SkosCollection};
@@ -62,6 +63,13 @@ lazy_static::lazy_static! {
     /// wrappers can inherit the model's permission state at construction time.
     static ref MODEL_PERMISSIONS_REGISTRY: RwLock<HashMap<String, ModelPermissions>> =
         RwLock::new(HashMap::new());
+
+    /// Global extension type registry.
+    /// Set by FFI targets (Python, WASM, NAPI) after registering extension handlers.
+    /// Read by extension crates (e.g. alizarin-pg) that need extension coercion
+    /// without depending on a specific FFI target.
+    static ref GLOBAL_EXTENSION_REGISTRY: RwLock<Option<ExtensionTypeRegistry>> =
+        RwLock::new(None);
 }
 
 /// A dynamically registered widget definition.
@@ -495,6 +503,41 @@ pub fn add_to_global_rdm_cache_from_skos_xml(
 ) -> Result<Vec<String>, String> {
     let collections = parse_skos_to_collections(xml_content, base_uri)?;
     Ok(add_to_global_rdm_cache_from_skos(&collections))
+}
+
+// ============================================================================
+// Global Extension Type Registry
+// ============================================================================
+
+/// Replace the global extension type registry.
+pub fn set_global_extension_registry(registry: ExtensionTypeRegistry) {
+    if let Ok(mut guard) = GLOBAL_EXTENSION_REGISTRY.write() {
+        *guard = Some(registry);
+    }
+}
+
+/// Get a reference-counted clone of the global extension type registry, if set.
+pub fn get_global_extension_registry() -> Option<ExtensionTypeRegistry> {
+    GLOBAL_EXTENSION_REGISTRY
+        .read()
+        .ok()
+        .and_then(|guard| guard.clone())
+}
+
+/// Check if a global extension type registry has been set.
+pub fn has_global_extension_registry() -> bool {
+    GLOBAL_EXTENSION_REGISTRY
+        .read()
+        .ok()
+        .map(|guard| guard.is_some())
+        .unwrap_or(false)
+}
+
+/// Clear the global extension type registry.
+pub fn clear_global_extension_registry() {
+    if let Ok(mut guard) = GLOBAL_EXTENSION_REGISTRY.write() {
+        *guard = None;
+    }
 }
 
 #[cfg(test)]

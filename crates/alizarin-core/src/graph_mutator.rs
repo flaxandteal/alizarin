@@ -3393,13 +3393,15 @@ fn apply_rename_graph(
 ) -> Result<(), MutationError> {
     // Update name if provided
     if let Some(name_map) = params.name {
-        let new_name = StaticTranslatableString::from_translations(name_map, None);
+        let default_lang = graph.name.lang.clone();
+        let new_name =
+            StaticTranslatableString::from_translations(name_map, Some(default_lang.clone()));
 
         // Update graph name
         graph.name = new_name.clone();
 
         // Also update root node name to match (root node name should equal graph name)
-        let root_display_name = new_name.to_string_default();
+        let root_display_name = new_name.get(&default_lang);
         graph.root.name = root_display_name.clone();
 
         // Generate slug from name and update graph slug and root alias
@@ -5068,10 +5070,10 @@ impl GraphInstruction {
     /// Resolve a subgraph from either `params.subgraph` (inline JSON) or
     /// `object` (graph ID looked up from the global registry).
     fn resolve_subgraph(&self) -> Result<StaticGraph, MutationError> {
-        if let Some(subgraph_value) = self.params.get("subgraph") {
+        let mut subgraph = if let Some(subgraph_value) = self.params.get("subgraph") {
             serde_json::from_value(subgraph_value.clone()).map_err(|e| {
                 MutationError::InvalidSubgraph(format!("Failed to parse subgraph: {}", e))
-            })
+            })?
         } else if !self.object.is_empty() {
             let graph = crate::registry::get_graph(&self.object).ok_or_else(|| {
                 MutationError::InvalidSubgraph(format!(
@@ -5079,12 +5081,18 @@ impl GraphInstruction {
                     self.object
                 ))
             })?;
-            Ok((*graph).clone())
+            (*graph).clone()
         } else {
-            Err(MutationError::InvalidSubgraph(
+            return Err(MutationError::InvalidSubgraph(
                 "add_subgraph/update_subgraph requires either 'subgraph' param or a branch graph ID as object".to_string(),
-            ))
+            ));
+        };
+
+        if subgraph.publication.is_none() {
+            stamp_publication(&mut subgraph);
         }
+
+        Ok(subgraph)
     }
 
     /// Helper to get a translatable map (language -> value) from params
@@ -5416,16 +5424,33 @@ impl GraphInstruction {
                 },
             )),
             "rename_graph" => {
-                // Parse name: either from params.name (as map) or object (as simple en string)
-                let name = self.get_translatable_map("name").or_else(|| {
-                    if self.object.is_empty() {
-                        None
-                    } else {
-                        let mut map = HashMap::new();
-                        map.insert("en".to_string(), self.object.clone());
-                        Some(map)
-                    }
-                });
+                // Parse name: from params.name (as i18n map or plain string) or object (as simple string).
+                // Plain strings are keyed by params.language (defaulting to "en"); apply_rename_graph
+                // resolves the final language from the graph itself.
+                let lang = self.get_str("language").unwrap_or_else(|| "en".to_string());
+                let name = self
+                    .get_translatable_map("name")
+                    .or_else(|| {
+                        // params.name may be a plain string (e.g. from a CSV column)
+                        self.get_str("name").and_then(|s| {
+                            if s.is_empty() {
+                                None
+                            } else {
+                                let mut map = HashMap::new();
+                                map.insert(lang.clone(), s);
+                                Some(map)
+                            }
+                        })
+                    })
+                    .or_else(|| {
+                        if self.object.is_empty() {
+                            None
+                        } else {
+                            let mut map = HashMap::new();
+                            map.insert(lang.clone(), self.object.clone());
+                            Some(map)
+                        }
+                    });
                 Ok(GraphMutation::RenameGraph(RenameGraphParams {
                     name,
                     description: self.get_translatable_map("description"),

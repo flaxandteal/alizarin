@@ -6,15 +6,15 @@ on:
     paths:
       - 'crates/alizarin-python/**'
       - 'crates/alizarin-core/**'
-      - 'ext/python/**'
       - 'ext/*/python/**'
+      - 'ext/*/core/**'
       - '.github/workflows/python.yml'
   pull_request:
     paths:
       - 'crates/alizarin-python/**'
       - 'crates/alizarin-core/**'
-      - 'ext/python/**'
       - 'ext/*/python/**'
+      - 'ext/*/core/**'
   workflow_dispatch:
 
 env:
@@ -128,7 +128,6 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            ext/python/*/target/
             ext/*/python/target/
           key: ${{ runner.os }}-cargo-extensions-${{ hashFiles('**/Cargo.lock') }}
 
@@ -155,7 +154,7 @@ jobs:
       - name: Build and test all Python extensions (Unix)
         if: matrix.os != 'windows-latest'
         run: |
-          for ext_dir in ext/python/*/ ext/*/python/; do
+          for ext_dir in ext/*/python/; do
             [ -d "$ext_dir" ] || continue
             ext_name=$(basename "$(dirname "$ext_dir")")-$(basename "$ext_dir")
             echo "=== Building $ext_dir ==="
@@ -177,7 +176,6 @@ jobs:
         shell: pwsh
         run: |
           $ext_dirs = @()
-          $ext_dirs += Get-ChildItem -Path ext/python -Directory -ErrorAction SilentlyContinue
           foreach ($parent in Get-ChildItem -Path ext -Directory -ErrorAction SilentlyContinue) {
             $pydir = Join-Path $parent.FullName "python"
             if (Test-Path $pydir) { $ext_dirs += Get-Item $pydir }
@@ -210,7 +208,6 @@ jobs:
         with:
           name: python-extensions-wheels-${{ matrix.os }}-py${{ matrix.python-version }}
           path: |
-            ext/python/*/dist/*.whl
             ext/*/python/dist/*.whl
 
   # Source distribution (for PyPI)

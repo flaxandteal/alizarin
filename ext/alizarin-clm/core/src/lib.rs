@@ -3,8 +3,8 @@
 //! This crate provides the core types and `ExtensionTypeHandler` implementation
 //! for the "reference" datatype. It is used by:
 //! - `alizarin-napi` (Node.js bindings)
-//! - `ext/python/alizarin-clm` (Python extension, via C ABI wrappers)
-//! - `ext/js/@alizarin/clm` (WASM/JS extension, could replace TS reimplementation)
+//! - `ext/alizarin-clm/python` (Python extension, via C ABI wrappers)
+//! - `ext/alizarin-clm/js` (JS extension)
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

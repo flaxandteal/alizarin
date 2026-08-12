@@ -78,23 +78,12 @@ jobs:
       - name: Build TypeScript/JavaScript bundle
         run: npm run build
 
-      # Build all JS extensions
+      # Build all JS extensions (ext/*/js/)
       - name: Build JS extensions and create tarballs
         run: |
-          # Extensions under ext/js/@alizarin/
-          for ext_dir in ext/js/@alizarin/*/; do
-            ext_name=$(basename "$ext_dir")
-            echo "=== Building @alizarin/$ext_name ==="
-            cd "$ext_dir"
-            npm install
-            npm run build
-            npm pack
-            mv alizarin-*.tgz ../../../../
-            cd - > /dev/null
-          done
-          # Extensions with own structure (e.g. ext/filelist/js/)
-          for ext_dir in ext/filelist/js; do
-            ext_name="filelist"
+          for ext_dir in ext/*/js/; do
+            [ -f "$ext_dir/package.json" ] || continue
+            ext_name=$(basename "$(dirname "$ext_dir")")
             echo "=== Building @alizarin/$ext_name ==="
             cd "$ext_dir"
             npm install
@@ -113,8 +102,9 @@ jobs:
           ls -lh pkg/
           echo ""
           echo "Checking JS extension dist directories:"
-          for ext_dir in ext/js/@alizarin/*/; do
-            ext_name=$(basename "$ext_dir")
+          for ext_dir in ext/*/js/; do
+            [ -f "$ext_dir/package.json" ] || continue
+            ext_name=$(basename "$(dirname "$ext_dir")")
             echo "  @alizarin/$ext_name:"
             ls -lh "$ext_dir/dist/" 2>/dev/null || echo "    (no dist)"
           done
@@ -235,23 +225,15 @@ jobs:
           # Publish main alizarin package
           npm publish --provenance --access public $TAG
 
-          # Publish @alizarin/* extensions under ext/js/
-          for ext_dir in ext/js/@alizarin/*/; do
+          # Publish @alizarin/* JS extensions (ext/*/js/)
+          for ext_dir in ext/*/js/; do
             [ -d "$ext_dir/dist" ] || continue
-            ext_name=$(basename "$ext_dir")
+            ext_name=$(basename "$(dirname "$ext_dir")")
             echo "=== Publishing @alizarin/$ext_name ==="
             cd "$ext_dir"
             npm publish --provenance --access public $TAG
             cd - > /dev/null
           done
-
-          # Publish @alizarin/filelist from ext/filelist/js/
-          if [ -d "ext/filelist/js/dist" ]; then
-            echo "=== Publishing @alizarin/filelist ==="
-            cd ext/filelist/js
-            npm publish --provenance --access public $TAG
-            cd - > /dev/null
-          fi
 
       - name: Publish alizarin-core to crates.io
         env:

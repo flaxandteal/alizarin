@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 alizarin-core = { path = "../alizarin-core", features = ["multi-threaded"] }
-alizarin-clm-core = { path = "../alizarin-clm-core" }
+alizarin-clm-core = { path = "../../ext/alizarin-clm/core" }
 alizarin-filelist-core = { path = "../../ext/filelist/core" }
 napi = { version = "2", features = ["napi6", "serde-json"] }
 napi-derive = "2"

@@ -228,6 +228,7 @@ pub trait ExtensionTypeHandler: Send + Sync {
 /// Registry for extension type handlers.
 ///
 /// Stores handlers by datatype name. Thread-safe for concurrent access.
+#[derive(Clone)]
 pub struct ExtensionTypeRegistry {
     handlers: HashMap<String, Arc<dyn ExtensionTypeHandler>>,
 }

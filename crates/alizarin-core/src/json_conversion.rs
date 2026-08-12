@@ -1258,6 +1258,110 @@ fn create_pseudo_value_from_leaf(
     Ok((pv, tile))
 }
 
+/// Resolve extension markers in a resource's tiles after coercion.
+///
+/// Walks each tile's data, looks up the node's datatype in the graph, and if the
+/// registry has a `resolve_markers` handler for that datatype, calls it to replace
+/// unresolved markers with final values.
+pub fn resolve_extension_markers(
+    resource: &mut StaticResource,
+    graph: &StaticGraph,
+    registry: &ExtensionTypeRegistry,
+    language: &str,
+) -> Result<(), String> {
+    let node_map: HashMap<&str, &str> = graph
+        .nodes
+        .iter()
+        .map(|n| (n.nodeid.as_str(), n.datatype.as_str()))
+        .collect();
+
+    if let Some(ref mut tiles) = resource.tiles {
+        for tile in tiles.iter_mut() {
+            let updates: Vec<(String, Value)> = tile
+                .data
+                .iter()
+                .filter_map(|(node_id, value)| {
+                    let datatype = *node_map.get(node_id.as_str())?;
+                    if !registry.has(datatype) {
+                        return None;
+                    }
+                    match registry.resolve_markers(datatype, value, language) {
+                        Ok(resolved) if resolved != *value => Some((node_id.clone(), resolved)),
+                        _ => None,
+                    }
+                })
+                .collect();
+
+            for (node_id, resolved) in updates {
+                tile.data.insert(node_id, resolved);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Convert a single JSON tree to a `StaticResource`, with label resolution and
+/// marker resolution handled inline.
+///
+/// This is the common pipeline shared by Python and WASM batch conversion:
+/// 1. Resolve concept labels to UUIDs (if alias_map + lookup provided)
+/// 2. Ensure graph_id is present in the tree
+/// 3. Call `tree_to_tiles_with_options` (with optional extension registry for inline coercion)
+/// 4. Resolve extension markers (if registry + resolve_markers flag)
+#[allow(clippy::too_many_arguments)]
+pub fn convert_single_tree<L: crate::label_resolution::ConceptLookup>(
+    tree: &Value,
+    graph: &StaticGraph,
+    graph_id: &str,
+    id_key: Option<&str>,
+    from_camel: bool,
+    strict: bool,
+    random_ids: bool,
+    extension_registry: Option<&ExtensionTypeRegistry>,
+    label_lookup: Option<(&HashMap<String, String>, &L)>,
+    resolve_markers: bool,
+) -> Result<StaticResource, String> {
+    let mut tree = tree.clone();
+
+    if let Some((alias_map, lookup)) = label_lookup {
+        tree = crate::resolve_labels(tree, alias_map, lookup, strict).map_err(|e| e.message)?;
+    }
+
+    if let Value::Object(ref mut map) = tree {
+        if !map.contains_key("graph_id") {
+            map.insert("graph_id".to_string(), Value::String(graph_id.to_string()));
+        }
+    }
+
+    let has_extensions = extension_registry.is_some();
+    let business_data = tree_to_tiles_with_options(
+        &tree,
+        graph,
+        strict,
+        id_key,
+        from_camel,
+        random_ids,
+        has_extensions,
+        extension_registry,
+    )?;
+
+    let mut resource = business_data
+        .business_data
+        .resources
+        .into_iter()
+        .next()
+        .ok_or_else(|| "No resources returned".to_string())?;
+
+    if resolve_markers {
+        if let Some(registry) = extension_registry {
+            let language = crate::get_current_language();
+            resolve_extension_markers(&mut resource, graph, registry, &language)?;
+        }
+    }
+
+    Ok(resource)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

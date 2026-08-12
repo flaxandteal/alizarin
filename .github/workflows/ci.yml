@@ -35,6 +35,51 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --workspace --exclude alizarin-python -- -D warnings
 
+  # Extension crate tests (excluded from workspace)
+  ext-tests:
+    name: Extension Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-ext-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Test alizarin-clm-core
+        working-directory: ext/alizarin-clm/core
+        run: cargo test
+
+      - name: Check alizarin-clm (python)
+        working-directory: ext/alizarin-clm/python
+        run: cargo test
+
+      - name: Test alizarin-filelist-core
+        working-directory: ext/filelist/core
+        run: cargo test
+
+      - name: Check alizarin-filelist (python)
+        working-directory: ext/filelist/python
+        run: cargo check
+
+      - name: Test alizarin-pg-core
+        working-directory: ext/alizarin-pg/core
+        run: cargo test
+
+      - name: Check alizarin-pg (python)
+        working-directory: ext/alizarin-pg/python
+        run: cargo check
+
   # Python linting
   python-lint:
     name: Python Lint
