@@ -68,9 +68,16 @@ jobs:
 
       # Build WASM for JS extensions that have their own Rust crates
       # Must happen before npm run build, as the full bundle inlines extension WASM
-      - name: Build filelist WASM
-        working-directory: ext/filelist/wasm
-        run: wasm-pack build --target web --release
+      - name: Build extension WASM crates
+        run: |
+          for wasm_dir in ext/*/wasm/; do
+            [ -f "$wasm_dir/Cargo.toml" ] || continue
+            ext_name=$(basename "$(dirname "$wasm_dir")")
+            echo "=== Building $ext_name WASM ==="
+            cd "$wasm_dir"
+            wasm-pack build --target web --release
+            cd - > /dev/null
+          done
 
       - name: Install Node dependencies
         run: npm ci

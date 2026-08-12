@@ -6,4 +6,4 @@ export * from './main';
 
 // Side-effect imports: these register custom datatypes and display serializers
 import '../ext/filelist/js/src/main';
-import '../ext/js/@alizarin/clm/src/main';
+import '../ext/alizarin-clm/js/src/main';

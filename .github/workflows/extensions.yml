@@ -55,10 +55,16 @@ jobs:
         working-directory: crates/alizarin-wasm
         run: wasm-pack build --target web --out-dir ../../pkg --out-name alizarin --release
 
-      # Build filelist WASM (needed by @alizarin/filelist JS extension)
-      - name: Build filelist WASM
-        working-directory: ext/filelist/wasm
-        run: wasm-pack build --target web --release
+      - name: Build extension WASM crates
+        run: |
+          for wasm_dir in ext/*/wasm/; do
+            [ -f "$wasm_dir/Cargo.toml" ] || continue
+            ext_name=$(basename "$(dirname "$wasm_dir")")
+            echo "=== Building $ext_name WASM ==="
+            cd "$wasm_dir"
+            wasm-pack build --target web --release
+            cd - > /dev/null
+          done
 
       - name: Install root dependencies
         run: npm ci
