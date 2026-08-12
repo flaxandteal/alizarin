@@ -1,0 +1,22 @@
+[package]
+name = "alizarin-pg"
+version = "2.0.0-alpha.125"
+edition = "2021"
+description = "PostgreSQL COPY format extension for Alizarin"
+
+[lib]
+name = "_rust"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["pyo3-ext"]
+pyo3-ext = ["pyo3"]
+
+[dependencies]
+pyo3 = { version = "0.21", features = ["extension-module", "abi3-py39"], optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rayon = "1.10"
+alizarin-core = { path = "../../../crates/alizarin-core" }
+alizarin-pg-core = { path = "../core" }
+pythonize = "0.21"
