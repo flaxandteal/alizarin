@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use super::card_index::CardIndex;
 use super::cards::{StaticCard, StaticCardsXNodesXWidgets, StaticFunctionsXGraphs};
 use super::descriptors::{DescriptorConfig, StaticResourceDescriptors, DESCRIPTOR_FUNCTION_ID};
+use super::graph_lookup::GraphLookup;
 use super::nodes::{StaticEdge, StaticNode, StaticNodegroup};
 use super::tile::StaticTile;
 use super::translatable::StaticTranslatableString;
@@ -949,6 +951,100 @@ impl StaticGraph {
                 .map(|s| s.to_string()),
             _ => None,
         }
+    }
+}
+
+// =========================================================================
+// GraphLookup trait implementation — pure delegation
+// =========================================================================
+
+impl GraphLookup for StaticGraph {
+    fn graph_id(&self) -> &str {
+        StaticGraph::graph_id(self)
+    }
+
+    fn display_name(&self) -> String {
+        StaticGraph::display_name(self)
+    }
+
+    fn get_model_class_name(&self) -> Option<String> {
+        StaticGraph::get_model_class_name(self)
+    }
+
+    fn name(&self) -> &StaticTranslatableString {
+        &self.name
+    }
+
+    fn get_root(&self) -> &StaticNode {
+        StaticGraph::get_root(self)
+    }
+
+    fn get_node_by_id(&self, id: &str) -> Option<&StaticNode> {
+        StaticGraph::get_node_by_id(self, id)
+    }
+
+    fn get_node_by_alias(&self, alias: &str) -> Option<&StaticNode> {
+        StaticGraph::get_node_by_alias(self, alias)
+    }
+
+    fn find_node_by_alias(&self, alias: &str) -> Option<&StaticNode> {
+        StaticGraph::find_node_by_alias(self, alias)
+    }
+
+    fn get_node_arc_by_alias(&self, alias: &str) -> Option<Arc<StaticNode>> {
+        StaticGraph::get_node_arc_by_alias(self, alias)
+    }
+
+    fn nodes_by_alias_arc(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
+        StaticGraph::nodes_by_alias_arc(self)
+    }
+
+    fn get_nodegroup_by_id(&self, nodegroup_id: &str) -> Option<&StaticNodegroup> {
+        StaticGraph::get_nodegroup_by_id(self, nodegroup_id)
+    }
+
+    fn get_nodes_in_nodegroup(&self, nodegroup_id: &str) -> Vec<&StaticNode> {
+        StaticGraph::get_nodes_in_nodegroup(self, nodegroup_id)
+    }
+
+    fn edges_map(&self) -> Option<&HashMap<String, Vec<String>>> {
+        StaticGraph::edges_map(self)
+    }
+
+    fn get_child_ids(&self, node_id: &str) -> Option<&Vec<String>> {
+        StaticGraph::get_child_ids(self, node_id)
+    }
+
+    fn find_card_by_nodegroup(&self, nodegroup_id: &str) -> Option<&StaticCard> {
+        StaticGraph::find_card_by_nodegroup(self, nodegroup_id)
+    }
+
+    fn cards_slice(&self) -> &[StaticCard] {
+        StaticGraph::cards_slice(self)
+    }
+
+    fn card_index(&self) -> Option<&CardIndex> {
+        StaticGraph::card_index(self)
+    }
+
+    fn cards_x_nodes_x_widgets_slice(&self) -> &[StaticCardsXNodesXWidgets] {
+        StaticGraph::cards_x_nodes_x_widgets_slice(self)
+    }
+
+    fn nodes_slice(&self) -> &[StaticNode] {
+        StaticGraph::nodes_slice(self)
+    }
+
+    fn nodegroups_slice(&self) -> &[StaticNodegroup] {
+        StaticGraph::nodegroups_slice(self)
+    }
+
+    fn edges_slice(&self) -> &[StaticEdge] {
+        StaticGraph::edges_slice(self)
+    }
+
+    fn nodes_by_nodegroup(&self) -> Option<&HashMap<String, Vec<usize>>> {
+        StaticGraph::nodes_by_nodegroup(self)
     }
 }
 

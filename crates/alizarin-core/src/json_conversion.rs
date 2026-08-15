@@ -14,6 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::extension_type_registry::ExtensionTypeRegistry;
+use crate::graph::GraphLookup;
 use crate::graph::{canonical_tile_id, StaticGraph};
 use crate::graph::{StaticResource, StaticResourceMetadata};
 use crate::graph_mutator::generate_uuid_v5;
@@ -81,7 +82,7 @@ pub fn create_static_resource(
 /// - Output: Array of nested JSON tree objects `[{...}, {...}]`
 ///
 /// Each resource tree uses node aliases as keys.
-pub fn tiles_to_tree(input: &Value, graph: &StaticGraph) -> Result<Value, String> {
+pub fn tiles_to_tree(input: &Value, graph: &impl GraphLookup) -> Result<Value, String> {
     let resources = extract_resources(input)?;
 
     let mut tree_resources = Vec::new();
@@ -103,7 +104,7 @@ pub fn tiles_to_tree(input: &Value, graph: &StaticGraph) -> Result<Value, String
 pub fn resource_tiles_to_tree(
     tiles: &[StaticTile],
     metadata: &StaticResourceMetadata,
-    graph: &StaticGraph,
+    graph: &impl GraphLookup,
 ) -> Result<Value, String> {
     let nodes_by_alias = graph
         .nodes_by_alias_arc()
@@ -186,7 +187,7 @@ fn attach_tree_metadata(tree: &mut Value, metadata: &StaticResourceMetadata) {
 pub fn resource_tiles_to_tree_with_context(
     tiles: &[StaticTile],
     metadata: &StaticResourceMetadata,
-    graph: &StaticGraph,
+    graph: &impl GraphLookup,
     options: &crate::type_serialization::SerializationOptions,
     ctx: &crate::type_serialization::SerializationContext,
 ) -> Result<Value, String> {
@@ -282,7 +283,7 @@ pub fn build_tree_from_tiles(
         lastmodified: None,
     };
 
-    resource_tiles_to_tree(&tiles, &metadata, &graph)
+    resource_tiles_to_tree(&tiles, &metadata, &*graph)
 }
 
 /// Extract resources from input (handles both wrapper format and single resource)
@@ -317,7 +318,7 @@ pub(crate) fn extract_resources(input: &Value) -> Result<Vec<StaticResource>, St
 pub(crate) fn build_pseudo_cache_from_tiles(
     tiles: &[StaticTile],
     nodes_by_alias: &HashMap<String, Arc<StaticNode>>,
-    graph: &StaticGraph,
+    graph: &impl GraphLookup,
     edges: &HashMap<String, Vec<String>>,
 ) -> HashMap<String, PseudoListCore> {
     use std::collections::HashSet;
@@ -849,7 +850,7 @@ fn build_pseudo_values_from_json(
     json_obj: &Map<String, Value>,
     current_node: &Arc<StaticNode>,
     nodes_by_alias: &HashMap<String, Arc<StaticNode>>,
-    graph: &StaticGraph,
+    graph: &impl GraphLookup,
     edges: &HashMap<String, Vec<String>>,
     resource_id: &str,
     parent_tile: Option<Arc<StaticTile>>,
@@ -1265,12 +1266,12 @@ fn create_pseudo_value_from_leaf(
 /// unresolved markers with final values.
 pub fn resolve_extension_markers(
     resource: &mut StaticResource,
-    graph: &StaticGraph,
+    graph: &impl GraphLookup,
     registry: &ExtensionTypeRegistry,
     language: &str,
 ) -> Result<(), String> {
     let node_map: HashMap<&str, &str> = graph
-        .nodes
+        .nodes_slice()
         .iter()
         .map(|n| (n.nodeid.as_str(), n.datatype.as_str()))
         .collect();

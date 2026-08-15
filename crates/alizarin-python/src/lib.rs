@@ -768,7 +768,7 @@ fn tiles_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
     };
 
     // Call shared Rust conversion function (returns array)
-    let json_tree_array = tiles_to_tree(&input_json, &graph)
+    let json_tree_array = tiles_to_tree(&input_json, &*graph)
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
     // Extract first element (single resource case)
@@ -1739,8 +1739,8 @@ fn batch_tiles_to_trees(py: Python, resources_json: String, strict: bool) -> PyR
             };
 
             // Call tiles_to_tree (returns array)
-            let json_tree_array =
-                tiles_to_tree(&input_json, &graph).map_err(|e| format!("Resource {}: {}", i, e))?;
+            let json_tree_array = tiles_to_tree(&input_json, &*graph)
+                .map_err(|e| format!("Resource {}: {}", i, e))?;
 
             // Extract first element and add metadata
             let mut tree = json_tree_array

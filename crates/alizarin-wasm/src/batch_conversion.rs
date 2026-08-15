@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use crate::graph::StaticGraph;
 use crate::json_conversion::create_static_resource;
 use alizarin_core::cards_to_tree as core_cards_to_tree;
@@ -136,7 +138,7 @@ pub fn tiles_to_tree_enhanced(
     };
 
     // Call tiles_to_tree
-    match core_tiles_to_tree(&input_json, graph) {
+    match core_tiles_to_tree(&input_json, graph.deref()) {
         Ok(json_tree_array) => {
             // Extract first element and add metadata
             let mut tree = json_tree_array
@@ -200,7 +202,7 @@ pub fn cards_to_tree(resource_json: &str, graph: &StaticGraph) -> Result<JsValue
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize resource: {}", e)))?
     };
 
-    match core_cards_to_tree(&input_json, graph) {
+    match core_cards_to_tree(&input_json, graph.deref()) {
         Ok(json_array) => {
             let mut tree = json_array
                 .as_array()
@@ -394,7 +396,7 @@ pub fn batch_tiles_to_trees(
         };
 
         // Call tiles_to_tree (returns array)
-        match core_tiles_to_tree(&input_json, graph) {
+        match core_tiles_to_tree(&input_json, graph.deref()) {
             Ok(json_tree_array) => {
                 // Extract first element and add metadata
                 let mut tree = json_tree_array

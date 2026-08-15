@@ -263,8 +263,8 @@ impl NodeConfigManager {
     }
 
     /// Build configs from a graph
-    pub fn build_from_graph(&mut self, graph: &StaticGraph) {
-        for node in graph.nodes.iter() {
+    pub fn build_from_graph(&mut self, graph: &impl crate::GraphLookup) {
+        for node in graph.nodes_slice().iter() {
             if let Some(config) = self.build_config_for_node(&node.datatype, &node.config) {
                 self.configs.insert(node.nodeid.clone(), config);
             }

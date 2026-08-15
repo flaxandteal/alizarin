@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use crate::graph::StaticGraph;
 /// Hierarchical tree conversion for resources - WASM wrapper
 ///
@@ -16,7 +18,7 @@ pub use alizarin_core::json_conversion::{create_static_resource, BusinessData};
 /// Output: Array of nested JSON tree objects `[{...}, {...}]`
 pub fn tiles_to_tree(input: &Value, graph: &StaticGraph) -> Result<Value, String> {
     // StaticGraph Derefs to CoreStaticGraph
-    alizarin_core::tiles_to_tree(input, graph)
+    alizarin_core::tiles_to_tree(input, graph.deref())
 }
 
 /// Convert nested tree structure to tiled resource format

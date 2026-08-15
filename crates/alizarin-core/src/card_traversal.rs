@@ -207,12 +207,9 @@ fn card_to_json(
 ) -> Value {
     let nodegroup_id = &card.nodegroup_id;
 
-    // Determine cardinality
     let cardinality = ctx
         .graph
-        .nodegroups
-        .iter()
-        .find(|ng| ng.nodegroupid == *nodegroup_id)
+        .get_nodegroup_by_id(nodegroup_id)
         .and_then(|ng| ng.cardinality.as_deref())
         .unwrap_or("1");
 
@@ -364,7 +361,7 @@ fn find_matching_tile_ids(
     parent_tile_id: Option<&str>,
     parent_nodegroup_id: Option<&str>,
     pseudo_cache: &HashMap<String, PseudoListCore>,
-    graph: &StaticGraph,
+    graph: &impl crate::GraphLookup,
 ) -> Vec<Option<String>> {
     // Find any PseudoList for a node in this nodegroup
     let nodes_in_ng = graph.get_nodes_in_nodegroup(nodegroup_id);

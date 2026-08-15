@@ -19,6 +19,8 @@
 pub mod card_index;
 mod cards;
 mod descriptors;
+mod graph_lookup;
+mod layered_graph;
 mod meta;
 mod nodes;
 mod prune;
@@ -36,6 +38,8 @@ pub use cards::{
 pub use descriptors::{
     DescriptorConfig, DescriptorTypeConfig, StaticResourceDescriptors, DESCRIPTOR_FUNCTION_ID,
 };
+pub use graph_lookup::GraphLookup;
+pub use layered_graph::LayeredGraph;
 pub use meta::StaticGraphMeta;
 pub use nodes::{StaticEdge, StaticNode, StaticNodegroup};
 pub use prune::{build_backedges, find_root_node, prune_graph, PruneError};

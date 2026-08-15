@@ -1866,7 +1866,7 @@ pub enum TileMergeMode {
 /// * Vector of warning messages about unified tiles and data conflicts
 pub fn unify_cardinality_one_tiles(
     tiles: &mut Vec<StaticTile>,
-    graph: &super::StaticGraph,
+    graph: &impl super::graph_lookup::GraphLookup,
     strict: bool,
     mode: TileMergeMode,
 ) -> Result<Vec<String>, String> {

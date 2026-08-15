@@ -51,7 +51,9 @@ pub use graph::{
     prune_graph,
     tile_namespace,
     BatchMergeResult,
+    GraphLookup,
     GraphWrapper,
+    LayeredGraph,
     // Resource merging
     MergeAccumulator,
     MergeResult,
