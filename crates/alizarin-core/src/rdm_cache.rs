@@ -6,7 +6,7 @@
 //! The WASM bindings (alizarin-wasm) wrap this with WasmRdmCache for JavaScript interop.
 
 use serde::{Deserialize, Deserializer, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::rdm_namespace::generate_value_uuid;
 
@@ -85,7 +85,7 @@ pub struct RdmConcept {
         alias = "prefLabels",
         deserialize_with = "deserialize_pref_labels"
     )]
-    pub pref_label: HashMap<String, RdmValue>,
+    pub pref_label: BTreeMap<String, RdmValue>,
     /// Alternative labels by language code
     #[serde(default, rename = "altLabels")]
     pub alt_labels: HashMap<String, Vec<String>>,
@@ -98,17 +98,26 @@ pub struct RdmConcept {
     /// Scope notes by language
     #[serde(default, rename = "scopeNote")]
     pub scope_note: HashMap<String, String>,
+    /// Explicit sort order from the source data. Respected on export when set;
+    /// falls back to concept id so output is deterministic either way.
+    #[serde(
+        default,
+        rename = "sortOrder",
+        alias = "sort_order",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub sort_order: Option<i32>,
 }
 
 /// Custom deserializer that handles both JSON formats for pref_label:
 /// - Simple: { "en": "Label" }
 /// - WithId: { "en": { "id": "...", "value": "Label" } }
-fn deserialize_pref_labels<'de, D>(deserializer: D) -> Result<HashMap<String, RdmValue>, D::Error>
+fn deserialize_pref_labels<'de, D>(deserializer: D) -> Result<BTreeMap<String, RdmValue>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let raw: HashMap<String, PrefLabelEntry> = HashMap::deserialize(deserializer)?;
-    let mut result = HashMap::new();
+    let mut result = BTreeMap::new();
 
     for (lang, entry) in raw {
         let value = match entry {
@@ -154,8 +163,10 @@ pub struct RdmCollection {
     pub id: String,
     /// Collection name (optional, for display)
     pub name: Option<String>,
-    /// Concepts indexed by their ID
-    concepts: HashMap<String, RdmConcept>,
+    /// Concepts indexed by their ID (BTreeMap so iteration/merge order is
+    /// deterministic — HashMap's randomized order was making the SKOS export
+    /// and last-writer-wins merge non-reproducible build-to-build).
+    concepts: BTreeMap<String, RdmConcept>,
     /// Top-level concepts (no broader)
     top_concepts: Vec<String>,
     /// Index from VALUE ID to (concept_id, language) for fast lookup
@@ -167,7 +178,7 @@ impl RdmCollection {
         Self {
             id,
             name: None,
-            concepts: HashMap::new(),
+            concepts: BTreeMap::new(),
             top_concepts: vec![],
             value_index: HashMap::new(),
         }
@@ -178,7 +189,7 @@ impl RdmCollection {
         Self {
             id,
             name: Some(name),
-            concepts: HashMap::new(),
+            concepts: BTreeMap::new(),
             top_concepts: vec![],
             value_index: HashMap::new(),
         }
@@ -398,14 +409,14 @@ impl RdmCollection {
 /// Cache for RDM collections, enabling concept UUID -> label lookups
 #[derive(Debug, Clone, Default)]
 pub struct RdmCache {
-    collections: HashMap<String, RdmCollection>,
+    collections: BTreeMap<String, RdmCollection>,
 }
 
 impl RdmCache {
     /// Create a new empty cache
     pub fn new() -> Self {
         Self {
-            collections: HashMap::new(),
+            collections: BTreeMap::new(),
         }
     }
 
@@ -787,7 +798,7 @@ impl RdmCache {
     /// and existing collections can enrich newly-added ones.
     fn enrich_bare_concepts(&mut self, newly_added_ids: &[String]) {
         // Build a global lookup of concept_id -> labels from ALL collections
-        let mut concept_labels: HashMap<String, HashMap<String, RdmValue>> = HashMap::new();
+        let mut concept_labels: HashMap<String, BTreeMap<String, RdmValue>> = HashMap::new();
 
         for coll in self.collections.values() {
             for (concept_id, concept) in &coll.concepts {
@@ -938,7 +949,7 @@ pub fn skos_to_rdm_collection(skos: &SkosCollection) -> RdmCollection {
         skos_concept: &SkosConcept,
         parent_id: Option<&str>,
     ) {
-        let mut pref_label: HashMap<String, RdmValue> = HashMap::new();
+        let mut pref_label: BTreeMap<String, RdmValue> = BTreeMap::new();
         for (lang, skos_value) in &skos_concept.pref_labels {
             pref_label.insert(
                 lang.clone(),
@@ -961,6 +972,8 @@ pub fn skos_to_rdm_collection(skos: &SkosCollection) -> RdmCollection {
             broader,
             narrower,
             scope_note: HashMap::new(),
+            // Carry through any explicit sort order from the SKOS input.
+            sort_order: skos_concept.sort_order,
         };
 
         rdm.add_concept(rdm_concept);
@@ -1076,7 +1089,7 @@ pub fn rdm_to_skos_collection_excluding(
                 // the concept appears in) → the importer sets ListItem.uri to it,
                 // so all copies share one identity while pks (from rdf:about) differ.
                 source: Some(concept_id.clone()),
-                sort_order: None,
+                sort_order: rdm_concept.sort_order,
                 children: None,
             };
 
@@ -1267,7 +1280,7 @@ mod tests {
         let mut collection = RdmCollection::new("coll-1".to_string());
 
         // Create parent concept (no broader)
-        let mut parent_labels = HashMap::new();
+        let mut parent_labels = BTreeMap::new();
         parent_labels.insert(
             "en".to_string(),
             RdmValue::new("v-parent-en".to_string(), "Parent".to_string()),
@@ -1279,10 +1292,11 @@ mod tests {
             broader: vec![],
             narrower: vec!["child".to_string()],
             scope_note: HashMap::new(),
+            sort_order: None,
         };
 
         // Create child concept (has broader)
-        let mut child_labels = HashMap::new();
+        let mut child_labels = BTreeMap::new();
         child_labels.insert(
             "en".to_string(),
             RdmValue::new("v-child-en".to_string(), "Child".to_string()),
@@ -1294,6 +1308,7 @@ mod tests {
             broader: vec!["parent".to_string()],
             narrower: vec![],
             scope_note: HashMap::new(),
+            sort_order: None,
         };
 
         collection.add_concept(parent);
@@ -1316,7 +1331,7 @@ mod tests {
     fn test_get_concept_mut() {
         let mut collection = RdmCollection::new("coll-1".to_string());
 
-        let mut labels = HashMap::new();
+        let mut labels = BTreeMap::new();
         labels.insert(
             "en".to_string(),
             RdmValue::new("v-c1-en".to_string(), "Original".to_string()),
@@ -1328,6 +1343,7 @@ mod tests {
             broader: vec![],
             narrower: vec![],
             scope_note: HashMap::new(),
+            sort_order: None,
         };
 
         collection.add_concept(concept);
@@ -1355,7 +1371,7 @@ mod tests {
         let mut collection = RdmCollection::new("coll-1".to_string());
 
         // Add parent
-        let mut parent_labels = HashMap::new();
+        let mut parent_labels = BTreeMap::new();
         parent_labels.insert(
             "en".to_string(),
             RdmValue::new("v-animals-en".to_string(), "Animals".to_string()),
@@ -1367,6 +1383,7 @@ mod tests {
             broader: vec![],
             narrower: vec![],
             scope_note: HashMap::new(),
+            sort_order: None,
         };
         collection.add_concept(parent);
 
@@ -1376,7 +1393,7 @@ mod tests {
         }
 
         // Add child with broader pointing to parent
-        let mut child_labels = HashMap::new();
+        let mut child_labels = BTreeMap::new();
         child_labels.insert(
             "en".to_string(),
             RdmValue::new("v-mammals-en".to_string(), "Mammals".to_string()),
@@ -1388,6 +1405,7 @@ mod tests {
             broader: vec!["animals".to_string()],
             narrower: vec![],
             scope_note: HashMap::new(),
+            sort_order: None,
         };
         collection.add_concept(child);
 

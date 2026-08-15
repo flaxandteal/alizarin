@@ -135,8 +135,14 @@ fn extract_or_generate_id(uri: &str) -> String {
             .unwrap()
     });
 
-    if let Some(caps) = uuid_regex.captures(uri) {
-        return caps.get(1).unwrap().as_str().to_string();
+    // Use the LAST uuid in the URI, not the first. For hierarchical heritagedata
+    // URIs like `.../schemes/<scheme-uuid>/concepts/<concept-uuid>` the entity's
+    // own id is the most-specific (last) uuid; `captures()` returned the first
+    // (the scheme), collapsing every concept in a scheme onto the scheme id and
+    // leaving a single, coin-flipped survivor. For flat `<base>/<uuid>` URIs the
+    // first and last match are the same, so existing lists are unaffected.
+    if let Some(m) = uuid_regex.find_iter(uri).last() {
+        return m.as_str().to_string();
     }
 
     // Generate deterministic UUID from URI using proper UUID v5
@@ -433,11 +439,12 @@ pub fn parse_skos_to_collections(
                 })
                 .collect();
 
-            // Sort children by sort_order
+            // Sort children by sort_order, then id (deterministic tiebreak)
             children.sort_by(|a, b| {
                 a.sort_order
-                    .unwrap_or(999)
-                    .cmp(&b.sort_order.unwrap_or(999))
+                    .unwrap_or(i32::MAX)
+                    .cmp(&b.sort_order.unwrap_or(i32::MAX))
+                    .then_with(|| a.id.cmp(&b.id))
             });
 
             if !children.is_empty() {
@@ -782,17 +789,28 @@ fn sorted_children(children: &Option<Vec<SkosConcept>>) -> Vec<&SkosConcept> {
     match children {
         Some(kids) => {
             let mut sorted: Vec<&SkosConcept> = kids.iter().collect();
-            sorted.sort_by_key(|c| &c.id);
+            sorted.sort_by(|a, b| {
+                a.sort_order
+                    .unwrap_or(i32::MAX)
+                    .cmp(&b.sort_order.unwrap_or(i32::MAX))
+                    .then_with(|| a.id.cmp(&b.id))
+            });
             sorted
         }
         None => vec![],
     }
 }
 
-/// Get sorted concepts from HashMap by ID
+/// Get concepts sorted by explicit `sortOrder` when present, then by id.
+/// The id tiebreak keeps output deterministic even when sortOrder is unset.
 fn sorted_concepts(concepts: &HashMap<String, SkosConcept>) -> Vec<&SkosConcept> {
     let mut sorted: Vec<_> = concepts.values().collect();
-    sorted.sort_by_key(|c| &c.id);
+    sorted.sort_by(|a, b| {
+        a.sort_order
+            .unwrap_or(i32::MAX)
+            .cmp(&b.sort_order.unwrap_or(i32::MAX))
+            .then_with(|| a.id.cmp(&b.id))
+    });
     sorted
 }
 
@@ -1314,6 +1332,68 @@ mod tests {
     <arches:sortorder rdf:datatype="http://www.w3.org/2001/XMLSchema#integer">2</arches:sortorder>
   </skos:Concept>
 </rdf:RDF>"#;
+
+    // Regression: heritagedata scheme URIs carry TWO uuids —
+    // `.../schemes/<scheme>/concepts/<concept>`. The concept's own id is the
+    // LAST (most-specific) uuid; extracting the first collapsed every concept in
+    // a scheme onto the scheme id (see extract_or_generate_id).
+    #[test]
+    fn test_extract_id_uses_last_uuid_in_hierarchical_uri() {
+        let scheme = "8196a6cc-77df-4439-8b04-f5d13472a064";
+        let concept = "c263f872-172d-4a02-9eae-32dc56b0ab5a";
+        let uri = format!(
+            "http://purl.org/heritagedata/schemes/{}/concepts/{}",
+            scheme, concept
+        );
+        assert_eq!(
+            extract_or_generate_id(&uri),
+            concept,
+            "must pick the concept uuid, not the scheme"
+        );
+        // Flat single-uuid URIs must be unaffected.
+        assert_eq!(
+            extract_or_generate_id(&format!("http://example.org/{}", scheme)),
+            scheme
+        );
+    }
+
+    // Regression: two concepts under one heritagedata scheme must both survive
+    // (previously they collapsed to one nondeterministic survivor).
+    #[test]
+    fn test_heritagedata_scheme_concepts_do_not_collapse() {
+        const SCHEME: &str =
+            "http://purl.org/heritagedata/schemes/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+        let hd = format!(
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:skos="http://www.w3.org/2004/02/skos/core#">
+  <skos:ConceptScheme rdf:about="{s}"/>
+  <skos:Concept rdf:about="{s}/concepts/11111111-1111-1111-1111-111111111111">
+    <skos:inScheme rdf:resource="{s}"/>
+    <skos:prefLabel xml:lang="en">Funder A</skos:prefLabel>
+  </skos:Concept>
+  <skos:Concept rdf:about="{s}/concepts/22222222-2222-2222-2222-222222222222">
+    <skos:inScheme rdf:resource="{s}"/>
+    <skos:prefLabel xml:lang="en">Funder B</skos:prefLabel>
+  </skos:Concept>
+</rdf:RDF>"#,
+            s = SCHEME
+        );
+        fn count(c: &SkosConcept) -> usize {
+            1 + c
+                .children
+                .as_ref()
+                .map_or(0, |ch| ch.iter().map(count).sum())
+        }
+        let cols = parse_skos_to_collections(&hd, "http://purl.org/heritagedata/").unwrap();
+        let total: usize = cols
+            .iter()
+            .flat_map(|c| c.concepts.values().chain(c.all_concepts.values()))
+            .map(count)
+            .sum();
+        // Both funder concepts must survive (previously collapsed to 1).
+        assert!(total >= 2, "both concepts must survive, got {total}");
+    }
 
     #[test]
     fn test_parse_skos() {

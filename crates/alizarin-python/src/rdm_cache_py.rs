@@ -12,7 +12,7 @@
 /// - UUID generation from labels
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use uuid::Uuid;
 
 // Core types from alizarin-core
@@ -426,7 +426,7 @@ impl RdmConcept {
     #[new]
     fn new(id: String, pref_label: HashMap<String, String>) -> Self {
         // Convert string labels to RdmValue (IDs will be generated when added to collection)
-        let pref_label_values: HashMap<String, CoreRdmValue> = pref_label
+        let pref_label_values: BTreeMap<String, CoreRdmValue> = pref_label
             .into_iter()
             .map(|(lang, value)| (lang, CoreRdmValue::new("__pending__".to_string(), value)))
             .collect();
@@ -439,6 +439,7 @@ impl RdmConcept {
                 broader: vec![],
                 narrower: vec![],
                 scope_note: HashMap::new(),
+                sort_order: None,
             },
         }
     }
@@ -456,13 +457,14 @@ impl RdmConcept {
     ///     concept = RustRdmConcept.from_label("uuid-1", {"en": "Category A", "de": "Kategorie A"})
     #[staticmethod]
     fn from_label(py: Python, id: String, label: PyObject) -> PyResult<Self> {
-        let pref_label: HashMap<String, CoreRdmValue> = if let Ok(s) = label.extract::<String>(py) {
+        let pref_label: BTreeMap<String, CoreRdmValue> = if let Ok(s) = label.extract::<String>(py)
+        {
             let lang = get_current_language();
-            let mut map = HashMap::new();
+            let mut map = BTreeMap::new();
             map.insert(lang, CoreRdmValue::new("__pending__".to_string(), s));
             map
         } else if let Ok(dict) = label.downcast::<PyDict>(py) {
-            let mut map = HashMap::new();
+            let mut map = BTreeMap::new();
             for (key, value) in dict.iter() {
                 let lang: String = key.extract()?;
                 let label_str: String = value.extract()?;
@@ -486,6 +488,7 @@ impl RdmConcept {
                 broader: vec![],
                 narrower: vec![],
                 scope_note: HashMap::new(),
+                sort_order: None,
             },
         })
     }
@@ -816,18 +819,18 @@ impl RdmCollection {
     ) -> PyResult<String> {
         // Extract pref_label as HashMap and get deterministic string for ID generation
         // Labels are trimmed to normalize whitespace
-        let (pref_label, label_string): (HashMap<String, CoreRdmValue>, String) =
+        let (pref_label, label_string): (BTreeMap<String, CoreRdmValue>, String) =
             if let Ok(s) = label.extract::<String>(py) {
                 let trimmed = s.trim().to_string();
                 let lang = get_current_language();
-                let mut map = HashMap::new();
+                let mut map = BTreeMap::new();
                 map.insert(
                     lang,
                     CoreRdmValue::new("__pending__".to_string(), trimmed.clone()),
                 );
                 (map, trimmed)
             } else if let Ok(dict) = label.downcast::<PyDict>(py) {
-                let mut map = HashMap::new();
+                let mut map = BTreeMap::new();
                 for (key, value) in dict.iter() {
                     let lang: String = key.extract()?;
                     let label_str: String = value.extract()?;
@@ -860,6 +863,7 @@ impl RdmCollection {
             broader: vec![],
             narrower: vec![],
             scope_note: HashMap::new(),
+            sort_order: None,
         };
 
         self.inner.add_concept(concept);
@@ -904,18 +908,18 @@ impl RdmCollection {
 
         // Extract pref_label as HashMap and get deterministic string for ID generation
         // Labels are trimmed to normalize whitespace
-        let (pref_label, label_string): (HashMap<String, CoreRdmValue>, String) =
+        let (pref_label, label_string): (BTreeMap<String, CoreRdmValue>, String) =
             if let Ok(s) = label.extract::<String>(py) {
                 let trimmed = s.trim().to_string();
                 let lang = get_current_language();
-                let mut map = HashMap::new();
+                let mut map = BTreeMap::new();
                 map.insert(
                     lang,
                     CoreRdmValue::new("__pending__".to_string(), trimmed.clone()),
                 );
                 (map, trimmed)
             } else if let Ok(dict) = label.downcast::<PyDict>(py) {
-                let mut map = HashMap::new();
+                let mut map = BTreeMap::new();
                 for (key, value) in dict.iter() {
                     let lang: String = key.extract()?;
                     let label_str: String = value.extract()?;
@@ -949,6 +953,7 @@ impl RdmCollection {
             broader: vec![parent_id.clone()],
             narrower: vec![],
             scope_note: HashMap::new(),
+            sort_order: None,
         };
 
         // Update parent's narrower list
