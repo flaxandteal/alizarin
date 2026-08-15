@@ -2253,7 +2253,7 @@ class TestBatchTreesToTilesWithMultiValueReference:
         trees_json = json.dumps([tree])
 
         # In strict mode, should raise an error for invalid reference input
-        with pytest.raises(ValueError, match="Extension coercion failed"):
+        with pytest.raises(ValueError, match="[Cc]oercion"):
             alizarin.batch_trees_to_tiles(
                 trees_json=trees_json,
                 graph_id=graph_id,

@@ -115,8 +115,8 @@ pub fn coerce_reference_value(
 
                 if uuid_regex.is_match(s) {
                     Ok((
-                        json!({"__needs_rdm_lookup": true, "uuid": s}),
-                        json!({"__needs_rdm_lookup": true, "uuid": s}),
+                        json!({"__needs_rdm_lookup": true, "uuid": s, "controlledList": config.controlled_list}),
+                        json!({"__needs_rdm_lookup": true, "uuid": s, "controlledList": config.controlled_list}),
                     ))
                 } else {
                     Ok((
@@ -178,6 +178,15 @@ fn reference_index_keys(value: &Value) -> Vec<String> {
                 if let Some(u) = m.get("uuid").and_then(|v| v.as_str()) {
                     if is_uuid(u) {
                         out.push(u.to_string());
+                    }
+                } else if let Some(labels) = m.get("labels").and_then(|v| v.as_array()) {
+                    // StaticReference: extract concept ID from first label's list_item_id
+                    if let Some(list_item_id) = labels
+                        .first()
+                        .and_then(|l| l.get("list_item_id"))
+                        .and_then(|v| v.as_str())
+                    {
+                        out.push(list_item_id.to_string());
                     }
                 }
             }
@@ -287,48 +296,120 @@ pub fn render_reference_display_value_resolved(
 // Marker resolution (build/index side)
 // =============================================================================
 
-/// Resolve reference markers to the bare concept-id form that
-/// `reference_index_keys` extracts for `concept_tags`.
+/// Build a StaticReference JSON value from concept JSON (as returned by RDM callbacks).
+///
+/// Thin wrapper around `build_static_reference_from_concept` that returns
+/// serialized JSON rather than a typed struct.
+pub fn build_reference_from_concept_json(
+    concept_json: &Value,
+    collection_id: &str,
+) -> Option<Value> {
+    build_static_reference_from_concept(concept_json, collection_id)
+        .ok()
+        .and_then(|sr| serde_json::to_value(sr).ok())
+}
+
+/// Resolve reference markers to full `StaticReference` objects using provided lookup functions.
+///
+/// This is the primary resolution function, used by the FFI layer where the RDM cache
+/// is accessed via callbacks rather than a global static.
 ///
 /// Per element of the (array-wrapped) tile value:
-/// - `__needs_rdm_lookup{uuid}` -> the `uuid` (already the concept id);
+/// - `__needs_rdm_lookup{uuid, controlledList}` -> full `StaticReference` built from
+///   the concept returned by `lookup_by_id`;
+/// - `__needs_rdm_label_lookup{label, controlledList}` -> full `StaticReference` built
+///   from the concept returned by `lookup_by_label`;
 /// - a bare id string -> unchanged;
-/// - `__needs_rdm_label_lookup{label, controlledList}` -> the concept id found
-///   by `label` in that collection, via the global RDM cache;
 /// - anything already resolved (e.g. a `StaticReference` object) -> left as-is.
 ///
-/// Unresolvable label markers are dropped.
-pub fn resolve_reference_markers(tile_data: &Value, _language: &str) -> Value {
-    fn resolve_one(v: &Value) -> Option<Value> {
+/// When lookup fails, markers pass through unchanged.
+pub fn resolve_reference_markers_with_lookups<F1, F2>(
+    tile_data: &Value,
+    _language: &str,
+    lookup_by_id: F1,
+    lookup_by_label: F2,
+) -> Value
+where
+    F1: Fn(&str, &str) -> Option<Value>,
+    F2: Fn(&str, &str) -> Option<Value>,
+{
+    let resolve_one = |v: &Value| -> Option<Value> {
         match v {
             Value::Null => None,
             Value::String(_) => Some(v.clone()),
             Value::Object(obj) => {
-                if let Some(uuid) = obj.get("uuid").and_then(|u| u.as_str()) {
-                    return Some(Value::String(uuid.to_string()));
+                if obj.get("__needs_rdm_lookup").is_some() {
+                    let uuid = obj.get("uuid").and_then(|u| u.as_str())?;
+                    let collection = obj.get("controlledList").and_then(|c| c.as_str());
+
+                    if let Some(coll_id) = collection {
+                        if let Some(concept_json) = lookup_by_id(coll_id, uuid) {
+                            if let Some(ref_val) =
+                                build_reference_from_concept_json(&concept_json, coll_id)
+                            {
+                                return Some(ref_val);
+                            }
+                        }
+                    }
+                    return Some(v.clone());
                 }
                 if obj.get("__needs_rdm_label_lookup").is_some() {
                     let label = obj.get("label").and_then(|l| l.as_str())?;
                     let collection = obj.get("controlledList").and_then(|c| c.as_str())?;
-                    return alizarin_core::with_global_rdm_cache(|cache| {
-                        cache
-                            .lookup_by_label(collection, label)
-                            .map(|c| c.id.clone())
-                    })
-                    .flatten()
-                    .map(Value::String);
+                    if let Some(concept_json) = lookup_by_label(collection, label) {
+                        if let Some(ref_val) =
+                            build_reference_from_concept_json(&concept_json, collection)
+                        {
+                            return Some(ref_val);
+                        }
+                    }
+                    return Some(v.clone());
                 }
                 Some(v.clone())
             }
             _ => Some(v.clone()),
         }
-    }
+    };
 
     match tile_data {
         Value::Array(items) => Value::Array(items.iter().filter_map(resolve_one).collect()),
         Value::Null => Value::Null,
         other => resolve_one(other).unwrap_or(Value::Null),
     }
+}
+
+/// Resolve reference markers using the global RDM cache.
+///
+/// Convenience wrapper around `resolve_reference_markers_with_lookups` that uses
+/// `alizarin_core::with_global_rdm_cache` for lookups. Suitable for standalone
+/// (non-FFI) use where the global cache is in the same binary.
+pub fn resolve_reference_markers(tile_data: &Value, language: &str) -> Value {
+    resolve_reference_markers_with_lookups(
+        tile_data,
+        language,
+        |collection_id, concept_id| {
+            alizarin_core::with_global_rdm_cache(|cache| {
+                cache.lookup_concept(collection_id, concept_id).map(|c| {
+                    serde_json::json!({
+                        "id": c.id,
+                        "pref_label": c.pref_label,
+                    })
+                })
+            })
+            .flatten()
+        },
+        |collection_id, label| {
+            alizarin_core::with_global_rdm_cache(|cache| {
+                cache.lookup_by_label(collection_id, label).map(|c| {
+                    serde_json::json!({
+                        "id": c.id,
+                        "pref_label": c.pref_label,
+                    })
+                })
+            })
+            .flatten()
+        },
+    )
 }
 
 // =============================================================================
@@ -629,7 +710,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_markers_to_indexable_concept_ids() {
+    fn test_resolve_markers_to_static_references() {
         use alizarin_core::{set_global_rdm_cache, RdmCache, RdmCollection};
 
         const NOUN: &str = "1052ed22-def2-5e6b-a5a2-ddff79e08e70";
@@ -644,46 +725,71 @@ mod tests {
 
         let handler = ReferenceTypeHandler;
 
+        // Label marker → full StaticReference
         let label_marker = json!([{"__needs_rdm_label_lookup": true, "label": "noun", "controlledList": "coll-pos"}]);
         let resolved = handler.resolve_markers(&label_marker, "en").unwrap();
-        assert_eq!(resolved, json!([NOUN]));
+        let resolved_arr = resolved.as_array().unwrap();
+        assert_eq!(resolved_arr.len(), 1);
+        assert!(
+            resolved_arr[0].get("labels").is_some(),
+            "Should be StaticReference"
+        );
+        assert_eq!(resolved_arr[0]["labels"][0]["list_item_id"], NOUN);
+        assert_eq!(resolved_arr[0]["labels"][0]["value"], "noun");
+        assert_eq!(resolved_arr[0]["list_id"], "coll-pos");
+        // reference_index_keys should extract concept ID from StaticReference
         assert_eq!(reference_index_keys(&resolved), vec![NOUN.to_string()]);
 
-        let uuid_marker = json!([{"__needs_rdm_lookup": true, "uuid": NOUN}]);
-        assert_eq!(
-            handler.resolve_markers(&uuid_marker, "en").unwrap(),
-            json!([NOUN])
+        // UUID marker with controlledList → full StaticReference
+        let uuid_marker =
+            json!([{"__needs_rdm_lookup": true, "uuid": NOUN, "controlledList": "coll-pos"}]);
+        let uuid_resolved = handler.resolve_markers(&uuid_marker, "en").unwrap();
+        assert!(
+            uuid_resolved[0].get("labels").is_some(),
+            "Should be StaticReference"
         );
+        assert_eq!(reference_index_keys(&uuid_resolved), vec![NOUN.to_string()]);
 
+        // Bare UUID string passes through unchanged
         assert_eq!(
             handler.resolve_markers(&json!([NOUN]), "en").unwrap(),
             json!([NOUN])
         );
 
+        // Missing label → marker passed through (not dropped)
         let miss = json!([{"__needs_rdm_label_lookup": true, "label": "verb", "controlledList": "coll-pos"}]);
-        assert_eq!(handler.resolve_markers(&miss, "en").unwrap(), json!([]));
+        let miss_resolved = handler.resolve_markers(&miss, "en").unwrap();
+        let miss_arr = miss_resolved.as_array().unwrap();
+        assert_eq!(miss_arr.len(), 1);
+        assert_eq!(
+            miss_arr[0]
+                .get("__needs_rdm_label_lookup")
+                .and_then(|v| v.as_bool()),
+            Some(true)
+        );
 
+        // Coerced label → resolves to StaticReference
         let cfg = ReferenceNodeConfig {
             controlled_list: Some("coll-pos".to_string()),
             ..Default::default()
         };
         let (from_name, _) = coerce_reference_value(&json!("noun"), &cfg).unwrap();
+        let from_name_resolved = handler.resolve_markers(&from_name, "en").unwrap();
+        assert!(from_name_resolved[0].get("labels").is_some());
         assert_eq!(
-            handler.resolve_markers(&from_name, "en").unwrap(),
-            json!([NOUN])
+            reference_index_keys(&from_name_resolved),
+            vec![NOUN.to_string()]
         );
+
+        // Coerced UUID → resolves to StaticReference (now includes controlledList)
         let (from_id, _) = coerce_reference_value(&json!(NOUN), &cfg).unwrap();
-        assert_eq!(
-            handler.resolve_markers(&from_id, "en").unwrap(),
-            json!([NOUN])
-        );
-        let resolved_ids = handler.resolve_markers(&from_name, "en").unwrap();
-        let (recoerced, _) = coerce_reference_value(&resolved_ids, &cfg).unwrap();
-        assert_eq!(
-            handler.resolve_markers(&recoerced, "en").unwrap(),
-            json!([NOUN])
-        );
         assert!(from_id.is_array());
+        let from_id_resolved = handler.resolve_markers(&from_id, "en").unwrap();
+        assert!(from_id_resolved[0].get("labels").is_some());
+        assert_eq!(
+            reference_index_keys(&from_id_resolved),
+            vec![NOUN.to_string()]
+        );
     }
 
     #[test]

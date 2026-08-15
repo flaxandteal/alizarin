@@ -123,20 +123,59 @@ mod python_module {
     // Marker Resolution (delegates to core's resolve_reference_markers)
     // =========================================================================
 
+    /// Call an FFI concept lookup callback and parse the returned JSON.
+    ///
+    /// # Safety
+    /// All pointer arguments must be valid for the lifetime of this call.
+    unsafe fn call_concept_lookup(
+        lookup_fn: unsafe extern "C" fn(
+            *mut c_void, *const u8, usize, *const u8, usize,
+            *mut *mut u8, *mut usize,
+        ) -> bool,
+        free_fn: FreeConceptJsonFn,
+        user_data: *mut c_void,
+        collection_id: &str,
+        key: &str,
+    ) -> Option<Value> {
+        let mut json_ptr: *mut u8 = std::ptr::null_mut();
+        let mut json_len: usize = 0;
+
+        let found = lookup_fn(
+            user_data,
+            collection_id.as_ptr(), collection_id.len(),
+            key.as_ptr(), key.len(),
+            &mut json_ptr, &mut json_len,
+        );
+
+        if !found || json_ptr.is_null() || json_len == 0 {
+            return None;
+        }
+
+        let json_slice = std::slice::from_raw_parts(json_ptr, json_len);
+        let result = std::str::from_utf8(json_slice)
+            .ok()
+            .and_then(|s| serde_json::from_str(s).ok());
+
+        free_fn(json_ptr, json_len);
+        result
+    }
+
     /// C ABI marker resolution function for reference type.
     ///
-    /// Delegates to `alizarin_clm_core::resolve_reference_markers` which uses
-    /// the global RDM cache (set via `set_global_rdm_cache` on the Python side).
+    /// Uses the provided RDM lookup callbacks to resolve markers, bridging
+    /// the shared library boundary (the CLM .so has its own copy of the global
+    /// RDM cache, so we must use the callbacks from the alizarin Python binding
+    /// which has the populated cache).
     unsafe extern "C" fn resolve_reference_markers(
         value_ptr: *const u8,
         value_len: usize,
         lang_ptr: *const u8,
         lang_len: usize,
         _has_collection: HasCollectionFn,
-        _lookup_by_id: ConceptLookupByIdFn,
-        _lookup_by_label: ConceptLookupByLabelFn,
-        _free_concept_json: FreeConceptJsonFn,
-        _lookup_user_data: *mut c_void,
+        lookup_by_id: ConceptLookupByIdFn,
+        lookup_by_label: ConceptLookupByLabelFn,
+        free_concept_json: FreeConceptJsonFn,
+        lookup_user_data: *mut c_void,
     ) -> ResolveMarkersResult {
         let value_slice = std::slice::from_raw_parts(value_ptr, value_len);
         let value_str = match std::str::from_utf8(value_slice) {
@@ -155,7 +194,26 @@ mod python_module {
             "en"
         };
 
-        let resolved = alizarin_clm_core::resolve_reference_markers(&value, language);
+        let resolved = alizarin_clm_core::resolve_reference_markers_with_lookups(
+            &value,
+            language,
+            |collection_id, concept_id| {
+                unsafe {
+                    call_concept_lookup(
+                        lookup_by_id, free_concept_json, lookup_user_data,
+                        collection_id, concept_id,
+                    )
+                }
+            },
+            |collection_id, label| {
+                unsafe {
+                    call_concept_lookup(
+                        lookup_by_label, free_concept_json, lookup_user_data,
+                        collection_id, label,
+                    )
+                }
+            },
+        );
 
         if resolved == value {
             ResolveMarkersResult::unchanged()
