@@ -146,5 +146,46 @@ if [ -f "$ROOT_DIR/ext/filelist/python/pyproject.toml" ]; then
     echo "  ✓ ext/filelist/python/pyproject.toml (version + dependencies)"
 fi
 
+# Update extensions in ext/<name>/{core,js,python}/ layout (e.g. alizarin-clm, alizarin-pg)
+for ext_dir in "$ROOT_DIR"/ext/*/; do
+    ext_name=$(basename "$ext_dir")
+    # Skip already-handled extensions
+    [ "$ext_name" = "filelist" ] && continue
+    [ "$ext_name" = "js" ] && continue
+    [ "$ext_name" = "python" ] && continue
+
+    # JS package.json
+    if [ -f "$ext_dir/js/package.json" ]; then
+        node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('$ext_dir/js/package.json', 'utf8'));
+            pkg.version = '$VERSION';
+            pkg.peerDependencies = pkg.peerDependencies || {};
+            pkg.peerDependencies.alizarin = '$VERSION';
+            fs.writeFileSync('$ext_dir/js/package.json', JSON.stringify(pkg, null, 2) + '\n');
+        "
+        echo "  ✓ ext/$ext_name/js/package.json (version + peerDependencies)"
+    fi
+
+    # Core Cargo.toml
+    if [ -f "$ext_dir/core/Cargo.toml" ]; then
+        sed -i "0,/^version = /s/^version = .*/version = \"$CARGO_VERSION\"/" "$ext_dir/core/Cargo.toml"
+        echo "  ✓ ext/$ext_name/core/Cargo.toml"
+    fi
+
+    # Python Cargo.toml
+    if [ -f "$ext_dir/python/Cargo.toml" ]; then
+        sed -i "0,/^version = /s/^version = .*/version = \"$CARGO_VERSION\"/" "$ext_dir/python/Cargo.toml"
+        echo "  ✓ ext/$ext_name/python/Cargo.toml"
+    fi
+
+    # Python pyproject.toml
+    if [ -f "$ext_dir/python/pyproject.toml" ]; then
+        sed -i "s/^version = .*/version = \"$PEP440_VERSION\"/" "$ext_dir/python/pyproject.toml"
+        sed -i "s/\"alizarin>=.*\"/\"alizarin>=$PEP440_VERSION\"/" "$ext_dir/python/pyproject.toml"
+        echo "  ✓ ext/$ext_name/python/pyproject.toml (version + dependencies)"
+    fi
+done
+
 echo ""
 echo "Version synced to $VERSION"
