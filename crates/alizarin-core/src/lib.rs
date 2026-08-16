@@ -40,9 +40,11 @@ pub mod type_serialization;
 
 // Graph types
 pub use graph::{
+    apply_compute_tiles,
     batch_merge_resources,
     build_backedges,
     canonical_tile_id,
+    compute_tiles_functions,
     find_root_node,
     is_iterable_datatype,
     merge_resources,
@@ -51,6 +53,9 @@ pub use graph::{
     prune_graph,
     tile_namespace,
     BatchMergeResult,
+    // Computed tiles
+    ComputeTilesConfig,
+    ComputeTilesProvider,
     GraphLookup,
     GraphWrapper,
     LayeredGraph,
@@ -83,6 +88,7 @@ pub use graph::{
     StaticTile,
     StaticTranslatableString,
     UnknownReference,
+    COMPUTE_TILES_FUNCTION_ID,
     ITERABLE_DATATYPES,
     TILE_NAMESPACE_URI,
 };

@@ -18,6 +18,7 @@
 
 pub mod card_index;
 mod cards;
+mod computed_tiles;
 mod descriptors;
 mod graph_lookup;
 mod layered_graph;
@@ -35,8 +36,12 @@ pub use cards::{
     StaticCard, StaticCardsXNodesXWidgets, StaticConstraint, StaticFunctionsXGraphs,
     StaticPublication,
 };
+pub use computed_tiles::{
+    apply_compute_tiles, compute_tiles_functions, ComputeTilesConfig, ComputeTilesProvider,
+};
 pub use descriptors::{
-    DescriptorConfig, DescriptorTypeConfig, StaticResourceDescriptors, DESCRIPTOR_FUNCTION_ID,
+    DescriptorConfig, DescriptorTypeConfig, StaticResourceDescriptors, COMPUTE_TILES_FUNCTION_ID,
+    DESCRIPTOR_FUNCTION_ID,
 };
 pub use graph_lookup::GraphLookup;
 pub use layered_graph::LayeredGraph;

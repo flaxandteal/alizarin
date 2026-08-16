@@ -388,6 +388,13 @@ impl WASMResourceInstanceWrapper {
         *self.tile_source.borrow_mut() = None;
     }
 
+    /// Return the graph for this wrapper's model (Rust-only, not exposed to JS).
+    pub fn graph(&self) -> Option<Arc<alizarin_core::StaticGraph>> {
+        let graph_id = self.core.borrow().graph_id.clone();
+        with_registry_model::<_, _, String>(&graph_id, |core| Ok(core.model_access.get_graph_arc()))
+            .ok()
+    }
+
     /// Helper to access the model core from registry (immutable) - WASM version
     fn with_model_core<F, R>(&self, f: F) -> Result<R, JsValue>
     where

@@ -6,6 +6,11 @@ use std::collections::HashMap;
 /// Descriptor function UUID (from Arches)
 pub const DESCRIPTOR_FUNCTION_ID: &str = "60000000-0000-0000-0000-000000000001";
 
+/// Compute-tiles function UUID: a `functions_x_graphs` entry with this
+/// `function_id` declares that a nodegroup's tiles are materialised on demand
+/// by a registered provider rather than read from a bundled head.
+pub const COMPUTE_TILES_FUNCTION_ID: &str = "60000000-0000-0000-0000-000000000002";
+
 /// Descriptors for resource display
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct StaticResourceDescriptors {
