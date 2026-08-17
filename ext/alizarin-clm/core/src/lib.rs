@@ -8,13 +8,68 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use alizarin_core::extension_type_registry::{
     ExtensionError, ExtensionTypeHandler, HandlerCapabilities,
 };
 use alizarin_core::type_coercion::CoercionResult;
 use alizarin_core::type_serialization::{ExternalResolver, SerializationContext};
+
+// =============================================================================
+// CLM Base URI Configuration
+// =============================================================================
+
+lazy_static::lazy_static! {
+    static ref CLM_BASE_URI: RwLock<Option<String>> = RwLock::new(None);
+}
+
+pub fn set_clm_base_uri(uri: &str) {
+    let normalized = if uri.ends_with('/') {
+        uri.to_string()
+    } else {
+        format!("{}/", uri)
+    };
+    if let Ok(mut guard) = CLM_BASE_URI.write() {
+        *guard = Some(normalized);
+    }
+}
+
+/// Get the current CLM base URI, if set.
+pub fn get_clm_base_uri() -> Option<String> {
+    CLM_BASE_URI.read().ok().and_then(|guard| guard.clone())
+}
+
+/// Clear the CLM base URI.
+pub fn clear_clm_base_uri() {
+    if let Ok(mut guard) = CLM_BASE_URI.write() {
+        *guard = None;
+    }
+}
+
+/// Build the URI for a list item given its UUID.
+///
+/// Uses the configured CLM base URI. Panics if not set — call `set_clm_base_uri`
+/// before generating references.
+pub fn build_item_uri(item_id: &str) -> String {
+    match get_clm_base_uri() {
+        Some(base) => format!("{}{}", base, item_id),
+        None => panic!(
+            "CLM base URI not configured. Call set_clm_base_uri() with \
+             PUBLIC_SERVER_ADDRESS before generating reference values."
+        ),
+    }
+}
+
+/// Build the URI for a list item, returning an error if CLM base URI is not configured.
+pub fn try_build_item_uri(item_id: &str) -> Result<String, String> {
+    match get_clm_base_uri() {
+        Some(base) => Ok(format!("{}{}", base, item_id)),
+        None => Err("CLM base URI not configured. Call set_clm_base_uri() with \
+             PUBLIC_SERVER_ADDRESS before generating reference values."
+            .to_string()),
+    }
+}
 
 // =============================================================================
 // Static Reference Types
@@ -426,7 +481,7 @@ pub fn build_static_reference_from_concept(
         .and_then(|v| v.as_str())
         .ok_or("Missing id in concept")?;
 
-    let uri = format!("urn:uuid:{}", concept_id);
+    let uri = try_build_item_uri(concept_id)?;
 
     let mut labels = Vec::new();
     if let Some(pref_label) = concept.get("pref_label").and_then(|v| v.as_object()) {
@@ -712,6 +767,8 @@ mod tests {
     #[test]
     fn test_resolve_markers_to_static_references() {
         use alizarin_core::{set_global_rdm_cache, RdmCache, RdmCollection};
+
+        set_clm_base_uri("http://localhost:8000/plugins/controlled-list-manager/item/");
 
         const NOUN: &str = "1052ed22-def2-5e6b-a5a2-ddff79e08e70";
         let coll = RdmCollection::from_concepts_json(

@@ -354,6 +354,15 @@ async def resolve_reference_markers(
     # Resolve markers
     errors: list[str] = []
 
+    def _build_item_uri(item_id: str) -> str:
+        base = get_clm_base_uri()
+        if not base:
+            raise RuntimeError(
+                "CLM base URI not configured. Call set_clm_base_uri() with "
+                "PUBLIC_SERVER_ADDRESS before generating reference values."
+            )
+        return f"{base}{item_id}"
+
     def build_static_reference(concept: Any, collection_id: str) -> dict:
         """Build a StaticReference dict from an RDM concept."""
         labels = []
@@ -369,7 +378,7 @@ async def resolve_reference_markers(
             })
 
         return {
-            "uri": getattr(concept, 'uri', '') or concept.id,
+            "uri": getattr(concept, 'uri', None) or _build_item_uri(concept.id),
             "list_id": collection_id,
             "labels": labels,
         }
@@ -625,17 +634,72 @@ def _register_widgets() -> bool:
         raise RuntimeError(f"Failed to register CLM widgets: {e}") from e
 
 
+def set_clm_base_uri(uri: str) -> None:
+    """
+    Set the CLM base URI for generating reference item URIs.
+
+    This should match `{PUBLIC_SERVER_ADDRESS}/plugins/controlled-list-manager/item/`.
+    When set, new StaticReference objects will use this as the URI prefix
+    instead of the `urn:uuid:` fallback.
+
+    Args:
+        uri: Base URI (trailing slash added if missing),
+             e.g. "http://localhost:8000/plugins/controlled-list-manager/item/"
+    """
+    from . import _rust as rust_ext
+    rust_ext.set_clm_base_uri(uri)
+
+
+def get_clm_base_uri() -> "str | None":
+    """Get the current CLM base URI, or None if not set."""
+    from . import _rust as rust_ext
+    return rust_ext.get_clm_base_uri()
+
+
+def clear_clm_base_uri() -> None:
+    """Clear the CLM base URI (reverts to urn:uuid: fallback)."""
+    from . import _rust as rust_ext
+    rust_ext.clear_clm_base_uri()
+
+
+def _configure_clm_base_uri_from_settings() -> bool:
+    """
+    Auto-configure CLM base URI from Django's PUBLIC_SERVER_ADDRESS if available.
+
+    Returns True if configured, False otherwise.
+    """
+    try:
+        from django.conf import settings
+        public_server = getattr(settings, 'PUBLIC_SERVER_ADDRESS', None)
+        if public_server:
+            base = public_server.rstrip('/')
+            force_script = getattr(settings, 'FORCE_SCRIPT_NAME', None)
+            if force_script:
+                base = f"{base}/{force_script.strip('/')}"
+            uri = f"{base}/plugins/controlled-list-manager/item/"
+            set_clm_base_uri(uri)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 # Auto-register on import
 _rust_available = _register_rust_handler()
 _register_python_handler()
 _mutation_available = _register_mutation_handler()
 _list_datatype_registered = _register_list_datatype()
 _widgets_registered = _register_widgets()
+_clm_uri_configured = _configure_clm_base_uri_from_settings()
 
 
 __all__ = [
     # Version
     "__version__",
+    # CLM base URI configuration
+    "set_clm_base_uri",
+    "get_clm_base_uri",
+    "clear_clm_base_uri",
     # Label resolution
     "resolve_reference_labels",
     # Marker resolution (for write-time resolution)

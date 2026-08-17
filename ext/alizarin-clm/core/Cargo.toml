@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-clm-core"
-version = "2.0.0-alpha.126"
+version = "2.0.0-alpha.127"
 edition = "2021"
 description = "Shared CLM (Controlled List Manager) reference type logic for Alizarin"
 
@@ -8,4 +8,5 @@ description = "Shared CLM (Controlled List Manager) reference type logic for Ali
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 regex = "1.10"
+lazy_static = "1.4"
 alizarin-core = { path = "../../../crates/alizarin-core" }

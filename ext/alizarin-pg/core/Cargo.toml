@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-pg-core"
-version = "2.0.0-alpha.126"
+version = "2.0.0-alpha.127"
 edition = "2021"
 description = "PostgreSQL COPY format output for Alizarin resources"
 

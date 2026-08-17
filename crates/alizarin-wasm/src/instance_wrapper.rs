@@ -395,6 +395,14 @@ impl WASMResourceInstanceWrapper {
             .ok()
     }
 
+    /// Check whether the wrapper has any tiles for the given nodegroup.
+    pub fn has_nodegroup_tiles(&self, nodegroup_id: &str) -> bool {
+        self.core
+            .borrow()
+            .nodegroup_index
+            .contains_key(nodegroup_id)
+    }
+
     /// Helper to access the model core from registry (immutable) - WASM version
     fn with_model_core<F, R>(&self, f: F) -> Result<R, JsValue>
     where

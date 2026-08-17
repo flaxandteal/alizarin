@@ -12,7 +12,8 @@
 pub use alizarin_clm_core::{
     StaticReference, StaticReferenceLabel, ReferenceNodeConfig,
     coerce_reference_value, render_reference_display_value,
-    build_static_reference_from_concept,
+    build_static_reference_from_concept, build_item_uri, try_build_item_uri,
+    set_clm_base_uri, get_clm_base_uri, clear_clm_base_uri,
     ReferenceTypeHandler, create_reference_handler, DATATYPE_NAME,
 };
 
@@ -233,6 +234,24 @@ mod python_module {
     static INIT: Once = Once::new();
 
     #[pyfunction]
+    #[pyo3(name = "set_clm_base_uri")]
+    pub fn py_set_clm_base_uri(uri: &str) {
+        alizarin_clm_core::set_clm_base_uri(uri);
+    }
+
+    #[pyfunction]
+    #[pyo3(name = "get_clm_base_uri")]
+    pub fn py_get_clm_base_uri() -> Option<String> {
+        alizarin_clm_core::get_clm_base_uri()
+    }
+
+    #[pyfunction]
+    #[pyo3(name = "clear_clm_base_uri")]
+    pub fn py_clear_clm_base_uri() {
+        alizarin_clm_core::clear_clm_base_uri();
+    }
+
+    #[pyfunction]
     pub fn get_reference_handler_capsule(py: Python<'_>) -> PyResult<Py<PyCapsule>> {
         static TYPE_NAME: &[u8] = b"reference";
 
@@ -279,6 +298,9 @@ mod python_module {
     #[pymodule]
     pub fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_function(wrap_pyfunction!(get_reference_handler_capsule, m)?)?;
+        m.add_function(wrap_pyfunction!(py_set_clm_base_uri, m)?)?;
+        m.add_function(wrap_pyfunction!(py_get_clm_base_uri, m)?)?;
+        m.add_function(wrap_pyfunction!(py_clear_clm_base_uri, m)?)?;
         Ok(())
     }
 }
