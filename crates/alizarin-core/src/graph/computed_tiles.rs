@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::descriptors::COMPUTE_TILES_FUNCTION_ID;
+use super::graph_lookup::GraphLookup;
 use super::static_graph::StaticGraph;
 use super::tile::StaticTile;
 
@@ -23,13 +24,13 @@ pub struct ComputeTilesConfig {
     pub cache: bool,
 }
 
-/// Extract compute-tiles function configs from a graph's `functions_x_graphs`.
-pub fn compute_tiles_functions(graph: &StaticGraph) -> Vec<ComputeTilesConfig> {
-    let fxgs = match &graph.functions_x_graphs {
-        Some(v) => v,
-        None => return Vec::new(),
-    };
-    fxgs.iter()
+/// Extract compute-tiles function configs from every `functions_x_graphs`
+/// declaration visible through the lookup. For a [`LayeredGraph`] this includes
+/// an overlay (computed layer) whose fxg the base graph does not carry.
+pub fn compute_tiles_functions(graph: &dyn GraphLookup) -> Vec<ComputeTilesConfig> {
+    graph
+        .functions_x_graphs()
+        .into_iter()
         .filter(|f| f.function_id == COMPUTE_TILES_FUNCTION_ID)
         .filter_map(|f| serde_json::from_value(f.config.clone()).ok())
         .collect()

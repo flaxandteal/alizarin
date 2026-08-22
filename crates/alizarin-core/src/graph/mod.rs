@@ -20,6 +20,7 @@ pub mod card_index;
 mod cards;
 mod computed_tiles;
 mod descriptors;
+mod functions;
 mod graph_lookup;
 mod layered_graph;
 mod meta;
@@ -42,6 +43,10 @@ pub use computed_tiles::{
 pub use descriptors::{
     DescriptorConfig, DescriptorTypeConfig, StaticResourceDescriptors, COMPUTE_TILES_FUNCTION_ID,
     DESCRIPTOR_FUNCTION_ID,
+};
+pub use functions::{
+    apply_derive_functions, default_functions_registry, DeriveProvider, DescriptorProvider,
+    FunctionsRegistry, RegisteredFunction,
 };
 pub use graph_lookup::GraphLookup;
 pub use layered_graph::LayeredGraph;

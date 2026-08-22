@@ -12,8 +12,10 @@
 use std::sync::Arc;
 
 use super::card_index::CardIndex;
-use super::cards::{StaticCard, StaticCardsXNodesXWidgets};
+use super::cards::{StaticCard, StaticCardsXNodesXWidgets, StaticFunctionsXGraphs};
+use super::descriptors::StaticResourceDescriptors;
 use super::nodes::{StaticEdge, StaticNode, StaticNodegroup};
+use super::tile::StaticTile;
 use super::translatable::StaticTranslatableString;
 
 use std::collections::HashMap;
@@ -102,4 +104,24 @@ pub trait GraphLookup {
     // ── Index-level access ──────────────────────────────────────────────
 
     fn nodes_by_nodegroup(&self) -> Option<&HashMap<String, Vec<usize>>>;
+
+    // ── Functions (compute-tiles / descriptors) ─────────────────────────
+
+    /// `functions_x_graphs` declarations attached to this graph (e.g. the
+    /// compute-tiles function that materialises a nodegroup's tiles on demand).
+    ///
+    /// Default: none. Implementors that carry declarations override this — the
+    /// default keeps the trait backwards-compatible for existing implementors.
+    fn functions_x_graphs(&self) -> Vec<&StaticFunctionsXGraphs> {
+        Vec::new()
+    }
+
+    /// Build resource descriptors for `tiles` from this graph's descriptor
+    /// configuration.
+    ///
+    /// Default: empty. Implementors carrying descriptor templates override this
+    /// (the default keeps the trait backwards-compatible).
+    fn build_descriptors(&self, _tiles: &[StaticTile]) -> StaticResourceDescriptors {
+        StaticResourceDescriptors::default()
+    }
 }

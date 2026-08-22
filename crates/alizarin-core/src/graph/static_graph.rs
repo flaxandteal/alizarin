@@ -1046,6 +1046,17 @@ impl GraphLookup for StaticGraph {
     fn nodes_by_nodegroup(&self) -> Option<&HashMap<String, Vec<usize>>> {
         StaticGraph::nodes_by_nodegroup(self)
     }
+
+    fn functions_x_graphs(&self) -> Vec<&StaticFunctionsXGraphs> {
+        self.functions_x_graphs
+            .as_deref()
+            .map(|v| v.iter().collect())
+            .unwrap_or_default()
+    }
+
+    fn build_descriptors(&self, tiles: &[StaticTile]) -> StaticResourceDescriptors {
+        StaticGraph::build_descriptors(self, tiles)
+    }
 }
 
 #[cfg(test)]

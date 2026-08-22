@@ -41,10 +41,12 @@ pub mod type_serialization;
 // Graph types
 pub use graph::{
     apply_compute_tiles,
+    apply_derive_functions,
     batch_merge_resources,
     build_backedges,
     canonical_tile_id,
     compute_tiles_functions,
+    default_functions_registry,
     find_root_node,
     is_iterable_datatype,
     merge_resources,
@@ -56,6 +58,9 @@ pub use graph::{
     // Computed tiles
     ComputeTilesConfig,
     ComputeTilesProvider,
+    DeriveProvider,
+    DescriptorProvider,
+    FunctionsRegistry,
     GraphLookup,
     GraphWrapper,
     LayeredGraph,
@@ -65,6 +70,7 @@ pub use graph::{
     // Resource registry for relationship resolution
     PopulateCachesResult,
     PruneError,
+    RegisteredFunction,
     RelatedResourceEntry,
     ResourceCache,
     ResourceEntry,

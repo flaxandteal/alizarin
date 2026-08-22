@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
 use super::card_index::CardIndex;
-use super::cards::{StaticCard, StaticCardsXNodesXWidgets};
+use super::cards::{StaticCard, StaticCardsXNodesXWidgets, StaticFunctionsXGraphs};
 use super::graph_lookup::GraphLookup;
 use super::nodes::{StaticEdge, StaticNode, StaticNodegroup};
 use super::static_graph::StaticGraph;
@@ -42,6 +42,7 @@ struct MergedSlices {
     all_edges: Vec<StaticEdge>,
     all_cards: Vec<StaticCard>,
     all_cxnxw: Vec<StaticCardsXNodesXWidgets>,
+    all_fxg: Vec<StaticFunctionsXGraphs>,
     nodes_by_nodegroup_flat: HashMap<String, Vec<usize>>,
 }
 
@@ -219,16 +220,19 @@ impl LayeredGraph {
         let mut all_edges: Vec<StaticEdge> = Vec::new();
         let mut all_cards: Vec<StaticCard> = Vec::new();
         let mut all_cxnxw: Vec<StaticCardsXNodesXWidgets> = Vec::new();
+        let mut all_fxg: Vec<StaticFunctionsXGraphs> = Vec::new();
 
+        // Every structural collection is deduped by its natural key as layers are
+        // folded top-down (topmost wins), so an overlay that re-describes the same
+        // model does not duplicate entries. Without this, a duplicated edge/card
+        // makes the tile->tree builder emit a cardinality-n nodegroup TWICE, and a
+        // duplicated fxg makes compute_tiles run the same function twice.
         let mut seen_node_ids = std::collections::HashSet::new();
         let mut seen_ng_ids = std::collections::HashSet::new();
         let mut seen_card_ngs = std::collections::HashSet::new();
-        // Dedup edges by their (domain -> range) endpoints, like nodes/nodegroups.
-        // Overlays that re-describe the SAME model (e.g. a computed layer carrying
-        // the whole graph) would otherwise duplicate every edge, and the
-        // tile->tree builder traverses via edges - so a cardinality-n nodegroup
-        // reachable through a duplicated edge gets emitted TWICE.
         let mut seen_edges = std::collections::HashSet::new();
+        let mut seen_cxnxw_ids = std::collections::HashSet::new();
+        let mut seen_fxg_ids = std::collections::HashSet::new();
 
         for graph in self.layers.iter().rev() {
             for node in &graph.nodes {
@@ -254,7 +258,18 @@ impl LayeredGraph {
                 }
             }
             if let Some(ref cxnxw) = graph.cards_x_nodes_x_widgets {
-                all_cxnxw.extend(cxnxw.iter().cloned());
+                for cw in cxnxw {
+                    if seen_cxnxw_ids.insert(cw.id.clone()) {
+                        all_cxnxw.push(cw.clone());
+                    }
+                }
+            }
+            if let Some(ref fxgs) = graph.functions_x_graphs {
+                for fxg in fxgs {
+                    if seen_fxg_ids.insert(fxg.id.clone()) {
+                        all_fxg.push(fxg.clone());
+                    }
+                }
             }
         }
 
@@ -276,6 +291,7 @@ impl LayeredGraph {
             all_edges,
             all_cards,
             all_cxnxw,
+            all_fxg,
             nodes_by_nodegroup_flat,
         }
     }
@@ -400,6 +416,22 @@ impl GraphLookup for LayeredGraph {
 
     fn nodes_by_nodegroup(&self) -> Option<&HashMap<String, Vec<usize>>> {
         Some(&self.merged_slices().nodes_by_nodegroup_flat)
+    }
+
+    fn functions_x_graphs(&self) -> Vec<&super::cards::StaticFunctionsXGraphs> {
+        // Deduped in the same unified merge as nodes/edges/cards (by id, topmost
+        // wins), so a re-describing overlay does not double a declaration. Returned
+        // from the memoized slice rather than recomputed per call.
+        self.merged_slices().all_fxg.iter().collect()
+    }
+
+    fn build_descriptors(
+        &self,
+        tiles: &[super::tile::StaticTile],
+    ) -> super::descriptors::StaticResourceDescriptors {
+        // Descriptor templates are a base-model concern; the base layer carries
+        // them and the nodes they reference. Layer 0 is always the base.
+        self.layers[0].build_descriptors(tiles)
     }
 }
 
@@ -534,6 +566,106 @@ mod tests {
             vec!["n1".to_string(), "n2".to_string()],
             "both distinct-range edges kept"
         );
+    }
+
+    fn graph_with_fxg(id: &str, fxg_id: &str) -> StaticGraph {
+        let mut g: StaticGraph = serde_json::from_value(json!({
+            "graphid": id,
+            "name": {"en": id},
+            "root": {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": id},
+            "nodes": [{"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": id}],
+            "nodegroups": [], "edges": [],
+            "functions_x_graphs": [{
+                "id": fxg_id, "function_id": "fn-x", "graph_id": id, "config": {}
+            }]
+        }))
+        .unwrap();
+        g.build_indices();
+        g
+    }
+
+    #[test]
+    fn functions_x_graphs_union_across_layers() {
+        // An overlay contributes a function declaration the base does not carry;
+        // both surface through the union. This lets a computed layer bring its own
+        // compute-tiles fxg without editing the base graph. Order is not
+        // significant (consumers filter by function_id), so assert the set.
+        let base = graph_with_fxg("base", "fxg-base");
+        let overlay = graph_with_fxg("overlay", "fxg-overlay");
+        let lg = LayeredGraph::new(Arc::new(base), vec![Arc::new(overlay)]);
+        let mut ids: Vec<&str> = lg
+            .functions_x_graphs()
+            .iter()
+            .map(|f| f.id.as_str())
+            .collect();
+        ids.sort();
+        assert_eq!(
+            ids,
+            vec!["fxg-base", "fxg-overlay"],
+            "both declarations surface"
+        );
+    }
+
+    #[test]
+    fn re_describing_overlay_does_not_duplicate_fxg() {
+        // An overlay that re-declares the SAME fxg (same id) as the base must not
+        // double it — otherwise compute_tiles would run the function twice. This
+        // is the fxg analogue of the edge/node dedup.
+        let base = graph_with_fxg("base", "fxg-shared");
+        let overlay = graph_with_fxg("overlay", "fxg-shared");
+        let lg = LayeredGraph::new(Arc::new(base), vec![Arc::new(overlay)]);
+        let fxgs = lg.functions_x_graphs();
+        assert_eq!(
+            fxgs.len(),
+            1,
+            "shared fxg id deduped; got {:?}",
+            fxgs.iter().map(|f| &f.id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn re_describing_overlay_does_not_duplicate_cxnxw() {
+        // cards_x_nodes_x_widgets deduped by id like everything else, so an
+        // overlay carrying the same widget row does not double it.
+        let mk = || {
+            let mut g: StaticGraph = serde_json::from_value(json!({
+                "graphid": "base", "name": {"en": "base"},
+                "root": {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "base"},
+                "nodes": [{"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "base"}],
+                "nodegroups": [], "edges": [],
+                "cards_x_nodes_x_widgets": [{
+                    "id": "cw1", "card_id": "c1", "node_id": "root", "widget_id": "w1",
+                    "label": {"en": "W"}, "visible": true
+                }]
+            }))
+            .unwrap();
+            g.build_indices();
+            g
+        };
+        let lg = LayeredGraph::new(Arc::new(mk()), vec![Arc::new(mk())]);
+        assert_eq!(
+            lg.cards_x_nodes_x_widgets_slice().len(),
+            1,
+            "shared cxnxw row deduped by id"
+        );
+    }
+
+    #[test]
+    fn functions_x_graphs_surfaces_overlay_only_declaration() {
+        // Base has none; the overlay's fxg is still visible through the lookup.
+        let mut base: StaticGraph = serde_json::from_value(json!({
+            "graphid": "base", "name": {"en": "base"},
+            "root": {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "base"},
+            "nodes": [{"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "base"}],
+            "nodegroups": [], "edges": []
+        }))
+        .unwrap();
+        base.build_indices();
+        let overlay = graph_with_fxg("overlay", "fxg-overlay");
+        let lg = LayeredGraph::new(Arc::new(base), vec![Arc::new(overlay)]);
+        let fxgs = lg.functions_x_graphs();
+        assert_eq!(fxgs.len(), 1);
+        assert_eq!(fxgs[0].id, "fxg-overlay");
     }
 
     #[test]
