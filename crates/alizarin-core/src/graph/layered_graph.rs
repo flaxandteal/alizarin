@@ -146,6 +146,11 @@ impl LayeredGraph {
         let mut nodes_by_nodegroup: HashMap<String, Vec<LayerRef>> = HashMap::new();
 
         // Iterate top-down so topmost wins (or_insert keeps first = topmost).
+        // A node/edge already contributed by a higher layer is SKIPPED, so an
+        // overlay that re-describes the same model does not duplicate entries
+        // (which would double every cardinality-n nodegroup at tree-build time).
+        let mut seen_node_ids = std::collections::HashSet::new();
+        let mut seen_edges = std::collections::HashSet::new();
         for (layer_idx, graph) in self.layers.iter().enumerate().rev() {
             for (item_idx, node) in graph.nodes.iter().enumerate() {
                 let lr = LayerRef {
@@ -153,6 +158,11 @@ impl LayeredGraph {
                     item_idx,
                 };
 
+                // First (topmost) occurrence of this node id only — otherwise a
+                // re-describing overlay double-fills nodes_by_nodegroup.
+                if !seen_node_ids.insert(node.nodeid.clone()) {
+                    continue;
+                }
                 node_by_id.entry(node.nodeid.clone()).or_insert(lr.clone());
 
                 if let Some(ref alias) = node.alias {
@@ -184,10 +194,12 @@ impl LayeredGraph {
             }
 
             for edge in &graph.edges {
-                edges_map
-                    .entry(edge.domainnode_id.clone())
-                    .or_default()
-                    .push(edge.rangenode_id.clone());
+                if seen_edges.insert((edge.domainnode_id.clone(), edge.rangenode_id.clone())) {
+                    edges_map
+                        .entry(edge.domainnode_id.clone())
+                        .or_default()
+                        .push(edge.rangenode_id.clone());
+                }
             }
         }
 
@@ -211,6 +223,12 @@ impl LayeredGraph {
         let mut seen_node_ids = std::collections::HashSet::new();
         let mut seen_ng_ids = std::collections::HashSet::new();
         let mut seen_card_ngs = std::collections::HashSet::new();
+        // Dedup edges by their (domain -> range) endpoints, like nodes/nodegroups.
+        // Overlays that re-describe the SAME model (e.g. a computed layer carrying
+        // the whole graph) would otherwise duplicate every edge, and the
+        // tile->tree builder traverses via edges - so a cardinality-n nodegroup
+        // reachable through a duplicated edge gets emitted TWICE.
+        let mut seen_edges = std::collections::HashSet::new();
 
         for graph in self.layers.iter().rev() {
             for node in &graph.nodes {
@@ -223,7 +241,11 @@ impl LayeredGraph {
                     all_nodegroups.push(ng.clone());
                 }
             }
-            all_edges.extend(graph.edges.iter().cloned());
+            for edge in &graph.edges {
+                if seen_edges.insert((edge.domainnode_id.clone(), edge.rangenode_id.clone())) {
+                    all_edges.push(edge.clone());
+                }
+            }
             if let Some(ref cards) = graph.cards {
                 for card in cards {
                     if seen_card_ngs.insert(card.nodegroup_id.clone()) {
@@ -454,6 +476,64 @@ mod tests {
         let ids = children.unwrap();
         assert!(ids.contains(&"n1".to_string()), "base edge");
         assert!(ids.contains(&"n2".to_string()), "overlay edge");
+    }
+
+    #[test]
+    fn overlay_redescribing_the_base_does_not_duplicate_edges_or_children() {
+        // A computed-layer overlay may carry the WHOLE base model (same edges +
+        // nodes). Its shared edges/children must not duplicate, or the tile->tree
+        // builder walks a cardinality-n nodegroup twice and doubles every row.
+        let lg = LayeredGraph::new(Arc::new(base_graph()), vec![Arc::new(base_graph())]);
+        let children = lg.get_child_ids("root").expect("root has children");
+        assert_eq!(
+            children.iter().filter(|c| c.as_str() == "n1").count(),
+            1,
+            "shared edge deduped in lookup; got {children:?}"
+        );
+        assert_eq!(
+            lg.edges_slice()
+                .iter()
+                .filter(|e| e.domainnode_id == "root" && e.rangenode_id == "n1")
+                .count(),
+            1,
+            "shared edge deduped in slices"
+        );
+        assert_eq!(
+            lg.get_nodes_in_nodegroup("ng1").len(),
+            1,
+            "shared nodegroup node not double-counted"
+        );
+    }
+
+    #[test]
+    fn edge_dedup_keys_on_domain_and_range_not_domain_alone() {
+        // Two edges share a domain (root) but have distinct ranges (n1, n2).
+        // Stacking the graph over itself must keep BOTH (dedup by the full
+        // (domain,range) tuple), not collapse root's children to one.
+        let mut g: StaticGraph = serde_json::from_value(json!({
+            "graphid": "base", "name": {"en": "Base"},
+            "root": {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "base"},
+            "nodes": [
+                {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "base"},
+                {"nodeid": "n1", "name": "A", "datatype": "string", "graph_id": "base"},
+                {"nodeid": "n2", "name": "B", "datatype": "string", "graph_id": "base"}
+            ],
+            "nodegroups": [],
+            "edges": [
+                {"edgeid": "e1", "domainnode_id": "root", "rangenode_id": "n1", "graph_id": "base"},
+                {"edgeid": "e2", "domainnode_id": "root", "rangenode_id": "n2", "graph_id": "base"}
+            ]
+        }))
+        .unwrap();
+        g.build_indices();
+        let lg = LayeredGraph::new(Arc::new(g.clone()), vec![Arc::new(g)]);
+        let mut children = lg.get_child_ids("root").expect("root has children").clone();
+        children.sort();
+        assert_eq!(
+            children,
+            vec!["n1".to_string(), "n2".to_string()],
+            "both distinct-range edges kept"
+        );
     }
 
     #[test]
