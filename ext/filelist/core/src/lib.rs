@@ -374,6 +374,16 @@ pub fn create_filelist_handler() -> Arc<dyn ExtensionTypeHandler> {
 /// The datatype name this handler registers for.
 pub const DATATYPE_NAME: &str = "file-list";
 
+/// Register the file-list handler for [`DATATYPE_NAME`] into `registry`.
+///
+/// One-call convenience for Rust consumers wiring the `"file-list"` datatype.
+pub fn register(registry: &mut alizarin_core::extension_type_registry::ExtensionTypeRegistry) {
+    registry.register(
+        DATATYPE_NAME.to_string(),
+        std::sync::Arc::new(FileListTypeHandler),
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

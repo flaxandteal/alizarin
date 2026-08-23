@@ -7,4 +7,4 @@ description = "PostgreSQL COPY format output for Alizarin resources"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-alizarin-core = { path = "../../../crates/alizarin-core" }
+alizarin-core = { path = "../../../crates/alizarin-core", version = "2.0.0-alpha.128" }
