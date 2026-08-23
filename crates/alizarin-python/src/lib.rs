@@ -101,6 +101,7 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
                 can_render_display: handler.render_display_fn.is_some(),
                 can_render_search: false,
                 can_resolve_markers: handler.resolve_markers_fn.is_some(),
+                can_index: false,
             }
         } else {
             HandlerCapabilities::default()

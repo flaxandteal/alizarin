@@ -6,6 +6,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub mod card_traversal;
 pub mod csv_business_data_loader;
 pub mod csv_model_loader;
+pub mod datatype_index;
 pub mod exporter;
 /// Alizarin Core Library
 ///
@@ -28,6 +29,7 @@ pub mod ontology;
 pub mod path_resolution;
 pub mod permissions;
 pub mod pseudo_value_core;
+pub mod quantize;
 pub mod rdm_cache;
 pub mod rdm_namespace;
 pub mod registry;
@@ -350,8 +352,10 @@ pub use permissions::{evaluate_tile_path, PermissionRule};
 pub use string_utils::{camel_to_snake, snake_to_camel, sort_json_keys, transform_keys_to_snake};
 
 // Extension type registry (unified handler infrastructure for WASM/Python)
+pub use datatype_index::datatype_index_spec;
 pub use extension_type_registry::{
-    ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities,
+    ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities, IndexClass,
+    IndexSpec,
 };
 
 // CSV model loader (3-CSV format: graph.csv, nodes.csv, collections.csv)

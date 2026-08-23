@@ -70,6 +70,12 @@ pub struct HandlerCapabilities {
     pub can_render_search: bool,
     /// Can resolve markers (e.g., reference labels from RDM)
     pub can_resolve_markers: bool,
+    /// Can produce an index spec (index class + keys) for head indexing.
+    ///
+    /// A handler that sets this owns the decision of how its datatype is
+    /// head-indexed — the core emitter routes through `index_spec` instead
+    /// of any hardcoded per-datatype logic.
+    pub can_index: bool,
 }
 
 impl HandlerCapabilities {
@@ -80,6 +86,7 @@ impl HandlerCapabilities {
             can_render_display: false,
             can_render_search: false,
             can_resolve_markers: false,
+            can_index: false,
         }
     }
 
@@ -90,6 +97,7 @@ impl HandlerCapabilities {
             can_render_display: true,
             can_render_search: false,
             can_resolve_markers: false,
+            can_index: false,
         }
     }
 
@@ -100,8 +108,53 @@ impl HandlerCapabilities {
             can_render_display: true,
             can_render_search: false,
             can_resolve_markers: true,
+            can_index: true,
         }
     }
+}
+
+/// How a datatype's value is head-indexed.
+///
+/// This is the domain-agnostic shape the emitter routes on: a concept-like
+/// datatype is hierarchical (its keys sit inside DFS intervals); a resource
+/// link is a coarse target; everything else is detail-only (lives in the
+/// tile chunks, not the head). The `collection` on the hierarchical variant
+/// lets a handler carry the vocabulary/collection its keys belong to —
+/// the handler owns that resolution, core does not hardcode it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum IndexClass {
+    /// Concept-like: keys are hierarchy members (DFS-interval indexed),
+    /// optionally scoped to a named collection/controlled list.
+    ConceptHierarchical { collection: Option<String> },
+    /// Resource link: keys are coarse link targets.
+    Link,
+    /// Ordered scalar: keys are values with a total order, head-indexed as a
+    /// sortable integer so the head can answer RANGE queries (`BETWEEN lo AND
+    /// hi`). The class is deliberately OPAQUE about what the value means — the
+    /// datatype decides the quantizer (date → days-from-civil), and the emitter
+    /// owns that encoding. Keys here are the RAW values (e.g. the ISO date
+    /// string); the emitter quantizes them.
+    Ordered,
+    /// Spatial geometry, head-indexed as its axis-aligned BOUNDING BOX (A8.2).
+    /// The head stores `(min_lng, min_lat, max_lng, max_lat)`; a bbox query
+    /// matches on box OVERLAP, which is a SUPERSET of true `sfIntersects` — so
+    /// the coarse result never misses a geometry, and the client verifies exact
+    /// intersection on the hydrated tile. NOT a centroid (a polygon whose
+    /// centroid is outside a query box can still intersect it — centroid would
+    /// drop it). Keys are the RAW GeoJSON; the emitter extracts the bbox.
+    SpatialBbox,
+    /// Not head-indexed: the value lives only in the tile chunks.
+    DetailOnly,
+}
+
+/// An index spec: the index class plus the extracted keys (concept ids,
+/// link target ids, …) for a single tile value. `keys` is empty for
+/// `DetailOnly` and may be empty for the other classes when the value
+/// carries no indexable ids.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IndexSpec {
+    pub class: IndexClass,
+    pub keys: Vec<String>,
 }
 
 /// Error type for extension handler operations.
@@ -168,7 +221,9 @@ pub trait ExtensionTypeHandler: Send + Sync {
     ///   `__needs_rdm_lookup` marker that this handler resolves via `ctx`)
     /// * `language` - The language code for localization
     /// * `ctx` - Optional serialization context, carrying the `ExternalResolver`
-    ///   and per-node config. `None` in contexts that render pre-resolved data.
+    ///   and per-node config. This is what lets an extension type resolve its own
+    ///   ids to labels — symmetric with how built-in `concept` serialization reads
+    ///   `ctx.external_resolver`. `None` in contexts that render pre-resolved data.
     ///
     /// # Returns
     /// `Some(String)` if rendered, `None` to use default rendering
@@ -200,6 +255,30 @@ pub trait ExtensionTypeHandler: Send + Sync {
         _language: &str,
     ) -> Result<Option<Value>, ExtensionError> {
         // Default: no custom search rendering (falls back to display)
+        Ok(None)
+    }
+
+    /// Produce an index spec (index class + keys) for a tile value.
+    ///
+    /// The handler owns the mapping from its datatype's tile value to a
+    /// domain-agnostic [`IndexSpec`] — including resolving which
+    /// collection/vocabulary its concept keys belong to from `config`.
+    /// This is why `config` is threaded here: collection resolution is the
+    /// handler's job, not the core emitter's.
+    ///
+    /// # Arguments
+    /// * `tile_data` - The tile value to extract index keys from
+    /// * `config` - Optional node configuration (e.g., collection id)
+    ///
+    /// # Returns
+    /// `Some(IndexSpec)` if this handler indexes the value, `None` to defer
+    /// to the caller's built-in handling.
+    fn index_spec(
+        &self,
+        _tile_data: &Value,
+        _config: Option<&Value>,
+    ) -> Result<Option<IndexSpec>, ExtensionError> {
+        // Default: no index spec (handler does not participate in indexing)
         Ok(None)
     }
 
@@ -351,6 +430,30 @@ impl ExtensionTypeRegistry {
                 handler.render_search(tile_data, language)
             }
             _ => Ok(None),
+        }
+    }
+
+    /// Produce an index spec using the registered handler, if any.
+    ///
+    /// Capability-gated on `can_index`. A handler that fails is treated as
+    /// "no spec" (the caller falls back to its built-in handling) — index
+    /// derivation must never abort an emit.
+    ///
+    /// # Returns
+    /// - `Some(spec)` if a handler is registered, capable, and returned one
+    /// - `None` if no handler, `!can_index`, the handler returned `None`,
+    ///   or the handler errored
+    pub fn index_spec(
+        &self,
+        datatype: &str,
+        tile_data: &Value,
+        config: Option<&Value>,
+    ) -> Option<IndexSpec> {
+        match self.handlers.get(datatype) {
+            Some(handler) if handler.capabilities().can_index => {
+                handler.index_spec(tile_data, config).ok().flatten()
+            }
+            _ => None,
         }
     }
 
