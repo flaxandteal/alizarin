@@ -1003,6 +1003,88 @@ mod tests {
         assert!(matches!(result, Err(LoaderError::NotFound(_))));
     }
 
+    /// Collect `(offset, element_bytes)` from the streaming scanner over an
+    /// in-memory wrapper file.
+    fn scan(json: &str) -> Vec<(u64, String)> {
+        let mut out = Vec::new();
+        stream_business_data_resources(json.as_bytes(), |off, bytes| {
+            out.push((off, String::from_utf8(bytes.to_vec()).unwrap()));
+            Ok(())
+        })
+        .unwrap();
+        out
+    }
+
+    #[test]
+    fn stream_offsets_roundtrip_and_are_seekable() {
+        // Three resources; the middle one carries nested arrays/objects (tiles),
+        // an escaped quote AND structural chars inside a string value, and a
+        // multi-byte UTF-8 char — none of which may break element boundaries.
+        let json = r#"{ "business_data" : { "resources" : [
+            {"resourceinstance":{"resourceinstanceid":"a","graph_id":"g","name":"A"}},
+            {"resourceinstance":{"resourceinstanceid":"b","graph_id":"g","name":"say \"}]{,\" ø fada"},"tiles":[{"nodegroup_id":"ng","resourceinstance_id":"b","data":{"n":[1,2,{"k":"v"}]}}]},
+            {"resourceinstance":{"resourceinstanceid":"c","graph_id":"g","name":"C"}}
+        ] } }"#;
+
+        let elems = scan(json);
+        assert_eq!(elems.len(), 3, "exactly three elements");
+
+        // Each recorded offset+len must slice out that exact element from the
+        // ORIGINAL bytes (the seek-back invariant the second emit pass relies on).
+        let bytes = json.as_bytes();
+        let ids = ["a", "b", "c"];
+        for ((off, elem), want_id) in elems.iter().zip(ids) {
+            let sliced = &bytes[*off as usize..*off as usize + elem.len()];
+            assert_eq!(sliced, elem.as_bytes(), "offset/len slices the element");
+            let r = parse_business_data_resource_bytes(sliced).unwrap();
+            assert_eq!(r.resourceinstance.resourceinstanceid, want_id);
+        }
+
+        // The tricky middle name survives intact through a real parse.
+        let mid = parse_business_data_resource_bytes(elems[1].1.as_bytes()).unwrap();
+        assert_eq!(mid.resourceinstance.name, r#"say "}]{," ø fada"#);
+        assert!(mid.tiles.is_some());
+    }
+
+    #[test]
+    fn stream_handles_empty_and_missing_array() {
+        assert_eq!(
+            scan(r#"{"business_data":{"resources":[]}}"#).len(),
+            0,
+            "empty array yields nothing"
+        );
+        assert_eq!(
+            scan(r#"{"business_data":{}}"#).len(),
+            0,
+            "absent resources array yields nothing, not an error"
+        );
+    }
+
+    #[test]
+    fn stream_matches_whole_file_parse() {
+        // The streaming element set must equal the ids the whole-file parser
+        // produces, in the same order.
+        let json = r#"{"business_data":{"resources":[
+            {"resourceinstance":{"resourceinstanceid":"x1","graph_id":"g","name":"n1"}},
+            {"resourceinstance":{"resourceinstanceid":"x2","graph_id":"g","name":"n2"}}
+        ]}}"#;
+        let whole = parse_business_data_bytes(json.as_bytes()).unwrap();
+        let streamed: Vec<String> = scan(json)
+            .iter()
+            .map(|(_, e)| {
+                parse_business_data_resource_bytes(e.as_bytes())
+                    .unwrap()
+                    .resourceinstance
+                    .resourceinstanceid
+            })
+            .collect();
+        let whole_ids: Vec<String> = whole
+            .iter()
+            .map(|r| r.resourceinstance.resourceinstanceid.clone())
+            .collect();
+        assert_eq!(streamed, whole_ids);
+    }
+
     #[test]
     fn test_parse_coral_format_json() {
         // Test parsing JSON without the new Arches-HER 2.0+ fields
@@ -1099,6 +1181,148 @@ pub fn parse_business_data_bytes(bytes: &[u8]) -> Result<Vec<StaticResource>, Lo
         let resource: BusinessDataResourceFull = serde_json::from_slice(bytes)?;
         Ok(vec![resource.to_static_resource()])
     }
+}
+
+/// Parse ONE resource element (a bare `{ resourceinstance, tiles, ... }` object,
+/// as produced by [`stream_business_data_resources`]) into a `StaticResource`.
+/// Unlike [`parse_business_data_bytes`] this skips the wrapper-first attempt — the
+/// input is known to be a single resource, so it is the exact per-element parse a
+/// seek-back second pass wants.
+pub fn parse_business_data_resource_bytes(bytes: &[u8]) -> Result<StaticResource, LoaderError> {
+    let resource: BusinessDataResourceFull = serde_json::from_slice(bytes)?;
+    Ok(resource.to_static_resource())
+}
+
+/// Stream the resources of a `{ business_data: { resources: [...] } }` file from a
+/// reader WITHOUT materialising the whole file, invoking `on_elem(offset, bytes)`
+/// once per resource element. `offset` is the element's start byte from the
+/// reader's origin; `bytes` is that element's exact JSON (a single `{...}`), valid
+/// only for the duration of the call. Memory is bounded to one element at a time.
+///
+/// Because `offset` is stable for a given file, a caller can record offsets in a
+/// first streaming pass and `File::seek` back to those offsets to parse elements
+/// in ANY order in a second pass (with [`parse_business_data_resource_bytes`]) —
+/// the basis for memory-bounded emit over a single large prebuild file.
+/// Concretely, this is what lets the emitter write resources in an order chosen
+/// by a proximity function (index the offsets, sort, then seek+parse+emit)
+/// without ever holding the whole file in memory.
+///
+/// NB: that per-element `offset` is *why* this is a hand-rolled byte scan.
+/// `serde_json` can stream (a `SeqAccess` visitor, or `StreamDeserializer`), but
+/// it exposes byte offsets only for TOP-LEVEL whitespace-separated values — not
+/// for the comma-separated elements nested inside `resources: [...]`. A serde
+/// visitor would therefore drop the offsets and break ordered writing, so do NOT
+/// "simplify" this into one; the scan below is deliberate.
+///
+/// Handles ONLY the wrapper format (the shape every large prebuild is written in).
+/// The bare single-resource format is not a stream and callers should keep using
+/// [`parse_business_data_bytes`] for it (small overlays); this returns
+/// `Ok(())` having yielded nothing if no `resources` array is found.
+///
+/// Structural scan: JSON string literals (with `\` escapes) are respected, so
+/// braces/brackets/commas inside string values never affect element boundaries;
+/// UTF-8 continuation bytes are all ≥ 0x80 and never collide with the ASCII
+/// structural bytes, so byte-level scanning is safe.
+pub fn stream_business_data_resources<R, F>(reader: R, mut on_elem: F) -> Result<(), LoaderError>
+where
+    R: std::io::Read,
+    F: FnMut(u64, &[u8]) -> Result<(), LoaderError>,
+{
+    use std::io::Read as _;
+    let mut reader = std::io::BufReader::with_capacity(1 << 20, reader);
+    let mut chunk = [0u8; 1 << 16];
+
+    let mut pos: u64 = 0;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    // Phase 1: seek the `resources` array. `key_buf` captures each string's
+    // content (capped) so we can recognise the `resources` key; the next `[` after
+    // it opens the array.
+    let mut in_array = false;
+    let mut seen_resources_key = false;
+    let mut key_buf: Vec<u8> = Vec::with_capacity(16);
+
+    // Phase 2: element extraction. `depth` is the brace/bracket nesting inside the
+    // current element; `elem_buf` accumulates its bytes.
+    let mut depth: i32 = 0;
+    let mut elem_start: u64 = 0;
+    let mut elem_buf: Vec<u8> = Vec::with_capacity(4096);
+
+    loop {
+        let n = reader.read(&mut chunk)?;
+        if n == 0 {
+            break;
+        }
+        for &b in &chunk[..n] {
+            let cur = pos;
+            pos += 1;
+
+            if !in_array {
+                if in_string {
+                    if escaped {
+                        escaped = false;
+                    } else if b == b'\\' {
+                        escaped = true;
+                    } else if b == b'"' {
+                        in_string = false;
+                        if key_buf == b"resources" {
+                            seen_resources_key = true;
+                        }
+                    } else if key_buf.len() < 16 {
+                        key_buf.push(b);
+                    }
+                } else if b == b'"' {
+                    in_string = true;
+                    key_buf.clear();
+                } else if b == b'[' && seen_resources_key {
+                    in_array = true;
+                }
+                continue;
+            }
+
+            if depth == 0 {
+                // Between elements: skip whitespace/commas; `{` opens an element;
+                // `]` closes the array (done).
+                match b {
+                    b'{' => {
+                        depth = 1;
+                        elem_start = cur;
+                        elem_buf.clear();
+                        elem_buf.push(b);
+                    }
+                    b']' => return Ok(()),
+                    _ => {}
+                }
+                continue;
+            }
+
+            // Inside an element.
+            elem_buf.push(b);
+            if in_string {
+                if escaped {
+                    escaped = false;
+                } else if b == b'\\' {
+                    escaped = true;
+                } else if b == b'"' {
+                    in_string = false;
+                }
+            } else {
+                match b {
+                    b'"' => in_string = true,
+                    b'{' | b'[' => depth += 1,
+                    b'}' | b']' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            on_elem(elem_start, &elem_buf)?;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Result of importing a prebuild/pkg directory.
