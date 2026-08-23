@@ -615,6 +615,17 @@ pub fn create_reference_handler() -> Arc<dyn ExtensionTypeHandler> {
 /// The datatype name this handler registers for.
 pub const DATATYPE_NAME: &str = "reference";
 
+/// Register the CLM reference handler for [`DATATYPE_NAME`] into `registry`.
+///
+/// One-call convenience for Rust consumers wiring the `"reference"` datatype:
+/// `alizarin_clm_core::register(&mut registry)`.
+pub fn register(registry: &mut alizarin_core::extension_type_registry::ExtensionTypeRegistry) {
+    registry.register(
+        DATATYPE_NAME.to_string(),
+        std::sync::Arc::new(ReferenceTypeHandler),
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

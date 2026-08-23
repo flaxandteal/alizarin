@@ -187,5 +187,16 @@ for ext_dir in "$ROOT_DIR"/ext/*/; do
     fi
 done
 
+# Keep the versioned `alizarin-core` dependency in each ext-core crate in
+# lockstep. These crates carry a dual `{ path, version }` dep so they remain
+# publishable to crates.io (a path-only dep is rejected by `cargo publish`); the
+# `version` must track alizarin-core or the published ext crate pins a stale core.
+for ext_core_cargo in "$ROOT_DIR"/ext/*/core/Cargo.toml; do
+    if [ -f "$ext_core_cargo" ] && grep -qE 'alizarin-core = \{.*version = ' "$ext_core_cargo"; then
+        sed -i -E "s/(alizarin-core = \{[^}]*version = )\"[^\"]*\"/\1\"$CARGO_VERSION\"/" "$ext_core_cargo"
+        echo "  ✓ ${ext_core_cargo#$ROOT_DIR/} (alizarin-core dep version)"
+    fi
+done
+
 echo ""
 echo "Version synced to $VERSION"

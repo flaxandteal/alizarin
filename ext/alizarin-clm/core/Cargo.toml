@@ -9,4 +9,4 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 regex = "1.10"
 lazy_static = "1.4"
-alizarin-core = { path = "../../../crates/alizarin-core" }
+alizarin-core = { path = "../../../crates/alizarin-core", version = "2.0.0-alpha.128" }
