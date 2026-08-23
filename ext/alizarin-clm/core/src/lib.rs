@@ -553,6 +553,7 @@ impl ExtensionTypeHandler for ReferenceTypeHandler {
             can_render_search: false,
             can_resolve_markers: true,
             can_index: false,
+            can_validate: false,
         }
     }
 

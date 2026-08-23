@@ -205,6 +205,7 @@ mod tests {
         fn capabilities(&self) -> HandlerCapabilities {
             HandlerCapabilities {
                 can_index: true,
+                can_validate: false,
                 ..Default::default()
             }
         }

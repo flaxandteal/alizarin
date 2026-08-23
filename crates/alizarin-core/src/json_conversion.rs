@@ -488,13 +488,119 @@ pub(crate) fn build_pseudo_cache_from_tiles(
 /// * `id_key` - Optional key for deterministic UUID v5 generation. When provided and
 ///   the tree does not contain a `resourceinstanceid`, a deterministic UUID v5 will
 ///   be generated using the key and graph ID as namespace.
+///   Policy for the value-validation pass run during [`tree_to_tiles_with_options`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ValidationMode {
+    /// Do not validate.
+    Off,
+    /// Validate every value, collecting all diagnostics. This is the default.
+    #[default]
+    Collect,
+    /// Validate, aborting with an `Err` on the first invalid value.
+    FailFast,
+}
+
+/// A single validation finding, located by nodegroup/node.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ValidationDiagnostic {
+    pub nodegroup_id: String,
+    pub node_id: String,
+    pub node_alias: Option<String>,
+    /// `false` = error (value invalid); `true` = advisory warning.
+    pub warning: bool,
+    pub message: String,
+}
+
+/// Run the registered handlers' `validate` over every value in `data`, per node
+/// datatype + config (mirrors how coercion resolves config). `Off` returns an
+/// empty vec; `Collect` gathers all diagnostics; `FailFast` returns `Err` on the
+/// first error. Values whose datatype has no `can_validate` handler are skipped
+/// (implicitly valid). Rust-native — no per-value FFI.
+pub fn validate_business_data(
+    data: &BusinessDataWrapper,
+    graph: &StaticGraph,
+    registry: Option<&ExtensionTypeRegistry>,
+    mode: ValidationMode,
+) -> Result<Vec<ValidationDiagnostic>, String> {
+    let mut diagnostics = Vec::new();
+    if mode == ValidationMode::Off {
+        return Ok(diagnostics);
+    }
+    let Some(registry) = registry else {
+        return Ok(diagnostics);
+    };
+    for resource in &data.business_data.resources {
+        let Some(tiles) = resource.tiles.as_ref() else {
+            continue;
+        };
+        for tile in tiles {
+            for (node_id, value) in &tile.data {
+                let Some(node) = graph.get_node_by_id(node_id) else {
+                    continue;
+                };
+                let config = if node.config.is_empty() {
+                    None
+                } else {
+                    Some(Value::Object(node.config.clone().into_iter().collect()))
+                };
+                match registry.validate(&node.datatype, value, config.as_ref()) {
+                    Ok(Some(result)) => {
+                        for message in result.errors {
+                            if mode == ValidationMode::FailFast {
+                                return Err(format!(
+                                    "validation failed for {} ({}): {}",
+                                    node.alias.as_deref().unwrap_or(node_id),
+                                    node.datatype,
+                                    message
+                                ));
+                            }
+                            diagnostics.push(ValidationDiagnostic {
+                                nodegroup_id: tile.nodegroup_id.clone(),
+                                node_id: node_id.clone(),
+                                node_alias: node.alias.clone(),
+                                warning: false,
+                                message,
+                            });
+                        }
+                        for message in result.warnings {
+                            diagnostics.push(ValidationDiagnostic {
+                                nodegroup_id: tile.nodegroup_id.clone(),
+                                node_id: node_id.clone(),
+                                node_alias: node.alias.clone(),
+                                warning: true,
+                                message,
+                            });
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        return Err(format!("validator error for {}: {}", node.datatype, e));
+                    }
+                }
+            }
+        }
+    }
+    Ok(diagnostics)
+}
+
 pub fn tree_to_tiles(
     json: &Value,
     graph: &StaticGraph,
     strict: bool,
     id_key: Option<&str>,
 ) -> Result<BusinessDataWrapper, String> {
-    tree_to_tiles_with_options(json, graph, strict, id_key, false, true, false, None)
+    tree_to_tiles_with_options(
+        json,
+        graph,
+        strict,
+        id_key,
+        false,
+        true,
+        false,
+        None,
+        ValidationMode::Off,
+    )
+    .map(|(wrapper, _)| wrapper)
 }
 
 /// Convert tree to tiles with camelCase key support.
@@ -516,7 +622,8 @@ pub fn tree_to_tiles_with_options(
     random_ids: bool,
     has_extension_handlers: bool,
     extension_registry: Option<&ExtensionTypeRegistry>,
-) -> Result<BusinessDataWrapper, String> {
+    validation: ValidationMode,
+) -> Result<(BusinessDataWrapper, Vec<ValidationDiagnostic>), String> {
     let trees = extract_tree_resources(json)?;
 
     // Look up model permissions once (O(1) registry read).
@@ -554,9 +661,11 @@ pub fn tree_to_tiles_with_options(
         resources.push(resource);
     }
 
-    Ok(BusinessDataWrapper {
+    let wrapper = BusinessDataWrapper {
         business_data: BusinessData { resources },
-    })
+    };
+    let diagnostics = validate_business_data(&wrapper, graph, extension_registry, validation)?;
+    Ok((wrapper, diagnostics))
 }
 
 /// Extract tree resources from input (array or single object)
@@ -1335,7 +1444,7 @@ pub fn convert_single_tree<L: crate::label_resolution::ConceptLookup>(
     }
 
     let has_extensions = extension_registry.is_some();
-    let business_data = tree_to_tiles_with_options(
+    let (business_data, _diagnostics) = tree_to_tiles_with_options(
         &tree,
         graph,
         strict,
@@ -1344,6 +1453,7 @@ pub fn convert_single_tree<L: crate::label_resolution::ConceptLookup>(
         random_ids,
         has_extensions,
         extension_registry,
+        ValidationMode::Off,
     )?;
 
     let mut resource = business_data
@@ -2410,12 +2520,32 @@ mod tests {
         });
 
         // random_ids=false → slug-based UUID5
-        let result1 =
-            tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false, None)
-                .expect("First conversion failed");
-        let result2 =
-            tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false, None)
-                .expect("Second conversion failed");
+        let result1 = tree_to_tiles_with_options(
+            &tree,
+            &graph,
+            false,
+            None,
+            false,
+            false,
+            false,
+            None,
+            ValidationMode::Off,
+        )
+        .expect("First conversion failed")
+        .0;
+        let result2 = tree_to_tiles_with_options(
+            &tree,
+            &graph,
+            false,
+            None,
+            false,
+            false,
+            false,
+            None,
+            ValidationMode::Off,
+        )
+        .expect("Second conversion failed")
+        .0;
 
         let id1 = &result1.business_data.resources[0]
             .resourceinstance
@@ -2441,12 +2571,32 @@ mod tests {
             "name": {"en": {"value": "Resource Beta", "direction": "ltr"}}
         });
 
-        let result1 =
-            tree_to_tiles_with_options(&tree1, &graph, false, None, false, false, false, None)
-                .expect("First conversion failed");
-        let result2 =
-            tree_to_tiles_with_options(&tree2, &graph, false, None, false, false, false, None)
-                .expect("Second conversion failed");
+        let result1 = tree_to_tiles_with_options(
+            &tree1,
+            &graph,
+            false,
+            None,
+            false,
+            false,
+            false,
+            None,
+            ValidationMode::Off,
+        )
+        .expect("First conversion failed")
+        .0;
+        let result2 = tree_to_tiles_with_options(
+            &tree2,
+            &graph,
+            false,
+            None,
+            false,
+            false,
+            false,
+            None,
+            ValidationMode::Off,
+        )
+        .expect("Second conversion failed")
+        .0;
 
         let id1 = &result1.business_data.resources[0]
             .resourceinstance
@@ -2472,8 +2622,17 @@ mod tests {
         });
 
         // random_ids=false, no id_key, no slug configured → error
-        let result =
-            tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false, None);
+        let result = tree_to_tiles_with_options(
+            &tree,
+            &graph,
+            false,
+            None,
+            false,
+            false,
+            false,
+            None,
+            ValidationMode::Off,
+        );
 
         assert!(result.is_err(), "Should error without slug configured");
         let err = result.unwrap_err();
@@ -2495,9 +2654,19 @@ mod tests {
         });
 
         // random_ids=true → should succeed even without slug
-        let result =
-            tree_to_tiles_with_options(&tree, &graph, false, None, false, true, false, None)
-                .expect("random_ids=true should not require slug");
+        let result = tree_to_tiles_with_options(
+            &tree,
+            &graph,
+            false,
+            None,
+            false,
+            true,
+            false,
+            None,
+            ValidationMode::Off,
+        )
+        .expect("random_ids=true should not require slug")
+        .0;
 
         let id = &result.business_data.resources[0]
             .resourceinstance
@@ -2516,9 +2685,19 @@ mod tests {
         });
 
         // Even with random_ids=false, explicit ID should win
-        let result =
-            tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false, None)
-                .expect("Explicit ID should work");
+        let result = tree_to_tiles_with_options(
+            &tree,
+            &graph,
+            false,
+            None,
+            false,
+            false,
+            false,
+            None,
+            ValidationMode::Off,
+        )
+        .expect("Explicit ID should work")
+        .0;
 
         let id = &result.business_data.resources[0]
             .resourceinstance
@@ -2545,8 +2724,10 @@ mod tests {
             false,
             false,
             None,
+            ValidationMode::Off,
         )
-        .expect("id_key should work");
+        .expect("id_key should work")
+        .0;
 
         let id = &result.business_data.resources[0]
             .resourceinstance
@@ -2566,9 +2747,19 @@ mod tests {
             "name": {"en": {"value": "Tile Patch Test", "direction": "ltr"}}
         });
 
-        let result =
-            tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false, None)
-                .expect("Conversion failed");
+        let result = tree_to_tiles_with_options(
+            &tree,
+            &graph,
+            false,
+            None,
+            false,
+            false,
+            false,
+            None,
+            ValidationMode::Off,
+        )
+        .expect("Conversion failed")
+        .0;
 
         let resource = &result.business_data.resources[0];
         let resource_id = &resource.resourceinstance.resourceinstanceid;
@@ -2672,8 +2863,17 @@ mod tests {
             "name": {"en": {"value": "Test", "direction": "ltr"}}
         });
 
-        let result =
-            tree_to_tiles_with_options(&tree, &graph, false, None, false, false, false, None);
+        let result = tree_to_tiles_with_options(
+            &tree,
+            &graph,
+            false,
+            None,
+            false,
+            false,
+            false,
+            None,
+            ValidationMode::Off,
+        );
 
         assert!(result.is_err(), "Should error on unresolved placeholder");
         let err = result.unwrap_err();
