@@ -129,6 +129,7 @@ pub struct ModelCsvBundle {
 const VALID_DATATYPES: &[&str] = &[
     "semantic",
     "string",
+    "non-localized-string",
     "concept",
     "concept-list",
     "number",
@@ -1056,6 +1057,34 @@ Monument Types,Motte,Castle,5"#;
             .filter(|d| d.level == DiagnosticLevel::Error)
             .collect();
         assert!(errors.is_empty(), "Unexpected errors: {:?}", errors);
+    }
+
+    #[test]
+    fn non_localized_string_is_a_valid_datatype() {
+        // Regression: `non-localized-string` is wired up everywhere else
+        // (coercion, serialization, widget mapping) but was missing from the
+        // VALID_DATATYPES allow-list, so a model declaring it failed validation.
+        const NODES: &str = r#"parent_alias,alias,name,datatype,cardinality,ontology_class,parent_property,description,collection_name,required,searchable,exportable,sortorder
+,identifier,Identifier,non-localized-string,1,http://www.cidoc-crm.org/cidoc-crm/E41_Appellation,http://www.cidoc-crm.org/cidoc-crm/P1_is_identified_by,An identifier,,true,true,true,1"#;
+        let (bundle, parse_diags) = parse_model_csvs(GRAPH_CSV, NODES, None).unwrap();
+        assert!(
+            parse_diags
+                .iter()
+                .all(|d| d.level != DiagnosticLevel::Error),
+            "parse errors: {:?}",
+            parse_diags
+        );
+        let validation = validate_model_csvs(&bundle);
+        assert!(
+            !validation
+                .iter()
+                .any(|d| d.message.contains("invalid datatype")),
+            "non-localized-string rejected: {:?}",
+            validation
+                .iter()
+                .filter(|d| d.message.contains("datatype"))
+                .collect::<Vec<_>>()
+        );
     }
 
     const TEST_NAMESPACE: &str = "http://test.example.org/rdm/";
