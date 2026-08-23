@@ -206,7 +206,8 @@ pub use card_traversal::{
 pub use json_conversion::{
     build_tree_from_tiles, convert_single_tree, create_static_resource, resolve_extension_markers,
     resource_tiles_to_tree, resource_tiles_to_tree_with_context, tiles_to_tree, tree_to_tiles,
-    tree_to_tiles_with_options, BusinessData, BusinessDataWrapper,
+    tree_to_tiles_with_options, validate_business_data, BusinessData, BusinessDataWrapper,
+    ValidationDiagnostic, ValidationMode,
 };
 
 // Pseudo value core types (for JSON conversion)
@@ -356,7 +357,7 @@ pub use string_utils::{camel_to_snake, snake_to_camel, sort_json_keys, transform
 pub use datatype_index::datatype_index_spec;
 pub use extension_type_registry::{
     ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities, IndexClass,
-    IndexSpec,
+    IndexSpec, ValidationResult,
 };
 
 // CSV model loader (3-CSV format: graph.csv, nodes.csv, collections.csv)

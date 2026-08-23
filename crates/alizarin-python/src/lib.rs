@@ -102,6 +102,7 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
                 can_render_search: false,
                 can_resolve_markers: handler.resolve_markers_fn.is_some(),
                 can_index: false,
+                can_validate: false,
             }
         } else {
             HandlerCapabilities::default()

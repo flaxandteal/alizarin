@@ -398,6 +398,7 @@ mod tests {
                     can_render_search: false,
                     can_resolve_markers: false,
                     can_index: false,
+                    can_validate: false,
                 }
             }
             fn coerce(
@@ -460,6 +461,7 @@ mod tests {
                     can_render_search: false,
                     can_resolve_markers: false,
                     can_index: false,
+                    can_validate: false,
                 }
             }
             fn coerce(
@@ -523,6 +525,7 @@ mod tests {
                     can_render_search: true,
                     can_resolve_markers: false,
                     can_index: false,
+                    can_validate: false,
                 }
             }
             fn coerce(
@@ -586,6 +589,7 @@ mod tests {
                     can_render_search: true,
                     can_resolve_markers: false,
                     can_index: false,
+                    can_validate: false,
                 }
             }
             fn coerce(

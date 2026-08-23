@@ -333,6 +333,7 @@ impl ExtensionTypeHandler for FileListTypeHandler {
             can_render_search: false,
             can_resolve_markers: false,
             can_index: false,
+            can_validate: false,
         }
     }
 

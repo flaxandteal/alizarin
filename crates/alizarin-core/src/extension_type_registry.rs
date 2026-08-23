@@ -76,6 +76,11 @@ pub struct HandlerCapabilities {
     /// head-indexed — the core emitter routes through `index_spec` instead
     /// of any hardcoded per-datatype logic.
     pub can_index: bool,
+    /// Participates in value validation during tree→tiles. The validation pass
+    /// only calls `validate` on handlers that set this, so a handler with no
+    /// constraints need not be visited. Validation is Rust-native (the pass runs
+    /// entirely on the core side — no per-value FFI round-trip to Python/JS).
+    pub can_validate: bool,
 }
 
 impl HandlerCapabilities {
@@ -87,6 +92,7 @@ impl HandlerCapabilities {
             can_render_search: false,
             can_resolve_markers: false,
             can_index: false,
+            can_validate: false,
         }
     }
 
@@ -98,6 +104,7 @@ impl HandlerCapabilities {
             can_render_search: false,
             can_resolve_markers: false,
             can_index: false,
+            can_validate: false,
         }
     }
 
@@ -109,6 +116,7 @@ impl HandlerCapabilities {
             can_render_search: false,
             can_resolve_markers: true,
             can_index: true,
+            can_validate: true,
         }
     }
 }
@@ -178,6 +186,51 @@ impl std::fmt::Display for ExtensionError {
 }
 
 impl std::error::Error for ExtensionError {}
+
+/// Result of validating a single value: whether it is acceptable, plus any
+/// human-readable messages. `errors` make a value invalid; `warnings` are
+/// advisory (a value can be `valid` while carrying warnings).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ValidationResult {
+    pub valid: bool,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+impl ValidationResult {
+    /// A passing result with no messages.
+    pub fn valid() -> Self {
+        Self {
+            valid: true,
+            errors: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+
+    /// A failing result carrying a single error message.
+    pub fn invalid(error: impl Into<String>) -> Self {
+        Self {
+            valid: false,
+            errors: vec![error.into()],
+            warnings: Vec::new(),
+        }
+    }
+
+    /// Build from a set of error messages — valid iff `errors` is empty.
+    pub fn from_errors(errors: Vec<String>) -> Self {
+        Self {
+            valid: errors.is_empty(),
+            errors,
+            warnings: Vec::new(),
+        }
+    }
+
+    /// Attach a warning (does not affect validity).
+    pub fn with_warning(mut self, warning: impl Into<String>) -> Self {
+        self.warnings.push(warning.into());
+        self
+    }
+}
 
 /// Trait for extension type handlers.
 ///
@@ -280,6 +333,25 @@ pub trait ExtensionTypeHandler: Send + Sync {
     ) -> Result<Option<IndexSpec>, ExtensionError> {
         // Default: no index spec (handler does not participate in indexing)
         Ok(None)
+    }
+
+    /// Validate a single value for this datatype during tree→tiles.
+    ///
+    /// Mirrors [`coerce`](Self::coerce): `value` is the (coerced) tile value and
+    /// `config` is the node configuration (required flags, regex, min/max,
+    /// allowed collections, …). RDM/graph context is reached the same way
+    /// `coerce` reaches it (the global RDM cache), so no extra params are needed.
+    /// Runs entirely on the core side — no per-value FFI round-trip.
+    ///
+    /// # Returns
+    /// A [`ValidationResult`]. The default accepts everything (a handler with no
+    /// constraints); `Err` is reserved for a handler that could not run at all.
+    fn validate(
+        &self,
+        _value: &Value,
+        _config: Option<&Value>,
+    ) -> Result<ValidationResult, ExtensionError> {
+        Ok(ValidationResult::valid())
     }
 
     /// Resolve markers in tile data (e.g., fetch reference labels).
@@ -454,6 +526,26 @@ impl ExtensionTypeRegistry {
                 handler.index_spec(tile_data, config).ok().flatten()
             }
             _ => None,
+        }
+    }
+
+    /// Validate a value via the registered handler, if it participates.
+    ///
+    /// `Ok(None)` — no handler for `datatype`, or it does not set `can_validate`
+    /// (nothing to check ⇒ implicitly valid). `Ok(Some(result))` — the handler
+    /// ran; inspect [`ValidationResult::valid`]. `Err` — the handler could not
+    /// run at all (distinct from an invalid value).
+    pub fn validate(
+        &self,
+        datatype: &str,
+        value: &Value,
+        config: Option<&Value>,
+    ) -> Result<Option<ValidationResult>, ExtensionError> {
+        match self.handlers.get(datatype) {
+            Some(handler) if handler.capabilities().can_validate => {
+                Ok(Some(handler.validate(value, config)?))
+            }
+            _ => Ok(None),
         }
     }
 

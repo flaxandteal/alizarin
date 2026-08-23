@@ -173,6 +173,7 @@ impl JsExtensionTypeHandler {
                     can_render_search: false,
                     can_resolve_markers: cbs.resolve_markers_fn.is_some(),
                     can_index: false,
+                    can_validate: false,
                 }
             } else {
                 HandlerCapabilities::default()
