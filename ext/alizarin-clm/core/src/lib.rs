@@ -47,28 +47,44 @@ pub fn clear_clm_base_uri() {
     }
 }
 
-/// Build the URI for a list item given its UUID.
-///
-/// Uses the configured CLM base URI. Panics if not set — call `set_clm_base_uri`
-/// before generating references.
-pub fn build_item_uri(item_id: &str) -> String {
-    match get_clm_base_uri() {
-        Some(base) => format!("{}{}", base, item_id),
-        None => panic!(
-            "CLM base URI not configured. Call set_clm_base_uri() with \
-             PUBLIC_SERVER_ADDRESS before generating reference values."
-        ),
-    }
+/// Process-wide default base for reference item URIs, used when no base has been
+/// configured via [`set_clm_base_uri`]. Mirrors Arches' out-of-the-box
+/// `PUBLIC_SERVER_ADDRESS` (`http://localhost:8000/`) joined with the CLM item
+/// path that `ListItem.generate_uri()` produces. This keeps consumers that
+/// upgrade past a127 without calling `set_clm_base_uri` producing valid item
+/// URLs instead of panicking; production deployments override it via
+/// `set_clm_base_uri(PUBLIC_SERVER_ADDRESS + "/plugins/controlled-list-manager/item/")`.
+pub const DEFAULT_CLM_BASE_URI: &str =
+    "http://localhost:8000/plugins/controlled-list-manager/item/";
+
+/// The effective CLM base URI: the configured value, or [`DEFAULT_CLM_BASE_URI`]
+/// when unset.
+fn effective_clm_base_uri() -> String {
+    get_clm_base_uri().unwrap_or_else(|| DEFAULT_CLM_BASE_URI.to_string())
 }
 
-/// Build the URI for a list item, returning an error if CLM base URI is not configured.
+/// Validate that a list item id is a UUID. Non-UUID ids were the original source
+/// of malformed reference values, so reject them at the boundary.
+fn ensure_uuid_item_id(item_id: &str) -> Result<(), String> {
+    uuid::Uuid::parse_str(item_id)
+        .map(|_| ())
+        .map_err(|_| format!("list item id is not a valid UUID: {item_id:?}"))
+}
+
+/// Build the URI for a list item given its UUID.
+///
+/// Uses the configured CLM base URI, or [`DEFAULT_CLM_BASE_URI`] when none is
+/// set. Panics if `item_id` is not a valid UUID — use [`try_build_item_uri`] for
+/// the non-panicking variant.
+pub fn build_item_uri(item_id: &str) -> String {
+    try_build_item_uri(item_id).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Build the URI for a list item, falling back to [`DEFAULT_CLM_BASE_URI`] when
+/// no base is configured. Returns an error if `item_id` is not a valid UUID.
 pub fn try_build_item_uri(item_id: &str) -> Result<String, String> {
-    match get_clm_base_uri() {
-        Some(base) => Ok(format!("{}{}", base, item_id)),
-        None => Err("CLM base URI not configured. Call set_clm_base_uri() with \
-             PUBLIC_SERVER_ADDRESS before generating reference values."
-            .to_string()),
-    }
+    ensure_uuid_item_id(item_id)?;
+    Ok(format!("{}{}", effective_clm_base_uri(), item_id))
 }
 
 // =============================================================================
@@ -355,13 +371,17 @@ pub fn render_reference_display_value_resolved(
 ///
 /// Thin wrapper around `build_static_reference_from_concept` that returns
 /// serialized JSON rather than a typed struct.
+///
+/// Returns `Err` when the concept is malformed (e.g. a non-UUID id) — that is an
+/// input problem and must propagate, NOT be silently dropped. A *missing*
+/// concept (lookup miss) is handled by the caller, which leaves the marker in
+/// place; it never reaches here.
 pub fn build_reference_from_concept_json(
     concept_json: &Value,
     collection_id: &str,
-) -> Option<Value> {
-    build_static_reference_from_concept(concept_json, collection_id)
-        .ok()
-        .and_then(|sr| serde_json::to_value(sr).ok())
+) -> Result<Value, String> {
+    let sr = build_static_reference_from_concept(concept_json, collection_id)?;
+    serde_json::to_value(sr).map_err(|e| format!("failed to serialize reference: {e}"))
 }
 
 /// Resolve reference markers to full `StaticReference` objects using provided lookup functions.
@@ -377,59 +397,78 @@ pub fn build_reference_from_concept_json(
 /// - a bare id string -> unchanged;
 /// - anything already resolved (e.g. a `StaticReference` object) -> left as-is.
 ///
-/// When lookup fails, markers pass through unchanged.
+/// A lookup *miss* (concept not in the cache) leaves the marker in place — that
+/// is expected and fine. A concept that IS found but is *malformed* (e.g. a
+/// non-UUID id) returns `Err`: that is an input problem and must fail the build,
+/// not silently produce bad data for a downstream fixer to clean up.
 pub fn resolve_reference_markers_with_lookups<F1, F2>(
     tile_data: &Value,
     _language: &str,
     lookup_by_id: F1,
     lookup_by_label: F2,
-) -> Value
+) -> Result<Value, String>
 where
     F1: Fn(&str, &str) -> Option<Value>,
     F2: Fn(&str, &str) -> Option<Value>,
 {
-    let resolve_one = |v: &Value| -> Option<Value> {
+    // Ok(Some(v)) -> keep v; Ok(None) -> drop the element; Err -> malformed input.
+    let resolve_one = |v: &Value| -> Result<Option<Value>, String> {
         match v {
-            Value::Null => None,
-            Value::String(_) => Some(v.clone()),
+            Value::Null => Ok(None),
+            Value::String(_) => Ok(Some(v.clone())),
             Value::Object(obj) => {
                 if obj.get("__needs_rdm_lookup").is_some() {
-                    let uuid = obj.get("uuid").and_then(|u| u.as_str())?;
+                    let Some(uuid) = obj.get("uuid").and_then(|u| u.as_str()) else {
+                        return Ok(None);
+                    };
                     let collection = obj.get("controlledList").and_then(|c| c.as_str());
 
                     if let Some(coll_id) = collection {
                         if let Some(concept_json) = lookup_by_id(coll_id, uuid) {
-                            if let Some(ref_val) =
-                                build_reference_from_concept_json(&concept_json, coll_id)
-                            {
-                                return Some(ref_val);
-                            }
+                            // Found: build it. A build failure is malformed data.
+                            return Ok(Some(build_reference_from_concept_json(
+                                &concept_json,
+                                coll_id,
+                            )?));
                         }
                     }
-                    return Some(v.clone());
+                    // Miss: leave the marker to be resolved later.
+                    return Ok(Some(v.clone()));
                 }
                 if obj.get("__needs_rdm_label_lookup").is_some() {
-                    let label = obj.get("label").and_then(|l| l.as_str())?;
-                    let collection = obj.get("controlledList").and_then(|c| c.as_str())?;
+                    let Some(label) = obj.get("label").and_then(|l| l.as_str()) else {
+                        return Ok(None);
+                    };
+                    let Some(collection) = obj.get("controlledList").and_then(|c| c.as_str())
+                    else {
+                        return Ok(None);
+                    };
                     if let Some(concept_json) = lookup_by_label(collection, label) {
-                        if let Some(ref_val) =
-                            build_reference_from_concept_json(&concept_json, collection)
-                        {
-                            return Some(ref_val);
-                        }
+                        return Ok(Some(build_reference_from_concept_json(
+                            &concept_json,
+                            collection,
+                        )?));
                     }
-                    return Some(v.clone());
+                    return Ok(Some(v.clone()));
                 }
-                Some(v.clone())
+                Ok(Some(v.clone()))
             }
-            _ => Some(v.clone()),
+            _ => Ok(Some(v.clone())),
         }
     };
 
     match tile_data {
-        Value::Array(items) => Value::Array(items.iter().filter_map(resolve_one).collect()),
-        Value::Null => Value::Null,
-        other => resolve_one(other).unwrap_or(Value::Null),
+        Value::Array(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                if let Some(r) = resolve_one(item)? {
+                    out.push(r);
+                }
+            }
+            Ok(Value::Array(out))
+        }
+        Value::Null => Ok(Value::Null),
+        other => Ok(resolve_one(other)?.unwrap_or(Value::Null)),
     }
 }
 
@@ -438,7 +477,7 @@ where
 /// Convenience wrapper around `resolve_reference_markers_with_lookups` that uses
 /// `alizarin_core::with_global_rdm_cache` for lookups. Suitable for standalone
 /// (non-FFI) use where the global cache is in the same binary.
-pub fn resolve_reference_markers(tile_data: &Value, language: &str) -> Value {
+pub fn resolve_reference_markers(tile_data: &Value, language: &str) -> Result<Value, String> {
     resolve_reference_markers_with_lookups(
         tile_data,
         language,
@@ -447,6 +486,7 @@ pub fn resolve_reference_markers(tile_data: &Value, language: &str) -> Value {
                 cache.lookup_concept(collection_id, concept_id).map(|c| {
                     serde_json::json!({
                         "id": c.id,
+                        "uri": c.uri,
                         "pref_label": c.pref_label,
                     })
                 })
@@ -458,6 +498,7 @@ pub fn resolve_reference_markers(tile_data: &Value, language: &str) -> Value {
                 cache.lookup_by_label(collection_id, label).map(|c| {
                     serde_json::json!({
                         "id": c.id,
+                        "uri": c.uri,
                         "pref_label": c.pref_label,
                     })
                 })
@@ -481,7 +522,17 @@ pub fn build_static_reference_from_concept(
         .and_then(|v| v.as_str())
         .ok_or("Missing id in concept")?;
 
-    let uri = try_build_item_uri(concept_id)?;
+    // The list item id must always be a UUID, whatever the URI source. Reject
+    // non-UUID ids here so malformed data can't produce a reference at all.
+    ensure_uuid_item_id(concept_id)?;
+
+    // Prefer the concept's own URI (a SKOS rdf:about or external vocabulary URI
+    // carried through import); only synthesize a CLM item URI when the source
+    // has none — mirroring Arches' `ListItem.uri or generate_uri()`.
+    let uri = match concept.get("uri").and_then(|v| v.as_str()) {
+        Some(u) if !u.is_empty() => u.to_string(),
+        _ => try_build_item_uri(concept_id)?,
+    };
 
     let mut labels = Vec::new();
     if let Some(pref_label) = concept.get("pref_label").and_then(|v| v.as_object()) {
@@ -599,7 +650,7 @@ impl ExtensionTypeHandler for ReferenceTypeHandler {
     }
 
     fn resolve_markers(&self, tile_data: &Value, language: &str) -> Result<Value, ExtensionError> {
-        Ok(resolve_reference_markers(tile_data, language))
+        resolve_reference_markers(tile_data, language).map_err(ExtensionError::new)
     }
 
     fn description(&self) -> &str {
@@ -629,6 +680,15 @@ pub fn register(registry: &mut alizarin_core::extension_type_registry::Extension
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Serializes tests that mutate the process-wide `CLM_BASE_URI`, so the
+    /// global-state races don't make them flaky under the parallel test runner.
+    /// Tolerates poisoning (a panicking test still releases a usable lock).
+    static BASE_URI_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock_base_uri() -> std::sync::MutexGuard<'static, ()> {
+        BASE_URI_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     #[test]
     fn test_static_reference_display() {
@@ -781,6 +841,7 @@ mod tests {
     fn test_resolve_markers_to_static_references() {
         use alizarin_core::{set_global_rdm_cache, RdmCache, RdmCollection};
 
+        let _guard = lock_base_uri();
         set_clm_base_uri("http://localhost:8000/plugins/controlled-list-manager/item/");
 
         const NOUN: &str = "1052ed22-def2-5e6b-a5a2-ddff79e08e70";
@@ -873,5 +934,141 @@ mod tests {
         let (tile_data, _) = coerce_reference_value(&value, &config).unwrap();
         assert!(tile_data.is_array());
         assert_eq!(tile_data.as_array().unwrap().len(), 1);
+    }
+
+    const ITEM: &str = "1052ed22-def2-5e6b-a5a2-ddff79e08e70";
+
+    fn concept_json(uri: Option<&str>) -> Value {
+        let mut c = json!({
+            "id": ITEM,
+            "pref_label": {"en": {"id": "v1", "value": "noun"}}
+        });
+        if let Some(u) = uri {
+            c["uri"] = json!(u);
+        }
+        c
+    }
+
+    // Happy: a concept carrying its own URI (e.g. SKOS rdf:about / external
+    // vocab) uses it verbatim, NOT a synthesized CLM item URI — even when a
+    // different base is configured.
+    #[test]
+    fn reference_uses_stored_concept_uri_verbatim() {
+        let _guard = lock_base_uri();
+        set_clm_base_uri("http://example.org/should-not-be-used/");
+        let sr = build_static_reference_from_concept(
+            &concept_json(Some("https://vocab.getty.edu/aat/300021147")),
+            "coll",
+        )
+        .unwrap();
+        assert_eq!(sr.uri, "https://vocab.getty.edu/aat/300021147");
+    }
+
+    // Happy: no stored URI + a configured base → synthesized `<base><uuid>`.
+    #[test]
+    fn reference_synthesizes_item_uri_when_no_stored_uri() {
+        let _guard = lock_base_uri();
+        set_clm_base_uri("http://my-arches.example/plugins/controlled-list-manager/item/");
+        let sr = build_static_reference_from_concept(&concept_json(None), "coll").unwrap();
+        assert_eq!(
+            sr.uri,
+            format!("http://my-arches.example/plugins/controlled-list-manager/item/{ITEM}")
+        );
+    }
+
+    // Happy: no stored URI + no configured base → the process-wide default
+    // (mirrors Arches' localhost PUBLIC_SERVER_ADDRESS), NOT a panic.
+    #[test]
+    fn reference_falls_back_to_default_base_when_unset() {
+        let _guard = lock_base_uri();
+        clear_clm_base_uri();
+        let sr = build_static_reference_from_concept(&concept_json(None), "coll").unwrap();
+        assert_eq!(sr.uri, format!("{DEFAULT_CLM_BASE_URI}{ITEM}"));
+    }
+
+    // An empty stored URI is treated as "no URI" and falls back to synthesis.
+    #[test]
+    fn reference_treats_empty_stored_uri_as_absent() {
+        let _guard = lock_base_uri();
+        set_clm_base_uri("http://host/item/");
+        let sr = build_static_reference_from_concept(&concept_json(Some("")), "coll").unwrap();
+        assert_eq!(sr.uri, format!("http://host/item/{ITEM}"));
+    }
+
+    // Unhappy: a non-UUID list item id is rejected regardless of URI source.
+    // No base is touched, so no lock needed (validation precedes base access).
+    #[test]
+    fn reference_rejects_non_uuid_item_id() {
+        let bad = json!({"id": "not-a-uuid", "pref_label": {"en": {"id": "v", "value": "x"}}});
+        let err = build_static_reference_from_concept(&bad, "coll").unwrap_err();
+        assert!(err.contains("not a valid UUID"), "got: {err}");
+
+        // A stored URI does NOT excuse a non-UUID id.
+        let bad2 = json!({"id": "42", "uri": "http://x/", "pref_label": {}});
+        assert!(build_static_reference_from_concept(&bad2, "coll").is_err());
+    }
+
+    // Unhappy: the low-level builder rejects non-UUID ids too.
+    #[test]
+    fn try_build_item_uri_rejects_non_uuid() {
+        assert!(try_build_item_uri("nope").is_err());
+        assert!(try_build_item_uri(ITEM).is_ok());
+    }
+
+    #[test]
+    #[should_panic(expected = "not a valid UUID")]
+    fn build_item_uri_panics_on_non_uuid() {
+        let _ = build_item_uri("still-not-a-uuid");
+    }
+
+    // Resolve path — lookup MISS leaves the marker untouched (expected; the
+    // concept may resolve later). No error.
+    #[test]
+    fn resolve_passes_marker_through_on_lookup_miss() {
+        let marker = json!([{"__needs_rdm_lookup": true, "uuid": ITEM, "controlledList": "coll"}]);
+        let out = resolve_reference_markers_with_lookups(
+            &marker,
+            "en",
+            |_, _| None, // miss
+            |_, _| None,
+        )
+        .expect("a miss must not error");
+        assert_eq!(out, marker, "marker should pass through unchanged");
+    }
+
+    // Resolve path — a FOUND but malformed concept (non-UUID id) is an input
+    // problem: hard-fail, don't emit or keep bad data.
+    #[test]
+    fn resolve_hard_fails_on_malformed_concept() {
+        let marker = json!([{"__needs_rdm_lookup": true, "uuid": ITEM, "controlledList": "coll"}]);
+        let err = resolve_reference_markers_with_lookups(
+            &marker,
+            "en",
+            |_, _| Some(json!({"id": "not-a-uuid", "pref_label": {}})),
+            |_, _| None,
+        )
+        .expect_err("a malformed concept must fail the build");
+        assert!(err.contains("not a valid UUID"), "got: {err}");
+    }
+
+    // Resolve path — a found, well-formed concept carrying its own URI resolves
+    // to a StaticReference that uses that URI verbatim.
+    #[test]
+    fn resolve_uses_stored_uri_from_found_concept() {
+        let marker = json!([{"__needs_rdm_lookup": true, "uuid": ITEM, "controlledList": "coll"}]);
+        let out = resolve_reference_markers_with_lookups(
+            &marker,
+            "en",
+            |_, _| {
+                Some(json!({
+                    "id": ITEM,
+                    "uri": "https://vocab.example/aat/300021147",
+                    "pref_label": {"en": {"id": "v1", "value": "noun"}}
+                }))
+            },
+            |_, _| None,
+        )
+        .unwrap();
+        assert_eq!(out[0]["uri"], "https://vocab.example/aat/300021147");
     }
 }

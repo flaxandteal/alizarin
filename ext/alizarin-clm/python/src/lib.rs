@@ -195,7 +195,7 @@ mod python_module {
             "en"
         };
 
-        let resolved = alizarin_clm_core::resolve_reference_markers_with_lookups(
+        let resolved = match alizarin_clm_core::resolve_reference_markers_with_lookups(
             &value,
             language,
             |collection_id, concept_id| {
@@ -214,7 +214,12 @@ mod python_module {
                     )
                 }
             },
-        );
+        ) {
+            Ok(v) => v,
+            // Malformed reference data (e.g. a non-UUID concept id) is an input
+            // problem — surface it rather than emitting/keeping bad data.
+            Err(e) => return ResolveMarkersResult::error(e),
+        };
 
         if resolved == value {
             ResolveMarkersResult::unchanged()

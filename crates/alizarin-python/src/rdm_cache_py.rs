@@ -434,6 +434,7 @@ impl RdmConcept {
         Self {
             inner: CoreRdmConcept {
                 id,
+                uri: None,
                 pref_label: pref_label_values,
                 alt_labels: HashMap::new(),
                 broader: vec![],
@@ -483,6 +484,7 @@ impl RdmConcept {
         Ok(Self {
             inner: CoreRdmConcept {
                 id,
+                uri: None,
                 pref_label,
                 alt_labels: HashMap::new(),
                 broader: vec![],
@@ -521,6 +523,19 @@ impl RdmConcept {
     #[getter]
     fn narrower(&self) -> Vec<String> {
         self.inner.narrower.clone()
+    }
+
+    /// The concept's own URI (e.g. a SKOS `rdf:about` or external vocabulary
+    /// URI). `None` when the source had no URI, in which case reference values
+    /// synthesize one from the CLM base URI.
+    #[getter]
+    fn uri(&self) -> Option<String> {
+        self.inner.uri.clone()
+    }
+
+    #[setter]
+    fn set_uri(&mut self, uri: Option<String>) {
+        self.inner.uri = uri;
     }
 
     /// Get preferred label for a language
@@ -858,6 +873,7 @@ impl RdmCollection {
 
         let concept = CoreRdmConcept {
             id: concept_id.clone(),
+            uri: None,
             pref_label,
             alt_labels: HashMap::new(),
             broader: vec![],
@@ -948,6 +964,7 @@ impl RdmCollection {
         // Create concept with broader set to parent
         let concept = CoreRdmConcept {
             id: concept_id.clone(),
+            uri: None,
             pref_label,
             alt_labels: HashMap::new(),
             broader: vec![parent_id.clone()],

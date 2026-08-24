@@ -78,6 +78,8 @@ enum PrefLabelEntry {
 pub struct RdmConcept {
     /// Concept ID (UUID)
     pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
     /// Preferred labels by language code (with value IDs)
     #[serde(
         default,
@@ -967,6 +969,9 @@ pub fn skos_to_rdm_collection(skos: &SkosCollection) -> RdmCollection {
 
         let rdm_concept = RdmConcept {
             id: skos_concept.id.clone(),
+            // Carry the concept's own URI (SKOS rdf:about) through so reference
+            // values can use it verbatim instead of synthesizing one.
+            uri: skos_concept.uri.clone(),
             pref_label,
             alt_labels: HashMap::new(),
             broader,
@@ -1218,6 +1223,47 @@ impl ConceptLookup for RdmCache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn skos_uri_carries_through_to_rdm_concept() {
+        let skos: crate::skos::SkosCollection = serde_json::from_value(json!({
+            "id": "coll",
+            "prefLabels": {"en": {"id": "vc", "value": "Coll"}},
+            "concepts": {
+                "u1": {
+                    "id": "1052ed22-def2-5e6b-a5a2-ddff79e08e70",
+                    "uri": "https://vocab.example/aat/300021147",
+                    "prefLabels": {"en": {"id": "v1", "value": "noun"}}
+                }
+            }
+        }))
+        .unwrap();
+        let rdm = skos_to_rdm_collection(&skos);
+        let c = rdm
+            .get_concept("1052ed22-def2-5e6b-a5a2-ddff79e08e70")
+            .expect("concept present");
+        assert_eq!(
+            c.uri.as_deref(),
+            Some("https://vocab.example/aat/300021147")
+        );
+    }
+
+    #[test]
+    fn concept_without_uri_is_backwards_compatible() {
+        let c: RdmConcept = serde_json::from_value(json!({
+            "id": "1052ed22-def2-5e6b-a5a2-ddff79e08e70",
+            "pref_label": {"en": {"id": "v1", "value": "noun"}}
+        }))
+        .expect("legacy concept JSON (no uri) must still deserialize");
+        assert_eq!(c.uri, None);
+
+        let reser = serde_json::to_value(&c).unwrap();
+        assert!(
+            reser.get("uri").is_none(),
+            "a uri-less concept must not emit a `uri` key: {reser}"
+        );
+    }
 
     #[test]
     fn test_concept_label_lookup() {
@@ -1287,6 +1333,7 @@ mod tests {
         );
         let parent = RdmConcept {
             id: "parent".to_string(),
+            uri: None,
             pref_label: parent_labels,
             alt_labels: HashMap::new(),
             broader: vec![],
@@ -1303,6 +1350,7 @@ mod tests {
         );
         let child = RdmConcept {
             id: "child".to_string(),
+            uri: None,
             pref_label: child_labels,
             alt_labels: HashMap::new(),
             broader: vec!["parent".to_string()],
@@ -1338,6 +1386,7 @@ mod tests {
         );
         let concept = RdmConcept {
             id: "c1".to_string(),
+            uri: None,
             pref_label: labels,
             alt_labels: HashMap::new(),
             broader: vec![],
@@ -1378,6 +1427,7 @@ mod tests {
         );
         let parent = RdmConcept {
             id: "animals".to_string(),
+            uri: None,
             pref_label: parent_labels,
             alt_labels: HashMap::new(),
             broader: vec![],
@@ -1400,6 +1450,7 @@ mod tests {
         );
         let child = RdmConcept {
             id: "mammals".to_string(),
+            uri: None,
             pref_label: child_labels,
             alt_labels: HashMap::new(),
             broader: vec!["animals".to_string()],
