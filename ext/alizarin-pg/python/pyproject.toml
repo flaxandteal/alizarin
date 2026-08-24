@@ -4,11 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "alizarin-pg"
-version = "2.0.0a128"
+version = "2.0.0a129"
 description = "PostgreSQL COPY format extension for Alizarin"
 requires-python = ">=3.9"
 dependencies = [
-    "alizarin>=2.0.0a128",
+    "alizarin>=2.0.0a129",
 ]
 
 [project.optional-dependencies]
