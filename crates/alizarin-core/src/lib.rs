@@ -204,10 +204,10 @@ pub use card_traversal::{
 
 // JSON conversion (tiles <-> tree)
 pub use json_conversion::{
-    build_tree_from_tiles, convert_single_tree, create_static_resource, resolve_extension_markers,
-    resource_tiles_to_tree, resource_tiles_to_tree_with_context, tiles_to_tree, tree_to_tiles,
-    tree_to_tiles_with_options, validate_business_data, BusinessData, BusinessDataWrapper,
-    ValidationDiagnostic, ValidationMode,
+    batch_convert_trees, build_tree_from_tiles, convert_single_tree, create_static_resource,
+    resolve_extension_markers, resource_tiles_to_tree, resource_tiles_to_tree_with_context,
+    tiles_to_tree, tree_to_tiles, tree_to_tiles_with_options, validate_business_data, BatchOptions,
+    BatchOutcome, BusinessData, BusinessDataWrapper, ValidationDiagnostic, ValidationMode,
 };
 
 // Pseudo value core types (for JSON conversion)
@@ -337,8 +337,9 @@ pub use registry::{
 // Global RDM cache (for concept lookups across FFI targets)
 pub use registry::{
     add_to_global_rdm_cache_from_skos, add_to_global_rdm_cache_from_skos_xml,
-    clear_global_rdm_cache, ensure_global_rdm_cache, get_global_rdm_cache, has_global_rdm_cache,
-    set_global_rdm_cache, with_global_rdm_cache, with_global_rdm_cache_mut,
+    clear_global_rdm_cache, ensure_global_rdm_cache, get_global_rdm_cache,
+    get_global_rdm_cache_arc, has_global_rdm_cache, set_global_rdm_cache, with_global_rdm_cache,
+    with_global_rdm_cache_mut,
 };
 
 // Global extension type registry (for extension crates like alizarin-pg)

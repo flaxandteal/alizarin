@@ -238,6 +238,7 @@ pub fn cards_to_tree(resource_json: &str, graph: &StaticGraph) -> Result<JsValue
 /// Note: In WASM, parallelism is limited by JavaScript's single-threaded nature,
 /// but we can still optimize by processing in batches and reducing boundary crossings.
 #[wasm_bindgen(js_name = batchTreesToTiles)]
+#[allow(clippy::too_many_arguments)]
 pub fn batch_trees_to_tiles(
     trees_json: &str,
     graph: &StaticGraph,
@@ -245,6 +246,8 @@ pub fn batch_trees_to_tiles(
     strict: bool,
     id_keys_json: Option<String>,
     random_ids: Option<bool>,
+    resolve_markers: Option<bool>,
+    scopes_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
     // Parse trees from JSON
     let mut trees: Vec<Value> = serde_json::from_str(trees_json)
@@ -267,66 +270,52 @@ pub fn batch_trees_to_tiles(
         }
     }
 
-    let graph_id = graph.graph_id();
-    let mut resources: Vec<alizarin_core::StaticResource> = Vec::new();
-    let mut errors: Vec<String> = Vec::new();
-    let warnings: Vec<String> = Vec::new();
-    let ext_registry = crate::extension_registry::build_extension_registry();
-
-    for (i, tree) in trees.iter_mut().enumerate() {
-        if from_camel {
+    // WASM handles camelCase by transforming tree keys up front, then converting
+    // with from_camel = false (its long-standing behaviour).
+    if from_camel {
+        for tree in trees.iter_mut() {
             *tree = transform_keys_to_snake(tree.clone());
         }
-
-        let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
-
-        let result = alizarin_core::convert_single_tree::<alizarin_core::RdmCache>(
-            tree,
-            graph,
-            graph_id,
-            id_key_ref,
-            false,
-            strict,
-            random_ids.unwrap_or(false),
-            Some(&ext_registry),
-            None,
-            false,
-        );
-
-        match result {
-            Ok(resource) => resources.push(resource),
-            Err(e) => {
-                errors.push(format!("Tree {}: {}", i, e));
-                if strict {
-                    return Err(JsValue::from_str(&format!("Strict mode error: {}", e)));
-                }
-            }
-        }
     }
 
-    // Check slug uniqueness if slug-based IDs were used
-    if id_keys.is_none() && !random_ids.unwrap_or(false) {
-        let mut seen_slugs: std::collections::HashMap<String, usize> =
-            std::collections::HashMap::new();
-        for (i, resource) in resources.iter().enumerate() {
-            if let Some(ref slug) = resource.resourceinstance.descriptors.slug {
-                if let Some(prev_idx) = seen_slugs.insert(slug.clone(), i) {
-                    let err_msg =
-                        format!("Duplicate slug '{}' on trees {} and {}", slug, prev_idx, i);
-                    if strict {
-                        return Err(JsValue::from_str(&err_msg));
-                    }
-                    errors.push(err_msg);
-                }
-            }
-        }
-    }
+    let scopes_value: Option<Value> = scopes_json
+        .map(|s| serde_json::from_str(&s))
+        .transpose()
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse scopes: {}", e)))?;
+
+    let ext_registry = crate::extension_registry::build_extension_registry();
+    let graph_id = graph.graph_id();
+
+    // The batch loop, scopes, error partitioning, strict handling, and
+    // slug-uniqueness live in core (`batch_convert_trees`) — shared with Python,
+    // so WASM now supports resolve_markers/scopes and can't drift. WASM is
+    // single-threaded, so core's sequential branch runs (`parallel` feature off).
+    let opts = alizarin_core::BatchOptions {
+        graph_id,
+        from_camel: false,
+        strict,
+        random_ids: random_ids.unwrap_or(false),
+        resolve_markers: resolve_markers.unwrap_or(false),
+        id_keys: id_keys.as_deref(),
+        scopes: scopes_value.as_ref(),
+    };
+    let outcome = alizarin_core::batch_convert_trees::<alizarin_core::RdmCache>(
+        &trees,
+        graph,
+        Some(&ext_registry),
+        None,
+        &opts,
+    )
+    .map_err(|e| JsValue::from_str(&e))?;
 
     // Serialize directly to JS — no intermediate serde_json::Value
+    let warnings: Vec<String> = Vec::new();
     let output = BatchResult {
-        business_data: BatchBusinessData { resources },
-        errors: &errors,
-        error_count: errors.len(),
+        business_data: BatchBusinessData {
+            resources: outcome.resources,
+        },
+        errors: &outcome.errors,
+        error_count: outcome.errors.len(),
         warnings: &warnings,
     };
 

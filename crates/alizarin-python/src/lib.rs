@@ -262,10 +262,11 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
                     ExtensionError::new(format!("Failed to serialize tile_data: {}", e))
                 })?;
 
-                // Get RDM cache for lookups
-                // Clone the inner cache and wrap in Arc (same pattern as batch_trees_to_tiles)
-                let core_cache: Option<Arc<CoreRdmCache>> = rdm_cache_py::get_global_rdm_cache()
-                    .map(|cache| Arc::new(cache.inner().clone()));
+                // Cheap Arc handle to the global RDM cache — a refcount bump, not
+                // a per-value deep copy of every collection/concept (which made
+                // this the batch hotpath's real bottleneck).
+                let core_cache: Option<Arc<CoreRdmCache>> =
+                    alizarin_core::get_global_rdm_cache_arc();
 
                 // SAFETY: Calling resolve_markers FFI function pointer registered via PyCapsule.
                 // cache_ptr is either null or points to an Arc<CoreRdmCache> kept alive by
@@ -1109,7 +1110,8 @@ fn batch_trees_to_tiles(
     let label_cache: Option<Arc<CoreRdmCache>> = if alias_map.is_empty() {
         None
     } else {
-        rdm_cache_py::get_global_rdm_cache().map(|cache| Arc::new(cache.inner().clone()))
+        // Cheap Arc handle to the global cache — no per-batch deep copy.
+        alizarin_core::get_global_rdm_cache_arc()
     };
     if from_camel {
         let camel_entries: Vec<_> = alias_map
@@ -1124,78 +1126,41 @@ fn batch_trees_to_tiles(
         .as_ref()
         .map(|cache| (&alias_map, cache.as_ref()));
 
-    let results: Vec<Result<serde_json::Value, String>> = trees
-        .into_par_iter()
-        .enumerate()
-        .map(|(i, tree)| {
-            let id_key_ref = id_keys.as_ref().map(|keys| keys[i].as_str());
+    // The batch loop, scopes, error partitioning, strict handling, and
+    // slug-uniqueness now live in core (`batch_convert_trees`) so Python and
+    // WASM share one implementation and can't drift on flags like
+    // `resolve_markers`. Parallelism is core's (via the `parallel` feature).
+    let opts = alizarin_core::BatchOptions {
+        graph_id: &graph_id,
+        from_camel,
+        strict,
+        random_ids,
+        resolve_markers,
+        id_keys: id_keys.as_deref(),
+        scopes: scopes_value.as_ref(),
+    };
+    let outcome = alizarin_core::batch_convert_trees(
+        &trees,
+        &graph,
+        ext_registry.as_ref(),
+        label_lookup,
+        &opts,
+    )
+    .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
-            let mut resource = alizarin_core::convert_single_tree(
-                &tree,
-                &graph,
-                &graph_id,
-                id_key_ref,
-                from_camel,
-                strict,
-                random_ids,
-                ext_registry.as_ref(),
-                label_lookup,
-                resolve_markers,
-            )
-            .map_err(|e| format!("Tree {}: {}", i, e))?;
-
-            if let Some(ref scopes_val) = scopes_value {
-                resource.scopes = Some(scopes_val.clone());
-            }
-
-            serde_json::to_value(&resource)
-                .map_err(|e| format!("Tree {}: Failed to serialize: {}", i, e))
-        })
+    let resources: Vec<serde_json::Value> = outcome
+        .resources
+        .iter()
+        .map(|r| serde_json::to_value(r).unwrap_or(serde_json::Value::Null))
         .collect();
-
-    // Separate successes and errors
-    let (successes, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
-    let resources: Vec<_> = successes.into_iter().map(Result::unwrap).collect();
-    let mut errors: Vec<_> = errors.into_iter().map(|e| e.unwrap_err()).collect();
-
-    // In strict mode, fail if any errors
-    if strict && !errors.is_empty() {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-            "Strict mode error: {}",
-            errors[0]
-        )));
-    }
-
-    // Check slug uniqueness if slug-based IDs were used
-    if id_keys.is_none() && !random_ids {
-        let mut seen_slugs: std::collections::HashMap<String, usize> =
-            std::collections::HashMap::new();
-        for (i, resource_value) in resources.iter().enumerate() {
-            if let Some(slug) = resource_value
-                .get("resourceinstance")
-                .and_then(|ri| ri.get("descriptors"))
-                .and_then(|d| d.get("slug"))
-                .and_then(|s| s.as_str())
-            {
-                if let Some(prev_idx) = seen_slugs.insert(slug.to_string(), i) {
-                    let err_msg =
-                        format!("Duplicate slug '{}' on trees {} and {}", slug, prev_idx, i);
-                    if strict {
-                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(err_msg));
-                    }
-                    errors.push(err_msg);
-                }
-            }
-        }
-    }
 
     // Return BusinessDataWrapper format with errors alongside
     let output = serde_json::json!({
         "business_data": {
             "resources": resources
         },
-        "errors": errors,
-        "error_count": errors.len()
+        "errors": outcome.errors,
+        "error_count": outcome.errors.len()
     });
 
     pythonize::pythonize(py, &output).map_err(|e| {

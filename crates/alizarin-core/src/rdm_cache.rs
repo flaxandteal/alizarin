@@ -173,6 +173,11 @@ pub struct RdmCollection {
     top_concepts: Vec<String>,
     /// Index from VALUE ID to (concept_id, language) for fast lookup
     value_index: HashMap<String, (String, String)>,
+    /// Index from a normalised (trimmed, lowercased) label to the concept ids
+    /// carrying it, so `find_by_label` is O(1) rather than an O(concepts) scan.
+    /// Both pref and alt labels are indexed; a label may map to several concepts.
+    /// Built in `add_concept` alongside `value_index`.
+    label_index: HashMap<String, Vec<String>>,
 }
 
 impl RdmCollection {
@@ -183,6 +188,7 @@ impl RdmCollection {
             concepts: BTreeMap::new(),
             top_concepts: vec![],
             value_index: HashMap::new(),
+            label_index: HashMap::new(),
         }
     }
 
@@ -194,6 +200,44 @@ impl RdmCollection {
             concepts: BTreeMap::new(),
             top_concepts: vec![],
             value_index: HashMap::new(),
+            label_index: HashMap::new(),
+        }
+    }
+
+    /// Index a concept id under a normalised label, avoiding duplicate entries
+    /// (a concept may repeat a label across languages).
+    fn index_label(&mut self, label: &str, concept_id: &str) {
+        let key = label.trim().to_lowercase();
+        if key.is_empty() {
+            return;
+        }
+        let ids = self.label_index.entry(key).or_default();
+        if !ids.iter().any(|id| id == concept_id) {
+            ids.push(concept_id.to_string());
+        }
+    }
+
+    /// Rebuild the label index from scratch over the current concepts. Call after
+    /// batch mutations that change labels outside `add_concept` — enrichment of
+    /// bare concepts, or a merge that replaces a concept — where incremental
+    /// updates would otherwise leave the index missing or stale entries.
+    pub(crate) fn rebuild_label_index(&mut self) {
+        self.label_index.clear();
+        // Collect first: can't hold an immutable borrow of `concepts` while
+        // `index_label` mutably borrows `self`.
+        let entries: Vec<(String, String)> = self
+            .concepts
+            .iter()
+            .flat_map(|(id, c)| {
+                c.pref_label
+                    .values()
+                    .map(|v| v.value.clone())
+                    .chain(c.alt_labels.values().flat_map(|a| a.iter().cloned()))
+                    .map(move |label| (label, id.clone()))
+            })
+            .collect();
+        for (label, id) in entries {
+            self.index_label(&label, &id);
         }
     }
 
@@ -218,6 +262,24 @@ impl RdmCollection {
             // Add to value index
             self.value_index
                 .insert(value.id.clone(), (concept_id.clone(), lang.clone()));
+        }
+
+        // Build the label index (pref + alt labels) so lookups don't scan.
+        let pref_values: Vec<String> = concept
+            .pref_label
+            .values()
+            .map(|v| v.value.clone())
+            .collect();
+        for label in pref_values {
+            self.index_label(&label, &concept_id);
+        }
+        let alt_values: Vec<String> = concept
+            .alt_labels
+            .values()
+            .flat_map(|alts| alts.iter().cloned())
+            .collect();
+        for label in alt_values {
+            self.index_label(&label, &concept_id);
         }
 
         if concept.broader.is_empty() {
@@ -340,38 +402,27 @@ impl RdmCollection {
     /// a deterministic result is returned by selecting the concept with the
     /// lexicographically smallest ID.
     pub fn find_by_label(&self, label: &str) -> Option<&RdmConcept> {
-        let label_lower = label.trim().to_lowercase();
-        let mut matches: Vec<_> = self
-            .concepts
-            .values()
-            .filter(|c| {
-                // Check pref_label in any language (trim stored values too)
-                c.pref_label.values().any(|p| p.value.trim().to_lowercase() == label_lower) ||
-                // Check alt_labels in any language
-                c.alt_labels.values().any(|alts|
-                    alts.iter().any(|l| l.trim().to_lowercase() == label_lower)
-                )
-            })
-            .collect();
-
-        // Sort by ID for deterministic results when multiple concepts share a label
-        matches.sort_by(|a, b| a.id.cmp(&b.id));
-        matches.into_iter().next()
+        let key = label.trim().to_lowercase();
+        // O(1) index hit; among concepts sharing a label, the lexicographically
+        // smallest id wins (same determinism as the old scan-then-sort).
+        self.label_index
+            .get(&key)?
+            .iter()
+            .filter(|id| self.concepts.contains_key(*id))
+            .min()
+            .and_then(|id| self.concepts.get(id))
     }
 
     /// Find all concepts by exact label match (case-insensitive)
     pub fn find_all_by_label(&self, label: &str) -> Vec<&RdmConcept> {
-        let label_lower = label.trim().to_lowercase();
-        self.concepts
-            .values()
-            .filter(|c| {
-                c.pref_label
-                    .values()
-                    .any(|p| p.value.trim().to_lowercase() == label_lower)
-                    || c.alt_labels
-                        .values()
-                        .any(|alts| alts.iter().any(|l| l.trim().to_lowercase() == label_lower))
-            })
+        let key = label.trim().to_lowercase();
+        let Some(ids) = self.label_index.get(&key) else {
+            return Vec::new();
+        };
+        let mut ids: Vec<&String> = ids.iter().collect();
+        ids.sort(); // deterministic order
+        ids.into_iter()
+            .filter_map(|id| self.concepts.get(id))
             .collect()
     }
 
@@ -463,6 +514,9 @@ impl RdmCache {
                     existing.add_concept(incoming_concept);
                 }
             }
+            // A merge can replace a concept, leaving stale label entries behind;
+            // rebuild the index so it exactly reflects the merged concepts.
+            existing.rebuild_label_index();
             // Merge top_concepts (deduplicated by add_concept)
             // Update name if incoming has one
             if collection.name.is_some() {
@@ -786,6 +840,12 @@ impl RdmCache {
         // (no labels), and a newly-added collection has the same concept ID with labels,
         // copy the labels across.
         self.enrich_bare_concepts(&added_ids);
+
+        // Enrichment sets concept labels via get_concept_mut, bypassing the
+        // incremental label index; rebuild so enriched labels are findable.
+        for coll in self.collections.values_mut() {
+            coll.rebuild_label_index();
+        }
 
         added_ids
     }
@@ -1262,6 +1322,85 @@ mod tests {
         assert!(
             reser.get("uri").is_none(),
             "a uri-less concept must not emit a `uri` key: {reser}"
+        );
+    }
+
+    #[test]
+    fn find_by_label_matches_pref_and_alt_case_insensitively() {
+        let coll = RdmCollection::from_concepts_json(
+            "c".into(),
+            r#"[
+                {"id":"1052ed22-def2-5e6b-a5a2-ddff79e08e70",
+                 "pref_label":{"en":{"id":"v1","value":"Noun"}},
+                 "altLabels":{"en":["substantive"]}}
+            ]"#,
+        )
+        .unwrap();
+        // pref label, case/space-insensitive
+        assert_eq!(
+            coll.find_by_label("  noun ").unwrap().id,
+            "1052ed22-def2-5e6b-a5a2-ddff79e08e70"
+        );
+        // alt label
+        assert_eq!(
+            coll.find_by_label("SUBSTANTIVE").unwrap().id,
+            "1052ed22-def2-5e6b-a5a2-ddff79e08e70"
+        );
+        // miss
+        assert!(coll.find_by_label("verb").is_none());
+    }
+
+    #[test]
+    fn find_by_label_is_deterministic_when_label_is_shared() {
+        // Two concepts share a label → the lexicographically smallest id wins,
+        // and find_all returns both. Guards the index against nondeterminism.
+        let coll = RdmCollection::from_concepts_json(
+            "c".into(),
+            r#"[
+                {"id":"bbbbbbbb-def2-5e6b-a5a2-ddff79e08e70","pref_label":{"en":{"id":"vb","value":"bank"}}},
+                {"id":"aaaaaaaa-def2-5e6b-a5a2-ddff79e08e70","pref_label":{"en":{"id":"va","value":"bank"}}}
+            ]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            coll.find_by_label("bank").unwrap().id,
+            "aaaaaaaa-def2-5e6b-a5a2-ddff79e08e70"
+        );
+        assert_eq!(coll.find_all_by_label("bank").len(), 2);
+    }
+
+    // Perf regression guard: `find_by_label` must be indexed (≈O(1)), not an
+    // O(concepts) scan. The scan made reference resolution O(refs × concepts) —
+    // hours on real controlled lists. Indexed, 10k lookups over 10k concepts is
+    // ~10ms; the old scan is ~30s, so the 3s bound catches a reintroduced scan
+    // with a large margin while tolerating slow CI.
+    #[test]
+    fn find_by_label_is_indexed_not_linear() {
+        let m = 10_000usize;
+        let concepts: String = (0..m)
+            .map(|i| {
+                format!(
+                    r#"{{"id":"{:08x}-def2-5e6b-a5a2-ddff79e08e70","pref_label":{{"en":{{"id":"v{i}","value":"term {i}"}}}}}}"#,
+                    i
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        let coll = RdmCollection::from_concepts_json("c".into(), &format!("[{concepts}]")).unwrap();
+
+        let n = 10_000usize;
+        let t = std::time::Instant::now();
+        let mut hits = 0;
+        for i in 0..n {
+            if coll.find_by_label(&format!("term {}", i % m)).is_some() {
+                hits += 1;
+            }
+        }
+        let dt = t.elapsed();
+        assert_eq!(hits, n);
+        assert!(
+            dt.as_secs_f64() < 3.0,
+            "{n} label lookups over {m} concepts took {dt:?} — find_by_label looks like a scan, not an index"
         );
     }
 

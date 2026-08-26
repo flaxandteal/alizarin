@@ -1473,6 +1473,128 @@ pub fn convert_single_tree<L: crate::label_resolution::ConceptLookup>(
     Ok(resource)
 }
 
+/// Options for [`batch_convert_trees`], mirroring the per-tree `convert_single_tree`
+/// parameters plus the batch-level `scopes`/`id_keys`.
+pub struct BatchOptions<'a> {
+    pub graph_id: &'a str,
+    pub from_camel: bool,
+    pub strict: bool,
+    pub random_ids: bool,
+    pub resolve_markers: bool,
+    /// Per-tree deterministic-id keys; when present, length must equal `trees`.
+    pub id_keys: Option<&'a [String]>,
+    /// Optional scopes applied to every produced resource.
+    pub scopes: Option<&'a Value>,
+}
+
+/// Result of a batch conversion: the produced resources plus any per-tree errors
+/// (non-fatal in non-strict mode).
+#[derive(Debug)]
+pub struct BatchOutcome {
+    pub resources: Vec<StaticResource>,
+    pub errors: Vec<String>,
+}
+
+/// Convert many alias-keyed trees to resources in one pass — the shared batch
+/// pipeline behind each binding's `batch_trees_to_tiles`. Owns the loop
+/// (parallel with the `parallel` feature, sequential otherwise), scope
+/// application, error partitioning, strict-mode failure, and slug-uniqueness.
+///
+/// Bindings stay thin: they resolve `graph`, `ext_registry`, and `label_lookup`
+/// from their own registries/globals and convert `BatchOutcome` to their result
+/// type. Marker resolution (when `opts.resolve_markers`) dispatches to the
+/// registered extension handler — for `reference`, that is `alizarin-clm-core`.
+pub fn batch_convert_trees<L: crate::label_resolution::ConceptLookup + Sync>(
+    trees: &[Value],
+    graph: &StaticGraph,
+    ext_registry: Option<&ExtensionTypeRegistry>,
+    label_lookup: Option<(&HashMap<String, String>, &L)>,
+    opts: &BatchOptions,
+) -> Result<BatchOutcome, String> {
+    if let Some(keys) = opts.id_keys {
+        if keys.len() != trees.len() {
+            return Err(format!(
+                "id_keys length ({}) must match trees length ({})",
+                keys.len(),
+                trees.len()
+            ));
+        }
+    }
+
+    let convert_one = |i: usize, tree: &Value| -> Result<StaticResource, String> {
+        let id_key_ref = opts
+            .id_keys
+            .and_then(|keys| keys.get(i))
+            .map(|s| s.as_str());
+        let mut resource = convert_single_tree(
+            tree,
+            graph,
+            opts.graph_id,
+            id_key_ref,
+            opts.from_camel,
+            opts.strict,
+            opts.random_ids,
+            ext_registry,
+            label_lookup,
+            opts.resolve_markers,
+        )
+        .map_err(|e| format!("Tree {}: {}", i, e))?;
+        if let Some(scopes_val) = opts.scopes {
+            resource.scopes = Some(scopes_val.clone());
+        }
+        Ok(resource)
+    };
+
+    #[cfg(feature = "parallel")]
+    let results: Vec<Result<StaticResource, String>> = {
+        use rayon::prelude::*;
+        trees
+            .par_iter()
+            .enumerate()
+            .map(|(i, tree)| convert_one(i, tree))
+            .collect()
+    };
+    #[cfg(not(feature = "parallel"))]
+    let results: Vec<Result<StaticResource, String>> = trees
+        .iter()
+        .enumerate()
+        .map(|(i, tree)| convert_one(i, tree))
+        .collect();
+
+    let mut resources = Vec::with_capacity(results.len());
+    let mut errors = Vec::new();
+    for r in results {
+        match r {
+            Ok(res) => resources.push(res),
+            Err(e) => errors.push(e),
+        }
+    }
+
+    if opts.strict && !errors.is_empty() {
+        return Err(errors.remove(0));
+    }
+
+    // Slug uniqueness — only when slug-based deterministic ids are in play
+    // (no explicit id_keys, not random). Reports the conflicting tree indices.
+    if opts.id_keys.is_none() && !opts.random_ids {
+        let mut seen_slugs: HashMap<String, usize> = HashMap::new();
+        for (i, resource) in resources.iter().enumerate() {
+            if let Some(slug) = resource.resourceinstance.descriptors.slug.as_deref() {
+                if let Some(prev_idx) = seen_slugs.insert(slug.to_string(), i) {
+                    let err_msg =
+                        format!("Duplicate slug '{}' on trees {} and {}", slug, prev_idx, i);
+                    if opts.strict {
+                        return Err(err_msg);
+                    }
+                    errors.push(err_msg);
+                }
+            }
+        }
+    }
+
+    Ok(BatchOutcome { resources, errors })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2556,6 +2678,55 @@ mod tests {
 
         assert_eq!(id1, id2, "Same tree data should produce same resource ID");
         assert!(uuid::Uuid::parse_str(id1).is_ok(), "Should be valid UUID");
+    }
+
+    #[test]
+    fn batch_convert_trees_reports_duplicate_slugs_and_applies_scopes() {
+        let graph = build_slug_test_graph(Some("<Name>"));
+        let same = serde_json::json!({
+            "graph_id": "slug-test-graph",
+            "name": {"en": {"value": "Same Name", "direction": "ltr"}}
+        });
+        let trees = vec![same.clone(), same];
+        let scopes = serde_json::json!({"scope": "test"});
+
+        let opts = BatchOptions {
+            graph_id: "slug-test-graph",
+            from_camel: false,
+            strict: false,
+            random_ids: false,
+            resolve_markers: false,
+            id_keys: None,
+            scopes: Some(&scopes),
+        };
+        let outcome =
+            batch_convert_trees::<crate::RdmCache>(&trees, &graph, None, None, &opts).unwrap();
+
+        // Both convert; scopes applied to every resource.
+        assert_eq!(outcome.resources.len(), 2);
+        assert_eq!(outcome.resources[0].scopes.as_ref(), Some(&scopes));
+        assert_eq!(outcome.resources[1].scopes.as_ref(), Some(&scopes));
+        // The shared slug-uniqueness check reports the duplicate (non-strict).
+        assert_eq!(outcome.errors.len(), 1, "{:?}", outcome.errors);
+        assert!(
+            outcome.errors[0].contains("Duplicate slug"),
+            "{:?}",
+            outcome.errors
+        );
+
+        // Strict mode turns the duplicate into a hard error.
+        let strict_opts = BatchOptions {
+            strict: true,
+            graph_id: "slug-test-graph",
+            from_camel: false,
+            random_ids: false,
+            resolve_markers: false,
+            id_keys: None,
+            scopes: None,
+        };
+        let err = batch_convert_trees::<crate::RdmCache>(&trees, &graph, None, None, &strict_opts)
+            .unwrap_err();
+        assert!(err.contains("Duplicate slug"), "{}", err);
     }
 
     #[test]

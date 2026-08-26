@@ -109,10 +109,13 @@ class ReferenceValueViewModel(str):
         if not labels:
             return None
 
+        from . import _rust as rust_ext
         parent_ref = StaticReference(
             labels=labels,
             list_id=self._collection_id,
-            uri=getattr(parent_concept, 'source', '') or f"http://localhost:8000/plugins/controlled-list-manager/item/{parent_id}"
+            # Prefer the concept's own URI, else the Rust builder (single source
+            # of truth for the default base + UUID check) — same as resolution.
+            uri=getattr(parent_concept, 'uri', None) or rust_ext.build_item_uri(parent_id),
         )
 
         return ReferenceValueViewModel(parent_ref, self._collection_id)

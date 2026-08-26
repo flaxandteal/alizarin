@@ -62,11 +62,6 @@ pub fn get_global_rdm_cache() -> Option<RdmCache> {
     })
 }
 
-/// (Crate-internal) Add already-parsed SKOS collections to the global RDM cache.
-pub fn add_skos_collections_to_global_cache(collections: &[SkosCollection]) -> Vec<String> {
-    alizarin_core::add_to_global_rdm_cache_from_skos(collections)
-}
-
 /// Clear the global RDM cache.
 #[pyfunction]
 pub fn clear_global_rdm_cache() {

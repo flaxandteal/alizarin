@@ -30,7 +30,7 @@ lazy_static::lazy_static! {
     /// Global RDM (Reference Data Manager) cache for concept collections.
     /// Used by label resolution, display rendering, and other functions that
     /// need concept lookups without passing a cache explicitly.
-    static ref GLOBAL_RDM_CACHE: RwLock<Option<RdmCache>> = RwLock::new(None);
+    static ref GLOBAL_RDM_CACHE: RwLock<Option<Arc<RdmCache>>> = RwLock::new(None);
 
     /// Registry of datatypes where the array IS the value (list types).
     /// For these datatypes, arrays should NOT be iterated over during tree-to-tiles conversion.
@@ -427,13 +427,29 @@ pub fn registered_widgets() -> Vec<String> {
 /// Replace the global RDM cache with the given cache.
 pub fn set_global_rdm_cache(cache: RdmCache) {
     if let Ok(mut guard) = GLOBAL_RDM_CACHE.write() {
-        *guard = Some(cache);
+        *guard = Some(Arc::new(cache));
     }
 }
 
 /// Get a clone of the global RDM cache, if set.
+///
+/// This deep-copies every collection/concept. Prefer [`get_global_rdm_cache_arc`]
+/// on hot paths (e.g. per-value marker resolution) — a full copy per call is what
+/// made batch reference resolution O(values × cache size).
 pub fn get_global_rdm_cache() -> Option<RdmCache> {
-    GLOBAL_RDM_CACHE.read().ok().and_then(|guard| guard.clone())
+    GLOBAL_RDM_CACHE
+        .read()
+        .ok()
+        .and_then(|guard| guard.as_ref().map(|arc| (**arc).clone()))
+}
+
+/// Get a cheap `Arc` handle to the global RDM cache, if set — a refcount bump,
+/// not a deep copy. Use this wherever the cache is only read (lookups).
+pub fn get_global_rdm_cache_arc() -> Option<Arc<RdmCache>> {
+    GLOBAL_RDM_CACHE
+        .read()
+        .ok()
+        .and_then(|guard| (*guard).clone())
 }
 
 /// Check if a global RDM cache has been set.
@@ -461,11 +477,13 @@ where
     GLOBAL_RDM_CACHE
         .read()
         .ok()
-        .and_then(|guard| guard.as_ref().map(f))
+        .and_then(|guard| guard.as_deref().map(f))
 }
 
 /// Run a closure with a mutable reference to the global RDM cache.
 /// Returns None if no cache is set or the lock is poisoned.
+///
+/// If the cache is shared (an `Arc` handle is outstanding), this copy-on-writes.
 pub fn with_global_rdm_cache_mut<F, R>(f: F) -> Option<R>
 where
     F: FnOnce(&mut RdmCache) -> R,
@@ -473,7 +491,7 @@ where
     GLOBAL_RDM_CACHE
         .write()
         .ok()
-        .and_then(|mut guard| guard.as_mut().map(f))
+        .and_then(|mut guard| guard.as_mut().map(|arc| f(Arc::make_mut(arc))))
 }
 
 /// Run a closure with a mutable reference to the global RDM cache,
@@ -484,9 +502,9 @@ where
 {
     let mut guard = GLOBAL_RDM_CACHE.write().expect("RDM cache lock poisoned");
     if guard.is_none() {
-        *guard = Some(RdmCache::default());
+        *guard = Some(Arc::new(RdmCache::default()));
     }
-    f(guard.as_mut().unwrap())
+    f(Arc::make_mut(guard.as_mut().unwrap()))
 }
 
 /// Add parsed SKOS collections to the global RDM cache (auto-creates if needed).

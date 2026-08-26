@@ -256,6 +256,16 @@ mod python_module {
         alizarin_clm_core::clear_clm_base_uri();
     }
 
+    /// Build a reference item URI from a UUID, using the configured base or the
+    /// process-wide default. Single source of truth for the default and the UUID
+    /// check — Python delegates here rather than reimplementing either.
+    #[pyfunction]
+    #[pyo3(name = "build_item_uri")]
+    pub fn py_build_item_uri(item_id: &str) -> PyResult<String> {
+        alizarin_clm_core::try_build_item_uri(item_id)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+    }
+
     #[pyfunction]
     pub fn get_reference_handler_capsule(py: Python<'_>) -> PyResult<Py<PyCapsule>> {
         static TYPE_NAME: &[u8] = b"reference";
@@ -306,6 +316,7 @@ mod python_module {
         m.add_function(wrap_pyfunction!(py_set_clm_base_uri, m)?)?;
         m.add_function(wrap_pyfunction!(py_get_clm_base_uri, m)?)?;
         m.add_function(wrap_pyfunction!(py_clear_clm_base_uri, m)?)?;
+        m.add_function(wrap_pyfunction!(py_build_item_uri, m)?)?;
         Ok(())
     }
 }
