@@ -105,12 +105,15 @@ mod python_module {
                 HANDLER_INFO = Some(TypeHandlerInfo {
                     type_name_ptr: TYPE_NAME.as_ptr(),
                     type_name_len: TYPE_NAME.len(),
-                    coerce_fn: coerce_filelist as CoerceFn,
-                    free_fn: alizarin_free_coerce_result as FreeFn,
+                    coerce_fn: Some(coerce_filelist as CoerceFn),
+                    free_fn: Some(alizarin_free_coerce_result as FreeFn),
                     render_display_fn: Some(render_filelist_display as RenderDisplayFn),
                     free_display_fn: Some(alizarin_free_render_display_result as FreeDisplayFn),
                     resolve_markers_fn: None,
                     free_resolve_markers_fn: None,
+                    validate_fn: None,
+                    free_validate_fn: None,
+                    abi: alizarin_extension_api::abi_fingerprint(),
                     user_data: std::ptr::null_mut(),
                 });
             }

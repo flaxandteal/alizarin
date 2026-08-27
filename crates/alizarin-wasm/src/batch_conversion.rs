@@ -309,14 +309,13 @@ pub fn batch_trees_to_tiles(
     .map_err(|e| JsValue::from_str(&e))?;
 
     // Serialize directly to JS — no intermediate serde_json::Value
-    let warnings: Vec<String> = Vec::new();
     let output = BatchResult {
         business_data: BatchBusinessData {
             resources: outcome.resources,
         },
         errors: &outcome.errors,
         error_count: outcome.errors.len(),
-        warnings: &warnings,
+        warnings: &outcome.warnings,
     };
 
     let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);

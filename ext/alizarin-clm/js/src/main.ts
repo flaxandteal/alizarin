@@ -471,8 +471,12 @@ class ReferenceValueViewModel extends String implements IViewModel {
       if (value !== null) {
         // Unwrap single-element arrays (tile data is always stored as array,
         // but ReferenceValueViewModel works with the inner value)
-        if (Array.isArray(value) && value.length === 1) {
-          value = value[0];
+        if (Array.isArray(value)) {
+          if (value.length === 1) {
+            value = value[0];
+          } else if (value.length === 0) {
+            return null;
+          }
         }
         if (value instanceof Promise) {
           return value.then((value) => {

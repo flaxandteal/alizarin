@@ -1,3 +1,3 @@
 export * from './main';
 import '../ext/filelist/js/src/main';
-import '../ext/js/@alizarin/clm/src/main';
+import '../ext/alizarin-clm/js/src/main';

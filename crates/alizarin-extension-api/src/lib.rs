@@ -22,6 +22,33 @@
 
 use std::ffi::c_void;
 
+/// Version of the extension C ABI defined by this crate. Bump on any change to
+/// the shared struct layouts or function signatures below. Extensions stamp
+/// their compiled fingerprint into [`TypeHandlerInfo`]; the host refuses to load
+/// an extension whose [`AbiFingerprint`] does not match its own.
+pub const ABI_VERSION: u32 = 1;
+
+/// A compatibility token an extension embeds so the host can confirm — once, at
+/// load — that both sides share the same ABI before any raw pointers cross the
+/// boundary. `value_size` guards against `serde_json::Value` layout drift even
+/// if `ABI_VERSION` was not bumped.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AbiFingerprint {
+    pub version: u32,
+    pub value_size: usize,
+    pub handler_info_size: usize,
+}
+
+/// The ABI fingerprint of the crate the caller was compiled against.
+pub fn abi_fingerprint() -> AbiFingerprint {
+    AbiFingerprint {
+        version: ABI_VERSION,
+        value_size: std::mem::size_of::<serde_json::Value>(),
+        handler_info_size: std::mem::size_of::<TypeHandlerInfo>(),
+    }
+}
+
 /// Result of a coercion operation
 ///
 /// All pointers are owned by the extension and must be freed via `free_fn`.
@@ -262,6 +289,64 @@ impl ResolveMarkersResult {
     }
 }
 
+/// Result of a validation operation — a serialized `ValidationResult`
+/// (`{valid, errors, warnings}`).
+///
+/// The value being validated is passed to the extension **by pointer**
+/// (`*const serde_json::Value`), so nothing is serialized on the hot path — only
+/// this small result crosses back. Owned by the extension; freed via the
+/// handler's `free_validate_fn`.
+#[repr(C)]
+pub struct ValidateResult {
+    /// Serialized `{valid, errors, warnings}` JSON (null on error).
+    pub json_ptr: *mut u8,
+    pub json_len: usize,
+    /// Extension-error message (null on success).
+    pub error_ptr: *mut u8,
+    pub error_len: usize,
+}
+
+impl ValidateResult {
+    /// A successful validation carrying the serialized `ValidationResult`.
+    pub fn success(json: Vec<u8>) -> Self {
+        let len = json.len();
+        let ptr = Box::into_raw(json.into_boxed_slice()) as *mut u8;
+        ValidateResult {
+            json_ptr: ptr,
+            json_len: len,
+            error_ptr: std::ptr::null_mut(),
+            error_len: 0,
+        }
+    }
+
+    /// A handler-level error (distinct from a validation failure).
+    pub fn error(message: String) -> Self {
+        let bytes = message.into_bytes();
+        let len = bytes.len();
+        let ptr = Box::into_raw(bytes.into_boxed_slice()) as *mut u8;
+        ValidateResult {
+            json_ptr: std::ptr::null_mut(),
+            json_len: 0,
+            error_ptr: ptr,
+            error_len: len,
+        }
+    }
+
+    pub fn is_error(&self) -> bool {
+        !self.error_ptr.is_null()
+    }
+}
+
+/// Validate a tile value. `value_ptr` is `*const serde_json::Value` — cast it
+/// back with `&*(value_ptr as *const serde_json::Value)`; sound because the host
+/// confirmed the [`AbiFingerprint`] at load. `config_ptr` is the node config as
+/// `*const serde_json::Value`, or null for no config.
+pub type ValidateFn =
+    unsafe extern "C" fn(value_ptr: *const c_void, config_ptr: *const c_void) -> ValidateResult;
+
+/// Free a [`ValidateResult`] allocated by a [`ValidateFn`].
+pub type FreeValidateFn = unsafe extern "C" fn(result: ValidateResult);
+
 /// Callback to lookup a concept by ID in the RDM cache
 ///
 /// Returns true if concept was found, false otherwise.
@@ -402,11 +487,12 @@ pub struct TypeHandlerInfo {
     pub type_name_ptr: *const u8,
     pub type_name_len: usize,
 
-    /// Coercion function (required)
-    pub coerce_fn: CoerceFn,
+    /// Coercion function. `None` for a validate-only handler — the host then
+    /// leaves coercion of this datatype to core.
+    pub coerce_fn: Option<CoerceFn>,
 
-    /// Free function for CoerceResult (required)
-    pub free_fn: FreeFn,
+    /// Free function for CoerceResult (`None` iff `coerce_fn` is `None`).
+    pub free_fn: Option<FreeFn>,
 
     /// Display render function (optional - null if not implemented)
     /// Used by toDisplayJson() to get human-readable strings
@@ -422,6 +508,17 @@ pub struct TypeHandlerInfo {
     /// Free function for ResolveMarkersResult (optional - null if resolve_markers_fn is null)
     pub free_resolve_markers_fn: Option<FreeResolveMarkersFn>,
 
+    /// Validation function (optional). The value is passed **by pointer**, so no
+    /// serialization happens on the hot path.
+    pub validate_fn: Option<ValidateFn>,
+
+    /// Free function for ValidateResult (optional - null if validate_fn is null)
+    pub free_validate_fn: Option<FreeValidateFn>,
+
+    /// ABI fingerprint of the crate the extension was built against. The host
+    /// checks this at load and refuses a mismatch before any pointer crosses.
+    pub abi: AbiFingerprint,
+
     /// Opaque data pointer (for extension use)
     pub user_data: *mut c_void,
 }
@@ -433,12 +530,38 @@ impl TypeHandlerInfo {
         TypeHandlerInfo {
             type_name_ptr: type_name.as_ptr(),
             type_name_len: type_name.len(),
-            coerce_fn,
-            free_fn,
+            coerce_fn: Some(coerce_fn),
+            free_fn: Some(free_fn),
             render_display_fn: None,
             free_display_fn: None,
             resolve_markers_fn: None,
             free_resolve_markers_fn: None,
+            validate_fn: None,
+            free_validate_fn: None,
+            abi: abi_fingerprint(),
+            user_data: std::ptr::null_mut(),
+        }
+    }
+
+    /// Create a validate-only handler: no coercion (core keeps that), just a
+    /// pointer-based validation function.
+    pub fn new_validating(
+        type_name: &'static str,
+        validate_fn: ValidateFn,
+        free_validate_fn: FreeValidateFn,
+    ) -> Self {
+        TypeHandlerInfo {
+            type_name_ptr: type_name.as_ptr(),
+            type_name_len: type_name.len(),
+            coerce_fn: None,
+            free_fn: None,
+            render_display_fn: None,
+            free_display_fn: None,
+            resolve_markers_fn: None,
+            free_resolve_markers_fn: None,
+            validate_fn: Some(validate_fn),
+            free_validate_fn: Some(free_validate_fn),
+            abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }
     }
@@ -454,12 +577,15 @@ impl TypeHandlerInfo {
         TypeHandlerInfo {
             type_name_ptr: type_name.as_ptr(),
             type_name_len: type_name.len(),
-            coerce_fn,
-            free_fn,
+            coerce_fn: Some(coerce_fn),
+            free_fn: Some(free_fn),
             render_display_fn: Some(render_display_fn),
             free_display_fn: Some(free_display_fn),
             resolve_markers_fn: None,
             free_resolve_markers_fn: None,
+            validate_fn: None,
+            free_validate_fn: None,
+            abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }
     }
@@ -477,12 +603,15 @@ impl TypeHandlerInfo {
         TypeHandlerInfo {
             type_name_ptr: type_name.as_ptr(),
             type_name_len: type_name.len(),
-            coerce_fn,
-            free_fn,
+            coerce_fn: Some(coerce_fn),
+            free_fn: Some(free_fn),
             render_display_fn: Some(render_display_fn),
             free_display_fn: Some(free_display_fn),
             resolve_markers_fn: Some(resolve_markers_fn),
             free_resolve_markers_fn: Some(free_resolve_markers_fn),
+            validate_fn: None,
+            free_validate_fn: None,
+            abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }
     }

@@ -131,10 +131,14 @@ pub fn get_registered_extension_handlers() -> js_sys::Array {
 
 /// Build a fresh extension registry from JS-registered handlers.
 ///
-/// Only includes handlers dynamically registered from JS via `registerExtensionHandler`.
-/// Extension crates (e.g. CLM, file-list) must register themselves from JS.
+/// Coercion/display handlers (e.g. CLM, file-list) register themselves from JS
+/// via `registerExtensionHandler`. The geospatial validate-only handler is pure
+/// Rust with no JS surface, so it is compiled in natively here — a JS round-trip
+/// would only add latency and can't do the GeoJSON parse anyway.
 pub fn build_extension_registry() -> ExtensionTypeRegistry {
     let mut registry = ExtensionTypeRegistry::new();
+
+    alizarin_geo_core::register(&mut registry);
 
     JS_TYPE_HANDLERS.with(|handlers| {
         for datatype in handlers.borrow().keys() {

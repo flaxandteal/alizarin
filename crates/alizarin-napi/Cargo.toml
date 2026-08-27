@@ -12,6 +12,7 @@ crate-type = ["cdylib"]
 alizarin-core = { path = "../alizarin-core", features = ["multi-threaded"] }
 alizarin-clm-core = { path = "../../ext/alizarin-clm/core" }
 alizarin-filelist-core = { path = "../../ext/filelist/core" }
+alizarin-geo-core = { path = "../../ext/alizarin-geo/core" }
 napi = { version = "2", features = ["napi6", "serde-json"] }
 napi-derive = "2"
 serde = { version = "1.0", features = ["derive"] }

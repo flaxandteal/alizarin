@@ -23,8 +23,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use alizarin_extension_api::{
-    CoerceFn, FreeDisplayFn, FreeFn, FreeResolveMarkersFn, RenderDisplayFn, ResolveMarkersFn,
-    TypeHandlerInfo,
+    abi_fingerprint, CoerceFn, FreeDisplayFn, FreeFn, FreeResolveMarkersFn, FreeValidateFn,
+    RenderDisplayFn, ResolveMarkersFn, TypeHandlerInfo, ValidateFn,
 };
 use std::ffi::c_void;
 
@@ -60,14 +60,18 @@ fn build_extension_registry() -> ExtensionTypeRegistry {
 
 /// Internal representation of a registered handler
 struct RegisteredHandler {
-    coerce_fn: CoerceFn,
-    free_fn: FreeFn,
+    /// Coercion (None for a validate-only handler; core then coerces this type).
+    coerce_fn: Option<CoerceFn>,
+    free_fn: Option<FreeFn>,
     /// Optional display renderer (for toDisplayJson support)
     render_display_fn: Option<RenderDisplayFn>,
     free_display_fn: Option<FreeDisplayFn>,
     /// Optional marker resolver (for resolving __needs_rdm_lookup etc.)
     resolve_markers_fn: Option<ResolveMarkersFn>,
     free_resolve_markers_fn: Option<FreeResolveMarkersFn>,
+    /// Optional validator (value passed by pointer — no per-value serialization).
+    validate_fn: Option<ValidateFn>,
+    free_validate_fn: Option<FreeValidateFn>,
 }
 
 // =============================================================================
@@ -97,12 +101,12 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
         let handlers = TYPE_HANDLERS.read().unwrap();
         if let Some(handler) = handlers.get(&self.type_name) {
             HandlerCapabilities {
-                can_coerce: true, // All handlers have coerce_fn
+                can_coerce: handler.coerce_fn.is_some(),
                 can_render_display: handler.render_display_fn.is_some(),
                 can_render_search: false,
                 can_resolve_markers: handler.resolve_markers_fn.is_some(),
                 can_index: false,
-                can_validate: false,
+                can_validate: handler.validate_fn.is_some(),
             }
         } else {
             HandlerCapabilities::default()
@@ -117,6 +121,12 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
         let handlers = TYPE_HANDLERS.read().unwrap();
 
         if let Some(handler) = handlers.get(&self.type_name) {
+            let (Some(coerce_fn), Some(free_fn)) = (handler.coerce_fn, handler.free_fn) else {
+                return Err(ExtensionError::new(format!(
+                    "handler '{}' has no coerce function",
+                    self.type_name
+                )));
+            };
             let value_json = serde_json::to_string(value)
                 .map_err(|e| ExtensionError::new(format!("Failed to serialize value: {}", e)))?;
 
@@ -132,7 +142,7 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
             // before the result goes out of scope. Pointers are valid UTF-8 JSON produced by
             // the extension's Rust code (same process, no IPC).
             unsafe {
-                let result = (handler.coerce_fn)(
+                let result = (coerce_fn)(
                     value_json.as_ptr(),
                     value_json.len(),
                     config_json.as_ptr(),
@@ -161,7 +171,7 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
                         })?;
 
                     // Free the result memory
-                    (handler.free_fn)(result);
+                    (free_fn)(result);
 
                     Ok(alizarin_core::CoercionResult::success(
                         tile_data,
@@ -174,7 +184,7 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
                     ))
                     .to_string();
 
-                    (handler.free_fn)(result);
+                    (free_fn)(result);
 
                     Err(ExtensionError::new(error_msg))
                 }
@@ -329,6 +339,60 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
             }
         } else {
             Ok(tile_data.clone())
+        }
+    }
+
+    fn validate(
+        &self,
+        value: &serde_json::Value,
+        config: Option<&serde_json::Value>,
+    ) -> Result<alizarin_core::extension_type_registry::ValidationResult, ExtensionError> {
+        use alizarin_core::extension_type_registry::ValidationResult;
+
+        // Copy out the fn pointers, then drop the lock before crossing the FFI.
+        let (validate_fn, free_validate_fn) = {
+            let handlers = TYPE_HANDLERS.read().unwrap();
+            match handlers.get(&self.type_name) {
+                Some(h) => (h.validate_fn, h.free_validate_fn),
+                None => return Ok(ValidationResult::valid()),
+            }
+        };
+        let (Some(validate_fn), Some(free_validate_fn)) = (validate_fn, free_validate_fn) else {
+            return Ok(ValidationResult::valid());
+        };
+
+        // Pass the value (and config) BY POINTER — no serialization on the hot
+        // path. Sound because the ABI handshake at load confirmed the extension's
+        // `serde_json::Value` layout matches ours.
+        let value_ptr = value as *const serde_json::Value as *const c_void;
+        let config_ptr = config
+            .map(|c| c as *const serde_json::Value as *const c_void)
+            .unwrap_or(std::ptr::null());
+
+        // SAFETY: value_ptr/config_ptr point to live `serde_json::Value`s for the
+        // duration of this call; the ext casts them back to the same type (ABI
+        // confirmed). The small result is freed via free_validate_fn.
+        unsafe {
+            let result = validate_fn(value_ptr, config_ptr);
+            if !result.error_ptr.is_null() {
+                let msg = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                    result.error_ptr,
+                    result.error_len,
+                ))
+                .to_string();
+                free_validate_fn(result);
+                return Err(ExtensionError::new(msg));
+            }
+            let json = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                result.json_ptr,
+                result.json_len,
+            ));
+            let parsed: Result<ValidationResult, ExtensionError> = serde_json::from_str(json)
+                .map_err(|e| {
+                    ExtensionError::new(format!("Failed to parse ValidationResult: {}", e))
+                });
+            free_validate_fn(result);
+            parsed
         }
     }
 
@@ -494,6 +558,21 @@ fn register_extension_handler(capsule: &PyCapsule) -> PyResult<()> {
     // within the struct are valid Rust fn pointers exported by the extension's cdylib.
     unsafe {
         let info = &*ptr;
+
+        // ABI handshake: refuse an extension built against an incompatible ABI
+        // before calling any of its functions or passing it pointers. The
+        // fingerprint (version + serde_json::Value size + struct size) catches
+        // version skew and layout drift; a wildly different layout reads `abi`
+        // from the wrong offset, which still almost never matches — fail-safe.
+        if info.abi != abi_fingerprint() {
+            return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "extension ABI mismatch: built against {:?}, host is {:?} — \
+                 rebuild the extension against this alizarin version.",
+                info.abi,
+                abi_fingerprint()
+            )));
+        }
+
         let type_name = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
             info.type_name_ptr,
             info.type_name_len,
@@ -512,6 +591,8 @@ fn register_extension_handler(capsule: &PyCapsule) -> PyResult<()> {
                 free_display_fn: info.free_display_fn,
                 resolve_markers_fn: info.resolve_markers_fn,
                 free_resolve_markers_fn: info.free_resolve_markers_fn,
+                validate_fn: info.validate_fn,
+                free_validate_fn: info.free_validate_fn,
             },
         );
 
@@ -1154,13 +1235,15 @@ fn batch_trees_to_tiles(
         .map(|r| serde_json::to_value(r).unwrap_or(serde_json::Value::Null))
         .collect();
 
-    // Return BusinessDataWrapper format with errors alongside
+    // Return BusinessDataWrapper format with errors and advisory warnings alongside
     let output = serde_json::json!({
         "business_data": {
             "resources": resources
         },
         "errors": outcome.errors,
-        "error_count": outcome.errors.len()
+        "error_count": outcome.errors.len(),
+        "warnings": outcome.warnings,
+        "warning_count": outcome.warnings.len()
     });
 
     pythonize::pythonize(py, &output).map_err(|e| {

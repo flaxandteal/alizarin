@@ -1,8 +1,8 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-import { w as wasmReady, r as registerExtensionHandler, C as CUSTOM_DATATYPES, g as getCurrentLanguage, a as registerResolvableDatatype, n as nodeConfigManager, R as RDM } from "./main-KYzw__re.js";
-import { A, K, G, p, o, T, L, N, c, I, J, U, k, y, X, S, t, W, B, l, b, _, j, D, m, F, H, V, i, z, O, q, P, Q, x, d, f, s, E, h, u, M, v, e } from "./main-KYzw__re.js";
+import { w as wasmReady, r as registerExtensionHandler, C as CUSTOM_DATATYPES, g as getCurrentLanguage, a as registerResolvableDatatype, n as nodeConfigManager, R as RDM } from "./main-jaKCSMlP.js";
+import { A, K, G, p, o, T, L, N, c, I, J, U, k, y, X, S, t, W, B, l, b, _, j, D, m, F, H, V, i, z, O, q, P, Q, x, d, f, s, E, h, u, M, v, e } from "./main-jaKCSMlP.js";
 function coerceFileList(value) {
   const ret = wasm.coerceFileList(value);
   if (ret[2]) {
@@ -1029,8 +1029,12 @@ class ReferenceValueViewModel extends String {
         tile.data.set(nodeid, null);
       }
       if (value !== null) {
-        if (Array.isArray(value) && value.length === 1) {
-          value = value[0];
+        if (Array.isArray(value)) {
+          if (value.length === 1) {
+            value = value[0];
+          } else if (value.length === 0) {
+            return null;
+          }
         }
         if (value instanceof Promise) {
           return value.then((value2) => {

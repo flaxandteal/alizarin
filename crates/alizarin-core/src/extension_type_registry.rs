@@ -190,7 +190,7 @@ impl std::error::Error for ExtensionError {}
 /// Result of validating a single value: whether it is acceptable, plus any
 /// human-readable messages. `errors` make a value invalid; `warnings` are
 /// advisory (a value can be `valid` while carrying warnings).
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ValidationResult {
     pub valid: bool,
     pub errors: Vec<String>,

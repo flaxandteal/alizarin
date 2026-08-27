@@ -1431,6 +1431,39 @@ pub fn convert_single_tree<L: crate::label_resolution::ConceptLookup>(
     label_lookup: Option<(&HashMap<String, String>, &L)>,
     resolve_markers: bool,
 ) -> Result<StaticResource, String> {
+    convert_single_tree_with_diagnostics(
+        tree,
+        graph,
+        graph_id,
+        id_key,
+        from_camel,
+        strict,
+        random_ids,
+        extension_registry,
+        label_lookup,
+        resolve_markers,
+    )
+    .map(|(resource, _warnings)| resource)
+}
+
+/// As [`convert_single_tree`], but also returns the advisory validation warnings
+/// gathered during conversion (empty unless `strict`, which enables the
+/// extension validation pass). Errors still fail the conversion in `strict`;
+/// warnings are non-fatal and surfaced to the caller so bindings can report them
+/// alongside other batch diagnostics.
+#[allow(clippy::too_many_arguments)]
+pub fn convert_single_tree_with_diagnostics<L: crate::label_resolution::ConceptLookup>(
+    tree: &Value,
+    graph: &StaticGraph,
+    graph_id: &str,
+    id_key: Option<&str>,
+    from_camel: bool,
+    strict: bool,
+    random_ids: bool,
+    extension_registry: Option<&ExtensionTypeRegistry>,
+    label_lookup: Option<(&HashMap<String, String>, &L)>,
+    resolve_markers: bool,
+) -> Result<(StaticResource, Vec<String>), String> {
     let mut tree = tree.clone();
 
     if let Some((alias_map, lookup)) = label_lookup {
@@ -1444,7 +1477,18 @@ pub fn convert_single_tree<L: crate::label_resolution::ConceptLookup>(
     }
 
     let has_extensions = extension_registry.is_some();
-    let (business_data, _diagnostics) = tree_to_tiles_with_options(
+    // Reuse `strict` to gate validation: strict callers get the extension
+    // validation pass; non-strict stays `Off` (zero hot-path cost). Use
+    // `Collect` rather than `FailFast` so a single pass gathers *all*
+    // diagnostics — both the errors we fail on and the advisory warnings we
+    // surface. No handler validates unless it sets `can_validate`, so this is
+    // inert for existing datatypes.
+    let validation = if strict {
+        ValidationMode::Collect
+    } else {
+        ValidationMode::Off
+    };
+    let (business_data, diagnostics) = tree_to_tiles_with_options(
         &tree,
         graph,
         strict,
@@ -1453,8 +1497,25 @@ pub fn convert_single_tree<L: crate::label_resolution::ConceptLookup>(
         random_ids,
         has_extensions,
         extension_registry,
-        ValidationMode::Off,
+        validation,
     )?;
+
+    // Split diagnostics: errors fail the conversion (in strict), warnings pass
+    // through. `format_diagnostic` locates each by alias/node for the caller.
+    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+    for d in diagnostics {
+        if d.warning {
+            warnings.push(format_diagnostic(&d));
+        } else {
+            errors.push(format_diagnostic(&d));
+        }
+    }
+    if !errors.is_empty() {
+        // Only reachable in strict (Off collects nothing); mirror FailFast by
+        // failing, but with every error rather than just the first.
+        return Err(errors.join("; "));
+    }
 
     let mut resource = business_data
         .business_data
@@ -1470,7 +1531,13 @@ pub fn convert_single_tree<L: crate::label_resolution::ConceptLookup>(
         }
     }
 
-    Ok(resource)
+    Ok((resource, warnings))
+}
+
+/// Format a [`ValidationDiagnostic`] as a human-readable, located message.
+fn format_diagnostic(d: &ValidationDiagnostic) -> String {
+    let location = d.node_alias.as_deref().unwrap_or(&d.node_id);
+    format!("{}: {}", location, d.message)
 }
 
 /// Options for [`batch_convert_trees`], mirroring the per-tree `convert_single_tree`
@@ -1487,12 +1554,14 @@ pub struct BatchOptions<'a> {
     pub scopes: Option<&'a Value>,
 }
 
-/// Result of a batch conversion: the produced resources plus any per-tree errors
-/// (non-fatal in non-strict mode).
+/// Result of a batch conversion: the produced resources, any per-tree errors
+/// (non-fatal in non-strict mode), and advisory validation warnings gathered
+/// during conversion (strict only — see [`convert_single_tree_with_diagnostics`]).
 #[derive(Debug)]
 pub struct BatchOutcome {
     pub resources: Vec<StaticResource>,
     pub errors: Vec<String>,
+    pub warnings: Vec<String>,
 }
 
 /// Convert many alias-keyed trees to resources in one pass — the shared batch
@@ -1521,12 +1590,14 @@ pub fn batch_convert_trees<L: crate::label_resolution::ConceptLookup + Sync>(
         }
     }
 
-    let convert_one = |i: usize, tree: &Value| -> Result<StaticResource, String> {
+    // Each tree yields (resource, warnings) on success. Warnings are tree-tagged
+    // so a caller can trace an advisory back to its input.
+    let convert_one = |i: usize, tree: &Value| -> Result<(StaticResource, Vec<String>), String> {
         let id_key_ref = opts
             .id_keys
             .and_then(|keys| keys.get(i))
             .map(|s| s.as_str());
-        let mut resource = convert_single_tree(
+        let (mut resource, warnings) = convert_single_tree_with_diagnostics(
             tree,
             graph,
             opts.graph_id,
@@ -1542,11 +1613,15 @@ pub fn batch_convert_trees<L: crate::label_resolution::ConceptLookup + Sync>(
         if let Some(scopes_val) = opts.scopes {
             resource.scopes = Some(scopes_val.clone());
         }
-        Ok(resource)
+        let tagged = warnings
+            .into_iter()
+            .map(|w| format!("Tree {}: {}", i, w))
+            .collect();
+        Ok((resource, tagged))
     };
 
     #[cfg(feature = "parallel")]
-    let results: Vec<Result<StaticResource, String>> = {
+    let results: Vec<Result<(StaticResource, Vec<String>), String>> = {
         use rayon::prelude::*;
         trees
             .par_iter()
@@ -1555,7 +1630,7 @@ pub fn batch_convert_trees<L: crate::label_resolution::ConceptLookup + Sync>(
             .collect()
     };
     #[cfg(not(feature = "parallel"))]
-    let results: Vec<Result<StaticResource, String>> = trees
+    let results: Vec<Result<(StaticResource, Vec<String>), String>> = trees
         .iter()
         .enumerate()
         .map(|(i, tree)| convert_one(i, tree))
@@ -1563,9 +1638,13 @@ pub fn batch_convert_trees<L: crate::label_resolution::ConceptLookup + Sync>(
 
     let mut resources = Vec::with_capacity(results.len());
     let mut errors = Vec::new();
+    let mut warnings = Vec::new();
     for r in results {
         match r {
-            Ok(res) => resources.push(res),
+            Ok((res, warns)) => {
+                resources.push(res);
+                warnings.extend(warns);
+            }
             Err(e) => errors.push(e),
         }
     }
@@ -1592,7 +1671,11 @@ pub fn batch_convert_trees<L: crate::label_resolution::ConceptLookup + Sync>(
         }
     }
 
-    Ok(BatchOutcome { resources, errors })
+    Ok(BatchOutcome {
+        resources,
+        errors,
+        warnings,
+    })
 }
 
 #[cfg(test)]

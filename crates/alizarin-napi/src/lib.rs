@@ -34,6 +34,8 @@ fn extension_registry() -> &'static ExtensionTypeRegistry {
             alizarin_filelist_core::DATATYPE_NAME,
             alizarin_filelist_core::create_filelist_handler(),
         );
+        // Validate-only geospatial handler (coercion stays in core).
+        alizarin_geo_core::register(&mut registry);
         registry
     })
 }

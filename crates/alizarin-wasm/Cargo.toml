@@ -13,6 +13,7 @@ default = []
 
 [dependencies]
 alizarin-core = { path = "../alizarin-core" }
+alizarin-geo-core = { path = "../../ext/alizarin-geo/core" }
 wasm-wrapper-derive = { path = "../wasm-wrapper-derive" }
 wasm-bindgen = "0.2.84"
 wasm-bindgen-futures = "0.4"
