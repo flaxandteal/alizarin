@@ -29,11 +29,11 @@ View models provide type-safe access to resource data:
 ### 4. Data Access Pattern
 
 ```typescript
-// 1. Initialize client
-const client = new ArchesClientRemote("https://my-arches-instance.org");
+// 1. Initialize client (client classes live under the `client` namespace export)
+const archesClient = new client.ArchesClientRemote("https://my-arches-instance.org");
 
 // 2. Create graph manager
-const graphManager = new GraphManager(client);
+const graphManager = new GraphManager(archesClient);
 
 // 3. Load a graph model
 const PersonModel = await graphManager.loadGraph("Person");

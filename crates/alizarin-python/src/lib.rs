@@ -23,8 +23,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use alizarin_extension_api::{
-    abi_fingerprint, CoerceFn, FreeDisplayFn, FreeFn, FreeResolveMarkersFn, FreeValidateFn,
-    RenderDisplayFn, ResolveMarkersFn, TypeHandlerInfo, ValidateFn,
+    abi_fingerprint, CoerceFn, FreeDisplayFn, FreeFn, FreeIndexSpecFn, FreeRenderSearchFn,
+    FreeResolveMarkersFn, FreeValidateFn, IndexSpecFn, RenderDisplayFn, RenderSearchFn,
+    ResolveMarkersFn, TypeHandlerInfo, ValidateFn,
 };
 use std::ffi::c_void;
 
@@ -72,6 +73,12 @@ struct RegisteredHandler {
     /// Optional validator (value passed by pointer — no per-value serialization).
     validate_fn: Option<ValidateFn>,
     free_validate_fn: Option<FreeValidateFn>,
+    /// Optional search renderer (value by pointer; returns search-indexable JSON).
+    render_search_fn: Option<RenderSearchFn>,
+    free_render_search_fn: Option<FreeRenderSearchFn>,
+    /// Optional index-spec declarer (value by pointer; returns class + raw keys).
+    index_spec_fn: Option<IndexSpecFn>,
+    free_index_spec_fn: Option<FreeIndexSpecFn>,
 }
 
 // =============================================================================
@@ -103,9 +110,9 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
             HandlerCapabilities {
                 can_coerce: handler.coerce_fn.is_some(),
                 can_render_display: handler.render_display_fn.is_some(),
-                can_render_search: false,
+                can_render_search: handler.render_search_fn.is_some(),
                 can_resolve_markers: handler.resolve_markers_fn.is_some(),
-                can_index: false,
+                can_index: handler.index_spec_fn.is_some(),
                 can_validate: handler.validate_fn.is_some(),
             }
         } else {
@@ -396,6 +403,102 @@ impl ExtensionTypeHandler for PyExtensionTypeHandler {
         }
     }
 
+    fn render_search(
+        &self,
+        tile_data: &serde_json::Value,
+        language: &str,
+    ) -> Result<Option<serde_json::Value>, ExtensionError> {
+        let (render_search_fn, free_render_search_fn) = {
+            let handlers = TYPE_HANDLERS.read().unwrap();
+            match handlers.get(&self.type_name) {
+                Some(h) => (h.render_search_fn, h.free_render_search_fn),
+                None => return Ok(None),
+            }
+        };
+        let (Some(render_search_fn), Some(free_render_search_fn)) =
+            (render_search_fn, free_render_search_fn)
+        else {
+            return Ok(None);
+        };
+
+        // Value BY POINTER (ABI-confirmed); language as UTF-8 bytes.
+        let value_ptr = tile_data as *const serde_json::Value as *const c_void;
+        // SAFETY: pointers are live for the call; the ext casts the value back to
+        // the same `serde_json::Value` type; the result is freed below.
+        unsafe {
+            let result = render_search_fn(value_ptr, language.as_ptr(), language.len());
+            if !result.error_ptr.is_null() {
+                let msg = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                    result.error_ptr,
+                    result.error_len,
+                ))
+                .to_string();
+                free_render_search_fn(result);
+                return Err(ExtensionError::new(msg));
+            }
+            let json = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                result.json_ptr,
+                result.json_len,
+            ));
+            let parsed: Result<Option<serde_json::Value>, ExtensionError> =
+                serde_json::from_str(json).map_err(|e| {
+                    ExtensionError::new(format!("Failed to parse render_search result: {}", e))
+                });
+            free_render_search_fn(result);
+            parsed
+        }
+    }
+
+    fn index_spec(
+        &self,
+        tile_data: &serde_json::Value,
+        config: Option<&serde_json::Value>,
+    ) -> Result<Option<alizarin_core::extension_type_registry::IndexSpec>, ExtensionError> {
+        use alizarin_core::extension_type_registry::IndexSpec;
+
+        let (index_spec_fn, free_index_spec_fn) = {
+            let handlers = TYPE_HANDLERS.read().unwrap();
+            match handlers.get(&self.type_name) {
+                Some(h) => (h.index_spec_fn, h.free_index_spec_fn),
+                None => return Ok(None),
+            }
+        };
+        let (Some(index_spec_fn), Some(free_index_spec_fn)) = (index_spec_fn, free_index_spec_fn)
+        else {
+            return Ok(None);
+        };
+
+        // Value and config BY POINTER (ABI-confirmed).
+        let value_ptr = tile_data as *const serde_json::Value as *const c_void;
+        let config_ptr = config
+            .map(|c| c as *const serde_json::Value as *const c_void)
+            .unwrap_or(std::ptr::null());
+        // SAFETY: pointers live for the call; the ext casts them back to the same
+        // type; the result is freed below.
+        unsafe {
+            let result = index_spec_fn(value_ptr, config_ptr);
+            if !result.error_ptr.is_null() {
+                let msg = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                    result.error_ptr,
+                    result.error_len,
+                ))
+                .to_string();
+                free_index_spec_fn(result);
+                return Err(ExtensionError::new(msg));
+            }
+            let json = std::str::from_utf8_unchecked(std::slice::from_raw_parts(
+                result.json_ptr,
+                result.json_len,
+            ));
+            let parsed: Result<Option<IndexSpec>, ExtensionError> = serde_json::from_str(json)
+                .map_err(|e| {
+                    ExtensionError::new(format!("Failed to parse IndexSpec result: {}", e))
+                });
+            free_index_spec_fn(result);
+            parsed
+        }
+    }
+
     fn description(&self) -> &str {
         "Python extension type handler (C ABI)"
     }
@@ -579,8 +682,18 @@ fn register_extension_handler(capsule: &PyCapsule) -> PyResult<()> {
         ))
         .to_string();
 
-        let has_display = info.render_display_fn.is_some();
-        let has_markers = info.resolve_markers_fn.is_some();
+        // Collect the capabilities present, for the log line below.
+        let feature_list: Vec<&str> = [
+            ("coercion", info.coerce_fn.is_some()),
+            ("display renderer", info.render_display_fn.is_some()),
+            ("marker resolver", info.resolve_markers_fn.is_some()),
+            ("validator", info.validate_fn.is_some()),
+            ("search renderer", info.render_search_fn.is_some()),
+            ("index spec", info.index_spec_fn.is_some()),
+        ]
+        .into_iter()
+        .filter_map(|(name, present)| present.then_some(name))
+        .collect();
 
         TYPE_HANDLERS.write().unwrap().insert(
             type_name.clone(),
@@ -593,14 +706,17 @@ fn register_extension_handler(capsule: &PyCapsule) -> PyResult<()> {
                 free_resolve_markers_fn: info.free_resolve_markers_fn,
                 validate_fn: info.validate_fn,
                 free_validate_fn: info.free_validate_fn,
+                render_search_fn: info.render_search_fn,
+                free_render_search_fn: info.free_render_search_fn,
+                index_spec_fn: info.index_spec_fn,
+                free_index_spec_fn: info.free_index_spec_fn,
             },
         );
 
-        let features = match (has_display, has_markers) {
-            (true, true) => " (with display renderer, marker resolver)",
-            (true, false) => " (with display renderer)",
-            (false, true) => " (with marker resolver)",
-            (false, false) => "",
+        let features = if feature_list.is_empty() {
+            String::new()
+        } else {
+            format!(" (with {})", feature_list.join(", "))
         };
         println!("Registered type handler for: {}{}", type_name, features);
     }

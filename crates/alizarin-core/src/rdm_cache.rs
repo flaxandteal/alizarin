@@ -241,10 +241,11 @@ impl RdmCollection {
         }
     }
 
-    /// Add a concept to the collection
+    /// Add a concept to the collection.
     ///
-    /// This also builds the value index for all labels in the concept.
-    /// If a label has a placeholder ID ("__pending__"), a deterministic ID is generated.
+    /// Builds the value index from the concept's pref labels (generating a
+    /// deterministic ID for any placeholder "__pending__" value) and the label
+    /// index from its pref and alt labels.
     pub fn add_concept(&mut self, mut concept: RdmConcept) {
         let concept_id = concept.id.clone();
 
@@ -773,10 +774,11 @@ impl RdmCache {
             .unwrap_or(false)
     }
 
-    /// Look up a concept by label in a specific collection
+    /// Look up a concept by label in a specific collection.
     ///
-    /// Returns the concept if exactly one match is found.
-    /// Returns None if no match or ambiguous (multiple matches).
+    /// Delegates to [`RdmCollection::find_by_label`]: case-insensitive, matching
+    /// pref and alt labels. When several concepts share the label the one with
+    /// the lexicographically smallest id is returned; None only when nothing matches.
     pub fn lookup_by_label(&self, collection_id: &str, label: &str) -> Option<&RdmConcept> {
         self.collections
             .get(collection_id)

@@ -233,10 +233,8 @@ pub fn cards_to_tree(resource_json: &str, graph: &StaticGraph) -> Result<JsValue
 ///         descriptor with uuid5, erroring instead of using uuid4.
 ///
 /// Returns:
-///     BusinessDataWrapper format: {business_data: {resources: [...]}, errors: [...]}
-///
-/// Note: In WASM, parallelism is limited by JavaScript's single-threaded nature,
-/// but we can still optimize by processing in batches and reducing boundary crossings.
+///     {business_data: {resources: [...]}, errors: [...], error_count, warnings: [...]}
+///     (warnings is omitted when empty).
 #[wasm_bindgen(js_name = batchTreesToTiles)]
 #[allow(clippy::too_many_arguments)]
 pub fn batch_trees_to_tiles(

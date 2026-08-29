@@ -181,6 +181,8 @@
 //! - `target_node_id` (String): Node to attach branch children to
 //! - `ontology_property` (String): Property for connecting edges
 //! - `alias_suffix` (Option<String>): Suffix for clashing aliases
+//! - `alias_prefix` (Option<String>): Prefix applied to all subgraph aliases
+//! - `name_prefix` (Option<String>): Prefix applied to all subgraph display names
 //!
 //! **Behavior:**
 //! - Skips branch root; connects children directly to target
@@ -201,6 +203,8 @@
 //! - `target_node_id` (String): Root node of existing branch
 //! - `ontology_property` (String): Property for new connecting edges
 //! - `alias_suffix` (Option<String>): Suffix for aliases
+//! - `alias_prefix` (Option<String>): Prefix for matching/adding branch aliases
+//! - `name_prefix` (Option<String>): Prefix applied to new nodes' display names
 //! - `remove_orphaned` (bool): If true, removes nodes no longer in branch
 //!
 //! **Behavior:**
@@ -1051,8 +1055,8 @@ pub struct NodeOptions {
     /// Force this node to own its own nodegroup (`nodeid == nodegroup_id`),
     /// matching Arches' collector semantics. When `true`, `AddNode` creates a
     /// dedicated nodegroup even if the cardinality is `1` and the parent is not
-    /// root. Defaults to `Some(true)` for semantic nodes with cardinality N;
-    /// `None` otherwise.
+    /// root. `None` by default; the CSV/instruction path sets it to `Some(true)`
+    /// for semantic nodes with cardinality N.
     pub is_collector: Option<bool>,
     /// Whether this field is required for data entry.
     pub isrequired: Option<bool>,

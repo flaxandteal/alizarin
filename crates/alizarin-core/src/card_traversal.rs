@@ -299,8 +299,9 @@ fn card_to_json(
 
 /// Build a single card instance (widgets + child cards for one tile).
 ///
-/// `current_depth` controls whether widgets are rendered (always, if we got here).
-/// `child_depth` controls whether child cards recurse further.
+/// Widgets are always rendered. `current_depth == Some(0)` stops child-card
+/// recursion at this level; `child_depth` is the remaining budget passed down
+/// to any child cards that do recurse.
 fn build_card_instance(
     tile_id: Option<&str>,
     nodegroup_id: &str,

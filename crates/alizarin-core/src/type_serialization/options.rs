@@ -19,7 +19,7 @@ pub enum SerializationMode {
 /// Options for value serialization
 #[derive(Debug, Clone)]
 pub struct SerializationOptions {
-    /// Output mode: TileData or Display
+    /// Output mode: TileData, Display, or SearchData
     pub mode: SerializationMode,
     /// Primary language for display output (default: "en"). First in the
     /// fallback chain; see [`SerializationOptions::language_chain`].

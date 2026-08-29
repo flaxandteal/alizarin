@@ -2,11 +2,14 @@
 //!
 //! This module provides a platform-agnostic registry for extension type handlers
 //! that can be used by both WASM and Python bindings. Extensions can register
-//! handlers for custom datatypes that provide:
+//! handlers for custom datatypes. The trait exposes six capabilities:
 //!
 //! - **Coercion**: Transform input values during ETL (tree → tiles)
 //! - **Display rendering**: Convert tile data to display strings
+//! - **Search rendering**: Convert tile data to search-indexable JSON
 //! - **Marker resolution**: Resolve references/lookups in tile data
+//! - **Validation**: Check values against node constraints during tree → tiles
+//! - **Index spec**: Report how the datatype's value is head-indexed
 //!
 //! # Architecture
 //!
@@ -59,7 +62,7 @@ use crate::type_serialization::SerializationContext;
 ///
 /// Not all handlers need to implement all capabilities. For example,
 /// a simple type might only need coercion, while a reference type
-/// needs all three.
+/// exercises most of them.
 #[derive(Debug, Clone, Default)]
 pub struct HandlerCapabilities {
     /// Can transform input values during ETL (tree → tiles)
@@ -129,7 +132,7 @@ impl HandlerCapabilities {
 /// tile chunks, not the head). The `collection` on the hierarchical variant
 /// lets a handler carry the vocabulary/collection its keys belong to —
 /// the handler owns that resolution, core does not hardcode it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum IndexClass {
     /// Concept-like: keys are hierarchy members (DFS-interval indexed),
     /// optionally scoped to a named collection/controlled list.
@@ -159,7 +162,7 @@ pub enum IndexClass {
 /// link target ids, …) for a single tile value. `keys` is empty for
 /// `DetailOnly` and may be empty for the other classes when the value
 /// carries no indexable ids.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IndexSpec {
     pub class: IndexClass,
     pub keys: Vec<String>,

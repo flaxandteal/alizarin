@@ -41,10 +41,10 @@ cargo add alizarin-core
 ### Pattern 1: Load and query resources
 
 ```typescript
-import { ArchesClientRemoteStatic, GraphManager } from 'alizarin';
+import { client, GraphManager } from 'alizarin';
 
-const client = new ArchesClientRemoteStatic('/data');
-const gm = new GraphManager(client);
+const archesClient = new client.ArchesClientRemoteStatic('/data');
+const gm = new GraphManager(archesClient);
 const Person = await gm.loadGraph('Person');
 const people = await Person.all();
 
@@ -140,7 +140,7 @@ add_node,heritage_item,description,Description,string,1,E62_String,P3_has_note
 ```
 
 **CSV columns:**
-- `action`: `load_graph`, `create_model`, `add_node`, `add_card`, `add_widget`, `add_function`, `set_descriptor_template`, `rename_node`, `rename_card`, `rename_graph`, `realign_card_from_node`, `update_node`, `change_node_type`, `change_cardinality`, `coppice_subgraph`, `concept_change_collection`, `reference_change_collection`, `delete_node`, `delete_nodegroup`, `delete_card`, `delete_function`
+- `action`: `load_graph`, `create_model`, `create_branch`, `add_node`, `add_edge`, `add_nodegroup`, `add_card`, `add_widget`, `add_function`, `set_descriptor_template`, `rename_node`, `rename_card`, `rename_graph`, `realign_card_from_node`, `update_node`, `change_node_type`, `change_cardinality`, `coppice_subgraph`, `concept_change_collection`, `delete_node`, `delete_nodegroup`, `delete_card`, `delete_widget`, `delete_function`. Any unrecognised action is dispatched as an extension mutation by that name (e.g. `clm.reference_change_collection` from the CLM extension).
 - `subject`: The parent alias (or model alias for `create_model`, graph ID for `load_graph`)
 - `object`: The new element's alias
 - `params.*`: Mutation-specific parameters (name, datatype, cardinality, ontology_class, parent_property, config, description, publication_id, alias_prefix, name_prefix). Supports **dot-notation** for nested values (e.g., `params.options.is_collector` becomes `{"options": {"is_collector": true}}`).

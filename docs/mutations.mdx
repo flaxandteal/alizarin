@@ -594,11 +594,13 @@ result_json = alizarin.build_graph_from_csv(mutation_csv)
 | `change_cardinality` | node_alias | `"1"` or `"n"` | - |
 | `coppice_subgraph` | root_alias | - | `publication_id` |
 | `concept_change_collection` | node_alias | collection_id | - |
-| `reference_change_collection` | node_alias | collection_id | `config_key` |
+| `clm.reference_change_collection` ¹ | node_alias | collection_id | `config_key` |
 | `delete_node` | node_alias | - | - |
 | `delete_nodegroup` | nodegroup_id | - | - |
 | `delete_card` | card_id | - | - |
 | `delete_function` | function_mapping_id | - | - |
+
+¹ Provided by the CLM extension, not core. Any unrecognised action is dispatched as an extension mutation named after the action string, so the CLM handler must be registered under its full `clm.reference_change_collection` name (import `alizarin_clm`) for this row to resolve. See [Extension Mutations](#extension-mutations).
 
 ### Using `load_graph` to Mutate Existing Graphs
 

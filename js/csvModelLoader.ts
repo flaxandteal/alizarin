@@ -6,8 +6,8 @@
  * nodes.csv, collections.csv) and builds an Arches resource model graph
  * with SKOS collections.
  *
- * When the NAPI backend is active, routes to native Rust implementations
- * for better performance.
+ * The build functions route to native NAPI implementations when that backend
+ * is active and exposes them; validateModelCsvs always uses WASM.
  *
  * @module csvModelLoader
  */

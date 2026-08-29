@@ -598,8 +598,9 @@ impl StaticResourceRegistry {
 
     /// Get a breakdown of registry contents for memory diagnostics.
     ///
-    /// Returns (total_entries, full_count, summary_count, total_tiles, total_cache_bytes)
-    /// where total_cache_bytes is an estimate of serialized __cache JSON size.
+    /// Counts only (entries, full/summary split, tiles, cached resources). The
+    /// byte-size estimates are left at 0 here; use
+    /// [`memory_stats_detailed`](Self::memory_stats_detailed) to populate them.
     pub fn memory_stats(&self) -> RegistryMemoryStats {
         let mut full_count: usize = 0;
         let mut summary_count: usize = 0;
@@ -1682,6 +1683,8 @@ impl MergeAccumulator {
 /// * `resource_batches` - Vector of resource collections to merge
 /// * `recompute_descriptors` - If true, recomputes descriptors from tiles after merging
 ///   using the graph from the registry (looked up by graph_id from the resource)
+/// * `strict` - If true, a cardinality-1 tile-data conflict aborts with an error
+///   (recorded in `BatchMergeResult::error`) instead of warning
 ///
 /// # Returns
 /// * `BatchMergeResult` - Contains merged resources (one per unique ID) and all warnings
@@ -1691,7 +1694,7 @@ impl MergeAccumulator {
 /// // Process disjoint subgraphs from multiple files
 /// let batch1: Vec<StaticResource> = parse_file("part1.json");
 /// let batch2: Vec<StaticResource> = parse_file("part2.json");
-/// let result = batch_merge_resources(vec![batch1, batch2], true);
+/// let result = batch_merge_resources(vec![batch1, batch2], true, false);
 /// // result.resources contains one entry per unique resourceinstanceid
 /// ```
 pub fn batch_merge_resources(

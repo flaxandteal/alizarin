@@ -16,10 +16,10 @@ Works in browsers and Node.js. Node.js requires `--experimental-wasm-modules`.
 ## Quick Example
 
 ```typescript
-import { ArchesClientRemoteStatic, GraphManager } from 'alizarin';
+import { client, GraphManager } from 'alizarin';
 
-const client = new ArchesClientRemoteStatic('/data');
-const gm = new GraphManager(client);
+const archesClient = new client.ArchesClientRemoteStatic('/data');
+const gm = new GraphManager(archesClient);
 
 // Load a graph model and query resources
 const Person = await gm.loadGraph('Person');
@@ -41,6 +41,8 @@ for (const person of people) {
 | `ArchesClientRemote` | Connects to a live Arches REST API |
 | `ArchesClientRemoteStatic` | Loads from pre-exported static JSON files |
 | `ArchesClientLocal` | Loads from local filesystem (Node.js only) |
+
+These client classes are exposed under the `client` namespace export (`import { client } from 'alizarin'`, then `new client.ArchesClientRemoteStatic(...)`), not as top-level named exports.
 
 ### Core ORM
 

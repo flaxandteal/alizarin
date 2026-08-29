@@ -9,7 +9,7 @@ description: The shared engine behind all Alizarin bindings
 
 ```toml
 [dependencies]
-alizarin-core = "0.2"
+alizarin-core = "2.0.0-alpha.131"
 ```
 
 The crate is published to [crates.io](https://crates.io/crates/alizarin-core).
@@ -56,11 +56,11 @@ let tiles = tree_to_tiles_with_options(&tree, &resource_id, &graph, &options)?;
 | `build_graph_from_model_csvs()` | `csv_model_loader` | Build graph from CSV definitions |
 | `build_resources_from_business_csv()` | `csv_business_data_loader` | Build resources from CSV |
 | `resolve_labels()` | `label_resolution` | Resolve label strings to concept UUIDs |
-| `prune_graph()` | `graph` | Remove unused nodes from a graph |
+| `prune_graph()` | `graph_model_access` | Remove unused nodes from a graph |
 
 ## Module Overview
 
-The crate is organised into ~37 public modules. The most commonly used:
+The crate is organised into ~29 top-level public modules. The most commonly used:
 
 - **`graph`** — Core data structures (`StaticGraph`, `StaticNode`, `StaticEdge`, etc.)
 - **`json_conversion`** — Tile/tree bidirectional conversion

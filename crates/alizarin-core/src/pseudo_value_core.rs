@@ -762,7 +762,7 @@ pub fn matches_tile_filter(
                 Some(parent_ng) => ng != parent_ng,
                 // When parent_nodegroup_id is not provided but parent_tile_id IS provided,
                 // we can't confirm different nodegroup, so don't use fallback.
-                // (Root level case where both are None is handled above at line 604)
+                // (Root level case where both are None is handled above)
                 None => false,
             };
             if tile.parenttile_id.is_none() && parent_tile_id.is_some() && is_different_nodegroup {

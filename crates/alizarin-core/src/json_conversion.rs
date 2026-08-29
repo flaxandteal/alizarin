@@ -473,22 +473,7 @@ pub(crate) fn build_pseudo_cache_from_tiles(
     pseudo_cache
 }
 
-/// Convert nested tree array to tiled resource format with business_data wrapper
-///
-/// **Structural transformation**:
-/// - Input: Array of nested tree objects `[{...}, {...}]` OR single tree object `{...}`
-/// - Output: `{"business_data": {"resources": [StaticResource, ...]}}`
-///
-/// Descriptors are calculated automatically from tiles.
-///
-/// # Arguments
-/// * `json` - Tree structure to convert
-/// * `graph` - Graph definition
-/// * `strict` - If true, fails on unknown fields (recommended). Defaults to true.
-/// * `id_key` - Optional key for deterministic UUID v5 generation. When provided and
-///   the tree does not contain a `resourceinstanceid`, a deterministic UUID v5 will
-///   be generated using the key and graph ID as namespace.
-///   Policy for the value-validation pass run during [`tree_to_tiles_with_options`].
+/// Policy for the value-validation pass run during [`tree_to_tiles_with_options`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ValidationMode {
     /// Do not validate.
@@ -583,6 +568,20 @@ pub fn validate_business_data(
     Ok(diagnostics)
 }
 
+/// Convert a nested tree array to tiled resource format with `business_data` wrapper.
+///
+/// **Structural transformation**:
+/// - Input: array of nested tree objects `[{...}, {...}]` OR single tree object `{...}`
+/// - Output: `{"business_data": {"resources": [StaticResource, ...]}}`
+///
+/// Descriptors are computed automatically from tiles. Thin wrapper over
+/// [`tree_to_tiles_with_options`] with camelCase off, random ids, no extensions,
+/// and validation off; discards the diagnostics vec.
+///
+/// # Arguments
+/// * `strict` - If true, fails on unknown fields.
+/// * `id_key` - Optional key for deterministic UUID v5 generation, used when the
+///   tree has no `resourceinstanceid` (keyed by the id_key and graph ID).
 pub fn tree_to_tiles(
     json: &Value,
     graph: &StaticGraph,
@@ -612,6 +611,11 @@ pub fn tree_to_tiles(
 ///   will handle them post-coercion). If false in strict mode, unknown datatypes produce errors.
 /// * `extension_registry` - Optional extension type registry for coercing extension types.
 ///   When provided, extension handlers are consulted for unknown datatypes during coercion.
+/// * `validation` - Controls the post-build value-validation pass (see [`ValidationMode`]).
+///
+/// Returns the built wrapper together with the validation diagnostics (empty
+/// unless `validation` gathers any); `FailFast` instead returns an `Err` on the
+/// first invalid value.
 #[allow(clippy::too_many_arguments)]
 pub fn tree_to_tiles_with_options(
     json: &Value,

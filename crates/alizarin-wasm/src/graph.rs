@@ -2600,9 +2600,14 @@ wasm_wrapper! {
 
 #[wasm_bindgen]
 impl StaticResourceMetadata {
+    /// Descriptors as a plain JS object (`{name, description, slug, map_popup}`),
+    /// matching the NAPI backend. Returning a WASM wrapper here made
+    /// `JSON.stringify(metadata.descriptors)` yield `{}` (wrappers have no
+    /// enumerable own properties), which silently broke `__cache` population in
+    /// the ETL — see WARNING.md.
     #[wasm_bindgen(getter)]
-    pub fn descriptors(&self) -> StaticResourceDescriptors {
-        StaticResourceDescriptors(self.0.descriptors.clone())
+    pub fn descriptors(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.0.descriptors).unwrap_or(JsValue::NULL)
     }
 }
 
@@ -2749,9 +2754,12 @@ impl StaticResourceSummary {
         StaticResourceMetadata(self.0.to_metadata())
     }
 
+    /// Descriptors as a plain JS object (or null), matching the NAPI backend.
+    /// A WASM wrapper here serialised to `{}` under `JSON.stringify` and broke
+    /// `__cache` population in the ETL — see WARNING.md.
     #[wasm_bindgen(getter)]
-    pub fn descriptors(&self) -> Option<StaticResourceDescriptors> {
-        self.0.descriptors.clone().map(StaticResourceDescriptors)
+    pub fn descriptors(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.0.descriptors).unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(getter)]

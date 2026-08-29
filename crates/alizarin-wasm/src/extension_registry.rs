@@ -129,7 +129,8 @@ pub fn get_registered_extension_handlers() -> js_sys::Array {
     })
 }
 
-/// Build a fresh extension registry from JS-registered handlers.
+/// Build a fresh extension registry: the native geo handler plus every
+/// JS-registered handler.
 ///
 /// Coercion/display handlers (e.g. CLM, file-list) register themselves from JS
 /// via `registerExtensionHandler`. The geospatial validate-only handler is pure

@@ -10,11 +10,10 @@
 
 // Re-export core types so downstream users don't need to depend on alizarin-clm-core directly
 pub use alizarin_clm_core::{
-    StaticReference, StaticReferenceLabel, ReferenceNodeConfig,
-    coerce_reference_value, render_reference_display_value,
-    build_static_reference_from_concept, build_item_uri, try_build_item_uri,
-    set_clm_base_uri, get_clm_base_uri, clear_clm_base_uri,
-    ReferenceTypeHandler, create_reference_handler, DATATYPE_NAME,
+    build_item_uri, build_static_reference_from_concept, clear_clm_base_uri,
+    coerce_reference_value, create_reference_handler, get_clm_base_uri,
+    render_reference_display_value, set_clm_base_uri, try_build_item_uri, ReferenceNodeConfig,
+    ReferenceTypeHandler, StaticReference, StaticReferenceLabel, DATATYPE_NAME,
 };
 
 // Re-export mutation types when feature is enabled
@@ -33,11 +32,10 @@ mod python_module {
 
     use alizarin_extension_api::{
         alizarin_free_coerce_result, alizarin_free_render_display_result,
-        alizarin_free_resolve_markers_result,
-        CoerceFn, CoerceResult, FreeFn, TypeHandlerInfo,
-        RenderDisplayFn, RenderDisplayResult, FreeDisplayFn,
-        ResolveMarkersFn, ResolveMarkersResult, FreeResolveMarkersFn,
-        HasCollectionFn, ConceptLookupByIdFn, ConceptLookupByLabelFn, FreeConceptJsonFn,
+        alizarin_free_resolve_markers_result, CoerceFn, CoerceResult, ConceptLookupByIdFn,
+        ConceptLookupByLabelFn, FreeConceptJsonFn, FreeDisplayFn, FreeFn, FreeResolveMarkersFn,
+        HasCollectionFn, RenderDisplayFn, RenderDisplayResult, ResolveMarkersFn,
+        ResolveMarkersResult, TypeHandlerInfo,
     };
 
     use pyo3::prelude::*;
@@ -80,7 +78,10 @@ mod python_module {
 
         match coerce_reference_value(&value, &config) {
             Ok((tile_data, resolved)) => {
-                match (serde_json::to_vec(&tile_data), serde_json::to_vec(&resolved)) {
+                match (
+                    serde_json::to_vec(&tile_data),
+                    serde_json::to_vec(&resolved),
+                ) {
                     (Ok(tile_json), Ok(resolved_json)) => {
                         CoerceResult::success(tile_json, resolved_json)
                     }
@@ -103,7 +104,9 @@ mod python_module {
         let resolved_slice = std::slice::from_raw_parts(resolved_ptr, resolved_len);
         let resolved_str = match std::str::from_utf8(resolved_slice) {
             Ok(s) => s,
-            Err(e) => return RenderDisplayResult::error(format!("Invalid UTF-8 in resolved: {}", e)),
+            Err(e) => {
+                return RenderDisplayResult::error(format!("Invalid UTF-8 in resolved: {}", e))
+            }
         };
 
         let lang_slice = std::slice::from_raw_parts(lang_ptr, lang_len);
@@ -130,8 +133,13 @@ mod python_module {
     /// All pointer arguments must be valid for the lifetime of this call.
     unsafe fn call_concept_lookup(
         lookup_fn: unsafe extern "C" fn(
-            *mut c_void, *const u8, usize, *const u8, usize,
-            *mut *mut u8, *mut usize,
+            *mut c_void,
+            *const u8,
+            usize,
+            *const u8,
+            usize,
+            *mut *mut u8,
+            *mut usize,
         ) -> bool,
         free_fn: FreeConceptJsonFn,
         user_data: *mut c_void,
@@ -143,9 +151,12 @@ mod python_module {
 
         let found = lookup_fn(
             user_data,
-            collection_id.as_ptr(), collection_id.len(),
-            key.as_ptr(), key.len(),
-            &mut json_ptr, &mut json_len,
+            collection_id.as_ptr(),
+            collection_id.len(),
+            key.as_ptr(),
+            key.len(),
+            &mut json_ptr,
+            &mut json_len,
         );
 
         if !found || json_ptr.is_null() || json_len == 0 {
@@ -198,21 +209,23 @@ mod python_module {
         let resolved = match alizarin_clm_core::resolve_reference_markers_with_lookups(
             &value,
             language,
-            |collection_id, concept_id| {
-                unsafe {
-                    call_concept_lookup(
-                        lookup_by_id, free_concept_json, lookup_user_data,
-                        collection_id, concept_id,
-                    )
-                }
+            |collection_id, concept_id| unsafe {
+                call_concept_lookup(
+                    lookup_by_id,
+                    free_concept_json,
+                    lookup_user_data,
+                    collection_id,
+                    concept_id,
+                )
             },
-            |collection_id, label| {
-                unsafe {
-                    call_concept_lookup(
-                        lookup_by_label, free_concept_json, lookup_user_data,
-                        collection_id, label,
-                    )
-                }
+            |collection_id, label| unsafe {
+                call_concept_lookup(
+                    lookup_by_label,
+                    free_concept_json,
+                    lookup_user_data,
+                    collection_id,
+                    label,
+                )
             },
         ) {
             Ok(v) => v,
@@ -226,7 +239,10 @@ mod python_module {
         } else {
             match serde_json::to_vec(&resolved) {
                 Ok(json) => ResolveMarkersResult::success(json),
-                Err(e) => ResolveMarkersResult::error(format!("Failed to serialize resolved value: {}", e)),
+                Err(e) => ResolveMarkersResult::error(format!(
+                    "Failed to serialize resolved value: {}",
+                    e
+                )),
             }
         }
     }
@@ -270,28 +286,34 @@ mod python_module {
     pub fn get_reference_handler_capsule(py: Python<'_>) -> PyResult<Py<PyCapsule>> {
         static TYPE_NAME: &[u8] = b"reference";
 
-        INIT.call_once(|| {
-            unsafe {
-                HANDLER_INFO = Some(TypeHandlerInfo {
-                    type_name_ptr: TYPE_NAME.as_ptr(),
-                    type_name_len: TYPE_NAME.len(),
-                    coerce_fn: Some(coerce_reference as CoerceFn),
-                    free_fn: Some(alizarin_free_coerce_result as FreeFn),
-                    render_display_fn: Some(render_reference_display as RenderDisplayFn),
-                    free_display_fn: Some(alizarin_free_render_display_result as FreeDisplayFn),
-                    resolve_markers_fn: Some(resolve_reference_markers as ResolveMarkersFn),
-                    free_resolve_markers_fn: Some(alizarin_free_resolve_markers_result as FreeResolveMarkersFn),
-                    validate_fn: None,
-                    free_validate_fn: None,
-                    abi: alizarin_extension_api::abi_fingerprint(),
-                    user_data: std::ptr::null_mut(),
-                });
-            }
+        INIT.call_once(|| unsafe {
+            HANDLER_INFO = Some(TypeHandlerInfo {
+                type_name_ptr: TYPE_NAME.as_ptr(),
+                type_name_len: TYPE_NAME.len(),
+                coerce_fn: Some(coerce_reference as CoerceFn),
+                free_fn: Some(alizarin_free_coerce_result as FreeFn),
+                render_display_fn: Some(render_reference_display as RenderDisplayFn),
+                free_display_fn: Some(alizarin_free_render_display_result as FreeDisplayFn),
+                resolve_markers_fn: Some(resolve_reference_markers as ResolveMarkersFn),
+                free_resolve_markers_fn: Some(
+                    alizarin_free_resolve_markers_result as FreeResolveMarkersFn,
+                ),
+                validate_fn: None,
+                free_validate_fn: None,
+                render_search_fn: None,
+                free_render_search_fn: None,
+                index_spec_fn: None,
+                free_index_spec_fn: None,
+                abi: alizarin_extension_api::abi_fingerprint(),
+                user_data: std::ptr::null_mut(),
+            });
         });
 
         #[allow(static_mut_refs)]
         let ptr = unsafe {
-            HANDLER_INFO.as_ref().expect("HANDLER_INFO initialized in Once::call_once above")
+            HANDLER_INFO
+                .as_ref()
+                .expect("HANDLER_INFO initialized in Once::call_once above")
                 as *const TypeHandlerInfo
         };
 
@@ -299,11 +321,7 @@ mod python_module {
             .expect("handler name contains no null bytes");
 
         unsafe {
-            let capsule = pyo3::ffi::PyCapsule_New(
-                ptr as *mut c_void,
-                name.as_ptr(),
-                None,
-            );
+            let capsule = pyo3::ffi::PyCapsule_New(ptr as *mut c_void, name.as_ptr(), None);
 
             if capsule.is_null() {
                 return Err(PyErr::fetch(py));
@@ -347,7 +365,9 @@ mod tests {
         let result = coerce_reference_value(&value, &config);
 
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Pre-formed reference objects are not valid input"));
+        assert!(result
+            .unwrap_err()
+            .contains("Pre-formed reference objects are not valid input"));
     }
 
     #[test]
@@ -358,9 +378,15 @@ mod tests {
 
         assert!(result.is_ok());
         let (tile_data, _) = result.unwrap();
-        assert!(tile_data.is_array(), "Single value should be wrapped in array");
+        assert!(
+            tile_data.is_array(),
+            "Single value should be wrapped in array"
+        );
         let first = &tile_data.as_array().unwrap()[0];
-        assert_eq!(first.get("__needs_rdm_lookup").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            first.get("__needs_rdm_lookup").and_then(|v| v.as_bool()),
+            Some(true)
+        );
     }
 
     #[test]
@@ -435,8 +461,15 @@ mod tests {
             multi_value: Some(true),
         };
         let (tile_data, _) = coerce_reference_value(&value, &config_multi).unwrap();
-        assert!(tile_data.is_array(), "With multiValue=true, should return array");
-        assert_eq!(tile_data.as_array().unwrap().len(), 1, "Array should contain one element");
+        assert!(
+            tile_data.is_array(),
+            "With multiValue=true, should return array"
+        );
+        assert_eq!(
+            tile_data.as_array().unwrap().len(),
+            1,
+            "Array should contain one element"
+        );
     }
 
     #[test]
@@ -450,6 +483,10 @@ mod tests {
         };
         let (tile_data, _) = coerce_reference_value(&value, &config).unwrap();
         assert!(tile_data.is_array(), "Should remain an array");
-        assert_eq!(tile_data.as_array().unwrap().len(), 2, "Should have 2 elements, not double-wrapped");
+        assert_eq!(
+            tile_data.as_array().unwrap().len(),
+            2,
+            "Should have 2 elements, not double-wrapped"
+        );
     }
 }

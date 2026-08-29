@@ -1,4 +1,11 @@
 #![cfg_attr(target_arch = "wasm32", allow(irrefutable_let_patterns))]
+//! Alizarin Core Library
+//!
+//! Platform-agnostic core functionality that can be used from:
+//! - JavaScript/TypeScript via WASM bindings (alizarin-wasm)
+//! - Python via PyO3 bindings (alizarin-python)
+//! - Native Rust applications (alizarin-explorer)
+//! - Other languages via C FFI
 
 /// The version of alizarin-core (from Cargo.toml at compile time).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -8,13 +15,6 @@ pub mod csv_business_data_loader;
 pub mod csv_model_loader;
 pub mod datatype_index;
 pub mod exporter;
-/// Alizarin Core Library
-///
-/// Platform-agnostic core functionality that can be used from:
-/// - JavaScript/TypeScript via WASM bindings (alizarin-wasm)
-/// - Python via PyO3 bindings (alizarin-python)
-/// - Native Rust applications (alizarin-explorer)
-/// - Other languages via C FFI
 pub mod extension_type_registry;
 pub mod graph;
 pub mod graph_model_access;

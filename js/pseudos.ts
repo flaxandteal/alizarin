@@ -589,7 +589,7 @@ class PseudoList extends Array implements IPseudo {
  *
  * @param rustValue - WasmPseudoValue or WasmPseudoList from Rust
  * @param wkri - The WKRI wrapper (parent IRIVM)
- * @param model - The model wrapper (for getting nodes - currently unused with new pattern)
+ * @param model - The model wrapper (used to look up node objects by id for lists)
  * @returns PseudoValue, PseudoList, or PseudoUnavailable
  */
 function wrapRustPseudo(

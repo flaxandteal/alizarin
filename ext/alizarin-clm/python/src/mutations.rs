@@ -84,7 +84,9 @@ impl ExtensionMutationHandler for ReferenceChangeCollectionHandler {
         };
 
         // Find and update the node's config
-        let node = graph.nodes.iter_mut()
+        let node = graph
+            .nodes
+            .iter_mut()
             .find(|n| n.nodeid == node_id)
             .ok_or_else(|| MutationError::NodeNotFound(node_id.clone()))?;
 
@@ -98,10 +100,8 @@ impl ExtensionMutationHandler for ReferenceChangeCollectionHandler {
         }
 
         // Update the config with the new collection ID
-        node.config.insert(
-            params.config_key,
-            Value::String(params.object),
-        );
+        node.config
+            .insert(params.config_key, Value::String(params.object));
 
         Ok(())
     }
@@ -223,8 +223,8 @@ mod tests {
             }
         }"#;
 
-        let mut graph: StaticGraph = serde_json::from_str(graph_json)
-            .expect("Failed to parse test graph JSON");
+        let mut graph: StaticGraph =
+            serde_json::from_str(graph_json).expect("Failed to parse test graph JSON");
         graph.build_indices();
         graph
     }
@@ -245,23 +245,24 @@ mod tests {
             conformance: MutationConformance::AlwaysConformant,
         });
 
-        let result = apply_mutations_with_extensions(
-            &graph,
-            vec![mutation],
-            options,
-            Some(&registry),
-        );
+        let result =
+            apply_mutations_with_extensions(&graph, vec![mutation], options, Some(&registry));
 
         assert!(result.is_ok());
         let mutated = result.unwrap();
 
         // Find the reference node and check its config
-        let ref_node = mutated.nodes.iter()
+        let ref_node = mutated
+            .nodes
+            .iter()
             .find(|n| n.alias.as_deref() == Some("type_ref"))
             .unwrap();
 
         assert_eq!(
-            ref_node.config.get("controlledList").and_then(|v| v.as_str()),
+            ref_node
+                .config
+                .get("controlledList")
+                .and_then(|v| v.as_str()),
             Some("new-collection-uuid")
         );
     }
@@ -282,22 +283,23 @@ mod tests {
             conformance: MutationConformance::AlwaysConformant,
         });
 
-        let result = apply_mutations_with_extensions(
-            &graph,
-            vec![mutation],
-            options,
-            Some(&registry),
-        );
+        let result =
+            apply_mutations_with_extensions(&graph, vec![mutation], options, Some(&registry));
 
         assert!(result.is_ok());
         let mutated = result.unwrap();
 
-        let ref_node = mutated.nodes.iter()
+        let ref_node = mutated
+            .nodes
+            .iter()
             .find(|n| n.nodeid == "ref-node-id")
             .unwrap();
 
         assert_eq!(
-            ref_node.config.get("controlledList").and_then(|v| v.as_str()),
+            ref_node
+                .config
+                .get("controlledList")
+                .and_then(|v| v.as_str()),
             Some("another-collection-uuid")
         );
     }
@@ -319,22 +321,23 @@ mod tests {
             conformance: MutationConformance::AlwaysConformant,
         });
 
-        let result = apply_mutations_with_extensions(
-            &graph,
-            vec![mutation],
-            options,
-            Some(&registry),
-        );
+        let result =
+            apply_mutations_with_extensions(&graph, vec![mutation], options, Some(&registry));
 
         assert!(result.is_ok());
         let mutated = result.unwrap();
 
-        let ref_node = mutated.nodes.iter()
+        let ref_node = mutated
+            .nodes
+            .iter()
             .find(|n| n.alias.as_deref() == Some("type_ref"))
             .unwrap();
 
         assert_eq!(
-            ref_node.config.get("rdmCollection").and_then(|v| v.as_str()),
+            ref_node
+                .config
+                .get("rdmCollection")
+                .and_then(|v| v.as_str()),
             Some("custom-collection")
         );
     }
@@ -354,12 +357,8 @@ mod tests {
             conformance: MutationConformance::AlwaysConformant,
         });
 
-        let result = apply_mutations_with_extensions(
-            &graph,
-            vec![mutation],
-            options,
-            Some(&registry),
-        );
+        let result =
+            apply_mutations_with_extensions(&graph, vec![mutation], options, Some(&registry));
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not found"));
@@ -381,12 +380,8 @@ mod tests {
             conformance: MutationConformance::AlwaysConformant,
         });
 
-        let result = apply_mutations_with_extensions(
-            &graph,
-            vec![mutation],
-            options,
-            Some(&registry),
-        );
+        let result =
+            apply_mutations_with_extensions(&graph, vec![mutation], options, Some(&registry));
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("reference"));
@@ -396,12 +391,10 @@ mod tests {
     /// then verify the collection is used when processing reference data
     #[test]
     fn test_integration_change_collection_and_verify() {
-        use alizarin_core::graph_mutator::{
-            AddNodeParams, Cardinality, NodeOptions,
-        };
+        use alizarin_core::graph_mutator::{AddNodeParams, Cardinality, NodeOptions};
         use alizarin_core::registry::{
-            register_widget_for_datatype, register_widget, RegisteredWidget,
-            unregister_widget_for_datatype, unregister_widget,
+            register_widget, register_widget_for_datatype, unregister_widget,
+            unregister_widget_for_datatype, RegisteredWidget,
         };
 
         // Register a widget for the "reference" datatype so AddNode can succeed
@@ -480,15 +473,21 @@ mod tests {
             vec![add_node_mutation],
             options.clone(),
             None, // No extension registry needed for AddNode
-        ).unwrap();
+        )
+        .unwrap();
 
         // Verify the reference node was added with initial collection
-        let ref_node = graph_with_ref.nodes.iter()
+        let ref_node = graph_with_ref
+            .nodes
+            .iter()
             .find(|n| n.alias.as_deref() == Some("person_type"))
             .expect("Reference node should exist");
         assert_eq!(ref_node.datatype, "reference");
         assert_eq!(
-            ref_node.config.get("controlledList").and_then(|v| v.as_str()),
+            ref_node
+                .config
+                .get("controlledList")
+                .and_then(|v| v.as_str()),
             Some("initial-collection-id")
         );
 
@@ -510,15 +509,21 @@ mod tests {
             vec![change_mutation],
             options,
             Some(&registry),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Step 3: Verify the collection was updated
-        let updated_node = updated_graph.nodes.iter()
+        let updated_node = updated_graph
+            .nodes
+            .iter()
             .find(|n| n.alias.as_deref() == Some("person_type"))
             .expect("Reference node should still exist");
 
         assert_eq!(
-            updated_node.config.get("controlledList").and_then(|v| v.as_str()),
+            updated_node
+                .config
+                .get("controlledList")
+                .and_then(|v| v.as_str()),
             Some(new_collection_id),
             "Collection should be updated to the new value"
         );

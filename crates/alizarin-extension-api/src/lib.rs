@@ -4,15 +4,15 @@
 //! Extensions can implement custom datatype handlers and graph mutations that are called
 //! directly from Rust without crossing the Python/WASM boundary at runtime.
 //!
-//! # Type Coercion Handlers
+//! # Type Handlers
 //!
-//! Extensions implement coercion handlers and register them via PyCapsule at import time.
-//! The handlers are then called directly from Rust during tile processing.
-//!
-//! # Display Rendering
-//!
-//! Extensions can optionally implement a display renderer to convert resolved values
-//! to human-readable strings. This is used by `toDisplayJson()` for export/indexing.
+//! Extensions register a [`TypeHandlerInfo`] via PyCapsule at import time. It
+//! carries an [`AbiFingerprint`] (checked by the host at load) plus up to six
+//! optional capabilities — coerce, display render, marker resolution, validate,
+//! search render, and index spec — each called directly from Rust. The three
+//! newer capabilities (validate, search render, index spec) pass the tile value
+//! by pointer (`*const serde_json::Value`); coerce/render_display/resolve_markers
+//! marshal JSON bytes.
 //!
 //! # Custom Mutations
 //!
@@ -26,7 +26,7 @@ use std::ffi::c_void;
 /// the shared struct layouts or function signatures below. Extensions stamp
 /// their compiled fingerprint into [`TypeHandlerInfo`]; the host refuses to load
 /// an extension whose [`AbiFingerprint`] does not match its own.
-pub const ABI_VERSION: u32 = 1;
+pub const ABI_VERSION: u32 = 2;
 
 /// A compatibility token an extension embeds so the host can confirm — once, at
 /// load — that both sides share the same ABI before any raw pointers cross the
@@ -347,6 +347,115 @@ pub type ValidateFn =
 /// Free a [`ValidateResult`] allocated by a [`ValidateFn`].
 pub type FreeValidateFn = unsafe extern "C" fn(result: ValidateResult);
 
+/// Result of `render_search`: serialized `Option<Value>` JSON (the
+/// search-indexable rendering of a tile value), or a handler error. Same layout
+/// as [`ValidateResult`]. Owned by the extension; freed via `free_render_search_fn`.
+#[repr(C)]
+pub struct RenderSearchResult {
+    /// Serialized `Option<Value>` JSON (`null` for no custom rendering); null on error.
+    pub json_ptr: *mut u8,
+    pub json_len: usize,
+    /// Handler-error message (null on success).
+    pub error_ptr: *mut u8,
+    pub error_len: usize,
+}
+
+impl RenderSearchResult {
+    pub fn success(json: Vec<u8>) -> Self {
+        let len = json.len();
+        let ptr = Box::into_raw(json.into_boxed_slice()) as *mut u8;
+        RenderSearchResult {
+            json_ptr: ptr,
+            json_len: len,
+            error_ptr: std::ptr::null_mut(),
+            error_len: 0,
+        }
+    }
+
+    pub fn error(message: String) -> Self {
+        let bytes = message.into_bytes();
+        let len = bytes.len();
+        let ptr = Box::into_raw(bytes.into_boxed_slice()) as *mut u8;
+        RenderSearchResult {
+            json_ptr: std::ptr::null_mut(),
+            json_len: 0,
+            error_ptr: ptr,
+            error_len: len,
+        }
+    }
+
+    pub fn is_error(&self) -> bool {
+        !self.error_ptr.is_null()
+    }
+}
+
+/// Render a tile value to search-indexable JSON. `value_ptr` is
+/// `*const serde_json::Value` (cast it back — sound because the host confirmed
+/// the [`AbiFingerprint`] at load); `lang_ptr`/`lang_len` is the UTF-8 language
+/// code. Returns serialized `Option<Value>`.
+pub type RenderSearchFn = unsafe extern "C" fn(
+    value_ptr: *const c_void,
+    lang_ptr: *const u8,
+    lang_len: usize,
+) -> RenderSearchResult;
+
+/// Free a [`RenderSearchResult`] allocated by a [`RenderSearchFn`].
+pub type FreeRenderSearchFn = unsafe extern "C" fn(result: RenderSearchResult);
+
+/// Result of `index_spec`: serialized `Option<IndexSpec>` JSON (the index class
+/// plus **raw** keys — coarsening is the emitter's job, not the handler's), or a
+/// handler error. Owned by the extension; freed via `free_index_spec_fn`.
+#[repr(C)]
+pub struct IndexSpecResult {
+    /// Serialized `Option<IndexSpec>` JSON (`null` to defer to built-in
+    /// handling); null on error.
+    pub json_ptr: *mut u8,
+    pub json_len: usize,
+    /// Handler-error message (null on success).
+    pub error_ptr: *mut u8,
+    pub error_len: usize,
+}
+
+impl IndexSpecResult {
+    pub fn success(json: Vec<u8>) -> Self {
+        let len = json.len();
+        let ptr = Box::into_raw(json.into_boxed_slice()) as *mut u8;
+        IndexSpecResult {
+            json_ptr: ptr,
+            json_len: len,
+            error_ptr: std::ptr::null_mut(),
+            error_len: 0,
+        }
+    }
+
+    pub fn error(message: String) -> Self {
+        let bytes = message.into_bytes();
+        let len = bytes.len();
+        let ptr = Box::into_raw(bytes.into_boxed_slice()) as *mut u8;
+        IndexSpecResult {
+            json_ptr: std::ptr::null_mut(),
+            json_len: 0,
+            error_ptr: ptr,
+            error_len: len,
+        }
+    }
+
+    pub fn is_error(&self) -> bool {
+        !self.error_ptr.is_null()
+    }
+}
+
+/// Produce an index spec for a tile value. `value_ptr`/`config_ptr` are
+/// `*const serde_json::Value` (config null for none). Returns serialized
+/// `Option<IndexSpec>` — the semantic index **class** plus raw keys. The handler
+/// declares *what kind* of index its datatype needs; it does **not** choose the
+/// coarse grouping (that stays with the index emitter).
+pub type IndexSpecFn =
+    unsafe extern "C" fn(value_ptr: *const c_void, config_ptr: *const c_void) -> IndexSpecResult;
+
+/// Free an [`IndexSpecResult`] allocated by an [`IndexSpecFn`].
+pub type FreeIndexSpecFn = unsafe extern "C" fn(result: IndexSpecResult);
+
 /// Callback to lookup a concept by ID in the RDM cache
 ///
 /// Returns true if concept was found, false otherwise.
@@ -476,11 +585,14 @@ pub unsafe extern "C" fn alizarin_free_render_display_result(result: RenderDispl
 // Handler Registration
 // =============================================================================
 
-/// Handler registration info passed via PyCapsule
+/// Handler registration info passed via PyCapsule.
 ///
-/// Extensions must provide coerce_fn and free_fn.
-/// render_display_fn, free_display_fn, resolve_markers_fn, and free_resolve_markers_fn
-/// are optional (null if not implemented).
+/// Carries the datatype name, an [`AbiFingerprint`] (checked by the host at
+/// load), and six optional capability fn-pointers, each paired with a `free_*`:
+/// coerce, display render, marker resolution, validate, search render, and index
+/// spec. Each pointer is `None` when unimplemented — a handler may provide any
+/// subset (e.g. a validate-only handler leaves `coerce_fn` `None` and lets core
+/// keep coercion). The host reports which are present as `HandlerCapabilities`.
 #[repr(C)]
 pub struct TypeHandlerInfo {
     /// Datatype name (e.g., "reference")
@@ -515,6 +627,20 @@ pub struct TypeHandlerInfo {
     /// Free function for ValidateResult (optional - null if validate_fn is null)
     pub free_validate_fn: Option<FreeValidateFn>,
 
+    /// Search-render function (optional). Renders a tile value to
+    /// search-indexable JSON; the value is passed **by pointer**.
+    pub render_search_fn: Option<RenderSearchFn>,
+
+    /// Free function for RenderSearchResult (null iff render_search_fn is null)
+    pub free_render_search_fn: Option<FreeRenderSearchFn>,
+
+    /// Index-spec function (optional). Declares the semantic index class + raw
+    /// keys for a tile value; the value is passed **by pointer**.
+    pub index_spec_fn: Option<IndexSpecFn>,
+
+    /// Free function for IndexSpecResult (null iff index_spec_fn is null)
+    pub free_index_spec_fn: Option<FreeIndexSpecFn>,
+
     /// ABI fingerprint of the crate the extension was built against. The host
     /// checks this at load and refuses a mismatch before any pointer crosses.
     pub abi: AbiFingerprint,
@@ -538,6 +664,10 @@ impl TypeHandlerInfo {
             free_resolve_markers_fn: None,
             validate_fn: None,
             free_validate_fn: None,
+            render_search_fn: None,
+            free_render_search_fn: None,
+            index_spec_fn: None,
+            free_index_spec_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }
@@ -561,6 +691,10 @@ impl TypeHandlerInfo {
             free_resolve_markers_fn: None,
             validate_fn: Some(validate_fn),
             free_validate_fn: Some(free_validate_fn),
+            render_search_fn: None,
+            free_render_search_fn: None,
+            index_spec_fn: None,
+            free_index_spec_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }
@@ -585,6 +719,10 @@ impl TypeHandlerInfo {
             free_resolve_markers_fn: None,
             validate_fn: None,
             free_validate_fn: None,
+            render_search_fn: None,
+            free_render_search_fn: None,
+            index_spec_fn: None,
+            free_index_spec_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }
@@ -611,6 +749,10 @@ impl TypeHandlerInfo {
             free_resolve_markers_fn: Some(free_resolve_markers_fn),
             validate_fn: None,
             free_validate_fn: None,
+            render_search_fn: None,
+            free_render_search_fn: None,
+            index_spec_fn: None,
+            free_index_spec_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }

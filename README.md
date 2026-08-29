@@ -105,7 +105,7 @@ newPerson.birthDate = new Date(1990, 5, 15);
 - `NumberViewModel` - Numeric values
 - `DateViewModel` - Date/time values
 - `ConceptValueViewModel` - Controlled vocabulary concepts
-- `GeojsonFeatureCollectionViewModel` - Geographic data
+- `GeoJSONViewModel` - Geographic data
 - `ResourceInstanceListViewModel` - Related resources
 - `SemanticViewModel` - Complex nested structures
 
