@@ -4,11 +4,11 @@ build-backend = "maturin"
 
 [project]
 name = "alizarin-geo"
-version = "2.0.0a132"
+version = "2.0.0b1"
 description = "Geospatial (geojson-feature-collection) extension for Alizarin"
 requires-python = ">=3.9"
 dependencies = [
-    "alizarin>=2.0.0a132",
+    "alizarin>=2.0.0b1",
 ]
 
 [project.optional-dependencies]
