@@ -19,8 +19,10 @@ async function run() {
           const span = await event.event_span;
           const start = span ? await span.start_date : null;
           const end = span ? await span.end_date : null;
+          // Dates come back as Date objects — format them for display.
+          const day = (d: Date | null) => d ? new Date(d).toISOString().slice(0, 10) : '?';
           return (
-            <li key={ i }>{ name } — { start ?? '?' } → { end ?? '?' }</li>
+            <li key={ i }>{ name } — { day(start) } → { day(end) }</li>
           );
         })
       }</ul>

@@ -17,18 +17,24 @@ async function run() {
     const footprints = await Footprints.all();
 
     return (
-      <ul>{
-        footprints.map(async (footprint: HazardFootprint, i: number) => {
-          const name = await footprint.name;
-          const model = await footprint.produced_by_model;
-          const scenario = await footprint.scenario;
-          const modelName = model ? await model.name : '(unknown model)';
-          const scenarioName = scenario ? await scenario.name : '(no scenario)';
-          return (
-            <li key={ i }>{ name } — modelled by { modelName }, under { scenarioName }</li>
-          );
-        })
-      }</ul>
+      <table>
+        <thead>
+          <tr><th>Footprint</th><th>Model</th><th>Scenario</th></tr>
+        </thead>
+        <tbody>{
+          footprints.map(async (footprint: HazardFootprint, i: number) => {
+            const model = await footprint.produced_by_model;
+            const scenario = await footprint.scenario;
+            return (
+              <tr key={ i }>
+                <td>{ await footprint.name }</td>
+                <td>{ model ? await model.name : '—' }</td>
+                <td>{ scenario ? await scenario.name : '—' }</td>
+              </tr>
+            );
+          })
+        }</tbody>
+      </table>
     );
 // @alizarin-code-end
   } catch (e: any) {

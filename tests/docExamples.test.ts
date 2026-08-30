@@ -84,11 +84,21 @@ function exampleClient() {
 // Resolve it fully and collect its text so we can assert the query produced output.
 async function renderToText(node: unknown): Promise<string> {
   const v = await node;
-  if (v == null || v === false) return '';
+  if (v == null || typeof v === 'boolean') return '';
   if (Array.isArray(v)) return (await Promise.all(v.map(renderToText))).join('');
-  if (typeof v === 'object' && v !== null && 'children' in v) {
-    const children = (v as ShimNode).children ?? [];
-    return (await Promise.all(children.map(renderToText))).join('');
+  if (typeof v === 'object') {
+    if ('children' in v) {
+      const children = (v as ShimNode).children ?? [];
+      return (await Promise.all(children.map(renderToText))).join('');
+    }
+    // Mirror React: a non-element object leaf (Date, plain object, a view model
+    // that didn't resolve to a primitive) is NOT a valid React child — it throws
+    // React error #31 in the browser. Fail loudly here instead of String()-masking
+    // it, so the doctest actually catches what the browser would reject.
+    throw new Error(
+      `Invalid React child: ${Object.prototype.toString.call(v)} (${String(v)}). ` +
+      `Convert it to a string before rendering (e.g. dates, numbers-as-objects).`,
+    );
   }
   return String(v);
 }
