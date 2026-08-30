@@ -1,0 +1,83 @@
+---
+title: Layering Principles
+description: The design rules that hold Alizarin's layers apart
+---
+
+Alizarin's [architecture](/docs/architecture) is a stack — static data model,
+Rust core, bindings, consumer ORM. The value is not the boxes but the **seams**
+between them. These are the rules that keep those seams clean.
+
+## One core, thin bindings
+
+Logic lives **once**, in `alizarin-core`. The WASM, NAPI and Python bindings are
+adapters, not reimplementations — they marshal calls and shape results, but the
+coercion, serialization, validation, resolution and indexing all happen in the
+shared Rust core. The payoff is de-duplication: a rule fixed in the core is fixed
+for every language at once, and boundaries are where bugs concentrate — so the
+more logic sits in the shared core, the fewer places there are to re-bug.
+
+## Resolve in the core, format in the host
+
+The core produces **resolved, typed values**; the consumer owns **presentation**.
+A concept id becomes a label, a resource reference becomes a display value, a card
+tree becomes a structured projection — all in the core. Turning that into
+markdown, HTML, URLs or JS `Map`s is the host's job. This is why display
+rendering, link construction and framework glue stay in the JS/TS layer while the
+value resolution stays in Rust: it keeps the core free of presentation and the
+host free of domain logic.
+
+## Declare semantics, not structure
+
+Upstream declares **what**; downstream owns **how**. Two examples:
+
+- **Indexing** — a datatype's handler declares its `IndexClass` (concept-
+  hierarchical, ordered, spatial, link) plus raw keys. It does *not* choose the
+  coarse grouping, the storage layout, or the partition scheme — the index
+  emitter does. So no downstream storage decision leaks into a datatype handler.
+- **Extensions** — a handler declares its `HandlerCapabilities` (which of coerce
+  / display / resolve-markers / validate / search / index it provides). The host
+  decides how to invoke them. The handler never needs to know the binding's
+  internals.
+
+Keep the shared vocabulary **semantic**, and it churns far less than a structural
+one would.
+
+## A single static data model
+
+Every layer speaks the same `StaticGraph` / `StaticResource` / `StaticTile` /
+`StaticNode`. No layer invents its own representation to pass across a boundary.
+The static model is the common currency, which is what lets the core, three
+bindings and the ORM interoperate without translation layers between them.
+
+## Lazy resolution
+
+Values resolve on **access**, not eagerly. The pseudo-value engine
+(`instance_wrapper_core` / `pseudo_value_core`) is the shared lazy core; the JS
+view models are a Proxy over it, so `await person.name` fetches and resolves only
+what you touch. Loading a resource does not resolve its whole tree; walking a card
+does not hydrate unrelated nodegroups.
+
+## Capability-based extension over a frozen ABI
+
+Out-of-tree datatypes plug in by **declaring capabilities**, not by patching the
+core. The [extension ABI](/docs/extension-abi) is a frozen C contract with a
+versioned `AbiFingerprint` handshake: a mismatched extension is refused at load
+rather than corrupting memory. New capabilities are additive and version-gated —
+the boundary can grow without breaking existing handlers silently.
+
+## Role-specialised bindings
+
+The three bindings are **not** an identical API. Each exposes the surface its
+deployment needs — the browser has no CSV ingestion, the Node builder has no
+standalone tree↔tile conversion, the notebook has everything. This is a
+deliberate, documented contract, not partial work: target the binding for your
+environment, and consult the per-binding surface rather than assuming parity.
+
+## Why it matters
+
+The layering is what makes Alizarin portable and maintainable: the same behaviour
+across browser, Node and Python; correctness verified once; and a public
+extension point that third parties can build on without forking the core. Hold
+the seams and the system scales; blur them — leak presentation into the core,
+structure into a handler, or logic into a binding — and you pay for it in every
+layer.

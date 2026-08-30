@@ -41,17 +41,34 @@ cargo add alizarin-core
 ### Pattern 1: Load and query resources
 
 ```typescript
-import { client, GraphManager } from 'alizarin';
+import { client, graphManager, staticStore, RDM, wasmReady } from 'alizarin';
 
+// Wait for the WASM core before initialising (the ORM runs on a Rust core).
+await wasmReady;
+
+// Client classes live under the `client` namespace, NOT the top level.
 const archesClient = new client.ArchesClientRemoteStatic('/data');
-const gm = new GraphManager(archesClient);
-const Person = await gm.loadGraph('Person');
+
+// Idiomatic setup uses the exported singletons. Set the SAME client on all
+// three: graphManager (schemas), staticStore (resources), RDM (concepts).
+graphManager.archesClient = archesClient;
+staticStore.archesClient = archesClient;
+RDM.archesClient = archesClient;
+
+// initialize() populates graph metadata; loadGraph() throws without it.
+// (Do NOT `new GraphManager(client)` then loadGraph directly — that skips init.)
+await graphManager.initialize();
+
+const Person = await graphManager.loadGraph('Person');
 const people = await Person.all();
 
 for (const person of people) {
-  console.log(person.forename);        // string value
-  console.log(person.birthDate);       // Date object
-  console.log(person.role?.prefLabel); // concept label
+  // Property access is ASYNC — every field must be awaited.
+  console.log(await person.forename);           // string value
+  console.log(await person.birthDate);          // Date object
+  // Concepts are String subclasses; there is NO .prefLabel.
+  // Await the field, then stringify to get the label.
+  console.log((await person.role)?.toString()); // concept label
 }
 ```
 
@@ -60,7 +77,11 @@ for (const person of people) {
 ```typescript
 import { buildGraphFromModelCsvs } from 'alizarin';
 
-const graph = buildGraphFromModelCsvs(graphCsv, nodesCsv, collectionsCsv, rdmNamespace);
+// Signature is (graphCsv, nodesCsv, rdmNamespace, collectionsCsv?) — rdmNamespace
+// comes BEFORE the optional collectionsCsv. Returns { graph, collections }.
+const { graph, collections } = buildGraphFromModelCsvs(
+  graphCsv, nodesCsv, rdmNamespace, collectionsCsv,
+);
 ```
 
 ### Pattern 3: Mutate a graph schema
@@ -157,7 +178,7 @@ add_node,heritage_item,description,Description,string,1,E62_String,P3_has_note
 
 3. **Don't write custom SKOS parsers.** Use `parseSkosXml()` (JS) or `parse_skos_xml_to_collection()` (Python).
 
-4. **Don't re-implement concept lookups.** Use the RDM system: `RDM.archesClient = client` in JS, or `add_from_skos_xml_to_global_cache()`/`resolve_labels()` in Python.
+4. **Don't re-implement concept lookups.** Use the RDM system: `RDM.archesClient = archesClient` in JS (an `ArchesClient` instance, not the `client` namespace), or `add_from_skos_xml_to_global_cache()`/`resolve_labels()` in Python.
 
 5. **Don't convert between camelCase and snake_case manually for Arches data.** The `from_camel` parameter in `json_tree_to_tiles()` handles this.
 

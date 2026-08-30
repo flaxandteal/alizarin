@@ -10,6 +10,7 @@ Alizarin provides a powerful mutation API for programmatically creating and modi
 Mutations are applied via JSON requests:
 
 ```python
+import json
 import alizarin
 
 mutation_request = {
@@ -230,7 +231,7 @@ Change a node's datatype (creates new nodegroup if needed).
         "datatype": "concept-list",
         "name": "Optional new name",
         "ontology_class": "Optional new class",
-        "config": {"collection": "uuid"}
+        "config": {"rdmCollection": "uuid"}
     }
 }
 ```
@@ -550,7 +551,7 @@ In this example, the `impact` node gets `options.is_collector = true`, forcing i
 
 ### Loading from CSV (Python)
 
-Alizarin provides built-in functions for CSV-based graph building. Use `build_graph_from_csv` to create a new graph from CSV, or `build_graph_from_instructions` to apply instruction lists to existing graphs:
+Alizarin provides built-in functions for CSV-based graph building. `build_graph_from_csv` takes CSV text; `build_graph_from_instructions` takes a JSON string containing an `instructions` array plus `options`. Either can create a new graph (first instruction `create_model`/`create_branch`) or mutate a registered graph (first instruction `load_graph`):
 
 ```python
 import alizarin
@@ -608,8 +609,8 @@ The `load_graph` action loads a previously registered graph and applies subseque
 
 ```csv
 action,subject,object,params.name,params.datatype,params.cardinality,params.ontology_class,params.parent_property,params.options.is_collector
-load_graph,b9e0701e-5463-11e9-b5f5-000d3ab1e588,,,,,,,,
-rename_node,activity_type,,Condition,,,,,,
+load_graph,b9e0701e-5463-11e9-b5f5-000d3ab1e588,,,,,,,
+rename_node,activity_type,,Condition,,,,,
 add_node,area_assignment,impact,Impact,reference,1,E55_Type,P2_has_type,true
 ```
 
@@ -625,11 +626,11 @@ The CSV format is particularly useful for:
 **graph_definition.csv:**
 ```csv
 action,subject,object,params.name,params.datatype,params.cardinality,params.ontology_class,params.parent_property,params.config
-create_model,building,,Building,,,,E18_Physical_Thing,
+create_model,building,,Building,,,E18_Physical_Thing,,
 add_node,building,names,Names,semantic,n,E41_Appellation,P1_is_identified_by,
 add_node,names,primary_name,Primary Name,string,1,E41_Appellation,P1_is_identified_by,
 add_node,names,alt_names,Alternative Names,string,n,E41_Appellation,P1_is_identified_by,
-add_node,building,building_type,Building Type,concept,1,E55_Type,P2_has_type,"{""collection"":""building-types""}"
+add_node,building,building_type,Building Type,concept,1,E55_Type,P2_has_type,"{""rdmCollection"":""building-types""}"
 add_node,building,location,Location,geojson-feature-collection,1,E53_Place,P53_has_former_or_current_location,
 add_node,building,construction_date,Construction Date,edtf,1,E52_Time-Span,P4_has_time-span,
 ```

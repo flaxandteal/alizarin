@@ -9,7 +9,7 @@ description: The shared engine behind all Alizarin bindings
 
 ```toml
 [dependencies]
-alizarin-core = "2.0.0-alpha.131"
+alizarin-core = "2.0.0-beta.1"
 ```
 
 The crate is published to [crates.io](https://crates.io/crates/alizarin-core).
@@ -17,17 +17,27 @@ The crate is published to [crates.io](https://crates.io/crates/alizarin-core).
 ## Quick Example
 
 ```rust
-use alizarin_core::json_conversion::{tiles_to_tree, tree_to_tiles_with_options};
+use alizarin_core::json_conversion::{tiles_to_tree, tree_to_tiles_with_options, ValidationMode};
 use alizarin_core::graph::StaticGraph;
 
 // Parse a graph definition
 let graph: StaticGraph = serde_json::from_str(&graph_json)?;
 
-// Convert tiles to a JSON tree
-let tree = tiles_to_tree(&resource, &graph, &interner)?;
+// Convert tiles to a JSON tree (resource is a serde_json::Value)
+let tree = tiles_to_tree(&resource, &graph)?;
 
-// Convert back
-let tiles = tree_to_tiles_with_options(&tree, &resource_id, &graph, &options)?;
+// Convert back — returns (BusinessDataWrapper, Vec<ValidationDiagnostic>)
+let (business_data, diagnostics) = tree_to_tiles_with_options(
+    &tree,
+    &graph,
+    true,                    // strict
+    None,                    // id_key
+    false,                   // from_camel
+    false,                   // random_ids
+    false,                   // has_extension_handlers
+    None,                    // extension_registry
+    ValidationMode::Collect, // validation mode
+)?;
 ```
 
 ## Key Types
@@ -37,7 +47,7 @@ let tiles = tree_to_tiles_with_options(&tree, &resource_id, &graph, &options)?;
 | `StaticGraph` | `graph` | Complete graph definition with nodes, edges, cards |
 | `StaticNode` | `graph` | A single node in the graph |
 | `StaticResource` | `graph` | Resource instance with tiles |
-| `StaticResourceRegistry` | `registry` | Indexed collection of resources |
+| `StaticResourceRegistry` | `graph` | Indexed collection of resources |
 | `PrebuildLoader` | `loader` | Load graphs and resources from a prebuild directory |
 | `RdmCache` | `rdm_cache` | Reference data concept cache |
 | `Interner` | `interner` | String interning for memory-efficient UUID handling |
@@ -56,7 +66,7 @@ let tiles = tree_to_tiles_with_options(&tree, &resource_id, &graph, &options)?;
 | `build_graph_from_model_csvs()` | `csv_model_loader` | Build graph from CSV definitions |
 | `build_resources_from_business_csv()` | `csv_business_data_loader` | Build resources from CSV |
 | `resolve_labels()` | `label_resolution` | Resolve label strings to concept UUIDs |
-| `prune_graph()` | `graph_model_access` | Remove unused nodes from a graph |
+| `prune_graph()` | `graph` | Remove unused nodes from a graph |
 
 ## Module Overview
 

@@ -17,22 +17,23 @@ Alizarin can run via static JSON files, or from an Arches-compatible API.
 
 It needs, unless precached, JSON endpoints for collections, concepts, resources (tiles) and graphs.
 
-## Installation
-
-```bash
-npm install alizarin
-```
-
 ## Quick Start
+
+After `npm install alizarin` (see [Installation](/docs/installation)), point the
+shared `graphManager` singleton at a client, initialise it, then load and query
+models.
 
 ### Basic Usage
 
 ```typescript
-import { client, GraphManager } from 'alizarin';
+import { client, graphManager, staticStore, RDM } from 'alizarin';
 
-// Connect to an Arches instance
+// Point the shared graphManager (and the stores it uses) at an Arches instance
 const archesClient = new client.ArchesClientRemote('https://your-arches-instance.org');
-const graphManager = new GraphManager(archesClient);
+graphManager.archesClient = archesClient;
+staticStore.archesClient = archesClient;
+RDM.archesClient = archesClient;
+await graphManager.initialize();
 
 // Load a resource model
 const MonumentModel = await graphManager.get('Monument');
@@ -40,24 +41,26 @@ const MonumentModel = await graphManager.get('Monument');
 // Query all monuments
 const monuments = await MonumentModel.all();
 
-// Access monument data
+// Access data through transparent, lazily-hydrated property access
 for (const monument of monuments) {
   console.log(await monument.name);
   console.log(await monument.constructionDate);
-  console.log(await monument.heritage_status);
 }
 ```
 
 ### Working with Static Data
 
 ```typescript
-import { client, GraphManager } from 'alizarin';
+import { client, graphManager, staticStore, RDM } from 'alizarin';
 
-// Load from static JSON exports
+// The same flow, but reading pre-exported static JSON (no live server needed)
 const archesClient = new client.ArchesClientRemoteStatic('/data/exports');
-const graphManager = new GraphManager(archesClient);
+graphManager.archesClient = archesClient;
+staticStore.archesClient = archesClient;
+RDM.archesClient = archesClient;
+await graphManager.initialize();
 
-// Usage is identical to remote client
+// Usage is identical to the remote client
 const PersonModel = await graphManager.get('Person');
 ```
 

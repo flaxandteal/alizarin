@@ -3,6 +3,8 @@ title: JavaScript / TypeScript
 description: WASM-powered ORM for browser and Node.js
 ---
 
+import AlizarinComponent from '@/app/alizarin.tsx';
+
 The primary Alizarin binding. A full ORM layer over Arches graph data, powered by a WASM core compiled from Rust.
 
 ## Installation
@@ -16,21 +18,30 @@ Works in browsers and Node.js. Node.js requires `--experimental-wasm-modules`.
 ## Quick Example
 
 ```typescript
-import { client, GraphManager } from 'alizarin';
+import { client, graphManager, staticStore, RDM } from 'alizarin';
 
+// Point the shared graphManager (and the stores it uses) at your data
 const archesClient = new client.ArchesClientRemoteStatic('/data');
-const gm = new GraphManager(archesClient);
+graphManager.archesClient = archesClient;
+staticStore.archesClient = archesClient;
+RDM.archesClient = archesClient;
+await graphManager.initialize();
 
 // Load a graph model and query resources
-const Person = await gm.loadGraph('Person');
+const Person = await graphManager.loadGraph('Person');
 const people = await Person.all();
 
+// Property access is asynchronous — values are lazily hydrated, so `await` each.
 for (const person of people) {
-  console.log(person.forename);       // StringViewModel
-  console.log(person.birthDate);      // DateViewModel
-  console.log(person.role?.prefLabel); // ConceptValueViewModel
+  console.log(await person.forename);      // StringViewModel
+  console.log(await person.birthDate);     // DateViewModel
+  console.log(await person.role);          // ConceptValueViewModel — a String subclass; stringifies to its label
 }
 ```
+
+Run a live version against sample conference data (press ▶):
+
+<AlizarinComponent module='/example/example-2.tsx' />
 
 ## API Surface
 

@@ -1,0 +1,107 @@
+---
+title: Core Internals
+description: The Rust core (alizarin-core) — the shared engine behind every binding
+---
+
+`alizarin-core` is the Rust crate every binding sits on. The WASM, NAPI and
+Python bindings are thin adapters; the data model and the transforms below live
+here once and are shared. Module paths are `alizarin_core::…`.
+
+## The static data model
+
+Everything operates on a serializable snapshot of Arches data — the "static"
+types (`graph/` submodules):
+
+- `StaticGraph` (`graph::static_graph`) — a resource model: nodes, nodegroups,
+  edges, cards, and `cards_x_nodes_x_widgets`.
+- `StaticResource` / `StaticResourceSummary` / `StaticResourceMetadata` /
+  `StaticResourceDescriptors` (`graph::resources`) — a resource instance and its
+  lightweight summary/descriptors.
+- `StaticTile` (`graph::tile`) — a tile: `data` keyed by node id.
+- `StaticNode`, `StaticNodegroup`, `StaticEdge`, `StaticCard`
+  (`graph::nodes`, `graph::cards`), and `CardIndex` (`graph::card_index`) which
+  indexes cards → widgets → child cards for traversal.
+
+These are what the pipelines below read and write.
+
+## Coercion — tree → tiles
+
+`json_conversion` turns nested alias-keyed **trees** (the shape humans and ETL
+author) into tiled `business_data`:
+
+- `convert_single_tree` / `batch_convert_trees` (returning a `BatchOutcome` of
+  resources, errors, and validation warnings) — the pipeline behind each
+  binding's `batch_trees_to_tiles`.
+- Per-datatype coercion lives in `type_coercion` (`scalars`, `strings`, `domain`,
+  `rdm`, `resources`, …), each producing tile data plus a resolved display value.
+- CSV ingestion: `csv_model_loader` (graph definitions from CSV) and
+  `csv_business_data_loader` (resource instances from CSV).
+
+## Serialization — tiles → display / search
+
+`type_serialization` renders tile values for consumption. A
+`SerializationContext` carries the resolvers (RDM cache, resource-display
+resolver, extension registry) and `SerializationOptions` selects the mode —
+tile, **display**, or **search** — per datatype (the `type_serialization`
+submodules `scalars`, `strings`, `domain`, `rdm`, `resources`). This is where a
+concept id becomes a label,
+a resource-instance becomes a display string, and so on.
+
+## Validation
+
+`ValidationMode` (`Off` / `Collect` / `FailFast`) gates a value-validation pass
+during tree→tiles. `validate_business_data` runs each registered handler's
+`validate` over every value, returning `ValidationResult` /
+`ValidationDiagnostic` (errors fail in strict mode; warnings surface to the
+binding output). It is Rust-native — no per-value round-trip to the host.
+
+## Instance resolution
+
+`instance_wrapper_core` (`ResourceInstanceWrapperCore`) and `pseudo_value_core`
+(`PseudoValueCore` / `PseudoListCore`) are the shared, lazy resolution engine —
+the thing the JS view models and the card serializer both sit on. A
+`PseudoValueCore` holds an `Arc<StaticNode>`, an `Arc<StaticTile>` and the raw
+`tile_data`; cardinality is decided by `is_node_single_cardinality`. Resolution
+is lazy: values are materialised per node on demand.
+
+## Card resolution
+
+`card_traversal` projects a resource onto its card tree — a read-model over the
+nodegroup hierarchy. `serialize_root_cards` / `serialize_card` walk the
+`CardIndex` and the pseudo cache once, resolving each widget's value through the
+serialization layer above. `cards_to_tree` is the inverse structural mapping.
+
+## RDM / controlled lists
+
+`rdm_cache` holds the controlled-list vocabulary: `RdmCache` stores `RdmConcept`s
+in a `BTreeMap` with a `value_index` (valueid → concept) and a `label_index`
+(label → concept ids, tie-broken deterministically by `find_by_label` /
+`lookup_by_label`). Hierarchy (DFS intervals, ancestors) is derived from the
+cache. `skos` parses SKOS RDF/XML into collections; `rdm_namespace` and
+`label_resolution` cover URI namespacing and label→id resolution.
+
+## Datatype indexing — the head index
+
+`datatype_index` maps a datatype's tile value to an `IndexSpec` = `IndexClass` +
+**raw** keys, for downstream query engines (a "head" index over which coarse
+queries prune before a detail scan). The classes are semantic —
+`ConceptHierarchical`, `Ordered`, `SpatialBbox`, `Link`, `DetailOnly` — and the
+handler declares *what kind* of index its datatype needs; the **emitter** owns
+the coarsening (DFS intervals, bbox extraction, `quantize` for ordered scalars).
+This is the boundary that keeps storage/query structure out of the core.
+
+## The extension system
+
+Custom datatypes register handlers in the `ExtensionTypeRegistry`
+(`extension_type_registry`). A handler declares up to six capabilities via
+`HandlerCapabilities` — coerce, display render, resolve markers, validate, search
+render, index spec — and every pipeline above routes through the registry when a
+handler is present. Out-of-tree handlers plug in over a frozen C ABI; see
+[Extension ABI](/docs/extension-abi).
+
+## Global registries
+
+`registry` holds the process-wide state the pipelines consult: the graph
+registry (`Arc<StaticGraph>` by id), the global RDM cache (`Arc<RdmCache>`), the
+extension registry, and the widget / list-datatype / model-permission
+registries.

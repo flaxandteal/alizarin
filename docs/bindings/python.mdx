@@ -19,20 +19,21 @@ Wheels are available for Python 3.9–3.13 on Linux, macOS and Windows.
 import alizarin
 import json
 
-# Register a graph
+# Register a graph (returns its graph_id)
 with open("graph.json") as f:
     graph_json = f.read()
-alizarin.register_graph(graph_json)
+graph_id = alizarin.register_graph(graph_json)
 
-# Convert tiles to a nested JSON tree
+# Convert tiles to a nested JSON tree (returns a dict)
 with open("resource.json") as f:
     resource_json = f.read()
 tree = alizarin.tiles_to_json_tree(resource_json)
-print(json.loads(tree))
+print(tree)
 
-# Convert back to tiles
+# Convert back to tiles (json_tree_to_tiles takes a JSON string)
+resource_id = tree["resourceinstanceid"]
 tiles = alizarin.json_tree_to_tiles(
-    tree, resource_id, graph_id,
+    json.dumps(tree), resource_id, graph_id,
     from_camel=True, strict=False
 )
 ```
@@ -59,10 +60,9 @@ tiles = alizarin.json_tree_to_tiles(
 | `get_registered_graph_ids()` | List all registered graph IDs |
 | `get_graph_json(graph_id)` | Retrieve registered graph as JSON |
 | `get_graph_schema(graph_id)` | Retrieve registered graph schema |
-| `merge_resources(a, b, ...)` | Merge two resource tile sets |
-| `batch_merge_resources(resources, ...)` | Parallel merge |
-| `streamed_merge_from_files(...)` | Stream-merge resources from files |
-| `chunked_merge_resources(json_strings, chunk_size, ...)` | Memory-efficient batch merge |
+| `merge_resources(resources_json)` | Merge a JSON array of resources (grouped by resourceinstanceid) |
+| `batch_merge_resources(batches_json, recompute_descriptors, strict)` | Batch merge across multiple JSON batches |
+| `streamed_merge_from_files(file_paths, chunk_size, ...)` | Memory-efficient stream-merge of resources from files |
 | `ResourceRegistry` | Class: create and manage a resource registry |
 
 ### Graph Mutations

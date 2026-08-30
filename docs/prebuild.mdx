@@ -169,8 +169,8 @@ files_written = alizarin.export_prebuild(
     base_uri="http://localhost:8000/"
 )
 
-# Export specific graphs only
-files_written = alizarin.export_graphs_to_dir("./output", ["graph-uuid-1", "graph-uuid-2"])
+# Export specific graphs only (graph_ids first, then output directory)
+files_written = alizarin.export_graphs_to_dir(["graph-uuid-1", "graph-uuid-2"], "./output")
 
 # Export all registered graphs
 files_written = alizarin.export_all_graphs_to_dir("./output")

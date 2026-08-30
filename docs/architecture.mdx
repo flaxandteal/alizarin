@@ -1,53 +1,140 @@
 ---
 title: Architecture
-description: Design principles of Alizarin
+description: How Alizarin is put together, end to end
 ---
 
-## Core Components
+import AlizarinComponent from '@/app/alizarin.tsx';
 
-### 1. Client Layer
-The client layer provides different strategies for connecting to Arches data:
+Alizarin is a layered system. A **static data model** is transformed and
+resolved by a shared **Rust core**, exposed through language **bindings**, and
+driven by a JS/TS **ORM consumer layer** — with an **extension system** that lets
+custom datatypes plug into the core.
 
-- **`ArchesClientRemoteStatic`**: Loads from pre-exported static JSON files
-- **`ArchesClientLocal`**: Loads from local filesystem (Node.js only)
-- **`ArchesClientRemote`**: Connects to live Arches servers via REST API (partial support)
-
-### 2. Graph Management
-The graph management layer handles loading and caching of Arches graph models:
-
-- **`GraphManager`**: Central registry for loaded graphs and resources
-- **`ResourceModelWrapper`**: Provides ORM functionality for graph models
-- **`GraphMutator`**: Fluent API for modifying graph schemas programmatically
-
-### 3. View Models
-View models provide type-safe access to resource data:
-
-- **`ResourceInstanceViewModel`**: Main entry point for accessing resource data
-- **`SemanticViewModel`**: Handles complex nested node structures
-- **Type-specific ViewModels**: `StringViewModel`, `DateViewModel`, `ConceptValueViewModel`, etc.
-
-### 4. Data Access Pattern
-
-```typescript
-// 1. Initialize client (client classes live under the `client` namespace export)
-const archesClient = new client.ArchesClientRemote("https://my-arches-instance.org");
-
-// 2. Create graph manager
-const graphManager = new GraphManager(archesClient);
-
-// 3. Load a graph model
-const PersonModel = await graphManager.loadGraph("Person");
-
-// 4. Query resources
-const people = await PersonModel.all();
-
-// 5. Access data through view models
-const person = people[0];
-console.log(person.name); // Transparent property access
-console.log(person.birthDate); // Typed, parsed values
+```
+   Consumers            JS/TS ORM  ·  Python / notebooks  ·  ETL / builders
+                              │              │                    │
+   Bindings            alizarin-wasm   alizarin-python      alizarin-napi
+        (thin adapters) └──────────────┬──────────────┘  (+ extension handlers)
+                                       │
+   Rust core                      alizarin-core
+        coercion · serialization · validation · instance resolution
+        card resolution · RDM cache · datatype indexing · registries
+                                       │
+   Static data model     StaticGraph · StaticResource · StaticTile · StaticNode
 ```
 
-## Data Flow
+The [Core Internals](/docs/core-internals) page describes the Rust core; the
+[Extension ABI](/docs/extension-abi) page describes how out-of-tree datatypes
+plug in; the [Bindings](/docs/bindings) pages document each language surface
+(they are not identical — see the per-backend contract).
+
+## The static data model
+
+Everything reads and writes a serializable snapshot of Arches data — `StaticGraph`
+(a resource model), `StaticResource` / `StaticTile` (an instance and its tiles),
+`StaticNode` / `StaticNodegroup` / `StaticCard`. These "static" types are the
+common currency across every layer. See
+[Core Internals → static data model](/docs/core-internals#the-static-data-model).
+
+## The Rust core
+
+`alizarin-core` holds the logic once, shared by all bindings:
+
+- **Coercion** (tree → tiles) and **serialization** (tiles → display / search),
+- **Validation** during coercion,
+- **Instance resolution** — the lazy `PseudoValue` engine the view models sit on,
+- **Card resolution** — projecting a resource onto its card tree,
+- **RDM cache** — controlled-list concepts, hierarchy and SKOS,
+- **Datatype indexing** — the coarse "head" index for downstream query engines,
+- **Global registries** — graphs, the RDM cache, extensions, widgets.
+
+Each is covered in [Core Internals](/docs/core-internals).
+
+## The extension system
+
+Custom datatypes register a handler in the core's `ExtensionTypeRegistry`,
+declaring up to six capabilities (coerce, display, resolve-markers, validate,
+search-render, index-spec). Every core pipeline routes through the registry when
+a handler is present. Out-of-tree handlers plug in over a frozen C ABI (Python
+via `PyCapsule`; WASM via JS callbacks; NAPI static-linked). See
+[Extension ABI](/docs/extension-abi).
+
+## Language bindings
+
+```
+                    alizarin-core (Rust)
+                   /        |         \
+           alizarin-wasm  alizarin-napi  alizarin-python
+           (wasm-bindgen) (napi-rs)      (PyO3)
+               |              |              |
+          JS/TS ORM      Node.js native   Python module
+         (browser+Node)   (Node.js only)  (pip install)
+```
+
+- **JS/TS (WASM)** — the full ORM layer (below). Browsers and Node.js.
+- **JS/TS (NAPI)** — an alternative native backend for the same ORM; swap in on
+  Node.js via `setBackend('napi')`.
+- **Python** — direct function exports for tile conversion, graph mutation, RDM
+  caching and SKOS. Used by [AORM](https://github.com/flaxandteal/arches-orm/)
+  and ETL pipelines.
+- **Rust** — the core crate directly, for maximum performance or new bindings.
+
+The bindings are **role-specialised**, not identical (the browser has no CSV
+ingestion; the Node builder has no standalone conversion). See the
+[Bindings](/docs/bindings) pages.
+
+## The JS/TS ORM consumer layer
+
+The JS/TS binding adds an ergonomic ORM over the core:
+
+### Client layer
+
+- **`client.ArchesClientRemoteStatic`** — pre-exported static JSON files
+- **`client.ArchesClientLocal`** — local filesystem (Node.js only)
+- **`client.ArchesClientRemote`** — a live Arches REST API (partial support)
+
+### Graph management
+
+- **`graphManager`** — the shared singleton registry for graphs and resources
+- **`ResourceModelWrapper`** — ORM wrapper over a graph model (`.all()`, …)
+- **`GraphMutator`** — fluent API for programmatic schema changes
+
+### View models
+
+Proxy-backed, lazily-hydrated typed access: `ResourceInstanceViewModel`,
+`SemanticViewModel` (nested nodegroups), and type-specific models
+(`StringViewModel`, `DateViewModel`, `ConceptValueViewModel`, …).
+
+### Data access pattern
+
+```typescript
+// graphManager, staticStore and RDM are shared singletons exported from
+// 'alizarin'; client classes live under the `client` namespace export.
+
+// 1. Point the shared graphManager (and the stores it uses) at a client
+const archesClient = new client.ArchesClientRemote("https://my-arches-instance.org");
+graphManager.archesClient = archesClient;
+staticStore.archesClient = archesClient;
+RDM.archesClient = archesClient;
+await graphManager.initialize();
+
+// 2. Load a graph model
+const PersonModel = await graphManager.loadGraph("Person");
+
+// 3. Query resources
+const people = await PersonModel.all();
+
+// 4. Access data — property access is asynchronous (values are lazily hydrated)
+const person = people[0];
+console.log(await person.name);      // Transparent, awaited property access
+console.log(await person.birthDate); // Typed, parsed values
+```
+
+A live version of the same lazy, relationship-following access (press ▶):
+
+<AlizarinComponent module='/example/example-3.tsx' />
+
+### Data flow
 
 ```
 ┌─────────────┐     ┌───────────────┐     ┌─────────────────┐
@@ -69,31 +156,11 @@ console.log(person.birthDate); // Typed, parsed values
                                    └─────────────┘    └──────────────┘
 ```
 
-## Multi-Binding Architecture
+## Key design patterns
 
-Alizarin is built as a Rust core (`alizarin-core`) with language-specific bindings:
-
-```
-                    alizarin-core (Rust)
-                   /        |         \
-           alizarin-wasm  alizarin-napi  alizarin-python
-           (wasm-bindgen) (napi-rs)      (PyO3)
-               |              |              |
-          JS/TS ORM      Node.js native   Python module
-         (browser+Node)   (Node.js only)  (pip install)
-```
-
-- **JS/TS (WASM)**: Full ORM layer with `GraphManager`, view models, and client abstractions. Works in browsers and Node.js.
-- **JS/TS (NAPI)**: Alternative native backend for the same ORM — swap in for better performance on Node.js.
-- **Python**: Direct function exports for tile conversion, graph mutation, RDM caching, and SKOS parsing. Used by [AORM](https://github.com/flaxandteal/arches-orm/) and ETL pipelines.
-- **Rust**: The core crate, usable directly for maximum performance or for building new bindings.
-
-See [Bindings](/docs/bindings) for detailed API documentation per language.
-
-## Key Design Patterns
-
-1. **Proxy Pattern**: ES6 Proxies enable transparent property access on view models
-2. **Lazy Loading**: Tile data is fetched only when accessed
-3. **Factory Pattern**: View models are created based on node data types
-4. **Repository Pattern**: GraphManager and StaticStore provide centralized data access
-5. **Builder Pattern**: GraphMutator provides a fluent interface for schema modification
+1. **Proxy pattern** — ES6 Proxies enable transparent (async) property access on view models
+2. **Lazy loading** — tile data is fetched and resolved only when accessed
+3. **Factory pattern** — view models are created per node datatype
+4. **Repository pattern** — `graphManager` and `staticStore` centralise data access
+5. **Builder pattern** — `GraphMutator` provides a fluent schema-modification interface
+6. **Shared core** — the transforms and resolution live once in Rust; bindings stay thin

@@ -5,6 +5,8 @@
     "installation",
     "background",
     "architecture",
+    "layering",
+    "core-internals",
     "---Guides---",
     "graphs",
     "mutations",

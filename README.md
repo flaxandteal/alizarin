@@ -38,36 +38,40 @@ npm install alizarin
 ### Basic Usage
 
 ```typescript
-import { ArchesClientRemote, GraphManager } from 'alizarin';
+import { client, graphManager, staticStore, RDM } from 'alizarin';
 
-// Connect to an Arches instance
-const client = new ArchesClientRemote('https://your-arches-instance.org');
-const graphManager = new GraphManager(client);
+// Point the shared graphManager (and the stores it uses) at an Arches instance
+const archesClient = new client.ArchesClientRemote('https://your-arches-instance.org');
+graphManager.archesClient = archesClient;
+staticStore.archesClient = archesClient;
+RDM.archesClient = archesClient;
+await graphManager.initialize();
 
-// Load a resource model
+// Load a resource model and query all monuments
 const MonumentModel = await graphManager.loadGraph('Monument');
-
-// Query all monuments
 const monuments = await MonumentModel.all();
 
-// Access monument data
+// Property access is asynchronous — values are lazily hydrated, so `await` each.
 for (const monument of monuments) {
-  console.log(monument.name);
-  console.log(monument.constructionDate);
-  console.log(monument.heritage_status?.prefLabel);
+  console.log(await monument.name);
+  console.log(await monument.constructionDate);
+  console.log(await monument.heritage_status); // concept: a String subclass, stringifies to its label
 }
 ```
 
 ### Working with Static Data
 
 ```typescript
-import { ArchesClientRemoteStatic, GraphManager } from 'alizarin';
+import { client, graphManager, staticStore, RDM } from 'alizarin';
 
-// Load from static JSON exports
-const client = new ArchesClientRemoteStatic('/data/exports');
-const graphManager = new GraphManager(client);
+// Load from static JSON exports (no live server needed)
+const archesClient = new client.ArchesClientRemoteStatic('/data/exports');
+graphManager.archesClient = archesClient;
+staticStore.archesClient = archesClient;
+RDM.archesClient = archesClient;
+await graphManager.initialize();
 
-// Usage is identical to remote client
+// Usage is identical to the remote client
 const PersonModel = await graphManager.loadGraph('Person');
 ```
 
