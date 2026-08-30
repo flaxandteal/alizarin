@@ -3,7 +3,13 @@ title: Bindings Overview
 description: Alizarin is available for JavaScript, Python and Rust
 ---
 
+import AlizarinComponent from '@/app/alizarin.tsx';
+
 Alizarin is built as a Rust core with bindings for multiple languages and runtimes. All bindings share the same underlying graph engine (`alizarin-core`), so behaviour is consistent across platforms.
+
+The minimal query every binding answers identically — load a model, get its resources, read a field. Here it is running live in the JS/WASM binding, in your browser (press ▶):
+
+<AlizarinComponent module='/example/example-6.tsx' />
 
 ## Which binding should I use?
 

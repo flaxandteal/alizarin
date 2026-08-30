@@ -19,11 +19,11 @@ async function run() {
     return (
       <ul>{
         footprints.map(async (footprint: HazardFootprint, i: number) => {
-          const name = await footprint['name'];
-          const model = await footprint['produced_by_model'];
-          const scenario = await footprint['scenario'];
-          const modelName = model ? await model['name'] : '(unknown model)';
-          const scenarioName = scenario ? await scenario['name'] : '(no scenario)';
+          const name = await footprint.name;
+          const model = await footprint.produced_by_model;
+          const scenario = await footprint.scenario;
+          const modelName = model ? await model.name : '(unknown model)';
+          const scenarioName = scenario ? await scenario.name : '(no scenario)';
           return (
             <li key={ i }>{ name } — modelled by { modelName }, under { scenarioName }</li>
           );

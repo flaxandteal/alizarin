@@ -13,7 +13,7 @@ async function run() {
     return (
       <ul>{
         sites.map(async (site: Site, i: number) => (
-          <li key={ i }>{ await site['name'] }</li>
+          <li key={ i }>{ await site.name }</li>
         ))
       }</ul>
     );

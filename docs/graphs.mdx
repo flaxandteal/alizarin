@@ -3,6 +3,13 @@ title: Graph Manipulation
 description: Modifying graphs on-the-fly
 ---
 
+import AlizarinComponent from '@/app/alizarin.tsx';
+
+A graph is more than one resource's fields — it links resources to each other.
+Here each site is followed to its parent site, live in your browser (press ▶):
+
+<AlizarinComponent module='/example/example-7.tsx' />
+
 ## Graph Structure
 
 An Arches graph is a tree of **nodes** organised into **nodegroups**. Understanding the relationship between nodes and nodegroups is key to working with mutations.
@@ -52,6 +59,17 @@ mutator.addStringNode(
 // Apply changes
 const modifiedGraph = mutator.apply();
 ```
+
+The same idea, running live in your browser — it loads the Site model's graph,
+adds a `local_reference` field under the root node, and applies, returning a new
+graph (press ▶):
+
+<AlizarinComponent module='/example/example-8.tsx' />
+
+`GraphMutator` is the **programmatic** route, for changes computed at runtime. For
+**static** model definitions, the declarative CSV/JSON format — the `add_node` row
+above, or a full model's `graph.csv` / `nodes.csv` fed to `buildGraphFromModelCsvs`
+— is usually simpler and easier to review.
 
 See [Graph Mutations](/docs/mutations) for the full mutation reference.
 

@@ -3,6 +3,8 @@ title: Background
 description: Motivation for Alizarin
 ---
 
+import AlizarinComponent from '@/app/alizarin.tsx';
+
 Alizarin began as a need for a static site for [Arches](https://archesproject.org),
 for Northern Ireland's Historic Environment Division of the [Department for Communities](https://www.communities-ni.gov.uk/).
 Arches itself is a complex system, whose strengths are based on its ability
@@ -21,6 +23,11 @@ efficiently client-side, using lazy-loading and lazy-hydration using Arches nati
 The principal use-case of this was to support a [Hugo](https://gohugo.io) site for public data access
 that was cheaply scalable, database-less and static. Data can be exported nightly, and the static site
 rebuilt using Alizarin directly from standard Arches export dumps.
+
+That lazy-hydration shows through in the API: values come back typed and parsed, resolved only when
+awaited — including fields nested inside semantic nodegroups. This runs live in your browser (press ▶):
+
+<AlizarinComponent module='/example/example-5.tsx' />
 
 ## Goals
 

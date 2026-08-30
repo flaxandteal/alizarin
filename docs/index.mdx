@@ -3,9 +3,15 @@ title: Welcome to Alizarin
 description: Fast JS/TS knowledge graphs
 ---
 
+import AlizarinComponent from '@/app/alizarin.tsx';
+
 A high-performance TypeScript/JavaScript SDK for working with [Arches](https://www.archesproject.org/) heritage data management systems. Alizarin provides a sophisticated object-relational mapping (ORM) layer that enables seamless interaction with Arches' graph-based data models.
 
 This is a JS/TS SDK exposing the [AORM](https://github.com/flaxandteal/arches-orm/) interface for front or backend, backed by a high-performance Rust core (delivered via WASM in browsers and NAPI on Node.js).
+
+The whole read API in a few lines — point at a model, list its resources, await typed fields. This runs live in your browser against sample data (press ▶):
+
+<AlizarinComponent module='/example/example-4.tsx' />
 
 ## Features
 

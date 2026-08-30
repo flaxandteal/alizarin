@@ -17,9 +17,9 @@ async function run() {
     return (
       <ul>{
         people.map(async (person: Person, i: number) => {
-          const name = await person['name'];
-          const org = await person['affiliated_organisation'];
-          const orgName = org ? await org['name'] : '(unaffiliated)';
+          const name = await person.name;
+          const org = await person.affiliated_organisation;
+          const orgName = org ? await org.name : '(unaffiliated)';
           return (<li key={ i }>{ name } — { orgName }</li>);
         })
       }</ul>

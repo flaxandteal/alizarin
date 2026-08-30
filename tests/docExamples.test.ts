@@ -22,11 +22,21 @@ import { initWasmForTests } from './wasm-init';
 import example1 from '../docs/example/example-1';
 import example2 from '../docs/example/example-2';
 import example3 from '../docs/example/example-3';
+import example4 from '../docs/example/example-4';
+import example5 from '../docs/example/example-5';
+import example6 from '../docs/example/example-6';
+import example7 from '../docs/example/example-7';
+import example8 from '../docs/example/example-8';
 
 const EXAMPLES: Record<string, { run: () => Promise<unknown> }> = {
   'example-1': example1,
   'example-2': example2,
   'example-3': example3,
+  'example-4': example4,
+  'example-5': example5,
+  'example-6': example6,
+  'example-7': example7,
+  'example-8': example8,
 };
 
 // --- React.createElement shim (returns plain nodes, no react) ---------------
