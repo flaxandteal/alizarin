@@ -2236,7 +2236,7 @@ class TestResolveReferenceMarkers:
         collection = RustRdmCollection("monument-types-collection")
 
         # Add a concept with multilingual labels
-        concept = RustRdmConcept("concept-castle-uuid", {"en": "Castle", "ga": "Caisleán"})
+        concept = RustRdmConcept("ca571e00-0000-4000-8000-000000000001", {"en": "Castle", "ga": "Caisleán"})
         collection.add_concept(concept)
 
         return collection
@@ -2265,7 +2265,7 @@ class TestResolveReferenceMarkers:
                                     "ref-node-1": [
                                         {
                                             "__needs_rdm_lookup": True,
-                                            "uuid": "concept-castle-uuid"
+                                            "uuid": "ca571e00-0000-4000-8000-000000000001"
                                         }
                                     ]
                                 }
@@ -2383,7 +2383,7 @@ class TestResolveReferenceMarkers:
                                                 {
                                                     "id": "label-1",
                                                     "language_id": "en",
-                                                    "list_item_id": "concept-castle-uuid",
+                                                    "list_item_id": "ca571e00-0000-4000-8000-000000000001",
                                                     "value": "Castle",
                                                     "valuetype_id": "prefLabel"
                                                 }
