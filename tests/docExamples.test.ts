@@ -91,13 +91,15 @@ async function renderToText(node: unknown): Promise<string> {
       const children = (v as ShimNode).children ?? [];
       return (await Promise.all(children.map(renderToText))).join('');
     }
-    // Mirror React: a non-element object leaf (Date, plain object, a view model
-    // that didn't resolve to a primitive) is NOT a valid React child — it throws
-    // React error #31 in the browser. Fail loudly here instead of String()-masking
-    // it, so the doctest actually catches what the browser would reject.
+    // Mirror what the docs harness actually renders: String/Number wrapper view
+    // models coerce fine, but other object leaves (Date, plain objects) are NOT
+    // valid React children — they throw React error #31 in the browser. Fail
+    // loudly here instead of String()-masking, so the doctest catches what the
+    // browser would reject (this is exactly how a raw Date slipped through before).
+    if (v instanceof String || v instanceof Number) return String(v);
     throw new Error(
       `Invalid React child: ${Object.prototype.toString.call(v)} (${String(v)}). ` +
-      `Convert it to a string before rendering (e.g. dates, numbers-as-objects).`,
+      `Convert it to a string before rendering (e.g. dates must be formatted).`,
     );
   }
   return String(v);

@@ -520,7 +520,7 @@ pub fn values_from_resource_nodegroup(
     }
 
     // Process implied nodes
-    for (_key, (node, tile)) in implied_nodes.iter() {
+    for (node, tile) in implied_nodes.values() {
         if let Some(tid) = tile.tileid.as_ref() {
             let key = (node.nodeid.clone(), tid.clone());
             if !tile_nodes_seen.contains(&key) {
