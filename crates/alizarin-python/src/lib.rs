@@ -528,6 +528,12 @@ unsafe extern "C" fn rdm_lookup_by_id(
     concept_json_ptr: *mut *mut u8,
     concept_json_len: *mut usize,
 ) -> bool {
+    // A null cache pointer means no global RDM cache exists (see `resolve_markers`,
+    // which passes null when `get_global_rdm_cache_arc()` is None). Treat that as a
+    // lookup miss rather than dereferencing null and segfaulting.
+    if user_data.is_null() {
+        return false;
+    }
     let cache = &*(user_data as *const CoreRdmCache);
 
     let collection_id = match std::str::from_utf8(std::slice::from_raw_parts(
@@ -579,6 +585,10 @@ unsafe extern "C" fn rdm_lookup_by_label(
     concept_json_ptr: *mut *mut u8,
     concept_json_len: *mut usize,
 ) -> bool {
+    // See `rdm_lookup_by_id`: null cache pointer => no cache => lookup miss.
+    if user_data.is_null() {
+        return false;
+    }
     let cache = &*(user_data as *const CoreRdmCache);
 
     let collection_id = match std::str::from_utf8(std::slice::from_raw_parts(
@@ -632,6 +642,10 @@ unsafe extern "C" fn rdm_has_collection(
     collection_id_ptr: *const u8,
     collection_id_len: usize,
 ) -> bool {
+    // See `rdm_lookup_by_id`: null cache pointer => no cache => collection absent.
+    if user_data.is_null() {
+        return false;
+    }
     let cache = &*(user_data as *const CoreRdmCache);
 
     let collection_id = match std::str::from_utf8(std::slice::from_raw_parts(
