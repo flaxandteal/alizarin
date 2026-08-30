@@ -1,0 +1,259 @@
+{
+  "__allConcepts": {
+    "1f1cd215-bd66-5e3c-bba9-0713e0218439": {
+      "children": [],
+      "id": "1f1cd215-bd66-5e3c-bba9-0713e0218439",
+      "prefLabels": {
+        "en": {
+          "id": "c1eb541d-0e9b-5ab0-8e95-4dc8ef844509",
+          "value": "Flood"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "259097ca-f3a6-56e2-83a4-649c273427de": {
+      "children": [],
+      "id": "259097ca-f3a6-56e2-83a4-649c273427de",
+      "prefLabels": {
+        "en": {
+          "id": "179286b2-ebdb-51e7-9328-f2502fd0ce4d",
+          "value": "Cyclone"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "7d376e7e-76e8-55c3-9825-fc2b0de42b6e": {
+      "children": [],
+      "id": "7d376e7e-76e8-55c3-9825-fc2b0de42b6e",
+      "prefLabels": {
+        "en": {
+          "id": "7b33d7ea-1776-5ae7-ba9d-50cac37006eb",
+          "value": "Wind"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    },
+    "8eef026e-33e9-5c16-a9ef-ba0b45e151c2": {
+      "children": [],
+      "id": "8eef026e-33e9-5c16-a9ef-ba0b45e151c2",
+      "prefLabels": {
+        "en": {
+          "id": "84f03cf5-d486-5475-af9a-29a4d1694586",
+          "value": "Crowding"
+        }
+      },
+      "sortOrder": 6,
+      "source": null,
+      "uri": null
+    },
+    "a0c35e77-7760-5719-8a06-a96cbf15fc05": {
+      "children": [],
+      "id": "a0c35e77-7760-5719-8a06-a96cbf15fc05",
+      "prefLabels": {
+        "en": {
+          "id": "d1be4709-e96b-5a22-bd2b-1831b62bc350",
+          "value": "Storm surge"
+        }
+      },
+      "sortOrder": 7,
+      "source": null,
+      "uri": null
+    },
+    "abb86dc6-017e-5e49-9207-40f70b4db144": {
+      "children": [],
+      "id": "abb86dc6-017e-5e49-9207-40f70b4db144",
+      "prefLabels": {
+        "en": {
+          "id": "f2358c1d-2e53-51e0-9f86-1372ece0dea1",
+          "value": "Heat"
+        }
+      },
+      "sortOrder": 5,
+      "source": null,
+      "uri": null
+    },
+    "afcdfa2d-4457-5c39-9017-e9641fba73d8": {
+      "children": [],
+      "id": "afcdfa2d-4457-5c39-9017-e9641fba73d8",
+      "prefLabels": {
+        "en": {
+          "id": "86d39637-9396-5d22-a89e-8df5c1c6030a",
+          "value": "Landslide"
+        }
+      },
+      "sortOrder": 8,
+      "source": null,
+      "uri": null
+    },
+    "f1a898fb-aecb-53b8-a2f4-4519f032334a": {
+      "children": [],
+      "id": "f1a898fb-aecb-53b8-a2f4-4519f032334a",
+      "prefLabels": {
+        "en": {
+          "id": "fc4770c3-5bc3-5d9e-b378-ff05894f1bee",
+          "value": "Earthquake"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    }
+  },
+  "__values": {
+    "179286b2-ebdb-51e7-9328-f2502fd0ce4d": {
+      "id": "179286b2-ebdb-51e7-9328-f2502fd0ce4d",
+      "value": "Cyclone"
+    },
+    "7b33d7ea-1776-5ae7-ba9d-50cac37006eb": {
+      "id": "7b33d7ea-1776-5ae7-ba9d-50cac37006eb",
+      "value": "Wind"
+    },
+    "84f03cf5-d486-5475-af9a-29a4d1694586": {
+      "id": "84f03cf5-d486-5475-af9a-29a4d1694586",
+      "value": "Crowding"
+    },
+    "86d39637-9396-5d22-a89e-8df5c1c6030a": {
+      "id": "86d39637-9396-5d22-a89e-8df5c1c6030a",
+      "value": "Landslide"
+    },
+    "c1eb541d-0e9b-5ab0-8e95-4dc8ef844509": {
+      "id": "c1eb541d-0e9b-5ab0-8e95-4dc8ef844509",
+      "value": "Flood"
+    },
+    "d1be4709-e96b-5a22-bd2b-1831b62bc350": {
+      "id": "d1be4709-e96b-5a22-bd2b-1831b62bc350",
+      "value": "Storm surge"
+    },
+    "f2358c1d-2e53-51e0-9f86-1372ece0dea1": {
+      "id": "f2358c1d-2e53-51e0-9f86-1372ece0dea1",
+      "value": "Heat"
+    },
+    "fc4770c3-5bc3-5d9e-b378-ff05894f1bee": {
+      "id": "fc4770c3-5bc3-5d9e-b378-ff05894f1bee",
+      "value": "Earthquake"
+    }
+  },
+  "altLabels": {},
+  "concepts": {
+    "1f1cd215-bd66-5e3c-bba9-0713e0218439": {
+      "children": [],
+      "id": "1f1cd215-bd66-5e3c-bba9-0713e0218439",
+      "prefLabels": {
+        "en": {
+          "id": "c1eb541d-0e9b-5ab0-8e95-4dc8ef844509",
+          "value": "Flood"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "259097ca-f3a6-56e2-83a4-649c273427de": {
+      "children": [],
+      "id": "259097ca-f3a6-56e2-83a4-649c273427de",
+      "prefLabels": {
+        "en": {
+          "id": "179286b2-ebdb-51e7-9328-f2502fd0ce4d",
+          "value": "Cyclone"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "7d376e7e-76e8-55c3-9825-fc2b0de42b6e": {
+      "children": [],
+      "id": "7d376e7e-76e8-55c3-9825-fc2b0de42b6e",
+      "prefLabels": {
+        "en": {
+          "id": "7b33d7ea-1776-5ae7-ba9d-50cac37006eb",
+          "value": "Wind"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    },
+    "8eef026e-33e9-5c16-a9ef-ba0b45e151c2": {
+      "children": [],
+      "id": "8eef026e-33e9-5c16-a9ef-ba0b45e151c2",
+      "prefLabels": {
+        "en": {
+          "id": "84f03cf5-d486-5475-af9a-29a4d1694586",
+          "value": "Crowding"
+        }
+      },
+      "sortOrder": 6,
+      "source": null,
+      "uri": null
+    },
+    "a0c35e77-7760-5719-8a06-a96cbf15fc05": {
+      "children": [],
+      "id": "a0c35e77-7760-5719-8a06-a96cbf15fc05",
+      "prefLabels": {
+        "en": {
+          "id": "d1be4709-e96b-5a22-bd2b-1831b62bc350",
+          "value": "Storm surge"
+        }
+      },
+      "sortOrder": 7,
+      "source": null,
+      "uri": null
+    },
+    "abb86dc6-017e-5e49-9207-40f70b4db144": {
+      "children": [],
+      "id": "abb86dc6-017e-5e49-9207-40f70b4db144",
+      "prefLabels": {
+        "en": {
+          "id": "f2358c1d-2e53-51e0-9f86-1372ece0dea1",
+          "value": "Heat"
+        }
+      },
+      "sortOrder": 5,
+      "source": null,
+      "uri": null
+    },
+    "afcdfa2d-4457-5c39-9017-e9641fba73d8": {
+      "children": [],
+      "id": "afcdfa2d-4457-5c39-9017-e9641fba73d8",
+      "prefLabels": {
+        "en": {
+          "id": "86d39637-9396-5d22-a89e-8df5c1c6030a",
+          "value": "Landslide"
+        }
+      },
+      "sortOrder": 8,
+      "source": null,
+      "uri": null
+    },
+    "f1a898fb-aecb-53b8-a2f4-4519f032334a": {
+      "children": [],
+      "id": "f1a898fb-aecb-53b8-a2f4-4519f032334a",
+      "prefLabels": {
+        "en": {
+          "id": "fc4770c3-5bc3-5d9e-b378-ff05894f1bee",
+          "value": "Earthquake"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    }
+  },
+  "id": "42fadb5f-bdd3-5b18-b2eb-2b39ef1cf44c",
+  "nodeType": "ConceptScheme",
+  "prefLabels": {
+    "en": {
+      "id": "a69f0c38-e326-5afe-8361-55d94f394bd6",
+      "value": "HazardType"
+    }
+  },
+  "scopeNotes": {},
+  "uri": null
+}

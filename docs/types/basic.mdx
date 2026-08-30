@@ -1,0 +1,36 @@
+---
+title: Basic types
+description: string, number, boolean and url view models
+---
+
+import AlizarinComponent from '@/app/alizarin.tsx';
+
+The basic scalar view models wrap primitive-like Arches datatypes. They resolve
+to a value you can render directly — with one caveat below.
+
+## string
+
+`StringViewModel` wraps a localized `string`. It **extends `String`**, so it
+stringifies to the value in the [current language](/docs/types/i18n) and can be
+rendered directly in JSX. `non-localized-string` (`NonLocalizedStringViewModel`)
+is the single-language variant.
+
+## number
+
+`NumberViewModel` wraps a numeric value. Like the other non-string scalars it is
+an object, not a primitive — coerce it (`` `${value}` `` or `String(value)`)
+before rendering, or React will reject a raw `Number`/`Date` object as a child.
+
+## boolean & url
+
+`BooleanViewModel` wraps `true`/`false`; `UrlViewModel` wraps a URL string.
+
+## Live example
+
+Each site's **name** (`string`) and its **area** (`number`, nested in a semantic
+nodegroup), resolved lazily and rendered — press ▶:
+
+<AlizarinComponent module='/example/example-9.tsx' />
+
+The `area` is coerced with a template literal, since a raw `NumberViewModel`
+object isn't a valid React child.

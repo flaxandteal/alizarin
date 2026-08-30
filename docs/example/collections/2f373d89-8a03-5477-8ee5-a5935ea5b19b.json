@@ -1,0 +1,139 @@
+{
+  "__allConcepts": {
+    "149bb522-3a08-53af-a758-b14d625a0984": {
+      "children": [],
+      "id": "149bb522-3a08-53af-a758-b14d625a0984",
+      "prefLabels": {
+        "en": {
+          "id": "8121c816-1c20-5edc-b425-38922a80bb32",
+          "value": "State"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    },
+    "8a841307-e6e3-5cf5-96ca-100e93845b54": {
+      "children": [],
+      "id": "8a841307-e6e3-5cf5-96ca-100e93845b54",
+      "prefLabels": {
+        "en": {
+          "id": "48039b46-0ba0-5bfb-bb64-4f20028822cb",
+          "value": "Corporation / municipality"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    },
+    "d1bd111c-4b5b-5353-abf1-f656676d94b8": {
+      "children": [],
+      "id": "d1bd111c-4b5b-5353-abf1-f656676d94b8",
+      "prefLabels": {
+        "en": {
+          "id": "b6e3ac11-153f-59ff-8d6c-cc9b360292e9",
+          "value": "Zone"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "e7bc90cf-d77d-5157-a1a6-aeaa1fa9e93a": {
+      "children": [],
+      "id": "e7bc90cf-d77d-5157-a1a6-aeaa1fa9e93a",
+      "prefLabels": {
+        "en": {
+          "id": "8a908525-753d-5390-b807-79c00f25eb9c",
+          "value": "Ward"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    }
+  },
+  "__values": {
+    "48039b46-0ba0-5bfb-bb64-4f20028822cb": {
+      "id": "48039b46-0ba0-5bfb-bb64-4f20028822cb",
+      "value": "Corporation / municipality"
+    },
+    "8121c816-1c20-5edc-b425-38922a80bb32": {
+      "id": "8121c816-1c20-5edc-b425-38922a80bb32",
+      "value": "State"
+    },
+    "8a908525-753d-5390-b807-79c00f25eb9c": {
+      "id": "8a908525-753d-5390-b807-79c00f25eb9c",
+      "value": "Ward"
+    },
+    "b6e3ac11-153f-59ff-8d6c-cc9b360292e9": {
+      "id": "b6e3ac11-153f-59ff-8d6c-cc9b360292e9",
+      "value": "Zone"
+    }
+  },
+  "altLabels": {},
+  "concepts": {
+    "149bb522-3a08-53af-a758-b14d625a0984": {
+      "children": [],
+      "id": "149bb522-3a08-53af-a758-b14d625a0984",
+      "prefLabels": {
+        "en": {
+          "id": "8121c816-1c20-5edc-b425-38922a80bb32",
+          "value": "State"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    },
+    "8a841307-e6e3-5cf5-96ca-100e93845b54": {
+      "children": [],
+      "id": "8a841307-e6e3-5cf5-96ca-100e93845b54",
+      "prefLabels": {
+        "en": {
+          "id": "48039b46-0ba0-5bfb-bb64-4f20028822cb",
+          "value": "Corporation / municipality"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    },
+    "d1bd111c-4b5b-5353-abf1-f656676d94b8": {
+      "children": [],
+      "id": "d1bd111c-4b5b-5353-abf1-f656676d94b8",
+      "prefLabels": {
+        "en": {
+          "id": "b6e3ac11-153f-59ff-8d6c-cc9b360292e9",
+          "value": "Zone"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "e7bc90cf-d77d-5157-a1a6-aeaa1fa9e93a": {
+      "children": [],
+      "id": "e7bc90cf-d77d-5157-a1a6-aeaa1fa9e93a",
+      "prefLabels": {
+        "en": {
+          "id": "8a908525-753d-5390-b807-79c00f25eb9c",
+          "value": "Ward"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    }
+  },
+  "id": "2f373d89-8a03-5477-8ee5-a5935ea5b19b",
+  "nodeType": "ConceptScheme",
+  "prefLabels": {
+    "en": {
+      "id": "f983d85a-c780-5988-9db4-beb599020e42",
+      "value": "AdminDivision"
+    }
+  },
+  "scopeNotes": {},
+  "uri": null
+}

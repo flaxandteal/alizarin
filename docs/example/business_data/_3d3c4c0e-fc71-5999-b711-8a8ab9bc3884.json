@@ -16,6 +16,10 @@
        "fe5d68b0-7f0a-5248-9dfd-a5cb59f3681a": {
         "en": {
          "direction": "ltr",
+         "value": "October Monsoon 2023"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Músún Deireadh Fómhair 2023"
         }
        }
@@ -126,6 +130,10 @@
        "fe5d68b0-7f0a-5248-9dfd-a5cb59f3681a": {
         "en": {
          "direction": "ltr",
+         "value": "May Cyclone — Storm Surge"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Cioclón Bealtaine — Borradh Stoirme"
         }
        }
@@ -199,6 +207,10 @@
       "data": {
        "fe5d68b0-7f0a-5248-9dfd-a5cb59f3681a": {
         "en": {
+         "direction": "ltr",
+         "value": "Design Flood 1:200"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Tuile Dearaidh 1:200"
         }

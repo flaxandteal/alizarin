@@ -1,0 +1,12 @@
+{
+  "title": "Types & View Models",
+  "pages": [
+    "index",
+    "basic",
+    "dates-edtf",
+    "concepts",
+    "geospatial",
+    "extensions",
+    "i18n"
+  ]
+}

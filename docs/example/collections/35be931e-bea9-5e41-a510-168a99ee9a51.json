@@ -1,0 +1,169 @@
+{
+  "__allConcepts": {
+    "39638bd4-41a9-53cc-b7f3-1bf7ba6cbdf2": {
+      "children": [],
+      "id": "39638bd4-41a9-53cc-b7f3-1bf7ba6cbdf2",
+      "prefLabels": {
+        "en": {
+          "id": "084697d9-6a46-5ce6-bef2-1b4be88cba97",
+          "value": "Crowd dynamics"
+        }
+      },
+      "sortOrder": 5,
+      "source": null,
+      "uri": null
+    },
+    "68c9ccbc-9e23-5ffd-9a4e-c5ae4beb198e": {
+      "children": [],
+      "id": "68c9ccbc-9e23-5ffd-9a4e-c5ae4beb198e",
+      "prefLabels": {
+        "en": {
+          "id": "b499d818-665d-592b-ad4e-a9059544e928",
+          "value": "Seismic ground-motion"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    },
+    "992ff2d3-11ce-5c74-b1fb-ebe369833886": {
+      "children": [],
+      "id": "992ff2d3-11ce-5c74-b1fb-ebe369833886",
+      "prefLabels": {
+        "en": {
+          "id": "51b050f1-63e6-573d-a4d2-37b00dbc7ecc",
+          "value": "Hydraulic / hydrodynamic"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "e83b92ff-4b9f-5935-9975-9ee6f8120342": {
+      "children": [],
+      "id": "e83b92ff-4b9f-5935-9975-9ee6f8120342",
+      "prefLabels": {
+        "en": {
+          "id": "a3cddb9c-b099-5857-852d-02599a0ca7f5",
+          "value": "Wind field"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "ef2003af-e8a0-5997-8e86-23eef6f9182a": {
+      "children": [],
+      "id": "ef2003af-e8a0-5997-8e86-23eef6f9182a",
+      "prefLabels": {
+        "en": {
+          "id": "8d143fa4-2fff-599f-81d9-f34e5962a5d7",
+          "value": "Thermal / heat-exposure"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    }
+  },
+  "__values": {
+    "084697d9-6a46-5ce6-bef2-1b4be88cba97": {
+      "id": "084697d9-6a46-5ce6-bef2-1b4be88cba97",
+      "value": "Crowd dynamics"
+    },
+    "51b050f1-63e6-573d-a4d2-37b00dbc7ecc": {
+      "id": "51b050f1-63e6-573d-a4d2-37b00dbc7ecc",
+      "value": "Hydraulic / hydrodynamic"
+    },
+    "8d143fa4-2fff-599f-81d9-f34e5962a5d7": {
+      "id": "8d143fa4-2fff-599f-81d9-f34e5962a5d7",
+      "value": "Thermal / heat-exposure"
+    },
+    "a3cddb9c-b099-5857-852d-02599a0ca7f5": {
+      "id": "a3cddb9c-b099-5857-852d-02599a0ca7f5",
+      "value": "Wind field"
+    },
+    "b499d818-665d-592b-ad4e-a9059544e928": {
+      "id": "b499d818-665d-592b-ad4e-a9059544e928",
+      "value": "Seismic ground-motion"
+    }
+  },
+  "altLabels": {},
+  "concepts": {
+    "39638bd4-41a9-53cc-b7f3-1bf7ba6cbdf2": {
+      "children": [],
+      "id": "39638bd4-41a9-53cc-b7f3-1bf7ba6cbdf2",
+      "prefLabels": {
+        "en": {
+          "id": "084697d9-6a46-5ce6-bef2-1b4be88cba97",
+          "value": "Crowd dynamics"
+        }
+      },
+      "sortOrder": 5,
+      "source": null,
+      "uri": null
+    },
+    "68c9ccbc-9e23-5ffd-9a4e-c5ae4beb198e": {
+      "children": [],
+      "id": "68c9ccbc-9e23-5ffd-9a4e-c5ae4beb198e",
+      "prefLabels": {
+        "en": {
+          "id": "b499d818-665d-592b-ad4e-a9059544e928",
+          "value": "Seismic ground-motion"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    },
+    "992ff2d3-11ce-5c74-b1fb-ebe369833886": {
+      "children": [],
+      "id": "992ff2d3-11ce-5c74-b1fb-ebe369833886",
+      "prefLabels": {
+        "en": {
+          "id": "51b050f1-63e6-573d-a4d2-37b00dbc7ecc",
+          "value": "Hydraulic / hydrodynamic"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "e83b92ff-4b9f-5935-9975-9ee6f8120342": {
+      "children": [],
+      "id": "e83b92ff-4b9f-5935-9975-9ee6f8120342",
+      "prefLabels": {
+        "en": {
+          "id": "a3cddb9c-b099-5857-852d-02599a0ca7f5",
+          "value": "Wind field"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "ef2003af-e8a0-5997-8e86-23eef6f9182a": {
+      "children": [],
+      "id": "ef2003af-e8a0-5997-8e86-23eef6f9182a",
+      "prefLabels": {
+        "en": {
+          "id": "8d143fa4-2fff-599f-81d9-f34e5962a5d7",
+          "value": "Thermal / heat-exposure"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    }
+  },
+  "id": "35be931e-bea9-5e41-a510-168a99ee9a51",
+  "nodeType": "ConceptScheme",
+  "prefLabels": {
+    "en": {
+      "id": "290e5515-68dd-5fb6-9281-d75a0e622c78",
+      "value": "Method"
+    }
+  },
+  "scopeNotes": {},
+  "uri": null
+}

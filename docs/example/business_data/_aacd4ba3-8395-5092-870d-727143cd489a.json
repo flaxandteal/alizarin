@@ -72,6 +72,16 @@
       "resourceinstance_id": "0e2ca1fc-f23d-529f-b5c9-a557587a8fac",
       "sortorder": 0,
       "tileid": "0955e536-e473-576f-a707-38075a79b34f"
+     },
+     {
+      "data": {
+       "5b76b035-2674-5297-9524-b51e5dbb587e": "05461022-6215-5402-b9f9-43e9fc5eafa6"
+      },
+      "nodegroup_id": "5b76b035-2674-5297-9524-b51e5dbb587e",
+      "parenttile_id": null,
+      "resourceinstance_id": "0e2ca1fc-f23d-529f-b5c9-a557587a8fac",
+      "sortorder": 0,
+      "tileid": "db3e3713-8de2-53d2-b05a-17e2164ba242"
      }
     ],
     "tiles_loaded": true
@@ -107,6 +117,10 @@
       "data": {
        "aff3344e-7a32-5101-a6fc-647ed465aa0c": {
         "en": {
+         "direction": "ltr",
+         "value": "Trá Bealtaine Hospital"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Ospidéal Trá Bealtaine"
         }
@@ -147,6 +161,16 @@
       "resourceinstance_id": "19a81eef-8aac-5b75-95ce-2dc70e28c0c3",
       "sortorder": 0,
       "tileid": "54b68786-a2ba-5098-9823-f684f67a833b"
+     },
+     {
+      "data": {
+       "5b76b035-2674-5297-9524-b51e5dbb587e": "07a411f1-6c7c-5c37-87d7-1ba9eb8e1933"
+      },
+      "nodegroup_id": "5b76b035-2674-5297-9524-b51e5dbb587e",
+      "parenttile_id": null,
+      "resourceinstance_id": "19a81eef-8aac-5b75-95ce-2dc70e28c0c3",
+      "sortorder": 0,
+      "tileid": "f5e1542c-3853-5ee9-b7e2-2622ade183b5"
      }
     ],
     "tiles_loaded": true
@@ -222,6 +246,16 @@
       "resourceinstance_id": "1a76fcdc-c3ba-5b74-9786-ca14be0d3ee2",
       "sortorder": 0,
       "tileid": "5b4313d5-e5ae-584d-a19f-cc9cc6f77789"
+     },
+     {
+      "data": {
+       "5b76b035-2674-5297-9524-b51e5dbb587e": "093add90-9c05-5331-aba4-90f89f98579b"
+      },
+      "nodegroup_id": "5b76b035-2674-5297-9524-b51e5dbb587e",
+      "parenttile_id": null,
+      "resourceinstance_id": "1a76fcdc-c3ba-5b74-9786-ca14be0d3ee2",
+      "sortorder": 0,
+      "tileid": "b88ffe30-8385-5a83-bfbf-d54a7800ed57"
      }
     ],
     "tiles_loaded": true
@@ -297,6 +331,16 @@
       "resourceinstance_id": "21a5c6d0-8def-5b11-815b-354252f5e421",
       "sortorder": 0,
       "tileid": "1e27d800-4d9d-52df-97b6-a098b0ba95f2"
+     },
+     {
+      "data": {
+       "5b76b035-2674-5297-9524-b51e5dbb587e": "0e48c17a-7696-5acd-acce-019f90fbc234"
+      },
+      "nodegroup_id": "5b76b035-2674-5297-9524-b51e5dbb587e",
+      "parenttile_id": null,
+      "resourceinstance_id": "21a5c6d0-8def-5b11-815b-354252f5e421",
+      "sortorder": 0,
+      "tileid": "0708bbe6-d72a-5467-84df-905047a81f5b"
      }
     ],
     "tiles_loaded": true
@@ -372,6 +416,16 @@
       "resourceinstance_id": "23819b3b-3328-5001-9aa6-5cfc0e103c04",
       "sortorder": 0,
       "tileid": "9b5db096-efd4-56f3-8d65-f6cb807036fe"
+     },
+     {
+      "data": {
+       "5b76b035-2674-5297-9524-b51e5dbb587e": "14839b28-a405-55e7-9c69-e778441dcb19"
+      },
+      "nodegroup_id": "5b76b035-2674-5297-9524-b51e5dbb587e",
+      "parenttile_id": null,
+      "resourceinstance_id": "23819b3b-3328-5001-9aa6-5cfc0e103c04",
+      "sortorder": 0,
+      "tileid": "690432b1-fa77-55f0-a7df-18bc1ea6ec7a"
      }
     ],
     "tiles_loaded": true
@@ -390,6 +444,10 @@
       "data": {
        "aff3344e-7a32-5101-a6fc-647ed465aa0c": {
         "en": {
+         "direction": "ltr",
+         "value": "Cnoc an Chaisil Hospital"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Ospidéal Cnoc an Chaisil"
         }
@@ -447,6 +505,16 @@
       "resourceinstance_id": "249cbcd8-4930-5633-a7ef-942c5b8dd983",
       "sortorder": 0,
       "tileid": "7d2a09c4-e006-5db5-a734-30c339aeb60b"
+     },
+     {
+      "data": {
+       "5b76b035-2674-5297-9524-b51e5dbb587e": "1b92a3b4-084e-59c3-841e-2ad57d43c6df"
+      },
+      "nodegroup_id": "5b76b035-2674-5297-9524-b51e5dbb587e",
+      "parenttile_id": null,
+      "resourceinstance_id": "249cbcd8-4930-5633-a7ef-942c5b8dd983",
+      "sortorder": 0,
+      "tileid": "34ee6b3b-abd5-58f5-80d1-0b7e91efdb30"
      }
     ],
     "tiles_loaded": true
@@ -480,6 +548,10 @@
       "data": {
        "aff3344e-7a32-5101-a6fc-647ed465aa0c": {
         "en": {
+         "direction": "ltr",
+         "value": "Cnoc an Chaisil School"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Scoil Chnoc an Chaisil"
         }
@@ -522,6 +594,16 @@
       "resourceinstance_id": "54bf3277-5239-5bd5-aefa-d67268a08567",
       "sortorder": 0,
       "tileid": "0fb04116-c494-539f-bfea-a749b4a68e85"
+     },
+     {
+      "data": {
+       "5b76b035-2674-5297-9524-b51e5dbb587e": "28e8c7ce-f6c1-54d2-98f5-319cba493108"
+      },
+      "nodegroup_id": "5b76b035-2674-5297-9524-b51e5dbb587e",
+      "parenttile_id": null,
+      "resourceinstance_id": "54bf3277-5239-5bd5-aefa-d67268a08567",
+      "sortorder": 0,
+      "tileid": "38d1bb1c-7970-5496-adb9-d537063d89b3"
      }
     ],
     "tiles_loaded": true
@@ -597,6 +679,16 @@
       "resourceinstance_id": "6028620e-34cb-5089-b399-835fc7d2da6a",
       "sortorder": 0,
       "tileid": "996e6f98-5615-5cbd-a114-267772f850c0"
+     },
+     {
+      "data": {
+       "5b76b035-2674-5297-9524-b51e5dbb587e": "31c4ddfb-66c1-5009-b748-72bc3603182a"
+      },
+      "nodegroup_id": "5b76b035-2674-5297-9524-b51e5dbb587e",
+      "parenttile_id": null,
+      "resourceinstance_id": "6028620e-34cb-5089-b399-835fc7d2da6a",
+      "sortorder": 0,
+      "tileid": "305866c9-e016-557b-9c97-132af207ff35"
      }
     ],
     "tiles_loaded": true
@@ -672,6 +764,16 @@
       "resourceinstance_id": "b878b824-3ee6-594d-ba07-679ebcc4767e",
       "sortorder": 0,
       "tileid": "b60f0ac7-f0d4-5e7f-bc17-82a883c040c3"
+     },
+     {
+      "data": {
+       "5b76b035-2674-5297-9524-b51e5dbb587e": "42d8cd3f-3393-5ec7-81bb-8278448c0b40"
+      },
+      "nodegroup_id": "5b76b035-2674-5297-9524-b51e5dbb587e",
+      "parenttile_id": null,
+      "resourceinstance_id": "b878b824-3ee6-594d-ba07-679ebcc4767e",
+      "sortorder": 0,
+      "tileid": "18aaa513-9b78-50db-9a07-c383affad8a7"
      }
     ],
     "tiles_loaded": true
@@ -747,6 +849,16 @@
       "resourceinstance_id": "c198176a-6d24-58ac-a507-5ca2e9c23607",
       "sortorder": 0,
       "tileid": "eb263c7a-48ae-559a-99d0-7919b97fdf51"
+     },
+     {
+      "data": {
+       "5b76b035-2674-5297-9524-b51e5dbb587e": "53b9c362-8f10-5ffe-beb9-7a646c918205"
+      },
+      "nodegroup_id": "5b76b035-2674-5297-9524-b51e5dbb587e",
+      "parenttile_id": null,
+      "resourceinstance_id": "c198176a-6d24-58ac-a507-5ca2e9c23607",
+      "sortorder": 0,
+      "tileid": "7818635d-a131-5315-9745-3f29f2ba1b20"
      }
     ],
     "tiles_loaded": true
@@ -765,6 +877,10 @@
       "data": {
        "aff3344e-7a32-5101-a6fc-647ed465aa0c": {
         "en": {
+         "direction": "ltr",
+         "value": "Trá Bealtaine National School"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Scoil Náisiúnta Trá Bealtaine"
         }
@@ -822,6 +938,16 @@
       "resourceinstance_id": "d5c8ac4e-4842-50d3-92ac-9344bb488576",
       "sortorder": 0,
       "tileid": "213c29df-c9a2-582d-96b5-df587016e087"
+     },
+     {
+      "data": {
+       "5b76b035-2674-5297-9524-b51e5dbb587e": "56a7a2e3-6140-5ce2-9b45-cbd98e083a8e"
+      },
+      "nodegroup_id": "5b76b035-2674-5297-9524-b51e5dbb587e",
+      "parenttile_id": null,
+      "resourceinstance_id": "d5c8ac4e-4842-50d3-92ac-9344bb488576",
+      "sortorder": 0,
+      "tileid": "61eb8167-ca13-56b1-89b1-32aaa2410abf"
      }
     ],
     "tiles_loaded": true

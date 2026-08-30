@@ -1,0 +1,589 @@
+{
+  "__allConcepts": {
+    "07ddd75c-6d1e-59d3-a25e-2956ade03255": {
+      "children": [],
+      "id": "07ddd75c-6d1e-59d3-a25e-2956ade03255",
+      "prefLabels": {
+        "en": {
+          "id": "28e8c7ce-f6c1-54d2-98f5-319cba493108",
+          "value": "D — Electricity, gas, steam, air-conditioning"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    },
+    "34d533a2-2d83-56f0-b85b-77674963c9eb": {
+      "children": [],
+      "id": "34d533a2-2d83-56f0-b85b-77674963c9eb",
+      "prefLabels": {
+        "en": {
+          "id": "14839b28-a405-55e7-9c69-e778441dcb19",
+          "value": "E — Water supply, sewerage, waste"
+        }
+      },
+      "sortOrder": 5,
+      "source": null,
+      "uri": null
+    },
+    "3680fbba-aed2-5ef1-834a-4f5ee2aa5cb2": {
+      "children": [],
+      "id": "3680fbba-aed2-5ef1-834a-4f5ee2aa5cb2",
+      "prefLabels": {
+        "en": {
+          "id": "53b9c362-8f10-5ffe-beb9-7a646c918205",
+          "value": "L — Real estate activities"
+        }
+      },
+      "sortOrder": 12,
+      "source": null,
+      "uri": null
+    },
+    "3f871a82-0771-56e8-ade1-1ebd8df84aba": {
+      "children": [],
+      "id": "3f871a82-0771-56e8-ade1-1ebd8df84aba",
+      "prefLabels": {
+        "en": {
+          "id": "05461022-6215-5402-b9f9-43e9fc5eafa6",
+          "value": "G — Wholesale and retail trade"
+        }
+      },
+      "sortOrder": 7,
+      "source": null,
+      "uri": null
+    },
+    "7c6aa8ae-f4a7-5225-8e31-b9fa6538a62a": {
+      "children": [],
+      "id": "7c6aa8ae-f4a7-5225-8e31-b9fa6538a62a",
+      "prefLabels": {
+        "en": {
+          "id": "093add90-9c05-5331-aba4-90f89f98579b",
+          "value": "R — Arts, entertainment and recreation"
+        }
+      },
+      "sortOrder": 18,
+      "source": null,
+      "uri": null
+    },
+    "7f969a6a-5215-53a3-99b5-01e41724a92d": {
+      "children": [],
+      "id": "7f969a6a-5215-53a3-99b5-01e41724a92d",
+      "prefLabels": {
+        "en": {
+          "id": "07a411f1-6c7c-5c37-87d7-1ba9eb8e1933",
+          "value": "J — Information and communication"
+        }
+      },
+      "sortOrder": 10,
+      "source": null,
+      "uri": null
+    },
+    "8c2e9430-901c-5fbc-a2de-2fcfeaf5683b": {
+      "children": [],
+      "id": "8c2e9430-901c-5fbc-a2de-2fcfeaf5683b",
+      "prefLabels": {
+        "en": {
+          "id": "76156f9c-bdd4-5d59-96c1-eb1f5ea715b6",
+          "value": "C — Manufacturing"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    },
+    "94f0eec3-d52a-5679-be10-a1e325bae617": {
+      "children": [],
+      "id": "94f0eec3-d52a-5679-be10-a1e325bae617",
+      "prefLabels": {
+        "en": {
+          "id": "0e48c17a-7696-5acd-acce-019f90fbc234",
+          "value": "B — Mining and quarrying"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "9e945421-c709-5479-8a60-036819720f1a": {
+      "children": [],
+      "id": "9e945421-c709-5479-8a60-036819720f1a",
+      "prefLabels": {
+        "en": {
+          "id": "e1ad7807-1072-510a-87bb-bb97732afdce",
+          "value": "K — Financial and insurance activities"
+        }
+      },
+      "sortOrder": 11,
+      "source": null,
+      "uri": null
+    },
+    "a2d6c17f-c2f1-55c7-9606-dad13862f5e2": {
+      "children": [],
+      "id": "a2d6c17f-c2f1-55c7-9606-dad13862f5e2",
+      "prefLabels": {
+        "en": {
+          "id": "8b000971-5344-5dc8-9670-5cffedde642b",
+          "value": "N — Administrative and support service"
+        }
+      },
+      "sortOrder": 14,
+      "source": null,
+      "uri": null
+    },
+    "a31e2432-e80c-5591-b778-bb6b063554b2": {
+      "children": [],
+      "id": "a31e2432-e80c-5591-b778-bb6b063554b2",
+      "prefLabels": {
+        "en": {
+          "id": "31c4ddfb-66c1-5009-b748-72bc3603182a",
+          "value": "H — Transportation and storage"
+        }
+      },
+      "sortOrder": 8,
+      "source": null,
+      "uri": null
+    },
+    "ad56f6a7-e60c-50df-93d9-bbabd5f9baac": {
+      "children": [],
+      "id": "ad56f6a7-e60c-50df-93d9-bbabd5f9baac",
+      "prefLabels": {
+        "en": {
+          "id": "a4f4a8d3-a21e-522d-a898-dcca4b735e70",
+          "value": "M — Professional, scientific, technical"
+        }
+      },
+      "sortOrder": 13,
+      "source": null,
+      "uri": null
+    },
+    "c65acb92-d9fa-54af-add6-e956966808d2": {
+      "children": [],
+      "id": "c65acb92-d9fa-54af-add6-e956966808d2",
+      "prefLabels": {
+        "en": {
+          "id": "f0fe5fac-a6a3-5a91-bc17-041506779704",
+          "value": "P — Education"
+        }
+      },
+      "sortOrder": 16,
+      "source": null,
+      "uri": null
+    },
+    "caec4851-3edd-5b9b-93e4-74e2256eba66": {
+      "children": [],
+      "id": "caec4851-3edd-5b9b-93e4-74e2256eba66",
+      "prefLabels": {
+        "en": {
+          "id": "ead9f2ef-b9df-5d4b-8b8c-b1eb8c7ec31c",
+          "value": "A — Agriculture, forestry and fishing"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "cb34defc-74c3-59e5-9ec4-4fd13467e778": {
+      "children": [],
+      "id": "cb34defc-74c3-59e5-9ec4-4fd13467e778",
+      "prefLabels": {
+        "en": {
+          "id": "1b92a3b4-084e-59c3-841e-2ad57d43c6df",
+          "value": "I — Accommodation and food service"
+        }
+      },
+      "sortOrder": 9,
+      "source": null,
+      "uri": null
+    },
+    "e62139df-ba9f-569f-8d08-1da4757c0d32": {
+      "children": [],
+      "id": "e62139df-ba9f-569f-8d08-1da4757c0d32",
+      "prefLabels": {
+        "en": {
+          "id": "d5bcace2-bff0-5fd3-8a74-2a51e437b40b",
+          "value": "Q — Human health and social work"
+        }
+      },
+      "sortOrder": 17,
+      "source": null,
+      "uri": null
+    },
+    "ecde8343-5f1f-5f54-ae8c-fc1778d7ed82": {
+      "children": [],
+      "id": "ecde8343-5f1f-5f54-ae8c-fc1778d7ed82",
+      "prefLabels": {
+        "en": {
+          "id": "c12bee9f-2d6d-51a4-b0c4-75850ce123af",
+          "value": "F — Construction"
+        }
+      },
+      "sortOrder": 6,
+      "source": null,
+      "uri": null
+    },
+    "f76cacc1-c6fa-5227-bfd1-79a3a6560c6e": {
+      "children": [],
+      "id": "f76cacc1-c6fa-5227-bfd1-79a3a6560c6e",
+      "prefLabels": {
+        "en": {
+          "id": "56a7a2e3-6140-5ce2-9b45-cbd98e083a8e",
+          "value": "S — Other service activities"
+        }
+      },
+      "sortOrder": 19,
+      "source": null,
+      "uri": null
+    },
+    "ffa793b2-9f0a-55e9-8ed7-8898fdc36ccd": {
+      "children": [],
+      "id": "ffa793b2-9f0a-55e9-8ed7-8898fdc36ccd",
+      "prefLabels": {
+        "en": {
+          "id": "42d8cd3f-3393-5ec7-81bb-8278448c0b40",
+          "value": "O — Public administration and defence"
+        }
+      },
+      "sortOrder": 15,
+      "source": null,
+      "uri": null
+    }
+  },
+  "__values": {
+    "05461022-6215-5402-b9f9-43e9fc5eafa6": {
+      "id": "05461022-6215-5402-b9f9-43e9fc5eafa6",
+      "value": "G — Wholesale and retail trade"
+    },
+    "07a411f1-6c7c-5c37-87d7-1ba9eb8e1933": {
+      "id": "07a411f1-6c7c-5c37-87d7-1ba9eb8e1933",
+      "value": "J — Information and communication"
+    },
+    "093add90-9c05-5331-aba4-90f89f98579b": {
+      "id": "093add90-9c05-5331-aba4-90f89f98579b",
+      "value": "R — Arts, entertainment and recreation"
+    },
+    "0e48c17a-7696-5acd-acce-019f90fbc234": {
+      "id": "0e48c17a-7696-5acd-acce-019f90fbc234",
+      "value": "B — Mining and quarrying"
+    },
+    "14839b28-a405-55e7-9c69-e778441dcb19": {
+      "id": "14839b28-a405-55e7-9c69-e778441dcb19",
+      "value": "E — Water supply, sewerage, waste"
+    },
+    "1b92a3b4-084e-59c3-841e-2ad57d43c6df": {
+      "id": "1b92a3b4-084e-59c3-841e-2ad57d43c6df",
+      "value": "I — Accommodation and food service"
+    },
+    "28e8c7ce-f6c1-54d2-98f5-319cba493108": {
+      "id": "28e8c7ce-f6c1-54d2-98f5-319cba493108",
+      "value": "D — Electricity, gas, steam, air-conditioning"
+    },
+    "31c4ddfb-66c1-5009-b748-72bc3603182a": {
+      "id": "31c4ddfb-66c1-5009-b748-72bc3603182a",
+      "value": "H — Transportation and storage"
+    },
+    "42d8cd3f-3393-5ec7-81bb-8278448c0b40": {
+      "id": "42d8cd3f-3393-5ec7-81bb-8278448c0b40",
+      "value": "O — Public administration and defence"
+    },
+    "53b9c362-8f10-5ffe-beb9-7a646c918205": {
+      "id": "53b9c362-8f10-5ffe-beb9-7a646c918205",
+      "value": "L — Real estate activities"
+    },
+    "56a7a2e3-6140-5ce2-9b45-cbd98e083a8e": {
+      "id": "56a7a2e3-6140-5ce2-9b45-cbd98e083a8e",
+      "value": "S — Other service activities"
+    },
+    "76156f9c-bdd4-5d59-96c1-eb1f5ea715b6": {
+      "id": "76156f9c-bdd4-5d59-96c1-eb1f5ea715b6",
+      "value": "C — Manufacturing"
+    },
+    "8b000971-5344-5dc8-9670-5cffedde642b": {
+      "id": "8b000971-5344-5dc8-9670-5cffedde642b",
+      "value": "N — Administrative and support service"
+    },
+    "a4f4a8d3-a21e-522d-a898-dcca4b735e70": {
+      "id": "a4f4a8d3-a21e-522d-a898-dcca4b735e70",
+      "value": "M — Professional, scientific, technical"
+    },
+    "c12bee9f-2d6d-51a4-b0c4-75850ce123af": {
+      "id": "c12bee9f-2d6d-51a4-b0c4-75850ce123af",
+      "value": "F — Construction"
+    },
+    "d5bcace2-bff0-5fd3-8a74-2a51e437b40b": {
+      "id": "d5bcace2-bff0-5fd3-8a74-2a51e437b40b",
+      "value": "Q — Human health and social work"
+    },
+    "e1ad7807-1072-510a-87bb-bb97732afdce": {
+      "id": "e1ad7807-1072-510a-87bb-bb97732afdce",
+      "value": "K — Financial and insurance activities"
+    },
+    "ead9f2ef-b9df-5d4b-8b8c-b1eb8c7ec31c": {
+      "id": "ead9f2ef-b9df-5d4b-8b8c-b1eb8c7ec31c",
+      "value": "A — Agriculture, forestry and fishing"
+    },
+    "f0fe5fac-a6a3-5a91-bc17-041506779704": {
+      "id": "f0fe5fac-a6a3-5a91-bc17-041506779704",
+      "value": "P — Education"
+    }
+  },
+  "altLabels": {},
+  "concepts": {
+    "07ddd75c-6d1e-59d3-a25e-2956ade03255": {
+      "children": [],
+      "id": "07ddd75c-6d1e-59d3-a25e-2956ade03255",
+      "prefLabels": {
+        "en": {
+          "id": "28e8c7ce-f6c1-54d2-98f5-319cba493108",
+          "value": "D — Electricity, gas, steam, air-conditioning"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    },
+    "34d533a2-2d83-56f0-b85b-77674963c9eb": {
+      "children": [],
+      "id": "34d533a2-2d83-56f0-b85b-77674963c9eb",
+      "prefLabels": {
+        "en": {
+          "id": "14839b28-a405-55e7-9c69-e778441dcb19",
+          "value": "E — Water supply, sewerage, waste"
+        }
+      },
+      "sortOrder": 5,
+      "source": null,
+      "uri": null
+    },
+    "3680fbba-aed2-5ef1-834a-4f5ee2aa5cb2": {
+      "children": [],
+      "id": "3680fbba-aed2-5ef1-834a-4f5ee2aa5cb2",
+      "prefLabels": {
+        "en": {
+          "id": "53b9c362-8f10-5ffe-beb9-7a646c918205",
+          "value": "L — Real estate activities"
+        }
+      },
+      "sortOrder": 12,
+      "source": null,
+      "uri": null
+    },
+    "3f871a82-0771-56e8-ade1-1ebd8df84aba": {
+      "children": [],
+      "id": "3f871a82-0771-56e8-ade1-1ebd8df84aba",
+      "prefLabels": {
+        "en": {
+          "id": "05461022-6215-5402-b9f9-43e9fc5eafa6",
+          "value": "G — Wholesale and retail trade"
+        }
+      },
+      "sortOrder": 7,
+      "source": null,
+      "uri": null
+    },
+    "7c6aa8ae-f4a7-5225-8e31-b9fa6538a62a": {
+      "children": [],
+      "id": "7c6aa8ae-f4a7-5225-8e31-b9fa6538a62a",
+      "prefLabels": {
+        "en": {
+          "id": "093add90-9c05-5331-aba4-90f89f98579b",
+          "value": "R — Arts, entertainment and recreation"
+        }
+      },
+      "sortOrder": 18,
+      "source": null,
+      "uri": null
+    },
+    "7f969a6a-5215-53a3-99b5-01e41724a92d": {
+      "children": [],
+      "id": "7f969a6a-5215-53a3-99b5-01e41724a92d",
+      "prefLabels": {
+        "en": {
+          "id": "07a411f1-6c7c-5c37-87d7-1ba9eb8e1933",
+          "value": "J — Information and communication"
+        }
+      },
+      "sortOrder": 10,
+      "source": null,
+      "uri": null
+    },
+    "8c2e9430-901c-5fbc-a2de-2fcfeaf5683b": {
+      "children": [],
+      "id": "8c2e9430-901c-5fbc-a2de-2fcfeaf5683b",
+      "prefLabels": {
+        "en": {
+          "id": "76156f9c-bdd4-5d59-96c1-eb1f5ea715b6",
+          "value": "C — Manufacturing"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    },
+    "94f0eec3-d52a-5679-be10-a1e325bae617": {
+      "children": [],
+      "id": "94f0eec3-d52a-5679-be10-a1e325bae617",
+      "prefLabels": {
+        "en": {
+          "id": "0e48c17a-7696-5acd-acce-019f90fbc234",
+          "value": "B — Mining and quarrying"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "9e945421-c709-5479-8a60-036819720f1a": {
+      "children": [],
+      "id": "9e945421-c709-5479-8a60-036819720f1a",
+      "prefLabels": {
+        "en": {
+          "id": "e1ad7807-1072-510a-87bb-bb97732afdce",
+          "value": "K — Financial and insurance activities"
+        }
+      },
+      "sortOrder": 11,
+      "source": null,
+      "uri": null
+    },
+    "a2d6c17f-c2f1-55c7-9606-dad13862f5e2": {
+      "children": [],
+      "id": "a2d6c17f-c2f1-55c7-9606-dad13862f5e2",
+      "prefLabels": {
+        "en": {
+          "id": "8b000971-5344-5dc8-9670-5cffedde642b",
+          "value": "N — Administrative and support service"
+        }
+      },
+      "sortOrder": 14,
+      "source": null,
+      "uri": null
+    },
+    "a31e2432-e80c-5591-b778-bb6b063554b2": {
+      "children": [],
+      "id": "a31e2432-e80c-5591-b778-bb6b063554b2",
+      "prefLabels": {
+        "en": {
+          "id": "31c4ddfb-66c1-5009-b748-72bc3603182a",
+          "value": "H — Transportation and storage"
+        }
+      },
+      "sortOrder": 8,
+      "source": null,
+      "uri": null
+    },
+    "ad56f6a7-e60c-50df-93d9-bbabd5f9baac": {
+      "children": [],
+      "id": "ad56f6a7-e60c-50df-93d9-bbabd5f9baac",
+      "prefLabels": {
+        "en": {
+          "id": "a4f4a8d3-a21e-522d-a898-dcca4b735e70",
+          "value": "M — Professional, scientific, technical"
+        }
+      },
+      "sortOrder": 13,
+      "source": null,
+      "uri": null
+    },
+    "c65acb92-d9fa-54af-add6-e956966808d2": {
+      "children": [],
+      "id": "c65acb92-d9fa-54af-add6-e956966808d2",
+      "prefLabels": {
+        "en": {
+          "id": "f0fe5fac-a6a3-5a91-bc17-041506779704",
+          "value": "P — Education"
+        }
+      },
+      "sortOrder": 16,
+      "source": null,
+      "uri": null
+    },
+    "caec4851-3edd-5b9b-93e4-74e2256eba66": {
+      "children": [],
+      "id": "caec4851-3edd-5b9b-93e4-74e2256eba66",
+      "prefLabels": {
+        "en": {
+          "id": "ead9f2ef-b9df-5d4b-8b8c-b1eb8c7ec31c",
+          "value": "A — Agriculture, forestry and fishing"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "cb34defc-74c3-59e5-9ec4-4fd13467e778": {
+      "children": [],
+      "id": "cb34defc-74c3-59e5-9ec4-4fd13467e778",
+      "prefLabels": {
+        "en": {
+          "id": "1b92a3b4-084e-59c3-841e-2ad57d43c6df",
+          "value": "I — Accommodation and food service"
+        }
+      },
+      "sortOrder": 9,
+      "source": null,
+      "uri": null
+    },
+    "e62139df-ba9f-569f-8d08-1da4757c0d32": {
+      "children": [],
+      "id": "e62139df-ba9f-569f-8d08-1da4757c0d32",
+      "prefLabels": {
+        "en": {
+          "id": "d5bcace2-bff0-5fd3-8a74-2a51e437b40b",
+          "value": "Q — Human health and social work"
+        }
+      },
+      "sortOrder": 17,
+      "source": null,
+      "uri": null
+    },
+    "ecde8343-5f1f-5f54-ae8c-fc1778d7ed82": {
+      "children": [],
+      "id": "ecde8343-5f1f-5f54-ae8c-fc1778d7ed82",
+      "prefLabels": {
+        "en": {
+          "id": "c12bee9f-2d6d-51a4-b0c4-75850ce123af",
+          "value": "F — Construction"
+        }
+      },
+      "sortOrder": 6,
+      "source": null,
+      "uri": null
+    },
+    "f76cacc1-c6fa-5227-bfd1-79a3a6560c6e": {
+      "children": [],
+      "id": "f76cacc1-c6fa-5227-bfd1-79a3a6560c6e",
+      "prefLabels": {
+        "en": {
+          "id": "56a7a2e3-6140-5ce2-9b45-cbd98e083a8e",
+          "value": "S — Other service activities"
+        }
+      },
+      "sortOrder": 19,
+      "source": null,
+      "uri": null
+    },
+    "ffa793b2-9f0a-55e9-8ed7-8898fdc36ccd": {
+      "children": [],
+      "id": "ffa793b2-9f0a-55e9-8ed7-8898fdc36ccd",
+      "prefLabels": {
+        "en": {
+          "id": "42d8cd3f-3393-5ec7-81bb-8278448c0b40",
+          "value": "O — Public administration and defence"
+        }
+      },
+      "sortOrder": 15,
+      "source": null,
+      "uri": null
+    }
+  },
+  "id": "bb2ab7ab-1ec2-5161-9208-450760eeb034",
+  "nodeType": "ConceptScheme",
+  "prefLabels": {
+    "en": {
+      "id": "807eb6e4-552b-568e-ae7e-7a99085c7ba0",
+      "value": "Sector"
+    }
+  },
+  "scopeNotes": {},
+  "uri": null
+}

@@ -1,0 +1,39 @@
+---
+title: Dates & EDTF
+description: Temporal view models — date and edtf
+---
+
+import AlizarinComponent from '@/app/alizarin.tsx';
+
+Alizarin has two temporal datatypes: `date` for exact calendar dates, and `edtf`
+(Extended Date/Time Format) for fuzzy, partial, or interval dates.
+
+## date
+
+`DateViewModel` wraps an Arches `date`. **It resolves to a `Date` object**, which
+is *not* a valid React child on its own — format it before rendering
+(`new Date(d).toISOString().slice(0, 10)`, `d.toLocaleDateString()`, etc.). This
+is the single most common footgun with the typed view models: a raw `Date` (or
+`Number`) put straight into JSX throws *"Objects are not valid as a React child"*.
+
+### Live example
+
+Each scenario event's start and end dates. Note the dates live in a nested
+semantic nodegroup (`event_span`), so we await the group, then the typed dates,
+then format them — press ▶:
+
+<AlizarinComponent module='/example/example-5.tsx' />
+
+## edtf
+
+`EDTFViewModel` wraps an `edtf` value — the [Extended Date/Time
+Format](https://www.loc.gov/standards/datetime/), which expresses uncertainty and
+intervals that a plain `date` cannot: `1984?` (uncertain year), `1985-04-12/1985-06`
+(an interval), `19XX` (an unspecified decade). Use it for historical records where
+precision varies.
+
+<div className="fd-callout">
+A live EDTF demo lands alongside the other added-field types (an `edtf` field is
+being added to the sample data). Until then, the shape is: `await
+record.some_edtf_field` → an `EDTFViewModel` you format like the date above.
+</div>

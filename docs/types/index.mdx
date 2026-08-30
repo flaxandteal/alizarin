@@ -1,0 +1,46 @@
+---
+title: Types & View Models
+description: How Arches datatypes surface as typed, lazy view models
+---
+
+Every node in a graph has an Arches **datatype**. When you read a resource,
+Alizarin resolves each value into a typed **view model** — a proxy that fetches
+and parses the underlying tile only when you `await` the property.
+
+The view models fall into three groups:
+
+## Basic scalars
+
+Simple, primitive-like values. See [Basic types](/docs/types/basic).
+
+| Datatype | View model | Notes |
+|----------|-----------|-------|
+| `string` | `StringViewModel` | Localized string; extends `String`, stringifies to the current language |
+| `non-localized-string` | `NonLocalizedStringViewModel` | A plain, single-language string |
+| `number` | `NumberViewModel` | Numeric value |
+| `boolean` | `BooleanViewModel` | True/false |
+| `url` | `UrlViewModel` | A URL string |
+
+## Complex view models
+
+Values with non-trivial rendering or structure:
+
+| Datatype | View model | Page |
+|----------|-----------|------|
+| `date` | `DateViewModel` | [Dates & EDTF](/docs/types/dates-edtf) |
+| `edtf` | `EDTFViewModel` | [Dates & EDTF](/docs/types/dates-edtf) |
+| `concept` / `concept-list` | `ConceptValueViewModel` / `ConceptListViewModel` | [Concepts](/docs/types/concepts) |
+| `geojson-feature-collection` | `GeoJSONViewModel` | [Geospatial](/docs/types/geospatial) |
+| `resource-instance` / `-list` | `ResourceInstanceViewModel` / `…ListViewModel` | followed as relationships |
+| _(nested nodegroup)_ | `SemanticViewModel` | groups child nodes |
+
+## Extension types
+
+Custom datatypes provided by out-of-tree extensions (registered over the
+[Extension ABI](/docs/extension-abi)): **CLM references** and **file/image lists**.
+See [Extension types](/docs/types/extensions).
+
+<div className="fd-callout">
+Every example on these pages runs live in your browser against the sample data —
+press ▶. Values are resolved lazily and returned typed.
+</div>

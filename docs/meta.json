@@ -12,6 +12,8 @@
     "mutations",
     "prebuild",
     "api",
+    "---Types---",
+    "types",
     "---Bindings---",
     "bindings",
     "---Reference---",

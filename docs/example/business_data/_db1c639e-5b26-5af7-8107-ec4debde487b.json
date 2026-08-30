@@ -121,6 +121,10 @@
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
          "direction": "ltr",
+         "value": "May Cyclone — Storm Surge — Trá Bealtaine"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Cioclón Bealtaine — Borradh Stoirme — Trá Bealtaine"
         }
        }
@@ -236,6 +240,10 @@
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
          "direction": "ltr",
+         "value": "October Monsoon 2023 — Cé an Rí"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Músún Deireadh Fómhair 2023 — Cé an Rí"
         }
        }
@@ -301,6 +309,10 @@
       "data": {
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
+         "direction": "ltr",
+         "value": "October Monsoon 2023 — West Town"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Músún Deireadh Fómhair 2023 — Baile an Iarthair"
         }
@@ -406,6 +418,10 @@
       "data": {
        "de4281a2-89da-5aa1-b6e7-21a2e762cc5f": {
         "en": {
+         "direction": "ltr",
+         "value": "Footprint for flood impact on West Town."
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Footprint for flood impact on Baile an Iarthair."
         }
@@ -550,6 +566,10 @@
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
          "direction": "ltr",
+         "value": "October Monsoon 2023 — Imeall Eanach"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Músún Deireadh Fómhair 2023 — Imeall Eanach"
         }
        }
@@ -692,6 +712,10 @@
       "data": {
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
+         "direction": "ltr",
+         "value": "Design Flood 1:200 — Cé an Rí"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Tuile Dearaidh 1:200 — Cé an Rí"
         }
@@ -836,6 +860,10 @@
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
          "direction": "ltr",
+         "value": "Design Flood 1:200 — Trá Bealtaine"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Tuile Dearaidh 1:200 — Trá Bealtaine"
         }
        }
@@ -979,6 +1007,10 @@
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
          "direction": "ltr",
+         "value": "October Monsoon 2023 — Trá Theas"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Músún Deireadh Fómhair 2023 — Trá Theas"
         }
        }
@@ -1016,6 +1048,10 @@
       "data": {
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
+         "direction": "ltr",
+         "value": "October Monsoon 2023 — Trá Bealtaine"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Músún Deireadh Fómhair 2023 — Trá Bealtaine"
         }
@@ -1171,6 +1207,10 @@
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
          "direction": "ltr",
+         "value": "May Cyclone — Storm Surge — Trá Theas"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Cioclón Bealtaine — Borradh Stoirme — Trá Theas"
         }
        }
@@ -1302,6 +1342,10 @@
       "data": {
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
+         "direction": "ltr",
+         "value": "Design Flood 1:200 — Trá Theas"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Tuile Dearaidh 1:200 — Trá Theas"
         }
@@ -1519,6 +1563,10 @@
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
          "direction": "ltr",
+         "value": "Design Flood 1:200 — Seandún"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Tuile Dearaidh 1:200 — Seandún"
         }
        }
@@ -1677,6 +1725,10 @@
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
          "direction": "ltr",
+         "value": "May Cyclone — Storm Surge — Trí Chuain"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Cioclón Bealtaine — Borradh Stoirme — Trí Chuain"
         }
        }
@@ -1748,6 +1800,10 @@
       "data": {
        "de4281a2-89da-5aa1-b6e7-21a2e762cc5f": {
         "en": {
+         "direction": "ltr",
+         "value": "Footprint for flood impact on West Town."
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Footprint for flood impact on Baile an Iarthair."
         }
@@ -1836,6 +1892,10 @@
       "data": {
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
+         "direction": "ltr",
+         "value": "Design Flood 1:200 — West Town"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Tuile Dearaidh 1:200 — Baile an Iarthair"
         }
@@ -1980,6 +2040,10 @@
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
          "direction": "ltr",
+         "value": "Design Flood 1:200 — Imeall Eanach"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Tuile Dearaidh 1:200 — Imeall Eanach"
         }
        }
@@ -2017,6 +2081,10 @@
       "data": {
        "404aa6c4-8fc7-509e-a601-1f95fcb465ae": {
         "en": {
+         "direction": "ltr",
+         "value": "May Cyclone — Storm Surge — Cé an Rí"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Cioclón Bealtaine — Borradh Stoirme — Cé an Rí"
         }

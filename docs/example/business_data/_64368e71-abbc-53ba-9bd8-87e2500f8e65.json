@@ -262,6 +262,10 @@
        "f3a2d94a-536e-5977-bde4-9106de0e62cc": {
         "en": {
          "direction": "ltr",
+         "value": "North District"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Ceantar Thuaidh"
         }
        }
@@ -458,6 +462,10 @@
       "data": {
        "f3a2d94a-536e-5977-bde4-9106de0e62cc": {
         "en": {
+         "direction": "ltr",
+         "value": "East Town"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Baile Thoir"
         }
@@ -882,6 +890,10 @@
       "data": {
        "f3a2d94a-536e-5977-bde4-9106de0e62cc": {
         "en": {
+         "direction": "ltr",
+         "value": "South District"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Ceantar Theas"
         }
@@ -1436,6 +1448,10 @@
        "f3a2d94a-536e-5977-bde4-9106de0e62cc": {
         "en": {
          "direction": "ltr",
+         "value": "Aonach Mór City Council"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Bardas Cathrach Aonach Mór"
         }
        }
@@ -1767,6 +1783,10 @@
        "f3a2d94a-536e-5977-bde4-9106de0e62cc": {
         "en": {
          "direction": "ltr",
+         "value": "West Town"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Baile an Iarthair"
         }
        }
@@ -1846,6 +1866,10 @@
       "data": {
        "f3a2d94a-536e-5977-bde4-9106de0e62cc": {
         "en": {
+         "direction": "ltr",
+         "value": "Central District"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Ceantar Láir"
         }

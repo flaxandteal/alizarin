@@ -1,0 +1,199 @@
+{
+  "__allConcepts": {
+    "2cad37fc-5fa0-567e-a0fa-fa0623d86b63": {
+      "children": [],
+      "id": "2cad37fc-5fa0-567e-a0fa-fa0623d86b63",
+      "prefLabels": {
+        "en": {
+          "id": "fa195c93-57d1-5115-94a6-bdfc61f771d4",
+          "value": "Mass-gathering incident"
+        }
+      },
+      "sortOrder": 6,
+      "source": null,
+      "uri": null
+    },
+    "340dacdd-0b88-53ab-b324-be97329cf646": {
+      "children": [],
+      "id": "340dacdd-0b88-53ab-b324-be97329cf646",
+      "prefLabels": {
+        "en": {
+          "id": "be3ca806-d579-5768-afa6-9ba8a5c5363d",
+          "value": "Earthquake"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    },
+    "362ada33-b993-5f49-b9c9-dcec5d96c4a6": {
+      "children": [],
+      "id": "362ada33-b993-5f49-b9c9-dcec5d96c4a6",
+      "prefLabels": {
+        "en": {
+          "id": "ba3614c6-9cd0-5fdf-9087-ec97ea5acd9e",
+          "value": "Cyclone landfall"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "663ec63e-0b97-5678-8e57-12637169a658": {
+      "children": [],
+      "id": "663ec63e-0b97-5678-8e57-12637169a658",
+      "prefLabels": {
+        "en": {
+          "id": "48e189c5-fb8b-5c18-a3e7-66d9242940c4",
+          "value": "Heatwave"
+        }
+      },
+      "sortOrder": 5,
+      "source": null,
+      "uri": null
+    },
+    "db6a53b9-da7d-571b-90c2-6c7b528669fd": {
+      "children": [],
+      "id": "db6a53b9-da7d-571b-90c2-6c7b528669fd",
+      "prefLabels": {
+        "en": {
+          "id": "e9e19737-30fd-57aa-bd22-e3e545520757",
+          "value": "Pluvial flood"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "e31baea8-bf40-5687-812d-8d03d8990ccb": {
+      "children": [],
+      "id": "e31baea8-bf40-5687-812d-8d03d8990ccb",
+      "prefLabels": {
+        "en": {
+          "id": "99b53c4c-aa31-59c2-a161-169fc04576b7",
+          "value": "Coastal flood"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    }
+  },
+  "__values": {
+    "48e189c5-fb8b-5c18-a3e7-66d9242940c4": {
+      "id": "48e189c5-fb8b-5c18-a3e7-66d9242940c4",
+      "value": "Heatwave"
+    },
+    "99b53c4c-aa31-59c2-a161-169fc04576b7": {
+      "id": "99b53c4c-aa31-59c2-a161-169fc04576b7",
+      "value": "Coastal flood"
+    },
+    "ba3614c6-9cd0-5fdf-9087-ec97ea5acd9e": {
+      "id": "ba3614c6-9cd0-5fdf-9087-ec97ea5acd9e",
+      "value": "Cyclone landfall"
+    },
+    "be3ca806-d579-5768-afa6-9ba8a5c5363d": {
+      "id": "be3ca806-d579-5768-afa6-9ba8a5c5363d",
+      "value": "Earthquake"
+    },
+    "e9e19737-30fd-57aa-bd22-e3e545520757": {
+      "id": "e9e19737-30fd-57aa-bd22-e3e545520757",
+      "value": "Pluvial flood"
+    },
+    "fa195c93-57d1-5115-94a6-bdfc61f771d4": {
+      "id": "fa195c93-57d1-5115-94a6-bdfc61f771d4",
+      "value": "Mass-gathering incident"
+    }
+  },
+  "altLabels": {},
+  "concepts": {
+    "2cad37fc-5fa0-567e-a0fa-fa0623d86b63": {
+      "children": [],
+      "id": "2cad37fc-5fa0-567e-a0fa-fa0623d86b63",
+      "prefLabels": {
+        "en": {
+          "id": "fa195c93-57d1-5115-94a6-bdfc61f771d4",
+          "value": "Mass-gathering incident"
+        }
+      },
+      "sortOrder": 6,
+      "source": null,
+      "uri": null
+    },
+    "340dacdd-0b88-53ab-b324-be97329cf646": {
+      "children": [],
+      "id": "340dacdd-0b88-53ab-b324-be97329cf646",
+      "prefLabels": {
+        "en": {
+          "id": "be3ca806-d579-5768-afa6-9ba8a5c5363d",
+          "value": "Earthquake"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    },
+    "362ada33-b993-5f49-b9c9-dcec5d96c4a6": {
+      "children": [],
+      "id": "362ada33-b993-5f49-b9c9-dcec5d96c4a6",
+      "prefLabels": {
+        "en": {
+          "id": "ba3614c6-9cd0-5fdf-9087-ec97ea5acd9e",
+          "value": "Cyclone landfall"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "663ec63e-0b97-5678-8e57-12637169a658": {
+      "children": [],
+      "id": "663ec63e-0b97-5678-8e57-12637169a658",
+      "prefLabels": {
+        "en": {
+          "id": "48e189c5-fb8b-5c18-a3e7-66d9242940c4",
+          "value": "Heatwave"
+        }
+      },
+      "sortOrder": 5,
+      "source": null,
+      "uri": null
+    },
+    "db6a53b9-da7d-571b-90c2-6c7b528669fd": {
+      "children": [],
+      "id": "db6a53b9-da7d-571b-90c2-6c7b528669fd",
+      "prefLabels": {
+        "en": {
+          "id": "e9e19737-30fd-57aa-bd22-e3e545520757",
+          "value": "Pluvial flood"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "e31baea8-bf40-5687-812d-8d03d8990ccb": {
+      "children": [],
+      "id": "e31baea8-bf40-5687-812d-8d03d8990ccb",
+      "prefLabels": {
+        "en": {
+          "id": "99b53c4c-aa31-59c2-a161-169fc04576b7",
+          "value": "Coastal flood"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    }
+  },
+  "id": "77b213c2-8953-5d1e-bfad-16a91a7156d4",
+  "nodeType": "ConceptScheme",
+  "prefLabels": {
+    "en": {
+      "id": "8e754987-1670-5147-8bc6-3f988221bc97",
+      "value": "EventType"
+    }
+  },
+  "scopeNotes": {},
+  "uri": null
+}

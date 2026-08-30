@@ -1,0 +1,169 @@
+{
+  "__allConcepts": {
+    "3fa67189-026a-5f78-8081-72d928db9614": {
+      "children": [],
+      "id": "3fa67189-026a-5f78-8081-72d928db9614",
+      "prefLabels": {
+        "en": {
+          "id": "973f9615-702b-585a-933b-932c2c909162",
+          "value": "Small (10–49)"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "4ac45aa3-4857-5b23-b921-26fda451c36b": {
+      "children": [],
+      "id": "4ac45aa3-4857-5b23-b921-26fda451c36b",
+      "prefLabels": {
+        "en": {
+          "id": "e2556380-784b-531c-8bc7-d60c0cdf994f",
+          "value": "Very large (1000+)"
+        }
+      },
+      "sortOrder": 5,
+      "source": null,
+      "uri": null
+    },
+    "6772beff-5ed0-5a31-bebe-a079d2ae01a6": {
+      "children": [],
+      "id": "6772beff-5ed0-5a31-bebe-a079d2ae01a6",
+      "prefLabels": {
+        "en": {
+          "id": "afb435d3-750f-510a-b870-6c08edaedcd3",
+          "value": "Medium (50–249)"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    },
+    "af4775d2-d37e-51c3-8366-a6ebcf4b3774": {
+      "children": [],
+      "id": "af4775d2-d37e-51c3-8366-a6ebcf4b3774",
+      "prefLabels": {
+        "en": {
+          "id": "cc9a69f0-332b-5fe4-9d5c-00c2d636e6c4",
+          "value": "Micro (1–9)"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "f1c88ec4-4963-501f-a723-825a7af1ff84": {
+      "children": [],
+      "id": "f1c88ec4-4963-501f-a723-825a7af1ff84",
+      "prefLabels": {
+        "en": {
+          "id": "4050b18b-9a99-5cf8-9e4a-dc9aa7e7e273",
+          "value": "Large (250–999)"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    }
+  },
+  "__values": {
+    "4050b18b-9a99-5cf8-9e4a-dc9aa7e7e273": {
+      "id": "4050b18b-9a99-5cf8-9e4a-dc9aa7e7e273",
+      "value": "Large (250–999)"
+    },
+    "973f9615-702b-585a-933b-932c2c909162": {
+      "id": "973f9615-702b-585a-933b-932c2c909162",
+      "value": "Small (10–49)"
+    },
+    "afb435d3-750f-510a-b870-6c08edaedcd3": {
+      "id": "afb435d3-750f-510a-b870-6c08edaedcd3",
+      "value": "Medium (50–249)"
+    },
+    "cc9a69f0-332b-5fe4-9d5c-00c2d636e6c4": {
+      "id": "cc9a69f0-332b-5fe4-9d5c-00c2d636e6c4",
+      "value": "Micro (1–9)"
+    },
+    "e2556380-784b-531c-8bc7-d60c0cdf994f": {
+      "id": "e2556380-784b-531c-8bc7-d60c0cdf994f",
+      "value": "Very large (1000+)"
+    }
+  },
+  "altLabels": {},
+  "concepts": {
+    "3fa67189-026a-5f78-8081-72d928db9614": {
+      "children": [],
+      "id": "3fa67189-026a-5f78-8081-72d928db9614",
+      "prefLabels": {
+        "en": {
+          "id": "973f9615-702b-585a-933b-932c2c909162",
+          "value": "Small (10–49)"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "4ac45aa3-4857-5b23-b921-26fda451c36b": {
+      "children": [],
+      "id": "4ac45aa3-4857-5b23-b921-26fda451c36b",
+      "prefLabels": {
+        "en": {
+          "id": "e2556380-784b-531c-8bc7-d60c0cdf994f",
+          "value": "Very large (1000+)"
+        }
+      },
+      "sortOrder": 5,
+      "source": null,
+      "uri": null
+    },
+    "6772beff-5ed0-5a31-bebe-a079d2ae01a6": {
+      "children": [],
+      "id": "6772beff-5ed0-5a31-bebe-a079d2ae01a6",
+      "prefLabels": {
+        "en": {
+          "id": "afb435d3-750f-510a-b870-6c08edaedcd3",
+          "value": "Medium (50–249)"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    },
+    "af4775d2-d37e-51c3-8366-a6ebcf4b3774": {
+      "children": [],
+      "id": "af4775d2-d37e-51c3-8366-a6ebcf4b3774",
+      "prefLabels": {
+        "en": {
+          "id": "cc9a69f0-332b-5fe4-9d5c-00c2d636e6c4",
+          "value": "Micro (1–9)"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "f1c88ec4-4963-501f-a723-825a7af1ff84": {
+      "children": [],
+      "id": "f1c88ec4-4963-501f-a723-825a7af1ff84",
+      "prefLabels": {
+        "en": {
+          "id": "4050b18b-9a99-5cf8-9e4a-dc9aa7e7e273",
+          "value": "Large (250–999)"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    }
+  },
+  "id": "f33fc858-36ac-5397-8085-a4c9ec9e504c",
+  "nodeType": "ConceptScheme",
+  "prefLabels": {
+    "en": {
+      "id": "e03ef0a3-e0b2-51f6-b865-b8aafd338a14",
+      "value": "SizeBand"
+    }
+  },
+  "scopeNotes": {},
+  "uri": null
+}

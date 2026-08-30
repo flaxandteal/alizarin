@@ -1,0 +1,229 @@
+{
+  "__allConcepts": {
+    "0a84d648-78c2-5d97-98c2-78fd1ef7b14a": {
+      "children": [],
+      "id": "0a84d648-78c2-5d97-98c2-78fd1ef7b14a",
+      "prefLabels": {
+        "en": {
+          "id": "f4d16023-d3b7-500a-bf31-083aa0e89e33",
+          "value": "Coastal"
+        }
+      },
+      "sortOrder": 5,
+      "source": null,
+      "uri": null
+    },
+    "15e6e4cf-f29e-53be-a441-5feb5431d9d6": {
+      "children": [],
+      "id": "15e6e4cf-f29e-53be-a441-5feb5431d9d6",
+      "prefLabels": {
+        "en": {
+          "id": "09272568-25fe-5d4e-b623-466be436d9d0",
+          "value": "Port"
+        }
+      },
+      "sortOrder": 6,
+      "source": null,
+      "uri": null
+    },
+    "5b7c73e6-d0c1-545c-b765-5b8bc25805a5": {
+      "children": [],
+      "id": "5b7c73e6-d0c1-545c-b765-5b8bc25805a5",
+      "prefLabels": {
+        "en": {
+          "id": "986b1125-4584-5f00-9ea3-879df33e8c59",
+          "value": "Industrial"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    },
+    "64c6d9e4-09d1-59ac-8467-ece33faf08f8": {
+      "children": [],
+      "id": "64c6d9e4-09d1-59ac-8467-ece33faf08f8",
+      "prefLabels": {
+        "en": {
+          "id": "2c5f89f8-8a06-52a1-816d-f4ce071e2a31",
+          "value": "Central business district"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "66bdfec8-92d5-5302-9efd-229b990e22a8": {
+      "children": [],
+      "id": "66bdfec8-92d5-5302-9efd-229b990e22a8",
+      "prefLabels": {
+        "en": {
+          "id": "81a6908b-2e05-5e31-8105-729a7311a9cf",
+          "value": "Peri-urban"
+        }
+      },
+      "sortOrder": 7,
+      "source": null,
+      "uri": null
+    },
+    "6942e0ef-f051-54b2-a9b5-cf44c08d528c": {
+      "children": [],
+      "id": "6942e0ef-f051-54b2-a9b5-cf44c08d528c",
+      "prefLabels": {
+        "en": {
+          "id": "7e097b8a-b311-520c-8696-b60c5e454d26",
+          "value": "Residential"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "f9914130-890e-5695-9c1a-78a5b4a25d27": {
+      "children": [],
+      "id": "f9914130-890e-5695-9c1a-78a5b4a25d27",
+      "prefLabels": {
+        "en": {
+          "id": "0a398152-7360-5362-a40c-1e66f8a72a0f",
+          "value": "Heritage"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    }
+  },
+  "__values": {
+    "09272568-25fe-5d4e-b623-466be436d9d0": {
+      "id": "09272568-25fe-5d4e-b623-466be436d9d0",
+      "value": "Port"
+    },
+    "0a398152-7360-5362-a40c-1e66f8a72a0f": {
+      "id": "0a398152-7360-5362-a40c-1e66f8a72a0f",
+      "value": "Heritage"
+    },
+    "2c5f89f8-8a06-52a1-816d-f4ce071e2a31": {
+      "id": "2c5f89f8-8a06-52a1-816d-f4ce071e2a31",
+      "value": "Central business district"
+    },
+    "7e097b8a-b311-520c-8696-b60c5e454d26": {
+      "id": "7e097b8a-b311-520c-8696-b60c5e454d26",
+      "value": "Residential"
+    },
+    "81a6908b-2e05-5e31-8105-729a7311a9cf": {
+      "id": "81a6908b-2e05-5e31-8105-729a7311a9cf",
+      "value": "Peri-urban"
+    },
+    "986b1125-4584-5f00-9ea3-879df33e8c59": {
+      "id": "986b1125-4584-5f00-9ea3-879df33e8c59",
+      "value": "Industrial"
+    },
+    "f4d16023-d3b7-500a-bf31-083aa0e89e33": {
+      "id": "f4d16023-d3b7-500a-bf31-083aa0e89e33",
+      "value": "Coastal"
+    }
+  },
+  "altLabels": {},
+  "concepts": {
+    "0a84d648-78c2-5d97-98c2-78fd1ef7b14a": {
+      "children": [],
+      "id": "0a84d648-78c2-5d97-98c2-78fd1ef7b14a",
+      "prefLabels": {
+        "en": {
+          "id": "f4d16023-d3b7-500a-bf31-083aa0e89e33",
+          "value": "Coastal"
+        }
+      },
+      "sortOrder": 5,
+      "source": null,
+      "uri": null
+    },
+    "15e6e4cf-f29e-53be-a441-5feb5431d9d6": {
+      "children": [],
+      "id": "15e6e4cf-f29e-53be-a441-5feb5431d9d6",
+      "prefLabels": {
+        "en": {
+          "id": "09272568-25fe-5d4e-b623-466be436d9d0",
+          "value": "Port"
+        }
+      },
+      "sortOrder": 6,
+      "source": null,
+      "uri": null
+    },
+    "5b7c73e6-d0c1-545c-b765-5b8bc25805a5": {
+      "children": [],
+      "id": "5b7c73e6-d0c1-545c-b765-5b8bc25805a5",
+      "prefLabels": {
+        "en": {
+          "id": "986b1125-4584-5f00-9ea3-879df33e8c59",
+          "value": "Industrial"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    },
+    "64c6d9e4-09d1-59ac-8467-ece33faf08f8": {
+      "children": [],
+      "id": "64c6d9e4-09d1-59ac-8467-ece33faf08f8",
+      "prefLabels": {
+        "en": {
+          "id": "2c5f89f8-8a06-52a1-816d-f4ce071e2a31",
+          "value": "Central business district"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "66bdfec8-92d5-5302-9efd-229b990e22a8": {
+      "children": [],
+      "id": "66bdfec8-92d5-5302-9efd-229b990e22a8",
+      "prefLabels": {
+        "en": {
+          "id": "81a6908b-2e05-5e31-8105-729a7311a9cf",
+          "value": "Peri-urban"
+        }
+      },
+      "sortOrder": 7,
+      "source": null,
+      "uri": null
+    },
+    "6942e0ef-f051-54b2-a9b5-cf44c08d528c": {
+      "children": [],
+      "id": "6942e0ef-f051-54b2-a9b5-cf44c08d528c",
+      "prefLabels": {
+        "en": {
+          "id": "7e097b8a-b311-520c-8696-b60c5e454d26",
+          "value": "Residential"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "f9914130-890e-5695-9c1a-78a5b4a25d27": {
+      "children": [],
+      "id": "f9914130-890e-5695-9c1a-78a5b4a25d27",
+      "prefLabels": {
+        "en": {
+          "id": "0a398152-7360-5362-a40c-1e66f8a72a0f",
+          "value": "Heritage"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    }
+  },
+  "id": "708b24a0-6842-52d0-8762-e5591c7f3f1a",
+  "nodeType": "ConceptScheme",
+  "prefLabels": {
+    "en": {
+      "id": "3192d46d-afbc-5d8f-83dc-809c88440d07",
+      "value": "ClusterType"
+    }
+  },
+  "scopeNotes": {},
+  "uri": null
+}

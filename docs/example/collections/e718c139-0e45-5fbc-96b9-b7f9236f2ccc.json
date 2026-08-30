@@ -1,0 +1,139 @@
+{
+  "__allConcepts": {
+    "04482386-7e56-58be-8c3e-8100ca4c8dea": {
+      "children": [],
+      "id": "04482386-7e56-58be-8c3e-8100ca4c8dea",
+      "prefLabels": {
+        "en": {
+          "id": "fe2577f2-9142-52d6-a26b-55fc7afdb388",
+          "value": "High"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    },
+    "bb51d449-975b-57f9-9ab5-7973400343c4": {
+      "children": [],
+      "id": "bb51d449-975b-57f9-9ab5-7973400343c4",
+      "prefLabels": {
+        "en": {
+          "id": "888a8d12-7421-5b4a-ae11-aea3d9f1ce61",
+          "value": "Very high"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    },
+    "d31b0f6a-fb69-551b-8f59-2f8620330d7a": {
+      "children": [],
+      "id": "d31b0f6a-fb69-551b-8f59-2f8620330d7a",
+      "prefLabels": {
+        "en": {
+          "id": "59ca82aa-23e2-5626-9a68-131080c7bddb",
+          "value": "Low"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "f36f7e5c-2a07-5cfb-a507-0ef5ea3c124c": {
+      "children": [],
+      "id": "f36f7e5c-2a07-5cfb-a507-0ef5ea3c124c",
+      "prefLabels": {
+        "en": {
+          "id": "e23ec276-ae36-593f-a97e-2bd6fb9d7735",
+          "value": "Medium"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    }
+  },
+  "__values": {
+    "59ca82aa-23e2-5626-9a68-131080c7bddb": {
+      "id": "59ca82aa-23e2-5626-9a68-131080c7bddb",
+      "value": "Low"
+    },
+    "888a8d12-7421-5b4a-ae11-aea3d9f1ce61": {
+      "id": "888a8d12-7421-5b4a-ae11-aea3d9f1ce61",
+      "value": "Very high"
+    },
+    "e23ec276-ae36-593f-a97e-2bd6fb9d7735": {
+      "id": "e23ec276-ae36-593f-a97e-2bd6fb9d7735",
+      "value": "Medium"
+    },
+    "fe2577f2-9142-52d6-a26b-55fc7afdb388": {
+      "id": "fe2577f2-9142-52d6-a26b-55fc7afdb388",
+      "value": "High"
+    }
+  },
+  "altLabels": {},
+  "concepts": {
+    "04482386-7e56-58be-8c3e-8100ca4c8dea": {
+      "children": [],
+      "id": "04482386-7e56-58be-8c3e-8100ca4c8dea",
+      "prefLabels": {
+        "en": {
+          "id": "fe2577f2-9142-52d6-a26b-55fc7afdb388",
+          "value": "High"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    },
+    "bb51d449-975b-57f9-9ab5-7973400343c4": {
+      "children": [],
+      "id": "bb51d449-975b-57f9-9ab5-7973400343c4",
+      "prefLabels": {
+        "en": {
+          "id": "888a8d12-7421-5b4a-ae11-aea3d9f1ce61",
+          "value": "Very high"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    },
+    "d31b0f6a-fb69-551b-8f59-2f8620330d7a": {
+      "children": [],
+      "id": "d31b0f6a-fb69-551b-8f59-2f8620330d7a",
+      "prefLabels": {
+        "en": {
+          "id": "59ca82aa-23e2-5626-9a68-131080c7bddb",
+          "value": "Low"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "f36f7e5c-2a07-5cfb-a507-0ef5ea3c124c": {
+      "children": [],
+      "id": "f36f7e5c-2a07-5cfb-a507-0ef5ea3c124c",
+      "prefLabels": {
+        "en": {
+          "id": "e23ec276-ae36-593f-a97e-2bd6fb9d7735",
+          "value": "Medium"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    }
+  },
+  "id": "e718c139-0e45-5fbc-96b9-b7f9236f2ccc",
+  "nodeType": "ConceptScheme",
+  "prefLabels": {
+    "en": {
+      "id": "e1b0bc92-a48e-54b1-8914-030312a3493b",
+      "value": "SeverityBand"
+    }
+  },
+  "scopeNotes": {},
+  "uri": null
+}

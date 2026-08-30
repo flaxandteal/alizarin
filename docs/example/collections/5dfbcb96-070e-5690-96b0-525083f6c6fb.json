@@ -1,0 +1,679 @@
+{
+  "__allConcepts": {
+    "00bced7c-b454-554a-998e-7ded5b54ef66": {
+      "children": [],
+      "id": "00bced7c-b454-554a-998e-7ded5b54ef66",
+      "prefLabels": {
+        "en": {
+          "id": "221e730b-b838-530b-afcc-cfd74b7777d7",
+          "value": "Earthquake — weak (PGA <0.05 g)"
+        }
+      },
+      "sortOrder": 20,
+      "source": null,
+      "uri": null
+    },
+    "0e2ecfb9-a02b-5636-868e-aedaf948cd97": {
+      "children": [],
+      "id": "0e2ecfb9-a02b-5636-868e-aedaf948cd97",
+      "prefLabels": {
+        "en": {
+          "id": "595a027c-1247-5439-a118-ea48ca29694a",
+          "value": "Heat — very hot (40–45 °C)"
+        }
+      },
+      "sortOrder": 32,
+      "source": null,
+      "uri": null
+    },
+    "112cdc8f-019b-5520-acbb-2774a105eb20": {
+      "children": [],
+      "id": "112cdc8f-019b-5520-acbb-2774a105eb20",
+      "prefLabels": {
+        "en": {
+          "id": "a1f8b6ef-8a02-5752-841d-8a72dde41c56",
+          "value": "Heat — extreme (>45 °C)"
+        }
+      },
+      "sortOrder": 33,
+      "source": null,
+      "uri": null
+    },
+    "16c923c5-289f-552b-8504-8be74fa323c0": {
+      "children": [],
+      "id": "16c923c5-289f-552b-8504-8be74fa323c0",
+      "prefLabels": {
+        "en": {
+          "id": "47d3f742-5f91-5d80-9133-9551167bce58",
+          "value": "Earthquake — strong (0.15–0.3 g)"
+        }
+      },
+      "sortOrder": 22,
+      "source": null,
+      "uri": null
+    },
+    "1d1985c8-22a6-5831-ba4c-e28a48da4a9c": {
+      "children": [],
+      "id": "1d1985c8-22a6-5831-ba4c-e28a48da4a9c",
+      "prefLabels": {
+        "en": {
+          "id": "c0e566fd-8b27-5103-ae01-8ca59ba12db6",
+          "value": "Earthquake — moderate (0.05–0.15 g)"
+        }
+      },
+      "sortOrder": 21,
+      "source": null,
+      "uri": null
+    },
+    "26cd86af-7c29-5287-9b95-e0b217293ce2": {
+      "children": [],
+      "id": "26cd86af-7c29-5287-9b95-e0b217293ce2",
+      "prefLabels": {
+        "en": {
+          "id": "247a9257-5820-5c2a-8ecf-6a97c23c1d67",
+          "value": "Wind — Cat 4 cyclone"
+        }
+      },
+      "sortOrder": 14,
+      "source": null,
+      "uri": null
+    },
+    "281c58bd-0f25-53c9-8209-db913066ddc4": {
+      "children": [],
+      "id": "281c58bd-0f25-53c9-8209-db913066ddc4",
+      "prefLabels": {
+        "en": {
+          "id": "dfd02a98-0db0-554c-a05b-0ba2341c163f",
+          "value": "Flood — nuisance (<0.3 m)"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "2ce85cce-f9e5-58e3-81f1-a78a6636f567": {
+      "children": [],
+      "id": "2ce85cce-f9e5-58e3-81f1-a78a6636f567",
+      "prefLabels": {
+        "en": {
+          "id": "fcfcc783-a8ed-550d-bff7-ace55d12df51",
+          "value": "Wind — tropical storm"
+        }
+      },
+      "sortOrder": 10,
+      "source": null,
+      "uri": null
+    },
+    "36e8fedc-5a49-5f43-b726-ee4ed4e3616a": {
+      "children": [],
+      "id": "36e8fedc-5a49-5f43-b726-ee4ed4e3616a",
+      "prefLabels": {
+        "en": {
+          "id": "49e60a4b-c1d1-5a9a-af3b-435b4bca662c",
+          "value": "Wind — Cat 1 cyclone"
+        }
+      },
+      "sortOrder": 11,
+      "source": null,
+      "uri": null
+    },
+    "44b9ab1f-9d31-524b-9ee3-6af8a711e84d": {
+      "children": [],
+      "id": "44b9ab1f-9d31-524b-9ee3-6af8a711e84d",
+      "prefLabels": {
+        "en": {
+          "id": "13d35890-2595-5f7e-8d48-028b633782e3",
+          "value": "Earthquake — severe (>0.3 g)"
+        }
+      },
+      "sortOrder": 23,
+      "source": null,
+      "uri": null
+    },
+    "62383ab1-1664-5e7c-9462-6f7b8d13bbac": {
+      "children": [],
+      "id": "62383ab1-1664-5e7c-9462-6f7b8d13bbac",
+      "prefLabels": {
+        "en": {
+          "id": "0016d594-4017-53c9-873f-ba4313121e0b",
+          "value": "Heat — hot (35–40 °C)"
+        }
+      },
+      "sortOrder": 31,
+      "source": null,
+      "uri": null
+    },
+    "79b00bc9-d3a0-5ab1-8166-b1a0bbc791a1": {
+      "children": [],
+      "id": "79b00bc9-d3a0-5ab1-8166-b1a0bbc791a1",
+      "prefLabels": {
+        "en": {
+          "id": "2e4e39a3-d950-5a09-a18d-f8ed9ea721c7",
+          "value": "Flood — deep (1.0–3.0 m)"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    },
+    "7ef624be-ee76-5b61-80c9-cd5f5d86f3da": {
+      "children": [],
+      "id": "7ef624be-ee76-5b61-80c9-cd5f5d86f3da",
+      "prefLabels": {
+        "en": {
+          "id": "32373ec5-6d80-5930-8e7f-6c636e4a25bf",
+          "value": "Crowd — moderate (2–4 p/m²)"
+        }
+      },
+      "sortOrder": 41,
+      "source": null,
+      "uri": null
+    },
+    "9482fa98-8f18-5fbd-a415-2633038a3e05": {
+      "children": [],
+      "id": "9482fa98-8f18-5fbd-a415-2633038a3e05",
+      "prefLabels": {
+        "en": {
+          "id": "d2cda042-814f-517b-9407-c7f3cd163a8a",
+          "value": "Crowd — dense (4–6 p/m²)"
+        }
+      },
+      "sortOrder": 42,
+      "source": null,
+      "uri": null
+    },
+    "a349de18-4958-5ce5-ab5f-201c893745d0": {
+      "children": [],
+      "id": "a349de18-4958-5ce5-ab5f-201c893745d0",
+      "prefLabels": {
+        "en": {
+          "id": "ea9715ba-c5a3-5ce4-9299-a0ed3f9342a0",
+          "value": "Crowd — sparse (<2 p/m²)"
+        }
+      },
+      "sortOrder": 40,
+      "source": null,
+      "uri": null
+    },
+    "afacf638-128d-5206-ac77-164a03cc46c3": {
+      "children": [],
+      "id": "afacf638-128d-5206-ac77-164a03cc46c3",
+      "prefLabels": {
+        "en": {
+          "id": "4263ed00-caf6-51a9-802b-4aee8060b43a",
+          "value": "Wind — Cat 5 cyclone"
+        }
+      },
+      "sortOrder": 15,
+      "source": null,
+      "uri": null
+    },
+    "bd4b264c-76ce-51c9-8752-1e8b510fc403": {
+      "children": [],
+      "id": "bd4b264c-76ce-51c9-8752-1e8b510fc403",
+      "prefLabels": {
+        "en": {
+          "id": "a5cea6dd-8a1d-515d-a963-e68b44b982cf",
+          "value": "Heat — warm (<35 °C)"
+        }
+      },
+      "sortOrder": 30,
+      "source": null,
+      "uri": null
+    },
+    "c559cb86-7c9d-5134-b71b-90c3b3a23e9d": {
+      "children": [],
+      "id": "c559cb86-7c9d-5134-b71b-90c3b3a23e9d",
+      "prefLabels": {
+        "en": {
+          "id": "8fe611ab-a3ce-5d1b-838d-a475b7cb51df",
+          "value": "Wind — Cat 2 cyclone"
+        }
+      },
+      "sortOrder": 12,
+      "source": null,
+      "uri": null
+    },
+    "e18d6a5c-fb7e-5434-91f8-4016d238d975": {
+      "children": [],
+      "id": "e18d6a5c-fb7e-5434-91f8-4016d238d975",
+      "prefLabels": {
+        "en": {
+          "id": "7b15b0d3-3040-5981-80eb-05165170b72a",
+          "value": "Flood — shallow (0.3–1.0 m)"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "e40a194e-422d-5302-8793-2a7b03e12d4c": {
+      "children": [],
+      "id": "e40a194e-422d-5302-8793-2a7b03e12d4c",
+      "prefLabels": {
+        "en": {
+          "id": "bb2adb22-e005-5e54-b153-01fe84fa8018",
+          "value": "Crowd — critical (>6 p/m²)"
+        }
+      },
+      "sortOrder": 43,
+      "source": null,
+      "uri": null
+    },
+    "eb617bfc-ee12-5ef0-92c9-a40c0ca403b1": {
+      "children": [],
+      "id": "eb617bfc-ee12-5ef0-92c9-a40c0ca403b1",
+      "prefLabels": {
+        "en": {
+          "id": "c3b6da2d-f325-57ee-8883-ec2e05aa912c",
+          "value": "Wind — Cat 3 cyclone"
+        }
+      },
+      "sortOrder": 13,
+      "source": null,
+      "uri": null
+    },
+    "ecfc5c63-5559-55ef-89d7-b4a1b3ebb047": {
+      "children": [],
+      "id": "ecfc5c63-5559-55ef-89d7-b4a1b3ebb047",
+      "prefLabels": {
+        "en": {
+          "id": "8515d8b5-6cf9-55f7-b831-c021b418f3a4",
+          "value": "Flood — extreme (>3.0 m)"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    }
+  },
+  "__values": {
+    "0016d594-4017-53c9-873f-ba4313121e0b": {
+      "id": "0016d594-4017-53c9-873f-ba4313121e0b",
+      "value": "Heat — hot (35–40 °C)"
+    },
+    "13d35890-2595-5f7e-8d48-028b633782e3": {
+      "id": "13d35890-2595-5f7e-8d48-028b633782e3",
+      "value": "Earthquake — severe (>0.3 g)"
+    },
+    "221e730b-b838-530b-afcc-cfd74b7777d7": {
+      "id": "221e730b-b838-530b-afcc-cfd74b7777d7",
+      "value": "Earthquake — weak (PGA <0.05 g)"
+    },
+    "247a9257-5820-5c2a-8ecf-6a97c23c1d67": {
+      "id": "247a9257-5820-5c2a-8ecf-6a97c23c1d67",
+      "value": "Wind — Cat 4 cyclone"
+    },
+    "2e4e39a3-d950-5a09-a18d-f8ed9ea721c7": {
+      "id": "2e4e39a3-d950-5a09-a18d-f8ed9ea721c7",
+      "value": "Flood — deep (1.0–3.0 m)"
+    },
+    "32373ec5-6d80-5930-8e7f-6c636e4a25bf": {
+      "id": "32373ec5-6d80-5930-8e7f-6c636e4a25bf",
+      "value": "Crowd — moderate (2–4 p/m²)"
+    },
+    "4263ed00-caf6-51a9-802b-4aee8060b43a": {
+      "id": "4263ed00-caf6-51a9-802b-4aee8060b43a",
+      "value": "Wind — Cat 5 cyclone"
+    },
+    "47d3f742-5f91-5d80-9133-9551167bce58": {
+      "id": "47d3f742-5f91-5d80-9133-9551167bce58",
+      "value": "Earthquake — strong (0.15–0.3 g)"
+    },
+    "49e60a4b-c1d1-5a9a-af3b-435b4bca662c": {
+      "id": "49e60a4b-c1d1-5a9a-af3b-435b4bca662c",
+      "value": "Wind — Cat 1 cyclone"
+    },
+    "595a027c-1247-5439-a118-ea48ca29694a": {
+      "id": "595a027c-1247-5439-a118-ea48ca29694a",
+      "value": "Heat — very hot (40–45 °C)"
+    },
+    "7b15b0d3-3040-5981-80eb-05165170b72a": {
+      "id": "7b15b0d3-3040-5981-80eb-05165170b72a",
+      "value": "Flood — shallow (0.3–1.0 m)"
+    },
+    "8515d8b5-6cf9-55f7-b831-c021b418f3a4": {
+      "id": "8515d8b5-6cf9-55f7-b831-c021b418f3a4",
+      "value": "Flood — extreme (>3.0 m)"
+    },
+    "8fe611ab-a3ce-5d1b-838d-a475b7cb51df": {
+      "id": "8fe611ab-a3ce-5d1b-838d-a475b7cb51df",
+      "value": "Wind — Cat 2 cyclone"
+    },
+    "a1f8b6ef-8a02-5752-841d-8a72dde41c56": {
+      "id": "a1f8b6ef-8a02-5752-841d-8a72dde41c56",
+      "value": "Heat — extreme (>45 °C)"
+    },
+    "a5cea6dd-8a1d-515d-a963-e68b44b982cf": {
+      "id": "a5cea6dd-8a1d-515d-a963-e68b44b982cf",
+      "value": "Heat — warm (<35 °C)"
+    },
+    "bb2adb22-e005-5e54-b153-01fe84fa8018": {
+      "id": "bb2adb22-e005-5e54-b153-01fe84fa8018",
+      "value": "Crowd — critical (>6 p/m²)"
+    },
+    "c0e566fd-8b27-5103-ae01-8ca59ba12db6": {
+      "id": "c0e566fd-8b27-5103-ae01-8ca59ba12db6",
+      "value": "Earthquake — moderate (0.05–0.15 g)"
+    },
+    "c3b6da2d-f325-57ee-8883-ec2e05aa912c": {
+      "id": "c3b6da2d-f325-57ee-8883-ec2e05aa912c",
+      "value": "Wind — Cat 3 cyclone"
+    },
+    "d2cda042-814f-517b-9407-c7f3cd163a8a": {
+      "id": "d2cda042-814f-517b-9407-c7f3cd163a8a",
+      "value": "Crowd — dense (4–6 p/m²)"
+    },
+    "dfd02a98-0db0-554c-a05b-0ba2341c163f": {
+      "id": "dfd02a98-0db0-554c-a05b-0ba2341c163f",
+      "value": "Flood — nuisance (<0.3 m)"
+    },
+    "ea9715ba-c5a3-5ce4-9299-a0ed3f9342a0": {
+      "id": "ea9715ba-c5a3-5ce4-9299-a0ed3f9342a0",
+      "value": "Crowd — sparse (<2 p/m²)"
+    },
+    "fcfcc783-a8ed-550d-bff7-ace55d12df51": {
+      "id": "fcfcc783-a8ed-550d-bff7-ace55d12df51",
+      "value": "Wind — tropical storm"
+    }
+  },
+  "altLabels": {},
+  "concepts": {
+    "00bced7c-b454-554a-998e-7ded5b54ef66": {
+      "children": [],
+      "id": "00bced7c-b454-554a-998e-7ded5b54ef66",
+      "prefLabels": {
+        "en": {
+          "id": "221e730b-b838-530b-afcc-cfd74b7777d7",
+          "value": "Earthquake — weak (PGA <0.05 g)"
+        }
+      },
+      "sortOrder": 20,
+      "source": null,
+      "uri": null
+    },
+    "0e2ecfb9-a02b-5636-868e-aedaf948cd97": {
+      "children": [],
+      "id": "0e2ecfb9-a02b-5636-868e-aedaf948cd97",
+      "prefLabels": {
+        "en": {
+          "id": "595a027c-1247-5439-a118-ea48ca29694a",
+          "value": "Heat — very hot (40–45 °C)"
+        }
+      },
+      "sortOrder": 32,
+      "source": null,
+      "uri": null
+    },
+    "112cdc8f-019b-5520-acbb-2774a105eb20": {
+      "children": [],
+      "id": "112cdc8f-019b-5520-acbb-2774a105eb20",
+      "prefLabels": {
+        "en": {
+          "id": "a1f8b6ef-8a02-5752-841d-8a72dde41c56",
+          "value": "Heat — extreme (>45 °C)"
+        }
+      },
+      "sortOrder": 33,
+      "source": null,
+      "uri": null
+    },
+    "16c923c5-289f-552b-8504-8be74fa323c0": {
+      "children": [],
+      "id": "16c923c5-289f-552b-8504-8be74fa323c0",
+      "prefLabels": {
+        "en": {
+          "id": "47d3f742-5f91-5d80-9133-9551167bce58",
+          "value": "Earthquake — strong (0.15–0.3 g)"
+        }
+      },
+      "sortOrder": 22,
+      "source": null,
+      "uri": null
+    },
+    "1d1985c8-22a6-5831-ba4c-e28a48da4a9c": {
+      "children": [],
+      "id": "1d1985c8-22a6-5831-ba4c-e28a48da4a9c",
+      "prefLabels": {
+        "en": {
+          "id": "c0e566fd-8b27-5103-ae01-8ca59ba12db6",
+          "value": "Earthquake — moderate (0.05–0.15 g)"
+        }
+      },
+      "sortOrder": 21,
+      "source": null,
+      "uri": null
+    },
+    "26cd86af-7c29-5287-9b95-e0b217293ce2": {
+      "children": [],
+      "id": "26cd86af-7c29-5287-9b95-e0b217293ce2",
+      "prefLabels": {
+        "en": {
+          "id": "247a9257-5820-5c2a-8ecf-6a97c23c1d67",
+          "value": "Wind — Cat 4 cyclone"
+        }
+      },
+      "sortOrder": 14,
+      "source": null,
+      "uri": null
+    },
+    "281c58bd-0f25-53c9-8209-db913066ddc4": {
+      "children": [],
+      "id": "281c58bd-0f25-53c9-8209-db913066ddc4",
+      "prefLabels": {
+        "en": {
+          "id": "dfd02a98-0db0-554c-a05b-0ba2341c163f",
+          "value": "Flood — nuisance (<0.3 m)"
+        }
+      },
+      "sortOrder": 1,
+      "source": null,
+      "uri": null
+    },
+    "2ce85cce-f9e5-58e3-81f1-a78a6636f567": {
+      "children": [],
+      "id": "2ce85cce-f9e5-58e3-81f1-a78a6636f567",
+      "prefLabels": {
+        "en": {
+          "id": "fcfcc783-a8ed-550d-bff7-ace55d12df51",
+          "value": "Wind — tropical storm"
+        }
+      },
+      "sortOrder": 10,
+      "source": null,
+      "uri": null
+    },
+    "36e8fedc-5a49-5f43-b726-ee4ed4e3616a": {
+      "children": [],
+      "id": "36e8fedc-5a49-5f43-b726-ee4ed4e3616a",
+      "prefLabels": {
+        "en": {
+          "id": "49e60a4b-c1d1-5a9a-af3b-435b4bca662c",
+          "value": "Wind — Cat 1 cyclone"
+        }
+      },
+      "sortOrder": 11,
+      "source": null,
+      "uri": null
+    },
+    "44b9ab1f-9d31-524b-9ee3-6af8a711e84d": {
+      "children": [],
+      "id": "44b9ab1f-9d31-524b-9ee3-6af8a711e84d",
+      "prefLabels": {
+        "en": {
+          "id": "13d35890-2595-5f7e-8d48-028b633782e3",
+          "value": "Earthquake — severe (>0.3 g)"
+        }
+      },
+      "sortOrder": 23,
+      "source": null,
+      "uri": null
+    },
+    "62383ab1-1664-5e7c-9462-6f7b8d13bbac": {
+      "children": [],
+      "id": "62383ab1-1664-5e7c-9462-6f7b8d13bbac",
+      "prefLabels": {
+        "en": {
+          "id": "0016d594-4017-53c9-873f-ba4313121e0b",
+          "value": "Heat — hot (35–40 °C)"
+        }
+      },
+      "sortOrder": 31,
+      "source": null,
+      "uri": null
+    },
+    "79b00bc9-d3a0-5ab1-8166-b1a0bbc791a1": {
+      "children": [],
+      "id": "79b00bc9-d3a0-5ab1-8166-b1a0bbc791a1",
+      "prefLabels": {
+        "en": {
+          "id": "2e4e39a3-d950-5a09-a18d-f8ed9ea721c7",
+          "value": "Flood — deep (1.0–3.0 m)"
+        }
+      },
+      "sortOrder": 3,
+      "source": null,
+      "uri": null
+    },
+    "7ef624be-ee76-5b61-80c9-cd5f5d86f3da": {
+      "children": [],
+      "id": "7ef624be-ee76-5b61-80c9-cd5f5d86f3da",
+      "prefLabels": {
+        "en": {
+          "id": "32373ec5-6d80-5930-8e7f-6c636e4a25bf",
+          "value": "Crowd — moderate (2–4 p/m²)"
+        }
+      },
+      "sortOrder": 41,
+      "source": null,
+      "uri": null
+    },
+    "9482fa98-8f18-5fbd-a415-2633038a3e05": {
+      "children": [],
+      "id": "9482fa98-8f18-5fbd-a415-2633038a3e05",
+      "prefLabels": {
+        "en": {
+          "id": "d2cda042-814f-517b-9407-c7f3cd163a8a",
+          "value": "Crowd — dense (4–6 p/m²)"
+        }
+      },
+      "sortOrder": 42,
+      "source": null,
+      "uri": null
+    },
+    "a349de18-4958-5ce5-ab5f-201c893745d0": {
+      "children": [],
+      "id": "a349de18-4958-5ce5-ab5f-201c893745d0",
+      "prefLabels": {
+        "en": {
+          "id": "ea9715ba-c5a3-5ce4-9299-a0ed3f9342a0",
+          "value": "Crowd — sparse (<2 p/m²)"
+        }
+      },
+      "sortOrder": 40,
+      "source": null,
+      "uri": null
+    },
+    "afacf638-128d-5206-ac77-164a03cc46c3": {
+      "children": [],
+      "id": "afacf638-128d-5206-ac77-164a03cc46c3",
+      "prefLabels": {
+        "en": {
+          "id": "4263ed00-caf6-51a9-802b-4aee8060b43a",
+          "value": "Wind — Cat 5 cyclone"
+        }
+      },
+      "sortOrder": 15,
+      "source": null,
+      "uri": null
+    },
+    "bd4b264c-76ce-51c9-8752-1e8b510fc403": {
+      "children": [],
+      "id": "bd4b264c-76ce-51c9-8752-1e8b510fc403",
+      "prefLabels": {
+        "en": {
+          "id": "a5cea6dd-8a1d-515d-a963-e68b44b982cf",
+          "value": "Heat — warm (<35 °C)"
+        }
+      },
+      "sortOrder": 30,
+      "source": null,
+      "uri": null
+    },
+    "c559cb86-7c9d-5134-b71b-90c3b3a23e9d": {
+      "children": [],
+      "id": "c559cb86-7c9d-5134-b71b-90c3b3a23e9d",
+      "prefLabels": {
+        "en": {
+          "id": "8fe611ab-a3ce-5d1b-838d-a475b7cb51df",
+          "value": "Wind — Cat 2 cyclone"
+        }
+      },
+      "sortOrder": 12,
+      "source": null,
+      "uri": null
+    },
+    "e18d6a5c-fb7e-5434-91f8-4016d238d975": {
+      "children": [],
+      "id": "e18d6a5c-fb7e-5434-91f8-4016d238d975",
+      "prefLabels": {
+        "en": {
+          "id": "7b15b0d3-3040-5981-80eb-05165170b72a",
+          "value": "Flood — shallow (0.3–1.0 m)"
+        }
+      },
+      "sortOrder": 2,
+      "source": null,
+      "uri": null
+    },
+    "e40a194e-422d-5302-8793-2a7b03e12d4c": {
+      "children": [],
+      "id": "e40a194e-422d-5302-8793-2a7b03e12d4c",
+      "prefLabels": {
+        "en": {
+          "id": "bb2adb22-e005-5e54-b153-01fe84fa8018",
+          "value": "Crowd — critical (>6 p/m²)"
+        }
+      },
+      "sortOrder": 43,
+      "source": null,
+      "uri": null
+    },
+    "eb617bfc-ee12-5ef0-92c9-a40c0ca403b1": {
+      "children": [],
+      "id": "eb617bfc-ee12-5ef0-92c9-a40c0ca403b1",
+      "prefLabels": {
+        "en": {
+          "id": "c3b6da2d-f325-57ee-8883-ec2e05aa912c",
+          "value": "Wind — Cat 3 cyclone"
+        }
+      },
+      "sortOrder": 13,
+      "source": null,
+      "uri": null
+    },
+    "ecfc5c63-5559-55ef-89d7-b4a1b3ebb047": {
+      "children": [],
+      "id": "ecfc5c63-5559-55ef-89d7-b4a1b3ebb047",
+      "prefLabels": {
+        "en": {
+          "id": "8515d8b5-6cf9-55f7-b831-c021b418f3a4",
+          "value": "Flood — extreme (>3.0 m)"
+        }
+      },
+      "sortOrder": 4,
+      "source": null,
+      "uri": null
+    }
+  },
+  "id": "5dfbcb96-070e-5690-96b0-525083f6c6fb",
+  "nodeType": "ConceptScheme",
+  "prefLabels": {
+    "en": {
+      "id": "32b7a608-2323-5ce1-9f9f-d78f6359a501",
+      "value": "IntensityBand"
+    }
+  },
+  "scopeNotes": {},
+  "uri": null
+}

@@ -53,14 +53,9 @@ for cargo_file in "$ROOT_DIR"/crates/*/Cargo.toml; do
     fi
 done
 
-# Update Python extension Cargo.toml files
-for cargo_file in "$ROOT_DIR"/ext/python/*/Cargo.toml; do
-    if [ -f "$cargo_file" ]; then
-        ext_name=$(basename "$(dirname "$cargo_file")")
-        sed -i "0,/^version = /s/^version = .*/version = \"$CARGO_VERSION\"/" "$cargo_file"
-        echo "  ✓ ext/python/$ext_name/Cargo.toml"
-    fi
-done
+# (ext-core / ext-python / ext-js crates are handled by the ext/<name>/ loop
+# below - the current ext/<name>/{core,python,js} layout. The old ext/python/*
+# and ext/js/@alizarin/* container layout is gone.)
 
 # Update Python pyproject.toml if it exists
 # Convert to PEP 440 format: 0.2.1-alpha.12 -> 0.2.1a12
@@ -89,23 +84,7 @@ if [ -f "$ROOT_DIR/crates/alizarin-napi/package.json" ]; then
     echo "  ✓ crates/alizarin-napi/package.json"
 fi
 
-# Update all JS extensions in ext/js/@alizarin/*/package.json
-for ext_pkg in "$ROOT_DIR"/ext/js/@alizarin/*/package.json; do
-    if [ -f "$ext_pkg" ]; then
-        ext_name=$(basename "$(dirname "$ext_pkg")")
-        node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('$ext_pkg', 'utf8'));
-            pkg.version = '$VERSION';
-            pkg.peerDependencies = pkg.peerDependencies || {};
-            pkg.peerDependencies.alizarin = '$VERSION';
-            fs.writeFileSync('$ext_pkg', JSON.stringify(pkg, null, 2) + '\n');
-        "
-        echo "  ✓ ext/js/@alizarin/$ext_name/package.json (version + peerDependencies)"
-    fi
-done
-
-# Update filelist JS extension (lives outside ext/js/@alizarin/)
+# Update filelist JS extension
 if [ -f "$ROOT_DIR/ext/filelist/js/package.json" ]; then
     node -e "
         const fs = require('fs');
@@ -124,18 +103,6 @@ for filelist_cargo in "$ROOT_DIR"/ext/filelist/*/Cargo.toml; do
         component_name=$(basename "$(dirname "$filelist_cargo")")
         sed -i "0,/^version = /s/^version = .*/version = \"$CARGO_VERSION\"/" "$filelist_cargo"
         echo "  ✓ ext/filelist/$component_name/Cargo.toml"
-    fi
-done
-
-# Update all Python extensions in ext/python/*/pyproject.toml
-for ext_pyproject in "$ROOT_DIR"/ext/python/*/pyproject.toml; do
-    if [ -f "$ext_pyproject" ]; then
-        ext_name=$(basename "$(dirname "$ext_pyproject")")
-        # Update version (use PEP 440 format)
-        sed -i "s/^version = .*/version = \"$PEP440_VERSION\"/" "$ext_pyproject"
-        # Update alizarin dependency version if present (use PEP 440 format)
-        sed -i "s/\"alizarin>=.*\"/\"alizarin>=$PEP440_VERSION\"/" "$ext_pyproject"
-        echo "  ✓ ext/python/$ext_name/pyproject.toml (version + dependencies)"
     fi
 done
 

@@ -48,6 +48,10 @@
        "85315936-57d9-534a-b383-45db3ff96ea3": {
         "en": {
          "direction": "ltr",
+         "value": "Fire chief at Seandún Fire Station"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Fire chief at Stáisiún Dóiteáin Seandún"
         }
        }
@@ -308,6 +312,10 @@
       "data": {
        "85315936-57d9-534a-b383-45db3ff96ea3": {
         "en": {
+         "direction": "ltr",
+         "value": "Hospital liaison at Trá Bealtaine Hospital"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Hospital liaison at Ospidéal Trá Bealtaine"
         }
@@ -769,6 +777,10 @@
        "85315936-57d9-534a-b383-45db3ff96ea3": {
         "en": {
          "direction": "ltr",
+         "value": "School principal at West Town School"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "School principal at Scoil Bhaile an Iarthair"
         }
        }
@@ -843,6 +855,10 @@
       "data": {
        "85315936-57d9-534a-b383-45db3ff96ea3": {
         "en": {
+         "direction": "ltr",
+         "value": "Triage lead at Trá Bealtaine Hospital"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Triage lead at Ospidéal Trá Bealtaine"
         }
@@ -1167,6 +1183,10 @@
        "85315936-57d9-534a-b383-45db3ff96ea3": {
         "en": {
          "direction": "ltr",
+         "value": "Shelter coordinator at Coastal Hall"
+        },
+        "ga": {
+         "direction": "ltr",
          "value": "Shelter coordinator at Halla an Chósta"
         }
        }
@@ -1260,6 +1280,10 @@
       "data": {
        "85315936-57d9-534a-b383-45db3ff96ea3": {
         "en": {
+         "direction": "ltr",
+         "value": "Deputy fire chief at Seandún Fire Station"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Deputy fire chief at Stáisiún Dóiteáin Seandún"
         }
@@ -1367,6 +1391,10 @@
       "data": {
        "85315936-57d9-534a-b383-45db3ff96ea3": {
         "en": {
+         "direction": "ltr",
+         "value": "Deputy shelter coordinator at Coastal Hall"
+        },
+        "ga": {
          "direction": "ltr",
          "value": "Deputy shelter coordinator at Halla an Chósta"
         }

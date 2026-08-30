@@ -1,0 +1,40 @@
+---
+title: Concepts
+description: concept and concept-list, backed by RDM collections
+---
+
+import AlizarinComponent from '@/app/alizarin.tsx';
+
+`concept` and `concept-list` values are **references into a controlled
+vocabulary** — an RDM (Reference Data Manager) collection. A tile doesn't store
+the label text; it stores a **value-id**, and Alizarin resolves it against the
+collection to the concept's preferred label in the [current
+language](/docs/types/i18n).
+
+## How resolution works
+
+1. The node's config names an `rdmCollection` (a collection UUID).
+2. The tile stores a value-id (a UUID pointing at a specific label).
+3. The [`RDM`](/docs/core-internals) loads the collection (once, cached) via the
+   client's `collectionIdToFile` resolver.
+4. `ConceptValueViewModel.getConceptValue(valueId)` looks the label up.
+
+## concept
+
+`ConceptValueViewModel` **extends `String`**, so it stringifies to the resolved
+label and renders directly — no `.prefLabel` accessor needed.
+
+## concept-list
+
+`ConceptListViewModel` wraps a `concept-list` — an array of concept references,
+each a `ConceptValueViewModel`.
+
+## Live example
+
+Each organisation's **name** and its **sector**, a `concept` resolved to its
+label from the sector collection — press ▶:
+
+<AlizarinComponent module='/example/example-10.tsx' />
+
+Because the label is language-dependent, switching the current language re-resolves
+it — see [Internationalization](/docs/types/i18n).
