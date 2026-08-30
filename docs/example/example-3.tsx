@@ -1,31 +1,26 @@
 type AlizarinModule = typeof import('alizarin');
 
-// Following a relationship: each talk's title plus its presenters' names.
-// Property access is lazy — `talk.presenter` resolves the linked Person records
-// only when awaited.
+// Following a relationship: each person's name plus their affiliated organisation.
+// Property access is lazy — `person.affiliated_organisation` resolves the linked
+// Organisation record only when awaited.
 async function run() {
   const { AlizarinModel, graphManager }: AlizarinModule = await import('alizarin');
-  class Person extends AlizarinModel<Person> {};
-  (await graphManager.get("Talk")).all();  // warm-up
-  (await graphManager.get(Person)).all();
+  class Organisation extends AlizarinModel<Organisation> {};
+  await (await graphManager.get("Person")).all();       // warm-up
+  await (await graphManager.get(Organisation)).all();   // load the linked graph first
   try {
 // @alizarin-code-begin
-    class Talk extends AlizarinModel<Talk> {};
-    const Talks = await graphManager.get(Talk);
-    const talks = await Talks.all();
+    class Person extends AlizarinModel<Person> {};
+    const People = await graphManager.get(Person);
+    const people = await People.all();
 
     return (
       <ul>{
-        talks.map(async (talk: Talk, i: number) => {
-          const title = await talk.title;
-          if (!title) {
-            return null;
-          }
-          const presenters = await talk.presenter;
-          const names = await Promise.all(
-            presenters.map(async (p: Promise<Person>) => (await p)['name'])
-          );
-          return (<li key={ i }>{ title } — { names.join(', ') }</li>);
+        people.map(async (person: Person, i: number) => {
+          const name = await person['name'];
+          const org = await person['affiliated_organisation'];
+          const orgName = org ? await org['name'] : '(unaffiliated)';
+          return (<li key={ i }>{ name } — { orgName }</li>);
         })
       }</ul>
     );

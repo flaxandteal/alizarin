@@ -1,20 +1,40 @@
 {
     "models": {
-        "0271fdde-e6c7-457c-b25a-e65a11aba499": {
-            "id": "0271fdde-e6c7-457c-b25a-e65a11aba499",
-            "name": {"en": "Institution"}
+        "3d3c4c0e-fc71-5999-b711-8a8ab9bc3884": {
+            "id": "3d3c4c0e-fc71-5999-b711-8a8ab9bc3884",
+            "name": {
+                "en": "ScenarioEvent"
+            }
         },
-        "a6c412db-72e0-4099-a690-ccc75ba841a9": {
-            "id": "a6c412db-72e0-4099-a690-ccc75ba841a9",
-            "name": {"en": "Talk"}
+        "91e13029-1637-5fbb-ac8a-2dd0c6502cc7": {
+            "id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+            "name": {
+                "en": "Person"
+            }
         },
-        "47f5403a-2785-4613-a8e9-bda0cdd85254": {
-            "id": "47f5403a-2785-4613-a8e9-bda0cdd85254",
-            "name": {"en": "Person"}
+        "607789d4-3f7b-58d8-a72b-06343b5409a9": {
+            "id": "607789d4-3f7b-58d8-a72b-06343b5409a9",
+            "name": {
+                "en": "HazardModel"
+            }
         },
-        "7d7d1c77-e660-48cc-b90d-292c81ea01cf": {
-            "id": "7d7d1c77-e660-48cc-b90d-292c81ea01cf",
-            "name": {"en": "Session"}
+        "db1c639e-5b26-5af7-8107-ec4debde487b": {
+            "id": "db1c639e-5b26-5af7-8107-ec4debde487b",
+            "name": {
+                "en": "HazardFootprint"
+            }
+        },
+        "aacd4ba3-8395-5092-870d-727143cd489a": {
+            "id": "aacd4ba3-8395-5092-870d-727143cd489a",
+            "name": {
+                "en": "Organisation"
+            }
+        },
+        "64368e71-abbc-53ba-9bd8-87e2500f8e65": {
+            "id": "64368e71-abbc-53ba-9bd8-87e2500f8e65",
+            "name": {
+                "en": "Site"
+            }
         }
     }
 }

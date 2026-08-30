@@ -1,0 +1,228 @@
+{
+ "business_data": {
+  "resources": [
+   {
+    "metadata": {},
+    "resourceinstance": {
+     "descriptors": {},
+     "graph_id": "3d3c4c0e-fc71-5999-b711-8a8ab9bc3884",
+     "legacyid": "event-001",
+     "name": "Músún Deireadh Fómhair 2023",
+     "resourceinstanceid": "27f4d574-3bca-52ce-9e32-2bc9f84a5122"
+    },
+    "tiles": [
+     {
+      "data": {
+       "fe5d68b0-7f0a-5248-9dfd-a5cb59f3681a": {
+        "en": {
+         "direction": "ltr",
+         "value": "Músún Deireadh Fómhair 2023"
+        }
+       }
+      },
+      "nodegroup_id": "fe5d68b0-7f0a-5248-9dfd-a5cb59f3681a",
+      "parenttile_id": null,
+      "resourceinstance_id": "27f4d574-3bca-52ce-9e32-2bc9f84a5122",
+      "sortorder": 0,
+      "tileid": "b8a59460-712b-51b5-8e08-a615459211a0"
+     },
+     {
+      "data": {
+       "93f47603-aa2d-5dad-9044-60a511cec2b5": "2023-10-15",
+       "9e7a3d2e-4ccb-574f-b12e-6ba4eea9f578": "2023-10-17"
+      },
+      "nodegroup_id": "c2b00c8a-df90-5e1d-8abf-752e39153599",
+      "parenttile_id": null,
+      "resourceinstance_id": "27f4d574-3bca-52ce-9e32-2bc9f84a5122",
+      "sortorder": 0,
+      "tileid": "caefc90a-98f8-5bac-bc92-5c92de63c734"
+     },
+     {
+      "data": {
+       "45e00c13-814a-5bae-9a74-b6feda5316a3": null
+      },
+      "nodegroup_id": "45e00c13-814a-5bae-9a74-b6feda5316a3",
+      "parenttile_id": null,
+      "resourceinstance_id": "27f4d574-3bca-52ce-9e32-2bc9f84a5122",
+      "sortorder": 0,
+      "tileid": "c46f5d03-e2ef-5ba5-b80d-b6679f7155f9"
+     },
+     {
+      "data": {
+       "68b32585-b97d-5d16-895c-eee35452c8a0": {
+        "en": {
+         "direction": "ltr",
+         "value": "Historical monsoon event; 200 mm rainfall in 12 hours caused widespread pluvial flooding across low-lying wards. Used for model calibration."
+        }
+       }
+      },
+      "nodegroup_id": "68b32585-b97d-5d16-895c-eee35452c8a0",
+      "parenttile_id": null,
+      "resourceinstance_id": "27f4d574-3bca-52ce-9e32-2bc9f84a5122",
+      "sortorder": 0,
+      "tileid": "d7e6475f-557a-53b6-ba01-3ec60e3912c2"
+     },
+     {
+      "tileid": "be0ecaf5-8fdb-5434-989c-b72ff8d0ea5f",
+      "nodegroup_id": "5c52ce05-e9f0-5ab8-afd1-7659b222c3ca",
+      "data": {
+       "a36d841c-d999-5e2c-819f-2d766301f893": null
+      },
+      "parenttile_id": null,
+      "resourceinstance_id": "27f4d574-3bca-52ce-9e32-2bc9f84a5122",
+      "sortorder": 0
+     }
+    ],
+    "tiles_loaded": true
+   },
+   {
+    "metadata": {},
+    "resourceinstance": {
+     "descriptors": {},
+     "graph_id": "3d3c4c0e-fc71-5999-b711-8a8ab9bc3884",
+     "legacyid": "event-002",
+     "name": "Cioclón Bealtaine — Borradh Stoirme",
+     "resourceinstanceid": "2c039ed6-6b0b-51ae-bfaf-dd4dc3d72c0a"
+    },
+    "tiles": [
+     {
+      "data": {
+       "68b32585-b97d-5d16-895c-eee35452c8a0": {
+        "en": {
+         "direction": "ltr",
+         "value": "Hypothetical cyclone making landfall near Chennai; Cat 3 wind forcing drives 2.5 m storm surge along Marina coastline."
+        }
+       }
+      },
+      "nodegroup_id": "68b32585-b97d-5d16-895c-eee35452c8a0",
+      "parenttile_id": null,
+      "resourceinstance_id": "2c039ed6-6b0b-51ae-bfaf-dd4dc3d72c0a",
+      "sortorder": 0,
+      "tileid": "eaad4b7c-90cd-5bf7-b22c-f6bcc9183595"
+     },
+     {
+      "data": {
+       "45e00c13-814a-5bae-9a74-b6feda5316a3": null
+      },
+      "nodegroup_id": "45e00c13-814a-5bae-9a74-b6feda5316a3",
+      "parenttile_id": null,
+      "resourceinstance_id": "2c039ed6-6b0b-51ae-bfaf-dd4dc3d72c0a",
+      "sortorder": 0,
+      "tileid": "8ac06b74-f62b-57e5-a960-dd49e494f529"
+     },
+     {
+      "data": {
+       "93f47603-aa2d-5dad-9044-60a511cec2b5": "2025-05-12",
+       "9e7a3d2e-4ccb-574f-b12e-6ba4eea9f578": "2025-05-14"
+      },
+      "nodegroup_id": "c2b00c8a-df90-5e1d-8abf-752e39153599",
+      "parenttile_id": null,
+      "resourceinstance_id": "2c039ed6-6b0b-51ae-bfaf-dd4dc3d72c0a",
+      "sortorder": 0,
+      "tileid": "eea6a810-331a-5ecb-a3b0-51e679e601d9"
+     },
+     {
+      "data": {
+       "fe5d68b0-7f0a-5248-9dfd-a5cb59f3681a": {
+        "en": {
+         "direction": "ltr",
+         "value": "Cioclón Bealtaine — Borradh Stoirme"
+        }
+       }
+      },
+      "nodegroup_id": "fe5d68b0-7f0a-5248-9dfd-a5cb59f3681a",
+      "parenttile_id": null,
+      "resourceinstance_id": "2c039ed6-6b0b-51ae-bfaf-dd4dc3d72c0a",
+      "sortorder": 0,
+      "tileid": "c1c57754-dd2a-53c4-8b77-2d141f7a908d"
+     },
+     {
+      "tileid": "cf7ae851-111a-5109-9efb-8267ccb8ce4a",
+      "nodegroup_id": "5c52ce05-e9f0-5ab8-afd1-7659b222c3ca",
+      "data": {
+       "a36d841c-d999-5e2c-819f-2d766301f893": null
+      },
+      "parenttile_id": null,
+      "resourceinstance_id": "2c039ed6-6b0b-51ae-bfaf-dd4dc3d72c0a",
+      "sortorder": 0
+     }
+    ],
+    "tiles_loaded": true
+   },
+   {
+    "metadata": {},
+    "resourceinstance": {
+     "descriptors": {},
+     "graph_id": "3d3c4c0e-fc71-5999-b711-8a8ab9bc3884",
+     "legacyid": "event-003",
+     "name": "Tuile Dearaidh 1:200",
+     "resourceinstanceid": "ce619f21-dc89-5a74-84cc-f954a18a2039"
+    },
+    "tiles": [
+     {
+      "data": {
+       "93f47603-aa2d-5dad-9044-60a511cec2b5": "2026-01-01",
+       "9e7a3d2e-4ccb-574f-b12e-6ba4eea9f578": "2026-01-02"
+      },
+      "nodegroup_id": "c2b00c8a-df90-5e1d-8abf-752e39153599",
+      "parenttile_id": null,
+      "resourceinstance_id": "ce619f21-dc89-5a74-84cc-f954a18a2039",
+      "sortorder": 0,
+      "tileid": "ff8adbc5-4542-5b77-a32d-645dd8e2e176"
+     },
+     {
+      "data": {
+       "68b32585-b97d-5d16-895c-eee35452c8a0": {
+        "en": {
+         "direction": "ltr",
+         "value": "Design-event scenario for 1-in-200-year pluvial flood; used for infrastructure resilience benchmarking and insurance loss modelling."
+        }
+       }
+      },
+      "nodegroup_id": "68b32585-b97d-5d16-895c-eee35452c8a0",
+      "parenttile_id": null,
+      "resourceinstance_id": "ce619f21-dc89-5a74-84cc-f954a18a2039",
+      "sortorder": 0,
+      "tileid": "f15f231b-28e5-571d-a1bc-2019ce3edfc5"
+     },
+     {
+      "data": {
+       "45e00c13-814a-5bae-9a74-b6feda5316a3": null
+      },
+      "nodegroup_id": "45e00c13-814a-5bae-9a74-b6feda5316a3",
+      "parenttile_id": null,
+      "resourceinstance_id": "ce619f21-dc89-5a74-84cc-f954a18a2039",
+      "sortorder": 0,
+      "tileid": "ff98914d-ff33-5fab-9f7b-4f488d06ff88"
+     },
+     {
+      "data": {
+       "fe5d68b0-7f0a-5248-9dfd-a5cb59f3681a": {
+        "en": {
+         "direction": "ltr",
+         "value": "Tuile Dearaidh 1:200"
+        }
+       }
+      },
+      "nodegroup_id": "fe5d68b0-7f0a-5248-9dfd-a5cb59f3681a",
+      "parenttile_id": null,
+      "resourceinstance_id": "ce619f21-dc89-5a74-84cc-f954a18a2039",
+      "sortorder": 0,
+      "tileid": "9e60cecb-5509-5d6b-82aa-0d19d69c4044"
+     },
+     {
+      "tileid": "14a38007-cb1a-50a2-a7d5-c4c40b1b2a46",
+      "nodegroup_id": "5c52ce05-e9f0-5ab8-afd1-7659b222c3ca",
+      "data": {
+       "a36d841c-d999-5e2c-819f-2d766301f893": null
+      },
+      "parenttile_id": null,
+      "resourceinstance_id": "ce619f21-dc89-5a74-84cc-f954a18a2039",
+      "sortorder": 0
+     }
+    ],
+    "tiles_loaded": true
+   }
+  ]
+ }
+}

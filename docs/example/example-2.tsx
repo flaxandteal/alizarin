@@ -3,17 +3,17 @@ type AlizarinModule = typeof import('alizarin');
 // A minimal query: load a model and list every instance's name.
 async function run() {
   const { AlizarinModel, graphManager }: AlizarinModule = await import('alizarin');
-  (await graphManager.get("Person")).all(); // warm-up: ensure the graph is loaded
+  await (await graphManager.get("Site")).all(); // warm-up: ensure the graph is loaded
   try {
 // @alizarin-code-begin
-    class Person extends AlizarinModel<Person> {};
-    const People = await graphManager.get(Person);
-    const people = await People.all();
+    class Site extends AlizarinModel<Site> {};
+    const Sites = await graphManager.get(Site);
+    const sites = await Sites.all();
 
     return (
       <ul>{
-        people.map(async (person: Person, i: number) => (
-          <li key={ i }>{ await person['name'] }</li>
+        sites.map(async (site: Site, i: number) => (
+          <li key={ i }>{ await site['name'] }</li>
         ))
       }</ul>
     );

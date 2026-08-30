@@ -1,0 +1,527 @@
+{
+ "graph": [
+  {
+   "author": null,
+   "cards": [
+    {
+     "active": true,
+     "cardid": "7c1a31a4-5570-585b-844b-47fb12dd2859",
+     "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+     "constraints": [],
+     "description": null,
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "helpenabled": false,
+     "helptext": {},
+     "helptitle": {},
+     "instructions": {},
+     "is_editable": true,
+     "name": {
+      "en": "Name"
+     },
+     "nodegroup_id": "7a3bc2e8-214d-5a56-9e44-70254d8f4e3d",
+     "sortorder": 0,
+     "visible": true
+    },
+    {
+     "active": true,
+     "cardid": "71ac67ac-dc80-5b53-9bb0-e55b71a942cc",
+     "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+     "constraints": [],
+     "description": null,
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "helpenabled": false,
+     "helptext": {},
+     "helptitle": {},
+     "instructions": {},
+     "is_editable": true,
+     "name": {
+      "en": "Role titles"
+     },
+     "nodegroup_id": "668f779f-4cf3-5d9a-850f-8f8c424d86fb",
+     "sortorder": 0,
+     "visible": true
+    },
+    {
+     "active": true,
+     "cardid": "b9b47a95-3a48-5c12-af3a-65675ef70b34",
+     "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+     "constraints": [],
+     "description": null,
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "helpenabled": false,
+     "helptext": {},
+     "helptitle": {},
+     "instructions": {},
+     "is_editable": true,
+     "name": {
+      "en": "Contact handle"
+     },
+     "nodegroup_id": "d89f74c3-6dc3-58c9-82b1-ff539c7503e3",
+     "sortorder": 0,
+     "visible": true
+    },
+    {
+     "active": true,
+     "cardid": "ade865e3-0dd0-52ec-bc74-dfc188896e79",
+     "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+     "constraints": [],
+     "description": null,
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "helpenabled": false,
+     "helptext": {},
+     "helptitle": {},
+     "instructions": {},
+     "is_editable": true,
+     "name": {
+      "en": "Primary site"
+     },
+     "nodegroup_id": "51794d79-ee93-5032-9224-993ba7000ab6",
+     "sortorder": 0,
+     "visible": true
+    },
+    {
+     "active": true,
+     "cardid": "465003ef-bd5d-5dd2-acf3-a9cabeb47ffe",
+     "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+     "constraints": [],
+     "description": null,
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "helpenabled": false,
+     "helptext": {},
+     "helptitle": {},
+     "instructions": {},
+     "is_editable": true,
+     "name": {
+      "en": "Affiliated organisation"
+     },
+     "nodegroup_id": "769bfc2b-c2f8-5e3c-b182-ba54d7911045",
+     "sortorder": 0,
+     "visible": true
+    },
+    {
+     "active": true,
+     "cardid": "975e94cf-138c-50c1-abc8-dc663f2c00de",
+     "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+     "constraints": [],
+     "description": null,
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "helpenabled": false,
+     "helptext": {},
+     "helptitle": {},
+     "instructions": {},
+     "is_editable": true,
+     "name": {
+      "en": "Notes"
+     },
+     "nodegroup_id": "85315936-57d9-534a-b383-45db3ff96ea3",
+     "sortorder": 0,
+     "visible": true
+    }
+   ],
+   "cards_x_nodes_x_widgets": [
+    {
+     "card_id": "7c1a31a4-5570-585b-844b-47fb12dd2859",
+     "config": {
+      "label": "Name",
+      "maxLength": null,
+      "placeholder": "Enter text",
+      "width": "100%"
+     },
+     "id": "4be73484-f898-5d38-bc11-8cc3e9e616fd",
+     "label": {
+      "en": "Name"
+     },
+     "node_id": "7a3bc2e8-214d-5a56-9e44-70254d8f4e3d",
+     "sortorder": 1,
+     "visible": true,
+     "widget_id": "10000000-0000-0000-0000-000000000001"
+    },
+    {
+     "card_id": "71ac67ac-dc80-5b53-9bb0-e55b71a942cc",
+     "config": {
+      "label": "Role titles",
+      "options": [],
+      "placeholder": "Select an option"
+     },
+     "id": "5b5ea35e-309c-5747-bb8a-50404c0ba09c",
+     "label": {
+      "en": "Role titles"
+     },
+     "node_id": "668f779f-4cf3-5d9a-850f-8f8c424d86fb",
+     "sortorder": 2,
+     "visible": true,
+     "widget_id": "10000000-0000-0000-0000-000000000012"
+    },
+    {
+     "card_id": "b9b47a95-3a48-5c12-af3a-65675ef70b34",
+     "config": {
+      "label": "Contact handle",
+      "maxLength": null,
+      "placeholder": "Enter text",
+      "width": "100%"
+     },
+     "id": "810fe5f2-9613-5c59-8133-753c97f0ccc0",
+     "label": {
+      "en": "Contact handle"
+     },
+     "node_id": "d89f74c3-6dc3-58c9-82b1-ff539c7503e3",
+     "sortorder": 3,
+     "visible": true,
+     "widget_id": "10000000-0000-0000-0000-000000000001"
+    },
+    {
+     "card_id": "ade865e3-0dd0-52ec-bc74-dfc188896e79",
+     "config": {
+      "label": "Primary site",
+      "placeholder": "Select a resource"
+     },
+     "id": "1105e0ab-7b2a-5ec1-b2d9-4f3454afdcc6",
+     "label": {
+      "en": "Primary site"
+     },
+     "node_id": "51794d79-ee93-5032-9224-993ba7000ab6",
+     "sortorder": 4,
+     "visible": true,
+     "widget_id": "31f3728c-7613-11e7-a139-784f435179ea"
+    },
+    {
+     "card_id": "465003ef-bd5d-5dd2-acf3-a9cabeb47ffe",
+     "config": {
+      "label": "Affiliated organisation",
+      "placeholder": "Select a resource"
+     },
+     "id": "8e77d423-88c4-5aa3-8bfe-8187f622fa9e",
+     "label": {
+      "en": "Affiliated organisation"
+     },
+     "node_id": "769bfc2b-c2f8-5e3c-b182-ba54d7911045",
+     "sortorder": 5,
+     "visible": true,
+     "widget_id": "31f3728c-7613-11e7-a139-784f435179ea"
+    },
+    {
+     "card_id": "975e94cf-138c-50c1-abc8-dc663f2c00de",
+     "config": {
+      "label": "Notes",
+      "maxLength": null,
+      "placeholder": "Enter text",
+      "width": "100%"
+     },
+     "id": "821e31f3-367e-584e-a9b3-8223c8b32078",
+     "label": {
+      "en": "Notes"
+     },
+     "node_id": "85315936-57d9-534a-b383-45db3ff96ea3",
+     "sortorder": 6,
+     "visible": true,
+     "widget_id": "10000000-0000-0000-0000-000000000001"
+    }
+   ],
+   "color": null,
+   "config": {},
+   "deploymentdate": null,
+   "deploymentfile": null,
+   "description": null,
+   "edges": [
+    {
+     "description": null,
+     "domainnode_id": "9b37239e-5833-54f9-b80b-859353a8fac7",
+     "edgeid": "37f828b0-6738-56d6-9e81-7efde0fcc95d",
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "name": null,
+     "ontologyproperty": "http://www.cidoc-crm.org/cidoc-crm/P1_is_identified_by",
+     "rangenode_id": "7a3bc2e8-214d-5a56-9e44-70254d8f4e3d"
+    },
+    {
+     "description": null,
+     "domainnode_id": "9b37239e-5833-54f9-b80b-859353a8fac7",
+     "edgeid": "69ee5f00-914b-5e73-af9b-8781c295ba7b",
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "name": null,
+     "ontologyproperty": "http://www.cidoc-crm.org/cidoc-crm/P2_has_type",
+     "rangenode_id": "668f779f-4cf3-5d9a-850f-8f8c424d86fb"
+    },
+    {
+     "description": null,
+     "domainnode_id": "9b37239e-5833-54f9-b80b-859353a8fac7",
+     "edgeid": "f72aeae5-ae30-5571-89ef-b07edb825dfd",
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "name": null,
+     "ontologyproperty": "http://www.cidoc-crm.org/cidoc-crm/P3_has_note",
+     "rangenode_id": "d89f74c3-6dc3-58c9-82b1-ff539c7503e3"
+    },
+    {
+     "description": null,
+     "domainnode_id": "9b37239e-5833-54f9-b80b-859353a8fac7",
+     "edgeid": "a302e1e7-d348-5536-a68a-e93d029300c0",
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "name": null,
+     "ontologyproperty": "http://www.cidoc-crm.org/cidoc-crm/P74_has_current_or_former_residence",
+     "rangenode_id": "51794d79-ee93-5032-9224-993ba7000ab6"
+    },
+    {
+     "description": null,
+     "domainnode_id": "9b37239e-5833-54f9-b80b-859353a8fac7",
+     "edgeid": "ada0ddcd-2469-5789-abb5-200ceed4d89c",
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "name": null,
+     "ontologyproperty": "http://www.cidoc-crm.org/cidoc-crm/P107i_is_current_or_former_member_of",
+     "rangenode_id": "769bfc2b-c2f8-5e3c-b182-ba54d7911045"
+    },
+    {
+     "description": null,
+     "domainnode_id": "9b37239e-5833-54f9-b80b-859353a8fac7",
+     "edgeid": "78d603f0-229f-51a8-94f0-2ff4da7dfbf9",
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "name": null,
+     "ontologyproperty": "http://www.cidoc-crm.org/cidoc-crm/P3_has_note",
+     "rangenode_id": "85315936-57d9-534a-b383-45db3ff96ea3"
+    }
+   ],
+   "functions_x_graphs": [],
+   "graphid": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+   "iconclass": null,
+   "is_editable": true,
+   "isresource": true,
+   "jsonldcontext": null,
+   "name": {
+    "en": "Person"
+   },
+   "nodegroups": [
+    {
+     "cardinality": "1",
+     "legacygroupid": null,
+     "nodegroupid": "7a3bc2e8-214d-5a56-9e44-70254d8f4e3d",
+     "parentnodegroup_id": null
+    },
+    {
+     "cardinality": "n",
+     "legacygroupid": null,
+     "nodegroupid": "668f779f-4cf3-5d9a-850f-8f8c424d86fb",
+     "parentnodegroup_id": null
+    },
+    {
+     "cardinality": "1",
+     "legacygroupid": null,
+     "nodegroupid": "d89f74c3-6dc3-58c9-82b1-ff539c7503e3",
+     "parentnodegroup_id": null
+    },
+    {
+     "cardinality": "1",
+     "legacygroupid": null,
+     "nodegroupid": "51794d79-ee93-5032-9224-993ba7000ab6",
+     "parentnodegroup_id": null
+    },
+    {
+     "cardinality": "1",
+     "legacygroupid": null,
+     "nodegroupid": "769bfc2b-c2f8-5e3c-b182-ba54d7911045",
+     "parentnodegroup_id": null
+    },
+    {
+     "cardinality": "1",
+     "legacygroupid": null,
+     "nodegroupid": "85315936-57d9-534a-b383-45db3ff96ea3",
+     "parentnodegroup_id": null
+    }
+   ],
+   "nodes": [
+    {
+     "alias": "person",
+     "config": {},
+     "datatype": "semantic",
+     "description": null,
+     "exportable": true,
+     "fieldname": null,
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "hascustomalias": false,
+     "is_collector": false,
+     "isrequired": false,
+     "issearchable": true,
+     "istopnode": true,
+     "name": "Person",
+     "nodegroup_id": null,
+     "nodeid": "9b37239e-5833-54f9-b80b-859353a8fac7",
+     "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E21_Person",
+     "parentproperty": null,
+     "sortorder": 0,
+     "sourcebranchpublication_id": null
+    },
+    {
+     "alias": "name",
+     "config": {},
+     "datatype": "string",
+     "description": {
+      "en": "Display name of the person."
+     },
+     "exportable": true,
+     "fieldname": null,
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "hascustomalias": false,
+     "is_collector": false,
+     "isrequired": true,
+     "issearchable": true,
+     "istopnode": false,
+     "name": "Name",
+     "nodegroup_id": "7a3bc2e8-214d-5a56-9e44-70254d8f4e3d",
+     "nodeid": "7a3bc2e8-214d-5a56-9e44-70254d8f4e3d",
+     "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E41_Appellation",
+     "parentproperty": "http://www.cidoc-crm.org/cidoc-crm/P1_is_identified_by",
+     "sortorder": 1,
+     "sourcebranchpublication_id": null
+    },
+    {
+     "alias": "role_titles",
+     "config": {
+      "rdmCollection": "be9a5956-a585-5c34-971e-1ca8faef226a"
+     },
+     "datatype": "concept-list",
+     "description": {
+      "en": "Service roles the person holds (coordinator, responder, reviewer, etc.). Repeatable."
+     },
+     "exportable": true,
+     "fieldname": null,
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "hascustomalias": false,
+     "is_collector": false,
+     "isrequired": false,
+     "issearchable": true,
+     "istopnode": false,
+     "name": "Role titles",
+     "nodegroup_id": "668f779f-4cf3-5d9a-850f-8f8c424d86fb",
+     "nodeid": "668f779f-4cf3-5d9a-850f-8f8c424d86fb",
+     "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E55_Type",
+     "parentproperty": "http://www.cidoc-crm.org/cidoc-crm/P2_has_type",
+     "sortorder": 2,
+     "sourcebranchpublication_id": null
+    },
+    {
+     "alias": "contact_handle",
+     "config": {},
+     "datatype": "string",
+     "description": {
+      "en": "Single free-text contact string (phone, email, radio callsign)."
+     },
+     "exportable": true,
+     "fieldname": null,
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "hascustomalias": false,
+     "is_collector": false,
+     "isrequired": false,
+     "issearchable": false,
+     "istopnode": false,
+     "name": "Contact handle",
+     "nodegroup_id": "d89f74c3-6dc3-58c9-82b1-ff539c7503e3",
+     "nodeid": "d89f74c3-6dc3-58c9-82b1-ff539c7503e3",
+     "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E62_String",
+     "parentproperty": "http://www.cidoc-crm.org/cidoc-crm/P3_has_note",
+     "sortorder": 3,
+     "sourcebranchpublication_id": null
+    },
+    {
+     "alias": "primary_site",
+     "config": {},
+     "datatype": "resource-instance",
+     "description": {
+      "en": "Site resource where the person is normally stationed."
+     },
+     "exportable": true,
+     "fieldname": null,
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "hascustomalias": false,
+     "is_collector": false,
+     "isrequired": false,
+     "issearchable": true,
+     "istopnode": false,
+     "name": "Primary site",
+     "nodegroup_id": "51794d79-ee93-5032-9224-993ba7000ab6",
+     "nodeid": "51794d79-ee93-5032-9224-993ba7000ab6",
+     "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E53_Place",
+     "parentproperty": "http://www.cidoc-crm.org/cidoc-crm/P74_has_current_or_former_residence",
+     "sortorder": 4,
+     "sourcebranchpublication_id": null
+    },
+    {
+     "alias": "affiliated_organisation",
+     "config": {},
+     "datatype": "resource-instance",
+     "description": {
+      "en": "Organisation this person belongs to."
+     },
+     "exportable": true,
+     "fieldname": null,
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "hascustomalias": false,
+     "is_collector": false,
+     "isrequired": false,
+     "issearchable": true,
+     "istopnode": false,
+     "name": "Affiliated organisation",
+     "nodegroup_id": "769bfc2b-c2f8-5e3c-b182-ba54d7911045",
+     "nodeid": "769bfc2b-c2f8-5e3c-b182-ba54d7911045",
+     "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E74_Group",
+     "parentproperty": "http://www.cidoc-crm.org/cidoc-crm/P107i_is_current_or_former_member_of",
+     "sortorder": 5,
+     "sourcebranchpublication_id": null
+    },
+    {
+     "alias": "notes",
+     "config": {},
+     "datatype": "string",
+     "description": {
+      "en": "Free-text reviewer notes."
+     },
+     "exportable": true,
+     "fieldname": null,
+     "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+     "hascustomalias": false,
+     "is_collector": false,
+     "isrequired": false,
+     "issearchable": false,
+     "istopnode": false,
+     "name": "Notes",
+     "nodegroup_id": "85315936-57d9-534a-b383-45db3ff96ea3",
+     "nodeid": "85315936-57d9-534a-b383-45db3ff96ea3",
+     "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E62_String",
+     "parentproperty": "http://www.cidoc-crm.org/cidoc-crm/P3_has_note",
+     "sortorder": 6,
+     "sourcebranchpublication_id": null
+    }
+   ],
+   "ontology_id": null,
+   "publication": {
+    "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+    "notes": null,
+    "publicationid": "79737233-e4e7-533e-9ea5-fd6a85f7a272",
+    "published_time": "2026-05-23T11:14:48.762"
+   },
+   "relatable_resource_model_ids": [],
+   "resource_2_resource_constraints": null,
+   "root": {
+    "alias": "person",
+    "config": {},
+    "datatype": "semantic",
+    "description": null,
+    "exportable": true,
+    "fieldname": null,
+    "graph_id": "91e13029-1637-5fbb-ac8a-2dd0c6502cc7",
+    "hascustomalias": false,
+    "is_collector": false,
+    "isrequired": false,
+    "issearchable": true,
+    "istopnode": true,
+    "name": "Person",
+    "nodegroup_id": null,
+    "nodeid": "9b37239e-5833-54f9-b80b-859353a8fac7",
+    "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E21_Person",
+    "parentproperty": null,
+    "sortorder": 0,
+    "sourcebranchpublication_id": null
+   },
+   "slug": "person",
+   "subtitle": null,
+   "template_id": "50000000-0000-0000-0000-000000000001",
+   "version": "1"
+  }
+ ]
+}
