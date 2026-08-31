@@ -1,0 +1,50 @@
+---
+title: Internationalization
+description: Localized strings, current language, and per-language access
+---
+
+import AlizarinComponent from '@/app/alizarin.tsx';
+
+Arches string values are **localized** — a single value carries every translation
+(`{ en: …, ga: … }`). Alizarin's string view models resolve to the current
+language, but you can also read any specific language directly.
+
+## Current language
+
+Set the app-wide language with `setCurrentLanguage(code)`; read it with
+`getCurrentLanguage()`. New string view models resolve against it:
+
+```typescript
+import { setCurrentLanguage, getCurrentLanguage } from 'alizarin';
+
+setCurrentLanguage('ga');          // switch to Irish
+const site = (await Sites.all())[0];
+console.log(`${await site.name}`); // resolves to the ga label if present
+```
+
+## Per-language access
+
+A `StringViewModel` exposes `.lang(code)` to read one specific language from the
+same value — useful for showing translations side by side without changing the
+global language:
+
+```typescript
+const name = await site.name;
+name.lang('en');  // English label
+name.lang('ga');  // Irish label (or undefined if untranslated)
+```
+
+## Live example
+
+Each site's name in **English** and **Irish** from the same value. Descriptive
+names are translated (North District / Ceantar Thuaidh); coined placenames
+(Trá Theas, Cluain Mór) are the same in both — press ▶:
+
+<AlizarinComponent module='/example/example-14.tsx' />
+
+## Notes
+
+- A missing translation falls back to the default language (`.lang(code)` returns
+  `undefined` for a language the value doesn't carry).
+- [Concept](/docs/types/concepts) labels are language-dependent too — switching
+  the current language re-resolves them from the collection.
