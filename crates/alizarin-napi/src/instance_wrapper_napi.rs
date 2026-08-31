@@ -30,7 +30,7 @@ use alizarin_core::GraphModelAccess;
 // Helpers
 // =============================================================================
 
-fn ext_registry() -> &'static ExtensionTypeRegistry {
+fn ext_registry() -> ExtensionTypeRegistry {
     crate::extension_registry()
 }
 
@@ -1654,7 +1654,7 @@ impl NapiResourceInstanceWrapper {
             concept_lookup: None,
             resource_resolver: resource_registry
                 .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
-            extension_registry: Some(ext_reg),
+            extension_registry: Some(&ext_reg),
         };
 
         let ctx = VisitorContext {

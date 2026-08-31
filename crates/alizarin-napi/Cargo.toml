@@ -10,9 +10,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 alizarin-core = { path = "../alizarin-core", features = ["multi-threaded"] }
-alizarin-clm-core = { path = "../../ext/alizarin-clm/core" }
-alizarin-filelist-core = { path = "../../ext/filelist/core" }
-alizarin-geo-core = { path = "../../ext/alizarin-geo/core" }
+# Leaf ABI crate — for TypeHandlerInfo, so extensions register over the ABI
+# (pointer from JS), not as compile-time deps.
+alizarin-extension-api = { path = "../alizarin-extension-api" }
 napi = { version = "2", features = ["napi6", "serde-json"] }
 napi-derive = "2"
 serde = { version = "1.0", features = ["derive"] }

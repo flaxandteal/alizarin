@@ -2,7 +2,6 @@ mod instance_wrapper_napi;
 use instance_wrapper_napi::NapiRdmCache;
 
 use std::collections::HashMap;
-use std::sync::OnceLock;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
@@ -22,22 +21,28 @@ use alizarin_core::{
 // Extension registry (shared across all calls)
 // ============================================================================
 
-fn extension_registry() -> &'static ExtensionTypeRegistry {
-    static REGISTRY: OnceLock<ExtensionTypeRegistry> = OnceLock::new();
-    REGISTRY.get_or_init(|| {
-        let mut registry = ExtensionTypeRegistry::new();
-        registry.register(
-            alizarin_clm_core::DATATYPE_NAME,
-            alizarin_clm_core::create_reference_handler(),
-        );
-        registry.register(
-            alizarin_filelist_core::DATATYPE_NAME,
-            alizarin_filelist_core::create_filelist_handler(),
-        );
-        // Validate-only geospatial handler (coercion stays in core).
-        alizarin_geo_core::register(&mut registry);
-        registry
-    })
+/// Build a fresh extension registry from the C-ABI handlers registered in core.
+///
+/// Extensions register over the ABI at load (see [`register_extension_handler`]),
+/// not as compile-time deps — so this crate carries no `ext/*` dependency. Rebuilt
+/// per call (cheap: wraps registered handler names in `Arc`), mirroring Python.
+fn extension_registry() -> ExtensionTypeRegistry {
+    alizarin_core::build_extension_registry_from_registered()
+}
+
+/// Register an extension type handler from a raw `TypeHandlerInfo` pointer, passed
+/// from the extension's native module through JS as a `BigInt`.
+///
+/// The pointer-passing (Python-capsule-style) approach avoids per-value
+/// serialization: the fn-pointers are called directly Rust→Rust. Returns the
+/// datatype name on success.
+#[napi(js_name = "registerExtensionHandler")]
+pub fn register_extension_handler(handler_ptr: BigInt) -> Result<String> {
+    let ptr = handler_ptr.get_u64().1 as *const alizarin_extension_api::TypeHandlerInfo;
+    // SAFETY: `ptr` is a `TypeHandlerInfo` produced by an extension's native module
+    // and handed across as a BigInt; core verifies the ABI fingerprint before
+    // reading any field or calling any fn. The extension must keep it alive.
+    unsafe { alizarin_core::register_handler_from_ptr(ptr) }.map_err(napi::Error::from_reason)
 }
 
 // ============================================================================
@@ -309,8 +314,9 @@ impl NapiStaticResourceRegistry {
         flatten_localized: Option<bool>,
         rdm_cache: Option<&NapiRdmCache>,
     ) -> Result<HashMap<String, Vec<String>>> {
+        let ext_registry = extension_registry();
         let ctx = SerializationContext {
-            extension_registry: Some(extension_registry()),
+            extension_registry: Some(&ext_registry),
             external_resolver: rdm_cache
                 .map(|r| r.inner() as &dyn alizarin_core::type_serialization::ExternalResolver),
             ..SerializationContext::empty()
@@ -341,8 +347,9 @@ impl NapiStaticResourceRegistry {
         required_scope: Option<String>,
     ) -> Result<serde_json::Value> {
         let filter_refs: Vec<&str> = filter_values.iter().map(|s| s.as_str()).collect();
+        let ext_registry = extension_registry();
         let ctx = SerializationContext {
-            extension_registry: Some(extension_registry()),
+            extension_registry: Some(&ext_registry),
             ..SerializationContext::empty()
         };
         let results = self
@@ -549,14 +556,14 @@ pub fn build_business_data_from_csv(
     let resources = if let Some(rc) = rdm_cache {
         let ctx = SerializationContext {
             concept_lookup: Some(rc.inner() as &dyn ConceptLookup),
-            extension_registry: Some(reg),
+            extension_registry: Some(&reg),
             ..SerializationContext::empty()
         };
         build_resources_from_business_csv_with_context(
             &csv_data,
             &graph,
             &collections,
-            Some(reg),
+            Some(&reg),
             options,
             Some(&ctx),
         )
