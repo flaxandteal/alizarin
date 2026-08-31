@@ -17,6 +17,10 @@ import { ArchesClientRemoteStatic } from '../js/client';
 import { graphManager, staticStore } from '../js/graphManager';
 import { RDM } from '../js/rdm';
 import { initWasmForTests } from './wasm-init';
+// Register out-of-tree datatype handlers so `reference` / `file-list` resolve,
+// exactly as the docs harness does (it imports the published packages).
+import '../ext/alizarin-clm/js/index';
+import '../ext/filelist/js/index';
 
 // Runnable examples — same modules the docs embed via <AlizarinComponent>.
 import example1 from '../docs/example/example-1';
@@ -31,6 +35,7 @@ import example9 from '../docs/example/example-9';
 import example10 from '../docs/example/example-10';
 import example11 from '../docs/example/example-11';
 import example12 from '../docs/example/example-12';
+import example13 from '../docs/example/example-13';
 
 const EXAMPLES: Record<string, { run: () => Promise<unknown> }> = {
   'example-1': example1,
@@ -45,6 +50,7 @@ const EXAMPLES: Record<string, { run: () => Promise<unknown> }> = {
   'example-10': example10,
   'example-11': example11,
   'example-12': example12,
+  'example-13': example13,
 };
 
 // --- React.createElement shim (returns plain nodes, no react) ---------------
