@@ -501,7 +501,30 @@
      "rangenode_id": "9f8d0bf7-ebc8-5555-9fad-4f38f59ebcba"
     }
    ],
-   "functions_x_graphs": [],
+   "functions_x_graphs": [
+    {
+     "id": "c75a3472-4654-4f71-8ccc-23b984b96501",
+     "function_id": "60000000-0000-0000-0000-000000000001",
+     "graph_id": "64368e71-abbc-53ba-9bd8-87e2500f8e65",
+     "config": {
+      "triggering_nodegroups": [],
+      "descriptor_types": {
+       "name": {
+        "nodegroup_id": "f3a2d94a-536e-5977-bde4-9106de0e62cc",
+        "string_template": "Heritage site — <Name>"
+       },
+       "description": {
+        "nodegroup_id": "f3a2d94a-536e-5977-bde4-9106de0e62cc",
+        "string_template": "The heritage site known as <Name>."
+       },
+       "map_popup": {
+        "nodegroup_id": "f3a2d94a-536e-5977-bde4-9106de0e62cc",
+        "string_template": "<Name>"
+       }
+      }
+     }
+    }
+   ],
    "graphid": "64368e71-abbc-53ba-9bd8-87e2500f8e65",
    "iconclass": null,
    "is_editable": true,

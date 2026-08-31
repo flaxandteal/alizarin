@@ -1,0 +1,58 @@
+---
+title: Deterministic IDs
+description: Stable UUIDs for diffable, cacheable input and output
+---
+
+import AlizarinComponent from '@/app/alizarin.tsx';
+
+Alizarin generates identifiers **deterministically**: an ID is a
+[UUIDv5](https://www.rfc-editor.org/rfc/rfc4122#section-4.3) computed from a
+namespace and a key, never a random `v4`. The same input always produces the same
+ID — which is what makes exports **diffable** and pipelines **cacheable**.
+
+## The primitive
+
+`generateUuidv5([type, id], key)` hashes a namespace tuple and a key into a stable
+UUID:
+
+```typescript
+import { utils } from 'alizarin';
+utils.generateUuidv5(['graph', 'demo'], 'survey-area');
+// → always the same UUID for these arguments
+```
+
+Same arguments → same UUID, on every machine, every run. Different key → different
+UUID. There is no clock, counter or randomness involved.
+
+## Where it's used
+
+- **Graph mutations** — `GraphMutator` derives every new node / nodegroup / edge
+  id from the graph id plus the node's key, so
+  [building a graph](/docs/graphs) from the same definition twice yields identical
+  ids.
+- **CSV model builds** — `buildGraphFromModelCsvs(...)` takes an `rdmNamespace`;
+  the same CSVs + namespace produce the same graph, byte for byte.
+- **RDM concepts** — collection and concept ids are generated from the namespace,
+  so [controlled lists](/docs/types/concepts) are stable across rebuilds.
+- **Computed tiles** — [derive functions](/docs/functions#derive-functions-computed-tiles)
+  must be pure, so their generated tile ids are reproducible and cacheable.
+
+## Live example
+
+The primitive is deterministic, and so is a repeated graph mutation — mutating the
+same base graph the same way twice gives the **same** new node id (press ▶):
+
+<AlizarinComponent module='/example/example-17.tsx' />
+
+## Why it matters
+
+- **Diffable exports** — re-export a dataset nightly and a `git diff` shows only
+  what actually changed; ids don't churn.
+- **Cacheable pipelines** — a build step keyed on input hashes can skip
+  recomputation, because unchanged input maps to unchanged ids and output.
+- **Cross-boundary links** — a resource in one graph can reference an id in
+  another and know it will be the same wherever that graph is rebuilt — the basis
+  for [layered, expandable graphs](/docs/layering).
+- **Purity is the contract** — this only holds because id generation (and the
+  [functions](/docs/functions#purity-is-the-contract) that run at load) are pure:
+  output depends solely on input.

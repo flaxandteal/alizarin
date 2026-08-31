@@ -1,0 +1,86 @@
+---
+title: Functions
+description: Load-time functions attached to a graph — descriptors and derived tiles
+---
+
+import AlizarinComponent from '@/app/alizarin.tsx';
+
+A graph can carry **functions** that run when a resource is loaded, declared in
+its `functions_x_graphs`. They travel with the graph definition and are applied
+by the core — a UUID-keyed registry mirroring the
+[extension datatype](/docs/extension-abi) pattern. There are two kinds today.
+
+## Descriptor functions
+
+A **descriptor** function turns a resource's tiles into a display string using a
+`string_template`. It computes the resource's **name**, **description** and
+**map-popup** at load — none of these is stored on a tile; they're derived from
+node values every time.
+
+The config lives in `functions_x_graphs` (function id
+`60000000-0000-0000-0000-000000000001`):
+
+```json
+{
+  "function_id": "60000000-0000-0000-0000-000000000001",
+  "config": {
+    "descriptor_types": {
+      "name":        { "nodegroup_id": "…", "string_template": "Heritage site — <Name>" },
+      "description": { "nodegroup_id": "…", "string_template": "The heritage site known as <Name>." }
+    }
+  }
+}
+```
+
+Placeholders (`<Name>`) reference nodes by display name within the nodegroup.
+Read the computed values with `getName()` / `getDescription()` / `getMapPopup()`:
+
+### Live example
+
+The Site model has a descriptor function configured. Each site's name and
+description are **computed** from the templates above — press ▶:
+
+<AlizarinComponent module='/example/example-15.tsx' />
+
+Note the computed `name` (`Heritage site — Mí Locha`) isn't a field on the
+resource — it's produced by the function from the `Name` node value.
+
+## Derive functions (computed tiles)
+
+A **derive** function (compute-tiles) goes further: it reads a resource's
+existing node values and **generates whole nodegroup tiles** just-in-time — tiles
+that were never stored. This is how, for example,
+[`alizarin-gramadan`](https://github.com/flaxandteal/alizarin) derives Irish
+grammatical inflections (an t-ainmní, an ginideach, …) from a base name node the
+moment the resource loads.
+
+Unlike datatype extensions, derive providers are **compiled-in Rust crates**
+(implementing `DeriveProvider`, self-registered by UUID), so they're reached
+identically from the native, NAPI, WASM and Python bindings without duplication.
+The `functions_x_graphs` entry names a `provider` key; the registered provider
+fills the declared `nodegroup`:
+
+```json
+{
+  "function_id": "…compute-tiles id…",
+  "config": { "provider": "gramadan", "nodegroup": "…", "layer": "…" }
+}
+```
+
+### Purity is the contract
+
+Both kinds **must be pure and deterministic** — output depends only on the input
+node values, never on time, randomness or external state. That's what lets the
+core cache computed tiles and skip recomputation, and it keeps
+[IDs deterministic](/docs/determinism) so the same input always yields the same
+output. A derive provider that reached out to a network or a clock would break
+both guarantees.
+
+## Which to use
+
+| | Descriptor | Derive (compute-tiles) |
+|---|---|---|
+| Produces | a display string (name/description/map-popup) | full nodegroup tiles |
+| Configured by | `string_template` | a `provider` key |
+| Registered as | built-in template engine | a compiled Rust `DeriveProvider` |
+| Runnable in JS | yes (above) | via its provider crate |

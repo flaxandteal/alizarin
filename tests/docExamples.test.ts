@@ -37,6 +37,9 @@ import example11 from '../docs/example/example-11';
 import example12 from '../docs/example/example-12';
 import example13 from '../docs/example/example-13';
 import example14 from '../docs/example/example-14';
+import example15 from '../docs/example/example-15';
+import example16 from '../docs/example/example-16';
+import example17 from '../docs/example/example-17';
 
 const EXAMPLES: Record<string, { run: () => Promise<unknown> }> = {
   'example-1': example1,
@@ -53,6 +56,9 @@ const EXAMPLES: Record<string, { run: () => Promise<unknown> }> = {
   'example-12': example12,
   'example-13': example13,
   'example-14': example14,
+  'example-15': example15,
+  'example-16': example16,
+  'example-17': example17,
 };
 
 // --- React.createElement shim (returns plain nodes, no react) ---------------

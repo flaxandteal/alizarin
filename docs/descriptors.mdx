@@ -1,0 +1,58 @@
+---
+title: Names, Descriptions & Slugs
+description: How a resource identifies and describes itself
+---
+
+import AlizarinComponent from '@/app/alizarin.tsx';
+
+Every resource has a human-facing **identity** that isn't a plain field: a
+**name**, a **description**, a **map-popup**, and a **slug**. The first three are
+*descriptors* computed by the graph's descriptor function; the slug is a URL-safe
+identifier derived from the name.
+
+## Descriptors
+
+Descriptors are produced by the [descriptor function](/docs/functions#descriptor-functions)
+— a `string_template` over node values, applied at load. Read them from a
+resource:
+
+```typescript
+const site = (await Sites.all())[0];
+await site.getName();        // "Heritage site — Trá Theas"
+await site.getDescription(); // "The heritage site known as Trá Theas."
+await site.getMapPopup();    // popup text for a map marker
+```
+
+None of these is stored on a tile — they're recomputed from node values, so they
+follow the [current language](/docs/types/i18n) and stay consistent with the data.
+
+## Slugs
+
+A **slug** is a short, URL-safe, lowercase identifier — used for static-site
+paths and stable links. `slugify(name)` derives one deterministically:
+
+```typescript
+import { slugify } from 'alizarin';
+slugify('Heritage site — Trá Theas'); // "heritage-site-tr-the"
+```
+
+It strips accents and punctuation, lowercases, hyphenates, and truncates — and
+because it's a pure function, the **same name always yields the same slug**
+(see [Deterministic IDs](/docs/determinism)). A slug can also be configured as a
+descriptor type (`<Slug>`) so `getSlug()` returns it directly.
+
+## Live example
+
+Each site's computed **name**, its **slug**, and its **description** — press ▶:
+
+<AlizarinComponent module='/example/example-16.tsx' />
+
+## Why it matters
+
+- **Static sites**: slugs give every resource a stable, human-readable URL with
+  no database lookup.
+- **Diffable exports**: names/slugs derived deterministically from data mean a
+  nightly re-export changes only where the data changed — see
+  [Deterministic IDs](/docs/determinism).
+- **Language-aware**: descriptors re-resolve per language, so one dataset serves
+  a multilingual site.
