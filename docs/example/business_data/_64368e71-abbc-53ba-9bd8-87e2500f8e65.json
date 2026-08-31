@@ -139,6 +139,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "0f307e49-ac35-54ee-96ab-7f17a72a8aaf",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "1988"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "0f307e49-ac35-54ee-96ab-7f17a72a8aaf",
+      "sortorder": 0,
+      "tileid": "adf2fa28-7ae5-5100-943a-ed2dd55e43cb"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": true
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "0f307e49-ac35-54ee-96ab-7f17a72a8aaf",
+      "sortorder": 0,
+      "tileid": "3bb94a88-c1c2-561a-888d-8523d1e8adb3"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/1",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "0f307e49-ac35-54ee-96ab-7f17a72a8aaf",
+      "sortorder": 0,
+      "tileid": "601c3f76-631c-57ce-bce2-9cc8fac8b208"
      }
     ],
     "tiles_loaded": true
@@ -285,6 +318,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "12b3c1e2-dda3-58ad-b437-79e9c2b9a722",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "1990/1995"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "12b3c1e2-dda3-58ad-b437-79e9c2b9a722",
+      "sortorder": 0,
+      "tileid": "68497939-05cd-5aec-bce2-6774d21ca500"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": false
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "12b3c1e2-dda3-58ad-b437-79e9c2b9a722",
+      "sortorder": 0,
+      "tileid": "caeeb756-de7f-59a3-bebd-203ae62a5a8f"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/2",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "12b3c1e2-dda3-58ad-b437-79e9c2b9a722",
+      "sortorder": 0,
+      "tileid": "e44f6972-9ed4-5a94-8477-98cdceac951d"
      }
     ],
     "tiles_loaded": true
@@ -427,6 +493,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "422339c8-b8db-5697-a382-3b34d16a2f47",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "19XX"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "422339c8-b8db-5697-a382-3b34d16a2f47",
+      "sortorder": 0,
+      "tileid": "3d4da1b4-98fa-5800-88da-91d576282bd8"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": true
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "422339c8-b8db-5697-a382-3b34d16a2f47",
+      "sortorder": 0,
+      "tileid": "b0bfafb8-4bc5-502b-9b0c-639ae8e485bf"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/3",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "422339c8-b8db-5697-a382-3b34d16a2f47",
+      "sortorder": 0,
+      "tileid": "b3656543-e689-5df2-981c-80d121d3bba0"
      }
     ],
     "tiles_loaded": true
@@ -573,6 +672,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "5269957d-e150-5a31-bc17-53cc8d9b38ee",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "2001-06"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "5269957d-e150-5a31-bc17-53cc8d9b38ee",
+      "sortorder": 0,
+      "tileid": "3adb5974-7b30-5b8b-b686-442b42424d48"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": false
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "5269957d-e150-5a31-bc17-53cc8d9b38ee",
+      "sortorder": 0,
+      "tileid": "49f4e3b0-a666-5cd0-a70e-cd5b22d9cf76"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/4",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "5269957d-e150-5a31-bc17-53cc8d9b38ee",
+      "sortorder": 0,
+      "tileid": "e60b8df7-76c7-5c9e-a0f2-21b717fe5a4a"
      }
     ],
     "tiles_loaded": true
@@ -715,6 +847,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "58dc24e1-eeea-539d-838d-26628ce2da5b",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "1975?"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "58dc24e1-eeea-539d-838d-26628ce2da5b",
+      "sortorder": 0,
+      "tileid": "8ff6200a-d6c1-5c23-ac81-78c58dd319a3"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": true
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "58dc24e1-eeea-539d-838d-26628ce2da5b",
+      "sortorder": 0,
+      "tileid": "8d06b4d2-88f9-53b8-be06-97caaf3a981e"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/5",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "58dc24e1-eeea-539d-838d-26628ce2da5b",
+      "sortorder": 0,
+      "tileid": "758e0230-bafa-5ac7-a543-b454a9e43df4"
      }
     ],
     "tiles_loaded": true
@@ -857,6 +1022,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "675cc864-5f55-51e9-ac43-b74b48dbdd84",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "1960/1969"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "675cc864-5f55-51e9-ac43-b74b48dbdd84",
+      "sortorder": 0,
+      "tileid": "0a80fc4a-4e35-5110-9982-eaedda621d32"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": false
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "675cc864-5f55-51e9-ac43-b74b48dbdd84",
+      "sortorder": 0,
+      "tileid": "3e735f24-40ed-5d6a-b4a7-de83702d6515"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/6",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "675cc864-5f55-51e9-ac43-b74b48dbdd84",
+      "sortorder": 0,
+      "tileid": "e9539ba7-f778-5cce-9c1f-7d42c6754bd7"
      }
     ],
     "tiles_loaded": true
@@ -1003,6 +1201,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "7c36c3f5-bec7-53cc-b5ef-1a140351d602",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "2010-05-12"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "7c36c3f5-bec7-53cc-b5ef-1a140351d602",
+      "sortorder": 0,
+      "tileid": "bbeaaa8a-2e22-5881-826e-837bec030bdf"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": true
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "7c36c3f5-bec7-53cc-b5ef-1a140351d602",
+      "sortorder": 0,
+      "tileid": "9bc32985-b057-5515-85d7-f944320d5cff"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/7",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "7c36c3f5-bec7-53cc-b5ef-1a140351d602",
+      "sortorder": 0,
+      "tileid": "acefbf0f-c363-5df6-bea9-81135e53249d"
      }
     ],
     "tiles_loaded": true
@@ -1145,6 +1376,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "8b1b5468-0ffe-5ee4-84f3-3b6791d734f3",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "185X"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "8b1b5468-0ffe-5ee4-84f3-3b6791d734f3",
+      "sortorder": 0,
+      "tileid": "c1ebbe0c-5ac1-5bd6-b0bd-9c1287a21c6a"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": false
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "8b1b5468-0ffe-5ee4-84f3-3b6791d734f3",
+      "sortorder": 0,
+      "tileid": "fc358543-0f03-56f4-9553-1d2fb04bd700"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/8",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "8b1b5468-0ffe-5ee4-84f3-3b6791d734f3",
+      "sortorder": 0,
+      "tileid": "a7c59e3c-e8f9-5ea3-a1cf-d0a3649eb569"
      }
     ],
     "tiles_loaded": true
@@ -1287,6 +1551,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "8e1c27b9-c743-5bcf-83c8-318179bb2edd",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "199X"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "8e1c27b9-c743-5bcf-83c8-318179bb2edd",
+      "sortorder": 0,
+      "tileid": "12202237-7f91-5bed-a4fa-37395a76fd88"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": true
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "8e1c27b9-c743-5bcf-83c8-318179bb2edd",
+      "sortorder": 0,
+      "tileid": "a74cc397-951a-5e68-b6fc-c776285ce83e"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/9",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "8e1c27b9-c743-5bcf-83c8-318179bb2edd",
+      "sortorder": 0,
+      "tileid": "0803426e-fdad-5af7-a23e-732b6c13aa62"
      }
     ],
     "tiles_loaded": true
@@ -1429,6 +1726,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "997b2ed6-48e2-5e66-b72b-c72861f3f622",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "2005/2008"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "997b2ed6-48e2-5e66-b72b-c72861f3f622",
+      "sortorder": 0,
+      "tileid": "6ebcab33-8a0d-58c9-a386-6471e6f9d02a"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": false
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "997b2ed6-48e2-5e66-b72b-c72861f3f622",
+      "sortorder": 0,
+      "tileid": "731d273d-8e6e-5280-bd54-4bd1e274bc70"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/10",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "997b2ed6-48e2-5e66-b72b-c72861f3f622",
+      "sortorder": 0,
+      "tileid": "523e5c25-a9b8-5c76-90f1-69cfb4787871"
      }
     ],
     "tiles_loaded": true
@@ -1543,6 +1873,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "a8a3240d-9756-535f-a91d-77af1e9af54b",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "1988"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "a8a3240d-9756-535f-a91d-77af1e9af54b",
+      "sortorder": 0,
+      "tileid": "33f3c3b4-aefb-5e0e-adb5-23a96c8e66a0"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": true
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "a8a3240d-9756-535f-a91d-77af1e9af54b",
+      "sortorder": 0,
+      "tileid": "86468ad8-cf62-55c4-b849-f9eb2bf09764"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/11",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "a8a3240d-9756-535f-a91d-77af1e9af54b",
+      "sortorder": 0,
+      "tileid": "3b7c5c9f-b708-5e6e-ba43-c93d6c12cb5b"
      }
     ],
     "tiles_loaded": true
@@ -1685,6 +2048,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "bb8ec53b-0d84-5d36-95a9-e02fdd046f24",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "1990/1995"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "bb8ec53b-0d84-5d36-95a9-e02fdd046f24",
+      "sortorder": 0,
+      "tileid": "eee6e2ed-9a25-523d-89de-a30e3f7af45f"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": false
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "bb8ec53b-0d84-5d36-95a9-e02fdd046f24",
+      "sortorder": 0,
+      "tileid": "3e92adc1-fda3-55ab-8d93-907ea86f91e2"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/12",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "bb8ec53b-0d84-5d36-95a9-e02fdd046f24",
+      "sortorder": 0,
+      "tileid": "cdbb0832-40ed-562c-ab0a-9959927981cc"
      }
     ],
     "tiles_loaded": true
@@ -1831,6 +2227,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "c37f54a1-48a0-53b2-b079-8e28c4bfd45f",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "19XX"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "c37f54a1-48a0-53b2-b079-8e28c4bfd45f",
+      "sortorder": 0,
+      "tileid": "04fa968b-d861-5970-96b1-26224339d98f"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": true
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "c37f54a1-48a0-53b2-b079-8e28c4bfd45f",
+      "sortorder": 0,
+      "tileid": "92784aea-863e-55d6-a503-0d514c33b03a"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/13",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "c37f54a1-48a0-53b2-b079-8e28c4bfd45f",
+      "sortorder": 0,
+      "tileid": "55c933ae-ff93-5413-858b-04896ccaa78d"
      }
     ],
     "tiles_loaded": true
@@ -1977,6 +2406,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "d793cffb-8aec-57af-9f9d-f3cb0da857b3",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "2001-06"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "d793cffb-8aec-57af-9f9d-f3cb0da857b3",
+      "sortorder": 0,
+      "tileid": "f45563df-074c-5be0-8263-f8df3f9d17cb"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": false
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "d793cffb-8aec-57af-9f9d-f3cb0da857b3",
+      "sortorder": 0,
+      "tileid": "81cb5af1-bf36-5a23-947b-e3975759e18b"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/14",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "d793cffb-8aec-57af-9f9d-f3cb0da857b3",
+      "sortorder": 0,
+      "tileid": "4f6f13c3-e998-569c-9b4b-6659105f1f46"
      }
     ],
     "tiles_loaded": true
@@ -2119,6 +2581,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "dc11e420-bfba-5362-8836-1bd4aac9219e",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "1975?"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "dc11e420-bfba-5362-8836-1bd4aac9219e",
+      "sortorder": 0,
+      "tileid": "645a898e-19fb-5bc9-8896-94d5f34b86f2"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": true
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "dc11e420-bfba-5362-8836-1bd4aac9219e",
+      "sortorder": 0,
+      "tileid": "0d00da44-65e0-54c1-85d7-9aad5834cc2e"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/15",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "dc11e420-bfba-5362-8836-1bd4aac9219e",
+      "sortorder": 0,
+      "tileid": "b26df62a-58e6-53ec-974b-41c5aad0c842"
      }
     ],
     "tiles_loaded": true
@@ -2261,6 +2756,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "ef26478e-0a44-5eac-b160-94e0aeb880c7",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "1960/1969"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "ef26478e-0a44-5eac-b160-94e0aeb880c7",
+      "sortorder": 0,
+      "tileid": "b8a75670-cd5c-5195-aafa-f53aae77fb22"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": false
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "ef26478e-0a44-5eac-b160-94e0aeb880c7",
+      "sortorder": 0,
+      "tileid": "d3ec6ab9-aebf-5a0c-b697-2e27bbc5dd97"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/16",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "ef26478e-0a44-5eac-b160-94e0aeb880c7",
+      "sortorder": 0,
+      "tileid": "3ba3fc1c-2cba-55d2-82c9-70bf3bf53ad3"
      }
     ],
     "tiles_loaded": true
@@ -2403,6 +2931,39 @@
       "parenttile_id": null,
       "resourceinstance_id": "f023bf21-51ea-530c-b4b3-4be17dfebe8b",
       "sortorder": 0
+     },
+     {
+      "data": {
+       "56929b52-5df8-5a61-9f22-b449c0622344": "2010-05-12"
+      },
+      "nodegroup_id": "56929b52-5df8-5a61-9f22-b449c0622344",
+      "parenttile_id": null,
+      "resourceinstance_id": "f023bf21-51ea-530c-b4b3-4be17dfebe8b",
+      "sortorder": 0,
+      "tileid": "a28fa71d-513b-5695-a40a-1ef283d2112d"
+     },
+     {
+      "data": {
+       "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79": true
+      },
+      "nodegroup_id": "7dc72b8a-72f0-5a7e-bc36-45104a2f9b79",
+      "parenttile_id": null,
+      "resourceinstance_id": "f023bf21-51ea-530c-b4b3-4be17dfebe8b",
+      "sortorder": 0,
+      "tileid": "3c7a7ee6-88b8-55c7-a514-d454a5eb5a6b"
+     },
+     {
+      "data": {
+       "11412fa9-5f8b-52a3-bb70-53e21f34ad61": {
+        "url": "https://records.example.org/site/17",
+        "url_label": "Heritage record"
+       }
+      },
+      "nodegroup_id": "11412fa9-5f8b-52a3-bb70-53e21f34ad61",
+      "parenttile_id": null,
+      "resourceinstance_id": "f023bf21-51ea-530c-b4b3-4be17dfebe8b",
+      "sortorder": 0,
+      "tileid": "7bce8eaf-a8bd-5949-b984-4d9e7c5288a5"
      }
     ],
     "tiles_loaded": true
