@@ -15,6 +15,7 @@
 //! });
 //! ```
 
+use alizarin_core::extension_type_registry::ValidationResult;
 use alizarin_core::{
     CoercionResult, ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry,
     HandlerCapabilities,
@@ -37,6 +38,7 @@ struct JsHandlerCallbacks {
     coerce_fn: Option<js_sys::Function>,
     render_display_fn: Option<js_sys::Function>,
     resolve_markers_fn: Option<js_sys::Function>,
+    validate_fn: Option<js_sys::Function>,
 }
 
 // =============================================================================
@@ -82,9 +84,21 @@ pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<()
         None
     };
 
-    if coerce_fn.is_none() && render_display_fn.is_none() && resolve_markers_fn.is_none() {
+    let validate_fn = js_sys::Reflect::get(&options, &JsValue::from_str("validate"))
+        .map_err(|_| JsValue::from_str("options must be an object (failed to read 'validate')"))?;
+    let validate_fn = if validate_fn.is_function() {
+        Some(validate_fn.dyn_into::<js_sys::Function>().unwrap())
+    } else {
+        None
+    };
+
+    if coerce_fn.is_none()
+        && render_display_fn.is_none()
+        && resolve_markers_fn.is_none()
+        && validate_fn.is_none()
+    {
         return Err(JsValue::from_str(
-            "At least one callback (coerce, renderDisplay, resolveMarkers) is required",
+            "At least one callback (coerce, renderDisplay, resolveMarkers, validate) is required",
         ));
     }
 
@@ -95,6 +109,7 @@ pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<()
                 coerce_fn,
                 render_display_fn,
                 resolve_markers_fn,
+                validate_fn,
             },
         );
     });
@@ -175,7 +190,7 @@ impl JsExtensionTypeHandler {
                     can_render_search: false,
                     can_resolve_markers: cbs.resolve_markers_fn.is_some(),
                     can_index: false,
-                    can_validate: false,
+                    can_validate: cbs.validate_fn.is_some(),
                 }
             } else {
                 HandlerCapabilities::default()
@@ -418,6 +433,58 @@ impl ExtensionTypeHandler for JsExtensionTypeHandler {
             } else {
                 Ok(tile_data.clone())
             }
+        })
+    }
+
+    fn validate(
+        &self,
+        value: &Value,
+        config: Option<&Value>,
+    ) -> Result<ValidationResult, ExtensionError> {
+        JS_TYPE_HANDLERS.with(|handlers| {
+            let handlers = handlers.borrow();
+            let Some(cbs) = handlers.get(&self.datatype) else {
+                return Ok(ValidationResult::valid());
+            };
+            let Some(ref validate_fn) = cbs.validate_fn else {
+                return Ok(ValidationResult::valid());
+            };
+
+            let to_js = |v: &Value| -> Result<JsValue, ExtensionError> {
+                let json = serde_json::to_string(v)
+                    .map_err(|e| ExtensionError::new(format!("Failed to serialize: {}", e)))?;
+                js_sys::JSON::parse(&json)
+                    .map_err(|_| ExtensionError::new("Failed to parse as JS".to_string()))
+            };
+            let js_value = to_js(value)?;
+            let js_config = match config {
+                Some(c) => to_js(c)?,
+                None => JsValue::NULL,
+            };
+
+            let result = validate_fn
+                .call2(&JsValue::NULL, &js_value, &js_config)
+                .map_err(|e| {
+                    ExtensionError::new(
+                        e.as_string()
+                            .unwrap_or_else(|| "JS validate callback failed".to_string()),
+                    )
+                })?;
+            // The callback returns a ValidationResult-shaped object; parse it back.
+            let json: String = js_sys::JSON::stringify(&result)
+                .ok()
+                .and_then(|s| s.as_string())
+                .ok_or_else(|| {
+                    ExtensionError::new(
+                        "validate must return a ValidationResult object".to_string(),
+                    )
+                })?;
+            serde_json::from_str(&json).map_err(|e| {
+                ExtensionError::new(format!(
+                    "validate returned an invalid ValidationResult: {}",
+                    e
+                ))
+            })
         })
     }
 

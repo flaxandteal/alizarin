@@ -52,6 +52,8 @@
     "build:wasm": "wasm-pack build crates/alizarin-wasm --target web --out-dir ../../pkg --out-name alizarin --release",
     "build:wasm:dev": "wasm-pack build crates/alizarin-wasm --target web --out-dir ../../pkg --out-name alizarin --dev",
     "build:wasm:release": "npm run build:wasm && wasm-opt -Os -o pkg/alizarin_bg.wasm pkg/alizarin_bg.wasm",
+    "build:wasm:ext-geo": "wasm-pack build ext/geo/wasm --target web --release",
+    "build:wasm:ext-filelist": "wasm-pack build ext/filelist/wasm --target web --release",
     "build:js": "NODE_OPTIONS='--experimental-wasm-modules' vite build && node scripts/create-inline.mjs && tsc -p tsconfig.build.json",
     "build": "npm run build:wasm && echo '⚠ NAPI not built by default — run napi separately' && npm run build:js",
     "build:release": "npm run build:wasm:release && npm run build:js",

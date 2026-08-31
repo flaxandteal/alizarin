@@ -3,8 +3,8 @@
 //! This crate provides the core types and `ExtensionTypeHandler` implementation
 //! for the "reference" datatype. It is used by:
 //! - `alizarin-napi` (Node.js bindings)
-//! - `ext/alizarin-clm/python` (Python extension, via C ABI wrappers)
-//! - `ext/alizarin-clm/js` (JS extension)
+//! - `ext/clm/python` (Python extension, via C ABI wrappers)
+//! - `ext/clm/js` (JS extension)
 
 /// Shared C-ABI `TypeHandlerInfo` builder for the python + napi bindings.
 pub mod c_abi;

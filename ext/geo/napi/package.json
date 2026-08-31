@@ -1,16 +1,16 @@
 {
-  "name": "@alizarin/clm-napi",
+  "name": "@alizarin/geo",
   "version": "2.0.0-beta.1",
   "license": "AGPL-3.0-or-later",
-  "description": "NAPI binding for the Alizarin CLM (reference) extension",
+  "description": "NAPI binding for the Alizarin geo (geojson-feature-collection) extension",
   "repository": {
     "type": "git",
     "url": "https://github.com/flaxandteal/alizarin",
-    "directory": "ext/alizarin-clm/napi"
+    "directory": "ext/geo/napi"
   },
   "main": "register.js",
   "napi": {
-    "name": "alizarin-clm-napi",
+    "name": "alizarin-geo-napi",
     "triples": {
       "defaults": true
     }
