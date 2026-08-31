@@ -394,6 +394,25 @@ class FileListDataType {
 // Register with alizarin's custom datatypes
 viewModels.CUSTOM_DATATYPES.set("file-list", FileListDataType);
 
+// Also register the file-list handler for the NAPI backend, when it is in use and
+// the native ext (@alizarin/filelist-napi) is installed. Both are OPTIONAL peers:
+// a WASM/browser consumer has neither, so the imports fail and this is skipped —
+// no native binary is pulled. A napi consumer adds @alizarin/filelist-napi to its
+// deps and this wires it up, so `import '@alizarin/filelist'` covers both backends.
+(async () => {
+  try {
+    // Variable specifiers so the bundler/tsc don't resolve these optional peers
+    // at build time — loaded (and typed `any`) only at runtime.
+    const napiPkg = "@alizarin/napi";
+    const extPkg = "@alizarin/filelist-napi";
+    const napi = await import(napiPkg) as { registerExtensionHandler(ptr: bigint): unknown };
+    const ext = await import(extPkg) as { fileListHandlerPtr(): bigint };
+    napi.registerExtensionHandler(ext.fileListHandlerPtr());
+  } catch {
+    // Not using the napi backend, or the native ext isn't installed — nothing to do.
+  }
+})();
+
 // =============================================================================
 // Exports
 // =============================================================================

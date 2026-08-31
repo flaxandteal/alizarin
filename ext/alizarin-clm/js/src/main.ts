@@ -674,3 +674,22 @@ viewModels.CUSTOM_DATATYPES.set("reference", ReferenceMergedDataType);
 // This tells the core that reference nodes should be included in
 // alias-to-collection mapping, so resolveLabels resolves reference labels.
 registerResolvableDatatype("reference");
+
+// Also register the reference handler for the NAPI backend, when it is in use and
+// the native ext (@alizarin/clm-napi) is installed. Both are OPTIONAL peers: a
+// WASM/browser consumer has neither, so the imports fail and this is skipped —
+// no native binary is pulled. A napi consumer adds @alizarin/clm-napi to its deps
+// and this wires it up, so `import '@alizarin/clm'` covers both backends.
+(async () => {
+  try {
+    // Variable specifiers so the bundler/tsc don't try to resolve these optional
+    // peers at build time — they're loaded (and typed `any`) only at runtime.
+    const napiPkg = "@alizarin/napi";
+    const extPkg = "@alizarin/clm-napi";
+    const napi = await import(napiPkg) as { registerExtensionHandler(ptr: bigint): unknown };
+    const ext = await import(extPkg) as { referenceHandlerPtr(): bigint };
+    napi.registerExtensionHandler(ext.referenceHandlerPtr());
+  } catch {
+    // Not using the napi backend, or the native ext isn't installed — nothing to do.
+  }
+})();

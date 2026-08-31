@@ -36,7 +36,7 @@ export default defineConfig({
     },
     rollupOptions: {
       // Externalize alizarin - it will be provided by the consumer
-      external: ['alizarin'],
+      external: ['alizarin', '@alizarin/napi', '@alizarin/filelist-napi'],
       output: {
         globals: {
           alizarin: 'Alizarin'

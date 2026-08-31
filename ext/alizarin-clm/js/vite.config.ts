@@ -15,8 +15,10 @@ export default defineConfig({
       formats: ['es']
     },
     rollupOptions: {
-      // Externalize alizarin - it will be provided by the consumer
-      external: ['alizarin'],
+      // Externalize alizarin (provided by the consumer) and the optional napi
+      // peers (@alizarin/napi, @alizarin/clm-napi) — dynamically imported at
+      // runtime only when the napi backend is in use, never bundled.
+      external: ['alizarin', '@alizarin/napi', '@alizarin/clm-napi'],
       output: {
         globals: {
           alizarin: 'Alizarin'

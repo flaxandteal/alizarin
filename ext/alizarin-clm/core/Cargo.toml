@@ -12,3 +12,5 @@ regex = "1.10"
 lazy_static = "1.4"
 uuid = "1.0"
 alizarin-core = { path = "../../../crates/alizarin-core", version = "2.0.0-beta.1" }
+# C-ABI TypeHandlerInfo builder (shared by the python + napi bindings).
+alizarin-extension-api = { path = "../../../crates/alizarin-extension-api" }

@@ -6,6 +6,9 @@
 //! - `ext/filelist/python` (Python extension, via C ABI wrappers)
 //! - `ext/filelist/js` (JS extension)
 
+/// Shared C-ABI `TypeHandlerInfo` builder for the python + napi bindings.
+pub mod c_abi;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;

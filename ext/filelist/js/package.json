@@ -23,7 +23,13 @@
     "test": "cd ../../.. && npm test -- ext/filelist/js/tests/filelist.test.ts"
   },
   "peerDependencies": {
-    "alizarin": "2.0.0-beta.1"
+    "alizarin": "2.0.0-beta.1",
+    "@alizarin/napi": "2.0.0-beta.1",
+    "@alizarin/filelist-napi": "2.0.0-beta.1"
+  },
+  "peerDependenciesMeta": {
+    "@alizarin/napi": { "optional": true },
+    "@alizarin/filelist-napi": { "optional": true }
   },
   "devDependencies": {
     "alizarin": "file:../../..",

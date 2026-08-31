@@ -23,7 +23,13 @@
     "test": "cd ../../.. && npm test -- ext/alizarin-clm/js/tests/clm.test.ts"
   },
   "peerDependencies": {
-    "alizarin": "2.0.0-beta.1"
+    "alizarin": "2.0.0-beta.1",
+    "@alizarin/napi": "2.0.0-beta.1",
+    "@alizarin/clm-napi": "2.0.0-beta.1"
+  },
+  "peerDependenciesMeta": {
+    "@alizarin/napi": { "optional": true },
+    "@alizarin/clm-napi": { "optional": true }
   },
   "devDependencies": {
     "alizarin": "file:../../..",
