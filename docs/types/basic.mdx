@@ -23,14 +23,25 @@ before rendering, or React will reject a raw `Number`/`Date` object as a child.
 
 ## boolean & url
 
-`BooleanViewModel` wraps `true`/`false`; `UrlViewModel` wraps a URL string.
+`BooleanViewModel` extends `Boolean` and renders a **label** from the node config
+(`trueLabel` / `falseLabel`) rather than `true`/`false`. `UrlViewModel` wraps a
+`{ url, url_label }` value — use `.forJson()` to get both, or stringify for the
+label. Both are objects, so coerce before rendering.
 
-## Live example
+## Live: string + number
 
 Each site's **name** (`string`) and its **area** (`number`, nested in a semantic
-nodegroup), resolved lazily and rendered — press ▶:
+nodegroup) — press ▶:
 
 <AlizarinComponent module='/example/example-9.tsx' />
 
 The `area` is coerced with a template literal, since a raw `NumberViewModel`
 object isn't a valid React child.
+
+## Live: boolean + url (+ edtf)
+
+Each site's **protected** flag (`boolean`, shown via its config label), a
+**record link** (`url`), and its **survey period** (`edtf`, see
+[Dates & EDTF](/docs/types/dates-edtf)) — press ▶:
+
+<AlizarinComponent module='/example/example-12.tsx' />

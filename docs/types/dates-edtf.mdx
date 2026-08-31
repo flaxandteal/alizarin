@@ -32,8 +32,13 @@ intervals that a plain `date` cannot: `1984?` (uncertain year), `1985-04-12/1985
 (an interval), `19XX` (an unspecified decade). Use it for historical records where
 precision varies.
 
-<div className="fd-callout">
-A live EDTF demo lands alongside the other added-field types (an `edtf` field is
-being added to the sample data). Until then, the shape is: `await
-record.some_edtf_field` → an `EDTFViewModel` you format like the date above.
-</div>
+### Live example
+
+Each site's **survey period** (`edtf`) — some exact, some fuzzy (`19XX`),
+some intervals (`1990/1995`) — alongside a `boolean` and a `url` field
+(press ▶):
+
+<AlizarinComponent module='/example/example-12.tsx' />
+
+`EDTFViewModel` isn't a plain string, so coerce it (`` `${period}` ``) before
+rendering — the same rule as `date`.
