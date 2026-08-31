@@ -1,4 +1,4 @@
-// Doctest for the runnable documentation examples (docs/example/example-*.tsx).
+// Doctest for the runnable documentation examples (docs/**/examples/*.tsx).
 //
 // These modules power the interactive "▶ Run this example" demos in the docs.
 // Here we execute each one against the bundled sample data so a broken demo
@@ -19,47 +19,25 @@ import { RDM } from '../js/rdm';
 import { initWasmForTests } from './wasm-init';
 // Register out-of-tree datatype handlers so `reference` / `file-list` resolve,
 // exactly as the docs harness does (it imports the published packages).
-import '../ext/alizarin-clm/js/index';
+import '../ext/clm/js/index';
 import '../ext/filelist/js/index';
 
-// Runnable examples — same modules the docs embed via <AlizarinComponent>.
-import example1 from '../docs/example/example-1';
-import example2 from '../docs/example/example-2';
-import example3 from '../docs/example/example-3';
-import example4 from '../docs/example/example-4';
-import example5 from '../docs/example/example-5';
-import example6 from '../docs/example/example-6';
-import example7 from '../docs/example/example-7';
-import example8 from '../docs/example/example-8';
-import example9 from '../docs/example/example-9';
-import example10 from '../docs/example/example-10';
-import example11 from '../docs/example/example-11';
-import example12 from '../docs/example/example-12';
-import example13 from '../docs/example/example-13';
-import example14 from '../docs/example/example-14';
-import example15 from '../docs/example/example-15';
-import example16 from '../docs/example/example-16';
-import example17 from '../docs/example/example-17';
+// Runnable examples — AUTO-DISCOVERED (same files the docs embed via
+// <AlizarinComponent>). Each lives in an `examples/` folder beside its page's
+// .mdx (docs/<section>/examples/<name>.tsx); `import.meta.glob` (vitest runs on
+// vite) eagerly collects them all, so adding an example needs no edit here — it
+// mirrors the harness's auto-discovery in alizarin-docs/lib/alizarin.ts.
+const exampleModules = import.meta.glob('../docs/**/examples/*.tsx', {
+  eager: true,
+}) as Record<string, { default: { run: () => Promise<unknown> } }>;
 
-const EXAMPLES: Record<string, { run: () => Promise<unknown> }> = {
-  'example-1': example1,
-  'example-2': example2,
-  'example-3': example3,
-  'example-4': example4,
-  'example-5': example5,
-  'example-6': example6,
-  'example-7': example7,
-  'example-8': example8,
-  'example-9': example9,
-  'example-10': example10,
-  'example-11': example11,
-  'example-12': example12,
-  'example-13': example13,
-  'example-14': example14,
-  'example-15': example15,
-  'example-16': example16,
-  'example-17': example17,
-};
+const EXAMPLES: Record<string, { run: () => Promise<unknown> }> = Object.fromEntries(
+  Object.entries(exampleModules).map(([path, mod]) => {
+    // '../docs/types/examples/basic-scalars.tsx' -> 'types/basic-scalars'
+    const name = path.replace(/^\.\.\/docs\//, '').replace(/examples\//, '').replace(/\.tsx$/, '');
+    return [name, mod.default];
+  }),
+);
 
 // --- React.createElement shim (returns plain nodes, no react) ---------------
 type ShimNode = { type: unknown; props: Record<string, unknown>; children: unknown[] };

@@ -22,7 +22,7 @@ Each scenario event's start and end dates. Note the dates live in a nested
 semantic nodegroup (`event_span`), so we await the group, then the typed dates,
 then format them — press ▶:
 
-<AlizarinComponent module='/example/example-5.tsx' />
+<AlizarinComponent module='/examples/typed-lazy-values.tsx' />
 
 ## edtf
 
@@ -38,7 +38,7 @@ Each site's **survey period** (`edtf`) — some exact, some fuzzy (`19XX`),
 some intervals (`1990/1995`) — alongside a `boolean` and a `url` field
 (press ▶):
 
-<AlizarinComponent module='/example/example-12.tsx' />
+<AlizarinComponent module='/types/examples/scalars-edtf-boolean-url.tsx' />
 
 `EDTFViewModel` isn't a plain string, so coerce it (`` `${period}` ``) before
 rendering — the same rule as `date`.

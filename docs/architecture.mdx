@@ -14,12 +14,12 @@ custom datatypes plug into the core.
    Consumers            JS/TS ORM  ·  Python / notebooks  ·  ETL / builders
                               │              │                    │
    Bindings            alizarin-wasm   alizarin-python      alizarin-napi
-        (thin adapters) └──────────────┬──────────────┘  (+ extension handlers)
-                                       │
-   Rust core                      alizarin-core
+        (thin adapters) └──────────────┬──────────────┘
+                                       │        ▲  extensions plug in here
+   Rust core                      alizarin-core │  (over the C ABI) — never
         coercion · serialization · validation · instance resolution
         card resolution · RDM cache · datatype indexing · registries
-                                       │
+                                       │        ▼  compiled into the base crates
    Static data model     StaticGraph · StaticResource · StaticTile · StaticNode
 ```
 
@@ -55,9 +55,25 @@ Each is covered in [Core Internals](/docs/core-internals).
 Custom datatypes register a handler in the core's `ExtensionTypeRegistry`,
 declaring up to six capabilities (coerce, display, resolve-markers, validate,
 search-render, index-spec). Every core pipeline routes through the registry when
-a handler is present. Out-of-tree handlers plug in over a frozen C ABI (Python
-via `PyCapsule`; WASM via JS callbacks; NAPI static-linked). See
-[Extension ABI](/docs/extension-abi).
+a handler is present.
+
+**The base crates carry no extension dependencies.** `alizarin-core`,
+`-wasm`, `-napi` and `-python` know nothing about CLM, file-list or geo — an
+extension is never compiled in. The machinery that reads a handler and calls its
+function pointers lives **once** in `alizarin-core` (`extension_abi`); each binding
+is a thin front-end that hands the core a handler over a frozen C ABI:
+
+- **Python** — wraps the pointer in a `PyCapsule`; `import alizarin_clm` registers it.
+- **NAPI** — the extension's native package passes the pointer through JS as a
+  `BigInt` (no static linking — the base `alizarin-napi` no longer bundles handlers).
+- **WASM** — a JS-callback surface (`registerExtensionHandler(datatype, { coerce,
+  renderDisplay, resolveMarkers, validate })`), since portable code can't pass raw
+  pointers.
+
+Each extension ships a JS/WASM package (`@alizarin/<x>`) and an optional native
+peer (`@alizarin/<x>-napi`); a single `import '@alizarin/<x>'` wires whichever
+backend is present. See [Extension ABI](/docs/extension-abi) for the contract and
+[Extension types](/docs/types/extensions) for the shipped ones (CLM, file-list, geo).
 
 ## Language bindings
 
@@ -132,7 +148,7 @@ console.log(await person.birthDate); // Typed, parsed values
 
 A live version of the same lazy, relationship-following access (press ▶):
 
-<AlizarinComponent module='/example/example-3.tsx' />
+<AlizarinComponent module='/examples/relationship-traversal.tsx' />
 
 ### Data flow
 

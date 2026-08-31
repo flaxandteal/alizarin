@@ -4,17 +4,27 @@ description: Frozen C ABI contract for out-of-tree datatype extensions (ABI v2)
 ---
 
 Out-of-tree datatype extensions plug into alizarin through a small C ABI. An
-extension builds a `TypeHandlerInfo`, wraps it in a `PyCapsule`, and registers it
-via `alizarin.register_type_handler(capsule)`. The host (`alizarin-python`)
-adapts it into the shared `ExtensionTypeRegistry` that core, and the other
-bindings, use.
+extension builds a `TypeHandlerInfo` — function pointers into its own compiled
+code — and hands it to the host, which adapts it into the shared
+`ExtensionTypeRegistry` that core and every binding use. **The base crates carry
+no extension dependencies**: extensions plug in at the boundary, never by
+compile-time linking. The machinery that reads a `TypeHandlerInfo` and calls its
+fn-pointers lives once in `alizarin-core` (`extension_abi`); the bindings are thin
+front-ends over it.
 
 This document is the committed contract for 2.0. `ABI_VERSION` is **2**.
 
-> **Scope.** The C ABI is the **Python** out-of-tree mechanism (PyCapsule). WASM
-> registers handlers via JS callbacks; NAPI static-links its handler cores. Those
-> do not use this ABI. "Freeze the extension ABI" means freeze this Python
-> capsule contract.
+> **How each binding registers the same `TypeHandlerInfo`:**
+> - **Python** — wraps the pointer in a `PyCapsule`; `import alizarin_clm` calls
+>   `alizarin.register_type_handler(capsule)`.
+> - **NAPI** — the extension's native module passes the pointer through JS as a
+>   `BigInt` to `registerExtensionHandler(ptr)`. Same C ABI, no static linking
+>   (base `alizarin-napi` no longer compiles the handler cores in).
+> - **WASM** — a *different*, JS-callback mechanism (portable code can't pass raw
+>   pointers): `registerExtensionHandler(datatype, { coerce, renderDisplay,
+>   resolveMarkers, validate })`. "Freeze the extension ABI" means freeze this
+>   C-ABI capsule/pointer contract; the JS-callback surface is versioned with the
+>   `alizarin` package.
 
 ## The surface
 
@@ -100,16 +110,51 @@ and cut a coordinated release.
 
 ## Writing an extension (sketch)
 
-```rust
-// Build the info once (a constructor sets abi + the unused pointers to None):
-let info = TypeHandlerInfo::new_validating(DATATYPE_NAME, validate_fn, free_fn);
-// ...or a struct literal for a multi-capability handler; either way set
-// `abi: abi_fingerprint()`.
+Build the `TypeHandlerInfo` once in the extension's **core** crate
+(`ext/<x>/core`, module `c_abi`), so the Python and NAPI bindings share a single
+copy of the `extern "C"` wrappers:
 
-// Expose it as a PyCapsule; register at import:
-//   alizarin.register_type_handler(get_handler_capsule())
+```rust
+// ext/<x>/core/src/c_abi.rs — a Once-initialised static (a constructor sets abi +
+// the unused pointers to None; or a struct literal for a multi-capability
+// handler, with `abi: abi_fingerprint()`):
+pub fn handler_type_info() -> *const TypeHandlerInfo { /* … */ }
 ```
 
-The in-tree extensions are the reference implementations:
-`ext/alizarin-clm/python` (coerce + display + resolve_markers),
-`ext/filelist/python` (coerce + display), `ext/alizarin-geo/python` (validate).
+Each binding hands that pointer to the host:
+
+```rust
+// ext/<x>/python — wrap in a PyCapsule (pointer from core):
+//   alizarin.register_type_handler(get_handler_capsule())
+
+// ext/<x>/napi — hand the pointer to JS as a BigInt:
+//   #[napi] fn xHandlerPtr() -> BigInt { core::handler_type_info() as u64 }
+//   // then in JS: registerExtensionHandler(xHandlerPtr())  // @alizarin/napi
+```
+
+The in-tree extensions are the reference implementations: `ext/clm` (coerce +
+display + resolve_markers), `ext/filelist` (coerce + display), `ext/geo`
+(validate).
+
+## Packaging (npm)
+
+Native NAPI handlers ship as a **separate** package per extension —
+`@alizarin/<x>-napi` — because native `.node` binaries are per-platform (unlike
+portable WASM, one artifact for all). To keep a **single import** for consumers,
+the JS/WASM package `@alizarin/<x>` lists `@alizarin/<x>-napi` (and
+`@alizarin/napi`) as **optional peer dependencies**
+(`peerDependenciesMeta: { optional: true }` — npm won't auto-install them) and
+wires them at runtime only when present:
+
+```ts
+// @alizarin/<x> entry, after its WASM registration:
+try {
+  const napi = await import("@alizarin/napi");
+  const ext  = await import("@alizarin/<x>-napi");
+  napi.registerExtensionHandler(ext.xHandlerPtr());
+} catch { /* WASM-only consumer, or the napi ext isn't installed */ }
+```
+
+A browser/WASM consumer of `@alizarin/<x>` pulls **no** native binary; a NAPI
+consumer adds `@alizarin/<x>-napi` to its deps and the same `import
+'@alizarin/<x>'` covers both backends. "Combine the import, split the binary."

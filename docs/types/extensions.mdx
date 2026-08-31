@@ -1,6 +1,6 @@
 ---
 title: Extension types
-description: reference (CLM) and file-list (images) via out-of-tree handlers
+description: reference (CLM), file-list (images) and geojson via out-of-tree handlers
 ---
 
 import AlizarinComponent from '@/app/alizarin.tsx';
@@ -9,15 +9,24 @@ Some datatypes aren't in the core — they're provided by **extensions** that
 register a handler over the [Extension ABI](/docs/extension-abi). The view models
 work exactly like the built-in ones once the handler is registered.
 
-To use them, install and import the package — it self-registers on `wasmReady`:
+To use one, install and import its package — it self-registers on `wasmReady`:
 
 ```typescript
 import 'alizarin';
 import '@alizarin/clm';       // registers the `reference` datatype
 import '@alizarin/filelist';  // registers the `file-list` datatype
+import '@alizarin/geo';       // registers `geojson-feature-collection` validation
 ```
 
-The docs harness does exactly this, so the demos below run live.
+The docs harness imports `@alizarin/clm` and `@alizarin/filelist`, so the reference
+and file-list demos below run live.
+
+> **Backends.** These are the *browser/Node WASM* packages — they register over
+> the JS callback surface. On the **NAPI** backend, add the matching native peer
+> (`@alizarin/clm-napi`, `@alizarin/filelist-napi`, `@alizarin/geo-napi`) and the
+> *same* `import '@alizarin/<x>'` wires both backends — see
+> [Extension ABI → Packaging](/docs/extension-abi#packaging-npm). The base
+> `alizarin` / `@alizarin/napi` packages carry no extensions; you always opt in.
 
 ## reference (CLM)
 
@@ -32,12 +41,34 @@ The `file-list` datatype wraps an array of files. `FileListViewModel` **extends
 `Array`**, each item a `FileItemViewModel` exposing `.name`, `.url`, `.fileType`,
 `.size`. For images, read `.url` straight into an `<img>` tag.
 
+## geojson (geo)
+
+`@alizarin/geo` is a **validate-only** extension for the
+`geojson-feature-collection` datatype: coercion and the
+[`GeoJSONViewModel`](/docs/types/geospatial) stay in core, but the extension
+checks GeoJSON structure, coordinate ranges and polygon-ring integrity at
+generation time. It's the reference example of the ABI's
+[`validate` capability](/docs/extension-abi) — the JS `registerExtensionHandler`
+now accepts a `validate(value, config)` callback that returns a
+`{ valid, errors, warnings }` result:
+
+```typescript
+import '@alizarin/geo'; // registers validation for geojson-feature-collection
+// internally: registerExtensionHandler('geojson-feature-collection', {
+//   validate: (value) => validateGeojson(value),  // runs in the geo WASM module
+// });
+```
+
+Unlike `reference`/`file-list`, geo has no view-model surface of its own — you
+still read boundaries through `GeoJSONViewModel`; registering the extension just
+adds validation to the pipeline.
+
 ## Live example
 
 Each site's **heritage designation** (`reference`) and its **photos**
 (`file-list`, rendered as images) — press ▶:
 
-<AlizarinComponent module='/example/example-13.tsx' />
+<AlizarinComponent module='/types/examples/extensions.tsx' />
 
 The images here are self-contained (data-URI PNGs in the sample data); in a real
 Arches deployment the `url` points at the file store.

@@ -26,7 +26,7 @@ source — the same data path the example below shows as text.
 The same boundaries as plain data — feature count and geometry type per site
 (press ▶):
 
-<AlizarinComponent module='/example/example-11.tsx' />
+<AlizarinComponent module='/types/examples/geojson.tsx' />
 
 ## Notes
 
@@ -35,5 +35,8 @@ The same boundaries as plain data — feature count and geometry type per site
   is not a valid React child, so read the fields you need.
 - The basemap uses OpenStreetMap raster tiles — external requests, so a strict
   docs Content-Security-Policy must allow the tile host.
-- The `alizarin-geo` extension layers marker/label resolution on top of the core
-  `geojson-feature-collection` datatype — see [Extension types](/docs/types/extensions).
+- Coercion and `GeoJSONViewModel` are **core** — geospatial reads work with no
+  extension installed. The optional `@alizarin/geo` extension adds **validation**
+  (GeoJSON structure, coordinate ranges, ring integrity) over the
+  [extension ABI](/docs/extension-abi)'s `validate` capability; register it with
+  `import '@alizarin/geo'`. See [Extension types](/docs/types/extensions#geojson-geo).
