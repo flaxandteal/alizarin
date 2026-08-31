@@ -242,12 +242,36 @@ jobs:
             cd - > /dev/null
           done
 
-      - name: Publish alizarin-core to crates.io
+      - name: Publish crates to crates.io (alizarin-core + all ext-core, auto-discovered)
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: |
-          cargo publish -p alizarin-core --allow-dirty
         continue-on-error: true
+        run: |
+          # Publish one crate dir, tolerating "already uploaded" and retrying past
+          # the crates.io index lag that trips an ext crate depending on a
+          # just-published alizarin-core.
+          publish() {
+            local dir="$1" out
+            for attempt in 1 2 3; do
+              if out=$( (cd "$dir" && cargo publish --allow-dirty) 2>&1 ); then
+                echo "$out"; echo "  ✓ $dir"; return 0
+              fi
+              echo "$out"
+              echo "$out" | grep -qiE 'already (exists|uploaded)' && { echo "  = $dir already on crates.io"; return 0; }
+              echo "  retry $dir in 30s (crates.io index lag)…"; sleep 30
+            done
+            echo "::warning::failed to publish $dir after retries"
+          }
+
+          # Core first - every ext-core crate deps it by version.
+          publish crates/alizarin-core
+
+          # Every ext-core crate, auto-discovered - no maintained list. They only
+          # dep alizarin-core (no inter-ext deps), so the order among them is
+          # irrelevant. New ext crates are picked up automatically.
+          for ext in ext/*/core; do
+            [ -f "$ext/Cargo.toml" ] && publish "$ext"
+          done
 
       - name: Output installation instructions
         run: |

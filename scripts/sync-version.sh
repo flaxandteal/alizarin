@@ -53,9 +53,7 @@ for cargo_file in "$ROOT_DIR"/crates/*/Cargo.toml; do
     fi
 done
 
-# (ext-core / ext-python / ext-js crates are handled by the ext/<name>/ loop
-# below - the current ext/<name>/{core,python,js} layout. The old ext/python/*
-# and ext/js/@alizarin/* container layout is gone.)
+# (ext crates are handled generically by the ext/<name>/{core,python,js} loop below.)
 
 # Update Python pyproject.toml if it exists
 # Convert to PEP 440 format: 0.2.1-alpha.12 -> 0.2.1a12
