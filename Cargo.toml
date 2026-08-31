@@ -18,6 +18,9 @@ exclude = [
     "ext/alizarin-pg/python",
     "ext/alizarin-geo/core",
     "ext/alizarin-geo/python",
+    "ext/alizarin-geo/napi",
+    "ext/alizarin-clm/napi",
+    "ext/filelist/napi",
 ]
 resolver = "2"
 

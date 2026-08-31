@@ -13,3 +13,5 @@ geojson = "0.24"
 # database — we only build proj-strings for UTM.
 proj4rs = { version = "0.1.10", default-features = false }
 alizarin-core = { path = "../../../crates/alizarin-core", version = "2.0.0-beta.1" }
+# C-ABI TypeHandlerInfo builder (shared by the python + napi bindings).
+alizarin-extension-api = { path = "../../../crates/alizarin-extension-api" }

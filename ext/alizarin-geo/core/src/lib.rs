@@ -18,6 +18,9 @@ use serde_json::Value;
 /// UTM projection as a load-time derive function (see [`utm`]).
 pub mod utm;
 
+/// Shared C-ABI `TypeHandlerInfo` builder for the python + napi bindings.
+pub mod c_abi;
+
 use alizarin_core::extension_type_registry::{
     ExtensionError, ExtensionTypeHandler, HandlerCapabilities, ValidationResult,
 };
