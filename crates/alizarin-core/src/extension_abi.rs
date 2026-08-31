@@ -486,6 +486,11 @@ pub fn has_registered_handler(type_name: &str) -> bool {
     TYPE_HANDLERS.read().unwrap().contains_key(type_name)
 }
 
+/// The datatype names of all registered C-ABI handlers.
+pub fn registered_handler_types() -> Vec<String> {
+    TYPE_HANDLERS.read().unwrap().keys().cloned().collect()
+}
+
 /// Register a C-ABI type handler from a raw [`TypeHandlerInfo`] pointer, then
 /// rebuild + install the global extension registry. Returns the datatype name.
 ///

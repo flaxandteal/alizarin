@@ -358,6 +358,7 @@ pub use registry::{
 // Shared C-ABI extension-handler machinery (used by Python + NAPI bindings).
 pub use extension_abi::{
     build_extension_registry_from_registered, has_registered_handler, register_handler_from_ptr,
+    registered_handler_types,
 };
 
 // Permission rules (for conditional tile filtering)
