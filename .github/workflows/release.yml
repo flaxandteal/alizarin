@@ -122,8 +122,8 @@ jobs:
           echo "Checking package.json files array includes required directories"
           cat package.json | grep -A 5 '"files"'
 
-      # temp: disable tests - name: Run tests
-      # temp: disable tests   run: npm test
+      - name: Run tests
+        run: npm test
 
       - name: Prepare package for npm
         run: |
