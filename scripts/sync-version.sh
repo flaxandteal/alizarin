@@ -152,14 +152,25 @@ for ext_dir in "$ROOT_DIR"/ext/*/; do
     fi
 done
 
-# Keep the versioned `alizarin-core` dependency in each ext-core crate in
-# lockstep. These crates carry a dual `{ path, version }` dep so they remain
-# publishable to crates.io (a path-only dep is rejected by `cargo publish`); the
-# `version` must track alizarin-core or the published ext crate pins a stale core.
-for ext_core_cargo in "$ROOT_DIR"/ext/*/core/Cargo.toml; do
-    if [ -f "$ext_core_cargo" ] && grep -qE 'alizarin-core = \{.*version = ' "$ext_core_cargo"; then
-        sed -i -E "s/(alizarin-core = \{[^}]*version = )\"[^\"]*\"/\1\"$CARGO_VERSION\"/" "$ext_core_cargo"
-        echo "  ✓ ${ext_core_cargo#$ROOT_DIR/} (alizarin-core dep version)"
+# Keep every INTRA-WORKSPACE dependency in lockstep with the workspace version.
+# Publishable crates cannot carry a path-only dep (crates.io rejects it), so they
+# declare a dual `{ path = "...", version = "..." }`; the `version` must track the
+# workspace or the published crate pins a stale sibling and `cargo publish` fails
+# to resolve it. `path =` is the discriminator - external crates.io deps never
+# carry it - so any single-line inline-table dep with both `path` and `version`
+# is one of ours. This covers alizarin-core's dep on alizarin-extension-api,
+# every ext-core's dep on alizarin-core, and any future sibling dep, with no
+# per-crate list to maintain.
+for cargo_file in \
+    "$ROOT_DIR"/Cargo.toml \
+    "$ROOT_DIR"/crates/*/Cargo.toml \
+    "$ROOT_DIR"/ext/*/*/Cargo.toml; do
+    [ -f "$cargo_file" ] || continue
+    # A non-comment line carrying BOTH path and version (either order).
+    if grep -qE '^[^#]*path *=[^#]*version *=|^[^#]*version *=[^#]*path *=' "$cargo_file"; then
+        # Bump the version on every path-bearing (non-comment) dep line.
+        sed -i -E '/^[[:space:]]*#/!{ /path *=/ s/(version *= *)"[^"]*"/\1"'"$CARGO_VERSION"'"/ }' "$cargo_file"
+        echo "  ✓ ${cargo_file#$ROOT_DIR/} (intra-workspace path+version deps)"
     fi
 done
 

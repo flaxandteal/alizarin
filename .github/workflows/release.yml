@@ -263,7 +263,10 @@ jobs:
             echo "::warning::failed to publish $dir after retries"
           }
 
-          # Core first - every ext-core crate deps it by version.
+          # ABI crate first - alizarin-core deps it by version.
+          publish crates/alizarin-extension-api
+
+          # Core next - every ext-core crate deps it by version.
           publish crates/alizarin-core
 
           # Every ext-core crate, auto-discovered - no maintained list. They only
