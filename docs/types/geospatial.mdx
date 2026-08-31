@@ -1,0 +1,39 @@
+---
+title: Geospatial
+description: geojson-feature-collection, on a live map
+---
+
+import AlizarinComponent from '@/app/alizarin.tsx';
+import GeoMap from '@/app/geo-map.tsx';
+
+A `geojson-feature-collection` value becomes a `GeoJSONViewModel` — a proxy over a
+standard GeoJSON `FeatureCollection`. Read `.type` / `.features` directly, or hand
+the whole object to a map library.
+
+## Live map
+
+Every Site's `boundary`, loaded with Alizarin in your browser and drawn on a
+MapLibre + OpenStreetMap basemap:
+
+<GeoMap />
+
+The component calls `graphManager.get('Site')`, awaits each `site.boundary`,
+merges the features into one `FeatureCollection`, and adds it as a MapLibre
+source — the same data path the example below shows as text.
+
+## The data
+
+The same boundaries as plain data — feature count and geometry type per site
+(press ▶):
+
+<AlizarinComponent module='/example/example-11.tsx' />
+
+## Notes
+
+- `GeoJSONViewModel` proxies the underlying FeatureCollection, so `boundary.features`
+  and `boundary.type` work without an accessor — but the view model object itself
+  is not a valid React child, so read the fields you need.
+- The basemap uses OpenStreetMap raster tiles — external requests, so a strict
+  docs Content-Security-Policy must allow the tile host.
+- The `alizarin-geo` extension layers marker/label resolution on top of the core
+  `geojson-feature-collection` datatype — see [Extension types](/docs/types/extensions).
