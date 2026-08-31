@@ -15,6 +15,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
 use crate::extension_type_registry::ExtensionTypeRegistry;
+use crate::graph::FunctionsRegistry;
 use crate::permissions::PermissionRule;
 use crate::rdm_cache::RdmCache;
 use crate::skos::{parse_skos_to_collections, SkosCollection};
@@ -70,6 +71,12 @@ lazy_static::lazy_static! {
     /// without depending on a specific FFI target.
     static ref GLOBAL_EXTENSION_REGISTRY: RwLock<Option<ExtensionTypeRegistry>> =
         RwLock::new(None);
+
+    /// Global graph-attached function registry (Derive / Descriptor providers).
+    /// Populated at binding init (e.g. `alizarin_geo_core::register_functions`);
+    /// consulted by the load-time derive hook. Empty by default → a no-op.
+    static ref GLOBAL_FUNCTIONS_REGISTRY: RwLock<FunctionsRegistry> =
+        RwLock::new(FunctionsRegistry::new());
 }
 
 /// A dynamically registered widget definition.
@@ -555,6 +562,36 @@ pub fn has_global_extension_registry() -> bool {
 pub fn clear_global_extension_registry() {
     if let Ok(mut guard) = GLOBAL_EXTENSION_REGISTRY.write() {
         *guard = None;
+    }
+}
+
+// ============================================================================
+
+/// Mutate the global graph-attached function registry in place — used by
+/// provider crates at init (e.g. `alizarin_geo_core::register_functions`).
+pub fn with_global_functions_registry_mut<R>(
+    f: impl FnOnce(&mut FunctionsRegistry) -> R,
+) -> Option<R> {
+    GLOBAL_FUNCTIONS_REGISTRY
+        .write()
+        .ok()
+        .map(|mut guard| f(&mut guard))
+}
+
+/// Get a clone of the global graph-attached function registry (cheap — `Arc`
+/// providers). Returns an empty registry if the lock is poisoned.
+pub fn get_global_functions_registry() -> FunctionsRegistry {
+    GLOBAL_FUNCTIONS_REGISTRY
+        .read()
+        .ok()
+        .map(|guard| guard.clone())
+        .unwrap_or_default()
+}
+
+/// Clear the global function registry (mainly for tests).
+pub fn clear_global_functions_registry() {
+    if let Ok(mut guard) = GLOBAL_FUNCTIONS_REGISTRY.write() {
+        *guard = FunctionsRegistry::new();
     }
 }
 

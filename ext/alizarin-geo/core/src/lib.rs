@@ -15,6 +15,9 @@ use std::sync::{Arc, RwLock};
 
 use serde_json::Value;
 
+/// UTM projection as a load-time derive function (see [`utm`]).
+pub mod utm;
+
 use alizarin_core::extension_type_registry::{
     ExtensionError, ExtensionTypeHandler, HandlerCapabilities, ValidationResult,
 };

@@ -511,6 +511,54 @@ impl WASMResourceInstanceWrapper {
             }
         }
 
+        // Load-time derive functions (compute-tiles): run any `functions_x_graphs`
+        // derive functions the graph declares, resolving providers from the global
+        // registry. Eager loads only — a lazy load may not yet hold the input
+        // geometry. No-op unless the graph declares compute functions AND a matching
+        // provider is registered (e.g. alizarin-geo's "utm"). See
+        // `ResourceInstanceWrapperCore::apply_computed_tiles`.
+        if !lazy {
+            let registry = alizarin_core::get_global_functions_registry();
+            if let Some(graph) = self.graph() {
+                let mut core = self.core.borrow_mut();
+                let mut all: Vec<StaticTile> = core
+                    .tiles
+                    .as_ref()
+                    .map(|m| m.values().cloned().collect())
+                    .unwrap_or_default();
+                let before = all.len();
+                let resource_id = all
+                    .first()
+                    .map(|t| t.resourceinstance_id.clone())
+                    .unwrap_or_default();
+                alizarin_core::apply_derive_functions(
+                    &mut all,
+                    &*graph,
+                    &resource_id,
+                    &|_| true,
+                    &registry,
+                );
+                // Insert only the newly-derived tiles (appended past `before`),
+                // with the same bookkeeping as regular tiles.
+                for mut tile in all.into_iter().skip(before) {
+                    let tile_id = tile.ensure_id();
+                    let nodegroup_id = tile.nodegroup_id.clone();
+                    core.nodegroup_index
+                        .entry(nodegroup_id.clone())
+                        .or_default()
+                        .push(tile_id.clone());
+                    core.loaded_nodegroups
+                        .write()
+                        .unwrap()
+                        .insert(nodegroup_id, LoadState::Loaded);
+                    core.tiles
+                        .as_mut()
+                        .expect("tiles initialized above")
+                        .insert(tile_id, tile);
+                }
+            }
+        }
+
         // If assume_tiles_comprehensive_for_nodegroup is true, mark ALL model nodegroups as loaded
         // This handles the case where some nodegroups have no tiles for this resource
         if assume_tiles_comprehensive_for_nodegroup {

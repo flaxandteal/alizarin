@@ -725,6 +725,37 @@ impl ResourceInstanceWrapperCore {
         self.nodegroup_index = nodegroup_index;
     }
 
+    /// Run the graph's load-time **derive functions** (compute-tiles) over the
+    /// currently-loaded tiles, appending any JIT-generated tiles to the store.
+    ///
+    /// `graph` is a [`GraphLookup`] (a base [`StaticGraph`] or a composed
+    /// [`LayeredGraph`], whose `functions_x_graphs()` unions across layers). This
+    /// is the plain-ORM analogue of the substrate's `hydrate_layers` derive hook:
+    /// providers are resolved from `registry` by the fxg's `provider` key. A tile
+    /// whose nodegroup is already present is left untouched (attested wins).
+    ///
+    /// A no-op when the graph declares no compute functions or the registry has no
+    /// matching provider — so it is safe to call unconditionally after load.
+    /// Membership is trivially true here: without a layer stack, a resource is a
+    /// member of its own base graph.
+    pub fn apply_computed_tiles(
+        &mut self,
+        graph: &dyn crate::graph::GraphLookup,
+        registry: &crate::graph::FunctionsRegistry,
+    ) {
+        let mut tiles: Vec<StaticTile> = match self.tiles.take() {
+            Some(map) => map.into_values().collect(),
+            None => return,
+        };
+        let resource_id = tiles
+            .first()
+            .map(|t| t.resourceinstance_id.clone())
+            .unwrap_or_default();
+        crate::graph::apply_derive_functions(&mut tiles, graph, &resource_id, &|_| true, registry);
+        // Rebuild the store + nodegroup index from the (possibly extended) set.
+        self.load_tiles(tiles);
+    }
+
     /// Merge tiles into the wrapper, keeping whatever is already loaded.
     ///
     /// Unlike [`load_tiles`](Self::load_tiles), which replaces the tile store,

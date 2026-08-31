@@ -15,6 +15,7 @@ pub mod csv_business_data_loader;
 pub mod csv_model_loader;
 pub mod datatype_index;
 pub mod exporter;
+pub mod extension_abi;
 pub mod extension_type_registry;
 pub mod graph;
 pub mod graph_model_access;
@@ -346,6 +347,17 @@ pub use registry::{
 pub use registry::{
     clear_global_extension_registry, get_global_extension_registry, has_global_extension_registry,
     set_global_extension_registry,
+};
+
+// Global graph-attached function registry (Derive / Descriptor providers).
+pub use registry::{
+    clear_global_functions_registry, get_global_functions_registry,
+    with_global_functions_registry_mut,
+};
+
+// Shared C-ABI extension-handler machinery (used by Python + NAPI bindings).
+pub use extension_abi::{
+    build_extension_registry_from_registered, has_registered_handler, register_handler_from_ptr,
 };
 
 // Permission rules (for conditional tile filtering)
