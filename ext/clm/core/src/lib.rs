@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 use std::sync::{Arc, RwLock};
 
 use alizarin_core::extension_type_registry::{
-    ExtensionError, ExtensionTypeHandler, HandlerCapabilities,
+    ExtensionError, ExtensionTypeHandler, HandlerCapabilities, IndexClass, IndexSpec,
 };
 use alizarin_core::type_coercion::CoercionResult;
 use alizarin_core::type_serialization::{ExternalResolver, SerializationContext};
@@ -233,7 +233,6 @@ pub fn coerce_reference_value(
 // Index Key Extraction
 // =============================================================================
 
-#[cfg(test)]
 fn is_uuid(s: &str) -> bool {
     let uuid_regex =
         regex::Regex::new(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -241,8 +240,8 @@ fn is_uuid(s: &str) -> bool {
     uuid_regex.is_match(s)
 }
 
-/// Extract the list-item UUID(s) a reference tile value indexes on.
-#[cfg(test)]
+/// Extract the list-item UUID(s) a reference tile value indexes on — the concept
+/// ids used as `ConceptHierarchical` keys by [`ReferenceTypeHandler::index_spec`].
 fn reference_index_keys(value: &Value) -> Vec<String> {
     fn push_from(value: &Value, out: &mut Vec<String>) {
         match value {
@@ -275,6 +274,20 @@ fn reference_index_keys(value: &Value) -> Vec<String> {
     let mut out = Vec::new();
     push_from(value, &mut out);
     out
+}
+
+/// Build the `ConceptHierarchical` index spec for a reference tile value: the
+/// concept ids ([`reference_index_keys`]) scoped to the node's controlled list.
+/// Shared by [`ReferenceTypeHandler::index_spec`] (Rust) and the C-ABI wrapper in
+/// [`c_abi`] so both bindings index references identically.
+pub(crate) fn reference_index_spec(value: &Value, config: Option<&Value>) -> IndexSpec {
+    let collection = config
+        .and_then(|c| serde_json::from_value::<ReferenceNodeConfig>(c.clone()).ok())
+        .and_then(|nc| nc.get_collection_id().map(str::to_string));
+    IndexSpec {
+        class: IndexClass::ConceptHierarchical { collection },
+        keys: reference_index_keys(value),
+    }
 }
 
 // =============================================================================
@@ -653,9 +666,24 @@ impl ExtensionTypeHandler for ReferenceTypeHandler {
             can_render_display: true,
             can_render_search: false,
             can_resolve_markers: true,
-            can_index: false,
+            can_index: true,
             can_validate: false,
         }
+    }
+
+    /// A CLM `reference` is a controlled-list value — semantically concept-like —
+    /// so it head-indexes exactly as the core `concept` datatype does:
+    /// [`IndexClass::ConceptHierarchical`] scoped to the node's controlled list,
+    /// with the concept ids extracted from the value. Keeping this in the handler
+    /// (rather than a `reference` arm in core's built-in match) is the point of
+    /// the extension ABI — the extension owns its datatype's indexing, and any
+    /// consumer that trusts `datatype_index_spec` gets reference faceting for free.
+    fn index_spec(
+        &self,
+        tile_data: &Value,
+        config: Option<&Value>,
+    ) -> Result<Option<IndexSpec>, ExtensionError> {
+        Ok(Some(reference_index_spec(tile_data, config)))
     }
 
     fn coerce(
@@ -991,6 +1019,41 @@ mod tests {
             reference_index_keys(&from_id_resolved),
             vec![NOUN.to_string()]
         );
+    }
+
+    #[test]
+    fn test_reference_index_spec_is_concept_hierarchical() {
+        const NOUN: &str = "1052ed22-def2-5e6b-a5a2-ddff79e08e70";
+        let handler = ReferenceTypeHandler;
+
+        // reference is now head-indexable, exactly like the core `concept` datatype.
+        assert!(handler.capabilities().can_index);
+
+        let resolved = json!([{
+            "labels": [{"id": "1", "language_id": "en", "list_item_id": NOUN, "value": "noun", "valuetype_id": "prefLabel"}],
+            "list_id": "coll-pos",
+            "uri": "http://x"
+        }]);
+        let config = json!({ "controlledList": "coll-pos" });
+        let expected = IndexClass::ConceptHierarchical {
+            collection: Some("coll-pos".to_string()),
+        };
+
+        // Handler-level: ConceptHierarchical scoped to the controlled list; keys = concept ids.
+        let spec = handler.index_spec(&resolved, Some(&config)).unwrap().unwrap();
+        assert_eq!(spec.class, expected);
+        assert_eq!(spec.keys, vec![NOUN.to_string()]);
+
+        // End-to-end via the path consumers read (incl. the ros-madair substrate):
+        // `datatype_index_spec("reference", …)` must route through the registered
+        // handler and return ConceptHierarchical, NOT DetailOnly.
+        let mut registry =
+            alizarin_core::extension_type_registry::ExtensionTypeRegistry::new();
+        register(&mut registry);
+        let via_registry =
+            alizarin_core::datatype_index_spec("reference", &resolved, Some(&config), Some(&registry));
+        assert_eq!(via_registry.class, expected);
+        assert_eq!(via_registry.keys, vec![NOUN.to_string()]);
     }
 
     #[test]

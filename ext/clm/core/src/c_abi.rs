@@ -15,11 +15,13 @@ use alizarin_extension_api::{
     abi_fingerprint, alizarin_free_coerce_result, alizarin_free_render_display_result,
     alizarin_free_resolve_markers_result, CoerceFn, CoerceResult, ConceptLookupByIdFn,
     ConceptLookupByLabelFn, FreeConceptJsonFn, FreeDisplayFn, FreeFn, FreeResolveMarkersFn,
-    HasCollectionFn, RenderDisplayFn, RenderDisplayResult, ResolveMarkersFn, ResolveMarkersResult,
-    TypeHandlerInfo,
+    FreeIndexSpecFn, HasCollectionFn, IndexSpecFn, IndexSpecResult, RenderDisplayFn,
+    RenderDisplayResult, ResolveMarkersFn, ResolveMarkersResult, TypeHandlerInfo,
 };
 
-use crate::{coerce_reference_value, render_reference_display_value, ReferenceNodeConfig};
+use crate::{
+    coerce_reference_value, reference_index_spec, render_reference_display_value, ReferenceNodeConfig,
+};
 
     unsafe extern "C" fn coerce_reference(
         value_ptr: *const u8,
@@ -221,6 +223,50 @@ use crate::{coerce_reference_value, render_reference_display_value, ReferenceNod
     }
 
     // =========================================================================
+    // Index Spec (delegates to core's reference_index_spec)
+    // =========================================================================
+
+    /// C ABI index-spec function for the reference type. `value_ptr`/`config_ptr`
+    /// cross by pointer (`*const serde_json::Value`, config null for none); returns
+    /// a serialized `Option<IndexSpec>` (always `Some` — a ConceptHierarchical spec).
+    unsafe extern "C" fn index_spec_reference(
+        value_ptr: *const c_void,
+        config_ptr: *const c_void,
+    ) -> IndexSpecResult {
+        if value_ptr.is_null() {
+            return IndexSpecResult::error("null value pointer".to_string());
+        }
+        let value = &*(value_ptr as *const Value);
+        let config = if config_ptr.is_null() {
+            None
+        } else {
+            Some(&*(config_ptr as *const Value))
+        };
+
+        let spec = Some(reference_index_spec(value, config));
+        match serde_json::to_vec(&spec) {
+            Ok(json) => IndexSpecResult::success(json),
+            Err(e) => IndexSpecResult::error(format!("Failed to serialize index spec: {}", e)),
+        }
+    }
+
+    /// Free an [`IndexSpecResult`] allocated by [`index_spec_reference`].
+    unsafe extern "C" fn free_index_spec_reference(result: IndexSpecResult) {
+        if !result.json_ptr.is_null() {
+            let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+                result.json_ptr,
+                result.json_len,
+            ));
+        }
+        if !result.error_ptr.is_null() {
+            let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+                result.error_ptr,
+                result.error_len,
+            ));
+        }
+    }
+
+    // =========================================================================
     // PyCapsule Registration
     // =========================================================================
 
@@ -229,7 +275,8 @@ static mut HANDLER_INFO: Option<TypeHandlerInfo> = None;
 static INIT: Once = Once::new();
 
 /// Pointer to the process-static CLM `reference` `TypeHandlerInfo` (coerce +
-/// display + resolve-markers). A binding hands this to the host for registration.
+/// display + resolve-markers + index-spec). A binding hands this to the host for
+/// registration.
 pub fn reference_handler_type_info() -> *const TypeHandlerInfo {
     static TYPE_NAME: &[u8] = b"reference";
     INIT.call_once(|| unsafe {
@@ -248,8 +295,8 @@ pub fn reference_handler_type_info() -> *const TypeHandlerInfo {
             free_validate_fn: None,
             render_search_fn: None,
             free_render_search_fn: None,
-            index_spec_fn: None,
-            free_index_spec_fn: None,
+            index_spec_fn: Some(index_spec_reference as IndexSpecFn),
+            free_index_spec_fn: Some(free_index_spec_reference as FreeIndexSpecFn),
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         });

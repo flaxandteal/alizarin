@@ -1,6 +1,6 @@
 {
   "name": "@alizarin/filelist-napi",
-  "version": "2.0.0-beta.7",
+  "version": "2.0.0-alpha.133",
   "license": "AGPL-3.0-or-later",
   "description": "NAPI binding for the Alizarin file-list extension",
   "repository": {
@@ -22,7 +22,7 @@
     "version": "napi version"
   },
   "peerDependencies": {
-    "@alizarin/napi": "2.0.0-beta.7"
+    "@alizarin/napi": "2.0.0-alpha.133"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0"
