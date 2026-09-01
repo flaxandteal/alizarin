@@ -129,7 +129,9 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             ext/*/python/target/
-          key: ${{ runner.os }}-cargo-extensions-${{ hashFiles('**/Cargo.lock') }}
+          # -v2 bump: the pre-rename cache carried ext/alizarin-*/python/target/,
+          # which re-created phantom old-name dirs on restore. Invalidate it once.
+          key: ${{ runner.os }}-cargo-extensions-v2-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install maturin and pytest
         run: pip install maturin pytest pytest-asyncio
@@ -155,7 +157,10 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: |
           for ext_dir in ext/*/python/; do
-            [ -d "$ext_dir" ] || continue
+            # Require a Cargo.toml, not just a dir: a stale Rust cache can restore
+            # target/ under an OLD ext name (e.g. ext/alizarin-clm/python/target/),
+            # leaving a phantom dir the glob would otherwise try (and fail) to build.
+            [ -f "${ext_dir}Cargo.toml" ] || continue
             ext_name=$(basename "$(dirname "$ext_dir")")-$(basename "$ext_dir")
             echo "=== Building $ext_dir ==="
             cd "$ext_dir"
@@ -178,7 +183,7 @@ jobs:
           $ext_dirs = @()
           foreach ($parent in Get-ChildItem -Path ext -Directory -ErrorAction SilentlyContinue) {
             $pydir = Join-Path $parent.FullName "python"
-            if (Test-Path $pydir) { $ext_dirs += Get-Item $pydir }
+            if (Test-Path (Join-Path $pydir "Cargo.toml")) { $ext_dirs += Get-Item $pydir }
           }
           foreach ($ext_dir in $ext_dirs) {
             $ext_name = $ext_dir.Name

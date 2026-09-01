@@ -149,7 +149,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           for ext_dir in ext/*/python/; do
-            [ -d "$ext_dir" ] || continue
+            [ -f "${ext_dir}Cargo.toml" ] || continue  # not just -d: skip phantom dirs (stale-cache target/ under an old ext name)
             ext_name=$(basename "$(dirname "$ext_dir")")-$(basename "$ext_dir")
             echo "=== Building $ext_dir ==="
             cd "$ext_dir"
@@ -161,7 +161,7 @@ jobs:
         if: matrix.os != 'ubuntu-latest'
         run: |
           for ext_dir in ext/*/python/; do
-            [ -d "$ext_dir" ] || continue
+            [ -f "${ext_dir}Cargo.toml" ] || continue  # not just -d: skip phantom dirs (stale-cache target/ under an old ext name)
             echo "=== Building $ext_dir ==="
             cd "$ext_dir"
             maturin build --release --out dist
