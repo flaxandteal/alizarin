@@ -1,6 +1,6 @@
 {
   "name": "@alizarin/clm-napi",
-  "version": "2.0.0-beta.5",
+  "version": "2.0.0-beta.6",
   "license": "AGPL-3.0-or-later",
   "description": "NAPI binding for the Alizarin CLM (reference) extension",
   "repository": {
@@ -22,7 +22,7 @@
     "version": "napi version"
   },
   "peerDependencies": {
-    "@alizarin/napi": "2.0.0-beta.5"
+    "@alizarin/napi": "2.0.0-beta.6"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0"
