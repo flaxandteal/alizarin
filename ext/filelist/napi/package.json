@@ -19,7 +19,6 @@
     "artifacts": "napi artifacts",
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
-    "prepublishOnly": "napi prepublish -t npm",
     "version": "napi version"
   },
   "peerDependencies": {
@@ -27,11 +26,6 @@
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0"
-  },
-  "optionalDependencies": {
-    "@alizarin/filelist-napi-win32-x64-msvc": "2.0.0-beta.5",
-    "@alizarin/filelist-napi-darwin-x64": "2.0.0-beta.5",
-    "@alizarin/filelist-napi-linux-x64-gnu": "2.0.0-beta.5"
   },
   "files": [
     "register.js",

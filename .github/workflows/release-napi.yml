@@ -144,14 +144,10 @@ jobs:
           echo "Native binaries:"
           ls -lh crates/alizarin-napi/*.node
 
-      - name: Install napi-rs CLI
-        working-directory: crates/alizarin-napi
-        run: npm install
-
-      - name: Generate JS binding
-        working-directory: crates/alizarin-napi
-        run: npx napi artifacts
-
+      # Monolithic: index.js / index.d.ts are committed and all four platforms'
+      # .node are staged into the package root above, so there is nothing to
+      # generate. Deliberately NO `napi artifacts` — that's the split-platform
+      # step, and it would re-add the per-platform optionalDependencies we dropped.
       - name: Create tarball
         working-directory: crates/alizarin-napi
         run: npm pack
@@ -229,10 +225,12 @@ jobs:
         working-directory: crates/alizarin-napi
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
+          # --ignore-scripts: skip the napi `prepublishOnly` (split-platform
+          # publish); we ship the monolithic tarball staged above.
           if echo "$VERSION" | grep -qE '(alpha|beta)'; then
-            npm publish --provenance --access public --tag alpha
+            npm publish --provenance --access public --ignore-scripts --tag alpha
           else
-            npm publish --provenance --access public
+            npm publish --provenance --access public --ignore-scripts
           fi
 
       # Publish each extension NAPI package (already staged & packed above).
@@ -248,5 +246,9 @@ jobs:
             [ -f "$napi_dir/package.json" ] || continue
             pkg=$(node -p "require('./$napi_dir/package.json').name")
             echo "=== Publishing $pkg ==="
-            ( cd "$napi_dir" && npm publish --provenance --access public $TAG )
+            # --ignore-scripts: the packages carry a napi `prepublishOnly`
+            # (`napi prepublish -t npm`, the split-platform flow) that is wrong for
+            # our monolithic tarball and needs the napi CLI on PATH. We publish the
+            # already-staged binaries directly, so skip lifecycle scripts entirely.
+            ( cd "$napi_dir" && npm publish --provenance --access public --ignore-scripts $TAG )
           done
