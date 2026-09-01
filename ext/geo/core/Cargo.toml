@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-geo-core"
-version = "2.0.0-beta.3"
+version = "2.0.0-beta.4"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 description = "Shared geospatial (geojson-feature-collection) type logic for Alizarin"
@@ -12,6 +12,6 @@ geojson = "0.24"
 # Pure-Rust proj4 port; WASM-safe. default-features off to avoid the heavy EPSG
 # database — we only build proj-strings for UTM.
 proj4rs = { version = "0.1.10", default-features = false }
-alizarin-core = { path = "../../../crates/alizarin-core", version = "2.0.0-beta.3" }
+alizarin-core = { path = "../../../crates/alizarin-core", version = "2.0.0-beta.4" }
 # C-ABI TypeHandlerInfo builder (shared by the python + napi bindings).
 alizarin-extension-api = { path = "../../../crates/alizarin-extension-api" }

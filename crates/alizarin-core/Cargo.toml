@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-core"
-version = "2.0.0-beta.3"
+version = "2.0.0-beta.4"
 authors = ["Phil Weir <phil.weir@flaxandteal.co.uk>"]
 edition = "2021"
 license = "AGPL-3.0-or-later"
@@ -19,7 +19,7 @@ multi-threaded = ["lasso/multi-threaded"]
 [dependencies]
 # Leaf ABI crate (no core dep) — for the shared C-ABI extension-handler machinery
 # in `extension_abi`. Extensions still depend only on alizarin-extension-api.
-alizarin-extension-api = { path = "../alizarin-extension-api", version = "2.0.0-beta.3" }
+alizarin-extension-api = { path = "../alizarin-extension-api", version = "2.0.0-beta.4" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 uuid = { version = "1.0", features = ["v4", "v5"] }

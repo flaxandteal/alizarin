@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-filelist-napi"
-version = "2.0.0-beta.3"
+version = "2.0.0-beta.4"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 description = "NAPI binding for the Alizarin file-list extension"

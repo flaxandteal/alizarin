@@ -174,5 +174,44 @@ for cargo_file in \
     fi
 done
 
+# Set the [package] version on EVERY ext subcrate. The per-extension loops above
+# only cover core/ + python/ (and filelist's own glob); this catches napi/ and
+# wasm/, which are otherwise never bumped and drift behind the workspace.
+for cargo_file in "$ROOT_DIR"/ext/*/*/Cargo.toml; do
+    [ -f "$cargo_file" ] || continue
+    sed -i "0,/^version = /s/^version = .*/version = \"$CARGO_VERSION\"/" "$cargo_file"
+    echo "  ✓ ${cargo_file#$ROOT_DIR/} (package version)"
+done
+
+# Normalise the npm side: the base @alizarin/napi package and every ext js/ +
+# napi/ package. Set each package's own version, and re-pin any intra-project
+# dependency (alizarin, @alizarin/*) that is on the beta line. The `-beta.`
+# discriminator deliberately leaves the per-platform binary optionalDependencies
+# (`@alizarin/napi-<triple>`, a separate `-alpha.` version line) and non-pins
+# (`file:`, `^x`, `*`, `workspace:`) untouched.
+for pkg_json in \
+    "$ROOT_DIR"/crates/alizarin-napi/package.json \
+    "$ROOT_DIR"/ext/*/js/package.json \
+    "$ROOT_DIR"/ext/*/napi/package.json; do
+    [ -f "$pkg_json" ] || continue
+    VERSION="$VERSION" node -e "
+        const fs = require('fs'), f = process.argv[1];
+        const pkg = JSON.parse(fs.readFileSync(f, 'utf8'));
+        pkg.version = process.env.VERSION;
+        for (const field of ['dependencies','peerDependencies','optionalDependencies','devDependencies']) {
+            const deps = pkg[field];
+            if (!deps) continue;
+            for (const [name, spec] of Object.entries(deps)) {
+                if ((name === 'alizarin' || name.startsWith('@alizarin/')) &&
+                    typeof spec === 'string' && spec.includes('-beta.')) {
+                    deps[name] = process.env.VERSION;
+                }
+            }
+        }
+        fs.writeFileSync(f, JSON.stringify(pkg, null, 2) + '\n');
+    " "$pkg_json"
+    echo "  ✓ ${pkg_json#$ROOT_DIR/} (version + @alizarin beta pins)"
+done
+
 echo ""
 echo "Version synced to $VERSION"

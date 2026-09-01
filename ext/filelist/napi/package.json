@@ -1,6 +1,6 @@
 {
   "name": "@alizarin/filelist-napi",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.4",
   "license": "AGPL-3.0-or-later",
   "description": "NAPI binding for the Alizarin file-list extension",
   "repository": {
@@ -11,7 +11,9 @@
   "main": "register.js",
   "napi": {
     "name": "alizarin-filelist-napi",
-    "triples": { "defaults": true }
+    "triples": {
+      "defaults": true
+    }
   },
   "scripts": {
     "artifacts": "napi artifacts",
@@ -20,6 +22,10 @@
     "prepublishOnly": "napi prepublish -t npm",
     "version": "napi version"
   },
-  "peerDependencies": { "@alizarin/napi": "2.0.0-beta.1" },
-  "devDependencies": { "@napi-rs/cli": "^2.18.0" }
+  "peerDependencies": {
+    "@alizarin/napi": "2.0.0-beta.4"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0"
+  }
 }
