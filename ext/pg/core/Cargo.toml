@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-pg-core"
-version = "2.0.0-beta.4"
+version = "2.0.0-beta.5"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 description = "PostgreSQL COPY format output for Alizarin resources"
@@ -8,4 +8,4 @@ description = "PostgreSQL COPY format output for Alizarin resources"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-alizarin-core = { path = "../../../crates/alizarin-core", version = "2.0.0-beta.4" }
+alizarin-core = { path = "../../../crates/alizarin-core", version = "2.0.0-beta.5" }

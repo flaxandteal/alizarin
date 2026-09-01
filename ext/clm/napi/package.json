@@ -1,6 +1,6 @@
 {
   "name": "@alizarin/clm-napi",
-  "version": "2.0.0-beta.4",
+  "version": "2.0.0-beta.5",
   "license": "AGPL-3.0-or-later",
   "description": "NAPI binding for the Alizarin CLM (reference) extension",
   "repository": {
@@ -23,15 +23,15 @@
     "version": "napi version"
   },
   "peerDependencies": {
-    "@alizarin/napi": "2.0.0-beta.4"
+    "@alizarin/napi": "2.0.0-beta.5"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0"
   },
   "optionalDependencies": {
-    "@alizarin/clm-napi-win32-x64-msvc": "2.0.0-beta.4",
-    "@alizarin/clm-napi-darwin-x64": "2.0.0-beta.4",
-    "@alizarin/clm-napi-linux-x64-gnu": "2.0.0-beta.4"
+    "@alizarin/clm-napi-win32-x64-msvc": "2.0.0-beta.5",
+    "@alizarin/clm-napi-darwin-x64": "2.0.0-beta.5",
+    "@alizarin/clm-napi-linux-x64-gnu": "2.0.0-beta.5"
   },
   "files": [
     "register.js",

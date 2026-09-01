@@ -1,6 +1,6 @@
 {
   "name": "@alizarin/clm",
-  "version": "2.0.0-beta.4",
+  "version": "2.0.0-beta.5",
   "description": "Alizarin display serializers for CLM reference datatypes",
   "license": "AGPL-3.0",
   "repository": {
@@ -23,9 +23,9 @@
     "test": "cd ../../.. && npm test -- ext/clm/js/tests/clm.test.ts"
   },
   "peerDependencies": {
-    "alizarin": "2.0.0-beta.4",
-    "@alizarin/napi": "2.0.0-beta.4",
-    "@alizarin/clm-napi": "2.0.0-beta.4"
+    "alizarin": "2.0.0-beta.5",
+    "@alizarin/napi": "2.0.0-beta.5",
+    "@alizarin/clm-napi": "2.0.0-beta.5"
   },
   "peerDependenciesMeta": {
     "@alizarin/napi": {
