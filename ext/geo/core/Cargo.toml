@@ -14,4 +14,4 @@ geojson = "0.24"
 proj4rs = { version = "0.1.10", default-features = false }
 alizarin-core = { path = "../../../crates/alizarin-core", version = "2.0.0-beta.7" }
 # C-ABI TypeHandlerInfo builder (shared by the python + napi bindings).
-alizarin-extension-api = { path = "../../../crates/alizarin-extension-api" }
+alizarin-extension-api = { path = "../../../crates/alizarin-extension-api", version = "2.0.0-beta.7" }
