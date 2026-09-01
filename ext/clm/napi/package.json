@@ -27,5 +27,16 @@
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0"
-  }
+  },
+  "optionalDependencies": {
+    "@alizarin/clm-napi-win32-x64-msvc": "2.0.0-beta.4",
+    "@alizarin/clm-napi-darwin-x64": "2.0.0-beta.4",
+    "@alizarin/clm-napi-linux-x64-gnu": "2.0.0-beta.4"
+  },
+  "files": [
+    "register.js",
+    "index.js",
+    "index.d.ts",
+    "*.node"
+  ]
 }

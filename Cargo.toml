@@ -21,6 +21,7 @@ exclude = [
     "ext/geo/napi",
     "ext/geo/wasm",
     "ext/clm/napi",
+    "ext/clm/wasm",
     "ext/filelist/napi",
 ]
 resolver = "2"

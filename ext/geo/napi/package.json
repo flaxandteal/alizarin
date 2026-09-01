@@ -1,5 +1,5 @@
 {
-  "name": "@alizarin/geo",
+  "name": "@alizarin/geo-napi",
   "version": "2.0.0-beta.4",
   "license": "AGPL-3.0-or-later",
   "description": "NAPI binding for the Alizarin geo (geojson-feature-collection) extension",
@@ -27,5 +27,16 @@
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0"
-  }
+  },
+  "optionalDependencies": {
+    "@alizarin/geo-napi-win32-x64-msvc": "2.0.0-beta.4",
+    "@alizarin/geo-napi-darwin-x64": "2.0.0-beta.4",
+    "@alizarin/geo-napi-linux-x64-gnu": "2.0.0-beta.4"
+  },
+  "files": [
+    "register.js",
+    "index.js",
+    "index.d.ts",
+    "*.node"
+  ]
 }

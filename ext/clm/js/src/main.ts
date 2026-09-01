@@ -1,5 +1,7 @@
 import { RDM, nodeConfig, utils, viewModels, registerExtensionHandler, registerResolvableDatatype, wasmReady } from "alizarin";
 import type { interfaces, staticTypes } from "alizarin";
+import { initSync, renderReferenceDisplay } from "../../wasm/pkg/alizarin_clm_wasm";
+import wasmBytes from "../../wasm/pkg/alizarin_clm_wasm_bg.wasm";
 type IPseudo = interfaces.IPseudo;
 type IViewModel = interfaces.IViewModel;
 type StaticTile = staticTypes.StaticTile;
@@ -75,89 +77,19 @@ function getReferenceValueByLabelFromCollection(collection: any, label: string):
 
 // =============================================================================
 
-// WASM initialization is deferred - registrations that need it use wasmReady.then()
-
-// Helper to flatten nested arrays/view models into a list of reference objects.
-// Handles ReferenceValueViewModels (with _ref), arrays, raw reference objects,
-// __needs_rdm_label_lookup markers, and JSON-string-encoded refs.
-function flattenToReferences(value: any): any[] {
-  const items: any[] = [];
-  const visit = (val: any) => {
-    if (!val) return;
-    if (val._ref) {
-      const ref = val._ref;
-      const refObj = typeof ref.toJSON === 'function' ? ref.toJSON() : ref;
-      if (refObj && (refObj.labels || refObj.__needs_rdm_label_lookup)) {
-        items.push(refObj);
-      }
-      return;
-    }
-    if (Array.isArray(val)) {
-      val.forEach(visit);
-      return;
-    }
-    if (val.__needs_rdm_label_lookup && val.label) {
-      items.push(val);
-      return;
-    }
-    if (val.labels) {
-      items.push(val);
-      return;
-    }
-    if (typeof val === 'string') {
-      try { visit(JSON.parse(val)); } catch { /* not JSON */ }
-    }
-  };
-  visit(value);
-  return items;
-}
-
-// Helper to render display string from a single reference object
-function renderReferenceDisplay(data: any, language: string): string | null {
-  if (!data) return null;
-
-  // Handle __needs_rdm_label_lookup format (unresolved marker with label property)
-  if (data.__needs_rdm_label_lookup && data.label) {
-    return data.label;
-  }
-
-  // Extract display string from StaticReference format
-  if (data.labels && data.labels.length > 0) {
-    const langPrefLabel = data.labels.find(
-      (l: any) => l.language_id === language && l.valuetype_id === 'prefLabel'
-    );
-    if (langPrefLabel) return langPrefLabel.value;
-
-    const langLabel = data.labels.find((l: any) => l.language_id === language);
-    if (langLabel) return langLabel.value;
-
-    const prefLabel = data.labels.find((l: any) => l.valuetype_id === 'prefLabel');
-    if (prefLabel) return prefLabel.value;
-
-    return data.labels[0].value;
-  }
-
-  return null;
-}
-
 // Register extension handlers after WASM is ready
 wasmReady.then(() => {
+  // Initialize the clm WASM module (bytes inlined by vite at build time).
+  initSync(wasmBytes);
+
   // The 'reference' datatype handles both single and multi-value references
-  // (the latter is configured via the node's `multiValue` config flag).
-  // There is no separate 'reference-list' datatype in Arches.
+  // (the latter is configured via the node's `multiValue` config flag). There is
+  // no separate 'reference-list' datatype in Arches. Display rendering delegates
+  // to alizarin-clm-core (WASM) — one source of truth shared with the napi/python
+  // backends, including tolerance of unresolved __needs_rdm_label_lookup markers.
   registerExtensionHandler('reference', {
-    renderDisplay: (tileData: any, language: string) => {
-      if (!tileData) return null;
-
-      const items = flattenToReferences(tileData);
-      if (items.length === 0) return null;
-
-      const displayStrings = items
-        .map((ref: any) => renderReferenceDisplay(ref, language))
-        .filter((s): s is string => s !== null);
-
-      return displayStrings.join(', ');
-    },
+    renderDisplay: (tileData: unknown, language: string) =>
+      renderReferenceDisplay(tileData, language) ?? null,
   });
 });
 

@@ -59,7 +59,36 @@ jobs:
         with:
           name: napi-${{ matrix.settings.target }}
           path: crates/alizarin-napi/${{ matrix.settings.artifact }}
-          if-no-found: error
+          if-no-files-found: error
+
+      # Build the out-of-tree extension NAPI crates for the same platform.
+      # Auto-discovered from ext/*/napi/ — a new extension is picked up with no
+      # edit here. Each is packaged monolithically (one tarball carries every
+      # platform's .node), like @alizarin/napi, so we stage each crate's binary
+      # plus the generated JS binding (index.js / index.d.ts) per platform.
+      - name: Build extension NAPI addons
+        shell: bash
+        run: |
+          mkdir -p ext-napi-staging
+          for napi_dir in ext/*/napi; do
+            [ -f "$napi_dir/package.json" ] || continue
+            pkg=$(node -p "require('./$napi_dir/package.json').name.replace('@alizarin/','')")
+            echo "=== Building @alizarin/$pkg (${{ matrix.settings.target }}) ==="
+            # --legacy-peer-deps: skip auto-installing the @alizarin/napi peer, which
+            # isn't on the registry yet at build time (only @napi-rs/cli is needed here).
+            ( cd "$napi_dir" && npm install --legacy-peer-deps && npx napi build --platform --release --target ${{ matrix.settings.target }} )
+            mkdir -p "ext-napi-staging/$pkg"
+            cp "$napi_dir"/*.node "ext-napi-staging/$pkg/"
+            # index.js/.d.ts are platform-independent; ship one copy (last wins).
+            cp "$napi_dir"/index.js "$napi_dir"/index.d.ts "ext-napi-staging/$pkg/" 2>/dev/null || true
+          done
+
+      - name: Upload extension NAPI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ext-napi-${{ matrix.settings.target }}
+          path: ext-napi-staging/
+          if-no-files-found: error
 
   test:
     name: Test NAPI
@@ -127,6 +156,24 @@ jobs:
         working-directory: crates/alizarin-napi
         run: npm pack
 
+      # Extension NAPI packages: stage every platform's .node (+ the generated
+      # binding) into each ext/*/napi crate and pack a monolithic tarball, the
+      # same shape as @alizarin/napi above. Auto-discovered; no per-extension list.
+      - name: Stage & pack extension NAPI packages
+        shell: bash
+        run: |
+          for napi_dir in ext/*/napi; do
+            [ -f "$napi_dir/package.json" ] || continue
+            pkg=$(node -p "require('./$napi_dir/package.json').name.replace('@alizarin/','')")
+            echo "=== Staging @alizarin/$pkg ==="
+            cp artifacts/ext-napi-*/"$pkg"/*.node "$napi_dir/"
+            cp artifacts/ext-napi-*/"$pkg"/index.js "$napi_dir/" 2>/dev/null || true
+            cp artifacts/ext-napi-*/"$pkg"/index.d.ts "$napi_dir/" 2>/dev/null || true
+            echo "Native binaries for @alizarin/$pkg:"
+            ls -lh "$napi_dir"/*.node
+            ( cd "$napi_dir" && npm pack )
+          done
+
       - name: Get version from tag or input
         id: get_version
         run: |
@@ -143,16 +190,25 @@ jobs:
           files: |
             crates/alizarin-napi/*.tgz
             crates/alizarin-napi/*.node
+            ext/*/napi/*.tgz
           body: |
             ## @alizarin/napi ${{ steps.get_version.outputs.version }}
 
-            Native Node.js bindings for alizarin-core.
+            Native Node.js bindings for alizarin-core, plus the native extension
+            handlers (`@alizarin/clm-napi`, `@alizarin/filelist-napi`,
+            `@alizarin/geo-napi`).
 
             ### Installation
 
             ```bash
             npm install @alizarin/napi
+            # native extension handlers (optional peers of @alizarin/clm etc.):
+            npm install @alizarin/clm-napi @alizarin/filelist-napi @alizarin/geo-napi
             ```
+
+            Each `@alizarin/<ext>-napi` is a monolithic tarball carrying every
+            platform's binary; a single `import '@alizarin/<ext>'` wires the WASM
+            or NAPI backend, whichever is installed.
 
             ### Included platforms
 
@@ -178,3 +234,19 @@ jobs:
           else
             npm publish --provenance --access public
           fi
+
+      # Publish each extension NAPI package (already staged & packed above).
+      # NOTE: on a package's FIRST ever release, Trusted Publishing cannot create
+      # it — bootstrap that version once with a granular token, then configure the
+      # per-package trusted publisher; subsequent releases run tokenless here.
+      - name: Publish extension NAPI packages (Trusted Publishing)
+        shell: bash
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          if echo "$VERSION" | grep -qE '(alpha|beta)'; then TAG="--tag alpha"; else TAG=""; fi
+          for napi_dir in ext/*/napi; do
+            [ -f "$napi_dir/package.json" ] || continue
+            pkg=$(node -p "require('./$napi_dir/package.json').name")
+            echo "=== Publishing $pkg ==="
+            ( cd "$napi_dir" && npm publish --provenance --access public $TAG )
+          done

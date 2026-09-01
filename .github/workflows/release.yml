@@ -185,11 +185,21 @@ jobs:
             npm install https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/alizarin-filelist-${{ steps.get_version.outputs.version }}.tgz
             ```
 
+            **@alizarin/geo** - GeoJSON validation for the geojson-feature-collection datatype:
+            ```bash
+            npm install https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/alizarin-geo-${{ steps.get_version.outputs.version }}.tgz
+            ```
+
             Then import to register:
             ```typescript
             import '@alizarin/clm';
             import '@alizarin/filelist';
+            import '@alizarin/geo';
             ```
+
+            Native (NAPI) backends for these extensions ship from the companion
+            `release-napi` workflow as `@alizarin/clm-napi`, `@alizarin/filelist-napi`
+            and `@alizarin/geo-napi`.
 
             ## What's Included
 

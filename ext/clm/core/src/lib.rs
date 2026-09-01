@@ -310,6 +310,53 @@ pub fn render_reference_display_value(
     }
 }
 
+/// Render display text from **tile data** (the WASM/browser lazy path),
+/// tolerating unresolved `__needs_rdm_label_lookup` markers by falling back to
+/// their `label`, and skipping bare `__needs_rdm_lookup` (uuid) markers.
+///
+/// The napi/python path resolves markers *before* rendering and uses the strict
+/// [`render_reference_display_value`]; the browser renders lazily and may still
+/// hold markers, so this mirrors what the old TypeScript handler did — keeping
+/// that logic in Rust (one source of truth) rather than reimplemented in JS.
+pub fn render_reference_display_tile(value: &Value, lang: Option<&str>) -> String {
+    fn render_one(item: &Value, lang: Option<&str>) -> Option<String> {
+        match item {
+            // JSON-string-encoded reference (defensive: some tile data is stringified).
+            Value::String(s) => serde_json::from_str::<Value>(s)
+                .ok()
+                .and_then(|parsed| render_one(&parsed, lang)),
+            Value::Object(obj) => {
+                // Unresolved label marker → show the label placeholder.
+                if obj
+                    .get("__needs_rdm_label_lookup")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    if let Some(Value::String(label)) = obj.get("label") {
+                        return Some(label.clone());
+                    }
+                }
+                // Otherwise a resolved StaticReference (uuid-only markers fail this
+                // and are dropped, matching the old handler).
+                serde_json::from_value::<StaticReference>(item.clone())
+                    .ok()
+                    .map(|r| r.to_display_string(lang))
+            }
+            _ => None,
+        }
+    }
+
+    match value {
+        Value::Null => String::new(),
+        Value::Array(arr) => arr
+            .iter()
+            .filter_map(|item| render_one(item, lang))
+            .collect::<Vec<_>>()
+            .join(", "),
+        other => render_one(other, lang).unwrap_or_default(),
+    }
+}
+
 /// Render a reference value to a display string, resolving bare list-item UUIDs
 /// and `__needs_rdm_lookup` markers through `resolver` when the value has not
 /// already been resolved to a [`StaticReference`].
@@ -758,6 +805,26 @@ mod tests {
             render_reference_display_value(&resolved, Some("en")).unwrap(),
             "Test Label"
         );
+    }
+
+    #[test]
+    fn test_render_display_tile_marker_tolerant() {
+        // Unresolved label marker falls back to its label (browser lazy path).
+        let marker = json!([{"__needs_rdm_label_lookup": true, "label": "Pending Label"}]);
+        assert_eq!(
+            render_reference_display_tile(&marker, Some("en")),
+            "Pending Label"
+        );
+
+        // A resolved reference renders; a bare uuid marker (no label) is dropped.
+        let mixed = json!([
+            {"labels": [{"id": "1", "language_id": "en", "list_item_id": "i", "value": "Real", "valuetype_id": "prefLabel"}], "list_id": "l", "uri": "u"},
+            {"__needs_rdm_lookup": true, "uuid": "550e8400-e29b-41d4-a716-446655440000"}
+        ]);
+        assert_eq!(render_reference_display_tile(&mixed, Some("en")), "Real");
+
+        // Null → empty string.
+        assert_eq!(render_reference_display_tile(&json!(null), None), "");
     }
 
     #[test]
