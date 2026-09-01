@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-filelist"
-version = "2.0.0-beta.6"
+version = "2.0.0-beta.7"
 edition = "2021"
 description = "File List datatype extension for Alizarin"
 
