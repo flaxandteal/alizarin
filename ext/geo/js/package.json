@@ -1,6 +1,6 @@
 {
   "name": "@alizarin/geo",
-  "version": "2.0.0-alpha.133",
+  "version": "2.0.0-alpha.134",
   "description": "Alizarin geojson-feature-collection validation extension (WASM)",
   "license": "AGPL-3.0",
   "repository": {
@@ -22,7 +22,7 @@
     "preview": "vite preview"
   },
   "peerDependencies": {
-    "alizarin": "2.0.0-alpha.133",
+    "alizarin": "2.0.0-alpha.134",
     "@alizarin/napi": "2.0.0-alpha.133",
     "@alizarin/geo-napi": "2.0.0-alpha.133"
   },

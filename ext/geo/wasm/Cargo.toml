@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-geo-wasm"
-version = "2.0.0-alpha.133"
+version = "2.0.0-alpha.134"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 description = "WASM bindings for alizarin-geo-core (geojson validation)"
