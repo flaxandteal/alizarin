@@ -1536,6 +1536,7 @@ impl NapiResourceInstanceWrapper {
         rdm_cache: &NapiRdmCache,
         node_config_manager: &NapiNodeConfigManager,
         language: Option<String>,
+        resource_registry: Option<&crate::NapiStaticResourceRegistry>,
     ) -> Result<serde_json::Value> {
         self.ensure_populated()?;
         let lang = language.unwrap_or_else(|| "en".to_string());
@@ -1543,7 +1544,7 @@ impl NapiResourceInstanceWrapper {
             SerializationOptions::display(&lang),
             Some(&rdm_cache.inner),
             Some(&node_config_manager.inner),
-            None,
+            resource_registry.map(|r| &r.inner),
         )
     }
 

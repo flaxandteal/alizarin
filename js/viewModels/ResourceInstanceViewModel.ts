@@ -195,7 +195,7 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
 
       t0 = performance.now();
       if (typeof this.$.wasmWrapper.toDisplayJsonFull === 'function') {
-        rootJson = this.$.wasmWrapper.toDisplayJsonFull(rdmCache, ncm, lang);
+        rootJson = this.$.wasmWrapper.toDisplayJsonFull(rdmCache, ncm, lang, staticStore.registry);
         recordNativeTiming("forDisplayJson: toDisplayJsonFull", performance.now() - t0);
       } else {
         await this.$.populate(false);
