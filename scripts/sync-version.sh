@@ -203,7 +203,7 @@ for pkg_json in \
             if (!deps) continue;
             for (const [name, spec] of Object.entries(deps)) {
                 if ((name === 'alizarin' || name.startsWith('@alizarin/')) &&
-                    typeof spec === 'string' && spec.includes('-beta.')) {
+                    typeof spec === 'string' && (spec.includes('-alpha.') || spec.includes('-beta.'))) {
                     deps[name] = process.env.VERSION;
                 }
             }

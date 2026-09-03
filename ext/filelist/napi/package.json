@@ -22,7 +22,7 @@
     "version": "napi version"
   },
   "peerDependencies": {
-    "@alizarin/napi": "2.0.0-alpha.133"
+    "@alizarin/napi": "2.0.0-alpha.134"
   },
   "devDependencies": {
     "@napi-rs/cli": "^2.18.0"
