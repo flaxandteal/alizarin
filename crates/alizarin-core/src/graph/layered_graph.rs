@@ -66,15 +66,13 @@ pub struct LayeredGraph {
 }
 
 impl LayeredGraph {
-    /// Create a layered graph from a base and one or more overlays.
+    /// Create a layered graph from a base and zero or more overlays.
     ///
-    /// Panics if `layers` is empty — use `StaticGraph` directly for
-    /// the single-layer case.
+    /// A single-layer graph (no overlays) is permitted: it merges to the base
+    /// alone. This lets callers that always hand a `LayeredGraph` to the
+    /// hydrate/query path (e.g. ros-madair-duck `hydrate_layers`) work uniformly
+    /// for 1..N layers without a separate `StaticGraph` code path.
     pub fn new(base: Arc<StaticGraph>, overlays: Vec<Arc<StaticGraph>>) -> Self {
-        assert!(
-            !overlays.is_empty(),
-            "Use StaticGraph directly when there are no overlays"
-        );
         let mut layers = Vec::with_capacity(1 + overlays.len());
         layers.push(base);
         layers.extend(overlays);
