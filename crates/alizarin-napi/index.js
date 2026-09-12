@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiEnsureNodegroupResult, NapiValuesFromNodegroupResult, NapiResourceInstanceWrapper, NapiResourceModelWrapper, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, buildGraphFromCsvs, buildBusinessDataFromCsv, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, buildAliasToCollectionMap, findNeededCollections, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
+const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiEnsureNodegroupResult, NapiValuesFromNodegroupResult, NapiResourceInstanceWrapper, NapiResourceModelWrapper, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, buildGraphFromCsvs, buildBusinessDataFromCsv, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, registerExtensionHandler, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, buildAliasToCollectionMap, findNeededCollections, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
 
 module.exports.NapiRdmCache = NapiRdmCache
 module.exports.NapiNodeConfigManager = NapiNodeConfigManager
@@ -333,6 +333,7 @@ module.exports.extensionRenderDisplay = extensionRenderDisplay
 module.exports.extensionResolveMarkers = extensionResolveMarkers
 module.exports.hasExtensionHandler = hasExtensionHandler
 module.exports.getRegisteredExtensionHandlers = getRegisteredExtensionHandlers
+module.exports.registerExtensionHandler = registerExtensionHandler
 module.exports.parseSkosXml = parseSkosXml
 module.exports.parseSkosXmlToCollection = parseSkosXmlToCollection
 module.exports.collectionToSkosXml = collectionToSkosXml
