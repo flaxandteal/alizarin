@@ -120,8 +120,13 @@ export async function initWasm() {
       // WASM not initialized yet, continue with normal initialization
     }
 
-    // In Node.js environment (tests), use synchronous init with file system
-    if (typeof process !== 'undefined' && process.versions?.node) {
+    // In Node.js environment (tests), use synchronous init with file system.
+    // Electron's renderer process also exposes process.versions.node, so we
+    // additionally require the absence of `window` here - otherwise this
+    // branch runs inside Electron-based browsers (e.g. Cypress's Electron
+    // runner) and hits the synchronous WebAssembly.Module() compile below,
+    // which Chromium refuses to run on the main thread for buffers over 4KB.
+    if (typeof process !== 'undefined' && process.versions?.node && typeof window === 'undefined') {
       try {
         console.log('[alizarin] Initializing WASM in Node.js environment');
 
