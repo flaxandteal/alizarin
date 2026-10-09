@@ -4,8 +4,8 @@ import { RDM, ResolveLabelsOptions, registerResolvableDatatype, unregisterResolv
 import { ResourceModelWrapper, createWKRM, getWKRMClass, graphManager, staticStore, GraphManager, GraphMutator, getWasmTimings } from "./graphManager";
 import * as staticTypes from "./static-types";
 import { CollectionMutator } from "./collectionMutator";
-import { buildGraphFromModelCsvs, validateModelCsvs, buildResourcesFromBusinessCsv } from "./csvModelLoader";
-import type { CsvModelDiagnostic, CsvModelBuildResult, BusinessDataResult } from "./csvModelLoader";
+import { buildGraphFromModelCsvs, validateModelCsvs, buildResourcesFromBusinessCsv, composeResourceLayers } from "./csvModelLoader";
+import type { CsvModelDiagnostic, CsvModelBuildResult, BusinessDataResult, ComposedResourceResult } from "./csvModelLoader";
 import * as utils from "./utils";
 import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
@@ -62,6 +62,7 @@ export type {
   CsvModelDiagnostic,
   CsvModelBuildResult,
   BusinessDataResult,
+  ComposedResourceResult,
 };
 export {
   AlizarinModel,
@@ -107,6 +108,7 @@ export {
   buildGraphFromModelCsvs,
   validateModelCsvs,
   buildResourcesFromBusinessCsv,
+  composeResourceLayers,
   // Extension function
   registerExtensionHandler,
   // Backend selection (WASM vs NAPI)

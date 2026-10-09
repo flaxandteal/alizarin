@@ -701,6 +701,44 @@ fn batch_trees_to_tiles(
     })
 }
 
+/// Compose one resource across an ordered layer stack, in memory — the binding
+/// form of the substrate's `hydrate_layers` (no DuckDB).
+///
+/// Args:
+///     resources_json: JSON array of the same resource as it exists in each
+///         layer, TOPMOST-FIRST (highest-priority layer first). Tiles are merged
+///         (identical tiles deduped, topmost wins), then cardinality-1 nodegroups
+///         unified PerNodegroup (topmost overrides a single-valued group whole;
+///         multi-valued groups accumulate).
+///     base_graph_json: The base model StaticGraph JSON.
+///     overlay_graphs_json: JSON array of overlay StaticGraphs bottom-to-top (may
+///         be "[]"); composition runs against the merged model via LayeredGraph.
+///     strict: Make a cross-layer conflict on a single-valued group an error.
+///
+/// Returns:
+///     {resource: ..., warnings: [...]}
+#[pyfunction]
+#[pyo3(signature = (resources_json, base_graph_json, overlay_graphs_json, strict=false))]
+fn compose_resource_layers(
+    py: Python,
+    resources_json: String,
+    base_graph_json: String,
+    overlay_graphs_json: String,
+    strict: bool,
+) -> PyResult<PyObject> {
+    let composed = alizarin_core::graph::compose_resource_layers_from_json(
+        &resources_json,
+        &base_graph_json,
+        &overlay_graphs_json,
+        strict,
+    )
+    .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+
+    pythonize::pythonize(py, &composed).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to convert result: {}", e))
+    })
+}
+
 // =============================================================================
 // ResourceRegistry - For relationship resolution and cache population
 // =============================================================================
@@ -2181,6 +2219,7 @@ fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     // Batch conversion functions (parallel processing with Rayon)
     m.add_function(wrap_pyfunction!(batch_trees_to_tiles, m)?)?;
     m.add_function(wrap_pyfunction!(batch_tiles_to_trees, m)?)?;
+    m.add_function(wrap_pyfunction!(compose_resource_layers, m)?)?;
     m.add_function(wrap_pyfunction!(cards_to_json_tree, m)?)?;
 
     // Streaming iterator (low memory, processes one tree at a time)

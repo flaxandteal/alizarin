@@ -553,4 +553,40 @@ pub fn batch_merge_resources_wasm(
         .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
 }
 
+/// Compose one resource across an ordered layer stack, entirely in memory — the
+/// binding form of the substrate's `hydrate_layers` (no DuckDB). The same resource
+/// as it exists in each layer is supplied **topmost-first** in `resources_json`;
+/// tiles are merged (identical tiles deduped, topmost wins) and cardinality-1
+/// nodegroups unified with PerNodegroup (the topmost layer overrides a
+/// single-valued group whole; multi-valued groups accumulate).
+///
+/// `base_graph_json` is the base model; `overlay_graphs_json` is a JSON array of
+/// overlay `StaticGraph`s **bottom-to-top** (may be `[]`) — composition runs
+/// against the merged (overlaid) model via `LayeredGraph`. `strict` makes a
+/// cross-layer conflict on a single-valued group an error instead of a warning.
+///
+/// Returns `{ resource, warnings }`.
+#[wasm_bindgen(js_name = composeResourceLayers)]
+pub fn compose_resource_layers(
+    resources_json: &str,
+    base_graph_json: &str,
+    overlay_graphs_json: &str,
+    strict: Option<bool>,
+) -> Result<JsValue, JsValue> {
+    use serde::Serialize;
+
+    let composed = alizarin_core::graph::compose_resource_layers_from_json(
+        resources_json,
+        base_graph_json,
+        overlay_graphs_json,
+        strict.unwrap_or(false),
+    )
+    .map_err(|e| JsValue::from_str(&e))?;
+
+    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    composed
+        .serialize(&serializer)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+}
+
 // Tests for transform_keys_to_snake are in alizarin-core/src/string_utils.rs

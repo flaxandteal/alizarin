@@ -2002,6 +2002,92 @@ pub fn unify_cardinality_one_tiles(
     Ok(warnings)
 }
 
+/// Compose one resource that appears across several layers into a single resource
+/// — the in-memory/binding form of the substrate's `hydrate_layers`, minus the
+/// storage read.
+///
+/// `layers` is the same resource as it exists in each layer, **topmost-first**
+/// (highest-priority layer first). It runs the two composition primitives in the
+/// same order `ros-madair-duck::hydrate_layers` does:
+/// 1. [`merge_resources`] — concatenate tiles, dropping tiles duplicated by id
+///    (first/topmost wins) and merging metadata/cache/scopes;
+/// 2. [`unify_cardinality_one_tiles`] with [`TileMergeMode::PerNodegroup`] —
+///    collapse each cardinality-1 nodegroup to the topmost layer that sets it
+///    (whole-group override, no field-by-field inheritance from lower layers);
+///    multi-valued nodegroups accumulate (append-only).
+///
+/// `strict` turns a cross-layer conflict on a single-valued group into an error.
+/// `graph` is any [`GraphLookup`](super::graph_lookup::GraphLookup) — pass a
+/// [`LayeredGraph`](super::layered_graph::LayeredGraph) to compose against the
+/// merged (overlaid) model. Returns the composed resource plus merge + unify
+/// warnings.
+pub fn compose_resource_across_layers(
+    layers: Vec<StaticResource>,
+    graph: &impl super::graph_lookup::GraphLookup,
+    strict: bool,
+) -> Result<(StaticResource, Vec<String>), String> {
+    let MergeResult {
+        resource: mut composed,
+        mut warnings,
+    } = merge_resources(layers)?;
+    let mut tiles = composed.tiles.take().unwrap_or_default();
+    warnings.extend(unify_cardinality_one_tiles(
+        &mut tiles,
+        graph,
+        strict,
+        TileMergeMode::PerNodegroup,
+    )?);
+    composed.tiles = Some(tiles);
+    Ok((composed, warnings))
+}
+
+/// The composed resource plus any merge/unify warnings — the serializable result
+/// of [`compose_resource_layers_from_json`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComposedResource {
+    pub resource: StaticResource,
+    pub warnings: Vec<String>,
+}
+
+/// JSON-boundary form of [`compose_resource_across_layers`] for the language
+/// bindings: parse the per-layer resources + the base/overlay graphs, build the
+/// [`LayeredGraph`](super::layered_graph::LayeredGraph) (indices and all), compose,
+/// and return a serializable `{ resource, warnings }`. The WASM/NAPI/Python
+/// wrappers are then one-liners that only map the error and serialize — the parse
+/// + build-layered-graph glue lives here once.
+///
+/// `resources_json` is `[StaticResource]` **topmost-first**; `overlay_graphs_json`
+/// is `[StaticGraph]` **bottom-to-top** (may be `"[]"`).
+pub fn compose_resource_layers_from_json(
+    resources_json: &str,
+    base_graph_json: &str,
+    overlay_graphs_json: &str,
+    strict: bool,
+) -> Result<ComposedResource, String> {
+    use std::sync::Arc;
+
+    let resources: Vec<StaticResource> = serde_json::from_str(resources_json)
+        .map_err(|e| format!("Failed to parse resources: {e}"))?;
+
+    let mut base: crate::graph::StaticGraph = serde_json::from_str(base_graph_json)
+        .map_err(|e| format!("Failed to parse base graph: {e}"))?;
+    base.build_indices();
+
+    let overlays: Vec<crate::graph::StaticGraph> = serde_json::from_str(overlay_graphs_json)
+        .map_err(|e| format!("Failed to parse overlay graphs: {e}"))?;
+    let overlays: Vec<Arc<crate::graph::StaticGraph>> = overlays
+        .into_iter()
+        .map(|mut g| {
+            g.build_indices();
+            Arc::new(g)
+        })
+        .collect();
+
+    let layered = super::layered_graph::LayeredGraph::new(Arc::new(base), overlays);
+    let (resource, warnings) = compose_resource_across_layers(resources, &layered, strict)?;
+    Ok(ComposedResource { resource, warnings })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2319,6 +2405,74 @@ mod tests {
             "the base's `b` is DROPPED, a whole-nodegroup override does not \
              inherit fields the overlay omitted"
         );
+    }
+
+    #[test]
+    fn compose_resource_across_layers_overrides_single_and_accumulates_multi() {
+        fn res(id: &str, tiles: Vec<StaticTile>) -> StaticResource {
+            StaticResource {
+                resourceinstance: StaticResourceMetadata {
+                    descriptors: StaticResourceDescriptors::default(),
+                    graph_id: "g".to_string(),
+                    name: "R".to_string(),
+                    resourceinstanceid: id.to_string(),
+                    publication_id: None,
+                    principaluser_id: None,
+                    legacyid: None,
+                    graph_publication_id: None,
+                    createdtime: None,
+                    lastmodified: None,
+                },
+                tiles: Some(tiles),
+                metadata: HashMap::new(),
+                cache: None,
+                scopes: None,
+                tiles_loaded: None,
+            }
+        }
+
+        let graph = layer_graph();
+        // The same resource in two layers, supplied topmost-first. The topmost
+        // layer overrides the single-valued group; both contribute to the multi.
+        let topmost = res(
+            "r1",
+            vec![
+                t("c-single", "single", None, &[("a", 9)]),
+                t("c-multi", "multi", None, &[("m", 1)]),
+            ],
+        );
+        let base = res(
+            "r1",
+            vec![
+                t("b-single", "single", None, &[("a", 1), ("b", 2)]),
+                t("b-multi", "multi", None, &[("m", 2)]),
+            ],
+        );
+
+        let (composed, _warnings) =
+            compose_resource_across_layers(vec![topmost, base], &graph, false).expect("compose");
+        let tiles = composed.tiles.expect("composed tiles");
+
+        // single (cardinality-1): collapses to the topmost tile, whole-group — the
+        // base's `b` is NOT inherited.
+        let single: Vec<&StaticTile> = tiles
+            .iter()
+            .filter(|t| t.nodegroup_id == "single")
+            .collect();
+        assert_eq!(single.len(), 1, "cardinality-1 group holds one tile");
+        assert_eq!(
+            single[0].data["a"],
+            serde_json::json!(9),
+            "topmost value wins"
+        );
+        assert!(
+            !single[0].data.contains_key("b"),
+            "whole-group override drops the base's omitted field"
+        );
+
+        // multi (cardinality-n): both layers' members survive (append-only).
+        let multi = tiles.iter().filter(|t| t.nodegroup_id == "multi").count();
+        assert_eq!(multi, 2, "multi-valued nodegroups accumulate across layers");
     }
 
     #[test]

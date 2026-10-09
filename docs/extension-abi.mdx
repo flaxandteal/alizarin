@@ -133,8 +133,9 @@ Each binding hands that pointer to the host:
 ```
 
 The in-tree extensions are the reference implementations: `ext/clm` (coerce +
-display + resolve_markers), `ext/filelist` (coerce + display), `ext/geo`
-(validate).
+display + resolve_markers + index_spec — a `reference` is a controlled-list value,
+so it head-indexes as `ConceptHierarchical`, exactly like the core `concept`
+datatype), `ext/filelist` (coerce + display), `ext/geo` (validate).
 
 ## Packaging (npm)
 

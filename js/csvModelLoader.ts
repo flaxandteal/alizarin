@@ -14,7 +14,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — generated WASM bindings
-import { buildGraphFromModelCsvs as wasmBuild, validateModelCsvs as wasmValidate, buildResourcesFromBusinessCsv as wasmBuildBusinessData } from '../pkg/alizarin';
+import { buildGraphFromModelCsvs as wasmBuild, validateModelCsvs as wasmValidate, buildResourcesFromBusinessCsv as wasmBuildBusinessData, composeResourceLayers as wasmComposeResourceLayers } from '../pkg/alizarin';
 import { getBackend, getNapiModule, safeStringify } from './backend';
 
 export interface CsvModelDiagnostic {
@@ -117,5 +117,52 @@ export function buildResourcesFromBusinessCsv(
     safeStringify(collections),
     defaultLanguage ?? null,
     strictConcepts ?? null,
+    uuidNamespace ?? null,
   );
+}
+
+/** The composed resource plus any merge/unify warnings. */
+export interface ComposedResourceResult {
+  resource: unknown;
+  warnings: string[];
+}
+
+/**
+ * Compose one resource across an ordered layer stack, entirely in memory (no
+ * DuckDB) — the binding form of the substrate's `hydrate_layers`.
+ *
+ * @param resources - The same resource as it appears in each layer, TOPMOST-FIRST
+ *   (highest-priority layer first). Tiles are merged (identical tiles deduped,
+ *   topmost wins), then cardinality-1 nodegroups are unified PerNodegroup: the
+ *   topmost layer overrides a single-valued group whole (no field-by-field
+ *   inheritance), while multi-valued nodegroups accumulate across layers.
+ * @param baseGraph - The base model `StaticGraph`.
+ * @param overlayGraphs - Overlay `StaticGraph`s bottom-to-top (default `[]`);
+ *   composition runs against the merged model via `LayeredGraph`.
+ * @param strict - Make a cross-layer conflict on a single-valued group an error.
+ * @returns `{ resource, warnings }`.
+ */
+export function composeResourceLayers(
+  resources: unknown[],
+  baseGraph: unknown,
+  overlayGraphs: unknown[] = [],
+  strict?: boolean,
+): ComposedResourceResult {
+  if (getBackend() === 'napi') {
+    const napi = getNapiModule();
+    if (napi?.composeResourceLayers) {
+      return napi.composeResourceLayers(
+        safeStringify(resources),
+        safeStringify(baseGraph),
+        safeStringify(overlayGraphs),
+        strict ?? null,
+      );
+    }
+  }
+  return wasmComposeResourceLayers(
+    safeStringify(resources),
+    safeStringify(baseGraph),
+    safeStringify(overlayGraphs),
+    strict ?? null,
+  ) as ComposedResourceResult;
 }

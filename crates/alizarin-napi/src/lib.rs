@@ -575,6 +575,36 @@ pub fn build_business_data_from_csv(
     Ok(wrap_business_data(&resources))
 }
 
+/// Compose one resource across an ordered layer stack, in memory — the binding
+/// form of the substrate's `hydrate_layers` (no DuckDB). The same resource as it
+/// exists in each layer is supplied **topmost-first** in `resources_json`; tiles
+/// are merged (identical tiles deduped, topmost wins) and cardinality-1 nodegroups
+/// unified with PerNodegroup (topmost overrides a single-valued group whole;
+/// multi-valued groups accumulate).
+///
+/// `overlay_graphs_json` is a JSON array of overlay `StaticGraph`s bottom-to-top
+/// (may be `[]`); composition runs against the merged model via `LayeredGraph`.
+/// `strict` makes a cross-layer conflict on a single-valued group an error.
+/// Returns `{ resource, warnings }`.
+#[napi]
+pub fn compose_resource_layers(
+    resources_json: String,
+    base_graph_json: String,
+    overlay_graphs_json: String,
+    strict: Option<bool>,
+) -> Result<serde_json::Value> {
+    let composed = alizarin_core::graph::compose_resource_layers_from_json(
+        &resources_json,
+        &base_graph_json,
+        &overlay_graphs_json,
+        strict.unwrap_or(false),
+    )
+    .map_err(napi::Error::from_reason)?;
+
+    serde_json::to_value(&composed)
+        .map_err(|e| napi::Error::from_reason(format!("Failed to serialize result: {e}")))
+}
+
 // ============================================================================
 // Extension handler direct access
 // ============================================================================

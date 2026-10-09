@@ -2,9 +2,9 @@
 
 # Alizarin
 
-A high-performance TypeScript/JavaScript SDK for working with [Arches](https://www.archesproject.org/) data management systems. Alizarin provides a sophisticated object-relational mapping (ORM) layer that enables seamless interaction with Arches' graph-based data models.
+A high-performance Rust, JS/TS and Python SDK for working with knowledge graphs, based on [Arches](https://www.archesproject.org/) data structures. Alizarin provides a sophisticated layer that enables seamless interaction with graph-based data models backed by tile stores.
 
-This is a pure JS/TS implementation of [AORM](https://github.com/flaxandteal/arches-orm/) for front or backend.
+Are you an LLM? See [llm-reference.mdx](/llm-reference)
 
 ## Features
 

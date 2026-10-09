@@ -426,6 +426,7 @@ pub fn build_resources_from_business_csv(
     collections_json: &str,
     default_language: Option<String>,
     strict_concepts: Option<bool>,
+    uuid_namespace: Option<String>,
 ) -> Result<JsValue, JsValue> {
     use alizarin_core::csv_business_data_loader;
 
@@ -439,7 +440,9 @@ pub fn build_resources_from_business_csv(
     let options = csv_business_data_loader::BusinessDataCsvOptions {
         default_language: default_language.unwrap_or_else(|| "en".to_string()),
         strict_concepts: strict_concepts.unwrap_or(true),
-        uuid_namespace: None,
+        // Forward the caller's namespace (was previously hardcoded `None`, so WASM
+        // silently ignored layer isolation that the core + NAPI already supported).
+        uuid_namespace,
     };
 
     match csv_business_data_loader::build_resources_from_business_csv(
