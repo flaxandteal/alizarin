@@ -103,6 +103,19 @@ declare class PseudoList extends Array implements IPseudo {
         [key: string]: any;
     } | null>;
     getValue(): AttrPromise<PseudoList | IViewModel | null>;
+    /**
+     * Resolve every per-tile entry and flatten one level into a single list.
+     *
+     * A cardinality-N nodegroup yields one entry per tile. When the node is itself
+     * list-valued (`resource-instance-list`, `concept-list`, `domain-value-list`),
+     * each per-tile entry is ALSO a list — so awaiting the field directly gives a
+     * list of per-tile lists (`[[a, b], [c]]`), which readers would otherwise have
+     * to flatten by hand (C6). `flattened()` does that, awaiting any nested
+     * promises: `[[a, b], [c]]` becomes `[a, b, c]`. For a scalar cardinality-N node
+     * (one value per tile) it is equivalent to awaiting the field, so it is safe to
+     * use uniformly. `null`/`undefined` entries are dropped.
+     */
+    flattened(): Promise<any[]>;
     toString(): string;
 }
 /**
@@ -111,7 +124,7 @@ declare class PseudoList extends Array implements IPseudo {
  *
  * @param rustValue - WasmPseudoValue or WasmPseudoList from Rust
  * @param wkri - The WKRI wrapper (parent IRIVM)
- * @param model - The model wrapper (for getting nodes - currently unused with new pattern)
+ * @param model - The model wrapper (used to look up node objects by id for lists)
  * @returns PseudoValue, PseudoList, or PseudoUnavailable
  */
 declare function wrapRustPseudo(rustValue: WasmPseudoValue | WasmPseudoList | null, wkri: IRIVM<any>, model: any): PseudoValue<any> | PseudoList | PseudoUnavailable | null | undefined;

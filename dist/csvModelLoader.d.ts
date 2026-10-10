@@ -6,8 +6,8 @@
  * nodes.csv, collections.csv) and builds an Arches resource model graph
  * with SKOS collections.
  *
- * When the NAPI backend is active, routes to native Rust implementations
- * for better performance.
+ * The build functions route to native NAPI implementations when that backend
+ * is active and exposes them; validateModelCsvs always uses WASM.
  *
  * @module csvModelLoader
  */
@@ -61,3 +61,24 @@ export interface BusinessDataResult {
  * @returns Business data wrapper with resources array
  */
 export declare function buildResourcesFromBusinessCsv(csvData: string, graph: any, collections: any[], defaultLanguage?: string, strictConcepts?: boolean, uuidNamespace?: string): BusinessDataResult;
+/** The composed resource plus any merge/unify warnings. */
+export interface ComposedResourceResult {
+    resource: unknown;
+    warnings: string[];
+}
+/**
+ * Compose one resource across an ordered layer stack, entirely in memory (no
+ * DuckDB) — the binding form of the substrate's `hydrate_layers`.
+ *
+ * @param resources - The same resource as it appears in each layer, TOPMOST-FIRST
+ *   (highest-priority layer first). Tiles are merged (identical tiles deduped,
+ *   topmost wins), then cardinality-1 nodegroups are unified PerNodegroup: the
+ *   topmost layer overrides a single-valued group whole (no field-by-field
+ *   inheritance), while multi-valued nodegroups accumulate across layers.
+ * @param baseGraph - The base model `StaticGraph`.
+ * @param overlayGraphs - Overlay `StaticGraph`s bottom-to-top (default `[]`);
+ *   composition runs against the merged model via `LayeredGraph`.
+ * @param strict - Make a cross-layer conflict on a single-valued group an error.
+ * @returns `{ resource, warnings }`.
+ */
+export declare function composeResourceLayers(resources: unknown[], baseGraph: unknown, overlayGraphs?: unknown[], strict?: boolean): ComposedResourceResult;

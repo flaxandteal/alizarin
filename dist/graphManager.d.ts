@@ -1,11 +1,18 @@
 import { ArchesClient, ArchesClientRemote } from './client';
-import { staticStore } from './staticStore';
+import { staticStore, StaticStore } from './staticStore';
 import { CardComponent, Widget } from './cards';
 import { StaticTranslatableString, StaticCollection, StaticConstraint, StaticTile, StaticGraph, StaticNode, StaticNodegroup, StaticResource, StaticResourceSummary } from "./static-types";
 import { PseudoValue, PseudoUnavailable } from "./pseudos.ts";
 import { SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, IWKRM, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
 import { AttrPromise } from "./utils";
+/**
+ * Normalise a model identifier so a display name, slug, alias or PascalCased class
+ * name all collapse to the same key: `"NPC"`, `"npc"`, `"Monster Type"` and
+ * `"monster-type"` → `"npc"` / `"monstertype"`. Used by `graphManager.get()` so a
+ * lookup is not restricted to the exact class name (fix for C7).
+ */
+export declare function normalizeModelName(name: string): string;
 import { recordNativeTiming, printNativeTimings, clearNativeTimings, getNativeTimings, recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings } from './wasmTiming';
 export { recordNativeTiming, printNativeTimings, clearNativeTimings, getNativeTimings, recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings };
 export type { ConditionalPermission, PermissionValue } from "./interfaces";
@@ -185,11 +192,14 @@ declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>;
     permittedNodegroups?: Map<string, PermissionValue>;
     pruneTiles: boolean;
+    /** The resource store this model reads from. Injectable so independent layer
+     *  stacks each get their own store; defaults to the shared `staticStore`. */
+    staticStore: StaticStore;
     private _nodes;
     private _nodesByAlias;
     private _edges;
     private _nodegroups;
-    constructor(wkrm: IWKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow?: boolean);
+    constructor(wkrm: IWKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow?: boolean, store?: StaticStore);
     get graph(): StaticGraph;
     set graph(g: StaticGraph);
     get nodes(): Map<string, StaticNode> | null;
@@ -256,7 +266,10 @@ declare class GraphManager {
     graphs: Map<string, ResourceModelWrapper<any>>;
     wkrms: Map<string, IWKRM>;
     defaultAllow: boolean;
-    constructor(archesClient: ArchesClient);
+    /** The resource store this manager reads through. Injectable so two managers
+     *  (e.g. two layer stacks) stay independent; defaults to the shared singleton. */
+    staticStore: StaticStore;
+    constructor(archesClient: ArchesClient, store?: StaticStore);
     getPruneTiles(pruneTiles?: boolean): boolean;
     initialize(configurationOptions?: ConfigurationOptions | undefined): Promise<void>;
     loadGraph<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow?: boolean): Promise<ResourceModelWrapper<RIVM>>;
@@ -266,4 +279,4 @@ declare class GraphManager {
 }
 declare const graphManager: GraphManager;
 export { createWKRM, getWKRMClass } from "./backend";
-export { GraphManager, graphManager, ArchesClientRemote, staticStore, ResourceModelWrapper, GraphMutator };
+export { GraphManager, graphManager, ArchesClientRemote, staticStore, StaticStore, ResourceModelWrapper, GraphMutator };
