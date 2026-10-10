@@ -684,3 +684,34 @@ test("get() awaits initialize() so a first get() does not race the registry (C8)
   const msg = err instanceof Error ? err.message : String(err ?? "");
   assert.notInclude(msg, "Cannot find model", "get() must await initialize() before the registry lookup (C8)");
 });
+
+test("get() loads a graph by a non-exact name on a cold cache (N1)", async () => {
+  const graph: any = (GroupJSON as any).graph[0];
+  const meta = new StaticGraphMeta({
+    graphid: graph.graphid,
+    name: graph.name || "Group",
+    slug: "group",
+    relatable_resource_model_ids: [],
+    resource_2_resource_constraints: [],
+    extra_fields: {},
+  });
+  const gm = new GraphManager(mockLayerClient(graph, meta));
+  // "group" (lowercase, non-exact) with the graph NOT yet cached. get() resolves
+  // the name via normalizeModelName, then delegates to loadGraph() — which, before
+  // N1, re-resolved only the EXACT class name and threw
+  // "Only loading graphs for which metadata is present, not group".
+  let err: unknown;
+  try {
+    const wrapper = await gm.get("group");
+    assert.isDefined(wrapper, "get() should load the model by a normalised name on a cold cache");
+  } catch (e) {
+    err = e;
+  }
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  assert.notInclude(
+    msg,
+    "Only loading graphs for which metadata is present",
+    "loadGraph() must resolve the same non-exact names get() does (N1)",
+  );
+  assert.notInclude(msg, "Cannot find model", "get() must resolve the normalised name (N1)");
+});

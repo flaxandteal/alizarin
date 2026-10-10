@@ -1444,21 +1444,33 @@ class GraphManager {
     this._initialized = true;
   }
 
-  async loadGraph<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow: boolean=true): Promise<ResourceModelWrapper<RIVM>> {
-    let modelClassName: string;
-    if (typeof modelClass == 'string') {
-      modelClassName = modelClass;
-    } else {
-      modelClassName = modelClass.name;
+  /**
+   * Resolve a model to its WKRM by exact class name, graph id, or a normalised
+   * name ("NPC" / "npc" / "Monster Type" / "monster-type" all match the
+   * "Npc" / "MonsterType" model). Shared by get() and loadGraph() so both accept
+   * the same name forms. (N1: loadGraph previously matched only the exact class
+   * name or graph id, so a first get("npc") that had to load the graph — i.e. the
+   * cache-miss path get() delegates to — still threw despite get()'s own
+   * normalised lookup.)
+   */
+  private resolveWkrm(modelClassName: string): IWKRM | undefined {
+    const exact = this.wkrms.get(modelClassName);
+    if (exact !== undefined) {
+      return exact;
     }
+    const target = normalizeModelName(modelClassName);
+    return (
+      [...this.wkrms.values()].find(w => w.graphId === modelClassName) ??
+      [...this.wkrms.entries()].find(([name]) => normalizeModelName(name) === target)?.[1]
+    );
+  }
 
-    let wkrm = this.wkrms.get(modelClassName);
+  async loadGraph<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow: boolean=true): Promise<ResourceModelWrapper<RIVM>> {
+    const modelClassName = typeof modelClass == 'string' ? modelClass : modelClass.name;
+
+    const wkrm = this.resolveWkrm(modelClassName);
     if (wkrm === undefined) {
-      wkrm = [...this.wkrms.values()].find(wkrm => wkrm.graphId === modelClassName);
-      if (wkrm === undefined) {
-        throw Error(`Only loading graphs for which metadata is present, not ${modelClassName}`);
-      }
-      modelClass = wkrm.modelClassName;
+      throw Error(`Only loading graphs for which metadata is present, not ${modelClassName}`);
     }
 
     const wrapper = this.graphs.get(wkrm.graphId);
@@ -1474,14 +1486,13 @@ class GraphManager {
     // Load node configs (domain values, booleans, etc.) for this graph
     nodeConfigManager.loadFromGraph(graph);
 
-    let model: ResourceInstanceViewModelConstructor<RIVM>;
-    if (typeof modelClass == 'string') {
-      modelClassName = modelClass;
-      model = makeResourceModelWrapper<RIVM>(undefined, wkrm, graph, defaultAllow, this.staticStore);
-    } else {
-      modelClassName = modelClass.name;
-      model = makeResourceModelWrapper<RIVM>(modelClass, wkrm, graph, defaultAllow, this.staticStore);
-    }
+    // Preserve a caller-supplied view-model class; fall back to a default class
+    // built from the wkrm when the model was named by string (so a name that only
+    // matched via resolveWkrm still loads, N1).
+    const model: ResourceInstanceViewModelConstructor<RIVM> =
+      typeof modelClass == 'string'
+        ? makeResourceModelWrapper<RIVM>(undefined, wkrm, graph, defaultAllow, this.staticStore)
+        : makeResourceModelWrapper<RIVM>(modelClass, wkrm, graph, defaultAllow, this.staticStore);
 
     this.graphs.set(graph.graphid, model.prototype.__);
     return model.prototype.__;
@@ -1498,22 +1509,15 @@ class GraphManager {
     // Initialize as a fallback — MUST be awaited, or a get() that races the first
     // initialize() sees an empty registry and throws "Cannot find model".
     await this.initialize(undefined);
-    let wkrm = this.wkrms.get(modelClassName);
+    const wkrm = this.resolveWkrm(modelClassName);
     if (wkrm === undefined) {
-      // Fallback: match by graph id, then by a normalised name so "NPC", "npc",
-      // "Monster Type" and "monster-type" all resolve to the "Npc"/"MonsterType"
-      // model, not just its exact PascalCased class name.
-      const target = normalizeModelName(modelClassName);
-      wkrm =
-        [...this.wkrms.values()].find(w => w.graphId === modelClassName) ??
-        [...this.wkrms.entries()].find(([name]) => normalizeModelName(name) === target)?.[1];
-      if (wkrm === undefined) {
-        throw Error(`Cannot find model requested: ${modelClassName}`);
-      }
+      throw Error(`Cannot find model requested: ${modelClassName}`);
     }
 
     const wrapper = this.graphs.get(wkrm.graphId);
     if (wrapper === undefined) {
+      // Cache miss: load the graph. loadGraph() shares resolveWkrm(), so the same
+      // non-exact name that resolved here also resolves there (N1).
       return this.loadGraph(modelClass, defaultAllow);
     }
     return wrapper;
