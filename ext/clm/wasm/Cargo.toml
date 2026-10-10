@@ -17,12 +17,3 @@ getrandom = { version = "0.2", features = ["js"] }
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.34"
-
-# Skip wasm-pack's auto wasm-opt: the npm `wasm-opt` package is capped at
-# binaryen 112, which cannot parse the reference-types/bulk-memory opcodes the
-# current toolchain emits (geo's binary trips "invalid code after misc prefix:
-# 17" = table.fill). Matches crates/alizarin-wasm, which disables it for the same
-# reason. Optimize in a separate release step with a modern (v121+) wasm-opt if
-# size matters.
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = false

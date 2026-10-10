@@ -78,6 +78,7 @@
     "@eslint/js": "^9.24.0",
     "@fetch-mock/vitest": "^0.2.13",
     "@types/node": "^22.14.0",
+    "binaryen": "^132.0.0",
     "eslint": "^9.24.0",
     "prettier": "^3.5.3",
     "puppeteer": "^24.24.0",
@@ -96,7 +97,6 @@
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",
     "geojson": "^0.5.0",
-    "uuid": "^11.1.0",
-    "wasm-opt": "^1.4.0"
+    "uuid": "^11.1.0"
   }
 }
