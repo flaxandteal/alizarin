@@ -1926,7 +1926,9 @@ wasm_wrapper! {
         get deploymentdate,
         get deploymentfile,
         get jsonldcontext,
-        get config,
+        // config has a manual getter below so it returns a plain JS object
+        // (preserving arbitrary host keys) rather than a serde_wasm_bindgen Map,
+        // which inspected as `{}` and dropped custom keys (C11).
         get relatable_resource_model_ids,
         get resource_2_resource_constraints,
     }
@@ -1994,6 +1996,13 @@ impl StaticGraph {
     #[wasm_bindgen(getter = graphid)]
     pub fn get_graphid(&self) -> String {
         self.0.graphid.clone()
+    }
+
+    /// Graph-level config as a plain JS object (not a Map), preserving any
+    /// host-specific keys the model carries (C11).
+    #[wasm_bindgen(getter = config)]
+    pub fn get_config(&self) -> JsValue {
+        json_to_js_value(&self.0.config)
     }
 
     #[wasm_bindgen(getter = name)]

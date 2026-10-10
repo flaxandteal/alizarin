@@ -177,6 +177,13 @@ impl NapiStaticGraph {
         serde_json::to_value(&self.inner.name).unwrap_or(serde_json::Value::Null)
     }
 
+    /// Graph-level config as a plain JS object, preserving arbitrary host keys —
+    /// parity with the WASM `config` getter (C11).
+    #[napi(getter)]
+    pub fn config(&self) -> serde_json::Value {
+        self.inner.config.clone()
+    }
+
     /// Register this graph in the global registry so NapiResourceInstanceWrapper can use it.
     #[napi]
     pub fn register(&self) {

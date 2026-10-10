@@ -190,7 +190,30 @@ describe('Client Layer', () => {
       expect(ArchesClientLocal).toBeDefined();
     });
 
-    // Note: Full testing of ArchesClientLocal would require Node.js file system mocks
-    // which are beyond the scope of this test suite that focuses on browser compatibility
+    // C9: defaults must not point at the repo's own tests/definitions/ fixtures,
+    // and graphToGraphFile must be undefined by default so getGraph() falls back
+    // to graphIdToGraphFile when a caller configures only the id-based resolver.
+    it('does not default to tests/definitions paths (C9)', () => {
+      const client = new ArchesClientLocal();
+      expect(client.graphToGraphFile).toBeUndefined();
+      expect(client.graphIdToGraphFile('abc')).not.toContain('tests/definitions');
+      expect(client.allGraphFile()).not.toContain('tests/definitions');
+    });
+
+    it('getGraph resolves through graphIdToGraphFile when graphToGraphFile is unset (C9)', async () => {
+      const client = new ArchesClientLocal({
+        graphIdToGraphFile: (id: string) => `/does-not-exist/${id}.json`,
+      });
+      expect(client.graphToGraphFile).toBeUndefined();
+      let resolved: string | undefined;
+      client.graphIdToGraphFile = (id: string) => {
+        resolved = id;
+        return `/does-not-exist/${id}.json`;
+      };
+      // The file read throws ENOENT; we only care that the id-based resolver was
+      // the one consulted (before the fix, a defaulted graphToGraphFile won instead).
+      await client.getGraph({ graphid: 'abc' } as never).catch(() => undefined);
+      expect(resolved).toBe('abc');
+    });
   });
 });

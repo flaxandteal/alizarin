@@ -86,24 +86,47 @@ struct ColumnNode {
     datatype: String,
 }
 
-/// Build concept label→UUID lookup from collections
+/// Build concept label→value-id lookup from collections.
+///
+/// Maps each prefLabel to that label's **value id** (`SkosValue.id`), NOT the
+/// concept id. Arches stores the matched value's id in a concept tile — and the
+/// ORM read side (`ConceptValueViewModel.getConceptValue`) indexes collection
+/// values by value id — so storing the value id is what lets a CSV-loaded concept
+/// resolve back on read (C1).
 fn build_concept_lookup(
     collections: &[SkosCollection],
 ) -> HashMap<String, HashMap<String, String>> {
-    // collection_id -> (lowercase_label -> concept_id)
+    // collection_id -> (lowercase_label -> value_id)
     let mut lookup: HashMap<String, HashMap<String, String>> = HashMap::new();
 
     for coll in collections {
         let mut labels: HashMap<String, String> = HashMap::new();
-        for (concept_id, concept) in &coll.all_concepts {
+        for concept in coll.all_concepts.values() {
             for pref_label in concept.pref_labels.values() {
-                labels.insert(pref_label.value.to_lowercase(), concept_id.clone());
+                labels.insert(pref_label.value.to_lowercase(), pref_label.id.clone());
             }
         }
         lookup.insert(coll.id.clone(), labels);
     }
 
     lookup
+}
+
+/// Find the prefLabel **value id** for a concept id, searching the collections.
+/// Prefers the English prefLabel (the canonical one Arches/alizarin mint value ids
+/// under), falling back to any available prefLabel. Used to convert a concept id
+/// (as the shared RdmCache lookup returns) into the value id a tile should store.
+fn value_id_for_concept(concept_id: &str, collections: &[SkosCollection]) -> Option<String> {
+    for coll in collections {
+        if let Some(concept) = coll.all_concepts.values().find(|c| c.id == concept_id) {
+            return concept
+                .pref_labels
+                .get("en")
+                .or_else(|| concept.pref_labels.values().next())
+                .map(|v| v.id.clone());
+        }
+    }
+    None
 }
 
 /// Find which collection a concept node references
@@ -186,6 +209,74 @@ struct CoerceContext<'a> {
     registry: Option<&'a ExtensionTypeRegistry>,
 }
 
+/// The allowed target model graphids for a link node, read from each
+/// `config.graphs[*].graphid` (populated from the `graphs` column in nodes.csv,
+/// see C4). Empty if the node declares no target models.
+fn link_target_graphids(node: &StaticNode) -> Vec<&str> {
+    node.config
+        .get("graphs")
+        .and_then(|g| g.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|entry| entry.get("graphid").and_then(|v| v.as_str()))
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Build one Arches resource-instance link object from a single CSV cell token.
+///
+/// A token that is already a UUID is used verbatim. A non-UUID token (a business
+/// `ResourceID`, e.g. `ferrymen`) is resolved to the deterministic resource
+/// instance id of the target model — `uuid5(("resource", target_graphid), token)`,
+/// the same derivation the loader uses when it builds that resource — provided the
+/// link node declares exactly one target model in `config.graphs` (C4). With no
+/// target model, or with several (so the key is ambiguous), a non-UUID token cannot
+/// be resolved and is rejected with an error diagnostic rather than stored as an
+/// unresolvable literal (C3).
+fn build_resource_link(
+    token: &str,
+    node: &StaticNode,
+    node_label: &str,
+    ctx: &mut CoerceContext<'_>,
+) -> Option<serde_json::Value> {
+    let resource_id = if uuid::Uuid::parse_str(token).is_ok() {
+        token.to_string()
+    } else {
+        let targets = link_target_graphids(node);
+        match targets.as_slice() {
+            [single] => generate_uuid_v5(("resource", Some(single)), token),
+            other => {
+                let reason = if other.is_empty() {
+                    "the node declares no target model (graphs) to derive a resource id from"
+                } else {
+                    "the node allows multiple target models, so a bare ResourceID is ambiguous — \
+                     use a resource instance UUID"
+                };
+                ctx.diagnostics.push(CsvModelDiagnostic {
+                    level: DiagnosticLevel::Error,
+                    file: "business_data.csv".to_string(),
+                    line: Some(ctx.line),
+                    message: format!(
+                        "Cannot resolve ResourceID '{}' for link node '{}': value is not a UUID and {}",
+                        token, node_label, reason
+                    ),
+                });
+                return None;
+            }
+        }
+    };
+
+    let rxr_id = generate_uuid_v5(("resource-x-resource", None), &resource_id);
+    Some(serde_json::json!({
+        "resourceId": resource_id,
+        "resourceXresourceId": rxr_id,
+        "ontologyProperty": "",
+        "inverseOntologyProperty": ""
+    }))
+}
+
 /// Convert a CSV cell value to the appropriate tile data value
 fn coerce_value(
     raw: &str,
@@ -251,20 +342,19 @@ fn coerce_value(
                 Some(serde_json::Value::Array(ids))
             }
         }
+        // A single resource-instance is stored in the SAME shape as a list — an
+        // array of link objects — just constrained to one entry, matching how
+        // Arches and the ORM read side (ResourceInstanceViewModel) treat it (C2).
+        "resource-instance" => {
+            let link = build_resource_link(raw.trim(), node, node_label, ctx)?;
+            Some(serde_json::Value::Array(vec![link]))
+        }
         "resource-instance-list" => {
             let arr: Vec<serde_json::Value> = raw
                 .split(',')
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty())
-                .map(|r| {
-                    let rxr_id = generate_uuid_v5(("resource-x-resource", None), r);
-                    serde_json::json!({
-                        "resourceId": r,
-                        "resourceXresourceId": rxr_id,
-                        "ontologyProperty": "",
-                        "inverseOntologyProperty": ""
-                    })
-                })
+                .filter_map(|r| build_resource_link(r, node, node_label, ctx))
                 .collect();
             if arr.is_empty() {
                 None
@@ -390,7 +480,12 @@ fn resolve_rdm_markers(value: Value, node: &StaticNode, ctx: &mut CoerceContext<
     }
 }
 
-/// Resolve a concept label to its UUID
+/// Resolve a concept label to the **value id** a concept tile should store.
+///
+/// Arches stores the matched value's id (not the concept id) in a concept tile,
+/// and the ORM read side looks concepts up by value id, so this returns a value id
+/// (C1). A value already supplied as a UUID is assumed to be a value id and passes
+/// through unchanged, mirroring Arches' `transform_value_for_tile`.
 fn resolve_concept_label(
     label: &str,
     node: &StaticNode,
@@ -398,7 +493,7 @@ fn resolve_concept_label(
 ) -> Option<String> {
     let lower = label.to_lowercase();
 
-    // If it's already a UUID, return as-is
+    // If it's already a UUID, return as-is (assumed to be a value id).
     if uuid::Uuid::parse_str(label).is_ok() {
         return Some(label.to_string());
     }
@@ -406,12 +501,13 @@ fn resolve_concept_label(
     let coll_id = find_node_collection_id(node, ctx.collections);
 
     if let Some(ext) = ctx.external_lookup {
-        // Authoritative path: resolve through the shared SKOS RdmCache, scoped
-        // to the node's own collection. This is the same concept identity the
-        // read side resolves back, so no minting/mismatch.
+        // Authoritative path: resolve through the shared SKOS RdmCache, scoped to
+        // the node's own collection. The cache resolves a label to a concept id, so
+        // convert it to the concept's prefLabel value id for tile storage; if the
+        // concept isn't in our local collections, fall back to the id as returned.
         if let Some(cid) = &coll_id {
             if let Some(id) = ext.lookup_by_label(cid, label) {
-                return Some(id);
+                return Some(value_id_for_concept(&id, ctx.collections).unwrap_or(id));
             }
         }
     } else {
@@ -1054,6 +1150,51 @@ john-1,John Smith,Preferred Name";
     }
 
     #[test]
+    fn test_concept_stored_as_value_id_not_concept_id() {
+        // C1: a concept tile must store the matched prefLabel's VALUE id (what the
+        // ORM read side resolves by), not the concept id.
+        let (graph, collections) = build_test_graph();
+        let csv = "ResourceID,name_value,name_type\njohn-1,John Smith,Preferred Name";
+        let resources =
+            build_resources_from_business_csv(csv, &graph, &collections, Default::default())
+                .expect("Should build");
+
+        let name_type = graph
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("name_type"))
+            .unwrap();
+        let stored = resources[0]
+            .tiles
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find_map(|t| t.data.get(&name_type.nodeid).and_then(|v| v.as_str()))
+            .expect("name_type value stored");
+
+        // The concept labelled "Preferred Name": its id and its prefLabel value id.
+        let (concept_id, value_id) = collections
+            .iter()
+            .flat_map(|c| c.all_concepts.values())
+            .find_map(|c| {
+                c.pref_labels
+                    .values()
+                    .find(|v| v.value == "Preferred Name")
+                    .map(|v| (c.id.clone(), v.id.clone()))
+            })
+            .expect("'Preferred Name' concept should exist");
+
+        assert_eq!(
+            stored, value_id,
+            "concept tile must store the value id (C1)"
+        );
+        assert_ne!(
+            stored, concept_id,
+            "concept tile must NOT store the concept id (C1)"
+        );
+    }
+
+    #[test]
     fn test_multilingual() {
         let (graph, collections) = build_test_graph();
 
@@ -1233,6 +1374,191 @@ john-1,John Smith";
                 .unwrap()
                 .len()
                 == 1
+        );
+    }
+
+    // --- CSV link cluster (C2/C3/C4) --------------------------------------
+
+    const LINK_GRAPH_CSV: &str = "name,ontology_class,author,description,is_resource
+Patronage,http://www.cidoc-crm.org/cidoc-crm/E21_Person,,links,true";
+
+    // `patron`/`allies` target the single "Faction" model; `either` allows two
+    // models (ambiguous for a bare key); `orphan` has no graphs (trailing empty
+    // column) — the latter two exercise the reject paths.
+    const LINK_NODES_CSV: &str = "\
+parent_alias,alias,name,datatype,cardinality,ontology_class,parent_property,description,collection_name,required,searchable,exportable,sortorder,graphs
+,patron,Patron,resource-instance,1,http://www.cidoc-crm.org/cidoc-crm/E39_Actor,http://www.cidoc-crm.org/cidoc-crm/P51_has_former_or_current_owner,,,,,,1,Faction
+,allies,Allies,resource-instance-list,n,http://www.cidoc-crm.org/cidoc-crm/E39_Actor,http://www.cidoc-crm.org/cidoc-crm/P107i_is_current_or_former_member_of,,,,,,2,Faction
+,either,Either,resource-instance,1,http://www.cidoc-crm.org/cidoc-crm/E39_Actor,http://www.cidoc-crm.org/cidoc-crm/P51_has_former_or_current_owner,,,,,,3,Faction|Guild
+,orphan,Orphan,resource-instance,1,http://www.cidoc-crm.org/cidoc-crm/E39_Actor,http://www.cidoc-crm.org/cidoc-crm/P51_has_former_or_current_owner,,,,,,4,";
+
+    fn build_link_graph() -> (StaticGraph, Vec<SkosCollection>) {
+        build_graph_from_model_csvs(
+            LINK_GRAPH_CSV,
+            LINK_NODES_CSV,
+            None,
+            "https://example.org/test",
+            MutatorOptions::default(),
+        )
+        .expect("Failed to build link graph")
+    }
+
+    fn faction_graphid() -> String {
+        crate::graph_mutator::generate_uuid_v5(("skeleton", None), "Faction")
+    }
+
+    fn node_by_alias<'a>(graph: &'a StaticGraph, alias: &str) -> &'a StaticNode {
+        graph
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some(alias))
+            .unwrap_or_else(|| panic!("node '{}' not found", alias))
+    }
+
+    fn link_tile_value<'a>(
+        resources: &'a [StaticResource],
+        node: &StaticNode,
+    ) -> Option<&'a serde_json::Value> {
+        resources[0]
+            .tiles
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find_map(|t| t.data.get(&node.nodeid))
+    }
+
+    #[test]
+    fn test_link_node_carries_target_graphid_config() {
+        // C4: a `graphs` entry resolves to the target model's deterministic graphid
+        // and lands in config.graphs; multiple entries produce multiple graphids.
+        let (graph, _) = build_link_graph();
+        let patron = node_by_alias(&graph, "patron");
+        assert_eq!(
+            link_target_graphids(patron),
+            vec![faction_graphid().as_str()]
+        );
+
+        let guild_graphid = crate::graph_mutator::generate_uuid_v5(("skeleton", None), "Guild");
+        assert_eq!(
+            link_target_graphids(node_by_alias(&graph, "either")),
+            vec![faction_graphid().as_str(), guild_graphid.as_str()]
+        );
+        // A link node with no graphs declares no targets.
+        assert!(link_target_graphids(node_by_alias(&graph, "orphan")).is_empty());
+    }
+
+    #[test]
+    fn test_resource_instance_singular_uses_list_shape_and_resolves_non_uuid() {
+        // C2: a single resource-instance is stored as a one-element array of link
+        // objects (not a bare string). C3: a non-UUID ResourceID is resolved to the
+        // target model's deterministic resource id.
+        let (graph, collections) = build_link_graph();
+        let csv = "ResourceID,patron\nhouse-1,ferrymen";
+        let resources = build_resources_from_business_csv(
+            csv,
+            &graph,
+            &collections,
+            BusinessDataCsvOptions {
+                strict_concepts: false,
+                ..Default::default()
+            },
+        )
+        .expect("Should build");
+
+        let patron = node_by_alias(&graph, "patron");
+        let value = link_tile_value(&resources, patron).expect("patron link stored");
+        let arr = value
+            .as_array()
+            .expect("resource-instance stored as array (C2)");
+        assert_eq!(arr.len(), 1);
+
+        let expected = generate_uuid_v5(("resource", Some(&faction_graphid())), "ferrymen");
+        assert_eq!(
+            arr[0].get("resourceId").and_then(|v| v.as_str()),
+            Some(expected.as_str()),
+            "non-UUID ResourceID must resolve via uuid5(target_graph, key) (C3)"
+        );
+        assert!(
+            arr[0].get("resourceXresourceId").is_some(),
+            "link object must carry the Arches resourceXresourceId field (C2)"
+        );
+    }
+
+    #[test]
+    fn test_resource_instance_accepts_uuid_verbatim() {
+        // C3: a value that is already a UUID is used as-is.
+        let (graph, collections) = build_link_graph();
+        let uuid = "11111111-1111-1111-1111-111111111111";
+        let csv = format!("ResourceID,patron\nhouse-1,{}", uuid);
+        let resources = build_resources_from_business_csv(
+            &csv,
+            &graph,
+            &collections,
+            BusinessDataCsvOptions {
+                strict_concepts: false,
+                ..Default::default()
+            },
+        )
+        .expect("Should build");
+
+        let patron = node_by_alias(&graph, "patron");
+        let value = link_tile_value(&resources, patron).expect("patron link stored");
+        assert_eq!(
+            value.as_array().unwrap()[0]
+                .get("resourceId")
+                .and_then(|v| v.as_str()),
+            Some(uuid)
+        );
+    }
+
+    #[test]
+    fn test_non_uuid_link_without_target_model_is_rejected() {
+        // C3: a non-UUID ResourceID on a link node with no target model cannot be
+        // resolved, so it is rejected with an error rather than stored as a dangling
+        // literal that never links.
+        let (graph, collections) = build_link_graph();
+        let csv = "ResourceID,orphan\nhouse-1,ferrymen";
+        let result = build_resources_from_business_csv(
+            csv,
+            &graph,
+            &collections,
+            BusinessDataCsvOptions {
+                strict_concepts: false,
+                ..Default::default()
+            },
+        );
+        let err = result.expect_err("non-UUID link without a target model must be rejected");
+        assert!(
+            err.diagnostics
+                .iter()
+                .any(|d| d.message.contains("no target model")),
+            "error should explain the missing target model, got: {:?}",
+            err.diagnostics
+        );
+    }
+
+    #[test]
+    fn test_non_uuid_link_with_multiple_targets_is_rejected_as_ambiguous() {
+        // C3: a bare ResourceID against a node that allows several target models is
+        // ambiguous (the key could live in any of them), so it is rejected.
+        let (graph, collections) = build_link_graph();
+        let csv = "ResourceID,either\nhouse-1,ferrymen";
+        let result = build_resources_from_business_csv(
+            csv,
+            &graph,
+            &collections,
+            BusinessDataCsvOptions {
+                strict_concepts: false,
+                ..Default::default()
+            },
+        );
+        let err = result.expect_err("ambiguous multi-target link must be rejected");
+        assert!(
+            err.diagnostics
+                .iter()
+                .any(|d| d.message.contains("ambiguous")),
+            "error should explain the ambiguity, got: {:?}",
+            err.diagnostics
         );
     }
 }

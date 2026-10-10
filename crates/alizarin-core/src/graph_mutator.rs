@@ -1779,6 +1779,12 @@ pub struct MutatorOptions {
     /// Useful when applying collection assignments to a branch that has
     /// already been captured by a resource model via add_subgraph.
     pub skip_publication: bool,
+    /// Explicit `published_time` to stamp on the publication. When `None`,
+    /// a fixed deterministic sentinel is used so that identical inputs produce
+    /// byte-identical graphs (see C5). Pass `Some(..)` to record a real build
+    /// time. The `publicationid` is always derived from the graph id alone, so
+    /// it is deterministic regardless of this value.
+    pub published_time: Option<String>,
 }
 
 impl Default for MutatorOptions {
@@ -1788,6 +1794,7 @@ impl Default for MutatorOptions {
             autocreate_widget: true,
             ontology_validator: None,
             skip_publication: false,
+            published_time: None,
         }
     }
 }
@@ -4555,6 +4562,7 @@ impl From<MutationRequestOptions> for MutatorOptions {
             autocreate_widget: opts.autocreate_widget,
             ontology_validator: None,
             skip_publication: false,
+            published_time: None,
         }
     }
 }
@@ -4697,7 +4705,7 @@ pub fn apply_mutations_create_from_json(
                     // Apply remaining mutations to the new graph
                     if mutations.is_empty() {
                         if !options.skip_publication {
-                            stamp_publication(&mut new_graph);
+                            stamp_publication(&mut new_graph, options.published_time.as_deref());
                         }
                         new_graph.build_indices();
                         Ok(new_graph)
@@ -4794,24 +4802,27 @@ pub fn apply_mutations_with_extensions(
 
     // Stamp publication after applying mutations
     if !options.skip_publication {
-        stamp_publication(&mut result);
+        stamp_publication(&mut result, options.published_time.as_deref());
     }
 
     result.build_indices();
     Ok(result)
 }
 
+/// Fixed sentinel `published_time` used when no explicit build time is given,
+/// so that identical inputs yield byte-identical graphs (C5).
+const DEFAULT_PUBLISHED_TIME: &str = "1970-01-01T00:00:00.000";
+
 /// Stamp a graph with a new publication entry.
 ///
-/// Generates a deterministic `publicationid` (UUID5 from graphid + timestamp)
-/// and sets `published_time` to the current UTC time. This ensures the graph
-/// can be used as a subgraph source (add_subgraph requires a publicationid).
-fn stamp_publication(graph: &mut StaticGraph) {
-    let now = chrono::Utc::now();
-    let timestamp = now.timestamp_millis().to_string();
-
-    let publication_id = generate_uuid_v5(("publication", Some(&graph.graphid)), &timestamp);
-    let published_time = now.format("%Y-%m-%dT%H:%M:%S%.3f").to_string();
+/// The `publicationid` is derived deterministically from the graph id alone, so
+/// rebuilding the same graph always yields the same publication (this is what
+/// lets add_subgraph treat the graph as a stable subgraph source). `published_time`
+/// defaults to a fixed sentinel for reproducible builds; pass `Some(..)` to record
+/// a real build timestamp.
+fn stamp_publication(graph: &mut StaticGraph, published_time: Option<&str>) {
+    let publication_id = generate_uuid_v5(("publication", Some(&graph.graphid)), &graph.graphid);
+    let published_time = published_time.unwrap_or(DEFAULT_PUBLISHED_TIME);
 
     graph.publication = Some(serde_json::json!({
         "publicationid": publication_id,
@@ -5093,7 +5104,7 @@ impl GraphInstruction {
         };
 
         if subgraph.publication.is_none() {
-            stamp_publication(&mut subgraph);
+            stamp_publication(&mut subgraph, None);
         }
 
         Ok(subgraph)
@@ -5686,7 +5697,7 @@ pub fn build_graph_from_instructions_with_extensions(
     if remaining.is_empty() {
         let mut graph = graph;
         if !options.skip_publication {
-            stamp_publication(&mut graph);
+            stamp_publication(&mut graph, options.published_time.as_deref());
         }
         return Ok(graph);
     }
@@ -8842,6 +8853,7 @@ add_node,parent_group,other,Other,string,1,,,
             autocreate_widget: false,
             ontology_validator: None,
             skip_publication: false,
+            published_time: None,
         };
 
         // Add a semantic node (no widget)
@@ -9488,6 +9500,53 @@ add_node,parent_group,other,Other,string,1,,,
         assert_eq!(
             graph.description.as_ref().unwrap().get("en"),
             "English description"
+        );
+    }
+
+    /// C5: building the same graph twice must yield byte-identical publication
+    /// metadata — the publicationid is derived from the graph id (no clock) and
+    /// published_time defaults to a fixed sentinel, not `now()`.
+    #[test]
+    fn test_publication_is_deterministic() {
+        let build = || {
+            let skeleton = create_skeleton_graph("Deterministic", "root", true, None);
+            apply_mutations_with_extensions(&skeleton, vec![], MutatorOptions::default(), None)
+                .unwrap()
+        };
+
+        let a = build();
+        let b = build();
+
+        let pub_a = a.publication.as_ref().expect("graph a should be stamped");
+        let pub_b = b.publication.as_ref().expect("graph b should be stamped");
+
+        // Same inputs -> identical publication block (both id and time).
+        assert_eq!(
+            pub_a, pub_b,
+            "publication must be reproducible across builds"
+        );
+        assert_eq!(
+            pub_a.get("published_time").and_then(|v| v.as_str()),
+            Some(DEFAULT_PUBLISHED_TIME),
+            "default published_time must be the fixed sentinel, not the wall clock"
+        );
+
+        // An explicit published_time is honoured while the id stays deterministic.
+        let skeleton = create_skeleton_graph("Deterministic", "root", true, None);
+        let options = MutatorOptions {
+            published_time: Some("2026-01-02T03:04:05.678".to_string()),
+            ..MutatorOptions::default()
+        };
+        let c = apply_mutations_with_extensions(&skeleton, vec![], options, None).unwrap();
+        let pub_c = c.publication.as_ref().unwrap();
+        assert_eq!(
+            pub_c.get("published_time").and_then(|v| v.as_str()),
+            Some("2026-01-02T03:04:05.678")
+        );
+        assert_eq!(
+            pub_c.get("publicationid"),
+            pub_a.get("publicationid"),
+            "publicationid must not depend on published_time"
         );
     }
 }

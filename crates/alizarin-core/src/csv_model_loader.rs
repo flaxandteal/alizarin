@@ -10,7 +10,12 @@
 //! `name,ontology_class,author,description,is_resource`
 //!
 //! ### nodes.csv
-//! `parent_alias,alias,name,datatype,cardinality,ontology_class,parent_property,description,collection_name,required,searchable,exportable,sortorder`
+//! `parent_alias,alias,name,datatype,cardinality,ontology_class,parent_property,description,collection_name,required,searchable,exportable,sortorder,graphs`
+//!
+//! `graphs` is optional and only meaningful for `resource-instance` /
+//! `resource-instance-list` nodes — the CSV form of Arches' `config.graphs`. It is
+//! pipe-separated; each entry names an allowed target model (by model name or
+//! literal graph UUID) and populates one `config.graphs` entry.
 //!
 //! ### collections.csv
 //! `collection_name,concept_label,parent_label,sort_order`
@@ -107,6 +112,14 @@ pub struct NodeRow {
     pub searchable: Option<bool>,
     pub exportable: Option<bool>,
     pub sortorder: Option<i32>,
+    /// Allowed target resource model(s) for `resource-instance` /
+    /// `resource-instance-list` nodes — the CSV form of Arches' `config.graphs`.
+    /// Pipe-separated (like `ontology_class`); each entry is either a model name
+    /// (resolved to its deterministic graphid via the same `uuid5("skeleton", name)`
+    /// derivation used when building that model) or a literal graph UUID. Populates
+    /// `config.graphs` so the business-data loader can resolve non-UUID ResourceIDs
+    /// for this link (C4).
+    pub graphs: Option<String>,
 }
 
 /// Parsed row from collections.csv
@@ -381,6 +394,7 @@ fn parse_nodes_csv(csv_text: &str, diagnostics: &mut Vec<CsvModelDiagnostic>) ->
             searchable: get_field(&record, &headers, "searchable").map(|v| v != "false"),
             exportable: get_field(&record, &headers, "exportable").map(|v| v == "true"),
             sortorder: get_field(&record, &headers, "sortorder").and_then(|v| v.parse().ok()),
+            graphs: get_field(&record, &headers, "graphs").map(String::from),
         });
     }
     rows
@@ -764,6 +778,36 @@ pub fn model_csvs_to_instructions(
             if let Some(ref cn) = node.collection_name {
                 if let Some(cid) = collection_ids.get(cn.as_str()) {
                     let config = serde_json::json!({ "rdmCollection": cid });
+                    instr = instr.with_param("config", config);
+                }
+            }
+        }
+
+        // For link (resource-instance) nodes, attach the allowed target model(s) as
+        // config.graphs — the CSV form of Arches' node.config["graphs"] — so the
+        // business-data loader can resolve non-UUID ResourceIDs to deterministic
+        // resource instance ids (C4). Each pipe-separated entry is a model name
+        // (resolved via the same uuid5("skeleton", name) derivation the target model
+        // uses for its own graphid) or a literal graph UUID.
+        if node.datatype == "resource-instance" || node.datatype == "resource-instance-list" {
+            if let Some(ref raw) = node.graphs {
+                let entries: Vec<serde_json::Value> = split_class_cell(raw)
+                    .into_iter()
+                    .map(|g| {
+                        let graphid = if Uuid::parse_str(&g).is_ok() {
+                            g
+                        } else {
+                            crate::graph_mutator::generate_uuid_v5(("skeleton", None), &g)
+                        };
+                        serde_json::json!({
+                            "graphid": graphid,
+                            "ontologyProperty": "",
+                            "inverseOntologyProperty": ""
+                        })
+                    })
+                    .collect();
+                if !entries.is_empty() {
+                    let config = serde_json::json!({ "graphs": entries });
                     instr = instr.with_param("config", config);
                 }
             }

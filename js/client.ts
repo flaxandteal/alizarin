@@ -305,22 +305,25 @@ class ArchesClientLocal extends ArchesClient {
       collectionIdToFile?: (collectionId: string) => string;
     } = {}) {
     super();
-    this.allGraphFile = allGraphFile || (() => "tests/definitions/models/_all.json");
-    this.graphToGraphFile =
-      graphToGraphFile ||
-      ((graph: StaticGraphMeta) => `tests/definitions/models/${graph.graphid}.json`);
+    // Defaults mirror ArchesClientRemoteStatic's layout (resource_models/,
+    // business_data/, collections/) — NOT the repo's own tests/definitions/
+    // fixtures, which leaked into production use (C9). graphToGraphFile is left
+    // undefined so getGraph() falls back to graphIdToGraphFile when a caller sets
+    // only the id-based resolver.
+    this.allGraphFile = allGraphFile || (() => "resource_models/_all.json");
+    this.graphToGraphFile = graphToGraphFile;
     this.graphIdToGraphFile =
       graphIdToGraphFile ||
-      ((graphId: string) => `tests/definitions/models/${graphId}.json`);
+      ((graphId: string) => `resource_models/${graphId}.json`);
     this.graphIdToResourcesFiles =
       graphIdToResourcesFiles ||
-      ((graphId: string) => [`tests/definitions/resources/_${graphId}.json`]);
+      ((graphId: string) => [`business_data/_${graphId}.json`]);
     this.resourceIdToFile =
       resourceIdToFile ||
-      ((resourceId: string) => `tests/definitions/resources/${resourceId}.json`);
+      ((resourceId: string) => `business_data/${resourceId}.json`);
     this.collectionIdToFile =
       collectionIdToFile ||
-      ((collectionId: string) => `tests/definitions/collections/${collectionId}.json`);
+      ((collectionId: string) => `collections/${collectionId}.json`);
     this.__loadedFileCache = {};
   }
 

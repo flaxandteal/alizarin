@@ -59,9 +59,9 @@ pub fn tree_to_tiles_enhanced(
     strict: bool,
     id_key: Option<String>,
     random_ids: Option<bool>,
-) -> Result<JsValue, JsValue> {
+) -> Result<JsValue, JsError> {
     let tree: Value = serde_json::from_str(tree_json)
-        .map_err(|e| JsValue::from_str(&format!("Failed to parse tree: {}", e)))?;
+        .map_err(|e| JsError::new(&format!("Failed to parse tree: {}", e)))?;
 
     let graph_id = graph.graph_id();
     let ext_registry = crate::extension_registry::build_extension_registry();
@@ -78,7 +78,7 @@ pub fn tree_to_tiles_enhanced(
         None,
         true,
     )
-    .map_err(|e| JsValue::from_str(&e))?;
+    .map_err(|e| JsError::new(&e))?;
 
     let wrapper = alizarin_core::BusinessDataWrapper {
         business_data: alizarin_core::BusinessData {
@@ -87,7 +87,7 @@ pub fn tree_to_tiles_enhanced(
     };
 
     serde_wasm_bindgen::to_value(&wrapper)
-        .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+        .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
 /// Single tiles to tree conversion
@@ -102,10 +102,10 @@ pub fn tree_to_tiles_enhanced(
 pub fn tiles_to_tree_enhanced(
     resource_json: &str,
     graph: &StaticGraph,
-) -> Result<JsValue, JsValue> {
+) -> Result<JsValue, JsError> {
     // Parse resource from JSON
     let resource: Value = serde_json::from_str(resource_json)
-        .map_err(|e| JsValue::from_str(&format!("Failed to parse resource: {}", e)))?;
+        .map_err(|e| JsError::new(&format!("Failed to parse resource: {}", e)))?;
 
     let graph_id = graph.graph_id();
 
@@ -127,14 +127,14 @@ pub fn tiles_to_tree_enhanced(
             .get("tiles")
             .map(|t| serde_json::from_value(t.clone()))
             .transpose()
-            .map_err(|e| JsValue::from_str(&format!("Failed to parse tiles: {}", e)))?
+            .map_err(|e| JsError::new(&format!("Failed to parse tiles: {}", e)))?
             .unwrap_or_default();
 
         let static_resource =
             create_static_resource(resource_id.clone(), graph_id.to_string(), tiles, graph);
 
         serde_json::to_value(&static_resource)
-            .map_err(|e| JsValue::from_str(&format!("Failed to serialize resource: {}", e)))?
+            .map_err(|e| JsError::new(&format!("Failed to serialize resource: {}", e)))?
     };
 
     // Call tiles_to_tree
@@ -153,9 +153,9 @@ pub fn tiles_to_tree_enhanced(
 
             // Convert to JS value
             serde_wasm_bindgen::to_value(&tree)
-                .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+                .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
         }
-        Err(e) => Err(JsValue::from_str(&e)),
+        Err(e) => Err(JsError::new(&e)),
     }
 }
 
@@ -172,9 +172,9 @@ pub fn tiles_to_tree_enhanced(
 /// Returns:
 ///     Card-structured tree with widgets and nested cards
 #[wasm_bindgen(js_name = cardsToTree)]
-pub fn cards_to_tree(resource_json: &str, graph: &StaticGraph) -> Result<JsValue, JsValue> {
+pub fn cards_to_tree(resource_json: &str, graph: &StaticGraph) -> Result<JsValue, JsError> {
     let resource: Value = serde_json::from_str(resource_json)
-        .map_err(|e| JsValue::from_str(&format!("Failed to parse resource: {}", e)))?;
+        .map_err(|e| JsError::new(&format!("Failed to parse resource: {}", e)))?;
 
     let graph_id = graph.graph_id();
     let resource_id = resource
@@ -192,14 +192,14 @@ pub fn cards_to_tree(resource_json: &str, graph: &StaticGraph) -> Result<JsValue
             .get("tiles")
             .map(|t| serde_json::from_value(t.clone()))
             .transpose()
-            .map_err(|e| JsValue::from_str(&format!("Failed to parse tiles: {}", e)))?
+            .map_err(|e| JsError::new(&format!("Failed to parse tiles: {}", e)))?
             .unwrap_or_default();
 
         let static_resource =
             create_static_resource(resource_id.clone(), graph_id.to_string(), tiles, graph);
 
         serde_json::to_value(&static_resource)
-            .map_err(|e| JsValue::from_str(&format!("Failed to serialize resource: {}", e)))?
+            .map_err(|e| JsError::new(&format!("Failed to serialize resource: {}", e)))?
     };
 
     match core_cards_to_tree(&input_json, graph.deref()) {
@@ -215,9 +215,9 @@ pub fn cards_to_tree(resource_json: &str, graph: &StaticGraph) -> Result<JsValue
             }
 
             serde_wasm_bindgen::to_value(&tree)
-                .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+                .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
         }
-        Err(e) => Err(JsValue::from_str(&e)),
+        Err(e) => Err(JsError::new(&e)),
     }
 }
 
@@ -246,21 +246,21 @@ pub fn batch_trees_to_tiles(
     random_ids: Option<bool>,
     resolve_markers: Option<bool>,
     scopes_json: Option<String>,
-) -> Result<JsValue, JsValue> {
+) -> Result<JsValue, JsError> {
     // Parse trees from JSON
     let mut trees: Vec<Value> = serde_json::from_str(trees_json)
-        .map_err(|e| JsValue::from_str(&format!("Failed to parse trees: {}", e)))?;
+        .map_err(|e| JsError::new(&format!("Failed to parse trees: {}", e)))?;
 
     // Parse id_keys if provided
     let id_keys: Option<Vec<String>> = id_keys_json
         .map(|json| serde_json::from_str(&json))
         .transpose()
-        .map_err(|e| JsValue::from_str(&format!("Failed to parse id_keys: {}", e)))?;
+        .map_err(|e| JsError::new(&format!("Failed to parse id_keys: {}", e)))?;
 
     // Validate id_keys length matches trees length
     if let Some(ref keys) = id_keys {
         if keys.len() != trees.len() {
-            return Err(JsValue::from_str(&format!(
+            return Err(JsError::new(&format!(
                 "id_keys length ({}) must match trees length ({})",
                 keys.len(),
                 trees.len()
@@ -279,7 +279,7 @@ pub fn batch_trees_to_tiles(
     let scopes_value: Option<Value> = scopes_json
         .map(|s| serde_json::from_str(&s))
         .transpose()
-        .map_err(|e| JsValue::from_str(&format!("Failed to parse scopes: {}", e)))?;
+        .map_err(|e| JsError::new(&format!("Failed to parse scopes: {}", e)))?;
 
     let ext_registry = crate::extension_registry::build_extension_registry();
     let graph_id = graph.graph_id();
@@ -304,7 +304,7 @@ pub fn batch_trees_to_tiles(
         None,
         &opts,
     )
-    .map_err(|e| JsValue::from_str(&e))?;
+    .map_err(|e| JsError::new(&e))?;
 
     // Serialize directly to JS — no intermediate serde_json::Value
     let output = BatchResult {
@@ -320,7 +320,7 @@ pub fn batch_trees_to_tiles(
     use serde::Serialize;
     output
         .serialize(&serializer)
-        .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+        .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
 /// Batch convert multiple tiled resources to JSON trees
@@ -337,10 +337,10 @@ pub fn batch_tiles_to_trees(
     resources_json: &str,
     graph: &StaticGraph,
     strict: bool,
-) -> Result<JsValue, JsValue> {
+) -> Result<JsValue, JsError> {
     // Parse resources from JSON
     let resources: Vec<Value> = serde_json::from_str(resources_json)
-        .map_err(|e| JsValue::from_str(&format!("Failed to parse resources: {}", e)))?;
+        .map_err(|e| JsError::new(&format!("Failed to parse resources: {}", e)))?;
 
     let graph_id = graph.graph_id();
     let mut results = Vec::new();
@@ -370,7 +370,7 @@ pub fn batch_tiles_to_trees(
                 .map(|t| serde_json::from_value(t.clone()))
                 .transpose()
                 .map_err(|e| format!("Resource {}: Failed to parse tiles: {}", i, e))
-                .map_err(|e| JsValue::from_str(&e))?
+                .map_err(|e| JsError::new(&e))?
                 .unwrap_or_default();
 
             let static_resource =
@@ -378,7 +378,7 @@ pub fn batch_tiles_to_trees(
 
             serde_json::to_value(&static_resource)
                 .map_err(|e| format!("Resource {}: Failed to serialize: {}", i, e))
-                .map_err(|e| JsValue::from_str(&e))?
+                .map_err(|e| JsError::new(&e))?
         };
 
         // Call tiles_to_tree (returns array)
@@ -401,10 +401,7 @@ pub fn batch_tiles_to_trees(
                 let error_msg = format!("Resource {}: {}", i, e);
                 errors.push(error_msg.clone());
                 if strict {
-                    return Err(JsValue::from_str(&format!(
-                        "Strict mode error: {}",
-                        error_msg
-                    )));
+                    return Err(JsError::new(&format!("Strict mode error: {}", error_msg)));
                 }
             }
         }
@@ -423,7 +420,7 @@ pub fn batch_tiles_to_trees(
     use serde::Serialize;
     output
         .serialize(&serializer)
-        .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+        .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
 /// Merge multiple resources with the same resourceinstanceid into one
@@ -437,9 +434,9 @@ pub fn batch_tiles_to_trees(
 /// Returns:
 ///     {resource: StaticResource, warnings: string[]}
 #[wasm_bindgen(js_name = mergeResources)]
-pub fn merge_resources_wasm(resources_json: &str) -> Result<JsValue, JsValue> {
+pub fn merge_resources_wasm(resources_json: &str) -> Result<JsValue, JsError> {
     let resources: Vec<StaticResource> = serde_json::from_str(resources_json)
-        .map_err(|e| JsValue::from_str(&format!("Failed to parse resources: {}", e)))?;
+        .map_err(|e| JsError::new(&format!("Failed to parse resources: {}", e)))?;
 
     match merge_resources(resources) {
         Ok(result) => {
@@ -447,9 +444,9 @@ pub fn merge_resources_wasm(resources_json: &str) -> Result<JsValue, JsValue> {
             use serde::Serialize;
             result
                 .serialize(&serializer)
-                .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+                .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
         }
-        Err(e) => Err(JsValue::from_str(&e)),
+        Err(e) => Err(JsError::new(&e)),
     }
 }
 
@@ -474,22 +471,22 @@ pub fn batch_merge_resources_wasm(
     batches_json: &str,
     recompute_descriptors: Option<bool>,
     strict: Option<bool>,
-) -> Result<JsValue, JsValue> {
+) -> Result<JsValue, JsError> {
     // Parse the outer array of JSON strings
     let batch_strings: Vec<String> = serde_json::from_str(batches_json)
-        .map_err(|e| JsValue::from_str(&format!("Failed to parse batches array: {}", e)))?;
+        .map_err(|e| JsError::new(&format!("Failed to parse batches array: {}", e)))?;
 
     // Parse each batch string into Vec<StaticResource>
     let mut resource_batches: Vec<Vec<StaticResource>> = Vec::new();
     for (i, batch_str) in batch_strings.iter().enumerate() {
         // Try to parse as JSON value first to determine format
         let value: Value = serde_json::from_str(batch_str)
-            .map_err(|e| JsValue::from_str(&format!("Failed to parse batch {}: {}", i, e)))?;
+            .map_err(|e| JsError::new(&format!("Failed to parse batch {}: {}", i, e)))?;
 
         let batch: Vec<StaticResource> = match &value {
             // Array of resources
             Value::Array(_) => serde_json::from_value(value).map_err(|e| {
-                JsValue::from_str(&format!(
+                JsError::new(&format!(
                     "Batch {}: Failed to parse as resource array: {}",
                     i, e
                 ))
@@ -500,13 +497,13 @@ pub fn batch_merge_resources_wasm(
                     // BusinessDataWrapper format
                     if let Some(resources) = bd.get("resources") {
                         serde_json::from_value(resources.clone()).map_err(|e| {
-                            JsValue::from_str(&format!(
+                            JsError::new(&format!(
                                 "Batch {}: Failed to parse business_data.resources: {}",
                                 i, e
                             ))
                         })?
                     } else {
-                        return Err(JsValue::from_str(&format!(
+                        return Err(JsError::new(&format!(
                             "Batch {}: business_data missing 'resources' field",
                             i
                         )));
@@ -514,18 +511,18 @@ pub fn batch_merge_resources_wasm(
                 } else if map.contains_key("resourceinstance") {
                     // Single StaticResource
                     let resource: StaticResource = serde_json::from_value(value).map_err(|e| {
-                        JsValue::from_str(&format!(
+                        JsError::new(&format!(
                             "Batch {}: Failed to parse as single resource: {}",
                             i, e
                         ))
                     })?;
                     vec![resource]
                 } else {
-                    return Err(JsValue::from_str(&format!("Batch {}: Unrecognized format - expected array, BusinessDataWrapper, or StaticResource", i)));
+                    return Err(JsError::new(&format!("Batch {}: Unrecognized format - expected array, BusinessDataWrapper, or StaticResource", i)));
                 }
             }
             _ => {
-                return Err(JsValue::from_str(&format!(
+                return Err(JsError::new(&format!(
                     "Batch {}: Expected array or object",
                     i
                 )));
@@ -543,14 +540,14 @@ pub fn batch_merge_resources_wasm(
     );
 
     if let Some(ref error) = result.error {
-        return Err(JsValue::from_str(error));
+        return Err(JsError::new(error));
     }
 
     let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
     use serde::Serialize;
     result
         .serialize(&serializer)
-        .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+        .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
 /// Compose one resource across an ordered layer stack, entirely in memory — the
@@ -572,7 +569,7 @@ pub fn compose_resource_layers(
     base_graph_json: &str,
     overlay_graphs_json: &str,
     strict: Option<bool>,
-) -> Result<JsValue, JsValue> {
+) -> Result<JsValue, JsError> {
     use serde::Serialize;
 
     let composed = alizarin_core::graph::compose_resource_layers_from_json(
@@ -581,12 +578,12 @@ pub fn compose_resource_layers(
         overlay_graphs_json,
         strict.unwrap_or(false),
     )
-    .map_err(|e| JsValue::from_str(&e))?;
+    .map_err(|e| JsError::new(&e))?;
 
     let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
     composed
         .serialize(&serializer)
-        .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
+        .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
 // Tests for transform_keys_to_snake are in alizarin-core/src/string_utils.rs

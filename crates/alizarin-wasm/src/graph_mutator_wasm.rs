@@ -156,11 +156,11 @@ impl ExtensionMutationHandler for JsMutationHandler {
 pub fn apply_mutations_from_json(
     graph: &StaticGraph,
     mutations_json: &str,
-) -> Result<StaticGraph, JsValue> {
+) -> Result<StaticGraph, JsError> {
     let core_graph: &CoreStaticGraph = graph;
     core_apply_mutations(core_graph, mutations_json)
         .map(StaticGraph::from)
-        .map_err(|e| JsValue::from_str(&e))
+        .map_err(|e| JsError::new(&e))
 }
 
 /// Generate a deterministic UUID v5 from group and key.
@@ -212,14 +212,14 @@ pub fn register_extension_mutation(
     name: &str,
     handler: js_sys::Function,
     conformance: Option<String>,
-) -> Result<(), JsValue> {
+) -> Result<(), JsError> {
     let conformance_level = match conformance.as_deref().unwrap_or("AlwaysConformant") {
         "AlwaysConformant" => MutationConformance::AlwaysConformant,
         "BranchConformant" => MutationConformance::BranchConformant,
         "ModelConformant" => MutationConformance::ModelConformant,
         "NonConformant" => MutationConformance::NonConformant,
         other => {
-            return Err(JsValue::from_str(&format!(
+            return Err(JsError::new(&format!(
                 "Invalid conformance level: {}",
                 other
             )))
@@ -298,13 +298,13 @@ fn build_mutation_registry() -> ExtensionMutationRegistry {
 pub fn apply_mutations_with_extensions(
     graph: &StaticGraph,
     mutations_json: &str,
-) -> Result<StaticGraph, JsValue> {
+) -> Result<StaticGraph, JsError> {
     let core_graph: &CoreStaticGraph = graph;
     let registry = build_mutation_registry();
 
     core_apply_mutations_with_ext(core_graph, mutations_json, Some(&registry))
         .map(StaticGraph::from)
-        .map_err(|e| JsValue::from_str(&e))
+        .map_err(|e| JsError::new(&e))
 }
 
 /// Apply mutations that may create a new graph.
@@ -325,7 +325,7 @@ pub fn apply_mutations_with_extensions(
 pub fn apply_mutations_create(
     mutations_json: &str,
     graph: Option<StaticGraph>,
-) -> Result<StaticGraph, JsValue> {
+) -> Result<StaticGraph, JsError> {
     let existing_graph = graph.map(|g| {
         let core: &CoreStaticGraph = &g;
         core.clone()
@@ -333,7 +333,7 @@ pub fn apply_mutations_create(
 
     core_apply_mutations_create(mutations_json, existing_graph.as_ref())
         .map(StaticGraph::from)
-        .map_err(|e| JsValue::from_str(&e))
+        .map_err(|e| JsError::new(&e))
 }
 
 /// Build a graph and collections from the 3-CSV model format.
@@ -355,7 +355,7 @@ pub fn build_graph_from_model_csvs(
     nodes_csv: &str,
     collections_csv: Option<String>,
     rdm_namespace: &str,
-) -> Result<JsValue, JsValue> {
+) -> Result<JsValue, JsError> {
     use alizarin_core::csv_model_loader;
 
     let result = csv_model_loader::build_graph_from_model_csvs(
@@ -376,11 +376,11 @@ pub fn build_graph_from_model_csvs(
             // plain JS objects (serde_wasm_bindgen produces Map objects for
             // serde_json::Value).
             let json_str = serde_json::to_string(&json)
-                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))?;
+                .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))?;
             js_sys::JSON::parse(&json_str)
-                .map_err(|_| JsValue::from_str("Failed to parse serialized JSON"))
+                .map_err(|_| JsError::new("Failed to parse serialized JSON"))
         }
-        Err(e) => Err(JsValue::from_str(&format!("{}", e))),
+        Err(e) => Err(JsError::new(&format!("{}", e))),
     }
 }
 
@@ -392,7 +392,7 @@ pub fn validate_model_csvs(
     graph_csv: &str,
     nodes_csv: &str,
     collections_csv: Option<String>,
-) -> Result<JsValue, JsValue> {
+) -> Result<JsValue, JsError> {
     use alizarin_core::csv_model_loader;
 
     let diagnostics = csv_model_loader::validate_model_csvs_from_strings(
@@ -402,7 +402,7 @@ pub fn validate_model_csvs(
     );
 
     serde_wasm_bindgen::to_value(&diagnostics)
-        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+        .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))
 }
 
 /// Build resource instances from a business data CSV.
@@ -427,15 +427,15 @@ pub fn build_resources_from_business_csv(
     default_language: Option<String>,
     strict_concepts: Option<bool>,
     uuid_namespace: Option<String>,
-) -> Result<JsValue, JsValue> {
+) -> Result<JsValue, JsError> {
     use alizarin_core::csv_business_data_loader;
 
     let graph: alizarin_core::graph::StaticGraph = serde_json::from_str(graph_json)
-        .map_err(|e| JsValue::from_str(&format!("Failed to parse graph JSON: {}", e)))?;
+        .map_err(|e| JsError::new(&format!("Failed to parse graph JSON: {}", e)))?;
 
     let collections: Vec<alizarin_core::skos::SkosCollection> =
         serde_json::from_str(collections_json)
-            .map_err(|e| JsValue::from_str(&format!("Failed to parse collections JSON: {}", e)))?;
+            .map_err(|e| JsError::new(&format!("Failed to parse collections JSON: {}", e)))?;
 
     let options = csv_business_data_loader::BusinessDataCsvOptions {
         default_language: default_language.unwrap_or_else(|| "en".to_string()),
@@ -454,10 +454,10 @@ pub fn build_resources_from_business_csv(
         Ok(resources) => {
             let wrapped = csv_business_data_loader::wrap_business_data(&resources);
             let json_str = serde_json::to_string(&wrapped)
-                .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))?;
+                .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))?;
             js_sys::JSON::parse(&json_str)
-                .map_err(|_| JsValue::from_str("Failed to parse serialized JSON"))
+                .map_err(|_| JsError::new("Failed to parse serialized JSON"))
         }
-        Err(e) => Err(JsValue::from_str(&format!("{}", e))),
+        Err(e) => Err(JsError::new(&format!("{}", e))),
     }
 }

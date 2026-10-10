@@ -13,7 +13,15 @@ fetchMock.mockGlobal();
 
 class Group extends ResourceInstanceViewModel<Group> {};
 
-const archesClient = new ArchesClientLocal();
+// ArchesClientLocal no longer defaults to the repo's tests/definitions/ fixtures
+// (C9), so this test passes those paths explicitly.
+const archesClient = new ArchesClientLocal({
+  allGraphFile: () => "tests/definitions/models/_all.json",
+  graphIdToGraphFile: (graphId: string) => `tests/definitions/models/${graphId}.json`,
+  graphIdToResourcesFiles: (graphId: string) => [`tests/definitions/resources/_${graphId}.json`],
+  resourceIdToFile: (resourceId: string) => `tests/definitions/resources/${resourceId}.json`,
+  collectionIdToFile: (collectionId: string) => `tests/definitions/collections/${collectionId}.json`,
+});
 graphManager.archesClient = archesClient;
 staticStore.archesClient = archesClient;
 RDM.archesClient = archesClient;
