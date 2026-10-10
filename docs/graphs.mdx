@@ -37,6 +37,17 @@ action,subject,object,params.name,params.datatype,params.cardinality,params.opti
 add_node,parent_group,impact,Impact,reference,1,true
 ```
 
+### Model metadata entries
+
+The graph-list response (the `models` map a client's `getGraphs()` returns, e.g.
+`graphs.json`) holds a **`StaticGraphMeta`** per graph. Arches reports
+`nodes`/`edges`/`cards`/`nodegroups`/`cards_x_nodes_x_widgets` there as integer
+**counts**. You do not have to trim a graph down to that shape: alizarin also
+accepts a **full graph** as its own metadata entry — those fields may be the
+arrays a full graph carries, and each collapses to its length. Unknown keys are
+preserved. (Previously a full graph there failed with an opaque
+`invalid type: sequence, expected u32`.)
+
 ## Modifying Graph Schemas
 
 ```typescript

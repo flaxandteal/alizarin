@@ -50,6 +50,42 @@ pub mod optional_string_or_vec {
     }
 }
 
+/// Accepts a graph-metadata count field as EITHER a number OR the collection it
+/// counts. The Arches graph-list endpoint reports `cards`/`nodes`/`edges`/etc. as
+/// integer counts, but a FULL graph export carries them as arrays (or objects).
+/// This lets a caller hand a full `StaticGraph` straight in as its own metadata
+/// entry (C10): an array/object collapses to its length, a number passes through,
+/// and null/absent becomes `None` — instead of the opaque "expected u32" error.
+pub mod count_or_collection {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use serde_json::Value;
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<u32>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(match Option::<Value>::deserialize(deserializer)? {
+            None | Some(Value::Null) => None,
+            Some(Value::Number(n)) => n.as_u64().map(|u| u as u32),
+            Some(Value::Array(a)) => Some(a.len() as u32),
+            Some(Value::Object(o)) => Some(o.len() as u32),
+            // A string or bool here is meaningless as a count; treat as absent
+            // rather than failing the whole metadata parse.
+            Some(_) => None,
+        })
+    }
+
+    pub fn serialize<S>(value: &Option<u32>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(n) => serializer.serialize_u32(*n),
+            None => serializer.serialize_none(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde::{Deserialize, Serialize};

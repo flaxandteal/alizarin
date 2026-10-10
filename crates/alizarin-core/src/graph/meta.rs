@@ -12,15 +12,15 @@ pub struct StaticGraphMeta {
     pub graphid: String,
     #[serde(default)]
     pub author: Option<String>,
-    #[serde(default)]
+    #[serde(default, with = "super::serde_helpers::count_or_collection")]
     pub cards: Option<u32>,
-    #[serde(default)]
+    #[serde(default, with = "super::serde_helpers::count_or_collection")]
     pub cards_x_nodes_x_widgets: Option<u32>,
     #[serde(default)]
     pub color: Option<String>,
     #[serde(default)]
     pub description: Option<StaticTranslatableString>,
-    #[serde(default)]
+    #[serde(default, with = "super::serde_helpers::count_or_collection")]
     pub edges: Option<u32>,
     #[serde(default)]
     pub iconclass: Option<String>,
@@ -33,9 +33,9 @@ pub struct StaticGraphMeta {
     pub jsonldcontext: Option<serde_json::Value>,
     #[serde(default)]
     pub name: Option<StaticTranslatableString>,
-    #[serde(default)]
+    #[serde(default, with = "super::serde_helpers::count_or_collection")]
     pub nodegroups: Option<u32>,
-    #[serde(default)]
+    #[serde(default, with = "super::serde_helpers::count_or_collection")]
     pub nodes: Option<u32>,
     /// Ontology IDs used by this graph. Accepts a single string or an array
     /// of strings on the wire.
@@ -88,5 +88,50 @@ impl StaticGraphMeta {
     /// Get the author
     pub fn display_author(&self) -> String {
         self.author.clone().unwrap_or_default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn count_fields_accept_integer_counts() {
+        // The Arches graph-list metadata form: counts are integers.
+        let meta: StaticGraphMeta = serde_json::from_value(serde_json::json!({
+            "graphid": "g1",
+            "cards": 3,
+            "nodes": 5,
+            "edges": 4,
+            "nodegroups": 2
+        }))
+        .expect("count form should parse");
+        assert_eq!(meta.nodes, Some(5));
+        assert_eq!(meta.cards, Some(3));
+    }
+
+    #[test]
+    fn count_fields_accept_a_full_graphs_collections() {
+        // C10: handing a full graph straight in as its own metadata entry — where
+        // cards/nodes/edges/nodegroups are ARRAYS — must not fail with "expected
+        // u32". The arrays collapse to their lengths.
+        let meta: StaticGraphMeta = serde_json::from_value(serde_json::json!({
+            "graphid": "g1",
+            "name": {"en": "Group"},
+            "nodes": [{"a": 1}, {"b": 2}, {"c": 3}],
+            "edges": [{"x": 1}],
+            "cards": [{}, {}],
+            "nodegroups": [{}],
+            "cards_x_nodes_x_widgets": [],
+            "some_host_field": {"scope": "campaign"}
+        }))
+        .expect("a full graph should be accepted as metadata");
+        assert_eq!(meta.nodes, Some(3));
+        assert_eq!(meta.edges, Some(1));
+        assert_eq!(meta.cards, Some(2));
+        assert_eq!(meta.nodegroups, Some(1));
+        assert_eq!(meta.cards_x_nodes_x_widgets, Some(0));
+        // Unknown fields are still captured via the flattened extra_fields.
+        assert!(meta.extra_fields.contains_key("some_host_field"));
     }
 }

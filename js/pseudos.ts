@@ -578,6 +578,32 @@ class PseudoList extends Array implements IPseudo {
     return new AttrPromise(resolve => resolve(this));
   }
 
+  /**
+   * Resolve every per-tile entry and flatten one level into a single list.
+   *
+   * A cardinality-N nodegroup yields one entry per tile. When the node is itself
+   * list-valued (`resource-instance-list`, `concept-list`, `domain-value-list`),
+   * each per-tile entry is ALSO a list — so awaiting the field directly gives a
+   * list of per-tile lists (`[[a, b], [c]]`), which readers would otherwise have
+   * to flatten by hand (C6). `flattened()` does that, awaiting any nested
+   * promises: `[[a, b], [c]]` becomes `[a, b, c]`. For a scalar cardinality-N node
+   * (one value per tile) it is equivalent to awaiting the field, so it is safe to
+   * use uniformly. `null`/`undefined` entries are dropped.
+   */
+  async flattened(): Promise<any[]> {
+    const resolved = await Promise.all(Array.from(this).map(async (item) => await item));
+    const out: any[] = [];
+    for (const entry of resolved) {
+      if (Array.isArray(entry)) {
+        const inner = await Promise.all(Array.from(entry).map(async (e: any) => await e));
+        out.push(...inner.filter((e) => e !== null && e !== undefined));
+      } else if (entry !== null && entry !== undefined) {
+        out.push(entry);
+      }
+    }
+    return out;
+  }
+
   toString() {
     return `<PL: ${this.length}>`;
   }

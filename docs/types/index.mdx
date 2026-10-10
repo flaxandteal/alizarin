@@ -34,6 +34,25 @@ Values with non-trivial rendering or structure:
 | `resource-instance` / `-list` | `ResourceInstanceViewModel` / `…ListViewModel` | followed as relationships |
 | _(nested nodegroup)_ | `SemanticViewModel` | groups child nodes |
 
+## Cardinality-N list values nest
+
+A **cardinality-N** nodegroup resolves to a `PseudoList` with one entry **per tile**.
+When the node is itself list-valued (`resource-instance-list`, `concept-list`,
+`domain-value-list`), each per-tile entry is _also_ a list — so awaiting the field
+gives a **list of per-tile lists**:
+
+```ts
+const perTile = await resource.contributors;   // [[a, b], [c]]  (2 tiles)
+```
+
+Call `.flattened()` on the `PseudoList` to resolve and flatten one level into a
+single list of values (awaiting any nested promises). It is a no-op for scalar
+cardinality-N nodes, so it is safe to use uniformly:
+
+```ts
+const all = await (await resource.contributors).flattened();  // [a, b, c]
+```
+
 ## Extension types
 
 Custom datatypes provided by out-of-tree extensions (registered over the
