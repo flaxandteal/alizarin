@@ -608,13 +608,14 @@ fn validate_model_csvs(
 /// Returns:
 ///     JSON string: { "business_data": { "resources": [...] } }
 #[pyfunction]
-#[pyo3(signature = (csv_data, graph_json, collections_json, default_language="en", strict_concepts=true))]
+#[pyo3(signature = (csv_data, graph_json, collections_json, default_language="en", strict_concepts=true, uuid_namespace=None))]
 fn build_resources_from_business_csv(
     csv_data: &str,
     graph_json: &str,
     collections_json: &str,
     default_language: &str,
     strict_concepts: bool,
+    uuid_namespace: Option<String>,
 ) -> PyResult<String> {
     use alizarin_core::csv_business_data_loader;
 
@@ -637,6 +638,7 @@ fn build_resources_from_business_csv(
     let options = csv_business_data_loader::BusinessDataCsvOptions {
         default_language: default_language.to_string(),
         strict_concepts,
+        uuid_namespace,
         ..Default::default()
     };
 

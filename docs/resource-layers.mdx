@@ -3,6 +3,10 @@ title: Resource layers
 description: Compose one resource across an ordered stack of layers (base + overlays)
 ---
 
+> **Not to be confused with** [Layering principles](/docs/layering), which is
+> about Alizarin's *architectural* tiers (core / bindings / ORM). This page is
+> about *data* layers — overlays of resource data.
+
 A **resource layer** is a copy of a resource as it exists in one layer of an
 ordered stack — a shared **base** plus **overlays** that override or extend it.
 `composeResourceLayers` merges that stack, topmost layer winning, into a single
@@ -54,12 +58,35 @@ resource, warnings = result["resource"], result["warnings"]
 | **Single-valued nodegroup** (cardinality 1) | Replaced **whole** by the topmost layer that sets it — there is **no** field-by-field inheritance from lower layers. A campaign that sets a `status` group replaces the base's entire `status` tile. |
 | **Multi-valued nodegroup** (cardinality n) | **Accumulates** across layers — append-only. Layering can **add** members but never remove one; model "an alliance that ended" as a single-valued status or an event, not by deletion. |
 | **Identical tiles** | A tile present unchanged in several layers (same tile id) is kept once. |
-| **`strict`** | A cross-layer conflict on a single-valued group becomes an **error** instead of a warning. |
+| **`strict`** | A cross-layer conflict on a single-valued group is raised as an **error** instead of a warning. |
 
 Identity (the resource id) is taken from the topmost layer. Resource ids are
 stable across layers by design (always the default namespace), so an overlay can
 override a resource it shares with the base, and a link resolves to the same
 resource in any layer — see *layer-isolated tile ids* below.
+
+> **`strict` and intended overrides.** An intended single-valued override is
+> currently reported like a conflict, and `strict = true` rejects it — so `strict`
+> cannot yet tell a deliberate override from an accidental clash. **Leave `strict`
+> off when you are using overrides**; use it only to catch duplicate tiles.
+
+### Worked example: Hollowmere burns
+
+*General* defines the town Hollowmere with `status = Thriving`. *Campaign B*
+overlays it with `status = Burned` and adds a rumour; both layers are built with
+their own `uuidNamespace`.
+
+```typescript
+const { resource } = composeResourceLayers(
+  [hollowmereInCampaignB, hollowmereInGeneral], // topmost-first
+  baseGraph,
+);
+// status → "Burned" (campaign overrides the whole single-valued group)
+// rumours → both the general rumour AND the campaign rumour (multi-valued accumulates)
+```
+
+The same resource id appears in both layers, so this is a state change on one
+entity — no duplicate Hollowmere, no lookup table.
 
 ## Model overlays
 
@@ -69,10 +96,16 @@ The `overlayGraphs` argument stacks **model** overlays under a
 tweak to a type), not just data. Overlays are listed **bottom-to-top** (the last
 is topmost); `[]` composes against the base model alone.
 
-## Layer-isolated tile ids
+## Layer-isolated tile ids — required
 
-When you build each layer's resources from CSV, pass `uuidNamespace` so a layer's
-derived **tile** ids don't collide with another layer's:
+> **Give each layer its own `uuidNamespace`.** Tile ids are derived
+> deterministically from the nodegroup + value, so the *same* resource + nodegroup
+> built in two layers **without** a per-layer namespace gets the *same* tile id.
+> The merge drops duplicate tile ids before the per-nodegroup unify, so a lower
+> layer's **multi-valued members silently vanish** — the "accumulate" guarantee
+> above holds **only** when tile ids are layer-isolated.
+
+When you build each layer's resources from CSV, pass `uuidNamespace`:
 
 ```typescript
 import { buildResourcesFromBusinessCsv } from 'alizarin';
@@ -84,8 +117,8 @@ const campaignTiles = buildResourcesFromBusinessCsv(
 ```
 
 **Resource** ids always use the default namespace (so cross-layer lookup and
-override work); only **tile** ids take the namespace. This is honoured identically
-on WASM, NAPI and Python.
+override work); only **tile** ids take the namespace. Honoured identically on
+WASM, NAPI and Python (`build_resources_from_business_csv(..., uuid_namespace=...)`).
 
 > **Scope.** `composeResourceLayers` composes resources **already in memory**. If
 > your layers live in a store (Parquet/DuckDB, SQLite, a REST API), the read +

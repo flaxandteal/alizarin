@@ -112,7 +112,7 @@ export async function initWasm() {
     try {
       // Try to use a WASM export to see if it's already initialized
       new StaticTranslatableString('test');
-      console.log('[alizarin] WASM already available from another module instance');
+      console.debug('[alizarin] WASM already available from another module instance');
       wasmInitialized = true;
       setWasmModule(wasmPkg);
       return;
@@ -123,7 +123,7 @@ export async function initWasm() {
     // In Node.js environment (tests), use synchronous init with file system
     if (typeof process !== 'undefined' && process.versions?.node) {
       try {
-        console.log('[alizarin] Initializing WASM in Node.js environment');
+        console.debug('[alizarin] Initializing WASM in Node.js environment');
 
         // If WASM is available as inline data URI (from alizarin/inline build), decode directly
         if (wasmURL.startsWith('data:')) {
@@ -132,7 +132,7 @@ export async function initWasm() {
           initSync({ module: wasmBuffer });
           wasmInitialized = true;
           setWasmModule(wasmPkg);
-          console.log('[alizarin] WASM initialized from inline data URI in Node.js');
+          console.debug('[alizarin] WASM initialized from inline data URI in Node.js');
 
           applyPrototypePatches();
           registerRustTimingGetter(getRscvTimings);
@@ -148,11 +148,18 @@ export async function initWasm() {
         // This handles different import contexts (direct vs through extensions)
         const moduleDir = path.dirname(fileURLToPath(import.meta.url));
         const possiblePaths = [
+          // pkg/ FIRST: in a source checkout the glue is imported from ../pkg, so the
+          // .wasm must come from the SAME pkg/ (a stale dist/ build would mismatch the
+          // glue's import hashes → LinkError).
           path.join(moduleDir, '../pkg', 'alizarin_bg.wasm'),      // Normal: js/_wasm.ts -> pkg/
           path.join(process.cwd(), 'pkg', 'alizarin_bg.wasm'),     // Working directory
           path.join(moduleDir, 'alizarin/pkg', 'alizarin_bg.wasm'),// From parent dir (extension context)
           path.join(moduleDir, '../../pkg', 'alizarin_bg.wasm'),   // From dist/bundled location
           path.join(moduleDir, '../../../pkg', 'alizarin_bg.wasm'),// From deeply nested imports
+          // Published package ships dist/ with no pkg/, so these catch the wasm beside
+          // the bundled module. LAST, so a checkout prefers its live pkg/ (P3).
+          path.join(moduleDir, 'alizarin_bg.wasm'),                // Published: dist/alizarin.js + dist/alizarin_bg.wasm
+          path.join(moduleDir, '../dist', 'alizarin_bg.wasm'),     // Published, from a nested dist import
         ];
 
         let wasmPath: string | undefined;
@@ -176,11 +183,11 @@ export async function initWasm() {
           initSync({ module: wasmBuffer });
           wasmInitialized = true;
           setWasmModule(wasmPkg);
-          console.log('[alizarin] WASM initialized successfully in Node.js');
+          console.debug('[alizarin] WASM initialized successfully in Node.js');
         } catch (initError) {
           const initMsg = initError instanceof Error ? initError.message : String(initError);
           if (initMsg.includes('memory already initialized') || initMsg.includes('unreachable')) {
-            console.log('[alizarin] WASM already initialized (detected during initSync), continuing');
+            console.debug('[alizarin] WASM already initialized (detected during initSync), continuing');
             wasmInitialized = true;
             setWasmModule(wasmPkg);
             return;
@@ -192,7 +199,7 @@ export async function initWasm() {
         const errorMsg = error instanceof Error ? error.message : String(error);
         if (errorMsg.includes('memory already initialized') || errorMsg.includes('unreachable')) {
           // WASM is already initialized from another import context - this is fine
-          console.log('[alizarin] WASM already initialized (from another import), continuing');
+          console.debug('[alizarin] WASM already initialized (from another import), continuing');
           wasmInitialized = true;
           setWasmModule(wasmPkg);
           return;
@@ -210,7 +217,7 @@ export async function initWasm() {
       console.debug('[alizarin] Initializing WASM in browser environment', { wasmURL });
       try {
         await init({ module_or_path: wasmURL });
-        console.log('[alizarin] WASM initialized successfully in browser');
+        console.debug('[alizarin] WASM initialized successfully in browser');
       } catch (error) {
         console.debug('[alizarin] Failed to initialize WASM in browser:', error);
         throw error;

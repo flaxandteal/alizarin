@@ -1,7 +1,7 @@
 import { test, beforeAll } from "vitest";
 import { assert } from 'chai';
 import { createStaticGraph, StaticCollection, StaticConcept, StaticNode, StaticNodegroup, StaticGraph, StaticGraphMeta } from '../js/static-types';
-import { ResourceModelWrapper, GraphMutator, createWKRM } from '../js/graphManager';
+import { ResourceModelWrapper, GraphMutator, createWKRM, GraphManager, StaticStore } from '../js/graphManager';
 import { IWKRM } from '../js/interfaces';
 import { initWasmForTests } from './wasm-init';
 import * as GroupJSON from "./data/models/Group.json";
@@ -640,4 +640,47 @@ test("ResourceModelWrapper > NodeViewModel > should allow access to node propert
   const formationEdge = await root.formation$edge;
   assert.isDefined(formationEdge);
   assert.equal(formationEdge.ontologyproperty, "http://www.cidoc-crm.org/cidoc-crm/P95i_was_formed_by");
+});
+
+// --- L6 / C8 regression: instantiable managers + awaited initialize ---------
+
+function mockLayerClient(graph: any, meta: StaticGraphMeta): any {
+  return {
+    getGraphs: async () => ({ models: { [graph.graphid]: meta } }),
+    getGraph: async () => graph,
+  };
+}
+
+test("GraphManager accepts an injected store so two managers stay independent (L6)", () => {
+  const s1 = new StaticStore();
+  const s2 = new StaticStore();
+  const gm1 = new GraphManager({} as any, s1);
+  const gm2 = new GraphManager({} as any, s2);
+  assert.strictEqual(gm1.staticStore, s1);
+  assert.strictEqual(gm2.staticStore, s2);
+  assert.notStrictEqual(gm1.staticStore, gm2.staticStore, "two managers must not share a store");
+});
+
+test("get() awaits initialize() so a first get() does not race the registry (C8)", async () => {
+  const graph: any = (GroupJSON as any).graph[0];
+  const meta = new StaticGraphMeta({
+    graphid: graph.graphid,
+    name: graph.name || "Group",
+    slug: "group",
+    relatable_resource_model_ids: [],
+    resource_2_resource_constraints: [],
+    extra_fields: {},
+  });
+  const gm = new GraphManager(mockLayerClient(graph, meta));
+  // No explicit initialize() first — get() must await it internally. Before the
+  // C8 fix, get() raced the (empty) registry and threw "Cannot find model requested".
+  let err: unknown;
+  try {
+    const wrapper = await gm.get("Group");
+    assert.isDefined(wrapper, "get() should resolve the model after awaiting initialize()");
+  } catch (e) {
+    err = e;
+  }
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  assert.notInclude(msg, "Cannot find model", "get() must await initialize() before the registry lookup (C8)");
 });

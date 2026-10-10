@@ -1419,7 +1419,7 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
         }
     }
 
-    let mut seen_tileids: HashSet<String> = HashSet::new();
+    let mut seen_tiles: HashMap<String, usize> = HashMap::new();
     let mut merged_tiles: Vec<StaticTile> = Vec::new();
     let mut warnings: Vec<String> = Vec::new();
     let mut merged_metadata: HashMap<String, String> = HashMap::new();
@@ -1432,10 +1432,23 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
         if let Some(tiles) = resource.tiles {
             for tile in tiles {
                 if let Some(ref tileid) = tile.tileid {
-                    if seen_tileids.contains(tileid) {
+                    if let Some(&kept_idx) = seen_tiles.get(tileid) {
+                        // Duplicate tile id across layers: keep the first (topmost).
+                        // Warn if the dropped tile carried DIFFERENT data — almost
+                        // always a missing per-layer uuidNamespace, which would
+                        // otherwise make a lower layer's members vanish silently.
+                        if merged_tiles[kept_idx].data != tile.data {
+                            warnings.push(format!(
+                                "Tile id '{}' (nodegroup '{}', resource '{}') appears in \
+                                 multiple layers with different data; kept the topmost. \
+                                 Give each layer its own uuidNamespace if these are \
+                                 distinct per-layer values.",
+                                tileid, tile.nodegroup_id, tile.resourceinstance_id
+                            ));
+                        }
                         continue;
                     }
-                    seen_tileids.insert(tileid.clone());
+                    seen_tiles.insert(tileid.clone(), merged_tiles.len());
                 }
                 merged_tiles.push(tile);
             }
@@ -1959,20 +1972,27 @@ pub fn unify_cardinality_one_tiles(
         for (source_tile_id, source_data) in sources {
             for (key, value) in source_data {
                 if let Some(existing) = canonical_tile.data.get(&key) {
-                    if existing != &value {
+                    // Only PerNode treats a differing value as a conflict: it fills the
+                    // canonical tile from shards, so two shards disagreeing on a key is
+                    // a genuine clash. PerNodegroup is a whole-group override — a lower
+                    // layer holding a different value is the *intended* override (the
+                    // topmost wins), so it is silent, and `strict` does not reject it.
+                    if existing != &value && mode == TileMergeMode::PerNode {
                         let msg = format!(
-                            "Data conflict in nodegroup '{}': key '{}' has different values in tiles '{}' and '{}'",
-                            canonical_tile.nodegroup_id,
+                            "Data conflict on node '{}' (nodegroup '{}', resource '{}'): tiles '{}' and '{}' disagree; keeping '{}'",
                             key,
+                            canonical_tile.nodegroup_id,
+                            canonical_tile.resourceinstance_id,
                             canonical_tile_id,
-                            source_tile_id
+                            source_tile_id,
+                            canonical_tile_id,
                         );
                         if strict {
                             return Err(msg);
                         }
-                        warnings.push(format!("{} (keeping first)", msg));
+                        warnings.push(msg);
                     }
-                    // Keep existing value (first wins)
+                    // Keep existing value (topmost/first wins)
                 } else if mode == TileMergeMode::PerNode {
                     // New key, add it. PerNode fills the canonical tile from the
                     // shards. PerNodegroup does NOT: a whole-tile override must not
@@ -2409,39 +2429,17 @@ mod tests {
 
     #[test]
     fn compose_resource_across_layers_overrides_single_and_accumulates_multi() {
-        fn res(id: &str, tiles: Vec<StaticTile>) -> StaticResource {
-            StaticResource {
-                resourceinstance: StaticResourceMetadata {
-                    descriptors: StaticResourceDescriptors::default(),
-                    graph_id: "g".to_string(),
-                    name: "R".to_string(),
-                    resourceinstanceid: id.to_string(),
-                    publication_id: None,
-                    principaluser_id: None,
-                    legacyid: None,
-                    graph_publication_id: None,
-                    createdtime: None,
-                    lastmodified: None,
-                },
-                tiles: Some(tiles),
-                metadata: HashMap::new(),
-                cache: None,
-                scopes: None,
-                tiles_loaded: None,
-            }
-        }
-
         let graph = layer_graph();
         // The same resource in two layers, supplied topmost-first. The topmost
         // layer overrides the single-valued group; both contribute to the multi.
-        let topmost = res(
+        let topmost = mk_resource(
             "r1",
             vec![
                 t("c-single", "single", None, &[("a", 9)]),
                 t("c-multi", "multi", None, &[("m", 1)]),
             ],
         );
-        let base = res(
+        let base = mk_resource(
             "r1",
             vec![
                 t("b-single", "single", None, &[("a", 1), ("b", 2)]),
@@ -2449,8 +2447,14 @@ mod tests {
             ],
         );
 
-        let (composed, _warnings) =
+        let (composed, warnings) =
             compose_resource_across_layers(vec![topmost, base], &graph, false).expect("compose");
+        // An intended single-valued override is NOT a conflict in PerNodegroup, so a
+        // clean compose (distinct tile ids per layer) produces no warnings.
+        assert!(
+            warnings.is_empty(),
+            "override must be silent, got: {warnings:?}"
+        );
         let tiles = composed.tiles.expect("composed tiles");
 
         // single (cardinality-1): collapses to the topmost tile, whole-group — the
@@ -2555,5 +2559,80 @@ mod tests {
             unify_cardinality_one_tiles(&mut strict, &graph, true, TileMergeMode::PerNode).is_err(),
             "strict must refuse to guess between two asserted values"
         );
+    }
+
+    // A resource carrying exactly the given tiles (resourceinstanceid = tiles' own).
+    fn mk_resource(id: &str, tiles: Vec<StaticTile>) -> StaticResource {
+        StaticResource {
+            resourceinstance: StaticResourceMetadata {
+                descriptors: StaticResourceDescriptors::default(),
+                graph_id: "g".to_string(),
+                name: "R".to_string(),
+                resourceinstanceid: id.to_string(),
+                publication_id: None,
+                principaluser_id: None,
+                legacyid: None,
+                graph_publication_id: None,
+                createdtime: None,
+                lastmodified: None,
+            },
+            tiles: Some(tiles),
+            metadata: HashMap::new(),
+            cache: None,
+            scopes: None,
+            tiles_loaded: None,
+        }
+    }
+
+    #[test]
+    fn pernodegroup_override_is_not_a_conflict_even_under_strict() {
+        // L2: in PerNodegroup, a differing lower value is the intended override, not
+        // a conflict — so it never warns, and `strict` must NOT reject it. (Contrast
+        // `a_cross_layer_conflict_warns_but_is_an_error_under_strict`, which is PerNode.)
+        let graph = layer_graph();
+        let pair = || {
+            vec![
+                t("overlay", "single", None, &[("a", 9)]),
+                t("base", "single", None, &[("a", 1)]),
+            ]
+        };
+
+        let mut lenient = pair();
+        let warnings =
+            unify_cardinality_one_tiles(&mut lenient, &graph, false, TileMergeMode::PerNodegroup)
+                .expect("lenient");
+        assert!(
+            warnings.is_empty(),
+            "an override must be silent, got {warnings:?}"
+        );
+
+        let mut strict = pair();
+        let warnings =
+            unify_cardinality_one_tiles(&mut strict, &graph, true, TileMergeMode::PerNodegroup)
+                .expect("strict must accept an override, not error on it");
+        assert!(warnings.is_empty());
+        assert_eq!(strict[0].data["a"], serde_json::json!(9), "topmost wins");
+    }
+
+    #[test]
+    fn merge_resources_warns_on_divergent_duplicate_tile_id() {
+        // L1: the same tile id in two layers with DIFFERENT data would silently drop
+        // the lower one — warn instead (the "give each layer a uuidNamespace" signal).
+        let topmost = mk_resource("r1", vec![t("dup", "multi", None, &[("m", 2)])]);
+        let lower = mk_resource("r1", vec![t("dup", "multi", None, &[("m", 1)])]);
+        let result = merge_resources(vec![topmost, lower]).expect("merge");
+        assert_eq!(
+            result.warnings.len(),
+            1,
+            "a divergent duplicate tile id must warn, not vanish"
+        );
+
+        // Identical duplicate (same id AND data) is deduped silently.
+        let a = mk_resource("r1", vec![t("dup", "multi", None, &[("m", 7)])]);
+        let b = mk_resource("r1", vec![t("dup", "multi", None, &[("m", 7)])]);
+        assert!(merge_resources(vec![a, b])
+            .expect("merge")
+            .warnings
+            .is_empty());
     }
 }

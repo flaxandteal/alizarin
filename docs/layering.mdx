@@ -7,6 +7,10 @@ Alizarin's [architecture](/docs/architecture) is a stack — static data model,
 Rust core, bindings, consumer ORM. The value is not the boxes but the **seams**
 between them. These are the rules that keep those seams clean.
 
+> This page is about Alizarin's **architectural** layers. For **data** layers —
+> composing one resource across a base/overlay data stack — see
+> [Resource layers](/docs/resource-layers).
+
 ## One core, thin bindings
 
 Logic lives **once**, in `alizarin-core`. The WASM, NAPI and Python bindings are

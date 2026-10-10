@@ -89,3 +89,24 @@ def test_batch_tiles_to_trees_conversion():
     name_for_correspondence = contact_names.get('contact_name_for_correspondence', {})
     assert not isinstance(name_for_correspondence, list), \
         "contact_name_for_correspondence (leaf within cardinality-n nodegroup) should NOT be an array"
+
+
+def test_compose_resource_layers_is_exported():
+    """L4: compose_resource_layers is registered on the native module but must also
+    be re-exported from the `alizarin` package facade (__init__.py), or
+    `alizarin.compose_resource_layers(...)` raises AttributeError."""
+    assert hasattr(alizarin, "compose_resource_layers"), (
+        "compose_resource_layers missing from the alizarin package facade"
+    )
+    assert callable(alizarin.compose_resource_layers)
+    assert "compose_resource_layers" in alizarin.__all__
+
+
+def test_build_resources_from_business_csv_exposes_uuid_namespace():
+    """L5: the Python CSV loader must expose `uuid_namespace` so a layer's tile ids
+    can be isolated (parity with WASM/NAPI), or Python cannot build composable
+    layers from CSV."""
+    assert hasattr(alizarin, "build_resources_from_business_csv")
+    assert "build_resources_from_business_csv" in alizarin.__all__
+    sig = alizarin.build_resources_from_business_csv.__text_signature__ or ""
+    assert "uuid_namespace" in sig, f"uuid_namespace absent from signature: {sig!r}"

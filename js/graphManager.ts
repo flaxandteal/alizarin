@@ -1,5 +1,5 @@
 import { GraphResult, archesClient, ArchesClient, ArchesClientRemote } from './client';
-import { staticStore } from './staticStore';
+import { staticStore, StaticStore } from './staticStore';
 import { CardComponent, DEFAULT_CARD_COMPONENT, Widget, getDefaultWidgetForNode } from './cards';
 import {
   StaticTranslatableString,
@@ -34,6 +34,16 @@ import { ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewMode
 import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, IModelWrapperBackend, IWKRM, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
 import { nodeConfigManager } from "./nodeConfig.ts";
 import { generateUuidv5, AttrPromise } from "./utils";
+
+/**
+ * Normalise a model identifier so a display name, slug, alias or PascalCased class
+ * name all collapse to the same key: `"NPC"`, `"npc"`, `"Monster Type"` and
+ * `"monster-type"` → `"npc"` / `"monstertype"`. Used by `graphManager.get()` so a
+ * lookup is not restricted to the exact class name (fix for C7).
+ */
+export function normalizeModelName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
 
 // Import and re-export timing functions from dedicated module (avoids circular imports)
 import { recordNativeTiming, printNativeTimings, clearNativeTimings, getNativeTimings, recordWasmTiming, printWasmTimings, clearWasmTimings, getWasmTimings } from './wasmTiming';
@@ -78,7 +88,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     // Initialize wrapper for tile management (WASM or NAPI depending on backend)
     let t0 = performance.now();
     if (resource) {
-      this.wasmWrapper = createInstanceWrapperForResource(resource, staticStore.registry);
+      this.wasmWrapper = createInstanceWrapperForResource(resource, this.model.staticStore.registry);
       this.resource = resource;
       recordNativeTiming("createInstanceWrapperForResource", performance.now() - t0);
     } else {
@@ -106,7 +116,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       this.wasmWrapper.setTileLoader((nodegroupId: string) => {
         // If nodegroupId is null/undefined, load all tiles
         // Otherwise load tiles for specific nodegroup
-        const tiles = staticStore.loadTiles(resourceId, nodegroupId);
+        const tiles = this.model.staticStore.loadTiles(resourceId, nodegroupId);
         return tiles;
       });
       recordNativeTiming("setTileLoader", performance.now() - t0);
@@ -159,7 +169,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
 
       // No tile loader — fetch from staticStore registry via archesClient
       const resourceId = this.wasmWrapper.getResourceId();
-      const fullResource = await staticStore.ensureFullResource(resourceId);
+      const fullResource = await this.model.staticStore.ensureFullResource(resourceId);
       if (fullResource && fullResource.tilesLoaded) {
         loadTilesFromResource(this.wasmWrapper, fullResource, true);
       }
@@ -263,7 +273,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     if (!this.wasmWrapper.isNodegroupLoaded(nodegroupId)) {
       const resourceId = this.wasmWrapper.getResourceId();
       if (resourceId) {
-        const tiles = await staticStore.loadTiles(resourceId, nodegroupId);
+        const tiles = await this.model.staticStore.loadTiles(resourceId, nodegroupId);
         if (tiles && tiles.length > 0) {
           this.wasmWrapper.appendTiles(tiles);
         }
@@ -879,6 +889,9 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   // Supports both boolean and conditional permission rules
   permittedNodegroups?: Map<string, PermissionValue>;
   pruneTiles: boolean = true;
+  /** The resource store this model reads from. Injectable so independent layer
+   *  stacks each get their own store; defaults to the shared `staticStore`. */
+  staticStore: StaticStore = staticStore;
 
   // Cached copies of backend data (to avoid repeated cross-boundary calls)
   private _nodes: Map<string, StaticNode> | null = null;
@@ -886,11 +899,12 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   private _edges: Map<string, string[]> | null = null;
   private _nodegroups: Map<string, StaticNodegroup> | null = null;
 
-  constructor(wkrm: IWKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow: boolean = false) {
+  constructor(wkrm: IWKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow: boolean = false, store: StaticStore = staticStore) {
     this.wkrm = wkrm;
     this._backend = createResourceModelWrapper(wkrm, graph, defaultAllow);
     this.pruneTiles = !defaultAllow;
     this.viewModelClass = viewModelClass;
+    this.staticStore = store;
   }
 
   // =========================================================================
@@ -1144,7 +1158,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   }
 
   async* iterAll(params: { limit?: number; lazy?: boolean; pruneTiles?: boolean }): AsyncGenerator<RIVM> {
-    yield* this.resourceGenerator(staticStore.loadAll(this.wkrm.graphId, params.limit), params.lazy, params.pruneTiles);
+    yield* this.resourceGenerator(this.staticStore.loadAll(this.wkrm.graphId, params.limit), params.lazy, params.pruneTiles);
   }
 
   // New summary-based methods for performance optimization
@@ -1157,7 +1171,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   }
 
   async* iterAllSummaries(params: { limit?: number }): AsyncGenerator<RIVM> {
-    yield* this.summaryGenerator(staticStore.loadAllSummaries(this.wkrm.graphId, params.limit), true);
+    yield* this.summaryGenerator(this.staticStore.loadAllSummaries(this.wkrm.graphId, params.limit), true);
   }
 
   async allSummaries(params: { limit?: number } | undefined = undefined): Promise<Array<RIVM>> {
@@ -1171,12 +1185,12 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
 
   async loadFullResource(id: string): Promise<RIVM> {
     // Check if we have full resource or just summary, load full resource on-demand
-    const fullResource = await staticStore.ensureFullResource(id);
+    const fullResource = await this.staticStore.ensureFullResource(id);
     return this.fromStaticResource(fullResource, false, true); // non-lazy, prune tiles
   }
 
   async findStatic(id: string): Promise<StaticResource> {
-    return await staticStore.loadOne(id);
+    return await this.staticStore.loadOne(id);
   }
 
   async find(id: string, lazy: boolean = true, pruneTiles?: boolean): Promise<RIVM> {
@@ -1345,7 +1359,8 @@ function makeResourceModelWrapper<T extends IRIVM<T>>(
   viewModelClass: ResourceInstanceViewModelConstructor<T> | undefined,
   wkrm: IWKRM,
   graph: StaticGraph,
-  defaultAllow: boolean
+  defaultAllow: boolean,
+  store: StaticStore = staticStore
 ): ResourceInstanceViewModelConstructor<T> {
   let vmc: ResourceInstanceViewModelConstructor<T>;
   if (!viewModelClass) {
@@ -1362,7 +1377,7 @@ function makeResourceModelWrapper<T extends IRIVM<T>>(
     vmc = viewModelClass;
   }
 
-  const wrapper = new ResourceModelWrapper<T>(wkrm, graph, vmc, defaultAllow);
+  const wrapper = new ResourceModelWrapper<T>(wkrm, graph, vmc, defaultAllow, store);
   vmc.prototype.__ = wrapper;
   return vmc;
 }
@@ -1375,9 +1390,13 @@ class GraphManager {
   graphs: Map<string, ResourceModelWrapper<any>>;
   wkrms: Map<string, IWKRM>;
   defaultAllow: boolean = false;
+  /** The resource store this manager reads through. Injectable so two managers
+   *  (e.g. two layer stacks) stay independent; defaults to the shared singleton. */
+  staticStore: StaticStore = staticStore;
 
-  constructor(archesClient: ArchesClient) {
+  constructor(archesClient: ArchesClient, store: StaticStore = staticStore) {
     this.archesClient = archesClient;
+    this.staticStore = store;
     this.graphs = new Map<string, ResourceModelWrapper<any>>();
     this.wkrms = new Map<string, IWKRM>();
   }
@@ -1458,10 +1477,10 @@ class GraphManager {
     let model: ResourceInstanceViewModelConstructor<RIVM>;
     if (typeof modelClass == 'string') {
       modelClassName = modelClass;
-      model = makeResourceModelWrapper<RIVM>(undefined, wkrm, graph, defaultAllow);
+      model = makeResourceModelWrapper<RIVM>(undefined, wkrm, graph, defaultAllow, this.staticStore);
     } else {
       modelClassName = modelClass.name;
-      model = makeResourceModelWrapper<RIVM>(modelClass, wkrm, graph, defaultAllow);
+      model = makeResourceModelWrapper<RIVM>(modelClass, wkrm, graph, defaultAllow, this.staticStore);
     }
 
     this.graphs.set(graph.graphid, model.prototype.__);
@@ -1476,11 +1495,18 @@ class GraphManager {
       modelClassName = modelClass.name;
     }
 
-    // Initialize as a fallback
-    this.initialize(undefined);
+    // Initialize as a fallback — MUST be awaited, or a get() that races the first
+    // initialize() sees an empty registry and throws "Cannot find model".
+    await this.initialize(undefined);
     let wkrm = this.wkrms.get(modelClassName);
     if (wkrm === undefined) {
-      wkrm = [...this.wkrms.values()].find(w => w.graphId === modelClassName);
+      // Fallback: match by graph id, then by a normalised name so "NPC", "npc",
+      // "Monster Type" and "monster-type" all resolve to the "Npc"/"MonsterType"
+      // model, not just its exact PascalCased class name.
+      const target = normalizeModelName(modelClassName);
+      wkrm =
+        [...this.wkrms.values()].find(w => w.graphId === modelClassName) ??
+        [...this.wkrms.entries()].find(([name]) => normalizeModelName(name) === target)?.[1];
       if (wkrm === undefined) {
         throw Error(`Cannot find model requested: ${modelClassName}`);
       }
@@ -1495,7 +1521,7 @@ class GraphManager {
 
   async getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean = true, pruneTiles?: boolean): Promise<T> {
     pruneTiles = this.getPruneTiles(pruneTiles);
-    const rivm = await staticStore.loadOne(resourceId);
+    const rivm = await this.staticStore.loadOne(resourceId);
     let graph = this.graphs.get(rivm.resourceinstance.graph_id);
     if (!graph) {
       graph = await this.loadGraph(rivm.resourceinstance.graph_id, !pruneTiles);
@@ -1520,4 +1546,4 @@ viewContext.graphManager = graphManager;
 
 // Re-export WKRM factory and class getter from backend
 export { createWKRM, getWKRMClass } from "./backend";
-export { GraphManager, graphManager, ArchesClientRemote, staticStore, ResourceModelWrapper, GraphMutator };
+export { GraphManager, graphManager, ArchesClientRemote, staticStore, StaticStore, ResourceModelWrapper, GraphMutator };

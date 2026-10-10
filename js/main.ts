@@ -1,7 +1,7 @@
 import * as client from "./client";
 import * as interfaces from "./interfaces";
 import { RDM, ResolveLabelsOptions, registerResolvableDatatype, unregisterResolvableDatatype } from "./rdm";
-import { ResourceModelWrapper, createWKRM, getWKRMClass, graphManager, staticStore, GraphManager, GraphMutator, getWasmTimings } from "./graphManager";
+import { ResourceModelWrapper, createWKRM, getWKRMClass, graphManager, staticStore, StaticStore, GraphManager, GraphMutator, getWasmTimings } from "./graphManager";
 import * as staticTypes from "./static-types";
 import { CollectionMutator } from "./collectionMutator";
 import { buildGraphFromModelCsvs, validateModelCsvs, buildResourcesFromBusinessCsv, composeResourceLayers } from "./csvModelLoader";
@@ -74,6 +74,7 @@ export {
   slugify,
   viewModels,
   staticStore,
+  StaticStore,
   RDM,
   registerResolvableDatatype,
   unregisterResolvableDatatype,
