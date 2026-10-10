@@ -11,13 +11,26 @@ on:
         required: true
         type: string
 
+# Four jobs so a single package failing no longer silently sinks the release or
+# blocks the others:
+#   build              -> build once, test, pack tarballs, cut the GH release.
+#   publish-crates-core-> alizarin-extension-api then alizarin-core, SERIAL, because
+#                         every other crate depends on core being on crates.io first.
+#   publish-npm        -> every npm tarball, parallel matrix (fail-fast: false).
+#   publish-crates-ext -> every ext/*/core, parallel matrix, after core is up.
+# Any failed matrix leg turns the whole run red (and the UI names which package),
+# while its siblings still publish. Publishing a version that already exists is
+# tolerated, so a re-run after fixing one package is safe.
+
 jobs:
-  build-and-release:
+  build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      id-token: write
-
+      contents: write   # create the GitHub release
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      npm_tarballs: ${{ steps.lists.outputs.npm_tarballs }}
+      crate_exts: ${{ steps.lists.outputs.crate_exts }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,17 +79,15 @@ jobs:
           echo "WASM build complete. Contents of pkg/:"
           ls -lh ../../pkg/
 
-      # Build WASM for JS extensions that have their own Rust crates
-      # Must happen before npm run build, as the full bundle inlines extension WASM
+      # Build WASM for JS extensions that have their own Rust crates.
+      # Must happen before npm run build, as the full bundle inlines extension WASM.
       - name: Build extension WASM crates
         run: |
           for wasm_dir in ext/*/wasm/; do
             [ -f "$wasm_dir/Cargo.toml" ] || continue
             ext_name=$(basename "$(dirname "$wasm_dir")")
             echo "=== Building $ext_name WASM ==="
-            cd "$wasm_dir"
-            wasm-pack build --target web --release
-            cd - > /dev/null
+            (cd "$wasm_dir" && wasm-pack build --target web --release)
           done
 
       - name: Install Node dependencies
@@ -85,59 +96,29 @@ jobs:
       - name: Build TypeScript/JavaScript bundle
         run: npm run build
 
-      # Build all JS extensions (ext/*/js/)
+      # Build all JS extensions (ext/*/js/) and pack each to the repo root.
       - name: Build JS extensions and create tarballs
         run: |
           for ext_dir in ext/*/js/; do
             [ -f "$ext_dir/package.json" ] || continue
             ext_name=$(basename "$(dirname "$ext_dir")")
             echo "=== Building @alizarin/$ext_name ==="
-            cd "$ext_dir"
-            npm install
-            npm run build
-            npm pack
-            mv alizarin-*.tgz ../../../
-            cd - > /dev/null
+            (cd "$ext_dir" && npm install && npm run build && npm pack && mv alizarin-*.tgz ../../../)
           done
-
-      - name: Verify build artifacts
-        run: |
-          echo "Checking dist directory:"
-          ls -lh dist/
-          echo ""
-          echo "Checking pkg directory:"
-          ls -lh pkg/
-          echo ""
-          echo "Checking JS extension dist directories:"
-          for ext_dir in ext/*/js/; do
-            [ -f "$ext_dir/package.json" ] || continue
-            ext_name=$(basename "$(dirname "$ext_dir")")
-            echo "  @alizarin/$ext_name:"
-            ls -lh "$ext_dir/dist/" 2>/dev/null || echo "    (no dist)"
-          done
-          echo ""
-          echo "Checking tarballs in root:"
-          ls -lh *.tgz || echo "No tarballs yet"
-          echo ""
-          echo "Checking package.json files array includes required directories"
-          cat package.json | grep -A 5 '"files"'
-
-      - name: Run tests
-        run: npm test
 
       - name: Prepare package for npm
         run: |
-          # Remove pkg/.gitignore created by wasm-pack so pkg/ contents are included in tarball
+          # Remove pkg/.gitignore created by wasm-pack so pkg/ contents are in the tarball.
           rm -f pkg/.gitignore
-          echo "Removed pkg/.gitignore to ensure WASM files are included in package"
 
-      - name: Create tarball for npm installation
+      - name: Create main tarball
         run: |
-          # Create a clean package tarball that npm can install
           npm pack
-          echo ""
-          echo "Tarball contents:"
+          echo "Main tarball contents:"
           tar -tzf alizarin-*.tgz | grep -E "(pkg/|dist/)" | head -20
+
+      - name: Run tests
+        run: npm test
 
       - name: Get version from tag or input
         id: get_version
@@ -148,8 +129,16 @@ jobs:
             echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
 
+      # Auto-discover what to publish: every packed tarball, and every ext/*/core
+      # crate. Emitted as JSON arrays for the downstream matrices.
+      - name: Compute publish lists
+        id: lists
+        run: |
+          echo "npm_tarballs=$(ls *.tgz | jq -R . | jq -sc .)" >> $GITHUB_OUTPUT
+          echo "crate_exts=$(for d in ext/*/core; do [ -f "$d/Cargo.toml" ] && basename "$(dirname "$d")"; done | jq -R . | jq -sc .)" >> $GITHUB_OUTPUT
+          echo "npm tarballs: $(ls *.tgz | tr '\n' ' ')"
+
       - name: Create Release
-        id: create_release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
@@ -224,42 +213,35 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Node.js for publishing
-        uses: actions/setup-node@v4
+      - name: Upload npm tarballs for the publish matrix
+        uses: actions/upload-artifact@v4
         with:
-          node-version: '24.x'
-          registry-url: 'https://registry.npmjs.org'
+          name: npm-tarballs
+          path: '*.tgz'
+          retention-days: 1
+          if-no-files-found: error
 
-      - name: Publish to npm (Trusted Publishing)
+  # crates.io, phase 1: the foundation everything depends on, SERIAL and in order.
+  # extension-api -> core. A failure here fails the run and (via `needs`) stops the
+  # ext crates from attempting a publish that would only fail against a missing core.
+  publish-crates-core:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Publish foundation crates (serial, dependency order)
         run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-          if echo "$VERSION" | grep -qE '(alpha|beta)'; then
-            TAG="--tag alpha"
-          else
-            TAG=""
-          fi
-
-          # Publish main alizarin package
-          npm publish --provenance --access public $TAG
-
-          # Publish @alizarin/* JS extensions (ext/*/js/)
-          for ext_dir in ext/*/js/; do
-            [ -d "$ext_dir/dist" ] || continue
-            ext_name=$(basename "$(dirname "$ext_dir")")
-            echo "=== Publishing @alizarin/$ext_name ==="
-            cd "$ext_dir"
-            npm publish --provenance --access public $TAG
-            cd - > /dev/null
-          done
-
-      - name: Publish crates to crates.io (alizarin-core + all ext-core, auto-discovered)
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        continue-on-error: true
-        run: |
-          # Publish one crate dir, tolerating "already uploaded" and retrying past
-          # the crates.io index lag that trips an ext crate depending on a
-          # just-published alizarin-core.
+          # Publish one crate dir: tolerate "already uploaded" (safe re-runs),
+          # retry past crates.io index lag, return non-zero on a genuine failure.
           publish() {
             local dir="$1" out
             for attempt in 1 2 3; do
@@ -267,25 +249,88 @@ jobs:
                 echo "$out"; echo "  ✓ $dir"; return 0
               fi
               echo "$out"
-              echo "$out" | grep -qiE 'already (exists|uploaded)' && { echo "  = $dir already on crates.io"; return 0; }
+              if echo "$out" | grep -qiE 'already (exists|uploaded)'; then
+                echo "  = $dir already on crates.io"; return 0
+              fi
               echo "  retry $dir in 30s (crates.io index lag)…"; sleep 30
             done
-            echo "::warning::failed to publish $dir after retries"
+            echo "::error::failed to publish $dir after retries"
+            return 1
           }
+          publish crates/alizarin-extension-api || exit 1
+          publish crates/alizarin-core || exit 1
 
-          # ABI crate first - alizarin-core deps it by version.
-          publish crates/alizarin-extension-api
-
-          # Core next - every ext-core crate deps it by version.
-          publish crates/alizarin-core
-
-          # Every ext-core crate, auto-discovered - no maintained list. They only
-          # dep alizarin-core (no inter-ext deps), so the order among them is
-          # irrelevant. New ext crates are picked up automatically.
-          for ext in ext/*/core; do
-            [ -f "$ext/Cargo.toml" ] && publish "$ext"
-          done
-
-      - name: Output installation instructions
+  # npm: every tarball in parallel. One failing leg reddens the run but the others
+  # still publish, and the matrix names which package failed.
+  publish-npm:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # OIDC Trusted Publishing + provenance
+    strategy:
+      fail-fast: false
+      matrix:
+        tarball: ${{ fromJSON(needs.build.outputs.npm_tarballs) }}
+    steps:
+      - name: Download npm tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-tarballs
+      # Node 24 ships an npm new enough for the OIDC handshake (Node 22's npm 10.x
+      # silently fails it with a misleading 404).
+      - name: Set up Node.js for publishing
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Publish ${{ matrix.tarball }}
         run: |
-          echo "::notice::Release created! Install with: npm install ${{ github.repository }}#${{ steps.get_version.outputs.version }}"
+          VERSION="${{ needs.build.outputs.version }}"
+          if echo "$VERSION" | grep -qE '(alpha|beta)'; then TAG="--tag alpha"; else TAG=""; fi
+          if out=$(npm publish "${{ matrix.tarball }}" --provenance --access public $TAG 2>&1); then
+            echo "$out"; echo "  ✓ published ${{ matrix.tarball }}"
+          elif echo "$out" | grep -qiE 'cannot publish over|previously published|already published'; then
+            echo "$out"; echo "  = ${{ matrix.tarball }} already published, tolerating"
+          else
+            echo "$out"; echo "::error::failed to publish ${{ matrix.tarball }}"; exit 1
+          fi
+
+  # crates.io, phase 2: every ext/*/core, in parallel, after core is live. They only
+  # depend on alizarin-core (no inter-ext deps), so order among them is irrelevant.
+  publish-crates-ext:
+    needs: [build, publish-crates-core]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: ${{ fromJSON(needs.build.outputs.crate_exts) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Publish ext/${{ matrix.crate }}/core
+        run: |
+          publish() {
+            local dir="$1" out
+            for attempt in 1 2 3; do
+              if out=$( (cd "$dir" && cargo publish --allow-dirty) 2>&1 ); then
+                echo "$out"; echo "  ✓ $dir"; return 0
+              fi
+              echo "$out"
+              if echo "$out" | grep -qiE 'already (exists|uploaded)'; then
+                echo "  = $dir already on crates.io"; return 0
+              fi
+              echo "  retry $dir in 30s (crates.io index lag)…"; sleep 30
+            done
+            echo "::error::failed to publish $dir after retries"
+            return 1
+          }
+          publish "ext/${{ matrix.crate }}/core" || exit 1
