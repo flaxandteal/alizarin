@@ -893,7 +893,11 @@ fn single_tree_to_resource(
 /// * **Parents before children**, remapping each child's `parenttile_id` to its
 ///   parent's new id on the way down: a child's id is keyed on its parent's,
 ///   so the parent must be renamed first.
-fn assign_canonical_tile_ids(tiles: &mut [StaticTile], graph: &StaticGraph, resource_id: &str) {
+pub(crate) fn assign_canonical_tile_ids(
+    tiles: &mut [StaticTile],
+    graph: &StaticGraph,
+    resource_id: &str,
+) {
     let is_cardinality_one = |ng_id: &str| -> bool {
         graph
             .get_nodegroup_by_id(ng_id)

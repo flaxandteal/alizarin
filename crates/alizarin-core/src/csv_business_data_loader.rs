@@ -953,6 +953,14 @@ pub fn build_resources_from_business_csv_with_context(
             }
         }
 
+        // Rewrite cardinality-1 tile ids to their canonical (derivable) form, so a
+        // standalone layer can compute and override them — including nested ones,
+        // which the namespace-based ids above left unaddressable (L7). Cardinality-n
+        // tiles keep their namespace-isolated ids (so they still accumulate across
+        // layers); this only rewrites single-valued tiles and fixes up the
+        // parenttile_id of their children. Mirrors json_conversion::tree_to_tiles.
+        crate::json_conversion::assign_canonical_tile_ids(&mut tiles, graph, &resourceinstanceid);
+
         resources.push(StaticResource {
             resourceinstance: StaticResourceMetadata {
                 resourceinstanceid: resourceinstanceid.clone(),
@@ -1559,6 +1567,114 @@ parent_alias,alias,name,datatype,cardinality,ontology_class,parent_property,desc
                 .any(|d| d.message.contains("ambiguous")),
             "error should explain the ambiguity, got: {:?}",
             err.diagnostics
+        );
+    }
+
+    // --- L7: canonical (derivable) tile ids for cardinality-1 tiles ----------
+    //
+    // NOTE: `canonical_tile_id` is an alizarin-specific deterministic scheme, NOT
+    // an Arches one — Arches mints random tile ids. It exists so a standalone layer
+    // can COMPUTE (and therefore override) a cardinality-1 tile it has never seen.
+    // This test asserts the CSV loader now uses it (matching json_conversion's
+    // tree_to_tiles), not that the ids match Arches.
+
+    #[test]
+    fn test_cardinality_one_tiles_use_canonical_ids() {
+        use crate::graph::canonical_tile_id;
+
+        // The standard test graph: `birth_date` and `person_type` are root
+        // cardinality-1 nodegroups (CSV can't nest a cardinality-1 nodegroup — a
+        // non-root cardinality-1 node folds into its parent's nodegroup).
+        let (graph, collections) = build_test_graph();
+
+        let csv = "ResourceID,name_value,birth_date\njohn-1,John Smith,1850-03-15";
+        let resources = build_resources_from_business_csv(
+            csv,
+            &graph,
+            &collections,
+            BusinessDataCsvOptions {
+                strict_concepts: false,
+                ..Default::default()
+            },
+        )
+        .expect("Should build");
+
+        let resid = generate_uuid_v5(("resource", Some(&graph.graphid)), "john-1");
+        let birth_ng = node_by_alias(&graph, "birth_date").nodeid.clone();
+
+        let tiles = resources[0].tiles.as_ref().unwrap();
+        let birth_tile = tiles
+            .iter()
+            .find(|t| t.nodegroup_id == birth_ng)
+            .expect("birth_date tile present");
+
+        // The id a standalone layer would compute from (resource id, nodegroup id).
+        let expected = canonical_tile_id(&resid, &birth_ng, None);
+        assert_eq!(
+            birth_tile.tileid.as_deref(),
+            Some(expected.as_str()),
+            "root cardinality-1 tile must carry its canonical, derivable id (L7)"
+        );
+
+        // And it is NOT the old namespace-based gen_tile_id derivation, proving the
+        // loader switched schemes.
+        let old_style = generate_uuid_v5(("tile", Some(&resid)), &birth_ng);
+        assert_ne!(
+            birth_tile.tileid.as_deref(),
+            Some(old_style.as_str()),
+            "tile id must no longer use the non-canonical gen_tile_id derivation"
+        );
+    }
+
+    #[test]
+    fn test_csv_layers_compose_cardinality_one_override_without_spurious_warning() {
+        // End-to-end L7: two CSV-built layers of the same resource differ on a
+        // cardinality-1 nodegroup. Because that tile now has a canonical id, it
+        // collides across layers by design and the topmost overrides — and the
+        // intended collision must NOT trip merge_resources' divergent-data warning.
+        use crate::graph::compose_resource_across_layers;
+
+        let (graph, collections) = build_test_graph();
+        let build = |date: &str| {
+            let csv = format!("ResourceID,birth_date\njohn-1,{}", date);
+            build_resources_from_business_csv(
+                &csv,
+                &graph,
+                &collections,
+                BusinessDataCsvOptions {
+                    strict_concepts: false,
+                    ..Default::default()
+                },
+            )
+            .expect("Should build")
+            .pop()
+            .expect("one resource")
+        };
+
+        let top = build("1850-03-15");
+        let bottom = build("1799-01-01");
+
+        // Topmost-first.
+        let (composed, warnings) = compose_resource_across_layers(vec![top, bottom], &graph, false)
+            .expect("compose should succeed");
+
+        assert!(
+            warnings.is_empty(),
+            "an intended cardinality-1 override must not warn, got: {:?}",
+            warnings
+        );
+
+        let birth_ng = node_by_alias(&graph, "birth_date").nodeid.clone();
+        let birth_node = node_by_alias(&graph, "birth_date").nodeid.clone();
+        let tiles = composed.tiles.as_ref().unwrap();
+        let birth_tile = tiles
+            .iter()
+            .find(|t| t.nodegroup_id == birth_ng)
+            .expect("birth_date tile present after compose");
+        assert_eq!(
+            birth_tile.data.get(&birth_node).and_then(|v| v.as_str()),
+            Some("1850-03-15"),
+            "the topmost layer's value must win the override"
         );
     }
 }

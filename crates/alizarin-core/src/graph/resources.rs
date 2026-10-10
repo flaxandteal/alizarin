@@ -1437,7 +1437,23 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
                         // Warn if the dropped tile carried DIFFERENT data — almost
                         // always a missing per-layer uuidNamespace, which would
                         // otherwise make a lower layer's members vanish silently.
-                        if merged_tiles[kept_idx].data != tile.data {
+                        //
+                        // EXCEPT when the id is the canonical (cardinality-1) tile id:
+                        // those are DERIVED from (resource, nodegroup, parent) and are
+                        // SUPPOSED to collide across layers — that collision is exactly
+                        // how a single-valued group is overridden (topmost wins). A
+                        // uuidNamespace there would break the override, so differing
+                        // data is expected, not a problem, and must not warn.
+                        let is_canonical_override = tile.tileid.as_deref()
+                            == Some(
+                                super::canonical_tile_id(
+                                    &tile.resourceinstance_id,
+                                    &tile.nodegroup_id,
+                                    tile.parenttile_id.as_deref(),
+                                )
+                                .as_str(),
+                            );
+                        if merged_tiles[kept_idx].data != tile.data && !is_canonical_override {
                             warnings.push(format!(
                                 "Tile id '{}' (nodegroup '{}', resource '{}') appears in \
                                  multiple layers with different data; kept the topmost. \
