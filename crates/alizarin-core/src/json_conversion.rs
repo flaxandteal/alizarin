@@ -271,6 +271,7 @@ pub fn build_tree_from_tiles(
             description: None,
             map_popup: None,
             slug: None,
+            point: None,
         },
         graph_id: graph_id.to_string(),
         name: resource_id.to_string(),

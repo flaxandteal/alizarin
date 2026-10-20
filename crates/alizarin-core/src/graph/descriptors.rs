@@ -22,6 +22,14 @@ pub struct StaticResourceDescriptors {
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub slug: Option<String>,
+    /// Representative display point as a geojson `Point`
+    /// (`{"type":"Point","coordinates":[lng,lat]}`), computed from the resource's
+    /// primary geometry (centroid / point-on-surface) — the "location descriptor",
+    /// a sibling of `name`/`map_popup`. Consumers (e.g. ros-madair-emit's grid edge)
+    /// use it to place a pin without reading the full geometry. `None` until a
+    /// descriptor template / builder populates it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub point: Option<String>,
 }
 
 impl StaticResourceDescriptors {
@@ -31,6 +39,7 @@ impl StaticResourceDescriptors {
             && self.map_popup.is_none()
             && self.description.is_none()
             && self.slug.is_none()
+            && self.point.is_none()
     }
 
     /// Create empty descriptors
@@ -217,6 +226,7 @@ mod tests {
             slug: Some("test-slug".to_string()),
             description: None,
             map_popup: None,
+            point: None,
         };
         let json = serde_json::to_string(&d).unwrap();
         let parsed: StaticResourceDescriptors = serde_json::from_str(&json).unwrap();
