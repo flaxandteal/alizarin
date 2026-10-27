@@ -24,9 +24,8 @@ use super::translatable::StaticTranslatableString;
 /// Lookup indices built lazily — cheap HashMap entries, no struct cloning.
 #[derive(Debug, Clone)]
 struct LookupIndices {
-    node_by_id: HashMap<String, LayerRef>,
-    node_by_alias: HashMap<String, LayerRef>,
-    nodes_by_alias_arc: HashMap<String, Arc<StaticNode>>,
+    // Node CONTENT lookups live on MergedSlices (so they carry the ontology-class
+    // union); these are the structural LayerRef indices that don't need it.
     nodegroup_by_id: HashMap<String, LayerRef>,
     edges_map: HashMap<String, Vec<String>>,
     nodes_by_nodegroup: HashMap<String, Vec<LayerRef>>,
@@ -44,6 +43,12 @@ struct MergedSlices {
     all_cxnxw: Vec<StaticCardsXNodesXWidgets>,
     all_fxg: Vec<StaticFunctionsXGraphs>,
     nodes_by_nodegroup_flat: HashMap<String, Vec<usize>>,
+    // Node CONTENT lookups resolve into `all_nodes` (not per-layer graphs) so that
+    // callers see the cross-layer ONTOLOGY-CLASS UNION baked into the merged node,
+    // not just the topmost layer's classes.
+    node_pos_by_id: HashMap<String, usize>,
+    node_pos_by_alias: HashMap<String, usize>,
+    nodes_by_alias_arc: HashMap<String, Arc<StaticNode>>,
 }
 
 /// Points to a specific item in a specific layer.
@@ -137,9 +142,6 @@ impl LayeredGraph {
     }
 
     fn build_lookup_indices(&self) -> LookupIndices {
-        let mut node_by_id: HashMap<String, LayerRef> = HashMap::new();
-        let mut node_by_alias: HashMap<String, LayerRef> = HashMap::new();
-        let mut nodes_by_alias_arc: HashMap<String, Arc<StaticNode>> = HashMap::new();
         let mut nodegroup_by_id: HashMap<String, LayerRef> = HashMap::new();
         let mut edges_map: HashMap<String, Vec<String>> = HashMap::new();
         let mut nodes_by_nodegroup: HashMap<String, Vec<LayerRef>> = HashMap::new();
@@ -148,37 +150,26 @@ impl LayeredGraph {
         // A node/edge already contributed by a higher layer is SKIPPED, so an
         // overlay that re-describes the same model does not duplicate entries
         // (which would double every cardinality-n nodegroup at tree-build time).
+        // Node CONTENT (id/alias → node, carrying the ontology-class union) is
+        // served from MergedSlices, not from here.
         let mut seen_node_ids = std::collections::HashSet::new();
         let mut seen_edges = std::collections::HashSet::new();
         for (layer_idx, graph) in self.layers.iter().enumerate().rev() {
             for (item_idx, node) in graph.nodes.iter().enumerate() {
-                let lr = LayerRef {
-                    layer_idx,
-                    item_idx,
-                };
-
                 // First (topmost) occurrence of this node id only — otherwise a
                 // re-describing overlay double-fills nodes_by_nodegroup.
                 if !seen_node_ids.insert(node.nodeid.clone()) {
                     continue;
                 }
-                node_by_id.entry(node.nodeid.clone()).or_insert(lr.clone());
-
-                if let Some(ref alias) = node.alias {
-                    if !alias.is_empty() {
-                        node_by_alias.entry(alias.clone()).or_insert(lr.clone());
-                        nodes_by_alias_arc
-                            .entry(alias.clone())
-                            .or_insert_with(|| Arc::new(node.clone()));
-                    }
-                }
-
                 if let Some(ref ng_id) = node.nodegroup_id {
                     if !ng_id.is_empty() {
                         nodes_by_nodegroup
                             .entry(ng_id.clone())
                             .or_default()
-                            .push(lr.clone());
+                            .push(LayerRef {
+                                layer_idx,
+                                item_idx,
+                            });
                     }
                 }
             }
@@ -203,9 +194,6 @@ impl LayeredGraph {
         }
 
         LookupIndices {
-            node_by_id,
-            node_by_alias,
-            nodes_by_alias_arc,
             nodegroup_by_id,
             edges_map,
             nodes_by_nodegroup,
@@ -225,7 +213,10 @@ impl LayeredGraph {
         // model does not duplicate entries. Without this, a duplicated edge/card
         // makes the tile->tree builder emit a cardinality-n nodegroup TWICE, and a
         // duplicated fxg makes compute_tiles run the same function twice.
-        let mut seen_node_ids = std::collections::HashSet::new();
+        // Nodes keep the topmost description, but their ONTOLOGY CLASSES are unioned
+        // across layers (see the node loop) — so `node_idx_by_id` tracks where each
+        // node landed rather than just whether it was seen.
+        let mut node_idx_by_id: HashMap<String, usize> = HashMap::new();
         let mut seen_ng_ids = std::collections::HashSet::new();
         let mut seen_card_ngs = std::collections::HashSet::new();
         let mut seen_edges = std::collections::HashSet::new();
@@ -234,8 +225,32 @@ impl LayeredGraph {
 
         for graph in self.layers.iter().rev() {
             for node in &graph.nodes {
-                if seen_node_ids.insert(node.nodeid.clone()) {
-                    all_nodes.push(node.clone());
+                match node_idx_by_id.get(&node.nodeid) {
+                    None => {
+                        node_idx_by_id.insert(node.nodeid.clone(), all_nodes.len());
+                        all_nodes.push(node.clone());
+                    }
+                    Some(&idx) => {
+                        // The same node, re-described by a LOWER layer. Keep the
+                        // topmost description, but UNION its ontology classes: a model
+                        // may be typed under a different ontology in each layer, and
+                        // the merged view should expose the union (`ontologyclass` is a
+                        // vector). Topmost classes stay first; lower layers append any
+                        // new ones, deduped. Order-preserving, so the primary (topmost)
+                        // ontology leads.
+                        //
+                        // NOTE: edge `ontologyproperty` is single-valued, so an edge
+                        // cannot yet carry the union of properties across ontologies —
+                        // only classes compose. See the edge loop below (topmost wins).
+                        if let Some(extra) = node.ontologyclass.as_ref() {
+                            let target = all_nodes[idx].ontologyclass.get_or_insert_with(Vec::new);
+                            for class in extra {
+                                if !target.contains(class) {
+                                    target.push(class.clone());
+                                }
+                            }
+                        }
+                    }
                 }
             }
             for ng in &graph.nodegroups {
@@ -272,6 +287,8 @@ impl LayeredGraph {
         }
 
         let mut nodes_by_nodegroup_flat: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut node_pos_by_alias: HashMap<String, usize> = HashMap::new();
+        let mut nodes_by_alias_arc: HashMap<String, Arc<StaticNode>> = HashMap::new();
         for (idx, node) in all_nodes.iter().enumerate() {
             if let Some(ref ng_id) = node.nodegroup_id {
                 if !ng_id.is_empty() {
@@ -281,9 +298,22 @@ impl LayeredGraph {
                         .push(idx);
                 }
             }
+            if let Some(ref alias) = node.alias {
+                if !alias.is_empty() {
+                    // `all_nodes` already deduped by id (topmost kept, classes unioned),
+                    // so the first node carrying an alias is the authoritative one.
+                    node_pos_by_alias.entry(alias.clone()).or_insert(idx);
+                    nodes_by_alias_arc
+                        .entry(alias.clone())
+                        .or_insert_with(|| Arc::new(node.clone()));
+                }
+            }
         }
 
         MergedSlices {
+            node_pos_by_id: node_idx_by_id,
+            node_pos_by_alias,
+            nodes_by_alias_arc,
             all_nodes,
             all_nodegroups,
             all_edges,
@@ -327,17 +357,18 @@ impl GraphLookup for LayeredGraph {
     }
 
     fn get_node_by_id(&self, id: &str) -> Option<&StaticNode> {
-        self.indices()
-            .node_by_id
-            .get(id)
-            .and_then(|lr| self.resolve_node(lr))
+        // Resolve into the MERGED nodes so the returned node carries the
+        // cross-layer ontology-class union, not just the topmost layer's classes.
+        let slices = self.merged_slices();
+        slices.node_pos_by_id.get(id).map(|&i| &slices.all_nodes[i])
     }
 
     fn get_node_by_alias(&self, alias: &str) -> Option<&StaticNode> {
-        self.indices()
-            .node_by_alias
+        let slices = self.merged_slices();
+        slices
+            .node_pos_by_alias
             .get(alias)
-            .and_then(|lr| self.resolve_node(lr))
+            .map(|&i| &slices.all_nodes[i])
     }
 
     fn find_node_by_alias(&self, alias: &str) -> Option<&StaticNode> {
@@ -346,11 +377,11 @@ impl GraphLookup for LayeredGraph {
     }
 
     fn get_node_arc_by_alias(&self, alias: &str) -> Option<Arc<StaticNode>> {
-        self.indices().nodes_by_alias_arc.get(alias).cloned()
+        self.merged_slices().nodes_by_alias_arc.get(alias).cloned()
     }
 
     fn nodes_by_alias_arc(&self) -> Option<&HashMap<String, Arc<StaticNode>>> {
-        Some(&self.indices().nodes_by_alias_arc)
+        Some(&self.merged_slices().nodes_by_alias_arc)
     }
 
     fn get_nodegroup_by_id(&self, nodegroup_id: &str) -> Option<&StaticNodegroup> {
@@ -699,5 +730,169 @@ mod tests {
         assert!(ids.contains(&"n1"));
         assert!(ids.contains(&"n2"));
         assert!(ids.contains(&"root"));
+    }
+
+    // --- Ontology-class composition across layers --------------------------
+    //
+    // `ontologyclass` is a vector: the SAME node may be typed under a different
+    // ontology in each layer, and the composed `LayeredGraph` must expose the UNION
+    // of those classes — through every node-content accessor, not just one.
+    // (`ontologyproperty` on edges is single-valued, so edges cannot yet carry a
+    // cross-ontology union — noted, not tested here.)
+
+    fn graph_typing_node(graphid: &str, n1_classes: serde_json::Value) -> StaticGraph {
+        let mut g: StaticGraph = serde_json::from_value(json!({
+            "graphid": graphid,
+            "name": {"en": graphid},
+            "root": {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": graphid},
+            "nodes": [
+                {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": graphid},
+                {"nodeid": "n1", "name": "Name", "datatype": "string", "graph_id": graphid,
+                 "alias": "name", "nodegroup_id": "ng1", "ontologyclass": n1_classes}
+            ],
+            "nodegroups": [{"nodegroupid": "ng1", "cardinality": "1"}],
+            "edges": [{"edgeid": "e1", "domainnode_id": "root", "rangenode_id": "n1", "graph_id": graphid}]
+        }))
+        .unwrap();
+        g.build_indices();
+        g
+    }
+
+    #[test]
+    fn layered_graph_unions_ontology_classes_across_every_accessor() {
+        // Same node n1, typed under CIDOC-CRM in the base and Dublin Core in the overlay.
+        let base = graph_typing_node(
+            "base",
+            json!(["http://www.cidoc-crm.org/cidoc-crm/E33_Linguistic_Object"]),
+        );
+        let overlay = graph_typing_node("overlay", json!(["http://purl.org/dc/terms/title"]));
+        let lg = LayeredGraph::new(Arc::new(base), vec![Arc::new(overlay)]);
+
+        let assert_union = |classes: &Option<Vec<String>>, via: &str| {
+            let c = classes
+                .as_ref()
+                .unwrap_or_else(|| panic!("{via}: n1 should carry ontology classes"));
+            assert!(
+                c.iter().any(|s| s.contains("E33_Linguistic_Object")),
+                "{via}: base ontology missing from union {c:?}"
+            );
+            assert!(
+                c.iter().any(|s| s.contains("dc/terms/title")),
+                "{via}: overlay ontology missing from union {c:?}"
+            );
+            assert_eq!(c.len(), 2, "{via}: exactly the two distinct classes {c:?}");
+        };
+
+        // The union must be visible no matter how the node is fetched.
+        assert_union(
+            &lg.get_node_by_id("n1").unwrap().ontologyclass,
+            "get_node_by_id",
+        );
+        assert_union(
+            &lg.find_node_by_alias("name").unwrap().ontologyclass,
+            "find_node_by_alias",
+        );
+        assert_union(
+            &lg.get_node_arc_by_alias("name").unwrap().ontologyclass,
+            "get_node_arc_by_alias",
+        );
+        let in_slice = lg.nodes_slice().iter().find(|n| n.nodeid == "n1").unwrap();
+        assert_union(&in_slice.ontologyclass, "nodes_slice");
+
+        // The node's OTHER content still follows topmost-wins — only classes union.
+        assert_eq!(lg.get_node_by_id("n1").unwrap().graph_id, "overlay");
+    }
+
+    #[test]
+    fn ontology_union_dedupes_preserves_topmost_first_and_tolerates_missing() {
+        // base n1 = [A, B]; overlay (topmost) n1 = [B, C]  -> union, B not duplicated.
+        let mut base = graph_typing_node("base", json!(["urn:A", "urn:B"]));
+        let mut overlay = graph_typing_node("ov", json!(["urn:B", "urn:C"]));
+        // Add a second node: typed only in the overlay, absent class in the base.
+        for (g, cls) in [
+            (&mut base, serde_json::Value::Null),
+            (&mut overlay, json!(["urn:Z"])),
+        ] {
+            let mut n2: StaticNode = serde_json::from_value(json!({
+                "nodeid": "n2", "name": "Other", "datatype": "string",
+                "graph_id": g.graphid, "alias": "other", "nodegroup_id": "ng1",
+                "ontologyclass": cls
+            }))
+            .unwrap();
+            n2.ontologyclass = n2.ontologyclass.filter(|v| !v.is_empty());
+            g.nodes.push(n2);
+            g.build_indices();
+        }
+        let lg = LayeredGraph::new(Arc::new(base), vec![Arc::new(overlay)]);
+
+        let n1 = lg
+            .get_node_by_id("n1")
+            .unwrap()
+            .ontologyclass
+            .clone()
+            .unwrap();
+        assert_eq!(n1.len(), 3, "deduped union (B once): {n1:?}");
+        let mut sorted = n1.clone();
+        sorted.sort();
+        assert_eq!(sorted, vec!["urn:A", "urn:B", "urn:C"]);
+        assert_eq!(n1[0], "urn:B", "topmost (overlay) classes lead: {n1:?}");
+
+        // n2: no class in the base, [Z] in the overlay -> just [Z] (no loss, no panic).
+        assert_eq!(
+            lg.get_node_by_id("n2")
+                .unwrap()
+                .ontologyclass
+                .clone()
+                .unwrap(),
+            vec!["urn:Z"]
+        );
+    }
+
+    #[test]
+    fn ontology_class_union_is_consistent_with_validate_edge_multi() {
+        use crate::ontology::OntologyValidator;
+        // `has_name` is only valid with domain `Place`. The base types the node as the
+        // generic `Thing`; only the overlay adds `Place`. So the edge validates *only*
+        // because the composed view unions both classes.
+        const ONT: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xml:base="urn:o/">
+  <rdfs:Class rdf:about="Thing"/>
+  <rdfs:Class rdf:about="Place"/>
+  <rdfs:Class rdf:about="Name"/>
+  <rdf:Property rdf:about="has_name">
+    <rdfs:domain rdf:resource="Place"/>
+    <rdfs:range rdf:resource="Name"/>
+  </rdf:Property>
+</rdf:RDF>"#;
+        let validator = OntologyValidator::from_rdfs_xml(&[ONT]).unwrap();
+
+        let base = graph_typing_node("base", json!(["urn:o/Thing"]));
+        let overlay = graph_typing_node("ov", json!(["urn:o/Place"]));
+        let lg = LayeredGraph::new(Arc::new(base), vec![Arc::new(overlay)]);
+
+        let domain_union = lg
+            .get_node_by_id("n1")
+            .unwrap()
+            .ontologyclass
+            .clone()
+            .unwrap();
+        let range = vec!["urn:o/Name".to_string()];
+
+        // The composed union validates (Place is in it)...
+        assert!(
+            validator
+                .validate_edge_multi(&domain_union, "urn:o/has_name", &range)
+                .is_ok(),
+            "edge should validate against the unioned classes {domain_union:?}"
+        );
+        // ...whereas the base layer's classes ALONE would not — proving the union is
+        // what the validator consumes, consistently.
+        assert!(
+            validator
+                .validate_edge_multi(&["urn:o/Thing".to_string()], "urn:o/has_name", &range)
+                .is_err(),
+            "the base ontology alone must NOT validate — the union is load-bearing"
+        );
     }
 }
