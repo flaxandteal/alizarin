@@ -416,6 +416,8 @@ pub fn validate_model_csvs(
 /// * `collections_json` - JSON string of the built collections array (from buildGraphFromModelCsvs)
 /// * `default_language` - Default language code (optional, defaults to "en")
 /// * `strict_concepts` - Whether to error on unresolved concept labels (optional, defaults to true)
+/// * `uuid_namespace` - Layer namespace (a UUID): given, multi-valued tile ids are derived
+///   and reproducible, and each layer must use its own; omitted, they are random
 ///
 /// # Returns
 /// JSON object: `{ "business_data": { "resources": [...] } }`

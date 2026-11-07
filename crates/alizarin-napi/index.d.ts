@@ -25,6 +25,10 @@ export declare function buildGraphFromCsvs(graphCsv: string, nodesCsv: string, c
  *
  * Returns the resources wrapped in the `{ business_data: { resources: [...] } }`
  * format expected by PrebuildLoader.
+ *
+ * `uuid_namespace` is a layer namespace (a UUID): given, multi-valued tile ids
+ * are derived and reproducible, and each layer must use its own; omitted, they
+ * are random.
  */
 export declare function buildBusinessDataFromCsv(csvData: string, graphJson: string, collectionsJson: string, defaultLanguage?: string | undefined | null, strictConcepts?: boolean | undefined | null, uuidNamespace?: string | undefined | null, rdmCache?: NapiRdmCache | undefined | null): any
 /**

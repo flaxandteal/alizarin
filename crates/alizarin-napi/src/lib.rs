@@ -590,6 +590,10 @@ pub fn build_graph_from_csvs(
 ///
 /// Returns the resources wrapped in the `{ business_data: { resources: [...] } }`
 /// format expected by PrebuildLoader.
+///
+/// `uuid_namespace` is a layer namespace (a UUID): given, multi-valued tile ids
+/// are derived and reproducible, and each layer must use its own; omitted, they
+/// are random.
 #[napi]
 pub fn build_business_data_from_csv(
     csv_data: String,

@@ -598,7 +598,8 @@ fn validate_model_csvs(
 /// Build resource instances from a business data CSV.
 ///
 /// Resolves node aliases to UUIDs from the graph, concept labels to UUIDs
-/// from the collections. Generates deterministic UUIDs for resources and tiles.
+/// from the collections. Resource ids are deterministic; so are tile ids for
+/// single-valued nodegroups, and for multi-valued ones when uuid_namespace is given.
 ///
 /// Args:
 ///     csv_data: The CSV string with ResourceID as first column, node aliases as remaining columns
@@ -606,6 +607,9 @@ fn validate_model_csvs(
 ///     collections_json: JSON string of the built collections array
 ///     default_language: Default language code (default "en")
 ///     strict_concepts: Whether to error on unresolved concept labels (default true)
+///     uuid_namespace: Layer namespace (a UUID). Given, multi-valued tile ids are
+///         derived and reproducible, and each layer must use its own; omitted,
+///         they are random.
 ///
 /// Returns:
 ///     JSON string: { "business_data": { "resources": [...] } }

@@ -51,12 +51,14 @@ pub struct BusinessDataCsvOptions {
     pub default_language: String,
     /// Whether to error on unresolved concept labels (default: true)
     pub strict_concepts: bool,
-    /// Override the base UUID v5 namespace for tile ID generation.
-    /// When building separate layers that share a graph model, each layer
-    /// should use a distinct namespace so tile IDs don't collide for the
-    /// same resource + nodegroup + sortorder. Resource IDs are unaffected
-    /// (they always use the default namespace so cross-layer lookup works).
-    /// If None, uses the default Alizarin namespace.
+    /// Layer namespace for cardinality-n tile ids, as for tree conversion
+    /// (`tree_to_tiles_with_namespace`). Given, they are derived
+    /// (`multi_tile_id`), so the same CSV always yields the same ids; each
+    /// layer must use its own, or two layers adding to the same nodegroup
+    /// would fuse their tiles. `None` gives them random ids, which can never
+    /// collide across layers but are not reproducible. Cardinality-1 tiles
+    /// are canonical either way, and resource ids always use the default
+    /// namespace so cross-layer lookup works.
     pub uuid_namespace: Option<String>,
 }
 
@@ -891,12 +893,15 @@ pub fn build_resources_from_business_csv_with_context(
             if cardinality == "n" {
                 // Each entry (row) gets its own tile
                 for (sortorder, (_line, data)) in entries.iter().enumerate() {
-                    let tileid = crate::graph::multi_tile_id(
-                        options.uuid_namespace.as_deref(),
-                        &resourceinstanceid,
-                        ng_id,
-                        sortorder as u32,
-                    );
+                    let tileid = match options.uuid_namespace.as_deref() {
+                        Some(ns) => crate::graph::multi_tile_id(
+                            Some(ns),
+                            &resourceinstanceid,
+                            ng_id,
+                            sortorder as u32,
+                        ),
+                        None => uuid::Uuid::new_v4().to_string(),
+                    };
 
                     let parenttile_id = parent_ng_id
                         .and_then(|png_id| {
@@ -1300,41 +1305,53 @@ jane-1,Jane Doe,1820-06-01";
         );
     }
 
-    #[test]
-    fn test_deterministic_uuids() {
-        let (graph, collections) = build_test_graph();
+    const TEST_LAYER_NS: &str = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
 
+    fn build_john(uuid_namespace: Option<&str>) -> Vec<StaticResource> {
+        let (graph, collections) = build_test_graph();
         let csv = "\
 ResourceID,name_value
 john-1,John Smith";
-
-        let r1 = build_resources_from_business_csv(
+        build_resources_from_business_csv(
             csv,
             &graph,
             &collections,
             BusinessDataCsvOptions {
                 strict_concepts: false,
+                uuid_namespace: uuid_namespace.map(str::to_string),
                 ..Default::default()
             },
         )
-        .unwrap();
+        .unwrap()
+    }
 
-        let r2 = build_resources_from_business_csv(
-            csv,
-            &graph,
-            &collections,
-            BusinessDataCsvOptions {
-                strict_concepts: false,
-                ..Default::default()
-            },
-        )
-        .unwrap();
+    #[test]
+    fn test_deterministic_uuids() {
+        let r1 = build_john(Some(TEST_LAYER_NS));
+        let r2 = build_john(Some(TEST_LAYER_NS));
 
         assert_eq!(
             r1[0].resourceinstance.resourceinstanceid,
             r2[0].resourceinstance.resourceinstanceid
         );
         assert_eq!(
+            r1[0].tiles.as_ref().unwrap()[0].tileid,
+            r2[0].tiles.as_ref().unwrap()[0].tileid,
+        );
+    }
+
+    #[test]
+    fn test_without_namespace_multi_valued_ids_are_random() {
+        let r1 = build_john(None);
+        let r2 = build_john(None);
+
+        // `names` is cardinality-n: a fresh id each build, so two layers built
+        // without namespaces can never fuse their tiles.
+        assert_eq!(
+            r1[0].resourceinstance.resourceinstanceid, r2[0].resourceinstance.resourceinstanceid,
+            "resource ids stay deterministic"
+        );
+        assert_ne!(
             r1[0].tiles.as_ref().unwrap()[0].tileid,
             r2[0].tiles.as_ref().unwrap()[0].tileid,
         );
@@ -1377,6 +1394,7 @@ john-1,John Smith";
                 &collections,
                 BusinessDataCsvOptions {
                     strict_concepts: false,
+                    uuid_namespace: Some(TEST_LAYER_NS.to_string()),
                     ..Default::default()
                 },
             )
