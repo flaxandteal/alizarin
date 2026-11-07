@@ -2,8 +2,9 @@
 
 use super::descriptors::StaticResourceDescriptors;
 use super::tile::StaticTile;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Metadata about a resource instance
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -34,7 +35,7 @@ pub struct StaticResourceSummary {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub descriptors: Option<StaticResourceDescriptors>,
-    #[serde(default)]
+    #[serde(default, serialize_with = "crate::sorted_serde::sorted_map")]
     pub metadata: HashMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub createdtime: Option<String>,
@@ -89,7 +90,10 @@ pub struct StaticResourceReference {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub root: Option<serde_json::Value>,
     /// Additional metadata (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "crate::sorted_serde::sorted_opt_map"
+    )]
     pub meta: Option<HashMap<String, serde_json::Value>>,
 }
 
@@ -143,7 +147,7 @@ pub struct StaticResource {
     pub resourceinstance: StaticResourceMetadata,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tiles: Option<Vec<StaticTile>>,
-    #[serde(default)]
+    #[serde(default, serialize_with = "crate::sorted_serde::sorted_map")]
     pub metadata: HashMap<String, String>,
 
     // Optional cache and scopes - stored as JSON for platform independence
@@ -199,7 +203,10 @@ pub struct RelatedResourceEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub descriptors: Option<StaticResourceDescriptors>,
     /// Additional metadata
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "crate::sorted_serde::sorted_opt_map"
+    )]
     pub meta: Option<HashMap<String, serde_json::Value>>,
 }
 
@@ -311,7 +318,10 @@ pub struct RelatedResourceListEntry {
     #[serde(rename = "_")]
     pub entries: Vec<RelatedResourceEntry>,
     /// Additional metadata
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "crate::sorted_serde::sorted_opt_map"
+    )]
     pub meta: Option<HashMap<String, serde_json::Value>>,
 }
 
@@ -547,14 +557,16 @@ pub struct RegistryMemoryStats {
 /// - Cache full resources for traversal (like staticStore)
 #[derive(Clone, Debug, Default)]
 pub struct StaticResourceRegistry {
-    resources: HashMap<String, ResourceEntry>,
+    /// Insertion-ordered, so listing a graph's resources follows load order
+    /// rather than hash order.
+    resources: IndexMap<String, ResourceEntry>,
 }
 
 impl StaticResourceRegistry {
     /// Create an empty registry
     pub fn new() -> Self {
         Self {
-            resources: HashMap::new(),
+            resources: IndexMap::new(),
         }
     }
 
@@ -1854,7 +1866,7 @@ pub fn batch_merge_resources(
 }
 
 /// Type alias for tile data merge mapping: canonical_idx -> Vec<(source_tile_id, data)>
-type TileDataMergeMap = HashMap<usize, Vec<(String, HashMap<String, serde_json::Value>)>>;
+type TileDataMergeMap = HashMap<usize, Vec<(String, BTreeMap<String, serde_json::Value>)>>;
 
 /// How a cardinality-1 scope with more than one tile is collapsed.
 ///
@@ -2169,7 +2181,7 @@ mod tests {
                 nodegroup_id: "ng1".to_string(),
                 resourceinstance_id: resource_id.to_string(),
                 parenttile_id: None,
-                data: HashMap::new(),
+                data: Default::default(),
                 provisionaledits: None,
                 sortorder: None,
             })

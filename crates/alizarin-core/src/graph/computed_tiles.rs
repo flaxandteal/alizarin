@@ -79,7 +79,6 @@ pub fn apply_compute_tiles(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     fn test_graph(functions_x_graphs: Vec<serde_json::Value>) -> StaticGraph {
         let json = serde_json::json!({
@@ -153,7 +152,7 @@ mod tests {
             config: &ComputeTilesConfig,
         ) -> Result<Vec<StaticTile>, String> {
             Ok(vec![StaticTile {
-                data: HashMap::new(),
+                data: Default::default(),
                 nodegroup_id: config.nodegroup.clone(),
                 resourceinstance_id: resource_id.to_string(),
                 tileid: None,
@@ -186,7 +185,7 @@ mod tests {
     fn apply_skips_when_nodegroup_attested() {
         let graph = test_graph(vec![compute_fxg()]);
         let mut tiles = vec![StaticTile {
-            data: HashMap::new(),
+            data: Default::default(),
             nodegroup_id: "forms".to_string(),
             resourceinstance_id: "r-001".to_string(),
             tileid: None,

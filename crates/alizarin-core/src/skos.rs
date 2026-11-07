@@ -46,7 +46,10 @@ pub struct SkosConcept {
     pub id: String,
     #[serde(default)]
     pub uri: Option<String>,
-    #[serde(rename = "prefLabels")]
+    #[serde(
+        rename = "prefLabels",
+        serialize_with = "crate::sorted_serde::sorted_map"
+    )]
     pub pref_labels: HashMap<String, SkosValue>,
     pub source: Option<String>,
     #[serde(rename = "sortOrder")]
@@ -81,22 +84,41 @@ pub struct SkosCollection {
     pub id: String,
     #[serde(default)]
     pub uri: Option<String>,
-    #[serde(rename = "prefLabels")]
+    #[serde(
+        rename = "prefLabels",
+        serialize_with = "crate::sorted_serde::sorted_map"
+    )]
     pub pref_labels: HashMap<String, SkosValue>,
-    #[serde(rename = "altLabels", default)]
+    #[serde(
+        rename = "altLabels",
+        default,
+        serialize_with = "crate::sorted_serde::sorted_map"
+    )]
     pub alt_labels: HashMap<String, Vec<SkosValue>>,
-    #[serde(rename = "scopeNotes", default)]
+    #[serde(
+        rename = "scopeNotes",
+        default,
+        serialize_with = "crate::sorted_serde::sorted_map"
+    )]
     pub scope_notes: HashMap<String, SkosValue>,
     /// The type of this grouping (ConceptScheme or Collection)
     #[serde(rename = "nodeType", default)]
     pub node_type: SkosNodeType,
     /// For ConceptScheme: hierarchical concepts (top-level with children)
     /// For Collection: flat member concepts (no hierarchy)
-    #[serde(default)]
+    #[serde(default, serialize_with = "crate::sorted_serde::sorted_map")]
     pub concepts: HashMap<String, SkosConcept>,
-    #[serde(rename = "__allConcepts", default)]
+    #[serde(
+        rename = "__allConcepts",
+        default,
+        serialize_with = "crate::sorted_serde::sorted_map"
+    )]
     pub all_concepts: HashMap<String, SkosConcept>,
-    #[serde(rename = "__values", default)]
+    #[serde(
+        rename = "__values",
+        default,
+        serialize_with = "crate::sorted_serde::sorted_map"
+    )]
     pub values: HashMap<String, SkosValue>,
 }
 

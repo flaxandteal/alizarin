@@ -74,7 +74,7 @@ impl WasmEnsureNodegroupResult {
     /// PORT: js/graphManager.ts:352 - iterating over result.recipes
     #[wasm_bindgen(js_name = getValueAliases)]
     pub fn get_value_aliases(&self) -> Vec<String> {
-        self.inner.values.keys().cloned().collect()
+        alizarin_core::sorted_serde::sorted_keys(self.inner.values.keys())
     }
 
     /// Get a structured value by alias
@@ -124,7 +124,7 @@ impl WasmPopulateResult {
     /// PORT: js/graphManager.ts:669 - iterating over result to get aliases
     #[wasm_bindgen(js_name = getValueAliases)]
     pub fn get_value_aliases(&self) -> Vec<String> {
-        self.inner.values.keys().cloned().collect()
+        alizarin_core::sorted_serde::sorted_keys(self.inner.values.keys())
     }
 
     /// PORT: js/graphManager.ts:670 - accessing value by alias
@@ -479,7 +479,7 @@ impl WASMResourceInstanceWrapper {
         {
             let mut core = self.core.borrow_mut();
             if core.tiles.is_none() {
-                core.tiles = Some(HashMap::new());
+                core.tiles = Some(alizarin_core::TileStore::new());
             }
 
             if !lazy && !append {
@@ -610,7 +610,7 @@ impl WASMResourceInstanceWrapper {
         *self.lazy.borrow_mut() = lazy;
         if lazy && self.core.borrow().tiles.is_none() {
             // Initialize empty tiles HashMap for lazy mode
-            self.core.borrow_mut().tiles = Some(HashMap::new());
+            self.core.borrow_mut().tiles = Some(alizarin_core::TileStore::new());
         }
     }
 
@@ -988,7 +988,7 @@ impl WASMResourceInstanceWrapper {
             .to_owned()
             .ok_or_else(|| JsValue::from_str("Tiles not initialized"))?;
 
-        let pruned_tiles: HashMap<String, StaticTile> = self.with_model_core(|core| {
+        let pruned_tiles: alizarin_core::TileStore = self.with_model_core(|core| {
             Ok(tiles
                 .into_iter()
                 .filter(|(_tile_id, tile)| core.is_tile_permitted(tile))

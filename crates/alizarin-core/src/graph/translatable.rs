@@ -87,7 +87,10 @@ impl Serialize for StaticTranslatableString {
     where
         S: serde::Serializer,
     {
-        self.translations.serialize(serializer)
+        self.translations
+            .iter()
+            .collect::<std::collections::BTreeMap<_, _>>()
+            .serialize(serializer)
     }
 }
 

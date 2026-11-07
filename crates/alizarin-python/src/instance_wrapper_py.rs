@@ -865,7 +865,7 @@ impl PyPopulateResult {
 
     /// Get all aliases
     fn aliases(&self) -> Vec<String> {
-        self.values.keys().cloned().collect()
+        alizarin_core::sorted_serde::sorted_keys(self.values.keys())
     }
 
     /// Get all nodegroups map

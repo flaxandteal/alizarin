@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_wrapper_derive::wasm_wrapper;
@@ -1407,7 +1407,7 @@ impl StaticTile {
 
     #[wasm_bindgen(getter = data)]
     pub fn get_data(&self) -> JsValue {
-        // Return as a JavaScript Map
+        // Return as a JavaScript Map (keys sorted, as tile data is a BTreeMap)
         let js_map = js_sys::Map::new();
         for (key, val) in &self.0.data {
             js_map.set(&JsValue::from_str(key), &json_to_js_value(val));
@@ -1423,7 +1423,7 @@ impl StaticTile {
             if js_sys::Reflect::has(&value, &JsValue::from_str("forEach")).unwrap_or(false) {
                 // It's a Map, iterate through it
                 let map = js_sys::Map::from(value);
-                let mut new_data = HashMap::new();
+                let mut new_data = BTreeMap::new();
                 map.for_each(&mut |val, key| {
                     if let Some(key_str) = key.as_string() {
                         if let Ok(json_val) = serde_wasm_bindgen::from_value(val) {
@@ -1433,7 +1433,7 @@ impl StaticTile {
                 });
                 self.0.data = new_data;
             } else if let Ok(obj_data) =
-                serde_wasm_bindgen::from_value::<HashMap<String, serde_json::Value>>(value)
+                serde_wasm_bindgen::from_value::<BTreeMap<String, serde_json::Value>>(value)
             {
                 self.0.data = obj_data;
             }

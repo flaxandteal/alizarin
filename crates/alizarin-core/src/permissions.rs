@@ -184,10 +184,9 @@ fn navigate_segment<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     fn make_test_tile(node_id: &str, data: serde_json::Value) -> StaticTile {
-        let mut tile_data = HashMap::new();
+        let mut tile_data = std::collections::BTreeMap::new();
         tile_data.insert(node_id.to_string(), data);
         StaticTile {
             tileid: Some("test-tile".to_string()),

@@ -6,7 +6,6 @@
 //! subset yields absent keys rather than errors, and later backfill merges
 //! without duplicating already-loaded values.
 
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -295,7 +294,7 @@ fn enumeration_does_not_assume_completeness() {
     );
 
     // Tiles map contains exactly what was loaded — no phantom tiles.
-    let tiles: &HashMap<String, StaticTile> =
+    let tiles: &alizarin_core::TileStore =
         core.tiles.as_ref().expect("tiles map exists after load");
     assert_eq!(tiles.len(), 1, "exactly the one loaded tile is present");
 }

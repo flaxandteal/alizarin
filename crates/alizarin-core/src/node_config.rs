@@ -29,7 +29,7 @@ pub struct StaticDomainValue {
     #[serde(default)]
     pub selected: bool,
     /// Translatable text labels by language code
-    #[serde(default)]
+    #[serde(default, serialize_with = "crate::sorted_serde::sorted_map")]
     pub text: HashMap<String, String>,
 }
 
@@ -62,10 +62,18 @@ impl StaticDomainValue {
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct NodeConfigBoolean {
     /// Language code -> label for true value
-    #[serde(default, rename = "trueLabel")]
+    #[serde(
+        default,
+        rename = "trueLabel",
+        serialize_with = "crate::sorted_serde::sorted_map"
+    )]
     pub true_label: HashMap<String, String>,
     /// Language code -> label for false value
-    #[serde(default, rename = "falseLabel")]
+    #[serde(
+        default,
+        rename = "falseLabel",
+        serialize_with = "crate::sorted_serde::sorted_map"
+    )]
     pub false_label: HashMap<String, String>,
     /// i18n property names
     #[serde(default)]

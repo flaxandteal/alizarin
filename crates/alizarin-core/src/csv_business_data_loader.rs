@@ -29,7 +29,7 @@
 //! ).unwrap();
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::csv_model_loader::{CsvModelDiagnostic, CsvModelError, DiagnosticLevel};
 use crate::extension_type_registry::ExtensionTypeRegistry;
@@ -803,14 +803,13 @@ pub fn build_resources_from_business_csv_with_context(
         let display_name = find_display_name(rows, &column_mappings, resource_id);
 
         // Group data by nodegroup
-        // For each nodegroup, collect: Vec<(row_index, HashMap<nodeid, value>)>
-        type TileData = HashMap<String, serde_json::Value>;
+        // For each nodegroup, collect: Vec<(row_index, BTreeMap<nodeid, value>)>
+        type TileData = BTreeMap<String, serde_json::Value>;
         let mut ng_data: HashMap<String, Vec<(usize, TileData)>> = HashMap::new();
 
         for (line, record) in rows {
             // For this row, group cell values by nodegroup
-            let mut row_ng_data: HashMap<String, HashMap<String, serde_json::Value>> =
-                HashMap::new();
+            let mut row_ng_data: HashMap<String, TileData> = HashMap::new();
 
             for (col_idx, mapping) in column_mappings.iter().enumerate() {
                 let Some(mapping) = mapping else { continue };
@@ -924,7 +923,7 @@ pub fn build_resources_from_business_csv_with_context(
                 }
             } else {
                 // Cardinality 1: merge all entries into a single tile
-                let mut merged_data: HashMap<String, serde_json::Value> = HashMap::new();
+                let mut merged_data = TileData::new();
                 for (_line, data) in entries {
                     for (node_id, value) in data {
                         if let Some(existing) = merged_data.get(node_id) {

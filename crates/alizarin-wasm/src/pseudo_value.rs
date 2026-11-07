@@ -531,7 +531,7 @@ pub(crate) struct TileBuilder {
     pub parenttile_id: Option<String>,
     pub resourceinstance_id: String,
     pub sortorder: Option<i32>,
-    pub data: HashMap<String, serde_json::Value>,
+    pub data: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
 impl TileBuilder {
@@ -543,7 +543,7 @@ impl TileBuilder {
             parenttile_id: tile.parenttile_id.clone(),
             resourceinstance_id: tile.resourceinstance_id.clone(),
             sortorder: tile.sortorder,
-            data: HashMap::new(),
+            data: Default::default(),
         }
     }
 

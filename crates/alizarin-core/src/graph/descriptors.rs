@@ -86,6 +86,7 @@ impl DescriptorTypeConfig {
 /// Complete descriptor configuration from functions_x_graphs
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DescriptorConfig {
+    #[serde(serialize_with = "crate::sorted_serde::sorted_map")]
     pub descriptor_types: HashMap<String, DescriptorTypeConfig>,
 }
 

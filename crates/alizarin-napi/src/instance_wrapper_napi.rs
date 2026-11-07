@@ -3,7 +3,7 @@
 /// Provides the same public interface as WASMResourceInstanceWrapper so that
 /// the TypeScript ViewModel layer (ResourceInstanceWrapper / PseudoValue / PseudoList)
 /// can work with either backend.
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use napi::bindgen_prelude::*;
@@ -184,12 +184,12 @@ impl NapiNodeConfigManager {
 }
 
 // =============================================================================
-// NapiTileData — Map-like interface over HashMap<String, Value>
+// NapiTileData — Map-like interface over a tile's BTreeMap<String, Value>
 // =============================================================================
 
 #[napi]
 pub struct NapiTileData {
-    entries: Arc<Mutex<HashMap<String, serde_json::Value>>>,
+    entries: Arc<Mutex<BTreeMap<String, serde_json::Value>>>,
 }
 
 #[napi]
@@ -219,6 +219,7 @@ impl NapiTileData {
         self.entries.lock().unwrap().remove(&key).is_some()
     }
 
+    /// Keys in sorted order, matching the WASM `data` Map and serialized tiles.
     #[napi]
     pub fn keys(&self) -> Vec<String> {
         self.entries.lock().unwrap().keys().cloned().collect()
@@ -237,7 +238,7 @@ pub struct NapiStaticTile {
     resourceinstance_id: String,
     parenttile_id: Option<String>,
     provisionaledits: Option<Vec<serde_json::Value>>,
-    data_store: Arc<Mutex<HashMap<String, serde_json::Value>>>,
+    data_store: Arc<Mutex<BTreeMap<String, serde_json::Value>>>,
 }
 
 #[napi]
@@ -257,7 +258,7 @@ impl NapiStaticTile {
             resourceinstance_id: resourceinstance_id.unwrap_or_default(),
             parenttile_id,
             provisionaledits: None,
-            data_store: Arc::new(Mutex::new(HashMap::new())),
+            data_store: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
@@ -642,7 +643,7 @@ pub struct NapiPopulateResult {
 impl NapiPopulateResult {
     #[napi]
     pub fn get_value_aliases(&self) -> Vec<String> {
-        self.values.keys().cloned().collect()
+        alizarin_core::sorted_serde::sorted_keys(self.values.keys())
     }
 
     #[napi]
@@ -696,7 +697,7 @@ pub struct NapiEnsureNodegroupResult {
 impl NapiEnsureNodegroupResult {
     #[napi]
     pub fn get_value_aliases(&self) -> Vec<String> {
-        self.values.keys().cloned().collect()
+        alizarin_core::sorted_serde::sorted_keys(self.values.keys())
     }
 
     #[napi]
@@ -908,7 +909,7 @@ impl NapiResourceInstanceWrapper {
             .map_err(|e| napi::Error::from_reason(format!("Invalid tiles JSON: {e}")))?;
 
         if self.inner.tiles.is_none() {
-            self.inner.tiles = Some(HashMap::new());
+            self.inner.tiles = Some(alizarin_core::TileStore::new());
         }
 
         let tiles_map = self.inner.tiles.as_mut().unwrap();
@@ -954,7 +955,7 @@ impl NapiResourceInstanceWrapper {
             .tiles
             .take()
             .ok_or_else(|| napi::Error::from_reason("Tiles not initialized".to_string()))?;
-        let pruned: HashMap<String, StaticTile> = tiles
+        let pruned: alizarin_core::TileStore = tiles
             .into_iter()
             .filter(|(_id, tile)| self.model_access.is_tile_permitted(tile))
             .collect();
@@ -1048,7 +1049,7 @@ impl NapiResourceInstanceWrapper {
     pub fn set_lazy(&mut self, lazy: bool) {
         self.lazy = lazy;
         if lazy && self.inner.tiles.is_none() {
-            self.inner.tiles = Some(HashMap::new());
+            self.inner.tiles = Some(alizarin_core::TileStore::new());
         }
     }
 
@@ -1598,7 +1599,7 @@ impl NapiResourceInstanceWrapper {
             let nodegroup_ids: Vec<String> = self
                 .model_access
                 .get_nodegroups()
-                .map(|ngs| ngs.keys().cloned().collect())
+                .map(|ngs| alizarin_core::sorted_serde::sorted_keys(ngs.keys()))
                 .unwrap_or_default();
 
             self.inner
@@ -1980,7 +1981,7 @@ impl NapiResourceModelWrapper {
     pub fn get_nodegroup_ids(&self) -> Vec<String> {
         self.model_access
             .get_nodegroups()
-            .map(|ng| ng.keys().cloned().collect())
+            .map(|ng| alizarin_core::sorted_serde::sorted_keys(ng.keys()))
             .unwrap_or_default()
     }
 

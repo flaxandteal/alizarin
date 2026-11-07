@@ -453,7 +453,7 @@ impl WASMResourceModelWrapper {
         // Get child node IDs
         let child_node_ids: Vec<String> = self.with_core_mut(|core| {
             let child_nodes = core.get_child_nodes(&arc_node.nodeid)?;
-            Ok::<Vec<String>, JsValue>(child_nodes.keys().cloned().collect())
+            Ok::<Vec<String>, JsValue>(alizarin_core::sorted_serde::sorted_keys(child_nodes.keys()))
         })?;
 
         // Parse tile if provided
@@ -628,7 +628,7 @@ impl WASMResourceModelWrapper {
             let child_nodes = core
                 .get_child_nodes(&node_id)
                 .map_err(|e| JsValue::from_str(&e))?;
-            Ok(child_nodes.keys().cloned().collect())
+            Ok(alizarin_core::sorted_serde::sorted_keys(child_nodes.keys()))
         })
     }
 
@@ -640,7 +640,7 @@ impl WASMResourceModelWrapper {
             let nodegroups = core
                 .get_nodegroup_objects()
                 .map_err(|e| JsValue::from_str(&e))?;
-            Ok(nodegroups.keys().cloned().collect())
+            Ok(alizarin_core::sorted_serde::sorted_keys(nodegroups.keys()))
         })
     }
 

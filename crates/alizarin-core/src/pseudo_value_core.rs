@@ -1,5 +1,5 @@
 use serde_json::{Map, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 /// Core PseudoValue types for JSON conversion
 ///
 /// These types contain the platform-agnostic parts of pseudo values
@@ -218,7 +218,7 @@ pub struct TileBuilder {
     pub parenttile_id: Option<String>,
     pub resourceinstance_id: String,
     pub sortorder: Option<i32>,
-    pub data: HashMap<String, Value>,
+    pub data: BTreeMap<String, Value>,
 }
 
 /// Context for tile building
@@ -705,7 +705,7 @@ impl TileBuilder {
             parenttile_id: tile.parenttile_id.clone(),
             resourceinstance_id: tile.resourceinstance_id.clone(),
             sortorder: tile.sortorder,
-            data: HashMap::new(),
+            data: BTreeMap::new(),
         }
     }
 

@@ -41,7 +41,7 @@ pub struct StaticGraphMeta {
     /// of strings on the wire.
     #[serde(default, with = "super::serde_helpers::optional_string_or_vec")]
     pub ontology_id: Option<Vec<String>>,
-    #[serde(default)]
+    #[serde(default, serialize_with = "crate::sorted_serde::sorted_opt_map")]
     pub publication: Option<HashMap<String, Option<String>>>,
     #[serde(default)]
     pub relatable_resource_model_ids: Vec<String>,
@@ -56,7 +56,7 @@ pub struct StaticGraphMeta {
     #[serde(default)]
     pub version: Option<String>,
     /// Extra fields not explicitly defined
-    #[serde(default, flatten)]
+    #[serde(default, flatten, serialize_with = "crate::sorted_serde::sorted_map")]
     pub extra_fields: HashMap<String, serde_json::Value>,
 }
 

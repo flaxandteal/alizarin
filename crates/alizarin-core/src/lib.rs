@@ -36,6 +36,7 @@ pub mod rdm_namespace;
 pub mod registry;
 pub mod shared_mut;
 pub mod skos;
+pub mod sorted_serde;
 pub mod string_utils;
 pub mod tile_source;
 pub mod type_coercion;
@@ -222,7 +223,7 @@ pub use instance_wrapper_core::{
     create_pseudo_list_from_tiles, ensure_nodegroup, is_node_single_cardinality,
     is_node_single_cardinality_with, matches_semantic_child, resolve_and_filter_tiles,
     values_from_resource_nodegroup, EnsureNodegroupResult, LoadState, ModelAccess, PopulateResult,
-    ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult,
+    ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult, TileStore,
     ValuesFromNodegroupResult,
 };
 

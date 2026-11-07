@@ -138,6 +138,7 @@ export declare class NapiTileData {
   get(key: string): any
   set(key: string, value: any): void
   delete(key: string): boolean
+  /** Keys in sorted order, matching the WASM `data` Map and serialized tiles. */
   keys(): Array<string>
 }
 export declare class NapiStaticTile {

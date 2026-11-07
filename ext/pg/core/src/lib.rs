@@ -248,7 +248,7 @@ mod tests {
     use std::collections::HashMap;
 
     fn make_tile(tileid: &str, resource_id: &str, nodegroup: &str) -> StaticTile {
-        let mut data = HashMap::new();
+        let mut data = std::collections::BTreeMap::new();
         data.insert("node-1".to_string(), serde_json::json!("test value"));
         StaticTile {
             tileid: Some(tileid.to_string()),

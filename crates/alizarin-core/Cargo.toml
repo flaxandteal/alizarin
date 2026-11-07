@@ -22,6 +22,8 @@ multi-threaded = ["lasso/multi-threaded"]
 alizarin-extension-api = { path = "../alizarin-extension-api", version = "2.0.0-alpha.142" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# Insertion-ordered maps for stores whose iteration order reaches output
+indexmap = { version = "2", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "v5"] }
 rayon = { version = "1.10", optional = true }
 lasso = { version = "0.7", features = ["serialize"] }

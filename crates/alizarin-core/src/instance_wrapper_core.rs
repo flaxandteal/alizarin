@@ -8,6 +8,7 @@
 /// The WASM and Python bindings wrap these types with platform-specific
 /// concerns (RefCell for WASM async, PyO3 for Python).
 use crate::shared_mut::SharedMut;
+use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -338,8 +339,8 @@ pub fn matches_semantic_child(
 pub fn resolve_and_filter_tiles(
     path: &str,
     model: &dyn ModelAccess,
-    tiles_store: &HashMap<String, StaticTile>,
-    nodegroup_index: &HashMap<String, Vec<String>>,
+    tiles_store: &TileStore,
+    nodegroup_index: &IndexMap<String, Vec<String>>,
     filter_tile_id: Option<&str>,
 ) -> Result<(PathResolutionInfo, Vec<StaticTile>), PathError> {
     let root_node = model
@@ -436,7 +437,7 @@ pub fn values_from_resource_nodegroup(
     nodegroup_tile_ids: &[String],
     nodegroup_id: &str,
     model: &dyn ModelAccess,
-    tiles_store: &HashMap<String, StaticTile>,
+    tiles_store: &TileStore,
 ) -> Result<ValuesFromNodegroupResult, SemanticChildError> {
     let node_objs = model.get_nodes().ok_or_else(|| {
         SemanticChildError::ModelNotInitialized("Model nodes not initialized".to_string())
@@ -565,7 +566,7 @@ pub fn ensure_nodegroup(
     nodegroup_permissions: &HashMap<String, PermissionRule>,
     do_implied_nodegroups: bool,
     model: &dyn ModelAccess,
-    tiles_store: &HashMap<String, StaticTile>,
+    tiles_store: &TileStore,
 ) -> Result<EnsureNodegroupResult, SemanticChildError> {
     let sentinel = all_nodegroups.get(nodegroup_id);
     let should_process = match sentinel {
@@ -641,6 +642,10 @@ pub fn ensure_nodegroup(
     })
 }
 
+/// A wrapper's tiles by id, in the order they were loaded or added, so every
+/// export follows that order rather than hash order.
+pub type TileStore = IndexMap<String, StaticTile>;
+
 /// Core resource instance wrapper - platform-agnostic business logic
 ///
 /// Contains all tile storage, indexing, and business logic.
@@ -654,10 +659,10 @@ pub struct ResourceInstanceWrapperCore {
     pub resource_instance: Option<StaticResourceMetadata>,
 
     /// Tile storage (tileid -> tile)
-    pub tiles: Option<HashMap<String, StaticTile>>,
+    pub tiles: Option<TileStore>,
 
     /// Index: nodegroup_id -> list of tile_ids
-    pub nodegroup_index: HashMap<String, Vec<String>>,
+    pub nodegroup_index: IndexMap<String, Vec<String>>,
 
     /// Track which nodegroups have been loaded/loading
     pub loaded_nodegroups: SharedMut<HashMap<String, LoadState>>,
@@ -680,7 +685,7 @@ impl ResourceInstanceWrapperCore {
             graph_id,
             resource_instance: None,
             tiles: None,
-            nodegroup_index: HashMap::new(),
+            nodegroup_index: IndexMap::new(),
             loaded_nodegroups: SharedMut::new(HashMap::new()),
             pseudo_cache: SharedMut::new(HashMap::new()),
             cached_nodes: None,
@@ -703,8 +708,8 @@ impl ResourceInstanceWrapperCore {
 
     /// Load tiles into the wrapper
     pub fn load_tiles(&mut self, tiles: Vec<StaticTile>) {
-        let mut tiles_map = HashMap::new();
-        let mut nodegroup_index: HashMap<String, Vec<String>> = HashMap::new();
+        let mut tiles_map = TileStore::new();
+        let mut nodegroup_index: IndexMap<String, Vec<String>> = IndexMap::new();
 
         for tile in tiles {
             let tile_id = tile
@@ -763,7 +768,7 @@ impl ResourceInstanceWrapperCore {
     /// (lazy per-nodegroup loading). A tile whose `tileid` is already present
     /// is overwritten, so re-merging the same nodegroup is idempotent.
     pub fn merge_tiles(&mut self, tiles: Vec<StaticTile>) {
-        let tiles_map = self.tiles.get_or_insert_with(HashMap::new);
+        let tiles_map = self.tiles.get_or_insert_with(TileStore::new);
         for tile in tiles {
             let tile_id = tile
                 .tileid

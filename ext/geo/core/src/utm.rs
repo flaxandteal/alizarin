@@ -10,7 +10,7 @@
 //! [`proj4rs`] (a pure-Rust proj4 port that also builds for WASM) — we only
 //! compute the UTM zone and hand proj4rs the corresponding proj-string.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use proj4rs::Proj;
@@ -151,7 +151,7 @@ impl DeriveProvider for UtmDeriveProvider {
             "easting": (utm.easting * 100.0).round() / 100.0,
             "northing": (utm.northing * 100.0).round() / 100.0,
         });
-        let mut data: HashMap<String, Value> = HashMap::new();
+        let mut data: BTreeMap<String, Value> = BTreeMap::new();
         data.insert(config.nodegroup.clone(), value);
         Ok(vec![StaticTile {
             data,
@@ -274,7 +274,7 @@ mod tests {
                 "coordinates": [[[80.24, 13.08], [80.26, 13.08], [80.26, 13.09], [80.24, 13.09], [80.24, 13.08]]]
             }}]
         });
-        let mut data: HashMap<String, Value> = HashMap::new();
+        let mut data: BTreeMap<String, Value> = BTreeMap::new();
         data.insert("boundary".to_string(), boundary);
         let mut tiles = vec![StaticTile {
             data,
