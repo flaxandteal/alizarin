@@ -272,6 +272,7 @@ mod tests {
                     description: None,
                     map_popup: None,
                     slug: None,
+                    point: None,
                 },
                 publication_id: None,
                 principaluser_id: None,
