@@ -8,6 +8,7 @@ needs. This is a deliberate, supported contract as of 2.0, not partial work.
 |---|:--:|:--:|:--:|
 | Instance / viewmodel wrapper | ✓ | ✓ | ✓ |
 | Resource registry (`getFull`/`getSummary`) | ✓ | ✓ | ✓ |
+| Registry calls behind `StaticStore` (`getAllFullForGraph`/`mergeFromResources`/`insert`) | ✓ | ✓ | ✓ |
 | Graph / prebuild export | ✓ | ✓ | ✓ |
 | SKOS / RDM parse | ✓ | ✓ | ✓ |
 | Extension coerce / render / resolve | ✓ | ✓ | ✓ |
@@ -19,6 +20,11 @@ needs. This is a deliberate, supported contract as of 2.0, not partial work.
 ¹ NAPI renders displays through the **instance-wrapper** (`forJson` /
 `forDisplayJson` on `NapiResourceInstanceWrapper`); it simply lacks the
 *standalone* `serialize_card` entry point.
+
+The WASM registry returns class instances and the NAPI registry returns plain
+JSON objects, so `tilesLoaded`, `toMetadata()` and `fromSummary()` are not methods
+you can call on NAPI results. Use `resourceTilesLoaded`, `summaryToMetadata` and
+`createStaticResourceFromSummary` from `js/backend.ts`.
 
 ## Why the surfaces differ (by design)
 
@@ -39,7 +45,8 @@ The backend-agnostic TypeScript layer (`js/`) works on **both** WASM and NAPI. I
 depends only on capabilities present in **all** backends it runs on — the
 instance-wrapper, registry, export, and extension APIs (top four rows). It does
 **not** call the conversion/coerce/card-display group, so NAPI's leaner surface
-does not limit it.
+does not limit it. `tests/dual-backend/staticStoreRegistry.test.ts` runs the
+`StaticStore` and `all()` → `getRootViewModel` → `toSnapshot` path on both.
 
 ## Addable on demand
 

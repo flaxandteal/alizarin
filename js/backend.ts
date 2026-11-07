@@ -469,6 +469,41 @@ export function createStaticResource(data: any): any {
   return createWasmType('StaticResource', data);
 }
 
+/**
+ * Whether a resource carries its tiles. WASM has a `tilesLoaded` getter; the
+ * plain objects NAPI returns only have `tiles_loaded` when something set it, so
+ * fall back to the rule the WASM constructor applies: tiles present and non-empty.
+ */
+export function resourceTilesLoaded(resource: any): boolean {
+  return resource.tilesLoaded ?? resource.tiles_loaded ?? (resource.tiles?.length > 0);
+}
+
+/**
+ * Metadata header for a registry summary (a WASM class, or a plain object on NAPI).
+ */
+export function summaryToMetadata(summary: any): any {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    return napi.summaryToMetadata(summary);
+  }
+  return summary.toMetadata();
+}
+
+/**
+ * Lightweight resource with no tiles, from a registry summary.
+ */
+export function createStaticResourceFromSummary(summary: any): any {
+  if (_backend === 'napi') {
+    return {
+      resourceinstance: summaryToMetadata(summary),
+      metadata: summary.metadata ?? {},
+      tiles_loaded: false,
+    };
+  }
+  return getWasmModule().StaticResource.fromSummary(summary);
+}
+
 export function createStaticNodegroup(data: any): any {
   return createWasmType('StaticNodegroup', data);
 }

@@ -14,7 +14,7 @@ use alizarin_core::type_serialization::SerializationContext;
 use alizarin_core::{
     build_graph_from_model_csvs, build_resources_from_business_csv,
     build_resources_from_business_csv_with_context, wrap_business_data, StaticGraph,
-    StaticResource, StaticResourceRegistry,
+    StaticResource, StaticResourceRegistry, StaticResourceSummary,
 };
 
 // ============================================================================
@@ -244,6 +244,38 @@ impl NapiStaticResourceRegistry {
         Ok(())
     }
 
+    /// Merge full resources given as JS objects. Same semantics and defaults as the
+    /// WASM `mergeFromResources`: summaries only unless `storeFull`, and related
+    /// resources in `__cache` merged as summaries unless `includeCaches` is false.
+    #[napi]
+    pub fn merge_from_resources(
+        &mut self,
+        resources: Vec<serde_json::Value>,
+        store_full: Option<bool>,
+        include_caches: Option<bool>,
+    ) -> Result<()> {
+        let resources = resources
+            .into_iter()
+            .map(serde_json::from_value)
+            .collect::<std::result::Result<Vec<StaticResource>, _>>()
+            .map_err(|e| napi::Error::from_reason(format!("Invalid resource: {}", e)))?;
+        self.inner.merge_from_resources(
+            &resources,
+            store_full.unwrap_or(false),
+            include_caches.unwrap_or(true),
+        );
+        Ok(())
+    }
+
+    /// Add a single resource summary given as a JS object.
+    #[napi]
+    pub fn insert(&mut self, summary: serde_json::Value) -> Result<()> {
+        let summary: StaticResourceSummary = serde_json::from_value(summary)
+            .map_err(|e| napi::Error::from_reason(format!("Invalid summary: {}", e)))?;
+        self.inner.insert(summary);
+        Ok(())
+    }
+
     /// Load a business_data file from raw bytes (Buffer), parse entirely in Rust,
     /// merge into this registry, and return lightweight refs.
     ///
@@ -412,6 +444,26 @@ impl NapiStaticResourceRegistry {
                 .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e))),
             None => Ok(None),
         }
+    }
+
+    /// Get all full resources for a graph as JSON objects. Summary-only entries are
+    /// skipped; a null, undefined or unknown graph id gives an empty array.
+    #[napi]
+    pub fn get_all_full_for_graph(
+        &self,
+        graph_id: Option<String>,
+    ) -> Result<Vec<serde_json::Value>> {
+        let Some(graph_id) = graph_id else {
+            return Ok(Vec::new());
+        };
+        self.inner
+            .iter_full()
+            .filter(|(_, r)| r.resourceinstance.graph_id == graph_id)
+            .map(|(_, r)| {
+                serde_json::to_value(r)
+                    .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
+            })
+            .collect()
     }
 
     /// Get a summary for a resource (works for both summary and full entries), or null if unknown.
@@ -798,6 +850,17 @@ pub fn find_needed_collections(
 
     let needed = alizarin_core::find_needed_collections(&tree, &alias_to_collection);
     Ok(needed.into_iter().collect())
+}
+
+/// Metadata header for a resource summary given as a JS object. The native
+/// registry hands back plain objects, so this stands in for the WASM
+/// `StaticResourceSummary.toMetadata()`.
+#[napi]
+pub fn summary_to_metadata(summary: serde_json::Value) -> Result<serde_json::Value> {
+    let summary: StaticResourceSummary = serde_json::from_value(summary)
+        .map_err(|e| napi::Error::from_reason(format!("Invalid summary: {}", e)))?;
+    serde_json::to_value(summary.to_metadata())
+        .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
 }
 
 /// Check if a string is a valid UUID.

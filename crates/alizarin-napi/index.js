@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiEnsureNodegroupResult, NapiValuesFromNodegroupResult, NapiResourceInstanceWrapper, NapiResourceModelWrapper, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, buildGraphFromCsvs, buildBusinessDataFromCsv, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, registerExtensionHandler, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, buildAliasToCollectionMap, findNeededCollections, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
+const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiEnsureNodegroupResult, NapiValuesFromNodegroupResult, NapiResourceInstanceWrapper, NapiResourceModelWrapper, registerExtensionHandler, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
 
 module.exports.NapiRdmCache = NapiRdmCache
 module.exports.NapiNodeConfigManager = NapiNodeConfigManager
@@ -323,23 +323,25 @@ module.exports.NapiEnsureNodegroupResult = NapiEnsureNodegroupResult
 module.exports.NapiValuesFromNodegroupResult = NapiValuesFromNodegroupResult
 module.exports.NapiResourceInstanceWrapper = NapiResourceInstanceWrapper
 module.exports.NapiResourceModelWrapper = NapiResourceModelWrapper
+module.exports.registerExtensionHandler = registerExtensionHandler
 module.exports.NapiPrebuildExporter = NapiPrebuildExporter
 module.exports.NapiStaticGraph = NapiStaticGraph
 module.exports.NapiStaticResourceRegistry = NapiStaticResourceRegistry
 module.exports.buildGraphFromCsvs = buildGraphFromCsvs
 module.exports.buildBusinessDataFromCsv = buildBusinessDataFromCsv
+module.exports.composeResourceLayers = composeResourceLayers
 module.exports.extensionCoerce = extensionCoerce
 module.exports.extensionRenderDisplay = extensionRenderDisplay
 module.exports.extensionResolveMarkers = extensionResolveMarkers
 module.exports.hasExtensionHandler = hasExtensionHandler
 module.exports.getRegisteredExtensionHandlers = getRegisteredExtensionHandlers
-module.exports.registerExtensionHandler = registerExtensionHandler
 module.exports.parseSkosXml = parseSkosXml
 module.exports.parseSkosXmlToCollection = parseSkosXmlToCollection
 module.exports.collectionToSkosXml = collectionToSkosXml
 module.exports.collectionsToSkosXml = collectionsToSkosXml
 module.exports.buildAliasToCollectionMap = buildAliasToCollectionMap
 module.exports.findNeededCollections = findNeededCollections
+module.exports.summaryToMetadata = summaryToMetadata
 module.exports.isValidUuid = isValidUuid
 module.exports.getDefaultResolvableDatatypes = getDefaultResolvableDatatypes
 module.exports.getDefaultConfigKeys = getDefaultConfigKeys

@@ -6,7 +6,7 @@ import {
   StaticResourceRegistry,
   StaticTile,
 } from "./static-types";
-import { createResourceRegistry, createStaticResource } from "./backend";
+import { createResourceRegistry, createStaticResource, resourceTilesLoaded, summaryToMetadata } from "./backend";
 
 /**
  * StaticStore - Thin wrapper around StaticResourceRegistry with optional archesClient fallback
@@ -64,7 +64,7 @@ class StaticStore {
   async getMeta(id: string, onlyIfCached: boolean = true): Promise<StaticResourceMetadata | null> {
     const summary = this.registry.getSummary(id);
     if (summary) {
-      return summary.toMetadata();
+      return summaryToMetadata(summary);
     }
 
     // Fallback: load via archesClient if not in registry
@@ -170,7 +170,7 @@ class StaticStore {
     for (const resource of resources) {
       if (limit && count >= limit) return;
       yielded.add(resource.resourceinstance.resourceinstanceid);
-      yield StaticResourceSummary.fromResource(resource);
+      yield this.registry.getSummary(resource.resourceinstance.resourceinstanceid)!;
       count++;
     }
 
@@ -201,7 +201,7 @@ class StaticStore {
   async loadTiles(id: string, nodegroupId?: string | null): Promise<StaticTile[]> {
     // Try registry first
     const cached = this.registry.getFull(id);
-    if (cached && cached.tilesLoaded) {
+    if (cached && resourceTilesLoaded(cached)) {
       const tiles = cached.tiles ?? [];
       return nodegroupId ? tiles.filter(tile => tile.nodegroup_id === nodegroupId) : tiles;
     }
@@ -221,7 +221,7 @@ class StaticStore {
   async ensureFullResource(id: string): Promise<StaticResource> {
     // Check registry for full resource with tiles
     const cached = this.registry.getFull(id);
-    if (cached && cached.tilesLoaded) {
+    if (cached && resourceTilesLoaded(cached)) {
       return cached;
     }
 

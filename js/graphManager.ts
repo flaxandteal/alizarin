@@ -24,10 +24,12 @@ import {
   createStaticEdge,
   createStaticCard,
   createStaticNodegroup,
+  createStaticResourceFromSummary,
   createStaticTranslatableString,
   createStaticCardsXNodesXWidgets,
   getBackend,
   loadTilesFromResource,
+  resourceTilesLoaded,
   safeStringify,
 } from "./backend";
 import { ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
@@ -132,7 +134,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     }
 
     // Use loadTilesFromResource to avoid expensive tiles getter (which creates N WASM wrappers)
-    if (!tilesLoaded && resource && resource.tilesLoaded && typeof this.wasmWrapper.loadTilesFromResource === 'function') {
+    if (!tilesLoaded && resource && resourceTilesLoaded(resource) && typeof this.wasmWrapper.loadTilesFromResource === 'function') {
       t0 = performance.now();
       loadTilesFromResource(this.wasmWrapper, resource, assumeTilesComprehensiveForNodegroup);
       recordNativeTiming("loadTilesFromResource", performance.now() - t0);
@@ -170,7 +172,7 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
       // No tile loader — fetch from staticStore registry via archesClient
       const resourceId = this.wasmWrapper.getResourceId();
       const fullResource = await this.model.staticStore.ensureFullResource(resourceId);
-      if (fullResource && fullResource.tilesLoaded) {
+      if (fullResource && resourceTilesLoaded(fullResource)) {
         loadTilesFromResource(this.wasmWrapper, fullResource, true);
       }
     }
@@ -1165,7 +1167,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   async* summaryGenerator(staticSummaries: AsyncIterable<StaticResourceSummary>, lazy: boolean = true): AsyncGenerator<RIVM> {
     for await (const summary of staticSummaries) {
       // Create lightweight resource from summary
-      const summaryResource = StaticResource.fromSummary(summary);
+      const summaryResource = createStaticResourceFromSummary(summary);
       yield this.fromStaticResource(summaryResource, lazy, false); // lazy=true, pruneTiles=false
     }
   }
