@@ -762,6 +762,28 @@ pub fn build_resources_from_business_csv_with_context(
         })
         .collect();
 
+    let ng_position: HashMap<&str, usize> = graph
+        .nodegroups
+        .iter()
+        .enumerate()
+        .map(|(i, ng)| (ng.nodegroupid.as_str(), i))
+        .collect();
+
+    // Number of ancestors, bounded by the nodegroup count so a malformed cycle
+    // can't loop forever.
+    let ng_depth = |ng_id: &str| -> usize {
+        let mut depth = 0;
+        let mut current = ng_id;
+        while let Some(parent) = ng_parent.get(current) {
+            if depth > ng_parent.len() {
+                break;
+            }
+            depth += 1;
+            current = parent;
+        }
+        depth
+    };
+
     // Build resources
     let mut resources: Vec<StaticResource> = Vec::new();
 
@@ -855,9 +877,11 @@ pub fn build_resources_from_business_csv_with_context(
         // Track parent tiles for nested nodegroups
         let mut parent_tile_ids: HashMap<String, Vec<String>> = HashMap::new();
 
-        // Sort nodegroups: parents first (those without parentnodegroup_id)
+        // Every parent before its children, at any depth, so a child can always
+        // find its parent's tile; ties follow the graph's nodegroup order, so tile
+        // order doesn't depend on HashMap iteration.
         let mut ng_ids: Vec<String> = ng_data.keys().cloned().collect();
-        ng_ids.sort_by_key(|ng_id| if ng_parent.contains_key(ng_id) { 1 } else { 0 });
+        ng_ids.sort_by_key(|ng_id| (ng_depth(ng_id), ng_position.get(ng_id.as_str()).copied()));
 
         for ng_id in &ng_ids {
             let entries = ng_data.get(ng_id).unwrap();
@@ -1308,6 +1332,84 @@ john-1,John Smith";
             r1[0].tiles.as_ref().unwrap()[0].tileid,
             r2[0].tiles.as_ref().unwrap()[0].tileid,
         );
+    }
+
+    /// Four levels of nesting: every child tile must point at its parent's tile,
+    /// and output must be identical however the HashMaps happen to iterate.
+    #[test]
+    fn test_deeply_nested_parent_links_and_order_are_stable() {
+        const C: &str = "http://www.cidoc-crm.org/cidoc-crm/";
+        let row = |parent: &str, alias: &str, datatype: &str, card: &str| {
+            format!("{parent},{alias},{alias},{datatype},{card},{C}E1,{C}P1,,,,,,")
+        };
+        let nodes = [
+            "parent_alias,alias,name,datatype,cardinality,ontology_class,parent_property,description,collection_name,required,searchable,exportable,sortorder".to_string(),
+            row("", "lvl1", "semantic", "n"),
+            row("lvl1", "v1", "string", "1"),
+            row("lvl1", "lvl2", "semantic", "n"),
+            row("lvl2", "v2", "string", "1"),
+            row("lvl2", "lvl3", "semantic", "n"),
+            row("lvl3", "v3", "string", "1"),
+            row("lvl3", "lvl4", "semantic", "1"),
+            row("lvl4", "v4", "string", "1"),
+        ]
+        .join("\n");
+        let (graph, collections) = build_graph_from_model_csvs(
+            &format!("name,ontology_class,author,description,is_resource\nP,{C}E21_Person,,,true"),
+            &nodes,
+            None,
+            "https://example.org/test",
+            MutatorOptions::default(),
+        )
+        .unwrap();
+        let csv = "ResourceID,v1,v2,v3,v4\nr0,a,b,c,d\nr0,e,f,g,h";
+
+        let build = || {
+            build_resources_from_business_csv(
+                csv,
+                &graph,
+                &collections,
+                BusinessDataCsvOptions {
+                    strict_concepts: false,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        };
+
+        let first = serde_json::to_value(build()).unwrap();
+        for _ in 0..32 {
+            assert_eq!(serde_json::to_value(build()).unwrap(), first);
+        }
+
+        let tiles = build().remove(0).tiles.unwrap();
+        let ng_parent: HashMap<&str, &str> = graph
+            .nodegroups
+            .iter()
+            .filter_map(|ng| Some((ng.nodegroupid.as_str(), ng.parentnodegroup_id.as_deref()?)))
+            .collect();
+        let tile_ng: HashMap<&str, &str> = tiles
+            .iter()
+            .map(|t| (t.tileid.as_deref().unwrap(), t.nodegroup_id.as_str()))
+            .collect();
+        assert!(
+            tiles.len() > 3,
+            "expected tiles at every level, got {}",
+            tiles.len()
+        );
+        for tile in &tiles {
+            let expected_parent_ng = ng_parent.get(tile.nodegroup_id.as_str()).copied();
+            let actual_parent_ng = tile.parenttile_id.as_deref().map(|p| {
+                *tile_ng
+                    .get(p)
+                    .expect("parenttile_id must name a tile in the resource")
+            });
+            assert_eq!(
+                actual_parent_ng, expected_parent_ng,
+                "tile {:?}",
+                tile.tileid
+            );
+        }
     }
 
     #[test]
