@@ -891,9 +891,11 @@ pub fn build_resources_from_business_csv_with_context(
             if cardinality == "n" {
                 // Each entry (row) gets its own tile
                 for (sortorder, (_line, data)) in entries.iter().enumerate() {
-                    let tileid = gen_tile_id(
-                        ("tile", Some(&resourceinstanceid)),
-                        &format!("{}/{}", ng_id, sortorder),
+                    let tileid = crate::graph::multi_tile_id(
+                        options.uuid_namespace.as_deref(),
+                        &resourceinstanceid,
+                        ng_id,
+                        sortorder as u32,
                     );
 
                     let parenttile_id = parent_ng_id
@@ -982,7 +984,12 @@ pub fn build_resources_from_business_csv_with_context(
         // tiles keep their namespace-isolated ids (so they still accumulate across
         // layers); this only rewrites single-valued tiles and fixes up the
         // parenttile_id of their children. Mirrors json_conversion::tree_to_tiles.
-        crate::json_conversion::assign_canonical_tile_ids(&mut tiles, graph, &resourceinstanceid);
+        crate::json_conversion::assign_canonical_tile_ids(
+            &mut tiles,
+            graph,
+            &resourceinstanceid,
+            crate::json_conversion::MultiTileIds::Keep,
+        );
 
         resources.push(StaticResource {
             resourceinstance: StaticResourceMetadata {

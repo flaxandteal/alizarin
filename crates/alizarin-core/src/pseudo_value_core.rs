@@ -221,6 +221,10 @@ pub struct TileBuilder {
     pub data: BTreeMap<String, Value>,
 }
 
+/// Tiles being built, by tile key, in the order traversal first reached them,
+/// so tiles built from a tree or pseudo cache come out in a stable order.
+pub type TileBuilderMap = indexmap::IndexMap<String, TileBuilder>;
+
 /// Context for tile building
 pub struct TileBuilderContext<'a> {
     pub pseudo_cache: &'a HashMap<String, PseudoListCore>,
@@ -383,11 +387,7 @@ impl PseudoValueCore {
     }
 
     /// Collect tiles from this pseudo value
-    pub fn collect_tiles(
-        &self,
-        ctx: &TileBuilderContext,
-        tiles: &mut HashMap<String, TileBuilder>,
-    ) {
+    pub fn collect_tiles(&self, ctx: &TileBuilderContext, tiles: &mut TileBuilderMap) {
         if ctx.depth > ctx.max_depth {
             return;
         }
@@ -440,11 +440,7 @@ impl PseudoValueCore {
     }
 
     /// Collect tiles from children of a semantic node
-    fn collect_children_tiles(
-        &self,
-        ctx: &TileBuilderContext,
-        tiles: &mut HashMap<String, TileBuilder>,
-    ) {
+    fn collect_children_tiles(&self, ctx: &TileBuilderContext, tiles: &mut TileBuilderMap) {
         let child_node_ids = match ctx.edges.get(&self.node.nodeid) {
             Some(ids) => ids,
             None => return,
@@ -622,11 +618,7 @@ impl PseudoListCore {
     }
 
     /// Collect tiles from all values
-    pub fn collect_tiles(
-        &self,
-        ctx: &TileBuilderContext,
-        tiles: &mut HashMap<String, TileBuilder>,
-    ) {
+    pub fn collect_tiles(&self, ctx: &TileBuilderContext, tiles: &mut TileBuilderMap) {
         for value in &self.values {
             value.collect_tiles(ctx, tiles);
         }

@@ -15,12 +15,12 @@ use std::sync::Arc;
 
 use crate::extension_type_registry::ExtensionTypeRegistry;
 use crate::graph::GraphLookup;
-use crate::graph::{canonical_tile_id, StaticGraph};
+use crate::graph::{allocate_multi_tile_id, canonical_tile_id, StaticGraph};
 use crate::graph::{StaticResource, StaticResourceMetadata};
 use crate::graph_mutator::generate_uuid_v5;
 use crate::instance_wrapper_core::is_node_single_cardinality_with;
 use crate::pseudo_value_core::{
-    PseudoListCore, PseudoValueCore, TileBuilder, TileBuilderContext, VisitorContext,
+    PseudoListCore, PseudoValueCore, TileBuilderContext, TileBuilderMap, VisitorContext,
 };
 use crate::registry::is_list_datatype;
 use crate::string_utils::snake_to_camel;
@@ -629,6 +629,44 @@ pub fn tree_to_tiles_with_options(
     extension_registry: Option<&ExtensionTypeRegistry>,
     validation: ValidationMode,
 ) -> Result<(BusinessDataWrapper, Vec<ValidationDiagnostic>), String> {
+    tree_to_tiles_with_namespace(
+        json,
+        graph,
+        strict,
+        id_key,
+        from_camel,
+        random_ids,
+        has_extension_handlers,
+        extension_registry,
+        validation,
+        None,
+    )
+}
+
+/// [`tree_to_tiles_with_options`], plus a tile namespace for multi-valued tiles.
+///
+/// * `tile_namespace` - `None` keeps today's behaviour: cardinality-n tiles get
+///   random ids, so independently built layers can only ADD to a multi-valued
+///   nodegroup, never collide in one. `Some(ns)` derives them instead
+///   ([`multi_tile_id`](crate::graph::multi_tile_id)), so the same tree always
+///   yields the same ids. Each layer must then use its OWN namespace, or two
+///   layers adding to the same nodegroup would mint the same id and fuse their
+///   tiles. A layer that means to amend, delete or override a lower layer's
+///   tile addresses that tile's id directly; the namespace only keeps new
+///   tiles apart.
+#[allow(clippy::too_many_arguments)]
+pub fn tree_to_tiles_with_namespace(
+    json: &Value,
+    graph: &StaticGraph,
+    strict: bool,
+    id_key: Option<&str>,
+    from_camel: bool,
+    random_ids: bool,
+    has_extension_handlers: bool,
+    extension_registry: Option<&ExtensionTypeRegistry>,
+    validation: ValidationMode,
+    tile_namespace: Option<&str>,
+) -> Result<(BusinessDataWrapper, Vec<ValidationDiagnostic>), String> {
     let trees = extract_tree_resources(json)?;
 
     // Look up model permissions once (O(1) registry read).
@@ -647,6 +685,7 @@ pub fn tree_to_tiles_with_options(
             random_ids,
             has_extension_handlers,
             extension_registry,
+            tile_namespace,
         )?;
 
         // Filter tiles by permissions if set — O(1) per tile via HashMap lookup
@@ -699,6 +738,7 @@ fn single_tree_to_resource(
     random_ids: bool,
     has_extension_handlers: bool,
     extension_registry: Option<&ExtensionTypeRegistry>,
+    tile_namespace: Option<&str>,
 ) -> Result<StaticResource, String> {
     let obj = json
         .as_object()
@@ -793,7 +833,7 @@ fn single_tree_to_resource(
         visited_aliases: &visited_aliases,
     };
 
-    let mut tiles_map: HashMap<String, TileBuilder> = HashMap::new();
+    let mut tiles_map = TileBuilderMap::new();
 
     if let Some(child_ids) = edges.get(&root.nodeid) {
         for child_id in child_ids {
@@ -844,13 +884,20 @@ fn single_tree_to_resource(
         resource_id
     };
 
-    // Give every cardinality-1 tile its COMPOSABLE (deterministic) id.
+    // Give every cardinality-1 tile its COMPOSABLE (deterministic) id, and, when
+    // a tile namespace is given, every other tile a derived one too.
     //
     // This must happen HERE, after `resource_id` is final: a slug-derived
     // resource id is not known until the tiles exist (the slug is computed FROM
-    // them), and a root canonical id is keyed on the resource. Assigning at
-    // mint time would key root tiles on the throwaway temp id.
-    assign_canonical_tile_ids(&mut tiles, graph, &resource_id);
+    // them), and every derived id is keyed on the resource. Assigning at mint
+    // time would key them on the throwaway temp id.
+    let multi = match tile_namespace {
+        Some(ns) => MultiTileIds::Derive {
+            namespace: Some(ns),
+        },
+        None => MultiTileIds::Keep,
+    };
+    assign_canonical_tile_ids(&mut tiles, graph, &resource_id, multi);
 
     // Use name from descriptors, or fallback to resourceinstanceid
     let name = descriptors
@@ -879,6 +926,15 @@ fn single_tree_to_resource(
     })
 }
 
+/// What [`assign_canonical_tile_ids`] does with tiles that are not cardinality-1.
+pub(crate) enum MultiTileIds<'a> {
+    /// Keep the ids they arrive with (the CSV loader has already derived them).
+    Keep,
+    /// Replace them with [`multi_tile_id`]s, numbered per nodegroup in the order
+    /// the tiles are visited, so the same tree always yields the same ids.
+    Derive { namespace: Option<&'a str> },
+}
+
 /// Give every **cardinality-1** tile its canonical, derivable id.
 ///
 /// This is where alizarin makes tile ids composable: it is the only tile path
@@ -886,11 +942,11 @@ fn single_tree_to_resource(
 /// The scheme, the key, and why both halves of that key are load-bearing are
 /// documented once, on [`canonical_tile_id`]. Only the mechanics are here.
 ///
-/// * **Cardinality-1** -> canonical id. **Cardinality-n** -> keeps its v4.
-/// * **Unknown cardinality** (no nodegroup, or no `cardinality` set) -> keeps
-///   its v4. Conservative on purpose: deriving an id for a nodegroup that turns
-///   out to be multi-valued would hand every one of its tiles the SAME id, i.e.
-///   destroy data. Failing to derive one merely costs composability.
+/// * **Cardinality-1** -> canonical id.
+/// * **Cardinality-n or unknown** -> per `multi`: kept as is, or given the next
+///   free [`multi_tile_id`] for its nodegroup. Each derived id is checked
+///   against every id already assigned, so even a nodegroup that turns out to
+///   be multi-valued cannot have two tiles share one.
 /// * **Parents before children**, remapping each child's `parenttile_id` to its
 ///   parent's new id on the way down: a child's id is keyed on its parent's,
 ///   so the parent must be renamed first.
@@ -898,6 +954,7 @@ pub(crate) fn assign_canonical_tile_ids(
     tiles: &mut [StaticTile],
     graph: &StaticGraph,
     resource_id: &str,
+    multi: MultiTileIds,
 ) {
     let is_cardinality_one = |ng_id: &str| -> bool {
         graph
@@ -920,6 +977,8 @@ pub(crate) fn assign_canonical_tile_ids(
     }
 
     let mut visited: HashSet<usize> = HashSet::new();
+    let mut assigned: HashSet<String> = HashSet::new();
+    let mut next_slot: HashMap<String, u32> = HashMap::new();
 
     while let Some((idx, new_parent_id)) = queue.pop_front() {
         if !visited.insert(idx) {
@@ -942,15 +1001,29 @@ pub(crate) fn assign_canonical_tile_ids(
             tiles[idx].tileid = Some(id.clone());
             id
         } else {
-            match tiles[idx].tileid.clone() {
-                Some(id) => id,
-                None => {
+            match (&multi, tiles[idx].tileid.clone()) {
+                (MultiTileIds::Derive { namespace }, _) => {
+                    let slot = next_slot.entry(nodegroup_id.clone()).or_insert(0);
+                    let (id, used) = allocate_multi_tile_id(
+                        *namespace,
+                        resource_id,
+                        &nodegroup_id,
+                        *slot,
+                        |candidate| assigned.contains(candidate),
+                    );
+                    *slot = used + 1;
+                    tiles[idx].tileid = Some(id.clone());
+                    id
+                }
+                (MultiTileIds::Keep, Some(id)) => id,
+                (MultiTileIds::Keep, None) => {
                     let id = uuid::Uuid::new_v4().to_string();
                     tiles[idx].tileid = Some(id.clone());
                     id
                 }
             }
         };
+        assigned.insert(new_id.clone());
 
         if let Some(old_id) = old_id {
             if let Some(child_idxs) = children_of.get(&old_id) {
@@ -1427,6 +1500,8 @@ pub fn resolve_extension_markers(
 /// 2. Ensure graph_id is present in the tree
 /// 3. Call `tree_to_tiles_with_options` (with optional extension registry for inline coercion)
 /// 4. Resolve extension markers (if registry + resolve_markers flag)
+///
+/// `tile_namespace` is as for [`tree_to_tiles_with_namespace`].
 #[allow(clippy::too_many_arguments)]
 pub fn convert_single_tree<L: crate::label_resolution::ConceptLookup>(
     tree: &Value,
@@ -1439,6 +1514,7 @@ pub fn convert_single_tree<L: crate::label_resolution::ConceptLookup>(
     extension_registry: Option<&ExtensionTypeRegistry>,
     label_lookup: Option<(&HashMap<String, String>, &L)>,
     resolve_markers: bool,
+    tile_namespace: Option<&str>,
 ) -> Result<StaticResource, String> {
     convert_single_tree_with_diagnostics(
         tree,
@@ -1451,6 +1527,7 @@ pub fn convert_single_tree<L: crate::label_resolution::ConceptLookup>(
         extension_registry,
         label_lookup,
         resolve_markers,
+        tile_namespace,
     )
     .map(|(resource, _warnings)| resource)
 }
@@ -1472,6 +1549,7 @@ pub fn convert_single_tree_with_diagnostics<L: crate::label_resolution::ConceptL
     extension_registry: Option<&ExtensionTypeRegistry>,
     label_lookup: Option<(&HashMap<String, String>, &L)>,
     resolve_markers: bool,
+    tile_namespace: Option<&str>,
 ) -> Result<(StaticResource, Vec<String>), String> {
     let mut tree = tree.clone();
 
@@ -1497,7 +1575,7 @@ pub fn convert_single_tree_with_diagnostics<L: crate::label_resolution::ConceptL
     } else {
         ValidationMode::Off
     };
-    let (business_data, diagnostics) = tree_to_tiles_with_options(
+    let (business_data, diagnostics) = tree_to_tiles_with_namespace(
         &tree,
         graph,
         strict,
@@ -1507,6 +1585,7 @@ pub fn convert_single_tree_with_diagnostics<L: crate::label_resolution::ConceptL
         has_extensions,
         extension_registry,
         validation,
+        tile_namespace,
     )?;
 
     // Split diagnostics: errors fail the conversion (in strict), warnings pass
@@ -1561,6 +1640,9 @@ pub struct BatchOptions<'a> {
     pub id_keys: Option<&'a [String]>,
     /// Optional scopes applied to every produced resource.
     pub scopes: Option<&'a Value>,
+    /// Layer namespace for derived cardinality-n tile ids; `None` keeps them
+    /// random (see [`tree_to_tiles_with_namespace`]).
+    pub tile_namespace: Option<&'a str>,
 }
 
 /// Result of a batch conversion: the produced resources, any per-tree errors
@@ -1617,6 +1699,7 @@ pub fn batch_convert_trees<L: crate::label_resolution::ConceptLookup + Sync>(
             ext_registry,
             label_lookup,
             opts.resolve_markers,
+            opts.tile_namespace,
         )
         .map_err(|e| format!("Tree {}: {}", i, e))?;
         if let Some(scopes_val) = opts.scopes {
@@ -2790,6 +2873,7 @@ mod tests {
             resolve_markers: false,
             id_keys: None,
             scopes: Some(&scopes),
+            tile_namespace: None,
         };
         let outcome =
             batch_convert_trees::<crate::RdmCache>(&trees, &graph, None, None, &opts).unwrap();
@@ -2815,6 +2899,7 @@ mod tests {
             resolve_markers: false,
             id_keys: None,
             scopes: None,
+            tile_namespace: None,
         };
         let err = batch_convert_trees::<crate::RdmCache>(&trees, &graph, None, None, &strict_opts)
             .unwrap_err();
@@ -3232,6 +3317,84 @@ mod tests {
             .tiles
             .clone()
             .expect("tiles")
+    }
+
+    fn convert_canonical_tree_in(namespace: &str) -> Vec<StaticTile> {
+        let graph = build_canonical_id_graph();
+        let (result, _) = tree_to_tiles_with_namespace(
+            &canonical_tree(),
+            &graph,
+            false,
+            None,
+            false,
+            true,
+            false,
+            None,
+            ValidationMode::Off,
+            Some(namespace),
+        )
+        .expect("canonical tree conversion");
+        result.business_data.resources[0]
+            .tiles
+            .clone()
+            .expect("tiles")
+    }
+
+    const LAYER_A: &str = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+    const LAYER_B: &str = "6ba7b811-9dad-11d1-80b4-00c04fd430c8";
+
+    #[test]
+    fn namespaced_tree_to_tiles_is_reproducible() {
+        let first = convert_canonical_tree_in(LAYER_A);
+        let second = convert_canonical_tree_in(LAYER_A);
+        let ids = |tiles: &[StaticTile]| -> Vec<(Option<String>, Option<String>)> {
+            tiles
+                .iter()
+                .map(|t| (t.tileid.clone(), t.parenttile_id.clone()))
+                .collect()
+        };
+        assert_eq!(
+            ids(&first),
+            ids(&second),
+            "same tree, same namespace: every id and parent link repeats, \
+             including children of cardinality-n tiles"
+        );
+
+        let mut contacts: Vec<_> = tiles_for(&first, "contact-ng")
+            .iter()
+            .filter_map(|t| t.tileid.clone())
+            .collect();
+        contacts.sort();
+        let mut expected = vec![
+            crate::graph::multi_tile_id(Some(LAYER_A), CANON_RESOURCE_ID, "contact-ng", 0),
+            crate::graph::multi_tile_id(Some(LAYER_A), CANON_RESOURCE_ID, "contact-ng", 1),
+        ];
+        expected.sort();
+        assert_eq!(contacts, expected, "cardinality-n tiles take slots 0 and 1");
+    }
+
+    #[test]
+    fn layer_namespaces_keep_new_multi_tiles_apart() {
+        let a = convert_canonical_tree_in(LAYER_A);
+        let b = convert_canonical_tree_in(LAYER_B);
+
+        let ids = |tiles: &[StaticTile], ng: &str| -> Vec<String> {
+            tiles_for(tiles, ng)
+                .iter()
+                .filter_map(|t| t.tileid.clone())
+                .collect()
+        };
+        for id in ids(&a, "contact-ng") {
+            assert!(
+                !ids(&b, "contact-ng").contains(&id),
+                "two layers adding contacts must not mint the same id"
+            );
+        }
+        assert_eq!(
+            ids(&a, "name-ng"),
+            ids(&b, "name-ng"),
+            "cardinality-1 ids stay canonical, so layers still meet on them"
+        );
     }
 
     fn tiles_for<'a>(tiles: &'a [StaticTile], ng: &str) -> Vec<&'a StaticTile> {

@@ -1587,7 +1587,7 @@ impl WASMResourceInstanceWrapper {
     /// Returns an array of StaticTile objects ready for serialization.
     #[wasm_bindgen(js_name = toTiles)]
     pub fn to_tiles(&self) -> Result<JsValue, JsValue> {
-        use crate::pseudo_value::{TileBuilder, TileBuilderContext};
+        use crate::pseudo_value::{TileBuilderContext, TileBuilderMap};
 
         let start = now_ms();
 
@@ -1650,8 +1650,7 @@ impl WASMResourceInstanceWrapper {
         })?;
 
         // Collect tiles from the tree
-        let mut tiles: std::collections::HashMap<String, TileBuilder> =
-            std::collections::HashMap::new();
+        let mut tiles = TileBuilderMap::new();
         root_list.collect_tiles(&ctx, &mut tiles);
 
         // Convert to StaticTiles and serialize
@@ -1682,7 +1681,7 @@ impl WASMResourceInstanceWrapper {
     /// Returns a StaticResource object ready for serialization.
     #[wasm_bindgen(js_name = toResource)]
     pub fn to_resource(&self) -> Result<JsValue, JsValue> {
-        use crate::pseudo_value::{TileBuilder, TileBuilderContext};
+        use crate::pseudo_value::{TileBuilderContext, TileBuilderMap};
 
         let start = now_ms();
 
@@ -1744,8 +1743,7 @@ impl WASMResourceInstanceWrapper {
         })?;
 
         // Collect tiles from the tree
-        let mut tiles_map: std::collections::HashMap<String, TileBuilder> =
-            std::collections::HashMap::new();
+        let mut tiles_map = TileBuilderMap::new();
         root_list.collect_tiles(&ctx, &mut tiles_map);
 
         // Convert to StaticTiles

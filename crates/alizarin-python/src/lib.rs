@@ -463,9 +463,13 @@ fn cards_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
 /// a deterministic UUID v5 will be generated using the key and graph ID.
 ///
 /// If scopes is provided (as JSON string), it will be set on all resulting resources.
+///
+/// If tile_namespace (a UUID) is provided, cardinality-n tile ids are derived so
+/// the same tree yields the same ids; each layer must use its own. Without it
+/// they stay random.
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
-#[pyo3(signature = (tree_json, resource_id, graph_id, from_camel=false, strict=true, rdm_cache=None, id_key=None, scopes=None))]
+#[pyo3(signature = (tree_json, resource_id, graph_id, from_camel=false, strict=true, rdm_cache=None, id_key=None, scopes=None, tile_namespace=None))]
 fn json_tree_to_tiles(
     py: Python,
     tree_json: String,
@@ -476,6 +480,7 @@ fn json_tree_to_tiles(
     rdm_cache: Option<&rdm_cache_py::RdmCache>,
     id_key: Option<String>,
     scopes: Option<String>,
+    tile_namespace: Option<String>,
 ) -> PyResult<PyObject> {
     let mut tree: serde_json::Value = serde_json::from_str(&tree_json).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse tree: {}", e))
@@ -544,6 +549,7 @@ fn json_tree_to_tiles(
         ext_registry_ref,
         label_lookup,
         true,
+        tile_namespace.as_deref(),
     )
     .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
 
@@ -581,12 +587,14 @@ fn json_tree_to_tiles(
 ///     resolve_markers: If True, resolve extension markers (e.g. label→UUID) via RDM cache
 ///     random_ids: If True, generate random UUIDs instead of slug-based IDs
 ///     skip_extensions: If True, skip extension coercion (unknown datatypes will error in strict mode)
+///     tile_namespace: Optional layer namespace (a UUID) for derived cardinality-n
+///         tile ids; each layer must use its own. Without it they stay random.
 ///
 /// Returns:
 ///     BusinessDataWrapper format: {business_data: {resources: [...]}, errors: [...], error_count: int}
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
-#[pyo3(signature = (trees_json, graph_id, from_camel=false, strict=true, id_keys=None, scopes=None, resolve_markers=true, random_ids=false, skip_extensions=false))]
+#[pyo3(signature = (trees_json, graph_id, from_camel=false, strict=true, id_keys=None, scopes=None, resolve_markers=true, random_ids=false, skip_extensions=false, tile_namespace=None))]
 fn batch_trees_to_tiles(
     py: Python,
     trees_json: String,
@@ -598,6 +606,7 @@ fn batch_trees_to_tiles(
     resolve_markers: bool,
     random_ids: bool,
     skip_extensions: bool,
+    tile_namespace: Option<String>,
 ) -> PyResult<PyObject> {
     let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json).map_err(|e| {
         PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e))
@@ -666,6 +675,7 @@ fn batch_trees_to_tiles(
         resolve_markers,
         id_keys: id_keys.as_deref(),
         scopes: scopes_value.as_ref(),
+        tile_namespace: tile_namespace.as_deref(),
     };
     let outcome = alizarin_core::batch_convert_trees(
         &trees,
@@ -1069,6 +1079,7 @@ struct TreeToTilesIterator {
     id_keys: Option<Vec<String>>,
     scopes: Option<serde_json::Value>,
     random_ids: bool,
+    tile_namespace: Option<String>,
     index: usize,
     ext_registry: Option<ExtensionTypeRegistry>,
 }
@@ -1076,7 +1087,8 @@ struct TreeToTilesIterator {
 #[pymethods]
 impl TreeToTilesIterator {
     #[new]
-    #[pyo3(signature = (tree_strings, graph_id, from_camel=false, strict=true, id_keys=None, scopes=None, random_ids=false))]
+    #[pyo3(signature = (tree_strings, graph_id, from_camel=false, strict=true, id_keys=None, scopes=None, random_ids=false, tile_namespace=None))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         tree_strings: Vec<String>,
         graph_id: String,
@@ -1085,6 +1097,7 @@ impl TreeToTilesIterator {
         id_keys: Option<Vec<String>>,
         scopes: Option<String>,
         random_ids: bool,
+        tile_namespace: Option<String>,
     ) -> PyResult<Self> {
         // Get graph from registry
         let graph = get_registered_graph(&graph_id)?;
@@ -1127,6 +1140,7 @@ impl TreeToTilesIterator {
             id_keys,
             scopes: scopes_value,
             random_ids,
+            tile_namespace,
             index: 0,
             ext_registry,
         })
@@ -1171,6 +1185,7 @@ impl TreeToTilesIterator {
             self.ext_registry.as_ref(),
             None,
             true,
+            self.tile_namespace.as_deref(),
         ) {
             Ok(mut resource) => {
                 if let Some(ref scopes_val) = self.scopes {

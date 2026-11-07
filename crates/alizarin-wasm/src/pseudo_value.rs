@@ -534,6 +534,10 @@ pub(crate) struct TileBuilder {
     pub data: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
+/// Tiles being built, in the order traversal first reached them, so `toTiles`
+/// and `toResource` output is stable (mirrors core's `TileBuilderMap`).
+pub(crate) type TileBuilderMap = alizarin_core::indexmap::IndexMap<String, TileBuilder>;
+
 impl TileBuilder {
     /// Create from a StaticTile reference
     pub fn from_tile(tile: &alizarin_core::StaticTile) -> Self {
@@ -584,11 +588,7 @@ impl PseudoValueInner {
     /// For semantic nodes: recursively collects from children
     ///
     /// The tiles map is keyed by tile key (tileid or generated key for new tiles)
-    pub fn collect_tiles(
-        &self,
-        ctx: &TileBuilderContext,
-        tiles: &mut HashMap<String, TileBuilder>,
-    ) {
+    pub fn collect_tiles(&self, ctx: &TileBuilderContext, tiles: &mut TileBuilderMap) {
         if ctx.depth > ctx.max_depth {
             return;
         }
@@ -636,11 +636,7 @@ impl PseudoValueInner {
     }
 
     /// Collect tiles from children of a semantic node
-    fn collect_children_tiles(
-        &self,
-        ctx: &TileBuilderContext,
-        tiles: &mut HashMap<String, TileBuilder>,
-    ) {
+    fn collect_children_tiles(&self, ctx: &TileBuilderContext, tiles: &mut TileBuilderMap) {
         let parent_tile_id = self.core.tile.as_ref().and_then(|t| t.tileid.clone());
         let parent_nodegroup_id = self.core.node.nodegroup_id.clone();
 
@@ -694,11 +690,7 @@ impl PseudoValueInner {
 
 impl PseudoListInner {
     /// Collect tiles from all values in this list
-    pub fn collect_tiles(
-        &self,
-        ctx: &TileBuilderContext,
-        tiles: &mut HashMap<String, TileBuilder>,
-    ) {
+    pub fn collect_tiles(&self, ctx: &TileBuilderContext, tiles: &mut TileBuilderMap) {
         for value in &self.values {
             value.collect_tiles(ctx, tiles);
         }

@@ -145,6 +145,7 @@ mod python_module {
                     ext_registry.as_ref(),
                     label_lookup,
                     resolve_markers,
+                    None,
                 )
                 .map_err(|e| format!("Tree {}: {}", i, e))
             })

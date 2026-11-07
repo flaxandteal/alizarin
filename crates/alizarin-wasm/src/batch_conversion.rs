@@ -48,6 +48,9 @@ use wasm_bindgen::prelude::*;
 ///     from_camel: If true, convert keys from camelCase to snake_case
 ///     strict: If true, fail on any validation error
 ///     id_key: Optional key for deterministic UUID v5 resourceinstanceid generation
+///     tile_namespace: Optional layer namespace (a UUID). Given, cardinality-n
+///         tile ids are derived so the same tree yields the same ids; each layer
+///         must use its own. Omitted, they stay random.
 ///
 /// Returns:
 ///     BusinessDataWrapper format: {business_data: {resources: [...]}}
@@ -59,6 +62,7 @@ pub fn tree_to_tiles_enhanced(
     strict: bool,
     id_key: Option<String>,
     random_ids: Option<bool>,
+    tile_namespace: Option<String>,
 ) -> Result<JsValue, JsError> {
     let tree: Value = serde_json::from_str(tree_json)
         .map_err(|e| JsError::new(&format!("Failed to parse tree: {}", e)))?;
@@ -77,6 +81,7 @@ pub fn tree_to_tiles_enhanced(
         Some(&ext_registry),
         None,
         true,
+        tile_namespace.as_deref(),
     )
     .map_err(|e| JsError::new(&e))?;
 
@@ -231,6 +236,8 @@ pub fn cards_to_tree(resource_json: &str, graph: &StaticGraph) -> Result<JsValue
 ///     id_keys_json: Optional JSON array of keys for deterministic UUID v5 generation (one per tree)
 ///     random_ids: Optional boolean - if not True and no id_keys, will try to use `slug`
 ///         descriptor with uuid5, erroring instead of using uuid4.
+///     tile_namespace: Optional layer namespace for derived cardinality-n tile
+///         ids, as for `treeToTiles`.
 ///
 /// Returns:
 ///     {business_data: {resources: [...]}, errors: [...], error_count, warnings: [...]}
@@ -246,6 +253,7 @@ pub fn batch_trees_to_tiles(
     random_ids: Option<bool>,
     resolve_markers: Option<bool>,
     scopes_json: Option<String>,
+    tile_namespace: Option<String>,
 ) -> Result<JsValue, JsError> {
     // Parse trees from JSON
     let mut trees: Vec<Value> = serde_json::from_str(trees_json)
@@ -296,6 +304,7 @@ pub fn batch_trees_to_tiles(
         resolve_markers: resolve_markers.unwrap_or(false),
         id_keys: id_keys.as_deref(),
         scopes: scopes_value.as_ref(),
+        tile_namespace: tile_namespace.as_deref(),
     };
     let outcome = alizarin_core::batch_convert_trees::<alizarin_core::RdmCache>(
         &trees,

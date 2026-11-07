@@ -61,7 +61,10 @@ pub use resources::{
     StaticResourceRegistry, StaticResourceSummary, TileMergeMode, UnknownReference,
 };
 pub use static_graph::{GraphWrapper, StaticGraph};
-pub use tile::{canonical_tile_id, tile_namespace, StaticTile, TILE_NAMESPACE_URI};
+pub use tile::{
+    allocate_multi_tile_id, canonical_tile_id, multi_tile_id, tile_namespace, StaticTile,
+    TILE_NAMESPACE_URI,
+};
 pub use translatable::StaticTranslatableString;
 
 /// Datatypes that represent iterable/list values

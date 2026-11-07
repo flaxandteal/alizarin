@@ -44,6 +44,7 @@ pub mod type_serialization;
 
 // Graph types
 pub use graph::{
+    allocate_multi_tile_id,
     apply_compute_tiles,
     apply_derive_functions,
     batch_merge_resources,
@@ -54,6 +55,7 @@ pub use graph::{
     find_root_node,
     is_iterable_datatype,
     merge_resources,
+    multi_tile_id,
     parse_resources_from_json_str,
     // Graph pruning
     prune_graph,
@@ -208,15 +210,20 @@ pub use card_traversal::{
 pub use json_conversion::{
     batch_convert_trees, build_tree_from_tiles, convert_single_tree, create_static_resource,
     resolve_extension_markers, resource_tiles_to_tree, resource_tiles_to_tree_with_context,
-    tiles_to_tree, tree_to_tiles, tree_to_tiles_with_options, validate_business_data, BatchOptions,
-    BatchOutcome, BusinessData, BusinessDataWrapper, ValidationDiagnostic, ValidationMode,
+    tiles_to_tree, tree_to_tiles, tree_to_tiles_with_namespace, tree_to_tiles_with_options,
+    validate_business_data, BatchOptions, BatchOutcome, BusinessData, BusinessDataWrapper,
+    ValidationDiagnostic, ValidationMode,
 };
 
 // Pseudo value core types (for JSON conversion)
 pub use pseudo_value_core::{
     matches_tile_filter, PseudoListCore, PseudoValueCore, TileBuilder, TileBuilderContext,
-    VisitorContext,
+    TileBuilderMap, VisitorContext,
 };
+
+// Re-exported so bindings name the same ordered map type core uses (`TileStore`,
+// `TileBuilderMap`) without each taking their own `indexmap` dependency.
+pub use indexmap;
 
 // Instance wrapper core types (for populate, semantic traversal)
 pub use instance_wrapper_core::{

@@ -122,6 +122,54 @@ pub fn canonical_tile_id(
     Uuid::new_v5(&tile_namespace(), name.as_bytes()).to_string()
 }
 
+/// Id of the `k`th tile of a **multi-valued** nodegroup within a resource.
+///
+/// The cardinality-n counterpart to [`canonical_tile_id`], and the formula the
+/// CSV loader has always used (`uuid5(namespace, "tile/<resource>", "<nodegroup>/<k>")`),
+/// so a resource built from CSV, from a tree, or through the ORM numbers its
+/// tiles the same way. `namespace` keeps independently built layers from
+/// minting the same id; `None` is the default alizarin namespace.
+///
+/// `k` is a slot, not a sortorder: callers pick it with
+/// [`allocate_multi_tile_id`], and a tile keeps its id however it is re-sorted.
+pub fn multi_tile_id(
+    namespace: Option<&str>,
+    resource_id: &str,
+    nodegroup_id: &str,
+    k: u32,
+) -> String {
+    let group = ("tile", Some(resource_id));
+    let key = format!("{}/{}", nodegroup_id, k);
+    match namespace {
+        Some(ns) => crate::graph_mutator::generate_uuid_v5_with_ns(ns, group, &key),
+        None => crate::graph_mutator::generate_uuid_v5(group, &key),
+    }
+}
+
+/// First free [`multi_tile_id`] at slot `start` or above.
+///
+/// `start` is only a hint (callers pass one past the highest sortorder in the
+/// nodegroup, so a deleted tile's id is not handed straight back); `is_taken` is
+/// what guarantees the id is unused, so a re-sorted nodegroup can't produce a
+/// collision. Returns the id and the slot it used, so a caller allocating
+/// several tiles can carry on from `slot + 1`.
+pub fn allocate_multi_tile_id(
+    namespace: Option<&str>,
+    resource_id: &str,
+    nodegroup_id: &str,
+    start: u32,
+    is_taken: impl Fn(&str) -> bool,
+) -> (String, u32) {
+    let mut k = start;
+    loop {
+        let id = multi_tile_id(namespace, resource_id, nodegroup_id, k);
+        if !is_taken(&id) {
+            return (id, k);
+        }
+        k += 1;
+    }
+}
+
 /// A tile containing data for a nodegroup instance
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StaticTile {
@@ -232,5 +280,31 @@ mod tests {
             tile_namespace(),
             Uuid::new_v5(&Uuid::NAMESPACE_URL, TILE_NAMESPACE_URI.as_bytes())
         );
+    }
+
+    #[test]
+    fn multi_tile_ids_differ_by_slot_namespace_and_nodegroup() {
+        let base = multi_tile_id(None, "res-1", "ng-a", 0);
+        assert_eq!(base, multi_tile_id(None, "res-1", "ng-a", 0));
+        assert_ne!(base, multi_tile_id(None, "res-1", "ng-a", 1));
+        assert_ne!(base, multi_tile_id(None, "res-1", "ng-b", 0));
+        assert_ne!(base, multi_tile_id(None, "res-2", "ng-a", 0));
+        let layer_ns = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+        assert_ne!(base, multi_tile_id(Some(layer_ns), "res-1", "ng-a", 0));
+    }
+
+    #[test]
+    fn allocation_skips_taken_slots() {
+        let taken = [
+            multi_tile_id(None, "res-1", "ng-a", 2),
+            multi_tile_id(None, "res-1", "ng-a", 3),
+        ];
+        let (id, slot) =
+            allocate_multi_tile_id(None, "res-1", "ng-a", 2, |id| taken.iter().any(|t| t == id));
+        assert_eq!(slot, 4);
+        assert_eq!(id, multi_tile_id(None, "res-1", "ng-a", 4));
+
+        let (_, slot) = allocate_multi_tile_id(None, "res-1", "ng-a", 0, |_| false);
+        assert_eq!(slot, 0);
     }
 }
