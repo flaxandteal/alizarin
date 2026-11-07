@@ -595,6 +595,9 @@ impl PseudoValueInner {
 
         // If this pseudo has a tile, ensure it exists in the map
         if let Some(ref tile) = self.core.tile {
+            // Same caveat as core's `PseudoValueCore::collect_tiles`: no-id tiles
+            // are keyed here only until the ORM can create tiles, at which point
+            // they need ids at creation (`allocate_multi_tile_id`).
             let tile_key = tile.tileid.clone().unwrap_or_else(|| {
                 format!("new_{}_{}", tile.nodegroup_id, tile.sortorder.unwrap_or(0))
             });

@@ -393,6 +393,13 @@ impl PseudoValueCore {
         }
 
         if let Some(ref tile) = self.tile {
+            // A tile with no id is new. Nothing creates one in exported output
+            // today (the ORM has no append/create API), but when it does: this
+            // key merges two new tiles of one nodegroup that share a sortorder,
+            // and the tile is emitted with no id and no parent link. Give new
+            // tiles an id at creation instead, from `allocate_multi_tile_id`
+            // (cardinality-n, under the model's layer namespace) or
+            // `canonical_tile_id` (cardinality-1), then key them by that id.
             let tile_key = tile.tileid.clone().unwrap_or_else(|| {
                 format!("new_{}_{}", tile.nodegroup_id, tile.sortorder.unwrap_or(0))
             });
