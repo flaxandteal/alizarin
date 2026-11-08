@@ -1328,6 +1328,31 @@ impl StaticResourceRegistry {
     }
 }
 
+/// A loaded registry is a tile source over its full resources, so anything that
+/// reads through [`TileSource`](crate::tile_source::TileSource) (e.g. a fold) can
+/// run over it in every binding. A resource held only as a summary has no tiles
+/// here, so it is reported as not found.
+impl crate::tile_source::TileSource for StaticResourceRegistry {
+    fn load_tiles(
+        &self,
+        resource_id: &str,
+        nodegroup_id: Option<&str>,
+    ) -> Result<Vec<StaticTile>, crate::tile_source::TileSourceError> {
+        let resource = self.get_full(resource_id).ok_or_else(|| {
+            crate::tile_source::TileSourceError::ResourceNotFound {
+                resource_id: resource_id.to_string(),
+            }
+        })?;
+        Ok(resource
+            .tiles
+            .iter()
+            .flatten()
+            .filter(|t| nodegroup_id.is_none_or(|ng| t.nodegroup_id == ng))
+            .cloned()
+            .collect())
+    }
+}
+
 /// Extract string keys from a serialized display value.
 ///
 /// Handles:

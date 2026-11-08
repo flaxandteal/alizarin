@@ -8,8 +8,10 @@
 //! polygon-nesting repair in Catalina's `fix_business_data.py`) surface at the
 //! boundary instead.
 //!
-//! Validation-only for now — coercion/indexing stay with core. `register` this
-//! handler for [`DATATYPE_NAME`] and the a129 validation pass will call it.
+//! It also folds values into a geometry summary (bbox + geometry types, see
+//! [`fold`]) for `alizarin_core::fold`. Coercion/indexing stay with core.
+//! `register` this handler for [`DATATYPE_NAME`] and the a129 validation pass
+//! will call it.
 
 use std::sync::{Arc, RwLock};
 
@@ -17,6 +19,9 @@ use serde_json::Value;
 
 /// UTM projection as a load-time derive function (see [`utm`]).
 pub mod utm;
+
+/// Folding geometry values into a bbox summary (see [`fold`]).
+pub mod fold;
 
 /// Shared C-ABI `TypeHandlerInfo` builder for the python + napi bindings.
 pub mod c_abi;
@@ -59,7 +64,7 @@ pub fn reset_coord_limit() {
     set_coord_limit(Some(DEFAULT_COORD_LIMIT));
 }
 
-/// Handler for the `geojson-feature-collection` datatype (validation-only).
+/// Handler for the `geojson-feature-collection` datatype (validation and fold).
 pub struct GeoTypeHandler;
 
 impl ExtensionTypeHandler for GeoTypeHandler {
@@ -80,6 +85,28 @@ impl ExtensionTypeHandler for GeoTypeHandler {
         _config: Option<&Value>,
     ) -> Result<ValidationResult, ExtensionError> {
         Ok(validate_geojson(value))
+    }
+
+    fn fold_identity(&self, _config: Option<&Value>) -> Option<Value> {
+        Some(fold::identity())
+    }
+
+    fn fold(
+        &self,
+        acc: Value,
+        values: &[&Value],
+        _config: Option<&Value>,
+    ) -> Result<Value, ExtensionError> {
+        fold::fold(acc, values)
+    }
+
+    fn fold_merge(
+        &self,
+        a: Value,
+        b: Value,
+        _config: Option<&Value>,
+    ) -> Result<Value, ExtensionError> {
+        fold::merge(a, b)
     }
 
     fn description(&self) -> &str {

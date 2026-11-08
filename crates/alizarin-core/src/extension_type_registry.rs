@@ -357,6 +357,44 @@ pub trait ExtensionTypeHandler: Send + Sync {
         Ok(ValidationResult::valid())
     }
 
+    /// The empty summary for folding values of this datatype, or `None` if the
+    /// datatype has no summary (the default).
+    ///
+    /// Folding reduces many values of one datatype into one summary (a bbox, a
+    /// `[min, max]`, …) — see [`crate::datatype_fold`]. A handler that returns `Some`
+    /// here must also implement [`fold`](Self::fold) and
+    /// [`fold_merge`](Self::fold_merge), and the three must form a monoid:
+    /// merging is associative, and the identity changes nothing, so a fold gives
+    /// the same summary whatever order values or partial folds arrive in.
+    /// Summaries are JSON so they serialise identically on every backend.
+    fn fold_identity(&self, _config: Option<&Value>) -> Option<Value> {
+        None
+    }
+
+    /// Fold a batch of (non-null) values into `acc`.
+    ///
+    /// Takes a batch rather than one value so a foreign handler is called once
+    /// per batch, not once per value. `Err` fails the whole fold: a value that
+    /// can't be summarised is a data error, not something to skip.
+    fn fold(
+        &self,
+        acc: Value,
+        _values: &[&Value],
+        _config: Option<&Value>,
+    ) -> Result<Value, ExtensionError> {
+        Ok(acc)
+    }
+
+    /// Merge two summaries (from folds over disjoint sets of values).
+    fn fold_merge(
+        &self,
+        a: Value,
+        _b: Value,
+        _config: Option<&Value>,
+    ) -> Result<Value, ExtensionError> {
+        Ok(a)
+    }
+
     /// Resolve markers in tile data (e.g., fetch reference labels).
     ///
     /// Some datatypes store IDs that need to be resolved to full objects
