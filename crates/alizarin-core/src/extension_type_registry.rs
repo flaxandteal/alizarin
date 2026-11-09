@@ -357,6 +357,40 @@ pub trait ExtensionTypeHandler: Send + Sync {
         Ok(ValidationResult::valid())
     }
 
+    /// This datatype's node config, normalised from the node's raw `config`, or
+    /// `None` (the default) if the handler doesn't expose one.
+    ///
+    /// Core models only its own datatypes' configs; an extension owns its own.
+    /// The result is JSON the extension defines (e.g. CLM's `reference` gives
+    /// its collection id and `multiValue`), returned as-is by every binding's
+    /// `getExtensionConfig`.
+    fn node_config(&self, _config: &Value) -> Option<Value> {
+        None
+    }
+
+    /// The collection this datatype's values come from, given the node's raw
+    /// `config`, or `None` if it has none. Label resolution uses it to map an
+    /// extension node to the collection its labels resolve in; core reads only
+    /// its own datatypes' config keys.
+    ///
+    /// The default reads `collectionId` from [`node_config`](Self::node_config),
+    /// so handlers across the C ABI, wasm and Python need no separate hook.
+    fn collection_id(&self, config: &Value) -> Option<String> {
+        self.node_config(config)?
+            .get("collectionId")?
+            .as_str()
+            .map(str::to_string)
+    }
+
+    /// Whether a display of this datatype is a list of labels, one per item,
+    /// rather than one string, given the node's raw `config` (default `false`).
+    ///
+    /// Gates on config, not on whether the value happens to be an array, so a
+    /// single-valued node stays scalar however its value is stored.
+    fn display_as_list(&self, _config: Option<&Value>) -> bool {
+        false
+    }
+
     /// The empty summary for folding values of this datatype, or `None` if the
     /// datatype has no summary (the default).
     ///

@@ -9,8 +9,9 @@ use wasm_bindgen::prelude::*;
 use alizarin_core::node_config::{
     NodeConfigBoolean as CoreNodeConfigBoolean, NodeConfigConcept as CoreNodeConfigConcept,
     NodeConfigDomain as CoreNodeConfigDomain, NodeConfigManager as CoreNodeConfigManager,
-    NodeConfigReference as CoreNodeConfigReference, StaticDomainValue as CoreStaticDomainValue,
+    StaticDomainValue as CoreStaticDomainValue,
 };
+use serde::Serialize;
 
 // Import WASM graph type for direct graph loading
 use crate::graph::StaticGraph as WasmStaticGraph;
@@ -168,57 +169,6 @@ impl From<&CoreNodeConfigConcept> for WasmNodeConfigConcept {
 }
 
 // =============================================================================
-// NodeConfigReference WASM Wrapper
-// =============================================================================
-
-/// Reference node configuration (CLM controlled list).
-#[wasm_bindgen]
-pub struct WasmNodeConfigReference {
-    inner: CoreNodeConfigReference,
-}
-
-#[wasm_bindgen]
-impl WasmNodeConfigReference {
-    /// Get the controlled list ID
-    #[wasm_bindgen(getter, js_name = controlledList)]
-    pub fn controlled_list(&self) -> String {
-        self.inner.controlled_list.clone()
-    }
-
-    /// Get the RDM collection ID
-    #[wasm_bindgen(getter, js_name = rdmCollection)]
-    pub fn rdm_collection(&self) -> String {
-        self.inner.rdm_collection.clone()
-    }
-
-    /// Get whether multi-value is enabled
-    #[wasm_bindgen(getter, js_name = multiValue)]
-    pub fn multi_value(&self) -> bool {
-        self.inner.multi_value
-    }
-
-    /// Get the collection ID (controlledList or rdmCollection)
-    #[wasm_bindgen(js_name = getCollectionId)]
-    pub fn get_collection_id(&self) -> Option<String> {
-        self.inner.get_collection_id().map(|s| s.to_string())
-    }
-}
-
-impl From<CoreNodeConfigReference> for WasmNodeConfigReference {
-    fn from(inner: CoreNodeConfigReference) -> Self {
-        Self { inner }
-    }
-}
-
-impl From<&CoreNodeConfigReference> for WasmNodeConfigReference {
-    fn from(inner: &CoreNodeConfigReference) -> Self {
-        Self {
-            inner: inner.clone(),
-        }
-    }
-}
-
-// =============================================================================
 // NodeConfigDomain WASM Wrapper
 // =============================================================================
 
@@ -337,13 +287,25 @@ impl WasmNodeConfigManager {
             .map(WasmNodeConfigConcept::from)
     }
 
-    /// Get reference config for a node (returns None if nodeid is null)
-    #[wasm_bindgen(js_name = getReference)]
-    pub fn get_reference(&self, nodeid: Option<String>) -> Option<WasmNodeConfigReference> {
-        let nodeid = nodeid?;
-        self.inner
-            .get_reference(&nodeid)
-            .map(WasmNodeConfigReference::from)
+    /// An extension datatype's node config, as its registered handler supplies
+    /// it (a plain object; its shape is the extension's). `undefined` if the
+    /// node has none, or no handler for its datatype is registered.
+    #[wasm_bindgen(js_name = getExtensionConfig)]
+    pub fn get_extension_config(&self, nodeid: Option<String>) -> JsValue {
+        let registry = crate::extension_registry::build_extension_registry();
+        nodeid
+            .and_then(|id| self.inner.get_extension_config(&id, Some(&registry)))
+            .and_then(|config| {
+                // Nulls stay null (not undefined), matching NAPI and Python.
+                config
+                    .serialize(
+                        &serde_wasm_bindgen::Serializer::new()
+                            .serialize_maps_as_objects(true)
+                            .serialize_missing_as_null(true),
+                    )
+                    .ok()
+            })
+            .unwrap_or(JsValue::UNDEFINED)
     }
 
     /// Get domain config for a node (returns None if nodeid is null)

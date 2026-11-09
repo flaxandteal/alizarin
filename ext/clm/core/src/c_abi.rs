@@ -14,9 +14,10 @@ use serde_json::Value;
 use alizarin_extension_api::{
     abi_fingerprint, alizarin_free_coerce_result, alizarin_free_render_display_result,
     alizarin_free_resolve_markers_result, CoerceFn, CoerceResult, ConceptLookupByIdFn,
-    ConceptLookupByLabelFn, FreeConceptJsonFn, FreeDisplayFn, FreeFn, FreeResolveMarkersFn,
-    FreeIndexSpecFn, HasCollectionFn, IndexSpecFn, IndexSpecResult, RenderDisplayFn,
-    RenderDisplayResult, ResolveMarkersFn, ResolveMarkersResult, TypeHandlerInfo,
+    ConceptLookupByLabelFn, DisplayAsListFn, FreeConceptJsonFn, FreeDisplayFn, FreeFn,
+    FreeIndexSpecFn, FreeNodeConfigFn, FreeResolveMarkersFn, HasCollectionFn, IndexSpecFn,
+    IndexSpecResult, NodeConfigFn, NodeConfigResult, RenderDisplayFn, RenderDisplayResult,
+    ResolveMarkersFn, ResolveMarkersResult, TypeHandlerInfo,
 };
 
 use crate::{
@@ -267,6 +268,33 @@ use crate::{
     }
 
     // =========================================================================
+    // Node config + list display (the reference config, supplied at runtime)
+    // =========================================================================
+
+    /// C ABI node-config function: the reference config from a node's raw
+    /// config (`*const serde_json::Value`). Freed by [`free_index_spec_reference`]
+    /// (same result layout).
+    unsafe extern "C" fn node_config_reference(config_ptr: *const c_void) -> NodeConfigResult {
+        if config_ptr.is_null() {
+            return NodeConfigResult::error("null config pointer".to_string());
+        }
+        let config = crate::reference_node_config(&*(config_ptr as *const Value));
+        match serde_json::to_vec(&Some(config)) {
+            Ok(json) => NodeConfigResult::success(json),
+            Err(e) => NodeConfigResult::error(format!("Failed to serialize node config: {}", e)),
+        }
+    }
+
+    /// C ABI list-display function: whether a reference node is multi-valued.
+    unsafe extern "C" fn display_reference_as_list(config_ptr: *const c_void) -> bool {
+        if config_ptr.is_null() {
+            return false;
+        }
+        serde_json::from_value::<ReferenceNodeConfig>((*(config_ptr as *const Value)).clone())
+            .is_ok_and(|c| c.is_multi_value())
+    }
+
+    // =========================================================================
     // PyCapsule Registration
     // =========================================================================
 
@@ -297,6 +325,9 @@ pub fn reference_handler_type_info() -> *const TypeHandlerInfo {
             free_render_search_fn: None,
             index_spec_fn: Some(index_spec_reference as IndexSpecFn),
             free_index_spec_fn: Some(free_index_spec_reference as FreeIndexSpecFn),
+            node_config_fn: Some(node_config_reference as NodeConfigFn),
+            free_node_config_fn: Some(free_index_spec_reference as FreeNodeConfigFn),
+            display_as_list_fn: Some(display_reference_as_list as DisplayAsListFn),
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         });

@@ -105,6 +105,9 @@ pub fn filelist_handler_type_info() -> *const TypeHandlerInfo {
             free_render_search_fn: None,
             index_spec_fn: None,
             free_index_spec_fn: None,
+            node_config_fn: None,
+            free_node_config_fn: None,
+            display_as_list_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         });

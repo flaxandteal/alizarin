@@ -87,13 +87,11 @@ fn link_keys(value: &Value) -> Vec<String> {
     out
 }
 
-/// Resolve the collection/controlled-list id from a concept node's config.
-/// `rdmCollection` takes precedence over `controlledList`.
+/// Resolve the collection id from a concept node's config. Extension datatypes
+/// that name a collection do so through their own `index_spec`.
 fn builtin_collection(config: Option<&Value>) -> Option<String> {
-    let config = config?;
-    config
+    config?
         .get("rdmCollection")
-        .or_else(|| config.get("controlledList"))
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
 }

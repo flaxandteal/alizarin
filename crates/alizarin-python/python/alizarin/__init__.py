@@ -289,9 +289,9 @@ from .node_config import (
     StaticNodeConfigBoolean,
     StaticNodeConfigConcept,
     StaticNodeConfigDomain,
-    StaticNodeConfigReference,
     NodeConfigManager,
     nodeConfigManager,
+    register_node_config_adapter,
 )
 
 # =============================================================================
@@ -521,9 +521,9 @@ __all__ = [
     "StaticNodeConfigBoolean",
     "StaticNodeConfigConcept",
     "StaticNodeConfigDomain",
-    "StaticNodeConfigReference",
     "NodeConfigManager",
     "nodeConfigManager",
+    "register_node_config_adapter",
     # Extension Registration
     "register_type_handler",
     "has_type_handler",

@@ -189,16 +189,16 @@ pub fn serialize_value(
                 }
             }
             SerializationMode::Display if caps.can_render_display => {
-                // A multi-value reference must stay an array in the hydrated
-                // tree (one entry per concept) rather than collapse to a single
-                // joined display string. Gate on the node's multiValue flag,
-                // not array-ness, to keep single-value references scalar.
-                let multi_value = ctx
+                // Some extension values must stay an array in the hydrated tree
+                // (one label per item, e.g. a multi-value reference) rather than
+                // collapse to one joined string. The handler decides from its
+                // node's config, so single-valued nodes stay scalar. Cached per
+                // node: on wasm the handler is a JS callback.
+                let as_list = ctx
                     .node_config
-                    .and_then(|nc| nc.as_reference())
-                    .map(|r| r.multi_value)
-                    .unwrap_or(false);
-                if multi_value {
+                    .and_then(|nc| nc.extension_display_as_list(handler.as_ref()))
+                    .unwrap_or_else(|| handler.display_as_list(None));
+                if as_list {
                     if let Value::Array(items) = tile_data {
                         let labels: Vec<Value> = items
                             .iter()

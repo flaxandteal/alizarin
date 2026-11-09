@@ -54,6 +54,31 @@ pub fn coerce_value(datatype: &str, value: &Value, config: Option<&Value>) -> Co
     coerce_value_with_registry(datatype, value, config, None)
 }
 
+/// The datatypes core handles itself (keep in step with the match in
+/// [`coerce_value_with_registry`]). Anything else, apart from `semantic`, which
+/// carries no value, is an extension's.
+pub const CORE_DATATYPES: &[&str] = &[
+    "number",
+    "non-localized-string",
+    "edtf",
+    "date",
+    "string",
+    "url",
+    "geojson-feature-collection",
+    "boolean",
+    "domain-value",
+    "domain-value-list",
+    "concept",
+    "concept-list",
+    "resource-instance",
+    "resource-instance-list",
+];
+
+/// Whether `datatype` belongs to an extension (not core, not `semantic`).
+pub fn is_extension_datatype(datatype: &str) -> bool {
+    datatype != "semantic" && !CORE_DATATYPES.contains(&datatype)
+}
+
 /// Coerce a value based on datatype, with optional extension registry.
 ///
 /// When the datatype is not handled by core, the extension registry is consulted.

@@ -185,8 +185,6 @@ use alizarin_core::{
     StaticResourceSummary as CoreStaticResourceSummary,
     // Graph types
     StaticTile as AlizarinStaticTile,
-    DEFAULT_CONFIG_KEYS,
-    DEFAULT_RESOLVABLE_DATATYPES,
 };
 
 /// Build alias-to-collection mapping directly from StaticGraph.
@@ -197,33 +195,7 @@ fn build_alias_to_collection_from_graph(
     graph: &AlizarinCoreStaticGraph,
     ext_registry: Option<&ExtensionTypeRegistry>,
 ) -> HashMap<String, String> {
-    use std::collections::HashSet;
-
-    let mut resolvable_set: HashSet<&str> = DEFAULT_RESOLVABLE_DATATYPES.iter().copied().collect();
-
-    if let Some(registry) = ext_registry {
-        for node in &graph.nodes {
-            if registry.has(&node.datatype) {
-                resolvable_set.insert(&node.datatype);
-            }
-        }
-    }
-
-    let mut alias_to_collection = HashMap::new();
-    for node in &graph.nodes {
-        if let Some(alias) = &node.alias {
-            if !resolvable_set.contains(node.datatype.as_str()) {
-                continue;
-            }
-            for key in DEFAULT_CONFIG_KEYS {
-                if let Some(collection_id) = node.config.get(*key).and_then(|v| v.as_str()) {
-                    alias_to_collection.insert(alias.clone(), collection_id.to_string());
-                    break;
-                }
-            }
-        }
-    }
-    alias_to_collection
+    alizarin_core::alias_to_collection_for_graph(graph, ext_registry)
 }
 
 /// Helper to get a graph from the registry

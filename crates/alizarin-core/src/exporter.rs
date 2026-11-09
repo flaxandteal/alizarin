@@ -164,9 +164,18 @@ pub fn export_all_graphs() -> Result<Vec<ExportFile>, ExportError> {
 /// as a ConceptScheme and writes to `reference_data/controlled_lists/`.
 /// This format is compatible with the `arches_controlled_lists` importer.
 ///
-/// Concepts that appear in multiple collections are only emitted once (in the
-/// first collection encountered, sorted by collection ID). This prevents
-/// duplicate-key errors when the CLM importer creates `ListItem` rows.
+/// Collections are exported in collection-ID order. A concept that appears in
+/// more than one collection is emitted in each: the first keeps its own id, and
+/// later lists get a clone with a distinct, deterministic `rdf:about`. The CLM
+/// importer pins each `ListItem` to one List and keys it on `rdf:about`, so a
+/// shared id would collide.
+///
+/// Note: this is the one place core still knows the controlled-list format.
+/// The layout (`controlled_lists/`, `ConceptScheme`, cloning shared concepts
+/// for the CLM importer) is kept here for now as a format convention. The
+/// intended direction is to move this export into the CLM extension, which
+/// owns references; the loader's `controlled_lists` subdir in
+/// `loader.rs` (`find_collection_files`) would move with it.
 pub fn export_collections(
     rdm_cache: &RdmCache,
     base_uri: &str,

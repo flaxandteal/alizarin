@@ -1,8 +1,8 @@
 //! WASM bindings for alizarin-clm-core.
 //!
-//! Exposes `reference` (CLM) display rendering to JavaScript, delegating to the
-//! shared Rust implementation. The `@alizarin/clm` JS package uses this in a
-//! `renderDisplay` handler registered via `registerExtensionHandler`, so the
+//! Exposes `reference` (CLM) display rendering and node config to JavaScript,
+//! delegating to the shared Rust implementation. The `@alizarin/clm` JS package
+//! uses these in a handler registered via `registerExtensionHandler`, so the
 //! display logic lives once in `alizarin-clm-core` rather than reimplemented in
 //! TypeScript. (Coercion for the browser still happens in the view-model layer;
 //! marker resolution is lazy in JS against the runtime RDM cache.)
@@ -32,4 +32,31 @@ pub fn render_reference_display(
     } else {
         Ok(Some(display))
     }
+}
+
+/// A reference node's config from its raw node config:
+/// `{controlledList, rdmCollection, multiValue, collectionId}`. The same shape
+/// the NAPI and Python handlers supply (one implementation, in
+/// `alizarin-clm-core`).
+#[wasm_bindgen(js_name = referenceNodeConfig)]
+pub fn reference_node_config(config: JsValue) -> Result<JsValue, JsError> {
+    let json: serde_json::Value = serde_wasm_bindgen::from_value(config)
+        .map_err(|e| JsError::new(&format!("Failed to parse node config: {}", e)))?;
+    let out = alizarin_clm_core::reference_node_config(&json);
+    // Nulls stay null (not undefined), so the config matches NAPI's and Python's.
+    serde::Serialize::serialize(
+        &out,
+        &serde_wasm_bindgen::Serializer::new()
+            .serialize_maps_as_objects(true)
+            .serialize_missing_as_null(true),
+    )
+    .map_err(|e| JsError::new(&format!("Failed to serialize node config: {}", e)))
+}
+
+/// Whether a reference node displays as a list (it is multi-valued).
+#[wasm_bindgen(js_name = referenceDisplayAsList)]
+pub fn reference_display_as_list(config: JsValue) -> bool {
+    serde_wasm_bindgen::from_value::<serde_json::Value>(config)
+        .map(|c| alizarin_clm_core::reference_node_config(&c)["multiValue"] == true)
+        .unwrap_or(false)
 }

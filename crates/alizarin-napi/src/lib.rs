@@ -837,8 +837,11 @@ pub fn build_alias_to_collection_map(
         strict: false,
     };
 
+    let registry = alizarin_core::build_extension_registry_from_registered();
     Ok(alizarin_core::build_alias_to_collection_map(
-        &graph, &config,
+        &graph,
+        &config,
+        Some(&registry),
     ))
 }
 

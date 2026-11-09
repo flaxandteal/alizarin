@@ -15,9 +15,9 @@ use std::ffi::c_void;
 use std::sync::{Arc, RwLock};
 
 use alizarin_extension_api::{
-    abi_fingerprint, CoerceFn, FreeDisplayFn, FreeFn, FreeIndexSpecFn, FreeRenderSearchFn,
-    FreeResolveMarkersFn, FreeValidateFn, IndexSpecFn, RenderDisplayFn, RenderSearchFn,
-    ResolveMarkersFn, TypeHandlerInfo, ValidateFn,
+    abi_fingerprint, CoerceFn, DisplayAsListFn, FreeDisplayFn, FreeFn, FreeIndexSpecFn,
+    FreeNodeConfigFn, FreeRenderSearchFn, FreeResolveMarkersFn, FreeValidateFn, IndexSpecFn,
+    NodeConfigFn, RenderDisplayFn, RenderSearchFn, ResolveMarkersFn, TypeHandlerInfo, ValidateFn,
 };
 
 use crate::extension_type_registry::{
@@ -49,6 +49,11 @@ struct RegisteredHandler {
     /// Optional index-spec declarer (value by pointer; returns class + raw keys).
     index_spec_fn: Option<IndexSpecFn>,
     free_index_spec_fn: Option<FreeIndexSpecFn>,
+    /// Optional node-config supplier (raw config by pointer; returns JSON).
+    node_config_fn: Option<NodeConfigFn>,
+    free_node_config_fn: Option<FreeNodeConfigFn>,
+    /// Optional list-display test (raw config by pointer).
+    display_as_list_fn: Option<DisplayAsListFn>,
 }
 
 // =============================================================================
@@ -463,6 +468,47 @@ impl ExtensionTypeHandler for AbiExtensionTypeHandler {
         }
     }
 
+    fn node_config(&self, config: &serde_json::Value) -> Option<serde_json::Value> {
+        let (node_config_fn, free_node_config_fn) = {
+            let handlers = TYPE_HANDLERS.read().unwrap();
+            let h = handlers.get(&self.type_name)?;
+            (h.node_config_fn?, h.free_node_config_fn?)
+        };
+        // SAFETY: the config pointer lives for the call; the ext casts it back to
+        // the same type; the result is freed below.
+        unsafe {
+            let result = node_config_fn(config as *const serde_json::Value as *const c_void);
+            let parsed = if result.error_ptr.is_null() && !result.json_ptr.is_null() {
+                let json = std::slice::from_raw_parts(result.json_ptr, result.json_len);
+                serde_json::from_slice::<Option<serde_json::Value>>(json)
+                    .ok()
+                    .flatten()
+            } else {
+                None
+            };
+            free_node_config_fn(result);
+            parsed
+        }
+    }
+
+    fn display_as_list(&self, config: Option<&serde_json::Value>) -> bool {
+        let display_as_list_fn = {
+            let handlers = TYPE_HANDLERS.read().unwrap();
+            match handlers
+                .get(&self.type_name)
+                .and_then(|h| h.display_as_list_fn)
+            {
+                Some(f) => f,
+                None => return false,
+            }
+        };
+        let config_ptr = config
+            .map(|c| c as *const serde_json::Value as *const c_void)
+            .unwrap_or(std::ptr::null());
+        // SAFETY: the config pointer (or null) lives for the call.
+        unsafe { display_as_list_fn(config_ptr) }
+    }
+
     fn description(&self) -> &str {
         "Python extension type handler (C ABI)"
     }
@@ -535,6 +581,9 @@ pub unsafe fn register_handler_from_ptr(ptr: *const TypeHandlerInfo) -> Result<S
             free_render_search_fn: info.free_render_search_fn,
             index_spec_fn: info.index_spec_fn,
             free_index_spec_fn: info.free_index_spec_fn,
+            node_config_fn: info.node_config_fn,
+            free_node_config_fn: info.free_node_config_fn,
+            display_as_list_fn: info.display_as_list_fn,
         },
     );
 

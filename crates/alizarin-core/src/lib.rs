@@ -131,7 +131,7 @@ pub use interner::{InternedId, Interner, InternerExt};
 // Node config types
 pub use node_config::{
     NodeConfig, NodeConfigBoolean, NodeConfigConcept, NodeConfigDomain, NodeConfigManager,
-    NodeConfigReference, StaticDomainValue,
+    StaticDomainValue,
 };
 
 // Type coercion
@@ -198,9 +198,9 @@ pub use type_serialization::{
 
 // Label resolution
 pub use label_resolution::{
-    build_alias_to_collection_map, find_needed_collections, is_valid_uuid, resolve_labels,
-    resolve_labels_full, ConceptLookup, LabelResolutionConfig, LabelResolutionError,
-    DEFAULT_CONFIG_KEYS, DEFAULT_RESOLVABLE_DATATYPES,
+    alias_to_collection_for_graph, build_alias_to_collection_map, find_needed_collections,
+    is_valid_uuid, resolve_labels, resolve_labels_full, ConceptLookup, LabelResolutionConfig,
+    LabelResolutionError, DEFAULT_CONFIG_KEYS, DEFAULT_RESOLVABLE_DATATYPES,
 };
 
 // Card-based traversal (card hierarchy instead of node hierarchy)

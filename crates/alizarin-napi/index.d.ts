@@ -140,6 +140,12 @@ export declare class NapiNodeConfigManager {
   getBoolean(nodeid?: string | undefined | null): NapiNodeConfigBoolean | null
   /** Concept config for a node, or null. */
   getConcept(nodeid?: string | undefined | null): NapiNodeConfigConcept | null
+  /**
+   * An extension datatype's node config, as its registered handler supplies
+   * it (a plain object; its shape is the extension's), or null if the node
+   * has none or no handler for its datatype is registered.
+   */
+  getExtensionConfig(nodeid?: string | undefined | null): any | null
   /** Domain config for a node, or null. */
   getDomain(nodeid?: string | undefined | null): NapiNodeConfigDomain | null
   /** A domain value by id, or null. */

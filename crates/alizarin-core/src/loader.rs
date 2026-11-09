@@ -413,6 +413,9 @@ impl PrebuildLoader {
 
     /// Find all SKOS XML files across the reference_data subdirectories:
     /// concepts/, collections/, controlled_lists/, and staging/.
+    ///
+    /// `controlled_lists/` is the CLM extension's layout, kept in core for now;
+    /// see the note on `exporter::export_collections` about moving it to CLM.
     pub fn find_collection_files(&self) -> Result<Vec<PathBuf>, LoaderError> {
         let reference_data = self.root_path.join("reference_data");
         if !reference_data.exists() {

@@ -1144,13 +1144,14 @@ class TestPhase0NodeConfigManager:
 
         assert ref_node_id is not None
         assert manager.has_config(ref_node_id)
-        assert manager.get_config_type(ref_node_id) == "reference"
+        assert manager.get_config_type(ref_node_id) == "extension"
 
-        # Get the reference config
-        ref_config = manager.get_reference(ref_node_id)
+        # The reference config comes from CLM's registered handler, not core
+        ref_config = manager.get_extension_config(ref_node_id)
         assert ref_config is not None
-        assert ref_config.controlled_list == "2730d609-3a8d-49dc-bf51-6ac34e80294a"
-        assert ref_config.multi_value is True
+        assert ref_config["controlledList"] == "2730d609-3a8d-49dc-bf51-6ac34e80294a"
+        assert ref_config["multiValue"] is True
+        assert ref_config["collectionId"] == "2730d609-3a8d-49dc-bf51-6ac34e80294a"
 
     def test_node_config_boolean(self):
         """Test NodeConfigBoolean type."""
@@ -1202,20 +1203,40 @@ class TestPhase0NodeConfigManager:
         assert config.rdm_collection == "my-rdm-collection-id"
 
     def test_node_config_reference_get_collection_id(self):
-        """Test NodeConfigReference get_collection_id method."""
-        from alizarin.alizarin import RustNodeConfigReference
+        """StaticNodeConfigReference (now CLM's, not core's) picks its collection."""
+        from alizarin_clm.node_config import StaticNodeConfigReference
 
         # With controlledList
-        config1 = RustNodeConfigReference("clm-list-id", "", False)
+        config1 = StaticNodeConfigReference.from_dict({"controlledList": "clm-list-id"})
         assert config1.get_collection_id() == "clm-list-id"
 
         # With rdmCollection fallback
-        config2 = RustNodeConfigReference("", "rdm-collection-id", True)
+        config2 = StaticNodeConfigReference.from_dict(
+            {"rdmCollection": "rdm-collection-id", "multiValue": True}
+        )
         assert config2.get_collection_id() == "rdm-collection-id"
+        assert config2.multi_value is True
 
         # With both, controlledList takes precedence
-        config3 = RustNodeConfigReference("clm-id", "rdm-id", False)
+        config3 = StaticNodeConfigReference.from_dict(
+            {"controlledList": "clm-id", "rdmCollection": "rdm-id"}
+        )
         assert config3.get_collection_id() == "clm-id"
+
+    def test_reference_config_adapter_is_registered_on_import(self):
+        """Importing alizarin_clm registers the reference config with core."""
+        import alizarin_clm  # noqa: F401
+        from alizarin.node_config import NodeConfigManager
+        from alizarin_clm.node_config import StaticNodeConfigReference
+
+        class Node:
+            nodeid = "ref-node"
+            datatype = "reference"
+            config = {"controlledList": "list-1", "multiValue": True}
+
+        config = NodeConfigManager(cache={}).retrieve(Node())
+        assert isinstance(config, StaticNodeConfigReference)
+        assert config.get_collection_id() == "list-1"
 
 
 class TestPhase0RdmCache:
@@ -1762,10 +1783,10 @@ class TestPhase0Integration:
                 ref_node_id = node["nodeid"]
                 break
 
-        ref_config = config_manager.get_reference(ref_node_id)
+        ref_config = config_manager.get_extension_config(ref_node_id)
         assert ref_config is not None
 
-        collection_id = ref_config.get_collection_id()
+        collection_id = ref_config["collectionId"]
         assert collection_id == "2730d609-3a8d-49dc-bf51-6ac34e80294a"
 
         # Step 3: Set up RdmCache with the required collection

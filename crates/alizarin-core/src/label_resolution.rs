@@ -22,8 +22,10 @@ pub const DEFAULT_RESOLVABLE_DATATYPES: &[&str] = &[
     "domain-value-list",
 ];
 
-/// Config keys that hold collection IDs (in order of preference)
-pub const DEFAULT_CONFIG_KEYS: &[&str] = &["rdmCollection", "controlledList"];
+/// Config keys that hold collection IDs for core datatypes (in order of
+/// preference). An extension datatype's collection comes from its handler
+/// ([`collection_id`](crate::extension_type_registry::ExtensionTypeHandler::collection_id)).
+pub const DEFAULT_CONFIG_KEYS: &[&str] = &["rdmCollection"];
 
 /// Error type for label resolution
 #[derive(Debug, Clone)]
@@ -120,10 +122,13 @@ impl LabelResolutionConfig {
 /// Build a mapping from node alias to collection ID based on graph definition.
 ///
 /// Returns a HashMap where keys are node aliases and values are collection IDs
-/// for nodes with resolvable datatypes.
+/// for nodes with resolvable datatypes. A node whose datatype has a handler in
+/// `registry` takes its collection from the handler; otherwise from the first
+/// of `config.config_keys` present in its config.
 pub fn build_alias_to_collection_map(
     graph: &Value,
     config: &LabelResolutionConfig,
+    registry: Option<&crate::extension_type_registry::ExtensionTypeRegistry>,
 ) -> HashMap<String, String> {
     let mut alias_to_collection: HashMap<String, String> = HashMap::new();
 
@@ -166,6 +171,13 @@ pub fn build_alias_to_collection_map(
             None => continue,
         };
 
+        if let Some(handler) = registry.and_then(|r| r.get(datatype)) {
+            if let Some(collection_id) = handler.collection_id(node_config) {
+                alias_to_collection.insert(alias.to_string(), collection_id);
+                continue;
+            }
+        }
+
         // Check config keys in order of preference
         for key in &config.config_keys {
             if let Some(collection_id) = node_config.get(key).and_then(|v| v.as_str()) {
@@ -175,6 +187,39 @@ pub fn build_alias_to_collection_map(
         }
     }
 
+    alias_to_collection
+}
+
+/// [`build_alias_to_collection_map`] over a parsed graph, with the default
+/// config keys. Every datatype with a handler in `registry` is resolvable,
+/// alongside [`DEFAULT_RESOLVABLE_DATATYPES`].
+pub fn alias_to_collection_for_graph(
+    graph: &crate::graph::StaticGraph,
+    registry: Option<&crate::extension_type_registry::ExtensionTypeRegistry>,
+) -> HashMap<String, String> {
+    let mut alias_to_collection = HashMap::new();
+    for node in &graph.nodes {
+        let Some(alias) = &node.alias else { continue };
+        let handler = registry.and_then(|r| r.get(&node.datatype));
+        if handler.is_none() && !DEFAULT_RESOLVABLE_DATATYPES.contains(&node.datatype.as_str()) {
+            continue;
+        }
+        let collection_id = match handler {
+            Some(handler) => serde_json::to_value(&node.config)
+                .ok()
+                .and_then(|config| handler.collection_id(&config)),
+            None => None,
+        }
+        .or_else(|| {
+            DEFAULT_CONFIG_KEYS
+                .iter()
+                .find_map(|key| node.config.get(*key).and_then(|v| v.as_str()))
+                .map(str::to_string)
+        });
+        if let Some(collection_id) = collection_id {
+            alias_to_collection.insert(alias.clone(), collection_id);
+        }
+    }
     alias_to_collection
 }
 
@@ -328,6 +373,7 @@ pub fn resolve_labels_full<L: ConceptLookup>(
     graph_json: &str,
     lookup: &L,
     config: &LabelResolutionConfig,
+    registry: Option<&crate::extension_type_registry::ExtensionTypeRegistry>,
 ) -> Result<(String, HashSet<String>), LabelResolutionError> {
     // Parse inputs
     let tree: Value = serde_json::from_str(tree_json).map_err(|e| LabelResolutionError {
@@ -341,7 +387,7 @@ pub fn resolve_labels_full<L: ConceptLookup>(
     })?;
 
     // Build alias -> collection mapping
-    let alias_to_collection = build_alias_to_collection_map(&graph, config);
+    let alias_to_collection = build_alias_to_collection_map(&graph, config, registry);
 
     if alias_to_collection.is_empty() {
         // No resolvable nodes, return tree unchanged
@@ -417,7 +463,7 @@ mod tests {
 
         // Default config only includes core types (concept, concept-list)
         let config = LabelResolutionConfig::default();
-        let map = build_alias_to_collection_map(&graph, &config);
+        let map = build_alias_to_collection_map(&graph, &config, None);
 
         assert_eq!(map.get("category"), Some(&"collection-1".to_string()));
         assert_eq!(map.get("tags"), Some(&"collection-2".to_string()));
@@ -443,11 +489,69 @@ mod tests {
             ]
         });
 
-        // Extensions can add their datatypes via with_additional_datatypes
+        // Extensions add their datatypes via with_additional_datatypes; core
+        // knows nothing of the extension's config key, so without a handler
+        // there is no collection.
         let config = LabelResolutionConfig::default().with_additional_datatypes(&["reference"]);
-        let map = build_alias_to_collection_map(&graph, &config);
-
+        let map = build_alias_to_collection_map(&graph, &config, None);
         assert_eq!(map.get("category"), Some(&"collection-1".to_string()));
+        assert_eq!(map.get("status"), None);
+
+        // The handler names the collection.
+        let registry = list_handler_registry();
+        let map = build_alias_to_collection_map(&graph, &config, Some(&registry));
+        assert_eq!(map.get("category"), Some(&"collection-1".to_string()));
+        assert_eq!(map.get("status"), Some(&"collection-2".to_string()));
+    }
+
+    fn list_handler_registry() -> crate::extension_type_registry::ExtensionTypeRegistry {
+        use crate::extension_type_registry::{
+            ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities,
+        };
+        struct ListHandler;
+        impl ExtensionTypeHandler for ListHandler {
+            fn capabilities(&self) -> HandlerCapabilities {
+                HandlerCapabilities::default()
+            }
+            fn node_config(&self, config: &Value) -> Option<Value> {
+                Some(serde_json::json!({ "collectionId": config.get("controlledList")? }))
+            }
+        }
+        let mut registry = ExtensionTypeRegistry::new();
+        registry.register("reference", std::sync::Arc::new(ListHandler));
+        registry
+    }
+
+    #[test]
+    fn alias_to_collection_for_graph_asks_handlers() {
+        let root = serde_json::json!(
+            {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "g"}
+        );
+        let graph = crate::graph::StaticGraph::from_json_string(
+            &serde_json::json!({
+                "graphid": "g",
+                "name": {"en": "G"},
+                "nodes": [
+                    root,
+                    {"alias": "category", "datatype": "concept", "nodeid": "n1",
+                     "name": "category", "graph_id": "g",
+                     "config": {"rdmCollection": "collection-1"}},
+                    {"alias": "status", "datatype": "reference", "nodeid": "n2",
+                     "name": "status", "graph_id": "g",
+                     "config": {"controlledList": "collection-2"}}
+                ],
+                "root": root
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let map = alias_to_collection_for_graph(&graph, None);
+        assert_eq!(map.get("category"), Some(&"collection-1".to_string()));
+        assert_eq!(map.get("status"), None);
+
+        let registry = list_handler_registry();
+        let map = alias_to_collection_for_graph(&graph, Some(&registry));
         assert_eq!(map.get("status"), Some(&"collection-2".to_string()));
     }
 

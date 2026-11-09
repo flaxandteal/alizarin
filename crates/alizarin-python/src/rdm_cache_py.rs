@@ -1689,8 +1689,9 @@ impl ConceptLookup for RdmCache {
 ///     tree_json: JSON string of the tree to process
 ///     graph_json: JSON string of the graph definition
 ///     cache: RdmCache instance with collections loaded
-///     resolvable_datatypes: List of datatypes to resolve (default: concept, concept-list, reference)
-///     config_keys: List of config keys to check for collection IDs (default: rdmCollection, controlledList)
+///     resolvable_datatypes: List of datatypes to resolve (default: concept, concept-list)
+///     config_keys: List of config keys to check for collection IDs (default: rdmCollection).
+///         An extension datatype with a registered handler names its own collection.
 ///     strict: If True, raise errors for unresolved labels
 ///
 /// Returns:
@@ -1722,9 +1723,14 @@ pub fn resolve_labels(
     };
 
     // Use the inner core cache for label resolution
-    let (resolved_json, needed_collections) =
-        label_resolution::resolve_labels_full(tree_json, graph_json, cache.inner(), &config)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.message))?;
+    let (resolved_json, needed_collections) = label_resolution::resolve_labels_full(
+        tree_json,
+        graph_json,
+        cache.inner(),
+        &config,
+        Some(&crate::build_extension_registry()),
+    )
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.message))?;
 
     Ok((resolved_json, needed_collections.into_iter().collect()))
 }
@@ -1736,8 +1742,9 @@ pub fn resolve_labels(
 /// Args:
 ///     tree_json: JSON string of the tree to scan
 ///     graph_json: JSON string of the graph definition
-///     resolvable_datatypes: List of datatypes to resolve (default: concept, concept-list, reference)
-///     config_keys: List of config keys to check for collection IDs (default: rdmCollection, controlledList)
+///     resolvable_datatypes: List of datatypes to resolve (default: concept, concept-list)
+///     config_keys: List of config keys to check for collection IDs (default: rdmCollection).
+///         An extension datatype with a registered handler names its own collection.
 ///
 /// Returns:
 ///     List of collection IDs that need to be loaded
@@ -1775,7 +1782,8 @@ pub fn get_needed_collections(
     })?;
 
     // Build alias -> collection mapping
-    let alias_to_collection = build_alias_to_collection_map(&graph, &config);
+    let alias_to_collection =
+        build_alias_to_collection_map(&graph, &config, Some(&crate::build_extension_registry()));
 
     // Find needed collections
     let needed = find_needed_collections(&tree, &alias_to_collection);

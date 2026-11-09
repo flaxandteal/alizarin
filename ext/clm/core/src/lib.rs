@@ -710,10 +710,11 @@ impl ExtensionTypeHandler for ReferenceTypeHandler {
         ctx: Option<&SerializationContext>,
     ) -> Result<Option<String>, ExtensionError> {
         let resolver = ctx.and_then(|c| c.external_resolver);
-        let collection = ctx
+        let config: Option<ReferenceNodeConfig> = ctx
             .and_then(|c| c.node_config)
-            .and_then(|nc| nc.as_reference())
-            .and_then(|r| r.get_collection_id());
+            .and_then(|nc| nc.as_extension())
+            .and_then(|raw| serde_json::from_value(raw.clone()).ok());
+        let collection = config.as_ref().and_then(|c| c.get_collection_id());
         let display = render_reference_display_value_resolved(
             tile_data,
             Some(language),
@@ -731,9 +732,32 @@ impl ExtensionTypeHandler for ReferenceTypeHandler {
         resolve_reference_markers(tile_data, language).map_err(ExtensionError::new)
     }
 
+    fn node_config(&self, config: &Value) -> Option<Value> {
+        Some(reference_node_config(config))
+    }
+
+    fn display_as_list(&self, config: Option<&Value>) -> bool {
+        config
+            .and_then(|c| serde_json::from_value::<ReferenceNodeConfig>(c.clone()).ok())
+            .is_some_and(|c| c.is_multi_value())
+    }
+
     fn description(&self) -> &str {
         "CLM reference type handler"
     }
+}
+
+/// A reference node's config as every binding's `getExtensionConfig` returns
+/// it: `{controlledList, rdmCollection, multiValue, collectionId}`, with absent
+/// ids as `null` and `collectionId` the one a lookup should use.
+pub fn reference_node_config(config: &Value) -> Value {
+    let config: ReferenceNodeConfig = serde_json::from_value(config.clone()).unwrap_or_default();
+    serde_json::json!({
+        "controlledList": config.controlled_list,
+        "rdmCollection": config.rdm_collection,
+        "multiValue": config.is_multi_value(),
+        "collectionId": config.get_collection_id(),
+    })
 }
 
 /// Create an `Arc<dyn ExtensionTypeHandler>` for the reference type.
@@ -1203,5 +1227,33 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out[0]["uri"], "https://vocab.example/aat/300021147");
+    }
+
+    #[test]
+    fn handler_supplies_the_reference_node_config() {
+        let handler = ReferenceTypeHandler;
+        let config = json!({ "controlledList": "list-1", "multiValue": true, "other": 1 });
+        assert_eq!(
+            handler.node_config(&config),
+            Some(json!({
+                "controlledList": "list-1",
+                "rdmCollection": null,
+                "multiValue": true,
+                "collectionId": "list-1"
+            }))
+        );
+        assert_eq!(
+            handler.node_config(&json!({ "rdmCollection": "rdm-1" })).unwrap()["collectionId"],
+            json!("rdm-1"),
+            "falls back to rdmCollection"
+        );
+        assert!(handler.display_as_list(Some(&config)));
+        assert!(!handler.display_as_list(Some(&json!({ "multiValue": false }))));
+        assert!(!handler.display_as_list(None));
+        // Label resolution's collection comes from the node config's collectionId.
+        assert_eq!(
+            handler.collection_id(&json!({ "controlledList": "list-1" })),
+            Some("list-1".to_string())
+        );
     }
 }

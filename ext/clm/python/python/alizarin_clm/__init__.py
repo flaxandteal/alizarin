@@ -18,6 +18,7 @@ from typing import Any, Optional  # noqa: F401 - used in type annotations
 
 # Import static types
 from .static_types import StaticReference, StaticReferenceLabel
+from .node_config import StaticNodeConfigReference
 
 # Import view models
 from .view_models import (
@@ -303,7 +304,11 @@ def _register_python_handler() -> None:
     """
     try:
         from alizarin.view_models import CUSTOM_DATATYPES
+        from alizarin.node_config import register_node_config_adapter
+        from .node_config import StaticNodeConfigReference
+
         CUSTOM_DATATYPES["reference"] = ReferenceMergedDataType
+        register_node_config_adapter("reference", StaticNodeConfigReference.from_dict)
     except ImportError as e:
         raise ImportError(f"Could not register CLM Python handler: {e}") from e
 
@@ -523,6 +528,7 @@ __all__ = [
     # Static types
     "StaticReference",
     "StaticReferenceLabel",
+    "StaticNodeConfigReference",
     # View models
     "ReferenceValueViewModel",
     "ReferenceListViewModel",

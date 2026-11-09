@@ -204,6 +204,15 @@ impl NapiNodeConfigManager {
         self.inner.get_concept(&nodeid?).map(Into::into)
     }
 
+    /// An extension datatype's node config, as its registered handler supplies
+    /// it (a plain object; its shape is the extension's), or null if the node
+    /// has none or no handler for its datatype is registered.
+    #[napi(js_name = "getExtensionConfig")]
+    pub fn get_extension_config(&self, nodeid: Option<String>) -> Option<serde_json::Value> {
+        let registry = alizarin_core::build_extension_registry_from_registered();
+        self.inner.get_extension_config(&nodeid?, Some(&registry))
+    }
+
     /// Domain config for a node, or null.
     #[napi(js_name = "getDomain")]
     pub fn get_domain(

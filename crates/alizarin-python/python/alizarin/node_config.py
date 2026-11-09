@@ -7,7 +7,7 @@ Matches TypeScript nodeConfig.ts
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .static_types import StaticNode, StaticDomainValue
@@ -66,29 +66,17 @@ class StaticNodeConfigConcept(INodeConfig):
         )
 
 
-@dataclass
-class StaticNodeConfigReference(INodeConfig):
-    """
-    Configuration for reference nodes (CLM extension).
+#: Config factories for extension datatypes, keyed by datatype. An extension
+#: (e.g. alizarin_clm for ``reference``) registers its own on import; core
+#: models only its own datatypes' configs.
+_extension_adapters: Dict[str, Callable[[Dict[str, Any]], INodeConfig]] = {}
 
-    Matches TypeScript node config for reference datatype.
-    """
-    controlledList: str = ""
-    rdmCollection: str = ""
-    multi_value: bool = False
 
-    def get_collection_id(self) -> Optional[str]:
-        """Get the collection ID (controlledList or rdmCollection)."""
-        return self.controlledList or self.rdmCollection or None
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> StaticNodeConfigReference:
-        """Create from dictionary."""
-        return cls(
-            controlledList=data.get("controlledList", ""),
-            rdmCollection=data.get("rdmCollection", ""),
-            multi_value=data.get("multiValue", False),
-        )
+def register_node_config_adapter(
+    datatype: str, factory: Callable[[Dict[str, Any]], INodeConfig]
+) -> None:
+    """Register how an extension datatype's raw node config becomes its config."""
+    _extension_adapters[datatype] = factory
 
 
 @dataclass
@@ -172,10 +160,10 @@ class NodeConfigManager:
             node_config = StaticNodeConfigBoolean.from_dict(config_data)
         elif node.datatype in ("domain-value-list", "domain-value"):
             node_config = StaticNodeConfigDomain.from_dict(config_data)
-        elif node.datatype == "reference":
-            node_config = StaticNodeConfigReference.from_dict(config_data)
         elif node.datatype in ("concept", "concept-list"):
             node_config = StaticNodeConfigConcept.from_dict(config_data)
+        elif node.datatype in _extension_adapters:
+            node_config = _extension_adapters[node.datatype](config_data)
 
         self.cache[node.nodeid] = node_config
         return node_config
@@ -201,7 +189,7 @@ __all__ = [
     "StaticNodeConfigBoolean",
     "StaticNodeConfigConcept",
     "StaticNodeConfigDomain",
-    "StaticNodeConfigReference",
     "NodeConfigManager",
     "nodeConfigManager",
+    "register_node_config_adapter",
 ]

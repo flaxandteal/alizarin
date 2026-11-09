@@ -103,10 +103,12 @@ describe("RDM.resolveLabels", () => {
       status: ["Category C"],
     };
 
-    // "reference" is an extension type (registered by CLM), not a core default.
-    // Without CLM loaded, we must pass it via additionalDatatypes.
+    // "reference" is an extension type (registered by CLM), not a core default,
+    // and core does not know its config key. Without CLM loaded, we must pass
+    // both; with CLM, its handler names the collection.
     const resolved = await RDM.resolveLabels(tree, graph, {
       additionalDatatypes: ["reference"],
+      additionalConfigKeys: ["controlledList"],
     });
 
     expect(resolved.status[0]).not.toBe("Category C");

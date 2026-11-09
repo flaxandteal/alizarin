@@ -2,7 +2,7 @@
 ///
 /// This module provides platform-agnostic types for:
 /// - StaticDomainValue: Domain value option from graph config
-/// - NodeConfig: Enum of config types (Domain, Boolean, Concept, Reference)
+/// - NodeConfig: Enum of the core datatypes' config types (Domain, Boolean, Concept)
 /// - NodeConfigManager: Cache and lookup for node configs
 ///
 /// These types can be used from:
@@ -120,42 +120,6 @@ impl NodeConfigConcept {
     }
 }
 
-/// Reference node configuration (CLM controlled list).
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
-pub struct NodeConfigReference {
-    /// Controlled list ID
-    #[serde(default, rename = "controlledList")]
-    pub controlled_list: String,
-    /// RDM collection ID (alternative)
-    #[serde(default, rename = "rdmCollection")]
-    pub rdm_collection: String,
-    /// Whether multiple values are allowed
-    #[serde(default, rename = "multiValue")]
-    pub multi_value: bool,
-}
-
-impl NodeConfigReference {
-    /// Create a new reference config
-    pub fn new(controlled_list: String, rdm_collection: String, multi_value: bool) -> Self {
-        Self {
-            controlled_list,
-            rdm_collection,
-            multi_value,
-        }
-    }
-
-    /// Get the collection ID (controlledList takes precedence over rdmCollection)
-    pub fn get_collection_id(&self) -> Option<&str> {
-        if !self.controlled_list.is_empty() {
-            Some(&self.controlled_list)
-        } else if !self.rdm_collection.is_empty() {
-            Some(&self.rdm_collection)
-        } else {
-            None
-        }
-    }
-}
-
 /// Domain value node configuration with options list.
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct NodeConfigDomain {
@@ -196,13 +160,22 @@ impl NodeConfigDomain {
 // Node Config Enum
 // =============================================================================
 
-/// Enum of all node config types
+/// Node config types. Core models only its own datatypes; an extension
+/// datatype's (e.g. CLM's `reference`) is kept raw, and the extension's handler
+/// interprets it ([`NodeConfigManager::get_extension_config`]).
 #[derive(Clone, Debug)]
 pub enum NodeConfig {
     Boolean(NodeConfigBoolean),
     Concept(NodeConfigConcept),
-    Reference(NodeConfigReference),
     Domain(NodeConfigDomain),
+    /// An extension datatype's raw node config, untouched by core.
+    Extension {
+        datatype: String,
+        config: serde_json::Value,
+        /// The handler's [`display_as_list`](crate::extension_type_registry::ExtensionTypeHandler::display_as_list)
+        /// answer, asked once per node (see [`NodeConfig::extension_display_as_list`]).
+        display_as_list: std::sync::OnceLock<bool>,
+    },
 }
 
 impl NodeConfig {
@@ -222,18 +195,39 @@ impl NodeConfig {
         }
     }
 
-    /// Get as reference config
-    pub fn as_reference(&self) -> Option<&NodeConfigReference> {
-        match self {
-            NodeConfig::Reference(c) => Some(c),
-            _ => None,
-        }
-    }
-
     /// Get as domain config
     pub fn as_domain(&self) -> Option<&NodeConfigDomain> {
         match self {
             NodeConfig::Domain(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    /// Get an extension datatype's raw config
+    pub fn as_extension(&self) -> Option<&serde_json::Value> {
+        match self {
+            NodeConfig::Extension { config, .. } => Some(config),
+            _ => None,
+        }
+    }
+
+    /// Whether an extension node's values display as a list, per `handler`.
+    /// `None` if this isn't an extension config.
+    ///
+    /// Asked once per node and cached. The answer depends only on the node's
+    /// config, and on wasm each ask crosses into JS (and often a second wasm
+    /// module), so asking per value would put boundary crossings on the
+    /// serialization hot path.
+    pub fn extension_display_as_list(
+        &self,
+        handler: &dyn crate::extension_type_registry::ExtensionTypeHandler,
+    ) -> Option<bool> {
+        match self {
+            NodeConfig::Extension {
+                config,
+                display_as_list,
+                ..
+            } => Some(*display_as_list.get_or_init(|| handler.display_as_list(Some(config)))),
             _ => None,
         }
     }
@@ -243,8 +237,8 @@ impl NodeConfig {
         match self {
             NodeConfig::Boolean(_) => "boolean",
             NodeConfig::Concept(_) => "concept",
-            NodeConfig::Reference(_) => "reference",
             NodeConfig::Domain(_) => "domain-value",
+            NodeConfig::Extension { .. } => "extension",
         }
     }
 }
@@ -298,14 +292,28 @@ impl NodeConfigManager {
         self.configs.get(nodeid).and_then(|c| c.as_concept())
     }
 
-    /// Get reference config for a node
-    pub fn get_reference(&self, nodeid: &str) -> Option<&NodeConfigReference> {
-        self.configs.get(nodeid).and_then(|c| c.as_reference())
-    }
-
     /// Get domain config for a node
     pub fn get_domain(&self, nodeid: &str) -> Option<&NodeConfigDomain> {
         self.configs.get(nodeid).and_then(|c| c.as_domain())
+    }
+
+    /// An extension datatype's node config, as its registered handler
+    /// normalises it ([`node_config`](crate::extension_type_registry::ExtensionTypeHandler::node_config)).
+    ///
+    /// `None` if the node has no extension config, or no handler for its
+    /// datatype is in `registry`. Consulted at lookup, so it doesn't matter
+    /// whether the extension registered before or after the graph loaded.
+    pub fn get_extension_config(
+        &self,
+        nodeid: &str,
+        registry: Option<&crate::extension_type_registry::ExtensionTypeRegistry>,
+    ) -> Option<serde_json::Value> {
+        match self.configs.get(nodeid)? {
+            NodeConfig::Extension {
+                datatype, config, ..
+            } => registry?.get(datatype)?.node_config(config),
+            _ => None,
+        }
     }
 
     /// Look up domain value by ID
@@ -365,9 +373,14 @@ impl NodeConfigManager {
                 let cfg = self.parse_concept_config(config);
                 Some(NodeConfig::Concept(cfg))
             }
-            "reference" => {
-                let cfg = self.parse_reference_config(config);
-                Some(NodeConfig::Reference(cfg))
+            dt if crate::type_coercion::is_extension_datatype(dt) && !config.is_empty() => {
+                Some(NodeConfig::Extension {
+                    datatype: dt.to_string(),
+                    config: serde_json::Value::Object(
+                        config.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+                    ),
+                    display_as_list: std::sync::OnceLock::new(),
+                })
             }
             _ => None,
         }
@@ -431,35 +444,6 @@ impl NodeConfigManager {
 
         NodeConfigConcept { rdm_collection }
     }
-
-    /// Parse reference config from node.config HashMap
-    fn parse_reference_config(
-        &self,
-        config: &HashMap<String, serde_json::Value>,
-    ) -> NodeConfigReference {
-        let controlled_list = config
-            .get("controlledList")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        let rdm_collection = config
-            .get("rdmCollection")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        let multi_value = config
-            .get("multiValue")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        NodeConfigReference {
-            controlled_list,
-            rdm_collection,
-            multi_value,
-        }
-    }
 }
 
 #[cfg(test)]
@@ -496,15 +480,6 @@ mod tests {
     }
 
     #[test]
-    fn test_node_config_reference() {
-        let config1 = NodeConfigReference::new("clm-id".to_string(), "".to_string(), false);
-        assert_eq!(config1.get_collection_id(), Some("clm-id"));
-
-        let config2 = NodeConfigReference::new("".to_string(), "rdm-id".to_string(), true);
-        assert_eq!(config2.get_collection_id(), Some("rdm-id"));
-    }
-
-    #[test]
     fn test_node_config_domain() {
         let opt1 = StaticDomainValue::new("opt-1".to_string(), false, HashMap::new());
         let opt2 = StaticDomainValue::new("opt-2".to_string(), true, HashMap::new());
@@ -514,5 +489,90 @@ mod tests {
         assert_eq!(config.options.len(), 2);
         assert_eq!(config.get_selected().map(|o| o.id.as_str()), Some("opt-2"));
         assert!(config.value_from_id("opt-1").is_some());
+    }
+
+    #[test]
+    fn extension_configs_are_kept_raw_and_read_through_the_handler() {
+        use crate::extension_type_registry::{
+            ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities,
+        };
+        use serde_json::{json, Value};
+
+        struct Upper;
+        impl ExtensionTypeHandler for Upper {
+            fn capabilities(&self) -> HandlerCapabilities {
+                HandlerCapabilities::default()
+            }
+            fn node_config(&self, config: &Value) -> Option<Value> {
+                Some(json!({ "list": config["list"].as_str()?.to_uppercase() }))
+            }
+        }
+
+        let mut manager = NodeConfigManager::new();
+        let raw: HashMap<String, Value> = [("list".to_string(), json!("abc"))].into();
+        let built = manager.build_config_for_node("x-list", &raw).unwrap();
+        assert_eq!(built.as_extension(), Some(&json!({ "list": "abc" })));
+        assert_eq!(built.type_name(), "extension");
+        manager.configs.insert("n1".to_string(), built);
+
+        assert_eq!(
+            manager.get_extension_config("n1", None),
+            None,
+            "no registry"
+        );
+        let mut registry = ExtensionTypeRegistry::new();
+        assert_eq!(
+            manager.get_extension_config("n1", Some(&registry)),
+            None,
+            "no handler for the datatype"
+        );
+        registry.register("x-list".to_string(), std::sync::Arc::new(Upper));
+        assert_eq!(
+            manager.get_extension_config("n1", Some(&registry)),
+            Some(json!({ "list": "ABC" }))
+        );
+
+        assert!(
+            manager.build_config_for_node("string", &raw).is_none(),
+            "core datatypes are not stored raw"
+        );
+        assert!(
+            manager
+                .build_config_for_node("x-list", &HashMap::new())
+                .is_none(),
+            "an empty config is no config"
+        );
+    }
+
+    #[test]
+    fn display_as_list_is_asked_once_per_node() {
+        use crate::extension_type_registry::{ExtensionTypeHandler, HandlerCapabilities};
+        use serde_json::{json, Value};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct Counting(AtomicUsize);
+        impl ExtensionTypeHandler for Counting {
+            fn capabilities(&self) -> HandlerCapabilities {
+                HandlerCapabilities::default()
+            }
+            fn display_as_list(&self, config: Option<&Value>) -> bool {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                config.and_then(|c| c["multi"].as_bool()).unwrap_or(false)
+            }
+        }
+
+        let manager = NodeConfigManager::new();
+        let raw: HashMap<String, Value> = [("multi".to_string(), json!(true))].into();
+        let built = manager.build_config_for_node("x-list", &raw).unwrap();
+        let handler = Counting(AtomicUsize::new(0));
+        for _ in 0..3 {
+            assert_eq!(built.extension_display_as_list(&handler), Some(true));
+        }
+        assert_eq!(handler.0.load(Ordering::SeqCst), 1);
+
+        let boolean = manager
+            .build_config_for_node("boolean", &HashMap::new())
+            .unwrap();
+        assert_eq!(boolean.extension_display_as_list(&handler), None);
     }
 }

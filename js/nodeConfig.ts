@@ -13,7 +13,6 @@ import {
   WasmNodeConfigBoolean,
   WasmNodeConfigConcept,
   WasmNodeConfigDomain,
-  WasmNodeConfigReference,
   WasmStaticDomainValue,
 } from '../pkg/alizarin';
 
@@ -57,28 +56,19 @@ class StaticNodeConfigConcept implements INodeConfig {
   }
 }
 
-class StaticNodeConfigReference implements INodeConfig {
-  private _wasm: WasmNodeConfigReference;
+/**
+ * Builds an extension datatype's config from the config its registered handler
+ * supplies (a plain object whose shape the extension defines).
+ */
+type NodeConfigAdapter = (config: any) => INodeConfig;
 
-  constructor(wasmConfig: WasmNodeConfigReference) {
-    this._wasm = wasmConfig;
-  }
+// Core models only its own datatypes' configs; an extension (e.g. @alizarin/clm
+// for `reference`) registers an adapter for its own on import.
+const extensionAdapters = new Map<string, NodeConfigAdapter>();
 
-  get controlledList(): string {
-    return this._wasm.controlledList;
-  }
-
-  get rdmCollection(): string {
-    return this._wasm.rdmCollection;
-  }
-
-  get multiValue(): boolean {
-    return this._wasm.multiValue;
-  }
-
-  getCollectionId(): string | undefined {
-    return this._wasm.getCollectionId() ?? undefined;
-  }
+/** Register how an extension datatype's node config is presented. */
+function registerNodeConfigAdapter(datatype: string, adapter: NodeConfigAdapter): void {
+  extensionAdapters.set(datatype, adapter);
 }
 
 class StaticNodeConfigDomain implements INodeConfig {
@@ -132,7 +122,7 @@ class StaticNodeConfigDomain implements INodeConfig {
 // =============================================================================
 
 type NodeConfigType = StaticNodeConfigBoolean | StaticNodeConfigConcept |
-                      StaticNodeConfigDomain | StaticNodeConfigReference;
+                      StaticNodeConfigDomain | INodeConfig;
 
 class NodeConfigManager {
   // Lazy initialization - manager created on first use (after backend is ready)
@@ -216,12 +206,11 @@ class NodeConfigManager {
         const wasm = wasmManager.getConcept(nodeid);
         return wasm ? new StaticNodeConfigConcept(wasm) : null;
       }
-      case 'reference': {
-        const wasm = wasmManager.getReference(nodeid);
-        return wasm ? new StaticNodeConfigReference(wasm) : null;
+      default: {
+        const adapter = extensionAdapters.get(datatype);
+        const config = adapter ? wasmManager.getExtensionConfig(nodeid) : null;
+        return config ? adapter!(config) : null;
       }
-      default:
-        return null;
     }
   }
 
@@ -245,6 +234,7 @@ export {
   StaticNodeConfigDomain,
   StaticNodeConfigBoolean,
   StaticNodeConfigConcept,
-  StaticNodeConfigReference,
   NodeConfigManager,
+  registerNodeConfigAdapter,
 };
+export type { NodeConfigAdapter };

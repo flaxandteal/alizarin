@@ -7,7 +7,6 @@ use serde_json;
 use alizarin_core::{
     get_global_extension_registry, get_global_rdm_cache, get_graph,
     RdmCache, StaticGraph,
-    DEFAULT_CONFIG_KEYS, DEFAULT_RESOLVABLE_DATATYPES,
 };
 
 fn get_registered_graph(graph_id: &str) -> Result<Arc<StaticGraph>, String> {
@@ -23,33 +22,7 @@ fn build_alias_to_collection_from_graph(
     graph: &StaticGraph,
     ext_registry: Option<&alizarin_core::ExtensionTypeRegistry>,
 ) -> HashMap<String, String> {
-    use std::collections::HashSet;
-
-    let mut resolvable_set: HashSet<&str> = DEFAULT_RESOLVABLE_DATATYPES.iter().copied().collect();
-
-    if let Some(registry) = ext_registry {
-        for node in &graph.nodes {
-            if registry.has(&node.datatype) {
-                resolvable_set.insert(&node.datatype);
-            }
-        }
-    }
-
-    let mut alias_to_collection = HashMap::new();
-    for node in &graph.nodes {
-        if let Some(alias) = &node.alias {
-            if !resolvable_set.contains(node.datatype.as_str()) {
-                continue;
-            }
-            for key in DEFAULT_CONFIG_KEYS {
-                if let Some(collection_id) = node.config.get(*key).and_then(|v| v.as_str()) {
-                    alias_to_collection.insert(alias.clone(), collection_id.to_string());
-                    break;
-                }
-            }
-        }
-    }
-    alias_to_collection
+    alizarin_core::alias_to_collection_for_graph(graph, ext_registry)
 }
 
 #[cfg(feature = "pyo3-ext")]

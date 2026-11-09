@@ -26,7 +26,7 @@ use std::ffi::c_void;
 /// the shared struct layouts or function signatures below. Extensions stamp
 /// their compiled fingerprint into [`TypeHandlerInfo`]; the host refuses to load
 /// an extension whose [`AbiFingerprint`] does not match its own.
-pub const ABI_VERSION: u32 = 2;
+pub const ABI_VERSION: u32 = 3;
 
 /// A compatibility token an extension embeds so the host can confirm — once, at
 /// load — that both sides share the same ABI before any raw pointers cross the
@@ -456,6 +456,24 @@ pub type IndexSpecFn =
 /// Free an [`IndexSpecResult`] allocated by an [`IndexSpecFn`].
 pub type FreeIndexSpecFn = unsafe extern "C" fn(result: IndexSpecResult);
 
+/// Result of `node_config`: serialized `Option<Value>` JSON (the datatype's
+/// node config as the extension defines it, `null` for none), or an error.
+/// Same layout as [`IndexSpecResult`].
+pub type NodeConfigResult = IndexSpecResult;
+
+/// Normalise a node's raw config for this datatype. `config_ptr` is a
+/// `*const serde_json::Value`. Core models only its own datatypes' configs;
+/// this is how an extension supplies its own at runtime.
+pub type NodeConfigFn = unsafe extern "C" fn(config_ptr: *const c_void) -> NodeConfigResult;
+
+/// Free a [`NodeConfigResult`] allocated by a [`NodeConfigFn`].
+pub type FreeNodeConfigFn = unsafe extern "C" fn(result: NodeConfigResult);
+
+/// Whether a display of this datatype is a list of labels (one per item)
+/// rather than one string, given the node's raw config (`config_ptr` is a
+/// `*const serde_json::Value`, or null for none).
+pub type DisplayAsListFn = unsafe extern "C" fn(config_ptr: *const c_void) -> bool;
+
 /// Callback to lookup a concept by ID in the RDM cache
 ///
 /// Returns true if concept was found, false otherwise.
@@ -588,9 +606,10 @@ pub unsafe extern "C" fn alizarin_free_render_display_result(result: RenderDispl
 /// Handler registration info passed via PyCapsule.
 ///
 /// Carries the datatype name, an [`AbiFingerprint`] (checked by the host at
-/// load), and six optional capability fn-pointers, each paired with a `free_*`:
-/// coerce, display render, marker resolution, validate, search render, and index
-/// spec. Each pointer is `None` when unimplemented — a handler may provide any
+/// load), and optional capability fn-pointers, each with a `free_*` where it
+/// returns owned data: coerce, display render, marker resolution, validate,
+/// search render, index spec, node config, and list display (no `free_`, it
+/// returns a bool). Each pointer is `None` when unimplemented — a handler may provide any
 /// subset (e.g. a validate-only handler leaves `coerce_fn` `None` and lets core
 /// keep coercion). The host reports which are present as `HandlerCapabilities`.
 #[repr(C)]
@@ -641,6 +660,17 @@ pub struct TypeHandlerInfo {
     /// Free function for IndexSpecResult (null iff index_spec_fn is null)
     pub free_index_spec_fn: Option<FreeIndexSpecFn>,
 
+    /// Node-config function (optional). Supplies this datatype's node config
+    /// from the node's raw config; the config is passed **by pointer**.
+    pub node_config_fn: Option<NodeConfigFn>,
+
+    /// Free function for NodeConfigResult (null iff node_config_fn is null)
+    pub free_node_config_fn: Option<FreeNodeConfigFn>,
+
+    /// List-display function (optional). Whether values display as a list of
+    /// labels; the config is passed **by pointer**.
+    pub display_as_list_fn: Option<DisplayAsListFn>,
+
     /// ABI fingerprint of the crate the extension was built against. The host
     /// checks this at load and refuses a mismatch before any pointer crosses.
     pub abi: AbiFingerprint,
@@ -668,6 +698,9 @@ impl TypeHandlerInfo {
             free_render_search_fn: None,
             index_spec_fn: None,
             free_index_spec_fn: None,
+            node_config_fn: None,
+            free_node_config_fn: None,
+            display_as_list_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }
@@ -695,6 +728,9 @@ impl TypeHandlerInfo {
             free_render_search_fn: None,
             index_spec_fn: None,
             free_index_spec_fn: None,
+            node_config_fn: None,
+            free_node_config_fn: None,
+            display_as_list_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }
@@ -723,6 +759,9 @@ impl TypeHandlerInfo {
             free_render_search_fn: None,
             index_spec_fn: None,
             free_index_spec_fn: None,
+            node_config_fn: None,
+            free_node_config_fn: None,
+            display_as_list_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }
@@ -753,6 +792,9 @@ impl TypeHandlerInfo {
             free_render_search_fn: None,
             index_spec_fn: None,
             free_index_spec_fn: None,
+            node_config_fn: None,
+            free_node_config_fn: None,
+            display_as_list_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }

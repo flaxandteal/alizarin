@@ -1,6 +1,11 @@
 import { RDM, nodeConfig, utils, viewModels, registerExtensionHandler, registerResolvableDatatype, wasmReady } from "alizarin";
 import type { interfaces, staticTypes } from "alizarin";
-import { initSync, renderReferenceDisplay } from "../../wasm/pkg/alizarin_clm_wasm";
+import {
+  initSync,
+  renderReferenceDisplay,
+  referenceNodeConfig,
+  referenceDisplayAsList,
+} from "../../wasm/pkg/alizarin_clm_wasm";
 import wasmBytes from "../../wasm/pkg/alizarin_clm_wasm_bg.wasm";
 type IPseudo = interfaces.IPseudo;
 type IViewModel = interfaces.IViewModel;
@@ -90,8 +95,48 @@ wasmReady.then(() => {
   registerExtensionHandler('reference', {
     renderDisplay: (tileData: unknown, language: string) =>
       renderReferenceDisplay(tileData, language) ?? null,
+    // The reference node config, supplied to core at runtime (core models only
+    // its own datatypes). Same Rust as the napi/python handlers.
+    nodeConfig: (config: unknown) => referenceNodeConfig(config),
+    displayAsList: (config: unknown) => referenceDisplayAsList(config),
   });
 });
+
+/**
+ * A reference node's config, as `nodeConfigManager.retrieve` returns it. Built
+ * from what the reference handler supplies:
+ * `{controlledList, rdmCollection, multiValue, collectionId}`.
+ */
+class StaticNodeConfigReference implements interfaces.INodeConfig {
+  private _config: {
+    controlledList: string | null;
+    rdmCollection: string | null;
+    multiValue: boolean;
+    collectionId: string | null;
+  };
+
+  constructor(config: StaticNodeConfigReference['_config']) {
+    this._config = config;
+  }
+
+  get controlledList(): string {
+    return this._config.controlledList ?? '';
+  }
+
+  get rdmCollection(): string {
+    return this._config.rdmCollection ?? '';
+  }
+
+  get multiValue(): boolean {
+    return this._config.multiValue;
+  }
+
+  getCollectionId(): string | undefined {
+    return this._config.collectionId ?? undefined;
+  }
+}
+
+nodeConfig.registerNodeConfigAdapter('reference', (config) => new StaticNodeConfigReference(config));
 
 class StaticReferenceLabel {
   id: string
@@ -593,7 +638,8 @@ class ReferenceMergedDataType {
     value: any,
     _cacheEntry: object
   ): Promise<ReferenceValueViewModel | ReferenceListViewModel | null> {
-    const config = nodeConfig.nodeConfigManager.retrieve(node);
+    // A reference node's config is CLM's own adapter (registered above).
+    const config = nodeConfig.nodeConfigManager.retrieve(node) as unknown as StaticNodeConfigReference | null;
     if (config && config.multiValue) {
       return ReferenceListViewModel.__create(tile, node, value, _cacheEntry);
     }
@@ -625,3 +671,5 @@ registerResolvableDatatype("reference");
     // Not using the napi backend, or the native ext isn't installed — nothing to do.
   }
 })();
+
+export { StaticNodeConfigReference };

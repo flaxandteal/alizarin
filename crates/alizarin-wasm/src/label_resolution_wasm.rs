@@ -20,7 +20,8 @@ use wasm_bindgen::prelude::*;
 ///
 /// @param graphJson - JSON string of the graph definition
 /// @param resolvableDatatypes - Array of datatypes to resolve (default: concept, concept-list)
-/// @param configKeys - Array of config keys to check (default: rdmCollection, controlledList)
+/// @param configKeys - Array of config keys to check (default: rdmCollection).
+///   An extension datatype with a registered handler names its own collection.
 /// @returns Map<string, string> of alias -> collectionId
 #[wasm_bindgen(js_name = buildAliasToCollectionMap)]
 pub fn wasm_build_alias_to_collection_map(
@@ -47,7 +48,8 @@ pub fn wasm_build_alias_to_collection_map(
     let graph: serde_json::Value = serde_json::from_str(graph_json)
         .map_err(|e| JsError::new(&format!("Invalid graph JSON: {}", e)))?;
 
-    let alias_map = build_alias_to_collection_map(&graph, &config);
+    let registry = crate::extension_registry::build_extension_registry();
+    let alias_map = build_alias_to_collection_map(&graph, &config, Some(&registry));
 
     serde_wasm_bindgen::to_value(&alias_map)
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
@@ -147,7 +149,7 @@ pub fn wasm_get_default_resolvable_datatypes() -> Vec<String> {
 
 /// Get the default config keys for collection ID lookup.
 ///
-/// @returns Array of config key strings: ["rdmCollection", "controlledList"]
+/// @returns Array of config key strings: ["rdmCollection"]
 #[wasm_bindgen(js_name = getDefaultConfigKeys)]
 pub fn wasm_get_default_config_keys() -> Vec<String> {
     label_resolution::DEFAULT_CONFIG_KEYS

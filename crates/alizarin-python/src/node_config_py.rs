@@ -14,7 +14,7 @@ fn sorted(map: &HashMap<String, String>) -> BTreeMap<String, String> {
 use alizarin_core::node_config::{
     NodeConfigBoolean as CoreNodeConfigBoolean, NodeConfigConcept as CoreNodeConfigConcept,
     NodeConfigDomain as CoreNodeConfigDomain, NodeConfigManager as CoreNodeConfigManager,
-    NodeConfigReference as CoreNodeConfigReference, StaticDomainValue as CoreStaticDomainValue,
+    StaticDomainValue as CoreStaticDomainValue,
 };
 
 // =============================================================================
@@ -181,60 +181,6 @@ impl PyNodeConfigConcept {
 }
 
 // =============================================================================
-// NodeConfigReference Wrapper
-// =============================================================================
-
-#[derive(Clone)]
-#[pyclass(name = "RustNodeConfigReference")]
-pub struct PyNodeConfigReference {
-    inner: CoreNodeConfigReference,
-}
-
-impl From<CoreNodeConfigReference> for PyNodeConfigReference {
-    fn from(inner: CoreNodeConfigReference) -> Self {
-        Self { inner }
-    }
-}
-
-impl From<&CoreNodeConfigReference> for PyNodeConfigReference {
-    fn from(inner: &CoreNodeConfigReference) -> Self {
-        Self {
-            inner: inner.clone(),
-        }
-    }
-}
-
-#[pymethods]
-impl PyNodeConfigReference {
-    #[new]
-    fn new(controlled_list: String, rdm_collection: String, multi_value: bool) -> Self {
-        Self {
-            inner: CoreNodeConfigReference::new(controlled_list, rdm_collection, multi_value),
-        }
-    }
-
-    #[getter]
-    fn controlled_list(&self) -> &str {
-        &self.inner.controlled_list
-    }
-
-    #[getter]
-    fn rdm_collection(&self) -> &str {
-        &self.inner.rdm_collection
-    }
-
-    #[getter]
-    fn multi_value(&self) -> bool {
-        self.inner.multi_value
-    }
-
-    /// Get the collection ID (controlledList or rdmCollection)
-    fn get_collection_id(&self) -> Option<String> {
-        self.inner.get_collection_id().map(|s| s.to_string())
-    }
-}
-
-// =============================================================================
 // NodeConfigDomain Wrapper
 // =============================================================================
 
@@ -337,11 +283,19 @@ impl PyNodeConfigManager {
             .map(PyNodeConfigConcept::from)
     }
 
-    /// Get reference config for a node
-    fn get_reference(&self, nodeid: &str) -> Option<PyNodeConfigReference> {
+    /// An extension datatype's node config, as its registered handler supplies
+    /// it (a dict; its shape is the extension's), or None if the node has none
+    /// or no handler for its datatype is registered.
+    fn get_extension_config(&self, py: Python, nodeid: &str) -> PyResult<Option<PyObject>> {
+        let registry = crate::build_extension_registry();
         self.inner
-            .get_reference(nodeid)
-            .map(PyNodeConfigReference::from)
+            .get_extension_config(nodeid, Some(&registry))
+            .map(|config| {
+                pythonize::pythonize(py, &config)
+                    .map(|obj| obj.into())
+                    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+            })
+            .transpose()
     }
 
     /// Get domain config for a node
@@ -393,7 +347,6 @@ pub fn register_module(m: &PyModule) -> PyResult<()> {
     m.add_class::<PyStaticDomainValue>()?;
     m.add_class::<PyNodeConfigBoolean>()?;
     m.add_class::<PyNodeConfigConcept>()?;
-    m.add_class::<PyNodeConfigReference>()?;
     m.add_class::<PyNodeConfigDomain>()?;
     m.add_class::<PyNodeConfigManager>()?;
     Ok(())

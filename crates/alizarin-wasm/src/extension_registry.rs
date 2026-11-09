@@ -39,6 +39,31 @@ struct JsHandlerCallbacks {
     render_display_fn: Option<js_sys::Function>,
     resolve_markers_fn: Option<js_sys::Function>,
     validate_fn: Option<js_sys::Function>,
+    node_config_fn: Option<js_sys::Function>,
+    display_as_list_fn: Option<js_sys::Function>,
+}
+
+/// An optional callback from a handler options object.
+fn optional_callback(options: &JsValue, name: &str) -> Result<Option<js_sys::Function>, JsValue> {
+    let value = js_sys::Reflect::get(options, &JsValue::from_str(name)).map_err(|_| {
+        JsValue::from_str(&format!(
+            "options must be an object (failed to read '{name}')"
+        ))
+    })?;
+    Ok(value.dyn_into::<js_sys::Function>().ok())
+}
+
+/// JSON to a JS value (via JSON text, as the other callbacks do).
+fn json_to_js(value: &Value) -> Option<JsValue> {
+    js_sys::JSON::parse(&serde_json::to_string(value).ok()?).ok()
+}
+
+/// A JS value back to JSON; `None` for `undefined`/`null` or unserialisable.
+fn js_to_json(value: &JsValue) -> Option<Value> {
+    if value.is_undefined() || value.is_null() {
+        return None;
+    }
+    serde_json::from_str(&js_sys::JSON::stringify(value).ok()?.as_string()?).ok()
 }
 
 // =============================================================================
@@ -51,6 +76,8 @@ struct JsHandlerCallbacks {
 /// - `coerce(value, config) => { tileData, displayValue }` - for ETL coercion
 /// - `renderDisplay(tileData, language) => string | null` - for display rendering
 /// - `resolveMarkers(tileData, language) => resolvedTileData` - for marker resolution
+/// - `nodeConfig(rawConfig) => config | null` - this datatype's node config
+/// - `displayAsList(rawConfig) => boolean` - whether values display as a list
 ///
 /// @param datatype - The datatype name (e.g., "reference")
 /// @param options - Object with callback functions
@@ -92,13 +119,17 @@ pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<()
         None
     };
 
+    let node_config_fn = optional_callback(&options, "nodeConfig")?;
+    let display_as_list_fn = optional_callback(&options, "displayAsList")?;
+
     if coerce_fn.is_none()
         && render_display_fn.is_none()
         && resolve_markers_fn.is_none()
         && validate_fn.is_none()
+        && node_config_fn.is_none()
     {
         return Err(JsValue::from_str(
-            "At least one callback (coerce, renderDisplay, resolveMarkers, validate) is required",
+            "At least one callback (coerce, renderDisplay, resolveMarkers, validate, nodeConfig) is required",
         ));
     }
 
@@ -110,6 +141,8 @@ pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<()
                 render_display_fn,
                 resolve_markers_fn,
                 validate_fn,
+                node_config_fn,
+                display_as_list_fn,
             },
         );
     });
@@ -485,6 +518,31 @@ impl ExtensionTypeHandler for JsExtensionTypeHandler {
                     e
                 ))
             })
+        })
+    }
+
+    fn node_config(&self, config: &Value) -> Option<Value> {
+        JS_TYPE_HANDLERS.with(|handlers| {
+            let handlers = handlers.borrow();
+            let callback = handlers.get(&self.datatype)?.node_config_fn.as_ref()?;
+            let result = callback.call1(&JsValue::NULL, &json_to_js(config)?).ok()?;
+            js_to_json(&result)
+        })
+    }
+
+    fn display_as_list(&self, config: Option<&Value>) -> bool {
+        JS_TYPE_HANDLERS.with(|handlers| {
+            let handlers = handlers.borrow();
+            let Some(callback) = handlers
+                .get(&self.datatype)
+                .and_then(|cbs| cbs.display_as_list_fn.as_ref())
+            else {
+                return false;
+            };
+            let js_config = config.and_then(json_to_js).unwrap_or(JsValue::NULL);
+            callback
+                .call1(&JsValue::NULL, &js_config)
+                .is_ok_and(|result| result.is_truthy())
         })
     }
 
