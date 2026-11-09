@@ -161,6 +161,11 @@ done
 # is one of ours. This covers alizarin-core's dep on alizarin-extension-api,
 # every ext-core's dep on alizarin-core, and any future sibling dep, with no
 # per-crate list to maintain.
+#
+# The pin is EXACT (`=`). A bare "2.0.0-alpha.N" is a caret requirement, and
+# crates.io carries 2.0.0-beta.9, which sorts above every alpha: `cargo publish`
+# verifies without the path, resolves the sibling to beta.9, and fails (a143
+# alizarin-geo-core, a144 alizarin-core). Siblings release in lockstep anyway.
 for cargo_file in \
     "$ROOT_DIR"/Cargo.toml \
     "$ROOT_DIR"/crates/*/Cargo.toml \
@@ -169,7 +174,7 @@ for cargo_file in \
     # A non-comment line carrying BOTH path and version (either order).
     if grep -qE '^[^#]*path *=[^#]*version *=|^[^#]*version *=[^#]*path *=' "$cargo_file"; then
         # Bump the version on every path-bearing (non-comment) dep line.
-        sed -i -E '/^[[:space:]]*#/!{ /path *=/ s/(version *= *)"[^"]*"/\1"'"$CARGO_VERSION"'"/ }' "$cargo_file"
+        sed -i -E '/^[[:space:]]*#/!{ /path *=/ s/(version *= *)"[^"]*"/\1"='"$CARGO_VERSION"'"/ }' "$cargo_file"
         echo "  ✓ ${cargo_file#$ROOT_DIR/} (intra-workspace path+version deps)"
     fi
 done
