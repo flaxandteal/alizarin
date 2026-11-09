@@ -102,7 +102,7 @@ impl<'de> Deserialize<'de> for FlexibleDescriptors {
         {
             let resolved = nested
                 .get("en")
-                .or_else(|| nested.values().next())
+                .or_else(|| crate::sorted_serde::lowest_key_value(&nested))
                 .cloned()
                 .unwrap_or_default();
             return Ok(FlexibleDescriptors { resolved });

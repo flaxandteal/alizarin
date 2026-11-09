@@ -55,7 +55,7 @@ impl StaticTranslatableString {
         self.translations
             .get(lang)
             .or_else(|| self.translations.get("en"))
-            .or_else(|| self.translations.values().next())
+            .or_else(|| crate::sorted_serde::lowest_key_value(&self.translations))
             .cloned()
             .unwrap_or_default()
     }

@@ -136,6 +136,22 @@ export declare class NapiNodeConfigManager {
   buildFromGraphJson(graphJson: string): void
   /** Build node configs from a NapiStaticGraph. */
   buildFromGraph(graph: NapiStaticGraph): void
+  /** Boolean config for a node, or null. */
+  getBoolean(nodeid?: string | undefined | null): NapiNodeConfigBoolean | null
+  /** Concept config for a node, or null. */
+  getConcept(nodeid?: string | undefined | null): NapiNodeConfigConcept | null
+  /** Domain config for a node, or null. */
+  getDomain(nodeid?: string | undefined | null): NapiNodeConfigDomain | null
+  /** A domain value by id, or null. */
+  lookupDomainValue(nodeid?: string | undefined | null, valueId?: string | undefined | null): NapiStaticDomainValue | null
+  /** Whether a node has config (false for a null id). */
+  hasConfig(nodeid?: string | undefined | null): boolean
+  /** The config type for a node, or null. */
+  getConfigType(nodeid?: string | undefined | null): string | null
+  /** Clear all cached configs. */
+  clear(): void
+  /** Number of cached configs. */
+  get length(): number
 }
 export declare class NapiTileData {
   has(key: string): boolean
@@ -392,6 +408,34 @@ export declare class NapiResourceModelWrapper {
   setGraphNodegroups(nodegroupsJson: string): void
   /** Prune graph to only include permitted nodegroups and their dependencies. */
   pruneGraph(keepFunctions?: Array<string> | undefined | null): void
+}
+/** A domain value option from node config. */
+export declare class NapiStaticDomainValue {
+  get id(): string
+  get selected(): boolean
+  /** Text for a language, falling back to `en`, then the lowest language key. */
+  lang(language: string): string | null
+  /** Display string (defaults to English). */
+  display(): string
+  /** All text labels, keyed by language. */
+  get text(): any
+}
+/** Boolean node configuration with true/false labels. */
+export declare class NapiNodeConfigBoolean {
+  getLabel(value: boolean, language: string): string | null
+  get trueLabel(): any
+  get falseLabel(): any
+}
+/** Concept node configuration (RDM collection reference). */
+export declare class NapiNodeConfigConcept {
+  get rdmCollection(): string
+}
+/** Domain value node configuration with an options list. */
+export declare class NapiNodeConfigDomain {
+  get options(): Array<NapiStaticDomainValue>
+  getSelected(): NapiStaticDomainValue | null
+  valueFromId(id: string): NapiStaticDomainValue | null
+  getOptionIds(): Array<string>
 }
 export declare class NapiPrebuildExporter {
   constructor()

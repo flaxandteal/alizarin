@@ -15,6 +15,13 @@ use alizarin_core::node_config::{
 // Import WASM graph type for direct graph loading
 use crate::graph::StaticGraph as WasmStaticGraph;
 
+/// A label map's entries in key order, so JS objects match NAPI's and Python's.
+fn sorted(
+    map: &std::collections::HashMap<String, String>,
+) -> std::collections::BTreeMap<&String, &String> {
+    map.iter().collect()
+}
+
 // =============================================================================
 // StaticDomainValue WASM Wrapper
 // =============================================================================
@@ -53,7 +60,7 @@ impl WasmStaticDomainValue {
     #[wasm_bindgen(getter)]
     pub fn text(&self) -> JsValue {
         let obj = Object::new();
-        for (key, value) in &self.inner.text {
+        for (key, value) in sorted(&self.inner.text) {
             Reflect::set(&obj, &JsValue::from_str(key), &JsValue::from_str(value)).ok();
         }
         obj.into()
@@ -96,7 +103,7 @@ impl WasmNodeConfigBoolean {
     #[wasm_bindgen(getter, js_name = trueLabel)]
     pub fn true_label(&self) -> JsValue {
         let obj = Object::new();
-        for (key, value) in &self.inner.true_label {
+        for (key, value) in sorted(&self.inner.true_label) {
             Reflect::set(&obj, &JsValue::from_str(key), &JsValue::from_str(value)).ok();
         }
         obj.into()
@@ -106,7 +113,7 @@ impl WasmNodeConfigBoolean {
     #[wasm_bindgen(getter, js_name = falseLabel)]
     pub fn false_label(&self) -> JsValue {
         let obj = Object::new();
-        for (key, value) in &self.inner.false_label {
+        for (key, value) in sorted(&self.inner.false_label) {
             Reflect::set(&obj, &JsValue::from_str(key), &JsValue::from_str(value)).ok();
         }
         obj.into()

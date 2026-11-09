@@ -3,7 +3,12 @@
 /// This module wraps the platform-agnostic types from alizarin-core
 /// with PyO3 bindings for Python access.
 use pyo3::prelude::*;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+
+/// A label map in key order, so dicts match the WASM and NAPI objects.
+fn sorted(map: &HashMap<String, String>) -> BTreeMap<String, String> {
+    map.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+}
 
 // Import core types
 use alizarin_core::node_config::{
@@ -57,8 +62,8 @@ impl PyStaticDomainValue {
     }
 
     #[getter]
-    fn text(&self) -> HashMap<String, String> {
-        self.inner.text.clone()
+    fn text(&self) -> BTreeMap<String, String> {
+        sorted(&self.inner.text)
     }
 
     /// Get text for a specific language
@@ -121,13 +126,13 @@ impl PyNodeConfigBoolean {
     }
 
     #[getter]
-    fn true_label(&self) -> HashMap<String, String> {
-        self.inner.true_label.clone()
+    fn true_label(&self) -> BTreeMap<String, String> {
+        sorted(&self.inner.true_label)
     }
 
     #[getter]
-    fn false_label(&self) -> HashMap<String, String> {
-        self.inner.false_label.clone()
+    fn false_label(&self) -> BTreeMap<String, String> {
+        sorted(&self.inner.false_label)
     }
 
     /// Get label for a boolean value in a specific language

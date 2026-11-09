@@ -1,4 +1,5 @@
 mod instance_wrapper_napi;
+mod node_config_napi;
 use instance_wrapper_napi::NapiRdmCache;
 
 use std::collections::HashMap;

@@ -124,7 +124,7 @@ fn value_id_for_concept(concept_id: &str, collections: &[SkosCollection]) -> Opt
             return concept
                 .pref_labels
                 .get("en")
-                .or_else(|| concept.pref_labels.values().next())
+                .or_else(|| crate::sorted_serde::lowest_key_value(&concept.pref_labels))
                 .map(|v| v.id.clone());
         }
     }

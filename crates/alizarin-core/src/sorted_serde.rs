@@ -39,6 +39,13 @@ pub fn sorted_keys<'a>(keys: impl Iterator<Item = &'a String>) -> Vec<String> {
     keys
 }
 
+/// The value under the lowest key: a deterministic "any value" for fallbacks
+/// (e.g. a label in some language when neither the requested one nor `en`
+/// exists). `map.values().next()` would pick a different entry per process.
+pub fn lowest_key_value<K: Ord, V>(map: &HashMap<K, V>) -> Option<&V> {
+    map.iter().min_by(|a, b| a.0.cmp(b.0)).map(|(_, v)| v)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -67,6 +74,18 @@ mod tests {
             json,
             format!("{{\"map\":{{{expected}}},\"opt\":{{{expected}}}}}")
         );
+    }
+
+    #[test]
+    fn fallback_value_is_the_lowest_key_however_the_map_was_built() {
+        for _ in 0..16 {
+            let labels: HashMap<String, &str> = ["ga", "cy", "fr", "de"]
+                .iter()
+                .map(|lang| (lang.to_string(), *lang))
+                .collect();
+            assert_eq!(lowest_key_value(&labels), Some(&"cy"));
+        }
+        assert_eq!(lowest_key_value(&HashMap::<String, i32>::new()), None);
     }
 
     #[test]

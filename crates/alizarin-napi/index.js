@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiEnsureNodegroupResult, NapiValuesFromNodegroupResult, NapiResourceInstanceWrapper, NapiResourceModelWrapper, registerExtensionHandler, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
+const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiEnsureNodegroupResult, NapiValuesFromNodegroupResult, NapiResourceInstanceWrapper, NapiResourceModelWrapper, NapiStaticDomainValue, NapiNodeConfigBoolean, NapiNodeConfigConcept, NapiNodeConfigDomain, registerExtensionHandler, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
 
 module.exports.NapiRdmCache = NapiRdmCache
 module.exports.NapiNodeConfigManager = NapiNodeConfigManager
@@ -323,6 +323,10 @@ module.exports.NapiEnsureNodegroupResult = NapiEnsureNodegroupResult
 module.exports.NapiValuesFromNodegroupResult = NapiValuesFromNodegroupResult
 module.exports.NapiResourceInstanceWrapper = NapiResourceInstanceWrapper
 module.exports.NapiResourceModelWrapper = NapiResourceModelWrapper
+module.exports.NapiStaticDomainValue = NapiStaticDomainValue
+module.exports.NapiNodeConfigBoolean = NapiNodeConfigBoolean
+module.exports.NapiNodeConfigConcept = NapiNodeConfigConcept
+module.exports.NapiNodeConfigDomain = NapiNodeConfigDomain
 module.exports.registerExtensionHandler = registerExtensionHandler
 module.exports.NapiPrebuildExporter = NapiPrebuildExporter
 module.exports.NapiStaticGraph = NapiStaticGraph

@@ -181,6 +181,73 @@ impl NapiNodeConfigManager {
         self.inner.build_from_graph(graph.inner_ref());
         Ok(())
     }
+
+    // The readers below mirror `WasmNodeConfigManager` name for name (and its
+    // null-id handling), so the shared TypeScript `NodeConfigManager` works on
+    // both backends.
+
+    /// Boolean config for a node, or null.
+    #[napi(js_name = "getBoolean")]
+    pub fn get_boolean(
+        &self,
+        nodeid: Option<String>,
+    ) -> Option<crate::node_config_napi::NapiNodeConfigBoolean> {
+        self.inner.get_boolean(&nodeid?).map(Into::into)
+    }
+
+    /// Concept config for a node, or null.
+    #[napi(js_name = "getConcept")]
+    pub fn get_concept(
+        &self,
+        nodeid: Option<String>,
+    ) -> Option<crate::node_config_napi::NapiNodeConfigConcept> {
+        self.inner.get_concept(&nodeid?).map(Into::into)
+    }
+
+    /// Domain config for a node, or null.
+    #[napi(js_name = "getDomain")]
+    pub fn get_domain(
+        &self,
+        nodeid: Option<String>,
+    ) -> Option<crate::node_config_napi::NapiNodeConfigDomain> {
+        self.inner.get_domain(&nodeid?).map(Into::into)
+    }
+
+    /// A domain value by id, or null.
+    #[napi(js_name = "lookupDomainValue")]
+    pub fn lookup_domain_value(
+        &self,
+        nodeid: Option<String>,
+        value_id: Option<String>,
+    ) -> Option<crate::node_config_napi::NapiStaticDomainValue> {
+        self.inner
+            .lookup_domain_value(&nodeid?, &value_id?)
+            .map(Into::into)
+    }
+
+    /// Whether a node has config (false for a null id).
+    #[napi(js_name = "hasConfig")]
+    pub fn has_config(&self, nodeid: Option<String>) -> bool {
+        nodeid.is_some_and(|id| self.inner.has_config(&id))
+    }
+
+    /// The config type for a node, or null.
+    #[napi(js_name = "getConfigType")]
+    pub fn get_config_type(&self, nodeid: Option<String>) -> Option<String> {
+        self.inner.get_config_type(&nodeid?).map(str::to_string)
+    }
+
+    /// Clear all cached configs.
+    #[napi]
+    pub fn clear(&mut self) {
+        self.inner.clear();
+    }
+
+    /// Number of cached configs.
+    #[napi(getter)]
+    pub fn length(&self) -> u32 {
+        self.inner.len() as u32
+    }
 }
 
 // =============================================================================

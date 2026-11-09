@@ -44,7 +44,7 @@ impl StaticDomainValue {
         self.text
             .get(language)
             .or_else(|| self.text.get("en"))
-            .or_else(|| self.text.values().next())
+            .or_else(|| crate::sorted_serde::lowest_key_value(&self.text))
             .map(|s| s.as_str())
     }
 
@@ -100,7 +100,7 @@ impl NodeConfigBoolean {
         labels
             .get(language)
             .or_else(|| labels.get("en"))
-            .or_else(|| labels.values().next())
+            .or_else(|| crate::sorted_serde::lowest_key_value(labels))
             .map(|s| s.as_str())
     }
 }
