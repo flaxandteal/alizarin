@@ -119,9 +119,12 @@ registry (BRACE's case) without a native tile source.
    capability trait, dispatch with number + date fallbacks, geo bbox fold, runner,
    registry `TileSource`, tests including order-independence (fold vs merge of
    partial folds give the same summary).
-2. **C ABI + bindings** so JS (BRACE) and Python get it.
+2. **C ABI + bindings** so JS (BRACE) and Python get it. *Superseded as the main entry point by
+   Aggregate functions (`notes/spans-scope.md`); a thin `foldResources` may remain for ad-hoc use.*
 3. **More summaries:** EDTF granularity, hull / cell-set, others as consumers ask.
-4. (Deferred, per the handoff) incremental recompute when a layer changes.
+4. (Deferred, per the handoff) incremental recompute when a layer changes. Removal that compares
+   against the extremes and marks the summary loose (`fold_remove`) is built; the provider-level
+   `update` hook and any trigger are parked. See `notes/spans-scope.md`, "Incremental updates".
 
 ## Decisions
 
