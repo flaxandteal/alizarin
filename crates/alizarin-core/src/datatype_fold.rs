@@ -15,12 +15,56 @@
 //! `alizarin-geo`'s). Summaries are JSON with sorted keys, so they serialise
 //! identically on every backend, and folds are order-independent: equal keys
 //! are broken by the value's JSON text, never by arrival order.
+//!
+//! # Removal and looseness
+//!
+//! [`fold_remove`] takes values back out. Bounds can't be inverted, so removing a
+//! value that touches one keeps the bound and marks the summary `"loose": true`:
+//! it may be a superset of the true summary until a re-fold. Core owns the flag
+//! (handlers never see it): folding into or merging with a loose summary gives a
+//! loose summary, and removing every value gives the exact empty summary. A
+//! re-fold from scratch is exact.
 
 use serde_json::{json, Value};
 use std::cmp::Ordering;
 
 use crate::extension_type_registry::ExtensionTypeRegistry;
+pub use crate::extension_type_registry::RemoveStep;
 use crate::quantize::{quantize_date, quantize_date_upper};
+
+/// The summary key core uses to mark a summary loose. Reserved: a handler's
+/// summary must not use it.
+pub const LOOSE_KEY: &str = "loose";
+
+/// Whether a summary is marked loose: a value touching one of its bounds was
+/// removed, so it may be a superset of the true summary until a re-fold.
+pub fn is_loose(summary: &Value) -> bool {
+    summary.get(LOOSE_KEY) == Some(&Value::Bool(true))
+}
+
+/// Remove the loose flag from `summary`, returning whether it was set, so a
+/// handler only ever sees its own summary shape.
+fn take_loose(summary: &mut Value) -> bool {
+    summary
+        .as_object_mut()
+        .and_then(|o| o.remove(LOOSE_KEY))
+        .is_some_and(|flag| flag == Value::Bool(true))
+}
+
+/// Set the loose flag on `summary` when `loose`. Only an object summary can carry
+/// it; anything else that needs the flag is an error rather than a silently exact
+/// summary.
+fn with_loose(mut summary: Value, loose: bool, datatype: &str) -> Result<Value, FoldError> {
+    if loose {
+        let object = summary.as_object_mut().ok_or_else(|| {
+            FoldError(format!(
+                "{datatype}: summary is not an object, so it cannot be marked loose"
+            ))
+        })?;
+        object.insert(LOOSE_KEY.to_string(), Value::Bool(true));
+    }
+    Ok(summary)
+}
 
 /// A fold that couldn't complete, e.g. a value its datatype can't summarise.
 #[derive(Debug, Clone, PartialEq)]
@@ -60,21 +104,23 @@ pub fn fold_identity(
 }
 
 /// Fold a batch of values into `acc`. Null values are not values and are
-/// ignored; anything else the datatype can't summarise fails the fold.
+/// ignored; anything else the datatype can't summarise fails the fold. A loose
+/// `acc` stays loose.
 pub fn fold_values(
     datatype: &str,
-    acc: Value,
+    mut acc: Value,
     values: &[&Value],
     config: Option<&Value>,
     registry: Option<&ExtensionTypeRegistry>,
 ) -> Result<FoldStep, FoldError> {
+    let loose = take_loose(&mut acc);
     let values: Vec<&Value> = values.iter().copied().filter(|v| !v.is_null()).collect();
     if let Some(handler) = handler_for(datatype, config, registry) {
         let summary = handler
             .fold(acc, &values, config)
             .map_err(|e| FoldError(format!("{datatype}: {e}")))?;
         return Ok(FoldStep {
-            summary,
+            summary: with_loose(summary, loose, datatype)?,
             skipped: 0,
         });
     }
@@ -93,28 +139,81 @@ pub fn fold_values(
         }
     }
     Ok(FoldStep {
-        summary: range.to_summary(kind),
+        summary: with_loose(range.to_summary(kind), loose, datatype)?,
         skipped,
     })
 }
 
-/// Merge two summaries of `datatype` from folds over disjoint values.
+/// Merge two summaries of `datatype` from folds over disjoint values. The result
+/// is loose if either input is.
 pub fn fold_merge(
     datatype: &str,
-    a: Value,
-    b: Value,
+    mut a: Value,
+    mut b: Value,
     config: Option<&Value>,
     registry: Option<&ExtensionTypeRegistry>,
 ) -> Result<Value, FoldError> {
+    let loose = take_loose(&mut a) | take_loose(&mut b);
     if let Some(handler) = handler_for(datatype, config, registry) {
-        return handler
+        let merged = handler
             .fold_merge(a, b, config)
-            .map_err(|e| FoldError(format!("{datatype}: {e}")));
+            .map_err(|e| FoldError(format!("{datatype}: {e}")))?;
+        return with_loose(merged, loose, datatype);
     }
     let kind = builtin(datatype).ok_or_else(|| no_summary(datatype))?;
     let mut range = Range::from_summary(&a, kind)?;
     range.merge(Range::from_summary(&b, kind)?);
-    Ok(range.to_summary(kind))
+    with_loose(range.to_summary(kind), loose, datatype)
+}
+
+/// Remove previously folded values from `acc`, or `Ok(None)` if `datatype` can't
+/// remove (the caller must re-fold).
+///
+/// Removing a value that touches a bound keeps the bound and marks the result
+/// loose. A loose `acc` stays loose, except that removing every value gives the
+/// exact empty summary. Nulls are ignored, as when folding, and so are `edtf`
+/// values the date parser can't order (they were skipped, never folded).
+pub fn fold_remove(
+    datatype: &str,
+    mut acc: Value,
+    values: &[&Value],
+    config: Option<&Value>,
+    registry: Option<&ExtensionTypeRegistry>,
+) -> Result<Option<Value>, FoldError> {
+    let was_loose = take_loose(&mut acc);
+    let values: Vec<&Value> = values.iter().copied().filter(|v| !v.is_null()).collect();
+    let step = if let Some(handler) = handler_for(datatype, config, registry) {
+        match handler
+            .fold_remove(acc, &values, config)
+            .map_err(|e| FoldError(format!("{datatype}: {e}")))?
+        {
+            Some(step) => step,
+            None => return Ok(None),
+        }
+    } else {
+        let kind = builtin(datatype).ok_or_else(|| no_summary(datatype))?;
+        let mut range = Range::from_summary(&acc, kind)?;
+        let mut touched = false;
+        for value in values {
+            match kind.bounds(value) {
+                Some((lower, upper)) => touched |= range.remove(lower, upper),
+                None if kind == Builtin::Edtf => {}
+                None => {
+                    return Err(FoldError(format!(
+                        "{datatype}: cannot remove value {value}"
+                    )))
+                }
+            }
+        }
+        RemoveStep {
+            summary: range.to_summary(kind),
+            exact: !touched,
+        }
+    };
+    // Nothing left is exactly nothing, however loose the input was.
+    let empty = fold_identity(datatype, config, registry).as_ref() == Some(&step.summary);
+    let loose = !empty && (was_loose || !step.exact);
+    with_loose(step.summary, loose, datatype).map(Some)
 }
 
 fn handler_for<'a>(
@@ -223,6 +322,30 @@ impl Range {
             key: upper,
             value: value.clone(),
         });
+    }
+
+    /// Take one value back out; returns whether it touched a bound (which is
+    /// kept). The last value out empties the range. Removing from an already
+    /// empty range means the caller's data is inconsistent, so it counts as
+    /// touching.
+    fn remove(&mut self, lower: Key, upper: Key) -> bool {
+        if self.count == 0 {
+            return true;
+        }
+        self.count -= 1;
+        if self.count == 0 {
+            *self = Range::default();
+            return false;
+        }
+        let touches_min = self
+            .min
+            .as_ref()
+            .is_none_or(|m| lower.cmp(&m.key) != Ordering::Greater);
+        let touches_max = self
+            .max
+            .as_ref()
+            .is_none_or(|m| upper.cmp(&m.key) != Ordering::Less);
+        touches_min || touches_max
     }
 
     fn merge(&mut self, other: Range) {
@@ -382,6 +505,92 @@ mod tests {
         assert_eq!(fold_identity("string", None, None), None);
         let err = fold_values("string", json!({}), &[&json!("x")], None, None);
         assert!(err.is_err());
+    }
+
+    fn remove(datatype: &str, acc: Value, values: &[Value]) -> Value {
+        let refs: Vec<&Value> = values.iter().collect();
+        fold_remove(datatype, acc, &refs, None, None)
+            .expect("removes")
+            .expect("built-ins can remove")
+    }
+
+    #[test]
+    fn removing_an_interior_value_stays_exact() {
+        let acc = fold_all("number", &[json!(1), json!(5), json!(9)]).summary;
+        let after = remove("number", acc, &[json!(5)]);
+        assert_eq!(after, json!({ "count": 2, "min": 1, "max": 9 }));
+        assert!(!is_loose(&after));
+    }
+
+    #[test]
+    fn removing_a_bound_keeps_it_and_marks_loose() {
+        let acc = fold_all("number", &[json!(1), json!(5), json!(9)]).summary;
+        let after = remove("number", acc, &[json!(9)]);
+        assert_eq!(
+            after,
+            json!({ "count": 2, "min": 1, "max": 9, "loose": true }),
+            "the bound is kept: a superset"
+        );
+        // A tie at the bound is still marked loose: no counts are kept.
+        let tied = fold_all("number", &[json!(1), json!(9), json!(9)]).summary;
+        assert!(is_loose(&remove("number", tied, &[json!(9)])));
+    }
+
+    #[test]
+    fn date_removal_compares_both_ends_of_a_value() {
+        let acc = fold_all("date", &[json!("1850"), json!("1855-06"), json!("1860")]).summary;
+        assert!(!is_loose(&remove("date", acc.clone(), &[json!("1855-06")])));
+        assert!(
+            is_loose(&remove("date", acc.clone(), &[json!("1860")])),
+            "1860 runs to the year's end, which is the max"
+        );
+        // A value inside the year 1850 starts after 1850-01-01, so it isn't the min.
+        assert!(!is_loose(&remove("date", acc, &[json!("1850-03-01")])));
+    }
+
+    #[test]
+    fn unorderable_edtf_is_ignored_on_removal_as_on_folding() {
+        let acc = fold_all("edtf", &[json!("1850"), json!("1855"), json!("1860")]).summary;
+        let after = remove("edtf", acc.clone(), &[json!("1855?")]);
+        assert_eq!(after, acc, "never folded, so nothing to take out");
+    }
+
+    #[test]
+    fn removing_everything_is_exactly_empty_even_from_loose() {
+        let acc = fold_all("number", &[json!(1), json!(9)]).summary;
+        let loose = remove("number", acc, &[json!(9)]);
+        assert!(is_loose(&loose));
+        let empty = remove("number", loose, &[json!(1)]);
+        assert_eq!(empty, json!({ "count": 0 }));
+    }
+
+    #[test]
+    fn looseness_survives_folding_and_merging() {
+        let acc = fold_all("number", &[json!(1), json!(9)]).summary;
+        let loose = remove("number", acc, &[json!(9)]);
+
+        let folded = fold_values("number", loose.clone(), &[&json!(4)], None, None)
+            .unwrap()
+            .summary;
+        assert!(is_loose(&folded));
+
+        let exact = fold_all("number", &[json!(3)]).summary;
+        let merged = fold_merge("number", exact.clone(), loose, None, None).unwrap();
+        assert!(
+            is_loose(&merged),
+            "either input loose makes the merge loose"
+        );
+        assert!(!is_loose(
+            &fold_merge("number", exact.clone(), exact, None, None).unwrap()
+        ));
+    }
+
+    #[test]
+    fn a_handler_without_removal_asks_for_a_refold() {
+        let mut registry = ExtensionTypeRegistry::new();
+        registry.register("number".to_string(), Arc::new(Concatenate));
+        let result = fold_remove("number", json!("ab"), &[&json!("a")], None, Some(&registry));
+        assert_eq!(result, Ok(None));
     }
 
     struct Concatenate;

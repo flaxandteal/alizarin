@@ -168,6 +168,17 @@ pub struct IndexSpec {
     pub keys: Vec<String>,
 }
 
+/// The result of removing values from a fold summary
+/// ([`ExtensionTypeHandler::fold_remove`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct RemoveStep {
+    /// The summary without the removed values.
+    pub summary: Value,
+    /// `false` if a removed value touched a bound that was kept, so the summary
+    /// may now be a superset of the true one.
+    pub exact: bool,
+}
+
 /// Error type for extension handler operations.
 #[derive(Debug, Clone)]
 pub struct ExtensionError {
@@ -427,6 +438,24 @@ pub trait ExtensionTypeHandler: Send + Sync {
         _config: Option<&Value>,
     ) -> Result<Value, ExtensionError> {
         Ok(a)
+    }
+
+    /// Remove previously folded values from `acc`, or `Ok(None)` (the default)
+    /// if this datatype can't, in which case the caller must re-fold.
+    ///
+    /// Return `exact: false` when a removed value touched a bound (e.g. it was
+    /// the minimum): keep that bound, so the summary is a superset of the true
+    /// one, and core marks it loose until a re-fold tightens it. Core records
+    /// looseness as `"loose": true` on the summary, so a removable summary must
+    /// be a JSON object and must not use the key `loose` itself; handlers never
+    /// see or set it.
+    fn fold_remove(
+        &self,
+        _acc: Value,
+        _values: &[&Value],
+        _config: Option<&Value>,
+    ) -> Result<Option<RemoveStep>, ExtensionError> {
+        Ok(None)
     }
 
     /// Resolve markers in tile data (e.g., fetch reference labels).

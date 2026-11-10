@@ -27,7 +27,7 @@ pub mod fold;
 pub mod c_abi;
 
 use alizarin_core::extension_type_registry::{
-    ExtensionError, ExtensionTypeHandler, HandlerCapabilities, ValidationResult,
+    ExtensionError, ExtensionTypeHandler, HandlerCapabilities, RemoveStep, ValidationResult,
 };
 
 /// The datatype name this handler registers for.
@@ -107,6 +107,16 @@ impl ExtensionTypeHandler for GeoTypeHandler {
         _config: Option<&Value>,
     ) -> Result<Value, ExtensionError> {
         fold::merge(a, b)
+    }
+
+    fn fold_remove(
+        &self,
+        acc: Value,
+        values: &[&Value],
+        _config: Option<&Value>,
+    ) -> Result<Option<RemoveStep>, ExtensionError> {
+        let (summary, exact) = fold::remove(acc, values)?;
+        Ok(Some(RemoveStep { summary, exact }))
     }
 
     fn description(&self) -> &str {

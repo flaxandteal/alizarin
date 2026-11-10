@@ -3,7 +3,9 @@
 //! Summary: `{"count", "bbox": [min_lng, min_lat, max_lng, max_lat],
 //! "geometry_types": [...]}`. `bbox` is absent until a position is seen, and
 //! `geometry_types` is sorted, so the summary is the same whatever order values
-//! are folded or merged in.
+//! are folded or merged in. `geometry_types` is inclusive: the types seen among
+//! folded values, never shrunk by a later removal (see `notes/spans-scope.md`,
+//! "Incremental updates").
 //!
 //! The bbox is a plain lon/lat envelope: it does not handle geometries that
 //! cross the antimeridian (it will span the globe), and for sparse layers it
@@ -25,27 +27,7 @@ pub fn identity() -> Value {
 pub fn fold(acc: Value, values: &[&Value]) -> Result<Value, ExtensionError> {
     let mut summary = Summary::read(&acc)?;
     for value in values {
-        summary.count += 1;
-        if value.as_object().is_some_and(|o| o.is_empty()) {
-            continue;
-        }
-        let gj = geojson::GeoJson::from_json_value((*value).clone())
-            .map_err(|e| ExtensionError::new(format!("invalid GeoJSON: {e}")))?;
-        match gj {
-            geojson::GeoJson::FeatureCollection(fc) => {
-                for feature in fc.features {
-                    if let Some(geometry) = feature.geometry {
-                        summary.add(&geometry.value);
-                    }
-                }
-            }
-            geojson::GeoJson::Feature(f) => {
-                if let Some(geometry) = f.geometry {
-                    summary.add(&geometry.value);
-                }
-            }
-            geojson::GeoJson::Geometry(g) => summary.add(&g.value),
-        }
+        summary.absorb(Summary::of_value(value)?);
     }
     Ok(summary.write())
 }
@@ -53,14 +35,34 @@ pub fn fold(acc: Value, values: &[&Value]) -> Result<Value, ExtensionError> {
 /// Merge two geometry summaries.
 pub fn merge(a: Value, b: Value) -> Result<Value, ExtensionError> {
     let mut summary = Summary::read(&a)?;
-    let other = Summary::read(&b)?;
-    summary.count += other.count;
-    if let Some([x0, y0, x1, y1]) = other.bbox {
-        summary.extend(x0, y0);
-        summary.extend(x1, y1);
-    }
-    summary.types.extend(other.types);
+    summary.absorb(Summary::read(&b)?);
     Ok(summary.write())
+}
+
+/// Remove previously folded values from `acc`. Returns the summary and whether
+/// it stayed exact: a removed geometry whose own bbox touches an edge of the
+/// summary's bbox leaves that edge in place (a superset), so it is not exact.
+/// `geometry_types` is inclusive and never shrinks. Removing the last value
+/// gives the empty summary.
+pub fn remove(acc: Value, values: &[&Value]) -> Result<(Value, bool), ExtensionError> {
+    let mut summary = Summary::read(&acc)?;
+    let mut exact = true;
+    for value in values {
+        let removed = Summary::of_value(value)?;
+        if summary.count == 0 {
+            exact = false; // removing from nothing: the caller's data is inconsistent
+            continue;
+        }
+        summary.count -= 1;
+        if let (Some(edges), Some(r)) = (summary.bbox, removed.bbox) {
+            exact &=
+                !(r[0] <= edges[0] || r[1] <= edges[1] || r[2] >= edges[2] || r[3] >= edges[3]);
+        }
+    }
+    if summary.count == 0 {
+        return Ok((identity(), true));
+    }
+    Ok((summary.write(), exact))
 }
 
 #[derive(Default)]
@@ -107,6 +109,46 @@ impl Summary {
             out["geometry_types"] = json!(self.types);
         }
         out
+    }
+
+    /// The summary of one value: count 1, its bbox and geometry types. An empty
+    /// value (`{}`) counts but has no geometry; anything else must be GeoJSON.
+    fn of_value(value: &Value) -> Result<Summary, ExtensionError> {
+        let mut summary = Summary {
+            count: 1,
+            ..Summary::default()
+        };
+        if value.as_object().is_some_and(|o| o.is_empty()) {
+            return Ok(summary);
+        }
+        let gj = geojson::GeoJson::from_json_value(value.clone())
+            .map_err(|e| ExtensionError::new(format!("invalid GeoJSON: {e}")))?;
+        match gj {
+            geojson::GeoJson::FeatureCollection(fc) => {
+                for feature in fc.features {
+                    if let Some(geometry) = feature.geometry {
+                        summary.add(&geometry.value);
+                    }
+                }
+            }
+            geojson::GeoJson::Feature(f) => {
+                if let Some(geometry) = f.geometry {
+                    summary.add(&geometry.value);
+                }
+            }
+            geojson::GeoJson::Geometry(g) => summary.add(&g.value),
+        }
+        Ok(summary)
+    }
+
+    /// Fold another summary into this one.
+    fn absorb(&mut self, other: Summary) {
+        self.count += other.count;
+        if let Some([x0, y0, x1, y1]) = other.bbox {
+            self.extend(x0, y0);
+            self.extend(x1, y1);
+        }
+        self.types.extend(other.types);
     }
 
     fn add(&mut self, geometry: &geojson::Value) {
@@ -273,5 +315,61 @@ mod tests {
                 "geometry_types": ["Point"]
             }))
         );
+    }
+
+    #[test]
+    fn removal_marks_loose_only_when_an_edge_is_touched() {
+        use alizarin_core::datatype_fold::{fold_identity, fold_remove, fold_values, is_loose};
+        use alizarin_core::extension_type_registry::ExtensionTypeRegistry;
+
+        let mut handlers = ExtensionTypeRegistry::new();
+        crate::register(&mut handlers);
+        let dt = crate::DATATYPE_NAME;
+        let reg = Some(&handlers);
+        let (west, middle, east) = (
+            fc(&[point(-10.0, 54.0)]),
+            fc(&[point(-7.0, 54.5)]),
+            fc(&[point(-5.0, 55.0)]),
+        );
+        let acc = fold_values(
+            dt,
+            fold_identity(dt, None, reg).unwrap(),
+            &[&west, &middle, &east],
+            None,
+            reg,
+        )
+        .unwrap()
+        .summary;
+
+        let inner = fold_remove(dt, acc.clone(), &[&middle], None, reg)
+            .unwrap()
+            .unwrap();
+        assert!(!is_loose(&inner), "an interior geometry");
+        assert_eq!(inner["count"], json!(2));
+        assert_eq!(inner["bbox"], acc["bbox"]);
+
+        let edge = fold_remove(dt, acc.clone(), &[&west], None, reg)
+            .unwrap()
+            .unwrap();
+        assert!(is_loose(&edge), "the westmost geometry");
+        assert_eq!(edge["bbox"], acc["bbox"], "the edge is kept: a superset");
+        assert_eq!(
+            edge["geometry_types"],
+            json!(["Point"]),
+            "types are inclusive"
+        );
+
+        let empty = fold_remove(dt, edge, &[&middle, &east], None, reg)
+            .unwrap()
+            .unwrap();
+        assert_eq!(empty, identity(), "nothing left is exactly empty");
+    }
+
+    #[test]
+    fn removing_a_value_without_geometry_stays_exact() {
+        let acc = fold(identity(), &[&fc(&[point(1.0, 2.0)]), &json!({})]).unwrap();
+        let (summary, exact) = remove(acc, &[&json!({})]).unwrap();
+        assert!(exact);
+        assert_eq!(summary["count"], json!(1));
     }
 }
