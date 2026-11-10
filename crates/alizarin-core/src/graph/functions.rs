@@ -21,9 +21,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use serde::{Deserialize, Serialize};
+
 use super::computed_tiles::{compute_tiles_functions, ComputeTilesConfig};
+use super::descriptors::AGGREGATE_FUNCTION_ID;
 use super::graph_lookup::GraphLookup;
 use super::tile::StaticTile;
+use crate::extension_type_registry::ExtensionTypeRegistry;
+use crate::slice_source::{GraphSource, SliceMember, SliceSource};
 
 /// A **Derive** function: read the resource's EXISTING node values (`tiles`) and
 /// produce derived tiles for a target nodegroup.
@@ -55,6 +60,59 @@ pub trait DescriptorProvider: Send + Sync {
     ) -> Result<String, String>;
 }
 
+/// An **Aggregate** function: read a slice of OTHER resources and produce tiles
+/// for a nodegroup on the calling resource (e.g. a Layer resource's spans, from
+/// the layer's members).
+///
+/// Where Derive reads the resource's own tiles, an Aggregate folds across many,
+/// typically through the datatype handlers' fold capability
+/// (`crate::datatype_fold`). The same purity contract applies: the output depends
+/// only on the slice's contents and the config, never on visit order.
+///
+/// It returns the COMPLETE tiles for `config.nodegroup`: an Aggregate owns its
+/// target nodegroup, and [`apply_aggregate_functions`] replaces what was there.
+/// Tile ids should be stable across runs (e.g. `multi_tile_id` with the layer
+/// namespace), so re-running on unchanged members gives identical tiles.
+pub trait AggregateProvider: Send + Sync {
+    fn aggregate(
+        &self,
+        target_id: &str,
+        graph: &dyn GraphLookup,
+        slice: &dyn SliceSource,
+        config: &AggregateConfig,
+        context: &AggregateContext<'_>,
+    ) -> Result<Vec<StaticTile>, String>;
+}
+
+/// Shared services an Aggregate may use. Built with [`AggregateContext::new`];
+/// non-exhaustive so services can be added without breaking providers.
+#[non_exhaustive]
+pub struct AggregateContext<'a> {
+    /// Datatype handlers, for fold dispatch (`crate::datatype_fold`).
+    pub handlers: &'a ExtensionTypeRegistry,
+    /// The graphs of the slice's members, to resolve paths per graph.
+    pub graphs: &'a dyn GraphSource,
+}
+
+impl<'a> AggregateContext<'a> {
+    pub fn new(handlers: &'a ExtensionTypeRegistry, graphs: &'a dyn GraphSource) -> Self {
+        Self { handlers, graphs }
+    }
+}
+
+/// An Aggregate function's declaration: the `config` of a `functions_x_graphs`
+/// entry whose `function_id` is [`AGGREGATE_FUNCTION_ID`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AggregateConfig {
+    /// The provider's UUID in the [`FunctionsRegistry`].
+    pub provider: String,
+    /// The nodegroup on the calling resource that this function fills.
+    pub nodegroup: String,
+    /// Provider-specific settings, opaque to core.
+    #[serde(default)]
+    pub config: serde_json::Value,
+}
+
 /// A registered graph-attached function, keyed in the registry by provider UUID.
 ///
 /// A **closed enum**: each kind keeps its own trait and signature; the registry
@@ -65,6 +123,7 @@ pub trait DescriptorProvider: Send + Sync {
 pub enum RegisteredFunction {
     Descriptor(Arc<dyn DescriptorProvider>),
     Derive(Arc<dyn DeriveProvider>),
+    Aggregate(Arc<dyn AggregateProvider>),
 }
 
 impl RegisteredFunction {
@@ -72,6 +131,7 @@ impl RegisteredFunction {
         match self {
             RegisteredFunction::Descriptor(_) => "descriptor",
             RegisteredFunction::Derive(_) => "derive",
+            RegisteredFunction::Aggregate(_) => "aggregate",
         }
     }
 }
@@ -117,6 +177,15 @@ impl FunctionsRegistry {
     pub fn descriptor(&self, provider_uuid: &str) -> Option<&Arc<dyn DescriptorProvider>> {
         match self.funcs.get(provider_uuid) {
             Some(RegisteredFunction::Descriptor(p)) => Some(p),
+            _ => None,
+        }
+    }
+
+    /// The Aggregate provider registered under `provider_uuid`, if present and an
+    /// Aggregate.
+    pub fn aggregate(&self, provider_uuid: &str) -> Option<&Arc<dyn AggregateProvider>> {
+        match self.funcs.get(provider_uuid) {
+            Some(RegisteredFunction::Aggregate(p)) => Some(p),
             _ => None,
         }
     }
@@ -174,4 +243,103 @@ pub fn apply_derive_functions(
             tiles.extend(computed);
         }
     }
+}
+
+/// The Aggregate functions a graph declares, in declaration order. Unlike the
+/// compute-tiles reader, a malformed declaration is an error: Aggregates run on
+/// an explicit call, and silently skipping one would leave its output stale.
+pub fn aggregate_functions(graph: &dyn GraphLookup) -> Result<Vec<AggregateConfig>, String> {
+    graph
+        .functions_x_graphs()
+        .into_iter()
+        .filter(|f| f.function_id == AGGREGATE_FUNCTION_ID)
+        .map(|f| {
+            serde_json::from_value(f.config.clone())
+                .map_err(|e| format!("aggregate function {}: invalid config: {e}", f.id))
+        })
+        .collect()
+}
+
+/// A slice with the calling resource left out: a Layer resource is not a member
+/// of its own layer.
+struct ExcludeTarget<'a> {
+    inner: &'a dyn SliceSource,
+    target_id: &'a str,
+}
+
+impl SliceSource for ExcludeTarget<'_> {
+    fn visit(
+        &self,
+        f: &mut dyn FnMut(SliceMember<'_>) -> Result<(), String>,
+    ) -> Result<(), String> {
+        self.inner.visit(&mut |member| {
+            if member.resource_id == self.target_id {
+                Ok(())
+            } else {
+                f(member)
+            }
+        })
+    }
+}
+
+/// Run the graph's **Aggregate** functions for `target_id` over `slice`, and
+/// replace each one's target nodegroup in `tiles` with its output.
+///
+/// Called explicitly (e.g. when a layer is built), never on load: an Aggregate
+/// is a pass over the whole slice.
+///
+/// - The calling resource is left out of the slice.
+/// - All-or-nothing: every function runs before `tiles` changes, so on `Err`
+///   (a malformed declaration, an unregistered provider, a provider error, or
+///   output for the wrong nodegroup or resource) `tiles` is untouched.
+/// - Two functions may not fill the same nodegroup.
+pub fn apply_aggregate_functions(
+    tiles: &mut Vec<StaticTile>,
+    graph: &dyn GraphLookup,
+    target_id: &str,
+    slice: &dyn SliceSource,
+    functions: &FunctionsRegistry,
+    context: &AggregateContext<'_>,
+) -> Result<(), String> {
+    let configs = aggregate_functions(graph)?;
+    let slice = ExcludeTarget {
+        inner: slice,
+        target_id,
+    };
+
+    let mut outputs: Vec<(String, Vec<StaticTile>)> = Vec::with_capacity(configs.len());
+    for config in &configs {
+        if outputs.iter().any(|(ng, _)| *ng == config.nodegroup) {
+            return Err(format!(
+                "two aggregate functions fill nodegroup {}",
+                config.nodegroup
+            ));
+        }
+        let provider = functions.aggregate(&config.provider).ok_or_else(|| {
+            format!(
+                "no aggregate provider registered as {} (for nodegroup {})",
+                config.provider, config.nodegroup
+            )
+        })?;
+        let produced = provider
+            .aggregate(target_id, graph, &slice, config, context)
+            .map_err(|e| format!("aggregate provider {}: {e}", config.provider))?;
+        if let Some(stray) = produced
+            .iter()
+            .find(|t| t.nodegroup_id != config.nodegroup || t.resourceinstance_id != target_id)
+        {
+            return Err(format!(
+                "aggregate provider {} produced a tile for nodegroup {} on resource {}; \
+                 expected nodegroup {} on {target_id}",
+                config.provider, stray.nodegroup_id, stray.resourceinstance_id, config.nodegroup
+            ));
+        }
+        outputs.push((config.nodegroup.clone(), produced));
+    }
+
+    for (nodegroup, produced) in outputs {
+        tiles.retain(|t| t.nodegroup_id != nodegroup);
+        tiles.extend(produced);
+    }
+    Ok(())
 }

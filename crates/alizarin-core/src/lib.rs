@@ -38,6 +38,7 @@ pub mod rdm_namespace;
 pub mod registry;
 pub mod shared_mut;
 pub mod skos;
+pub mod slice_source;
 pub mod sorted_serde;
 pub mod string_utils;
 pub mod tile_source;
@@ -46,7 +47,9 @@ pub mod type_serialization;
 
 // Graph types
 pub use graph::{
+    aggregate_functions,
     allocate_multi_tile_id,
+    apply_aggregate_functions,
     apply_compute_tiles,
     apply_derive_functions,
     batch_merge_resources,
@@ -62,6 +65,10 @@ pub use graph::{
     // Graph pruning
     prune_graph,
     tile_namespace,
+    // Aggregate functions
+    AggregateConfig,
+    AggregateContext,
+    AggregateProvider,
     BatchMergeResult,
     // Computed tiles
     ComputeTilesConfig,
@@ -102,6 +109,7 @@ pub use graph::{
     StaticTile,
     StaticTranslatableString,
     UnknownReference,
+    AGGREGATE_FUNCTION_ID,
     COMPUTE_TILES_FUNCTION_ID,
     ITERABLE_DATATYPES,
     TILE_NAMESPACE_URI,
@@ -244,6 +252,11 @@ pub use path_resolution::{resolve_path_segments, PathError, PathResolutionInfo};
 
 // Tile source trait (pluggable tile backends)
 pub use tile_source::{TileSource, TileSourceError};
+
+// Slices for Aggregate functions (visited once, possibly streamed)
+#[cfg(not(target_arch = "wasm32"))]
+pub use slice_source::BusinessDataFileSlice;
+pub use slice_source::{GraphSource, RegisteredGraphs, SliceMember, SliceSource};
 
 // RDM cache types
 pub use rdm_cache::{

@@ -41,12 +41,13 @@ pub use computed_tiles::{
     apply_compute_tiles, compute_tiles_functions, ComputeTilesConfig, ComputeTilesProvider,
 };
 pub use descriptors::{
-    DescriptorConfig, DescriptorTypeConfig, StaticResourceDescriptors, COMPUTE_TILES_FUNCTION_ID,
-    DESCRIPTOR_FUNCTION_ID,
+    DescriptorConfig, DescriptorTypeConfig, StaticResourceDescriptors, AGGREGATE_FUNCTION_ID,
+    COMPUTE_TILES_FUNCTION_ID, DESCRIPTOR_FUNCTION_ID,
 };
 pub use functions::{
-    apply_derive_functions, default_functions_registry, DeriveProvider, DescriptorProvider,
-    FunctionsRegistry, RegisteredFunction,
+    aggregate_functions, apply_aggregate_functions, apply_derive_functions,
+    default_functions_registry, AggregateConfig, AggregateContext, AggregateProvider,
+    DeriveProvider, DescriptorProvider, FunctionsRegistry, RegisteredFunction,
 };
 pub use graph_lookup::GraphLookup;
 pub use layered_graph::LayeredGraph;
