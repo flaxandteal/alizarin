@@ -47,7 +47,7 @@ pub use descriptors::{
 pub use functions::{
     aggregate_functions, apply_aggregate_functions, apply_derive_functions,
     default_functions_registry, AggregateConfig, AggregateContext, AggregateProvider,
-    DeriveProvider, DescriptorProvider, FunctionsRegistry, RegisteredFunction,
+    DeriveProvider, DescriptorProvider, FunctionsRegistry, NodeValueWrite, RegisteredFunction,
 };
 pub use graph_lookup::GraphLookup;
 pub use layered_graph::LayeredGraph;

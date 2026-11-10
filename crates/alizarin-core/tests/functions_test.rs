@@ -121,8 +121,12 @@ impl DescriptorProvider for HeadwordDescriptor {
 // ---- registry --------------------------------------------------------------
 
 #[test]
-fn default_registry_is_empty() {
-    assert!(default_functions_registry().is_empty());
+fn default_registry_holds_only_the_builtin_fold_aggregate() {
+    let reg = default_functions_registry();
+    assert_eq!(reg.len(), 1);
+    assert!(reg
+        .aggregate(alizarin_core::FOLD_AGGREGATE_PROVIDER_ID)
+        .is_some());
 }
 
 #[test]

@@ -19,6 +19,7 @@ pub mod exporter;
 pub mod extension_abi;
 pub mod extension_type_registry;
 pub mod fold;
+pub mod fold_aggregate;
 pub mod graph;
 pub mod graph_model_access;
 pub mod graph_mutator;
@@ -82,6 +83,7 @@ pub use graph::{
     // Resource merging
     MergeAccumulator,
     MergeResult,
+    NodeValueWrite,
     // Resource registry for relationship resolution
     PopulateCachesResult,
     PruneError,
@@ -252,6 +254,9 @@ pub use path_resolution::{resolve_path_segments, PathError, PathResolutionInfo};
 
 // Tile source trait (pluggable tile backends)
 pub use tile_source::{TileSource, TileSourceError};
+
+// The built-in fold Aggregate provider
+pub use fold_aggregate::{FoldAggregate, FOLD_AGGREGATE_PROVIDER_ID};
 
 // Slices for Aggregate functions (visited once, possibly streamed)
 #[cfg(not(target_arch = "wasm32"))]

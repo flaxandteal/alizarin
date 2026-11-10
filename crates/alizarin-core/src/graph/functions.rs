@@ -60,19 +60,19 @@ pub trait DescriptorProvider: Send + Sync {
     ) -> Result<String, String>;
 }
 
-/// An **Aggregate** function: read a slice of OTHER resources and produce tiles
-/// for a nodegroup on the calling resource (e.g. a Layer resource's spans, from
-/// the layer's members).
+/// An **Aggregate** function: read a slice of OTHER resources and compute node
+/// values on the calling resource (e.g. a Layer resource's span values, from the
+/// layer's members).
 ///
 /// Where Derive reads the resource's own tiles, an Aggregate folds across many,
 /// typically through the datatype handlers' fold capability
 /// (`crate::datatype_fold`). The same purity contract applies: the output depends
 /// only on the slice's contents and the config, never on visit order.
 ///
-/// It returns the COMPLETE tiles for `config.nodegroup`: an Aggregate owns its
-/// target nodegroup, and [`apply_aggregate_functions`] replaces what was there.
-/// Tile ids should be stable across runs (e.g. `multi_tile_id` with the layer
-/// namespace), so re-running on unchanged members gives identical tiles.
+/// It returns **node values**, not tiles: each names a tile (by an id the config
+/// supplies) and a node on the calling resource's graph. Everything else in those
+/// tiles is ordinary resource data, written by whoever owns the resource;
+/// [`apply_aggregate_functions`] only sets the named node values.
 pub trait AggregateProvider: Send + Sync {
     fn aggregate(
         &self,
@@ -81,7 +81,16 @@ pub trait AggregateProvider: Send + Sync {
         slice: &dyn SliceSource,
         config: &AggregateConfig,
         context: &AggregateContext<'_>,
-    ) -> Result<Vec<StaticTile>, String>;
+    ) -> Result<Vec<NodeValueWrite>, String>;
+}
+
+/// One node value an Aggregate writes: `data[node_id] = value` in the calling
+/// resource's tile `tileid`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NodeValueWrite {
+    pub tileid: String,
+    pub node_id: String,
+    pub value: serde_json::Value,
 }
 
 /// Shared services an Aggregate may use. Built with [`AggregateContext::new`];
@@ -106,8 +115,6 @@ impl<'a> AggregateContext<'a> {
 pub struct AggregateConfig {
     /// The provider's UUID in the [`FunctionsRegistry`].
     pub provider: String,
-    /// The nodegroup on the calling resource that this function fills.
-    pub nodegroup: String,
     /// Provider-specific settings, opaque to core.
     #[serde(default)]
     pub config: serde_json::Value,
@@ -199,12 +206,20 @@ impl FunctionsRegistry {
     }
 }
 
-/// The default registry for a context. alizarin-core ships it EMPTY — provider
-/// crates (e.g. `alizarin-gramadan`) register their UUIDs on top, exactly as
-/// `ros-madair-handlers::default_registry` seeds the datatype registry. Each FFI
-/// binding builds one once (a `static`/`OnceLock`) and layers providers in.
+/// The default registry for a context: core's built-in providers, currently the
+/// fold Aggregate ([`crate::fold_aggregate`], under
+/// [`FOLD_AGGREGATE_PROVIDER_ID`](crate::fold_aggregate::FOLD_AGGREGATE_PROVIDER_ID)).
+/// Provider crates (e.g. `alizarin-gramadan`) register their UUIDs on top,
+/// exactly as `ros-madair-handlers::default_registry` seeds the datatype
+/// registry. Each FFI binding builds one once (a `static`/`OnceLock`) and layers
+/// providers in.
 pub fn default_functions_registry() -> FunctionsRegistry {
-    FunctionsRegistry::new()
+    let mut registry = FunctionsRegistry::new();
+    registry.register(
+        crate::fold_aggregate::FOLD_AGGREGATE_PROVIDER_ID,
+        RegisteredFunction::Aggregate(Arc::new(crate::fold_aggregate::FoldAggregate)),
+    );
+    registry
 }
 
 /// Run the graph's **Derive** functions against `tiles`, resolving each provider
@@ -283,16 +298,26 @@ impl SliceSource for ExcludeTarget<'_> {
 }
 
 /// Run the graph's **Aggregate** functions for `target_id` over `slice`, and
-/// replace each one's target nodegroup in `tiles` with its output.
+/// write their node values into `tiles` (the calling resource's tiles).
 ///
 /// Called explicitly (e.g. when a layer is built), never on load: an Aggregate
 /// is a pass over the whole slice.
 ///
+/// Each write sets one node in one tile, and touches nothing else in it:
+/// - **The tile exists:** its `node_id` value is set. The tile must be in the
+///   node's nodegroup and belong to `target_id`.
+/// - **The tile doesn't exist:** it is created with that id, the node's
+///   nodegroup, and just that value. Only for a top-level nodegroup: a tile in
+///   a nested nodegroup needs a parent tile, which only its owner can supply, so
+///   it must be created first.
+///
+/// Also:
 /// - The calling resource is left out of the slice.
-/// - All-or-nothing: every function runs before `tiles` changes, so on `Err`
-///   (a malformed declaration, an unregistered provider, a provider error, or
-///   output for the wrong nodegroup or resource) `tiles` is untouched.
-/// - Two functions may not fill the same nodegroup.
+/// - Re-running overwrites the same node values, so it is idempotent.
+/// - All-or-nothing: every function runs and every write is checked before
+///   `tiles` changes, so on `Err` (a malformed declaration, an unregistered
+///   provider, a provider error, an unknown node, a tile in the wrong nodegroup
+///   or resource, or two writes to one node of one tile) `tiles` is untouched.
 pub fn apply_aggregate_functions(
     tiles: &mut Vec<StaticTile>,
     graph: &dyn GraphLookup,
@@ -307,39 +332,100 @@ pub fn apply_aggregate_functions(
         target_id,
     };
 
-    let mut outputs: Vec<(String, Vec<StaticTile>)> = Vec::with_capacity(configs.len());
-    for config in &configs {
-        if outputs.iter().any(|(ng, _)| *ng == config.nodegroup) {
-            return Err(format!(
-                "two aggregate functions fill nodegroup {}",
-                config.nodegroup
-            ));
-        }
+    let mut writes: Vec<NodeValueWrite> = Vec::new();
+    for (index, config) in configs.iter().enumerate() {
         let provider = functions.aggregate(&config.provider).ok_or_else(|| {
             format!(
-                "no aggregate provider registered as {} (for nodegroup {})",
-                config.provider, config.nodegroup
+                "aggregate function {index}: no aggregate provider registered as {}",
+                config.provider
             )
         })?;
         let produced = provider
             .aggregate(target_id, graph, &slice, config, context)
-            .map_err(|e| format!("aggregate provider {}: {e}", config.provider))?;
-        if let Some(stray) = produced
-            .iter()
-            .find(|t| t.nodegroup_id != config.nodegroup || t.resourceinstance_id != target_id)
-        {
-            return Err(format!(
-                "aggregate provider {} produced a tile for nodegroup {} on resource {}; \
-                 expected nodegroup {} on {target_id}",
-                config.provider, stray.nodegroup_id, stray.resourceinstance_id, config.nodegroup
-            ));
-        }
-        outputs.push((config.nodegroup.clone(), produced));
+            .map_err(|e| format!("aggregate function {index} ({}): {e}", config.provider))?;
+        writes.extend(produced);
     }
 
-    for (nodegroup, produced) in outputs {
-        tiles.retain(|t| t.nodegroup_id != nodegroup);
-        tiles.extend(produced);
+    // Check every write, and work out each one's nodegroup, before changing tiles.
+    let mut written = std::collections::HashSet::new(); // (tileid, node_id)
+    let mut new_tiles: HashMap<&str, &str> = HashMap::new(); // tileid -> nodegroup
+    let mut planned: Vec<(&NodeValueWrite, &str)> = Vec::with_capacity(writes.len());
+    for write in &writes {
+        if !written.insert((write.tileid.as_str(), write.node_id.as_str())) {
+            return Err(format!(
+                "two aggregate writes to node {} of tile {}",
+                write.node_id, write.tileid
+            ));
+        }
+        let node = graph
+            .get_node_by_id(&write.node_id)
+            .ok_or_else(|| format!("aggregate write to unknown node {}", write.node_id))?;
+        let nodegroup = node.nodegroup_id.as_deref().ok_or_else(|| {
+            format!(
+                "aggregate write to node {}, which has no nodegroup",
+                node.nodeid
+            )
+        })?;
+        match tiles
+            .iter()
+            .find(|t| t.tileid.as_deref() == Some(write.tileid.as_str()))
+        {
+            Some(tile) => {
+                if tile.resourceinstance_id != target_id || tile.nodegroup_id != nodegroup {
+                    return Err(format!(
+                        "aggregate write to node {} of tile {}: the tile is in nodegroup {} on {}, \
+                         the node in nodegroup {nodegroup} on {target_id}",
+                        node.nodeid, write.tileid, tile.nodegroup_id, tile.resourceinstance_id
+                    ));
+                }
+            }
+            None => {
+                if let Some(other) = new_tiles.insert(&write.tileid, nodegroup) {
+                    if other != nodegroup {
+                        return Err(format!(
+                            "aggregate writes to new tile {} name nodes in nodegroups {other} and \
+                             {nodegroup}",
+                            write.tileid
+                        ));
+                    }
+                }
+                let nested = graph
+                    .get_nodegroup_by_id(nodegroup)
+                    .is_some_and(|ng| ng.parentnodegroup_id.is_some());
+                if nested {
+                    return Err(format!(
+                        "aggregate write to node {} of tile {}: no such tile, and nodegroup \
+                         {nodegroup} is nested, so the tile (with its parent) must be created first",
+                        node.nodeid, write.tileid
+                    ));
+                }
+            }
+        }
+        planned.push((write, nodegroup));
+    }
+
+    for (write, nodegroup) in planned {
+        let index = match tiles
+            .iter()
+            .position(|t| t.tileid.as_deref() == Some(write.tileid.as_str()))
+        {
+            Some(index) => index,
+            None => {
+                tiles.push(StaticTile {
+                    data: Default::default(),
+                    nodegroup_id: nodegroup.to_string(),
+                    resourceinstance_id: target_id.to_string(),
+                    tileid: Some(write.tileid.clone()),
+                    parenttile_id: None,
+                    provisionaledits: None,
+                    sortorder: None,
+                });
+                tiles.len() - 1
+            }
+        };
+        tiles[index]
+            .data
+            .insert(write.node_id.clone(), write.value.clone());
     }
     Ok(())
 }

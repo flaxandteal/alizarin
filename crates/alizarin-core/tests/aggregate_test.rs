@@ -1,360 +1,391 @@
-//! Aggregate functions: a provider folds a slice of OTHER resources into tiles on
-//! the calling resource. Integration test (public API only).
+//! Aggregate functions: a provider computes node values on the calling resource
+//! from a slice of OTHER resources, and `apply_aggregate_functions` writes them
+//! into the resource's tiles. Covers the core contract (with stub providers) and
+//! the built-in fold provider. Integration test (public API only).
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use alizarin_core::datatype_fold::{fold_identity, fold_values};
 use alizarin_core::extension_type_registry::ExtensionTypeRegistry;
 use alizarin_core::{
-    aggregate_functions, apply_aggregate_functions, AggregateConfig, AggregateContext,
-    AggregateProvider, BusinessDataFileSlice, FunctionsRegistry, GraphLookup, RegisteredFunction,
-    SliceMember, SliceSource, StaticGraph, StaticResource, StaticResourceRegistry, StaticTile,
-    AGGREGATE_FUNCTION_ID,
+    aggregate_functions, apply_aggregate_functions, build_graph_from_model_csvs,
+    default_functions_registry, AggregateConfig, AggregateContext, AggregateProvider,
+    BusinessDataFileSlice, FunctionsRegistry, GraphLookup, NodeValueWrite, RegisteredFunction,
+    SliceSource, StaticGraph, StaticResource, StaticResourceRegistry, StaticTile,
+    AGGREGATE_FUNCTION_ID, FOLD_AGGREGATE_PROVIDER_ID,
 };
 use serde_json::{json, Value};
 
 // ---- fixtures -----------------------------------------------------------------
 
+const C: &str = "http://www.cidoc-crm.org/cidoc-crm/";
 const LAYER: &str = "layer-1";
+const NODES_HEADER: &str = "parent_alias,alias,name,datatype,cardinality,ontology_class,\
+                            parent_property,description,collection_name,required,searchable,\
+                            exportable,sortorder";
 
-/// A member graph with one number node, `height`, in nodegroup `ng-height`.
+fn csv_graph(name: &str, rows: &[&str]) -> StaticGraph {
+    let rows: Vec<String> = rows
+        .iter()
+        .map(|r| {
+            let f: Vec<&str> = r.split(',').collect();
+            // parent, alias, datatype, cardinality
+            format!(
+                "{},{},{},{},{},{C}E1,{C}P2,,,,,,",
+                f[0], f[1], f[1], f[2], f[3]
+            )
+        })
+        .collect();
+    let (graph, _) = build_graph_from_model_csvs(
+        &format!("name,ontology_class,author,description,is_resource\n{name},{C}E1,,,true"),
+        &format!("{NODES_HEADER}\n{}", rows.join("\n")),
+        None,
+        "https://example.org/test",
+        Default::default(),
+    )
+    .expect("graph");
+    graph
+}
+
+/// A member graph: a number, a boolean and a date, each in its own nodegroup.
 fn building_graph() -> StaticGraph {
-    let root =
-        json!({"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "building"});
-    serde_json::from_value(json!({
-        "graphid": "building",
-        "name": {"en": "Building"},
-        "root": root,
-        "nodes": [
-            root,
-            {"nodeid": "n-height", "alias": "height", "name": "height", "datatype": "number",
-             "graph_id": "building", "nodegroup_id": "ng-height"}
+    csv_graph(
+        "Building",
+        &[
+            ",height,number,1",
+            ",listed,boolean,1",
+            ",built,date,1",
+            ",note,non-localized-string,1",
         ],
-        "edges": [], "nodegroups": [], "cards": [], "cards_x_nodes_x_widgets": [],
-    }))
-    .expect("building graph")
+    )
 }
 
-/// The Layer's graph, declaring the given Aggregate functions.
+/// The Layer's graph: a top-level `span` nodegroup, and `inner` nested in `outer`.
 fn layer_graph(fxgs: Vec<Value>) -> StaticGraph {
-    let root =
-        json!({"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "layer"});
-    serde_json::from_value(json!({
-        "graphid": "layer",
-        "name": {"en": "Layer"},
-        "root": root,
-        "nodes": [root],
-        "edges": [], "nodegroups": [], "cards": [], "cards_x_nodes_x_widgets": [],
-        "functions_x_graphs": fxgs,
-    }))
-    .expect("layer graph")
+    let mut graph = csv_graph(
+        "Layer",
+        &[
+            ",span,semantic,n",
+            "span,span_value,non-localized-string,1",
+            "span,span_text,non-localized-string,1",
+            "span,span_values,number,1",
+            "span,span_resources,number,1",
+            "span,span_role,non-localized-string,1",
+            ",outer,semantic,n",
+            "outer,inner,semantic,n",
+            "inner,inner_value,number,1",
+        ],
+    );
+    graph.functions_x_graphs = Some(serde_json::from_value(Value::Array(fxgs)).unwrap());
+    graph
 }
 
-fn aggregate_fxg(provider: &str, nodegroup: &str, config: Value) -> Value {
+fn node<'a>(graph: &'a StaticGraph, alias: &str) -> &'a alizarin_core::StaticNode {
+    graph
+        .nodes
+        .iter()
+        .find(|n| n.alias.as_deref() == Some(alias))
+        .unwrap_or_else(|| panic!("no node {alias}"))
+}
+
+fn nodegroup(graph: &StaticGraph, alias: &str) -> String {
+    node(graph, alias).nodegroup_id.clone().unwrap()
+}
+
+fn fxg(provider: &str, config: Value) -> Value {
     json!({
-        "id": format!("fxg-{provider}-{nodegroup}"),
+        "id": format!("fxg-{provider}"),
         "function_id": AGGREGATE_FUNCTION_ID,
         "graph_id": "layer",
-        "config": { "provider": provider, "nodegroup": nodegroup, "config": config }
+        "config": { "provider": provider, "config": config }
     })
 }
 
-fn tile(nodegroup: &str, resource: &str, tileid: &str, data: Value) -> StaticTile {
-    StaticTile {
-        data: data
-            .as_object()
-            .map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
-            .unwrap_or_default(),
-        nodegroup_id: nodegroup.to_string(),
-        resourceinstance_id: resource.to_string(),
-        tileid: Some(tileid.to_string()),
-        parenttile_id: None,
-        provisionaledits: None,
-        sortorder: None,
-    }
+/// A Building resource with the given node values (by alias).
+fn building(graph: &StaticGraph, id: &str, values: &[(&str, Value)]) -> StaticResource {
+    let tiles: Vec<StaticTile> = values
+        .iter()
+        .map(|(alias, value)| {
+            let n = node(graph, alias);
+            let mut tile = StaticTile::new_empty(n.nodegroup_id.clone().unwrap());
+            tile.tileid = Some(format!("{id}-{alias}"));
+            tile.resourceinstance_id = id.to_string();
+            tile.data.insert(n.nodeid.clone(), value.clone());
+            tile
+        })
+        .collect();
+    resource(&graph.graphid, id, tiles)
 }
 
-fn resource_json(graph_id: &str, id: &str, height: Option<f64>) -> Value {
-    let tiles = match height {
-        Some(h) => json!([{
-            "tileid": format!("t-{id}"), "nodegroup_id": "ng-height",
-            "resourceinstance_id": id, "parenttile_id": null, "sortorder": 0,
-            "data": {"n-height": h}
-        }]),
-        None => json!([]),
-    };
-    json!({
+fn resource(graph_id: &str, id: &str, tiles: Vec<StaticTile>) -> StaticResource {
+    serde_json::from_value(json!({
         "resourceinstance": {"resourceinstanceid": id, "graph_id": graph_id, "name": id,
                              "descriptors": {}},
-        "tiles": tiles
-    })
+        "tiles": tiles,
+    }))
+    .expect("resource")
 }
 
-/// Three buildings (heights 3, 12, 7), one with no height, one resource of
-/// another graph, and the Layer resource itself (which must not be visited).
-fn members() -> Vec<StaticResource> {
-    [
-        resource_json("building", "b1", Some(3.0)),
-        resource_json("building", "b2", Some(12.0)),
-        resource_json("building", "b3", Some(7.0)),
-        resource_json("building", "b4", None),
-        resource_json("other", "o1", Some(99.0)),
-        resource_json("layer", LAYER, Some(1000.0)),
+/// b1..b3 have heights 3, 12, 7 (b2 and b3 listed); b4 has no height; o1 is of
+/// another graph; and the Layer resource itself, which must never be visited.
+fn members(b: &StaticGraph) -> Vec<StaticResource> {
+    vec![
+        building(b, "b1", &[("height", json!(3.0)), ("listed", json!(false))]),
+        building(b, "b2", &[("height", json!(12.0)), ("listed", json!(true))]),
+        building(b, "b3", &[("height", json!(7.0)), ("listed", json!(true))]),
+        building(b, "b4", &[("listed", json!(true))]),
+        resource("other-graph", "o1", vec![]),
+        resource("layer", LAYER, vec![]),
     ]
-    .into_iter()
-    .map(|r| serde_json::from_value(r).expect("resource"))
-    .collect()
 }
 
-fn graphs() -> HashMap<String, Arc<StaticGraph>> {
-    HashMap::from([("building".to_string(), Arc::new(building_graph()))])
+struct Run {
+    building: StaticGraph,
+    layer: StaticGraph,
 }
 
-// ---- providers -------------------------------------------------------------------
+impl Run {
+    fn new(fxgs: Vec<Value>) -> Self {
+        Run {
+            building: building_graph(),
+            layer: layer_graph(fxgs),
+        }
+    }
 
-/// The intended shape of a real provider: resolve `{graph, alias}` through the
-/// member's graph, fold that node's values with the datatype's fold, and write
-/// one summary tile.
-struct FoldNode;
+    fn apply(&self, slice: &dyn SliceSource, tiles: &mut Vec<StaticTile>) -> Result<(), String> {
+        let handlers = ExtensionTypeRegistry::new();
+        let graphs: HashMap<String, Arc<StaticGraph>> = HashMap::from([(
+            self.building.graphid.clone(),
+            Arc::new(self.building.clone()),
+        )]);
+        let context = AggregateContext::new(&handlers, &graphs);
+        apply_aggregate_functions(tiles, &self.layer, LAYER, slice, &registry(), &context)
+    }
 
-impl AggregateProvider for FoldNode {
-    fn aggregate(
-        &self,
-        target_id: &str,
-        _graph: &dyn GraphLookup,
-        slice: &dyn SliceSource,
-        config: &AggregateConfig,
-        context: &AggregateContext<'_>,
-    ) -> Result<Vec<StaticTile>, String> {
-        let graph_id = config.config["graph"].as_str().ok_or("no graph")?;
-        let alias = config.config["alias"].as_str().ok_or("no alias")?;
-        let graph = context.graphs.graph(graph_id).ok_or("unknown graph")?;
-        let node = graph
-            .nodes
+    fn value(&self, tiles: &[StaticTile], tileid: &str, alias: &str) -> Value {
+        let tile = tiles
             .iter()
-            .find(|n| n.alias.as_deref() == Some(alias))
-            .ok_or("unknown alias")?;
-        let handlers = Some(context.handlers);
-        let mut acc =
-            fold_identity(&node.datatype, None, handlers).ok_or("datatype has no fold")?;
-        let mut resources = 0usize;
-        slice.visit(&mut |m: SliceMember<'_>| {
-            if m.graph_id != graph_id {
-                return Ok(());
-            }
-            let values: Vec<&Value> = m
-                .tiles
-                .iter()
-                .filter_map(|t| t.data.get(&node.nodeid))
-                .filter(|v| !v.is_null())
-                .collect();
-            if !values.is_empty() {
-                resources += 1;
-            }
-            let step = fold_values(&node.datatype, acc.take(), &values, None, handlers)
-                .map_err(|e| e.0)?;
-            acc = step.summary;
-            Ok(())
-        })?;
-        Ok(vec![tile(
-            &config.nodegroup,
-            target_id,
-            "span-0",
-            json!({ "summary": acc, "resources": resources }),
-        )])
+            .find(|t| t.tileid.as_deref() == Some(tileid))
+            .unwrap_or_else(|| panic!("no tile {tileid}"));
+        tile.data
+            .get(&node(&self.layer, alias).nodeid)
+            .cloned()
+            .unwrap_or(Value::Null)
     }
 }
 
-/// Writes one tile per visited member, recording its id: shows exactly which
-/// resources were in the slice.
+// ---- stub providers (core contract) ------------------------------------------------
+
+/// Writes exactly the `{tileid, alias, value}` triples in its config.
+struct Fixed;
+
+impl AggregateProvider for Fixed {
+    fn aggregate(
+        &self,
+        _target_id: &str,
+        graph: &dyn GraphLookup,
+        _slice: &dyn SliceSource,
+        config: &AggregateConfig,
+        _context: &AggregateContext<'_>,
+    ) -> Result<Vec<NodeValueWrite>, String> {
+        config.config["writes"]
+            .as_array()
+            .ok_or("no writes")?
+            .iter()
+            .map(|w| {
+                let alias = w["alias"].as_str().ok_or("no alias")?;
+                let node_id = graph
+                    .get_node_by_alias(alias)
+                    .map(|n| n.nodeid.clone())
+                    .unwrap_or_else(|| alias.to_string()); // unknown: pass through
+                Ok(NodeValueWrite {
+                    tileid: w["tileid"].as_str().ok_or("no tileid")?.to_string(),
+                    node_id,
+                    value: w["value"].clone(),
+                })
+            })
+            .collect()
+    }
+}
+
+/// Writes the sorted ids of every member it visits.
 struct ListMembers;
 
 impl AggregateProvider for ListMembers {
     fn aggregate(
         &self,
-        target_id: &str,
-        _graph: &dyn GraphLookup,
+        _target_id: &str,
+        graph: &dyn GraphLookup,
         slice: &dyn SliceSource,
         config: &AggregateConfig,
         _context: &AggregateContext<'_>,
-    ) -> Result<Vec<StaticTile>, String> {
+    ) -> Result<Vec<NodeValueWrite>, String> {
         let mut ids = Vec::new();
         slice.visit(&mut |m| {
             ids.push(m.resource_id.to_string());
             Ok(())
         })?;
         ids.sort();
-        Ok(vec![tile(
-            &config.nodegroup,
-            target_id,
-            "members",
-            json!({ "ids": ids }),
-        )])
-    }
-}
-
-/// Produces a tile for the wrong nodegroup.
-struct Stray;
-
-impl AggregateProvider for Stray {
-    fn aggregate(
-        &self,
-        target_id: &str,
-        _graph: &dyn GraphLookup,
-        _slice: &dyn SliceSource,
-        _config: &AggregateConfig,
-        _context: &AggregateContext<'_>,
-    ) -> Result<Vec<StaticTile>, String> {
-        Ok(vec![tile("somewhere-else", target_id, "x", json!({}))])
+        Ok(vec![NodeValueWrite {
+            tileid: config.config["tileid"].as_str().unwrap().to_string(),
+            node_id: graph
+                .get_node_by_alias("span_value")
+                .unwrap()
+                .nodeid
+                .clone(),
+            value: json!(ids),
+        }])
     }
 }
 
 fn registry() -> FunctionsRegistry {
-    let mut reg = FunctionsRegistry::new();
-    reg.register(
-        "fold-node",
-        RegisteredFunction::Aggregate(Arc::new(FoldNode)),
-    );
+    let mut reg = default_functions_registry();
+    reg.register("fixed", RegisteredFunction::Aggregate(Arc::new(Fixed)));
     reg.register(
         "list-members",
         RegisteredFunction::Aggregate(Arc::new(ListMembers)),
     );
-    reg.register("stray", RegisteredFunction::Aggregate(Arc::new(Stray)));
     reg
 }
 
-fn run(
-    fxgs: Vec<Value>,
-    slice: &dyn SliceSource,
-    tiles: &mut Vec<StaticTile>,
-) -> Result<(), String> {
-    let handlers = ExtensionTypeRegistry::new();
-    let graphs = graphs();
-    let context = AggregateContext::new(&handlers, &graphs);
-    apply_aggregate_functions(
-        tiles,
-        &layer_graph(fxgs),
-        LAYER,
-        slice,
-        &registry(),
-        &context,
-    )
+fn fixed(writes: Value) -> Value {
+    fxg("fixed", json!({ "writes": writes }))
 }
 
-fn fold_height() -> Value {
-    aggregate_fxg(
-        "fold-node",
-        "ng-spans",
-        json!({ "graph": "building", "alias": "height" }),
-    )
+fn layer_tile(run: &Run, tileid: &str, values: &[(&str, Value)]) -> StaticTile {
+    let mut tile = StaticTile::new_empty(nodegroup(&run.layer, "span_value"));
+    tile.tileid = Some(tileid.to_string());
+    tile.resourceinstance_id = LAYER.to_string();
+    for (alias, value) in values {
+        tile.data
+            .insert(node(&run.layer, alias).nodeid.clone(), value.clone());
+    }
+    tile
 }
 
-// ---- tests -------------------------------------------------------------------------
+// ---- core contract -------------------------------------------------------------
 
 #[test]
-fn registry_resolves_aggregates_by_kind() {
-    let reg = registry();
-    assert_eq!(reg.get("fold-node").map(|f| f.kind()), Some("aggregate"));
-    assert!(reg.aggregate("fold-node").is_some());
-    assert!(reg.derive("fold-node").is_none(), "wrong-kind lookup");
-    assert!(reg.aggregate("missing").is_none());
+fn the_fold_provider_is_built_in() {
+    let reg = default_functions_registry();
+    assert_eq!(
+        reg.get(FOLD_AGGREGATE_PROVIDER_ID).map(|f| f.kind()),
+        Some("aggregate")
+    );
+    assert!(
+        reg.derive(FOLD_AGGREGATE_PROVIDER_ID).is_none(),
+        "wrong-kind lookup"
+    );
 }
 
 #[test]
-fn folds_a_node_across_the_slice_into_the_target_nodegroup() {
-    let mut tiles = Vec::new();
-    run(vec![fold_height()], &members(), &mut tiles).unwrap();
+fn writes_one_node_value_and_leaves_the_rest_of_the_tile() {
+    let run = Run::new(vec![fixed(json!([
+        { "tileid": "t-span", "alias": "span_value", "value": "computed" }
+    ]))]);
+    let mut tiles = vec![layer_tile(
+        &run,
+        "t-span",
+        &[
+            ("span_role", json!("display-extent")),
+            ("span_value", json!("old")),
+        ],
+    )];
+    run.apply(&members(&run.building), &mut tiles).unwrap();
 
     assert_eq!(tiles.len(), 1);
-    assert_eq!(tiles[0].nodegroup_id, "ng-spans");
-    assert_eq!(tiles[0].resourceinstance_id, LAYER);
-    // b1..b3 only: b4 has no value, o1 is another graph, the Layer is excluded.
+    assert_eq!(run.value(&tiles, "t-span", "span_value"), json!("computed"));
     assert_eq!(
-        tiles[0].data["summary"],
-        json!({ "min": 3.0, "max": 12.0, "count": 3 })
+        run.value(&tiles, "t-span", "span_role"),
+        json!("display-extent"),
+        "the owner's data is untouched"
     );
-    assert_eq!(tiles[0].data["resources"], json!(3));
+}
+
+#[test]
+fn a_missing_top_level_tile_is_created_with_just_that_value() {
+    let run = Run::new(vec![fixed(json!([
+        { "tileid": "t-new", "alias": "span_value", "value": "a" },
+        { "tileid": "t-new", "alias": "span_values", "value": 3 }
+    ]))]);
+    let mut tiles = Vec::new();
+    run.apply(&members(&run.building), &mut tiles).unwrap();
+
+    assert_eq!(tiles.len(), 1);
+    assert_eq!(tiles[0].nodegroup_id, nodegroup(&run.layer, "span_value"));
+    assert_eq!(tiles[0].resourceinstance_id, LAYER);
+    assert_eq!(tiles[0].data.len(), 2);
+    assert_eq!(run.value(&tiles, "t-new", "span_values"), json!(3));
 }
 
 #[test]
 fn the_calling_resource_is_not_in_its_own_slice() {
+    let run = Run::new(vec![fxg("list-members", json!({ "tileid": "t" }))]);
     let mut tiles = Vec::new();
-    run(
-        vec![aggregate_fxg("list-members", "ng-members", Value::Null)],
-        &members(),
-        &mut tiles,
-    )
-    .unwrap();
-    assert_eq!(tiles[0].data["ids"], json!(["b1", "b2", "b3", "b4", "o1"]));
-}
-
-#[test]
-fn rerunning_replaces_the_target_nodegroup_and_keeps_others() {
-    let mut tiles = vec![
-        tile("ng-spans", LAYER, "stale", json!({ "summary": "old" })),
-        tile("ng-title", LAYER, "title", json!({ "title": "Layer one" })),
-    ];
-    run(vec![fold_height()], &members(), &mut tiles).unwrap();
-    let first = tiles.clone();
-    run(vec![fold_height()], &members(), &mut tiles).unwrap();
-
-    assert_eq!(tiles.len(), 2);
-    assert!(tiles.iter().any(|t| t.tileid.as_deref() == Some("title")));
-    assert!(!tiles.iter().any(|t| t.tileid.as_deref() == Some("stale")));
+    run.apply(&members(&run.building), &mut tiles).unwrap();
     assert_eq!(
-        serde_json::to_value(&tiles).unwrap(),
-        serde_json::to_value(&first).unwrap(),
-        "re-running on unchanged members is idempotent"
+        run.value(&tiles, "t", "span_value"),
+        json!(["b1", "b2", "b3", "b4", "o1"])
     );
 }
 
 #[test]
-fn visit_order_does_not_change_the_output() {
-    let mut forward = Vec::new();
-    run(vec![fold_height()], &members(), &mut forward).unwrap();
-    let mut reversed_members = members();
-    reversed_members.reverse();
-    let mut reversed = Vec::new();
-    run(vec![fold_height()], &reversed_members, &mut reversed).unwrap();
-    assert_eq!(forward[0].data, reversed[0].data);
-}
-
-#[test]
 fn failures_leave_tiles_untouched() {
-    let original = vec![tile("ng-spans", LAYER, "keep", json!({ "summary": "old" }))];
-    let cases: Vec<(&str, Vec<Value>)> = vec![
+    let cases: Vec<(&str, Vec<Value>, &str)> = vec![
         (
             "unregistered provider (after a good one)",
             vec![
-                fold_height(),
-                aggregate_fxg("missing", "ng-other", Value::Null),
+                fixed(json!([{ "tileid": "t-span", "alias": "span_value", "value": 1 }])),
+                fxg("missing", Value::Null),
             ],
+            "no aggregate provider",
         ),
         (
-            "tile for another nodegroup",
-            vec![aggregate_fxg("stray", "ng-spans", Value::Null)],
+            "two writes to one node of one tile",
+            vec![fixed(json!([
+                { "tileid": "t-span", "alias": "span_value", "value": 1 },
+                { "tileid": "t-span", "alias": "span_value", "value": 2 }
+            ]))],
+            "two aggregate writes",
         ),
         (
-            "two functions fill one nodegroup",
-            vec![
-                fold_height(),
-                aggregate_fxg("list-members", "ng-spans", Value::Null),
-            ],
-        ),
-        (
-            "provider error",
-            vec![aggregate_fxg(
-                "fold-node",
-                "ng-spans",
-                json!({ "graph": "building" }),
+            "an unknown node",
+            vec![fixed(
+                json!([{ "tileid": "t-span", "alias": "nope", "value": 1 }]),
             )],
+            "unknown node",
+        ),
+        (
+            "an existing tile in another nodegroup",
+            vec![fixed(
+                json!([{ "tileid": "t-span", "alias": "inner_value", "value": 1 }]),
+            )],
+            "the tile is in nodegroup",
+        ),
+        (
+            "a new tile in a nested nodegroup",
+            vec![fixed(
+                json!([{ "tileid": "t-new", "alias": "inner_value", "value": 1 }]),
+            )],
+            "is nested",
+        ),
+        (
+            "a new tile named for two nodegroups",
+            vec![fixed(json!([
+                { "tileid": "t-new", "alias": "span_value", "value": 1 },
+                { "tileid": "t-new", "alias": "inner_value", "value": 2 }
+            ]))],
+            "name nodes in nodegroups",
         ),
     ];
-    for (label, fxgs) in cases {
+    for (label, fxgs, expected) in cases {
+        let run = Run::new(fxgs);
+        let original = vec![layer_tile(&run, "t-span", &[("span_value", json!("keep"))])];
         let mut tiles = original.clone();
-        let err = run(fxgs, &members(), &mut tiles);
-        assert!(err.is_err(), "{label}: expected an error");
+        let err = run
+            .apply(&members(&run.building), &mut tiles)
+            .expect_err(label);
+        assert!(err.contains(expected), "{label}: {err}");
         assert_eq!(
             serde_json::to_value(&tiles).unwrap(),
             serde_json::to_value(&original).unwrap(),
@@ -367,30 +398,192 @@ fn failures_leave_tiles_untouched() {
 fn a_malformed_declaration_is_an_error() {
     let bad = json!({
         "id": "fxg-bad", "function_id": AGGREGATE_FUNCTION_ID, "graph_id": "layer",
-        "config": { "provider": "fold-node" }
+        "config": { "config": {} }
     });
     let err = aggregate_functions(&layer_graph(vec![bad])).unwrap_err();
     assert!(err.contains("fxg-bad"), "{err}");
 }
 
-#[test]
-fn registry_and_streamed_file_slices_match_the_in_memory_one() {
-    let mut expected = Vec::new();
-    run(vec![fold_height()], &members(), &mut expected).unwrap();
+// ---- the fold provider ------------------------------------------------------------
 
-    let mut registry_slice = StaticResourceRegistry::new();
-    for r in members() {
-        registry_slice.insert_full(r);
+fn fold(run_building: &StaticGraph, item: Value) -> Value {
+    let mut item = item;
+    item["graph"] = json!(run_building.graphid);
+    fxg(FOLD_AGGREGATE_PROVIDER_ID, json!({ "items": [item] }))
+}
+
+fn fold_run(item: Value) -> Run {
+    let building = building_graph();
+    let fxgs = vec![fold(&building, item)];
+    Run {
+        building,
+        layer: layer_graph(fxgs),
     }
-    let mut from_registry = Vec::new();
-    run(vec![fold_height()], &registry_slice, &mut from_registry).unwrap();
-    assert_eq!(from_registry[0].data, expected[0].data);
+}
 
+#[test]
+fn folds_a_node_into_the_named_node_values() {
+    let run = fold_run(json!({
+        "tileid": "t-height", "path": "height",
+        "into": { "span_value": "summary", "span_text": "summary_text",
+                  "span_values": "values", "span_resources": "resources" }
+    }));
+    let mut tiles = Vec::new();
+    run.apply(&members(&run.building), &mut tiles).unwrap();
+
+    let summary = json!({ "count": 3, "min": 3.0, "max": 12.0 });
+    assert_eq!(run.value(&tiles, "t-height", "span_value"), summary);
+    assert_eq!(
+        run.value(&tiles, "t-height", "span_text"),
+        json!(summary.to_string())
+    );
+    assert_eq!(run.value(&tiles, "t-height", "span_values"), json!(3));
+    assert_eq!(
+        run.value(&tiles, "t-height", "span_resources"),
+        json!(3),
+        "b4 has no height; o1 and the Layer aren't Buildings"
+    );
+}
+
+#[test]
+fn where_keeps_only_members_with_an_allowed_value() {
+    let run = fold_run(json!({
+        "tileid": "t", "path": "height",
+        "where": { "path": "listed", "allowed": ["true"] },
+        "into": { "span_value": "summary", "span_resources": "resources" }
+    }));
+    let mut tiles = Vec::new();
+    run.apply(&members(&run.building), &mut tiles).unwrap();
+    assert_eq!(
+        run.value(&tiles, "t", "span_value"),
+        json!({ "count": 2, "min": 7.0, "max": 12.0 })
+    );
+    assert_eq!(run.value(&tiles, "t", "span_resources"), json!(2));
+}
+
+#[test]
+fn group_by_writes_one_entry_per_value() {
+    let run = fold_run(json!({
+        "tileid": "t", "path": "height", "group_by": "listed",
+        "into": { "span_value": "summary", "span_resources": "resources" }
+    }));
+    let mut tiles = Vec::new();
+    run.apply(&members(&run.building), &mut tiles).unwrap();
+    assert_eq!(
+        run.value(&tiles, "t", "span_value"),
+        json!({
+            "false": { "count": 1, "min": 3.0, "max": 3.0 },
+            "true": { "count": 2, "min": 7.0, "max": 12.0 }
+        })
+    );
+    assert_eq!(
+        run.value(&tiles, "t", "span_resources"),
+        json!({ "false": 1, "true": 2 }),
+        "b4 is listed but has no height, so it contributes nothing"
+    );
+}
+
+#[test]
+fn nothing_folded_writes_a_null_summary() {
+    let run = fold_run(json!({
+        "tileid": "t", "path": "built",
+        "into": { "span_value": "summary", "span_text": "summary_text", "span_values": "values" }
+    }));
+    let mut tiles = Vec::new();
+    run.apply(&members(&run.building), &mut tiles).unwrap();
+    assert_eq!(run.value(&tiles, "t", "span_value"), Value::Null);
+    assert_eq!(run.value(&tiles, "t", "span_text"), Value::Null);
+    assert_eq!(run.value(&tiles, "t", "span_values"), json!(0));
+}
+
+#[test]
+fn config_mistakes_are_caught_before_folding() {
+    let cases = [
+        (
+            "an unknown field",
+            json!({ "tileid": "t", "path": "height", "into": { "span_value": "summary" }, "typo": 1 }),
+            "unknown field",
+        ),
+        (
+            "an unknown output",
+            json!({ "tileid": "t", "path": "height", "into": { "span_value": "average" } }),
+            "unknown variant",
+        ),
+        (
+            "a path that doesn't resolve",
+            json!({ "tileid": "t", "path": "nope", "into": { "span_value": "summary" } }),
+            "nope",
+        ),
+        (
+            "a datatype with no fold",
+            json!({ "tileid": "t", "path": "note", "into": { "span_value": "summary" } }),
+            "has no fold",
+        ),
+        (
+            "group_by on an open vocabulary",
+            json!({ "tileid": "t", "path": "height", "group_by": "note",
+                    "into": { "span_value": "summary" } }),
+            "not a fixed vocabulary",
+        ),
+        (
+            "an empty allowed set",
+            json!({ "tileid": "t", "path": "height", "where": { "path": "listed", "allowed": [] },
+                    "into": { "span_value": "summary" } }),
+            "'allowed' is empty",
+        ),
+        (
+            "an into alias the Layer graph doesn't have",
+            json!({ "tileid": "t", "path": "height", "into": { "nope": "summary" } }),
+            "no node with alias nope",
+        ),
+        (
+            "nothing to write",
+            json!({ "tileid": "t", "path": "height", "into": {} }),
+            "names no nodes",
+        ),
+    ];
+    for (label, item, expected) in cases {
+        let run = fold_run(item);
+        let mut tiles = Vec::new();
+        let err = run
+            .apply(&members(&run.building), &mut tiles)
+            .expect_err(label);
+        assert!(err.contains(expected), "{label}: {err}");
+        assert!(tiles.is_empty(), "{label}: tiles changed");
+    }
+}
+
+#[test]
+fn reruns_and_visit_order_give_identical_tiles() {
+    let item = json!({
+        "tileid": "t", "path": "height", "group_by": "listed",
+        "into": { "span_value": "summary", "span_values": "values" }
+    });
+    let run = fold_run(item);
+    let mut first = Vec::new();
+    run.apply(&members(&run.building), &mut first).unwrap();
+
+    let mut again = first.clone();
+    run.apply(&members(&run.building), &mut again).unwrap();
+
+    let mut reversed_members = members(&run.building);
+    reversed_members.reverse();
+    let mut reversed = Vec::new();
+    run.apply(&reversed_members, &mut reversed).unwrap();
+
+    let json = |t: &Vec<StaticTile>| serde_json::to_value(t).unwrap();
+    assert_eq!(json(&again), json(&first), "re-running is idempotent");
+    assert_eq!(json(&reversed), json(&first), "visit order doesn't matter");
+}
+
+// ---- slices -----------------------------------------------------------------------
+
+fn write_business_data(name: &str, resources: &[StaticResource]) -> std::path::PathBuf {
     let path = std::env::temp_dir().join(format!(
-        "alizarin-aggregate-test-{}.json",
+        "alizarin-aggregate-{name}-{}.json",
         std::process::id()
     ));
-    let resources: Vec<Value> = members()
+    let resources: Vec<Value> = resources
         .iter()
         .map(|r| serde_json::to_value(r).unwrap())
         .collect();
@@ -399,12 +592,28 @@ fn registry_and_streamed_file_slices_match_the_in_memory_one() {
         serde_json::to_vec(&json!({ "business_data": { "resources": resources } })).unwrap(),
     )
     .unwrap();
+    path
+}
+
+#[test]
+fn registry_and_streamed_file_slices_match_the_in_memory_one() {
+    let run = fold_run(json!({
+        "tileid": "t", "path": "height", "into": { "span_value": "summary" }
+    }));
+    let mut expected = Vec::new();
+    run.apply(&members(&run.building), &mut expected).unwrap();
+
+    let mut registry_slice = StaticResourceRegistry::new();
+    for r in members(&run.building) {
+        registry_slice.insert_full(r);
+    }
+    let mut from_registry = Vec::new();
+    run.apply(&registry_slice, &mut from_registry).unwrap();
+    assert_eq!(from_registry[0].data, expected[0].data);
+
+    let path = write_business_data("slice", &members(&run.building));
     let mut from_file = Vec::new();
-    let result = run(
-        vec![fold_height()],
-        &BusinessDataFileSlice::new(&path),
-        &mut from_file,
-    );
+    let result = run.apply(&BusinessDataFileSlice::new(&path), &mut from_file);
     std::fs::remove_file(&path).ok();
     result.unwrap();
     assert_eq!(from_file[0].data, expected[0].data);
@@ -412,19 +621,7 @@ fn registry_and_streamed_file_slices_match_the_in_memory_one() {
 
 #[test]
 fn a_visitor_error_stops_the_streamed_visit() {
-    let path = std::env::temp_dir().join(format!(
-        "alizarin-aggregate-stop-{}.json",
-        std::process::id()
-    ));
-    let resources: Vec<Value> = members()
-        .iter()
-        .map(|r| serde_json::to_value(r).unwrap())
-        .collect();
-    std::fs::write(
-        &path,
-        serde_json::to_vec(&json!({ "business_data": { "resources": resources } })).unwrap(),
-    )
-    .unwrap();
+    let path = write_business_data("stop", &members(&building_graph()));
     let mut seen = 0;
     let result = BusinessDataFileSlice::new(&path).visit(&mut |_| {
         seen += 1;
