@@ -1,17 +1,32 @@
-// Alizarin geo extension — registers a validate-only handler for the
-// `geojson-feature-collection` datatype.
+// Alizarin geo extension — registers a handler for the
+// `geojson-feature-collection` datatype: validation, and folding values into a
+// geometry summary ({count, bbox, geometry_types}) for alizarin's fold and
+// Aggregate functions.
 //
-// WASM backend: validation runs in the geo WASM module (validateGeojson).
+// WASM backend: both run in the geo WASM module. Each fold call crosses into JS
+// once per batch of values, so folding geometry here suits occasional, build-time
+// use rather than a per-view hot path.
 // NAPI backend: wired via the optional @alizarin/geo-napi native peer, if present.
 import { registerExtensionHandler, wasmReady } from "alizarin";
-import { initSync, validateGeojson } from "../../wasm/pkg/alizarin_geo_wasm";
+import {
+  initSync,
+  validateGeojson,
+  geoFoldIdentity,
+  geoFold,
+  geoFoldMerge,
+  geoFoldRemove,
+} from "../../wasm/pkg/alizarin_geo_wasm";
 import wasmBytes from "../../wasm/pkg/alizarin_geo_wasm_bg.wasm";
 
-// Register the geojson validator for the WASM backend once the core WASM is ready.
+// Register the geojson handler for the WASM backend once the core WASM is ready.
 wasmReady.then(() => {
   initSync(wasmBytes);
   registerExtensionHandler("geojson-feature-collection", {
     validate: (value: unknown, _config: unknown) => validateGeojson(value),
+    foldIdentity: (_config: unknown) => geoFoldIdentity(),
+    fold: (acc: unknown, values: unknown[], _config: unknown) => geoFold(acc, values),
+    foldMerge: (a: unknown, b: unknown, _config: unknown) => geoFoldMerge(a, b),
+    foldRemove: (acc: unknown, values: unknown[], _config: unknown) => geoFoldRemove(acc, values),
   });
 });
 

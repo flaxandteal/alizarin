@@ -15,7 +15,7 @@
 //! });
 //! ```
 
-use alizarin_core::extension_type_registry::ValidationResult;
+use alizarin_core::extension_type_registry::{RemoveStep, ValidationResult};
 use alizarin_core::{
     CoercionResult, ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry,
     HandlerCapabilities,
@@ -41,6 +41,50 @@ struct JsHandlerCallbacks {
     validate_fn: Option<js_sys::Function>,
     node_config_fn: Option<js_sys::Function>,
     display_as_list_fn: Option<js_sys::Function>,
+    fold_identity_fn: Option<js_sys::Function>,
+    fold_fn: Option<js_sys::Function>,
+    fold_merge_fn: Option<js_sys::Function>,
+    fold_remove_fn: Option<js_sys::Function>,
+}
+
+/// Call one of a datatype's JS callbacks with JSON arguments, returning its
+/// result. A missing callback or a JS exception is an [`ExtensionError`].
+fn call_js(
+    datatype: &str,
+    name: &str,
+    pick: impl Fn(&JsHandlerCallbacks) -> Option<&js_sys::Function>,
+    args: &[Option<&Value>],
+) -> Result<Option<JsValue>, ExtensionError> {
+    JS_TYPE_HANDLERS.with(|handlers| {
+        let handlers = handlers.borrow();
+        let Some(callback) = handlers.get(datatype).and_then(&pick) else {
+            return Ok(None);
+        };
+        let js_args = js_sys::Array::new();
+        for arg in args {
+            let js = match arg {
+                Some(value) => json_to_js(value).ok_or_else(|| {
+                    ExtensionError::new(format!("{datatype}: {name}: argument is not JSON"))
+                })?,
+                None => JsValue::NULL,
+            };
+            js_args.push(&js);
+        }
+        callback
+            .apply(&JsValue::NULL, &js_args)
+            .map(Some)
+            .map_err(|e| {
+                let message = e
+                    .as_string()
+                    .or_else(|| {
+                        js_sys::Reflect::get(&e, &JsValue::from_str("message"))
+                            .ok()?
+                            .as_string()
+                    })
+                    .unwrap_or_else(|| "JS error".to_string());
+                ExtensionError::new(format!("{datatype}: {name}: {message}"))
+            })
+    })
 }
 
 /// An optional callback from a handler options object.
@@ -78,6 +122,11 @@ fn js_to_json(value: &JsValue) -> Option<Value> {
 /// - `resolveMarkers(tileData, language) => resolvedTileData` - for marker resolution
 /// - `nodeConfig(rawConfig) => config | null` - this datatype's node config
 /// - `displayAsList(rawConfig) => boolean` - whether values display as a list
+/// - `foldIdentity(config) => summary | null`, `fold(acc, values, config) => summary`,
+///   `foldMerge(a, b, config) => summary`, and optionally
+///   `foldRemove(acc, values, config) => { summary, exact } | null` - this
+///   datatype's fold (see `alizarin_core::datatype_fold`). `values` is a batch, so
+///   a fold crosses into JS once per batch; throwing fails the fold.
 ///
 /// @param datatype - The datatype name (e.g., "reference")
 /// @param options - Object with callback functions
@@ -121,15 +170,26 @@ pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<()
 
     let node_config_fn = optional_callback(&options, "nodeConfig")?;
     let display_as_list_fn = optional_callback(&options, "displayAsList")?;
+    let fold_identity_fn = optional_callback(&options, "foldIdentity")?;
+    let fold_fn = optional_callback(&options, "fold")?;
+    let fold_merge_fn = optional_callback(&options, "foldMerge")?;
+    let fold_remove_fn = optional_callback(&options, "foldRemove")?;
+
+    if fold_identity_fn.is_some() && (fold_fn.is_none() || fold_merge_fn.is_none()) {
+        return Err(JsValue::from_str(
+            "foldIdentity needs fold and foldMerge as well (the three form the fold)",
+        ));
+    }
 
     if coerce_fn.is_none()
         && render_display_fn.is_none()
         && resolve_markers_fn.is_none()
         && validate_fn.is_none()
         && node_config_fn.is_none()
+        && fold_identity_fn.is_none()
     {
         return Err(JsValue::from_str(
-            "At least one callback (coerce, renderDisplay, resolveMarkers, validate, nodeConfig) is required",
+            "At least one callback (coerce, renderDisplay, resolveMarkers, validate, nodeConfig, foldIdentity) is required",
         ));
     }
 
@@ -143,6 +203,10 @@ pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<()
                 validate_fn,
                 node_config_fn,
                 display_as_list_fn,
+                fold_identity_fn,
+                fold_fn,
+                fold_merge_fn,
+                fold_remove_fn,
             },
         );
     });
@@ -544,6 +608,88 @@ impl ExtensionTypeHandler for JsExtensionTypeHandler {
                 .call1(&JsValue::NULL, &js_config)
                 .is_ok_and(|result| result.is_truthy())
         })
+    }
+
+    fn fold_identity(&self, config: Option<&Value>) -> Option<Value> {
+        call_js(
+            &self.datatype,
+            "foldIdentity",
+            |cbs| cbs.fold_identity_fn.as_ref(),
+            &[config],
+        )
+        .ok()
+        .flatten()
+        .as_ref()
+        .and_then(js_to_json)
+    }
+
+    fn fold(
+        &self,
+        acc: Value,
+        values: &[&Value],
+        config: Option<&Value>,
+    ) -> Result<Value, ExtensionError> {
+        let batch = Value::Array(values.iter().map(|v| (*v).clone()).collect());
+        let result = call_js(
+            &self.datatype,
+            "fold",
+            |cbs| cbs.fold_fn.as_ref(),
+            &[Some(&acc), Some(&batch), config],
+        )?;
+        result.as_ref().and_then(js_to_json).ok_or_else(|| {
+            ExtensionError::new(format!("{}: fold returned no summary", self.datatype))
+        })
+    }
+
+    fn fold_merge(
+        &self,
+        a: Value,
+        b: Value,
+        config: Option<&Value>,
+    ) -> Result<Value, ExtensionError> {
+        let result = call_js(
+            &self.datatype,
+            "foldMerge",
+            |cbs| cbs.fold_merge_fn.as_ref(),
+            &[Some(&a), Some(&b), config],
+        )?;
+        result.as_ref().and_then(js_to_json).ok_or_else(|| {
+            ExtensionError::new(format!("{}: foldMerge returned no summary", self.datatype))
+        })
+    }
+
+    fn fold_remove(
+        &self,
+        acc: Value,
+        values: &[&Value],
+        config: Option<&Value>,
+    ) -> Result<Option<RemoveStep>, ExtensionError> {
+        let batch = Value::Array(values.iter().map(|v| (*v).clone()).collect());
+        let Some(result) = call_js(
+            &self.datatype,
+            "foldRemove",
+            |cbs| cbs.fold_remove_fn.as_ref(),
+            &[Some(&acc), Some(&batch), config],
+        )?
+        else {
+            return Ok(None); // no callback: the caller re-folds
+        };
+        let Some(step) = js_to_json(&result) else {
+            return Ok(None);
+        };
+        let summary = step.get("summary").cloned().ok_or_else(|| {
+            ExtensionError::new(format!(
+                "{}: foldRemove result has no summary",
+                self.datatype
+            ))
+        })?;
+        let exact = step.get("exact").and_then(Value::as_bool).ok_or_else(|| {
+            ExtensionError::new(format!(
+                "{}: foldRemove result has no exact flag",
+                self.datatype
+            ))
+        })?;
+        Ok(Some(RemoveStep { summary, exact }))
     }
 
     fn description(&self) -> &str {
