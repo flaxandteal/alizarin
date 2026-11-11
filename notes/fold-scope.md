@@ -101,12 +101,17 @@ registry (BRACE's case) without a native tile source.
 
 ### 6. Bindings (phase 2)
 
-- C ABI: three fn-pointers + frees on `TypeHandlerInfo`, under `ABI_VERSION` 3
-  (already bumped, unreleased, for the extension node-config hooks; the
-  fingerprint check refuses mismatched extensions). Values by pointer, as
-  `index_spec` does.
-- `foldResources(registry, graph(s), resourceIds, specs)` on WASM, NAPI, Python,
-  plus `backend.ts`; `ext/geo` napi/wasm/python expose the capability.
+- **C ABI (built, `ABI_VERSION` 4):** `fold_identity_fn`, `fold_fn`,
+  `fold_merge_fn`, `fold_remove_fn` and one `free_fold_fn` on `TypeHandlerInfo`.
+  Values cross by pointer (an array of `*const Value`), never copied. ABI 3
+  shipped in alpha.144/145, so this is a new version; the fingerprint check
+  refuses mismatched extensions. Geo implements it.
+- **WASM (built):** JS handlers register `foldIdentity` / `fold` / `foldMerge` /
+  `foldRemove` callbacks (batched JSON); geo's wasm build exports and registers
+  them.
+- `foldResources(registry, graph(s), resourceIds, specs)` on WASM, NAPI, Python:
+  **not built**. Aggregate functions are the entry point
+  (`applyAggregateFunctions`, see `notes/spans-scope.md`).
 - **WASM and NAPI must be equivalent:** same signature through `backend.ts`,
   byte-identical summaries for the same input. A `tests/dual-backend/` test
   folds the same registry on both and compares; Python is checked against the
@@ -119,8 +124,9 @@ registry (BRACE's case) without a native tile source.
    capability trait, dispatch with number + date fallbacks, geo bbox fold, runner,
    registry `TileSource`, tests including order-independence (fold vs merge of
    partial folds give the same summary).
-2. **C ABI + bindings** so JS (BRACE) and Python get it. *Superseded as the main entry point by
-   Aggregate functions (`notes/spans-scope.md`); a thin `foldResources` may remain for ad-hoc use.*
+2. **C ABI + bindings** so JS (BRACE) and Python get it. The fold capability now crosses both the C
+   ABI (ABI 4) and the wasm JS bridge. The entry point is Aggregate functions
+   (`notes/spans-scope.md`); a thin `foldResources` binding is not built.
 3. **More summaries:** EDTF granularity, hull / cell-set, others as consumers ask.
 4. (Deferred, per the handoff) incremental recompute when a layer changes. Removal that compares
    against the extremes and marks the summary loose (`fold_remove`) is built; the provider-level

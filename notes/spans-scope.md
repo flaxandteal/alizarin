@@ -112,10 +112,14 @@ would be a separate provider.
    set-membership `where`, fixed-vocabulary `group_by`. Logic lives in providers.
 2. **Aggregates write node values, not tiles.** The owner owns tiles, ids and every other node value.
 3. **Folds depend on the fold capability, not on geo.** Geo registers its fold on its own handler.
-4. **Built at build time on native hosts** (Rust, napi, Python). Function providers have **no C ABI**:
-   they must be compiled into the same binary as core. In wasm an extension module is separate, so a
-   provider there can't register, and every fold call would cross into JS with JSON. The browser reads
-   span values and at most merges a handful.
+4. **Every binding runs Aggregates; build time is the normal place.** The fold provider is in core, so
+   wasm, napi and Python all have it. Datatype folds reach it the way each binding reaches handlers:
+   - **Rust / napi / Python:** directly, or over the C ABI (ABI 4 fold pointers; values by pointer).
+   - **wasm:** extension modules are separate, so a handler's fold is JS callbacks, crossing into JS
+     with JSON once per batch. Fine for an occasional in-browser build; not a per-view hot path.
+
+   Function providers themselves still have **no C ABI**: a new provider must be compiled into core's
+   binary (as the fold provider is).
 5. **RM is a consumer.** It indexes the Layer resource like any other. A summary node should not be a
    geometry datatype, so RM's spatial index doesn't treat an extent as content.
 6. **Membership by default is the loaded layer** (registry or business-data file) minus the calling
@@ -151,17 +155,18 @@ nothing.
 
 1. ~~Core: the Aggregate kind, slices, `apply_aggregate_functions`.~~ Built.
 2. ~~The fold provider (`where`, `group_by`, outputs, config checks).~~ Built, in core.
-3. **Bindings:** napi and Python `applyAggregateFunctions` over a loaded registry or a business-data file
-   path, with the default functions registry plus any registered handlers; a test that both give
-   identical node values.
+3. ~~Bindings.~~ Built: `applyAggregateFunctions` on the wasm, napi and Python resource registries;
+   `applyAggregateFunctionsFromFile` / `apply_aggregate_functions_from_file` (streamed) on napi and
+   Python. Geometry folds on all three: geo's wasm build registers JS fold callbacks, its native build
+   the C ABI fold pointers (ABI 4). A shared fixture (`tests/data/aggregate/`) with hand-checked
+   expected tiles is checked by `tests/dual-backend/aggregate.test.ts` (wasm, napi) and
+   `crates/alizarin-python/tests/test_aggregate.py`.
 4. **Rollup provider** over member Layer resources, and `fold_merge_all`.
 5. **Later:** an `on-member-change` trigger with the `update` hook (parked above), exact composed-view
    rollups, richer summaries (hull, cell-set, EDTF granularity).
 
 ## Open questions
 
-- **Phase 2 of `fold-scope.md`** (`foldResources` on wasm/napi/Python) is no longer on the critical path:
-  Aggregate's bindings replace it as the entry point. Keep a thin `foldResources` for ad-hoc use, or drop
-  it?
-- **A starter role taxonomy:** worth shipping as example reference data in the docs, or left entirely to
-  Layer owners?
+- **Roles are left to downstream** (decided): no starter taxonomy ships with alizarin for now.
+- **`foldResources` bindings** (fold-scope phase 2) are not built: Aggregate's bindings are the entry
+  point. Add a thin ad-hoc one only if a caller needs a fold without a resource to write to.
