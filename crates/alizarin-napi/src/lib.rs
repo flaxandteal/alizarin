@@ -46,6 +46,28 @@ pub fn register_extension_handler(handler_ptr: BigInt) -> Result<String> {
     unsafe { alizarin_core::register_handler_from_ptr(ptr) }.map_err(napi::Error::from_reason)
 }
 
+/// Whether any value folded into `summary` (a `datatype` fold summary, e.g. an
+/// Aggregate node value) could match `predicate`. Conservative: `false` only
+/// when certain, so whatever the summary covers can be skipped. Predicates:
+/// `{range: {min, max}}` for number/date/edtf, or a handler's own (geo:
+/// `{bbox: [minx, miny, maxx, maxy]}`); anything undecidable gives `true`. A
+/// null summary folded nothing. Equivalent to WASM's and Python's.
+#[napi(js_name = "foldMayMatch")]
+pub fn fold_may_match(
+    datatype: String,
+    summary: Option<serde_json::Value>,
+    predicate: serde_json::Value,
+    config: Option<serde_json::Value>,
+) -> bool {
+    alizarin_core::datatype_fold::fold_may_match(
+        &datatype,
+        &summary.unwrap_or(serde_json::Value::Null),
+        &predicate,
+        config.as_ref(),
+        Some(&extension_registry()),
+    )
+}
+
 // ============================================================================
 // Error conversion
 // ============================================================================

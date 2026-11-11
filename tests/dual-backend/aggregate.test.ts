@@ -19,6 +19,7 @@ import {
   createStaticGraphMeta,
   parseStaticGraph,
   registerExtensionHandler,
+  foldMayMatch,
 } from '../../js/backend';
 import BuildingGraph from "../data/aggregate/building.json";
 import LayerGraph from "../data/aggregate/layer.json";
@@ -43,6 +44,8 @@ beforeAll(async () => {
       fold: (acc: unknown, values: unknown[]) => geo.geoFold(acc, values),
       foldMerge: (a: unknown, b: unknown) => geo.geoFoldMerge(a, b),
       foldRemove: (acc: unknown, values: unknown[]) => geo.geoFoldRemove(acc, values),
+      foldMayMatch: (summary: unknown, predicate: unknown) =>
+        geo.geoFoldMayMatch(summary, predicate),
     });
   }
 });
@@ -127,6 +130,29 @@ describe(`Aggregate functions [${getBackend()} backend]`, () => {
     }
     expect(layerTiles(registry)).toEqual(Expected.tiles);
     expect(layerTiles(registry, ExpectedGeo.layer_id)).toEqual(ExpectedGeo.tiles);
+  });
+
+  // Pruning: a Layer's extent decides, through geo's handler, whether a query
+  // box could hit any of its members.
+  test("a Layer's extent rules out a query box only when disjoint", () => {
+    const registry = createResourceRegistry();
+    registry.loadFromBusinessDataBytes(
+      new TextEncoder().encode(JSON.stringify(BusinessData)),
+      true,
+      true,
+    );
+    registry.applyAggregateFunctions(ExpectedGeo.layer_id);
+    const tile = layerTiles(registry, ExpectedGeo.layer_id)["extent-buildings"];
+    const extent = tile.data["c423f13e-50ba-59e3-badd-a583d628defe"];
+    const box = (bbox: number[]) => foldMayMatch('geojson-feature-collection', extent, { bbox });
+
+    expect(box([-7, 54.5, -6.5, 55])).toBe(true); // inside
+    expect(box([-6, 55.5, 0, 60])).toBe(true); // touches a corner (inclusive)
+    expect(box([100, -10, 110, 0])).toBe(false); // far away
+    expect(foldMayMatch('geojson-feature-collection', extent, { unknown: true })).toBe(true);
+    expect(foldMayMatch('geojson-feature-collection', null, { bbox: [-8, 54, -6, 55.5] })).toBe(false);
+    // Core's own fold (no handler): a range against a number summary.
+    expect(foldMayMatch('number', { count: 2, min: 10, max: 20 }, { range: { min: 21 } })).toBe(false);
   });
 
   test("an unknown target is an error", () => {

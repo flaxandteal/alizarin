@@ -11,7 +11,7 @@ import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
 import * as nodeConfig from "./nodeConfig";
 import { initWasm, setWasmURL, ensureWasmRdmCache, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, registerExtensionHandler } from "./_wasm";
-import { setBackend, setNapiModule, setWasmModule, getBackend, autoDetectBackend, createResourceRegistry, getMemoryUsage, formatMemoryUsage, parseStaticGraph } from "./backend";
+import { setBackend, setNapiModule, setWasmModule, getBackend, autoDetectBackend, createResourceRegistry, getMemoryUsage, formatMemoryUsage, parseStaticGraph, foldMayMatch } from "./backend";
 import type { BackendType, MemoryUsage, RegistryStats } from "./backend";
 import { resetTimingStats, getTimingStats, logTimingStats } from "./semantic";
 import * as tracing from "./tracing";
@@ -112,6 +112,8 @@ export {
   composeResourceLayers,
   // Extension function
   registerExtensionHandler,
+  // Fold summaries: can a summary's values match a predicate? (pruning)
+  foldMayMatch,
   // Backend selection (WASM vs NAPI)
   setBackend,
   setNapiModule,

@@ -1705,6 +1705,42 @@ fn apply_aggregate_functions_from_file(
     serde_json::to_string(&resource).map_err(|e| invalid(e.to_string()))
 }
 
+/// Whether any value folded into a summary could match a predicate.
+///
+/// Conservative: False only when certain, so whatever the summary covers (e.g.
+/// a Layer whose Aggregate node value it is) can be skipped. Predicates:
+/// `{"range": {"min", "max"}}` for number/date/edtf, or a handler's own (geo:
+/// `{"bbox": [minx, miny, maxx, maxy]}`); anything undecidable gives True. A
+/// null summary folded nothing. Equivalent to WASM's and NAPI's `foldMayMatch`.
+///
+/// Args:
+///     datatype: The datatype the summary folds (e.g. "number")
+///     summary_json: The fold summary as JSON
+///     predicate_json: The predicate as JSON
+///     config_json: The node's config as JSON, if any
+#[pyfunction]
+#[pyo3(signature = (datatype, summary_json, predicate_json, config_json=None))]
+fn fold_may_match(
+    datatype: &str,
+    summary_json: &str,
+    predicate_json: &str,
+    config_json: Option<&str>,
+) -> PyResult<bool> {
+    let parse = |what: &str, json: &str| -> PyResult<serde_json::Value> {
+        serde_json::from_str(json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("invalid {what}: {e}"))
+        })
+    };
+    let config = config_json.map(|c| parse("config", c)).transpose()?;
+    Ok(alizarin_core::datatype_fold::fold_may_match(
+        datatype,
+        &parse("summary", summary_json)?,
+        &parse("predicate", predicate_json)?,
+        config.as_ref(),
+        Some(&build_extension_registry()),
+    ))
+}
+
 /// Set a descriptor template on a registered graph.
 ///
 /// Creates or updates the descriptor function config for the given type.
@@ -2243,6 +2279,7 @@ fn alizarin(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Graph registry (for batch_merge_resources descriptor computation)
     m.add_function(wrap_pyfunction!(register_graph, m)?)?;
     m.add_function(wrap_pyfunction!(apply_aggregate_functions_from_file, m)?)?;
+    m.add_function(wrap_pyfunction!(fold_may_match, m)?)?;
     m.add_function(wrap_pyfunction!(get_graph_json, m)?)?;
     m.add_function(wrap_pyfunction!(get_graph_schema, m)?)?;
     m.add_function(wrap_pyfunction!(set_descriptor_template, m)?)?;

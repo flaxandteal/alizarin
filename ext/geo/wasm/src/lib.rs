@@ -76,6 +76,17 @@ pub fn geo_fold_remove(acc: JsValue, values: JsValue) -> Result<JsValue, JsError
     to_js(&serde_json::json!({ "summary": summary, "exact": exact }))
 }
 
+/// Whether any geometry folded into `summary` could intersect `predicate`'s
+/// `{bbox: [minx, miny, maxx, maxy]}`: `false` only when certain, `true` for
+/// anything undecidable. Registered as the handler's `foldMayMatch`.
+#[wasm_bindgen(js_name = geoFoldMayMatch)]
+pub fn geo_fold_may_match(summary: JsValue, predicate: JsValue) -> bool {
+    match (from_js(summary, "summary"), from_js(predicate, "predicate")) {
+        (Ok(summary), Ok(predicate)) => alizarin_geo_core::fold::may_match(&summary, &predicate),
+        _ => true,
+    }
+}
+
 /// Set the max coordinate count per feature collection (or `null` to disable).
 #[wasm_bindgen(js_name = setCoordLimit)]
 pub fn set_coord_limit(limit: Option<usize>) {

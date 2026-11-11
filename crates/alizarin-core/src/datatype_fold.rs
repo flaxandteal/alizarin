@@ -216,6 +216,65 @@ pub fn fold_remove(
     with_loose(step.summary, loose, datatype).map(Some)
 }
 
+/// Whether any value folded into `summary` could match `predicate`:
+/// conservative, so `false` means "certainly not" and a caller may skip
+/// whatever the summary covers (e.g. a layer whose extent misses a query).
+///
+/// - An empty summary (nothing folded, or `null`) matches nothing.
+/// - A loose summary is a superset, so it is answered from its kept bounds.
+/// - Built-ins: `number`, `date` and `edtf` answer `{"range": {"min", "max"}}`
+///   (inclusive; either end optional; ends written as values of the datatype,
+///   e.g. `"1900"` for a date, which covers the whole year).
+/// - A registered handler answers for its own datatype (geo: `{"bbox": [...]}`).
+/// - Any predicate, summary or datatype that can't be decided gives `true`.
+pub fn fold_may_match(
+    datatype: &str,
+    summary: &Value,
+    predicate: &Value,
+    config: Option<&Value>,
+    registry: Option<&ExtensionTypeRegistry>,
+) -> bool {
+    if summary.is_null() {
+        return false;
+    }
+    let mut summary = summary.clone();
+    take_loose(&mut summary);
+    if fold_identity(datatype, config, registry).as_ref() == Some(&summary) {
+        return false; // nothing folded
+    }
+    if let Some(handler) = handler_for(datatype, config, registry) {
+        return handler.fold_may_match(&summary, predicate, config);
+    }
+    let Some(kind) = builtin(datatype) else {
+        return true;
+    };
+    let Ok(range) = Range::from_summary(&summary, kind) else {
+        return true;
+    };
+    let (Some(min), Some(max)) = (range.min, range.max) else {
+        return false; // values were folded but none could be ordered
+    };
+    let Some(wanted) = predicate.get("range") else {
+        return true;
+    };
+    // The predicate's ends, widened to the whole span each value covers.
+    let end = |field: &str, upper: bool| -> Option<Option<Key>> {
+        match wanted.get(field) {
+            None | Some(Value::Null) => Some(None),
+            Some(value) => {
+                let (lower_key, upper_key) = kind.bounds(value)?;
+                Some(Some(if upper { upper_key } else { lower_key }))
+            }
+        }
+    };
+    let (Some(from), Some(to)) = (end("min", false), end("max", true)) else {
+        return true; // an end we can't order: undecidable
+    };
+    let after_from = from.is_none_or(|f| max.key.cmp(&f) != Ordering::Less);
+    let before_to = to.is_none_or(|t| min.key.cmp(&t) != Ordering::Greater);
+    after_from && before_to
+}
+
 fn handler_for<'a>(
     datatype: &str,
     config: Option<&Value>,
@@ -591,6 +650,105 @@ mod tests {
         registry.register("number".to_string(), Arc::new(Concatenate));
         let result = fold_remove("number", json!("ab"), &[&json!("a")], None, Some(&registry));
         assert_eq!(result, Ok(None));
+    }
+
+    fn may(datatype: &str, summary: &Value, predicate: Value) -> bool {
+        fold_may_match(datatype, summary, &predicate, None, None)
+    }
+
+    #[test]
+    fn may_match_never_excludes_a_folded_value() {
+        let values = [json!(-4.5), json!(0), json!(3), json!(12.25)];
+        let summary = fold_all("number", &values).summary;
+        for v in &values {
+            assert!(
+                may(
+                    "number",
+                    &summary,
+                    json!({ "range": { "min": v, "max": v } })
+                ),
+                "{v}"
+            );
+        }
+        // A loose summary keeps its bounds, so a removed extreme is still "maybe".
+        let loose = remove("number", summary, &[json!(12.25)]);
+        assert!(is_loose(&loose));
+        for v in &values {
+            assert!(
+                may("number", &loose, json!({ "range": { "min": v, "max": v } })),
+                "{v}"
+            );
+        }
+    }
+
+    #[test]
+    fn may_match_excludes_disjoint_ranges() {
+        let summary = fold_all("number", &[json!(10), json!(20)]).summary;
+        assert!(!may("number", &summary, json!({ "range": { "min": 21 } })));
+        assert!(!may("number", &summary, json!({ "range": { "max": 9.5 } })));
+        assert!(!may(
+            "number",
+            &summary,
+            json!({ "range": { "min": 0, "max": 9 } })
+        ));
+        assert!(
+            may("number", &summary, json!({ "range": { "min": 20 } })),
+            "inclusive"
+        );
+        assert!(may(
+            "number",
+            &summary,
+            json!({ "range": { "min": 15, "max": 99 } })
+        ));
+        assert!(may("number", &summary, json!({ "range": {} })), "unbounded");
+    }
+
+    #[test]
+    fn date_may_match_widens_each_end_to_what_it_covers() {
+        let summary = fold_all("date", &[json!("1850-03-01"), json!("1860")]).summary;
+        assert!(!may(
+            "date",
+            &summary,
+            json!({ "range": { "min": "1861" } })
+        ));
+        assert!(!may(
+            "date",
+            &summary,
+            json!({ "range": { "max": "1849" } })
+        ));
+        // "1860" runs to the year's end; "1850" as a max covers all of 1850.
+        assert!(may(
+            "date",
+            &summary,
+            json!({ "range": { "min": "1860-06-01" } })
+        ));
+        assert!(may("date", &summary, json!({ "range": { "max": "1850" } })));
+    }
+
+    #[test]
+    fn may_match_is_false_only_when_certain() {
+        let summary = fold_all("number", &[json!(1), json!(2)]).summary;
+        assert!(
+            may("number", &summary, json!({ "bbox": [0, 0, 1, 1] })),
+            "unknown predicate"
+        );
+        assert!(
+            may("number", &summary, json!({ "range": { "min": "x" } })),
+            "unorderable end"
+        );
+        assert!(
+            may("string", &json!({ "count": 1 }), json!({ "range": {} })),
+            "no fold"
+        );
+        assert!(!may(
+            "number",
+            &fold_all("number", &[]).summary,
+            json!({ "range": {} })
+        ));
+        assert!(
+            !may("number", &Value::Null, json!({ "range": {} })),
+            "null: nothing folded"
+        );
     }
 
     struct Concatenate;

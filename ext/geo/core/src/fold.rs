@@ -32,6 +32,28 @@ pub fn fold(acc: Value, values: &[&Value]) -> Result<Value, ExtensionError> {
     Ok(summary.write())
 }
 
+/// Whether any geometry folded into `summary` could intersect `predicate`'s
+/// `{"bbox": [min_lng, min_lat, max_lng, max_lat]}` (inclusive envelopes).
+/// Conservative: `false` only when the summary's bbox is disjoint from it, or
+/// it folded no geometry at all; `true` for anything else it can't decide.
+pub fn may_match(summary: &Value, predicate: &Value) -> bool {
+    let Some(wanted) = predicate.get("bbox").and_then(|b| {
+        let n: Vec<f64> = b.as_array()?.iter().map(Value::as_f64).collect::<Option<_>>()?;
+        <[f64; 4]>::try_from(n).ok()
+    }) else {
+        return true;
+    };
+    let Ok(summary) = Summary::read(summary) else {
+        return true;
+    };
+    match summary.bbox {
+        None => false, // no geometry folded
+        Some(have) => {
+            !(have[2] < wanted[0] || have[0] > wanted[2] || have[3] < wanted[1] || have[1] > wanted[3])
+        }
+    }
+}
+
 /// Merge two geometry summaries.
 pub fn merge(a: Value, b: Value) -> Result<Value, ExtensionError> {
     let mut summary = Summary::read(&a)?;

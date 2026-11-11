@@ -76,6 +76,32 @@ def test_geometry_folds_through_geo_over_the_c_abi():
     assert layer_tiles(registry.get_full(expected["layer_id"])) == expected["tiles"]
 
 
+def test_layer_extent_rules_out_a_query_box_only_when_disjoint():
+    pytest.importorskip("alizarin_geo")
+    expected = load("expected_geo_tiles.json")
+    alizarin.register_graph(json.dumps(load("layer_geo.json")))
+    registry = loaded_registry()
+    registry.apply_aggregate_functions(expected["layer_id"])
+    tile = layer_tiles(registry.get_full(expected["layer_id"]))["extent-buildings"]
+    extent = json.dumps(tile["data"]["c423f13e-50ba-59e3-badd-a583d628defe"])
+
+    def box(bbox):
+        return alizarin.fold_may_match(
+            "geojson-feature-collection", extent, json.dumps({"bbox": bbox})
+        )
+
+    assert box([-7, 54.5, -6.5, 55])  # inside
+    assert box([-6, 55.5, 0, 60])  # touches a corner (inclusive)
+    assert not box([100, -10, 110, 0])  # far away
+
+
+def test_number_summary_may_match_a_range():
+    summary = json.dumps({"count": 2, "min": 10, "max": 20})
+    assert not alizarin.fold_may_match("number", summary, '{"range": {"min": 21}}')
+    assert alizarin.fold_may_match("number", summary, '{"range": {"min": 20}}')
+    assert not alizarin.fold_may_match("number", "null", '{"range": {}}')
+
+
 def test_adding_members_in_turns_matches_a_full_run():
     registry = loaded_registry()
     # As a loop would: the ids added since the last consumer event, per call.

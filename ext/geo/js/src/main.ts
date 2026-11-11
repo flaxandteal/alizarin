@@ -15,6 +15,7 @@ import {
   geoFold,
   geoFoldMerge,
   geoFoldRemove,
+  geoFoldMayMatch,
 } from "../../wasm/pkg/alizarin_geo_wasm";
 import wasmBytes from "../../wasm/pkg/alizarin_geo_wasm_bg.wasm";
 
@@ -27,6 +28,8 @@ wasmReady.then(() => {
     fold: (acc: unknown, values: unknown[], _config: unknown) => geoFold(acc, values),
     foldMerge: (a: unknown, b: unknown, _config: unknown) => geoFoldMerge(a, b),
     foldRemove: (acc: unknown, values: unknown[], _config: unknown) => geoFoldRemove(acc, values),
+    foldMayMatch: (summary: unknown, predicate: unknown, _config: unknown) =>
+      geoFoldMayMatch(summary, predicate),
   });
 });
 

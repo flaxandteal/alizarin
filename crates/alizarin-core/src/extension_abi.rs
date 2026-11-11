@@ -15,10 +15,10 @@ use std::ffi::c_void;
 use std::sync::{Arc, RwLock};
 
 use alizarin_extension_api::{
-    abi_fingerprint, CoerceFn, DisplayAsListFn, FoldFn, FoldIdentityFn, FoldMergeFn, FoldRemoveFn,
-    FoldResult, FreeDisplayFn, FreeFn, FreeFoldFn, FreeIndexSpecFn, FreeNodeConfigFn,
-    FreeRenderSearchFn, FreeResolveMarkersFn, FreeValidateFn, IndexSpecFn, NodeConfigFn,
-    RenderDisplayFn, RenderSearchFn, ResolveMarkersFn, TypeHandlerInfo, ValidateFn,
+    abi_fingerprint, CoerceFn, DisplayAsListFn, FoldFn, FoldIdentityFn, FoldMayMatchFn,
+    FoldMergeFn, FoldRemoveFn, FoldResult, FreeDisplayFn, FreeFn, FreeFoldFn, FreeIndexSpecFn,
+    FreeNodeConfigFn, FreeRenderSearchFn, FreeResolveMarkersFn, FreeValidateFn, IndexSpecFn,
+    NodeConfigFn, RenderDisplayFn, RenderSearchFn, ResolveMarkersFn, TypeHandlerInfo, ValidateFn,
 };
 
 use crate::extension_type_registry::{
@@ -60,6 +60,7 @@ struct RegisteredHandler {
     fold_fn: Option<FoldFn>,
     fold_merge_fn: Option<FoldMergeFn>,
     fold_remove_fn: Option<FoldRemoveFn>,
+    fold_may_match_fn: Option<FoldMayMatchFn>,
     free_fold_fn: Option<FreeFoldFn>,
 }
 
@@ -652,6 +653,32 @@ impl ExtensionTypeHandler for AbiExtensionTypeHandler {
         Ok(Some(RemoveStep { summary, exact }))
     }
 
+    fn fold_may_match(
+        &self,
+        summary: &serde_json::Value,
+        predicate: &serde_json::Value,
+        config: Option<&serde_json::Value>,
+    ) -> bool {
+        let may_match_fn = {
+            let handlers = TYPE_HANDLERS.read().unwrap();
+            match handlers
+                .get(&self.type_name)
+                .and_then(|h| h.fold_may_match_fn)
+            {
+                Some(f) => f,
+                None => return true, // can't decide: maybe
+            }
+        };
+        // SAFETY: every pointer (or null) lives for the call.
+        unsafe {
+            may_match_fn(
+                value_ptr(Some(summary)),
+                value_ptr(Some(predicate)),
+                value_ptr(config),
+            )
+        }
+    }
+
     fn description(&self) -> &str {
         "Python extension type handler (C ABI)"
     }
@@ -731,6 +758,7 @@ pub unsafe fn register_handler_from_ptr(ptr: *const TypeHandlerInfo) -> Result<S
             fold_fn: info.fold_fn,
             fold_merge_fn: info.fold_merge_fn,
             fold_remove_fn: info.fold_remove_fn,
+            fold_may_match_fn: info.fold_may_match_fn,
             free_fold_fn: info.free_fold_fn,
         },
     );

@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 register_graph: Optional[Any] = None
 apply_aggregate_functions_from_file: Optional[Any] = None
+fold_may_match: Optional[Any] = None
 get_graph_json: Optional[Any] = None
 get_graph_schema: Optional[Any] = None
 tiles_to_json_tree: Optional[Any] = None
@@ -48,6 +49,7 @@ try:
     from . import alizarin as _alizarin_rust
     register_graph = _alizarin_rust.register_graph
     apply_aggregate_functions_from_file = _alizarin_rust.apply_aggregate_functions_from_file
+    fold_may_match = _alizarin_rust.fold_may_match
     get_graph_json = _alizarin_rust.get_graph_json
     get_graph_schema = _alizarin_rust.get_graph_schema
     tiles_to_json_tree = _alizarin_rust.tiles_to_json_tree
@@ -433,6 +435,7 @@ __all__ = [
     "get_graph_json",
     # Aggregate functions
     "apply_aggregate_functions_from_file",
+    "fold_may_match",
     "get_graph_schema",
     # Core Rust functions
     "tiles_to_json_tree",

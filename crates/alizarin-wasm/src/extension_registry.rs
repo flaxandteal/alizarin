@@ -45,6 +45,7 @@ struct JsHandlerCallbacks {
     fold_fn: Option<js_sys::Function>,
     fold_merge_fn: Option<js_sys::Function>,
     fold_remove_fn: Option<js_sys::Function>,
+    fold_may_match_fn: Option<js_sys::Function>,
 }
 
 /// Call one of a datatype's JS callbacks with JSON arguments, returning its
@@ -127,6 +128,9 @@ fn js_to_json(value: &JsValue) -> Option<Value> {
 ///   `foldRemove(acc, values, config) => { summary, exact } | null` - this
 ///   datatype's fold (see `alizarin_core::datatype_fold`). `values` is a batch, so
 ///   a fold crosses into JS once per batch; throwing fails the fold.
+/// - `foldMayMatch(summary, predicate, config) => boolean` - optional,
+///   conservative: `false` only if no value folded into `summary` can match
+///   `predicate`. A missing callback, a throw or a non-boolean is "maybe".
 ///
 /// @param datatype - The datatype name (e.g., "reference")
 /// @param options - Object with callback functions
@@ -174,6 +178,7 @@ pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<()
     let fold_fn = optional_callback(&options, "fold")?;
     let fold_merge_fn = optional_callback(&options, "foldMerge")?;
     let fold_remove_fn = optional_callback(&options, "foldRemove")?;
+    let fold_may_match_fn = optional_callback(&options, "foldMayMatch")?;
 
     if fold_identity_fn.is_some() && (fold_fn.is_none() || fold_merge_fn.is_none()) {
         return Err(JsValue::from_str(
@@ -207,6 +212,7 @@ pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<()
                 fold_fn,
                 fold_merge_fn,
                 fold_remove_fn,
+                fold_may_match_fn,
             },
         );
     });
@@ -226,6 +232,32 @@ pub fn unregister_extension_handler(datatype: &str) {
     JS_TYPE_HANDLERS.with(|handlers| {
         handlers.borrow_mut().remove(datatype);
     });
+}
+
+/// Whether any value folded into `summary` (a `datatype` fold summary, e.g. an
+/// Aggregate node value) could match `predicate`. Conservative: `false` only
+/// when certain, so whatever the summary covers can be skipped. Predicates:
+/// `{range: {min, max}}` for number/date/edtf, or a handler's own (geo:
+/// `{bbox: [minx, miny, maxx, maxy]}`); anything undecidable gives `true`. A
+/// null summary folded nothing. Equivalent to NAPI's and Python's.
+#[wasm_bindgen(js_name = foldMayMatch)]
+pub fn fold_may_match_js(
+    datatype: &str,
+    summary: JsValue,
+    predicate: JsValue,
+    config: JsValue,
+) -> bool {
+    let summary = js_to_json(&summary).unwrap_or(Value::Null);
+    let Some(predicate) = js_to_json(&predicate) else {
+        return true;
+    };
+    alizarin_core::datatype_fold::fold_may_match(
+        datatype,
+        &summary,
+        &predicate,
+        js_to_json(&config).as_ref(),
+        Some(&build_extension_registry()),
+    )
 }
 
 /// Get the list of registered extension handler datatypes.
@@ -690,6 +722,19 @@ impl ExtensionTypeHandler for JsExtensionTypeHandler {
             ))
         })?;
         Ok(Some(RemoveStep { summary, exact }))
+    }
+
+    fn fold_may_match(&self, summary: &Value, predicate: &Value, config: Option<&Value>) -> bool {
+        // A missing callback, a throw or a non-boolean answer is "maybe".
+        match call_js(
+            &self.datatype,
+            "foldMayMatch",
+            |cbs| cbs.fold_may_match_fn.as_ref(),
+            &[Some(summary), Some(predicate), config],
+        ) {
+            Ok(Some(result)) => result.as_bool().unwrap_or(true),
+            _ => true,
+        }
     }
 
     fn description(&self) -> &str {

@@ -511,6 +511,17 @@ pub type FoldRemoveFn = FoldFn;
 /// Free a [`FoldResult`] allocated by any of the fold functions.
 pub type FreeFoldFn = unsafe extern "C" fn(result: FoldResult);
 
+/// Whether any value folded into a summary could match a predicate.
+/// `summary_ptr`, `predicate_ptr` and `config_ptr` (null for none) are
+/// `*const serde_json::Value`. Must be conservative: `false` only when no such
+/// value can exist; `true` ("maybe") for anything it can't decide, including
+/// errors. Returns a plain bool, so nothing to free.
+pub type FoldMayMatchFn = unsafe extern "C" fn(
+    summary_ptr: *const c_void,
+    predicate_ptr: *const c_void,
+    config_ptr: *const c_void,
+) -> bool;
+
 /// Callback to lookup a concept by ID in the RDM cache
 ///
 /// Returns true if concept was found, false otherwise.
@@ -716,6 +727,8 @@ pub struct TypeHandlerInfo {
     pub fold_fn: Option<FoldFn>,
     pub fold_merge_fn: Option<FoldMergeFn>,
     pub fold_remove_fn: Option<FoldRemoveFn>,
+    /// Optional conservative match test on a summary (no free: returns a bool).
+    pub fold_may_match_fn: Option<FoldMayMatchFn>,
 
     /// Free function for every fold function's result (null iff all are null)
     pub free_fold_fn: Option<FreeFoldFn>,
@@ -754,6 +767,7 @@ impl TypeHandlerInfo {
             fold_fn: None,
             fold_merge_fn: None,
             fold_remove_fn: None,
+            fold_may_match_fn: None,
             free_fold_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
@@ -789,6 +803,7 @@ impl TypeHandlerInfo {
             fold_fn: None,
             fold_merge_fn: None,
             fold_remove_fn: None,
+            fold_may_match_fn: None,
             free_fold_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
@@ -825,6 +840,7 @@ impl TypeHandlerInfo {
             fold_fn: None,
             fold_merge_fn: None,
             fold_remove_fn: None,
+            fold_may_match_fn: None,
             free_fold_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
@@ -863,6 +879,7 @@ impl TypeHandlerInfo {
             fold_fn: None,
             fold_merge_fn: None,
             fold_remove_fn: None,
+            fold_may_match_fn: None,
             free_fold_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),

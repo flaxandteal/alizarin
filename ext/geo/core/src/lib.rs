@@ -119,6 +119,10 @@ impl ExtensionTypeHandler for GeoTypeHandler {
         Ok(Some(RemoveStep { summary, exact }))
     }
 
+    fn fold_may_match(&self, summary: &Value, predicate: &Value, _config: Option<&Value>) -> bool {
+        fold::may_match(summary, predicate)
+    }
+
     fn description(&self) -> &str {
         "Geospatial (geojson-feature-collection) type handler"
     }

@@ -332,6 +332,7 @@ pub fn reference_handler_type_info() -> *const TypeHandlerInfo {
             fold_fn: None,
             fold_merge_fn: None,
             fold_remove_fn: None,
+            fold_may_match_fn: None,
             free_fold_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),

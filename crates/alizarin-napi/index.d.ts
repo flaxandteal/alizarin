@@ -13,6 +13,15 @@
  */
 export declare function registerExtensionHandler(handlerPtr: bigint): string
 /**
+ * Whether any value folded into `summary` (a `datatype` fold summary, e.g. an
+ * Aggregate node value) could match `predicate`. Conservative: `false` only
+ * when certain, so whatever the summary covers can be skipped. Predicates:
+ * `{range: {min, max}}` for number/date/edtf, or a handler's own (geo:
+ * `{bbox: [minx, miny, maxx, maxy]}`); anything undecidable gives `true`. A
+ * null summary folded nothing. Equivalent to WASM's and Python's.
+ */
+export declare function foldMayMatch(datatype: string, summary: any | undefined | null, predicate: any, config?: any | undefined | null): boolean
+/**
  * Build a StaticGraph from model CSVs (graph.csv, nodes.csv, optional collections.csv).
  *
  * Returns the graph as a JSON string. The `rdm_namespace` is used for

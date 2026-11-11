@@ -12,7 +12,8 @@ use std::sync::Once;
 
 use alizarin_core::extension_type_registry::ExtensionError;
 use alizarin_extension_api::{
-    FoldFn, FoldIdentityFn, FoldMergeFn, FoldRemoveFn, FoldResult, FreeFoldFn, FreeValidateFn,
+    FoldFn, FoldIdentityFn, FoldMayMatchFn, FoldMergeFn, FoldRemoveFn, FoldResult, FreeFoldFn,
+    FreeValidateFn,
     TypeHandlerInfo, ValidateFn, ValidateResult,
 };
 use serde_json::Value;
@@ -100,6 +101,20 @@ unsafe extern "C" fn geo_fold_remove(
     })())
 }
 
+unsafe extern "C" fn geo_fold_may_match(
+    summary_ptr: *const c_void,
+    predicate_ptr: *const c_void,
+    _config_ptr: *const c_void,
+) -> bool {
+    if summary_ptr.is_null() || predicate_ptr.is_null() {
+        return true; // can't decide: maybe
+    }
+    fold::may_match(
+        &*(summary_ptr as *const Value),
+        &*(predicate_ptr as *const Value),
+    )
+}
+
 /// Free a [`FoldResult`] produced by any of the geo fold functions.
 ///
 /// # Safety
@@ -168,6 +183,7 @@ pub fn geo_handler_type_info() -> *const TypeHandlerInfo {
         info.fold_fn = Some(geo_fold as FoldFn);
         info.fold_merge_fn = Some(geo_fold_merge as FoldMergeFn);
         info.fold_remove_fn = Some(geo_fold_remove as FoldRemoveFn);
+        info.fold_may_match_fn = Some(geo_fold_may_match as FoldMayMatchFn);
         info.free_fold_fn = Some(geo_free_fold as FreeFoldFn);
         HANDLER_INFO = Some(info);
     });
@@ -276,6 +292,16 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(is_loose(&edge), "the westmost point touched the bbox");
+
+        // Pruning over the ABI: a box around the points may match; one far away
+        // can't; and the loose summary still covers the removed westmost point.
+        use alizarin_core::datatype_fold::fold_may_match;
+        let near = json!({ "bbox": [-11.0, 53.0, -4.0, 56.0] });
+        let far = json!({ "bbox": [100.0, -10.0, 110.0, 0.0] });
+        let west_only = json!({ "bbox": [-10.0, 54.0, -10.0, 54.0] });
+        assert!(fold_may_match(DATATYPE_NAME, &edge, &near, None, reg));
+        assert!(!fold_may_match(DATATYPE_NAME, &edge, &far, None, reg));
+        assert!(fold_may_match(DATATYPE_NAME, &edge, &west_only, None, reg));
 
         let err = fold_values(DATATYPE_NAME, edge, &[&json!("not geojson")], None, reg);
         assert!(err.is_err(), "a handler error crosses the ABI as an error");

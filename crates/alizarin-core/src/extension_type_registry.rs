@@ -458,6 +458,26 @@ pub trait ExtensionTypeHandler: Send + Sync {
         Ok(None)
     }
 
+    /// Whether any value folded into `summary` could match `predicate`. Must be
+    /// **conservative**: `false` only when no such value can exist, so a caller
+    /// can safely skip everything the summary covers (e.g. drop a layer whose
+    /// extent misses a query). The default, and the answer for any predicate the
+    /// handler doesn't recognise, is `true` ("maybe").
+    ///
+    /// `summary` never carries core's loose flag (it's stripped); a loose summary
+    /// is still a superset, so answering from its bounds stays safe. Predicate
+    /// shapes core defines: `{"range": {"min": v, "max": v}}` (inclusive, either
+    /// end optional, values of this datatype) and `{"bbox": [minx, miny, maxx,
+    /// maxy]}`.
+    fn fold_may_match(
+        &self,
+        _summary: &Value,
+        _predicate: &Value,
+        _config: Option<&Value>,
+    ) -> bool {
+        true
+    }
+
     /// Resolve markers in tile data (e.g., fetch reference labels).
     ///
     /// Some datatypes store IDs that need to be resolved to full objects

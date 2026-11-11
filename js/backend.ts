@@ -268,6 +268,27 @@ export function registerExtensionHandler(datatype: string, handler: any): void {
   mod.registerExtensionHandler(datatype, handler);
 }
 
+/**
+ * Whether any value folded into `summary` (a `datatype` fold summary, e.g. an
+ * Aggregate node value) could match `predicate`. Conservative: `false` only
+ * when certain, so whatever the summary covers (e.g. a Layer) can be skipped.
+ * Predicates: `{range: {min, max}}` for number/date/edtf, or a handler's own
+ * (geo: `{bbox: [minx, miny, maxx, maxy]}`); anything undecidable is `true`.
+ */
+export function foldMayMatch(
+  datatype: string,
+  summary: unknown,
+  predicate: unknown,
+  config?: unknown,
+): boolean {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    return napi.foldMayMatch(datatype, summary ?? null, predicate, config ?? null);
+  }
+  return getWasmModule().foldMayMatch(datatype, summary ?? null, predicate, config ?? null);
+}
+
 // ============================================================================
 // Model wrapper factory
 // ============================================================================
