@@ -3224,6 +3224,28 @@ impl StaticResourceRegistry {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    /// Add `count` to the pending count each of a resource's Aggregate functions
+    /// declares (`pending` in its entry): members added but not yet applied, so
+    /// a consumer can tell its node values are stale, and by how much. Runs and
+    /// additions reset it to 0. Returns the node values that changed.
+    /// Equivalent to NAPI's and Python's.
+    #[wasm_bindgen(js_name = markAggregatePending)]
+    pub fn mark_aggregate_pending(
+        &mut self,
+        target_id: String,
+        count: u32,
+    ) -> Result<JsValue, JsValue> {
+        let changed = alizarin_core::mark_aggregate_pending_in_registry(
+            &mut self.0,
+            &target_id,
+            count.into(),
+        )
+        .map_err(|e| JsValue::from_str(&e))?;
+        changed
+            .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     /// Check if a resource has full data stored (not just summary)
     /// Returns false if resource_id is null/undefined
     #[wasm_bindgen(js_name = hasFull)]

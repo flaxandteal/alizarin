@@ -181,6 +181,28 @@ describe(`Aggregate functions [${getBackend()} backend]`, () => {
     expect(foldMayMatch('number', { count: 2, min: 10, max: 20 }, { range: { min: 21 } })).toBe(false);
   });
 
+  test("marking counts members pending, and applying them resets the count", () => {
+    const registry = createResourceRegistry();
+    registry.loadFromBusinessDataBytes(
+      new TextEncoder().encode(JSON.stringify(BusinessData)),
+      true,
+      true,
+    );
+    const pendingNode = (LayerGraph as any).nodes.find((n: any) => n.alias === "pending_count").nodeid;
+    const pending = () => layerTiles(registry)["freshness"]?.data[pendingNode];
+
+    expect(registry.markAggregatePending(Expected.layer_id, 2)).toEqual([
+      { tileid: "freshness", nodeid: pendingNode, value: 2 },
+    ]);
+    registry.markAggregatePending(Expected.layer_id, 2);
+    expect(pending()).toBe(4);
+
+    // The consumer event: apply what was added; the Layer is up to date again.
+    const changed = registry.applyAggregateAdditions(Expected.layer_id, ["b1", "b2", "b3", "b4"]);
+    expect(changed).toContainEqual({ tileid: "freshness", nodeid: pendingNode, value: 0 });
+    expect(layerTiles(registry)).toEqual(Expected.tiles);
+  });
+
   test("an unknown target is an error", () => {
     const registry = createResourceRegistry();
     expect(() => registry.applyAggregateFunctions("no-such-resource")).toThrow(/not loaded in full/);

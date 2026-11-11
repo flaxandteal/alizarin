@@ -65,6 +65,8 @@ pub use graph::{
     default_functions_registry,
     find_root_node,
     is_iterable_datatype,
+    mark_aggregate_pending,
+    mark_aggregate_pending_in_registry,
     merge_resources,
     multi_tile_id,
     parse_resources_from_json_str,
@@ -89,6 +91,7 @@ pub use graph::{
     MergeAccumulator,
     MergeResult,
     NodeValueWrite,
+    PendingNode,
     // Resource registry for relationship resolution
     PopulateCachesResult,
     PruneError,

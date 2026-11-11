@@ -562,6 +562,14 @@ export declare class NapiStaticResourceRegistry {
    * as `applyAggregateFunctions` does. Equivalent to WASM's and Python's.
    */
   applyAggregateAdditions(targetId: string, addedIds: Array<string>): any
+  /**
+   * Add `count` to the pending count each of a resource's Aggregate functions
+   * declares (`pending` in its entry): members added but not yet applied, so
+   * a consumer can tell its node values are stale, and by how much. Runs and
+   * additions reset it to 0. Returns the node values that changed.
+   * Equivalent to WASM's and Python's.
+   */
+  markAggregatePending(targetId: string, count: number): any
   /** Get the full resource (with tiles) as a JSON object, or null if only summary stored. */
   getFull(resourceId: string): any | null
   /**

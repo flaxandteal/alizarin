@@ -139,6 +139,22 @@ pub struct AggregateConfig {
     /// Provider-specific settings, opaque to core.
     #[serde(default)]
     pub config: serde_json::Value,
+    /// Optional: a `number` node on the calling resource counting members added
+    /// since its node values were last brought up to date, so a consumer can
+    /// tell they're stale, and by how much, without tracking it elsewhere.
+    /// [`mark_aggregate_pending`] adds to it; every run and addition resets it
+    /// to 0. Several Aggregates may share one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending: Option<PendingNode>,
+}
+
+/// Where an Aggregate's pending count lives: node `alias` in tile `tileid` of
+/// the calling resource (created, if missing, as Aggregate writes are).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PendingNode {
+    pub tileid: String,
+    pub alias: String,
 }
 
 /// A registered graph-attached function, keyed in the registry by provider UUID.
@@ -340,6 +356,9 @@ impl SliceSource for ExcludeTarget<'_> {
 ///   provider, a provider error, an unknown node, a tile in the wrong nodegroup
 ///   or resource, or two writes to one node of one tile) `tiles` is untouched.
 ///
+/// Each declared pending count ([`AggregateConfig::pending`]) is reset to 0 in
+/// the same write: the node values are now up to date.
+///
 /// Returns the writes that changed a node value (all of a new tile's do), in
 /// declaration order, so `[]` when a rerun finds nothing new. A consumer that
 /// caches these node values can refresh exactly those.
@@ -432,12 +451,31 @@ fn run_aggregates(
             .map_err(|e| format!("aggregate function {index} ({}): {e}", config.provider))?;
         writes.extend(produced);
     }
+    // Every declared pending count resets: the node values are now up to date.
+    for (tileid, node_id) in pending_nodes(graph, &configs)? {
+        writes.push(NodeValueWrite {
+            tileid,
+            node_id,
+            value: serde_json::json!(0),
+        });
+    }
+    write_checked(tiles, graph, target_id, &writes)
+}
 
+/// Check every write (as [`apply_aggregate_functions`] lists), then make them
+/// all, returning those that changed a node value. On `Err`, `tiles` is
+/// untouched.
+fn write_checked(
+    tiles: &mut Vec<StaticTile>,
+    graph: &dyn GraphLookup,
+    target_id: &str,
+    writes: &[NodeValueWrite],
+) -> Result<Vec<NodeValueWrite>, String> {
     // Check every write, and work out each one's nodegroup, before changing tiles.
     let mut written = std::collections::HashSet::new(); // (tileid, node_id)
     let mut new_tiles: HashMap<&str, &str> = HashMap::new(); // tileid -> nodegroup
     let mut planned: Vec<(&NodeValueWrite, &str)> = Vec::with_capacity(writes.len());
-    for write in &writes {
+    for write in writes {
         if !written.insert((write.tileid.as_str(), write.node_id.as_str())) {
             return Err(format!(
                 "two aggregate writes to node {} of tile {}",
@@ -519,6 +557,71 @@ fn run_aggregates(
         }
     }
     Ok(changed)
+}
+
+/// The pending-count nodes the Aggregates in `configs` declare, as
+/// `(tileid, node id)`, each once however many share it.
+fn pending_nodes(
+    graph: &dyn GraphLookup,
+    configs: &[AggregateConfig],
+) -> Result<Vec<(String, String)>, String> {
+    let mut nodes: Vec<(String, String)> = Vec::new();
+    for pending in configs.iter().filter_map(|c| c.pending.as_ref()) {
+        let node = graph.get_node_by_alias(&pending.alias).ok_or_else(|| {
+            format!(
+                "pending: no node with alias {} on the calling graph",
+                pending.alias
+            )
+        })?;
+        if node.datatype != "number" {
+            return Err(format!(
+                "pending: node {} is {}, not number",
+                pending.alias, node.datatype
+            ));
+        }
+        let key = (pending.tileid.clone(), node.nodeid.clone());
+        if !nodes.contains(&key) {
+            nodes.push(key);
+        }
+    }
+    Ok(nodes)
+}
+
+/// Add `count` to each pending count the graph's Aggregates declare
+/// ([`AggregateConfig::pending`]) in `tiles`: call it as members are added
+/// without applying them, so a consumer can tell the node values are stale,
+/// and by how much, before an event brings them up to date (which resets the
+/// counts). A missing or null count starts from 0.
+///
+/// Errors if no Aggregate declares a pending node. Returns the writes that
+/// changed, all-or-nothing, as [`apply_aggregate_functions`] does.
+pub fn mark_aggregate_pending(
+    tiles: &mut Vec<StaticTile>,
+    graph: &dyn GraphLookup,
+    target_id: &str,
+    count: u64,
+) -> Result<Vec<NodeValueWrite>, String> {
+    let nodes = pending_nodes(graph, &aggregate_functions(graph)?)?;
+    if nodes.is_empty() {
+        return Err("no Aggregate function on this graph declares a pending node".to_string());
+    }
+    let writes: Vec<NodeValueWrite> = nodes
+        .into_iter()
+        .map(|(tileid, node_id)| {
+            let current = tiles
+                .iter()
+                .find(|t| t.tileid.as_deref() == Some(tileid.as_str()))
+                .and_then(|t| t.data.get(&node_id))
+                .and_then(serde_json::Value::as_f64)
+                .map_or(0, |n| n as u64);
+            NodeValueWrite {
+                tileid,
+                node_id,
+                value: serde_json::json!(current.saturating_add(count)),
+            }
+        })
+        .collect();
+    write_checked(tiles, graph, target_id, &writes)
 }
 
 /// Run `resource`'s Aggregate functions over `slice` with the process-wide
@@ -650,6 +753,30 @@ pub fn apply_aggregate_functions_in_registry(
         .ok_or_else(|| format!("resource {target_id} is not loaded in full"))?;
     let changed = apply_aggregate_functions_to_resource(&mut resource, &*registry, handlers)?;
     if !changed.is_empty() {
+        registry.insert_full(resource);
+    }
+    Ok(changed)
+}
+
+/// [`mark_aggregate_pending`] for a resource held in full in `registry`, with
+/// its registered graph; the registry entry is updated in place. For a loop
+/// that adds members over time: mark as it adds, apply on the consumer event.
+pub fn mark_aggregate_pending_in_registry(
+    registry: &mut super::StaticResourceRegistry,
+    target_id: &str,
+    count: u64,
+) -> Result<Vec<NodeValueWrite>, String> {
+    let mut resource = registry
+        .get_full(target_id)
+        .cloned()
+        .ok_or_else(|| format!("resource {target_id} is not loaded in full"))?;
+    let graph_id = resource.resourceinstance.graph_id.clone();
+    let graph =
+        crate::get_graph(&graph_id).ok_or_else(|| format!("graph {graph_id} is not registered"))?;
+    let mut tiles = resource.tiles.take().unwrap_or_default();
+    let changed = mark_aggregate_pending(&mut tiles, graph.as_ref(), target_id, count)?;
+    if !changed.is_empty() {
+        resource.tiles = Some(tiles);
         registry.insert_full(resource);
     }
     Ok(changed)

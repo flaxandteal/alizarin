@@ -881,6 +881,30 @@ impl ResourceRegistry {
         Ok(pythonize::pythonize(py, &changed)?)
     }
 
+    /// Add `count` to the pending count each of a resource's Aggregate functions
+    /// declares (`pending` in its entry): members added but not yet applied.
+    ///
+    /// A consumer can then tell the node values are stale, and by how much.
+    /// Runs and additions reset it to 0.
+    ///
+    /// Args:
+    ///     target_id: The resource (e.g. a Layer resource) whose count to add to
+    ///     count: How many members were added
+    ///
+    /// Returns:
+    ///     The node values that changed, as `apply_aggregate_functions` does
+    fn mark_aggregate_pending(
+        &mut self,
+        py: Python,
+        target_id: &str,
+        count: u64,
+    ) -> PyResult<PyObject> {
+        let changed =
+            alizarin_core::mark_aggregate_pending_in_registry(&mut self.inner, target_id, count)
+                .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+        Ok(pythonize::pythonize(py, &changed)?)
+    }
+
     /// Get all full resources for a specific graph
     fn get_all_full_for_graph(&self, py: Python, graph_id: &str) -> PyResult<PyObject> {
         let resources: Vec<&AlizarinStaticResource> = self

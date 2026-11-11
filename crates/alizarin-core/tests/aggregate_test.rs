@@ -9,10 +9,10 @@ use std::sync::Arc;
 use alizarin_core::extension_type_registry::ExtensionTypeRegistry;
 use alizarin_core::{
     aggregate_functions, apply_aggregate_additions, apply_aggregate_functions,
-    build_graph_from_model_csvs, default_functions_registry, AggregateConfig, AggregateContext,
-    AggregateProvider, BusinessDataFileSlice, FunctionsRegistry, GraphLookup, NodeValueWrite,
-    RegisteredFunction, SliceSource, StaticGraph, StaticResource, StaticResourceRegistry,
-    StaticTile, AGGREGATE_FUNCTION_ID, FOLD_AGGREGATE_PROVIDER_ID,
+    build_graph_from_model_csvs, default_functions_registry, mark_aggregate_pending,
+    AggregateConfig, AggregateContext, AggregateProvider, BusinessDataFileSlice, FunctionsRegistry,
+    GraphLookup, NodeValueWrite, RegisteredFunction, SliceSource, StaticGraph, StaticResource,
+    StaticResourceRegistry, StaticTile, AGGREGATE_FUNCTION_ID, FOLD_AGGREGATE_PROVIDER_ID,
 };
 use serde_json::{json, Value};
 
@@ -74,6 +74,8 @@ fn layer_graph(fxgs: Vec<Value>) -> StaticGraph {
             ",outer,semantic,n",
             "outer,inner,semantic,n",
             "inner,inner_value,number,1",
+            ",freshness,semantic,1",
+            "freshness,pending_count,number,1",
         ],
     );
     graph.functions_x_graphs = Some(serde_json::from_value(Value::Array(fxgs)).unwrap());
@@ -752,6 +754,111 @@ fn a_provider_that_cannot_add_is_an_error_and_changes_nothing() {
         serde_json::to_value(&tiles).unwrap(),
         serde_json::to_value(&original).unwrap()
     );
+}
+
+// ---- pending counts -----------------------------------------------------------------
+
+/// `fxg` with its pending count in node `alias` of tile `t-fresh`.
+fn with_pending(mut fxg: Value, alias: &str) -> Value {
+    fxg["config"]["pending"] = json!({ "tileid": "t-fresh", "alias": alias });
+    fxg
+}
+
+fn counting_values(building: &StaticGraph, tileid: &str) -> Value {
+    fold(
+        building,
+        json!({ "tileid": tileid, "path": "height", "into": { "span_values": "values" } }),
+    )
+}
+
+fn mark(run: &Run, tiles: &mut Vec<StaticTile>, count: u64) -> Result<Vec<NodeValueWrite>, String> {
+    mark_aggregate_pending(tiles, &run.layer, LAYER, count)
+}
+
+#[test]
+fn marking_adds_to_the_pending_count_and_runs_and_additions_reset_it() {
+    let building = building_graph();
+    let fxgs = vec![with_pending(
+        counting_values(&building, "t"),
+        "pending_count",
+    )];
+    let run = Run {
+        layer: layer_graph(fxgs),
+        building,
+    };
+    let pending = |tiles: &[StaticTile]| run.value(tiles, "t-fresh", "pending_count");
+    let all = members(&run.building);
+    let mut tiles = Vec::new();
+
+    let changed = mark(&run, &mut tiles, 2).unwrap();
+    assert_eq!(changed.len(), 1, "creates the count's tile: {changed:?}");
+    mark(&run, &mut tiles, 1).unwrap();
+    assert_eq!(pending(&tiles), json!(3));
+
+    run.add(&all[0..3].to_vec(), &mut tiles).unwrap();
+    assert_eq!(
+        pending(&tiles),
+        json!(0),
+        "additions bring the values up to date"
+    );
+    assert_eq!(run.value(&tiles, "t", "span_values"), json!(3));
+
+    mark(&run, &mut tiles, 5).unwrap();
+    run.apply(&all, &mut tiles).unwrap();
+    assert_eq!(pending(&tiles), json!(0), "so does a full run");
+    assert!(
+        mark(&run, &mut tiles, 0).unwrap().is_empty(),
+        "nothing to add"
+    );
+}
+
+#[test]
+fn a_shared_pending_count_is_kept_once() {
+    let building = building_graph();
+    let mut second = with_pending(counting_values(&building, "t2"), "pending_count");
+    second["id"] = json!("fxg-second");
+    let fxgs = vec![
+        with_pending(counting_values(&building, "t"), "pending_count"),
+        second,
+    ];
+    let run = Run {
+        layer: layer_graph(fxgs),
+        building,
+    };
+    let mut tiles = Vec::new();
+    mark(&run, &mut tiles, 2).unwrap();
+    assert_eq!(run.value(&tiles, "t-fresh", "pending_count"), json!(2));
+    run.apply(&members(&run.building), &mut tiles).unwrap();
+    assert_eq!(run.value(&tiles, "t-fresh", "pending_count"), json!(0));
+}
+
+#[test]
+fn pending_mistakes_are_errors_that_change_nothing() {
+    for (alias, expected) in [
+        ("nope", "no node with alias nope"),
+        ("span_role", "is non-localized-string, not number"),
+    ] {
+        let building = building_graph();
+        let fxgs = vec![with_pending(counting_values(&building, "t"), alias)];
+        let run = Run {
+            layer: layer_graph(fxgs),
+            building,
+        };
+        let mut tiles = Vec::new();
+        let err = mark(&run, &mut tiles, 1).unwrap_err();
+        assert!(err.contains(expected), "mark, {alias}: {err}");
+        let err = run.apply(&members(&run.building), &mut tiles).unwrap_err();
+        assert!(err.contains(expected), "run, {alias}: {err}");
+        assert!(tiles.is_empty());
+    }
+
+    let building = building_graph();
+    let run = Run {
+        layer: layer_graph(vec![counting_values(&building, "t")]),
+        building,
+    };
+    let err = mark(&run, &mut Vec::new(), 1).unwrap_err();
+    assert!(err.contains("declares a pending node"), "{err}");
 }
 
 // ---- slices -----------------------------------------------------------------------

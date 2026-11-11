@@ -500,6 +500,26 @@ impl NapiStaticResourceRegistry {
         serde_json::to_value(changed).map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
+    /// Add `count` to the pending count each of a resource's Aggregate functions
+    /// declares (`pending` in its entry): members added but not yet applied, so
+    /// a consumer can tell its node values are stale, and by how much. Runs and
+    /// additions reset it to 0. Returns the node values that changed.
+    /// Equivalent to WASM's and Python's.
+    #[napi]
+    pub fn mark_aggregate_pending(
+        &mut self,
+        target_id: String,
+        count: u32,
+    ) -> Result<serde_json::Value> {
+        let changed = alizarin_core::mark_aggregate_pending_in_registry(
+            &mut self.inner,
+            &target_id,
+            count.into(),
+        )
+        .map_err(napi::Error::from_reason)?;
+        serde_json::to_value(changed).map_err(|e| napi::Error::from_reason(e.to_string()))
+    }
+
     /// Get the full resource (with tiles) as a JSON object, or null if only summary stored.
     #[napi]
     pub fn get_full(&self, resource_id: String) -> Result<Option<serde_json::Value>> {

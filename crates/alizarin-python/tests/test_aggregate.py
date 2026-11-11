@@ -128,6 +128,26 @@ def test_adding_members_in_turns_matches_a_full_run():
     assert layer_tiles(registry.get_full(EXPECTED["layer_id"])) == EXPECTED["tiles"]
 
 
+def test_marking_counts_members_pending_and_applying_resets_it():
+    pending_node = next(n["nodeid"] for n in load("layer.json")["nodes"] if n["alias"] == "pending_count")
+    registry = loaded_registry()
+    layer_id = EXPECTED["layer_id"]
+
+    def pending():
+        return layer_tiles(registry.get_full(layer_id))["freshness"]["data"][pending_node]
+
+    assert registry.mark_aggregate_pending(layer_id, 2) == [
+        {"tileid": "freshness", "nodeid": pending_node, "value": 2}
+    ]
+    registry.mark_aggregate_pending(layer_id, 2)
+    assert pending() == 4
+
+    # The consumer event: apply what was added; the Layer is up to date again.
+    changed = registry.apply_aggregate_additions(layer_id, ["b1", "b2", "b3", "b4"])
+    assert {"tileid": "freshness", "nodeid": pending_node, "value": 0} in changed
+    assert layer_tiles(registry.get_full(layer_id)) == EXPECTED["tiles"]
+
+
 def test_adding_an_unloaded_member_is_an_error():
     registry = loaded_registry()
     with pytest.raises(ValueError, match="not loaded in full"):

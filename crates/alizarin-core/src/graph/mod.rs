@@ -48,8 +48,9 @@ pub use functions::{
     aggregate_functions, apply_aggregate_additions, apply_aggregate_additions_in_registry,
     apply_aggregate_additions_to_resource, apply_aggregate_functions,
     apply_aggregate_functions_in_registry, apply_aggregate_functions_to_resource,
-    apply_derive_functions, default_functions_registry, AggregateConfig, AggregateContext,
-    AggregateProvider, DeriveProvider, DescriptorProvider, FunctionsRegistry, NodeValueWrite,
+    apply_derive_functions, default_functions_registry, mark_aggregate_pending,
+    mark_aggregate_pending_in_registry, AggregateConfig, AggregateContext, AggregateProvider,
+    DeriveProvider, DescriptorProvider, FunctionsRegistry, NodeValueWrite, PendingNode,
     RegisteredFunction,
 };
 pub use graph_lookup::GraphLookup;
