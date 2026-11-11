@@ -233,7 +233,7 @@ impl PyPseudoValue {
     }
 
     /// Set tile data from Python object
-    fn set_tile_data(&mut self, py: Python<'_>, data: &PyAny) -> PyResult<()> {
+    fn set_tile_data(&mut self, py: Python<'_>, data: &Bound<'_, PyAny>) -> PyResult<()> {
         let json_value = python_to_json(py, data)?;
         self.inner.tile_data = Some(json_value);
         Ok(())
@@ -479,7 +479,7 @@ impl PyPseudoListIterator {
 // =============================================================================
 
 /// Register pseudo value types with the Python module
-pub fn register_module(m: &pyo3::types::PyModule) -> PyResult<()> {
+pub fn register_module(m: &Bound<'_, pyo3::types::PyModule>) -> PyResult<()> {
     m.add_class::<PyPseudoValue>()?;
     m.add_class::<PyPseudoList>()?;
     m.add_class::<PyPseudoListIterator>()?;

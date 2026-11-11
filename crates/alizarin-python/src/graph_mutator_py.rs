@@ -645,7 +645,6 @@ fn build_resources_from_business_csv(
         default_language: default_language.to_string(),
         strict_concepts,
         uuid_namespace,
-        ..Default::default()
     };
 
     let resources = csv_business_data_loader::build_resources_from_business_csv(
@@ -666,7 +665,7 @@ fn build_resources_from_business_csv(
 }
 
 /// Register graph mutator functions with the Python module
-pub fn register_module(m: &PyModule) -> PyResult<()> {
+pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(apply_mutations_from_json, m)?)?;
     m.add_function(wrap_pyfunction!(apply_mutations_create, m)?)?;
     m.add_function(wrap_pyfunction!(apply_mutations_with_extensions, m)?)?;

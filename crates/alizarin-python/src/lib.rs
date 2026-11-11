@@ -47,7 +47,7 @@ fn get_registered_extension_handlers() -> Vec<String> {
 /// global-registry install). Called once at import time by an extension.
 #[pyfunction]
 #[pyo3(name = "register_type_handler")]
-fn register_extension_handler(capsule: &PyCapsule) -> PyResult<()> {
+fn register_extension_handler(capsule: &Bound<'_, PyCapsule>) -> PyResult<()> {
     let ptr = capsule.pointer() as *const TypeHandlerInfo;
     // SAFETY: ptr comes from PyCapsule::pointer(), set by the extension when it
     // created the capsule; the TypeHandlerInfo and its buffers/fn-pointers are
@@ -90,7 +90,7 @@ fn coerce_with_extension(
 
     let config: Option<serde_json::Value> = config_json
         .filter(|s| *s != "null")
-        .map(|s| serde_json::from_str(s))
+        .map(serde_json::from_str)
         .transpose()
         .map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Invalid config JSON: {}", e))
@@ -410,11 +410,6 @@ fn cards_to_json_tree(py: Python, resource_json: String) -> PyResult<PyObject> {
         ))
     })
 }
-
-/// Convert nested JSON tree to tiled resource
-///
-/// Args:
-///     tree_json: Nested JSON tree as string
 
 /// Convert nested JSON tree to tiled resource
 ///
@@ -1523,20 +1518,20 @@ impl PyResourceModelWrapper {
         let result = self.model_access.is_tile_permitted(&tile);
 
         // Debug logging for conditional filtering
-        if let Some(rule) = self.model_access.get_permission_rule(nodegroup_id) {
-            if let PermissionRule::Conditional { path, allowed } = rule {
-                let tile_id = tile.tileid.as_deref().unwrap_or("(no id)");
-                let value = evaluate_tile_path(&tile, path);
+        if let Some(PermissionRule::Conditional { path, allowed }) =
+            self.model_access.get_permission_rule(nodegroup_id)
+        {
+            let tile_id = tile.tileid.as_deref().unwrap_or("(no id)");
+            let value = evaluate_tile_path(&tile, path);
 
-                if let Ok(logging) = py.import_bound("logging") {
-                    if let Ok(logger) = logging.call_method1("getLogger", ("alizarin",)) {
-                        let _ = logger.call_method1("debug",
-                            (format!(
-                                "[alizarin] Conditional filter: nodegroup={}, tile={}, path={}, value={:?}, allowed={:?}, permitted={}",
-                                nodegroup_id, tile_id, path, value, allowed, result
-                            ),)
-                        );
-                    }
+            if let Ok(logging) = py.import_bound("logging") {
+                if let Ok(logger) = logging.call_method1("getLogger", ("alizarin",)) {
+                    let _ = logger.call_method1("debug",
+                        (format!(
+                            "[alizarin] Conditional filter: nodegroup={}, tile={}, path={}, value={:?}, allowed={:?}, permitted={}",
+                            nodegroup_id, tile_id, path, value, allowed, result
+                        ),)
+                    );
                 }
             }
         }
@@ -2229,7 +2224,7 @@ fn import_prebuild(
         .next()
         .map(graph_mutator_py::PyOntologyValidator::from_inner);
 
-    let dict = pyo3::types::PyDict::new(py);
+    let dict = pyo3::types::PyDict::new_bound(py);
     dict.set_item("graph_ids", result.graph_ids)?;
     dict.set_item("collection_ids", result.collection_ids)?;
     dict.set_item("ontology_validator", ontology_validator.into_py(py))?;
@@ -2244,7 +2239,7 @@ fn get_registered_graph_ids() -> Vec<String> {
 
 /// Python module definition
 #[pymodule]
-fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
+fn alizarin(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Graph registry (for batch_merge_resources descriptor computation)
     m.add_function(wrap_pyfunction!(register_graph, m)?)?;
     m.add_function(wrap_pyfunction!(apply_aggregate_functions_from_file, m)?)?;

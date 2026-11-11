@@ -105,7 +105,7 @@ pub fn skos_collections_to_xml(collections_json: &str, base_uri: &str) -> PyResu
 }
 
 /// Register SKOS functions with the Python module
-pub fn register_module(m: &PyModule) -> PyResult<()> {
+pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(parse_skos_xml, m)?)?;
     m.add_function(wrap_pyfunction!(parse_skos_xml_to_collection, m)?)?;
     m.add_function(wrap_pyfunction!(skos_collection_to_xml, m)?)?;

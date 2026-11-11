@@ -33,7 +33,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run Clippy
-        run: cargo clippy --workspace --exclude alizarin-python -- -D warnings
+        run: cargo clippy --workspace -- -D warnings
 
   # Extension crate tests (excluded from workspace)
   ext-tests:

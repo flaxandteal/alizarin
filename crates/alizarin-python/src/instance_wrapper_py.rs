@@ -424,7 +424,7 @@ impl PyResourceInstanceWrapperCore {
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
         pyo3::Python::with_gil(|py| {
-            let dict = pyo3::types::PyDict::new(py);
+            let dict = pyo3::types::PyDict::new_bound(py);
             dict.set_item("nodegroup_id", &info.nodegroup_id)?;
             dict.set_item("is_single", info.is_single)?;
             dict.set_item("target_node_id", &info.target_node.nodeid)?;
@@ -988,7 +988,7 @@ impl PySemanticChildResult {
 // =============================================================================
 
 /// Register instance wrapper types with the Python module
-pub fn register_module(m: &pyo3::types::PyModule) -> PyResult<()> {
+pub fn register_module(m: &Bound<'_, pyo3::types::PyModule>) -> PyResult<()> {
     m.add_class::<PyResourceInstanceWrapperCore>()?;
     m.add_class::<PyPopulateResult>()?;
     m.add_class::<PySemanticChildResult>()?;

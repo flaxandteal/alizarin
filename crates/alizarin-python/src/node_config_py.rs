@@ -292,7 +292,6 @@ impl PyNodeConfigManager {
             .get_extension_config(nodeid, Some(&registry))
             .map(|config| {
                 pythonize::pythonize(py, &config)
-                    .map(|obj| obj.into())
                     .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
             })
             .transpose()
@@ -343,7 +342,7 @@ impl PyNodeConfigManager {
 // =============================================================================
 
 /// Register node config types with the Python module
-pub fn register_module(m: &PyModule) -> PyResult<()> {
+pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyStaticDomainValue>()?;
     m.add_class::<PyNodeConfigBoolean>()?;
     m.add_class::<PyNodeConfigConcept>()?;

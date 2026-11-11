@@ -10,7 +10,7 @@ use pyo3::types::{PyDict, PyList};
 ///
 /// Handles conversion of Python primitives, lists, and dicts to JSON.
 /// Falls back to Python's json.dumps() for complex types.
-pub fn python_to_json(py: Python<'_>, obj: &PyAny) -> PyResult<serde_json::Value> {
+pub fn python_to_json(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
     if obj.is_none() {
         return Ok(serde_json::Value::Null);
     }
@@ -38,7 +38,7 @@ pub fn python_to_json(py: Python<'_>, obj: &PyAny) -> PyResult<serde_json::Value
     if let Ok(list) = obj.downcast::<PyList>() {
         let mut arr = Vec::new();
         for item in list.iter() {
-            arr.push(python_to_json(py, item)?);
+            arr.push(python_to_json(py, &item)?);
         }
         return Ok(serde_json::Value::Array(arr));
     }
@@ -48,7 +48,7 @@ pub fn python_to_json(py: Python<'_>, obj: &PyAny) -> PyResult<serde_json::Value
         let mut map = serde_json::Map::new();
         for (k, v) in dict.iter() {
             let key: String = k.extract()?;
-            map.insert(key, python_to_json(py, v)?);
+            map.insert(key, python_to_json(py, &v)?);
         }
         return Ok(serde_json::Value::Object(map));
     }

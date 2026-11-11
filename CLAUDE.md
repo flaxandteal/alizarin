@@ -44,7 +44,7 @@ All JS/test commands need `NODE_OPTIONS='--experimental-wasm-modules'` (already 
 Rust linting (pre-commit hooks):
 ```bash
 cargo fmt --all -- --check
-cargo clippy --workspace --exclude alizarin-python -- -D warnings
+cargo clippy --workspace -- -D warnings
 ```
 
 ## Architecture
@@ -54,7 +54,7 @@ cargo clippy --workspace --exclude alizarin-python -- -D warnings
 **Rust crates** (`crates/`):
 - `alizarin-core` — Core data structures, graph traversal, JSON conversion, SKOS parsing, type coercion, label resolution. Shared between WASM and Python targets.
 - `alizarin-wasm` — WASM bindings (`wasm-bindgen`) that wrap core functionality. Builds to `pkg/` via `wasm-pack`.
-- `alizarin-python` — PyO3 bindings (separate build, excluded from workspace clippy).
+- `alizarin-python` — PyO3 bindings (separate build via maturin; excluded from workspace `cargo test`, as an extension module can't link a test binary).
 - `alizarin-explorer` — TUI explorer tool for Arches graphs.
 - `alizarin-extension-api` — Extension API types.
 - `wasm-wrapper-derive` — Proc macro for generating WASM wrapper boilerplate.

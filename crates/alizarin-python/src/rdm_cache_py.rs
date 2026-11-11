@@ -129,7 +129,7 @@ pub fn compose_collections_in_global_cache(
 #[pyfunction]
 pub fn compose_collections_from_csv_in_global_cache(csv_text: &str) -> PyResult<Vec<String>> {
     alizarin_core::ensure_global_rdm_cache(|cache| cache.apply_composition_csv(csv_text))
-        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
 }
 
 /// Add collections from SKOS XML directly to the global RDM cache.
@@ -332,7 +332,7 @@ fn label_to_deterministic_string(py: Python, label: &PyObject) -> PyResult<Strin
         return Ok(s);
     }
 
-    if let Ok(dict) = label.downcast::<PyDict>(py) {
+    if let Ok(dict) = label.bind(py).downcast::<PyDict>() {
         let mut labels_map: HashMap<String, String> = HashMap::new();
         for (key, value) in dict.iter() {
             let lang: String = key.extract()?;
@@ -357,7 +357,7 @@ fn extract_label_string(py: Python, label: &PyObject) -> PyResult<String> {
     if let Ok(s) = label.extract::<String>(py) {
         return Ok(s.trim().to_string());
     }
-    if label.downcast::<PyDict>(py).is_ok() {
+    if label.bind(py).downcast::<PyDict>().is_ok() {
         return Ok(label_to_deterministic_string(py, label)?.trim().to_string());
     }
     Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
@@ -459,7 +459,7 @@ impl RdmConcept {
             let mut map = BTreeMap::new();
             map.insert(lang, CoreRdmValue::new("__pending__".to_string(), s));
             map
-        } else if let Ok(dict) = label.downcast::<PyDict>(py) {
+        } else if let Ok(dict) = label.bind(py).downcast::<PyDict>() {
             let mut map = BTreeMap::new();
             for (key, value) in dict.iter() {
                 let lang: String = key.extract()?;
@@ -839,7 +839,7 @@ impl RdmCollection {
                     CoreRdmValue::new("__pending__".to_string(), trimmed.clone()),
                 );
                 (map, trimmed)
-            } else if let Ok(dict) = label.downcast::<PyDict>(py) {
+            } else if let Ok(dict) = label.bind(py).downcast::<PyDict>() {
                 let mut map = BTreeMap::new();
                 for (key, value) in dict.iter() {
                     let lang: String = key.extract()?;
@@ -929,7 +929,7 @@ impl RdmCollection {
                     CoreRdmValue::new("__pending__".to_string(), trimmed.clone()),
                 );
                 (map, trimmed)
-            } else if let Ok(dict) = label.downcast::<PyDict>(py) {
+            } else if let Ok(dict) = label.bind(py).downcast::<PyDict>() {
                 let mut map = BTreeMap::new();
                 for (key, value) in dict.iter() {
                     let lang: String = key.extract()?;
@@ -1802,7 +1802,7 @@ pub fn is_valid_uuid(s: &str) -> bool {
 // =============================================================================
 
 /// Register RDM cache types with the Python module
-pub fn register_module(m: &PyModule) -> PyResult<()> {
+pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<RdmConcept>()?;
     m.add_class::<RdmCollection>()?;
     m.add_class::<RdmCache>()?;
