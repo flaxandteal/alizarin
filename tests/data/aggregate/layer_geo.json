@@ -104,6 +104,7 @@
        "tileid": "extent-buildings",
        "graph": "db55ce9f-0c61-59b0-bdae-bd2f9517797b",
        "path": "location",
+       "datatype": "geojson-feature-collection",
        "into": {
         "extent_value": "summary",
         "extent_resources": "resources"

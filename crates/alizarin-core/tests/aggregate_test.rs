@@ -419,6 +419,16 @@ fn a_malformed_declaration_is_an_error() {
 fn fold(run_building: &StaticGraph, item: Value) -> Value {
     let mut item = item;
     item["graph"] = json!(run_building.graphid);
+    // The datatype the config must state: the node's own, unless the test sets one.
+    if item.get("datatype").is_none() {
+        let path = item["path"].as_str().unwrap_or_default();
+        let datatype = run_building
+            .nodes
+            .iter()
+            .find(|n| n.alias.as_deref() == Some(path))
+            .map_or("number", |n| n.datatype.as_str());
+        item["datatype"] = json!(datatype);
+    }
     fxg(FOLD_AGGREGATE_PROVIDER_ID, json!({ "items": [item] }))
 }
 
@@ -525,6 +535,12 @@ fn config_mistakes_are_caught_before_folding() {
             "nope",
         ),
         (
+            "a datatype that isn't the node's",
+            json!({ "tileid": "t", "path": "height", "datatype": "date",
+                    "into": { "span_value": "summary" } }),
+            "config says datatype date, but the node is number",
+        ),
+        (
             "a datatype with no fold",
             json!({ "tileid": "t", "path": "note", "into": { "span_value": "summary" } }),
             "has no fold",
@@ -561,6 +577,35 @@ fn config_mistakes_are_caught_before_folding() {
         assert!(err.contains(expected), "{label}: {err}");
         assert!(tiles.is_empty(), "{label}: tiles changed");
     }
+}
+
+#[test]
+fn the_datatype_is_required_and_checked_on_additions_too() {
+    // Missing: rejected when the config is read, as any field is.
+    let building = building_graph();
+    let item = json!({ "tileid": "t", "graph": building.graphid, "path": "height",
+                       "into": { "span_value": "summary" } });
+    let run = Run {
+        layer: layer_graph(vec![fxg(
+            FOLD_AGGREGATE_PROVIDER_ID,
+            json!({ "items": [item] }),
+        )]),
+        building,
+    };
+    let mut tiles = Vec::new();
+    let err = run.apply(&members(&run.building), &mut tiles).unwrap_err();
+    assert!(err.contains("missing field `datatype`"), "{err}");
+
+    // Mismatched, as after a member graph changes: additions fail too.
+    let run = fold_run(json!({ "tileid": "t", "path": "height", "datatype": "date",
+                               "into": { "span_value": "summary" } }));
+    let mut tiles = Vec::new();
+    let err = run.add(&members(&run.building), &mut tiles).unwrap_err();
+    assert!(
+        err.contains("config says datatype date, but the node is number"),
+        "{err}"
+    );
+    assert!(tiles.is_empty());
 }
 
 #[test]

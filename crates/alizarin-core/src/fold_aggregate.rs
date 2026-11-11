@@ -16,6 +16,7 @@
 //!   { "tileid": "<tile on the calling resource>",
 //!     "graph": "<member graph id>",
 //!     "path": "<dot path to a value node in that graph>",
+//!     "datatype": "<that node's datatype>",
 //!     "where": { "path": "<dot path>", "allowed": ["<value>", ...] },  // optional
 //!     "group_by": "<dot path to a concept, domain or boolean node>",   // optional
 //!     "into": { "<node alias on the calling graph>": "summary" | "summary_text"
@@ -27,6 +28,10 @@
 //!   node; `values` counts values folded, `resources` the members that
 //!   contributed one, and `skipped` the values the datatype skipped (only
 //!   unorderable `edtf`).
+//! - **`datatype`** states what the folded node is, so the calling resource
+//!   says what its summaries are without its member graphs, and must match the
+//!   node: a member graph that changed a folded node's datatype is an error on
+//!   every run and addition, not summaries silently written for another type.
 //! - **`where`** keeps a member only if one of its tiles has a value at that
 //!   path in `allowed`: a string equal to an allowed value, or an array with any
 //!   such element. Set membership only, with the semantics of
@@ -84,6 +89,7 @@ struct FoldItem {
     tileid: String,
     graph: String,
     path: String,
+    datatype: String,
     #[serde(default, rename = "where")]
     where_: Option<Where>,
     #[serde(default)]
@@ -416,6 +422,12 @@ fn plan(
     let model = GraphModelAccess::from_graph(&member_graph);
 
     let node = resolve(&model, &member_graph, &item.path)?;
+    if node.datatype != item.datatype {
+        return Err(format!(
+            "{}: config says datatype {}, but the node is {} (has the member graph changed?)",
+            item.path, item.datatype, node.datatype
+        ));
+    }
     if node.datatype == "semantic" {
         return Err(format!(
             "{}: is a semantic node; only value nodes fold",

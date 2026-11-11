@@ -63,6 +63,7 @@ dispatch: any datatype whose handler is registered folds through it (geometry wi
   { "tileid": "<tile on the calling resource>",
     "graph": "<member graph id>",
     "path": "<dot path to a value node in that graph>",
+    "datatype": "<that node's datatype; must match it>",
     "where": { "path": "<dot path>", "allowed": ["<value>", …] },   // optional
     "group_by": "<dot path to a concept, domain or boolean node>",  // optional
     "into": { "<node alias on the calling graph>": "summary" | "summary_text" | "values"

@@ -129,6 +129,7 @@
        "tileid": "span-height",
        "graph": "db55ce9f-0c61-59b0-bdae-bd2f9517797b",
        "path": "height",
+       "datatype": "number",
        "into": {
         "span_value": "summary",
         "span_resources": "resources"
@@ -138,6 +139,7 @@
        "tileid": "span-listed",
        "graph": "db55ce9f-0c61-59b0-bdae-bd2f9517797b",
        "path": "height",
+       "datatype": "number",
        "where": {
         "path": "listed",
         "allowed": [
