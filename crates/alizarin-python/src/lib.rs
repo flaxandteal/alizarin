@@ -837,13 +837,18 @@ impl ResourceRegistry {
     ///
     /// Args:
     ///     target_id: The resource whose Aggregate functions to run (e.g. a Layer resource)
-    fn apply_aggregate_functions(&mut self, target_id: &str) -> PyResult<()> {
-        alizarin_core::apply_aggregate_functions_in_registry(
+    ///
+    /// Returns:
+    ///     The node values that changed, as `[{"tileid", "nodeid", "value"}]`
+    ///     (empty if nothing did), for a consumer caching them
+    fn apply_aggregate_functions(&mut self, py: Python, target_id: &str) -> PyResult<PyObject> {
+        let changed = alizarin_core::apply_aggregate_functions_in_registry(
             &mut self.inner,
             target_id,
             &build_extension_registry(),
         )
-        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+        Ok(pythonize::pythonize(py, &changed)?)
     }
 
     /// Expand a resource's Aggregate node values with members added since the
@@ -857,18 +862,23 @@ impl ResourceRegistry {
     /// Args:
     ///     target_id: The resource whose Aggregate node values to expand
     ///     added_ids: Members added since the last call, already loaded in full here
+    ///
+    /// Returns:
+    ///     The node values that changed, as `apply_aggregate_functions` does
     fn apply_aggregate_additions(
         &mut self,
+        py: Python,
         target_id: &str,
         added_ids: Vec<String>,
-    ) -> PyResult<()> {
-        alizarin_core::apply_aggregate_additions_in_registry(
+    ) -> PyResult<PyObject> {
+        let changed = alizarin_core::apply_aggregate_additions_in_registry(
             &mut self.inner,
             target_id,
             &added_ids,
             &build_extension_registry(),
         )
-        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+        Ok(pythonize::pythonize(py, &changed)?)
     }
 
     /// Get all full resources for a specific graph

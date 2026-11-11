@@ -152,7 +152,11 @@ impl Run {
         }
     }
 
-    fn apply(&self, slice: &dyn SliceSource, tiles: &mut Vec<StaticTile>) -> Result<(), String> {
+    fn apply(
+        &self,
+        slice: &dyn SliceSource,
+        tiles: &mut Vec<StaticTile>,
+    ) -> Result<Vec<NodeValueWrite>, String> {
         let handlers = ExtensionTypeRegistry::new();
         let graphs: HashMap<String, Arc<StaticGraph>> = HashMap::from([(
             self.building.graphid.clone(),
@@ -162,7 +166,11 @@ impl Run {
         apply_aggregate_functions(tiles, &self.layer, LAYER, slice, &registry(), &context)
     }
 
-    fn add(&self, added: &dyn SliceSource, tiles: &mut Vec<StaticTile>) -> Result<(), String> {
+    fn add(
+        &self,
+        added: &dyn SliceSource,
+        tiles: &mut Vec<StaticTile>,
+    ) -> Result<Vec<NodeValueWrite>, String> {
         let handlers = ExtensionTypeRegistry::new();
         let graphs: HashMap<String, Arc<StaticGraph>> = HashMap::from([(
             self.building.graphid.clone(),
@@ -606,6 +614,34 @@ fn the_datatype_is_required_and_checked_on_additions_too() {
         "{err}"
     );
     assert!(tiles.is_empty());
+}
+
+#[test]
+fn applying_returns_the_node_values_that_changed() {
+    let run = fold_run(json!({
+        "tileid": "t", "path": "height",
+        "into": { "span_value": "summary", "span_values": "values" }
+    }));
+    let node = |alias: &str| run.layer.get_node_by_alias(alias).unwrap().nodeid.clone();
+    let mut tiles = vec![layer_tile(&run, "t", &[("span_values", json!(3))])];
+
+    // span_values already holds 3, so only the summary changes.
+    let changed = run.apply(&members(&run.building), &mut tiles).unwrap();
+    assert_eq!(
+        changed,
+        vec![NodeValueWrite {
+            tileid: "t".to_string(),
+            node_id: node("span_value"),
+            value: json!({ "count": 3, "min": 3.0, "max": 12.0 }),
+        }]
+    );
+    let rerun = run.apply(&members(&run.building), &mut tiles).unwrap();
+    assert!(rerun.is_empty(), "a rerun changes nothing: {rerun:?}");
+    assert_eq!(
+        serde_json::to_value(&changed[0]).unwrap()["nodeid"],
+        json!(node("span_value")),
+        "serialised with Arches' names"
+    );
 }
 
 #[test]

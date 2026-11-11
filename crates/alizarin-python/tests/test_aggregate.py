@@ -46,6 +46,24 @@ def test_registry_slice_writes_the_expected_node_values():
     assert layer_tiles(registry.get_full(EXPECTED["layer_id"])) == EXPECTED["tiles"]
 
 
+def test_a_run_returns_exactly_the_node_values_it_changed():
+    resources = load("business_data.json")["business_data"]["resources"]
+    layer = next(
+        r for r in resources if r["resourceinstance"]["resourceinstanceid"] == EXPECTED["layer_id"]
+    )
+    had = {(t["tileid"], n) for t in layer.get("tiles") or [] for n in t["data"]}
+    expected = {
+        (tileid, n): v
+        for tileid, t in EXPECTED["tiles"].items()
+        for n, v in t["data"].items()
+        if (tileid, n) not in had
+    }
+    registry = loaded_registry()
+    changed = registry.apply_aggregate_functions(EXPECTED["layer_id"])
+    assert {(w["tileid"], w["nodeid"]): w["value"] for w in changed} == expected
+    assert registry.apply_aggregate_functions(EXPECTED["layer_id"]) == []
+
+
 def test_rerunning_gives_identical_tiles():
     registry = loaded_registry()
     registry.apply_aggregate_functions(EXPECTED["layer_id"])

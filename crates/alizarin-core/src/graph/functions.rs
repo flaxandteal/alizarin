@@ -104,10 +104,12 @@ pub trait AggregateProvider: Send + Sync {
 }
 
 /// One node value an Aggregate writes: `data[node_id] = value` in the calling
-/// resource's tile `tileid`.
-#[derive(Debug, Clone, PartialEq)]
+/// resource's tile `tileid`. Serialises as `{tileid, nodeid, value}`, Arches'
+/// own names, for the bindings that return the writes that changed.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct NodeValueWrite {
     pub tileid: String,
+    #[serde(rename = "nodeid")]
     pub node_id: String,
     pub value: serde_json::Value,
 }
@@ -337,6 +339,10 @@ impl SliceSource for ExcludeTarget<'_> {
 ///   `tiles` changes, so on `Err` (a malformed declaration, an unregistered
 ///   provider, a provider error, an unknown node, a tile in the wrong nodegroup
 ///   or resource, or two writes to one node of one tile) `tiles` is untouched.
+///
+/// Returns the writes that changed a node value (all of a new tile's do), in
+/// declaration order, so `[]` when a rerun finds nothing new. A consumer that
+/// caches these node values can refresh exactly those.
 pub fn apply_aggregate_functions(
     tiles: &mut Vec<StaticTile>,
     graph: &dyn GraphLookup,
@@ -344,7 +350,7 @@ pub fn apply_aggregate_functions(
     slice: &dyn SliceSource,
     functions: &FunctionsRegistry,
     context: &AggregateContext<'_>,
-) -> Result<(), String> {
+) -> Result<Vec<NodeValueWrite>, String> {
     let slice = ExcludeTarget {
         inner: slice,
         target_id,
@@ -377,7 +383,7 @@ pub fn apply_aggregate_additions(
     added: &dyn SliceSource,
     functions: &FunctionsRegistry,
     context: &AggregateContext<'_>,
-) -> Result<(), String> {
+) -> Result<Vec<NodeValueWrite>, String> {
     let added = ExcludeTarget {
         inner: added,
         target_id,
@@ -412,7 +418,7 @@ fn run_aggregates(
         &AggregateConfig,
         &[StaticTile],
     ) -> Result<Vec<NodeValueWrite>, String>,
-) -> Result<(), String> {
+) -> Result<Vec<NodeValueWrite>, String> {
     let configs = aggregate_functions(graph)?;
     let mut writes: Vec<NodeValueWrite> = Vec::new();
     for (index, config) in configs.iter().enumerate() {
@@ -485,6 +491,8 @@ fn run_aggregates(
         planned.push((write, nodegroup));
     }
 
+    // Write, keeping the writes that changed a node value.
+    let mut changed = Vec::new();
     for (write, nodegroup) in planned {
         let index = match tiles
             .iter()
@@ -504,22 +512,25 @@ fn run_aggregates(
                 tiles.len() - 1
             }
         };
-        tiles[index]
-            .data
-            .insert(write.node_id.clone(), write.value.clone());
+        let data = &mut tiles[index].data;
+        if data.get(&write.node_id) != Some(&write.value) {
+            data.insert(write.node_id.clone(), write.value.clone());
+            changed.push(write.clone());
+        }
     }
-    Ok(())
+    Ok(changed)
 }
 
 /// Run `resource`'s Aggregate functions over `slice` with the process-wide
 /// registries: its graph and the members' graphs from the registered graphs, and
 /// providers from the global functions registry (core's built-ins plus any a
-/// provider crate registered). The entry point the bindings use.
+/// provider crate registered). The entry point the bindings use. Returns the
+/// writes that changed, as [`apply_aggregate_functions`] does.
 pub fn apply_aggregate_functions_to_resource(
     resource: &mut super::StaticResource,
     slice: &dyn SliceSource,
     handlers: &ExtensionTypeRegistry,
-) -> Result<(), String> {
+) -> Result<Vec<NodeValueWrite>, String> {
     with_process_registries(
         resource,
         handlers,
@@ -535,7 +546,7 @@ pub fn apply_aggregate_additions_to_resource(
     resource: &mut super::StaticResource,
     added: &dyn SliceSource,
     handlers: &ExtensionTypeRegistry,
-) -> Result<(), String> {
+) -> Result<Vec<NodeValueWrite>, String> {
     with_process_registries(
         resource,
         handlers,
@@ -557,8 +568,8 @@ fn with_process_registries(
         &str,
         &FunctionsRegistry,
         &AggregateContext<'_>,
-    ) -> Result<(), String>,
-) -> Result<(), String> {
+    ) -> Result<Vec<NodeValueWrite>, String>,
+) -> Result<Vec<NodeValueWrite>, String> {
     let graph_id = &resource.resourceinstance.graph_id;
     let graph =
         crate::get_graph(graph_id).ok_or_else(|| format!("graph {graph_id} is not registered"))?;
@@ -567,9 +578,9 @@ fn with_process_registries(
     let graphs = crate::slice_source::RegisteredGraphs;
     let context = AggregateContext::new(handlers, &graphs);
     let mut tiles = resource.tiles.clone().unwrap_or_default();
-    f(&mut tiles, graph.as_ref(), &target_id, &functions, &context)?;
+    let changed = f(&mut tiles, graph.as_ref(), &target_id, &functions, &context)?;
     resource.tiles = Some(tiles);
-    Ok(())
+    Ok(changed)
 }
 
 /// The members of a registry named by id, as a slice. Every id must be loaded
@@ -609,7 +620,7 @@ pub fn apply_aggregate_additions_in_registry(
     target_id: &str,
     added_ids: &[String],
     handlers: &ExtensionTypeRegistry,
-) -> Result<(), String> {
+) -> Result<Vec<NodeValueWrite>, String> {
     let mut resource = registry
         .get_full(target_id)
         .cloned()
@@ -618,9 +629,11 @@ pub fn apply_aggregate_additions_in_registry(
         registry,
         ids: added_ids,
     };
-    apply_aggregate_additions_to_resource(&mut resource, &added, handlers)?;
-    registry.insert_full(resource);
-    Ok(())
+    let changed = apply_aggregate_additions_to_resource(&mut resource, &added, handlers)?;
+    if !changed.is_empty() {
+        registry.insert_full(resource);
+    }
+    Ok(changed)
 }
 
 /// [`apply_aggregate_functions_to_resource`] for a resource held in full in
@@ -630,12 +643,14 @@ pub fn apply_aggregate_functions_in_registry(
     registry: &mut super::StaticResourceRegistry,
     target_id: &str,
     handlers: &ExtensionTypeRegistry,
-) -> Result<(), String> {
+) -> Result<Vec<NodeValueWrite>, String> {
     let mut resource = registry
         .get_full(target_id)
         .cloned()
         .ok_or_else(|| format!("resource {target_id} is not loaded in full"))?;
-    apply_aggregate_functions_to_resource(&mut resource, &*registry, handlers)?;
-    registry.insert_full(resource);
-    Ok(())
+    let changed = apply_aggregate_functions_to_resource(&mut resource, &*registry, handlers)?;
+    if !changed.is_empty() {
+        registry.insert_full(resource);
+    }
+    Ok(changed)
 }

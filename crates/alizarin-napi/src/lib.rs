@@ -463,16 +463,18 @@ impl NapiStaticResourceRegistry {
     /// The resource must be loaded in full here, and its graph and its members'
     /// graphs registered. Its Aggregate functions (e.g. the built-in fold) write
     /// node values into its tiles, which are updated in place; the resource itself
-    /// is not part of the slice. Equivalent to Python's
-    /// `ResourceRegistry.apply_aggregate_functions`.
+    /// is not part of the slice. Returns the node values that changed,
+    /// `[{tileid, nodeid, value}]` (`[]` if nothing did), for a consumer caching
+    /// them. Equivalent to Python's `ResourceRegistry.apply_aggregate_functions`.
     #[napi]
-    pub fn apply_aggregate_functions(&mut self, target_id: String) -> Result<()> {
-        alizarin_core::apply_aggregate_functions_in_registry(
+    pub fn apply_aggregate_functions(&mut self, target_id: String) -> Result<serde_json::Value> {
+        let changed = alizarin_core::apply_aggregate_functions_in_registry(
             &mut self.inner,
             &target_id,
             &extension_registry(),
         )
-        .map_err(napi::Error::from_reason)
+        .map_err(napi::Error::from_reason)?;
+        serde_json::to_value(changed).map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
     /// Expand a resource's Aggregate node values with members added since the
@@ -480,20 +482,22 @@ impl NapiStaticResourceRegistry {
     /// loaded in full here). Call it when the node values are about to be
     /// consumed: additions compose, so the ids since the last call go in one
     /// batch. Add each member once; re-adding one counts it again. Errors if a
-    /// provider can't add incrementally. Equivalent to WASM's and Python's.
+    /// provider can't add incrementally. Returns the node values that changed,
+    /// as `applyAggregateFunctions` does. Equivalent to WASM's and Python's.
     #[napi]
     pub fn apply_aggregate_additions(
         &mut self,
         target_id: String,
         added_ids: Vec<String>,
-    ) -> Result<()> {
-        alizarin_core::apply_aggregate_additions_in_registry(
+    ) -> Result<serde_json::Value> {
+        let changed = alizarin_core::apply_aggregate_additions_in_registry(
             &mut self.inner,
             &target_id,
             &added_ids,
             &extension_registry(),
         )
-        .map_err(napi::Error::from_reason)
+        .map_err(napi::Error::from_reason)?;
+        serde_json::to_value(changed).map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
     /// Get the full resource (with tiles) as a JSON object, or null if only summary stored.

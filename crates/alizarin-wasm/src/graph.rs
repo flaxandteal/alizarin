@@ -3182,16 +3182,21 @@ impl StaticResourceRegistry {
     /// The resource must be loaded in full here, and its graph and its members'
     /// graphs registered. Its Aggregate functions (e.g. the built-in fold) write
     /// node values into its tiles, which are updated in place; the resource
-    /// itself is not part of the slice. Equivalent to NAPI's and Python's
+    /// itself is not part of the slice. Returns the node values that changed,
+    /// `[{tileid, nodeid, value}]` (`[]` if nothing did), for a consumer caching
+    /// them. Equivalent to NAPI's and Python's
     /// `applyAggregateFunctions` / `apply_aggregate_functions`.
     #[wasm_bindgen(js_name = applyAggregateFunctions)]
-    pub fn apply_aggregate_functions(&mut self, target_id: String) -> Result<(), JsValue> {
-        alizarin_core::apply_aggregate_functions_in_registry(
+    pub fn apply_aggregate_functions(&mut self, target_id: String) -> Result<JsValue, JsValue> {
+        let changed = alizarin_core::apply_aggregate_functions_in_registry(
             &mut self.0,
             &target_id,
             &crate::extension_registry::build_extension_registry(),
         )
-        .map_err(|e| JsValue::from_str(&e))
+        .map_err(|e| JsValue::from_str(&e))?;
+        changed
+            .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Expand a resource's Aggregate node values with members added since the
@@ -3200,19 +3205,23 @@ impl StaticResourceRegistry {
     /// consumed: additions compose, so the ids since the last call go in one
     /// batch. Add each member once; re-adding one counts it again. Errors if a
     /// provider can't add incrementally (run `applyAggregateFunctions` then).
+    /// Returns the node values that changed, as `applyAggregateFunctions` does.
     #[wasm_bindgen(js_name = applyAggregateAdditions)]
     pub fn apply_aggregate_additions(
         &mut self,
         target_id: String,
         added_ids: Vec<String>,
-    ) -> Result<(), JsValue> {
-        alizarin_core::apply_aggregate_additions_in_registry(
+    ) -> Result<JsValue, JsValue> {
+        let changed = alizarin_core::apply_aggregate_additions_in_registry(
             &mut self.0,
             &target_id,
             &added_ids,
             &crate::extension_registry::build_extension_registry(),
         )
-        .map_err(|e| JsValue::from_str(&e))
+        .map_err(|e| JsValue::from_str(&e))?;
+        changed
+            .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+            .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Check if a resource has full data stored (not just summary)

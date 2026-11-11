@@ -103,6 +103,32 @@ describe(`Aggregate functions [${getBackend()} backend]`, () => {
     expect(layerTiles(registry)).toEqual(Expected.tiles);
   });
 
+  test("a run returns exactly the node values it changed, and a rerun none", () => {
+    const registry = createResourceRegistry();
+    registry.loadFromBusinessDataBytes(
+      new TextEncoder().encode(JSON.stringify(BusinessData)),
+      true,
+      true,
+    );
+    // What the run should change: the expected tiles, less what the input had.
+    const input = (BusinessData as any).business_data.resources.find(
+      (r: any) => r.resourceinstance.resourceinstanceid === Expected.layer_id,
+    );
+    const had = new Set(
+      (input.tiles ?? []).flatMap((t: any) => Object.keys(t.data).map((n) => `${t.tileid}/${n}`)),
+    );
+    const expected = Object.fromEntries(
+      Object.entries(Expected.tiles as Record<string, any>)
+        .flatMap(([tileid, t]) => Object.entries(t.data).map(([n, v]) => [`${tileid}/${n}`, v]))
+        .filter(([key]) => !had.has(key as string)),
+    );
+
+    const changed = registry.applyAggregateFunctions(Expected.layer_id);
+    expect(Object.fromEntries(changed.map((w: any) => [`${w.tileid}/${w.nodeid}`, w.value])))
+      .toEqual(expected);
+    expect(registry.applyAggregateFunctions(Expected.layer_id)).toEqual([]);
+  });
+
   test("re-running gives identical tiles", () => {
     const registry = createResourceRegistry();
     registry.loadFromBusinessDataBytes(
