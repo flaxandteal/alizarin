@@ -2,7 +2,7 @@ name: Extensions
 
 on:
   push:
-    branches: [main, dev/*]
+    branches: [main, dev/*, release/*]
     paths:
       - 'ext/**'
       - '.github/workflows/extensions.yml'
@@ -83,8 +83,11 @@ jobs:
             npm install
             npm run build
             cd - > /dev/null
+            # test:all, not test: the root `test` script ends in `&& echo`, so
+            # `npm test -- <path>` would pass the path to echo, not to vitest.
             if [ -d "${ext_dir}tests" ]; then
-              npm test -- "${ext_dir}tests/" || echo "Tests for $ext_name failed or pending"
+              echo "=== Testing @alizarin/$ext_name ==="
+              npm run test:all -- "${ext_dir}tests/"
             fi
           done
 

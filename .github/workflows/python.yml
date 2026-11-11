@@ -2,12 +2,14 @@ name: Python Packages
 
 on:
   push:
-    branches: [main, dev/*]
+    branches: [main, dev/*, release/*]
     paths:
       - 'crates/alizarin-python/**'
       - 'crates/alizarin-core/**'
       - 'ext/*/python/**'
       - 'ext/*/core/**'
+      - 'crates/alizarin-extension-api/**'
+      - 'tests/data/**'
       - '.github/workflows/python.yml'
   pull_request:
     paths:
@@ -15,6 +17,8 @@ on:
       - 'crates/alizarin-core/**'
       - 'ext/*/python/**'
       - 'ext/*/core/**'
+      - 'crates/alizarin-extension-api/**'
+      - 'tests/data/**'
   workflow_dispatch:
 
 env:
@@ -207,6 +211,12 @@ jobs:
               Pop-Location
             }
           }
+
+      # alizarin's own tests again, now with every extension installed, so the
+      # ones needing an extension's handler (e.g. geo folds) run, not skip.
+      - name: Run alizarin tests with the extensions installed
+        shell: bash
+        run: pytest crates/alizarin-python/tests -v
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4

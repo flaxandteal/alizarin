@@ -1,7 +1,7 @@
 name: Check code
 on:
   push:
-    branches: [main, dev/*]
+    branches: [main, dev/*, release/*]
   pull_request:
 
 jobs:
@@ -218,6 +218,17 @@ jobs:
 
       - name: Install root dependencies
         run: npm ci
+
+      # The NAPI dual-backend tests load each extension's native handler
+      # (ext/*/napi), as @alizarin/*-napi does on import. --legacy-peer-deps:
+      # the @alizarin/napi peer is this checkout, not a published package.
+      - name: Build extension NAPI addons
+        run: |
+          for napi_dir in ext/*/napi/; do
+            [ -f "$napi_dir/Cargo.toml" ] || continue
+            echo "=== Building $(basename "$(dirname "$napi_dir")") NAPI ==="
+            (cd "$napi_dir" && npm install --legacy-peer-deps && npm run build)
+          done
 
       - name: Run dual-backend tests (NAPI)
         run: npx vitest run --config vitest.napi.config.js --testTimeout 30000
