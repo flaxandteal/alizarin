@@ -1,0 +1,23 @@
+{
+ "layer_id": "00000000-0000-4000-8000-0000000000a2",
+ "tiles": {
+  "extent-buildings": {
+   "nodegroup_id": "07a1c38d-5c41-51b2-9285-c884f13044d5",
+   "data": {
+    "c423f13e-50ba-59e3-badd-a583d628defe": {
+     "count": 3,
+     "bbox": [
+      -8,
+      54,
+      -6,
+      55.5
+     ],
+     "geometry_types": [
+      "Point"
+     ]
+    },
+    "6977b51b-bc5a-5757-871a-a2ff09c1a8b6": 3
+   }
+  }
+ }
+}

@@ -1,0 +1,315 @@
+{
+ "author": null,
+ "cards": [
+  {
+   "active": true,
+   "cardid": "af4c7eeb-0b84-5abe-bf51-32bde98dbcae",
+   "component_id": "f05e4d3a-53c1-11e8-b0ea-784f435179ea",
+   "constraints": [],
+   "description": null,
+   "graph_id": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+   "helpenabled": false,
+   "helptext": {},
+   "helptitle": {},
+   "instructions": {},
+   "is_editable": true,
+   "name": {
+    "en": "span"
+   },
+   "nodegroup_id": "c3a64765-d3e0-5652-ac39-e17ce331dfa5",
+   "sortorder": 0,
+   "visible": true
+  }
+ ],
+ "cards_x_nodes_x_widgets": [
+  {
+   "card_id": "af4c7eeb-0b84-5abe-bf51-32bde98dbcae",
+   "config": {
+    "label": "span_value",
+    "placeholder": "Enter text",
+    "width": "100%"
+   },
+   "id": "5ac25c47-b866-50c2-872d-eadd0044e70d",
+   "label": {
+    "en": "span_value"
+   },
+   "node_id": "ead5e648-5dc9-58d1-9289-593b8c689d75",
+   "sortorder": 0,
+   "visible": true,
+   "widget_id": "10000000-0000-0000-0000-000000000011"
+  },
+  {
+   "card_id": "af4c7eeb-0b84-5abe-bf51-32bde98dbcae",
+   "config": {
+    "label": "span_resources",
+    "max": "",
+    "min": "",
+    "placeholder": "Enter number",
+    "width": "100%"
+   },
+   "id": "882064f4-d291-51cf-a256-cb186742efb5",
+   "label": {
+    "en": "span_resources"
+   },
+   "node_id": "ce44b06f-9fc6-596d-92d0-068ab2d73413",
+   "sortorder": 0,
+   "visible": true,
+   "widget_id": "10000000-0000-0000-0000-000000000008"
+  },
+  {
+   "card_id": "af4c7eeb-0b84-5abe-bf51-32bde98dbcae",
+   "config": {
+    "label": "span_role",
+    "placeholder": "Enter text",
+    "width": "100%"
+   },
+   "id": "c442b827-a76a-55e4-a9d3-afb7909c5f53",
+   "label": {
+    "en": "span_role"
+   },
+   "node_id": "e090ae3f-1830-5af8-8db5-4611b2081c87",
+   "sortorder": 0,
+   "visible": true,
+   "widget_id": "10000000-0000-0000-0000-000000000011"
+  }
+ ],
+ "color": null,
+ "config": {},
+ "deploymentdate": null,
+ "deploymentfile": null,
+ "description": null,
+ "edges": [
+  {
+   "description": null,
+   "domainnode_id": "2517456e-5e75-587a-b24f-cd00b834f3f6",
+   "edgeid": "d2d2d289-12d9-5252-890b-e265aab13210",
+   "graph_id": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+   "name": null,
+   "ontologyproperty": "http://www.cidoc-crm.org/cidoc-crm/P2",
+   "rangenode_id": "c3a64765-d3e0-5652-ac39-e17ce331dfa5"
+  },
+  {
+   "description": null,
+   "domainnode_id": "c3a64765-d3e0-5652-ac39-e17ce331dfa5",
+   "edgeid": "6efbb968-ef0c-5669-af1c-a6074c02b580",
+   "graph_id": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+   "name": null,
+   "ontologyproperty": "http://www.cidoc-crm.org/cidoc-crm/P2",
+   "rangenode_id": "ead5e648-5dc9-58d1-9289-593b8c689d75"
+  },
+  {
+   "description": null,
+   "domainnode_id": "c3a64765-d3e0-5652-ac39-e17ce331dfa5",
+   "edgeid": "3c261052-aeca-5f50-900c-4bb07ac720a4",
+   "graph_id": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+   "name": null,
+   "ontologyproperty": "http://www.cidoc-crm.org/cidoc-crm/P2",
+   "rangenode_id": "ce44b06f-9fc6-596d-92d0-068ab2d73413"
+  },
+  {
+   "description": null,
+   "domainnode_id": "c3a64765-d3e0-5652-ac39-e17ce331dfa5",
+   "edgeid": "cc2079b0-a5de-5b76-9ac6-b8072948ff24",
+   "graph_id": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+   "name": null,
+   "ontologyproperty": "http://www.cidoc-crm.org/cidoc-crm/P2",
+   "rangenode_id": "e090ae3f-1830-5af8-8db5-4611b2081c87"
+  }
+ ],
+ "functions_x_graphs": [
+  {
+   "id": "aggregate-spans",
+   "function_id": "60000000-0000-0000-0000-000000000003",
+   "graph_id": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+   "config": {
+    "provider": "60000000-0000-0000-0000-000000000004",
+    "config": {
+     "items": [
+      {
+       "tileid": "span-height",
+       "graph": "db55ce9f-0c61-59b0-bdae-bd2f9517797b",
+       "path": "height",
+       "into": {
+        "span_value": "summary",
+        "span_resources": "resources"
+       }
+      },
+      {
+       "tileid": "span-listed",
+       "graph": "db55ce9f-0c61-59b0-bdae-bd2f9517797b",
+       "path": "height",
+       "where": {
+        "path": "listed",
+        "allowed": [
+         "true"
+        ]
+       },
+       "into": {
+        "span_value": "summary",
+        "span_resources": "resources"
+       }
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "graphid": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+ "iconclass": null,
+ "is_active": true,
+ "is_editable": true,
+ "isresource": true,
+ "jsonldcontext": null,
+ "name": {
+  "en": "Layer"
+ },
+ "nodegroups": [
+  {
+   "cardinality": "n",
+   "legacygroupid": null,
+   "nodegroupid": "c3a64765-d3e0-5652-ac39-e17ce331dfa5",
+   "parentnodegroup_id": null
+  }
+ ],
+ "nodes": [
+  {
+   "alias": "layer",
+   "config": {},
+   "datatype": "semantic",
+   "description": null,
+   "exportable": true,
+   "fieldname": null,
+   "graph_id": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+   "hascustomalias": false,
+   "is_collector": false,
+   "isrequired": false,
+   "issearchable": true,
+   "istopnode": true,
+   "name": "Layer",
+   "nodegroup_id": null,
+   "nodeid": "2517456e-5e75-587a-b24f-cd00b834f3f6",
+   "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E1",
+   "parentproperty": null,
+   "sortorder": 0,
+   "sourcebranchpublication_id": null
+  },
+  {
+   "alias": "span",
+   "config": {},
+   "datatype": "semantic",
+   "description": null,
+   "exportable": false,
+   "fieldname": null,
+   "graph_id": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+   "hascustomalias": false,
+   "is_collector": true,
+   "isrequired": false,
+   "issearchable": true,
+   "istopnode": false,
+   "name": "span",
+   "nodegroup_id": "c3a64765-d3e0-5652-ac39-e17ce331dfa5",
+   "nodeid": "c3a64765-d3e0-5652-ac39-e17ce331dfa5",
+   "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E1",
+   "parentproperty": "http://www.cidoc-crm.org/cidoc-crm/P2",
+   "sortorder": 0,
+   "sourcebranchpublication_id": null
+  },
+  {
+   "alias": "span_value",
+   "config": {},
+   "datatype": "non-localized-string",
+   "description": null,
+   "exportable": false,
+   "fieldname": null,
+   "graph_id": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+   "hascustomalias": false,
+   "is_collector": false,
+   "isrequired": false,
+   "issearchable": true,
+   "istopnode": false,
+   "name": "span_value",
+   "nodegroup_id": "c3a64765-d3e0-5652-ac39-e17ce331dfa5",
+   "nodeid": "ead5e648-5dc9-58d1-9289-593b8c689d75",
+   "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E1",
+   "parentproperty": "http://www.cidoc-crm.org/cidoc-crm/P2",
+   "sortorder": 0,
+   "sourcebranchpublication_id": null
+  },
+  {
+   "alias": "span_resources",
+   "config": {},
+   "datatype": "number",
+   "description": null,
+   "exportable": false,
+   "fieldname": null,
+   "graph_id": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+   "hascustomalias": false,
+   "is_collector": false,
+   "isrequired": false,
+   "issearchable": true,
+   "istopnode": false,
+   "name": "span_resources",
+   "nodegroup_id": "c3a64765-d3e0-5652-ac39-e17ce331dfa5",
+   "nodeid": "ce44b06f-9fc6-596d-92d0-068ab2d73413",
+   "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E1",
+   "parentproperty": "http://www.cidoc-crm.org/cidoc-crm/P2",
+   "sortorder": 0,
+   "sourcebranchpublication_id": null
+  },
+  {
+   "alias": "span_role",
+   "config": {},
+   "datatype": "non-localized-string",
+   "description": null,
+   "exportable": false,
+   "fieldname": null,
+   "graph_id": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+   "hascustomalias": false,
+   "is_collector": false,
+   "isrequired": false,
+   "issearchable": true,
+   "istopnode": false,
+   "name": "span_role",
+   "nodegroup_id": "c3a64765-d3e0-5652-ac39-e17ce331dfa5",
+   "nodeid": "e090ae3f-1830-5af8-8db5-4611b2081c87",
+   "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E1",
+   "parentproperty": "http://www.cidoc-crm.org/cidoc-crm/P2",
+   "sortorder": 0,
+   "sourcebranchpublication_id": null
+  }
+ ],
+ "ontology_id": null,
+ "publication": {
+  "graph_id": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+  "notes": null,
+  "publicationid": "e370b08b-74a3-5ff7-833d-b2408c7b4140",
+  "published_time": "1970-01-01T00:00:00.000"
+ },
+ "relatable_resource_model_ids": [],
+ "resource_2_resource_constraints": null,
+ "root": {
+  "alias": "layer",
+  "config": {},
+  "datatype": "semantic",
+  "description": null,
+  "exportable": true,
+  "fieldname": null,
+  "graph_id": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+  "hascustomalias": false,
+  "is_collector": false,
+  "isrequired": false,
+  "issearchable": true,
+  "istopnode": true,
+  "name": "Layer",
+  "nodegroup_id": null,
+  "nodeid": "2517456e-5e75-587a-b24f-cd00b834f3f6",
+  "ontologyclass": "http://www.cidoc-crm.org/cidoc-crm/E1",
+  "parentproperty": null,
+  "sortorder": 0,
+  "sourcebranchpublication_id": null
+ },
+ "slug": "layer",
+ "subtitle": null,
+ "template_id": "50000000-0000-0000-0000-000000000001",
+ "version": "1"
+}

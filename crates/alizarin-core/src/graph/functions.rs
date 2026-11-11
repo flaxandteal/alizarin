@@ -429,3 +429,49 @@ pub fn apply_aggregate_functions(
     }
     Ok(())
 }
+
+/// Run `resource`'s Aggregate functions over `slice` with the process-wide
+/// registries: its graph and the members' graphs from the registered graphs, and
+/// providers from the global functions registry (core's built-ins plus any a
+/// provider crate registered). The entry point the bindings use.
+pub fn apply_aggregate_functions_to_resource(
+    resource: &mut super::StaticResource,
+    slice: &dyn SliceSource,
+    handlers: &ExtensionTypeRegistry,
+) -> Result<(), String> {
+    let graph_id = &resource.resourceinstance.graph_id;
+    let graph =
+        crate::get_graph(graph_id).ok_or_else(|| format!("graph {graph_id} is not registered"))?;
+    let target_id = resource.resourceinstance.resourceinstanceid.clone();
+    let functions = crate::get_global_functions_registry();
+    let graphs = crate::slice_source::RegisteredGraphs;
+    let context = AggregateContext::new(handlers, &graphs);
+    let mut tiles = resource.tiles.clone().unwrap_or_default();
+    apply_aggregate_functions(
+        &mut tiles,
+        graph.as_ref(),
+        &target_id,
+        slice,
+        &functions,
+        &context,
+    )?;
+    resource.tiles = Some(tiles);
+    Ok(())
+}
+
+/// [`apply_aggregate_functions_to_resource`] for a resource held in full in
+/// `registry`, with the registry as the slice (the resource itself is left out).
+/// The registry entry is updated in place.
+pub fn apply_aggregate_functions_in_registry(
+    registry: &mut super::StaticResourceRegistry,
+    target_id: &str,
+    handlers: &ExtensionTypeRegistry,
+) -> Result<(), String> {
+    let mut resource = registry
+        .get_full(target_id)
+        .cloned()
+        .ok_or_else(|| format!("resource {target_id} is not loaded in full"))?;
+    apply_aggregate_functions_to_resource(&mut resource, &*registry, handlers)?;
+    registry.insert_full(resource);
+    Ok(())
+}

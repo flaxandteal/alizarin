@@ -72,11 +72,13 @@ lazy_static::lazy_static! {
     static ref GLOBAL_EXTENSION_REGISTRY: RwLock<Option<ExtensionTypeRegistry>> =
         RwLock::new(None);
 
-    /// Global graph-attached function registry (Derive / Descriptor providers).
-    /// Populated at binding init (e.g. `alizarin_geo_core::register_functions`);
-    /// consulted by the load-time derive hook. Empty by default → a no-op.
+    /// Global graph-attached function registry (Derive / Descriptor / Aggregate
+    /// providers). Seeded with core's built-ins (`default_functions_registry`,
+    /// i.e. the fold Aggregate); provider crates add theirs at binding init (e.g.
+    /// `alizarin_geo_core::register_functions`). Consulted by the load-time derive
+    /// hook and by `apply_aggregate_functions_to_resource`.
     static ref GLOBAL_FUNCTIONS_REGISTRY: RwLock<FunctionsRegistry> =
-        RwLock::new(FunctionsRegistry::new());
+        RwLock::new(crate::graph::default_functions_registry());
 }
 
 /// A dynamically registered widget definition.
@@ -588,10 +590,11 @@ pub fn get_global_functions_registry() -> FunctionsRegistry {
         .unwrap_or_default()
 }
 
-/// Clear the global function registry (mainly for tests).
+/// Reset the global function registry to core's built-ins, dropping any
+/// registered providers (mainly for tests).
 pub fn clear_global_functions_registry() {
     if let Ok(mut guard) = GLOBAL_FUNCTIONS_REGISTRY.write() {
-        *guard = FunctionsRegistry::new();
+        *guard = crate::graph::default_functions_registry();
     }
 }
 

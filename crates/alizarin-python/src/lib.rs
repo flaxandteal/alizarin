@@ -833,6 +833,24 @@ impl ResourceRegistry {
         pythonize::pythonize(py, &json).map_err(|e| e.into())
     }
 
+    /// Run a resource's Aggregate functions, with this registry as the slice.
+    ///
+    /// The resource must be loaded in full here, and its graph and its members'
+    /// graphs registered (`register_graph`). Its Aggregate functions (e.g. the
+    /// built-in fold) write node values into its tiles, which are updated in
+    /// place; the resource itself is not part of the slice.
+    ///
+    /// Args:
+    ///     target_id: The resource whose Aggregate functions to run (e.g. a Layer resource)
+    fn apply_aggregate_functions(&mut self, target_id: &str) -> PyResult<()> {
+        alizarin_core::apply_aggregate_functions_in_registry(
+            &mut self.inner,
+            target_id,
+            &build_extension_registry(),
+        )
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
+    }
+
     /// Get all full resources for a specific graph
     fn get_all_full_for_graph(&self, py: Python, graph_id: &str) -> PyResult<PyObject> {
         let resources: Vec<&AlizarinStaticResource> = self
@@ -1637,6 +1655,36 @@ fn register_graph(graph_json: String) -> PyResult<String> {
     Ok(graph_id)
 }
 
+/// Run a resource's Aggregate functions over a business-data file, streamed one
+/// resource at a time (so a large layer is never held in memory).
+///
+/// The resource's graph and its members' graphs must be registered
+/// (`register_graph`). The resource itself is left out of the slice if the file
+/// contains it.
+///
+/// Args:
+///     resource_json: The resource (e.g. a Layer resource) as JSON
+///     business_data_path: A `{"business_data": {"resources": [...]}}` file
+///
+/// Returns:
+///     The resource as JSON, with its Aggregate node values written
+#[pyfunction]
+fn apply_aggregate_functions_from_file(
+    resource_json: &str,
+    business_data_path: &str,
+) -> PyResult<String> {
+    let invalid = |e: String| PyErr::new::<pyo3::exceptions::PyValueError, _>(e);
+    let mut resource: AlizarinStaticResource = serde_json::from_str(resource_json)
+        .map_err(|e| invalid(format!("invalid resource: {e}")))?;
+    alizarin_core::apply_aggregate_functions_to_resource(
+        &mut resource,
+        &alizarin_core::BusinessDataFileSlice::new(business_data_path),
+        &build_extension_registry(),
+    )
+    .map_err(invalid)?;
+    serde_json::to_string(&resource).map_err(|e| invalid(e.to_string()))
+}
+
 /// Set a descriptor template on a registered graph.
 ///
 /// Creates or updates the descriptor function config for the given type.
@@ -2174,6 +2222,7 @@ fn get_registered_graph_ids() -> Vec<String> {
 fn alizarin(_py: Python, m: &PyModule) -> PyResult<()> {
     // Graph registry (for batch_merge_resources descriptor computation)
     m.add_function(wrap_pyfunction!(register_graph, m)?)?;
+    m.add_function(wrap_pyfunction!(apply_aggregate_functions_from_file, m)?)?;
     m.add_function(wrap_pyfunction!(get_graph_json, m)?)?;
     m.add_function(wrap_pyfunction!(get_graph_schema, m)?)?;
     m.add_function(wrap_pyfunction!(set_descriptor_template, m)?)?;

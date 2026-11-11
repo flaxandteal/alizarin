@@ -76,6 +76,16 @@ export declare function collectionToSkosXml(collectionJson: any, baseUri: string
 /** Serialize multiple SkosCollections to SKOS RDF/XML. */
 export declare function collectionsToSkosXml(collectionsJson: any, baseUri: string): string
 /**
+ * Run a resource's Aggregate functions over a business-data file, streamed one
+ * resource at a time (so a large layer is never held in memory).
+ *
+ * The resource's graph and its members' graphs must be registered. The resource
+ * itself is left out of the slice if the file contains it. Returns the resource
+ * with its Aggregate node values written. Equivalent to Python's
+ * `apply_aggregate_functions_from_file`.
+ */
+export declare function applyAggregateFunctionsFromFile(resourceJson: string, businessDataPath: string): any
+/**
  * Build a mapping from node alias to collection ID based on graph definition.
  *
  * Equivalent to WASM's `buildAliasToCollectionMap`.
@@ -522,6 +532,16 @@ export declare class NapiStaticResourceRegistry {
   get length(): number
   contains(resourceId: string): boolean
   hasFull(resourceId: string): boolean
+  /**
+   * Run a resource's Aggregate functions, with this registry as the slice.
+   *
+   * The resource must be loaded in full here, and its graph and its members'
+   * graphs registered. Its Aggregate functions (e.g. the built-in fold) write
+   * node values into its tiles, which are updated in place; the resource itself
+   * is not part of the slice. Equivalent to Python's
+   * `ResourceRegistry.apply_aggregate_functions`.
+   */
+  applyAggregateFunctions(targetId: string): void
   /** Get the full resource (with tiles) as a JSON object, or null if only summary stored. */
   getFull(resourceId: string): any | null
   /**

@@ -3177,6 +3177,23 @@ impl StaticResourceRegistry {
         resource_id.and_then(|id| self.0.get_full(&id).map(|r| StaticResource(r.clone())))
     }
 
+    /// Run a resource's Aggregate functions, with this registry as the slice.
+    ///
+    /// The resource must be loaded in full here, and its graph and its members'
+    /// graphs registered. Its Aggregate functions (e.g. the built-in fold) write
+    /// node values into its tiles, which are updated in place; the resource
+    /// itself is not part of the slice. Equivalent to NAPI's and Python's
+    /// `applyAggregateFunctions` / `apply_aggregate_functions`.
+    #[wasm_bindgen(js_name = applyAggregateFunctions)]
+    pub fn apply_aggregate_functions(&mut self, target_id: String) -> Result<(), JsValue> {
+        alizarin_core::apply_aggregate_functions_in_registry(
+            &mut self.0,
+            &target_id,
+            &crate::extension_registry::build_extension_registry(),
+        )
+        .map_err(|e| JsValue::from_str(&e))
+    }
+
     /// Check if a resource has full data stored (not just summary)
     /// Returns false if resource_id is null/undefined
     #[wasm_bindgen(js_name = hasFull)]

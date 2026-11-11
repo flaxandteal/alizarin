@@ -1,0 +1,220 @@
+{
+ "business_data": {
+  "resources": [
+   {
+    "resourceinstance": {
+     "resourceinstanceid": "b1",
+     "graph_id": "db55ce9f-0c61-59b0-bdae-bd2f9517797b",
+     "name": "b1",
+     "descriptors": {}
+    },
+    "tiles": [
+     {
+      "tileid": "b1-listed",
+      "nodegroup_id": "7e1960e9-81f1-5fe5-8f46-c3acea42ef07",
+      "resourceinstance_id": "b1",
+      "parenttile_id": null,
+      "sortorder": 0,
+      "data": {
+       "7e1960e9-81f1-5fe5-8f46-c3acea42ef07": false
+      }
+     },
+     {
+      "tileid": "b1-height",
+      "nodegroup_id": "7fe5d8b6-07d2-57cb-916b-059cafc4df3a",
+      "resourceinstance_id": "b1",
+      "parenttile_id": null,
+      "sortorder": 0,
+      "data": {
+       "7fe5d8b6-07d2-57cb-916b-059cafc4df3a": 3
+      }
+     },
+     {
+      "tileid": "b1-location",
+      "nodegroup_id": "3d17768c-9d86-52f4-93f2-72f7ce5f1c6d",
+      "resourceinstance_id": "b1",
+      "parenttile_id": null,
+      "sortorder": 0,
+      "data": {
+       "3d17768c-9d86-52f4-93f2-72f7ce5f1c6d": {
+        "type": "FeatureCollection",
+        "features": [
+         {
+          "type": "Feature",
+          "properties": {},
+          "geometry": {
+           "type": "Point",
+           "coordinates": [
+            -6,
+            54
+           ]
+          }
+         }
+        ]
+       }
+      }
+     }
+    ]
+   },
+   {
+    "resourceinstance": {
+     "resourceinstanceid": "b2",
+     "graph_id": "db55ce9f-0c61-59b0-bdae-bd2f9517797b",
+     "name": "b2",
+     "descriptors": {}
+    },
+    "tiles": [
+     {
+      "tileid": "b2-listed",
+      "nodegroup_id": "7e1960e9-81f1-5fe5-8f46-c3acea42ef07",
+      "resourceinstance_id": "b2",
+      "parenttile_id": null,
+      "sortorder": 0,
+      "data": {
+       "7e1960e9-81f1-5fe5-8f46-c3acea42ef07": true
+      }
+     },
+     {
+      "tileid": "b2-height",
+      "nodegroup_id": "7fe5d8b6-07d2-57cb-916b-059cafc4df3a",
+      "resourceinstance_id": "b2",
+      "parenttile_id": null,
+      "sortorder": 0,
+      "data": {
+       "7fe5d8b6-07d2-57cb-916b-059cafc4df3a": 12
+      }
+     },
+     {
+      "tileid": "b2-location",
+      "nodegroup_id": "3d17768c-9d86-52f4-93f2-72f7ce5f1c6d",
+      "resourceinstance_id": "b2",
+      "parenttile_id": null,
+      "sortorder": 0,
+      "data": {
+       "3d17768c-9d86-52f4-93f2-72f7ce5f1c6d": {
+        "type": "FeatureCollection",
+        "features": [
+         {
+          "type": "Feature",
+          "properties": {},
+          "geometry": {
+           "type": "Point",
+           "coordinates": [
+            -8,
+            55.5
+           ]
+          }
+         }
+        ]
+       }
+      }
+     }
+    ]
+   },
+   {
+    "resourceinstance": {
+     "resourceinstanceid": "b3",
+     "graph_id": "db55ce9f-0c61-59b0-bdae-bd2f9517797b",
+     "name": "b3",
+     "descriptors": {}
+    },
+    "tiles": [
+     {
+      "tileid": "b3-listed",
+      "nodegroup_id": "7e1960e9-81f1-5fe5-8f46-c3acea42ef07",
+      "resourceinstance_id": "b3",
+      "parenttile_id": null,
+      "sortorder": 0,
+      "data": {
+       "7e1960e9-81f1-5fe5-8f46-c3acea42ef07": true
+      }
+     },
+     {
+      "tileid": "b3-height",
+      "nodegroup_id": "7fe5d8b6-07d2-57cb-916b-059cafc4df3a",
+      "resourceinstance_id": "b3",
+      "parenttile_id": null,
+      "sortorder": 0,
+      "data": {
+       "7fe5d8b6-07d2-57cb-916b-059cafc4df3a": 7
+      }
+     }
+    ]
+   },
+   {
+    "resourceinstance": {
+     "resourceinstanceid": "b4",
+     "graph_id": "db55ce9f-0c61-59b0-bdae-bd2f9517797b",
+     "name": "b4",
+     "descriptors": {}
+    },
+    "tiles": [
+     {
+      "tileid": "b4-listed",
+      "nodegroup_id": "7e1960e9-81f1-5fe5-8f46-c3acea42ef07",
+      "resourceinstance_id": "b4",
+      "parenttile_id": null,
+      "sortorder": 0,
+      "data": {
+       "7e1960e9-81f1-5fe5-8f46-c3acea42ef07": true
+      }
+     },
+     {
+      "tileid": "b4-location",
+      "nodegroup_id": "3d17768c-9d86-52f4-93f2-72f7ce5f1c6d",
+      "resourceinstance_id": "b4",
+      "parenttile_id": null,
+      "sortorder": 0,
+      "data": {
+       "3d17768c-9d86-52f4-93f2-72f7ce5f1c6d": {
+        "type": "FeatureCollection",
+        "features": [
+         {
+          "type": "Feature",
+          "properties": {},
+          "geometry": {
+           "type": "Point",
+           "coordinates": [
+            -7,
+            54.5
+           ]
+          }
+         }
+        ]
+       }
+      }
+     }
+    ]
+   },
+   {
+    "resourceinstance": {
+     "resourceinstanceid": "00000000-0000-4000-8000-0000000000a1",
+     "graph_id": "85be2b62-fdac-52a7-a7a7-b10fce3e4719",
+     "name": "00000000-0000-4000-8000-0000000000a1",
+     "descriptors": {}
+    },
+    "tiles": [
+     {
+      "tileid": "span-height",
+      "nodegroup_id": "c3a64765-d3e0-5652-ac39-e17ce331dfa5",
+      "resourceinstance_id": "00000000-0000-4000-8000-0000000000a1",
+      "parenttile_id": null,
+      "sortorder": 0,
+      "data": {
+       "e090ae3f-1830-5af8-8db5-4611b2081c87": "display-extent"
+      }
+     }
+    ]
+   },
+   {
+    "resourceinstance": {
+     "resourceinstanceid": "00000000-0000-4000-8000-0000000000a2",
+     "graph_id": "19701c47-f19b-537c-a2db-10ade1d56284",
+     "name": "00000000-0000-4000-8000-0000000000a2",
+     "descriptors": {}
+    },
+    "tiles": []
+   }
+  ]
+ }
+}

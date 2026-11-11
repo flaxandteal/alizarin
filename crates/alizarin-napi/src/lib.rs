@@ -436,6 +436,23 @@ impl NapiStaticResourceRegistry {
         self.inner.has_full(&resource_id)
     }
 
+    /// Run a resource's Aggregate functions, with this registry as the slice.
+    ///
+    /// The resource must be loaded in full here, and its graph and its members'
+    /// graphs registered. Its Aggregate functions (e.g. the built-in fold) write
+    /// node values into its tiles, which are updated in place; the resource itself
+    /// is not part of the slice. Equivalent to Python's
+    /// `ResourceRegistry.apply_aggregate_functions`.
+    #[napi]
+    pub fn apply_aggregate_functions(&mut self, target_id: String) -> Result<()> {
+        alizarin_core::apply_aggregate_functions_in_registry(
+            &mut self.inner,
+            &target_id,
+            &extension_registry(),
+        )
+        .map_err(napi::Error::from_reason)
+    }
+
     /// Get the full resource (with tiles) as a JSON object, or null if only summary stored.
     #[napi]
     pub fn get_full(&self, resource_id: String) -> Result<Option<serde_json::Value>> {
@@ -803,6 +820,33 @@ pub fn collections_to_skos_xml_napi(
         &collections,
         &base_uri,
     ))
+}
+
+// ============================================================================
+// Aggregate functions
+// ============================================================================
+
+/// Run a resource's Aggregate functions over a business-data file, streamed one
+/// resource at a time (so a large layer is never held in memory).
+///
+/// The resource's graph and its members' graphs must be registered. The resource
+/// itself is left out of the slice if the file contains it. Returns the resource
+/// with its Aggregate node values written. Equivalent to Python's
+/// `apply_aggregate_functions_from_file`.
+#[napi(js_name = "applyAggregateFunctionsFromFile")]
+pub fn apply_aggregate_functions_from_file(
+    resource_json: String,
+    business_data_path: String,
+) -> Result<serde_json::Value> {
+    let mut resource: StaticResource = serde_json::from_str(&resource_json)
+        .map_err(|e| napi::Error::from_reason(format!("invalid resource: {e}")))?;
+    alizarin_core::apply_aggregate_functions_to_resource(
+        &mut resource,
+        &alizarin_core::BusinessDataFileSlice::new(business_data_path),
+        &extension_registry(),
+    )
+    .map_err(napi::Error::from_reason)?;
+    serde_json::to_value(&resource).map_err(|e| napi::Error::from_reason(e.to_string()))
 }
 
 // ============================================================================

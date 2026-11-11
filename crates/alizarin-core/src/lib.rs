@@ -51,6 +51,8 @@ pub use graph::{
     aggregate_functions,
     allocate_multi_tile_id,
     apply_aggregate_functions,
+    apply_aggregate_functions_in_registry,
+    apply_aggregate_functions_to_resource,
     apply_compute_tiles,
     apply_derive_functions,
     batch_merge_resources,

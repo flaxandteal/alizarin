@@ -1,0 +1,28 @@
+{
+ "layer_id": "00000000-0000-4000-8000-0000000000a1",
+ "tiles": {
+  "span-height": {
+   "nodegroup_id": "c3a64765-d3e0-5652-ac39-e17ce331dfa5",
+   "data": {
+    "e090ae3f-1830-5af8-8db5-4611b2081c87": "display-extent",
+    "ead5e648-5dc9-58d1-9289-593b8c689d75": {
+     "count": 3,
+     "min": 3,
+     "max": 12
+    },
+    "ce44b06f-9fc6-596d-92d0-068ab2d73413": 3
+   }
+  },
+  "span-listed": {
+   "nodegroup_id": "c3a64765-d3e0-5652-ac39-e17ce331dfa5",
+   "data": {
+    "ead5e648-5dc9-58d1-9289-593b8c689d75": {
+     "count": 2,
+     "min": 7,
+     "max": 12
+    },
+    "ce44b06f-9fc6-596d-92d0-068ab2d73413": 2
+   }
+  }
+ }
+}

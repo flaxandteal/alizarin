@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn global_registry_round_trip() {
         alizarin_core::clear_global_functions_registry();
-        // Empty global registry → derive is a no-op.
+        // Reset to core's built-ins, so no utm provider → derive is a no-op.
         assert!(alizarin_core::get_global_functions_registry()
             .derive(PROVIDER_KEY)
             .is_none());

@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiEnsureNodegroupResult, NapiValuesFromNodegroupResult, NapiResourceInstanceWrapper, NapiResourceModelWrapper, NapiStaticDomainValue, NapiNodeConfigBoolean, NapiNodeConfigConcept, NapiNodeConfigDomain, registerExtensionHandler, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
+const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiEnsureNodegroupResult, NapiValuesFromNodegroupResult, NapiResourceInstanceWrapper, NapiResourceModelWrapper, NapiStaticDomainValue, NapiNodeConfigBoolean, NapiNodeConfigConcept, NapiNodeConfigDomain, registerExtensionHandler, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, applyAggregateFunctionsFromFile, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
 
 module.exports.NapiRdmCache = NapiRdmCache
 module.exports.NapiNodeConfigManager = NapiNodeConfigManager
@@ -343,6 +343,7 @@ module.exports.parseSkosXml = parseSkosXml
 module.exports.parseSkosXmlToCollection = parseSkosXmlToCollection
 module.exports.collectionToSkosXml = collectionToSkosXml
 module.exports.collectionsToSkosXml = collectionsToSkosXml
+module.exports.applyAggregateFunctionsFromFile = applyAggregateFunctionsFromFile
 module.exports.buildAliasToCollectionMap = buildAliasToCollectionMap
 module.exports.findNeededCollections = findNeededCollections
 module.exports.summaryToMetadata = summaryToMetadata

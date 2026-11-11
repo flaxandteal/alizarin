@@ -45,9 +45,10 @@ pub use descriptors::{
     COMPUTE_TILES_FUNCTION_ID, DESCRIPTOR_FUNCTION_ID,
 };
 pub use functions::{
-    aggregate_functions, apply_aggregate_functions, apply_derive_functions,
-    default_functions_registry, AggregateConfig, AggregateContext, AggregateProvider,
-    DeriveProvider, DescriptorProvider, FunctionsRegistry, NodeValueWrite, RegisteredFunction,
+    aggregate_functions, apply_aggregate_functions, apply_aggregate_functions_in_registry,
+    apply_aggregate_functions_to_resource, apply_derive_functions, default_functions_registry,
+    AggregateConfig, AggregateContext, AggregateProvider, DeriveProvider, DescriptorProvider,
+    FunctionsRegistry, NodeValueWrite, RegisteredFunction,
 };
 pub use graph_lookup::GraphLookup;
 pub use layered_graph::LayeredGraph;
