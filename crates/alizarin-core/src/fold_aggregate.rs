@@ -48,7 +48,7 @@ use serde_json::Value;
 use crate::datatype_fold::{fold_identity, fold_values};
 use crate::graph::{
     AggregateConfig, AggregateContext, AggregateProvider, GraphLookup, NodeValueWrite, StaticGraph,
-    StaticNode,
+    StaticNode, StaticTile,
 };
 use crate::graph_model_access::GraphModelAccess;
 use crate::instance_wrapper_core::ModelAccess;
@@ -124,9 +124,63 @@ struct Plan {
 #[derive(Clone)]
 struct Acc {
     summary: Value,
+    /// Whether any value has been folded (so `summary` means something).
+    seen: bool,
     values: usize,
     resources: usize,
     skipped: usize,
+}
+
+impl Acc {
+    fn empty(p: &Plan) -> Acc {
+        Acc {
+            summary: p.identity.clone(),
+            seen: false,
+            values: 0,
+            resources: 0,
+            skipped: 0,
+        }
+    }
+
+    /// An accumulator resumed from the node values an earlier run stored for it
+    /// (`stored(output)`): the summary from `summary`, else `summary_text`, and
+    /// whichever counts the item writes. Outputs it doesn't write start empty.
+    fn resume(p: &Plan, stored: impl Fn(Output) -> Option<Value>) -> Result<Acc, String> {
+        let summary = match stored(Output::Summary).filter(|v| !v.is_null()) {
+            Some(summary) => Some(summary),
+            None => match stored(Output::SummaryText) {
+                Some(Value::String(text)) => Some(
+                    serde_json::from_str(&text)
+                        .map_err(|e| format!("stored summary text is not JSON: {e}"))?,
+                ),
+                _ => None,
+            },
+        };
+        let count = |output| {
+            stored(output)
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize)
+                .unwrap_or(0)
+        };
+        let (values, resources, skipped) = (
+            count(Output::Values),
+            count(Output::Resources),
+            count(Output::Skipped),
+        );
+        Ok(Acc {
+            seen: summary.is_some() || values > 0 || resources > 0,
+            summary: summary.unwrap_or_else(|| p.identity.clone()),
+            values,
+            resources,
+            skipped,
+        })
+    }
+}
+
+/// One accumulator per item, or per group value for a `group_by` item.
+struct Totals {
+    singles: Vec<Acc>,
+    groups: Vec<BTreeMap<String, Acc>>,
 }
 
 impl AggregateProvider for FoldAggregate {
@@ -138,112 +192,200 @@ impl AggregateProvider for FoldAggregate {
         config: &AggregateConfig,
         context: &AggregateContext<'_>,
     ) -> Result<Vec<NodeValueWrite>, String> {
-        let parsed: FoldConfig = serde_json::from_value(config.config.clone())
-            .map_err(|e| format!("invalid fold config: {e}"))?;
-        let plans = parsed
-            .items
-            .iter()
-            .enumerate()
-            .map(|(i, item)| plan(item, graph, context).map_err(|e| format!("item {i}: {e}")))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let empty = |p: &Plan| Acc {
-            summary: p.identity.clone(),
-            values: 0,
-            resources: 0,
-            skipped: 0,
+        let plans = parse_plans(config, graph, context)?;
+        let mut totals = Totals {
+            singles: plans.iter().map(Acc::empty).collect(),
+            groups: plans.iter().map(|_| BTreeMap::new()).collect(),
         };
-        // One accumulator per item, or per group value for a group_by item.
-        let mut singles: Vec<Acc> = plans.iter().map(empty).collect();
-        let mut groups: Vec<BTreeMap<String, Acc>> =
-            plans.iter().map(|_| BTreeMap::new()).collect();
+        fold_slice(&plans, &mut totals, slice, context)?;
+        Ok(writes(&plans, &totals))
+    }
 
-        slice.visit(&mut |member: SliceMember<'_>| {
-            for (i, p) in plans.iter().enumerate() {
-                if member.graph_id != p.graph_id {
-                    continue;
-                }
-                if let Some((node, allowed)) = &p.where_ {
-                    let passes = member
-                        .tiles
-                        .iter()
-                        .filter_map(|t| t.data.get(node))
-                        .any(|v| keys(v).iter().any(|k| allowed.contains(k)));
-                    if !passes {
-                        continue;
-                    }
-                }
-                let values: Vec<&Value> = member
-                    .tiles
-                    .iter()
-                    .filter_map(|t| t.data.get(&p.node_id))
-                    .filter(|v| !v.is_null())
-                    .collect();
-                let fold_into = |acc: &mut Acc| -> Result<(), String> {
-                    let step = fold_values(
-                        &p.datatype,
-                        acc.summary.take(),
-                        &values,
-                        p.node_config.as_ref(),
-                        Some(context.handlers),
-                    )
-                    .map_err(|e| format!("item {i}, resource {}: {e}", member.resource_id))?;
-                    let folded = values.len() - step.skipped;
-                    acc.summary = step.summary;
-                    acc.values += folded;
-                    acc.skipped += step.skipped;
-                    if folded > 0 {
-                        acc.resources += 1;
-                    }
-                    Ok(())
-                };
-                match &p.group_node {
-                    None => fold_into(&mut singles[i])?,
-                    Some(group_node) => {
-                        let group_keys: BTreeSet<String> = member
-                            .tiles
-                            .iter()
-                            .filter_map(|t| t.data.get(group_node))
-                            .flat_map(keys)
-                            .collect();
-                        for key in group_keys {
-                            let acc = groups[i].entry(key).or_insert_with(|| empty(p));
-                            fold_into(acc)?;
-                        }
-                    }
-                }
+    /// Resume each item from the node values stored in `tiles`, fold only the
+    /// `added` members, and write the expanded totals. Earlier members are never
+    /// revisited; a loose stored summary stays loose.
+    fn add(
+        &self,
+        _target_id: &str,
+        graph: &dyn GraphLookup,
+        added: &dyn SliceSource,
+        tiles: &[StaticTile],
+        config: &AggregateConfig,
+        context: &AggregateContext<'_>,
+    ) -> Option<Result<Vec<NodeValueWrite>, String>> {
+        Some((|| {
+            let plans = parse_plans(config, graph, context)?;
+            let mut totals = resume(&plans, tiles)?;
+            fold_slice(&plans, &mut totals, added, context)?;
+            Ok(writes(&plans, &totals))
+        })())
+    }
+}
+
+fn parse_plans(
+    config: &AggregateConfig,
+    graph: &dyn GraphLookup,
+    context: &AggregateContext<'_>,
+) -> Result<Vec<Plan>, String> {
+    let parsed: FoldConfig = serde_json::from_value(config.config.clone())
+        .map_err(|e| format!("invalid fold config: {e}"))?;
+    parsed
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| plan(item, graph, context).map_err(|e| format!("item {i}: {e}")))
+        .collect()
+}
+
+/// Each item's totals as an earlier run stored them in `tiles`.
+fn resume(plans: &[Plan], tiles: &[StaticTile]) -> Result<Totals, String> {
+    let mut totals = Totals {
+        singles: Vec::with_capacity(plans.len()),
+        groups: Vec::with_capacity(plans.len()),
+    };
+    for (i, p) in plans.iter().enumerate() {
+        let tile = tiles
+            .iter()
+            .find(|t| t.tileid.as_deref() == Some(p.tileid.as_str()));
+        // The value stored for `output`, if the item writes it and it's set.
+        let stored = |output: Output| -> Option<&Value> {
+            let (node_id, _) = p
+                .into
+                .iter()
+                .find(|(_, o)| std::mem::discriminant(o) == std::mem::discriminant(&output))?;
+            tile?.data.get(node_id).filter(|v| !v.is_null())
+        };
+        let item = |e: String| format!("item {i}: {e}");
+        match &p.group_node {
+            None => {
+                totals
+                    .singles
+                    .push(Acc::resume(p, |o| stored(o).cloned()).map_err(item)?);
+                totals.groups.push(BTreeMap::new());
             }
-            Ok(())
-        })?;
-
-        let mut writes = Vec::new();
-        for (i, p) in plans.iter().enumerate() {
-            for (node_id, output) in &p.into {
-                let value = match &p.group_node {
-                    None => output_value(&singles[i], *output),
-                    Some(_) => Value::Object(
-                        groups[i]
-                            .iter()
-                            .map(|(key, acc)| (key.clone(), output_value(acc, *output)))
-                            .collect(),
-                    ),
-                };
-                writes.push(NodeValueWrite {
-                    tileid: p.tileid.clone(),
-                    node_id: node_id.clone(),
-                    value,
-                });
+            Some(_) => {
+                let outputs = [
+                    Output::Summary,
+                    Output::SummaryText,
+                    Output::Values,
+                    Output::Resources,
+                    Output::Skipped,
+                ];
+                let keys: BTreeSet<String> = outputs
+                    .iter()
+                    .filter_map(|o| stored(*o)?.as_object())
+                    .flat_map(|by_group| by_group.keys().cloned())
+                    .collect();
+                let mut groups = BTreeMap::new();
+                for key in keys {
+                    let acc = Acc::resume(p, |o| stored(o)?.get(&key).cloned()).map_err(item)?;
+                    groups.insert(key, acc);
+                }
+                totals.singles.push(Acc::empty(p));
+                totals.groups.push(groups);
             }
         }
-        Ok(writes)
     }
+    Ok(totals)
+}
+
+/// Fold `slice`'s members into `totals`, item by item, in one visit.
+fn fold_slice(
+    plans: &[Plan],
+    totals: &mut Totals,
+    slice: &dyn SliceSource,
+    context: &AggregateContext<'_>,
+) -> Result<(), String> {
+    let Totals { singles, groups } = totals;
+    slice.visit(&mut |member: SliceMember<'_>| {
+        for (i, p) in plans.iter().enumerate() {
+            if member.graph_id != p.graph_id {
+                continue;
+            }
+            if let Some((node, allowed)) = &p.where_ {
+                let passes = member
+                    .tiles
+                    .iter()
+                    .filter_map(|t| t.data.get(node))
+                    .any(|v| keys(v).iter().any(|k| allowed.contains(k)));
+                if !passes {
+                    continue;
+                }
+            }
+            let values: Vec<&Value> = member
+                .tiles
+                .iter()
+                .filter_map(|t| t.data.get(&p.node_id))
+                .filter(|v| !v.is_null())
+                .collect();
+            let fold_into = |acc: &mut Acc| -> Result<(), String> {
+                let step = fold_values(
+                    &p.datatype,
+                    acc.summary.take(),
+                    &values,
+                    p.node_config.as_ref(),
+                    Some(context.handlers),
+                )
+                .map_err(|e| format!("item {i}, resource {}: {e}", member.resource_id))?;
+                let folded = values.len() - step.skipped;
+                acc.summary = step.summary;
+                acc.values += folded;
+                acc.skipped += step.skipped;
+                if folded > 0 {
+                    acc.resources += 1;
+                    acc.seen = true;
+                }
+                Ok(())
+            };
+            match &p.group_node {
+                None => fold_into(&mut singles[i])?,
+                Some(group_node) => {
+                    let group_keys: BTreeSet<String> = member
+                        .tiles
+                        .iter()
+                        .filter_map(|t| t.data.get(group_node))
+                        .flat_map(keys)
+                        .collect();
+                    for key in group_keys {
+                        let acc = groups[i].entry(key).or_insert_with(|| Acc::empty(p));
+                        fold_into(acc)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    })
+}
+
+/// The node values to write for `totals`.
+fn writes(plans: &[Plan], totals: &Totals) -> Vec<NodeValueWrite> {
+    let mut writes = Vec::new();
+    for (i, p) in plans.iter().enumerate() {
+        for (node_id, output) in &p.into {
+            let value = match &p.group_node {
+                None => output_value(&totals.singles[i], *output),
+                Some(_) => Value::Object(
+                    totals.groups[i]
+                        .iter()
+                        .map(|(key, acc)| (key.clone(), output_value(acc, *output)))
+                        .collect(),
+                ),
+            };
+            writes.push(NodeValueWrite {
+                tileid: p.tileid.clone(),
+                node_id: node_id.clone(),
+                value,
+            });
+        }
+    }
+    writes
 }
 
 fn output_value(acc: &Acc, output: Output) -> Value {
     match output {
-        Output::Summary if acc.values == 0 => Value::Null,
+        Output::Summary if !acc.seen => Value::Null,
         Output::Summary => acc.summary.clone(),
-        Output::SummaryText if acc.values == 0 => Value::Null,
+        Output::SummaryText if !acc.seen => Value::Null,
         Output::SummaryText => Value::String(acc.summary.to_string()),
         Output::Values => acc.values.into(),
         Output::Resources => acc.resources.into(),

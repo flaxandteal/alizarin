@@ -3194,6 +3194,27 @@ impl StaticResourceRegistry {
         .map_err(|e| JsValue::from_str(&e))
     }
 
+    /// Expand a resource's Aggregate node values with members added since the
+    /// last call, without revisiting earlier ones (`addedIds` must already be
+    /// loaded in full here). Call it when the node values are about to be
+    /// consumed: additions compose, so the ids since the last call go in one
+    /// batch. Add each member once; re-adding one counts it again. Errors if a
+    /// provider can't add incrementally (run `applyAggregateFunctions` then).
+    #[wasm_bindgen(js_name = applyAggregateAdditions)]
+    pub fn apply_aggregate_additions(
+        &mut self,
+        target_id: String,
+        added_ids: Vec<String>,
+    ) -> Result<(), JsValue> {
+        alizarin_core::apply_aggregate_additions_in_registry(
+            &mut self.0,
+            &target_id,
+            &added_ids,
+            &crate::extension_registry::build_extension_registry(),
+        )
+        .map_err(|e| JsValue::from_str(&e))
+    }
+
     /// Check if a resource has full data stored (not just summary)
     /// Returns false if resource_id is null/undefined
     #[wasm_bindgen(js_name = hasFull)]

@@ -76,6 +76,20 @@ def test_geometry_folds_through_geo_over_the_c_abi():
     assert layer_tiles(registry.get_full(expected["layer_id"])) == expected["tiles"]
 
 
+def test_adding_members_in_turns_matches_a_full_run():
+    registry = loaded_registry()
+    # As a loop would: the ids added since the last consumer event, per call.
+    for turn in (["b1"], ["b2", "b3"], ["b4"]):
+        registry.apply_aggregate_additions(EXPECTED["layer_id"], turn)
+    assert layer_tiles(registry.get_full(EXPECTED["layer_id"])) == EXPECTED["tiles"]
+
+
+def test_adding_an_unloaded_member_is_an_error():
+    registry = loaded_registry()
+    with pytest.raises(ValueError, match="not loaded in full"):
+        registry.apply_aggregate_additions(EXPECTED["layer_id"], ["no-such-member"])
+
+
 def test_an_unknown_target_is_an_error():
     with pytest.raises(ValueError, match="not loaded in full"):
         alizarin.ResourceRegistry().apply_aggregate_functions("no-such-resource")

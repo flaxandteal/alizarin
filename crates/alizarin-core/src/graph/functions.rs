@@ -82,6 +82,25 @@ pub trait AggregateProvider: Send + Sync {
         config: &AggregateConfig,
         context: &AggregateContext<'_>,
     ) -> Result<Vec<NodeValueWrite>, String>;
+
+    /// Expand this Aggregate's node values with the `added` members only, without
+    /// revisiting earlier ones, by merging them into the totals already stored in
+    /// `tiles` (the calling resource's current tiles). Returns the node values to
+    /// write, as [`aggregate`](Self::aggregate) does.
+    ///
+    /// `None` (the default) means this provider can't, and the caller must run
+    /// [`aggregate`](Self::aggregate) over the whole slice instead.
+    fn add(
+        &self,
+        _target_id: &str,
+        _graph: &dyn GraphLookup,
+        _added: &dyn SliceSource,
+        _tiles: &[StaticTile],
+        _config: &AggregateConfig,
+        _context: &AggregateContext<'_>,
+    ) -> Option<Result<Vec<NodeValueWrite>, String>> {
+        None
+    }
 }
 
 /// One node value an Aggregate writes: `data[node_id] = value` in the calling
@@ -326,12 +345,75 @@ pub fn apply_aggregate_functions(
     functions: &FunctionsRegistry,
     context: &AggregateContext<'_>,
 ) -> Result<(), String> {
-    let configs = aggregate_functions(graph)?;
     let slice = ExcludeTarget {
         inner: slice,
         target_id,
     };
+    run_aggregates(tiles, graph, target_id, functions, |provider, config, _| {
+        provider.aggregate(target_id, graph, &slice, config, context)
+    })
+}
 
+/// Expand the graph's **Aggregate** functions' node values in `tiles` with the
+/// `added` members only, without revisiting earlier ones: each provider merges
+/// the additions into the totals already stored in `tiles`
+/// ([`AggregateProvider::add`]).
+///
+/// An event response, like [`apply_aggregate_functions`]: call it when the node
+/// values are about to be consumed, not on every insertion. Additions compose,
+/// so the members added since the last call can be passed in one batch, with
+/// the same result as adding them one at a time.
+///
+/// - Each member must be added once: a provider doesn't track membership, so
+///   adding one again counts it again (extents are unaffected; counts aren't).
+/// - Errors (and leaves `tiles` untouched) if any of the graph's Aggregate
+///   providers can't add incrementally; run [`apply_aggregate_functions`] then.
+/// - The calling resource is left out of `added`; otherwise as
+///   [`apply_aggregate_functions`] (same checks, same writes, all-or-nothing).
+pub fn apply_aggregate_additions(
+    tiles: &mut Vec<StaticTile>,
+    graph: &dyn GraphLookup,
+    target_id: &str,
+    added: &dyn SliceSource,
+    functions: &FunctionsRegistry,
+    context: &AggregateContext<'_>,
+) -> Result<(), String> {
+    let added = ExcludeTarget {
+        inner: added,
+        target_id,
+    };
+    run_aggregates(
+        tiles,
+        graph,
+        target_id,
+        functions,
+        |provider, config, current| {
+            provider
+                .add(target_id, graph, &added, current, config, context)
+                .unwrap_or_else(|| {
+                    Err(
+                        "can't add incrementally; run apply_aggregate_functions instead"
+                            .to_string(),
+                    )
+                })
+        },
+    )
+}
+
+/// Collect every Aggregate function's node values (from `produce`, given the
+/// provider, its config and the current tiles), check them, then write them.
+fn run_aggregates(
+    tiles: &mut Vec<StaticTile>,
+    graph: &dyn GraphLookup,
+    target_id: &str,
+    functions: &FunctionsRegistry,
+    mut produce: impl FnMut(
+        &dyn AggregateProvider,
+        &AggregateConfig,
+        &[StaticTile],
+    ) -> Result<Vec<NodeValueWrite>, String>,
+) -> Result<(), String> {
+    let configs = aggregate_functions(graph)?;
     let mut writes: Vec<NodeValueWrite> = Vec::new();
     for (index, config) in configs.iter().enumerate() {
         let provider = functions.aggregate(&config.provider).ok_or_else(|| {
@@ -340,8 +422,7 @@ pub fn apply_aggregate_functions(
                 config.provider
             )
         })?;
-        let produced = provider
-            .aggregate(target_id, graph, &slice, config, context)
+        let produced = produce(provider.as_ref(), config, tiles)
             .map_err(|e| format!("aggregate function {index} ({}): {e}", config.provider))?;
         writes.extend(produced);
     }
@@ -439,6 +520,45 @@ pub fn apply_aggregate_functions_to_resource(
     slice: &dyn SliceSource,
     handlers: &ExtensionTypeRegistry,
 ) -> Result<(), String> {
+    with_process_registries(
+        resource,
+        handlers,
+        |tiles, graph, target_id, functions, context| {
+            apply_aggregate_functions(tiles, graph, target_id, slice, functions, context)
+        },
+    )
+}
+
+/// [`apply_aggregate_additions`] for `resource` with the process-wide registries,
+/// as [`apply_aggregate_functions_to_resource`] does for a full run.
+pub fn apply_aggregate_additions_to_resource(
+    resource: &mut super::StaticResource,
+    added: &dyn SliceSource,
+    handlers: &ExtensionTypeRegistry,
+) -> Result<(), String> {
+    with_process_registries(
+        resource,
+        handlers,
+        |tiles, graph, target_id, functions, context| {
+            apply_aggregate_additions(tiles, graph, target_id, added, functions, context)
+        },
+    )
+}
+
+/// Run `f` over `resource`'s tiles with its registered graph, the global
+/// functions registry and the registered member graphs; store the tiles back
+/// only if `f` succeeds.
+fn with_process_registries(
+    resource: &mut super::StaticResource,
+    handlers: &ExtensionTypeRegistry,
+    f: impl FnOnce(
+        &mut Vec<StaticTile>,
+        &dyn GraphLookup,
+        &str,
+        &FunctionsRegistry,
+        &AggregateContext<'_>,
+    ) -> Result<(), String>,
+) -> Result<(), String> {
     let graph_id = &resource.resourceinstance.graph_id;
     let graph =
         crate::get_graph(graph_id).ok_or_else(|| format!("graph {graph_id} is not registered"))?;
@@ -447,15 +567,59 @@ pub fn apply_aggregate_functions_to_resource(
     let graphs = crate::slice_source::RegisteredGraphs;
     let context = AggregateContext::new(handlers, &graphs);
     let mut tiles = resource.tiles.clone().unwrap_or_default();
-    apply_aggregate_functions(
-        &mut tiles,
-        graph.as_ref(),
-        &target_id,
-        slice,
-        &functions,
-        &context,
-    )?;
+    f(&mut tiles, graph.as_ref(), &target_id, &functions, &context)?;
     resource.tiles = Some(tiles);
+    Ok(())
+}
+
+/// The members of a registry named by id, as a slice. Every id must be loaded
+/// in full: a missing one is an error, not silently skipped.
+struct RegistryMembers<'a> {
+    registry: &'a super::StaticResourceRegistry,
+    ids: &'a [String],
+}
+
+impl SliceSource for RegistryMembers<'_> {
+    fn visit(
+        &self,
+        f: &mut dyn FnMut(SliceMember<'_>) -> Result<(), String>,
+    ) -> Result<(), String> {
+        for id in self.ids {
+            let resource = self
+                .registry
+                .get_full(id)
+                .ok_or_else(|| format!("resource {id} is not loaded in full"))?;
+            f(SliceMember {
+                graph_id: &resource.resourceinstance.graph_id,
+                resource_id: &resource.resourceinstance.resourceinstanceid,
+                tiles: resource.tiles.as_deref().unwrap_or(&[]),
+            })?;
+        }
+        Ok(())
+    }
+}
+
+/// [`apply_aggregate_additions`] for a resource held in full in `registry`: the
+/// members `added_ids` (already merged into the registry) are folded into its
+/// stored totals, and the registry entry is updated in place. The event-response
+/// form for a loop that adds members over time: pass the ids added since the
+/// last call.
+pub fn apply_aggregate_additions_in_registry(
+    registry: &mut super::StaticResourceRegistry,
+    target_id: &str,
+    added_ids: &[String],
+    handlers: &ExtensionTypeRegistry,
+) -> Result<(), String> {
+    let mut resource = registry
+        .get_full(target_id)
+        .cloned()
+        .ok_or_else(|| format!("resource {target_id} is not loaded in full"))?;
+    let added = RegistryMembers {
+        registry,
+        ids: added_ids,
+    };
+    apply_aggregate_additions_to_resource(&mut resource, &added, handlers)?;
+    registry.insert_full(resource);
     Ok(())
 }
 

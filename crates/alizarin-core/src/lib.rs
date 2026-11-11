@@ -50,6 +50,9 @@ pub mod type_serialization;
 pub use graph::{
     aggregate_functions,
     allocate_multi_tile_id,
+    apply_aggregate_additions,
+    apply_aggregate_additions_in_registry,
+    apply_aggregate_additions_to_resource,
     apply_aggregate_functions,
     apply_aggregate_functions_in_registry,
     apply_aggregate_functions_to_resource,

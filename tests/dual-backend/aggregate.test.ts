@@ -113,6 +113,22 @@ describe(`Aggregate functions [${getBackend()} backend]`, () => {
     expect(layerTiles(registry)).toEqual(first);
   });
 
+  test("adding members in turns reaches the same node values as a full run", () => {
+    const registry = createResourceRegistry();
+    registry.loadFromBusinessDataBytes(
+      new TextEncoder().encode(JSON.stringify(BusinessData)),
+      true,
+      true,
+    );
+    // As a loop would: the ids added since the last consumer event, per call.
+    for (const turn of [["b1"], ["b2", "b3"], ["b4"]]) {
+      registry.applyAggregateAdditions(Expected.layer_id, turn);
+      registry.applyAggregateAdditions(ExpectedGeo.layer_id, turn);
+    }
+    expect(layerTiles(registry)).toEqual(Expected.tiles);
+    expect(layerTiles(registry, ExpectedGeo.layer_id)).toEqual(ExpectedGeo.tiles);
+  });
+
   test("an unknown target is an error", () => {
     const registry = createResourceRegistry();
     expect(() => registry.applyAggregateFunctions("no-such-resource")).toThrow(/not loaded in full/);

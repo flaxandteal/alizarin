@@ -542,6 +542,15 @@ export declare class NapiStaticResourceRegistry {
    * `ResourceRegistry.apply_aggregate_functions`.
    */
   applyAggregateFunctions(targetId: string): void
+  /**
+   * Expand a resource's Aggregate node values with members added since the
+   * last call, without revisiting earlier ones (`addedIds` must already be
+   * loaded in full here). Call it when the node values are about to be
+   * consumed: additions compose, so the ids since the last call go in one
+   * batch. Add each member once; re-adding one counts it again. Errors if a
+   * provider can't add incrementally. Equivalent to WASM's and Python's.
+   */
+  applyAggregateAdditions(targetId: string, addedIds: Array<string>): void
   /** Get the full resource (with tiles) as a JSON object, or null if only summary stored. */
   getFull(resourceId: string): any | null
   /**

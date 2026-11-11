@@ -851,6 +851,31 @@ impl ResourceRegistry {
         .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
     }
 
+    /// Expand a resource's Aggregate node values with members added since the
+    /// last call, without revisiting earlier ones.
+    ///
+    /// Call it when the node values are about to be consumed: additions compose,
+    /// so the ids added since the last call go in one batch. Add each member
+    /// once; re-adding one counts it again. Raises if a provider can't add
+    /// incrementally (run `apply_aggregate_functions` then).
+    ///
+    /// Args:
+    ///     target_id: The resource whose Aggregate node values to expand
+    ///     added_ids: Members added since the last call, already loaded in full here
+    fn apply_aggregate_additions(
+        &mut self,
+        target_id: &str,
+        added_ids: Vec<String>,
+    ) -> PyResult<()> {
+        alizarin_core::apply_aggregate_additions_in_registry(
+            &mut self.inner,
+            target_id,
+            &added_ids,
+            &build_extension_registry(),
+        )
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
+    }
+
     /// Get all full resources for a specific graph
     fn get_all_full_for_graph(&self, py: Python, graph_id: &str) -> PyResult<PyObject> {
         let resources: Vec<&AlizarinStaticResource> = self

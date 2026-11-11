@@ -8,11 +8,11 @@ use std::sync::Arc;
 
 use alizarin_core::extension_type_registry::ExtensionTypeRegistry;
 use alizarin_core::{
-    aggregate_functions, apply_aggregate_functions, build_graph_from_model_csvs,
-    default_functions_registry, AggregateConfig, AggregateContext, AggregateProvider,
-    BusinessDataFileSlice, FunctionsRegistry, GraphLookup, NodeValueWrite, RegisteredFunction,
-    SliceSource, StaticGraph, StaticResource, StaticResourceRegistry, StaticTile,
-    AGGREGATE_FUNCTION_ID, FOLD_AGGREGATE_PROVIDER_ID,
+    aggregate_functions, apply_aggregate_additions, apply_aggregate_functions,
+    build_graph_from_model_csvs, default_functions_registry, AggregateConfig, AggregateContext,
+    AggregateProvider, BusinessDataFileSlice, FunctionsRegistry, GraphLookup, NodeValueWrite,
+    RegisteredFunction, SliceSource, StaticGraph, StaticResource, StaticResourceRegistry,
+    StaticTile, AGGREGATE_FUNCTION_ID, FOLD_AGGREGATE_PROVIDER_ID,
 };
 use serde_json::{json, Value};
 
@@ -160,6 +160,16 @@ impl Run {
         )]);
         let context = AggregateContext::new(&handlers, &graphs);
         apply_aggregate_functions(tiles, &self.layer, LAYER, slice, &registry(), &context)
+    }
+
+    fn add(&self, added: &dyn SliceSource, tiles: &mut Vec<StaticTile>) -> Result<(), String> {
+        let handlers = ExtensionTypeRegistry::new();
+        let graphs: HashMap<String, Arc<StaticGraph>> = HashMap::from([(
+            self.building.graphid.clone(),
+            Arc::new(self.building.clone()),
+        )]);
+        let context = AggregateContext::new(&handlers, &graphs);
+        apply_aggregate_additions(tiles, &self.layer, LAYER, added, &registry(), &context)
     }
 
     fn value(&self, tiles: &[StaticTile], tileid: &str, alias: &str) -> Value {
@@ -574,6 +584,93 @@ fn reruns_and_visit_order_give_identical_tiles() {
     let json = |t: &Vec<StaticTile>| serde_json::to_value(t).unwrap();
     assert_eq!(json(&again), json(&first), "re-running is idempotent");
     assert_eq!(json(&reversed), json(&first), "visit order doesn't matter");
+}
+
+// ---- additions ----------------------------------------------------------------------
+
+/// Add the members in turns (b1; b2 + b3; b4, o1 and the Layer itself), starting
+/// from no tiles, and return the resulting tiles.
+fn add_in_turns(run: &Run) -> Vec<StaticTile> {
+    let all = members(&run.building);
+    let mut tiles = Vec::new();
+    for turn in [&all[0..1], &all[1..3], &all[3..]] {
+        run.add(&turn.to_vec(), &mut tiles).unwrap();
+    }
+    tiles
+}
+
+#[test]
+fn adding_in_turns_matches_a_full_run() {
+    let items = [
+        json!({ "tileid": "t", "path": "height",
+                "into": { "span_value": "summary", "span_text": "summary_text",
+                          "span_values": "values", "span_resources": "resources" } }),
+        json!({ "tileid": "t", "path": "height",
+                "where": { "path": "listed", "allowed": ["true"] },
+                "into": { "span_value": "summary", "span_resources": "resources" } }),
+        json!({ "tileid": "t", "path": "height", "group_by": "listed",
+                "into": { "span_value": "summary", "span_values": "values" } }),
+        // Only a summary: resuming must still know values were folded.
+        json!({ "tileid": "t", "path": "height", "into": { "span_value": "summary" } }),
+        // Only the summary as text: resumed by parsing it.
+        json!({ "tileid": "t", "path": "height", "into": { "span_text": "summary_text" } }),
+    ];
+    for item in items {
+        let run = fold_run(item.clone());
+        let mut full = Vec::new();
+        run.apply(&members(&run.building), &mut full).unwrap();
+        let incremental = add_in_turns(&run);
+        assert_eq!(
+            serde_json::to_value(&incremental).unwrap(),
+            serde_json::to_value(&full).unwrap(),
+            "{item}"
+        );
+    }
+}
+
+#[test]
+fn additions_only_fold_the_added_members() {
+    let run = fold_run(json!({
+        "tileid": "t", "path": "height", "into": { "span_values": "values" }
+    }));
+    let all = members(&run.building);
+    let mut tiles = Vec::new();
+    run.add(&vec![all[1].clone()], &mut tiles).unwrap();
+    assert_eq!(run.value(&tiles, "t", "span_values"), json!(1));
+    run.add(&vec![all[0].clone()], &mut tiles).unwrap();
+    assert_eq!(run.value(&tiles, "t", "span_values"), json!(2));
+}
+
+#[test]
+fn a_loose_stored_summary_stays_loose() {
+    let run = fold_run(json!({
+        "tileid": "t", "path": "height", "into": { "span_value": "summary" }
+    }));
+    let loose = json!({ "count": 2, "min": 1.0, "max": 20.0, "loose": true });
+    let mut tiles = vec![layer_tile(&run, "t", &[("span_value", loose)])];
+    run.add(&vec![members(&run.building)[1].clone()], &mut tiles)
+        .unwrap();
+    assert_eq!(
+        run.value(&tiles, "t", "span_value"),
+        json!({ "count": 3, "min": 1.0, "max": 20.0, "loose": true })
+    );
+}
+
+#[test]
+fn a_provider_that_cannot_add_is_an_error_and_changes_nothing() {
+    let run = Run::new(vec![fixed(json!([
+        { "tileid": "t-span", "alias": "span_value", "value": "x" }
+    ]))]);
+    let original = vec![layer_tile(&run, "t-span", &[("span_value", json!("keep"))])];
+    let mut tiles = original.clone();
+    let err = run
+        .add(&members(&run.building), &mut tiles)
+        .expect_err("Fixed has no add");
+    assert!(err.contains("can't add incrementally"), "{err}");
+    assert_eq!(
+        serde_json::to_value(&tiles).unwrap(),
+        serde_json::to_value(&original).unwrap()
+    );
 }
 
 // ---- slices -----------------------------------------------------------------------
