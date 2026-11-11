@@ -328,6 +328,11 @@ pub fn reference_handler_type_info() -> *const TypeHandlerInfo {
             node_config_fn: Some(node_config_reference as NodeConfigFn),
             free_node_config_fn: Some(free_index_spec_reference as FreeNodeConfigFn),
             display_as_list_fn: Some(display_reference_as_list as DisplayAsListFn),
+            fold_identity_fn: None,
+            fold_fn: None,
+            fold_merge_fn: None,
+            fold_remove_fn: None,
+            free_fold_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         });

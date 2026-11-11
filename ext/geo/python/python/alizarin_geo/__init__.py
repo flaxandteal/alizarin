@@ -1,9 +1,11 @@
 """
 Alizarin Geo Extension
 
-Provides validation for the ``geojson-feature-collection`` datatype. Coercion is
-left to alizarin's core; this extension registers a *validate-only* handler that
-the host dispatches to when converting trees with strict/validation enabled.
+Provides validation and folding for the ``geojson-feature-collection`` datatype.
+Coercion is left to alizarin's core; this extension registers a handler that the
+host dispatches to when converting trees with strict/validation enabled, and when
+folding geometry into a summary (``{count, bbox, geometry_types}``), e.g. for an
+Aggregate function's layer extent.
 
 Usage:
     Simply import this module to register the handler:

@@ -108,6 +108,11 @@ pub fn filelist_handler_type_info() -> *const TypeHandlerInfo {
             node_config_fn: None,
             free_node_config_fn: None,
             display_as_list_fn: None,
+            fold_identity_fn: None,
+            fold_fn: None,
+            fold_merge_fn: None,
+            fold_remove_fn: None,
+            free_fold_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         });

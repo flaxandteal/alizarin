@@ -1,17 +1,20 @@
 /**
  * Dual-backend Aggregate functions: a Layer resource's fold Aggregate, run over a
- * resource registry, writes the same node values on WASM and NAPI. Python checks
- * the same fixture against the same expected tiles
- * (crates/alizarin-python/tests/test_aggregate.py), so all three agree.
+ * resource registry, writes the same node values on WASM and NAPI, for numbers
+ * (core's fold) and geometry (geo's). Python checks the same fixture against the
+ * same expected tiles (crates/alizarin-python/tests/test_aggregate.py), so all
+ * three agree.
  *
  * Runs under both backends via:
  *   npx vitest run tests/dual-backend/aggregate.test.ts (WASM)
  *   npx vitest run -c vitest.napi.config.js tests/dual-backend/aggregate.test.ts (NAPI)
  */
 import { test, describe, expect, beforeAll } from "vitest";
+import { createRequire } from "module";
 import { ResourceModelWrapper, createWKRM } from '../../js/graphManager';
 import {
   getBackend,
+  getNapiModule,
   createResourceRegistry,
   createStaticGraphMeta,
   parseStaticGraph,
@@ -25,7 +28,12 @@ import Expected from "../data/aggregate/expected_layer_tiles.json";
 import ExpectedGeo from "../data/aggregate/expected_geo_tiles.json";
 
 beforeAll(async () => {
-  if (getBackend() !== 'napi') {
+  if (getBackend() === 'napi') {
+    // As @alizarin/geo-napi does on import: hand geo's native handler (validate +
+    // fold, over the C ABI) to the host.
+    const geoNapi = createRequire(import.meta.url)('../../ext/geo/napi/index.js');
+    getNapiModule().registerExtensionHandler(geoNapi.geoHandlerPtr());
+  } else {
     // As @alizarin/geo does: register its WASM build's fold as the handler's.
     const geo = await import('../../ext/geo/wasm/pkg/alizarin_geo_wasm');
     const bytes = (await import('../../ext/geo/wasm/pkg/alizarin_geo_wasm_bg.wasm')).default;
@@ -68,21 +76,18 @@ describe(`Aggregate functions [${getBackend()} backend]`, () => {
   register(LayerGraph);
   register(LayerGeoGraph);
 
-  // NAPI reaches geo's handler over the C ABI, which has no fold pointers yet,
-  // so geometry folds on WASM only for now.
-  test.skipIf(getBackend() === 'napi')(
-    "geometry folds through geo's handler into an extent",
-    () => {
-      const registry = createResourceRegistry();
-      registry.loadFromBusinessDataBytes(
-        new TextEncoder().encode(JSON.stringify(BusinessData)),
-        true,
-        true,
-      );
-      registry.applyAggregateFunctions(ExpectedGeo.layer_id);
-      expect(layerTiles(registry, ExpectedGeo.layer_id)).toEqual(ExpectedGeo.tiles);
-    },
-  );
+  // Geometry folds through geo's handler: its WASM build's JS callbacks on WASM,
+  // its native build over the C ABI (ABI 4) on NAPI.
+  test("geometry folds through geo's handler into an extent", () => {
+    const registry = createResourceRegistry();
+    registry.loadFromBusinessDataBytes(
+      new TextEncoder().encode(JSON.stringify(BusinessData)),
+      true,
+      true,
+    );
+    registry.applyAggregateFunctions(ExpectedGeo.layer_id);
+    expect(layerTiles(registry, ExpectedGeo.layer_id)).toEqual(ExpectedGeo.tiles);
+  });
 
   test("the fold Aggregate writes the expected node values into the Layer's tiles", () => {
     const registry = createResourceRegistry();

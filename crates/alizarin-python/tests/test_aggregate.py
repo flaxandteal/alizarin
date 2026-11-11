@@ -67,6 +67,15 @@ def test_streamed_file_slice_matches():
     assert layer_tiles(result) == EXPECTED["tiles"]
 
 
+def test_geometry_folds_through_geo_over_the_c_abi():
+    pytest.importorskip("alizarin_geo")  # registers geo's handler (validate + fold) on import
+    expected = load("expected_geo_tiles.json")
+    alizarin.register_graph(json.dumps(load("layer_geo.json")))
+    registry = loaded_registry()
+    registry.apply_aggregate_functions(expected["layer_id"])
+    assert layer_tiles(registry.get_full(expected["layer_id"])) == expected["tiles"]
+
+
 def test_an_unknown_target_is_an_error():
     with pytest.raises(ValueError, match="not loaded in full"):
         alizarin.ResourceRegistry().apply_aggregate_functions("no-such-resource")

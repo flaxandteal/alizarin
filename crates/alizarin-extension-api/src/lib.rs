@@ -26,7 +26,7 @@ use std::ffi::c_void;
 /// the shared struct layouts or function signatures below. Extensions stamp
 /// their compiled fingerprint into [`TypeHandlerInfo`]; the host refuses to load
 /// an extension whose [`AbiFingerprint`] does not match its own.
-pub const ABI_VERSION: u32 = 3;
+pub const ABI_VERSION: u32 = 4;
 
 /// A compatibility token an extension embeds so the host can confirm — once, at
 /// load — that both sides share the same ABI before any raw pointers cross the
@@ -474,6 +474,43 @@ pub type FreeNodeConfigFn = unsafe extern "C" fn(result: NodeConfigResult);
 /// `*const serde_json::Value`, or null for none).
 pub type DisplayAsListFn = unsafe extern "C" fn(config_ptr: *const c_void) -> bool;
 
+/// Result of a fold call: serialized JSON, or an error. Same layout as
+/// [`IndexSpecResult`]; freed via `free_fold_fn`.
+pub type FoldResult = IndexSpecResult;
+
+/// The empty summary for this datatype: a JSON summary, or `null` if the
+/// datatype has no summary. `config_ptr` is a `*const serde_json::Value`, or null
+/// for none. Folds reduce many values of one datatype into one summary; see
+/// `alizarin_core::datatype_fold`.
+pub type FoldIdentityFn = unsafe extern "C" fn(config_ptr: *const c_void) -> FoldResult;
+
+/// Fold a batch of values into a summary, returning the new summary.
+/// `acc_ptr` and `config_ptr` (null for none) are `*const serde_json::Value`;
+/// `values_ptr` points to `values_len` `*const serde_json::Value`s, passed **by
+/// pointer** so a batch of large values (e.g. geometries) is never copied.
+pub type FoldFn = unsafe extern "C" fn(
+    acc_ptr: *const c_void,
+    values_ptr: *const *const c_void,
+    values_len: usize,
+    config_ptr: *const c_void,
+) -> FoldResult;
+
+/// Merge two summaries (folds over disjoint values), returning the merged one.
+pub type FoldMergeFn = unsafe extern "C" fn(
+    a_ptr: *const c_void,
+    b_ptr: *const c_void,
+    config_ptr: *const c_void,
+) -> FoldResult;
+
+/// Remove previously folded values from a summary. Arguments as [`FoldFn`].
+/// Returns `null` if the datatype can't remove (the host re-folds), or
+/// `{"summary": …, "exact": bool}`, where `exact` is false if a removed value
+/// touched a bound that was kept.
+pub type FoldRemoveFn = FoldFn;
+
+/// Free a [`FoldResult`] allocated by any of the fold functions.
+pub type FreeFoldFn = unsafe extern "C" fn(result: FoldResult);
+
 /// Callback to lookup a concept by ID in the RDM cache
 ///
 /// Returns true if concept was found, false otherwise.
@@ -608,8 +645,9 @@ pub unsafe extern "C" fn alizarin_free_render_display_result(result: RenderDispl
 /// Carries the datatype name, an [`AbiFingerprint`] (checked by the host at
 /// load), and optional capability fn-pointers, each with a `free_*` where it
 /// returns owned data: coerce, display render, marker resolution, validate,
-/// search render, index spec, node config, and list display (no `free_`, it
-/// returns a bool). Each pointer is `None` when unimplemented — a handler may provide any
+/// search render, index spec, node config, list display (no `free_`, it
+/// returns a bool), and fold (four functions sharing one `free_fold_fn`). Each
+/// pointer is `None` when unimplemented — a handler may provide any
 /// subset (e.g. a validate-only handler leaves `coerce_fn` `None` and lets core
 /// keep coercion). The host reports which are present as `HandlerCapabilities`.
 #[repr(C)]
@@ -671,6 +709,17 @@ pub struct TypeHandlerInfo {
     /// labels; the config is passed **by pointer**.
     pub display_as_list_fn: Option<DisplayAsListFn>,
 
+    /// Fold functions (optional, ABI 4). `fold_identity_fn` returning a summary
+    /// opts the datatype into folding; `fold_fn` and `fold_merge_fn` must then be
+    /// present too. `fold_remove_fn` is optional on its own.
+    pub fold_identity_fn: Option<FoldIdentityFn>,
+    pub fold_fn: Option<FoldFn>,
+    pub fold_merge_fn: Option<FoldMergeFn>,
+    pub fold_remove_fn: Option<FoldRemoveFn>,
+
+    /// Free function for every fold function's result (null iff all are null)
+    pub free_fold_fn: Option<FreeFoldFn>,
+
     /// ABI fingerprint of the crate the extension was built against. The host
     /// checks this at load and refuses a mismatch before any pointer crosses.
     pub abi: AbiFingerprint,
@@ -701,6 +750,11 @@ impl TypeHandlerInfo {
             node_config_fn: None,
             free_node_config_fn: None,
             display_as_list_fn: None,
+            fold_identity_fn: None,
+            fold_fn: None,
+            fold_merge_fn: None,
+            fold_remove_fn: None,
+            free_fold_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }
@@ -731,6 +785,11 @@ impl TypeHandlerInfo {
             node_config_fn: None,
             free_node_config_fn: None,
             display_as_list_fn: None,
+            fold_identity_fn: None,
+            fold_fn: None,
+            fold_merge_fn: None,
+            fold_remove_fn: None,
+            free_fold_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }
@@ -762,6 +821,11 @@ impl TypeHandlerInfo {
             node_config_fn: None,
             free_node_config_fn: None,
             display_as_list_fn: None,
+            fold_identity_fn: None,
+            fold_fn: None,
+            fold_merge_fn: None,
+            fold_remove_fn: None,
+            free_fold_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }
@@ -795,6 +859,11 @@ impl TypeHandlerInfo {
             node_config_fn: None,
             free_node_config_fn: None,
             display_as_list_fn: None,
+            fold_identity_fn: None,
+            fold_fn: None,
+            fold_merge_fn: None,
+            fold_remove_fn: None,
+            free_fold_fn: None,
             abi: abi_fingerprint(),
             user_data: std::ptr::null_mut(),
         }

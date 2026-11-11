@@ -15,13 +15,14 @@ use std::ffi::c_void;
 use std::sync::{Arc, RwLock};
 
 use alizarin_extension_api::{
-    abi_fingerprint, CoerceFn, DisplayAsListFn, FreeDisplayFn, FreeFn, FreeIndexSpecFn,
-    FreeNodeConfigFn, FreeRenderSearchFn, FreeResolveMarkersFn, FreeValidateFn, IndexSpecFn,
-    NodeConfigFn, RenderDisplayFn, RenderSearchFn, ResolveMarkersFn, TypeHandlerInfo, ValidateFn,
+    abi_fingerprint, CoerceFn, DisplayAsListFn, FoldFn, FoldIdentityFn, FoldMergeFn, FoldRemoveFn,
+    FoldResult, FreeDisplayFn, FreeFn, FreeFoldFn, FreeIndexSpecFn, FreeNodeConfigFn,
+    FreeRenderSearchFn, FreeResolveMarkersFn, FreeValidateFn, IndexSpecFn, NodeConfigFn,
+    RenderDisplayFn, RenderSearchFn, ResolveMarkersFn, TypeHandlerInfo, ValidateFn,
 };
 
 use crate::extension_type_registry::{
-    ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities,
+    ExtensionError, ExtensionTypeHandler, ExtensionTypeRegistry, HandlerCapabilities, RemoveStep,
 };
 
 lazy_static::lazy_static! {
@@ -54,6 +55,43 @@ struct RegisteredHandler {
     free_node_config_fn: Option<FreeNodeConfigFn>,
     /// Optional list-display test (raw config by pointer).
     display_as_list_fn: Option<DisplayAsListFn>,
+    /// Optional fold (values by pointer; returns JSON summaries).
+    fold_identity_fn: Option<FoldIdentityFn>,
+    fold_fn: Option<FoldFn>,
+    fold_merge_fn: Option<FoldMergeFn>,
+    fold_remove_fn: Option<FoldRemoveFn>,
+    free_fold_fn: Option<FreeFoldFn>,
+}
+
+/// A `*const serde_json::Value` for the ABI, or null.
+fn value_ptr(value: Option<&serde_json::Value>) -> *const c_void {
+    value
+        .map(|v| v as *const serde_json::Value as *const c_void)
+        .unwrap_or(std::ptr::null())
+}
+
+/// Read a fold result's JSON (or its error), then free it.
+///
+/// # Safety
+/// `result` must come from the extension's fold function paired with `free`.
+unsafe fn take_fold_result(
+    result: FoldResult,
+    free: FreeFoldFn,
+) -> Result<serde_json::Value, ExtensionError> {
+    let out = if !result.error_ptr.is_null() {
+        let message = std::slice::from_raw_parts(result.error_ptr, result.error_len);
+        Err(ExtensionError::new(
+            String::from_utf8_lossy(message).into_owned(),
+        ))
+    } else if result.json_ptr.is_null() {
+        Err(ExtensionError::new("fold returned no result"))
+    } else {
+        let json = std::slice::from_raw_parts(result.json_ptr, result.json_len);
+        serde_json::from_slice(json)
+            .map_err(|e| ExtensionError::new(format!("invalid fold result: {e}")))
+    };
+    free(result);
+    out
 }
 
 // =============================================================================
@@ -71,6 +109,17 @@ pub struct AbiExtensionTypeHandler {
 impl AbiExtensionTypeHandler {
     pub fn new(type_name: String) -> Self {
         Self { type_name }
+    }
+
+    /// One of the registered fold functions (picked by `pick`) with the shared
+    /// free function, if both are present.
+    fn fold_fns<F: Copy>(
+        &self,
+        pick: impl Fn(&RegisteredHandler) -> Option<F>,
+    ) -> Option<(F, FreeFoldFn)> {
+        let handlers = TYPE_HANDLERS.read().unwrap();
+        let h = handlers.get(&self.type_name)?;
+        Some((pick(h)?, h.free_fold_fn?))
     }
 }
 
@@ -509,6 +558,100 @@ impl ExtensionTypeHandler for AbiExtensionTypeHandler {
         unsafe { display_as_list_fn(config_ptr) }
     }
 
+    fn fold_identity(&self, config: Option<&serde_json::Value>) -> Option<serde_json::Value> {
+        let (identity_fn, free) = {
+            let handlers = TYPE_HANDLERS.read().unwrap();
+            let h = handlers.get(&self.type_name)?;
+            (h.fold_identity_fn?, h.free_fold_fn?)
+        };
+        // SAFETY: the config pointer (or null) lives for the call; the result is
+        // freed by `take_fold_result`.
+        let summary = unsafe { take_fold_result(identity_fn(value_ptr(config)), free) }.ok()?;
+        (!summary.is_null()).then_some(summary)
+    }
+
+    fn fold(
+        &self,
+        acc: serde_json::Value,
+        values: &[&serde_json::Value],
+        config: Option<&serde_json::Value>,
+    ) -> Result<serde_json::Value, ExtensionError> {
+        let (fold_fn, free) = self
+            .fold_fns(|h| h.fold_fn)
+            .ok_or_else(|| ExtensionError::new(format!("{}: no fold function", self.type_name)))?;
+        let ptrs: Vec<*const c_void> = values.iter().map(|v| value_ptr(Some(v))).collect();
+        // SAFETY: acc, every value and config live for the call; the result is
+        // freed by `take_fold_result`.
+        unsafe {
+            take_fold_result(
+                fold_fn(
+                    value_ptr(Some(&acc)),
+                    ptrs.as_ptr(),
+                    ptrs.len(),
+                    value_ptr(config),
+                ),
+                free,
+            )
+        }
+    }
+
+    fn fold_merge(
+        &self,
+        a: serde_json::Value,
+        b: serde_json::Value,
+        config: Option<&serde_json::Value>,
+    ) -> Result<serde_json::Value, ExtensionError> {
+        let (merge_fn, free) = self.fold_fns(|h| h.fold_merge_fn).ok_or_else(|| {
+            ExtensionError::new(format!("{}: no fold merge function", self.type_name))
+        })?;
+        // SAFETY: as for `fold`.
+        unsafe {
+            take_fold_result(
+                merge_fn(value_ptr(Some(&a)), value_ptr(Some(&b)), value_ptr(config)),
+                free,
+            )
+        }
+    }
+
+    fn fold_remove(
+        &self,
+        acc: serde_json::Value,
+        values: &[&serde_json::Value],
+        config: Option<&serde_json::Value>,
+    ) -> Result<Option<RemoveStep>, ExtensionError> {
+        let Some((remove_fn, free)) = self.fold_fns(|h| h.fold_remove_fn) else {
+            return Ok(None); // no removal: the caller re-folds
+        };
+        let ptrs: Vec<*const c_void> = values.iter().map(|v| value_ptr(Some(v))).collect();
+        // SAFETY: as for `fold`.
+        let step = unsafe {
+            take_fold_result(
+                remove_fn(
+                    value_ptr(Some(&acc)),
+                    ptrs.as_ptr(),
+                    ptrs.len(),
+                    value_ptr(config),
+                ),
+                free,
+            )?
+        };
+        if step.is_null() {
+            return Ok(None);
+        }
+        let bad = || {
+            ExtensionError::new(format!(
+                "{}: fold remove result is not {{summary, exact}}",
+                self.type_name
+            ))
+        };
+        let exact = step
+            .get("exact")
+            .and_then(serde_json::Value::as_bool)
+            .ok_or_else(bad)?;
+        let summary = step.get("summary").cloned().ok_or_else(bad)?;
+        Ok(Some(RemoveStep { summary, exact }))
+    }
+
     fn description(&self) -> &str {
         "Python extension type handler (C ABI)"
     }
@@ -584,6 +727,11 @@ pub unsafe fn register_handler_from_ptr(ptr: *const TypeHandlerInfo) -> Result<S
             node_config_fn: info.node_config_fn,
             free_node_config_fn: info.free_node_config_fn,
             display_as_list_fn: info.display_as_list_fn,
+            fold_identity_fn: info.fold_identity_fn,
+            fold_fn: info.fold_fn,
+            fold_merge_fn: info.fold_merge_fn,
+            fold_remove_fn: info.fold_remove_fn,
+            free_fold_fn: info.free_fold_fn,
         },
     );
 
