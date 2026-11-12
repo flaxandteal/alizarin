@@ -2113,18 +2113,14 @@ impl NapiResourceModelWrapper {
     #[napi(js_name = "setPermittedNodegroups")]
     pub fn set_permitted_nodegroups(&mut self, permissions: serde_json::Value) -> Result<()> {
         let perms = Self::parse_permission_value(&permissions)?;
-        alizarin_core::set_model_permissions(&self.graph_id, perms.clone())
-            .map_err(napi::Error::from_reason)?;
-        alizarin_core::update_model_permitted_nodegroups(&self.graph_id, perms);
-        Ok(())
+        alizarin_core::set_model_permissions(&self.graph_id, perms)
+            .map_err(napi::Error::from_reason)
     }
 
     #[napi(js_name = "setDefaultAllowAllNodegroups")]
     pub fn set_default_allow_all_nodegroups(&mut self, default_allow: bool) -> Result<()> {
         alizarin_core::set_model_default_allow(&self.graph_id, default_allow)
-            .map_err(napi::Error::from_reason)?;
-        alizarin_core::update_model_default_allow(&self.graph_id, default_allow);
-        Ok(())
+            .map_err(napi::Error::from_reason)
     }
 
     // =========================================================================
@@ -2174,19 +2170,10 @@ impl NapiResourceModelWrapper {
 
 // Private helpers for NapiResourceModelWrapper
 impl NapiResourceModelWrapper {
-    /// Register `graph` and its shared model with core (replacing any earlier
-    /// one), and feed the permissions registry until nothing reads it.
+    /// Register `graph` and its shared model with core (replacing any earlier one).
     fn register(graph: Arc<StaticGraph>, default_allow: bool) -> Result<Self> {
         let graph_id = graph.graphid.clone();
-        let model = alizarin_core::register_model(graph, default_allow)
-            .map_err(napi::Error::from_reason)?;
-        alizarin_core::register_model_permissions(
-            &graph_id,
-            alizarin_core::ModelPermissions {
-                default_allow,
-                permitted_nodegroups: model.get_permitted_nodegroups_rules().clone(),
-            },
-        );
+        alizarin_core::register_model(graph, default_allow).map_err(napi::Error::from_reason)?;
         Ok(NapiResourceModelWrapper { graph_id })
     }
 

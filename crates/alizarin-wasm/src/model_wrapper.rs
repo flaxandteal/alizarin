@@ -241,17 +241,8 @@ impl WASMResourceModelWrapper {
         // graph, which core's graph registry shares); WASM keeps only the WKRM.
         let core_graph = graph.0.clone();
         let graph_id = core_graph.graph_id().to_string();
-        let model = alizarin_core::register_model(Arc::new(core_graph), default_allow)
+        alizarin_core::register_model(Arc::new(core_graph), default_allow)
             .unwrap_or_else(|e| wasm_bindgen::throw_str(&e));
-
-        // Feed the permissions registry until nothing reads it.
-        alizarin_core::register_model_permissions(
-            &graph_id,
-            alizarin_core::ModelPermissions {
-                default_allow,
-                permitted_nodegroups: model.get_permitted_nodegroups_rules().clone(),
-            },
-        );
 
         MODEL_REGISTRY.with(|registry| {
             registry
@@ -661,7 +652,6 @@ impl WASMResourceModelWrapper {
             &self.graph_id,
             default_allow,
         ));
-        alizarin_core::update_model_default_allow(&self.graph_id, default_allow);
     }
 
     /// Set permitted nodegroups with support for both boolean and conditional rules.
@@ -717,9 +707,8 @@ impl WASMResourceModelWrapper {
         }
 
         // Core resolves alias keys to nodegroup ids, once, for every reader.
-        alizarin_core::set_model_permissions(&self.graph_id, perms.clone())
+        alizarin_core::set_model_permissions(&self.graph_id, perms)
             .map_err(|e| JsValue::from_str(&e))?;
-        alizarin_core::update_model_permitted_nodegroups(&self.graph_id, perms);
 
         Ok(())
     }

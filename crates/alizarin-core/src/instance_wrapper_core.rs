@@ -669,13 +669,6 @@ pub struct ResourceInstanceWrapperCore {
 
     /// Cache of PseudoValues (alias -> PseudoListCore)
     pub pseudo_cache: SharedMut<HashMap<String, PseudoListCore>>,
-
-    /// Cached model indices - avoids repeated lookups
-    pub cached_nodes: Option<Arc<HashMap<String, Arc<StaticNode>>>>,
-    pub cached_edges: Option<Arc<HashMap<String, Vec<String>>>>,
-    pub cached_reverse_edges: Option<Arc<HashMap<String, Vec<String>>>>,
-    pub cached_nodes_by_nodegroup: Option<Arc<HashMap<String, Vec<Arc<StaticNode>>>>>,
-    pub cached_nodegroups: Option<Arc<HashMap<String, Arc<StaticNodegroup>>>>,
 }
 
 impl ResourceInstanceWrapperCore {
@@ -688,22 +681,7 @@ impl ResourceInstanceWrapperCore {
             nodegroup_index: IndexMap::new(),
             loaded_nodegroups: SharedMut::new(HashMap::new()),
             pseudo_cache: SharedMut::new(HashMap::new()),
-            cached_nodes: None,
-            cached_edges: None,
-            cached_reverse_edges: None,
-            cached_nodes_by_nodegroup: None,
-            cached_nodegroups: None,
         }
-    }
-
-    /// Set cached model indices from a ModelAccess implementation
-    pub fn set_cached_indices(&mut self, model: &dyn ModelAccess) {
-        self.cached_nodes = model.get_nodes().map(|m| Arc::new(m.clone()));
-        self.cached_edges = model.get_edges().map(|m| Arc::new(m.clone()));
-        self.cached_reverse_edges = model.get_reverse_edges().map(|m| Arc::new(m.clone()));
-        self.cached_nodes_by_nodegroup =
-            model.get_nodes_by_nodegroup().map(|m| Arc::new(m.clone()));
-        self.cached_nodegroups = model.get_nodegroups().map(|m| Arc::new(m.clone()));
     }
 
     /// Load tiles into the wrapper

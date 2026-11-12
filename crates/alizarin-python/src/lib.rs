@@ -1431,17 +1431,8 @@ impl PyResourceModelWrapper {
         let default_allow = default_allow.unwrap_or(true);
 
         // The graph's shared model, which every instance wrapper uses.
-        let model = alizarin_core::register_model(graph, default_allow)
+        alizarin_core::register_model(graph, default_allow)
             .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)?;
-
-        // Feed the permissions registry until nothing reads it.
-        alizarin_core::register_model_permissions(
-            &graph_id,
-            alizarin_core::ModelPermissions {
-                default_allow,
-                permitted_nodegroups: model.get_permitted_nodegroups_rules().clone(),
-            },
-        );
 
         Ok(PyResourceModelWrapper { graph_id })
     }
@@ -1533,10 +1524,8 @@ impl PyResourceModelWrapper {
     /// Raises ValueError if any permission rule is invalid.
     fn set_permitted_nodegroups(&mut self, py: Python, permissions: PyObject) -> PyResult<()> {
         let perms = instance_wrapper_py::parse_permissions_dict(py, &permissions)?;
-        alizarin_core::set_model_permissions(&self.graph_id, perms.clone())
-            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
-        alizarin_core::update_model_permitted_nodegroups(&self.graph_id, perms);
-        Ok(())
+        alizarin_core::set_model_permissions(&self.graph_id, perms)
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
     }
 
     /// Check if a nodegroup is permitted (for nodegroup-level filtering)

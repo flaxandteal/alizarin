@@ -96,9 +96,8 @@ fn metadata(graph: &StaticGraph) -> StaticResourceMetadata {
     }
 }
 
-fn make_core(graph: &StaticGraph, model: &GraphModelAccess) -> ResourceInstanceWrapperCore {
+fn make_core(graph: &StaticGraph) -> ResourceInstanceWrapperCore {
     let mut core = ResourceInstanceWrapperCore::new(graph.graphid.clone());
-    core.set_cached_indices(model);
     core.resource_instance = Some(metadata(graph));
     core
 }
@@ -110,7 +109,7 @@ fn make_core(graph: &StaticGraph, model: &GraphModelAccess) -> ResourceInstanceW
 fn populate_with_tile_subset_loads_only_present() {
     let graph = load_group_graph();
     let model = GraphModelAccess::new_eager(Arc::new(graph.clone()), true);
-    let mut core = make_core(&graph, &model);
+    let mut core = make_core(&graph);
 
     // Load ONLY the basic_info tile; request three nodegroups.
     core.load_tiles(vec![basic_info_tile(&graph)]);
@@ -163,7 +162,7 @@ fn populate_with_tile_subset_loads_only_present() {
 fn populate_with_no_tiles_is_not_an_error() {
     let graph = load_group_graph();
     let model = GraphModelAccess::new_eager(Arc::new(graph.clone()), true);
-    let mut core = make_core(&graph, &model);
+    let mut core = make_core(&graph);
 
     core.load_tiles(vec![]);
 
@@ -188,7 +187,7 @@ fn populate_with_no_tiles_is_not_an_error() {
 fn backfill_merges_without_duplication() {
     let graph = load_group_graph();
     let model = GraphModelAccess::new_eager(Arc::new(graph.clone()), true);
-    let mut core = make_core(&graph, &model);
+    let mut core = make_core(&graph);
 
     let basic_info_ng = nodegroup_id_for_alias(&graph, "basic_info");
     let statement_ng = nodegroup_id_for_alias(&graph, "statement");
@@ -282,8 +281,7 @@ fn tree_from_tile_subset_has_absent_not_error() {
 #[test]
 fn enumeration_does_not_assume_completeness() {
     let graph = load_group_graph();
-    let model = GraphModelAccess::new_eager(Arc::new(graph.clone()), true);
-    let mut core = make_core(&graph, &model);
+    let mut core = make_core(&graph);
 
     core.load_tiles(vec![basic_info_tile(&graph)]);
 
