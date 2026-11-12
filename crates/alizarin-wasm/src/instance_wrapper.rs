@@ -175,40 +175,26 @@ where
     F: FnOnce(&crate::model_wrapper::ResourceModelWrapperCore) -> Result<R, E>,
     E: From<String>,
 {
-    crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
-        let registry_borrow = registry.borrow();
-        let core_arc = registry_borrow
-            .get(graph_id)
-            .ok_or_else(|| E::from(format!("Model not found in registry: {}", graph_id)))?;
-        let core_borrow = core_arc.borrow();
-        f(&core_borrow)
-    })
+    let core =
+        crate::model_wrapper::ResourceModelWrapperCore::for_graph(graph_id).map_err(E::from)?;
+    f(&core)
 }
 
-/// Access the model for `graph_id` from the MODEL_REGISTRY (mutable).
+/// As [`with_registry_model`], with a per-call view `f` may borrow mutably;
+/// nothing done to the view persists (model changes go through core).
 pub(crate) fn with_registry_model_mut<F, R, E>(graph_id: &str, f: F) -> Result<R, E>
 where
     F: FnOnce(&mut crate::model_wrapper::ResourceModelWrapperCore) -> Result<R, E>,
     E: From<String>,
 {
-    crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
-        let registry_borrow = registry.borrow();
-        let core_arc = registry_borrow
-            .get(graph_id)
-            .ok_or_else(|| E::from(format!("Model not found in registry: {}", graph_id)))?;
-        let mut core_borrow = core_arc.borrow_mut();
-        f(&mut core_borrow)
-    })
+    let mut core =
+        crate::model_wrapper::ResourceModelWrapperCore::for_graph(graph_id).map_err(E::from)?;
+    f(&mut core)
 }
 
-/// Build core's resource-instance state for `graph_id`, ensuring the model's node
-/// index is built first (the `ModelAccess` trait needs it).
+/// Build core's resource-instance state for `graph_id` (core keeps the shared
+/// model built, so there is nothing to prepare).
 fn new_core(graph_id: String) -> alizarin_core::ResourceInstanceWrapperCore {
-    crate::model_wrapper::MODEL_REGISTRY.with(|registry| {
-        if let Some(core_arc) = registry.borrow().get(&graph_id) {
-            core_arc.borrow_mut().ensure_built().ok();
-        }
-    });
     alizarin_core::ResourceInstanceWrapperCore::new(graph_id)
 }
 
@@ -2101,8 +2087,7 @@ impl WASMResourceInstanceWrapper {
         let t0 = now_ms();
         let nodegroup_permissions: HashMap<String, alizarin_core::PermissionRule> = self
             .with_model_core(|core| {
-                use alizarin_core::ModelAccess;
-                Ok(core.get_permitted_nodegroups())
+                Ok(alizarin_core::ModelAccess::get_permitted_nodegroups(core))
             })?;
         record_timing("populate: get permissions from model", now_ms() - t0);
 
@@ -2505,8 +2490,7 @@ impl WASMResourceInstanceWrapper {
             let nodes = model
                 .get_nodes()
                 .ok_or_else(|| JsValue::from_str("Nodes not initialized"))?;
-            let edges = model
-                .get_edges()
+            let edges = alizarin_core::ModelAccess::get_edges(model)
                 .ok_or_else(|| JsValue::from_str("Edges not initialized"))?;
             let nodegroups = model.get_nodegroups();
             alizarin_core::resolve_path_segments(path, &root_node, nodes, edges, nodegroups)
