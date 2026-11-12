@@ -216,6 +216,7 @@ pub fn register_extension_handler(datatype: &str, options: JsValue) -> Result<()
             },
         );
     });
+    alizarin_core::extension_type_registry::bump_handlers_generation();
 
     Ok(())
 }
@@ -232,6 +233,7 @@ pub fn unregister_extension_handler(datatype: &str) {
     JS_TYPE_HANDLERS.with(|handlers| {
         handlers.borrow_mut().remove(datatype);
     });
+    alizarin_core::extension_type_registry::bump_handlers_generation();
 }
 
 /// Whether any value folded into `summary` (a `datatype` fold summary, e.g. an

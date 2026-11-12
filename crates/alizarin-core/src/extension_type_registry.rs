@@ -58,6 +58,21 @@ use std::sync::Arc;
 use crate::type_coercion::CoercionResult;
 use crate::type_serialization::SerializationContext;
 
+/// Moves on whenever a datatype handler is registered or removed (by any
+/// binding), so anything caching a handler's answers can tell they may be
+/// stale; see `node_config::DisplayAsListCache`.
+static HANDLERS_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The current handlers generation.
+pub fn handlers_generation() -> u64 {
+    HANDLERS_GENERATION.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Record that the registered handlers changed (a registration or removal).
+pub fn bump_handlers_generation() {
+    HANDLERS_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Describes what capabilities an extension handler provides.
 ///
 /// Not all handlers need to implement all capabilities. For example,

@@ -764,6 +764,7 @@ pub unsafe fn register_handler_from_ptr(ptr: *const TypeHandlerInfo) -> Result<S
     );
 
     crate::set_global_extension_registry(build_extension_registry_from_registered());
+    crate::extension_type_registry::bump_handlers_generation();
     Ok(type_name)
 }
 

@@ -160,6 +160,50 @@ impl NodeConfigDomain {
 // Node Config Enum
 // =============================================================================
 
+/// An extension node's cached `display_as_list` answer, tagged with the handlers
+/// generation it was asked under
+/// ([`handlers_generation`](crate::extension_type_registry::handlers_generation)).
+/// Registering or removing any handler moves the generation on, so the next ask
+/// refreshes a possibly stale answer. One atomic load per ask, no lock.
+#[derive(Debug)]
+pub struct DisplayAsListCache(std::sync::atomic::AtomicU64);
+
+impl DisplayAsListCache {
+    /// Nothing cached yet.
+    const UNSET: u64 = u64::MAX;
+
+    /// The cached answer if it was asked under the current handlers, otherwise
+    /// `ask()`'s, which is then cached.
+    pub fn get_or_ask(&self, ask: impl FnOnce() -> bool) -> bool {
+        self.get_or_ask_at(crate::extension_type_registry::handlers_generation(), ask)
+    }
+
+    fn get_or_ask_at(&self, generation: u64, ask: impl FnOnce() -> bool) -> bool {
+        use std::sync::atomic::Ordering::Relaxed;
+        let cached = self.0.load(Relaxed);
+        if cached != Self::UNSET && cached >> 1 == generation {
+            return cached & 1 == 1;
+        }
+        let answer = ask();
+        self.0.store(generation << 1 | answer as u64, Relaxed);
+        answer
+    }
+}
+
+impl Default for DisplayAsListCache {
+    fn default() -> Self {
+        Self(std::sync::atomic::AtomicU64::new(Self::UNSET))
+    }
+}
+
+impl Clone for DisplayAsListCache {
+    fn clone(&self) -> Self {
+        Self(std::sync::atomic::AtomicU64::new(
+            self.0.load(std::sync::atomic::Ordering::Relaxed),
+        ))
+    }
+}
+
 /// Node config types. Core models only its own datatypes; an extension
 /// datatype's (e.g. CLM's `reference`) is kept raw, and the extension's handler
 /// interprets it ([`NodeConfigManager::get_extension_config`]).
@@ -173,8 +217,9 @@ pub enum NodeConfig {
         datatype: String,
         config: serde_json::Value,
         /// The handler's [`display_as_list`](crate::extension_type_registry::ExtensionTypeHandler::display_as_list)
-        /// answer, asked once per node (see [`NodeConfig::extension_display_as_list`]).
-        display_as_list: std::sync::OnceLock<bool>,
+        /// answer, asked once per node while the handlers stay the same (see
+        /// [`NodeConfig::extension_display_as_list`]).
+        display_as_list: DisplayAsListCache,
     },
 }
 
@@ -227,7 +272,7 @@ impl NodeConfig {
                 config,
                 display_as_list,
                 ..
-            } => Some(*display_as_list.get_or_init(|| handler.display_as_list(Some(config)))),
+            } => Some(display_as_list.get_or_ask(|| handler.display_as_list(Some(config)))),
             _ => None,
         }
     }
@@ -379,7 +424,7 @@ impl NodeConfigManager {
                     config: serde_json::Value::Object(
                         config.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
                     ),
-                    display_as_list: std::sync::OnceLock::new(),
+                    display_as_list: DisplayAsListCache::default(),
                 })
             }
             _ => None,
@@ -574,5 +619,35 @@ mod tests {
             .build_config_for_node("boolean", &HashMap::new())
             .unwrap();
         assert_eq!(boolean.extension_display_as_list(&handler), None);
+    }
+
+    #[test]
+    fn changed_handlers_refresh_a_cached_display_as_list() {
+        let cache = DisplayAsListCache::default();
+        let mut asks = 0;
+        assert!(cache.get_or_ask_at(5, || {
+            asks += 1;
+            true
+        }));
+        assert!(
+            cache.get_or_ask_at(5, || {
+                asks += 1;
+                false
+            }),
+            "same handlers: the cached answer"
+        );
+        assert!(
+            !cache.get_or_ask_at(6, || {
+                asks += 1;
+                false
+            }),
+            "a handler changed: asked again"
+        );
+        assert_eq!(asks, 2);
+        let copy = cache.clone();
+        assert!(
+            !copy.get_or_ask_at(6, || unreachable!()),
+            "a clone keeps the answer"
+        );
     }
 }
