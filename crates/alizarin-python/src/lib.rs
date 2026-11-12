@@ -1407,9 +1407,19 @@ fn batch_tiles_to_trees(py: Python, resources_json: String, strict: bool) -> PyR
 ///
 /// Provides graph pruning and permission checking.
 /// Graph must be registered via register_graph first.
+///
+/// A handle on its graph's model in core's registry, which instance wrappers
+/// share: it reads that model and changes it only through core.
 #[pyclass]
 struct PyResourceModelWrapper {
-    model_access: GraphModelAccess,
+    graph_id: String,
+}
+
+impl PyResourceModelWrapper {
+    /// The graph's shared model, as it is now.
+    fn model(&self) -> PyResult<Arc<GraphModelAccess>> {
+        instance_wrapper_py::model_for(&self.graph_id)
+    }
 }
 
 #[pymethods]
@@ -1420,35 +1430,34 @@ impl PyResourceModelWrapper {
         let graph = get_registered_graph(&graph_id)?;
         let default_allow = default_allow.unwrap_or(true);
 
-        let model_access = GraphModelAccess::new_eager(graph, default_allow);
+        // The graph's shared model, which every instance wrapper uses.
+        let model = alizarin_core::register_model(graph, default_allow)
+            .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)?;
 
-        // Register permissions so instance wrappers can inherit them
+        // Feed the permissions registry until nothing reads it.
         alizarin_core::register_model_permissions(
             &graph_id,
             alizarin_core::ModelPermissions {
                 default_allow,
-                permitted_nodegroups: model_access.get_permitted_nodegroups_rules().clone(),
+                permitted_nodegroups: model.get_permitted_nodegroups_rules().clone(),
             },
         );
 
-        Ok(PyResourceModelWrapper { model_access })
+        Ok(PyResourceModelWrapper { graph_id })
     }
 
     /// Build index caches (nodes, edges, nodegroups, etc.)
     /// Call after construction or after graph mutation.
     fn build_nodes(&mut self) -> PyResult<()> {
-        self.model_access.ensure_built().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                "Failed to build nodes: {}",
-                e
-            ))
-        })
+        // Core keeps the shared model built; this only checks it exists.
+        self.model().map(|_| ())
     }
 
     /// Get child nodes for a given node ID, keyed by alias.
     /// Returns a dict of {alias: node_json}.
     fn get_child_nodes(&self, py: Python, node_id: &str) -> PyResult<PyObject> {
-        let children = self.model_access.get_child_nodes(node_id);
+        let model = self.model()?;
+        let children = model.get_child_nodes(node_id);
         let dict = pyo3::types::PyDict::new_bound(py);
         for (alias, node) in &children {
             let node_json = serde_json::to_string(node.as_ref()).map_err(|e| {
@@ -1466,7 +1475,8 @@ impl PyResourceModelWrapper {
     #[pyo3(name = "get_nodes")]
     fn get_node_objects(&self, py: Python) -> PyResult<PyObject> {
         let dict = pyo3::types::PyDict::new_bound(py);
-        if let Some(nodes) = alizarin_core::ModelAccess::get_nodes(&self.model_access) {
+        let model = self.model()?;
+        if let Some(nodes) = alizarin_core::ModelAccess::get_nodes(&*model) {
             for (id, node) in nodes {
                 let node_json = serde_json::to_string(node.as_ref()).map_err(|e| {
                     PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
@@ -1483,7 +1493,8 @@ impl PyResourceModelWrapper {
     /// Get all edges as a dict of {node_id: [child_node_id, ...]}.
     fn get_edges(&self, py: Python) -> PyResult<PyObject> {
         let dict = pyo3::types::PyDict::new_bound(py);
-        if let Some(edges) = alizarin_core::ModelAccess::get_edges(&self.model_access) {
+        let model = self.model()?;
+        if let Some(edges) = alizarin_core::ModelAccess::get_edges(&*model) {
             for (id, children) in edges {
                 let py_list =
                     pyo3::types::PyList::new_bound(py, children.iter().map(|s| s.as_str()));
@@ -1497,7 +1508,8 @@ impl PyResourceModelWrapper {
     #[pyo3(name = "get_nodes_by_alias")]
     fn get_node_objects_by_alias(&self, py: Python) -> PyResult<PyObject> {
         let dict = pyo3::types::PyDict::new_bound(py);
-        if let Some(nodes_by_alias) = self.model_access.get_nodes_by_alias() {
+        let model = self.model()?;
+        if let Some(nodes_by_alias) = model.get_nodes_by_alias() {
             for (alias, node) in nodes_by_alias {
                 let node_json = serde_json::to_string(node.as_ref()).map_err(|e| {
                     PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
@@ -1521,16 +1533,16 @@ impl PyResourceModelWrapper {
     /// Raises ValueError if any permission rule is invalid.
     fn set_permitted_nodegroups(&mut self, py: Python, permissions: PyObject) -> PyResult<()> {
         let perms = instance_wrapper_py::parse_permissions_dict(py, &permissions)?;
-        let graph_id = self.model_access.get_graph().graphid.clone();
-        self.model_access
-            .set_permitted_nodegroups_rules(perms.clone());
-        alizarin_core::update_model_permitted_nodegroups(&graph_id, perms);
+        alizarin_core::set_model_permissions(&self.graph_id, perms.clone())
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+        alizarin_core::update_model_permitted_nodegroups(&self.graph_id, perms);
         Ok(())
     }
 
     /// Check if a nodegroup is permitted (for nodegroup-level filtering)
     fn is_nodegroup_permitted(&self, nodegroup_id: &str) -> bool {
-        self.model_access.is_nodegroup_permitted(nodegroup_id)
+        self.model()
+            .is_ok_and(|model| model.is_nodegroup_permitted(nodegroup_id))
     }
 
     /// Check if a specific tile is permitted by the permission rules.
@@ -1549,11 +1561,12 @@ impl PyResourceModelWrapper {
             ))
         })?;
 
-        let result = self.model_access.is_tile_permitted(&tile);
+        let model = self.model()?;
+        let result = model.is_tile_permitted(&tile);
 
         // Debug logging for conditional filtering
         if let Some(PermissionRule::Conditional { path, allowed }) =
-            self.model_access.get_permission_rule(nodegroup_id)
+            model.get_permission_rule(nodegroup_id)
         {
             let tile_id = tile.tileid.as_deref().unwrap_or("(no id)");
             let value = evaluate_tile_path(&tile, path);
@@ -1575,19 +1588,21 @@ impl PyResourceModelWrapper {
 
     /// Prune graph to only include permitted nodegroups.
     fn prune_graph(&mut self, keep_functions: Option<Vec<String>>) -> PyResult<()> {
-        self.model_access
-            .prune_graph(keep_functions.as_deref())
-            .map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                    "Failed to prune graph: {}",
-                    e
-                ))
-            })
+        alizarin_core::update_model(&self.graph_id, |model| {
+            model.prune_graph(keep_functions.as_deref())
+        })
+        .map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to prune graph: {}",
+                e
+            ))
+        })
     }
 
     /// Export graph as JSON
     fn export_graph(&self, py: Python) -> PyResult<PyObject> {
-        let graph = self.model_access.get_graph();
+        let model = self.model()?;
+        let graph = model.get_graph();
         pythonize::pythonize(py, graph).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                 "Failed to convert graph to Python: {}",

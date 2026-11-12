@@ -6,6 +6,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use alizarin_core::{
     GraphModelAccess, PermissionRule, PopulateResult as CorePopulateResult, PseudoListCore,
@@ -123,15 +124,33 @@ fn parse_conditional_rule(dict: &Bound<'_, PyDict>) -> Result<PermissionRule, St
 // PyResourceInstanceWrapperCore - Python wrapper
 // =============================================================================
 
+/// The shared model core holds for `graph_id`, registered by its model wrapper.
+pub(crate) fn model_for(graph_id: &str) -> PyResult<Arc<GraphModelAccess>> {
+    alizarin_core::get_model(graph_id).ok_or_else(|| {
+        PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+            "No model registered for graph '{graph_id}'. Create its model wrapper first."
+        ))
+    })
+}
+
 /// Python wrapper for ResourceInstanceWrapperCore.
+///
+/// It holds no model of its own: it looks up its graph's shared model on each
+/// use, so it sees permission changes and prunes made after it was created.
 ///
 /// Provides Rust-backed instance wrapper with the same capabilities as WASM,
 /// enabling cross-model traversal and proper tile processing in Python.
 #[pyclass(name = "RustResourceInstanceWrapperCore")]
 pub struct PyResourceInstanceWrapperCore {
     inner: ResourceInstanceWrapperCore,
-    model_access: Option<GraphModelAccess>,
     graph_id: String,
+}
+
+impl PyResourceInstanceWrapperCore {
+    /// This instance's graph's shared model, as it is now.
+    fn model(&self) -> PyResult<Arc<GraphModelAccess>> {
+        model_for(&self.graph_id)
+    }
 }
 
 #[pymethods]
@@ -139,34 +158,14 @@ impl PyResourceInstanceWrapperCore {
     /// Create a new PyResourceInstanceWrapperCore
     ///
     /// Args:
-    ///     graph_id: The graph ID (must be registered via register_graph first)
+    ///     graph_id: The graph ID (its model wrapper must exist)
     #[new]
     fn new(graph_id: String) -> PyResult<Self> {
-        // Get graph from registry
-        let graph = alizarin_core::get_graph(&graph_id).ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
-                "Graph '{}' not registered. Call register_graph() first.",
-                graph_id
-            ))
-        })?;
-
-        // Inherit permissions from the model wrapper via the registry.
-        // Falls back to default_allow: true if no model has been registered.
-        let model_perms = alizarin_core::get_model_permissions(&graph_id);
-        let default_allow = model_perms
-            .as_ref()
-            .map(|p| p.default_allow)
-            .unwrap_or(true);
-        // The registered graph's own Arc: the model never mutates its graph in
-        // place (pruning swaps in a new one), so there's nothing to copy.
-        let mut model_access = GraphModelAccess::new_eager(graph, default_allow);
-        if let Some(perms) = model_perms {
-            model_access.set_permitted_nodegroups_rules(perms.permitted_nodegroups);
-        }
+        // Its graph's model must be registered; the instance builds nothing.
+        model_for(&graph_id)?;
 
         Ok(PyResourceInstanceWrapperCore {
             inner: ResourceInstanceWrapperCore::new(graph_id.clone()),
-            model_access: Some(model_access),
             graph_id,
         })
     }
@@ -252,18 +251,6 @@ impl PyResourceInstanceWrapperCore {
         Ok(())
     }
 
-    /// Set permitted nodegroups.
-    ///
-    /// Args:
-    ///     permissions: Dict of nodegroup_id -> bool or {path, allowed} conditional rule
-    fn set_permitted_nodegroups(&mut self, py: Python, permissions: PyObject) -> PyResult<()> {
-        let rules = parse_permissions_dict(py, &permissions)?;
-        if let Some(ref mut model_access) = self.model_access {
-            model_access.set_permitted_nodegroups_rules(rules);
-        }
-        Ok(())
-    }
-
     /// Populate the pseudo cache
     ///
     /// Args:
@@ -279,9 +266,8 @@ impl PyResourceInstanceWrapperCore {
         nodegroup_ids: Vec<String>,
         root_alias: String,
     ) -> PyResult<PyPopulateResult> {
-        let model = self.model_access.as_ref().ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Model not initialized")
-        })?;
+        let model = self.model()?;
+        let model = &*model;
 
         let result = self
             .inner
@@ -334,9 +320,8 @@ impl PyResourceInstanceWrapperCore {
         parent_nodegroup_id: Option<String>,
         child_alias: String,
     ) -> PyResult<PySemanticChildResult> {
-        let model = self.model_access.as_ref().ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Model not initialized")
-        })?;
+        let model = self.model()?;
+        let model = &*model;
 
         let result = self
             .inner
@@ -396,9 +381,8 @@ impl PyResourceInstanceWrapperCore {
         path: &str,
         filter_tile_id: Option<&str>,
     ) -> PyResult<PyPseudoList> {
-        let model = self.model_access.as_ref().ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Model not initialized")
-        })?;
+        let model = self.model()?;
+        let model = &*model;
 
         let result = self
             .inner
@@ -413,9 +397,8 @@ impl PyResourceInstanceWrapperCore {
     /// Returns a dict with { nodegroup_id, is_single, target_node_id } — enough
     /// for the caller to lazy-load just that nodegroup's tiles.
     fn resolve_path(&self, path: &str) -> PyResult<pyo3::Py<pyo3::types::PyDict>> {
-        let model = self.model_access.as_ref().ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Model not initialized")
-        })?;
+        let model = self.model()?;
+        let model = &*model;
 
         let info = self
             .inner
@@ -479,12 +462,8 @@ impl PyResourceInstanceWrapperCore {
         parent_nodegroup_id: Option<String>,
         max_depth: Option<usize>,
     ) -> PyResult<PyObject> {
-        let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
-                "Graph '{}' not registered",
-                self.graph_id
-            ))
-        })?;
+        // The model's graph: the registered one, or as pruned since.
+        let graph = self.model()?.get_graph_arc();
 
         let card_index = graph.card_index().ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(
@@ -522,12 +501,8 @@ impl PyResourceInstanceWrapperCore {
     ///     max_depth: Max recursion depth (None = unlimited, 0 = root cards only)
     #[pyo3(signature = (max_depth=None))]
     fn serialize_root_cards(&self, py: Python, max_depth: Option<usize>) -> PyResult<PyObject> {
-        let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
-                "Graph '{}' not registered",
-                self.graph_id
-            ))
-        })?;
+        // The model's graph: the registered one, or as pruned since.
+        let graph = self.model()?.get_graph_arc();
 
         let card_index = graph.card_index().ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(
@@ -573,12 +548,8 @@ impl PyResourceInstanceWrapperCore {
         language: Option<String>,
         resource_registry: Option<&crate::ResourceRegistry>,
     ) -> PyResult<PyObject> {
-        let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
-                "Graph '{}' not registered",
-                self.graph_id
-            ))
-        })?;
+        // The model's graph: the registered one, or as pruned since.
+        let graph = self.model()?.get_graph_arc();
 
         let card_index = graph.card_index().ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(
@@ -648,12 +619,8 @@ impl PyResourceInstanceWrapperCore {
         language: Option<String>,
         resource_registry: Option<&crate::ResourceRegistry>,
     ) -> PyResult<PyObject> {
-        let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
-                "Graph '{}' not registered",
-                self.graph_id
-            ))
-        })?;
+        // The model's graph: the registered one, or as pruned since.
+        let graph = self.model()?.get_graph_arc();
 
         let card_index = graph.card_index().ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(
@@ -724,12 +691,8 @@ impl PyResourceInstanceWrapperCore {
         language: Option<String>,
         resource_registry: Option<&crate::ResourceRegistry>,
     ) -> PyResult<PyObject> {
-        let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
-                "Graph '{}' not registered",
-                self.graph_id
-            ))
-        })?;
+        // The model's graph: the registered one, or as pruned since.
+        let graph = self.model()?.get_graph_arc();
 
         let nodes_by_alias = graph.nodes_by_alias_arc().ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>("Graph indices not built")
@@ -805,12 +768,8 @@ impl PyResourceInstanceWrapperCore {
         card_id: String,
         max_depth: Option<usize>,
     ) -> PyResult<Vec<String>> {
-        let graph = alizarin_core::get_graph(&self.graph_id).ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
-                "Graph '{}' not registered",
-                self.graph_id
-            ))
-        })?;
+        // The model's graph: the registered one, or as pruned since.
+        let graph = self.model()?.get_graph_arc();
 
         let card_index = graph.card_index().ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(
