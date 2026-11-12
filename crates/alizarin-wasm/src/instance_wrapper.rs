@@ -804,7 +804,7 @@ impl WASMResourceInstanceWrapper {
         };
 
         // Get the graph from model core
-        let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
+        let graph = self.with_model_core(|core| Ok(core.model_access.get_graph_arc()))?;
 
         // Descriptors build directly on the StaticGraph via lazy self-indexing.
         let ext_registry = crate::extension_registry::build_extension_registry();
@@ -1138,7 +1138,7 @@ impl WASMResourceInstanceWrapper {
         parent_nodegroup_id: Option<String>,
         max_depth: Option<usize>,
     ) -> Result<JsValue, JsValue> {
-        let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
+        let graph = self.with_model_core(|core| Ok(core.model_access.get_graph_arc()))?;
 
         let card_index = graph.card_index().ok_or_else(|| {
             JsValue::from_str("Graph has no card index — cards may not be loaded")
@@ -1174,7 +1174,7 @@ impl WASMResourceInstanceWrapper {
     /// @param maxDepth - Max recursion depth (null = unlimited, 0 = root cards only)
     #[wasm_bindgen(js_name = serializeRootCards)]
     pub fn serialize_root_cards(&self, max_depth: Option<usize>) -> Result<JsValue, JsValue> {
-        let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
+        let graph = self.with_model_core(|core| Ok(core.model_access.get_graph_arc()))?;
 
         let card_index = graph.card_index().ok_or_else(|| {
             JsValue::from_str("Graph has no card index — cards may not be loaded")
@@ -1216,7 +1216,7 @@ impl WASMResourceInstanceWrapper {
         language: Option<String>,
         resource_registry: &StaticResourceRegistry,
     ) -> Result<JsValue, JsValue> {
-        let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
+        let graph = self.with_model_core(|core| Ok(core.model_access.get_graph_arc()))?;
 
         let card_index = graph.card_index().ok_or_else(|| {
             JsValue::from_str("Graph has no card index — cards may not be loaded")
@@ -1281,7 +1281,7 @@ impl WASMResourceInstanceWrapper {
         language: Option<String>,
         resource_registry: &StaticResourceRegistry,
     ) -> Result<JsValue, JsValue> {
-        let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
+        let graph = self.with_model_core(|core| Ok(core.model_access.get_graph_arc()))?;
 
         let card_index = graph.card_index().ok_or_else(|| {
             JsValue::from_str("Graph has no card index — cards may not be loaded")
@@ -1340,7 +1340,7 @@ impl WASMResourceInstanceWrapper {
         card_id: String,
         max_depth: Option<usize>,
     ) -> Result<Vec<String>, JsValue> {
-        let graph = self.with_model_core(|core| Ok(core.get_graph().clone()))?;
+        let graph = self.with_model_core(|core| Ok(core.model_access.get_graph_arc()))?;
 
         let card_index = graph.card_index().ok_or_else(|| {
             JsValue::from_str("Graph has no card index — cards may not be loaded")
