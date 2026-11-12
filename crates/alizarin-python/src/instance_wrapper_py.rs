@@ -7,8 +7,6 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::collections::{HashMap, HashSet};
 
-use std::sync::Arc;
-
 use alizarin_core::{
     GraphModelAccess, PermissionRule, PopulateResult as CorePopulateResult, PseudoListCore,
     PseudoValueCore, ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult,
@@ -159,8 +157,9 @@ impl PyResourceInstanceWrapperCore {
             .as_ref()
             .map(|p| p.default_allow)
             .unwrap_or(true);
-        let mut model_access =
-            GraphModelAccess::new_eager(Arc::new((*graph).clone()), default_allow);
+        // The registered graph's own Arc: the model never mutates its graph in
+        // place (pruning swaps in a new one), so there's nothing to copy.
+        let mut model_access = GraphModelAccess::new_eager(graph, default_allow);
         if let Some(perms) = model_perms {
             model_access.set_permitted_nodegroups_rules(perms.permitted_nodegroups);
         }

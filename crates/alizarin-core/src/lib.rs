@@ -258,7 +258,9 @@ pub use instance_wrapper_core::{
 pub use graph_model_access::GraphModelAccess;
 
 // Path resolution (dot-separated path → nodegroup tiles)
-pub use path_resolution::{resolve_path_segments, PathError, PathResolutionInfo};
+pub use path_resolution::{
+    resolve_path_in_graph, resolve_path_segments, PathError, PathResolutionInfo,
+};
 
 // Tile source trait (pluggable tile backends)
 pub use tile_source::{TileSource, TileSourceError};

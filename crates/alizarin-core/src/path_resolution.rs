@@ -6,7 +6,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::{is_node_single_cardinality, StaticNode, StaticNodegroup};
+use crate::{
+    is_node_single_cardinality, is_node_single_cardinality_with, StaticGraph, StaticNode,
+    StaticNodegroup,
+};
 
 // =============================================================================
 // Error type
@@ -135,6 +138,97 @@ pub fn resolve_path_segments(
     edges: &HashMap<String, Vec<String>>,
     nodegroups: Option<&HashMap<String, Arc<StaticNodegroup>>>,
 ) -> Result<PathResolutionInfo, PathError> {
+    let maps = Maps {
+        nodes,
+        edges,
+        nodegroups,
+    };
+    resolve_with(path, Arc::clone(root_node), &maps)
+}
+
+/// [`resolve_path_segments`] against a graph's own indices, which are built
+/// once per graph and cached on it: no model to build, for a caller holding
+/// the graph (e.g. an Aggregate resolving paths in its members' graphs).
+pub fn resolve_path_in_graph(
+    graph: &StaticGraph,
+    path: &str,
+) -> Result<PathResolutionInfo, PathError> {
+    let root = graph.get_root();
+    let root = root
+        .alias
+        .as_deref()
+        .and_then(|alias| graph.get_node_arc_by_alias(alias))
+        .filter(|n| n.nodeid == root.nodeid)
+        .unwrap_or_else(|| Arc::new(root.clone()));
+    resolve_with(path, root, graph)
+}
+
+/// What resolution reads from a graph, so the same walk runs over a model's
+/// index maps or a [`StaticGraph`]'s own.
+trait PathSource {
+    fn child_ids(&self, node: &StaticNode) -> Vec<String>;
+    fn child_by_alias(&self, parent: &StaticNode, alias: &str) -> Option<Arc<StaticNode>>;
+    fn is_single(&self, node: &StaticNode) -> bool;
+}
+
+struct Maps<'a> {
+    nodes: &'a HashMap<String, Arc<StaticNode>>,
+    edges: &'a HashMap<String, Vec<String>>,
+    nodegroups: Option<&'a HashMap<String, Arc<StaticNodegroup>>>,
+}
+
+impl PathSource for Maps<'_> {
+    fn child_ids(&self, node: &StaticNode) -> Vec<String> {
+        self.edges.get(&node.nodeid).cloned().unwrap_or_default()
+    }
+
+    fn child_by_alias(&self, parent: &StaticNode, alias: &str) -> Option<Arc<StaticNode>> {
+        self.edges.get(&parent.nodeid)?.iter().find_map(|id| {
+            self.nodes
+                .get(id)
+                .filter(|n| n.alias.as_deref() == Some(alias))
+                .cloned()
+        })
+    }
+
+    fn is_single(&self, node: &StaticNode) -> bool {
+        is_node_single_cardinality(node, self.nodegroups)
+    }
+}
+
+impl PathSource for StaticGraph {
+    fn child_ids(&self, node: &StaticNode) -> Vec<String> {
+        self.get_child_ids(&node.nodeid)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn child_by_alias(&self, parent: &StaticNode, alias: &str) -> Option<Arc<StaticNode>> {
+        let child = self
+            .get_children(&parent.nodeid)
+            .into_iter()
+            .find(|n| n.alias.as_deref() == Some(alias))?;
+        // The graph's shared Arc for it; a copy only if aliases aren't unique.
+        Some(
+            self.get_node_arc_by_alias(alias)
+                .filter(|n| n.nodeid == child.nodeid)
+                .unwrap_or_else(|| Arc::new(child.clone())),
+        )
+    }
+
+    fn is_single(&self, node: &StaticNode) -> bool {
+        is_node_single_cardinality_with(node, |ng| {
+            self.get_nodegroup_by_id(ng)
+                .and_then(|g| g.cardinality.clone())
+        })
+    }
+}
+
+fn resolve_with(
+    path: &str,
+    root: Arc<StaticNode>,
+    source: &impl PathSource,
+) -> Result<PathResolutionInfo, PathError> {
     // Split on '.', filter out empty segments (handles leading '.')
     let segments: Vec<&str> = path.split('.').filter(|s| !s.is_empty()).collect();
 
@@ -142,7 +236,7 @@ pub fn resolve_path_segments(
         return Err(PathError::EmptyPath);
     }
 
-    let mut current_node = Arc::clone(root_node);
+    let mut current_node = root;
     let mut parent_nodegroup_id: Option<String> = None;
 
     for segment in &segments {
@@ -158,7 +252,7 @@ pub fn resolve_path_segments(
         }
         // "*" asserts cardinality-N. Validate the node is not single-cardinality.
         if *segment == "*" {
-            if is_node_single_cardinality(&current_node, nodegroups) {
+            if source.is_single(&current_node) {
                 return Err(PathError::StarOnSingleCardinality {
                     node_alias: current_node.alias.clone().unwrap_or_default(),
                 });
@@ -166,19 +260,8 @@ pub fn resolve_path_segments(
             continue;
         }
 
-        // Get children of the current node
-        let child_ids = edges.get(&current_node.nodeid).cloned().unwrap_or_default();
-
         // Find the child whose alias matches this segment
-        let matched = child_ids.iter().find_map(|child_id| {
-            nodes.get(child_id).and_then(|child_node| {
-                if child_node.alias.as_deref() == Some(segment) {
-                    Some(Arc::clone(child_node))
-                } else {
-                    None
-                }
-            })
-        });
+        let matched = source.child_by_alias(&current_node, segment);
 
         parent_nodegroup_id = current_node.nodegroup_id.clone();
         current_node = matched.ok_or_else(|| PathError::AliasNotFound {
@@ -196,10 +279,10 @@ pub fn resolve_path_segments(
         })?;
 
     // Get child node IDs for PseudoValue construction
-    let child_node_ids = edges.get(&current_node.nodeid).cloned().unwrap_or_default();
+    let child_node_ids = source.child_ids(&current_node);
 
     // Determine cardinality
-    let is_single = is_node_single_cardinality(&current_node, nodegroups);
+    let is_single = source.is_single(&current_node);
 
     Ok(PathResolutionInfo {
         target_node: current_node,

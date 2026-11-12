@@ -55,9 +55,7 @@ use crate::graph::{
     AggregateConfig, AggregateContext, AggregateProvider, GraphLookup, NodeValueWrite, StaticGraph,
     StaticNode, StaticTile,
 };
-use crate::graph_model_access::GraphModelAccess;
-use crate::instance_wrapper_core::ModelAccess;
-use crate::path_resolution::resolve_path_segments;
+use crate::path_resolution::resolve_path_in_graph;
 use crate::slice_source::{SliceMember, SliceSource};
 
 /// The fold provider's UUID in the functions registry. It is registered by
@@ -415,13 +413,13 @@ fn plan(
     graph: &dyn GraphLookup,
     context: &AggregateContext<'_>,
 ) -> Result<Plan, String> {
+    // Paths resolve against the graph's own cached indices: nothing to build.
     let member_graph = context
         .graphs
         .graph(&item.graph)
         .ok_or_else(|| format!("graph {} is not available", item.graph))?;
-    let model = GraphModelAccess::from_graph(&member_graph);
 
-    let node = resolve(&model, &member_graph, &item.path)?;
+    let node = resolve(&member_graph, &item.path)?;
     if node.datatype != item.datatype {
         return Err(format!(
             "{}: config says datatype {}, but the node is {} (has the member graph changed?)",
@@ -456,14 +454,14 @@ fn plan(
             if w.allowed.is_empty() {
                 return Err(format!("where {}: 'allowed' is empty", w.path));
             }
-            let n = resolve(&model, &member_graph, &w.path)?;
+            let n = resolve(&member_graph, &w.path)?;
             Some((n.nodeid.clone(), w.allowed.clone()))
         }
     };
     let group_node = match &item.group_by {
         None => None,
         Some(path) => {
-            let n = resolve(&model, &member_graph, path)?;
+            let n = resolve(&member_graph, path)?;
             if !GROUPABLE.contains(&n.datatype.as_str()) {
                 return Err(format!(
                     "group_by {path}: datatype {} is not a fixed vocabulary ({})",
@@ -502,15 +500,8 @@ fn plan(
     })
 }
 
-fn resolve(
-    model: &GraphModelAccess,
-    graph: &StaticGraph,
-    path: &str,
-) -> Result<Arc<StaticNode>, String> {
-    let root = model.get_root_node()?;
-    let nodes = model.get_nodes().ok_or("graph nodes not built")?;
-    let edges = model.get_edges().ok_or("graph edges not built")?;
-    resolve_path_segments(path, &root, nodes, edges, model.get_nodegroups())
+fn resolve(graph: &StaticGraph, path: &str) -> Result<Arc<StaticNode>, String> {
+    resolve_path_in_graph(graph, path)
         .map(|info| info.target_node)
         .map_err(|e| format!("{path}: {e} (in graph {})", graph.graphid))
 }
