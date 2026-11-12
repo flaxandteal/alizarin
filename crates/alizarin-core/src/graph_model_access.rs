@@ -36,6 +36,12 @@ pub struct GraphModelAccess {
     nodegroups: Option<Arc<HashMap<String, Arc<StaticNodegroup>>>>,
     root_node_id: Option<String>,
 
+    /// The rules as set, keyed by nodegroup id.
+    explicit_permissions: HashMap<String, PermissionRule>,
+    /// The effective rules, derived from `explicit_permissions` and
+    /// `default_allow` by [`Self::refresh_permissions`]: once built, complete
+    /// (an entry for every nodegroup), so consumers that treat a missing entry
+    /// as permitted still get the model's default.
     permitted_nodegroups: HashMap<String, PermissionRule>,
     default_allow: bool,
 }
@@ -53,6 +59,7 @@ impl GraphModelAccess {
             nodes_by_nodegroup: None,
             nodegroups: None,
             root_node_id: None,
+            explicit_permissions: HashMap::new(),
             permitted_nodegroups: HashMap::new(),
             default_allow,
         }
@@ -216,17 +223,9 @@ impl GraphModelAccess {
         self.nodegroups = Some(Arc::new(nodegroups));
         self.root_node_id = Some(root_node_id);
 
-        // Pre-populate default permissions if none were explicitly set,
-        // so get_permitted_nodegroups() can return a cheap clone instead
-        // of rebuilding a HashMap on every call.
-        if self.permitted_nodegroups.is_empty() {
-            for key in self.nodegroups.as_ref().unwrap().keys() {
-                self.permitted_nodegroups
-                    .insert(key.clone(), PermissionRule::Boolean(self.default_allow));
-            }
-            self.permitted_nodegroups
-                .insert(String::new(), PermissionRule::Boolean(true));
-        }
+        // Complete the effective rules for this graph's nodegroups, so
+        // get_permitted_nodegroups() stays a cheap clone.
+        self.refresh_permissions();
 
         Ok(())
     }
@@ -449,20 +448,43 @@ impl GraphModelAccess {
 
     /// Set permitted nodegroups with full PermissionRule support.
     pub fn set_permitted_nodegroups_rules(&mut self, permissions: HashMap<String, PermissionRule>) {
-        self.permitted_nodegroups = permissions;
+        self.explicit_permissions = permissions;
+        self.refresh_permissions();
     }
 
     /// Set permitted nodegroups from boolean map (backward compatibility).
     pub fn set_permitted_nodegroups_bool(&mut self, permissions: HashMap<String, bool>) {
-        self.permitted_nodegroups = permissions
+        self.explicit_permissions = permissions
             .into_iter()
             .map(|(k, v)| (k, PermissionRule::Boolean(v)))
             .collect();
+        self.refresh_permissions();
     }
 
-    /// Set the default permission for nodegroups not explicitly listed.
+    /// Set the default permission for nodegroups not explicitly listed. Takes
+    /// effect at once, built or not.
     pub fn set_default_allow(&mut self, default_allow: bool) {
         self.default_allow = default_allow;
+        self.refresh_permissions();
+    }
+
+    /// Re-derive the effective rules: each nodegroup gets its explicit rule,
+    /// else `default_allow`; the root (`""`) is permitted unless a rule says
+    /// otherwise; explicit rules for keys outside the graph are kept. Before
+    /// the indices are built, just the explicit rules.
+    fn refresh_permissions(&mut self) {
+        let mut effective = self.explicit_permissions.clone();
+        if let Some(nodegroups) = &self.nodegroups {
+            for key in nodegroups.keys() {
+                effective
+                    .entry(key.clone())
+                    .or_insert(PermissionRule::Boolean(self.default_allow));
+            }
+            effective
+                .entry(String::new())
+                .or_insert(PermissionRule::Boolean(true));
+        }
+        self.permitted_nodegroups = effective;
     }
 
     /// Check if a nodegroup is permitted.
@@ -940,6 +962,46 @@ mod tests {
         let arc1 = access.get_nodes_arc().unwrap();
         let arc2 = access.get_nodes_arc().unwrap();
         assert!(Arc::ptr_eq(&arc1, &arc2));
+    }
+
+    #[test]
+    fn effective_permissions_stay_complete_and_follow_the_default() {
+        let permits = |access: &GraphModelAccess, ng: &str| {
+            access
+                .get_permitted_nodegroups_rules()
+                .get(ng)
+                .map(|rule| rule.permits_nodegroup())
+        };
+        let mut access = GraphModelAccess::new_eager(Arc::new(create_test_graph()), false);
+        assert_eq!(
+            permits(&access, "ng1"),
+            Some(false),
+            "every nodegroup listed"
+        );
+
+        // Changing the default after the build applies to unlisted nodegroups.
+        access.set_default_allow(true);
+        assert_eq!(permits(&access, "ng1"), Some(true));
+        assert!(access.is_nodegroup_permitted("ng2"));
+
+        // Setting rules keeps the map complete: unlisted ones take the default.
+        access.set_default_allow(false);
+        access.set_permitted_nodegroups_rules(HashMap::from([(
+            "ng1".to_string(),
+            PermissionRule::Boolean(true),
+        )]));
+        assert_eq!(permits(&access, "ng1"), Some(true));
+        assert_eq!(
+            permits(&access, "ng2"),
+            Some(false),
+            "the default, not missing"
+        );
+        assert!(!access.is_nodegroup_permitted("ng2"));
+
+        // A later default change still reaches them, and leaves the rule alone.
+        access.set_default_allow(true);
+        assert_eq!(permits(&access, "ng2"), Some(true));
+        assert_eq!(permits(&access, "ng1"), Some(true));
     }
 
     #[test]
