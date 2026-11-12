@@ -850,10 +850,21 @@ impl NapiValuesFromNodegroupResult {
 // NapiResourceInstanceWrapper
 // =============================================================================
 
+/// The shared model core holds for `graph_id`, registered by its model wrapper.
+fn model_for(graph_id: &str) -> Result<Arc<GraphModelAccess>> {
+    alizarin_core::get_model(graph_id).ok_or_else(|| {
+        napi::Error::from_reason(format!(
+            "No model registered for graph '{graph_id}'. Create its model wrapper first."
+        ))
+    })
+}
+
+/// A resource instance. It holds no model of its own: it looks up its graph's
+/// shared model on each use, so it sees permission changes and prunes made
+/// after it was created.
 #[napi]
 pub struct NapiResourceInstanceWrapper {
     inner: ResourceInstanceWrapperCore,
-    model_access: GraphModelAccess,
     lazy: bool,
 }
 
@@ -869,30 +880,10 @@ impl NapiResourceInstanceWrapper {
     /// the tile-source fast path can look up tiles by resource.
     #[napi(constructor)]
     pub fn new(graph_id: String, resource_id: Option<String>) -> Result<Self> {
-        let graph = alizarin_core::get_graph(&graph_id).ok_or_else(|| {
-            napi::Error::from_reason(format!(
-                "Graph '{}' not registered. Call registerGraph() first.",
-                graph_id
-            ))
-        })?;
-
-        // Inherit permissions from the model wrapper via the registry.
-        // Falls back to default_allow: true if no model has been registered
-        // (backward compat with direct construction).
-        let model_perms = alizarin_core::get_model_permissions(&graph_id);
-        let default_allow = model_perms
-            .as_ref()
-            .map(|p| p.default_allow)
-            .unwrap_or(true);
-        // The registered graph's own Arc: the model never mutates its graph in
-        // place (pruning swaps in a new one), so there's nothing to copy.
-        let mut model_access = GraphModelAccess::new_eager(graph, default_allow);
-        if let Some(perms) = model_perms {
-            model_access.set_permitted_nodegroups_rules(perms.permitted_nodegroups);
-        }
+        // Its graph's model must be registered; the instance builds nothing.
+        model_for(&graph_id)?;
 
         let mut core = ResourceInstanceWrapperCore::new(graph_id.clone());
-        core.set_cached_indices(&model_access);
 
         // Set minimal resource metadata so tile source can resolve this instance.
         if let Some(rid) = resource_id {
@@ -913,7 +904,6 @@ impl NapiResourceInstanceWrapper {
 
         Ok(NapiResourceInstanceWrapper {
             inner: core,
-            model_access,
             lazy: false,
         })
     }
@@ -927,9 +917,10 @@ impl NapiResourceInstanceWrapper {
     pub fn load_tiles(&mut self, tiles_json: String) -> Result<()> {
         let tiles: Vec<StaticTile> = serde_json::from_str(&tiles_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid tiles JSON: {e}")))?;
+        let model = self.model()?;
         let filtered: Vec<StaticTile> = tiles
             .into_iter()
-            .filter(|tile| self.model_access.is_tile_permitted(tile))
+            .filter(|tile| model.is_tile_permitted(tile))
             .collect();
         self.inner.load_tiles(filtered);
         Ok(())
@@ -941,12 +932,13 @@ impl NapiResourceInstanceWrapper {
         let resource: StaticResource = serde_json::from_str(&resource_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid resource JSON: {e}")))?;
 
+        let model = self.model()?;
         self.inner.resource_instance = Some(resource.resourceinstance.clone());
 
         if let Some(tiles_vec) = resource.tiles {
             let filtered: Vec<StaticTile> = tiles_vec
                 .into_iter()
-                .filter(|tile| self.model_access.is_tile_permitted(tile))
+                .filter(|tile| model.is_tile_permitted(tile))
                 .collect();
             self.inner.load_tiles(filtered);
         }
@@ -966,12 +958,13 @@ impl NapiResourceInstanceWrapper {
             None => return Ok(false),
         };
 
+        let model = self.model()?;
         self.inner.resource_instance = Some(resource.resourceinstance.clone());
 
         if let Some(tiles_vec) = &resource.tiles {
             let filtered: Vec<StaticTile> = tiles_vec
                 .iter()
-                .filter(|tile| self.model_access.is_tile_permitted(tile))
+                .filter(|tile| model.is_tile_permitted(tile))
                 .cloned()
                 .collect();
             self.inner.load_tiles(filtered);
@@ -1027,6 +1020,7 @@ impl NapiResourceInstanceWrapper {
     /// Prune tiles to only keep those in permitted nodegroups.
     #[napi(js_name = "pruneResourceTiles")]
     pub fn prune_resource_tiles(&mut self) -> Result<()> {
+        let model = self.model()?;
         let tiles = self
             .inner
             .tiles
@@ -1034,7 +1028,7 @@ impl NapiResourceInstanceWrapper {
             .ok_or_else(|| napi::Error::from_reason("Tiles not initialized".to_string()))?;
         let pruned: alizarin_core::TileStore = tiles
             .into_iter()
-            .filter(|(_id, tile)| self.model_access.is_tile_permitted(tile))
+            .filter(|(_id, tile)| model.is_tile_permitted(tile))
             .collect();
         self.inner.tiles = Some(pruned);
         Ok(())
@@ -1172,7 +1166,10 @@ impl NapiResourceInstanceWrapper {
 
     #[napi]
     pub fn get_missing_nodegroups_for_children(&self, parent_node_id: String) -> Vec<String> {
-        let child_nodes = self.model_access.get_child_nodes(&parent_node_id);
+        let Ok(model) = self.model() else {
+            return Vec::new();
+        };
+        let child_nodes = model.get_child_nodes(&parent_node_id);
 
         if !self.lazy {
             return Vec::new();
@@ -1232,9 +1229,10 @@ impl NapiResourceInstanceWrapper {
         nodegroup_ids: Vec<String>,
         root_node_alias: String,
     ) -> Result<NapiPopulateResult> {
+        let model = self.model()?;
         let result = self
             .inner
-            .populate(lazy, &nodegroup_ids, &root_node_alias, &self.model_access)
+            .populate(lazy, &nodegroup_ids, &root_node_alias, &*model)
             .map_err(sc_err)?;
 
         Ok(NapiPopulateResult {
@@ -1263,7 +1261,8 @@ impl NapiResourceInstanceWrapper {
         // PermissionRule is currently used only for tile filtering, and may not be
         // JSON-serializable. Use the model's permissions if available.
         let _ = nodegroup_permissions_js;
-        let nodegroup_permissions = self.model_access.get_permitted_nodegroups();
+        let model = self.model()?;
+        let nodegroup_permissions = model.get_permitted_nodegroups();
 
         let result = self
             .inner
@@ -1274,7 +1273,7 @@ impl NapiResourceInstanceWrapper {
                 add_if_missing,
                 &nodegroup_permissions,
                 do_implied_nodegroups,
-                &self.model_access,
+                &*model,
             )
             .map_err(sc_err)?;
 
@@ -1293,6 +1292,7 @@ impl NapiResourceInstanceWrapper {
         nodegroup_tile_ids: Vec<String>,
         nodegroup_id: String,
     ) -> Result<NapiValuesFromNodegroupResult> {
+        let model = self.model()?;
         let existing_values: HashMap<String, Option<bool>> =
             serde_json::from_value(existing_values_js)
                 .map_err(|e| napi::Error::from_reason(format!("Invalid existing_values: {e}")))?;
@@ -1303,7 +1303,7 @@ impl NapiResourceInstanceWrapper {
                 &existing_values,
                 &nodegroup_tile_ids,
                 &nodegroup_id,
-                &self.model_access,
+                &*model,
             )
             .map_err(sc_err)?;
 
@@ -1323,9 +1323,10 @@ impl NapiResourceInstanceWrapper {
     /// lazy-load just that nodegroup's tiles before calling getValuesAtPath.
     #[napi(js_name = "resolvePath")]
     pub fn resolve_path(&self, path: String) -> Result<serde_json::Value> {
+        let model = self.model()?;
         let info = self
             .inner
-            .resolve_path(&path, &self.model_access)
+            .resolve_path(&path, &*model)
             .map_err(|e| napi::Error::from_reason(e.to_string()))?;
         Ok(serde_json::json!({
             "nodegroupId": info.nodegroup_id,
@@ -1337,9 +1338,10 @@ impl NapiResourceInstanceWrapper {
     /// Resolve a dot-separated path and return a PseudoList.
     #[napi]
     pub fn get_values_at_path(&self, path: String) -> Result<NapiPseudoList> {
+        let model = self.model()?;
         let result = self
             .inner
-            .get_values_at_path(&path, &self.model_access, None)
+            .get_values_at_path(&path, &*model, None)
             .map_err(|e| napi::Error::from_reason(e.to_string()))?;
         Ok(NapiPseudoList { inner: result })
     }
@@ -1359,6 +1361,7 @@ impl NapiResourceInstanceWrapper {
         parent_nodegroup_id: Option<String>,
         child_alias: String,
     ) -> Result<Option<NapiPseudoList>> {
+        let model = self.model()?;
         let result = self
             .inner
             .get_semantic_child_value(
@@ -1366,7 +1369,7 @@ impl NapiResourceInstanceWrapper {
                 &parent_node_id,
                 parent_nodegroup_id.as_ref(),
                 &child_alias,
-                &self.model_access,
+                &*model,
             )
             .map_err(sc_err)?;
 
@@ -1394,8 +1397,9 @@ impl NapiResourceInstanceWrapper {
         parent_node_id: String,
         parent_nodegroup_id: Option<String>,
     ) -> Result<serde_json::Value> {
+        let model = self.model()?;
         // Get child nodes
-        let child_nodes = self.model_access.get_child_nodes(&parent_node_id);
+        let child_nodes = model.get_child_nodes(&parent_node_id);
 
         let mut results = serde_json::Map::new();
         for child in child_nodes.values() {
@@ -1405,7 +1409,7 @@ impl NapiResourceInstanceWrapper {
                     &parent_node_id,
                     parent_nodegroup_id.as_ref(),
                     alias,
-                    &self.model_access,
+                    &*model,
                 );
                 match result {
                     Ok(SemanticChildResult::List(list)) => {
@@ -1442,7 +1446,8 @@ impl NapiResourceInstanceWrapper {
         parent_node_id: String,
         parent_nodegroup_id: Option<String>,
     ) -> Result<serde_json::Value> {
-        let child_nodes = self.model_access.get_child_nodes(&parent_node_id);
+        let model = self.model()?;
+        let child_nodes = model.get_child_nodes(&parent_node_id);
 
         let tiles = self
             .inner
@@ -1488,7 +1493,8 @@ impl NapiResourceInstanceWrapper {
 
     #[napi]
     pub fn get_root_pseudo(&self) -> Option<NapiPseudoValue> {
-        let root = self.model_access.get_root_node().ok()?;
+        let model = self.model().ok()?;
+        let root = model.get_root_node().ok()?;
         let alias = root.alias.as_deref()?;
         let cached = self.inner.get_cached_pseudo(alias)?;
         cached
@@ -1528,9 +1534,9 @@ impl NapiResourceInstanceWrapper {
         is_permitted: bool,
         is_single: bool,
     ) -> Result<serde_json::Value> {
+        let model = self.model()?;
         // Find node by alias
-        let nodes = self
-            .model_access
+        let nodes = model
             .get_nodes()
             .ok_or_else(|| napi::Error::from_reason("Nodes not initialized"))?;
 
@@ -1541,8 +1547,7 @@ impl NapiResourceInstanceWrapper {
                 napi::Error::from_reason(format!("Node with alias '{}' not found", alias))
             })?;
 
-        let edges = self
-            .model_access
+        let edges = model
             .get_edges()
             .ok_or_else(|| napi::Error::from_reason("Edges not initialized"))?;
         let child_node_ids = edges.get(&node.nodeid).cloned().unwrap_or_default();
@@ -1653,6 +1658,11 @@ impl NapiResourceInstanceWrapper {
 // =============================================================================
 
 impl NapiResourceInstanceWrapper {
+    /// This instance's graph's shared model, as it is now.
+    fn model(&self) -> Result<Arc<GraphModelAccess>> {
+        model_for(&self.inner.graph_id)
+    }
+
     fn ensure_populated(&self) -> Result<()> {
         let needs_populate = {
             let cache = self
@@ -1664,23 +1674,20 @@ impl NapiResourceInstanceWrapper {
         };
 
         if needs_populate {
-            let root_node = self
-                .model_access
-                .get_root_node()
-                .map_err(napi::Error::from_reason)?;
+            let model = self.model()?;
+            let root_node = model.get_root_node().map_err(napi::Error::from_reason)?;
             let root_alias = root_node
                 .alias
                 .clone()
                 .ok_or_else(|| napi::Error::from_reason("Root node has no alias"))?;
 
-            let nodegroup_ids: Vec<String> = self
-                .model_access
+            let nodegroup_ids: Vec<String> = model
                 .get_nodegroups()
                 .map(|ngs| alizarin_core::sorted_serde::sorted_keys(ngs.keys()))
                 .unwrap_or_default();
 
             self.inner
-                .populate(false, &nodegroup_ids, &root_alias, &self.model_access)
+                .populate(false, &nodegroup_ids, &root_alias, &*model)
                 .map_err(sc_err)?;
         }
 
@@ -1700,11 +1707,9 @@ impl NapiResourceInstanceWrapper {
             .read()
             .map_err(|_| napi::Error::from_reason("Failed to lock pseudo cache"))?;
 
+        let model = self.model()?;
         // Get root alias
-        let root_node = self
-            .model_access
-            .get_root_node()
-            .map_err(napi::Error::from_reason)?;
+        let root_node = model.get_root_node().map_err(napi::Error::from_reason)?;
         let root_alias = root_node
             .alias
             .as_deref()
@@ -1715,12 +1720,10 @@ impl NapiResourceInstanceWrapper {
         })?;
 
         // Build graph indices for VisitorContext
-        let nodes_by_alias = self
-            .model_access
+        let nodes_by_alias = model
             .get_nodes_by_alias_arc()
             .ok_or_else(|| napi::Error::from_reason("Nodes by alias not built"))?;
-        let edges = self
-            .model_access
+        let edges = model
             .get_edges_arc()
             .ok_or_else(|| napi::Error::from_reason("Edges not built"))?;
 
@@ -1812,9 +1815,12 @@ impl From<&PseudoListCore> for NapiPseudoListJson {
 /// Provides graph schema access (nodes, edges, nodegroups, permissions, pruning)
 /// so that the TS ResourceModelWrapper can delegate to either this or the WASM
 /// model wrapper via the backend abstraction.
+///
+/// A handle on its graph's model in core's registry, which instance wrappers
+/// share: it reads that model and changes it only through core.
 #[napi]
 pub struct NapiResourceModelWrapper {
-    model_access: GraphModelAccess,
+    graph_id: String,
 }
 
 #[napi]
@@ -1829,49 +1835,15 @@ impl NapiResourceModelWrapper {
             .map_err(|e| napi::Error::from_reason(format!("Invalid graph JSON: {}", e)))?;
 
         graph.build_indices();
-        let graph_id = graph.graphid.clone();
-        let graph_arc = Arc::new(graph);
-
-        // Register in core graph registry
-        alizarin_core::register_graph(&graph_id, Arc::clone(&graph_arc));
-
-        let model_access = GraphModelAccess::new_eager(graph_arc, default_allow);
-
-        // Register permissions so instance wrappers can inherit them
-        alizarin_core::register_model_permissions(
-            &graph_id,
-            alizarin_core::ModelPermissions {
-                default_allow,
-                permitted_nodegroups: model_access.get_permitted_nodegroups_rules().clone(),
-            },
-        );
-
-        Ok(NapiResourceModelWrapper { model_access })
+        Self::register(Arc::new(graph), default_allow)
     }
 
     /// Create from an already-loaded NapiStaticGraph.
     #[napi(factory)]
     pub fn from_graph(graph: &crate::NapiStaticGraph, default_allow: bool) -> Result<Self> {
-        let inner = graph.inner_ref();
-        let graph_id = inner.graphid.clone();
-        let mut cloned = inner.clone();
+        let mut cloned = graph.inner_ref().clone();
         cloned.build_indices();
-        let graph_arc = Arc::new(cloned);
-
-        alizarin_core::register_graph(&graph_id, Arc::clone(&graph_arc));
-
-        let model_access = GraphModelAccess::new_eager(graph_arc, default_allow);
-
-        // Register permissions so instance wrappers can inherit them
-        alizarin_core::register_model_permissions(
-            &graph_id,
-            alizarin_core::ModelPermissions {
-                default_allow,
-                permitted_nodegroups: model_access.get_permitted_nodegroups_rules().clone(),
-            },
-        );
-
-        Ok(NapiResourceModelWrapper { model_access })
+        Self::register(Arc::new(cloned), default_allow)
     }
 
     // =========================================================================
@@ -1880,7 +1852,7 @@ impl NapiResourceModelWrapper {
 
     #[napi(js_name = "getGraphId")]
     pub fn get_graph_id(&self) -> String {
-        self.model_access.get_graph().graphid.clone()
+        self.graph_id.clone()
     }
 
     // =========================================================================
@@ -1889,16 +1861,18 @@ impl NapiResourceModelWrapper {
 
     #[napi(getter)]
     pub fn graph(&self) -> Result<serde_json::Value> {
-        serde_json::to_value(self.model_access.get_graph())
-            .map_err(|e| napi::Error::from_reason(e.to_string()))
+        let model = self.model()?;
+        serde_json::to_value(model.get_graph()).map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
     #[napi(setter)]
     pub fn set_graph(&mut self, graph_json: String) -> Result<()> {
         let graph: StaticGraph = serde_json::from_str(&graph_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid graph JSON: {}", e)))?;
-        self.model_access.rebuild_from_graph(&graph);
-        Ok(())
+        self.update(|model| {
+            model.rebuild_from_graph(&graph);
+            Ok(())
+        })
     }
 
     // =========================================================================
@@ -1915,8 +1889,10 @@ impl NapiResourceModelWrapper {
     pub fn build_nodes_for_graph(&mut self, graph_json: String) -> Result<()> {
         let graph: StaticGraph = serde_json::from_str(&graph_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid graph JSON: {}", e)))?;
-        self.model_access.rebuild_from_graph(&graph);
-        Ok(())
+        self.update(|model| {
+            model.rebuild_from_graph(&graph);
+            Ok(())
+        })
     }
 
     // =========================================================================
@@ -1926,18 +1902,16 @@ impl NapiResourceModelWrapper {
     /// Get the root node of the graph.
     #[napi(js_name = "getRootNode")]
     pub fn get_root_node(&self) -> Result<serde_json::Value> {
-        let root = self
-            .model_access
-            .get_root_node()
-            .map_err(napi::Error::from_reason)?;
+        let model = self.model()?;
+        let root = model.get_root_node().map_err(napi::Error::from_reason)?;
         serde_json::to_value(&*root).map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
     /// Get all nodes as a Map<string, StaticNode>.
     #[napi(js_name = "getNodeObjects")]
     pub fn get_node_objects(&self) -> Result<HashMap<String, serde_json::Value>> {
-        let nodes = self
-            .model_access
+        let model = self.model()?;
+        let nodes = model
             .get_nodes()
             .ok_or_else(|| napi::Error::from_reason("Nodes not available"))?;
         let mut result = HashMap::new();
@@ -1953,8 +1927,8 @@ impl NapiResourceModelWrapper {
     /// Get all nodes indexed by alias.
     #[napi(js_name = "getNodeObjectsByAlias")]
     pub fn get_node_objects_by_alias(&self) -> Result<HashMap<String, serde_json::Value>> {
-        let nodes = self
-            .model_access
+        let model = self.model()?;
+        let nodes = model
             .get_nodes_by_alias()
             .ok_or_else(|| napi::Error::from_reason("Nodes by alias not available"))?;
         let mut result = HashMap::new();
@@ -1970,8 +1944,8 @@ impl NapiResourceModelWrapper {
     /// Get a single node by alias.
     #[napi(js_name = "getNodeObjectFromAlias")]
     pub fn get_node_object_from_alias(&self, alias: String) -> Result<serde_json::Value> {
-        let nodes = self
-            .model_access
+        let model = self.model()?;
+        let nodes = model
             .get_nodes_by_alias()
             .ok_or_else(|| napi::Error::from_reason("Nodes by alias not available"))?;
         let node = nodes.get(&alias).ok_or_else(|| {
@@ -1983,8 +1957,8 @@ impl NapiResourceModelWrapper {
     /// Get a single node by node ID.
     #[napi(js_name = "getNodeObjectFromId")]
     pub fn get_node_object_from_id(&self, id: String) -> Result<serde_json::Value> {
-        let nodes = self
-            .model_access
+        let model = self.model()?;
+        let nodes = model
             .get_nodes()
             .ok_or_else(|| napi::Error::from_reason("Nodes not available"))?;
         let node = nodes
@@ -1996,7 +1970,8 @@ impl NapiResourceModelWrapper {
     /// Get child nodes for a parent node ID.
     #[napi(js_name = "getChildNodes")]
     pub fn get_child_nodes(&self, node_id: String) -> Result<HashMap<String, serde_json::Value>> {
-        let children = self.model_access.get_child_nodes(&node_id);
+        let model = self.model()?;
+        let children = model.get_child_nodes(&node_id);
         let mut result = HashMap::new();
         for (alias, node) in &children {
             result.insert(
@@ -2011,11 +1986,9 @@ impl NapiResourceModelWrapper {
     /// Get child node aliases (just strings, not full objects).
     #[napi(js_name = "getChildNodeAliases")]
     pub fn get_child_node_aliases(&self, node_id: String) -> Vec<String> {
-        self.model_access
-            .get_child_nodes(&node_id)
-            .keys()
-            .cloned()
-            .collect()
+        self.model()
+            .map(|model| model.get_child_nodes(&node_id).keys().cloned().collect())
+            .unwrap_or_default()
     }
 
     // =========================================================================
@@ -2025,8 +1998,8 @@ impl NapiResourceModelWrapper {
     /// Get edges as Map<parent_id, [child_ids]>.
     #[napi(js_name = "getEdges")]
     pub fn get_edges(&self) -> Result<HashMap<String, Vec<String>>> {
-        let edges = self
-            .model_access
+        let model = self.model()?;
+        let edges = model
             .get_edges()
             .ok_or_else(|| napi::Error::from_reason("Edges not available"))?;
         Ok(edges.clone())
@@ -2039,8 +2012,8 @@ impl NapiResourceModelWrapper {
     /// Get all nodegroups.
     #[napi(js_name = "getNodegroupObjects")]
     pub fn get_nodegroup_objects(&self) -> Result<HashMap<String, serde_json::Value>> {
-        let nodegroups = self
-            .model_access
+        let model = self.model()?;
+        let nodegroups = model
             .get_nodegroups()
             .ok_or_else(|| napi::Error::from_reason("Nodegroups not available"))?;
         let mut result = HashMap::new();
@@ -2056,17 +2029,21 @@ impl NapiResourceModelWrapper {
     /// Get nodegroup IDs.
     #[napi(js_name = "getNodegroupIds")]
     pub fn get_nodegroup_ids(&self) -> Vec<String> {
-        self.model_access
-            .get_nodegroups()
-            .map(|ng| alizarin_core::sorted_serde::sorted_keys(ng.keys()))
+        self.model()
+            .ok()
+            .and_then(|model| {
+                model
+                    .get_nodegroups()
+                    .map(|ng| alizarin_core::sorted_serde::sorted_keys(ng.keys()))
+            })
             .unwrap_or_default()
     }
 
     /// Get nodegroup name (actually the name of the root node for that nodegroup).
     #[napi(js_name = "getNodegroupName")]
     pub fn get_nodegroup_name(&self, nodegroup_id: String) -> Result<String> {
-        let nodes = self
-            .model_access
+        let model = self.model()?;
+        let nodes = model
             .get_nodes()
             .ok_or_else(|| napi::Error::from_reason("Nodes not available"))?;
         let node = nodes
@@ -2078,8 +2055,8 @@ impl NapiResourceModelWrapper {
     /// Get node ID from alias.
     #[napi(js_name = "getNodeIdFromAlias")]
     pub fn get_node_id_from_alias(&self, alias: String) -> Result<String> {
-        let nodes = self
-            .model_access
+        let model = self.model()?;
+        let nodes = model
             .get_nodes_by_alias()
             .ok_or_else(|| napi::Error::from_reason("Nodes by alias not available"))?;
         let node = nodes.get(&alias).ok_or_else(|| {
@@ -2119,13 +2096,16 @@ impl NapiResourceModelWrapper {
     /// Get permitted nodegroups as boolean map.
     #[napi(js_name = "getPermittedNodegroups")]
     pub fn get_permitted_nodegroups(&self) -> HashMap<String, bool> {
-        self.model_access.get_permitted_nodegroups_bool()
+        self.model()
+            .map(|model| model.get_permitted_nodegroups_bool())
+            .unwrap_or_default()
     }
 
     /// Check if a nodegroup is permitted.
     #[napi(js_name = "isNodegroupPermitted")]
     pub fn is_nodegroup_permitted(&self, nodegroup_id: String) -> bool {
-        self.model_access.is_nodegroup_permitted(&nodegroup_id)
+        self.model()
+            .is_ok_and(|model| model.is_nodegroup_permitted(&nodegroup_id))
     }
 
     /// Set permitted nodegroups. Accepts an object with boolean values or
@@ -2133,18 +2113,18 @@ impl NapiResourceModelWrapper {
     #[napi(js_name = "setPermittedNodegroups")]
     pub fn set_permitted_nodegroups(&mut self, permissions: serde_json::Value) -> Result<()> {
         let perms = Self::parse_permission_value(&permissions)?;
-        let graph_id = self.model_access.get_graph().graphid.clone();
-        self.model_access
-            .set_permitted_nodegroups_rules(perms.clone());
-        alizarin_core::update_model_permitted_nodegroups(&graph_id, perms);
+        alizarin_core::set_model_permissions(&self.graph_id, perms.clone())
+            .map_err(napi::Error::from_reason)?;
+        alizarin_core::update_model_permitted_nodegroups(&self.graph_id, perms);
         Ok(())
     }
 
     #[napi(js_name = "setDefaultAllowAllNodegroups")]
-    pub fn set_default_allow_all_nodegroups(&mut self, default_allow: bool) {
-        let graph_id = self.model_access.get_graph().graphid.clone();
-        self.model_access.set_default_allow(default_allow);
-        alizarin_core::update_model_default_allow(&graph_id, default_allow);
+    pub fn set_default_allow_all_nodegroups(&mut self, default_allow: bool) -> Result<()> {
+        alizarin_core::set_model_default_allow(&self.graph_id, default_allow)
+            .map_err(napi::Error::from_reason)?;
+        alizarin_core::update_model_default_allow(&self.graph_id, default_allow);
+        Ok(())
     }
 
     // =========================================================================
@@ -2155,24 +2135,30 @@ impl NapiResourceModelWrapper {
     pub fn set_graph_nodes(&mut self, nodes_json: String) -> Result<()> {
         let nodes: Vec<StaticNode> = serde_json::from_str(&nodes_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid nodes JSON: {}", e)))?;
-        self.model_access.set_graph_nodes(nodes);
-        Ok(())
+        self.update(|model| {
+            model.set_graph_nodes(nodes);
+            Ok(())
+        })
     }
 
     #[napi(js_name = "setGraphEdges")]
     pub fn set_graph_edges(&mut self, edges_json: String) -> Result<()> {
         let edges: Vec<StaticEdge> = serde_json::from_str(&edges_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid edges JSON: {}", e)))?;
-        self.model_access.set_graph_edges(edges);
-        Ok(())
+        self.update(|model| {
+            model.set_graph_edges(edges);
+            Ok(())
+        })
     }
 
     #[napi(js_name = "setGraphNodegroups")]
     pub fn set_graph_nodegroups(&mut self, nodegroups_json: String) -> Result<()> {
         let nodegroups: Vec<StaticNodegroup> = serde_json::from_str(&nodegroups_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid nodegroups JSON: {}", e)))?;
-        self.model_access.set_graph_nodegroups(nodegroups);
-        Ok(())
+        self.update(|model| {
+            model.set_graph_nodegroups(nodegroups);
+            Ok(())
+        })
     }
 
     // =========================================================================
@@ -2182,15 +2168,41 @@ impl NapiResourceModelWrapper {
     /// Prune graph to only include permitted nodegroups and their dependencies.
     #[napi(js_name = "pruneGraph")]
     pub fn prune_graph(&mut self, keep_functions: Option<Vec<String>>) -> Result<()> {
-        let keep_fns_ref = keep_functions.as_deref();
-        self.model_access
-            .prune_graph(keep_fns_ref)
-            .map_err(napi::Error::from_reason)
+        self.update(|model| model.prune_graph(keep_functions.as_deref()))
     }
 }
 
 // Private helpers for NapiResourceModelWrapper
 impl NapiResourceModelWrapper {
+    /// Register `graph` and its shared model with core (replacing any earlier
+    /// one), and feed the permissions registry until nothing reads it.
+    fn register(graph: Arc<StaticGraph>, default_allow: bool) -> Result<Self> {
+        let graph_id = graph.graphid.clone();
+        let model = alizarin_core::register_model(graph, default_allow)
+            .map_err(napi::Error::from_reason)?;
+        alizarin_core::register_model_permissions(
+            &graph_id,
+            alizarin_core::ModelPermissions {
+                default_allow,
+                permitted_nodegroups: model.get_permitted_nodegroups_rules().clone(),
+            },
+        );
+        Ok(NapiResourceModelWrapper { graph_id })
+    }
+
+    /// The graph's shared model, as it is now.
+    fn model(&self) -> Result<Arc<GraphModelAccess>> {
+        model_for(&self.graph_id)
+    }
+
+    /// Change the graph's shared model through core (copy-on-write).
+    fn update<R>(
+        &self,
+        f: impl FnOnce(&mut GraphModelAccess) -> std::result::Result<R, String>,
+    ) -> Result<R> {
+        alizarin_core::update_model(&self.graph_id, f).map_err(napi::Error::from_reason)
+    }
+
     /// Parse permission values from a JSON object.
     /// Supports booleans and conditional rules: { path: "...", allowed: [...] }
     fn parse_permission_value(val: &serde_json::Value) -> Result<HashMap<String, PermissionRule>> {

@@ -271,6 +271,11 @@ export declare class NapiValuesFromNodegroupResult {
   getAllValues(): any
   get impliedNodegroups(): Array<string>
 }
+/**
+ * A resource instance. It holds no model of its own: it looks up its graph's
+ * shared model on each use, so it sees permission changes and prunes made
+ * after it was created.
+ */
 export declare class NapiResourceInstanceWrapper {
   /**
    * Create a wrapper for a given graph (must be registered).
@@ -374,6 +379,9 @@ export declare class NapiResourceInstanceWrapper {
  * Provides graph schema access (nodes, edges, nodegroups, permissions, pruning)
  * so that the TS ResourceModelWrapper can delegate to either this or the WASM
  * model wrapper via the backend abstraction.
+ *
+ * A handle on its graph's model in core's registry, which instance wrappers
+ * share: it reads that model and changes it only through core.
  */
 export declare class NapiResourceModelWrapper {
   /**
