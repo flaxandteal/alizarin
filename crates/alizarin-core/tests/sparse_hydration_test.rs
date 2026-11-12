@@ -296,3 +296,28 @@ fn enumeration_does_not_assume_completeness() {
         core.tiles.as_ref().expect("tiles map exists after load");
     assert_eq!(tiles.len(), 1, "exactly the one loaded tile is present");
 }
+
+/// Loading through the model's permissions drops tiles it forbids, for a full
+/// load and an incremental merge alike; once permitted, a merge accepts them.
+#[test]
+fn permitted_loads_drop_tiles_the_model_forbids() {
+    let graph = load_group_graph();
+    let tile = basic_info_tile(&graph);
+    let mut model = GraphModelAccess::new_eager(Arc::new(graph.clone()), true);
+    model.set_permitted_nodegroups_rules(std::collections::HashMap::from([(
+        tile.nodegroup_id.clone(),
+        alizarin_core::PermissionRule::Boolean(false),
+    )]));
+    let count = |core: &ResourceInstanceWrapperCore| core.tiles.as_ref().map_or(0, |t| t.len());
+
+    let mut core = make_core(&graph);
+    core.load_permitted_tiles(vec![tile.clone()], &model);
+    assert_eq!(count(&core), 0, "load drops the forbidden tile");
+    core.merge_permitted_tiles(vec![tile.clone()], &model);
+    assert_eq!(count(&core), 0, "merge drops it too");
+
+    model.set_default_allow(true);
+    model.set_permitted_nodegroups_rules(std::collections::HashMap::new());
+    core.merge_permitted_tiles(vec![tile], &model);
+    assert_eq!(count(&core), 1, "permitted, so merged");
+}

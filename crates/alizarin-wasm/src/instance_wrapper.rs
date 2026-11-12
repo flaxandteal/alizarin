@@ -452,15 +452,13 @@ impl WASMResourceInstanceWrapper {
 
         let lazy = *self.lazy.borrow();
 
-        let filtered: Vec<StaticTile> = self
-            .with_model_core(|model_core| {
-                Ok(tiles
-                    .iter()
-                    .filter(|tile| model_core.model_access.is_tile_permitted(tile))
-                    .cloned()
-                    .collect())
-            })
-            .unwrap_or(tiles);
+        // Without its model there are no permissions to apply: fail closed.
+        let filtered: Vec<StaticTile> = self.with_model_core(move |model_core| {
+            Ok(tiles
+                .into_iter()
+                .filter(|tile| model_core.model_access.is_tile_permitted(tile))
+                .collect())
+        })?;
 
         {
             let mut core = self.core.borrow_mut();

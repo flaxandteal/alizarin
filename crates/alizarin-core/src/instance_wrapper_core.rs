@@ -739,6 +739,37 @@ impl ResourceInstanceWrapperCore {
         self.load_tiles(tiles);
     }
 
+    /// [`load_tiles`](Self::load_tiles), keeping only the tiles `model`
+    /// permits: how a binding loads a resource, so permissions are applied in
+    /// one place.
+    pub fn load_permitted_tiles(
+        &mut self,
+        tiles: impl IntoIterator<Item = StaticTile>,
+        model: &crate::graph_model_access::GraphModelAccess,
+    ) {
+        self.load_tiles(
+            tiles
+                .into_iter()
+                .filter(|tile| model.is_tile_permitted(tile))
+                .collect(),
+        );
+    }
+
+    /// [`merge_tiles`](Self::merge_tiles), keeping only the tiles `model`
+    /// permits: how a binding adds tiles incrementally.
+    pub fn merge_permitted_tiles(
+        &mut self,
+        tiles: impl IntoIterator<Item = StaticTile>,
+        model: &crate::graph_model_access::GraphModelAccess,
+    ) {
+        self.merge_tiles(
+            tiles
+                .into_iter()
+                .filter(|tile| model.is_tile_permitted(tile))
+                .collect(),
+        );
+    }
+
     /// Merge tiles into the wrapper, keeping whatever is already loaded.
     ///
     /// Unlike [`load_tiles`](Self::load_tiles), which replaces the tile store,

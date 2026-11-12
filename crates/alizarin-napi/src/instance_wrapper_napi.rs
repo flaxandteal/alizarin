@@ -918,11 +918,7 @@ impl NapiResourceInstanceWrapper {
         let tiles: Vec<StaticTile> = serde_json::from_str(&tiles_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid tiles JSON: {e}")))?;
         let model = self.model()?;
-        let filtered: Vec<StaticTile> = tiles
-            .into_iter()
-            .filter(|tile| model.is_tile_permitted(tile))
-            .collect();
-        self.inner.load_tiles(filtered);
+        self.inner.load_permitted_tiles(tiles, &model);
         Ok(())
     }
 
@@ -936,11 +932,7 @@ impl NapiResourceInstanceWrapper {
         self.inner.resource_instance = Some(resource.resourceinstance.clone());
 
         if let Some(tiles_vec) = resource.tiles {
-            let filtered: Vec<StaticTile> = tiles_vec
-                .into_iter()
-                .filter(|tile| model.is_tile_permitted(tile))
-                .collect();
-            self.inner.load_tiles(filtered);
+            self.inner.load_permitted_tiles(tiles_vec, &model);
         }
         Ok(())
     }
@@ -962,12 +954,8 @@ impl NapiResourceInstanceWrapper {
         self.inner.resource_instance = Some(resource.resourceinstance.clone());
 
         if let Some(tiles_vec) = &resource.tiles {
-            let filtered: Vec<StaticTile> = tiles_vec
-                .iter()
-                .filter(|tile| model.is_tile_permitted(tile))
-                .cloned()
-                .collect();
-            self.inner.load_tiles(filtered);
+            self.inner
+                .load_permitted_tiles(tiles_vec.iter().cloned(), &model);
         }
         Ok(true)
     }
@@ -977,24 +965,8 @@ impl NapiResourceInstanceWrapper {
     pub fn append_tiles(&mut self, tiles_js: serde_json::Value) -> Result<()> {
         let tiles: Vec<StaticTile> = serde_json::from_value(tiles_js)
             .map_err(|e| napi::Error::from_reason(format!("Invalid tiles JSON: {e}")))?;
-
-        if self.inner.tiles.is_none() {
-            self.inner.tiles = Some(alizarin_core::TileStore::new());
-        }
-
-        let tiles_map = self.inner.tiles.as_mut().unwrap();
-        for tile in tiles {
-            let tile_id = tile
-                .tileid
-                .clone()
-                .unwrap_or_else(|| format!("synthetic_{}", tiles_map.len()));
-            self.inner
-                .nodegroup_index
-                .entry(tile.nodegroup_id.clone())
-                .or_default()
-                .push(tile_id.clone());
-            tiles_map.insert(tile_id, tile);
-        }
+        let model = self.model()?;
+        self.inner.merge_permitted_tiles(tiles, &model);
         Ok(())
     }
 

@@ -188,7 +188,8 @@ impl PyResourceInstanceWrapperCore {
             ))
         })?;
 
-        self.inner.load_tiles(tiles);
+        let model = self.model()?;
+        self.inner.load_permitted_tiles(tiles, &model);
         Ok(())
     }
 
@@ -208,7 +209,8 @@ impl PyResourceInstanceWrapperCore {
             ))
         })?;
 
-        self.inner.merge_tiles(tiles);
+        let model = self.model()?;
+        self.inner.merge_permitted_tiles(tiles, &model);
         Ok(())
     }
 
