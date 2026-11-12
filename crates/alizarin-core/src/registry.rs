@@ -16,6 +16,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::extension_type_registry::ExtensionTypeRegistry;
 use crate::graph::FunctionsRegistry;
+use crate::graph_model_access::GraphModelAccess;
 use crate::permissions::PermissionRule;
 use crate::rdm_cache::RdmCache;
 use crate::skos::{parse_skos_to_collections, SkosCollection};
@@ -26,6 +27,12 @@ lazy_static::lazy_static! {
     /// Uses Arc for cheap cloning when retrieving graphs
     /// Uses RwLock for thread-safe access across parallel threads
     static ref GRAPH_REGISTRY: RwLock<HashMap<String, Arc<StaticGraph>>> =
+        RwLock::new(HashMap::new());
+
+    /// One model per graph (graph_id -> model), shared by every binding's
+    /// model and instance wrappers; see [`register_model`]. Always built:
+    /// readers need only `&self` accessors.
+    static ref MODEL_REGISTRY: RwLock<HashMap<String, Arc<GraphModelAccess>>> =
         RwLock::new(HashMap::new());
 
     /// Global RDM (Reference Data Manager) cache for concept collections.
@@ -169,6 +176,99 @@ pub fn get_registered_graph_ids() -> Vec<String> {
         .ok()
         .map(|registry| registry.keys().cloned().collect())
         .unwrap_or_default()
+}
+
+// ============================================================================
+// Model Registry
+// ============================================================================
+
+/// Register the model for `graph`: the graph itself (sharing this `Arc`, as
+/// [`register_graph`] stores it) and one [`GraphModelAccess`] over it, built
+/// now, with `default_allow` and no explicit permission rules. This is the one
+/// model every binding's model and instance wrappers use for the graph;
+/// registering again replaces it, permissions included.
+pub fn register_model(
+    graph: Arc<StaticGraph>,
+    default_allow: bool,
+) -> Result<Arc<GraphModelAccess>, String> {
+    let graph_id = graph.graph_id().to_string();
+    let mut model = GraphModelAccess::new(Arc::clone(&graph), default_allow);
+    model.ensure_built()?;
+    let model = Arc::new(model);
+    register_graph(&graph_id, graph);
+    MODEL_REGISTRY
+        .write()
+        .map_err(|_| "model registry lock poisoned".to_string())?
+        .insert(graph_id, Arc::clone(&model));
+    Ok(model)
+}
+
+/// The model registered for `graph_id`, as a cheap `Arc` snapshot. Instances
+/// look it up on each use, so they see changes made after they were created.
+pub fn get_model(graph_id: &str) -> Option<Arc<GraphModelAccess>> {
+    MODEL_REGISTRY
+        .read()
+        .ok()
+        .and_then(|registry| registry.get(graph_id).cloned())
+}
+
+/// Change the model registered for `graph_id` with `f`, rebuilding its indices
+/// if `f` invalidated them (a new graph, a prune). Copy-on-write: anyone
+/// holding the previous snapshot keeps it unchanged, and the copy is cheap, as
+/// the index maps are `Arc`-shared. Errors if no model is registered, or with
+/// `f`'s error, leaving the registered model as it was.
+pub fn update_model<R>(
+    graph_id: &str,
+    f: impl FnOnce(&mut GraphModelAccess) -> Result<R, String>,
+) -> Result<R, String> {
+    let mut registry = MODEL_REGISTRY
+        .write()
+        .map_err(|_| "model registry lock poisoned".to_string())?;
+    let entry = registry
+        .get_mut(graph_id)
+        .ok_or_else(|| format!("no model registered for graph {graph_id}"))?;
+    let mut model = (**entry).clone();
+    let result = f(&mut model)?;
+    model.ensure_built()?;
+    *entry = Arc::new(model);
+    Ok(result)
+}
+
+/// Set the permission rules on `graph_id`'s model. Keys may be node aliases or
+/// nodegroup ids: aliases resolve to nodegroup ids here, once, so every
+/// binding and every check (tile filtering, pruning) sees the same keys.
+pub fn set_model_permissions(
+    graph_id: &str,
+    rules: HashMap<String, PermissionRule>,
+) -> Result<(), String> {
+    let resolved = resolve_permission_keys(graph_id, rules);
+    update_model(graph_id, |model| {
+        model.set_permitted_nodegroups_rules(resolved);
+        Ok(())
+    })
+}
+
+/// Set whether nodegroups without a rule are permitted on `graph_id`'s model.
+pub fn set_model_default_allow(graph_id: &str, default_allow: bool) -> Result<(), String> {
+    update_model(graph_id, |model| {
+        model.set_default_allow(default_allow);
+        Ok(())
+    })
+}
+
+/// Unregister `graph_id`'s model (its graph stays registered).
+pub fn unregister_model(graph_id: &str) -> Option<Arc<GraphModelAccess>> {
+    MODEL_REGISTRY
+        .write()
+        .ok()
+        .and_then(|mut registry| registry.remove(graph_id))
+}
+
+/// Clear every registered model (graphs stay registered).
+pub fn clear_model_registry() {
+    if let Ok(mut registry) = MODEL_REGISTRY.write() {
+        registry.clear();
+    }
 }
 
 // ============================================================================
@@ -717,5 +817,72 @@ mod tests {
         assert_eq!(retrieved.permitted_nodegroups.len(), 1);
 
         unregister_model_permissions("test-perms-3");
+    }
+
+    /// A graph with one aliased value node (`name`) in nodegroup `ng1`.
+    fn create_aliased_graph(graph_id: &str) -> StaticGraph {
+        let json = serde_json::json!({
+            "graphid": graph_id,
+            "name": {"en": "Test Graph"},
+            "root": {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": graph_id},
+            "nodes": [
+                {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": graph_id},
+                {"nodeid": "ng1", "name": "Name", "alias": "name", "datatype": "string",
+                 "nodegroup_id": "ng1", "graph_id": graph_id}
+            ],
+            "edges": [{"edgeid": "e1", "domainnode_id": "root", "rangenode_id": "ng1",
+                       "graph_id": graph_id}],
+            "nodegroups": [{"nodegroupid": "ng1", "cardinality": "1"}]
+        });
+        StaticGraph::from_json_string(&json.to_string()).expect("Failed to create test graph")
+    }
+
+    #[test]
+    fn a_registered_model_is_shared_and_changed_copy_on_write() {
+        let graph_id = "test-model-1";
+        let model = register_model(Arc::new(create_aliased_graph(graph_id)), false).unwrap();
+        assert!(model.is_built());
+        assert!(Arc::ptr_eq(&get_model(graph_id).unwrap(), &model));
+        assert!(
+            Arc::ptr_eq(&get_graph(graph_id).unwrap(), &model.get_graph_arc()),
+            "the registered graph is the model's own"
+        );
+        assert!(!model.is_nodegroup_permitted("ng1"));
+
+        // An alias key resolves to its nodegroup id, once, for every reader.
+        let rules = HashMap::from([("name".to_string(), PermissionRule::Boolean(true))]);
+        set_model_permissions(graph_id, rules).unwrap();
+        let updated = get_model(graph_id).unwrap();
+        assert!(updated.is_nodegroup_permitted("ng1"));
+        assert!(updated.get_permission_rule("name").is_none());
+        assert!(updated.is_built());
+        assert!(
+            !model.is_nodegroup_permitted("ng1"),
+            "a snapshot taken before the change keeps it"
+        );
+
+        unregister_model(graph_id);
+        assert!(get_model(graph_id).is_none());
+        unregister_graph(graph_id);
+    }
+
+    #[test]
+    fn a_failed_or_impossible_update_changes_nothing() {
+        let err = update_model("test-model-none", |_| Ok(())).unwrap_err();
+        assert!(err.contains("no model registered"), "{err}");
+
+        let graph_id = "test-model-2";
+        register_model(Arc::new(create_aliased_graph(graph_id)), true).unwrap();
+        let before = get_model(graph_id).unwrap();
+        let err = update_model(graph_id, |model| {
+            model.set_default_allow(false);
+            Err::<(), _>("nope".to_string())
+        })
+        .unwrap_err();
+        assert_eq!(err, "nope");
+        assert!(Arc::ptr_eq(&before, &get_model(graph_id).unwrap()));
+
+        unregister_model(graph_id);
+        unregister_graph(graph_id);
     }
 }

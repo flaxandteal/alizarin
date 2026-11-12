@@ -350,6 +350,12 @@ pub use registry::{
     register_graph_owned, registry_size, unregister_graph,
 };
 
+// Model registry: one shared model per graph, for every binding
+pub use registry::{
+    clear_model_registry, get_model, register_model, set_model_default_allow,
+    set_model_permissions, unregister_model, update_model,
+};
+
 // Model permissions registry (for NAPI/Python instance wrapper construction)
 pub use registry::{
     clear_model_permissions_registry, get_model_permissions, register_model_permissions,
