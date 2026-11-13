@@ -13,7 +13,7 @@ use alizarin_core::{StaticGraph, StaticNode, StaticNodegroup, StaticTile};
 use alizarin_core::GraphModelAccess;
 pub use alizarin_core::PermissionRule;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -664,85 +664,33 @@ impl WASMResourceModelWrapper {
     /// Returns an error if any permission rule is invalid.
     #[wasm_bindgen(js_name = setPermittedNodegroups)]
     pub fn set_permitted_nodegroups(&mut self, permissions: js_sys::Map) -> Result<(), JsValue> {
-        let mut perms: HashMap<String, PermissionRule> = HashMap::new();
+        // To JSON, then core's one strict parser, as on NAPI and Python.
+        let mut entries = serde_json::Map::new();
         let mut errors: Vec<String> = Vec::new();
-
-        // Use for_each callback to avoid iterator retention
-        permissions.for_each(&mut |value, key| {
-            let key_str = match key.as_string() {
-                Some(k) => k,
-                None => {
-                    errors.push(format!("Invalid key (not a string): {:?}", key));
-                    return;
+        // for_each, not an iterator, to avoid iterator retention.
+        permissions.for_each(&mut |value, key| match key.as_string() {
+            Some(key) => match serde_wasm_bindgen::from_value::<serde_json::Value>(value) {
+                Ok(rule) => {
+                    entries.insert(key, rule);
                 }
-            };
-
-            // Check if it's a boolean (simple permission)
-            if let Some(bool_val) = value.as_bool() {
-                perms.insert(key_str, PermissionRule::Boolean(bool_val));
-            }
-            // Check if it's an object (conditional permission)
-            else if value.is_object() && !value.is_null() {
-                match Self::parse_conditional_rule(&value) {
-                    Ok(rule) => {
-                        perms.insert(key_str, rule);
-                    }
-                    Err(e) => {
-                        errors.push(format!("Invalid conditional rule for '{}': {}", key_str, e));
-                    }
-                }
-            } else {
-                errors.push(format!(
-                    "Invalid permission value for '{}': expected boolean or {{path, allowed}} object",
-                    key_str
-                ));
-            }
+                Err(e) => errors.push(format!("'{key}': not a JSON value ({e})")),
+            },
+            None => errors.push(format!("Invalid key (not a string): {key:?}")),
         });
-
         if !errors.is_empty() {
             return Err(JsValue::from_str(&format!(
                 "Permission validation errors:\n  - {}",
                 errors.join("\n  - ")
             )));
         }
+        let perms = PermissionRule::rules_from_json(&serde_json::Value::Object(entries))
+            .map_err(|e| JsValue::from_str(&e))?;
 
         // Core resolves alias keys to nodegroup ids, once, for every reader.
         alizarin_core::set_model_permissions(&self.graph_id, perms)
             .map_err(|e| JsValue::from_str(&e))?;
 
         Ok(())
-    }
-
-    /// Parse a conditional permission rule from a JS object
-    /// Expected format: { path: ".data.uuid.field", allowed: ["value1", "value2"] }
-    fn parse_conditional_rule(value: &JsValue) -> Result<PermissionRule, String> {
-        // Extract path from JS object
-        let path = js_sys::Reflect::get(value, &JsValue::from_str("path"))
-            .map_err(|_| "failed to read 'path' property".to_string())?;
-        let path_str = path.as_string().ok_or("'path' must be a string")?;
-
-        // Extract allowed array from JS object
-        let allowed = js_sys::Reflect::get(value, &JsValue::from_str("allowed"))
-            .map_err(|_| "failed to read 'allowed' property".to_string())?;
-        if !js_sys::Array::is_array(&allowed) {
-            return Err("'allowed' must be an array".to_string());
-        }
-        let allowed_array = js_sys::Array::from(&allowed);
-        let mut allowed_set = HashSet::new();
-        for i in 0..allowed_array.length() {
-            let item = allowed_array.get(i);
-            match item.as_string() {
-                Some(s) => {
-                    allowed_set.insert(s);
-                }
-                None => {
-                    return Err(format!("'allowed[{}]' must be a string", i));
-                }
-            }
-        }
-
-        // Delegate validation and construction to core
-        PermissionRule::conditional(path_str, allowed_set)
     }
 
     pub fn build_nodes(&mut self) -> Result<(), JsValue> {

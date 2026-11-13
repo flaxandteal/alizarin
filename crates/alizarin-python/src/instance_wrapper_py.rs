@@ -5,7 +5,7 @@
 /// as the WASM implementation.
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use alizarin_core::{
@@ -33,83 +33,9 @@ pub(crate) fn parse_permissions_dict(
     let dict = permissions.downcast_bound::<PyDict>(py).map_err(|_| {
         PyErr::new::<pyo3::exceptions::PyTypeError, _>("permissions must be a dict")
     })?;
-
-    let mut perms: HashMap<String, PermissionRule> = HashMap::new();
-    let mut errors: Vec<String> = Vec::new();
-
-    for (key, value) in dict.iter() {
-        let key_str: String = key
-            .extract()
-            .map_err(|_| {
-                errors.push(format!("Invalid key (not a string): {:?}", key));
-            })
-            .unwrap_or_default();
-
-        if key_str.is_empty() && !errors.is_empty() {
-            continue;
-        }
-
-        // Check if it's a boolean
-        if let Ok(bool_val) = value.extract::<bool>() {
-            perms.insert(key_str, PermissionRule::Boolean(bool_val));
-            continue;
-        }
-
-        // Check if it's a dict (conditional permission)
-        if let Ok(cond_dict) = value.downcast::<PyDict>() {
-            match parse_conditional_rule(cond_dict) {
-                Ok(rule) => {
-                    perms.insert(key_str, rule);
-                }
-                Err(e) => {
-                    errors.push(format!("Invalid conditional rule for '{}': {}", key_str, e));
-                }
-            }
-            continue;
-        }
-
-        errors.push(format!(
-            "Invalid permission value for '{}': expected bool or {{path, allowed}} dict",
-            key_str
-        ));
-    }
-
-    if !errors.is_empty() {
-        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-            "Permission validation errors:\n  - {}",
-            errors.join("\n  - ")
-        )));
-    }
-
-    Ok(perms)
-}
-
-fn parse_conditional_rule(dict: &Bound<'_, PyDict>) -> Result<PermissionRule, String> {
-    // Extract fields from Python dict
-    let path = dict
-        .get_item("path")
-        .map_err(|_| "failed to read 'path' key")?
-        .ok_or("'path' key is required")?;
-    let path_str: String = path.extract().map_err(|_| "'path' must be a string")?;
-
-    let allowed = dict
-        .get_item("allowed")
-        .map_err(|_| "failed to read 'allowed' key")?
-        .ok_or("'allowed' key is required")?;
-    let allowed_list = allowed
-        .downcast::<pyo3::types::PyList>()
-        .map_err(|_| "'allowed' must be a list")?;
-
-    let mut allowed_set = HashSet::new();
-    for (i, item) in allowed_list.iter().enumerate() {
-        let s: String = item
-            .extract()
-            .map_err(|_| format!("'allowed[{}]' must be a string", i))?;
-        allowed_set.insert(s);
-    }
-
-    // Delegate validation and construction to core
-    PermissionRule::conditional(path_str, allowed_set)
+    // To JSON, then core's one strict parser, as on WASM and NAPI.
+    let json = crate::python_json::python_to_json(py, dict.as_any())?;
+    PermissionRule::rules_from_json(&json).map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
 }
 
 // =============================================================================

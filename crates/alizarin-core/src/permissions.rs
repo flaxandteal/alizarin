@@ -4,7 +4,7 @@
 //! based on tile data values (set membership).
 
 use crate::StaticTile;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 // =============================================================================
 // Permission Rules
@@ -38,6 +38,63 @@ impl PermissionRule {
             return Err("'allowed' set cannot be empty".to_string());
         }
         Ok(PermissionRule::Conditional { path, allowed })
+    }
+
+    /// One rule from JSON: `true`/`false`, or
+    /// `{"path": "<string>", "allowed": ["<string>", ...]}`. Strict: any other
+    /// shape, a non-string `path` or a non-string `allowed` entry is an error,
+    /// so a mistyped rule is never silently weakened.
+    pub fn from_json(value: &serde_json::Value) -> Result<Self, String> {
+        use serde_json::Value;
+        match value {
+            Value::Bool(b) => Ok(PermissionRule::Boolean(*b)),
+            Value::Object(rule) => {
+                let path = match rule.get("path") {
+                    Some(Value::String(path)) => path.clone(),
+                    Some(_) => return Err("'path' must be a string".to_string()),
+                    None => return Err("'path' is required".to_string()),
+                };
+                let allowed = match rule.get("allowed") {
+                    Some(Value::Array(items)) => items
+                        .iter()
+                        .enumerate()
+                        .map(|(i, item)| {
+                            item.as_str()
+                                .map(str::to_string)
+                                .ok_or_else(|| format!("'allowed[{i}]' must be a string"))
+                        })
+                        .collect::<Result<HashSet<_>, _>>()?,
+                    Some(_) => return Err("'allowed' must be an array".to_string()),
+                    None => return Err("'allowed' is required".to_string()),
+                };
+                PermissionRule::conditional(path, allowed)
+            }
+            _ => Err("expected a boolean or {path, allowed}".to_string()),
+        }
+    }
+
+    /// Rules keyed by nodegroup id or node alias, from a JSON object: the one
+    /// parser every binding uses. Every invalid entry is reported in one error.
+    pub fn rules_from_json(value: &serde_json::Value) -> Result<HashMap<String, Self>, String> {
+        let entries = value.as_object().ok_or("Permissions must be an object")?;
+        let mut rules = HashMap::with_capacity(entries.len());
+        let mut errors = Vec::new();
+        for (key, rule) in entries {
+            match Self::from_json(rule) {
+                Ok(rule) => {
+                    rules.insert(key.clone(), rule);
+                }
+                Err(e) => errors.push(format!("'{key}': {e}")),
+            }
+        }
+        if errors.is_empty() {
+            Ok(rules)
+        } else {
+            Err(format!(
+                "Permission validation errors:\n  - {}",
+                errors.join("\n  - ")
+            ))
+        }
     }
 
     /// Check if this rule permits the nodegroup itself (not tile-level)
@@ -367,5 +424,38 @@ mod tests {
             segments2,
             vec!["data", "node", "array", "[2]", "nested", "field"]
         );
+    }
+
+    #[test]
+    fn rules_from_json_accepts_both_shapes_and_rejects_anything_else() {
+        use serde_json::json;
+        let rules = PermissionRule::rules_from_json(&json!({
+            "ng1": true,
+            "ng2": { "path": ".data.n", "allowed": ["a", "b"] }
+        }))
+        .unwrap();
+        assert!(rules["ng1"].permits_nodegroup());
+        assert!(
+            matches!(&rules["ng2"], PermissionRule::Conditional { allowed, .. } if allowed.len() == 2)
+        );
+
+        let err = PermissionRule::rules_from_json(&json!({
+            "a": 1,
+            "b": { "path": 3, "allowed": ["x"] },
+            "c": { "path": ".p", "allowed": ["x", 2] },
+            "d": { "path": ".p" },
+            "e": { "path": "", "allowed": ["x"] }
+        }))
+        .unwrap_err();
+        for expected in [
+            "'a': expected a boolean",
+            "'b': 'path' must be a string",
+            "'c': 'allowed[1]' must be a string",
+            "'d': 'allowed' is required",
+            "'e': 'path' cannot be empty",
+        ] {
+            assert!(err.contains(expected), "{expected} in {err}");
+        }
+        assert!(PermissionRule::rules_from_json(&json!([true])).is_err());
     }
 }

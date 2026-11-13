@@ -9,8 +9,6 @@ use std::sync::{Arc, Mutex};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
-use std::collections::HashSet;
-
 use alizarin_core::extension_type_registry::ExtensionTypeRegistry;
 use alizarin_core::graph::{
     StaticEdge, StaticGraph, StaticNode, StaticNodegroup, StaticResource, StaticTile,
@@ -2084,7 +2082,8 @@ impl NapiResourceModelWrapper {
     /// conditional rule objects { path, allowed }.
     #[napi(js_name = "setPermittedNodegroups")]
     pub fn set_permitted_nodegroups(&mut self, permissions: serde_json::Value) -> Result<()> {
-        let perms = Self::parse_permission_value(&permissions)?;
+        let perms =
+            PermissionRule::rules_from_json(&permissions).map_err(napi::Error::from_reason)?;
         alizarin_core::set_model_permissions(&self.graph_id, perms)
             .map_err(napi::Error::from_reason)
     }
@@ -2160,47 +2159,5 @@ impl NapiResourceModelWrapper {
         f: impl FnOnce(&mut GraphModelAccess) -> std::result::Result<R, String>,
     ) -> Result<R> {
         alizarin_core::update_model(&self.graph_id, f).map_err(napi::Error::from_reason)
-    }
-
-    /// Parse permission values from a JSON object.
-    /// Supports booleans and conditional rules: { path: "...", allowed: [...] }
-    fn parse_permission_value(val: &serde_json::Value) -> Result<HashMap<String, PermissionRule>> {
-        let obj = val
-            .as_object()
-            .ok_or_else(|| napi::Error::from_reason("Permissions must be an object"))?;
-        let mut perms = HashMap::new();
-        for (key, value) in obj {
-            if let Some(b) = value.as_bool() {
-                perms.insert(key.clone(), PermissionRule::Boolean(b));
-            } else if let Some(obj) = value.as_object() {
-                let path = obj
-                    .get("path")
-                    .and_then(|v| v.as_str())
-                    .map(String::from)
-                    .unwrap_or_default();
-                let allowed = obj
-                    .get("allowed")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str().map(String::from))
-                            .collect::<HashSet<String>>()
-                    })
-                    .unwrap_or_default();
-                let rule = PermissionRule::conditional(path, allowed).map_err(|e| {
-                    napi::Error::from_reason(format!(
-                        "Invalid conditional rule for '{}': {}",
-                        key, e
-                    ))
-                })?;
-                perms.insert(key.clone(), rule);
-            } else {
-                return Err(napi::Error::from_reason(format!(
-                    "Invalid permission value for '{}': expected boolean or {{path, allowed}}",
-                    key
-                )));
-            }
-        }
-        Ok(perms)
     }
 }
