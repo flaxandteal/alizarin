@@ -140,7 +140,7 @@ export function createInstanceWrapperForResource(resource: StaticResource, regis
  */
 export function loadTilesFromResource(wrapper: any, resource: any, assumeComprehensive?: boolean): void {
   if (_backend === 'napi') {
-    wrapper.loadTilesFromResource(JSON.stringify(resource));
+    wrapper.loadTilesFromResource(JSON.stringify(resource), assumeComprehensive);
   } else if (resource.constructor?.name === 'StaticResource') {
     // WASM class instance — pass reference directly (no serialization)
     wrapper.loadTilesFromResource(resource, assumeComprehensive);

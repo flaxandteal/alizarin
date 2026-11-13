@@ -465,6 +465,27 @@ fn lazy_semantic_children_error_until_their_nodegroup_is_loaded() {
         .is_ok());
 }
 
+/// Tiles the host says are the resource's complete set make every nodegroup
+/// loaded, so in lazy mode a child with no tiles is empty, not unfetched.
+#[test]
+fn comprehensive_tiles_mark_every_nodegroup_loaded() {
+    let graph = load_group_graph();
+    let model = GraphModelAccess::new_eager(Arc::new(graph.clone()), true);
+    let root = graph.root.nodeid.clone();
+    let mut core = make_core(&graph);
+    core.set_lazy(true);
+    core.load_tiles(vec![basic_info_tile(&graph)]);
+    assert!(core
+        .get_semantic_child_value(None, &root, None, "statement", &model)
+        .is_err());
+
+    core.mark_all_nodegroups_loaded(&model);
+    assert!(matches!(
+        core.get_semantic_child_value(None, &root, None, "statement", &model),
+        Ok(SemanticChildResult::Empty)
+    ));
+}
+
 /// Descriptors come from the cache unless asked to recompute or none are
 /// cached, when they are built from the tiles (the graph is asked for only
 /// then) and cached; the name falls back from the metadata to them.

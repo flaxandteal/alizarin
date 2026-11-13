@@ -883,6 +883,23 @@ impl ResourceInstanceWrapperCore {
         }
     }
 
+    /// Mark every nodegroup of the model loaded: for tiles the host says are
+    /// the resource's complete set, so a nodegroup without tiles is known to
+    /// be empty rather than unfetched. A nodegroup already tracked (loading,
+    /// say) is left as it is.
+    pub fn mark_all_nodegroups_loaded(&self, model: &dyn ModelAccess) {
+        let Some(nodegroups) = model.get_nodegroups() else {
+            return;
+        };
+        if let Ok(mut loaded) = self.loaded_nodegroups.write() {
+            for nodegroup_id in nodegroups.keys() {
+                loaded
+                    .entry(nodegroup_id.clone())
+                    .or_insert(LoadState::Loaded);
+            }
+        }
+    }
+
     /// The nodegroups of `parent_node_id`'s children whose tiles aren't loaded
     /// yet, each listed once (children often share one): what a lazy caller
     /// must fetch before visiting them. In eager mode (`lazy` false) every

@@ -284,17 +284,27 @@ export declare class NapiResourceInstanceWrapper {
    * the tile-source fast path can look up tiles by resource.
    */
   constructor(graphId: string, resourceId?: string | undefined | null)
-  /** Load tiles from a JSON string (single-pass deserialization). */
-  loadTiles(tilesJson: string): void
-  /** Load tiles directly from a StaticResource JSON string (single-pass deserialization). */
-  loadTilesFromResource(resourceJson: string): void
+  /**
+   * Load tiles from a JSON string (single-pass deserialization). Unless
+   * `assumeTilesComprehensiveForNodegroup` is false, they are the resource's
+   * complete set, so every nodegroup counts as loaded (as on WASM).
+   */
+  loadTiles(tilesJson: string, assumeTilesComprehensiveForNodegroup?: boolean | undefined | null): void
+  /**
+   * Load tiles directly from a StaticResource JSON string (single-pass
+   * deserialization); comprehensive unless told otherwise, as `loadTiles`.
+   */
+  loadTilesFromResource(resourceJson: string, assumeTilesComprehensiveForNodegroup?: boolean | undefined | null): void
   /**
    * Load tiles directly from a NapiStaticResourceRegistry by resource ID.
    * This avoids the JS round-trip of serializing tiles to JS and back.
    */
-  loadFromRegistry(resourceId: string, registry: NapiStaticResourceRegistry): boolean
-  /** Append tiles incrementally (for lazy loading). */
-  appendTiles(tilesJs: any): void
+  loadFromRegistry(resourceId: string, registry: NapiStaticResourceRegistry, assumeTilesComprehensiveForNodegroup?: boolean | undefined | null): boolean
+  /**
+   * Append tiles incrementally (for lazy loading); comprehensive unless
+   * told otherwise, as WASM's `appendTiles` is.
+   */
+  appendTiles(tilesJs: any, assumeTilesComprehensiveForNodegroup?: boolean | undefined | null): void
   getTileCount(): number
   /**
    * Export all tiles as a JSON string.

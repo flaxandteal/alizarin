@@ -906,19 +906,33 @@ impl NapiResourceInstanceWrapper {
     // Tile loading
     // =========================================================================
 
-    /// Load tiles from a JSON string (single-pass deserialization).
+    /// Load tiles from a JSON string (single-pass deserialization). Unless
+    /// `assumeTilesComprehensiveForNodegroup` is false, they are the resource's
+    /// complete set, so every nodegroup counts as loaded (as on WASM).
     #[napi]
-    pub fn load_tiles(&mut self, tiles_json: String) -> Result<()> {
+    pub fn load_tiles(
+        &mut self,
+        tiles_json: String,
+        assume_tiles_comprehensive_for_nodegroup: Option<bool>,
+    ) -> Result<()> {
         let tiles: Vec<StaticTile> = serde_json::from_str(&tiles_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid tiles JSON: {e}")))?;
         let model = self.model()?;
         self.inner.load_permitted_tiles(tiles, &model);
+        if assume_tiles_comprehensive_for_nodegroup.unwrap_or(true) {
+            self.inner.mark_all_nodegroups_loaded(&*model);
+        }
         Ok(())
     }
 
-    /// Load tiles directly from a StaticResource JSON string (single-pass deserialization).
+    /// Load tiles directly from a StaticResource JSON string (single-pass
+    /// deserialization); comprehensive unless told otherwise, as `loadTiles`.
     #[napi]
-    pub fn load_tiles_from_resource(&mut self, resource_json: String) -> Result<()> {
+    pub fn load_tiles_from_resource(
+        &mut self,
+        resource_json: String,
+        assume_tiles_comprehensive_for_nodegroup: Option<bool>,
+    ) -> Result<()> {
         let resource: StaticResource = serde_json::from_str(&resource_json)
             .map_err(|e| napi::Error::from_reason(format!("Invalid resource JSON: {e}")))?;
 
@@ -927,6 +941,9 @@ impl NapiResourceInstanceWrapper {
 
         if let Some(tiles_vec) = resource.tiles {
             self.inner.load_permitted_tiles(tiles_vec, &model);
+            if assume_tiles_comprehensive_for_nodegroup.unwrap_or(true) {
+                self.inner.mark_all_nodegroups_loaded(&*model);
+            }
         }
         Ok(())
     }
@@ -938,6 +955,7 @@ impl NapiResourceInstanceWrapper {
         &mut self,
         resource_id: String,
         registry: &crate::NapiStaticResourceRegistry,
+        assume_tiles_comprehensive_for_nodegroup: Option<bool>,
     ) -> Result<bool> {
         let resource = match registry.inner.get_full(&resource_id) {
             Some(r) => r,
@@ -950,17 +968,28 @@ impl NapiResourceInstanceWrapper {
         if let Some(tiles_vec) = &resource.tiles {
             self.inner
                 .load_permitted_tiles(tiles_vec.iter().cloned(), &model);
+            if assume_tiles_comprehensive_for_nodegroup.unwrap_or(true) {
+                self.inner.mark_all_nodegroups_loaded(&*model);
+            }
         }
         Ok(true)
     }
 
-    /// Append tiles incrementally (for lazy loading).
+    /// Append tiles incrementally (for lazy loading); comprehensive unless
+    /// told otherwise, as WASM's `appendTiles` is.
     #[napi]
-    pub fn append_tiles(&mut self, tiles_js: serde_json::Value) -> Result<()> {
+    pub fn append_tiles(
+        &mut self,
+        tiles_js: serde_json::Value,
+        assume_tiles_comprehensive_for_nodegroup: Option<bool>,
+    ) -> Result<()> {
         let tiles: Vec<StaticTile> = serde_json::from_value(tiles_js)
             .map_err(|e| napi::Error::from_reason(format!("Invalid tiles JSON: {e}")))?;
         let model = self.model()?;
         self.inner.merge_permitted_tiles(tiles, &model);
+        if assume_tiles_comprehensive_for_nodegroup.unwrap_or(true) {
+            self.inner.mark_all_nodegroups_loaded(&*model);
+        }
         Ok(())
     }
 

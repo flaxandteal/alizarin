@@ -405,16 +405,9 @@ impl WASMResourceInstanceWrapper {
         // If assume_tiles_comprehensive_for_nodegroup is true, mark ALL model nodegroups as loaded
         // This handles the case where some nodegroups have no tiles for this resource
         if assume_tiles_comprehensive_for_nodegroup {
-            self.with_model_core(|model_core| {
-                if let Some(nodegroups) = model_core.get_nodegroups_internal() {
-                    let core_ref = self.core.borrow();
-                    let mut loaded = core_ref.loaded_nodegroups.write().unwrap();
-                    for nodegroup_id in nodegroups.keys() {
-                        loaded
-                            .entry(nodegroup_id.clone())
-                            .or_insert(LoadState::Loaded);
-                    }
-                }
+            let core_ref = self.core.borrow();
+            with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+                core_ref.mark_all_nodegroups_loaded(model);
                 Ok(())
             })?;
         }

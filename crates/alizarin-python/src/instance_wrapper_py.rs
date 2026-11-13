@@ -106,7 +106,14 @@ impl PyResourceInstanceWrapperCore {
     ///
     /// Args:
     ///     tiles_json: JSON string of tiles array
-    fn load_tiles(&mut self, tiles_json: &str) -> PyResult<()> {
+    ///     assume_tiles_comprehensive_for_nodegroup: the resource's complete
+    ///         set, so every nodegroup counts as loaded (as on NAPI/WASM)
+    #[pyo3(signature = (tiles_json, assume_tiles_comprehensive_for_nodegroup=true))]
+    fn load_tiles(
+        &mut self,
+        tiles_json: &str,
+        assume_tiles_comprehensive_for_nodegroup: bool,
+    ) -> PyResult<()> {
         let tiles: Vec<StaticTile> = serde_json::from_str(tiles_json).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                 "Failed to parse tiles JSON: {}",
@@ -116,6 +123,9 @@ impl PyResourceInstanceWrapperCore {
 
         let model = self.model()?;
         self.inner.load_permitted_tiles(tiles, &model);
+        if assume_tiles_comprehensive_for_nodegroup {
+            self.inner.mark_all_nodegroups_loaded(&*model);
+        }
         Ok(())
     }
 
