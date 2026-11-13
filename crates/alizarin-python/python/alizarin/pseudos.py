@@ -470,20 +470,20 @@ class PseudoList(List[PseudoValue[VM]], Generic[VM]):
 
     async def sorted(self) -> List[Any]:
         """
-        Sort values by tile sortorder.
+        Values in tile sortorder: tiles without one after the numbered ones,
+        ties and unnumbered tiles in load order (as core orders semantic
+        children).
 
         Matches JS/TS PseudoList.sorted() method.
         """
-        resolved = await self.get_value()
 
-        def get_sortorder(val: Any) -> int:
-            if val and hasattr(val, '__parentPseudo'):
-                pseudo = val.__parentPseudo
-                if pseudo and pseudo.tile and hasattr(pseudo.tile, 'sortorder'):
-                    return pseudo.tile.sortorder or 0
-            return 0
+        def sortorder_key(value: Any) -> tuple[bool, int]:
+            tile = getattr(value, "tile", None)
+            sortorder = getattr(tile, "sortorder", None)
+            return (sortorder is None, sortorder or 0)
 
-        return sorted(resolved, key=get_sortorder)
+        # Stable, so equal keys keep load order.
+        return [await v.get_value() for v in sorted(self, key=sortorder_key)]
 
     async def get_value(self) -> List[Optional[VM]]:
         """Get all values as ViewModels."""

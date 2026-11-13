@@ -911,7 +911,7 @@ describe('Pseudos', () => {
       expect(sorted[2]).toBe(item1); // sortorder: 3
     });
 
-    it('should handle items without sortorder in sorting', async () => {
+    it('should put items without sortorder last, in load order', async () => {
       const list = new PseudoList();
       list.initialize(node, parent);
 
@@ -927,16 +927,28 @@ describe('Pseudos', () => {
         __parentPseudo: null,
       };
 
-      list.push(Promise.resolve(item1));
+      const item3 = {
+        forJson: () => 'item3',
+        __parentPseudo: {
+          tile: { sortorder: null },
+        },
+      };
+
+      const item4 = {
+        forJson: () => 'item4',
+        __parentPseudo: {
+          tile: { sortorder: 1 },
+        },
+      };
+
       list.push(Promise.resolve(item2));
+      list.push(Promise.resolve(item1));
+      list.push(Promise.resolve(item3));
+      list.push(Promise.resolve(item4));
 
       const sorted = await list.sorted();
 
-      expect(sorted.length).toBe(2);
-      // Verify both items are present in the sorted result
-      const sortorders = sorted.map(item => item.__parentPseudo?.tile?.sortorder ?? 0);
-      expect(sortorders).toContain(0);  // item2's default sortorder
-      expect(sortorders).toContain(5);  // item1's sortorder
+      expect(sorted.map(item => item.forJson())).toEqual(['item4', 'item1', 'item2', 'item3']);
     });
 
     it('should serialize to JSON array', async () => {

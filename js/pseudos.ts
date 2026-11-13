@@ -483,24 +483,20 @@ class PseudoList extends Array implements IPseudo {
     return true;
   }
 
+  // Values in tile sortorder: tiles without one after the numbered ones, ties
+  // and unnumbered tiles in load order (as core orders semantic children).
   async sorted() {
     const resolved = await Promise.all(this.map(async (pn) => await pn));
-    const test = [];
-    const sorted = resolved.sort((a, b) => {
-      const vals = [a, b].map(val => {
-        if (val && a.__parentPseudo && a.__parentPseudo.tile) {
-          if (val.__parentPseudo.tile.sortorder > 0) {
-            // RMV
-            test.push(1);
-          }
-          return val.__parentPseudo.tile.sortorder;
-        } else {
-          return 0;
-        }
-      });
-      return vals[0] - vals[1];
+    const sortorder = (val: { __parentPseudo?: { tile?: { sortorder?: number | null } } | null }) =>
+      val?.__parentPseudo?.tile?.sortorder;
+    // Array.prototype.sort is stable, so equal keys keep load order.
+    return resolved.sort((a, b) => {
+      const [x, y] = [sortorder(a), sortorder(b)];
+      if (x == null || y == null) {
+        return Number(x == null) - Number(y == null);
+      }
+      return x - y;
     });
-    return sorted;
   }
 
   describeField() {
