@@ -1691,12 +1691,12 @@ class NodeViewModel:
     async def __getEdgeTo(self, key: str) -> 'StaticEdge':
         """Get edge from parent node to child node by alias"""
 
-        childNode = self.__parentPseudo.childNodes.get(key)
+        childNode = self.__parentPseudo.child_nodes.get(key)
         if not childNode:
             raise ValueError(f"Child node key {key} missing")
 
         domainId = self.__parentPseudo.nodeid
-        rangeId = childNode.nodeid
+        rangeId = childNode["nodeid"]
         edges = [
             edge for edge in self.__parentWkrm.graph.edges
             if edge.domainnode_id == domainId and edge.rangenode_id == rangeId
@@ -1709,19 +1709,21 @@ class NodeViewModel:
 
     async def __get(self, key: str) -> 'NodeViewModel':
         """Get child node by alias"""
-        pseudo = self.__parentWkrm.createPseudoNodeChild(key, self.__parentPseudo)
+        pseudo = self.__parentWkrm.create_pseudo_node_child(key, self.__parentPseudo)
         return await NodeViewModel._create(pseudo, self.__parentWkrm)
 
     def __getattribute__(self, key: str) -> Any:
         """Proxy attribute access"""
+        # The node itself (checked first: "_" starts with "_" too)
+        if key == '_':
+            return object.__getattribute__(self, '_NodeViewModel__parentPseudo').node
+
         # Internal attributes
-        if key.startswith('_NodeViewModel__') or key.startswith('_') or key in ('then',):
+        if key.startswith('_') or key in ('then',):
             return object.__getattribute__(self, key)
 
         # Special handling
-        if key == '_':
-            return self.__parentPseudo.node
-        elif key.endswith('$edge'):
+        if key.endswith('$edge'):
             # Get edge to child
             alias = key[:-5]  # Remove '$edge' suffix
             import asyncio

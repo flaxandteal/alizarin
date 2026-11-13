@@ -1403,6 +1403,118 @@ fn batch_tiles_to_trees(py: Python, resources_json: String, strict: bool) -> PyR
 
 // camel_to_snake and transform_keys_to_snake are now in alizarin-core/src/string_utils.rs
 
+/// A graph node for navigating a model's structure (`NodeViewModel`): core's
+/// `PseudoNodeCore`, as WASM's `PseudoNode` and NAPI's `NapiPseudoNode` are.
+#[pyclass(name = "PseudoNode")]
+struct PyPseudoNode {
+    core: alizarin_core::PseudoNodeCore,
+}
+
+#[pymethods]
+impl PyPseudoNode {
+    fn is_iterable(&self) -> bool {
+        self.core.is_iterable()
+    }
+
+    /// The path from where navigation started (`.group.basic_info`), with
+    /// `[*]` after a list node.
+    fn get_node_placeholder(&self) -> String {
+        self.core.placeholder()
+    }
+
+    /// The node, as a dict.
+    #[getter]
+    fn node(&self, py: Python) -> PyResult<PyObject> {
+        pythonize::pythonize(py, &*self.core.node).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to convert node: {e}"))
+        })
+    }
+
+    #[getter]
+    fn size(&self) -> usize {
+        self.core.child_nodes.len()
+    }
+
+    #[getter]
+    fn child_node_aliases(&self) -> Vec<String> {
+        self.core.child_nodes.keys().cloned().collect()
+    }
+
+    /// Children by alias, each as a dict.
+    #[getter]
+    fn child_nodes(&self, py: Python) -> PyResult<PyObject> {
+        let children: std::collections::BTreeMap<&str, &alizarin_core::StaticNode> = self
+            .core
+            .child_nodes
+            .iter()
+            .map(|(alias, node)| (alias.as_str(), &**node))
+            .collect();
+        pythonize::pythonize(py, &children).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert child nodes: {e}"
+            ))
+        })
+    }
+
+    #[getter]
+    fn nodeid(&self) -> String {
+        self.core.node.nodeid.clone()
+    }
+
+    #[getter]
+    fn alias(&self) -> String {
+        self.core.node.alias.clone().unwrap_or_default()
+    }
+
+    #[getter]
+    fn name(&self) -> String {
+        self.core.node.name.clone()
+    }
+
+    #[getter]
+    fn nodegroup_id(&self) -> Option<String> {
+        self.core.node.nodegroup_id.clone()
+    }
+
+    /// The datatype, read as `semantic` on an inner node.
+    #[getter]
+    fn datatype(&self) -> String {
+        self.core.datatype().to_string()
+    }
+
+    #[getter]
+    fn is_collector(&self) -> bool {
+        self.core.node.is_collector
+    }
+
+    #[getter]
+    fn is_outer(&self) -> bool {
+        self.core.is_outer()
+    }
+
+    #[getter]
+    fn inner(&self) -> PyResult<PyPseudoNode> {
+        self.core
+            .inner
+            .as_ref()
+            .map(|inner| PyPseudoNode {
+                core: (**inner).clone(),
+            })
+            .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyValueError, _>("No inner node"))
+    }
+
+    #[getter]
+    fn is_inner(&self) -> bool {
+        self.core.is_inner
+    }
+
+    fn to_json(&self, py: Python) -> PyResult<PyObject> {
+        pythonize::pythonize(py, &self.core.node.to_json()).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to convert node: {e}"))
+        })
+    }
+}
+
 /// Python wrapper for ResourceModelWrapperCore
 ///
 /// Provides graph pruning and permission checking.
@@ -1460,6 +1572,33 @@ impl PyResourceModelWrapper {
             dict.set_item(alias, node_json)?;
         }
         Ok(dict.to_object(py))
+    }
+
+    /// A pseudo node to navigate from: the root, or the node with `alias`.
+    /// Core's, as WASM and NAPI use.
+    #[pyo3(signature = (alias=None))]
+    fn create_pseudo_node(&self, alias: Option<&str>) -> PyResult<PyPseudoNode> {
+        let model = self.model()?;
+        match alias {
+            Some(alias) => alizarin_core::PseudoNodeCore::by_alias(alias, &*model),
+            None => alizarin_core::PseudoNodeCore::root(&*model),
+        }
+        .map(|core| PyPseudoNode { core })
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
+    }
+
+    /// `parent`'s child `child`, which records `parent` as its parent.
+    fn create_pseudo_node_child(
+        &self,
+        child: &str,
+        parent: PyRef<'_, PyPseudoNode>,
+    ) -> PyResult<PyPseudoNode> {
+        let model = self.model()?;
+        parent
+            .core
+            .child(child, &*model)
+            .map(|core| PyPseudoNode { core })
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
     }
 
     /// Get all nodes as a dict of {node_id: node_json}.
@@ -2369,6 +2508,7 @@ fn alizarin(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Wrapper classes
     m.add_class::<PyResourceModelWrapper>()?;
+    m.add_class::<PyPseudoNode>()?;
 
     // Utility functions
     m.add_function(wrap_pyfunction!(matches_semantic_child, m)?)?;

@@ -508,13 +508,20 @@ class ResourceModelWrapper(Generic[RIVM]):
 
     def get_root(self) -> Any:
         """
-        Get root NodeViewModel for navigation.
+        Get the root NodeViewModel, for navigating the model's structure.
 
-        Returns:
-            SemanticViewModel for the root node
+        Matches TypeScript ResourceModelWrapper.getRoot.
         """
-        from .semantic import SemanticViewModel
-        return SemanticViewModel(None, None, self.graph.root)
+        from .view_models import NodeViewModel
+        return NodeViewModel(self.create_pseudo_node(), self)
+
+    def create_pseudo_node(self, alias: Optional[str] = None) -> Any:
+        """A pseudo node to navigate from: the root, or the node with alias."""
+        return self._rust_model.create_pseudo_node(alias)
+
+    def create_pseudo_node_child(self, child: str, parent: Any) -> Any:
+        """parent's child, which records parent as its parent (for its path)."""
+        return self._rust_model.create_pseudo_node_child(child, parent)
 
     async def all(
         self,
