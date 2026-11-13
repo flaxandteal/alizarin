@@ -1,6 +1,6 @@
 use crate::graph::{StaticResource, StaticResourceDescriptors, StaticResourceRegistry};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
@@ -13,8 +13,6 @@ use crate::graph::StaticTile as WasmStaticTile;
 use crate::node_config_wasm::WasmNodeConfigManager;
 use crate::pseudo_value::{PseudoList, PseudoListInner, PseudoValue, PseudoValueInner};
 use crate::rdm_cache_wasm::WasmRdmCache;
-use alizarin_core::is_node_single_cardinality;
-use alizarin_core::matches_semantic_child as matches_semantic_child_core;
 use alizarin_core::node_config::NodeConfigManager;
 use alizarin_core::rdm_cache::RdmCache;
 use alizarin_core::StaticTile as CoreStaticTile;
@@ -23,17 +21,7 @@ use alizarin_core::TileSource;
 use js_sys::Map as JsMap;
 // Re-export from core to avoid duplication
 pub use alizarin_core::SemanticChildError;
-
-/// Result of get_semantic_child_value - either values or an indication that none exist
-#[derive(Debug)]
-pub(crate) enum SemanticChildResult {
-    /// A list of pseudo values (for collectors or multiple matches)
-    List(PseudoListInner),
-    /// A single pseudo value
-    Single(PseudoValueInner),
-    /// No matching values found (not an error, just empty)
-    Empty,
-}
+use alizarin_core::SemanticChildResult;
 
 /// WASM wrapper for ValuesFromNodegroupResult
 #[wasm_bindgen]
@@ -161,9 +149,8 @@ impl WasmPopulateResult {
 // The resource-instance STATE now lives in `alizarin_core::ResourceInstanceWrapperCore`
 // (shared with NAPI/Python; its pseudo_cache/loaded_nodegroups use the feature-gated
 // `SharedMut`, which is Rc<RefCell> on wasm32). The former WASM copy is gone. What
-// stays WASM-specific is the MODEL_REGISTRY binding (core has no registry) and the
-// lazy-load-aware semantic-child lookup — the two helpers and the extension trait
-// below.
+// stays WASM-specific is the MODEL_REGISTRY binding and the async fetch-and-retry
+// around core's (lazy-aware, synchronous) semantic-child lookup.
 
 /// Access the model for `graph_id` from the WASM MODEL_REGISTRY (immutable). A free
 /// function (not a method) so a caller already holding a borrow of the resource core
@@ -211,8 +198,6 @@ pub struct WASMResourceInstanceWrapper {
     /// Signature: (nodegroup_id: Option<string>) => Promise<StaticTile[]>
     /// None = load all tiles, Some(id) = load tiles for specific nodegroup
     tile_loader: RefCell<Option<js_sys::Function>>,
-    /// Whether this instance uses lazy tile loading
-    lazy: RefCell<bool>,
     /// Optional compiled-in tile source (checked before tile_loader JS callback).
     /// Set via Rust-only `set_tile_source()` when both alizarin and a tile
     /// backend (e.g. Rós Madair) are compiled into the same binary.
@@ -222,139 +207,36 @@ pub struct WASMResourceInstanceWrapper {
 // Re-export from core to avoid duplication
 pub(crate) use alizarin_core::LoadState;
 
-/// A WASM-specific extension of core's `ResourceInstanceWrapperCore`: the
-/// lazy-load-aware semantic-child lookup. Core's inherent `get_semantic_child_value`
-/// takes a `&dyn ModelAccess` and assumes tiles are present; the WASM path must
-/// instead resolve the model from MODEL_REGISTRY and signal `TilesNotLoaded` so the
-/// async wrapper knows to fetch-and-retry. Named `_lazy` to avoid shadowing core's.
-pub(crate) trait WasmInstanceCoreExt {
-    #[allow(clippy::too_many_arguments)]
-    fn get_semantic_child_value_lazy(
-        &self,
-        parent_tile_id: Option<&String>,
-        parent_node_id: &str,
-        parent_nodegroup_id: Option<&String>,
-        child_alias: &str,
-        loaded_nodegroups: Option<&HashSet<String>>,
-    ) -> Result<SemanticChildResult, SemanticChildError>;
+/// Core's semantic child lookup for `core`, against its graph's shared model.
+/// In lazy mode, a child whose nodegroup isn't loaded yet is `TilesNotLoaded`.
+fn semantic_child_value(
+    core: &alizarin_core::ResourceInstanceWrapperCore,
+    parent_tile_id: Option<&String>,
+    parent_node_id: &str,
+    parent_nodegroup_id: Option<&String>,
+    child_alias: &str,
+) -> Result<SemanticChildResult, SemanticChildError> {
+    with_registry_model(&core.graph_id, |model| {
+        core.get_semantic_child_value(
+            parent_tile_id,
+            parent_node_id,
+            parent_nodegroup_id,
+            child_alias,
+            model,
+        )
+    })
 }
 
-impl WasmInstanceCoreExt for alizarin_core::ResourceInstanceWrapperCore {
-    fn get_semantic_child_value_lazy(
-        &self,
-        parent_tile_id: Option<&String>,
-        parent_node_id: &str,
-        parent_nodegroup_id: Option<&String>,
-        child_alias: &str,
-        loaded_nodegroups: Option<&HashSet<String>>,
-    ) -> Result<SemanticChildResult, SemanticChildError> {
-        #[allow(clippy::map_clone)]
-        let child_nodes = with_registry_model_mut(&self.graph_id, |core| {
-            core.get_child_nodes(parent_node_id)
-                .map_err(SemanticChildError::ModelNotInitialized)
-                .map(|map| map.clone())
-        })?;
-
-        let child_node = child_nodes
-            .get(child_alias)
-            .ok_or_else(|| SemanticChildError::ChildNotFound {
-                alias: child_alias.to_string(),
-            })?
-            .clone();
-
-        if let Some(loaded_ngs) = loaded_nodegroups {
-            if let Some(ref child_nodegroup_id) = child_node.nodegroup_id {
-                if !loaded_ngs.contains(child_nodegroup_id) {
-                    return Err(SemanticChildError::TilesNotLoaded {
-                        nodegroup_id: child_nodegroup_id.clone(),
-                    });
-                }
-            }
+/// A semantic child as JS sees it: a PseudoList, a PseudoValue, or null.
+fn semantic_child_to_js(result: SemanticChildResult) -> JsValue {
+    match result {
+        SemanticChildResult::List(list) => {
+            PseudoList::from_rust(PseudoListInner::from_core(list)).into()
         }
-
-        let tiles = self
-            .tiles
-            .as_ref()
-            .ok_or(SemanticChildError::TilesNotInitialized)?;
-
-        let candidate_tile_ids: Vec<String> =
-            if let Some(ref child_nodegroup_id) = child_node.nodegroup_id {
-                self.nodegroup_index
-                    .get(child_nodegroup_id)
-                    .cloned()
-                    .unwrap_or_default()
-            } else {
-                tiles.keys().cloned().collect()
-            };
-
-        let mut matching_tile_ids: Vec<String> = Vec::new();
-        for tile_id in candidate_tile_ids {
-            if let Some(tile) = tiles.get(&tile_id) {
-                if matches_semantic_child_core(
-                    parent_tile_id,
-                    parent_nodegroup_id,
-                    &child_node,
-                    tile,
-                ) {
-                    matching_tile_ids.push(tile_id);
-                }
-            }
+        SemanticChildResult::Single(value) => {
+            PseudoValue::from_rust(PseudoValueInner::from_core(value, None)).into()
         }
-
-        if matching_tile_ids.is_empty() {
-            return Ok(SemanticChildResult::Empty);
-        }
-
-        matching_tile_ids.sort();
-
-        #[allow(clippy::map_clone)]
-        let edges = with_registry_model(&self.graph_id, |core| {
-            core.get_edges_internal()
-                .ok_or_else(|| {
-                    SemanticChildError::ModelNotInitialized(
-                        "Model edges not initialized".to_string(),
-                    )
-                })
-                .map(|map| map.clone())
-        })?;
-
-        let is_single = with_registry_model::<_, _, SemanticChildError>(&self.graph_id, |core| {
-            Ok(is_node_single_cardinality(
-                &child_node,
-                core.get_nodegroups_internal(),
-            ))
-        })?;
-
-        let mut values = Vec::new();
-        for tile_id in &matching_tile_ids {
-            let tile = tiles
-                .get(tile_id)
-                .ok_or_else(|| SemanticChildError::Other("Tile not found".to_string()))?;
-
-            let tile_data = tile.data.get(&child_node.nodeid);
-            let child_ids = edges.get(&child_node.nodeid).cloned().unwrap_or_default();
-
-            values.push(PseudoValueInner::from_node_and_tile(
-                Arc::clone(&child_node),
-                Some(Arc::new(tile.clone())),
-                tile_data.cloned(),
-                child_ids,
-            ));
-        }
-
-        if !is_single || values.len() > 1 {
-            let pseudo_list = PseudoListInner::from_values_with_cardinality(
-                child_alias.to_string(),
-                values,
-                is_single,
-            );
-            Ok(SemanticChildResult::List(pseudo_list))
-        } else {
-            match values.into_iter().next() {
-                Some(value) => Ok(SemanticChildResult::Single(value)),
-                None => Ok(SemanticChildResult::Empty),
-            }
-        }
+        SemanticChildResult::Empty => JsValue::NULL,
     }
 }
 
@@ -448,7 +330,7 @@ impl WASMResourceInstanceWrapper {
     ) -> Result<(), JsValue> {
         self.check_tiles(&tiles)?;
 
-        let lazy = *self.lazy.borrow();
+        let lazy = self.core.borrow().is_lazy();
 
         // Without its model there are no permissions to apply: fail closed.
         let filtered: Vec<StaticTile> = self.with_model_core(move |model_core| {
@@ -569,7 +451,6 @@ impl WASMResourceInstanceWrapper {
             core: RefCell::new(new_core(graph_id)),
             tile_loader: RefCell::new(None),
             tile_source: RefCell::new(None),
-            lazy: RefCell::new(false),
         }
     }
 
@@ -582,17 +463,17 @@ impl WASMResourceInstanceWrapper {
             }),
             tile_loader: RefCell::new(None),
             tile_source: RefCell::new(None),
-            lazy: RefCell::new(false),
         }
     }
 
     /// Set whether this wrapper should use lazy tile loading
     #[wasm_bindgen(js_name = setLazy)]
     pub fn set_lazy(&self, lazy: bool) {
-        *self.lazy.borrow_mut() = lazy;
-        if lazy && self.core.borrow().tiles.is_none() {
+        let mut core = self.core.borrow_mut();
+        core.set_lazy(lazy);
+        if lazy && core.tiles.is_none() {
             // Initialize empty tiles HashMap for lazy mode
-            self.core.borrow_mut().tiles = Some(alizarin_core::TileStore::new());
+            core.tiles = Some(alizarin_core::TileStore::new());
         }
     }
 
@@ -642,7 +523,7 @@ impl WASMResourceInstanceWrapper {
     /// In lazy mode, checks if nodegroup has been processed (which includes tile loading)
     #[wasm_bindgen(js_name = hasTilesForNodegroup)]
     pub fn has_tiles_for_nodegroup(&self, nodegroup_id: String) -> bool {
-        if !*self.lazy.borrow() {
+        if !self.core.borrow().is_lazy() {
             // Non-lazy mode: if tiles exist, we have all tiles
             return self.core.borrow().tiles.is_some();
         }
@@ -2081,9 +1962,9 @@ impl WASMResourceInstanceWrapper {
     /// - parent_tile_id: The tileid of the parent semantic node (or null)
     /// - parent_node_id: The nodeid of the parent semantic node
     /// - parent_nodegroup_id: The nodegroup_id of the parent node (or null)
-    /// - child_aliases: List of child node aliases to search for
     ///
-    /// Returns: Map<alias, Vec<tileid>> - for each child alias, which tiles contain it
+    /// Returns: Map<alias, Vec<tileid>> - for every child alias, the tiles holding it
+    /// (`[]` if none), in sortorder, unnumbered tiles last in load order
     #[wasm_bindgen(js_name = findSemanticChildren)]
     pub fn find_semantic_children(
         &self,
@@ -2091,57 +1972,18 @@ impl WASMResourceInstanceWrapper {
         parent_node_id: String,
         parent_nodegroup_id: Option<String>,
     ) -> Result<JsValue, JsValue> {
-        // Get nodes from model
-        self.with_model_core_mut(|core| {
-            if core.get_nodes_internal().is_none() {
-                core.build_nodes().ok();
-            }
-            Ok(())
-        })?;
-
-        #[allow(clippy::map_clone)]
-        let child_nodes = self.with_model_core_mut(|core| {
-            core.get_child_nodes(parent_node_id.as_str())
-                .map_err(|e| JsValue::from_str(&e))
-                .map(|map| map.clone())
-        })?;
-
-        // Result map: alias -> Vec<tileid>
-        let mut results: HashMap<String, Vec<String>> = HashMap::new();
-
-        // Store the borrow so it lives long enough for the loop
         let core_ref = self.core.borrow();
-
-        // Iterate through all tiles
-        let tiles = core_ref
-            .tiles
-            .as_ref()
-            .ok_or_else(|| JsValue::from_str("Tiles not initialized"))?;
-        for (tile_id, tile) in tiles.iter() {
-            // Check each child alias we're looking for
-            for (child_alias, child_node) in &child_nodes {
-                // Now check semantic parent-child relationship
-                // PORT: js/semantic.ts lines 296-340
-                if matches_semantic_child_core(
+        let children =
+            with_registry_model::<_, _, SemanticChildError>(&core_ref.graph_id, |model| {
+                core_ref.find_semantic_children(
                     parent_tile_id.as_ref(),
+                    &parent_node_id,
                     parent_nodegroup_id.as_ref(),
-                    child_node,
-                    tile,
-                ) {
-                    results
-                        .entry(child_alias.clone())
-                        .or_default()
-                        .push(tile_id.clone());
-                }
-            }
-        }
-
-        // Sort each alias's tile IDs for deterministic ordering
-        for tile_ids in results.values_mut() {
-            tile_ids.sort();
-        }
-
-        serde_wasm_bindgen::to_value(&results)
+                    model,
+                )
+            })
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        serde_wasm_bindgen::to_value(&children)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize results: {:?}", e)))
     }
 
@@ -2166,52 +2008,16 @@ impl WASMResourceInstanceWrapper {
         parent_nodegroup_id: Option<String>,
         child_alias: String,
     ) -> Result<JsValue, JsValue> {
-        // Determine loaded nodegroups for lazy mode check
-        // Extract loaded nodegroup IDs from loaded_nodegroups state
-        let is_lazy = *self.lazy.borrow();
-        let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
-            let core_ref = self.core.borrow();
-            let loaded = core_ref.loaded_nodegroups.read().unwrap();
-            Some(
-                loaded
-                    .iter()
-                    .filter(|(_, state)| **state == LoadState::Loaded)
-                    .map(|(id, _)| id.clone())
-                    .collect(),
-            )
-        } else {
-            None
-        };
-
-        // Call core implementation
-        let result = self.core.borrow().get_semantic_child_value_lazy(
+        // In lazy mode, an unfetched nodegroup throws `TILES_NOT_LOADED:<id>`.
+        semantic_child_value(
+            &self.core.borrow(),
             parent_tile_id.as_ref(),
             &parent_node_id,
             parent_nodegroup_id.as_ref(),
             &child_alias,
-            loaded_nodegroups_snapshot.as_ref(),
-        );
-
-        // Convert result to JsValue
-        match result {
-            Ok(SemanticChildResult::List(pseudo_list)) => {
-                let wasm_list = PseudoList::from_rust(pseudo_list);
-                Ok(wasm_list.into())
-            }
-            Ok(SemanticChildResult::Single(pseudo_value)) => {
-                let wasm_value = PseudoValue::from_rust(pseudo_value);
-                Ok(wasm_value.into())
-            }
-            Ok(SemanticChildResult::Empty) => Ok(JsValue::NULL),
-            Err(SemanticChildError::TilesNotLoaded { nodegroup_id }) => {
-                // Return a specific error that JS can catch and handle
-                Err(JsValue::from_str(&format!(
-                    "TILES_NOT_LOADED:{}",
-                    nodegroup_id
-                )))
-            }
-            Err(e) => Err(JsValue::from_str(&e.to_string())),
-        }
+        )
+        .map(semantic_child_to_js)
+        .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Resolve a dot-separated path to its target node metadata without needing tiles.
@@ -2377,30 +2183,14 @@ impl WASMResourceInstanceWrapper {
             }
         }
 
-        // Determine loaded nodegroups for lazy mode check
-        // Extract loaded nodegroup IDs from loaded_nodegroups state
-        let is_lazy = *self.lazy.borrow();
-        let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
-            let core_ref = self.core.borrow();
-            let loaded = core_ref.loaded_nodegroups.read().unwrap();
-            Some(
-                loaded
-                    .iter()
-                    .filter(|(_, state)| **state == LoadState::Loaded)
-                    .map(|(id, _)| id.clone())
-                    .collect(),
-            )
-        } else {
-            None
-        };
-
-        // First attempt - call core implementation
-        let result = self.core.borrow().get_semantic_child_value_lazy(
+        // First attempt: in lazy mode, core names the nodegroup still to fetch.
+        let is_lazy = self.core.borrow().is_lazy();
+        let result = semantic_child_value(
+            &self.core.borrow(),
             parent_tile_id.as_ref(),
             &parent_node_id,
             parent_nodegroup_id.as_ref(),
             &child_alias,
-            loaded_nodegroups_snapshot.as_ref(),
         );
 
         // Check if we need to load tiles
@@ -2524,63 +2314,26 @@ impl WASMResourceInstanceWrapper {
                 }
                 record_timing("mark_loaded", now_ms() - t4);
 
-                // Retry with updated loaded_nodegroups
-                let t5 = now_ms();
-                let is_lazy = *self.lazy.borrow();
-                let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
-                    let core_ref = self.core.borrow();
-                    let loaded = core_ref.loaded_nodegroups.read().unwrap();
-                    Some(
-                        loaded
-                            .iter()
-                            .filter(|(_, state)| **state == LoadState::Loaded)
-                            .map(|(id, _)| id.clone())
-                            .collect(),
-                    )
-                } else {
-                    None
-                };
-                record_timing("snapshot_rebuild", now_ms() - t5);
-
+                // Retry, now the nodegroup is loaded
                 let t6 = now_ms();
-                let retry_result = self.core.borrow().get_semantic_child_value_lazy(
+                let retry_result = semantic_child_value(
+                    &self.core.borrow(),
                     parent_tile_id.as_ref(),
                     &parent_node_id,
                     parent_nodegroup_id.as_ref(),
                     &child_alias,
-                    loaded_nodegroups_snapshot.as_ref(),
                 );
                 record_timing("retry_get_semantic_child", now_ms() - t6);
 
                 record_timing("tiles_not_loaded_block_total", now_ms() - block_start);
 
-                // Convert retry result to JsValue
-                match retry_result {
-                    Ok(SemanticChildResult::List(pseudo_list)) => {
-                        let wasm_list = PseudoList::from_rust(pseudo_list);
-                        Ok(wasm_list.into())
-                    }
-                    Ok(SemanticChildResult::Single(pseudo_value)) => {
-                        let wasm_value = PseudoValue::from_rust(pseudo_value);
-                        Ok(wasm_value.into())
-                    }
-                    Ok(SemanticChildResult::Empty) => Ok(JsValue::NULL),
-                    Err(e) => Err(JsValue::from_str(&e.to_string())),
-                }
+                retry_result
+                    .map(semantic_child_to_js)
+                    .map_err(|e| JsValue::from_str(&e.to_string()))
             }
-            Ok(SemanticChildResult::List(pseudo_list)) => {
-                let wasm_list = PseudoList::from_rust(pseudo_list);
-                Ok(wasm_list.into())
-            }
-            Ok(SemanticChildResult::Single(pseudo_value)) => {
-                let wasm_value = PseudoValue::from_rust(pseudo_value);
-                Ok(wasm_value.into())
-            }
-            Ok(SemanticChildResult::Empty) => {
-                // Return empty PseudoList instead of null - TS should never need to create pseudos
-                Ok(JsValue::NULL)
-            }
-            Err(e) => Err(JsValue::from_str(&e.to_string())),
+            other => other
+                .map(semantic_child_to_js)
+                .map_err(|e| JsValue::from_str(&e.to_string())),
         }
     }
 
@@ -2600,10 +2353,15 @@ impl WASMResourceInstanceWrapper {
         parent_node_id: String,
     ) -> Result<Vec<String>, JsValue> {
         // Core's, as NAPI uses (none in eager mode; each nodegroup once).
-        let lazy = *self.lazy.borrow();
         let core_ref = self.core.borrow();
         with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
-            Ok(core_ref.missing_nodegroups_for_children(&parent_node_id, model, lazy))
+            Ok(
+                core_ref.missing_nodegroups_for_children(
+                    &parent_node_id,
+                    model,
+                    core_ref.is_lazy(),
+                ),
+            )
         })
     }
 
@@ -2628,67 +2386,21 @@ impl WASMResourceInstanceWrapper {
         parent_node_id: String,
         parent_nodegroup_id: Option<String>,
     ) -> Result<JsValue, JsValue> {
-        // Determine loaded nodegroups for lazy mode check
-        let is_lazy = *self.lazy.borrow();
-        let loaded_nodegroups_snapshot: Option<HashSet<String>> = if is_lazy {
-            let core_ref = self.core.borrow();
-            let loaded = core_ref.loaded_nodegroups.read().unwrap();
-            Some(
-                loaded
-                    .iter()
-                    .filter(|(_, state)| **state == LoadState::Loaded)
-                    .map(|(id, _)| id.clone())
-                    .collect(),
-            )
-        } else {
-            None
-        };
-
-        // Get all child aliases for this parent
-        #[allow(clippy::map_clone)]
-        let child_nodes = self.with_model_core_mut(|core| {
-            core.get_child_nodes(&parent_node_id)
-                .map_err(|e| JsValue::from_str(&e))
-                .map(|map| map.clone())
-        })?;
-
-        // Create JS Map for results
-        let result_map = JsMap::new();
-
-        // Get each child value and add to map
-        for child_alias in child_nodes.keys() {
-            let result = self.core.borrow().get_semantic_child_value_lazy(
+        let core_ref = self.core.borrow();
+        let values = with_registry_model::<_, _, SemanticChildError>(&core_ref.graph_id, |model| {
+            core_ref.get_all_semantic_child_values(
                 parent_tile_id.as_ref(),
                 &parent_node_id,
                 parent_nodegroup_id.as_ref(),
-                child_alias,
-                loaded_nodegroups_snapshot.as_ref(),
-            );
+                model,
+            )
+        })
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-            let js_value = match result {
-                Ok(SemanticChildResult::List(pseudo_list)) => {
-                    let wasm_list = PseudoList::from_rust(pseudo_list);
-                    wasm_list.into()
-                }
-                Ok(SemanticChildResult::Single(pseudo_value)) => {
-                    let wasm_value = PseudoValue::from_rust(pseudo_value);
-                    wasm_value.into()
-                }
-                Ok(SemanticChildResult::Empty) => JsValue::NULL,
-                Err(SemanticChildError::TilesNotLoaded { nodegroup_id }) => {
-                    return Err(JsValue::from_str(&format!(
-                        "TILES_NOT_LOADED:{} (for alias {}). Call getMissingNodegroupsForChildren first.",
-                        nodegroup_id, child_alias
-                    )));
-                }
-                Err(e) => {
-                    return Err(JsValue::from_str(&e.to_string()));
-                }
-            };
-
-            result_map.set(&JsValue::from_str(child_alias), &js_value);
+        let result_map = JsMap::new();
+        for (alias, value) in values {
+            result_map.set(&JsValue::from_str(&alias), &semantic_child_to_js(value));
         }
-
         Ok(result_map.into())
     }
 }
@@ -2788,10 +2500,10 @@ mod adoption_tests {
     }
 
     #[wasm_bindgen_test]
-    fn semantic_child_lazy_is_reachable() {
-        use alizarin_core::ResourceInstanceWrapperCore;
-        let core = ResourceInstanceWrapperCore::new("unregistered-graph".to_string());
-        let result = core.get_semantic_child_value_lazy(None, "parent-node", None, "child", None);
+    fn semantic_child_of_an_unregistered_model_is_a_clean_error() {
+        let core =
+            alizarin_core::ResourceInstanceWrapperCore::new("unregistered-graph".to_string());
+        let result = semantic_child_value(&core, None, "parent-node", None, "child");
         assert!(result.is_err(), "an unregistered model is a clean error");
     }
 }
