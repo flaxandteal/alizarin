@@ -1015,31 +1015,10 @@ impl WASMResourceInstanceWrapper {
     /// After calling this, the instance should not be used.
     #[wasm_bindgen(js_name = release)]
     pub fn release(&self) {
-        // Clear tiles
-        {
-            let mut core = self.core.borrow_mut();
-            if let Some(ref mut tiles) = core.tiles {
-                tiles.clear();
-            }
-            core.tiles = None;
-            core.nodegroup_index.clear();
-        }
+        // Core's release (tiles, index, pseudo cache, load states), as NAPI uses.
+        self.core.borrow_mut().release();
 
-        // Clear pseudo cache
-        {
-            let core_ref = self.core.borrow();
-            let mut cache = core_ref.pseudo_cache.write().unwrap();
-            cache.clear();
-        }
-
-        // Clear loaded nodegroups tracking
-        {
-            let core_ref = self.core.borrow();
-            let mut loaded = core_ref.loaded_nodegroups.write().unwrap();
-            loaded.clear();
-        }
-
-        // Clear tile loader callback
+        // Clear tile loader callback (WASM's own)
         *self.tile_loader.borrow_mut() = None;
     }
 
@@ -1051,20 +1030,15 @@ impl WASMResourceInstanceWrapper {
     /// PORT: js/graphManager.ts:330-364 getRoot()
     #[wasm_bindgen(js_name = getRootPseudo)]
     pub fn get_root_pseudo(&self) -> Option<PseudoValue> {
-        // Get root node to find its alias
-        let root_node = self
-            .with_model_core_mut(|core| Ok(core.get_root_node().ok()))
-            .ok()??;
-
-        let root_alias = root_node.alias.clone().unwrap_or_default();
-
-        // Need to hold borrow long enough for the lock
         let core_ref = self.core.borrow();
-        let cache = core_ref.pseudo_cache.read().unwrap();
+        let root_alias = with_registry_model::<_, _, String>(&core_ref.graph_id, |model| {
+            Ok(model.get_root_node()?.alias.clone().unwrap_or_default())
+        })
+        .ok()?;
 
-        // Look up root by its actual alias; cache stores PseudoListCore.
-        let root_list_core = cache.get(&root_alias)?;
-        let root_list = PseudoListInner::from_core(root_list_core.clone());
+        // Core's cached root list (PseudoListCore): wrap only the value returned.
+        let cache = core_ref.pseudo_cache.read().unwrap();
+        let root_list = cache.get(&root_alias)?;
 
         if root_list.values.len() > 1 {
             web_sys::console::warn_1(&"Multiple root tiles found - returning first".into());
@@ -1073,7 +1047,7 @@ impl WASMResourceInstanceWrapper {
         root_list
             .values
             .first()
-            .map(|v| PseudoValue::from_rust(v.clone()))
+            .map(|v| PseudoValue::from_rust(PseudoValueInner::from_core(v.clone(), None)))
     }
 
     /// Convert the entire resource to JSON using Rust-side traversal.
@@ -2246,21 +2220,11 @@ impl WASMResourceInstanceWrapper {
     /// lazy-load just that nodegroup's tiles before calling getValuesAtPath.
     #[wasm_bindgen(js_name = resolvePath)]
     pub fn resolve_path(&self, path: &str) -> Result<JsValue, JsValue> {
-        // Ensure model caches are built
-        self.with_model_core_mut(|model_core| {
-            model_core.ensure_built().map_err(|e| JsValue::from_str(&e))
-        })?;
-
-        let info = self.with_model_core(|model| {
-            use alizarin_core::ModelAccess;
-            let root_node = model.get_root_node().map_err(|e| JsValue::from_str(&e))?;
-            let nodes = model
-                .get_nodes()
-                .ok_or_else(|| JsValue::from_str("Nodes not initialized"))?;
-            let edges = alizarin_core::ModelAccess::get_edges(model)
-                .ok_or_else(|| JsValue::from_str("Edges not initialized"))?;
-            let nodegroups = model.get_nodegroups();
-            alizarin_core::resolve_path_segments(path, &root_node, nodes, edges, nodegroups)
+        // Core's resolve_path, as NAPI and Python use.
+        let core_ref = self.core.borrow();
+        let info = with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+            core_ref
+                .resolve_path(path, model)
                 .map_err(|e| JsValue::from_str(&e.to_string()))
         })?;
 
@@ -2635,41 +2599,12 @@ impl WASMResourceInstanceWrapper {
         &self,
         parent_node_id: String,
     ) -> Result<Vec<String>, JsValue> {
-        // In non-lazy mode, all tiles are assumed loaded
-        if !*self.lazy.borrow() {
-            return Ok(Vec::new());
-        }
-
-        // Get loaded nodegroups snapshot
-        let loaded_nodegroups: HashSet<String> = {
-            let core_ref = self.core.borrow();
-            let loaded = core_ref.loaded_nodegroups.read().unwrap();
-            loaded
-                .iter()
-                .filter(|(_, state)| **state == LoadState::Loaded)
-                .map(|(id, _)| id.clone())
-                .collect()
-        };
-
-        // Get child nodes for this parent
-        #[allow(clippy::map_clone)]
-        let child_nodes = self.with_model_core_mut(|core| {
-            core.get_child_nodes(&parent_node_id)
-                .map_err(|e| JsValue::from_str(&e))
-                .map(|map| map.clone())
-        })?;
-
-        // Collect missing nodegroups
-        let mut missing: Vec<String> = Vec::new();
-        for child_node in child_nodes.values() {
-            if let Some(ref nodegroup_id) = child_node.nodegroup_id {
-                if !loaded_nodegroups.contains(nodegroup_id) && !missing.contains(nodegroup_id) {
-                    missing.push(nodegroup_id.clone());
-                }
-            }
-        }
-
-        Ok(missing)
+        // Core's, as NAPI uses (none in eager mode; each nodegroup once).
+        let lazy = *self.lazy.borrow();
+        let core_ref = self.core.borrow();
+        with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+            Ok(core_ref.missing_nodegroups_for_children(&parent_node_id, model, lazy))
+        })
     }
 
     /// Sync batch endpoint: get all semantic child values for a parent node at once.

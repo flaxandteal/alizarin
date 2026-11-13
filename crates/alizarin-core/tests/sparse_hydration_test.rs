@@ -297,6 +297,42 @@ fn enumeration_does_not_assume_completeness() {
     assert_eq!(tiles.len(), 1, "exactly the one loaded tile is present");
 }
 
+/// A lazy caller's missing nodegroups for a node's children are each listed
+/// once, and drop out once loaded; eager mode has none missing; release
+/// forgets what was loaded.
+#[test]
+fn missing_child_nodegroups_are_listed_once_and_release_forgets_loads() {
+    let graph = load_group_graph();
+    let model = GraphModelAccess::new_eager(Arc::new(graph.clone()), true);
+    let basic_info = graph
+        .get_node_by_alias("basic_info")
+        .expect("basic_info node")
+        .nodeid
+        .clone();
+    let mut core = make_core(&graph);
+
+    // basic_info's three children share one nodegroup: listed once.
+    let missing = core.missing_nodegroups_for_children(&basic_info, &model, true);
+    assert_eq!(missing.len(), 1, "{missing:?}");
+    assert!(
+        core.missing_nodegroups_for_children(&basic_info, &model, false)
+            .is_empty(),
+        "eager: everything is loaded"
+    );
+
+    core.mark_nodegroup_loaded(&missing[0]);
+    assert!(core
+        .missing_nodegroups_for_children(&basic_info, &model, true)
+        .is_empty());
+
+    core.release();
+    assert_eq!(
+        core.missing_nodegroups_for_children(&basic_info, &model, true),
+        missing,
+        "release forgets the load"
+    );
+}
+
 /// Loading through the model's permissions drops tiles it forbids, for a full
 /// load and an incremental merge alike; once permitted, a merge accepts them.
 #[test]

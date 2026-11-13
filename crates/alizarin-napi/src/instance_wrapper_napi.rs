@@ -1139,21 +1139,8 @@ impl NapiResourceInstanceWrapper {
         let Ok(model) = self.model() else {
             return Vec::new();
         };
-        let child_nodes = model.get_child_nodes(&parent_node_id);
-
-        if !self.lazy {
-            return Vec::new();
-        }
-
-        let mut missing = Vec::new();
-        for child in child_nodes.values() {
-            if let Some(ng_id) = &child.nodegroup_id {
-                if !self.inner.is_nodegroup_loaded(ng_id) {
-                    missing.push(ng_id.to_string());
-                }
-            }
-        }
-        missing
+        self.inner
+            .missing_nodegroups_for_children(&parent_node_id, &*model, self.lazy)
     }
 
     // =========================================================================
@@ -1614,12 +1601,7 @@ impl NapiResourceInstanceWrapper {
 
     #[napi]
     pub fn release(&mut self) {
-        self.inner.tiles = None;
-        self.inner.nodegroup_index.clear();
-        self.clear_pseudo_cache();
-        if let Ok(mut loaded) = self.inner.loaded_nodegroups.write() {
-            loaded.clear();
-        }
+        self.inner.release();
     }
 }
 

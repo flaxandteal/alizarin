@@ -841,6 +841,46 @@ impl ResourceInstanceWrapperCore {
         }
     }
 
+    /// The nodegroups of `parent_node_id`'s children whose tiles aren't loaded
+    /// yet, each listed once (children often share one): what a lazy caller
+    /// must fetch before visiting them. In eager mode (`lazy` false) every
+    /// tile is loaded up front, so none.
+    pub fn missing_nodegroups_for_children(
+        &self,
+        parent_node_id: &str,
+        model: &dyn ModelAccess,
+        lazy: bool,
+    ) -> Vec<String> {
+        if !lazy {
+            return Vec::new();
+        }
+        let (Some(edges), Some(nodes)) = (model.get_edges(), model.get_nodes()) else {
+            return Vec::new();
+        };
+        let mut missing: Vec<String> = Vec::new();
+        for child_id in edges.get(parent_node_id).into_iter().flatten() {
+            if let Some(nodegroup_id) = nodes.get(child_id).and_then(|n| n.nodegroup_id.as_ref()) {
+                if !self.is_nodegroup_loaded(nodegroup_id) && !missing.contains(nodegroup_id) {
+                    missing.push(nodegroup_id.clone());
+                }
+            }
+        }
+        missing
+    }
+
+    /// Drop everything loaded for this resource: its tiles and their index,
+    /// the pseudo cache and the nodegroup load states.
+    pub fn release(&mut self) {
+        self.tiles = None;
+        self.nodegroup_index.clear();
+        if let Ok(mut cache) = self.pseudo_cache.write() {
+            cache.clear();
+        }
+        if let Ok(mut loaded) = self.loaded_nodegroups.write() {
+            loaded.clear();
+        }
+    }
+
     /// Get a cached pseudo list by alias
     pub fn get_cached_pseudo(&self, alias: &str) -> Option<PseudoListCore> {
         if let Ok(cache) = self.pseudo_cache.read() {
