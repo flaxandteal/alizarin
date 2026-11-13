@@ -230,6 +230,20 @@ impl PyResourceInstanceWrapperCore {
         self.inner.mark_nodegroup_loaded(nodegroup_id)
     }
 
+    /// Switch lazy tile mode, as on NAPI/WASM: a nodegroup not yet loaded is
+    /// then unknown, so semantic child lookups on it raise
+    /// `TILES_NOT_LOADED:<nodegroup>` until its tiles are loaded or it is
+    /// marked loaded. Python fetches no tiles itself, so `populate(lazy=...)`
+    /// (lazy pseudo building) leaves this off.
+    fn set_lazy(&mut self, lazy: bool) {
+        self.inner.set_lazy(lazy);
+    }
+
+    /// Whether lazy tile mode is on.
+    fn is_lazy(&self) -> bool {
+        self.inner.is_lazy()
+    }
+
     /// Get semantic child value
     ///
     /// Args:
@@ -261,11 +275,9 @@ impl PyResourceInstanceWrapperCore {
                 model,
             )
             .map_err(|e| match e {
-                SemanticChildError::TilesNotLoaded { nodegroup_id } => {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Tiles not loaded for nodegroup: {}",
-                        nodegroup_id
-                    ))
+                // Core's text (`TILES_NOT_LOADED:<nodegroup>`), as on NAPI/WASM.
+                e @ SemanticChildError::TilesNotLoaded { .. } => {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
                 }
                 SemanticChildError::ChildNotFound { alias } => {
                     PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(

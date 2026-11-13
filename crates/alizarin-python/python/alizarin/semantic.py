@@ -185,7 +185,6 @@ class SemanticViewModel:
             The child PseudoValue or None
         """
         parent = self.__parent_wkri
-        tile = self.__tile
         node = self.__node
 
         if not parent or not hasattr(parent, "_i"):
@@ -210,40 +209,7 @@ class SemanticViewModel:
         if key in self.__child_values:
             return self.__child_values[key]
 
-        # Try to get from instance wrapper
-        if hasattr(instance_wrapper, "wasm_wrapper"):
-            wasm_wrapper = instance_wrapper.wasm_wrapper
-            if wasm_wrapper and hasattr(wasm_wrapper, "get_semantic_child_value"):
-                try:
-                    rust_value = wasm_wrapper.get_semantic_child_value(
-                        tile.tileid if tile else None,
-                        node.nodeid,
-                        node.nodegroup_id,
-                        key,
-                    )
-
-                    # Wrap the Rust value
-                    from .pseudos import wrap_rust_pseudo
-                    child = wrap_rust_pseudo(rust_value, parent, model)
-
-                    if child is not None:
-                        # Set parent reference
-                        if hasattr(child, "parent_value"):
-                            child.parent_value = self.__parent_pseudo
-
-                        # Cache the child
-                        self.__child_values[key] = child
-
-                    return child
-                except Exception as e:
-                    error_str = str(e)
-                    if error_str.startswith("TILES_NOT_LOADED:"):
-                        # Tiles not loaded - would need to load them
-                        # For now, return None
-                        return None
-                    raise
-
-        # Fall back to retrieve_pseudo if available
+        # From the instance's pseudo cache
         if hasattr(instance_wrapper, "retrieve_pseudo"):
             result = await instance_wrapper.retrieve_pseudo(key)
             if result and len(result) > 0:
