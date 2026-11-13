@@ -11,8 +11,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use alizarin_core::{
-    resource_tiles_to_tree, GraphModelAccess, ResourceInstanceWrapperCore, StaticGraph,
-    StaticResourceMetadata, StaticTile,
+    resource_tiles_to_tree, GraphModelAccess, ResourceInstanceWrapperCore, SemanticChildResult,
+    StaticGraph, StaticResourceMetadata, StaticTile,
 };
 
 const RESOURCE_ID: &str = "sparse-test-resource-1";
@@ -356,4 +356,110 @@ fn permitted_loads_drop_tiles_the_model_forbids() {
     model.set_permitted_nodegroups_rules(std::collections::HashMap::new());
     core.merge_permitted_tiles(vec![tile], &model);
     assert_eq!(count(&core), 1, "permitted, so merged");
+}
+
+fn basic_info_tile_numbered(
+    graph: &StaticGraph,
+    tile_id: &str,
+    sortorder: Option<i32>,
+) -> StaticTile {
+    let mut tile = basic_info_tile(graph);
+    tile.tileid = Some(tile_id.to_string());
+    tile.sortorder = sortorder;
+    tile
+}
+
+/// Semantic children come back in sortorder, unnumbered tiles after the
+/// numbered ones in load order, the same for ids and values; every child
+/// alias is listed, `[]` when it has none.
+#[test]
+fn semantic_children_follow_sortorder_with_unnumbered_last_in_load_order() {
+    let graph = load_group_graph();
+    let model = GraphModelAccess::new_eager(Arc::new(graph.clone()), true);
+    let root = graph.root.nodeid.clone();
+    let mut core = make_core(&graph);
+    core.load_tiles(vec![
+        basic_info_tile_numbered(&graph, "a", None),
+        basic_info_tile_numbered(&graph, "b", Some(2)),
+        basic_info_tile_numbered(&graph, "c", Some(1)),
+        basic_info_tile_numbered(&graph, "d", None),
+        statement_tile(&graph),
+    ]);
+    let expected = vec!["c", "b", "a", "d"];
+
+    let children = core
+        .find_semantic_children(None, &root, None, &model)
+        .expect("children");
+    assert_eq!(children["basic_info"], expected);
+    assert_eq!(children["statement"], vec!["tile-statement-1"]);
+    assert_eq!(
+        children["identifier"],
+        Vec::<String>::new(),
+        "listed, with none"
+    );
+
+    match core
+        .get_semantic_child_value(None, &root, None, "basic_info", &model)
+        .expect("value")
+    {
+        SemanticChildResult::List(list) => {
+            let ids: Vec<String> = list
+                .values
+                .iter()
+                .map(|v| {
+                    v.tile
+                        .as_ref()
+                        .and_then(|t| t.tileid.clone())
+                        .unwrap_or_default()
+                })
+                .collect();
+            assert_eq!(ids, expected);
+        }
+        other => panic!("expected a list, got {other:?}"),
+    }
+}
+
+/// In lazy mode a child whose nodegroup the host hasn't fetched is an error
+/// (`TILES_NOT_LOADED:<nodegroup>`), not an absence, for one child or all;
+/// merging its tiles, or marking an empty fetch loaded, answers it. Eager
+/// mode never asks.
+#[test]
+fn lazy_semantic_children_error_until_their_nodegroup_is_loaded() {
+    let graph = load_group_graph();
+    let model = GraphModelAccess::new_eager(Arc::new(graph.clone()), true);
+    let root = graph.root.nodeid.clone();
+    let statement_ng = nodegroup_id_for_alias(&graph, "statement");
+    let mut core = make_core(&graph);
+    core.set_lazy(true);
+    core.load_tiles(vec![basic_info_tile(&graph)]);
+
+    assert!(core
+        .get_semantic_child_value(None, &root, None, "basic_info", &model)
+        .is_ok());
+    let err = core
+        .get_semantic_child_value(None, &root, None, "statement", &model)
+        .expect_err("not fetched yet");
+    assert_eq!(err.to_string(), format!("TILES_NOT_LOADED:{statement_ng}"));
+    assert!(core
+        .get_all_semantic_child_values(None, &root, None, &model)
+        .is_err());
+
+    core.merge_tiles(vec![statement_tile(&graph)]);
+    assert!(core
+        .get_semantic_child_value(None, &root, None, "statement", &model)
+        .is_ok());
+
+    // The host fetched the rest and found nothing.
+    for nodegroup_id in core.missing_nodegroups_for_children(&root, &model, true) {
+        core.mark_nodegroup_loaded(&nodegroup_id);
+    }
+    assert!(core
+        .get_all_semantic_child_values(None, &root, None, &model)
+        .is_ok());
+
+    let mut eager = make_core(&graph);
+    eager.load_tiles(vec![basic_info_tile(&graph)]);
+    assert!(eager
+        .get_semantic_child_value(None, &root, None, "statement", &model)
+        .is_ok());
 }

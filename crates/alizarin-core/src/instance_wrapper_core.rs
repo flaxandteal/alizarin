@@ -9,7 +9,7 @@
 /// concerns (RefCell for WASM async, PyO3 for Python).
 use crate::shared_mut::SharedMut;
 use indexmap::IndexMap;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::path_resolution::{resolve_path_segments, PathError, PathResolutionInfo};
@@ -39,8 +39,10 @@ pub enum SemanticChildError {
 impl std::fmt::Display for SemanticChildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            // A stable prefix callers can match on, the same on every binding:
+            // fetch the nodegroup's tiles, then ask again.
             SemanticChildError::TilesNotLoaded { nodegroup_id } => {
-                write!(f, "Tiles not loaded for nodegroup: {}", nodegroup_id)
+                write!(f, "TILES_NOT_LOADED:{}", nodegroup_id)
             }
             SemanticChildError::ChildNotFound { alias } => {
                 write!(f, "Child node not found: {}", alias)
@@ -669,6 +671,12 @@ pub struct ResourceInstanceWrapperCore {
 
     /// Cache of PseudoValues (alias -> PseudoListCore)
     pub pseudo_cache: SharedMut<HashMap<String, PseudoListCore>>,
+
+    /// Lazy mode: tiles arrive per nodegroup as the host fetches them, so a
+    /// nodegroup not yet loaded is unknown, not empty. Core keeps only this
+    /// state (and `loaded_nodegroups`) and reports what is missing; the
+    /// fetching is the host's (async, outside core).
+    pub lazy: bool,
 }
 
 impl ResourceInstanceWrapperCore {
@@ -681,6 +689,7 @@ impl ResourceInstanceWrapperCore {
             nodegroup_index: IndexMap::new(),
             loaded_nodegroups: SharedMut::new(HashMap::new()),
             pseudo_cache: SharedMut::new(HashMap::new()),
+            lazy: false,
         }
     }
 
@@ -706,6 +715,16 @@ impl ResourceInstanceWrapperCore {
 
         self.tiles = Some(tiles_map);
         self.nodegroup_index = nodegroup_index;
+
+        // Lazy mode: exactly the nodegroups loaded now count as fetched.
+        if self.lazy {
+            if let Ok(mut loaded) = self.loaded_nodegroups.write() {
+                loaded.clear();
+                for nodegroup_id in self.nodegroup_index.keys() {
+                    loaded.insert(nodegroup_id.clone(), LoadState::Loaded);
+                }
+            }
+        }
     }
 
     /// Run the graph's load-time **derive functions** (compute-tiles) over the
@@ -778,6 +797,7 @@ impl ResourceInstanceWrapperCore {
     /// is overwritten, so re-merging the same nodegroup is idempotent.
     pub fn merge_tiles(&mut self, tiles: Vec<StaticTile>) {
         let tiles_map = self.tiles.get_or_insert_with(TileStore::new);
+        let mut merged_nodegroups: Vec<String> = Vec::new();
         for tile in tiles {
             let tile_id = tile
                 .tileid
@@ -790,7 +810,17 @@ impl ResourceInstanceWrapperCore {
             if !entry.contains(&tile_id) {
                 entry.push(tile_id.clone());
             }
+            if !merged_nodegroups.contains(&tile.nodegroup_id) {
+                merged_nodegroups.push(tile.nodegroup_id.clone());
+            }
             tiles_map.insert(tile_id, tile);
+        }
+
+        // Lazy mode: the merged nodegroups now count as fetched.
+        if self.lazy {
+            for nodegroup_id in &merged_nodegroups {
+                self.mark_nodegroup_loaded(nodegroup_id);
+            }
         }
     }
 
@@ -879,6 +909,108 @@ impl ResourceInstanceWrapperCore {
         if let Ok(mut loaded) = self.loaded_nodegroups.write() {
             loaded.clear();
         }
+    }
+
+    /// Switch lazy mode (see [`Self::lazy`]).
+    pub fn set_lazy(&mut self, lazy: bool) {
+        self.lazy = lazy;
+    }
+
+    /// Whether this instance is in lazy mode.
+    pub fn is_lazy(&self) -> bool {
+        self.lazy
+    }
+
+    /// The ids of `child_node`'s tiles that are semantic children of the given
+    /// parent: only the child's nodegroup's tiles are looked at (every tile if
+    /// it has none). Ordered by `sortorder`, tiles without one after the
+    /// numbered ones; ties and unnumbered tiles keep their load order.
+    fn semantic_child_tile_ids(
+        &self,
+        parent_tile_id: Option<&String>,
+        parent_nodegroup_id: Option<&String>,
+        child_node: &StaticNode,
+    ) -> Result<Vec<String>, SemanticChildError> {
+        let tiles = self
+            .tiles
+            .as_ref()
+            .ok_or(SemanticChildError::TilesNotInitialized)?;
+        let candidates: Vec<&String> = match &child_node.nodegroup_id {
+            Some(nodegroup_id) => self
+                .nodegroup_index
+                .get(nodegroup_id)
+                .map(|ids| ids.iter().collect())
+                .unwrap_or_default(),
+            None => tiles.keys().collect(),
+        };
+        let mut ids: Vec<String> = candidates
+            .into_iter()
+            .filter(|id| {
+                tiles.get(*id).is_some_and(|tile| {
+                    matches_semantic_child(parent_tile_id, parent_nodegroup_id, child_node, tile)
+                })
+            })
+            .cloned()
+            .collect();
+        // Stable, so equal keys keep load order.
+        ids.sort_by_key(|id| {
+            let sortorder = tiles.get(id).and_then(|tile| tile.sortorder);
+            (sortorder.is_none(), sortorder.unwrap_or(0))
+        });
+        Ok(ids)
+    }
+
+    /// For every child of `parent_node_id`, by alias: the ids of its tiles that
+    /// are semantic children of the given parent, ordered as
+    /// [`get_semantic_child_value`](Self::get_semantic_child_value) orders
+    /// values (`[]` if none).
+    pub fn find_semantic_children(
+        &self,
+        parent_tile_id: Option<&String>,
+        parent_node_id: &str,
+        parent_nodegroup_id: Option<&String>,
+        model: &dyn ModelAccess,
+    ) -> Result<BTreeMap<String, Vec<String>>, SemanticChildError> {
+        let children = model
+            .get_child_nodes(parent_node_id)
+            .map_err(SemanticChildError::ModelNotInitialized)?;
+        children
+            .iter()
+            .map(|(alias, child)| {
+                let ids =
+                    self.semantic_child_tile_ids(parent_tile_id, parent_nodegroup_id, child)?;
+                Ok((alias.clone(), ids))
+            })
+            .collect()
+    }
+
+    /// Every child of `parent_node_id`'s value, by alias, as
+    /// [`get_semantic_child_value`](Self::get_semantic_child_value) gives it.
+    /// Errors propagate: in lazy mode, `TilesNotLoaded` for a child whose
+    /// nodegroup the host hasn't fetched yet.
+    pub fn get_all_semantic_child_values(
+        &self,
+        parent_tile_id: Option<&String>,
+        parent_node_id: &str,
+        parent_nodegroup_id: Option<&String>,
+        model: &dyn ModelAccess,
+    ) -> Result<BTreeMap<String, SemanticChildResult>, SemanticChildError> {
+        let children = model
+            .get_child_nodes(parent_node_id)
+            .map_err(SemanticChildError::ModelNotInitialized)?;
+        children
+            .keys()
+            .map(|alias| {
+                let value = self.get_semantic_child_value(
+                    parent_tile_id,
+                    parent_node_id,
+                    parent_nodegroup_id,
+                    alias,
+                    model,
+                )?;
+                Ok((alias.clone(), value))
+            })
+            .collect()
     }
 
     /// Get a cached pseudo list by alias
@@ -1146,19 +1278,30 @@ impl ResourceInstanceWrapperCore {
                 alias: child_alias.to_string(),
             })?;
 
+        // Lazy mode: the host hasn't fetched this nodegroup's tiles yet, so
+        // its absence would be a guess. Say so; the host fetches and asks again.
+        if self.lazy {
+            if let Some(nodegroup_id) = &child_node.nodegroup_id {
+                if !self.is_nodegroup_loaded(nodegroup_id) {
+                    return Err(SemanticChildError::TilesNotLoaded {
+                        nodegroup_id: nodegroup_id.clone(),
+                    });
+                }
+            }
+        }
+
         // Get tiles storage
         let tiles = self
             .tiles
             .as_ref()
             .ok_or(SemanticChildError::TilesNotInitialized)?;
 
-        // Filter tiles that match the semantic child relationship
-        let matching_tiles: Vec<Arc<StaticTile>> = tiles
-            .values()
-            .filter(|tile| {
-                matches_semantic_child(parent_tile_id, parent_nodegroup_id, child_node, tile)
-            })
-            .map(|t| Arc::new(t.clone()))
+        // The matching tiles, from the child's nodegroup only, in sortorder.
+        let matching_tiles: Vec<Arc<StaticTile>> = self
+            .semantic_child_tile_ids(parent_tile_id, parent_nodegroup_id, child_node)?
+            .iter()
+            .filter_map(|id| tiles.get(id))
+            .map(|tile| Arc::new(tile.clone()))
             .collect();
 
         if matching_tiles.is_empty() {
