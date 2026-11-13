@@ -32,6 +32,7 @@ pub mod node_config;
 pub mod ontology;
 pub mod path_resolution;
 pub mod permissions;
+pub mod pseudo_node_core;
 pub mod pseudo_value_core;
 pub mod quantize;
 pub mod rdm_cache;
@@ -236,6 +237,7 @@ pub use json_conversion::{
 };
 
 // Pseudo value core types (for JSON conversion)
+pub use pseudo_node_core::PseudoNodeCore;
 pub use pseudo_value_core::{
     matches_tile_filter, PseudoListCore, PseudoValueCore, TileBuilder, TileBuilderContext,
     TileBuilderMap, VisitorContext,
