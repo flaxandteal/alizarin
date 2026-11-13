@@ -165,18 +165,6 @@ where
     f(&core)
 }
 
-/// As [`with_registry_model`], with a per-call view `f` may borrow mutably;
-/// nothing done to the view persists (model changes go through core).
-pub(crate) fn with_registry_model_mut<F, R, E>(graph_id: &str, f: F) -> Result<R, E>
-where
-    F: FnOnce(&mut crate::model_wrapper::ResourceModelWrapperCore) -> Result<R, E>,
-    E: From<String>,
-{
-    let mut core =
-        crate::model_wrapper::ResourceModelWrapperCore::for_graph(graph_id).map_err(E::from)?;
-    f(&mut core)
-}
-
 /// Build core's resource-instance state for `graph_id` (core keeps the shared
 /// model built, so there is nothing to prepare).
 fn new_core(graph_id: String) -> alizarin_core::ResourceInstanceWrapperCore {
@@ -278,17 +266,8 @@ impl WASMResourceInstanceWrapper {
         with_registry_model(&graph_id, f)
     }
 
-    /// Helper to access the model core from registry (mutable) - WASM version
-    fn with_model_core_mut<F, R>(&self, f: F) -> Result<R, JsValue>
-    where
-        F: FnOnce(&mut crate::model_wrapper::ResourceModelWrapperCore) -> Result<R, JsValue>,
-    {
-        let graph_id = self.core.borrow().graph_id.clone();
-        with_registry_model_mut(&graph_id, f)
-    }
-
     fn check_tiles(&self, tiles: &Vec<StaticTile>) -> Result<(), JsValue> {
-        self.with_model_core_mut(|core| {
+        self.with_model_core(|core| {
             let nodegroups = core
                 .get_nodegroup_objects()
                 .map_err(|e| JsValue::from_str(&e))?;
@@ -426,7 +405,7 @@ impl WASMResourceInstanceWrapper {
         // If assume_tiles_comprehensive_for_nodegroup is true, mark ALL model nodegroups as loaded
         // This handles the case where some nodegroups have no tiles for this resource
         if assume_tiles_comprehensive_for_nodegroup {
-            self.with_model_core_mut(|model_core| {
+            self.with_model_core(|model_core| {
                 if let Some(nodegroups) = model_core.get_nodegroups_internal() {
                     let core_ref = self.core.borrow();
                     let mut loaded = core_ref.loaded_nodegroups.write().unwrap();
@@ -1342,8 +1321,8 @@ impl WASMResourceInstanceWrapper {
         let start = now_ms();
 
         // Get root node from model
-        let root_node = self
-            .with_model_core_mut(|core| core.get_root_node().map_err(|e| JsValue::from_str(&e)))?;
+        let root_node =
+            self.with_model_core(|core| core.get_root_node().map_err(|e| JsValue::from_str(&e)))?;
 
         let root_alias = root_node.alias.clone().unwrap_or_default();
 
@@ -1447,8 +1426,8 @@ impl WASMResourceInstanceWrapper {
             .ok_or_else(|| JsValue::from_str("No resource metadata available"))?;
 
         // Get root node from model
-        let root_node = self
-            .with_model_core_mut(|core| core.get_root_node().map_err(|e| JsValue::from_str(&e)))?;
+        let root_node =
+            self.with_model_core(|core| core.get_root_node().map_err(|e| JsValue::from_str(&e)))?;
 
         let root_alias = root_node.alias.clone().unwrap_or_default();
 
@@ -1953,11 +1932,6 @@ impl WASMResourceInstanceWrapper {
         // Borrow core once — avoid double-borrow of the RefCell
         let core_ref = self.core.borrow();
 
-        // Ensure model caches are built
-        with_registry_model_mut(&core_ref.graph_id, |model_core| {
-            model_core.ensure_built().map_err(|e| JsValue::from_str(&e))
-        })?;
-
         let tiles_store = core_ref
             .tiles
             .as_ref()
@@ -2026,7 +2000,7 @@ impl WASMResourceInstanceWrapper {
             let cache = core_ref.pseudo_cache.read().unwrap();
             if let Some(pseudo_list_core) = cache.get(&child_alias) {
                 let pseudo_list = PseudoListInner::from_core(pseudo_list_core.clone());
-                let nodegroup_id = self.with_model_core_mut(|core| {
+                let nodegroup_id = self.with_model_core(|core| {
                     Ok(core
                         .get_nodes_by_alias_internal()
                         .ok_or_else(|| {

@@ -51,16 +51,6 @@ impl ResourceModelWrapperCore {
     // (WASMResourceModelWrapper, instance_wrapper) need minimal changes
     // =========================================================================
 
-    /// Core keeps the shared model built; kept for callers that still ask.
-    pub fn ensure_built(&self) -> Result<(), String> {
-        Ok(())
-    }
-
-    /// Core keeps the shared model built; kept for callers that still ask.
-    pub fn build_nodes(&self) -> Result<(), String> {
-        Ok(())
-    }
-
     pub fn get_root_node(&self) -> Result<Arc<StaticNode>, String> {
         alizarin_core::ModelAccess::get_root_node(&*self.model_access)
     }
@@ -308,9 +298,6 @@ impl WASMResourceModelWrapper {
         child_node: Option<String>,
         parent_pseudo: Option<&PseudoNode>,
     ) -> Result<PseudoNode, JsValue> {
-        // Ensure nodes cache is built
-        self.with_core(|core| core.ensure_built().map_err(|e| JsValue::from_str(&e)))?;
-
         // Get the node (Arc<StaticNode>) either by alias or as root
         let arc_node: Arc<StaticNode> = if let Some(parent) = parent_pseudo {
             let child_node_id: Option<String> = child_node.clone();
@@ -376,9 +363,6 @@ impl WASMResourceModelWrapper {
         tile: JsValue,
         parent: JsValue,
     ) -> Result<PseudoValue, JsValue> {
-        // Ensure nodes cache is built
-        self.with_core(|core| core.ensure_built().map_err(|e| JsValue::from_str(&e)))?;
-
         // Get the node by alias or as root
         let arc_node: Arc<StaticNode> = if let Some(key_str) = alias {
             self.with_core(|core| {
@@ -693,8 +677,10 @@ impl WASMResourceModelWrapper {
         Ok(())
     }
 
+    /// Core keeps the shared model built, so there is nothing to do; kept so
+    /// existing callers needn't change.
     pub fn build_nodes(&mut self) -> Result<(), JsValue> {
-        self.with_core(|core| core.build_nodes().map_err(|e| JsValue::from_str(&e)))
+        Ok(())
     }
 
     #[wasm_bindgen(js_name = buildNodesForGraph)]
