@@ -178,6 +178,30 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     }
   }
 
+  /**
+   * Fetch one nodegroup's tiles (all of them when null) and merge them,
+   * marking exactly that nodegroup loaded, even if it has none: so lazy
+   * lookups fetch each nodegroup once and never read an unfetched one as
+   * empty. Uses the tile loader when one is set, else the static store, on
+   * either backend.
+   */
+  async fetchNodegroupTiles(nodegroupId: string | null): Promise<void> {
+    const tileLoader = typeof this.wasmWrapper.getTileLoader === 'function'
+      ? this.wasmWrapper.getTileLoader()
+      : null;
+    let tiles;
+    if (tileLoader) {
+      tiles = await tileLoader(nodegroupId);
+    } else {
+      const resourceId = this.wasmWrapper.getResourceId();
+      if (!resourceId) {
+        return;
+      }
+      tiles = await this.model.staticStore.loadTiles(resourceId, nodegroupId);
+    }
+    this.wasmWrapper.appendFetchedTiles(tiles ?? [], nodegroupId);
+  }
+
   pruneResourceTiles(): undefined {
     this.wasmWrapper.pruneResourceTiles();
   }
@@ -273,15 +297,10 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
 
     // Step 2: Ensure tiles for target nodegroup are loaded
     if (!this.wasmWrapper.isNodegroupLoaded(nodegroupId)) {
-      const resourceId = this.wasmWrapper.getResourceId();
-      if (resourceId) {
-        const tiles = await this.model.staticStore.loadTiles(resourceId, nodegroupId);
-        if (tiles && tiles.length > 0) {
-          this.wasmWrapper.appendTiles(tiles);
-        }
-      } else {
+      if (!this.wasmWrapper.getResourceId()) {
         return null;
       }
+      await this.fetchNodegroupTiles(nodegroupId);
     }
 
     // Step 3: getValuesAtPath will find tiles for this nodegroup

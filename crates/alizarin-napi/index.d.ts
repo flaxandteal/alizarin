@@ -305,6 +305,12 @@ export declare class NapiResourceInstanceWrapper {
    * told otherwise, as WASM's `appendTiles` is.
    */
   appendTiles(tilesJs: any, assumeTilesComprehensiveForNodegroup?: boolean | undefined | null): void
+  /**
+   * Append the tiles a lazy fetch returned for `nodegroupId` (null: the
+   * whole resource), marking just that nodegroup loaded, even if it had no
+   * tiles. Core's, as WASM and Python use.
+   */
+  appendFetchedTiles(tilesJs: any, nodegroupId?: string | undefined | null): void
   getTileCount(): number
   /**
    * Export all tiles as a JSON string.

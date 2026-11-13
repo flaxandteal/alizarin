@@ -115,23 +115,13 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     timingStats.wasmCalls++;
     timingStats.wasmTotalMs += performance.now() - t0;
 
-    // Step 2: Load any missing tiles (async - the only async part)
-    if (missingNodegroups.length > 0) {
-      const tileLoader = wasmWrapper.getTileLoader();
-      if (tileLoader) {
-        // Load tiles for each missing nodegroup
-        for (const nodegroupId of missingNodegroups) {
-          const t1 = performance.now();
-          const tiles = await tileLoader(nodegroupId);
-          timingStats.wasmTotalMs += performance.now() - t1;
-          if (tiles && tiles.length > 0) {
-            const t2 = performance.now();
-            wasmWrapper.appendTiles(tiles);
-            timingStats.wasmCalls++;
-            timingStats.wasmTotalMs += performance.now() - t2;
-          }
-        }
-      }
+    // Step 2: Load any missing tiles (async - the only async part); each
+    // fetch marks its nodegroup loaded, even when it has no tiles
+    for (const nodegroupId of missingNodegroups) {
+      const t1 = performance.now();
+      await this.__parentWkri.$.fetchNodegroupTiles(nodegroupId);
+      timingStats.wasmCalls++;
+      timingStats.wasmTotalMs += performance.now() - t1;
     }
 
     // Step 3: Get all child values in a single sync batch call (no async boundary crossings)
@@ -227,18 +217,10 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
       if (errorStr.startsWith('TILES_NOT_LOADED:')) {
         // Tiles not loaded - load them and retry
         const nodegroupId = errorStr.split(':')[1].split(' ')[0]; // Extract nodegroup ID
-        const tileLoader = wasmWrapper.getTileLoader();
-        if (tileLoader) {
-          const t1 = performance.now();
-          const tiles = await tileLoader(nodegroupId);
-          timingStats.wasmTotalMs += performance.now() - t1;
-          if (tiles && tiles.length > 0) {
-            const t2 = performance.now();
-            wasmWrapper.appendTiles(tiles);
-            timingStats.wasmCalls++;
-            timingStats.wasmTotalMs += performance.now() - t2;
-          }
-        }
+        const t1 = performance.now();
+        await parent.$.fetchNodegroupTiles(nodegroupId);
+        timingStats.wasmCalls++;
+        timingStats.wasmTotalMs += performance.now() - t1;
         // Retry sync call after loading tiles
         const t3 = performance.now();
         rustValue = wasmWrapper.getSemanticChildValue(

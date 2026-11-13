@@ -301,6 +301,23 @@ impl WASMResourceInstanceWrapper {
         self.load_tiles_internal(tiles, true, assume_tiles_comprehensive_for_nodegroup)
     }
 
+    /// Merge the tiles a lazy fetch returned for `nodegroup_id` (`None`: the
+    /// whole resource), through core: that nodegroup counts as loaded even
+    /// with no tiles, as on NAPI and Python.
+    pub fn append_fetched_tiles(
+        &self,
+        tiles: Vec<StaticTile>,
+        nodegroup_id: Option<&str>,
+    ) -> Result<(), JsValue> {
+        self.check_tiles(&tiles)?;
+        let mut core = self.core.borrow_mut();
+        let graph_id = core.graph_id.clone();
+        with_registry_model::<_, _, JsValue>(&graph_id, |model| {
+            core.merge_fetched_tiles(tiles, nodegroup_id, &model.model_access);
+            Ok(())
+        })
+    }
+
     fn load_tiles_internal(
         &self,
         tiles: Vec<StaticTile>,
@@ -522,6 +539,21 @@ impl WASMResourceInstanceWrapper {
         let tiles: Vec<StaticTile> = serde_wasm_bindgen::from_value(tiles_js)
             .map_err(|e| JsValue::from_str(&format!("Failed to deserialize tiles: {:?}", e)))?;
         self.append_tiles(tiles, true)
+    }
+
+    /// Append the tiles a lazy fetch returned for `nodegroupId` (null: the
+    /// whole resource), marking just that nodegroup loaded, even if it had no
+    /// tiles. Use this, not appendTiles (which marks every nodegroup), after
+    /// fetching one nodegroup.
+    #[wasm_bindgen(js_name = appendFetchedTiles)]
+    pub fn append_fetched_tiles_js(
+        &self,
+        tiles_js: JsValue,
+        nodegroup_id: Option<String>,
+    ) -> Result<(), JsValue> {
+        let tiles: Vec<StaticTile> = serde_wasm_bindgen::from_value(tiles_js)
+            .map_err(|e| JsValue::from_str(&format!("Failed to deserialize tiles: {:?}", e)))?;
+        self.append_fetched_tiles(tiles, nodegroup_id.as_deref())
     }
 
     /// Load tiles from WASM StaticTile objects directly (no serialization overhead)
@@ -1930,7 +1962,7 @@ impl WASMResourceInstanceWrapper {
                     match source_result {
                         Ok(core_tiles) => {
                             record_timing("tile_source_load", now_ms() - block_start);
-                            self.append_tiles(core_tiles, true)?;
+                            self.append_fetched_tiles(core_tiles, Some(&nodegroup_id))?;
                             true
                         }
                         Err(alizarin_core::TileSourceError::ResourceNotFound { .. }) => {
@@ -2011,18 +2043,9 @@ impl WASMResourceInstanceWrapper {
                     record_timing("tile_conversion", now_ms() - t2);
 
                     let t3 = now_ms();
-                    self.append_tiles(core_tiles, true)?;
+                    self.append_fetched_tiles(core_tiles, Some(&nodegroup_id))?;
                     record_timing("append_tiles", now_ms() - t3);
                 }
-
-                // Mark nodegroup as loaded
-                let t4 = now_ms();
-                {
-                    let core_ref = self.core.borrow();
-                    let mut loaded = core_ref.loaded_nodegroups.write().unwrap();
-                    loaded.insert(nodegroup_id.clone(), LoadState::Loaded);
-                }
-                record_timing("mark_loaded", now_ms() - t4);
 
                 // Retry, now the nodegroup is loaded
                 let t6 = now_ms();

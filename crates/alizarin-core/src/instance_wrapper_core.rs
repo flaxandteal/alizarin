@@ -801,6 +801,24 @@ impl ResourceInstanceWrapperCore {
         );
     }
 
+    /// Merge the tiles a host fetched for `nodegroup_id` (`None`: the whole
+    /// resource), as [`merge_permitted_tiles`](Self::merge_permitted_tiles),
+    /// and record the fetch: that nodegroup counts as loaded even if it had no
+    /// tiles, so a lazy lookup neither reads an unfetched nodegroup as empty
+    /// nor asks for a fetched one again. `None` marks every nodegroup.
+    pub fn merge_fetched_tiles(
+        &mut self,
+        tiles: impl IntoIterator<Item = StaticTile>,
+        nodegroup_id: Option<&str>,
+        model: &crate::graph_model_access::GraphModelAccess,
+    ) {
+        self.merge_permitted_tiles(tiles, model);
+        match nodegroup_id {
+            Some(nodegroup_id) => self.mark_nodegroup_loaded(nodegroup_id),
+            None => self.mark_all_nodegroups_loaded(model),
+        }
+    }
+
     /// Merge tiles into the wrapper, keeping whatever is already loaded.
     ///
     /// Unlike [`load_tiles`](Self::load_tiles), which replaces the tile store,

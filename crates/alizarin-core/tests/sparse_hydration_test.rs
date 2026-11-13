@@ -465,6 +465,36 @@ fn lazy_semantic_children_error_until_their_nodegroup_is_loaded() {
         .is_ok());
 }
 
+/// A lazy fetch's tiles mark just the fetched nodegroup loaded, even when it
+/// returned none; a whole-resource fetch marks every nodegroup.
+#[test]
+fn fetched_tiles_mark_just_their_nodegroup_loaded() {
+    let graph = load_group_graph();
+    let model = GraphModelAccess::new_eager(Arc::new(graph.clone()), true);
+    let root = graph.root.nodeid.clone();
+    let child = |core: &ResourceInstanceWrapperCore, alias: &str| {
+        core.get_semantic_child_value(None, &root, None, alias, &model)
+    };
+    let mut core = make_core(&graph);
+    core.set_lazy(true);
+
+    let statement = nodegroup_id_for_alias(&graph, "statement");
+    core.merge_fetched_tiles(vec![], Some(&statement), &model);
+    assert!(
+        matches!(child(&core, "statement"), Ok(SemanticChildResult::Empty)),
+        "fetched, with no tiles"
+    );
+    assert!(child(&core, "basic_info").is_err(), "not fetched");
+
+    let basic_info = nodegroup_id_for_alias(&graph, "basic_info");
+    core.merge_fetched_tiles(vec![basic_info_tile(&graph)], Some(&basic_info), &model);
+    assert!(child(&core, "basic_info").is_ok());
+    assert!(child(&core, "identifier").is_err(), "still not fetched");
+
+    core.merge_fetched_tiles(vec![], None, &model);
+    assert!(child(&core, "identifier").is_ok(), "a whole-resource fetch");
+}
+
 /// Tiles the host says are the resource's complete set make every nodegroup
 /// loaded, so in lazy mode a child with no tiles is empty, not unfetched.
 #[test]

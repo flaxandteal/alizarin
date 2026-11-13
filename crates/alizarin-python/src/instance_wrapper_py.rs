@@ -129,6 +129,26 @@ impl PyResourceInstanceWrapperCore {
         Ok(())
     }
 
+    /// Append the tiles a lazy fetch returned for `nodegroup_id` (None: the
+    /// whole resource), marking just that nodegroup loaded, even if it had no
+    /// tiles (as on NAPI/WASM).
+    #[pyo3(signature = (tiles_json, nodegroup_id=None))]
+    fn append_fetched_tiles(
+        &mut self,
+        tiles_json: &str,
+        nodegroup_id: Option<&str>,
+    ) -> PyResult<()> {
+        let tiles: Vec<StaticTile> = serde_json::from_str(tiles_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to parse tiles JSON: {}",
+                e
+            ))
+        })?;
+        let model = self.model()?;
+        self.inner.merge_fetched_tiles(tiles, nodegroup_id, &model);
+        Ok(())
+    }
+
     /// Merge tiles into the wrapper, keeping already-loaded nodegroups.
     ///
     /// The incremental counterpart to `load_tiles` (which replaces): load one

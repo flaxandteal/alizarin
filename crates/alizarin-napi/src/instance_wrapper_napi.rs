@@ -993,6 +993,23 @@ impl NapiResourceInstanceWrapper {
         Ok(())
     }
 
+    /// Append the tiles a lazy fetch returned for `nodegroupId` (null: the
+    /// whole resource), marking just that nodegroup loaded, even if it had no
+    /// tiles. Core's, as WASM and Python use.
+    #[napi]
+    pub fn append_fetched_tiles(
+        &mut self,
+        tiles_js: serde_json::Value,
+        nodegroup_id: Option<String>,
+    ) -> Result<()> {
+        let tiles: Vec<StaticTile> = serde_json::from_value(tiles_js)
+            .map_err(|e| napi::Error::from_reason(format!("Invalid tiles JSON: {e}")))?;
+        let model = self.model()?;
+        self.inner
+            .merge_fetched_tiles(tiles, nodegroup_id.as_deref(), &model);
+        Ok(())
+    }
+
     #[napi]
     pub fn get_tile_count(&self) -> u32 {
         self.inner.tiles.as_ref().map(|t| t.len()).unwrap_or(0) as u32

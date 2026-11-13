@@ -265,6 +265,27 @@ describe(`Backend consistency [${getBackend()}]`, () => {
     test("has .setLazy(boolean) method", () => {
       expect(typeof wrapper.setLazy).toBe('function');
     });
+
+    test("appendFetchedTiles marks just the fetched nodegroup loaded, even with no tiles", () => {
+      // A fresh lazy instance has fetched nothing: every child is unknown.
+      const lazy = createInstanceWrapperForModel(graph.graphid);
+      lazy.setLazy(true);
+      const rootId = modelWrapper.getRootNode().nodeid;
+      const nodegroupOf = (alias: string) =>
+        modelWrapper.getNodeObjectsByAlias().get(alias)!.nodegroup_id;
+      const child = (alias: string) => {
+        try {
+          return lazy.getSemanticChildValue(null, rootId, null, alias);
+        } catch (e: any) {
+          return String(e?.message ?? e);
+        }
+      };
+
+      expect(child("statement")).toMatch(/^TILES_NOT_LOADED:/);
+      lazy.appendFetchedTiles([], nodegroupOf("statement"));
+      expect(child("statement")).toBeNull();
+      expect(child("basic_info")).toMatch(/^TILES_NOT_LOADED:/);
+    });
   });
 
   // =========================================================================
