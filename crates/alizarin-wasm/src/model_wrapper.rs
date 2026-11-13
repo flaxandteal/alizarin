@@ -677,12 +677,6 @@ impl WASMResourceModelWrapper {
         Ok(())
     }
 
-    /// Core keeps the shared model built, so there is nothing to do; kept so
-    /// existing callers needn't change.
-    pub fn build_nodes(&mut self) -> Result<(), JsValue> {
-        Ok(())
-    }
-
     #[wasm_bindgen(js_name = buildNodesForGraph)]
     pub fn build_nodes_for_graph(&mut self, graph: &WasmStaticGraph) -> Result<(), JsValue> {
         let graph = graph.0.clone();
