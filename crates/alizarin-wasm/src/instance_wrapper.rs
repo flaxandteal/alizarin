@@ -1357,54 +1357,39 @@ impl WASMResourceInstanceWrapper {
     pub fn to_json(&self) -> Result<JsValue, JsValue> {
         let start = now_ms();
 
-        // Get root node from model to find its alias
-        let root_node = self
-            .with_model_core_mut(|core| core.get_root_node().map_err(|e| JsValue::from_str(&e)))?;
-
-        let root_alias = root_node.alias.clone().unwrap_or_default();
-
-        // Ensure nodes_by_alias and edges are built
-        self.with_model_core_mut(|core| {
-            if core.get_nodes_by_alias_internal().is_none() {
-                core.build_nodes().map_err(|e| JsValue::from_str(&e))?;
-            }
-            Ok(())
-        })?;
-
-        let (nodes_by_alias, edges) = self.with_model_core(|core| {
-            let nodes = core
-                .get_nodes_by_alias_internal()
-                .ok_or_else(|| JsValue::from_str("nodes_by_alias not built"))?
-                .clone();
-            let edges = core
-                .get_edges_internal()
-                .ok_or_else(|| JsValue::from_str("edges not built"))?
-                .clone();
-            Ok((nodes, edges))
-        })?;
-
         // Check that all tiles have been loaded - fail fast if not
         self.check_tiles_loaded("toJson")?;
 
-        // Get the pseudo_cache (populated by populate()). Stored as PseudoListCore;
-        // the WASM VisitorContext/to_json is PseudoListInner-based, so convert here.
+        // Core's serialisation, as on NAPI: core's pseudo_cache (populated by
+        // populate()) and the model's own node and edge maps, borrowed, not copied.
         let core_ref = self.core.borrow();
-        let cache_core = core_ref.pseudo_cache.read().unwrap();
-        let cache: std::collections::HashMap<String, PseudoListInner> = cache_core
-            .iter()
-            .map(|(k, v)| (k.clone(), PseudoListInner::from_core(v.clone())))
-            .collect();
-
-        let ctx = VisitorContext::new(&cache, &nodes_by_alias, &edges);
-
-        let root_list = cache.get(&root_alias).ok_or_else(|| {
-            JsValue::from_str(&format!(
-                "Root pseudo not found in cache for alias '{}' - was populate() called?",
-                root_alias
-            ))
+        let json = with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+            let root_alias = model
+                .get_root_node()
+                .map_err(|e| JsValue::from_str(&e))?
+                .alias
+                .clone()
+                .unwrap_or_default();
+            let nodes_by_alias = model
+                .get_nodes_by_alias_internal()
+                .ok_or_else(|| JsValue::from_str("nodes_by_alias not built"))?;
+            let edges = model
+                .get_edges_internal()
+                .ok_or_else(|| JsValue::from_str("edges not built"))?;
+            let cache = core_ref.pseudo_cache.read().unwrap();
+            let ctx = alizarin_core::pseudo_value_core::VisitorContext::new(
+                &cache,
+                nodes_by_alias,
+                edges,
+            );
+            let root_list = cache.get(&root_alias).ok_or_else(|| {
+                JsValue::from_str(&format!(
+                    "Root pseudo not found in cache for alias '{}' - was populate() called?",
+                    root_alias
+                ))
+            })?;
+            Ok(root_list.to_json(&ctx))
         })?;
-
-        let json = root_list.to_json(&ctx);
 
         // Convert serde_json::Value to JSON string, then parse to JS object
         // Note: Using JSON.parse is more reliable than serde_wasm_bindgen::to_value
