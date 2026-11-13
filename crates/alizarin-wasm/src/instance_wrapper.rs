@@ -11,9 +11,7 @@ use crate::tracing::{now_ms, record_timing};
 use crate::graph::StaticTile as WasmStaticTile;
 // Core types for internal storage (avoid WASM wrapper overhead)
 use crate::node_config_wasm::WasmNodeConfigManager;
-use crate::pseudo_value::{
-    PseudoList, PseudoListInner, PseudoValue, PseudoValueInner, VisitorContext,
-};
+use crate::pseudo_value::{PseudoList, PseudoListInner, PseudoValue, PseudoValueInner};
 use crate::rdm_cache_wasm::WasmRdmCache;
 use alizarin_core::is_node_single_cardinality;
 use alizarin_core::matches_semantic_child as matches_semantic_child_core;
@@ -1461,79 +1459,62 @@ impl WASMResourceInstanceWrapper {
     ) -> Result<JsValue, JsValue> {
         let start = now_ms();
 
-        // Get root node from model to find its alias
-        let root_node = self
-            .with_model_core_mut(|core| core.get_root_node().map_err(|e| JsValue::from_str(&e)))?;
-
-        let root_alias = root_node.alias.clone().unwrap_or_default();
-
-        // Ensure nodes_by_alias and edges are built
-        self.with_model_core_mut(|core| {
-            if core.get_nodes_by_alias_internal().is_none() {
-                core.build_nodes().map_err(|e| JsValue::from_str(&e))?;
-            }
-            Ok(())
-        })?;
-
-        let (nodes_by_alias, edges) = self.with_model_core(|core| {
-            let nodes = core
-                .get_nodes_by_alias_internal()
-                .ok_or_else(|| JsValue::from_str("nodes_by_alias not built"))?
-                .clone();
-            let edges = core
-                .get_edges_internal()
-                .ok_or_else(|| JsValue::from_str("edges not built"))?
-                .clone();
-            Ok((nodes, edges))
-        })?;
-
         // Check that all tiles have been loaded - fail fast if not
         self.check_tiles_loaded("toDisplayJson")?;
 
-        // Get the pseudo_cache (populated by populate()). PseudoListCore → Inner
-        // for the WASM display VisitorContext below.
-        let core_ref = self.core.borrow();
-        let cache_core = core_ref.pseudo_cache.read().unwrap();
-        let cache: std::collections::HashMap<String, PseudoListInner> = cache_core
-            .iter()
-            .map(|(k, v)| (k.clone(), PseudoListInner::from_core(v.clone())))
-            .collect();
-
         let lang = language.unwrap_or_else(|| "en".to_string());
-
         let ext_registry = crate::extension_registry::build_extension_registry();
-        let ser_ctx = alizarin_core::type_serialization::SerializationContext {
-            node_config: None,
-            external_resolver: rdm_cache
-                .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
-            concept_lookup: None,
-            resource_resolver: resource_registry
-                .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
-            extension_registry: Some(&ext_registry),
-        };
 
-        let ctx = VisitorContext {
-            pseudo_cache: &cache,
-            nodes_by_alias: &nodes_by_alias,
-            edges: &edges,
-            depth: 0,
-            max_depth: 50,
-            serialization_options: alizarin_core::SerializationOptions::display(&lang),
-            serialization_context: ser_ctx,
-            node_config_manager,
-        };
+        // Core's serialisation in display mode: core's pseudo_cache (populated
+        // by populate()) and the model's own maps, borrowed, not copied.
+        let core_ref = self.core.borrow();
+        let json = with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+            let root_alias = model
+                .get_root_node()
+                .map_err(|e| JsValue::from_str(&e))?
+                .alias
+                .clone()
+                .unwrap_or_default();
+            let nodes_by_alias = model
+                .get_nodes_by_alias_internal()
+                .ok_or_else(|| JsValue::from_str("nodes_by_alias not built"))?;
+            let edges = model
+                .get_edges_internal()
+                .ok_or_else(|| JsValue::from_str("edges not built"))?;
+            let cache = core_ref.pseudo_cache.read().unwrap();
 
-        // Look up the root pseudo from cache (created in populate())
-        let root_list = cache.get(&root_alias).ok_or_else(|| {
-            JsValue::from_str(&format!(
-                "Root pseudo not found in cache for alias '{}' - was populate() called?",
-                root_alias
-            ))
+            let ser_ctx = alizarin_core::type_serialization::SerializationContext {
+                node_config: None,
+                external_resolver: rdm_cache
+                    .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
+                concept_lookup: None,
+                resource_resolver: resource_registry
+                    .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
+                extension_registry: Some(&ext_registry),
+            };
+            let ctx = alizarin_core::pseudo_value_core::VisitorContext {
+                pseudo_cache: &cache,
+                nodes_by_alias,
+                edges,
+                depth: 0,
+                max_depth: 50,
+                serialization_options: alizarin_core::SerializationOptions::display(&lang),
+                serialization_context: ser_ctx,
+                node_config_manager,
+            };
+
+            // Look up the root pseudo from cache (created in populate())
+            let root_list = cache.get(&root_alias).ok_or_else(|| {
+                JsValue::from_str(&format!(
+                    "Root pseudo not found in cache for alias '{}' - was populate() called?",
+                    root_alias
+                ))
+            })?;
+
+            // Display resolution happens at leaf level via serialize_leaf_value
+            // in to_json_generic.
+            Ok(root_list.to_json(&ctx))
         })?;
-
-        // Use the same to_json path — display resolution happens at leaf level
-        // via serialize_leaf_value in to_json_generic
-        let json = root_list.to_json(&ctx);
 
         // Convert serde_json::Value to JSON string, then parse to JS object
         let json_string = serde_json::to_string(&json)

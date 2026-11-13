@@ -5,7 +5,7 @@ use wasm_bindgen::prelude::*;
 use alizarin_core::type_serialization::{SerializationContext, SerializationOptions};
 use alizarin_core::{PseudoValueCore, StaticNode, StaticTile};
 // Import traits and generic functions for visitor pattern delegation
-use alizarin_core::pseudo_value_core::{to_json_generic, PseudoListLike, PseudoValueLike};
+use alizarin_core::pseudo_value_core::{PseudoListLike, PseudoValueLike};
 // WASM wrapper types for API boundary
 use crate::graph::StaticNode as WasmStaticNode;
 use crate::graph::StaticTile as WasmStaticTile;
@@ -454,70 +454,6 @@ impl PseudoListInner {
 // ============================================================================
 
 use std::collections::HashMap;
-
-/// Visitor context for JSON serialization - reuses core's generic VisitorContext
-pub(crate) type VisitorContext<'a> =
-    alizarin_core::pseudo_value_core::VisitorContext<'a, PseudoListInner>;
-
-impl PseudoValueInner {
-    /// Convert this pseudo value to JSON using core's generic visitor.
-    pub fn to_json(&self, ctx: &VisitorContext) -> serde_json::Value {
-        to_json_generic(self, ctx)
-    }
-}
-
-impl PseudoListInner {
-    /// Convert this pseudo list to JSON
-    ///
-    /// For single-cardinality nodes, returns the single value's JSON.
-    /// For multi-cardinality (collector) nodes, returns an array.
-    pub fn to_json(&self, ctx: &VisitorContext) -> serde_json::Value {
-        if self.values.is_empty() {
-            return serde_json::Value::Null;
-        }
-
-        // Sort values by sortorder for consistent output
-        let mut sorted_values: Vec<&PseudoValueInner> = self.values.iter().collect();
-        sorted_values.sort_by_key(|v| {
-            v.core
-                .tile
-                .as_ref()
-                .and_then(|t| t.sortorder)
-                .unwrap_or(i32::MAX)
-        });
-
-        if self.is_single {
-            // Single value - use first sorted value
-            if let Some(first) = sorted_values.first() {
-                return first.to_json(ctx);
-            }
-            return serde_json::Value::Null;
-        }
-
-        // Multiple values - array (using sorted order)
-        let arr: Vec<serde_json::Value> = sorted_values
-            .iter()
-            .map(|v| v.to_json(ctx))
-            .filter(|v| !v.is_null())
-            .collect();
-
-        if arr.is_empty() {
-            serde_json::Value::Null
-        } else if arr.len() == 1 {
-            // If there's exactly one value and it's already an array, return it directly.
-            // This handles list datatypes (reference, file-list, etc.) where all values
-            // are stored as an array in a single tile slot rather than separate tiles.
-            if let Some(first) = arr.first() {
-                if first.is_array() {
-                    return first.clone();
-                }
-            }
-            serde_json::Value::Array(arr)
-        } else {
-            serde_json::Value::Array(arr)
-        }
-    }
-}
 
 // ============================================================================
 // Tile Builder - Visitor pattern for building StaticTiles from pseudo cache
