@@ -1780,25 +1780,25 @@ impl WASMResourceInstanceWrapper {
         is_permitted: bool,
         is_single: bool,
     ) -> Result<JsValue, JsValue> {
-        // PORT: js/pseudos.ts:506-510 - Get node by alias from model
-        // Ensure nodes are built (only if not already built)
-        self.with_model_core_mut(|core| {
-            if core.get_nodes_internal().is_none() {
-                core.build_nodes().map_err(|e| JsValue::from_str(&e))?;
-            }
-            Ok(())
+        // PORT: js/pseudos.ts:506-510 - Get node by alias from model, with its
+        // child ids, without copying the model's maps.
+        let (node, child_ids) = self.with_model_core(|core| {
+            let node = core
+                .get_nodes_by_alias_internal()
+                .ok_or_else(|| JsValue::from_str("Model nodes not initialized"))?
+                .get(alias)
+                .cloned()
+                .ok_or_else(|| {
+                    JsValue::from_str(&format!("Could not find node by alias: {}", alias))
+                })?;
+            let child_ids = core
+                .get_edges_internal()
+                .ok_or_else(|| JsValue::from_str("Model edges not initialized"))?
+                .get(&node.nodeid)
+                .cloned()
+                .unwrap_or_default();
+            Ok((node, child_ids))
         })?;
-
-        #[allow(clippy::map_clone)]
-        let node_objs = self.with_model_core(|core| {
-            core.get_nodes_by_alias_internal()
-                .ok_or_else(|| JsValue::from_str("Model nodes not initialized"))
-                .map(|map| map.clone())
-        })?;
-        let node = node_objs
-            .get(alias)
-            .ok_or_else(|| JsValue::from_str(&format!("Could not find node by alias: {}", alias)))?
-            .clone();
 
         // PORT: js/pseudos.ts:518-532 - Check if this should be a PseudoList
         let is_collector = node.is_collector;
@@ -1841,14 +1841,6 @@ impl WASMResourceInstanceWrapper {
             // Get all tiles for this nodegroup
             let tile_ids = self.get_tile_ids_by_nodegroup(Some(nodegroup_id.to_string()));
 
-            // Get edges from model directly (no deserialization needed)
-            #[allow(clippy::map_clone)]
-            let edges = self.with_model_core(|core| {
-                core.get_edges_internal()
-                    .ok_or_else(|| JsValue::from_str("Model edges not initialized"))
-                    .map(|map| map.clone())
-            })?;
-
             // Create list of PseudoValueInners from each tile
             let mut values = Vec::new();
 
@@ -1858,15 +1850,12 @@ impl WASMResourceInstanceWrapper {
                     // Get tile data for this node
                     let tile_data = tile.data.get(&node.nodeid);
 
-                    // Get child node IDs from edges
-                    let child_ids = edges.get(&node.nodeid).cloned().unwrap_or_default();
-
                     // Create PseudoValueInner for this tile
                     let pseudo_value = PseudoValueInner::from_node_and_tile(
                         Arc::clone(&node),
                         Some(Arc::new(tile.clone())),
                         tile_data.cloned(),
-                        child_ids,
+                        child_ids.clone(),
                     );
 
                     values.push(pseudo_value);
@@ -1899,15 +1888,6 @@ impl WASMResourceInstanceWrapper {
             } else {
                 None
             };
-
-            // Get child node IDs from edges from model directly
-            #[allow(clippy::map_clone)]
-            let edges = self.with_model_core(|core| {
-                core.get_edges_internal()
-                    .ok_or_else(|| JsValue::from_str("Model edges not initialized"))
-                    .map(|map| map.clone())
-            })?;
-            let child_ids = edges.get(&node.nodeid).cloned().unwrap_or_default();
 
             // Create PseudoValueInner
             let pseudo_value = PseudoValueInner::from_node_and_tile(
