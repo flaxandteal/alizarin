@@ -1750,6 +1750,193 @@ impl From<&PseudoListCore> for NapiPseudoListJson {
 }
 
 // =============================================================================
+// NapiPseudoNode
+// =============================================================================
+
+/// A graph node for navigating a model's structure (`NodeViewModel`): core's
+/// [`alizarin_core::PseudoNodeCore`], with the same names as WASM's
+/// `PseudoNode`.
+#[napi]
+pub struct NapiPseudoNode {
+    core: alizarin_core::PseudoNodeCore,
+}
+
+#[napi]
+impl NapiPseudoNode {
+    #[napi(js_name = "isIterable")]
+    pub fn is_iterable(&self) -> bool {
+        self.core.is_iterable()
+    }
+
+    /// The path from where navigation started (`.group.basic_info`), with
+    /// `[*]` after a list node.
+    #[napi(js_name = "getNodePlaceholder")]
+    pub fn get_node_placeholder(&self) -> String {
+        self.core.placeholder()
+    }
+
+    #[napi(getter)]
+    pub fn node(&self) -> serde_json::Value {
+        serde_json::to_value(&*self.core.node).unwrap_or(serde_json::Value::Null)
+    }
+
+    #[napi(getter)]
+    pub fn size(&self) -> u32 {
+        self.core.child_nodes.len() as u32
+    }
+
+    #[napi(getter, js_name = "childNodeAliases")]
+    pub fn child_node_aliases(&self) -> Vec<String> {
+        self.core.child_nodes.keys().cloned().collect()
+    }
+
+    /// Children by alias, as a `Map` (as on WASM).
+    #[napi(getter, js_name = "childNodes", ts_return_type = "Map<string, any>")]
+    pub fn child_nodes(&self, env: Env) -> Result<napi::JsObject> {
+        let map_ctor: napi::JsFunction = env.get_global()?.get_named_property("Map")?;
+        let map = map_ctor.new_instance::<napi::JsUnknown>(&[])?;
+        let set: napi::JsFunction = map.get_named_property("set")?;
+        for (alias, node) in &self.core.child_nodes {
+            let key = env.create_string(alias)?.into_unknown();
+            let value = env.to_js_value(&**node)?;
+            set.call(Some(&map), &[key, value])?;
+        }
+        Ok(map)
+    }
+
+    #[napi(getter)]
+    pub fn nodeid(&self) -> String {
+        self.core.node.nodeid.clone()
+    }
+
+    #[napi(getter)]
+    pub fn alias(&self) -> String {
+        self.core.node.alias.clone().unwrap_or_default()
+    }
+
+    #[napi(getter)]
+    pub fn name(&self) -> String {
+        self.core.node.name.clone()
+    }
+
+    #[napi(getter)]
+    pub fn description(&self) -> serde_json::Value {
+        self.core
+            .node
+            .description
+            .as_ref()
+            .and_then(|d| serde_json::to_value(d.to_json()).ok())
+            .unwrap_or(serde_json::Value::Null)
+    }
+
+    #[napi(getter, js_name = "graphId")]
+    pub fn graph_id(&self) -> String {
+        self.core.node.graph_id.clone()
+    }
+
+    #[napi(getter)]
+    pub fn ontologyclass(&self) -> serde_json::Value {
+        match self.core.node.ontologyclass.as_deref() {
+            None | Some([]) => serde_json::Value::Null,
+            Some([class]) => serde_json::Value::String(class.clone()),
+            Some(classes) => serde_json::json!(classes),
+        }
+    }
+
+    #[napi(getter, js_name = "nodegroup_id")]
+    pub fn nodegroup_id(&self) -> Option<String> {
+        self.core.node.nodegroup_id.clone()
+    }
+
+    #[napi(getter)]
+    pub fn fieldname(&self) -> Option<String> {
+        self.core.node.fieldname.clone()
+    }
+
+    #[napi(getter)]
+    pub fn parentproperty(&self) -> Option<String> {
+        self.core.node.parentproperty.clone()
+    }
+
+    #[napi(getter, js_name = "sourcebranchpublicationId")]
+    pub fn sourcebranchpublication_id(&self) -> Option<String> {
+        self.core.node.sourcebranchpublication_id.clone()
+    }
+
+    #[napi(getter)]
+    pub fn exportable(&self) -> bool {
+        self.core.node.exportable
+    }
+
+    #[napi(getter)]
+    pub fn hascustomalias(&self) -> bool {
+        self.core.node.hascustomalias
+    }
+
+    #[napi(getter, js_name = "isCollector")]
+    pub fn is_collector(&self) -> bool {
+        self.core.node.is_collector
+    }
+
+    #[napi(getter)]
+    pub fn isrequired(&self) -> bool {
+        self.core.node.isrequired
+    }
+
+    #[napi(getter)]
+    pub fn issearchable(&self) -> bool {
+        self.core.node.issearchable
+    }
+
+    #[napi(getter)]
+    pub fn istopnode(&self) -> bool {
+        self.core.node.istopnode
+    }
+
+    #[napi(getter)]
+    pub fn sortorder(&self) -> Option<i32> {
+        self.core.node.sortorder
+    }
+
+    #[napi(getter)]
+    pub fn config(&self) -> serde_json::Value {
+        serde_json::to_value(&self.core.node.config).unwrap_or(serde_json::Value::Null)
+    }
+
+    /// The datatype, read as `semantic` on an inner node.
+    #[napi(getter)]
+    pub fn datatype(&self) -> String {
+        self.core.datatype().to_string()
+    }
+
+    #[napi(getter, js_name = "isOuter")]
+    pub fn is_outer(&self) -> bool {
+        self.core.is_outer()
+    }
+
+    #[napi(getter)]
+    pub fn inner(&self) -> Result<NapiPseudoNode> {
+        self.core
+            .inner
+            .as_ref()
+            .map(|inner| NapiPseudoNode {
+                core: (**inner).clone(),
+            })
+            .ok_or_else(|| napi::Error::from_reason("No inner node"))
+    }
+
+    #[napi(getter, js_name = "isInner")]
+    pub fn is_inner(&self) -> bool {
+        self.core.is_inner
+    }
+
+    #[napi(js_name = "toJSON")]
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::to_value(self.core.node.to_json()).unwrap_or(serde_json::Value::Null)
+    }
+}
+
+// =============================================================================
 // NapiResourceModelWrapper
 // =============================================================================
 
@@ -1848,6 +2035,34 @@ impl NapiResourceModelWrapper {
         let model = self.model()?;
         let root = model.get_root_node().map_err(napi::Error::from_reason)?;
         serde_json::to_value(&*root).map_err(|e| napi::Error::from_reason(e.to_string()))
+    }
+
+    /// A pseudo node to navigate from: the root, or the node with `alias`.
+    /// Core's, as WASM and Python use.
+    #[napi(js_name = "createPseudoNode")]
+    pub fn create_pseudo_node(&self, alias: Option<String>) -> Result<NapiPseudoNode> {
+        let model = self.model()?;
+        match alias {
+            Some(alias) => alizarin_core::PseudoNodeCore::by_alias(&alias, &*model),
+            None => alizarin_core::PseudoNodeCore::root(&*model),
+        }
+        .map(|core| NapiPseudoNode { core })
+        .map_err(napi::Error::from_reason)
+    }
+
+    /// `parent`'s child `child`, which records `parent` as its parent.
+    #[napi(js_name = "createPseudoNodeChild")]
+    pub fn create_pseudo_node_child(
+        &self,
+        child: String,
+        parent: &NapiPseudoNode,
+    ) -> Result<NapiPseudoNode> {
+        let model = self.model()?;
+        parent
+            .core
+            .child(&child, &*model)
+            .map(|core| NapiPseudoNode { core })
+            .map_err(napi::Error::from_reason)
     }
 
     /// Get all nodes as a Map<string, StaticNode>.

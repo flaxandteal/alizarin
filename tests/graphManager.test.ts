@@ -605,6 +605,11 @@ test("ResourceModelWrapper > getRoot > should allow navigation through NodeViewM
   // Verify toString works
   const rootStr = await root.toString();
   assert.equal(rootStr, "group");
+
+  // A child records its parent, so its placeholder is the path to it
+  assert.equal(root.__parentPseudo.getNodePlaceholder(), ".group");
+  const basicInfoPseudo = wrapper.createPseudoNodeChild("basic_info", root.__parentPseudo);
+  assert.equal(basicInfoPseudo.getNodePlaceholder(), ".group.basic_info");
 });
 
 test("ResourceModelWrapper > NodeViewModel > should allow access to node properties via ._", async () => {

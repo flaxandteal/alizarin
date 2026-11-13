@@ -16,9 +16,7 @@ const NAPI_EXCLUDED = [
   "tests/resources.test.ts",
   "tests/static-types.test.ts",
   "tests/type-coercion.test.ts",
-  // NAPI gaps: no PseudoNode (createPseudoNode); the TS GraphMutator needs the
-  // WASM StaticGraph's copy/push* API; three doc examples time out.
-  "tests/graphManager.test.ts",
+  // NAPI gap: the TS GraphMutator needs the WASM StaticGraph's copy/push* API.
   "tests/docExamples.test.ts",
 ];
 

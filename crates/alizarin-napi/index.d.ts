@@ -401,6 +401,48 @@ export declare class NapiResourceInstanceWrapper {
   release(): void
 }
 /**
+ * A graph node for navigating a model's structure (`NodeViewModel`): core's
+ * [`alizarin_core::PseudoNodeCore`], with the same names as WASM's
+ * `PseudoNode`.
+ */
+export declare class NapiPseudoNode {
+  isIterable(): boolean
+  /**
+   * The path from where navigation started (`.group.basic_info`), with
+   * `[*]` after a list node.
+   */
+  getNodePlaceholder(): string
+  get node(): any
+  get size(): number
+  get childNodeAliases(): Array<string>
+  /** Children by alias, as a `Map` (as on WASM). */
+  get childNodes(): Map<string, any>
+  get nodeid(): string
+  get alias(): string
+  get name(): string
+  get description(): any
+  get graphId(): string
+  get ontologyclass(): any
+  get nodegroup_id(): string | null
+  get fieldname(): string | null
+  get parentproperty(): string | null
+  get sourcebranchpublicationId(): string | null
+  get exportable(): boolean
+  get hascustomalias(): boolean
+  get isCollector(): boolean
+  get isrequired(): boolean
+  get issearchable(): boolean
+  get istopnode(): boolean
+  get sortorder(): number | null
+  get config(): any
+  /** The datatype, read as `semantic` on an inner node. */
+  get datatype(): string
+  get isOuter(): boolean
+  get inner(): NapiPseudoNode
+  get isInner(): boolean
+  toJSON(): any
+}
+/**
  * NAPI equivalent of WASMResourceModelWrapper.
  *
  * Provides graph schema access (nodes, edges, nodegroups, permissions, pruning)
@@ -427,6 +469,13 @@ export declare class NapiResourceModelWrapper {
   buildNodesForGraph(graphJson: string): void
   /** Get the root node of the graph. */
   getRootNode(): any
+  /**
+   * A pseudo node to navigate from: the root, or the node with `alias`.
+   * Core's, as WASM and Python use.
+   */
+  createPseudoNode(alias?: string | undefined | null): NapiPseudoNode
+  /** `parent`'s child `child`, which records `parent` as its parent. */
+  createPseudoNodeChild(child: string, parent: NapiPseudoNode): NapiPseudoNode
   /** Get all nodes as a Map<string, StaticNode>. */
   getNodeObjects(): Record<string, any>
   /** Get all nodes indexed by alias. */
