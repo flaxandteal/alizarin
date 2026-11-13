@@ -1449,7 +1449,9 @@ impl NapiResourceInstanceWrapper {
         }
     }
 
-    /// Construct a PseudoValue from node metadata (for TS wrapper).
+    /// Construct the pseudo for `alias` (for the TS wrapper): core's, as WASM
+    /// uses — a list, a value, or null (TS: PseudoUnavailable) when not
+    /// permitted.
     #[napi]
     pub fn make_pseudo_value(
         &self,
@@ -1457,45 +1459,17 @@ impl NapiResourceInstanceWrapper {
         tile_id: Option<String>,
         is_permitted: bool,
         is_single: bool,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<Option<Either<NapiPseudoList, NapiPseudoValue>>> {
         let model = self.model()?;
-        // Find node by alias
-        let nodes = model
-            .get_nodes()
-            .ok_or_else(|| napi::Error::from_reason("Nodes not initialized"))?;
-
-        let node = nodes
-            .values()
-            .find(|n| n.alias.as_deref() == Some(&alias))
-            .ok_or_else(|| {
-                napi::Error::from_reason(format!("Node with alias '{}' not found", alias))
-            })?;
-
-        let edges = model
-            .get_edges()
-            .ok_or_else(|| napi::Error::from_reason("Edges not initialized"))?;
-        let child_node_ids = edges.get(&node.nodeid).cloned().unwrap_or_default();
-
-        // Get tile if tile_id provided
-        let tile = tile_id
-            .as_ref()
-            .and_then(|tid| self.inner.get_tile(tid))
-            .map(|t| Arc::new(t.clone()));
-
-        let tile_data = tile
-            .as_ref()
-            .and_then(|t| t.data.get(&node.nodeid).cloned());
-
-        let value =
-            PseudoValueCore::from_node_and_tile(Arc::clone(node), tile, tile_data, child_node_ids);
-
-        // Return as JSON with metadata about how to wrap it
-        Ok(serde_json::json!({
-            "alias": alias,
-            "isSingle": is_single,
-            "isPermitted": is_permitted,
-            "value": NapiPseudoValueJson::from(&value),
-        }))
+        let result = self
+            .inner
+            .make_pseudo_value(&alias, tile_id.as_deref(), is_permitted, is_single, &*model)
+            .map_err(napi::Error::from_reason)?;
+        Ok(match result {
+            SemanticChildResult::List(list) => Some(Either::A(NapiPseudoList { inner: list })),
+            SemanticChildResult::Single(value) => Some(Either::B(NapiPseudoValue { inner: value })),
+            SemanticChildResult::Empty => None,
+        })
     }
 
     // =========================================================================

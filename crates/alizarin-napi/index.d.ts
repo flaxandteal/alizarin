@@ -361,8 +361,12 @@ export declare class NapiResourceInstanceWrapper {
   cachePseudoList(alias: string, list: NapiPseudoList): void
   cachePseudoValue(alias: string, value: NapiPseudoValue): void
   clearPseudoCache(): void
-  /** Construct a PseudoValue from node metadata (for TS wrapper). */
-  makePseudoValue(alias: string, tileId: string | undefined | null, isPermitted: boolean, isSingle: boolean): any
+  /**
+   * Construct the pseudo for `alias` (for the TS wrapper): core's, as WASM
+   * uses — a list, a value, or null (TS: PseudoUnavailable) when not
+   * permitted.
+   */
+  makePseudoValue(alias: string, tileId: string | undefined | null, isPermitted: boolean, isSingle: boolean): NapiPseudoList | NapiPseudoValue | null
   /** Serialize to JSON (tile_data mode — raw values). */
   toJson(): any
   /** Serialize to display JSON (resolved labels). */

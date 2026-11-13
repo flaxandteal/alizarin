@@ -489,3 +489,48 @@ fn descriptors_build_from_tiles_once_and_name_falls_back_to_them() {
     core.descriptors(true, context).expect("rebuilt");
     assert_eq!(calls.get(), 2, "recompute builds again");
 }
+
+/// A collector's made pseudo lists its nodegroup's tiles (none if not
+/// permitted); anything else is one value on the given tile, or unavailable
+/// if not permitted; an unknown alias is an error.
+#[test]
+fn made_pseudos_list_a_collectors_tiles_and_respect_permission() {
+    let graph = load_group_graph();
+    let model = GraphModelAccess::new_eager(Arc::new(graph.clone()), true);
+    let mut core = make_core(&graph);
+    core.load_tiles(vec![
+        basic_info_tile_numbered(&graph, "a", None),
+        basic_info_tile_numbered(&graph, "b", Some(1)),
+    ]);
+    let made = |alias: &str, tile_id: Option<&str>, permitted: bool| {
+        core.make_pseudo_value(alias, tile_id, permitted, false, &model)
+    };
+
+    match made("basic_info", None, true).expect("made") {
+        SemanticChildResult::List(list) => {
+            let ids: Vec<Option<&str>> = list
+                .values
+                .iter()
+                .map(|v| v.tile.as_ref().and_then(|t| t.tileid.as_deref()))
+                .collect();
+            assert_eq!(ids, [Some("b"), Some("a")], "numbered first");
+        }
+        other => panic!("expected a list, got {other:?}"),
+    }
+    match made("basic_info", None, false).expect("made") {
+        SemanticChildResult::List(list) => assert!(list.values.is_empty()),
+        other => panic!("expected an empty list, got {other:?}"),
+    }
+    match made("name", Some("a"), true).expect("made") {
+        SemanticChildResult::Single(value) => assert_eq!(
+            value.tile.as_ref().and_then(|t| t.tileid.as_deref()),
+            Some("a")
+        ),
+        other => panic!("expected a value, got {other:?}"),
+    }
+    assert!(matches!(
+        made("name", Some("a"), false),
+        Ok(SemanticChildResult::Empty)
+    ));
+    assert!(made("no_such_alias", None, true).is_err());
+}

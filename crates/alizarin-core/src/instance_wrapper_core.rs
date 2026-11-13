@@ -202,6 +202,15 @@ pub trait ModelAccess {
         Ok(children)
     }
 
+    /// The node with this alias. The default scans every node; models with an
+    /// alias index override it.
+    fn get_node_by_alias(&self, alias: &str) -> Option<Arc<StaticNode>> {
+        self.get_nodes()?
+            .values()
+            .find(|node| node.alias.as_deref() == Some(alias))
+            .cloned()
+    }
+
     /// Get permitted nodegroups as permission rules.
     /// Each rule may be a simple boolean or a conditional (per-tile) filter.
     fn get_permitted_nodegroups(&self) -> HashMap<String, PermissionRule>;
@@ -210,6 +219,13 @@ pub trait ModelAccess {
 // =============================================================================
 // Helper functions
 // =============================================================================
+
+/// The key tiles are ordered by, with a stable sort: by `sortorder`, tiles
+/// without one after the numbered ones; ties and unnumbered tiles keep their
+/// load order.
+fn tile_sortorder_key(tile: &StaticTile) -> (bool, i32) {
+    (tile.sortorder.is_none(), tile.sortorder.unwrap_or(0))
+}
 
 /// Determine whether a node should be treated as single-cardinality.
 ///
@@ -976,6 +992,70 @@ impl ResourceInstanceWrapperCore {
             .unwrap_or_else(|| "<Unnamed>".to_string())
     }
 
+    /// The pseudo for `alias` that hosts wrap when adding a child or making a
+    /// root (TS `addPseudo`): a collector, unless `is_single`, is a list of its
+    /// nodegroup's tiles in load order, empty if not permitted or no tiles are
+    /// loaded; anything else is one value on `tile_id`'s tile (no tile: an
+    /// independent value, filled later), or `Empty` (unavailable) if not
+    /// permitted or no tiles are loaded.
+    pub fn make_pseudo_value(
+        &self,
+        alias: &str,
+        tile_id: Option<&str>,
+        is_permitted: bool,
+        is_single: bool,
+        model: &dyn ModelAccess,
+    ) -> Result<SemanticChildResult, String> {
+        let node = model
+            .get_node_by_alias(alias)
+            .ok_or_else(|| format!("Could not find node by alias: {alias}"))?;
+        let child_ids = model
+            .get_edges()
+            .ok_or("Model edges not initialized")?
+            .get(&node.nodeid)
+            .cloned()
+            .unwrap_or_default();
+        let tiles = self.tiles.as_ref().filter(|_| is_permitted);
+        let value_on = |tile: Option<&StaticTile>| {
+            PseudoValueCore::from_node_and_tile(
+                Arc::clone(&node),
+                tile.map(|t| Arc::new(t.clone())),
+                tile.and_then(|t| t.data.get(&node.nodeid).cloned()),
+                child_ids.clone(),
+            )
+        };
+
+        if node.is_collector && !is_single {
+            Ok(SemanticChildResult::List(match tiles {
+                None => PseudoListCore::new(alias.to_string()),
+                Some(tiles) => {
+                    let nodegroup_id = node.nodegroup_id.as_deref().unwrap_or("");
+                    let mut list_tiles: Vec<&StaticTile> = self
+                        .nodegroup_index
+                        .get(nodegroup_id)
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|id| tiles.get(id))
+                        .collect();
+                    list_tiles.sort_by_key(|tile| tile_sortorder_key(tile));
+                    let values = list_tiles
+                        .into_iter()
+                        .map(|tile| value_on(Some(tile)))
+                        .collect();
+                    PseudoListCore::from_values(alias.to_string(), values)
+                }
+            }))
+        } else {
+            Ok(match tiles {
+                None => SemanticChildResult::Empty,
+                // An id with no loaded tile is an independent value too.
+                Some(tiles) => {
+                    SemanticChildResult::Single(value_on(tile_id.and_then(|id| tiles.get(id))))
+                }
+            })
+        }
+    }
+
     /// The ids of `child_node`'s tiles that are semantic children of the given
     /// parent: only the child's nodegroup's tiles are looked at (every tile if
     /// it has none). Ordered by `sortorder`, tiles without one after the
@@ -1008,10 +1088,7 @@ impl ResourceInstanceWrapperCore {
             .cloned()
             .collect();
         // Stable, so equal keys keep load order.
-        ids.sort_by_key(|id| {
-            let sortorder = tiles.get(id).and_then(|tile| tile.sortorder);
-            (sortorder.is_none(), sortorder.unwrap_or(0))
-        });
+        ids.sort_by_key(|id| tiles.get(id).map(tile_sortorder_key));
         Ok(ids)
     }
 

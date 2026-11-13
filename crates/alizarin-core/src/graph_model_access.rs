@@ -573,6 +573,10 @@ impl ModelAccess for GraphModelAccess {
             .ok_or_else(|| "Root node not found".to_string())
     }
 
+    fn get_node_by_alias(&self, alias: &str) -> Option<Arc<StaticNode>> {
+        self.get_nodes_by_alias_internal()?.get(alias).cloned()
+    }
+
     fn get_permitted_nodegroups(&self) -> HashMap<String, PermissionRule> {
         // Defaults are pre-populated in build_indices(), so this is always a
         // cheap clone rather than rebuilding on every call.

@@ -351,38 +351,6 @@ impl PseudoListLike for PseudoListInner {
 }
 
 impl PseudoListInner {
-    /// Create a new empty PseudoList (defaults to list, not single)
-    pub fn new(node_alias: String) -> Self {
-        PseudoListInner {
-            node_alias,
-            values: Vec::new(),
-            is_loaded: false,
-            is_single: false,
-        }
-    }
-
-    /// Group values by their tiles
-    ///
-    /// PORT: js/pseudos.ts PseudoList grouping logic
-    /// PORT: js/graphManager.ts lines 987-1011 - PseudoList merging
-    pub fn from_values(node_alias: String, values: Vec<PseudoValueInner>) -> Self {
-        // Sort values by sortorder at construction time for consistent ordering
-        let mut sorted_values = values;
-        sorted_values.sort_by_key(|v| {
-            v.core
-                .tile
-                .as_ref()
-                .and_then(|t| t.sortorder)
-                .unwrap_or(i32::MAX)
-        });
-        PseudoListInner {
-            node_alias,
-            values: sorted_values,
-            is_loaded: true,
-            is_single: false,
-        }
-    }
-
     /// Create from values with explicit is_single flag
     pub fn from_values_with_cardinality(
         node_alias: String,
@@ -1403,7 +1371,8 @@ mod tests {
             PseudoValueInner::from_node_and_tile(node.clone(), Some(tile2.clone()), None, vec![]),
         ];
 
-        let list = PseudoListInner::from_values("TestNode".to_string(), values);
+        let list =
+            PseudoListInner::from_values_with_cardinality("TestNode".to_string(), values, false);
 
         assert_eq!(list.node_alias, "TestNode");
         assert_eq!(list.values.len(), 3); // Three total values (grouped by tile internally)

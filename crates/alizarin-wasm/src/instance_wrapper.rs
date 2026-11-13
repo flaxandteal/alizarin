@@ -1514,9 +1514,9 @@ impl WASMResourceInstanceWrapper {
     /// - alias: Node alias to create pseudo for
     /// - tile_id: Optional tile ID (if node shares parent's tile)
     /// - is_permitted: Whether nodegroup is permitted (precalculated in TS)
-    /// - node_objs_js: Map<string, StaticNode> from TS
-    /// - edges_js: Map<string, string[]> from TS
     /// - is_single: Force single value (not a list)
+    ///
+    /// Core's, as NAPI uses: null (TS: PseudoUnavailable) when not permitted.
     #[wasm_bindgen(js_name = makePseudoValue)]
     pub fn make_pseudo_value(
         &self,
@@ -1525,127 +1525,12 @@ impl WASMResourceInstanceWrapper {
         is_permitted: bool,
         is_single: bool,
     ) -> Result<JsValue, JsValue> {
-        // PORT: js/pseudos.ts:506-510 - Get node by alias from model, with its
-        // child ids, without copying the model's maps.
-        let (node, child_ids) = self.with_model_core(|core| {
-            let node = core
-                .get_nodes_by_alias_internal()
-                .ok_or_else(|| JsValue::from_str("Model nodes not initialized"))?
-                .get(alias)
-                .cloned()
-                .ok_or_else(|| {
-                    JsValue::from_str(&format!("Could not find node by alias: {}", alias))
-                })?;
-            let child_ids = core
-                .get_edges_internal()
-                .ok_or_else(|| JsValue::from_str("Model edges not initialized"))?
-                .get(&node.nodeid)
-                .cloned()
-                .unwrap_or_default();
-            Ok((node, child_ids))
-        })?;
-
-        // PORT: js/pseudos.ts:518-532 - Check if this should be a PseudoList
-        let is_collector = node.is_collector;
-        // PORT: js/pseudos.ts:421 - handle missing nodegroup_id (root node case)
-        // If nodegroup_id is None or empty string, use empty string (root nodegroup)
-        let nodegroup_id = node
-            .nodegroup_id
-            .as_ref()
-            .map(|s| if s.is_empty() { "" } else { s.as_str() })
-            .unwrap_or("");
-
-        // Get nodegroup to check cardinality
-        // Note: In TS this comes from model.getNodegroupObjects()
-        // For now, assume is_collector + !is_single means it's a list
-        let should_be_list = is_collector && !is_single;
-
-        // Store the borrow so it lives long enough for the entire function
         let core_ref = self.core.borrow();
-
-        // If tiles aren't loaded, return empty pseudo
-        let Some(tiles) = core_ref.tiles.as_ref() else {
-            if should_be_list {
-                let empty_list = PseudoListInner::new(alias.to_string());
-                let wasm_list = PseudoList::from_rust(empty_list);
-                return Ok(wasm_list.into());
-            } else {
-                return Ok(JsValue::null());
-            }
-        };
-
-        if should_be_list {
-            // PORT: js/pseudos.ts:536-562 - Create PseudoList with values from tiles
-            if !is_permitted {
-                // Return empty list for unpermitted nodegroup
-                let empty_list = PseudoListInner::new(alias.to_string());
-                let wasm_list = PseudoList::from_rust(empty_list);
-                return Ok(wasm_list.into());
-            }
-
-            // Get all tiles for this nodegroup
-            let tile_ids = self.get_tile_ids_by_nodegroup(Some(nodegroup_id.to_string()));
-
-            // Create list of PseudoValueInners from each tile
-            let mut values = Vec::new();
-
-            for tid in tile_ids {
-                let tile = tiles.get(&tid);
-                if let Some(tile) = tile {
-                    // Get tile data for this node
-                    let tile_data = tile.data.get(&node.nodeid);
-
-                    // Create PseudoValueInner for this tile
-                    let pseudo_value = PseudoValueInner::from_node_and_tile(
-                        Arc::clone(&node),
-                        Some(Arc::new(tile.clone())),
-                        tile_data.cloned(),
-                        child_ids.clone(),
-                    );
-
-                    values.push(pseudo_value);
-                }
-            }
-
-            let pseudo_list = PseudoListInner::from_values(alias.to_string(), values);
-            let wasm_list = PseudoList::from_rust(pseudo_list);
-            Ok(wasm_list.into())
-        } else {
-            // PORT: js/pseudos.ts:563-590 - Create single PseudoValue
-            if !is_permitted {
-                // Return null/unavailable for unpermitted nodegroup
-                // TS will wrap this in PseudoUnavailable
-                return Ok(JsValue::NULL);
-            }
-
-            // Get the tile if provided
-            // NOTE: We do NOT search for tiles here - we trust the tile_id passed from TS
-            // The tile may be null, which means the value is "independent" and will be populated later
-            let tile = if let Some(tid) = tile_id {
-                tiles.get(&tid).cloned()
-            } else {
-                None
-            };
-
-            // Extract tile data if we have a tile
-            let tile_data = if let Some(ref t) = tile {
-                t.data.get(&node.nodeid).cloned()
-            } else {
-                None
-            };
-
-            // Create PseudoValueInner
-            let pseudo_value = PseudoValueInner::from_node_and_tile(
-                Arc::clone(&node),
-                tile.map(Arc::new),
-                tile_data,
-                child_ids,
-            );
-
-            // Convert to WASM wrapper
-            let wasm_value = PseudoValue::from_rust(pseudo_value);
-            Ok(wasm_value.into())
-        }
+        let result = with_registry_model::<_, _, String>(&core_ref.graph_id, |model| {
+            core_ref.make_pseudo_value(alias, tile_id.as_deref(), is_permitted, is_single, model)
+        })
+        .map_err(|e| JsValue::from_str(&e))?;
+        Ok(semantic_child_to_js(result))
     }
 
     /// Check if a nodegroup has been loaded

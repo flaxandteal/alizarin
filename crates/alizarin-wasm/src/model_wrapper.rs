@@ -187,6 +187,10 @@ impl alizarin_core::ModelAccess for ResourceModelWrapperCore {
         self.model_access.get_nodegroups_internal()
     }
 
+    fn get_node_by_alias(&self, alias: &str) -> Option<Arc<StaticNode>> {
+        alizarin_core::ModelAccess::get_node_by_alias(&*self.model_access, alias)
+    }
+
     fn get_permitted_nodegroups(&self) -> HashMap<String, alizarin_core::PermissionRule> {
         alizarin_core::ModelAccess::get_permitted_nodegroups(&*self.model_access)
     }
