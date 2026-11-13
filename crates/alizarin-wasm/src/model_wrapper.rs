@@ -302,60 +302,20 @@ impl WASMResourceModelWrapper {
         child_node: Option<String>,
         parent_pseudo: Option<&PseudoNode>,
     ) -> Result<PseudoNode, JsValue> {
-        // Get the node (Arc<StaticNode>) either by alias or as root
-        let arc_node: Arc<StaticNode> = if let Some(parent) = parent_pseudo {
-            let child_node_id: Option<String> = child_node.clone();
-            Arc::clone(
-                parent
-                    .child_nodes
-                    .get(
-                        child_node
-                            .ok_or_else(|| {
-                                JsValue::from_str("Must have a child node name if passing a parent")
-                            })?
-                            .as_str(),
-                    )
-                    .ok_or_else(|| {
-                        JsValue::from_str(
-                            format!(
-                                "This parent node does not have this child: {:?} {:?}",
-                                parent.get_nodeid(),
-                                child_node_id
-                            )
-                            .as_str(),
-                        )
-                    })?,
-            )
-        } else if let Some(key_str) = child_node {
-            // Get by alias - clone the Arc (cheap)
-            self.with_core(|core| {
-                let nodes_by_alias = core
-                    .get_nodes_by_alias_internal()
-                    .ok_or_else(|| JsValue::from_str("Could not access nodes by alias"))?;
-                Ok::<Arc<StaticNode>, JsValue>(Arc::clone(
-                    nodes_by_alias.get(key_str.as_str()).ok_or_else(|| {
-                        JsValue::from_str(&format!("Could not find node with alias: {}", key_str))
-                    })?,
-                ))
-            })?
-        } else {
-            // Get root node - returns Arc<StaticNode>
-            self.with_core(|core| {
-                core.get_root_node()
-                    .map_err(|e| JsValue::from_str(&format!("Could not find root node: {}", e)))
-            })?
-        };
-
-        // Dereference Arc to get StaticNode for JavaScript
-        let node = (*arc_node).clone();
-
-        // Check datatype
-        let child_nodes = self.with_core(|core| core.get_child_nodes(&node.nodeid))?;
-
-        // Pass StaticNode directly to the internal constructor
-        let pseudo_node = PseudoNode::new_from_static_node(arc_node, child_nodes)?;
-
-        Ok(pseudo_node)
+        // Core's, as NAPI and Python use: a child records its parent's path.
+        self.with_core(|core| {
+            let model: &dyn alizarin_core::ModelAccess = &*core.model_access;
+            let made = match (parent_pseudo, child_node) {
+                (Some(parent), Some(child)) => parent.core().child(&child, model),
+                (Some(_), None) => {
+                    Err("Must have a child node name if passing a parent".to_string())
+                }
+                (None, Some(alias)) => alizarin_core::PseudoNodeCore::by_alias(&alias, model),
+                (None, None) => alizarin_core::PseudoNodeCore::root(model),
+            };
+            made.map(PseudoNode::from_core)
+                .map_err(|e| JsValue::from_str(&e))
+        })
     }
 
     /// Create a PseudoValue - the new unified pseudo type that includes runtime state
