@@ -11,8 +11,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use alizarin_core::{
-    resource_tiles_to_tree, ExtensionTypeRegistry, GraphModelAccess, ResourceInstanceWrapperCore,
-    SemanticChildResult, StaticGraph, StaticResourceMetadata, StaticTile,
+    resource_tiles_to_tree, ExtensionTypeRegistry, GraphModelAccess, PseudoListCore,
+    PseudoValueCore, ResourceInstanceWrapperCore, SemanticChildResult, StaticGraph,
+    StaticResourceMetadata, StaticTile,
 };
 
 const RESOURCE_ID: &str = "sparse-test-resource-1";
@@ -533,4 +534,51 @@ fn made_pseudos_list_a_collectors_tiles_and_respect_permission() {
         Ok(SemanticChildResult::Empty)
     ));
     assert!(made("no_such_alias", None, true).is_err());
+}
+
+/// A list keeps its values in tile sortorder (unnumbered last, ties in load
+/// order) however it is built: from values, merged, or pushed to.
+#[test]
+fn pseudo_lists_keep_values_in_sortorder() {
+    let graph = load_group_graph();
+    let node = Arc::new(
+        graph
+            .nodes_slice()
+            .iter()
+            .find(|n| n.alias.as_deref() == Some("basic_info"))
+            .expect("basic_info node")
+            .clone(),
+    );
+    let value = |id: &str, sortorder: Option<i32>| {
+        PseudoValueCore::from_node_and_tile(
+            Arc::clone(&node),
+            Some(Arc::new(basic_info_tile_numbered(&graph, id, sortorder))),
+            None,
+            vec![],
+        )
+    };
+    let ids = |list: &PseudoListCore| -> Vec<String> {
+        list.values
+            .iter()
+            .map(|v| {
+                v.tile
+                    .as_ref()
+                    .and_then(|t| t.tileid.clone())
+                    .unwrap_or_default()
+            })
+            .collect()
+    };
+
+    let mut list = PseudoListCore::from_values(
+        "basic_info".into(),
+        vec![value("a", None), value("b", Some(2))],
+    );
+    assert_eq!(ids(&list), ["b", "a"]);
+    list.merge(PseudoListCore::from_values(
+        "basic_info".into(),
+        vec![value("c", Some(1)), value("d", None)],
+    ));
+    assert_eq!(ids(&list), ["c", "b", "a", "d"]);
+    list.push(value("e", Some(2)));
+    assert_eq!(ids(&list), ["c", "b", "e", "a", "d"]);
 }

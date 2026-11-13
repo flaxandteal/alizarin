@@ -1814,47 +1814,14 @@ impl WASMResourceInstanceWrapper {
         path: &str,
         filter_tile_id: Option<String>,
     ) -> Result<PseudoList, JsValue> {
-        // Borrow core once — avoid double-borrow of the RefCell
+        // Core's, as NAPI and Python use.
         let core_ref = self.core.borrow();
-
-        let tiles_store = core_ref
-            .tiles
-            .as_ref()
-            .ok_or_else(|| JsValue::from_str("Tiles not initialized"))?;
-
-        // Delegate path resolution and tile filtering to core's standalone function
-        let (info, tiles) = with_registry_model(&core_ref.graph_id, |model| {
-            alizarin_core::resolve_and_filter_tiles(
-                path,
-                model,
-                tiles_store,
-                &core_ref.nodegroup_index,
-                filter_tile_id.as_deref(),
-            )
-            .map_err(|e| JsValue::from_str(&e.to_string()))
+        let list = with_registry_model(&core_ref.graph_id, |model| {
+            core_ref
+                .get_values_at_path(path, model, filter_tile_id.as_deref())
+                .map_err(|e| JsValue::from_str(&e.to_string()))
         })?;
-
-        drop(core_ref);
-
-        // Build PseudoValueInner from core results — inner/outer handled by PseudoValueCore
-        let values: Vec<PseudoValueInner> = tiles
-            .into_iter()
-            .map(|tile| {
-                let tile_data = tile.data.get(&info.target_node.nodeid).cloned();
-                let tile_arc = Arc::new(tile);
-                PseudoValueInner::from_node_and_tile(
-                    Arc::clone(&info.target_node),
-                    Some(tile_arc),
-                    tile_data,
-                    info.child_node_ids.clone(),
-                )
-            })
-            .collect();
-
-        let alias = info.target_node.alias.clone().unwrap_or_default();
-        let pseudo_list =
-            PseudoListInner::from_values_with_cardinality(alias, values, info.is_single);
-        Ok(PseudoList::from_rust(pseudo_list))
+        Ok(PseudoList::from_rust(PseudoListInner::from_core(list)))
     }
 
     /// Async version of getSemanticChildValue that handles lazy tile loading
@@ -1919,14 +1886,14 @@ impl WASMResourceInstanceWrapper {
                         return Ok(JsValue::NULL);
                     }
                 } else {
-                    // Return as list - convert Vec<&PseudoValueInner> to PseudoListInner
-                    let cloned_values: Vec<PseudoValueInner> =
-                        matching_entries.iter().map(|v| (*v).clone()).collect();
-                    let result_list = PseudoListInner::from_values_with_cardinality(
-                        child_alias.clone(),
-                        cloned_values,
-                        pseudo_list.is_single,
-                    );
+                    // Return as list: the entries are already in tile sortorder,
+                    // and keep their cached WASM state.
+                    let result_list = PseudoListInner {
+                        node_alias: child_alias.clone(),
+                        values: matching_entries.iter().map(|v| (*v).clone()).collect(),
+                        is_loaded: true,
+                        is_single: false,
+                    };
                     let wasm_list = PseudoList::from_rust(result_list);
                     return Ok(wasm_list.into());
                 }

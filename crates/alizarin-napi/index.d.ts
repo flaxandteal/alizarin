@@ -342,7 +342,7 @@ export declare class NapiResourceInstanceWrapper {
    */
   resolvePath(path: string): any
   /** Resolve a dot-separated path and return a PseudoList. */
-  getValuesAtPath(path: string): NapiPseudoList
+  getValuesAtPath(path: string, filterTileId?: string | undefined | null): NapiPseudoList
   /**
    * Get semantic child value for a parent/child relationship.
    * Returns a NapiPseudoList (or null for empty). Singles are wrapped in a

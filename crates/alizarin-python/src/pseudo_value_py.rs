@@ -364,9 +364,9 @@ impl PyPseudoList {
             .collect()
     }
 
-    /// Add a value to the list
+    /// Add a value to the list, in tile sortorder (after any with the same key)
     fn add_value(&mut self, value: PyPseudoValue) {
-        self.inner.values.push(value.inner);
+        self.inner.push(value.inner);
     }
 
     /// Get the number of values

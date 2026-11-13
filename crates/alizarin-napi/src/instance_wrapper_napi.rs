@@ -1292,11 +1292,15 @@ impl NapiResourceInstanceWrapper {
 
     /// Resolve a dot-separated path and return a PseudoList.
     #[napi]
-    pub fn get_values_at_path(&self, path: String) -> Result<NapiPseudoList> {
+    pub fn get_values_at_path(
+        &self,
+        path: String,
+        filter_tile_id: Option<String>,
+    ) -> Result<NapiPseudoList> {
         let model = self.model()?;
         let result = self
             .inner
-            .get_values_at_path(&path, &*model, None)
+            .get_values_at_path(&path, &*model, filter_tile_id.as_deref())
             .map_err(|e| napi::Error::from_reason(e.to_string()))?;
         Ok(NapiPseudoList { inner: result })
     }

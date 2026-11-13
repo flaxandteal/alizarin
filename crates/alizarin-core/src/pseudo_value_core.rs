@@ -114,7 +114,9 @@ pub struct PseudoListCore {
     /// The node alias this list represents
     pub node_alias: String,
 
-    /// Grouped values by tile
+    /// Values, in tile sortorder (unnumbered last, ties in load order). The
+    /// constructors, `merge` and `push` keep that order; change `values`
+    /// directly only if you keep it too.
     pub values: Vec<PseudoValueCore>,
 
     /// Whether this list has been fully loaded
@@ -495,6 +497,17 @@ impl PseudoValueCore {
     }
 }
 
+/// The key tiles are ordered by, with a stable sort: by `sortorder`, those
+/// without one after the numbered ones; ties keep their load order.
+pub(crate) fn sortorder_key(sortorder: Option<i32>) -> (bool, i32) {
+    (sortorder.is_none(), sortorder.unwrap_or(0))
+}
+
+/// A value's key: its tile's (no tile counts as unnumbered).
+fn value_sortorder_key(value: &PseudoValueCore) -> (bool, i32) {
+    sortorder_key(value.tile.as_ref().and_then(|t| t.sortorder))
+}
+
 impl PseudoListCore {
     /// Create a new empty PseudoListCore
     pub fn new(node_alias: String) -> Self {
@@ -516,22 +529,18 @@ impl PseudoListCore {
         }
     }
 
-    /// Create from values
+    /// Create from values, put in tile sortorder
     pub fn from_values(node_alias: String, values: Vec<PseudoValueCore>) -> Self {
-        PseudoListCore {
-            node_alias,
-            values,
-            is_loaded: true,
-            is_single: false,
-        }
+        Self::from_values_with_cardinality(node_alias, values, false)
     }
 
-    /// Create from values with explicit is_single flag
+    /// Create from values, put in tile sortorder, with explicit is_single flag
     pub fn from_values_with_cardinality(
         node_alias: String,
-        values: Vec<PseudoValueCore>,
+        mut values: Vec<PseudoValueCore>,
         is_single: bool,
     ) -> Self {
+        values.sort_by_key(value_sortorder_key);
         PseudoListCore {
             node_alias,
             values,
@@ -540,9 +549,20 @@ impl PseudoListCore {
         }
     }
 
-    /// Merge another PseudoListCore into this one
+    /// Merge another PseudoListCore into this one, keeping tile sortorder
+    /// (on ties, this list's values first)
     pub fn merge(&mut self, mut other: PseudoListCore) {
         self.values.append(&mut other.values);
+        self.values.sort_by_key(value_sortorder_key);
+    }
+
+    /// Add a value in tile sortorder, after any with the same key
+    pub fn push(&mut self, value: PseudoValueCore) {
+        let key = value_sortorder_key(&value);
+        let at = self
+            .values
+            .partition_point(|v| value_sortorder_key(v) <= key);
+        self.values.insert(at, value);
     }
 
     /// Get matching entries based on tile relationship
@@ -560,8 +580,8 @@ impl PseudoListCore {
         nodegroup_id: Option<String>,
         parent_nodegroup_id: Option<String>,
     ) -> Vec<&PseudoValueCore> {
-        let mut entries: Vec<&PseudoValueCore> = self
-            .values
+        // In the list's (tile sortorder) order: lowest first = primary.
+        self.values
             .iter()
             .filter(|v| {
                 match v.tile.as_ref() {
@@ -576,17 +596,7 @@ impl PseudoListCore {
                     None => parent_tile_id.is_none(),
                 }
             })
-            .collect();
-
-        // Sort by sortorder to ensure consistent ordering (lowest first = primary)
-        entries.sort_by_key(|v| {
-            v.tile
-                .as_ref()
-                .and_then(|t| t.sortorder)
-                .unwrap_or(i32::MAX)
-        });
-
-        entries
+            .collect()
     }
 
     /// Convert to JSON
@@ -595,25 +605,18 @@ impl PseudoListCore {
             return Value::Null;
         }
 
-        // Sort values by sortorder for consistent output
-        let mut sorted_values: Vec<&PseudoValueCore> = self.values.iter().collect();
-        sorted_values.sort_by_key(|v| {
-            v.tile
-                .as_ref()
-                .and_then(|t| t.sortorder)
-                .unwrap_or(i32::MAX)
-        });
-
+        // Values are already in tile sortorder.
         if self.is_single {
-            if let Some(first) = sorted_values.first() {
-                return to_json_generic(*first, ctx);
+            if let Some(first) = self.values.first() {
+                return to_json_generic(first, ctx);
             }
             return Value::Null;
         }
 
-        let arr: Vec<Value> = sorted_values
+        let arr: Vec<Value> = self
+            .values
             .iter()
-            .map(|v| to_json_generic(*v, ctx))
+            .map(|v| to_json_generic(v, ctx))
             .filter(|v| !v.is_null())
             .collect();
 

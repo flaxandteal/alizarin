@@ -183,20 +183,6 @@ pub(crate) struct NodegroupResult {
 }
 
 impl PseudoValueInner {
-    /// Create a new PseudoValueInner from a node and optional tile.
-    ///
-    /// Delegates inner/outer construction to PseudoValueCore, then wraps
-    /// with WASM-specific runtime state.
-    pub fn from_node_and_tile(
-        node: Arc<StaticNode>,
-        tile: Option<Arc<StaticTile>>,
-        tile_data: Option<serde_json::Value>,
-        child_node_ids: Vec<String>,
-    ) -> Self {
-        let core = PseudoValueCore::from_node_and_tile(node, tile, tile_data, child_node_ids);
-        Self::from_core(core, None)
-    }
-
     /// Create a new PseudoValueInner with full configuration (parent + is_inner).
     ///
     /// For non-inner values, delegates to PseudoValueCore for inner/outer construction.
@@ -351,29 +337,6 @@ impl PseudoListLike for PseudoListInner {
 }
 
 impl PseudoListInner {
-    /// Create from values with explicit is_single flag
-    pub fn from_values_with_cardinality(
-        node_alias: String,
-        values: Vec<PseudoValueInner>,
-        is_single: bool,
-    ) -> Self {
-        // Sort values by sortorder at construction time for consistent ordering
-        let mut sorted_values = values;
-        sorted_values.sort_by_key(|v| {
-            v.core
-                .tile
-                .as_ref()
-                .and_then(|t| t.sortorder)
-                .unwrap_or(i32::MAX)
-        });
-        PseudoListInner {
-            node_alias,
-            values: sorted_values,
-            is_loaded: true,
-            is_single,
-        }
-    }
-
     /// Get all values across
     pub fn all_values(&self) -> Vec<&PseudoValueInner> {
         self.values.iter().collect()
@@ -1351,7 +1314,10 @@ mod tests {
     #[test]
     fn test_pseudo_value_creation() {
         let node = create_test_node("TestNode");
-        let pv = PseudoValueInner::from_node_and_tile(node.clone(), None, None, vec![]);
+        let pv = PseudoValueInner::from_core(
+            PseudoValueCore::from_node_and_tile(node.clone(), None, None, vec![]),
+            None,
+        );
 
         assert_eq!(pv.node_alias(), Some("TestNode"));
         assert!(!pv.has_tile());
@@ -1366,13 +1332,15 @@ mod tests {
         let tile2 = create_test_tile("tile2");
 
         let values = vec![
-            PseudoValueInner::from_node_and_tile(node.clone(), Some(tile1.clone()), None, vec![]),
-            PseudoValueInner::from_node_and_tile(node.clone(), Some(tile1.clone()), None, vec![]),
-            PseudoValueInner::from_node_and_tile(node.clone(), Some(tile2.clone()), None, vec![]),
+            PseudoValueCore::from_node_and_tile(node.clone(), Some(tile1.clone()), None, vec![]),
+            PseudoValueCore::from_node_and_tile(node.clone(), Some(tile1.clone()), None, vec![]),
+            PseudoValueCore::from_node_and_tile(node.clone(), Some(tile2.clone()), None, vec![]),
         ];
 
-        let list =
-            PseudoListInner::from_values_with_cardinality("TestNode".to_string(), values, false);
+        let list = PseudoListInner::from_core(alizarin_core::PseudoListCore::from_values(
+            "TestNode".to_string(),
+            values,
+        ));
 
         assert_eq!(list.node_alias, "TestNode");
         assert_eq!(list.values.len(), 3); // Three total values (grouped by tile internally)

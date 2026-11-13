@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use crate::path_resolution::{resolve_path_segments, PathError, PathResolutionInfo};
 use crate::permissions::PermissionRule;
-use crate::pseudo_value_core::{PseudoListCore, PseudoValueCore};
+use crate::pseudo_value_core::{sortorder_key, PseudoListCore, PseudoValueCore};
 use crate::{
     ExtensionTypeRegistry, StaticGraph, StaticNode, StaticNodegroup, StaticResourceDescriptors,
     StaticResourceMetadata, StaticTile,
@@ -219,13 +219,6 @@ pub trait ModelAccess {
 // =============================================================================
 // Helper functions
 // =============================================================================
-
-/// The key tiles are ordered by, with a stable sort: by `sortorder`, tiles
-/// without one after the numbered ones; ties and unnumbered tiles keep their
-/// load order.
-fn tile_sortorder_key(tile: &StaticTile) -> (bool, i32) {
-    (tile.sortorder.is_none(), tile.sortorder.unwrap_or(0))
-}
 
 /// Determine whether a node should be treated as single-cardinality.
 ///
@@ -1030,18 +1023,15 @@ impl ResourceInstanceWrapperCore {
                 None => PseudoListCore::new(alias.to_string()),
                 Some(tiles) => {
                     let nodegroup_id = node.nodegroup_id.as_deref().unwrap_or("");
-                    let mut list_tiles: Vec<&StaticTile> = self
+                    let values = self
                         .nodegroup_index
                         .get(nodegroup_id)
                         .into_iter()
                         .flatten()
                         .filter_map(|id| tiles.get(id))
-                        .collect();
-                    list_tiles.sort_by_key(|tile| tile_sortorder_key(tile));
-                    let values = list_tiles
-                        .into_iter()
                         .map(|tile| value_on(Some(tile)))
                         .collect();
+                    // In tile sortorder, as every list is.
                     PseudoListCore::from_values(alias.to_string(), values)
                 }
             }))
@@ -1088,7 +1078,7 @@ impl ResourceInstanceWrapperCore {
             .cloned()
             .collect();
         // Stable, so equal keys keep load order.
-        ids.sort_by_key(|id| tiles.get(id).map(tile_sortorder_key));
+        ids.sort_by_key(|id| sortorder_key(tiles.get(id).and_then(|tile| tile.sortorder)));
         Ok(ids)
     }
 
