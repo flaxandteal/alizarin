@@ -863,7 +863,6 @@ fn model_for(graph_id: &str) -> Result<Arc<GraphModelAccess>> {
 #[napi]
 pub struct NapiResourceInstanceWrapper {
     inner: ResourceInstanceWrapperCore,
-    lazy: bool,
 }
 
 #[napi]
@@ -900,10 +899,7 @@ impl NapiResourceInstanceWrapper {
             });
         }
 
-        Ok(NapiResourceInstanceWrapper {
-            inner: core,
-            lazy: false,
-        })
+        Ok(NapiResourceInstanceWrapper { inner: core })
     }
 
     // =========================================================================
@@ -1009,7 +1005,7 @@ impl NapiResourceInstanceWrapper {
         self.inner
             .tiles
             .as_ref()
-            .map(|t| !self.lazy || !t.is_empty())
+            .map(|t| !self.inner.is_lazy() || !t.is_empty())
             .unwrap_or(false)
     }
 
@@ -1066,7 +1062,7 @@ impl NapiResourceInstanceWrapper {
 
     #[napi]
     pub fn has_tiles_for_nodegroup(&self, nodegroup_id: String) -> bool {
-        if self.lazy {
+        if self.inner.is_lazy() {
             self.inner.is_nodegroup_loaded(&nodegroup_id)
         } else {
             self.inner
@@ -1088,7 +1084,7 @@ impl NapiResourceInstanceWrapper {
 
     #[napi]
     pub fn set_lazy(&mut self, lazy: bool) {
-        self.lazy = lazy;
+        self.inner.set_lazy(lazy);
         if lazy && self.inner.tiles.is_none() {
             self.inner.tiles = Some(alizarin_core::TileStore::new());
         }
@@ -1140,7 +1136,7 @@ impl NapiResourceInstanceWrapper {
             return Vec::new();
         };
         self.inner
-            .missing_nodegroups_for_children(&parent_node_id, &*model, self.lazy)
+            .missing_nodegroups_for_children(&parent_node_id, &*model, self.inner.is_lazy())
     }
 
     // =========================================================================
@@ -1346,7 +1342,8 @@ impl NapiResourceInstanceWrapper {
         }
     }
 
-    /// Get all semantic child values for a parent node.
+    /// Get all semantic child values for a parent node, by alias (`null` for
+    /// none). Errors propagate: in lazy mode, `TILES_NOT_LOADED:<nodegroup>`.
     #[napi]
     pub fn get_all_semantic_child_values(
         &self,
@@ -1355,43 +1352,31 @@ impl NapiResourceInstanceWrapper {
         parent_nodegroup_id: Option<String>,
     ) -> Result<serde_json::Value> {
         let model = self.model()?;
-        // Get child nodes
-        let child_nodes = model.get_child_nodes(&parent_node_id);
-
-        let mut results = serde_json::Map::new();
-        for child in child_nodes.values() {
-            if let Some(ref alias) = child.alias {
-                let result = self.inner.get_semantic_child_value(
-                    parent_tile_id.as_ref(),
-                    &parent_node_id,
-                    parent_nodegroup_id.as_ref(),
-                    alias,
-                    &*model,
-                );
-                match result {
-                    Ok(SemanticChildResult::List(list)) => {
-                        results.insert(
-                            alias.clone(),
-                            serde_json::to_value(NapiPseudoListJson::from(&list))
-                                .unwrap_or(serde_json::Value::Null),
-                        );
+        let values = self
+            .inner
+            .get_all_semantic_child_values(
+                parent_tile_id.as_ref(),
+                &parent_node_id,
+                parent_nodegroup_id.as_ref(),
+                &*model,
+            )
+            .map_err(sc_err)?;
+        let results = values
+            .into_iter()
+            .map(|(alias, value)| {
+                let json = match value {
+                    SemanticChildResult::List(list) => {
+                        serde_json::to_value(NapiPseudoListJson::from(&list))
                     }
-                    Ok(SemanticChildResult::Single(val)) => {
-                        results.insert(
-                            alias.clone(),
-                            serde_json::to_value(NapiPseudoValueJson::from(&val))
-                                .unwrap_or(serde_json::Value::Null),
-                        );
+                    SemanticChildResult::Single(val) => {
+                        serde_json::to_value(NapiPseudoValueJson::from(&val))
                     }
-                    Ok(SemanticChildResult::Empty) => {
-                        results.insert(alias.clone(), serde_json::Value::Null);
-                    }
-                    Err(_) => {
-                        results.insert(alias.clone(), serde_json::Value::Null);
-                    }
+                    SemanticChildResult::Empty => Ok(serde_json::Value::Null),
                 }
-            }
-        }
+                .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+                Ok((alias, json))
+            })
+            .collect::<Result<serde_json::Map<_, _>>>()?;
         Ok(serde_json::Value::Object(results))
     }
 
@@ -1404,36 +1389,16 @@ impl NapiResourceInstanceWrapper {
         parent_nodegroup_id: Option<String>,
     ) -> Result<serde_json::Value> {
         let model = self.model()?;
-        let child_nodes = model.get_child_nodes(&parent_node_id);
-
-        let tiles = self
+        let children = self
             .inner
-            .tiles
-            .as_ref()
-            .ok_or_else(|| napi::Error::from_reason("Tiles not initialized"))?;
-
-        let mut results = serde_json::Map::new();
-        for child in child_nodes.values() {
-            if let Some(ref alias) = child.alias {
-                let matching_tile_ids: Vec<String> = tiles
-                    .iter()
-                    .filter(|(_, tile)| {
-                        alizarin_core::matches_semantic_child(
-                            parent_tile_id.as_ref(),
-                            parent_nodegroup_id.as_ref(),
-                            child,
-                            tile,
-                        )
-                    })
-                    .filter_map(|(_, tile)| tile.tileid.clone())
-                    .collect();
-                results.insert(
-                    alias.clone(),
-                    serde_json::to_value(&matching_tile_ids).unwrap(),
-                );
-            }
-        }
-        Ok(serde_json::Value::Object(results))
+            .find_semantic_children(
+                parent_tile_id.as_ref(),
+                &parent_node_id,
+                parent_nodegroup_id.as_ref(),
+                &*model,
+            )
+            .map_err(sc_err)?;
+        serde_json::to_value(children).map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
     // =========================================================================
