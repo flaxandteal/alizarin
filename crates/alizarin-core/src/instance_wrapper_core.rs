@@ -15,7 +15,10 @@ use std::sync::Arc;
 use crate::path_resolution::{resolve_path_segments, PathError, PathResolutionInfo};
 use crate::permissions::PermissionRule;
 use crate::pseudo_value_core::{PseudoListCore, PseudoValueCore};
-use crate::{StaticNode, StaticNodegroup, StaticResourceMetadata, StaticTile};
+use crate::{
+    ExtensionTypeRegistry, StaticGraph, StaticNode, StaticNodegroup, StaticResourceDescriptors,
+    StaticResourceMetadata, StaticTile,
+};
 
 // =============================================================================
 // Error types
@@ -919,6 +922,58 @@ impl ResourceInstanceWrapperCore {
     /// Whether this instance is in lazy mode.
     pub fn is_lazy(&self) -> bool {
         self.lazy
+    }
+
+    /// This resource's descriptors: the cached ones, unless `recompute` is set
+    /// or none are cached, when they are built from its tiles with the graph's
+    /// descriptor templates, and cached. `context` gives the graph and the
+    /// extension registry, and is called only to build. Errors if no tiles
+    /// are loaded.
+    pub fn descriptors(
+        &mut self,
+        recompute: bool,
+        context: impl FnOnce() -> Result<(Arc<StaticGraph>, ExtensionTypeRegistry), String>,
+    ) -> Result<StaticResourceDescriptors, String> {
+        if !recompute {
+            if let Some(cached) = self.resource_instance.as_ref().map(|r| &r.descriptors) {
+                if !cached.is_empty() {
+                    return Ok(cached.clone());
+                }
+            }
+        }
+        let tiles: Vec<StaticTile> = self
+            .tiles
+            .as_ref()
+            .ok_or_else(|| "No tiles loaded".to_string())?
+            .values()
+            .cloned()
+            .collect();
+        let (graph, extension_registry) = context()?;
+        let descriptors = graph.build_descriptors_with_context(
+            &tiles,
+            &mut Vec::new(),
+            None,
+            Some(&extension_registry),
+        );
+        if let Some(resource) = self.resource_instance.as_mut() {
+            resource.descriptors = descriptors.clone();
+        }
+        Ok(descriptors)
+    }
+
+    /// This resource's name: its metadata's, else its descriptors', else
+    /// `<Unnamed>`.
+    pub fn display_name(&self) -> String {
+        self.resource_instance
+            .as_ref()
+            .and_then(|r| {
+                if r.name.is_empty() {
+                    r.descriptors.name.clone()
+                } else {
+                    Some(r.name.clone())
+                }
+            })
+            .unwrap_or_else(|| "<Unnamed>".to_string())
     }
 
     /// The ids of `child_node`'s tiles that are semantic children of the given

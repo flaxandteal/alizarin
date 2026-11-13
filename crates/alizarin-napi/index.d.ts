@@ -322,7 +322,11 @@ export declare class NapiResourceInstanceWrapper {
   tryAcquireNodegroupLock(nodegroupId: string): boolean
   getMissingNodegroupsForChildren(parentNodeId: string): Array<string>
   getResourceId(): string | null
-  getName(): any
+  getName(): string
+  /**
+   * The cached descriptors, built from the tiles (and cached) if `recompute`
+   * or none are cached: core's, as WASM uses.
+   */
   getDescriptors(recompute: boolean): any
   /** Populate the pseudo cache for the given nodegroups. */
   populate(lazy: boolean, nodegroupIds: Array<string>, rootNodeAlias: string): NapiPopulateResult
@@ -345,7 +349,10 @@ export declare class NapiResourceInstanceWrapper {
    * single-element list so the JS `wrapRustPseudo` path works uniformly.
    */
   getSemanticChildValue(parentTileId: string | undefined | null, parentNodeId: string, parentNodegroupId: string | undefined | null, childAlias: string): NapiPseudoList | null
-  /** Get all semantic child values for a parent node. */
+  /**
+   * Get all semantic child values for a parent node, by alias (`null` for
+   * none). Errors propagate: in lazy mode, `TILES_NOT_LOADED:<nodegroup>`.
+   */
   getAllSemanticChildValues(parentTileId: string | undefined | null, parentNodeId: string, parentNodegroupId?: string | undefined | null): any
   /** Find all semantic children of a parent node (returns map of alias → tile IDs). */
   findSemanticChildren(parentTileId: string | undefined | null, parentNodeId: string, parentNodegroupId?: string | undefined | null): any

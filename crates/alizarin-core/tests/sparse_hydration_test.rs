@@ -11,8 +11,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use alizarin_core::{
-    resource_tiles_to_tree, GraphModelAccess, ResourceInstanceWrapperCore, SemanticChildResult,
-    StaticGraph, StaticResourceMetadata, StaticTile,
+    resource_tiles_to_tree, ExtensionTypeRegistry, GraphModelAccess, ResourceInstanceWrapperCore,
+    SemanticChildResult, StaticGraph, StaticResourceMetadata, StaticTile,
 };
 
 const RESOURCE_ID: &str = "sparse-test-resource-1";
@@ -462,4 +462,30 @@ fn lazy_semantic_children_error_until_their_nodegroup_is_loaded() {
     assert!(eager
         .get_semantic_child_value(None, &root, None, "statement", &model)
         .is_ok());
+}
+
+/// Descriptors come from the cache unless asked to recompute or none are
+/// cached, when they are built from the tiles (the graph is asked for only
+/// then) and cached; the name falls back from the metadata to them.
+#[test]
+fn descriptors_build_from_tiles_once_and_name_falls_back_to_them() {
+    let graph = Arc::new(load_group_graph());
+    let mut core = make_core(&graph);
+    core.load_tiles(vec![basic_info_tile(&graph)]);
+    core.resource_instance.as_mut().expect("metadata").name = String::new();
+    assert_eq!(core.display_name(), "<Unnamed>");
+
+    let calls = std::cell::Cell::new(0);
+    let context = || {
+        calls.set(calls.get() + 1);
+        Ok::<_, String>((graph.clone(), ExtensionTypeRegistry::new()))
+    };
+    let built = core.descriptors(false, context).expect("built");
+    assert_eq!(built.name.as_deref(), Some("Sparse Group"));
+    assert_eq!(core.display_name(), "Sparse Group");
+
+    core.descriptors(false, context).expect("cached");
+    assert_eq!(calls.get(), 1, "cached, so the graph isn't asked for");
+    core.descriptors(true, context).expect("rebuilt");
+    assert_eq!(calls.get(), 2, "recompute builds again");
 }

@@ -615,21 +615,7 @@ impl WASMResourceInstanceWrapper {
     /// PORT: js/graphManager.ts:115-125 (getName method)
     #[wasm_bindgen(js_name = getName)]
     pub fn get_name(&self) -> String {
-        self.core
-            .borrow()
-            .resource_instance
-            .as_ref()
-            .map(|r| {
-                // Get name from metadata, or from descriptors
-                if !r.name.is_empty() {
-                    r.name.clone()
-                } else if let Some(descriptor_name) = &r.descriptors.name {
-                    descriptor_name.clone()
-                } else {
-                    "<Unnamed>".to_string()
-                }
-            })
-            .unwrap_or_else(|| "<Unnamed>".to_string())
+        self.core.borrow().display_name()
     }
 
     /// Get resource descriptors, optionally recomputing from tiles.
@@ -640,59 +626,18 @@ impl WASMResourceInstanceWrapper {
     /// graph configuration templates, updates the cache, and returns them.
     #[wasm_bindgen(js_name = getDescriptors)]
     pub fn get_descriptors(&self, recompute: bool) -> Result<StaticResourceDescriptors, JsValue> {
-        if !recompute {
-            // Return cached descriptors
-            let cached = self
-                .core
-                .borrow()
-                .resource_instance
-                .as_ref()
-                .map(|r| StaticResourceDescriptors(r.descriptors.clone()));
-
-            if let Some(descriptors) = cached {
-                if !descriptors.is_empty() {
-                    return Ok(descriptors);
-                }
-            }
-            // Fall through to compute if cache is empty
-        }
-
-        // Compute fresh descriptors
-        let descriptors = self.compute_descriptors_internal()?;
-
-        // Update the cache
-        if let Some(ref mut r) = self.core.borrow_mut().resource_instance {
-            r.descriptors = descriptors.0.clone();
-        }
-
-        Ok(descriptors)
-    }
-
-    /// Internal helper to compute descriptors without updating cache.
-    fn compute_descriptors_internal(&self) -> Result<StaticResourceDescriptors, JsValue> {
-        // Get tiles - clone to release borrow
-        let tiles_vec: Vec<_> = {
-            let core_ref = self.core.borrow();
-            let tiles = core_ref
-                .tiles
-                .as_ref()
-                .ok_or_else(|| JsValue::from_str("No tiles loaded"))?;
-            tiles.values().cloned().collect()
-        };
-
-        // Get the graph from model core
-        let graph = self.with_model_core(|core| Ok(core.model_access.get_graph_arc()))?;
-
-        // Descriptors build directly on the StaticGraph via lazy self-indexing.
-        let ext_registry = crate::extension_registry::build_extension_registry();
-        let descriptors = graph.build_descriptors_with_context(
-            &tiles_vec,
-            &mut Vec::new(),
-            None,
-            Some(&ext_registry),
-        );
-
-        Ok(StaticResourceDescriptors(descriptors))
+        // Core's, as NAPI uses; the graph and registry only when building.
+        let graph_id = self.core.borrow().graph_id.clone();
+        self.core
+            .borrow_mut()
+            .descriptors(recompute, || {
+                let graph = with_registry_model::<_, _, String>(&graph_id, |model| {
+                    Ok(model.model_access.get_graph_arc())
+                })?;
+                Ok((graph, crate::extension_registry::build_extension_registry()))
+            })
+            .map(StaticResourceDescriptors)
+            .map_err(|e| JsValue::from_str(&e))
     }
 
     /// Get tile IDs for a specific nodegroup
@@ -1757,57 +1702,10 @@ impl WASMResourceInstanceWrapper {
     // Phase 2: Graph Traversal Helpers
     // ========================================================================
 
-    /// Internal ensureNodegroup implementation with Rust-native types
-    /// This function works entirely with Rust types and can recursively call itself
-    /// without serialization overhead. We cannot sensibly store the all_nodegroups
-    /// or all_values_map, as these represent the state of the dependent language's
-    /// viewModels (which may not exist or be ready, for example).
-    /// Delegates to core's standalone `ensure_nodegroup`.
-    fn ensure_nodegroup_internal(
-        &self,
-        all_values_map: &HashMap<String, Option<bool>>,
-        all_nodegroups: &mut HashMap<String, bool>,
-        nodegroup_id: &str,
-        add_if_missing: bool,
-        nodegroup_permissions: &HashMap<String, alizarin_core::PermissionRule>,
-        do_implied_nodegroups: bool,
-    ) -> Result<alizarin_core::EnsureNodegroupResult, JsValue> {
-        let fn_start = now_ms();
-
-        let core_ref = self.core.borrow();
-        let tiles_store = match core_ref.tiles.as_ref() {
-            Some(t) => t,
-            None => {
-                return Ok(alizarin_core::EnsureNodegroupResult {
-                    values: HashMap::new(),
-                    implied_nodegroups: Vec::new(),
-                    all_nodegroups_map: all_nodegroups.clone(),
-                });
-            }
-        };
-
-        let result = with_registry_model(&core_ref.graph_id, |model| {
-            alizarin_core::ensure_nodegroup(
-                all_values_map,
-                all_nodegroups,
-                nodegroup_id,
-                add_if_missing,
-                nodegroup_permissions,
-                do_implied_nodegroups,
-                model,
-                tiles_store,
-            )
-            .map_err(|e| JsValue::from_str(&format!("{:?}", e)))
-        })?;
-
-        record_timing("eng: total (delegated to core)", now_ms() - fn_start);
-        Ok(result)
-    }
-
-    /// Complete ensureNodegroup implementation in Rust
+    /// Ensure a single nodegroup is loaded and return structured values: core's,
+    /// as NAPI uses. Permissions are the shared model's, as `populate` uses;
+    /// `nodegroup_permissions_js` is ignored, kept so callers needn't change.
     /// PORT: graphManager.ts lines 302-377 (full ensureNodegroup function)
-    /// PORT: Phase 4c - Now returns structured WasmEnsureNodegroupResult instead of recipes
-    /// Now gets node_objs, nodegroup_objs, and edges from model core directly
     #[wasm_bindgen(js_name = ensureNodegroup)]
     pub fn ensure_nodegroup(
         &self,
@@ -1833,31 +1731,24 @@ impl WASMResourceInstanceWrapper {
                 JsValue::from_str(&format!("Failed to deserialize all_nodegroups: {:?}", e))
             })?;
 
-        // Phase 4h: Deserialize nodegroup permissions
-        // JS sends HashMap<String, bool> — convert to PermissionRule at the boundary.
-        // Non-boolean values (if any slip through) are flattened to false with a warning.
-        let bool_permissions: HashMap<String, bool> =
-            serde_wasm_bindgen::from_value(nodegroup_permissions_js).map_err(|e| {
-                JsValue::from_str(&format!(
-                    "Failed to deserialize nodegroup_permissions: {:?}",
-                    e
-                ))
-            })?;
-        let nodegroup_permissions: HashMap<String, alizarin_core::PermissionRule> =
-            bool_permissions
-                .into_iter()
-                .map(|(k, v)| (k, alizarin_core::PermissionRule::Boolean(v)))
-                .collect();
-
-        // Call internal implementation with Rust-native types
-        let result = self.ensure_nodegroup_internal(
-            &all_values_map,
-            &mut all_nodegroups,
-            nodegroup_id,
-            add_if_missing,
-            &nodegroup_permissions,
-            do_implied_nodegroups,
-        )?;
+        // The shared model's permissions, not the caller's (see above).
+        let _ = nodegroup_permissions_js;
+        let fn_start = now_ms();
+        let core_ref = self.core.borrow();
+        let result = with_registry_model(&core_ref.graph_id, |model| {
+            core_ref
+                .ensure_nodegroup(
+                    &all_values_map,
+                    &mut all_nodegroups,
+                    nodegroup_id,
+                    add_if_missing,
+                    &alizarin_core::ModelAccess::get_permitted_nodegroups(model),
+                    do_implied_nodegroups,
+                    model,
+                )
+                .map_err(|e| JsValue::from_str(&e.to_string()))
+        })?;
+        record_timing("eng: total (delegated to core)", now_ms() - fn_start);
 
         // PORT: Phase 4c - Return structured values wrapped in WasmEnsureNodegroupResult
         // PORT: js/graphManager.ts:377 - return { newValues, impliedNodegroups, ... }

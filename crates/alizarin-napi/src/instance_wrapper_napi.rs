@@ -1152,22 +1152,24 @@ impl NapiResourceInstanceWrapper {
     }
 
     #[napi]
-    pub fn get_name(&self) -> Result<serde_json::Value> {
-        match self.inner.resource_instance.as_ref() {
-            Some(ri) => serde_json::to_value(&ri.name)
-                .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e))),
-            None => Ok(serde_json::Value::Null),
-        }
+    pub fn get_name(&self) -> String {
+        self.inner.display_name()
     }
 
+    /// The cached descriptors, built from the tiles (and cached) if `recompute`
+    /// or none are cached: core's, as WASM uses.
     #[napi]
-    pub fn get_descriptors(&self, _recompute: bool) -> Result<serde_json::Value> {
-        // For now return cached descriptors; recompute=true could be supported later
-        match self.inner.resource_instance.as_ref() {
-            Some(ri) => serde_json::to_value(&ri.descriptors)
-                .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e))),
-            None => Ok(serde_json::Value::Null),
-        }
+    pub fn get_descriptors(&mut self, recompute: bool) -> Result<serde_json::Value> {
+        let graph_id = self.inner.graph_id.clone();
+        let descriptors = self
+            .inner
+            .descriptors(recompute, || {
+                let graph = model_for(&graph_id).map_err(|e| e.reason)?.get_graph_arc();
+                Ok((graph, ext_registry()))
+            })
+            .map_err(napi::Error::from_reason)?;
+        serde_json::to_value(&descriptors)
+            .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
     }
 
     // =========================================================================
