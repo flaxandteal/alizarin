@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiEnsureNodegroupResult, NapiValuesFromNodegroupResult, NapiResourceInstanceWrapper, NapiPseudoNode, NapiResourceModelWrapper, NapiStaticDomainValue, NapiNodeConfigBoolean, NapiNodeConfigConcept, NapiNodeConfigDomain, registerExtensionHandler, foldMayMatch, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, applyMutationsFromJson, applyMutationsCreate, getMutationSchema, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, applyAggregateFunctionsFromFile, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
+const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiEnsureNodegroupResult, NapiValuesFromNodegroupResult, NapiResourceInstanceWrapper, NapiPseudoNode, NapiResourceModelWrapper, NapiStaticDomainValue, NapiNodeConfigBoolean, NapiNodeConfigConcept, NapiNodeConfigDomain, registerExtensionHandler, foldMayMatch, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, applyMutationsFromJson, applyMutationsJson, applyMutationsCreate, getMutationSchema, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, applyAggregateFunctionsFromFile, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
 
 module.exports.NapiRdmCache = NapiRdmCache
 module.exports.NapiNodeConfigManager = NapiNodeConfigManager
@@ -334,6 +334,7 @@ module.exports.NapiPrebuildExporter = NapiPrebuildExporter
 module.exports.NapiStaticGraph = NapiStaticGraph
 module.exports.NapiStaticResourceRegistry = NapiStaticResourceRegistry
 module.exports.applyMutationsFromJson = applyMutationsFromJson
+module.exports.applyMutationsJson = applyMutationsJson
 module.exports.applyMutationsCreate = applyMutationsCreate
 module.exports.getMutationSchema = getMutationSchema
 module.exports.buildGraphFromCsvs = buildGraphFromCsvs

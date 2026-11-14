@@ -16,8 +16,6 @@ const NAPI_EXCLUDED = [
   "tests/resources.test.ts",
   "tests/static-types.test.ts",
   "tests/type-coercion.test.ts",
-  // NAPI gap: the TS GraphMutator needs the WASM StaticGraph's copy/push* API.
-  "tests/docExamples.test.ts",
 ];
 
 export default defineConfig({

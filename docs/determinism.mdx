@@ -26,10 +26,11 @@ UUID. There is no clock, counter or randomness involved.
 
 ## Where it's used
 
-- **Graph mutations** — `GraphMutator` derives every new node / nodegroup / edge
-  id from the graph id plus the node's key, so
+- **Graph mutations** — `GraphMutator` runs its changes in core, which derives
+  every new node / nodegroup / edge / card id from the graph id plus a key, so
   [building a graph](/docs/graphs) from the same definition twice yields identical
-  ids.
+  ids, on every backend and in Python. (Core's derivation is its own, not
+  `utils.generateUuidv5`'s, so the two give different ids for the same key.)
 - **CSV model builds** — `buildGraphFromModelCsvs(...)` takes an `rdmNamespace`;
   the same CSVs + namespace produce the same graph, byte for byte.
 - **RDM concepts** — collection and concept ids are generated from the namespace,

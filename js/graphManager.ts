@@ -1,10 +1,9 @@
 import { GraphResult, archesClient, ArchesClient, ArchesClientRemote } from './client';
 import { staticStore, StaticStore } from './staticStore';
-import { CardComponent, DEFAULT_CARD_COMPONENT, Widget, getDefaultWidgetForNode } from './cards';
+import { CardComponent, Widget } from './cards';
 import {
   StaticTranslatableString,
   StaticCollection,
-  StaticConstraint,
   StaticTile,
   StaticGraph,
   StaticNode,
@@ -20,13 +19,8 @@ import {
   createResourceModelWrapper,
   createWKRM,
   createStaticGraphMeta,
-  createStaticNode,
-  createStaticEdge,
-  createStaticCard,
-  createStaticNodegroup,
   createStaticResourceFromSummary,
-  createStaticTranslatableString,
-  createStaticCardsXNodesXWidgets,
+  applyGraphMutations,
   getBackend,
   loadTilesFromResource,
   resourceTilesLoaded,
@@ -35,7 +29,7 @@ import {
 import { ResourceInstanceViewModel, viewContext, SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, IModelWrapperBackend, IWKRM, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
 import { nodeConfigManager } from "./nodeConfig.ts";
-import { generateUuidv5, AttrPromise } from "./utils";
+import { AttrPromise } from "./utils";
 
 /**
  * Normalise a model identifier so a display name, slug, alias or PascalCased class
@@ -589,8 +583,37 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
   }
 }
 
-type GraphMutation = (baseGraph: StaticGraph) => StaticGraph;
+/** A core graph mutation, e.g. `{ AddNode: {...} }` (core's `GraphMutation`). */
+type GraphMutation = { [kind: string]: unknown };
 
+/** Per-node flags, as core's `NodeOptions` takes them. */
+type NodeOptions = {
+  exportable?: boolean,
+  fieldname?: string,
+  hascustomalias?: boolean;
+  is_collector?: boolean;
+  isrequired?: boolean;
+  issearchable?: boolean;
+  istopnode?: boolean;
+  sortorder?: number;
+};
+
+/** A core mutation of `kind` (`AddNode`, `AddCard`, …) with its params. */
+function mutation(kind: string, params: object): GraphMutation {
+  return { [kind]: params };
+}
+
+/** A plain or translatable string, as core reads a translatable string. */
+function translatable(value: string | StaticTranslatableString): unknown {
+  return typeof value === 'string' ? value : (value as any).toJSON();
+}
+
+/**
+ * Fluent builder for graph schema changes. It records core graph mutations
+ * and `apply()` runs them in core, so the same mutations give the same graph,
+ * ids included, on WASM, NAPI and Python (whose GraphMutator is the same).
+ * Cards and widgets for new nodes are created by core when `autocreateCard`.
+ */
 class GraphMutator {
   baseGraph: StaticGraph;
   mutations: GraphMutation[];
@@ -605,244 +628,72 @@ class GraphMutator {
     this.autocreateCard = options.autocreateCard === undefined || options.autocreateCard;
   }
 
-  _generateUuidv5(key: string) {
-    return generateUuidv5(['graph', this.baseGraph.graphid], key);
+  addSemanticNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options: NodeOptions = {}, config?: {[key: string]: any}) {
+    return this._addGenericNode(parentAlias, alias, name, cardinality, "semantic", ontologyClass, parentProperty, description, options, config);
   }
 
-  _generateEdge(fromNode: string, toNode: string, ontologyProperty: string, name?: string, description?: string) {
-    const edgeId = this._generateUuidv5(`node-${fromNode}-${toNode}`);
-    return createStaticEdge({
-      description: description || null,
-      domainnode_id: fromNode,
-      edgeid: edgeId,
-      graph_id: this.baseGraph.graphid,
-      name: name || null,
-      rangenode_id: toNode,
-      ontologyproperty: ontologyProperty,
-    });
-  }
-
-  addSemanticNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options: {
-    exportable?: boolean,
-    fieldname?: string,
-    hascustomalias?: boolean;
-    is_collector?: boolean;
-    isrequired?: boolean;
-    issearchable?: boolean;
-    istopnode?: boolean;
-    sortorder?: number;
-  } = {}, config?: {[key: string]: any}) {
-    return this._addGenericNode(
-      parentAlias,
-      alias,
-      name,
-      cardinality,
-      "semantic",
-      ontologyClass,
-      parentProperty,
-      description,
-      options,
-      config
-    );
-  }
-
-  addConceptNode(parentAlias: string | null, alias: string, name: string, collection: StaticCollection, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options: {
+  addConceptNode(parentAlias: string | null, alias: string, name: string, collection: StaticCollection, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options: NodeOptions & {
     is_list?: boolean,
-    exportable?: boolean,
-    fieldname?: string,
-    hascustomalias?: boolean;
-    is_collector?: boolean;
-    isrequired?: boolean;
-    issearchable?: boolean;
-    istopnode?: boolean;
-    sortorder?: number;
   } = {}, config?: {[key: string]: any}) {
     config = config || {};
     if (collection?.id) {
       config['rdmCollection'] = collection.id
     }
-    return this._addGenericNode(
-      parentAlias,
-      alias,
-      name,
-      cardinality,
-      options.is_list ? "concept-list" : "concept",
-      ontologyClass,
-      parentProperty,
-      description,
-      options,
-      config
-    );
+    const { is_list, ...nodeOptions } = options;
+    return this._addGenericNode(parentAlias, alias, name, cardinality, is_list ? "concept-list" : "concept", ontologyClass, parentProperty, description, nodeOptions, config);
+  }
+
+  addStringNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options: NodeOptions = {}, config?: {[key: string]: any}) {
+    return this._addGenericNode(parentAlias, alias, name, cardinality, "string", ontologyClass, parentProperty, description, options, config);
   }
 
   addCard(nodegroup: string | StaticNodegroup, name: string | StaticTranslatableString, component?: CardComponent, options: {
     active?: boolean,
-    constraints?: Array<StaticConstraint>,
     cssclass?: string | null,
     helpenabled?: boolean,
     helptext?: string | null | StaticTranslatableString,
     helptitle?: string | null | StaticTranslatableString,
     instructions?: string | null | StaticTranslatableString,
     is_editable?: boolean,
-    description?: string | null,
+    description?: string | null | StaticTranslatableString,
     sortorder?: number | null,
     visible?: boolean
   } = {}, config?: {[key: string]: any}) {
-    const nodegroupId = typeof nodegroup === 'string' ? nodegroup : nodegroup.nodegroupid;
-    const cardName = (typeof name === 'object' && name !== null && 'toJSON' in name) ? name : createStaticTranslatableString(name);
-    const cardComponent = component || DEFAULT_CARD_COMPONENT;
-    const helptext = options?.helptext && (
-      (typeof options.helptext === 'object' && options.helptext !== null && 'toJSON' in options.helptext) ?
-        options.helptext : createStaticTranslatableString(options.helptext)
-    );
-    const helptitle = (options?.helptitle && (
-      (typeof options.helptitle === 'object' && options.helptitle !== null && 'toJSON' in options.helptitle) ?
-        options.helptitle : createStaticTranslatableString(options.helptitle)
-    ));
-    const instructions = (options?.instructions && (
-      (typeof options.instructions === 'object' && options.instructions !== null && 'toJSON' in options.instructions) ?
-        options.instructions : createStaticTranslatableString(options.instructions)
-    ));
-    this.mutations.push((graph: StaticGraph) => {
-      const cards = graph.cards || [];
-      if (cards.filter(card => card.nodegroup_id === nodegroup).length > 0) {
-        throw Error(`This nodegroup, ${nodegroupId}, already has a card`);
-      }
-      const cardId = this._generateUuidv5(`card-ng-${nodegroupId}`);
-      const card = createStaticCard({
-        active: options.active === undefined ? true : options.active,
-        cardid: cardId,
-        component_id: cardComponent.id,
-        config: config || undefined,
-        constraints: options.constraints || [],
-        cssclass: options.cssclass || null,
-        description: options.description || null,
-        graph_id: graph.graphid,
-        helpenabled: !!(options.helpenabled || (options.helpenabled === undefined && (helptext || helptitle))),
-        helptext: helptext || createStaticTranslatableString(''),
-        helptitle: helptitle || createStaticTranslatableString(''),
-        instructions: instructions || createStaticTranslatableString(''),
-        is_editable: options.is_editable === undefined ? true : options.is_editable,
-        name: cardName,
-        nodegroup_id: nodegroupId,
-        sortorder: options.sortorder || null,
-        visible: options.visible === undefined ? true : options.visible
-      });
-      graph.pushCard(card);
-      return graph;
-    });
-  }
-
-  addStringNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options: {
-    exportable?: boolean,
-    fieldname?: string,
-    hascustomalias?: boolean;
-    is_collector?: boolean;
-    isrequired?: boolean;
-    issearchable?: boolean;
-    istopnode?: boolean;
-    sortorder?: number;
-  } = {}, config?: {[key: string]: any}) {
-    return this._addGenericNode(
-      parentAlias,
-      alias,
-      name,
-      cardinality,
-      "string",
-      ontologyClass,
-      parentProperty,
-      description,
-      options,
-      config
-    );
-  }
-
-  _addNodegroup(parentAlias: string | null, nodegroupId: string, cardinality: 'n' | '1', name?: StaticTranslatableString) {
-    this.mutations.push((graph: StaticGraph) => {
-      const prnt = parentAlias === null ? graph.root : graph.nodes.find(node => node.alias === parentAlias);
-      if (!prnt) {
-        throw Error(`Missing parent for nodegroup: ${parentAlias}`);
-      }
-      const nodegroup = createStaticNodegroup({
-        cardinality: cardinality,
-        legacygroupid: null,
-        nodegroupid: nodegroupId,
-        parentnodegroup_id: prnt.nodegroup_id
-      });
-      graph.pushNodegroup(nodegroup);
-      return graph;
-    });
-    if (this.autocreateCard) {
-      this.addCard(nodegroupId, name || '(unnamed)');
-    }
+    const optional = (value?: string | null | StaticTranslatableString) => value ? translatable(value) : null;
+    this.mutations.push(mutation('AddCard', {
+      nodegroup_id: typeof nodegroup === 'string' ? nodegroup : nodegroup.nodegroupid,
+      name: translatable(name),
+      component_id: component?.id ?? null,
+      options: {
+        active: options.active ?? null,
+        cssclass: options.cssclass ?? null,
+        helpenabled: options.helpenabled ?? null,
+        helptext: optional(options.helptext),
+        helptitle: optional(options.helptitle),
+        instructions: optional(options.instructions),
+        is_editable: options.is_editable ?? null,
+        description: optional(options.description),
+        sortorder: options.sortorder ?? null,
+        visible: options.visible ?? null,
+      },
+      config: config ?? null,
+    }));
     return this;
   }
 
-  _addGenericNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', datatype: string, ontologyClass: string | string[], parentProperty: string, description?: string, options: {
-    exportable?: boolean,
-    fieldname?: string,
-    hascustomalias?: boolean;
-    is_collector?: boolean;
-    isrequired?: boolean;
-    issearchable?: boolean;
-    istopnode?: boolean;
-    sortorder?: number;
-  } = {}, config?: {[key: string]: any}) {
-    const nodeId = this._generateUuidv5(`node-${alias}`);
-    const node = {
-      alias: alias,
-      config: config || {},
-      datatype: datatype,
-      description: description || undefined,
-      exportable: options.exportable || false,
-      fieldname: options.fieldname || undefined,
-      graph_id: this.baseGraph.graphid,
-      hascustomalias: options.hascustomalias || false,
-      is_collector: options.is_collector || false,
-      isrequired: options.isrequired || false,
-      issearchable: options.issearchable || true, // This is the default in Arches I believe
-      istopnode: options.istopnode || false,
-      name: name,
-      nodegroup_id: '',
-      nodeid: nodeId,
-      parentproperty: parentProperty,
-      sortorder: options.sortorder || 0,
-      ontologyclass: ontologyClass,
-      sourcebranchpublication_id: undefined,
-    };
-    if (cardinality === 'n' || parentAlias === null) {
-      node.nodegroup_id = nodeId;
-      this._addNodegroup(parentAlias, node.nodegroup_id, cardinality, createStaticTranslatableString(name));
-    }
-    this.mutations.push((graph: StaticGraph) => {
-      const prnt = parentAlias === null ? graph.root : graph.nodes.find(node => node.alias === parentAlias);
-      if (!prnt) {
-        throw Error(`Parent node does not exist: ${parentAlias}`);
-      }
-      // FIXME: we assume we are not adding a root node, but nowhere do we say this.
-      node.nodegroup_id = node.nodegroup_id !== '' ? node.nodegroup_id : prnt.nodegroup_id || '';
-      const newNode = createStaticNode(node);
-      graph.pushNode(newNode);
-      const edge = this._generateEdge(prnt.nodeid, nodeId, parentProperty);
-      graph.pushEdge(edge);
-      return graph;
-    });
-
-    if (this.autocreateCard && datatype !== 'semantic') {
-      const widget = getDefaultWidgetForNode(node);
-      const config = widget.getDefaultConfig();
-      config.label = name;
-      this.addWidgetToCard(
-        nodeId,
-        widget,
-        name,
-        config,
-        {
-          sortorder: node.sortorder,
-          silentSkip: true // if, for some reason, the card is not present (i.e. was removed), we should not worry
-        }
-      );
-    }
+  _addGenericNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', datatype: string, ontologyClass: string | string[], parentProperty: string, description?: string, options: NodeOptions = {}, config?: {[key: string]: any}) {
+    this.mutations.push(mutation('AddNode', {
+      parent_alias: parentAlias,
+      alias,
+      name,
+      cardinality,
+      datatype,
+      ontology_class: ontologyClass,
+      parent_property: parentProperty,
+      description: description ?? null,
+      config: config ?? null,
+      options,
+    }));
     return this;
   }
 
@@ -853,46 +704,29 @@ class GraphMutator {
     config: {[key: string]: any},
     options: {
       sortorder?: number | null,
-      silentSkip?: boolean,
       visible?: boolean
     } = {}
   ): GraphMutator {
-    this.mutations.push((graph: StaticGraph) => {
-      const node = graph.nodes.find(node => node.nodeid === nodeId);
-      if (!node) {
-        throw Error(`Tried to add card to graph ${graph.graphid} for node ${nodeId} but it was not found.`);
-      }
-      const card = graph.cards?.find(card => card.nodegroup_id === node.nodegroup_id);
-
-      if (card) {
-        const cardXNodeXWidgetId = this._generateUuidv5(`cxnxw-${nodeId}-${widget.id}`);
-
-        const cardXNodeXWidget = createStaticCardsXNodesXWidgets({
-          card_id: card.cardid,
-          config: config,
-          id: cardXNodeXWidgetId,
-          label: createStaticTranslatableString(name),
-          node_id: nodeId,
-          sortorder: options.sortorder || 0,
-          visible: options.visible === undefined || options.visible,
-          widget_id: widget.id
-        });
-        graph.pushCardXNodeXWidget(cardXNodeXWidget);
-      } else if (!options.silentSkip) {
-        throw Error(`Failed adding widget for ${nodeId} to card for ${node.nodegroup_id} on graph ${graph.graphid}, as no card for this nodegroup (yet?)`);
-      }
-      return graph;
-    });
+    this.mutations.push(mutation('AddWidgetToCard', {
+      node_id: nodeId,
+      widget_id: widget.id,
+      label: name,
+      config,
+      sortorder: options.sortorder ?? null,
+      visible: options.visible ?? null,
+    }));
     return this;
   }
 
-  apply() {
-    if (!this.baseGraph.copy) {
-      throw Error("Attempt to build a mutator without a proper StaticGraph base graph");
-    }
-    // TODO: complete deepcopies
-    const graph = this.baseGraph.copy();
-    return this.mutations.reduce((graph, mutation) => mutation(graph), graph);
+  /** A new graph with the mutations applied, by core; the base graph is untouched. */
+  apply(): StaticGraph {
+    return applyGraphMutations(this.baseGraph, JSON.stringify({
+      mutations: this.mutations,
+      options: {
+        autocreate_card: this.autocreateCard,
+        autocreate_widget: this.autocreateCard,
+      },
+    }));
   }
 }
 

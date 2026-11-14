@@ -580,6 +580,23 @@ export function parseStaticGraph(jsonText: string): any {
 }
 
 /**
+ * Apply a core mutation request (JSON) to a graph of the active backend,
+ * giving a new graph of the same kind. Core does the work on every backend.
+ */
+export function applyGraphMutations(graph: any, mutationsJson: string): any {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (graph instanceof napi.NapiStaticGraph) {
+      return napi.applyMutationsFromJson(graph, mutationsJson);
+    }
+    // NAPI graphs in TS are plain graph data: mutate through JSON, as Python does.
+    const mutated = napi.applyMutationsJson(JSON.stringify(graph), mutationsJson);
+    return createStaticGraph(JSON.parse(mutated));
+  }
+  return getWasmModule().applyMutationsFromJson(graph, mutationsJson);
+}
+
+/**
  * Parse a business_data JSON string into StaticResource[].
  * In WASM mode uses the Rust bulk parser; in NAPI mode JSON.parse.
  */

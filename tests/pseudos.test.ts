@@ -441,7 +441,9 @@ describe('Pseudos', () => {
         null,
         "semantic_node",
         "Semantic Node",
-        "http://www.cidoc-crm.org/cidoc-crm/E55_Type"
+        "1",
+        "http://www.cidoc-crm.org/cidoc-crm/E55_Type",
+        "http://www.cidoc-crm.org/cidoc-crm/P2_has_type"
       );
       testMutator.addStringNode(
         "semantic_node",

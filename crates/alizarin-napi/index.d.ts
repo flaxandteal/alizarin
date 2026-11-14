@@ -28,6 +28,12 @@ export declare function foldMayMatch(datatype: string, summary: any | undefined 
  */
 export declare function applyMutationsFromJson(graph: NapiStaticGraph, mutationsJson: string): NapiStaticGraph
 /**
+ * As [`apply_mutations_from_json`], on graph JSON: the mutated graph's JSON.
+ * Python's `apply_mutations_from_json` has this shape; the TS layer uses it
+ * for NAPI's plain graph objects.
+ */
+export declare function applyMutationsJson(graphJson: string, mutationsJson: string): string
+/**
  * Apply a mutation request that may start with `CreateGraph` (then `graph`
  * is omitted): core's, as WASM's and Python's `applyMutationsCreate`.
  */

@@ -662,6 +662,17 @@ pub fn apply_mutations_from_json(
         .map_err(napi::Error::from_reason)
 }
 
+/// As [`apply_mutations_from_json`], on graph JSON: the mutated graph's JSON.
+/// Python's `apply_mutations_from_json` has this shape; the TS layer uses it
+/// for NAPI's plain graph objects.
+#[napi(js_name = "applyMutationsJson")]
+pub fn apply_mutations_json(graph_json: String, mutations_json: String) -> Result<String> {
+    let graph = StaticGraph::from_json_string(&graph_json).map_err(napi::Error::from_reason)?;
+    let mutated = alizarin_core::graph_mutator::apply_mutations_from_json(&graph, &mutations_json)
+        .map_err(napi::Error::from_reason)?;
+    serde_json::to_string(&mutated).map_err(|e| napi::Error::from_reason(e.to_string()))
+}
+
 /// Apply a mutation request that may start with `CreateGraph` (then `graph`
 /// is omitted): core's, as WASM's and Python's `applyMutationsCreate`.
 #[napi(js_name = "applyMutationsCreate")]
