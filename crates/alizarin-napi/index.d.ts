@@ -273,17 +273,6 @@ export declare class NapiPopulateResult {
   get allValuesMap(): any
   get allNodegroupsMap(): any
 }
-export declare class NapiEnsureNodegroupResult {
-  getValueAliases(): Array<string>
-  getValue(alias: string): NapiPseudoList | null
-  getAllValues(): any
-  get impliedNodegroups(): Array<string>
-  get allNodegroupsMap(): any
-}
-export declare class NapiValuesFromNodegroupResult {
-  getAllValues(): any
-  get impliedNodegroups(): Array<string>
-}
 /**
  * A resource instance. It holds no model of its own: it looks up its graph's
  * shared model on each use, so it sees permission changes and prunes made
@@ -324,7 +313,6 @@ export declare class NapiResourceInstanceWrapper {
    * tiles. Core's, as WASM and Python use.
    */
   appendFetchedTiles(tilesJs: any, nodegroupId?: string | undefined | null): void
-  getTileCount(): number
   /**
    * Export all tiles as a JSON string.
    * Returns the wrapper's current tile state (including any mutations from setTileDataForNode).
@@ -334,21 +322,14 @@ export declare class NapiResourceInstanceWrapper {
   /** Prune tiles to only keep those in permitted nodegroups. */
   pruneResourceTiles(): void
   tilesLoaded(): boolean
-  getAllTileIds(): Array<string>
-  getTileIdsByNodegroup(nodegroupId?: string | undefined | null): Array<string>
   getTile(tileId: string): any
-  getTileData(tileId: string, nodeId: string): any
   /**
    * Set a single node's data in a tile, mutating in place.
    * Returns true if the tile was found and updated.
    */
   setTileDataForNode(tileId: string, nodeId: string, value: any): boolean
-  hasTilesForNodegroup(nodegroupId: string): boolean
-  getNodegroupCount(): number
   setLazy(lazy: boolean): void
   isNodegroupLoaded(nodegroupId?: string | undefined | null): boolean
-  isNodegroupLoadedOrLoading(nodegroupId?: string | undefined | null): boolean
-  tryAcquireNodegroupLock(nodegroupId: string): boolean
   getMissingNodegroupsForChildren(parentNodeId: string): Array<string>
   getResourceId(): string | null
   getName(): string
@@ -359,10 +340,6 @@ export declare class NapiResourceInstanceWrapper {
   getDescriptors(recompute: boolean): any
   /** Populate the pseudo cache for the given nodegroups. */
   populate(lazy: boolean, nodegroupIds: Array<string>, rootNodeAlias: string): NapiPopulateResult
-  /** Ensure a single nodegroup is loaded and return structured values. */
-  ensureNodegroup(allValuesJs: any, allNodegroupsJs: any, nodegroupId: string, addIfMissing: boolean, nodegroupPermissionsJs: any, doImpliedNodegroups: boolean): NapiEnsureNodegroupResult
-  /** Build pseudo values from tiles for a specific nodegroup. */
-  valuesFromResourceNodegroup(existingValuesJs: any, nodegroupTileIds: Array<string>, nodegroupId: string): NapiValuesFromNodegroupResult
   /**
    * Resolve a dot-separated path to its target node metadata without needing tiles.
    *
@@ -383,13 +360,8 @@ export declare class NapiResourceInstanceWrapper {
    * none). Errors propagate: in lazy mode, `TILES_NOT_LOADED:<nodegroup>`.
    */
   getAllSemanticChildValues(parentTileId: string | undefined | null, parentNodeId: string, parentNodegroupId?: string | undefined | null): any
-  /** Find all semantic children of a parent node (returns map of alias → tile IDs). */
-  findSemanticChildren(parentTileId: string | undefined | null, parentNodeId: string, parentNodegroupId?: string | undefined | null): any
   getCachedPseudo(alias?: string | undefined | null): NapiPseudoList | null
   getRootPseudo(): NapiPseudoValue | null
-  cachePseudoList(alias: string, list: NapiPseudoList): void
-  cachePseudoValue(alias: string, value: NapiPseudoValue): void
-  clearPseudoCache(): void
   /**
    * Construct the pseudo for `alias` (for the TS wrapper): core's, as WASM
    * uses — a list, a value, or null (TS: PseudoUnavailable) when not
@@ -400,8 +372,6 @@ export declare class NapiResourceInstanceWrapper {
   toJson(): any
   /** Serialize to display JSON (resolved labels). */
   toDisplayJson(rdmCache: NapiRdmCache, nodeConfigManager: NapiNodeConfigManager, language?: string | undefined | null, resourceRegistry?: NapiStaticResourceRegistry | undefined | null): any
-  /** Serialize to display JSON without RDM/config (basic labels only). */
-  toDisplayJsonSimple(language?: string | undefined | null): any
   /**
    * Populate (if needed) and serialize to display JSON in a single synchronous call.
    *
@@ -475,7 +445,6 @@ export declare class NapiResourceModelWrapper {
   constructor(graphJson: string, defaultAllow: boolean)
   /** Create from an already-loaded NapiStaticGraph. */
   static fromGraph(graph: NapiStaticGraph, defaultAllow: boolean): NapiResourceModelWrapper
-  getGraphId(): string
   /** The model's graph, as a `NapiStaticGraph` (as WASM gives its StaticGraph). */
   get graph(): NapiStaticGraph
   set graph(graphJson: string)
@@ -526,9 +495,6 @@ export declare class NapiResourceModelWrapper {
    */
   setPermittedNodegroups(permissions: any): void
   setDefaultAllowAllNodegroups(defaultAllow: boolean): void
-  setGraphNodes(nodesJson: string): void
-  setGraphEdges(edgesJson: string): void
-  setGraphNodegroups(nodegroupsJson: string): void
   /** Prune graph to only include permitted nodegroups and their dependencies. */
   pruneGraph(keepFunctions?: Array<string> | undefined | null): void
 }

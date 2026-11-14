@@ -158,17 +158,6 @@ impl PseudoListInner {
             is_single: core.is_single,
         }
     }
-
-    /// Convert to a PseudoListCore (for use with card_traversal functions).
-    /// Extracts only the data fields, dropping WASM-specific runtime state.
-    pub fn to_core(&self) -> alizarin_core::PseudoListCore {
-        alizarin_core::PseudoListCore {
-            node_alias: self.node_alias.clone(),
-            values: self.values.iter().map(|v| v.core.clone()).collect(),
-            is_loaded: self.is_loaded,
-            is_single: self.is_single,
-        }
-    }
 }
 
 /// Result returned from nodegroup operations
@@ -377,193 +366,6 @@ impl PseudoListInner {
         });
 
         entries
-    }
-}
-
-// ============================================================================
-// Visitor pattern for JSON serialization
-// ============================================================================
-
-use std::collections::HashMap;
-
-// ============================================================================
-// Tile Builder - Visitor pattern for building StaticTiles from pseudo cache
-// ============================================================================
-
-/// A tile being built - accumulates data from multiple leaf nodes that share the same tile
-#[derive(Debug, Clone)]
-pub(crate) struct TileBuilder {
-    pub tileid: Option<String>,
-    pub nodegroup_id: String,
-    pub parenttile_id: Option<String>,
-    pub resourceinstance_id: String,
-    pub sortorder: Option<i32>,
-    pub data: std::collections::BTreeMap<String, serde_json::Value>,
-}
-
-/// Tiles being built, in the order traversal first reached them, so `toTiles`
-/// and `toResource` output is stable (mirrors core's `TileBuilderMap`).
-pub(crate) type TileBuilderMap = alizarin_core::indexmap::IndexMap<String, TileBuilder>;
-
-impl TileBuilder {
-    /// Create from a StaticTile reference
-    pub fn from_tile(tile: &alizarin_core::StaticTile) -> Self {
-        TileBuilder {
-            tileid: tile.tileid.clone(),
-            nodegroup_id: tile.nodegroup_id.clone(),
-            parenttile_id: tile.parenttile_id.clone(),
-            resourceinstance_id: tile.resourceinstance_id.clone(),
-            sortorder: tile.sortorder,
-            data: Default::default(),
-        }
-    }
-
-    /// Convert to a StaticTile
-    pub fn to_static_tile(&self) -> alizarin_core::StaticTile {
-        alizarin_core::StaticTile {
-            tileid: self.tileid.clone(),
-            nodegroup_id: self.nodegroup_id.clone(),
-            parenttile_id: self.parenttile_id.clone(),
-            resourceinstance_id: self.resourceinstance_id.clone(),
-            sortorder: self.sortorder,
-            provisionaledits: None,
-            data: self.data.clone(),
-        }
-    }
-}
-
-/// Context for tile building traversal
-pub(crate) struct TileBuilderContext<'a> {
-    /// The pseudo_cache from the instance wrapper (alias -> PseudoListInner)
-    pub pseudo_cache: &'a HashMap<String, PseudoListInner>,
-    /// Node alias to node mapping from the model
-    pub nodes_by_alias: &'a HashMap<String, Arc<StaticNode>>,
-    /// Node edges from the model (parent_nodeid -> child_nodeids)
-    pub edges: &'a HashMap<String, Vec<String>>,
-    /// Resource instance ID for new tiles
-    pub resourceinstance_id: String,
-    /// Current traversal depth
-    pub depth: usize,
-    /// Maximum depth
-    pub max_depth: usize,
-}
-
-impl PseudoValueInner {
-    /// Collect tile data from this pseudo value and its children.
-    ///
-    /// For leaf nodes: adds tile_data to the appropriate tile
-    /// For semantic nodes: recursively collects from children
-    ///
-    /// The tiles map is keyed by tile key (tileid or generated key for new tiles)
-    pub fn collect_tiles(&self, ctx: &TileBuilderContext, tiles: &mut TileBuilderMap) {
-        if ctx.depth > ctx.max_depth {
-            return;
-        }
-
-        // If this pseudo has a tile, ensure it exists in the map
-        if let Some(ref tile) = self.core.tile {
-            // Same caveat as core's `PseudoValueCore::collect_tiles`: no-id tiles
-            // are keyed here only until the ORM can create tiles, at which point
-            // they need ids at creation (`allocate_multi_tile_id`).
-            let tile_key = tile.tileid.clone().unwrap_or_else(|| {
-                format!("new_{}_{}", tile.nodegroup_id, tile.sortorder.unwrap_or(0))
-            });
-
-            if !tiles.contains_key(&tile_key) {
-                tiles.insert(tile_key.clone(), TileBuilder::from_tile(tile));
-            }
-
-            // For leaf nodes with tile_data, add to the tile's data map
-            let datatype = self.datatype();
-            if datatype != "semantic" && !self.core.is_inner {
-                if let Some(ref data) = self.core.tile_data {
-                    if let Some(tile_builder) = tiles.get_mut(&tile_key) {
-                        tile_builder
-                            .data
-                            .insert(self.core.node.nodeid.clone(), data.clone());
-                    }
-                }
-            }
-        }
-
-        // For semantic nodes and inner nodes, collect from children
-        if self.datatype() == "semantic" || self.core.is_inner {
-            self.collect_children_tiles(ctx, tiles);
-        }
-
-        // For outer nodes, also collect from inner
-        if let Some(ref inner) = self.inner {
-            let child_ctx = TileBuilderContext {
-                pseudo_cache: ctx.pseudo_cache,
-                nodes_by_alias: ctx.nodes_by_alias,
-                edges: ctx.edges,
-                resourceinstance_id: ctx.resourceinstance_id.clone(),
-                depth: ctx.depth + 1,
-                max_depth: ctx.max_depth,
-            };
-            inner.collect_tiles(&child_ctx, tiles);
-        }
-    }
-
-    /// Collect tiles from children of a semantic node
-    fn collect_children_tiles(&self, ctx: &TileBuilderContext, tiles: &mut TileBuilderMap) {
-        let parent_tile_id = self.core.tile.as_ref().and_then(|t| t.tileid.clone());
-        let parent_nodegroup_id = self.core.node.nodegroup_id.clone();
-
-        let child_node_ids = match ctx.edges.get(&self.core.node.nodeid) {
-            Some(ids) => ids,
-            None => return,
-        };
-
-        for child_node_id in child_node_ids {
-            let child_node = ctx
-                .nodes_by_alias
-                .values()
-                .find(|n| &n.nodeid == child_node_id);
-
-            let child_node = match child_node {
-                Some(n) => n,
-                None => continue,
-            };
-
-            let child_alias = match &child_node.alias {
-                Some(alias) if !alias.is_empty() => alias,
-                _ => continue,
-            };
-
-            let pseudo_list = match ctx.pseudo_cache.get(child_alias) {
-                Some(list) => list,
-                None => continue,
-            };
-
-            let matching_values = pseudo_list.matching_entries(
-                parent_tile_id.clone(),
-                child_node.nodegroup_id.clone(),
-                parent_nodegroup_id.clone(),
-            );
-
-            let child_ctx = TileBuilderContext {
-                pseudo_cache: ctx.pseudo_cache,
-                nodes_by_alias: ctx.nodes_by_alias,
-                edges: ctx.edges,
-                resourceinstance_id: ctx.resourceinstance_id.clone(),
-                depth: ctx.depth + 1,
-                max_depth: ctx.max_depth,
-            };
-
-            for value in matching_values {
-                value.collect_tiles(&child_ctx, tiles);
-            }
-        }
-    }
-}
-
-impl PseudoListInner {
-    /// Collect tiles from all values in this list
-    pub fn collect_tiles(&self, ctx: &TileBuilderContext, tiles: &mut TileBuilderMap) {
-        for value in &self.values {
-            value.collect_tiles(ctx, tiles);
-        }
     }
 }
 
@@ -1166,12 +968,6 @@ impl PseudoValue {
             inner: RefCell::new(inner),
         }
     }
-
-    /// Get the inner PseudoValueInner (for Rust-internal use)
-    /// Phase 4g: Added for cache storage
-    pub(crate) fn into_inner(self) -> PseudoValueInner {
-        self.inner.into_inner()
-    }
 }
 
 #[derive(Debug)]
@@ -1240,11 +1036,6 @@ impl PseudoList {
     /// Create a PseudoList from PseudoListInner (for Rust-internal use)
     pub(crate) fn from_rust(inner: PseudoListInner) -> Self {
         PseudoList { inner }
-    }
-
-    /// Get the inner PseudoListInner (for Rust-internal use)
-    pub(crate) fn into_inner(self) -> PseudoListInner {
-        self.inner
     }
 }
 

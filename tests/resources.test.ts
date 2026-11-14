@@ -324,71 +324,20 @@ describe("testing api", () => {
       const basic_info = await group.basic_info;
       assert(basic_info?.length > 0, "basic_info should have entries");
 
-      // Call toTiles() via the Rust path
-      const tiles = group.$.wasmWrapper.toTiles();
-      console.log("toTiles() result:", JSON.stringify(tiles, null, 2));
+      // Export the instance's tiles via the Rust path
+      const tiles = JSON.parse(group.$.wasmWrapper.exportTilesJson());
 
       // Verify the result is an array of tiles
-      assert(Array.isArray(tiles), "toTiles() should return an array");
-      assert(tiles.length > 0, "toTiles() should return at least one tile");
+      assert(Array.isArray(tiles), "exportTilesJson() should give an array");
+      assert(tiles.length > 0, "exportTilesJson() should give at least one tile");
 
       // Check that tiles have expected structure
       const firstTile = tiles[0];
       assert(firstTile.nodegroup_id, "tile should have nodegroup_id");
       assert(typeof firstTile.data === 'object', "tile should have data object");
-
-      console.log(`\ntoTiles() returned ${tiles.length} tiles`);
-      tiles.forEach((tile: any, i: number) => {
-        console.log(`  tile[${i}]: nodegroup=${tile.nodegroup_id}, data keys=${Object.keys(tile.data).length}`);
-      });
-
-      // Print timing summary
-      console.log("\n=== toTiles Timing Results ===");
-      printRscvTimings();
     },
   );
 
-  apiTest(
-    "toResource() builds complete StaticResource",
-    async ({ graphsResponse, graphResponses }) => {
-      fetchMock.once("*", JSON.stringify(graphsResponse));
-      Object.values(graphResponses).forEach((response) =>
-        fetchMock.once("*", JSON.stringify(response)),
-      );
-
-      // Clear timings before test
-      clearRscvTimings();
-
-      const Groups = await graphManager.get(Group);
-      const groups: Group[] = await Groups.all({ pruneTiles: false });
-      const group = groups[0];
-
-      // Make sure we have an instance wrapper with wasmWrapper
-      assert(group.$, "group should have instance wrapper");
-      assert(group.$.wasmWrapper, "instance wrapper should have wasmWrapper");
-
-      // Access a value to populate the cache
-      const basic_info = await group.basic_info;
-      assert(basic_info?.length > 0, "basic_info should have entries");
-
-      // Call toResource() via the Rust path
-      const resource = group.$.wasmWrapper.toResource();
-      console.log("toResource() result:", JSON.stringify(resource, null, 2).substring(0, 500) + "...");
-
-      // Verify the result has expected structure
-      assert(resource.resourceinstance, "resource should have resourceinstance");
-      assert(resource.resourceinstance.resourceinstanceid, "resource should have resourceinstanceid");
-      assert(Array.isArray(resource.tiles), "resource should have tiles array");
-      assert(resource.tiles.length > 0, "resource should have at least one tile");
-
-      console.log(`\ntoResource() returned resource with ${resource.tiles.length} tiles`);
-      console.log(`  resourceinstanceid: ${resource.resourceinstance.resourceinstanceid}`);
-
-      // Print timing summary
-      console.log("\n=== toResource Timing Results ===");
-      printRscvTimings();
-    },
-  );
 });
 
 // from pathlib import Path

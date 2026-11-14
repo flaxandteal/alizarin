@@ -10,12 +10,10 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
 use alizarin_core::extension_type_registry::ExtensionTypeRegistry;
-use alizarin_core::graph::{
-    StaticEdge, StaticGraph, StaticNode, StaticNodegroup, StaticResource, StaticTile,
-};
+use alizarin_core::graph::{StaticGraph, StaticResource, StaticTile};
 use alizarin_core::instance_wrapper_core::ModelAccess;
 use alizarin_core::instance_wrapper_core::{
-    LoadState, ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult,
+    ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult,
 };
 use alizarin_core::node_config::NodeConfigManager;
 use alizarin_core::permissions::PermissionRule;
@@ -757,94 +755,6 @@ impl NapiPopulateResult {
 }
 
 // =============================================================================
-// NapiEnsureNodegroupResult
-// =============================================================================
-
-#[napi]
-pub struct NapiEnsureNodegroupResult {
-    values: HashMap<String, PseudoListCore>,
-    implied_nodegroups: Vec<String>,
-    all_nodegroups_map: HashMap<String, bool>,
-}
-
-#[napi]
-impl NapiEnsureNodegroupResult {
-    #[napi]
-    pub fn get_value_aliases(&self) -> Vec<String> {
-        alizarin_core::sorted_serde::sorted_keys(self.values.keys())
-    }
-
-    #[napi]
-    pub fn get_value(&self, alias: String) -> Option<NapiPseudoList> {
-        self.values
-            .get(&alias)
-            .map(|l| NapiPseudoList { inner: l.clone() })
-    }
-
-    #[napi]
-    pub fn get_all_values(&self) -> serde_json::Value {
-        let mut map = serde_json::Map::new();
-        for (alias, list) in &self.values {
-            map.insert(
-                alias.clone(),
-                serde_json::json!({
-                    "nodeAlias": list.node_alias,
-                    "isSingle": list.is_single,
-                    "isLoaded": list.is_loaded,
-                    "totalValues": list.values.len(),
-                }),
-            );
-        }
-        serde_json::Value::Object(map)
-    }
-
-    #[napi(getter)]
-    pub fn implied_nodegroups(&self) -> Vec<String> {
-        self.implied_nodegroups.clone()
-    }
-
-    #[napi(getter)]
-    pub fn all_nodegroups_map(&self) -> serde_json::Value {
-        serde_json::to_value(&self.all_nodegroups_map).unwrap_or(serde_json::Value::Null)
-    }
-}
-
-// =============================================================================
-// NapiValuesFromNodegroupResult
-// =============================================================================
-
-#[napi]
-pub struct NapiValuesFromNodegroupResult {
-    values: HashMap<String, PseudoListCore>,
-    implied_nodegroups: Vec<String>,
-}
-
-#[napi]
-impl NapiValuesFromNodegroupResult {
-    #[napi]
-    pub fn get_all_values(&self) -> serde_json::Value {
-        let mut map = serde_json::Map::new();
-        for (alias, list) in &self.values {
-            map.insert(
-                alias.clone(),
-                serde_json::json!({
-                    "nodeAlias": list.node_alias,
-                    "isSingle": list.is_single,
-                    "isLoaded": list.is_loaded,
-                    "totalValues": list.values.len(),
-                }),
-            );
-        }
-        serde_json::Value::Object(map)
-    }
-
-    #[napi(getter)]
-    pub fn implied_nodegroups(&self) -> Vec<String> {
-        self.implied_nodegroups.clone()
-    }
-}
-
-// =============================================================================
 // NapiResourceInstanceWrapper
 // =============================================================================
 
@@ -1010,11 +920,6 @@ impl NapiResourceInstanceWrapper {
         Ok(())
     }
 
-    #[napi]
-    pub fn get_tile_count(&self) -> u32 {
-        self.inner.tiles.as_ref().map(|t| t.len()).unwrap_or(0) as u32
-    }
-
     /// Export all tiles as a JSON string.
     /// Returns the wrapper's current tile state (including any mutations from setTileDataForNode).
     /// Returned as a string for fast boundary crossing — call JSON.parse() on the JS side.
@@ -1056,42 +961,12 @@ impl NapiResourceInstanceWrapper {
     }
 
     #[napi]
-    pub fn get_all_tile_ids(&self) -> Vec<String> {
-        self.inner
-            .tiles
-            .as_ref()
-            .map(|t| t.keys().cloned().collect())
-            .unwrap_or_default()
-    }
-
-    #[napi]
-    pub fn get_tile_ids_by_nodegroup(&self, nodegroup_id: Option<String>) -> Vec<String> {
-        match nodegroup_id {
-            Some(ng_id) => self
-                .inner
-                .nodegroup_index
-                .get(&ng_id)
-                .cloned()
-                .unwrap_or_default(),
-            None => Vec::new(),
-        }
-    }
-
-    #[napi]
     pub fn get_tile(&self, tile_id: String) -> Result<serde_json::Value> {
         let tile = self
             .inner
             .get_tile(&tile_id)
             .ok_or_else(|| napi::Error::from_reason(format!("Tile '{}' not found", tile_id)))?;
         serde_json::to_value(tile).map_err(|e| napi::Error::from_reason(e.to_string()))
-    }
-
-    #[napi]
-    pub fn get_tile_data(&self, tile_id: String, node_id: String) -> serde_json::Value {
-        self.inner
-            .get_tile(&tile_id)
-            .and_then(|t| t.data.get(&node_id).cloned())
-            .unwrap_or(serde_json::Value::Null)
     }
 
     /// Set a single node's data in a tile, mutating in place.
@@ -1104,24 +979,6 @@ impl NapiResourceInstanceWrapper {
         value: serde_json::Value,
     ) -> bool {
         self.inner.set_tile_data_for_node(&tile_id, &node_id, value)
-    }
-
-    #[napi]
-    pub fn has_tiles_for_nodegroup(&self, nodegroup_id: String) -> bool {
-        if self.inner.is_lazy() {
-            self.inner.is_nodegroup_loaded(&nodegroup_id)
-        } else {
-            self.inner
-                .tiles
-                .as_ref()
-                .map(|t| !t.is_empty())
-                .unwrap_or(false)
-        }
-    }
-
-    #[napi]
-    pub fn get_nodegroup_count(&self) -> u32 {
-        self.inner.nodegroup_index.len() as u32
     }
 
     // =========================================================================
@@ -1141,38 +998,6 @@ impl NapiResourceInstanceWrapper {
         match nodegroup_id {
             Some(id) => self.inner.is_nodegroup_loaded(&id),
             None => false,
-        }
-    }
-
-    #[napi]
-    pub fn is_nodegroup_loaded_or_loading(&self, nodegroup_id: Option<String>) -> bool {
-        match nodegroup_id {
-            Some(id) => {
-                if let Ok(loaded) = self.inner.loaded_nodegroups.read() {
-                    matches!(
-                        loaded.get(&id),
-                        Some(LoadState::Loaded) | Some(LoadState::Loading)
-                    )
-                } else {
-                    false
-                }
-            }
-            None => false,
-        }
-    }
-
-    #[napi]
-    pub fn try_acquire_nodegroup_lock(&self, nodegroup_id: String) -> bool {
-        if let Ok(mut loaded) = self.inner.loaded_nodegroups.write() {
-            let state = loaded.entry(nodegroup_id).or_insert(LoadState::NotLoaded);
-            if *state == LoadState::NotLoaded {
-                *state = LoadState::Loading;
-                true
-            } else {
-                false
-            }
-        } else {
-            false
         }
     }
 
@@ -1240,77 +1065,6 @@ impl NapiResourceInstanceWrapper {
             values: result.values,
             all_values_map: result.all_values_map,
             all_nodegroups_map: result.all_nodegroups_map,
-        })
-    }
-
-    /// Ensure a single nodegroup is loaded and return structured values.
-    #[napi]
-    pub fn ensure_nodegroup(
-        &self,
-        all_values_js: serde_json::Value,
-        all_nodegroups_js: serde_json::Value,
-        nodegroup_id: String,
-        add_if_missing: bool,
-        nodegroup_permissions_js: serde_json::Value,
-        do_implied_nodegroups: bool,
-    ) -> Result<NapiEnsureNodegroupResult> {
-        let all_values: HashMap<String, Option<bool>> = serde_json::from_value(all_values_js)
-            .map_err(|e| napi::Error::from_reason(format!("Invalid all_values: {e}")))?;
-        let mut all_nodegroups: HashMap<String, bool> =
-            serde_json::from_value(all_nodegroups_js)
-                .map_err(|e| napi::Error::from_reason(format!("Invalid all_nodegroups: {e}")))?;
-        // PermissionRule is currently used only for tile filtering, and may not be
-        // JSON-serializable. Use the model's permissions if available.
-        let _ = nodegroup_permissions_js;
-        let model = self.model()?;
-        let nodegroup_permissions = model.get_permitted_nodegroups();
-
-        let result = self
-            .inner
-            .ensure_nodegroup(
-                &all_values,
-                &mut all_nodegroups,
-                &nodegroup_id,
-                add_if_missing,
-                &nodegroup_permissions,
-                do_implied_nodegroups,
-                &*model,
-            )
-            .map_err(sc_err)?;
-
-        Ok(NapiEnsureNodegroupResult {
-            values: result.values,
-            implied_nodegroups: result.implied_nodegroups,
-            all_nodegroups_map: result.all_nodegroups_map,
-        })
-    }
-
-    /// Build pseudo values from tiles for a specific nodegroup.
-    #[napi]
-    pub fn values_from_resource_nodegroup(
-        &self,
-        existing_values_js: serde_json::Value,
-        nodegroup_tile_ids: Vec<String>,
-        nodegroup_id: String,
-    ) -> Result<NapiValuesFromNodegroupResult> {
-        let model = self.model()?;
-        let existing_values: HashMap<String, Option<bool>> =
-            serde_json::from_value(existing_values_js)
-                .map_err(|e| napi::Error::from_reason(format!("Invalid existing_values: {e}")))?;
-
-        let result = self
-            .inner
-            .values_from_resource_nodegroup(
-                &existing_values,
-                &nodegroup_tile_ids,
-                &nodegroup_id,
-                &*model,
-            )
-            .map_err(sc_err)?;
-
-        Ok(NapiValuesFromNodegroupResult {
-            values: result.values,
-            implied_nodegroups: result.implied_nodegroups,
         })
     }
 
@@ -1432,27 +1186,6 @@ impl NapiResourceInstanceWrapper {
         Ok(serde_json::Value::Object(results))
     }
 
-    /// Find all semantic children of a parent node (returns map of alias → tile IDs).
-    #[napi]
-    pub fn find_semantic_children(
-        &self,
-        parent_tile_id: Option<String>,
-        parent_node_id: String,
-        parent_nodegroup_id: Option<String>,
-    ) -> Result<serde_json::Value> {
-        let model = self.model()?;
-        let children = self
-            .inner
-            .find_semantic_children(
-                parent_tile_id.as_ref(),
-                &parent_node_id,
-                parent_nodegroup_id.as_ref(),
-                &*model,
-            )
-            .map_err(sc_err)?;
-        serde_json::to_value(children).map_err(|e| napi::Error::from_reason(e.to_string()))
-    }
-
     // =========================================================================
     // Pseudo cache management
     // =========================================================================
@@ -1475,28 +1208,6 @@ impl NapiResourceInstanceWrapper {
             .values
             .first()
             .map(|v| NapiPseudoValue { inner: v.clone() })
-    }
-
-    #[napi]
-    pub fn cache_pseudo_list(&self, alias: String, list: &NapiPseudoList) {
-        self.inner.store_pseudo(alias, list.inner.clone());
-    }
-
-    #[napi]
-    pub fn cache_pseudo_value(&self, alias: String, value: &NapiPseudoValue) {
-        let list = PseudoListCore::from_values_with_cardinality(
-            alias.clone(),
-            vec![value.inner.clone()],
-            true,
-        );
-        self.inner.store_pseudo(alias, list);
-    }
-
-    #[napi]
-    pub fn clear_pseudo_cache(&self) {
-        if let Ok(mut cache) = self.inner.pseudo_cache.write() {
-            cache.clear();
-        }
     }
 
     /// Construct the pseudo for `alias` (for the TS wrapper): core's, as WASM
@@ -1548,13 +1259,6 @@ impl NapiResourceInstanceWrapper {
             Some(&node_config_manager.inner),
             resource_registry.map(|r| &r.inner),
         )
-    }
-
-    /// Serialize to display JSON without RDM/config (basic labels only).
-    #[napi]
-    pub fn to_display_json_simple(&self, language: Option<String>) -> Result<serde_json::Value> {
-        let lang = language.unwrap_or_else(|| "en".to_string());
-        self.serialize_with_options(SerializationOptions::display(&lang), None, None, None)
     }
 
     /// Populate (if needed) and serialize to display JSON in a single synchronous call.
@@ -1977,15 +1681,6 @@ impl NapiResourceModelWrapper {
     }
 
     // =========================================================================
-    // Graph ID
-    // =========================================================================
-
-    #[napi(js_name = "getGraphId")]
-    pub fn get_graph_id(&self) -> String {
-        self.graph_id.clone()
-    }
-
-    // =========================================================================
     // Graph getter/setter
     // =========================================================================
 
@@ -2283,40 +1978,6 @@ impl NapiResourceModelWrapper {
     pub fn set_default_allow_all_nodegroups(&mut self, default_allow: bool) -> Result<()> {
         alizarin_core::set_model_default_allow(&self.graph_id, default_allow)
             .map_err(napi::Error::from_reason)
-    }
-
-    // =========================================================================
-    // Graph modification
-    // =========================================================================
-
-    #[napi(js_name = "setGraphNodes")]
-    pub fn set_graph_nodes(&mut self, nodes_json: String) -> Result<()> {
-        let nodes: Vec<StaticNode> = serde_json::from_str(&nodes_json)
-            .map_err(|e| napi::Error::from_reason(format!("Invalid nodes JSON: {}", e)))?;
-        self.update(|model| {
-            model.set_graph_nodes(nodes);
-            Ok(())
-        })
-    }
-
-    #[napi(js_name = "setGraphEdges")]
-    pub fn set_graph_edges(&mut self, edges_json: String) -> Result<()> {
-        let edges: Vec<StaticEdge> = serde_json::from_str(&edges_json)
-            .map_err(|e| napi::Error::from_reason(format!("Invalid edges JSON: {}", e)))?;
-        self.update(|model| {
-            model.set_graph_edges(edges);
-            Ok(())
-        })
-    }
-
-    #[napi(js_name = "setGraphNodegroups")]
-    pub fn set_graph_nodegroups(&mut self, nodegroups_json: String) -> Result<()> {
-        let nodegroups: Vec<StaticNodegroup> = serde_json::from_str(&nodegroups_json)
-            .map_err(|e| napi::Error::from_reason(format!("Invalid nodegroups JSON: {}", e)))?;
-        self.update(|model| {
-            model.set_graph_nodegroups(nodegroups);
-            Ok(())
-        })
     }
 
     // =========================================================================

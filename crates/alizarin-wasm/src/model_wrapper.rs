@@ -272,12 +272,6 @@ impl WASMResourceModelWrapper {
         }
     }
 
-    /// Get the graph_id for this model
-    #[wasm_bindgen(js_name = getGraphId)]
-    pub fn get_graph_id(&self) -> String {
-        self.graph_id.clone()
-    }
-
     /// Create a root PseudoNode (no parent)
     #[wasm_bindgen(js_name = createPseudoNode)]
     pub fn create_pseudo_node(
@@ -649,43 +643,6 @@ impl WASMResourceModelWrapper {
             Ok(())
         })
         .map_err(|e| JsValue::from_str(&e))
-    }
-
-    // Graph modification methods - accept WASM wrappers, extract core types
-    #[wasm_bindgen(js_name = setGraphNodes)]
-    pub fn set_graph_nodes(&mut self, nodes: JsValue) {
-        if let Ok(wasm_nodes) =
-            serde_wasm_bindgen::from_value::<Vec<alizarin_core::StaticNode>>(nodes)
-        {
-            Self::or_throw(alizarin_core::update_model(&self.graph_id, |model| {
-                model.set_graph_nodes(wasm_nodes);
-                Ok(())
-            }));
-        }
-    }
-
-    #[wasm_bindgen(js_name = setGraphEdges)]
-    pub fn set_graph_edges(&mut self, edges: JsValue) {
-        if let Ok(wasm_edges) =
-            serde_wasm_bindgen::from_value::<Vec<alizarin_core::StaticEdge>>(edges)
-        {
-            Self::or_throw(alizarin_core::update_model(&self.graph_id, |model| {
-                model.set_graph_edges(wasm_edges);
-                Ok(())
-            }));
-        }
-    }
-
-    #[wasm_bindgen(js_name = setGraphNodegroups)]
-    pub fn set_graph_nodegroups(&mut self, nodegroups: JsValue) {
-        if let Ok(wasm_nodegroups) =
-            serde_wasm_bindgen::from_value::<Vec<alizarin_core::StaticNodegroup>>(nodegroups)
-        {
-            Self::or_throw(alizarin_core::update_model(&self.graph_id, |model| {
-                model.set_graph_nodegroups(wasm_nodegroups);
-                Ok(())
-            }));
-        }
     }
 
     // Getters

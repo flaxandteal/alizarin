@@ -79,13 +79,13 @@ describe('NapiResourceModelWrapper', () => {
   it('constructs from graph JSON string', () => {
     const wrapper = new NapiResourceModelWrapper(graphStr, true);
     assert.ok(wrapper, 'wrapper should be defined');
-    assert.equal(wrapper.getGraphId(), '07883c9e-b25c-11e9-975a-a4d18cec433a');
+    assert.equal(wrapper.graph.graphid, '07883c9e-b25c-11e9-975a-a4d18cec433a');
   });
 
   it('constructs from NapiStaticGraph via fromGraph()', () => {
     const graph = NapiStaticGraph.fromJsonString(groupJson);
     const wrapper = NapiResourceModelWrapper.fromGraph(graph, true);
-    assert.equal(wrapper.getGraphId(), '07883c9e-b25c-11e9-975a-a4d18cec433a');
+    assert.equal(wrapper.graph.graphid, '07883c9e-b25c-11e9-975a-a4d18cec433a');
   });
 
   it('throws on invalid JSON', () => {
@@ -280,7 +280,7 @@ describe('NapiResourceModelWrapper', () => {
 
   it('graphId getter matches input', () => {
     const wrapper = new NapiResourceModelWrapper(graphStr, true);
-    assert.equal(wrapper.getGraphId(), '07883c9e-b25c-11e9-975a-a4d18cec433a');
+    assert.equal(wrapper.graph.graphid, '07883c9e-b25c-11e9-975a-a4d18cec433a');
   });
 
   // -------------------------------------------------------------------------
@@ -441,7 +441,7 @@ describe('NapiResourceInstanceWrapper methods', () => {
     const wrapper = new NapiResourceInstanceWrapper(graphId);
     wrapper.loadTilesFromResource(JSON.stringify(resource));
 
-    const tileIds = wrapper.getAllTileIds();
+    const tileIds = JSON.parse(wrapper.exportTilesJson()).map((t) => t.tileid);
     assert.ok(tileIds.length > 0, 'should have tiles');
     const tileId = tileIds[0];
 
@@ -450,7 +450,7 @@ describe('NapiResourceInstanceWrapper methods', () => {
     assert.equal(result, true);
 
     // Read it back
-    const data = wrapper.getTileData(tileId, 'test-node-id');
+    const data = wrapper.getTile(tileId).data['test-node-id'];
     assert.deepEqual(data, [{ name: 'test.jpg' }]);
   });
 
@@ -501,7 +501,7 @@ describe('NapiResourceInstanceWrapper methods', () => {
     const wrapper = new NapiResourceInstanceWrapper(graphId);
     wrapper.loadTilesFromResource(JSON.stringify(resource));
 
-    const tileIds = wrapper.getAllTileIds();
+    const tileIds = JSON.parse(wrapper.exportTilesJson()).map((t) => t.tileid);
     const tileId = tileIds[0];
 
     // Mutate a tile
@@ -588,12 +588,12 @@ describe('NapiStaticGraph serialization', () => {
     const graph = NapiStaticGraph.fromJsonString(groupJson);
     // This is the correct NAPI path — no JSON.stringify needed
     const wrapper = NapiResourceModelWrapper.fromGraph(graph, true);
-    assert.equal(wrapper.getGraphId(), '07883c9e-b25c-11e9-975a-a4d18cec433a');
+    assert.equal(wrapper.graph.graphid, '07883c9e-b25c-11e9-975a-a4d18cec433a');
   });
 
   it('NapiResourceModelWrapper constructor accepts JSON.stringify of NapiStaticGraph', () => {
     const graph = NapiStaticGraph.fromJsonString(groupJson);
     const wrapper = new NapiResourceModelWrapper(JSON.stringify(graph), true);
-    assert.equal(wrapper.getGraphId(), '07883c9e-b25c-11e9-975a-a4d18cec433a');
+    assert.equal(wrapper.graph.graphid, '07883c9e-b25c-11e9-975a-a4d18cec433a');
   });
 });
