@@ -81,6 +81,8 @@ class StaticNode:
     issearchable: bool = False
     istopnode: bool = False
     sourcebranchpublication_id: Optional[str] = None
+    source_identifier_id: Optional[str] = None
+    is_immutable: Optional[bool] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -104,6 +106,8 @@ class StaticNode:
             "issearchable": self.issearchable,
             "istopnode": self.istopnode,
             "sourcebranchpublication_id": self.sourcebranchpublication_id,
+            "source_identifier_id": self.source_identifier_id,
+            "is_immutable": self.is_immutable,
         }
 
     @classmethod
@@ -129,6 +133,8 @@ class StaticNode:
             issearchable=data.get("issearchable", False),
             istopnode=data.get("istopnode", False),
             sourcebranchpublication_id=data.get("sourcebranchpublication_id"),
+            source_identifier_id=data.get("source_identifier_id"),
+            is_immutable=data.get("is_immutable"),
         )
 
 
@@ -146,6 +152,7 @@ class StaticEdge:
     name: Optional[str] = None
     ontologyproperty: Optional[str] = None
     description: Optional[str] = None
+    source_identifier_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -156,6 +163,7 @@ class StaticEdge:
             "name": self.name,
             "ontologyproperty": self.ontologyproperty,
             "description": self.description,
+            "source_identifier_id": self.source_identifier_id,
         }
 
     @classmethod
@@ -168,6 +176,7 @@ class StaticEdge:
             name=data.get("name"),
             ontologyproperty=data.get("ontologyproperty"),
             description=data.get("description"),
+            source_identifier_id=data.get("source_identifier_id"),
         )
 
 
@@ -182,6 +191,7 @@ class StaticNodegroup:
     cardinality: Optional[str] = None
     parentnodegroup_id: Optional[str] = None
     legacygroupid: Optional[str] = None
+    grouping_node_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -189,6 +199,7 @@ class StaticNodegroup:
             "cardinality": self.cardinality,
             "parentnodegroup_id": self.parentnodegroup_id,
             "legacygroupid": self.legacygroupid,
+            "grouping_node_id": self.grouping_node_id,
         }
 
     @classmethod
@@ -198,6 +209,7 @@ class StaticNodegroup:
             cardinality=data.get("cardinality"),
             parentnodegroup_id=data.get("parentnodegroup_id"),
             legacygroupid=data.get("legacygroupid"),
+            grouping_node_id=data.get("grouping_node_id"),
         )
 
 
@@ -246,6 +258,7 @@ class StaticCard:
     helptitle: Dict[str, str] = field(default_factory=dict)
     instructions: Dict[str, str] = field(default_factory=dict)
     sortorder: Optional[int] = None
+    source_identifier_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -266,6 +279,7 @@ class StaticCard:
             "helptitle": self.helptitle,
             "instructions": self.instructions,
             "sortorder": self.sortorder,
+            "source_identifier_id": self.source_identifier_id,
         }
 
     @classmethod
@@ -288,6 +302,7 @@ class StaticCard:
             helptitle=data.get("helptitle", {}),
             instructions=data.get("instructions", {}),
             sortorder=data.get("sortorder"),
+            source_identifier_id=data.get("source_identifier_id"),
         )
 
 
@@ -425,13 +440,24 @@ class StaticFunctionsXGraphs:
     function_id: str
     graph_id: str
     config: Dict[str, Any] = field(default_factory=dict)
+    id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "id": self.id,
             "function_id": self.function_id,
             "graph_id": self.graph_id,
             "config": self.config,
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> StaticFunctionsXGraphs:
+        return cls(
+            function_id=data["function_id"],
+            graph_id=data["graph_id"],
+            config=data.get("config") or {},
+            id=data.get("id"),
+        )
 
 
 @dataclass
@@ -448,9 +474,12 @@ class StaticCardsXNodesXWidgets:
     label: Optional[Union[str, Dict[str, str]]] = None
     sortorder: Optional[int] = None
     visible: bool = True
+    id: Optional[str] = None
+    source_identifier_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "id": self.id,
             "card_id": self.card_id,
             "node_id": self.node_id,
             "widget_id": self.widget_id,
@@ -458,7 +487,22 @@ class StaticCardsXNodesXWidgets:
             "label": self.label,
             "sortorder": self.sortorder,
             "visible": self.visible,
+            "source_identifier_id": self.source_identifier_id,
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> StaticCardsXNodesXWidgets:
+        return cls(
+            card_id=data["card_id"],
+            node_id=data["node_id"],
+            widget_id=data["widget_id"],
+            config=data.get("config") or {},
+            label=data.get("label"),
+            sortorder=data.get("sortorder"),
+            visible=data.get("visible", True),
+            id=data.get("id"),
+            source_identifier_id=data.get("source_identifier_id"),
+        )
 
 
 @dataclass
@@ -495,6 +539,9 @@ class StaticGraph:
     slug: Optional[str] = None
     template_id: Optional[str] = None
     version: Optional[str] = None
+    # Graph fields this class doesn't model, kept as they came so that a
+    # graph round-trips whole (from_dict -> to_dict).
+    extra: Dict[str, Any] = field(default_factory=dict)
 
     # Internal caches
     _node_map: Optional[Dict[str, StaticNode]] = field(default=None, repr=False)
@@ -551,22 +598,42 @@ class StaticGraph:
         )
 
     def to_dict(self) -> Dict[str, Any]:
-        """Export graph as dict."""
+        """Export graph as dict: every field, so it round-trips whole."""
+        def translatable(value: Any) -> Any:
+            return value.to_json() if isinstance(value, StaticTranslatableString) else value
+
         return {
+            **self.extra,
             "graphid": self.graphid,
-            "name": self.name,
+            "name": translatable(self.name),
             "nodes": [n.to_dict() for n in self.nodes],
             "edges": [e.to_dict() for e in self.edges],
             "nodegroups": [ng.to_dict() for ng in self.nodegroups],
             "root": self.root.to_dict(),
-            "cards": [c.to_dict() for c in self.cards] if self.cards else None,
+            "cards": [c.to_dict() for c in self.cards] if self.cards is not None else None,
+            "cards_x_nodes_x_widgets": (
+                [w.to_dict() for w in self.cards_x_nodes_x_widgets]
+                if self.cards_x_nodes_x_widgets is not None else None
+            ),
+            "functions_x_graphs": [f.to_dict() for f in self.functions_x_graphs],
             "author": self.author,
-            "description": self.description.to_json() if isinstance(self.description, StaticTranslatableString) else self.description,
-            "subtitle": self.subtitle.to_json() if isinstance(self.subtitle, StaticTranslatableString) else self.subtitle,
+            "color": self.color,
+            "description": translatable(self.description),
+            "subtitle": translatable(self.subtitle),
             "iconclass": self.iconclass,
             "isresource": self.isresource,
             "ontology_id": self.ontology_id,
             "config": self.config,
+            "deploymentdate": self.deploymentdate,
+            "deploymentfile": self.deploymentfile,
+            "is_editable": self.is_editable,
+            "jsonldcontext": self.jsonldcontext,
+            "publication": self.publication.to_dict() if self.publication else None,
+            "relatable_resource_model_ids": self.relatable_resource_model_ids,
+            "resource_2_resource_constraints": self.resource_2_resource_constraints,
+            "slug": self.slug,
+            "template_id": self.template_id,
+            "version": self.version,
         }
 
     @classmethod
@@ -601,8 +668,14 @@ class StaticGraph:
             raise ValueError("Graph must have a root node")
 
         cards = None
-        if "cards" in data and data["cards"]:
+        if data.get("cards") is not None:
             cards = [StaticCard.from_dict(c) for c in data["cards"]]
+
+        widgets = None
+        if data.get("cards_x_nodes_x_widgets") is not None:
+            widgets = [
+                StaticCardsXNodesXWidgets.from_dict(w) for w in data["cards_x_nodes_x_widgets"]
+            ]
 
         publication = None
         if "publication" in data and data["publication"]:
@@ -616,17 +689,44 @@ class StaticGraph:
             nodegroups=nodegroups,
             root=root,
             cards=cards,
+            cards_x_nodes_x_widgets=widgets,
+            functions_x_graphs=[
+                StaticFunctionsXGraphs.from_dict(f) for f in data.get("functions_x_graphs") or []
+            ],
             author=data.get("author"),
+            color=data.get("color"),
             description=data.get("description"),
             subtitle=data.get("subtitle"),
             iconclass=data.get("iconclass"),
             isresource=data.get("isresource", True),
             ontology_id=data.get("ontology_id"),
             config=data.get("config", {}),
+            deploymentdate=data.get("deploymentdate"),
+            deploymentfile=data.get("deploymentfile"),
+            is_editable=data.get("is_editable"),
+            jsonldcontext=data.get("jsonldcontext"),
             publication=publication,
+            relatable_resource_model_ids=data.get("relatable_resource_model_ids") or [],
+            resource_2_resource_constraints=data.get("resource_2_resource_constraints"),
+            slug=data.get("slug"),
+            template_id=data.get("template_id"),
+            version=data.get("version"),
+            extra={k: v for k, v in data.items() if k not in _MODELLED_GRAPH_FIELDS},
         )
         graph.build_indices()
         return graph
+
+
+# The StaticGraph fields from_dict reads into attributes; any other key is kept
+# in `extra`.
+_MODELLED_GRAPH_FIELDS = frozenset({
+    "graphid", "name", "nodes", "edges", "nodegroups", "root", "cards",
+    "cards_x_nodes_x_widgets", "functions_x_graphs", "author", "color",
+    "description", "subtitle", "iconclass", "isresource", "ontology_id",
+    "config", "deploymentdate", "deploymentfile", "is_editable",
+    "jsonldcontext", "publication", "relatable_resource_model_ids",
+    "resource_2_resource_constraints", "slug", "template_id", "version",
+})
 
 
 # =============================================================================
