@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiResourceInstanceWrapper, NapiPseudoNode, NapiResourceModelWrapper, NapiStaticDomainValue, NapiNodeConfigBoolean, NapiNodeConfigConcept, NapiNodeConfigDomain, registerExtensionHandler, foldMayMatch, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, applyMutationsFromJson, applyMutationsCreate, getMutationSchema, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, applyAggregateFunctionsFromFile, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
+const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiResourceInstanceWrapper, NapiPseudoNode, NapiResourceModelWrapper, NapiStaticDomainValue, NapiNodeConfigBoolean, NapiNodeConfigConcept, NapiNodeConfigDomain, registerExtensionHandler, foldMayMatch, getCurrentLanguage, setCurrentLanguage, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, applyMutationsFromJson, applyMutationsCreate, getMutationSchema, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, applyAggregateFunctionsFromFile, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
 
 module.exports.NapiRdmCache = NapiRdmCache
 module.exports.NapiNodeConfigManager = NapiNodeConfigManager
@@ -328,6 +328,8 @@ module.exports.NapiNodeConfigConcept = NapiNodeConfigConcept
 module.exports.NapiNodeConfigDomain = NapiNodeConfigDomain
 module.exports.registerExtensionHandler = registerExtensionHandler
 module.exports.foldMayMatch = foldMayMatch
+module.exports.getCurrentLanguage = getCurrentLanguage
+module.exports.setCurrentLanguage = setCurrentLanguage
 module.exports.NapiPrebuildExporter = NapiPrebuildExporter
 module.exports.NapiStaticGraph = NapiStaticGraph
 module.exports.NapiStaticResourceRegistry = NapiStaticResourceRegistry
