@@ -420,34 +420,8 @@ export function createStaticGraphMeta(data: any): any {
 
 export function createStaticGraph(data: any): any {
   if (_backend === 'napi') {
-    // Add mutation methods that mirror the WASM StaticGraph API
-    const graph = { ...data };
-    // Wrap translatable string fields
-    if (graph.name != null && typeof graph.name !== 'function') {
-      graph.name = createStaticTranslatableString(graph.name);
-    }
-    if (graph.description != null && typeof graph.description !== 'function') {
-      graph.description = createStaticTranslatableString(graph.description);
-    }
-    if (graph.subtitle != null && typeof graph.subtitle !== 'function') {
-      graph.subtitle = createStaticTranslatableString(graph.subtitle);
-    }
-    graph.nodes = graph.nodes ? [...graph.nodes] : [];
-    graph.edges = graph.edges ? [...graph.edges] : [];
-    graph.nodegroups = graph.nodegroups ? [...graph.nodegroups] : [];
-    graph.cards = graph.cards ? [...(graph.cards || [])] : [];
-    graph.cards_x_nodes_x_widgets = graph.cards_x_nodes_x_widgets ? [...graph.cards_x_nodes_x_widgets] : [];
-    graph.pushNode = function(node: any) { this.nodes.push(node); };
-    graph.pushEdge = function(edge: any) { this.edges.push(edge); };
-    graph.pushNodegroup = function(ng: any) { this.nodegroups.push(ng); };
-    graph.pushCard = function(card: any) { this.cards.push(card); };
-    graph.pushCardXNodeXWidget = function(cxnxw: any) { this.cards_x_nodes_x_widgets.push(cxnxw); };
-    graph.copy = function() { return createStaticGraph(this); };
-    graph.toJSON = function() {
-      const { pushNode: _pushNode, pushEdge: _pushEdge, pushNodegroup: _pushNodegroup, pushCard: _pushCard, pushCardXNodeXWidget: _pushCardXNodeXWidget, copy: _copy, toJSON: _toJSON, ...rest } = this;
-      return rest;
-    };
-    return graph;
+    // Core's graph, as WASM's StaticGraph is; changes go through GraphMutator.
+    return getNapiModule().NapiStaticGraph.fromJsonString(JSON.stringify(data));
   }
   const Cls = getWasmModule()['StaticGraph'];
   if (!Cls) throw new Error('Unknown WASM type: StaticGraph');
@@ -584,16 +558,8 @@ export function parseStaticGraph(jsonText: string): any {
  * giving a new graph of the same kind. Core does the work on every backend.
  */
 export function applyGraphMutations(graph: any, mutationsJson: string): any {
-  if (_backend === 'napi') {
-    const napi = getNapiModule();
-    if (graph instanceof napi.NapiStaticGraph) {
-      return napi.applyMutationsFromJson(graph, mutationsJson);
-    }
-    // NAPI graphs in TS are plain graph data: mutate through JSON, as Python does.
-    const mutated = napi.applyMutationsJson(JSON.stringify(graph), mutationsJson);
-    return createStaticGraph(JSON.parse(mutated));
-  }
-  return getWasmModule().applyMutationsFromJson(graph, mutationsJson);
+  const module = _backend === 'napi' ? getNapiModule() : getWasmModule();
+  return module.applyMutationsFromJson(graph, mutationsJson);
 }
 
 /**

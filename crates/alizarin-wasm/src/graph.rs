@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -1973,23 +1973,10 @@ impl StaticGraph {
     /// Returns the first graph from the array, or error if none found
     #[wasm_bindgen(js_name = fromJsonString)]
     pub fn from_json_string(json_str: &str) -> Result<StaticGraph, JsValue> {
-        // Helper struct to deserialize the wrapper
-        #[derive(Deserialize)]
-        struct GraphWrapper {
-            graph: Vec<CoreStaticGraph>,
-        }
-
-        let wrapper: GraphWrapper = serde_json::from_str(json_str)
-            .map_err(|e| JsValue::from_str(&format!("Failed to parse JSON: {}", e)))?;
-
-        let mut graph = wrapper
-            .graph
-            .into_iter()
-            .next()
-            .ok_or_else(|| JsValue::from_str("No graphs found in JSON"))?;
-
-        graph.build_indices();
-        Ok(StaticGraph(graph))
+        // Core's parsing, as NAPI uses: a graph, or `{graph: [...]}`.
+        CoreStaticGraph::from_json_string(json_str)
+            .map(StaticGraph)
+            .map_err(|e| JsValue::from_str(&e))
     }
 
     // Getters for key fields
@@ -2207,74 +2194,12 @@ impl StaticGraph {
             .unwrap_or(JsValue::NULL)
     }
 
+    /// The whole graph as plain data, core's serialisation (as NAPI's
+    /// `toJSON`), so it parses back into the same graph.
     #[wasm_bindgen(js_name = toJSON)]
     pub fn to_json(&self) -> JsValue {
-        // Manual serialization to plain JS object using our helper
-        use serde_json::json;
-
-        let mut obj = serde_json::Map::new();
-
-        if let Some(ref val) = self.author {
-            obj.insert("author".to_string(), json!(val));
-        }
-        obj.insert("cards".to_string(), json!(self.cards));
-        obj.insert(
-            "cards_x_nodes_x_widgets".to_string(),
-            json!(self.cards_x_nodes_x_widgets),
-        );
-        if let Some(ref val) = self.color {
-            obj.insert("color".to_string(), json!(val));
-        }
-        if let Some(ref val) = self.description {
-            obj.insert("description".to_string(), json!(val));
-        }
-        obj.insert("edges".to_string(), json!(self.edges));
-        obj.insert("graphid".to_string(), json!(self.graphid));
-        if let Some(ref val) = self.iconclass {
-            obj.insert("iconclass".to_string(), json!(val));
-        }
-        if let Some(val) = self.is_editable {
-            obj.insert("is_editable".to_string(), json!(val));
-        }
-        if let Some(val) = self.isresource {
-            obj.insert("isresource".to_string(), json!(val));
-        }
-        if let Some(ref val) = self.jsonldcontext {
-            obj.insert("jsonldcontext".to_string(), json!(val));
-        }
-        obj.insert("name".to_string(), json!(self.name));
-        obj.insert("nodegroups".to_string(), json!(self.nodegroups));
-        obj.insert("nodes".to_string(), json!(self.nodes));
-        crate::utils::insert_classes_json(&mut obj, "ontology_id", self.ontology_id.as_ref());
-        if let Some(ref val) = self.publication {
-            obj.insert("publication".to_string(), json!(val));
-        }
-        if !self.relatable_resource_model_ids.is_empty() {
-            obj.insert(
-                "relatable_resource_model_ids".to_string(),
-                json!(self.relatable_resource_model_ids),
-            );
-        }
-        if let Some(r2rc) = self.resource_2_resource_constraints.as_ref() {
-            if !r2rc.is_empty() {
-                obj.insert(
-                    "resource_2_resource_constraints".to_string(),
-                    json!(Some(r2rc)),
-                );
-            }
-        }
-        obj.insert("root".to_string(), json!(self.root));
-        if let Some(ref val) = self.slug {
-            obj.insert("slug".to_string(), json!(val));
-        }
-        if let Some(ref val) = self.subtitle {
-            obj.insert("subtitle".to_string(), json!(val));
-        }
-        if let Some(ref val) = self.version {
-            obj.insert("version".to_string(), json!(val));
-        }
-
-        json_to_js_value(&serde_json::Value::Object(obj))
+        let core: &alizarin_core::StaticGraph = self;
+        json_to_js_value(&serde_json::to_value(core).unwrap_or(serde_json::Value::Null))
     }
 
     /// Get a simplified schema view of the graph showing node aliases and structure.

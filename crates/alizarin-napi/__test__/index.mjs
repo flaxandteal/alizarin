@@ -543,16 +543,11 @@ describe('NapiNodeConfigManager', () => {
     ncm.buildFromGraph(graph);
   });
 
-  it('buildFromGraphJson fails on JSON.stringify of a NapiStaticGraph', () => {
+  it('buildFromGraphJson works on JSON.stringify of a NapiStaticGraph', () => {
     const graph = NapiStaticGraph.fromJsonString(personJson);
     const ncm = new NapiNodeConfigManager();
-    // Demonstrates the bug: NAPI objects don't stringify their getters
-    const stringified = JSON.stringify(graph);
-    assert.throws(
-      () => ncm.buildFromGraphJson(stringified),
-      /Failed to parse graph/i,
-      'JSON.stringify of NapiStaticGraph should produce invalid graph JSON'
-    );
+    // NapiStaticGraph has toJSON, so it stringifies as the whole graph
+    assert.doesNotThrow(() => ncm.buildFromGraphJson(JSON.stringify(graph)));
   });
 
   it('buildFromGraphJson works with raw graph JSON', () => {
@@ -577,12 +572,16 @@ describe('NapiStaticGraph serialization', () => {
     'utf-8'
   );
 
-  it('JSON.stringify of NapiStaticGraph produces empty object', () => {
+  it('JSON.stringify of NapiStaticGraph gives the whole graph', () => {
     const graph = NapiStaticGraph.fromJsonString(groupJson);
-    const stringified = JSON.stringify(graph);
-    // This documents the fundamental limitation: NAPI class instances
-    // do not serialize via JSON.stringify
-    assert.equal(stringified, '{}', 'NapiStaticGraph should stringify to {}');
+    const stringified = JSON.parse(JSON.stringify(graph));
+    // toJSON: the graph's data, which parses back to the same graph
+    assert.equal(stringified.graphid, '07883c9e-b25c-11e9-975a-a4d18cec433a');
+    assert.equal(stringified.nodes.length, graph.nodes.length);
+    assert.equal(
+      NapiStaticGraph.fromJsonString(JSON.stringify(graph)).nodes.length,
+      graph.nodes.length
+    );
   });
 
   it('NapiResourceModelWrapper.fromGraph accepts NapiStaticGraph directly', () => {
@@ -592,13 +591,9 @@ describe('NapiStaticGraph serialization', () => {
     assert.equal(wrapper.getGraphId(), '07883c9e-b25c-11e9-975a-a4d18cec433a');
   });
 
-  it('NapiResourceModelWrapper constructor fails with JSON.stringify of NapiStaticGraph', () => {
+  it('NapiResourceModelWrapper constructor accepts JSON.stringify of NapiStaticGraph', () => {
     const graph = NapiStaticGraph.fromJsonString(groupJson);
-    // Demonstrates the bug this regression test guards against
-    assert.throws(
-      () => new NapiResourceModelWrapper(JSON.stringify(graph), true),
-      /Invalid graph JSON/i,
-      'JSON.stringify of NapiStaticGraph should produce invalid input for constructor'
-    );
+    const wrapper = new NapiResourceModelWrapper(JSON.stringify(graph), true);
+    assert.equal(wrapper.getGraphId(), '07883c9e-b25c-11e9-975a-a4d18cec433a');
   });
 });

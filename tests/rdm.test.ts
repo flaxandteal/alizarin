@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { RDM } from "../js/rdm";
-import { createStaticGraph, StaticCollection, StaticConcept, StaticNode } from "../js/static-types";
+import { createStaticGraph, StaticCollection, StaticConcept } from "../js/static-types";
+import { GraphMutator } from "../js/graphManager";
 
 describe("RDM.resolveLabels", () => {
   let collection: StaticCollection;
@@ -24,62 +25,27 @@ describe("RDM.resolveLabels", () => {
     // Add to RDM cache
     RDM.addCollection(collection);
 
-    // Create a graph with concept and reference nodes
-    graph = createStaticGraph({
-      author: "Test",
-      description: "Test graph",
-      name: "Test Graph",
-    });
-
-    // Add a concept node with rdmCollection config
-    const conceptNode = new StaticNode({
-      nodeid: "concept-node-id",
-      alias: "category",
-      datatype: "concept",
-      name: "Category",
-      graph_id: graph.graphid,
-      nodegroup_id: "concept-nodegroup-id",
-      is_collector: true,
-      isrequired: false,
-      exportable: false,
-      config: {
-        rdmCollection: "test-collection-id",
-      },
-    });
-
-    // Add a reference node with controlledList config
-    const referenceNode = new StaticNode({
-      nodeid: "reference-node-id",
-      alias: "status",
-      datatype: "reference",
-      name: "Status",
-      graph_id: graph.graphid,
-      nodegroup_id: "reference-nodegroup-id",
-      is_collector: true,
-      isrequired: false,
-      exportable: false,
-      config: {
+    // A graph with a concept node (rdmCollection config), a reference node
+    // (controlledList config) and a string node (not resolved), built by core.
+    // No auto cards: the reference datatype has no default widget in core.
+    const E55 = "http://www.cidoc-crm.org/cidoc-crm/E55_Type";
+    const P2 = "http://www.cidoc-crm.org/cidoc-crm/P2_has_type";
+    graph = new GraphMutator(
+      createStaticGraph({
+        author: "Test",
+        description: "Test graph",
+        name: "Test Graph",
+      }),
+      { autocreateCard: false },
+    )
+      .addConceptNode(null, "category", "Category", collection, "n", E55, P2)
+      ._addGenericNode(null, "status", "Status", "n", "reference", E55, P2, undefined, {}, {
         controlledList: "test-collection-id",
-      },
-    });
-
-    // Add a string node (should not be resolved)
-    const stringNode = new StaticNode({
-      nodeid: "string-node-id",
-      alias: "name",
-      datatype: "string",
-      name: "Name",
-      graph_id: graph.graphid,
-      nodegroup_id: "string-nodegroup-id",
-      is_collector: true,
-      isrequired: false,
-      exportable: false,
-      config: {},
-    });
-
-    graph.pushNode(conceptNode);
-    graph.pushNode(referenceNode);
-    graph.pushNode(stringNode);
+      })
+      .addStringNode(null, "name", "Name", "n",
+        "http://www.cidoc-crm.org/cidoc-crm/E41_Appellation",
+        "http://www.cidoc-crm.org/cidoc-crm/P1_is_identified_by")
+      .apply();
   });
 
   it("should resolve concept labels to UUIDs", async () => {

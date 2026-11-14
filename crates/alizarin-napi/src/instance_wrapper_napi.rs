@@ -1989,10 +1989,13 @@ impl NapiResourceModelWrapper {
     // Graph getter/setter
     // =========================================================================
 
+    /// The model's graph, as a `NapiStaticGraph` (as WASM gives its StaticGraph).
     #[napi(getter)]
-    pub fn graph(&self) -> Result<serde_json::Value> {
+    pub fn graph(&self) -> Result<crate::NapiStaticGraph> {
         let model = self.model()?;
-        serde_json::to_value(model.get_graph()).map_err(|e| napi::Error::from_reason(e.to_string()))
+        Ok(crate::NapiStaticGraph::from_inner(
+            model.get_graph().clone(),
+        ))
     }
 
     #[napi(setter)]

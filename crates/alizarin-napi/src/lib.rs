@@ -173,6 +173,10 @@ impl NapiStaticGraph {
     pub(crate) fn inner_ref(&self) -> &StaticGraph {
         &self.inner
     }
+
+    pub(crate) fn from_inner(inner: StaticGraph) -> Self {
+        NapiStaticGraph { inner }
+    }
 }
 
 #[napi]
@@ -195,14 +199,106 @@ impl NapiStaticGraph {
         self.inner.graphid.clone()
     }
 
+    // WASM StaticGraph's read API. Changes go through `applyMutationsFromJson`
+    // (TS: GraphMutator), as on every backend. Collections are converted
+    // straight to JS (no serde_json::Value step) on each read; callers that
+    // read them often cache them (the TS ResourceModelWrapper does).
+
     /// The graph's nodes, as on WASM.
+    #[napi(getter, ts_return_type = "any[]")]
+    pub fn nodes(&self, env: Env) -> Result<napi::JsUnknown> {
+        env.to_js_value(&self.inner.nodes_slice())
+    }
+
+    #[napi(getter, ts_return_type = "any")]
+    pub fn root(&self, env: Env) -> Result<napi::JsUnknown> {
+        env.to_js_value(&self.inner.root)
+    }
+
+    #[napi(getter, ts_return_type = "any[]")]
+    pub fn edges(&self, env: Env) -> Result<napi::JsUnknown> {
+        env.to_js_value(&self.inner.edges_slice())
+    }
+
+    #[napi(getter, ts_return_type = "any[]")]
+    pub fn nodegroups(&self, env: Env) -> Result<napi::JsUnknown> {
+        env.to_js_value(&self.inner.nodegroups_slice())
+    }
+
+    #[napi(getter, ts_return_type = "any[] | null")]
+    pub fn cards(&self, env: Env) -> Result<napi::JsUnknown> {
+        env.to_js_value(&self.inner.cards)
+    }
+
+    #[napi(
+        getter,
+        js_name = "cards_x_nodes_x_widgets",
+        ts_return_type = "any[] | null"
+    )]
+    pub fn cards_x_nodes_x_widgets(&self, env: Env) -> Result<napi::JsUnknown> {
+        env.to_js_value(&self.inner.cards_x_nodes_x_widgets)
+    }
+
+    #[napi(
+        getter,
+        js_name = "functions_x_graphs",
+        ts_return_type = "any[] | null"
+    )]
+    pub fn functions_x_graphs(&self, env: Env) -> Result<napi::JsUnknown> {
+        env.to_js_value(&self.inner.functions_x_graphs)
+    }
+
+    #[napi(getter, ts_return_type = "any")]
+    pub fn description(&self, env: Env) -> Result<napi::JsUnknown> {
+        env.to_js_value(&self.inner.description)
+    }
+
+    #[napi(getter, ts_return_type = "any")]
+    pub fn subtitle(&self, env: Env) -> Result<napi::JsUnknown> {
+        env.to_js_value(&self.inner.subtitle)
+    }
+
     #[napi(getter)]
-    pub fn nodes(&self) -> Vec<serde_json::Value> {
-        self.inner
-            .nodes_slice()
-            .iter()
-            .map(|node| serde_json::to_value(node).unwrap_or(serde_json::Value::Null))
-            .collect()
+    pub fn isresource(&self) -> Option<bool> {
+        self.inner.isresource
+    }
+
+    #[napi(getter)]
+    pub fn author(&self) -> Option<String> {
+        self.inner.author.clone()
+    }
+
+    #[napi(getter)]
+    pub fn iconclass(&self) -> Option<String> {
+        self.inner.iconclass.clone()
+    }
+
+    #[napi(getter)]
+    pub fn slug(&self) -> Option<String> {
+        self.inner.slug.clone()
+    }
+
+    #[napi(getter, js_name = "template_id")]
+    pub fn template_id(&self) -> Option<String> {
+        self.inner.template_id.clone()
+    }
+
+    #[napi(getter)]
+    pub fn version(&self) -> Option<String> {
+        self.inner.version.clone()
+    }
+
+    /// The whole graph as plain data, so `JSON.stringify` works on it.
+    #[napi(js_name = "toJSON")]
+    pub fn to_json(&self) -> serde_json::Value {
+        json_or_null(&self.inner)
+    }
+
+    #[napi]
+    pub fn copy(&self) -> NapiStaticGraph {
+        NapiStaticGraph {
+            inner: self.inner.clone(),
+        }
     }
 
     #[napi(getter)]
@@ -662,15 +758,9 @@ pub fn apply_mutations_from_json(
         .map_err(napi::Error::from_reason)
 }
 
-/// As [`apply_mutations_from_json`], on graph JSON: the mutated graph's JSON.
-/// Python's `apply_mutations_from_json` has this shape; the TS layer uses it
-/// for NAPI's plain graph objects.
-#[napi(js_name = "applyMutationsJson")]
-pub fn apply_mutations_json(graph_json: String, mutations_json: String) -> Result<String> {
-    let graph = StaticGraph::from_json_string(&graph_json).map_err(napi::Error::from_reason)?;
-    let mutated = alizarin_core::graph_mutator::apply_mutations_from_json(&graph, &mutations_json)
-        .map_err(napi::Error::from_reason)?;
-    serde_json::to_string(&mutated).map_err(|e| napi::Error::from_reason(e.to_string()))
+/// `value` as JSON, or null if it can't be (it always can for graph types).
+fn json_or_null<T: serde::Serialize>(value: &T) -> serde_json::Value {
+    serde_json::to_value(value).unwrap_or(serde_json::Value::Null)
 }
 
 /// Apply a mutation request that may start with `CreateGraph` (then `graph`

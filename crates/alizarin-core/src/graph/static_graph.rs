@@ -124,14 +124,18 @@ impl StaticGraph {
     /// Handles both direct graph objects and wrapped format: {"graph": [...]}
     pub fn from_json_string(json_str: &str) -> Result<StaticGraph, String> {
         // Try parsing as a direct StaticGraph first
-        if let Ok(mut graph) = serde_json::from_str::<StaticGraph>(json_str) {
-            graph.build_indices();
-            return Ok(graph);
-        }
+        let direct_error = match serde_json::from_str::<StaticGraph>(json_str) {
+            Ok(mut graph) => {
+                graph.build_indices();
+                return Ok(graph);
+            }
+            Err(e) => e,
+        };
 
-        // Fall back to wrapped format {graph: [...]}
-        let wrapper: GraphWrapper =
-            serde_json::from_str(json_str).map_err(|e| format!("Failed to parse JSON: {}", e))?;
+        // Fall back to wrapped format {graph: [...]}; if that fails too, the
+        // direct parse's error is the one that says what's wrong with a graph.
+        let wrapper: GraphWrapper = serde_json::from_str(json_str)
+            .map_err(|_| format!("Failed to parse graph JSON: {direct_error}"))?;
         let mut graph = wrapper
             .graph
             .into_iter()

@@ -4,6 +4,7 @@ import { createStaticGraph, StaticCollection, StaticConcept, StaticNode, StaticN
 import { ResourceModelWrapper, GraphMutator, createWKRM, GraphManager, StaticStore } from '../js/graphManager';
 import { IWKRM } from '../js/interfaces';
 import { initWasmForTests } from './wasm-init';
+import { parseStaticGraph } from '../js/backend';
 import * as GroupJSON from "./data/models/Group.json";
 
 beforeAll(async () => {
@@ -290,38 +291,15 @@ test("ResourceModelWrapper > getBranchPublicationIds > should return unique bran
     "http://www.w3.org/2000/01/rdf-schema#Literal",
     "http://www.cidoc-crm.org/cidoc-crm/P3_has_note"
   );
-  const mutatedGraph = mutator.apply();
+  let mutatedGraph = mutator.apply();
 
-  // Create a new node with sourcebranchpublication_id set
-  const nodeToUpdate = mutatedGraph.nodes.find(n => n.alias === "field1");
-  if (nodeToUpdate) {
-    const updatedNode = new StaticNode({
-      alias: nodeToUpdate.alias,
-      config: nodeToUpdate.config,
-      datatype: nodeToUpdate.datatype,
-      description: nodeToUpdate.description,
-      exportable: nodeToUpdate.exportable,
-      fieldname: nodeToUpdate.fieldname,
-      graph_id: nodeToUpdate.graph_id,
-      hascustomalias: nodeToUpdate.hascustomalias,
-      is_collector: nodeToUpdate.is_collector,
-      isrequired: nodeToUpdate.isrequired,
-      issearchable: nodeToUpdate.issearchable,
-      istopnode: nodeToUpdate.istopnode,
-      name: nodeToUpdate.name,
-      nodegroup_id: nodeToUpdate.nodegroup_id,
-      nodeid: nodeToUpdate.nodeid,
-      ontologyclass: nodeToUpdate.ontologyclass,
-      parentproperty: nodeToUpdate.parentproperty,
-      sortorder: nodeToUpdate.sortorder,
-      sourcebranchpublication_id: "branch-pub-123"
-    });
-
-    // Replace the node in the graph
-    mutatedGraph.nodes = mutatedGraph.nodes.map(n =>
-      n.alias === "field1" ? updatedNode : n
-    );
-  }
+  // Set sourcebranchpublication_id on field1 in the graph's data and rebuild
+  // the graph from it (the same on either backend)
+  const data = JSON.parse(JSON.stringify(mutatedGraph));
+  data.nodes = data.nodes.map((n: any) =>
+    n.alias === "field1" ? { ...n, sourcebranchpublication_id: "branch-pub-123" } : n
+  );
+  mutatedGraph = parseStaticGraph(JSON.stringify(data));
 
   const wrapper = new ResourceModelWrapper(
     createTestWKRM(graph),

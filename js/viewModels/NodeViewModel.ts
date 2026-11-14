@@ -76,7 +76,7 @@ export class NodeViewModel implements IStringKeyedObject, IViewModel {
 
     const domainId = this.__parentPseudo.nodeid;
     const rangeId = childNode.nodeid;
-    const edges = this.__parentWkrm.graph.edges.filter(
+    const edges = this.__parentWkrm.getEdgeObjects().filter(
       (edge: StaticEdge) => edge.domainnode_id === domainId && edge.rangenode_id === rangeId
     );
     if (edges.length !== 1) {

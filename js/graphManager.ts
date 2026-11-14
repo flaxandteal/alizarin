@@ -753,6 +753,9 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   private _nodesByAlias: Map<string, StaticNode> | null = null;
   private _edges: Map<string, string[]> | null = null;
   private _nodegroups: Map<string, StaticNodegroup> | null = null;
+  // The backend builds a graph (and its edge list) afresh on every read
+  private _graph: StaticGraph | null = null;
+  private _edgeObjects: any[] | null = null;
 
   constructor(wkrm: IWKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow: boolean = false, store: StaticStore = staticStore) {
     this.wkrm = wkrm;
@@ -767,7 +770,10 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   // =========================================================================
 
   get graph(): StaticGraph {
-    return this._backend.graph;
+    if (!this._graph) {
+      this._graph = this._backend.graph;
+    }
+    return this._graph!;
   }
 
   set graph(g: StaticGraph) {
@@ -812,6 +818,8 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     this._nodesByAlias = null;
     this._edges = null;
     this._nodegroups = null;
+    this._graph = null;
+    this._edgeObjects = null;
   }
 
   // =========================================================================
@@ -948,7 +956,7 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   // TODO: Switch to getBranches
   getBranchPublicationIds(accessible?: boolean): string[] {
     const accessibleOnly = accessible || false;
-    const nodes = [...this.graph.nodes.values()];
+    const nodes = [...this.getNodeObjects().values()];
     return [...nodes.reduce(
       (acc: Set<string>, node: StaticNode): Set<string> => {
         if (node.sourcebranchpublication_id) {
@@ -965,9 +973,17 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     )];
   }
 
+  /** The graph's edges, cached (unlike `graph.edges`, built on every read). */
+  getEdgeObjects(): any[] {
+    if (!this._edgeObjects) {
+      this._edgeObjects = [...this.graph.edges];
+    }
+    return this._edgeObjects;
+  }
+
   getCollections(accessible?: boolean): string[] {
     const accessibleOnly = accessible || false;
-    const nodes = [...this.graph.nodes.values()];
+    const nodes = [...this.getNodeObjects().values()];
     return [...nodes.reduce(
       (acc: Set<string>, node: StaticNode): Set<string> => {
         if (['concept', 'concept-list'].includes(node.datatype) && node.config?.rdmCollection) {

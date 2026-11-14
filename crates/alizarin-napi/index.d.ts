@@ -28,12 +28,6 @@ export declare function foldMayMatch(datatype: string, summary: any | undefined 
  */
 export declare function applyMutationsFromJson(graph: NapiStaticGraph, mutationsJson: string): NapiStaticGraph
 /**
- * As [`apply_mutations_from_json`], on graph JSON: the mutated graph's JSON.
- * Python's `apply_mutations_from_json` has this shape; the TS layer uses it
- * for NAPI's plain graph objects.
- */
-export declare function applyMutationsJson(graphJson: string, mutationsJson: string): string
-/**
  * Apply a mutation request that may start with `CreateGraph` (then `graph`
  * is omitted): core's, as WASM's and Python's `applyMutationsCreate`.
  */
@@ -482,7 +476,8 @@ export declare class NapiResourceModelWrapper {
   /** Create from an already-loaded NapiStaticGraph. */
   static fromGraph(graph: NapiStaticGraph, defaultAllow: boolean): NapiResourceModelWrapper
   getGraphId(): string
-  get graph(): any
+  /** The model's graph, as a `NapiStaticGraph` (as WASM gives its StaticGraph). */
+  get graph(): NapiStaticGraph
   set graph(graphJson: string)
   buildNodes(): void
   buildNodesForGraph(graphJson: string): void
@@ -592,7 +587,24 @@ export declare class NapiStaticGraph {
   /** Alias matching the WASM `graphid` property for backend consistency. */
   get graphid(): string
   /** The graph's nodes, as on WASM. */
-  get nodes(): Array<any>
+  get nodes(): any[]
+  get root(): any
+  get edges(): any[]
+  get nodegroups(): any[]
+  get cards(): any[] | null
+  get cards_x_nodes_x_widgets(): any[] | null
+  get functions_x_graphs(): any[] | null
+  get description(): any
+  get subtitle(): any
+  get isresource(): boolean | null
+  get author(): string | null
+  get iconclass(): string | null
+  get slug(): string | null
+  get template_id(): string | null
+  get version(): string | null
+  /** The whole graph as plain data, so `JSON.stringify` works on it. */
+  toJSON(): any
+  copy(): NapiStaticGraph
   get name(): any
   /**
    * Graph-level config as a plain JS object, preserving arbitrary host keys —
