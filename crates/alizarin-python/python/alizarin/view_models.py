@@ -26,6 +26,7 @@ from typing import (
 )
 from datetime import datetime
 from dataclasses import dataclass
+import inspect
 import json
 
 if TYPE_CHECKING:
@@ -871,8 +872,9 @@ class ResourceInstanceViewModel:
             if not root:
                 return None
 
-            # Access the attribute on the root
-            return getattr(root, key)
+            # Access the attribute on the root; a semantic child is a coroutine
+            value = getattr(root, key)
+            return await value if inspect.isawaitable(value) else value
 
         # Return AttrPromise for chaining
         return AttrPromise(load_and_get_attr())
@@ -1789,8 +1791,9 @@ async def get_view_model(
     """
     # Get cache entries if available
     cacheEntries: Optional[Dict[str, Dict[str, Any]]] = None
-    if parentPseudo.parent and parentPseudo.parent._i:
-        cacheEntries = await parentPseudo.parent._i.getValueCache(False, None)
+    parent_wkri = getattr(parentPseudo, "_parent_wkri", None)
+    if parent_wkri is not None and getattr(parent_wkri, "_i", None):
+        cacheEntries = await parent_wkri._i.get_value_cache(False, None)
 
     cacheEntry: Optional[Any] = None
     if cacheEntries and tile.tileid:
@@ -1872,7 +1875,7 @@ async def get_view_model(
         return None
 
     # Set parent pseudo
-    vm.__parentPseudo = parentPseudo
+    _set_parent_pseudo(vm, parentPseudo)
 
     # For list ViewModels, set parent pseudo on items
     if isinstance(vm, list):
@@ -1881,10 +1884,24 @@ async def get_view_model(
                 async def set_parent(item):
                     resolved = await item
                     if resolved is not None:
-                        resolved.__parentPseudo = parentPseudo
+                        _set_parent_pseudo(resolved, parentPseudo)
                 import asyncio
                 asyncio.create_task(set_parent(vme))
             else:
-                vme.__parentPseudo = parentPseudo
+                _set_parent_pseudo(vme, parentPseudo)
 
     return vm
+
+
+def _set_parent_pseudo(vm: Any, parent_pseudo: Any) -> None:
+    """
+    Give `vm` its parent pseudo where its class reads it: the name-mangled
+    `__parentPseudo` (or SemanticViewModel's `__parent_pseudo`) its class set
+    up. Assigning `vm.__parentPseudo` here, outside the class, would set an
+    attribute the class never reads (or fail on a class with `__slots__`).
+    """
+    for cls in type(vm).__mro__:
+        for name in (f"_{cls.__name__}__parentPseudo", f"_{cls.__name__}__parent_pseudo"):
+            if hasattr(vm, name):
+                setattr(vm, name, parent_pseudo)
+                return

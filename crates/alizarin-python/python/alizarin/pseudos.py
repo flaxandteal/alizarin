@@ -153,7 +153,7 @@ class PseudoValue(Generic[VM]):
         node_id = rust_value.node_id
         node = None
         if model:
-            node = model.get_node_object_from_id(node_id)
+            node = model.get_node_objects().get(node_id)
         if node is None:
             # Reconstruct from Rust JSON
             node_json_str = rust_value.get_node_json()

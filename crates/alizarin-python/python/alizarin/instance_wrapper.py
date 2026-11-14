@@ -25,12 +25,17 @@ if TYPE_CHECKING:
     from .static_types import StaticTile, StaticNode, StaticResource
     from .model_wrapper import ResourceModelWrapper
     from .graph_manager import IRIVM
+    from .pseudos import IPseudo
 
 from .pseudos import PseudoValue, PseudoList, wrap_rust_pseudo
 
 # Import Rust core wrapper from the extension module
 from . import alizarin as _alizarin_rust
 RustResourceInstanceWrapperCore = _alizarin_rust.RustResourceInstanceWrapperCore
+
+# Core's error prefix for a lookup that needs tiles fetched first, followed by
+# the comma-separated nodegroups to fetch (the same on every binding).
+TILES_NOT_LOADED = "TILES_NOT_LOADED:"
 
 # Type Variables
 RIVM = TypeVar("RIVM", bound="IRIVM")
@@ -125,6 +130,77 @@ class ResourceInstanceWrapper(Generic[RIVM]):
             loader: Async function that loads tiles for a nodegroup
         """
         self._tile_loader = loader
+
+    def is_lazy(self) -> bool:
+        """Whether tiles arrive per nodegroup as lookups need them."""
+        return self._rust_core.is_lazy()
+
+    async def fetch_nodegroup_tiles(self, nodegroup_id: Optional[str]) -> None:
+        """
+        Fetch one nodegroup's tiles (all of them when None) and merge them,
+        marking exactly that nodegroup loaded, even if it has none.
+
+        Matches TypeScript ResourceInstanceWrapper.fetchNodegroupTiles: the
+        tile loader when one is set, else this resource's own tiles.
+        """
+        if self._tile_loader is not None:
+            tiles = await self._tile_loader(nodegroup_id) or []
+        else:
+            tiles = [
+                tile
+                for tile in ((self.resource.tiles or []) if self.resource else [])
+                if nodegroup_id is None or tile.nodegroup_id == nodegroup_id
+            ]
+        tiles_json = json.dumps(
+            [tile if isinstance(tile, dict) else self._tile_to_dict(tile) for tile in tiles]
+        )
+        self._rust_core.append_fetched_tiles(tiles_json, nodegroup_id)
+        # Layer 2 is rebuilt from Rust as values are asked for again.
+        self._pseudo_cache = {}
+
+    async def fetch_nodegroups(self, nodegroup_ids: List[str]) -> None:
+        """
+        Fetch every nodegroup a lazy lookup listed: from the compiled-in tile
+        source first, where there is one, and the rest through
+        fetch_nodegroup_tiles.
+
+        Matches TypeScript ResourceInstanceWrapper.fetchNodegroups.
+        """
+        if not nodegroup_ids:
+            return
+        remaining = self._rust_core.fetch_from_tile_source(list(nodegroup_ids))
+        for nodegroup_id in remaining:
+            await self.fetch_nodegroup_tiles(nodegroup_id)
+
+    async def semantic_child(
+        self,
+        tile: Optional[StaticTile],
+        node: StaticNode,
+        key: str,
+    ) -> Optional[IPseudo]:
+        """
+        The child `key` of semantic `node` within `tile` (None at the root):
+        core's lookup, as TypeScript's SemanticViewModel makes it. In lazy
+        mode, the nodegroups core lists as unloaded are fetched first.
+
+        Returns a PseudoList for a multi-valued child, a PseudoValue for a
+        single one, or None.
+        """
+        args = (tile.tileid if tile else None, node.nodeid, node.nodegroup_id, key)
+        try:
+            result = self._rust_core.get_semantic_child_value(*args)
+        except RuntimeError as error:
+            message = str(error)
+            if not message.startswith(TILES_NOT_LOADED):
+                raise
+            await self.fetch_nodegroups(
+                message[len(TILES_NOT_LOADED):].split(" ")[0].split(",")
+            )
+            result = self._rust_core.get_semantic_child_value(*args)
+        if result.is_empty:
+            return None
+        rust_value = result.as_list() if result.result_type == "list" else result.as_single()
+        return wrap_rust_pseudo(rust_value, self.wkri, self.model)
 
     async def retrieve_pseudo(
         self,
@@ -257,6 +333,10 @@ class ResourceInstanceWrapper(Generic[RIVM]):
             tiles: List of tiles to populate with (optional)
             lazy: Whether to use lazy loading
         """
+        # Lazy: tiles not loaded now are fetched as lookups need them, as on
+        # NAPI and WASM.
+        self._rust_core.set_lazy(lazy)
+
         if tiles:
             # Convert tiles to JSON for Rust
             tiles_data = [self._tile_to_dict(t) for t in tiles]

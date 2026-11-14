@@ -209,17 +209,15 @@ class SemanticViewModel:
         if key in self.__child_values:
             return self.__child_values[key]
 
-        # From the instance's pseudo cache
-        if hasattr(instance_wrapper, "retrieve_pseudo"):
-            result = await instance_wrapper.retrieve_pseudo(key)
-            if result and len(result) > 0:
-                child = result[0]
-                if hasattr(child, "parent_value"):
-                    child.parent_value = self.__parent_pseudo
-                self.__child_values[key] = child
-                return child
-
-        return None
+        # Core's lookup within this tile, fetching what a lazy instance lacks
+        # first: as TypeScript's SemanticViewModel, on NAPI and WASM.
+        child = await instance_wrapper.semantic_child(self.__tile, node, key)
+        if child is None:
+            return None
+        if hasattr(child, "parent_value"):
+            child.parent_value = self.__parent_pseudo
+        self.__child_values[key] = child
+        return child
 
     async def __as_tile_data(self) -> tuple[None, List[Any]]:
         """
