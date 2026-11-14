@@ -281,6 +281,33 @@ fn edits_the_graph_rules_out_fail_when_made() {
 }
 
 #[test]
+fn a_batch_applies_all_or_nothing_and_names_the_failing_edit() {
+    let (graph, model, mut core) = setup(false, vec![]);
+    let ops: Vec<alizarin_core::EditOp> = serde_json::from_value(json!([
+        {"op": "set", "alias": "label", "value": "x"},
+        {"op": "add", "alias": "nickname", "values": {"nickname": "baile"}},
+        {"op": "set", "tile": {"ref": 1}, "alias": "nickname", "value": "an baile"},
+    ]))
+    .unwrap();
+    let delta = core.apply_edits(&ops, &model).unwrap();
+    assert_eq!(delta.upserted.len(), 2);
+    assert_eq!(data(&core, &graph, "nickname"), vec![&json!("an baile")]);
+
+    // A failing edit leaves the wrapper as it was.
+    let ops: Vec<alizarin_core::EditOp> = serde_json::from_value(json!([
+        {"op": "set", "alias": "label", "value": "y"},
+        {"op": "set", "alias": "nope", "value": 1},
+    ]))
+    .unwrap();
+    let err = core.apply_edits(&ops, &model).unwrap_err();
+    assert!(err.starts_with("edit 1: "), "{err}");
+    assert_eq!(data(&core, &graph, "label"), vec![&json!("x")]);
+
+    assert!(core.check_editable("label", &model).is_ok());
+    assert!(core.check_editable("nope", &model).is_err());
+}
+
+#[test]
 fn a_lazy_wrapper_can_only_edit_loaded_nodegroups() {
     let (graph, model, mut core) = setup(false, vec![]);
     core.set_lazy(true);

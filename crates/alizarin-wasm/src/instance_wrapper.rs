@@ -1170,6 +1170,39 @@ impl WASMResourceInstanceWrapper {
         })
     }
 
+    /// Throws if node `alias` can't be given a value here (unknown, semantic,
+    /// derived, or a lazy nodegroup not loaded): what the ORM checks on
+    /// assignment. Core's, as on NAPI and Python.
+    #[wasm_bindgen(js_name = checkEditable)]
+    pub fn check_editable(&self, alias: String) -> Result<(), JsValue> {
+        let core_ref = self.core.borrow();
+        with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+            core_ref
+                .check_editable(&alias, &model.model_access)
+                .map_err(|e| JsValue::from_str(&e))
+        })
+    }
+
+    /// Apply and commit a batch of edits as the ORM recorded them
+    /// (`[{op: "set" | "add" | "remove", ...}]`), all or nothing, returning
+    /// `{upserted, removed}`. Core's, as on NAPI and Python.
+    #[wasm_bindgen(js_name = applyEdits)]
+    pub fn apply_edits(&self, ops: JsValue) -> Result<JsValue, JsValue> {
+        let ops: Vec<alizarin_core::EditOp> = serde_wasm_bindgen::from_value(ops)
+            .map_err(|e| JsValue::from_str(&format!("invalid edits: {e}")))?;
+        let mut core = self.core.borrow_mut();
+        let graph_id = core.graph_id.clone();
+        let delta = with_registry_model::<_, _, JsValue>(&graph_id, |model| {
+            core.apply_edits(&ops, &model.model_access)
+                .map_err(|e| JsValue::from_str(&e))
+        })?;
+        serde::Serialize::serialize(
+            &delta,
+            &serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true),
+        )
+        .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     /// Fetch `nodegroupIds` from the compiled-in tile source, if there is one,
     /// returning those still for the host's loader. Core's, as on NAPI and
     /// Python.

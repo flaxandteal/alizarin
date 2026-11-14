@@ -345,6 +345,18 @@ export declare class NapiResourceInstanceWrapper {
    */
   nodegroupsToFetch(nodegroupId: string): Array<string>
   /**
+   * Throws if node `alias` can't be given a value here (unknown, semantic,
+   * derived, or a lazy nodegroup not loaded): what the ORM checks on
+   * assignment. Core's, as on WASM and Python.
+   */
+  checkEditable(alias: string): void
+  /**
+   * Apply and commit a batch of edits as the ORM recorded them
+   * (`[{op: "set" | "add" | "remove", ...}]`), all or nothing, returning
+   * `{upserted, removed}`. Core's, as on WASM and Python.
+   */
+  applyEdits(ops: any): any
+  /**
    * Fetch `nodegroupIds` from the compiled-in tile source, if there is one,
    * returning those still for the host's loader. Core's, as on WASM and
    * Python.

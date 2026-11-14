@@ -377,7 +377,115 @@ impl ResourceEdit {
     }
 }
 
+/// A tile named in an [`EditOp`]: an existing tile's id, or the tile an
+/// earlier `add` in the same batch made (`{"ref": index}`).
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(untagged)]
+pub enum TileRef {
+    Id(String),
+    Ref { r#ref: usize },
+}
+
+/// One change in a batch for [`ResourceInstanceWrapperCore::apply_edits`]:
+/// the form every binding's ORM records assignments in.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(tag = "op", rename_all = "lowercase")]
+pub enum EditOp {
+    /// [`ResourceEdit::set_value`].
+    Set {
+        #[serde(default)]
+        tile: Option<TileRef>,
+        #[serde(default)]
+        parent: Option<TileRef>,
+        alias: String,
+        value: Value,
+    },
+    /// [`ResourceEdit::add_tile`].
+    Add {
+        alias: String,
+        #[serde(default)]
+        parent: Option<TileRef>,
+        #[serde(default)]
+        values: Map<String, Value>,
+    },
+    /// [`ResourceEdit::remove_tile`].
+    Remove { tile: TileRef },
+}
+
 impl ResourceInstanceWrapperCore {
+    /// An error if node `alias` can't be given a value here: unknown, semantic,
+    /// derived, or (lazy) in a nodegroup not loaded. What an ORM checks when a
+    /// value is assigned, before recording it.
+    pub fn check_editable(&self, alias: &str, model: &GraphModelAccess) -> Result<(), String> {
+        let node = writable_node(alias, model)?;
+        let nodegroup_id = node.nodegroup_id.as_deref().unwrap_or_default();
+        if self.is_lazy() && !self.is_nodegroup_loaded(nodegroup_id) {
+            return Err(format!("TILES_NOT_LOADED:{nodegroup_id}"));
+        }
+        Ok(())
+    }
+
+    /// Apply a batch of edits (as an ORM recorded them) and commit them with
+    /// the process-wide extension and functions registries: all or nothing.
+    /// An error names the failing edit by its index.
+    pub fn apply_edits(
+        &mut self,
+        ops: &[EditOp],
+        model: &GraphModelAccess,
+    ) -> Result<TileDelta, String> {
+        let registry = crate::get_global_extension_registry();
+        let mut edit = ResourceEdit::new(self)?;
+        let mut added: Vec<Option<String>> = Vec::with_capacity(ops.len());
+        let resolve = |tile: &Option<TileRef>, added: &[Option<String>]| match tile {
+            None => Ok(None),
+            Some(TileRef::Id(id)) => Ok(Some(id.clone())),
+            Some(TileRef::Ref { r#ref }) => added
+                .get(*r#ref)
+                .cloned()
+                .flatten()
+                .map(Some)
+                .ok_or_else(|| format!("ref {ref} names no earlier add", r#ref = r#ref)),
+        };
+        for (index, op) in ops.iter().enumerate() {
+            let result = match op {
+                EditOp::Set {
+                    tile,
+                    parent,
+                    alias,
+                    value,
+                } => {
+                    let tile = resolve(tile, &added);
+                    let parent = resolve(parent, &added);
+                    tile.and_then(|tile| parent.map(|parent| (tile, parent)))
+                        .and_then(|(tile, parent)| {
+                            edit.set_value(
+                                tile.as_deref(),
+                                parent.as_deref(),
+                                alias,
+                                value,
+                                model,
+                                registry.as_ref(),
+                            )
+                        })
+                        .map(|_| None)
+                }
+                EditOp::Add {
+                    alias,
+                    parent,
+                    values,
+                } => resolve(parent, &added).and_then(|parent| {
+                    edit.add_tile(alias, parent.as_deref(), values, model, registry.as_ref())
+                        .map(Some)
+                }),
+                EditOp::Remove { tile } => resolve(&Some(tile.clone()), &added)
+                    .and_then(|tile| edit.remove_tile(&tile.unwrap_or_default(), model))
+                    .map(|_| None),
+            };
+            added.push(result.map_err(|e| format!("edit {index}: {e}"))?);
+        }
+        edit.commit(self, model, &crate::get_global_functions_registry())
+    }
+
     /// Apply a committed [`TileDelta`]: remove and write tiles, drop every
     /// cached value (the ORMs rebuild theirs from these tiles), and rerun the
     /// on-load Derive functions.

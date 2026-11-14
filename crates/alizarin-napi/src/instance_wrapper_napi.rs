@@ -1014,6 +1014,32 @@ impl NapiResourceInstanceWrapper {
         Ok(self.inner.nodegroups_to_fetch(&nodegroup_id, &*model))
     }
 
+    /// Throws if node `alias` can't be given a value here (unknown, semantic,
+    /// derived, or a lazy nodegroup not loaded): what the ORM checks on
+    /// assignment. Core's, as on WASM and Python.
+    #[napi]
+    pub fn check_editable(&self, alias: String) -> Result<()> {
+        let model = self.model()?;
+        self.inner
+            .check_editable(&alias, &model)
+            .map_err(napi::Error::from_reason)
+    }
+
+    /// Apply and commit a batch of edits as the ORM recorded them
+    /// (`[{op: "set" | "add" | "remove", ...}]`), all or nothing, returning
+    /// `{upserted, removed}`. Core's, as on WASM and Python.
+    #[napi]
+    pub fn apply_edits(&mut self, ops: serde_json::Value) -> Result<serde_json::Value> {
+        let ops: Vec<alizarin_core::EditOp> = serde_json::from_value(ops)
+            .map_err(|e| napi::Error::from_reason(format!("invalid edits: {e}")))?;
+        let model = self.model()?;
+        let delta = self
+            .inner
+            .apply_edits(&ops, &model)
+            .map_err(napi::Error::from_reason)?;
+        serde_json::to_value(delta).map_err(|e| napi::Error::from_reason(e.to_string()))
+    }
+
     /// Fetch `nodegroupIds` from the compiled-in tile source, if there is one,
     /// returning those still for the host's loader. Core's, as on WASM and
     /// Python.

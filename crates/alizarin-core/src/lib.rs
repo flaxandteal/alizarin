@@ -39,7 +39,7 @@ pub mod rdm_cache;
 pub mod rdm_namespace;
 pub mod registry;
 pub mod resource_edit;
-pub use resource_edit::{ResourceEdit, TileDelta};
+pub use resource_edit::{EditOp, ResourceEdit, TileDelta, TileRef};
 pub mod shared_mut;
 pub mod skos;
 pub mod slice_source;

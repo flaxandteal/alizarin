@@ -306,6 +306,33 @@ impl PyResourceInstanceWrapperCore {
         Ok(self.inner.nodegroups_to_fetch(nodegroup_id, &*model))
     }
 
+    /// Raises ValueError if node `alias` can't be given a value here (unknown,
+    /// semantic, derived, or a lazy nodegroup not loaded): what the ORM checks
+    /// on assignment. Core's, as on NAPI and WASM.
+    fn check_editable(&self, alias: &str) -> PyResult<()> {
+        let model = self.model()?;
+        self.inner
+            .check_editable(alias, &model)
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
+    }
+
+    /// Apply and commit a batch of edits as the ORM recorded them (a JSON
+    /// list of `{"op": "set" | "add" | "remove", ...}`), all or nothing,
+    /// returning `{"upserted", "removed"}` as JSON. Core's, as on NAPI and
+    /// WASM.
+    fn apply_edits(&mut self, ops_json: &str) -> PyResult<String> {
+        let ops: Vec<alizarin_core::EditOp> = serde_json::from_str(ops_json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("invalid edits: {e}"))
+        })?;
+        let model = self.model()?;
+        let delta = self
+            .inner
+            .apply_edits(&ops, &model)
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+        serde_json::to_string(&delta)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    }
+
     /// Fetch `nodegroup_ids` from the compiled-in tile source, if there is
     /// one, returning those still for the host's loader. Core's, as on NAPI
     /// and WASM.
