@@ -251,6 +251,7 @@ from .graph_manager import (
 # =============================================================================
 
 from .model_wrapper import ResourceModelWrapper
+from .graph_mutator import GraphMutator
 
 
 def load_model(graph_id: str) -> ResourceModelWrapper:
@@ -518,6 +519,7 @@ __all__ = [
     "WKRM",
     # Model Wrapper
     "ResourceModelWrapper",
+    "GraphMutator",
     "load_model",
     # Instance Wrapper
     "ResourceInstanceWrapper",
