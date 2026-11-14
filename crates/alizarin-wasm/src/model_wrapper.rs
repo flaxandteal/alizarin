@@ -194,6 +194,10 @@ impl alizarin_core::ModelAccess for ResourceModelWrapperCore {
     fn get_permitted_nodegroups(&self) -> HashMap<String, alizarin_core::PermissionRule> {
         alizarin_core::ModelAccess::get_permitted_nodegroups(&*self.model_access)
     }
+
+    fn on_load_functions(&self) -> Arc<Vec<alizarin_core::ComputeTilesConfig>> {
+        alizarin_core::ModelAccess::on_load_functions(&*self.model_access)
+    }
 }
 
 // WASM wrapper - lightweight reference that borrows from registry

@@ -196,6 +196,23 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     this.wasmWrapper.appendFetchedTiles(tiles ?? [], nodegroupId);
   }
 
+  /**
+   * Fetch every nodegroup a lazy lookup listed (`nodegroupsToFetch`,
+   * `getMissingNodegroupsForChildren`, or a `TILES_NOT_LOADED:a,b` error):
+   * from the compiled-in tile source first, where the backend has one, and the
+   * rest through fetchNodegroupTiles. The same on either backend, as Python's
+   * `fetch_nodegroups` is.
+   */
+  async fetchNodegroups(nodegroupIds: string[]): Promise<void> {
+    if (nodegroupIds.length === 0) {
+      return;
+    }
+    const remaining: string[] = this.wasmWrapper.fetchFromTileSource(nodegroupIds);
+    for (const nodegroupId of remaining) {
+      await this.fetchNodegroupTiles(nodegroupId);
+    }
+  }
+
   pruneResourceTiles(): undefined {
     this.wasmWrapper.pruneResourceTiles();
   }
@@ -289,12 +306,14 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     const pathInfo = this.wasmWrapper.resolvePath(path);
     const { nodegroupId } = pathInfo;
 
-    // Step 2: Ensure tiles for target nodegroup are loaded
+    // Step 2: Ensure tiles for target nodegroup are loaded, with the sources
+    // of an on-load derived target
     if (!this.wasmWrapper.isNodegroupLoaded(nodegroupId)) {
       if (!this.wasmWrapper.getResourceId()) {
         return null;
       }
-      await this.fetchNodegroupTiles(nodegroupId);
+      const toFetch: string[] = this.wasmWrapper.nodegroupsToFetch(nodegroupId);
+      await this.fetchNodegroups(toFetch.length ? toFetch : [nodegroupId]);
     }
 
     // Step 3: getValuesAtPath will find tiles for this nodegroup

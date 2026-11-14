@@ -117,12 +117,10 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
 
     // Step 2: Load any missing tiles (async - the only async part); each
     // fetch marks its nodegroup loaded, even when it has no tiles
-    for (const nodegroupId of missingNodegroups) {
-      const t1 = performance.now();
-      await this.__parentWkri.$.fetchNodegroupTiles(nodegroupId);
-      timingStats.wasmCalls++;
-      timingStats.wasmTotalMs += performance.now() - t1;
-    }
+    const t1 = performance.now();
+    await this.__parentWkri.$.fetchNodegroups(missingNodegroups);
+    timingStats.wasmCalls++;
+    timingStats.wasmTotalMs += performance.now() - t1;
 
     // Step 3: Get all child values in a single sync batch call (no async boundary crossings)
     const t3 = performance.now();
@@ -215,10 +213,13 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     } catch (e: any) {
       const errorStr = e?.message || String(e);
       if (errorStr.startsWith('TILES_NOT_LOADED:')) {
-        // Tiles not loaded - load them and retry
-        const nodegroupId = errorStr.split(':')[1].split(' ')[0]; // Extract nodegroup ID
+        // Tiles not loaded - load every listed nodegroup, then retry
+        const nodegroupIds = errorStr
+          .slice('TILES_NOT_LOADED:'.length)
+          .split(' ')[0]
+          .split(',');
         const t1 = performance.now();
-        await parent.$.fetchNodegroupTiles(nodegroupId);
+        await parent.$.fetchNodegroups(nodegroupIds);
         timingStats.wasmCalls++;
         timingStats.wasmTotalMs += performance.now() - t1;
         // Retry sync call after loading tiles

@@ -77,6 +77,18 @@ impl PyResourceInstanceWrapperCore {
     fn model(&self) -> PyResult<Arc<GraphModelAccess>> {
         model_for(&self.graph_id)
     }
+
+    /// Set a compiled-in tile source, tried before the host's loader
+    /// (`fetch_from_tile_source`). Rust-only, as on NAPI and WASM: for a
+    /// binary that compiles alizarin and a tile backend together.
+    pub fn set_tile_source(&mut self, source: Arc<dyn alizarin_core::TileSource>) {
+        self.inner.tile_source = Some(source);
+    }
+
+    /// Remove the compiled-in tile source.
+    pub fn clear_tile_source(&mut self) {
+        self.inner.tile_source = None;
+    }
 }
 
 #[pymethods]
@@ -124,7 +136,7 @@ impl PyResourceInstanceWrapperCore {
         let model = self.model()?;
         self.inner.load_permitted_tiles(tiles, &model);
         if assume_tiles_comprehensive_for_nodegroup {
-            self.inner.mark_all_nodegroups_loaded(&*model);
+            self.inner.mark_loaded_comprehensively(&model);
         }
         Ok(())
     }
@@ -263,8 +275,8 @@ impl PyResourceInstanceWrapperCore {
     /// Switch lazy tile mode, as on NAPI/WASM: a nodegroup not yet loaded is
     /// then unknown, so semantic child lookups on it raise
     /// `TILES_NOT_LOADED:<nodegroup>` until its tiles are loaded or it is
-    /// marked loaded. Python fetches no tiles itself, so `populate(lazy=...)`
-    /// (lazy pseudo building) leaves this off.
+    /// marked loaded. The Python wrapper's `populate(lazy=...)` sets it, and
+    /// fetches what lookups list (`fetch_nodegroups`), as TypeScript does.
     fn set_lazy(&mut self, lazy: bool) {
         self.inner.set_lazy(lazy);
     }
@@ -272,6 +284,38 @@ impl PyResourceInstanceWrapperCore {
     /// Whether lazy tile mode is on.
     fn is_lazy(&self) -> bool {
         self.inner.is_lazy()
+    }
+
+    /// The nodegroups to fetch before the children of `parent_node_id` can be
+    /// read (in lazy mode; none otherwise), each once. Core's, as on NAPI and
+    /// WASM.
+    fn get_missing_nodegroups_for_children(&self, parent_node_id: &str) -> PyResult<Vec<String>> {
+        let model = self.model()?;
+        Ok(self.inner.missing_nodegroups_for_children(
+            parent_node_id,
+            &*model,
+            self.inner.is_lazy(),
+        ))
+    }
+
+    /// The nodegroups to fetch before `nodegroup_id` can be read (in lazy
+    /// mode; none otherwise): itself and, for an on-load Derive target, its
+    /// unloaded sources. Core's, as on NAPI and WASM.
+    fn nodegroups_to_fetch(&self, nodegroup_id: &str) -> PyResult<Vec<String>> {
+        let model = self.model()?;
+        Ok(self.inner.nodegroups_to_fetch(nodegroup_id, &*model))
+    }
+
+    /// Fetch `nodegroup_ids` from the compiled-in tile source, if there is
+    /// one, returning those still for the host's loader. Core's, as on NAPI
+    /// and WASM.
+    fn fetch_from_tile_source(&mut self, nodegroup_ids: Vec<String>) -> PyResult<Vec<String>> {
+        let model = self.model()?;
+        self.inner
+            .fetch_from_tile_source(&nodegroup_ids, &model)
+            .map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("TileSource error: {e}"))
+            })
     }
 
     /// Get semantic child value
@@ -382,6 +426,12 @@ impl PyResourceInstanceWrapperCore {
             dict.set_item("target_node_id", &info.target_node.nodeid)?;
             Ok(dict.into())
         })
+    }
+
+    /// Drop everything loaded for this resource: its tiles, the pseudo cache
+    /// and the nodegroup load states. Core's, as on NAPI and WASM.
+    fn release(&mut self) {
+        self.inner.release();
     }
 
     /// Get all nodegroup IDs that have tiles

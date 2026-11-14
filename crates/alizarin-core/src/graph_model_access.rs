@@ -35,6 +35,8 @@ pub struct GraphModelAccess {
     nodes_by_nodegroup: Option<Arc<HashMap<String, Vec<Arc<StaticNode>>>>>,
     nodegroups: Option<Arc<HashMap<String, Arc<StaticNodegroup>>>>,
     root_node_id: Option<String>,
+    /// The graph's on-load Derive declarations, parsed once.
+    on_load_functions: Option<Arc<Vec<crate::ComputeTilesConfig>>>,
 
     /// The rules as set, keyed by nodegroup id.
     explicit_permissions: HashMap<String, PermissionRule>,
@@ -59,6 +61,7 @@ impl GraphModelAccess {
             nodes_by_nodegroup: None,
             nodegroups: None,
             root_node_id: None,
+            on_load_functions: None,
             explicit_permissions: HashMap::new(),
             permitted_nodegroups: HashMap::new(),
             default_allow,
@@ -107,6 +110,7 @@ impl GraphModelAccess {
         self.nodes_by_nodegroup = None;
         self.nodegroups = None;
         self.root_node_id = None;
+        self.on_load_functions = None;
     }
 
     /// Build all indices from the current graph.
@@ -222,6 +226,7 @@ impl GraphModelAccess {
         self.nodes_by_nodegroup = Some(Arc::new(nodes_by_nodegroup));
         self.nodegroups = Some(Arc::new(nodegroups));
         self.root_node_id = Some(root_node_id);
+        self.on_load_functions = Some(Arc::new(on_load_functions_of(graph)));
 
         // Complete the effective rules for this graph's nodegroups, so
         // get_permitted_nodegroups() stays a cheap clone.
@@ -582,6 +587,21 @@ impl ModelAccess for GraphModelAccess {
         // cheap clone rather than rebuilding on every call.
         self.permitted_nodegroups.clone()
     }
+
+    fn on_load_functions(&self) -> Arc<Vec<crate::ComputeTilesConfig>> {
+        match &self.on_load_functions {
+            Some(functions) => Arc::clone(functions),
+            None => Arc::new(on_load_functions_of(&self.graph)),
+        }
+    }
+}
+
+/// The on-load Derive declarations `graph` makes, in declaration order.
+fn on_load_functions_of(graph: &StaticGraph) -> Vec<crate::ComputeTilesConfig> {
+    crate::compute_tiles_functions(graph)
+        .into_iter()
+        .filter(|f| f.mode == crate::DeriveMode::OnLoad)
+        .collect()
 }
 
 #[cfg(test)]

@@ -27,8 +27,10 @@ use crate::{
 /// Error type for semantic child value retrieval
 #[derive(Debug, Clone)]
 pub enum SemanticChildError {
-    /// Tiles for the required nodegroup have not been loaded yet
-    TilesNotLoaded { nodegroup_id: String },
+    /// Tiles the lookup needs have not been loaded yet: every nodegroup to
+    /// fetch before asking again (more than one when an on-load Derive target
+    /// needs its sources).
+    TilesNotLoaded { nodegroup_ids: Vec<String> },
     /// Child node not found
     ChildNotFound { alias: String },
     /// Tiles storage not initialized
@@ -43,9 +45,9 @@ impl std::fmt::Display for SemanticChildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             // A stable prefix callers can match on, the same on every binding:
-            // fetch the nodegroup's tiles, then ask again.
-            SemanticChildError::TilesNotLoaded { nodegroup_id } => {
-                write!(f, "TILES_NOT_LOADED:{}", nodegroup_id)
+            // fetch each listed nodegroup's tiles (comma-separated), then ask again.
+            SemanticChildError::TilesNotLoaded { nodegroup_ids } => {
+                write!(f, "TILES_NOT_LOADED:{}", nodegroup_ids.join(","))
             }
             SemanticChildError::ChildNotFound { alias } => {
                 write!(f, "Child node not found: {}", alias)
@@ -214,6 +216,13 @@ pub trait ModelAccess {
     /// Get permitted nodegroups as permission rules.
     /// Each rule may be a simple boolean or a conditional (per-tile) filter.
     fn get_permitted_nodegroups(&self) -> HashMap<String, PermissionRule>;
+
+    /// The graph's on-load Derive declarations. The default finds none; a model
+    /// holding the graph ([`GraphModelAccess`](crate::graph_model_access::GraphModelAccess))
+    /// parses them once.
+    fn on_load_functions(&self) -> Arc<Vec<crate::ComputeTilesConfig>> {
+        Arc::new(Vec::new())
+    }
 }
 
 // =============================================================================
@@ -689,6 +698,16 @@ pub struct ResourceInstanceWrapperCore {
     /// state (and `loaded_nodegroups`) and reports what is missing; the
     /// fetching is the host's (async, outside core).
     pub lazy: bool,
+
+    /// Ids of the tiles on-load Derive functions added
+    /// ([`derive_on_load`](Self::derive_on_load)): recomputed on every load,
+    /// never stored, so left out of [`stored_tiles`](Self::stored_tiles).
+    pub on_load_derived: HashSet<String>,
+
+    /// A compiled-in source of this resource's tiles, tried before the host's
+    /// loader on a lazy fetch ([`fetch_from_tile_source`](Self::fetch_from_tile_source)).
+    /// Set from Rust, the same way on every binding.
+    pub tile_source: Option<Arc<dyn crate::TileSource>>,
 }
 
 impl ResourceInstanceWrapperCore {
@@ -702,6 +721,8 @@ impl ResourceInstanceWrapperCore {
             loaded_nodegroups: SharedMut::new(HashMap::new()),
             pseudo_cache: SharedMut::new(HashMap::new()),
             lazy: false,
+            on_load_derived: HashSet::new(),
+            tile_source: None,
         }
     }
 
@@ -739,55 +760,198 @@ impl ResourceInstanceWrapperCore {
         }
     }
 
-    /// Run the graph's load-time **derive functions** (compute-tiles) over the
-    /// currently-loaded tiles, appending any JIT-generated tiles to the store.
+    /// Run the graph's **on-load Derive functions** over the loaded tiles, with
+    /// providers from `registry`, replacing the tiles an earlier call added.
+    /// The load and merge methods below call it with the global registry, so a
+    /// binding gets on-load tiles by loading; call it directly only after
+    /// changing tiles some other way.
     ///
-    /// `graph` is a [`GraphLookup`] (a base [`StaticGraph`] or a composed
-    /// [`LayeredGraph`], whose `functions_x_graphs()` unions across layers). This
-    /// is the plain-ORM analogue of the substrate's `hydrate_layers` derive hook:
-    /// providers are resolved from `registry` by the fxg's `provider` key. A tile
-    /// whose nodegroup is already present is left untouched (attested wins).
-    ///
-    /// A no-op when the graph declares no compute functions or the registry has no
-    /// matching provider — so it is safe to call unconditionally after load.
-    /// Membership is trivially true here: without a layer stack, a resource is a
-    /// member of its own base graph.
-    pub fn apply_computed_tiles(
+    /// - Each function's tiles get [`derived_tile_id`](crate::derived_tile_id)s,
+    ///   the same on every load, and are recorded in
+    ///   [`on_load_derived`](Self::on_load_derived), so
+    ///   [`stored_tiles`](Self::stored_tiles) leaves them out.
+    /// - A target nodegroup that holds other tiles is left alone (attested data
+    ///   wins). Functions chain, in declaration order.
+    /// - Lazy mode: a function runs once all its declared `sources` are loaded;
+    ///   one declaring none can't tell, so it runs on eager loads only. Until
+    ///   it runs, its target counts as unloaded (unless it holds other tiles),
+    ///   so [`nodegroups_to_fetch`](Self::nodegroups_to_fetch) has the host
+    ///   fetch the sources rather than read the target as empty.
+    /// - Cached values of a target whose tiles changed are dropped, so a read
+    ///   after a later fetch sees the new tiles.
+    /// - Membership is trivially true: without a layer stack, a resource is a
+    ///   member of its own graph. A provider missing from `registry`, or one
+    ///   that errors, yields no tiles.
+    /// - Providers get the tiles and must not reach back into this wrapper
+    ///   (the [`DeriveProvider`](crate::DeriveProvider) purity contract): every
+    ///   binding holds it for the whole load.
+    pub fn derive_on_load(
         &mut self,
-        graph: &dyn crate::graph::GraphLookup,
+        model: &crate::graph_model_access::GraphModelAccess,
         registry: &crate::graph::FunctionsRegistry,
     ) {
-        let mut tiles: Vec<StaticTile> = match self.tiles.take() {
-            Some(map) => map.into_values().collect(),
-            None => return,
-        };
-        let resource_id = tiles
-            .first()
-            .map(|t| t.resourceinstance_id.clone())
+        let functions = model.on_load_functions();
+        if functions.is_empty() && self.on_load_derived.is_empty() {
+            return;
+        }
+        let graph = model.get_graph();
+
+        // Take out the earlier on-load tiles: they're recomputed from what is
+        // now loaded.
+        let mut previous: HashMap<String, StaticTile> = HashMap::new();
+        for id in std::mem::take(&mut self.on_load_derived) {
+            if let Some(tile) = self.tiles.as_mut().and_then(|t| t.shift_remove(&id)) {
+                if let Some(ids) = self.nodegroup_index.get_mut(&tile.nodegroup_id) {
+                    ids.retain(|i| *i != id);
+                }
+                previous.insert(id, tile);
+            }
+        }
+        let mut tiles: Vec<StaticTile> = self
+            .tiles
+            .as_ref()
+            .map(|t| t.values().cloned().collect())
             .unwrap_or_default();
-        crate::graph::apply_derive_functions(&mut tiles, graph, &resource_id, &|_| true, registry);
-        // Rebuild the store + nodegroup index from the (possibly extended) set.
-        self.load_tiles(tiles);
+        let resource_id = self
+            .resource_instance
+            .as_ref()
+            .map(|r| r.resourceinstanceid.clone())
+            .or_else(|| tiles.first().map(|t| t.resourceinstance_id.clone()))
+            .unwrap_or_default();
+
+        let mut derived: Vec<StaticTile> = Vec::new();
+        for func in functions.iter() {
+            let attested = tiles.iter().any(|t| t.nodegroup_id == func.nodegroup);
+            if self.lazy && !func.sources.iter().all(|s| self.is_nodegroup_loaded(s)) {
+                if !func.sources.is_empty() && !attested {
+                    if let Ok(mut loaded) = self.loaded_nodegroups.write() {
+                        loaded.remove(&func.nodegroup);
+                    }
+                }
+                continue;
+            }
+            if self.lazy && func.sources.is_empty() {
+                continue;
+            }
+            if attested {
+                continue;
+            }
+            let Some(provider) = registry.derive(&func.provider) else {
+                continue;
+            };
+            let Ok(produced) = provider.derive(&resource_id, graph, &tiles, func) else {
+                continue;
+            };
+            let mut next: HashMap<Option<String>, usize> = HashMap::new();
+            for mut tile in produced
+                .into_iter()
+                .filter(|t| t.nodegroup_id == func.nodegroup)
+            {
+                let k = next.entry(tile.parenttile_id.clone()).or_insert(0);
+                tile.tileid = Some(crate::derived_tile_id(
+                    &resource_id,
+                    &func.nodegroup,
+                    tile.parenttile_id.as_deref(),
+                    &func.provider,
+                    *k,
+                ));
+                *k += 1;
+                tile.resourceinstance_id = resource_id.clone();
+                tiles.push(tile.clone());
+                derived.push(tile);
+            }
+            if self.lazy {
+                self.mark_nodegroup_loaded(&func.nodegroup);
+            }
+        }
+
+        // Store them, noting the targets whose tiles changed.
+        let mut changed: HashSet<String> = HashSet::new();
+        for tile in derived {
+            let id = tile.tileid.clone().unwrap_or_default();
+            let same = previous.remove(&id).is_some_and(|old| {
+                old.data == tile.data
+                    && old.parenttile_id == tile.parenttile_id
+                    && old.sortorder == tile.sortorder
+            });
+            if !same {
+                changed.insert(tile.nodegroup_id.clone());
+            }
+            self.nodegroup_index
+                .entry(tile.nodegroup_id.clone())
+                .or_default()
+                .push(id.clone());
+            self.tiles
+                .get_or_insert_with(TileStore::new)
+                .insert(id.clone(), tile);
+            self.on_load_derived.insert(id);
+        }
+        // Earlier tiles not produced again are gone.
+        changed.extend(previous.into_values().map(|t| t.nodegroup_id));
+
+        // Drop the cached values those targets' nodes held.
+        if !changed.is_empty() {
+            if let (Some(by_nodegroup), Ok(mut cache)) =
+                (model.get_nodes_by_nodegroup(), self.pseudo_cache.write())
+            {
+                for nodegroup_id in &changed {
+                    for node in by_nodegroup.get(nodegroup_id).into_iter().flatten() {
+                        if let Some(alias) = &node.alias {
+                            cache.remove(alias);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The tiles that are the resource's data: every loaded tile except those
+    /// on-load Derive functions added, which are recomputed on each load and
+    /// never stored. What exports write.
+    pub fn stored_tiles(&self) -> Vec<&StaticTile> {
+        self.tiles
+            .as_ref()
+            .map(|t| {
+                t.iter()
+                    .filter(|(id, _)| !self.on_load_derived.contains(*id))
+                    .map(|(_, tile)| tile)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// [`derive_on_load`](Self::derive_on_load) with the global functions
+    /// registry, if there is anything to do: what the load and merge methods
+    /// below run.
+    pub fn derive_on_load_with(&mut self, model: &crate::graph_model_access::GraphModelAccess) {
+        if self.on_load_derived.is_empty() && model.on_load_functions().is_empty() {
+            return;
+        }
+        self.derive_on_load(model, &crate::get_global_functions_registry());
     }
 
     /// [`load_tiles`](Self::load_tiles), keeping only the tiles `model`
-    /// permits: how a binding loads a resource, so permissions are applied in
-    /// one place.
+    /// permits, then [`derive_on_load`](Self::derive_on_load): how a binding
+    /// loads a resource, so permissions and on-load tiles are handled in one
+    /// place.
     pub fn load_permitted_tiles(
         &mut self,
         tiles: impl IntoIterator<Item = StaticTile>,
         model: &crate::graph_model_access::GraphModelAccess,
     ) {
+        self.on_load_derived.clear();
         self.load_tiles(
             tiles
                 .into_iter()
                 .filter(|tile| model.is_tile_permitted(tile))
                 .collect(),
         );
+        self.derive_on_load_with(model);
     }
 
     /// [`merge_tiles`](Self::merge_tiles), keeping only the tiles `model`
-    /// permits: how a binding adds tiles incrementally.
+    /// permits, then [`derive_on_load`](Self::derive_on_load): how a binding
+    /// adds tiles incrementally.
     pub fn merge_permitted_tiles(
         &mut self,
         tiles: impl IntoIterator<Item = StaticTile>,
@@ -799,6 +963,7 @@ impl ResourceInstanceWrapperCore {
                 .filter(|tile| model.is_tile_permitted(tile))
                 .collect(),
         );
+        self.derive_on_load_with(model);
     }
 
     /// Merge the tiles a host fetched for `nodegroup_id` (`None`: the whole
@@ -812,11 +977,62 @@ impl ResourceInstanceWrapperCore {
         nodegroup_id: Option<&str>,
         model: &crate::graph_model_access::GraphModelAccess,
     ) {
-        self.merge_permitted_tiles(tiles, model);
+        self.merge_tiles(
+            tiles
+                .into_iter()
+                .filter(|tile| model.is_tile_permitted(tile))
+                .collect(),
+        );
         match nodegroup_id {
             Some(nodegroup_id) => self.mark_nodegroup_loaded(nodegroup_id),
             None => self.mark_all_nodegroups_loaded(model),
         }
+        self.derive_on_load_with(model);
+    }
+
+    /// Record that the tiles just loaded or merged are the resource's complete
+    /// set: every nodegroup counts as loaded. In lazy mode that can let on-load
+    /// Derive functions run that were waiting for their sources, so they run
+    /// again here. What every binding calls after a comprehensive load.
+    pub fn mark_loaded_comprehensively(
+        &mut self,
+        model: &crate::graph_model_access::GraphModelAccess,
+    ) {
+        self.mark_all_nodegroups_loaded(model);
+        if self.lazy {
+            self.derive_on_load_with(model);
+        }
+    }
+
+    /// Fetch `nodegroup_ids` from the [`tile_source`](Self::tile_source), if
+    /// there is one, merging each as [`merge_fetched_tiles`](Self::merge_fetched_tiles)
+    /// does. Returns the nodegroups still to fetch, for the host's loader: all
+    /// of them without a source or a loaded resource id, and those the source
+    /// doesn't hold this resource for. A source failure is an error.
+    pub fn fetch_from_tile_source(
+        &mut self,
+        nodegroup_ids: &[String],
+        model: &crate::graph_model_access::GraphModelAccess,
+    ) -> Result<Vec<String>, crate::TileSourceError> {
+        let source = self.tile_source.clone();
+        let resource_id = self
+            .resource_instance
+            .as_ref()
+            .map(|r| r.resourceinstanceid.clone());
+        let (Some(source), Some(resource_id)) = (source, resource_id) else {
+            return Ok(nodegroup_ids.to_vec());
+        };
+        let mut remaining = Vec::new();
+        for nodegroup_id in nodegroup_ids {
+            match source.load_tiles(&resource_id, Some(nodegroup_id)) {
+                Ok(tiles) => self.merge_fetched_tiles(tiles, Some(nodegroup_id), model),
+                Err(crate::TileSourceError::ResourceNotFound { .. }) => {
+                    remaining.push(nodegroup_id.clone())
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(remaining)
     }
 
     /// Merge tiles into the wrapper, keeping whatever is already loaded.
@@ -937,12 +1153,43 @@ impl ResourceInstanceWrapperCore {
         let mut missing: Vec<String> = Vec::new();
         for child_id in edges.get(parent_node_id).into_iter().flatten() {
             if let Some(nodegroup_id) = nodes.get(child_id).and_then(|n| n.nodegroup_id.as_ref()) {
-                if !self.is_nodegroup_loaded(nodegroup_id) && !missing.contains(nodegroup_id) {
-                    missing.push(nodegroup_id.clone());
+                for needed in self.unloaded_for(nodegroup_id, model) {
+                    if !missing.contains(&needed) {
+                        missing.push(needed);
+                    }
                 }
             }
         }
         missing
+    }
+
+    /// The nodegroups to fetch before `nodegroup_id` can be read, in lazy mode:
+    /// itself, if not loaded, and, if it is the target of an on-load Derive
+    /// function still waiting for them, that function's unloaded sources (the
+    /// target counts as unloaded until its function has run). Empty when it can
+    /// be read, and always outside lazy mode.
+    pub fn nodegroups_to_fetch(&self, nodegroup_id: &str, model: &dyn ModelAccess) -> Vec<String> {
+        if !self.lazy {
+            return Vec::new();
+        }
+        self.unloaded_for(nodegroup_id, model)
+    }
+
+    /// [`nodegroups_to_fetch`](Self::nodegroups_to_fetch), whatever the mode.
+    fn unloaded_for(&self, nodegroup_id: &str, model: &dyn ModelAccess) -> Vec<String> {
+        if self.is_nodegroup_loaded(nodegroup_id) {
+            return Vec::new();
+        }
+        let mut needed = vec![nodegroup_id.to_string()];
+        let functions = model.on_load_functions();
+        for func in functions.iter().filter(|f| f.nodegroup == nodegroup_id) {
+            for source in &func.sources {
+                if !self.is_nodegroup_loaded(source) && !needed.contains(source) {
+                    needed.push(source.clone());
+                }
+            }
+        }
+        needed
     }
 
     /// Drop everything loaded for this resource: its tiles and their index,
@@ -1437,13 +1684,10 @@ impl ResourceInstanceWrapperCore {
 
         // Lazy mode: the host hasn't fetched this nodegroup's tiles yet, so
         // its absence would be a guess. Say so; the host fetches and asks again.
-        if self.lazy {
-            if let Some(nodegroup_id) = &child_node.nodegroup_id {
-                if !self.is_nodegroup_loaded(nodegroup_id) {
-                    return Err(SemanticChildError::TilesNotLoaded {
-                        nodegroup_id: nodegroup_id.clone(),
-                    });
-                }
+        if let Some(nodegroup_id) = &child_node.nodegroup_id {
+            let nodegroup_ids = self.nodegroups_to_fetch(nodegroup_id, model);
+            if !nodegroup_ids.is_empty() {
+                return Err(SemanticChildError::TilesNotLoaded { nodegroup_ids });
             }
         }
 

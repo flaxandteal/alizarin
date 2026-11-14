@@ -830,7 +830,7 @@ impl NapiResourceInstanceWrapper {
         let model = self.model()?;
         self.inner.load_permitted_tiles(tiles, &model);
         if assume_tiles_comprehensive_for_nodegroup.unwrap_or(true) {
-            self.inner.mark_all_nodegroups_loaded(&*model);
+            self.inner.mark_loaded_comprehensively(&model);
         }
         Ok(())
     }
@@ -852,7 +852,7 @@ impl NapiResourceInstanceWrapper {
         if let Some(tiles_vec) = resource.tiles {
             self.inner.load_permitted_tiles(tiles_vec, &model);
             if assume_tiles_comprehensive_for_nodegroup.unwrap_or(true) {
-                self.inner.mark_all_nodegroups_loaded(&*model);
+                self.inner.mark_loaded_comprehensively(&model);
             }
         }
         Ok(())
@@ -879,7 +879,7 @@ impl NapiResourceInstanceWrapper {
             self.inner
                 .load_permitted_tiles(tiles_vec.iter().cloned(), &model);
             if assume_tiles_comprehensive_for_nodegroup.unwrap_or(true) {
-                self.inner.mark_all_nodegroups_loaded(&*model);
+                self.inner.mark_loaded_comprehensively(&model);
             }
         }
         Ok(true)
@@ -898,7 +898,7 @@ impl NapiResourceInstanceWrapper {
         let model = self.model()?;
         self.inner.merge_permitted_tiles(tiles, &model);
         if assume_tiles_comprehensive_for_nodegroup.unwrap_or(true) {
-            self.inner.mark_all_nodegroups_loaded(&*model);
+            self.inner.mark_loaded_comprehensively(&model);
         }
         Ok(())
     }
@@ -925,12 +925,7 @@ impl NapiResourceInstanceWrapper {
     /// Returned as a string for fast boundary crossing — call JSON.parse() on the JS side.
     #[napi]
     pub fn export_tiles_json(&self) -> Result<String> {
-        let tiles: Vec<&StaticTile> = self
-            .inner
-            .tiles
-            .as_ref()
-            .map(|t| t.values().collect())
-            .unwrap_or_default();
+        let tiles: Vec<&StaticTile> = self.inner.stored_tiles();
         serde_json::to_string(&tiles).map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
@@ -1008,6 +1003,26 @@ impl NapiResourceInstanceWrapper {
         };
         self.inner
             .missing_nodegroups_for_children(&parent_node_id, &*model, self.inner.is_lazy())
+    }
+
+    /// The nodegroups to fetch before `nodegroupId` can be read (in lazy mode;
+    /// none otherwise): itself and, for an on-load Derive target, its unloaded
+    /// sources. Core's, as on WASM and Python.
+    #[napi]
+    pub fn nodegroups_to_fetch(&self, nodegroup_id: String) -> Result<Vec<String>> {
+        let model = self.model()?;
+        Ok(self.inner.nodegroups_to_fetch(&nodegroup_id, &*model))
+    }
+
+    /// Fetch `nodegroupIds` from the compiled-in tile source, if there is one,
+    /// returning those still for the host's loader. Core's, as on WASM and
+    /// Python.
+    #[napi]
+    pub fn fetch_from_tile_source(&mut self, nodegroup_ids: Vec<String>) -> Result<Vec<String>> {
+        let model = self.model()?;
+        self.inner
+            .fetch_from_tile_source(&nodegroup_ids, &model)
+            .map_err(|e| napi::Error::from_reason(format!("TileSource error: {e}")))
     }
 
     // =========================================================================
@@ -1308,6 +1323,18 @@ impl NapiResourceInstanceWrapper {
     /// This instance's graph's shared model, as it is now.
     fn model(&self) -> Result<Arc<GraphModelAccess>> {
         model_for(&self.inner.graph_id)
+    }
+
+    /// Set a compiled-in tile source, tried before the host's loader
+    /// (`fetchFromTileSource`). Rust-only, as on WASM and Python: for a binary
+    /// that compiles alizarin and a tile backend together.
+    pub fn set_tile_source(&mut self, source: Arc<dyn alizarin_core::TileSource>) {
+        self.inner.tile_source = Some(source);
+    }
+
+    /// Remove the compiled-in tile source.
+    pub fn clear_tile_source(&mut self) {
+        self.inner.tile_source = None;
     }
 
     fn ensure_populated(&self) -> Result<()> {

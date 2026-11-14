@@ -2,7 +2,6 @@ use crate::graph::{StaticResource, StaticResourceDescriptors, StaticResourceRegi
 use std::cell::RefCell;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::JsFuture;
 
 // Use the new unified tracing infrastructure
 use crate::tracing::{now_ms, record_timing};
@@ -109,10 +108,6 @@ pub struct WASMResourceInstanceWrapper {
     /// Signature: (nodegroup_id: Option<string>) => Promise<StaticTile[]>
     /// None = load all tiles, Some(id) = load tiles for specific nodegroup
     tile_loader: RefCell<Option<js_sys::Function>>,
-    /// Optional compiled-in tile source (checked before tile_loader JS callback).
-    /// Set via Rust-only `set_tile_source()` when both alizarin and a tile
-    /// backend (e.g. Rós Madair) are compiled into the same binary.
-    tile_source: RefCell<Option<Arc<dyn TileSource>>>,
 }
 
 // Re-export from core to avoid duplication
@@ -152,17 +147,16 @@ fn semantic_child_to_js(result: SemanticChildResult) -> JsValue {
 }
 
 impl WASMResourceInstanceWrapper {
-    /// Set a compiled-in tile source. Checked before the JS tile_loader callback.
-    ///
-    /// This is a Rust-only method (not exposed to JS). Use it when both alizarin
-    /// and a tile backend are compiled into the same WASM/NAPI binary.
+    /// Set a compiled-in tile source, tried before the host's loader
+    /// (`fetchFromTileSource`). Rust-only, as on NAPI and Python: for a binary
+    /// that compiles alizarin and a tile backend together.
     pub fn set_tile_source(&self, source: Arc<dyn TileSource>) {
-        *self.tile_source.borrow_mut() = Some(source);
+        self.core.borrow_mut().tile_source = Some(source);
     }
 
     /// Remove the compiled-in tile source.
     pub fn clear_tile_source(&self) {
-        *self.tile_source.borrow_mut() = None;
+        self.core.borrow_mut().tile_source = None;
     }
 
     /// Return the graph for this wrapper's model (Rust-only, not exposed to JS).
@@ -249,108 +243,23 @@ impl WASMResourceInstanceWrapper {
     ) -> Result<(), JsValue> {
         self.check_tiles(&tiles)?;
 
-        let lazy = self.core.borrow().is_lazy();
-
-        // Without its model there are no permissions to apply: fail closed.
-        let filtered: Vec<StaticTile> = self.with_model_core(move |model_core| {
-            Ok(tiles
-                .into_iter()
-                .filter(|tile| model_core.model_access.is_tile_permitted(tile))
-                .collect())
+        // Core's, as NAPI and Python load: permissions (failing closed without
+        // the model), on-load derives, then, when comprehensive, every
+        // nodegroup marked loaded.
+        let mut core = self.core.borrow_mut();
+        let graph_id = core.graph_id.clone();
+        with_registry_model::<_, _, JsValue>(&graph_id, |model| {
+            let model = &model.model_access;
+            if append {
+                core.merge_permitted_tiles(tiles, model);
+            } else {
+                core.load_permitted_tiles(tiles, model);
+            }
+            if assume_tiles_comprehensive_for_nodegroup {
+                core.mark_loaded_comprehensively(model);
+            }
+            Ok(())
         })?;
-
-        {
-            let mut core = self.core.borrow_mut();
-            if core.tiles.is_none() {
-                core.tiles = Some(alizarin_core::TileStore::new());
-            }
-
-            if !lazy && !append {
-                core.tiles
-                    .as_mut()
-                    .expect("tiles initialized above")
-                    .clear();
-                core.nodegroup_index.clear();
-            }
-
-            for mut tile in filtered {
-                let tile_id = tile.ensure_id();
-                let nodegroup_id = tile.nodegroup_id.clone();
-
-                core.nodegroup_index
-                    .entry(nodegroup_id.clone())
-                    .or_default()
-                    .push(tile_id.clone());
-
-                {
-                    let mut loaded = core.loaded_nodegroups.write().unwrap();
-                    loaded.insert(nodegroup_id, LoadState::Loaded);
-                }
-
-                core.tiles
-                    .as_mut()
-                    .expect("tiles initialized above")
-                    .insert(tile_id.clone(), tile);
-            }
-        }
-
-        // Load-time derive functions (compute-tiles): run any `functions_x_graphs`
-        // derive functions the graph declares, resolving providers from the global
-        // registry. Eager loads only — a lazy load may not yet hold the input
-        // geometry. No-op unless the graph declares compute functions AND a matching
-        // provider is registered (e.g. alizarin-geo's "utm"). See
-        // `ResourceInstanceWrapperCore::apply_computed_tiles`.
-        if !lazy {
-            let registry = alizarin_core::get_global_functions_registry();
-            if let Some(graph) = self.graph() {
-                let mut core = self.core.borrow_mut();
-                let mut all: Vec<StaticTile> = core
-                    .tiles
-                    .as_ref()
-                    .map(|m| m.values().cloned().collect())
-                    .unwrap_or_default();
-                let before = all.len();
-                let resource_id = all
-                    .first()
-                    .map(|t| t.resourceinstance_id.clone())
-                    .unwrap_or_default();
-                alizarin_core::apply_derive_functions(
-                    &mut all,
-                    &*graph,
-                    &resource_id,
-                    &|_| true,
-                    &registry,
-                );
-                // Insert only the newly-derived tiles (appended past `before`),
-                // with the same bookkeeping as regular tiles.
-                for mut tile in all.into_iter().skip(before) {
-                    let tile_id = tile.ensure_id();
-                    let nodegroup_id = tile.nodegroup_id.clone();
-                    core.nodegroup_index
-                        .entry(nodegroup_id.clone())
-                        .or_default()
-                        .push(tile_id.clone());
-                    core.loaded_nodegroups
-                        .write()
-                        .unwrap()
-                        .insert(nodegroup_id, LoadState::Loaded);
-                    core.tiles
-                        .as_mut()
-                        .expect("tiles initialized above")
-                        .insert(tile_id, tile);
-                }
-            }
-        }
-
-        // If assume_tiles_comprehensive_for_nodegroup is true, mark ALL model nodegroups as loaded
-        // This handles the case where some nodegroups have no tiles for this resource
-        if assume_tiles_comprehensive_for_nodegroup {
-            let core_ref = self.core.borrow();
-            with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
-                core_ref.mark_all_nodegroups_loaded(model);
-                Ok(())
-            })?;
-        }
 
         Ok(())
     }
@@ -362,7 +271,6 @@ impl WASMResourceInstanceWrapper {
         WASMResourceInstanceWrapper {
             core: RefCell::new(new_core(graph_id)),
             tile_loader: RefCell::new(None),
-            tile_source: RefCell::new(None),
         }
     }
 
@@ -374,7 +282,6 @@ impl WASMResourceInstanceWrapper {
                 c
             }),
             tile_loader: RefCell::new(None),
-            tile_source: RefCell::new(None),
         }
     }
 
@@ -558,11 +465,7 @@ impl WASMResourceInstanceWrapper {
     #[wasm_bindgen(js_name = exportTilesJson)]
     pub fn export_tiles_json(&self) -> Result<String, JsValue> {
         let core = self.core.borrow();
-        let tiles: Vec<&CoreStaticTile> = core
-            .tiles
-            .as_ref()
-            .map(|t| t.values().collect())
-            .unwrap_or_default();
+        let tiles: Vec<&CoreStaticTile> = core.stored_tiles();
         serde_json::to_string(&tiles).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
@@ -1256,225 +1159,31 @@ impl WASMResourceInstanceWrapper {
         Ok(PseudoList::from_rust(PseudoListInner::from_core(list)))
     }
 
-    /// Async version of getSemanticChildValue that handles lazy tile loading
-    ///
-    /// If tiles are not loaded for the child's nodegroup, this method will:
-    /// 1. Call the tile loader to fetch tiles for that nodegroup
-    /// 2. Load the tiles into Rust storage
-    /// 3. Mark the nodegroup as loaded
-    /// 4. Retry getting the semantic child value
-    ///
-    /// Returns: PseudoValue or PseudoList, or null if not found
-    ///
-    /// Phase 4h: Changed from &mut self to &self using RefCell interior mutability.
-    /// This prevents deadlocks when multiple async operations run concurrently on
-    /// the same wrapper instance. The previous &mut self caused WASM async operations
-    /// to block each other since only one mutable borrow can exist at a time.
-    #[wasm_bindgen(js_name = retrieveSemanticChildValue)]
-    pub async fn retrieve_semantic_child_value(
+    /// The nodegroups to fetch before `nodegroupId` can be read (in lazy mode;
+    /// none otherwise): itself and, for an on-load Derive target, its unloaded
+    /// sources. Core's, as on NAPI and Python.
+    #[wasm_bindgen(js_name = nodegroupsToFetch)]
+    pub fn nodegroups_to_fetch(&self, nodegroup_id: String) -> Result<Vec<String>, JsValue> {
+        let core_ref = self.core.borrow();
+        with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+            Ok(core_ref.nodegroups_to_fetch(&nodegroup_id, model))
+        })
+    }
+
+    /// Fetch `nodegroupIds` from the compiled-in tile source, if there is one,
+    /// returning those still for the host's loader. Core's, as on NAPI and
+    /// Python.
+    #[wasm_bindgen(js_name = fetchFromTileSource)]
+    pub fn fetch_from_tile_source(
         &self,
-        parent_tile_id: Option<String>,
-        parent_node_id: String,
-        parent_nodegroup_id: Option<String>,
-        child_alias: String,
-    ) -> Result<JsValue, JsValue> {
-        // First check pseudo_cache - after populate() values are stored there
-        {
-            let core_ref = self.core.borrow();
-            let cache = core_ref.pseudo_cache.read().unwrap();
-            if let Some(pseudo_list_core) = cache.get(&child_alias) {
-                let pseudo_list = PseudoListInner::from_core(pseudo_list_core.clone());
-                let nodegroup_id = self.with_model_core(|core| {
-                    Ok(core
-                        .get_nodes_by_alias_internal()
-                        .ok_or_else(|| {
-                            JsValue::from_str(&format!("Failed to get nodes {:?}", child_alias))
-                        })?
-                        .get(&child_alias)
-                        .ok_or_else(|| {
-                            JsValue::from_str(&format!("Failed to get children {:?}", child_alias))
-                        })?
-                        .nodegroup_id
-                        .clone())
-                })?;
-
-                // Sanity check: is_single should only have 0 or 1 values
-                let matching_entries =
-                    pseudo_list.matching_entries(parent_tile_id, nodegroup_id, parent_nodegroup_id);
-
-                // Check if this should be returned as single or list based on is_single flag
-                if pseudo_list.is_single {
-                    if matching_entries.len() > 1 {
-                        return Err(JsValue::from_str(&format!(
-                            "is_single=true but pseudo_list for '{}' has {} values (expected 0 or 1)",
-                            child_alias, matching_entries.len()
-                        )));
-                    }
-                    // Return single value (first element) if present
-                    if let Some(first_value) = matching_entries.first() {
-                        let wasm_value = PseudoValue::from_rust((*first_value).clone());
-                        return Ok(wasm_value.into());
-                    } else {
-                        return Ok(JsValue::NULL);
-                    }
-                } else {
-                    // Return as list: the entries are already in tile sortorder,
-                    // and keep their cached WASM state.
-                    let result_list = PseudoListInner {
-                        node_alias: child_alias.clone(),
-                        values: matching_entries.iter().map(|v| (*v).clone()).collect(),
-                        is_loaded: true,
-                        is_single: false,
-                    };
-                    let wasm_list = PseudoList::from_rust(result_list);
-                    return Ok(wasm_list.into());
-                }
-            }
-        }
-
-        // First attempt: in lazy mode, core names the nodegroup still to fetch.
-        let is_lazy = self.core.borrow().is_lazy();
-        let result = semantic_child_value(
-            &self.core.borrow(),
-            parent_tile_id.as_ref(),
-            &parent_node_id,
-            parent_nodegroup_id.as_ref(),
-            &child_alias,
-        );
-
-        // Check if we need to load tiles
-        match result {
-            Err(SemanticChildError::TilesNotLoaded { nodegroup_id }) => {
-                let block_start = now_ms();
-
-                // Fast path: try compiled-in TileSource before JS callback
-                let tile_source_result = {
-                    let source_ref = self.tile_source.borrow();
-                    if let Some(source) = source_ref.as_ref() {
-                        let resource_id = self
-                            .core
-                            .borrow()
-                            .resource_instance
-                            .as_ref()
-                            .map(|r| r.resourceinstanceid.clone());
-                        resource_id
-                            .as_ref()
-                            .map(|rid| source.load_tiles(rid, Some(&nodegroup_id)))
-                    } else {
-                        None
-                    }
-                };
-
-                let used_tile_source = if let Some(source_result) = tile_source_result {
-                    match source_result {
-                        Ok(core_tiles) => {
-                            record_timing("tile_source_load", now_ms() - block_start);
-                            self.append_fetched_tiles(core_tiles, Some(&nodegroup_id))?;
-                            true
-                        }
-                        Err(alizarin_core::TileSourceError::ResourceNotFound { .. }) => {
-                            // Resource not in this source — fall through to JS callback
-                            false
-                        }
-                        Err(e) => {
-                            // Hard error — propagate rather than masking
-                            return Err(JsValue::from_str(&format!("TileSource error: {}", e)));
-                        }
-                    }
-                } else {
-                    false
-                };
-
-                if !used_tile_source {
-                    // Fallback: JS tile_loader callback (existing async path)
-                    let t0 = now_ms();
-                    let loader =
-                        self.tile_loader.borrow().clone().ok_or_else(|| {
-                            JsValue::from_str("No tile loader set for lazy loading")
-                        })?;
-
-                    let nodegroup_js = if is_lazy {
-                        JsValue::from_str(&nodegroup_id)
-                    } else {
-                        JsValue::NULL
-                    };
-
-                    let promise = loader.call1(&JsValue::NULL, &nodegroup_js).map_err(|e| {
-                        JsValue::from_str(&format!("Failed to call tile loader: {:?}", e))
-                    })?;
-                    record_timing("loader_call", now_ms() - t0);
-
-                    let t1 = now_ms();
-                    let tiles_js = JsFuture::from(js_sys::Promise::from(promise))
-                        .await
-                        .map_err(|e| JsValue::from_str(&format!("Tile loader failed: {:?}", e)))?;
-                    record_timing("loader_await", now_ms() - t1);
-
-                    // Convert JS array to Vec<CoreStaticTile>
-                    let t2 = now_ms();
-                    let tiles_array = js_sys::Array::from(&tiles_js);
-                    let mut core_tiles: Vec<StaticTile> = Vec::new();
-
-                    for i in 0..tiles_array.length() {
-                        let tile_js = tiles_array.get(i);
-
-                        // Fast path disabled - FromWasmAbi::from_abi takes ownership of the pointer
-                        // which causes double-free when the JS object is also dropped.
-                        // TODO: Implement proper cloning or use RefFromWasmAbi for borrowing.
-
-                        if let Ok(tile) =
-                            serde_wasm_bindgen::from_value::<StaticTile>(tile_js.clone())
-                        {
-                            core_tiles.push(tile);
-                        } else {
-                            let to_json_fn =
-                                js_sys::Reflect::get(&tile_js, &JsValue::from_str("toJSON"))
-                                    .ok()
-                                    .filter(|v| v.is_function());
-
-                            if let Some(func) = to_json_fn {
-                                if let Ok(func) = func.dyn_into::<js_sys::Function>() {
-                                    if let Ok(json_value) = func.call0(&tile_js) {
-                                        if let Ok(tile) =
-                                            serde_wasm_bindgen::from_value::<StaticTile>(json_value)
-                                        {
-                                            core_tiles.push(tile);
-                                            continue;
-                                        }
-                                    }
-                                }
-                            }
-                            web_sys::console::log_1(&format!("[retrieve_semantic_children] Warning: could not convert tile {} to CoreStaticTile", i).into());
-                        }
-                    }
-                    record_timing("tile_conversion", now_ms() - t2);
-
-                    let t3 = now_ms();
-                    self.append_fetched_tiles(core_tiles, Some(&nodegroup_id))?;
-                    record_timing("append_tiles", now_ms() - t3);
-                }
-
-                // Retry, now the nodegroup is loaded
-                let t6 = now_ms();
-                let retry_result = semantic_child_value(
-                    &self.core.borrow(),
-                    parent_tile_id.as_ref(),
-                    &parent_node_id,
-                    parent_nodegroup_id.as_ref(),
-                    &child_alias,
-                );
-                record_timing("retry_get_semantic_child", now_ms() - t6);
-
-                record_timing("tiles_not_loaded_block_total", now_ms() - block_start);
-
-                retry_result
-                    .map(semantic_child_to_js)
-                    .map_err(|e| JsValue::from_str(&e.to_string()))
-            }
-            other => other
-                .map(semantic_child_to_js)
-                .map_err(|e| JsValue::from_str(&e.to_string())),
-        }
+        nodegroup_ids: Vec<String>,
+    ) -> Result<Vec<String>, JsValue> {
+        let mut core = self.core.borrow_mut();
+        let graph_id = core.graph_id.clone();
+        with_registry_model::<_, _, JsValue>(&graph_id, |model| {
+            core.fetch_from_tile_source(&nodegroup_ids, &model.model_access)
+                .map_err(|e| JsValue::from_str(&format!("TileSource error: {e}")))
+        })
     }
 
     /// Check which nodegroups need tiles loaded for all children of a parent node.

@@ -331,6 +331,18 @@ export declare class NapiResourceInstanceWrapper {
   setLazy(lazy: boolean): void
   isNodegroupLoaded(nodegroupId?: string | undefined | null): boolean
   getMissingNodegroupsForChildren(parentNodeId: string): Array<string>
+  /**
+   * The nodegroups to fetch before `nodegroupId` can be read (in lazy mode;
+   * none otherwise): itself and, for an on-load Derive target, its unloaded
+   * sources. Core's, as on WASM and Python.
+   */
+  nodegroupsToFetch(nodegroupId: string): Array<string>
+  /**
+   * Fetch `nodegroupIds` from the compiled-in tile source, if there is one,
+   * returning those still for the host's loader. Core's, as on WASM and
+   * Python.
+   */
+  fetchFromTileSource(nodegroupIds: Array<string>): Array<string>
   getResourceId(): string | null
   getName(): string
   /**
