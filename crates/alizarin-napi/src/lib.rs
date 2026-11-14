@@ -195,6 +195,16 @@ impl NapiStaticGraph {
         self.inner.graphid.clone()
     }
 
+    /// The graph's nodes, as on WASM.
+    #[napi(getter)]
+    pub fn nodes(&self) -> Vec<serde_json::Value> {
+        self.inner
+            .nodes_slice()
+            .iter()
+            .map(|node| serde_json::to_value(node).unwrap_or(serde_json::Value::Null))
+            .collect()
+    }
+
     #[napi(getter)]
     pub fn name(&self) -> serde_json::Value {
         serde_json::to_value(&self.inner.name).unwrap_or(serde_json::Value::Null)
@@ -637,6 +647,40 @@ fn csv_err(e: alizarin_core::CsvModelError) -> napi::Error {
         })
         .collect();
     napi::Error::from_reason(msgs.join("\n"))
+}
+
+/// Apply a mutation request (core's `MutationRequest` JSON) to `graph`, giving
+/// a new graph: core's, as WASM's `applyMutationsFromJson` and Python's
+/// `apply_mutations_from_json`.
+#[napi(js_name = "applyMutationsFromJson")]
+pub fn apply_mutations_from_json(
+    graph: &NapiStaticGraph,
+    mutations_json: String,
+) -> Result<NapiStaticGraph> {
+    alizarin_core::graph_mutator::apply_mutations_from_json(&graph.inner, &mutations_json)
+        .map(|inner| NapiStaticGraph { inner })
+        .map_err(napi::Error::from_reason)
+}
+
+/// Apply a mutation request that may start with `CreateGraph` (then `graph`
+/// is omitted): core's, as WASM's and Python's `applyMutationsCreate`.
+#[napi(js_name = "applyMutationsCreate")]
+pub fn apply_mutations_create(
+    mutations_json: String,
+    graph: Option<&NapiStaticGraph>,
+) -> Result<NapiStaticGraph> {
+    alizarin_core::graph_mutator::apply_mutations_create_from_json(
+        &mutations_json,
+        graph.map(|g| &g.inner),
+    )
+    .map(|inner| NapiStaticGraph { inner })
+    .map_err(napi::Error::from_reason)
+}
+
+/// The documented shape of each mutation type: core's, as on WASM and Python.
+#[napi(js_name = "getMutationSchema")]
+pub fn get_mutation_schema() -> serde_json::Value {
+    alizarin_core::graph_mutator::get_mutation_schema()
 }
 
 /// Build a StaticGraph from model CSVs (graph.csv, nodes.csv, optional collections.csv).

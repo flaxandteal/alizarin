@@ -22,6 +22,19 @@ export declare function registerExtensionHandler(handlerPtr: bigint): string
  */
 export declare function foldMayMatch(datatype: string, summary: any | undefined | null, predicate: any, config?: any | undefined | null): boolean
 /**
+ * Apply a mutation request (core's `MutationRequest` JSON) to `graph`, giving
+ * a new graph: core's, as WASM's `applyMutationsFromJson` and Python's
+ * `apply_mutations_from_json`.
+ */
+export declare function applyMutationsFromJson(graph: NapiStaticGraph, mutationsJson: string): NapiStaticGraph
+/**
+ * Apply a mutation request that may start with `CreateGraph` (then `graph`
+ * is omitted): core's, as WASM's and Python's `applyMutationsCreate`.
+ */
+export declare function applyMutationsCreate(mutationsJson: string, graph?: NapiStaticGraph | undefined | null): NapiStaticGraph
+/** The documented shape of each mutation type: core's, as on WASM and Python. */
+export declare function getMutationSchema(): any
+/**
  * Build a StaticGraph from model CSVs (graph.csv, nodes.csv, optional collections.csv).
  *
  * Returns the graph as a JSON string. The `rdm_namespace` is used for
@@ -572,6 +585,8 @@ export declare class NapiStaticGraph {
   get graphId(): string
   /** Alias matching the WASM `graphid` property for backend consistency. */
   get graphid(): string
+  /** The graph's nodes, as on WASM. */
+  get nodes(): Array<any>
   get name(): any
   /**
    * Graph-level config as a plain JS object, preserving arbitrary host keys —

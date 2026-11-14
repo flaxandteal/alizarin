@@ -465,9 +465,11 @@ use crate::graph::{
 /// This ensures deterministic UUID generation across all platforms
 const ALIZARIN_NAMESPACE: &str = "1a79f1c8-9505-4bea-a18e-28a053f725ca";
 
-/// Generate a deterministic UUID v5 from a group and key
-///
-/// This matches the JS `generateUuidv5` function for cross-platform compatibility.
+/// Generate a deterministic UUID v5 from a group and key: the key within a
+/// namespace derived from `"{type}/{id}"` (or `"{type}"`) under
+/// `ALIZARIN_NAMESPACE`. Every binding's graph mutation uses this; JS's
+/// `utils.generateUuidv5` is a different scheme (one v5 of
+/// `"{type}:{id}:{key}"`) and gives different ids.
 ///
 /// # Arguments
 /// * `group` - A tuple of (type, optional_id) that forms the namespace
