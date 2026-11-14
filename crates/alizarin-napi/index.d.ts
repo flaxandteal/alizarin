@@ -22,6 +22,13 @@ export declare function registerExtensionHandler(handlerPtr: bigint): string
  */
 export declare function foldMayMatch(datatype: string, summary: any | undefined | null, predicate: any, config?: any | undefined | null): boolean
 /**
+ * The language a plain string is taken as (coercion, edits), as on WASM and
+ * Python: core's, process-wide.
+ */
+export declare function getCurrentLanguage(): string
+/** Set the language a plain string is taken as, as on WASM and Python. */
+export declare function setCurrentLanguage(language: string): void
+/**
  * Apply a mutation request (core's `MutationRequest` JSON) to `graph`, giving
  * a new graph: core's, as WASM's `applyMutationsFromJson` and Python's
  * `apply_mutations_from_json`.

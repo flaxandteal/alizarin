@@ -84,6 +84,19 @@ fn exporter_err(e: alizarin_core::ExportError) -> napi::Error {
     napi::Error::from_reason(e.to_string())
 }
 
+/// The language a plain string is taken as (coercion, edits), as on WASM and
+/// Python: core's, process-wide.
+#[napi]
+pub fn get_current_language() -> String {
+    alizarin_core::type_coercion::get_current_language()
+}
+
+/// Set the language a plain string is taken as, as on WASM and Python.
+#[napi]
+pub fn set_current_language(language: String) {
+    alizarin_core::type_coercion::set_current_language(&language);
+}
+
 #[napi]
 #[derive(Default)]
 pub struct NapiPrebuildExporter {}

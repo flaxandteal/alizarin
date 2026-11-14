@@ -56,6 +56,7 @@ interface IInstanceWrapper<T extends IRIVM<T>> {
   model: IModelWrapper<T>;
   loadNodes(aliases: Array<string>): Promise<void>;
   fetchNodegroupTiles(nodegroupId: string | null): Promise<void>;
+  fetchNodegroups(nodegroupIds: string[]): Promise<void>;
   allEntries(): MapIterator<[string, Array<IPseudo> | false | null]>;
   addPseudo(childNode: StaticNode, tile: StaticTile | null, node: StaticNode): IPseudo;
   setOrmAttribute(key: string, value: any): Promise<void>;

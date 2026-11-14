@@ -24,6 +24,7 @@ let _wasmModule: any = null;
  */
 export function setWasmModule(mod: any) {
   _wasmModule = mod;
+  applyCoreLanguage();
 }
 
 function getWasmModule(): any {
@@ -69,6 +70,34 @@ export function setNapiModule(mod: any) {
   _backend = 'napi';
   // Expose for modules that can't import backend.ts without circular deps
   (globalThis as any).__alizarin_napi = mod;
+  applyCoreLanguage();
+}
+
+// ============================================================================
+// Current language
+// ============================================================================
+
+let _coreLanguage: string | undefined;
+
+/**
+ * Set core's current language (what a plain string is taken as when coerced or
+ * assigned) on every loaded backend, and on any loaded later: so it is one
+ * value, as Python's `set_current_language` is.
+ */
+export function setCoreLanguage(lang: string): void {
+  _coreLanguage = lang;
+  applyCoreLanguage();
+}
+
+function applyCoreLanguage(): void {
+  if (_coreLanguage === undefined) {
+    return;
+  }
+  for (const mod of [_wasmModule, getNapiModule()]) {
+    if (mod && typeof mod.setCurrentLanguage === 'function') {
+      mod.setCurrentLanguage(_coreLanguage);
+    }
+  }
 }
 
 // ============================================================================

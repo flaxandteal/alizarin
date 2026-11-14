@@ -1,4 +1,5 @@
 import { v5 as uuidv5 } from 'uuid';
+import { setCoreLanguage } from './backend';
 import { IStringKeyedObject, IViewModel, IInstanceWrapper } from "./interfaces";
 import type { StaticGraph, StaticNode, StaticResourceDescriptors, IStaticDescriptorConfig } from "./static-types";
 
@@ -16,7 +17,11 @@ function getCurrentLanguage(): string {
 
 function setCurrentLanguage(lang: string) {
   currentLanguage = lang;
+  setCoreLanguage(lang);
 }
+
+// Core starts from the same language TS does.
+setCoreLanguage(getCurrentLanguage());
 
 /**
  * Slugify a string safely for use in file paths
