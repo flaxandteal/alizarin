@@ -60,6 +60,7 @@ pub use graph::{
     apply_compute_tiles,
     apply_derive_functions,
     apply_stored_derive_functions,
+    apply_stored_derive_functions_to_resources,
     batch_merge_resources,
     build_backedges,
     canonical_tile_id,

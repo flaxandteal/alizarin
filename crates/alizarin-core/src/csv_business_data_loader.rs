@@ -1017,6 +1017,18 @@ pub fn build_resources_from_business_csv_with_context(
         });
     }
 
+    // Stored derive functions (e.g. UTM), as tree-to-tiles runs them.
+    if let Err(message) =
+        crate::graph::apply_stored_derive_functions_to_resources(&mut resources, graph, None)
+    {
+        diagnostics.push(CsvModelDiagnostic {
+            level: DiagnosticLevel::Error,
+            file: "business_data.csv".to_string(),
+            line: None,
+            message,
+        });
+    }
+
     // Check for any remaining errors
     if diagnostics
         .iter()

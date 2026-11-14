@@ -49,11 +49,11 @@ pub use functions::{
     aggregate_functions, apply_aggregate_additions, apply_aggregate_additions_in_registry,
     apply_aggregate_additions_to_resource, apply_aggregate_functions,
     apply_aggregate_functions_in_registry, apply_aggregate_functions_to_resource,
-    apply_derive_functions, apply_stored_derive_functions, default_functions_registry,
-    derived_tile_id, mark_aggregate_pending, mark_aggregate_pending_in_registry,
-    stored_derive_functions, AggregateConfig, AggregateContext, AggregateProvider, DeriveProvider,
-    DescriptorProvider, FunctionsRegistry, NodeValueWrite, PendingNode, RegisteredFunction,
-    StoredDeriveChanges,
+    apply_derive_functions, apply_stored_derive_functions,
+    apply_stored_derive_functions_to_resources, default_functions_registry, derived_tile_id,
+    mark_aggregate_pending, mark_aggregate_pending_in_registry, stored_derive_functions,
+    AggregateConfig, AggregateContext, AggregateProvider, DeriveProvider, DescriptorProvider,
+    FunctionsRegistry, NodeValueWrite, PendingNode, RegisteredFunction, StoredDeriveChanges,
 };
 pub use graph_lookup::GraphLookup;
 pub use layered_graph::LayeredGraph;

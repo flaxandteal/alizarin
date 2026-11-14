@@ -542,6 +542,37 @@ fn replace_derived(
     Ok(())
 }
 
+/// [`apply_stored_derive_functions`] over resources of `graph`, with the global
+/// functions registry: the hook shared by the write paths (tree-to-tiles, the
+/// CSV loader) and the bindings' backfill. `changed` as there; `None` treats
+/// every nodegroup as changed, as a newly built resource's are.
+///
+/// Returns each resource's changes, in order. A no-op if the graph declares no
+/// stored functions; a resource whose tiles aren't loaded (`tiles: None`) is
+/// skipped. All-or-nothing per resource, not across them: on `Err`, earlier
+/// resources keep their derived tiles.
+pub fn apply_stored_derive_functions_to_resources(
+    resources: &mut [super::StaticResource],
+    graph: &dyn GraphLookup,
+    changed: Option<&[String]>,
+) -> Result<Vec<StoredDeriveChanges>, String> {
+    if stored_derive_functions(graph)?.is_empty() {
+        return Ok(vec![StoredDeriveChanges::default(); resources.len()]);
+    }
+    let registry = crate::get_global_functions_registry();
+    resources
+        .iter_mut()
+        .map(|resource| {
+            let id = resource.resourceinstance.resourceinstanceid.clone();
+            match resource.tiles.as_mut() {
+                Some(tiles) => apply_stored_derive_functions(tiles, graph, &id, changed, &registry)
+                    .map_err(|e| format!("resource {id}: {e}")),
+                None => Ok(StoredDeriveChanges::default()),
+            }
+        })
+        .collect()
+}
+
 /// Whether two tiles hold the same content (StaticTile has no `PartialEq`).
 fn same_tile(a: &StaticTile, b: &StaticTile) -> bool {
     a.nodegroup_id == b.nodegroup_id

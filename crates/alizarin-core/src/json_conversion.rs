@@ -697,6 +697,19 @@ pub fn tree_to_tiles_with_namespace(
         resources.push(resource);
     }
 
+    // Stored derive functions (e.g. UTM) run on the permitted tiles, and their
+    // output is filtered by the same permissions, so a derived tile can't carry
+    // a value its source's permissions hid.
+    let changes =
+        crate::graph::apply_stored_derive_functions_to_resources(&mut resources, graph, None)?;
+    if let Some(model) = &model {
+        for (resource, changes) in resources.iter_mut().zip(&changes) {
+            if let (false, Some(tiles)) = (changes.upserted.is_empty(), resource.tiles.as_mut()) {
+                tiles.retain(|tile| model.is_tile_permitted(tile));
+            }
+        }
+    }
+
     let wrapper = BusinessDataWrapper {
         business_data: BusinessData { resources },
     };
