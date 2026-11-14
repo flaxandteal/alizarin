@@ -59,11 +59,13 @@ pub use graph::{
     apply_aggregate_functions_to_resource,
     apply_compute_tiles,
     apply_derive_functions,
+    apply_stored_derive_functions,
     batch_merge_resources,
     build_backedges,
     canonical_tile_id,
     compute_tiles_functions,
     default_functions_registry,
+    derived_tile_id,
     find_root_node,
     is_iterable_datatype,
     mark_aggregate_pending,
@@ -73,6 +75,7 @@ pub use graph::{
     parse_resources_from_json_str,
     // Graph pruning
     prune_graph,
+    stored_derive_functions,
     tile_namespace,
     // Aggregate functions
     AggregateConfig,
@@ -82,6 +85,7 @@ pub use graph::{
     // Computed tiles
     ComputeTilesConfig,
     ComputeTilesProvider,
+    DeriveMode,
     DeriveProvider,
     DescriptorProvider,
     FunctionsRegistry,
@@ -119,6 +123,7 @@ pub use graph::{
     StaticResourceSummary,
     StaticTile,
     StaticTranslatableString,
+    StoredDeriveChanges,
     UnknownReference,
     AGGREGATE_FUNCTION_ID,
     COMPUTE_TILES_FUNCTION_ID,

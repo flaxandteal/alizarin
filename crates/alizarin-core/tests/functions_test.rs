@@ -5,9 +5,9 @@
 use std::sync::Arc;
 
 use alizarin_core::{
-    apply_derive_functions, default_functions_registry, ComputeTilesConfig, DeriveProvider,
-    DescriptorProvider, FunctionsRegistry, GraphLookup, RegisteredFunction, StaticGraph,
-    StaticTile,
+    apply_derive_functions, apply_stored_derive_functions, default_functions_registry,
+    derived_tile_id, ComputeTilesConfig, DeriveProvider, DescriptorProvider, FunctionsRegistry,
+    GraphLookup, RegisteredFunction, StaticGraph, StaticTile,
 };
 
 // ---- helpers ---------------------------------------------------------------
@@ -289,6 +289,286 @@ fn derive_functions_chain_second_sees_first() {
         Some(2),
         "B saw A's output in the same pass"
     );
+}
+
+// ---- derive: stored mode ---------------------------------------------------
+
+/// A graph with nodegroups `latlng`, `utm` (cardinality `utm_card`) and `b`
+/// (cardinality 1), declaring `fxgs`.
+fn stored_graph(utm_card: &str, fxgs: Vec<serde_json::Value>) -> StaticGraph {
+    serde_json::from_value(serde_json::json!({
+        "graphid": "g",
+        "name": {"en": "G"},
+        "root": {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "g"},
+        "nodes": [{"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "g"}],
+        "edges": [],
+        "nodegroups": [
+            {"nodegroupid": "latlng", "cardinality": "1"},
+            {"nodegroupid": "utm", "cardinality": utm_card},
+            {"nodegroupid": "b", "cardinality": "1"},
+        ],
+        "cards": [], "cards_x_nodes_x_widgets": [],
+        "functions_x_graphs": fxgs,
+    }))
+    .expect("graph")
+}
+
+fn stored_fxg(provider: &str, nodegroup: &str, sources: &[&str]) -> serde_json::Value {
+    serde_json::json!({
+        "id": format!("fxg-{provider}"),
+        "function_id": COMPUTE_ID,
+        "graph_id": "g",
+        "config": { "provider": provider, "nodegroup": nodegroup, "mode": "stored", "sources": sources }
+    })
+}
+
+fn utm_registry() -> FunctionsRegistry {
+    let mut reg = FunctionsRegistry::new();
+    reg.register("utm", RegisteredFunction::Derive(Arc::new(LatLngToUtm)));
+    reg
+}
+
+fn latlng(lat: f64, lng: f64) -> StaticTile {
+    let mut t = tile(
+        "latlng",
+        "r1",
+        serde_json::json!({ "latlng": { "lat": lat, "lng": lng } }),
+    );
+    t.tileid = Some("ll-1".to_string());
+    t
+}
+
+fn with_id(mut t: StaticTile, id: &str) -> StaticTile {
+    t.tileid = Some(id.to_string());
+    t
+}
+
+#[test]
+fn stored_declarations_do_not_run_on_load() {
+    let graph = stored_graph("1", vec![stored_fxg("utm", "utm", &["latlng"])]);
+    let mut tiles = vec![latlng(10.0, 20.0)];
+    apply_derive_functions(&mut tiles, &graph, "r1", &|_| true, &utm_registry());
+    assert_eq!(
+        tiles.len(),
+        1,
+        "a stored declaration must not derive on load"
+    );
+}
+
+#[test]
+fn stored_writes_a_predictable_id_and_replaces_it_on_rerun() {
+    let graph = stored_graph("1", vec![stored_fxg("utm", "utm", &["latlng"])]);
+    let reg = utm_registry();
+    let expected = derived_tile_id("r1", "utm", None, "utm", 0);
+
+    let mut tiles = vec![latlng(10.0, 20.0)];
+    let changes =
+        apply_stored_derive_functions(&mut tiles, &graph, "r1", None, &reg).expect("derive");
+    assert_eq!(changes.upserted.len(), 1);
+    assert_eq!(
+        changes.upserted[0].tileid.as_deref(),
+        Some(expected.as_str())
+    );
+    assert!(changes.removed.is_empty());
+
+    // The source changes: the same tile is rewritten, not duplicated.
+    tiles[0] = latlng(30.0, 40.0);
+    let changed = ["latlng".to_string()];
+    let changes = apply_stored_derive_functions(&mut tiles, &graph, "r1", Some(&changed), &reg)
+        .expect("rerun");
+    assert_eq!(changes.upserted.len(), 1);
+    assert!(changes.removed.is_empty(), "replaced in place, same id");
+    let utm: Vec<_> = tiles.iter().filter(|t| t.nodegroup_id == "utm").collect();
+    assert_eq!(utm.len(), 1);
+    assert_eq!(utm[0].tileid.as_deref(), Some(expected.as_str()));
+    assert_eq!(utm[0].data["utm"]["easting"].as_f64(), Some(220_000.0));
+
+    // Nothing changed: rerunning reports no changes.
+    let changes = apply_stored_derive_functions(&mut tiles, &graph, "r1", None, &reg)
+        .expect("rerun unchanged");
+    assert!(changes.is_empty());
+}
+
+#[test]
+fn stored_runs_only_when_a_source_changed() {
+    let graph = stored_graph("1", vec![stored_fxg("utm", "utm", &["latlng"])]);
+    let mut tiles = vec![latlng(10.0, 20.0)];
+    let changed = ["b".to_string()];
+    let changes =
+        apply_stored_derive_functions(&mut tiles, &graph, "r1", Some(&changed), &utm_registry())
+            .expect("derive");
+    assert!(changes.is_empty());
+    assert_eq!(tiles.len(), 1);
+}
+
+#[test]
+fn stored_overwrites_another_tile_in_a_cardinality_1_target_by_default() {
+    let graph = stored_graph("1", vec![stored_fxg("utm", "utm", &["latlng"])]);
+    let mut tiles = vec![
+        latlng(10.0, 20.0),
+        with_id(
+            tile("utm", "r1", serde_json::json!({ "manual": true })),
+            "mine",
+        ),
+    ];
+    let changes = apply_stored_derive_functions(&mut tiles, &graph, "r1", None, &utm_registry())
+        .expect("derive");
+    assert_eq!(changes.removed, vec!["mine".to_string()]);
+    let utm: Vec<_> = tiles.iter().filter(|t| t.nodegroup_id == "utm").collect();
+    assert_eq!(utm.len(), 1);
+    assert!(utm[0].data.contains_key("utm"));
+}
+
+#[test]
+fn stored_gives_way_in_a_cardinality_1_target_without_overwrite() {
+    let mut fxg = stored_fxg("utm", "utm", &["latlng"]);
+    fxg["config"]["overwrite"] = serde_json::json!(false);
+    let graph = stored_graph("1", vec![fxg]);
+    let reg = utm_registry();
+
+    // Its own earlier tile, written before someone added theirs, is dropped.
+    let mut tiles = vec![latlng(10.0, 20.0)];
+    apply_stored_derive_functions(&mut tiles, &graph, "r1", None, &reg).expect("derive");
+    let own = derived_tile_id("r1", "utm", None, "utm", 0);
+    tiles.retain(|t| t.nodegroup_id != "utm");
+    tiles.push(with_id(
+        tile("utm", "r1", serde_json::json!({ "manual": true })),
+        "mine",
+    ));
+    tiles.push(with_id(
+        tile("utm", "r1", serde_json::json!({ "stale": true })),
+        &own,
+    ));
+
+    let changes =
+        apply_stored_derive_functions(&mut tiles, &graph, "r1", None, &reg).expect("derive");
+    assert_eq!(changes.removed, vec![own]);
+    assert!(changes.upserted.is_empty());
+    let utm: Vec<_> = tiles.iter().filter(|t| t.nodegroup_id == "utm").collect();
+    assert_eq!(utm.len(), 1);
+    assert_eq!(utm[0].tileid.as_deref(), Some("mine"));
+}
+
+#[test]
+fn stored_leaves_other_tiles_in_a_cardinality_n_target_and_drops_its_surplus() {
+    // Emits one utm tile per latlng tile.
+    struct PerLatLng;
+    impl DeriveProvider for PerLatLng {
+        fn derive(
+            &self,
+            r: &str,
+            _g: &dyn GraphLookup,
+            t: &[StaticTile],
+            c: &ComputeTilesConfig,
+        ) -> Result<Vec<StaticTile>, String> {
+            Ok(t.iter()
+                .filter(|x| x.nodegroup_id == "latlng")
+                .map(|x| tile(&c.nodegroup, r, serde_json::json!({ "from": x.tileid })))
+                .collect())
+        }
+    }
+    let mut reg = FunctionsRegistry::new();
+    reg.register("per", RegisteredFunction::Derive(Arc::new(PerLatLng)));
+    let graph = stored_graph("n", vec![stored_fxg("per", "utm", &["latlng"])]);
+
+    let mut tiles = vec![
+        with_id(latlng(1.0, 2.0), "ll-1"),
+        with_id(latlng(3.0, 4.0), "ll-2"),
+        with_id(
+            tile("utm", "r1", serde_json::json!({ "manual": true })),
+            "mine",
+        ),
+    ];
+    let changes =
+        apply_stored_derive_functions(&mut tiles, &graph, "r1", None, &reg).expect("derive");
+    assert_eq!(changes.upserted.len(), 2);
+    assert_eq!(tiles.iter().filter(|t| t.nodegroup_id == "utm").count(), 3);
+
+    // One source tile goes: the function's second tile goes with it, the
+    // manual tile stays.
+    tiles.retain(|t| t.tileid.as_deref() != Some("ll-2"));
+    let changes =
+        apply_stored_derive_functions(&mut tiles, &graph, "r1", None, &reg).expect("rerun");
+    assert_eq!(
+        changes.removed,
+        vec![derived_tile_id("r1", "utm", None, "per", 1)]
+    );
+    let utm: Vec<_> = tiles.iter().filter(|t| t.nodegroup_id == "utm").collect();
+    assert_eq!(utm.len(), 2);
+    assert!(utm.iter().any(|t| t.tileid.as_deref() == Some("mine")));
+}
+
+#[test]
+fn stored_functions_chain_on_their_targets() {
+    // utm from latlng, then `b` from utm: a latlng change reruns both.
+    struct FromUtm;
+    impl DeriveProvider for FromUtm {
+        fn derive(
+            &self,
+            r: &str,
+            _g: &dyn GraphLookup,
+            t: &[StaticTile],
+            c: &ComputeTilesConfig,
+        ) -> Result<Vec<StaticTile>, String> {
+            let utm = t
+                .iter()
+                .find(|x| x.nodegroup_id == "utm")
+                .ok_or("no utm yet")?;
+            Ok(vec![tile(
+                &c.nodegroup,
+                r,
+                serde_json::json!({ "e": utm.data["utm"]["easting"] }),
+            )])
+        }
+    }
+    let mut reg = utm_registry();
+    reg.register("from-utm", RegisteredFunction::Derive(Arc::new(FromUtm)));
+    let graph = stored_graph(
+        "1",
+        vec![
+            stored_fxg("utm", "utm", &["latlng"]),
+            stored_fxg("from-utm", "b", &["utm"]),
+        ],
+    );
+    let mut tiles = vec![latlng(10.0, 20.0)];
+    let changed = ["latlng".to_string()];
+    let changes = apply_stored_derive_functions(&mut tiles, &graph, "r1", Some(&changed), &reg)
+        .expect("derive");
+    assert_eq!(changes.upserted.len(), 2);
+    let b = tiles.iter().find(|t| t.nodegroup_id == "b").expect("b");
+    assert_eq!(b.data["e"].as_f64(), Some(200_000.0));
+}
+
+#[test]
+fn stored_errors_leave_tiles_untouched() {
+    let reg = utm_registry();
+    let original = vec![latlng(10.0, 20.0)];
+
+    // No sources declared.
+    let graph = stored_graph("1", vec![stored_fxg("utm", "utm", &[])]);
+    let mut tiles = original.clone();
+    assert!(apply_stored_derive_functions(&mut tiles, &graph, "r1", None, &reg).is_err());
+
+    // Provider not registered: an error, not a silent skip, for stored mode.
+    let graph = stored_graph("1", vec![stored_fxg("nope", "utm", &["latlng"])]);
+    assert!(apply_stored_derive_functions(&mut tiles, &graph, "r1", None, &reg).is_err());
+
+    // A later function fails: the earlier one's tile is not kept.
+    let graph = stored_graph(
+        "1",
+        vec![
+            stored_fxg("utm", "utm", &["latlng"]),
+            stored_fxg("nope", "b", &["utm"]),
+        ],
+    );
+    assert!(apply_stored_derive_functions(&mut tiles, &graph, "r1", None, &reg).is_err());
+
+    // A target nodegroup the graph doesn't have.
+    let graph = stored_graph("1", vec![stored_fxg("utm", "missing", &["latlng"])]);
+    assert!(apply_stored_derive_functions(&mut tiles, &graph, "r1", None, &reg).is_err());
+
+    assert_eq!(tiles.len(), original.len());
+    assert!(tiles.iter().all(|t| t.nodegroup_id == "latlng"));
 }
 
 // ---- descriptor kind -------------------------------------------------------

@@ -7,6 +7,25 @@ use super::graph_lookup::GraphLookup;
 use super::static_graph::StaticGraph;
 use super::tile::StaticTile;
 
+/// When a Derive declaration runs.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeriveMode {
+    /// Computed when the resource is loaded, and never stored: readers need the
+    /// provider (e.g. Gramadán's forms in a computed layer).
+    #[default]
+    OnLoad,
+    /// Computed when one of its `sources` nodegroups changes, and stored with
+    /// the resource's data, so readers need no provider and a static index can
+    /// search it (e.g. UTM). Run by
+    /// [`apply_stored_derive_functions`](super::apply_stored_derive_functions).
+    Stored,
+}
+
+fn default_overwrite() -> bool {
+    true
+}
+
 /// Configuration for a compute-tiles function, deserialized from the
 /// `config` field of a `functions_x_graphs` entry whose `function_id`
 /// is [`COMPUTE_TILES_FUNCTION_ID`].
@@ -17,9 +36,23 @@ pub struct ComputeTilesConfig {
     pub provider: String,
     /// Which nodegroup this function fills.
     pub nodegroup: String,
-    /// Layer ID for the fast first test: is the resource present in this
-    /// layer? Usually the computed layer's own ID ("am I a member here?").
+    /// On-load only: layer ID for the fast first test: is the resource present
+    /// in this layer? Usually the computed layer's own ID ("am I a member
+    /// here?"). Stored declarations ignore it.
+    #[serde(default)]
     pub member_of: String,
+    /// When it runs; must be given as `"stored"` for stored mode.
+    #[serde(default)]
+    pub mode: DeriveMode,
+    /// Stored only, and required there: the nodegroups whose changes rerun it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<String>,
+    /// Stored only: in a cardinality-1 target, whether its tile replaces a tile
+    /// someone else put there (`true`, the default) or gives way to it. Its own
+    /// earlier tiles are always replaced, and in a cardinality-n target other
+    /// tiles are always left alone.
+    #[serde(default = "default_overwrite")]
+    pub overwrite: bool,
     #[serde(default)]
     pub cache: bool,
 }
@@ -64,7 +97,7 @@ pub fn apply_compute_tiles(
 ) {
     let functions = compute_tiles_functions(graph);
     for func in &functions {
-        if !is_member(&func.member_of) {
+        if func.mode != DeriveMode::OnLoad || !is_member(&func.member_of) {
             continue;
         }
         if tiles.iter().any(|t| t.nodegroup_id == func.nodegroup) {

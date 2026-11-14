@@ -18,15 +18,16 @@
 //! side-effecting Arches hooks (`post_save`, external I/O) are deliberately NOT
 //! this mechanism.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use super::computed_tiles::{compute_tiles_functions, ComputeTilesConfig};
-use super::descriptors::AGGREGATE_FUNCTION_ID;
+use super::computed_tiles::{compute_tiles_functions, ComputeTilesConfig, DeriveMode};
+use super::descriptors::{AGGREGATE_FUNCTION_ID, COMPUTE_TILES_FUNCTION_ID};
 use super::graph_lookup::GraphLookup;
-use super::tile::StaticTile;
+use super::tile::{tile_namespace, StaticTile};
 use crate::extension_type_registry::ExtensionTypeRegistry;
 use crate::slice_source::{GraphSource, SliceMember, SliceSource};
 
@@ -259,8 +260,10 @@ pub fn default_functions_registry() -> FunctionsRegistry {
     registry
 }
 
-/// Run the graph's **Derive** functions against `tiles`, resolving each provider
-/// from `registry` by its `provider` UUID and merging the results in.
+/// Run the graph's on-load **Derive** functions against `tiles`, resolving each
+/// provider from `registry` by its `provider` UUID and merging the results in.
+/// Stored declarations are skipped: their tiles are already in `tiles`
+/// ([`apply_stored_derive_functions`]).
 ///
 /// - `is_member(layer_id)` is the fast first test (resource present in the
 ///   configured layer); each substrate provides an O(1) implementation.
@@ -279,7 +282,7 @@ pub fn apply_derive_functions(
     registry: &FunctionsRegistry,
 ) {
     for func in compute_tiles_functions(graph) {
-        if !is_member(&func.member_of) {
+        if func.mode != DeriveMode::OnLoad || !is_member(&func.member_of) {
             continue;
         }
         if tiles.iter().any(|t| t.nodegroup_id == func.nodegroup) {
@@ -295,6 +298,256 @@ pub fn apply_derive_functions(
             tiles.extend(computed);
         }
     }
+}
+
+/// The stored-mode Derive declarations a graph makes, in declaration order.
+/// Strict, unlike the on-load reader: a stored function runs on writes, and
+/// silently skipping a malformed one would leave its stored tiles stale. A
+/// declaration is stored-mode if its config says `"mode": "stored"`; each
+/// must name its `sources`.
+pub fn stored_derive_functions(graph: &dyn GraphLookup) -> Result<Vec<ComputeTilesConfig>, String> {
+    let mut configs = Vec::new();
+    for f in graph
+        .functions_x_graphs()
+        .into_iter()
+        .filter(|f| f.function_id == COMPUTE_TILES_FUNCTION_ID)
+    {
+        if f.config.get("mode").and_then(|m| m.as_str()) != Some("stored") {
+            continue;
+        }
+        let config: ComputeTilesConfig = serde_json::from_value(f.config.clone())
+            .map_err(|e| format!("derive function {}: invalid config: {e}", f.id))?;
+        if config.sources.is_empty() {
+            return Err(format!(
+                "derive function {}: stored mode needs `sources`, the nodegroups whose \
+                 changes rerun it",
+                f.id
+            ));
+        }
+        configs.push(config);
+    }
+    Ok(configs)
+}
+
+/// The id of the `k`th tile a stored Derive function (`provider`) writes into
+/// `nodegroup_id`, under `parent_tileid` or, without one, at `resource_id`'s
+/// root: `uuid5(TILE_NS, "{parent|resource}/{nodegroup}/derive/{provider}/{k}")`.
+///
+/// Predictable, so a rerun finds and replaces the function's own earlier tiles,
+/// and a layer can address them. Deliberately not
+/// [`canonical_tile_id`](super::canonical_tile_id), even for cardinality 1: tiles written by anyone
+/// else carry that id, and the function must tell its own tiles from theirs.
+pub fn derived_tile_id(
+    resource_id: &str,
+    nodegroup_id: &str,
+    parent_tileid: Option<&str>,
+    provider: &str,
+    k: usize,
+) -> String {
+    let scope = parent_tileid.unwrap_or(resource_id);
+    let name = format!("{scope}/{nodegroup_id}/derive/{provider}/{k}");
+    Uuid::new_v5(&tile_namespace(), name.as_bytes()).to_string()
+}
+
+/// What [`apply_stored_derive_functions`] changed in a resource's tiles.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct StoredDeriveChanges {
+    /// Derived tiles that are new or changed, as they now stand.
+    pub upserted: Vec<StaticTile>,
+    /// Ids of tiles removed: a function's earlier tiles it no longer produces,
+    /// and tiles it overwrote.
+    pub removed: Vec<String>,
+}
+
+impl StoredDeriveChanges {
+    pub fn is_empty(&self) -> bool {
+        self.upserted.is_empty() && self.removed.is_empty()
+    }
+}
+
+/// Run the graph's stored-mode **Derive** functions whose `sources` include a
+/// nodegroup in `changed` (`None`: all of them, e.g. for a backfill), and
+/// store their tiles in `tiles`.
+///
+/// Called by write paths after a resource's tiles change. Each function:
+/// - Gets the current tiles, including earlier functions' output in this pass,
+///   so derivations chain: a function's target counts as changed for the
+///   functions after it.
+/// - Has its output given [`derived_tile_id`]s, replacing every tile it wrote
+///   before (so a function that now produces fewer tiles leaves none stale).
+/// - In a cardinality-1 target, at most one tile per parent: another tile
+///   already there is replaced if `overwrite` (the default), or else kept, and
+///   the function's tile dropped. A cardinality-n target's other tiles are left
+///   alone.
+///
+/// All-or-nothing: on `Err` (a malformed declaration, an unregistered provider,
+/// a provider error, an unknown target nodegroup, a tile outside it, or two
+/// tiles for one cardinality-1 slot) `tiles` is untouched.
+///
+/// Its own earlier tiles are recognised by id; tiles in the target are checked
+/// for slots below the number of tiles there, so a derived tile someone removed
+/// by hand may leave a higher-numbered sibling behind.
+pub fn apply_stored_derive_functions(
+    tiles: &mut Vec<StaticTile>,
+    graph: &dyn GraphLookup,
+    resource_id: &str,
+    changed: Option<&[String]>,
+    registry: &FunctionsRegistry,
+) -> Result<StoredDeriveChanges, String> {
+    let configs = stored_derive_functions(graph)?;
+    let mut changed: Option<HashSet<String>> = changed.map(|c| c.iter().cloned().collect());
+    let mut working = tiles.clone();
+    let mut written: HashSet<String> = HashSet::new();
+    let mut ran = false;
+    for config in &configs {
+        if let Some(changed) = &changed {
+            if !config.sources.iter().any(|s| changed.contains(s)) {
+                continue;
+            }
+        }
+        let provider = registry.derive(&config.provider).ok_or_else(|| {
+            format!(
+                "stored derive function into {}: no derive provider registered as {}",
+                config.nodegroup, config.provider
+            )
+        })?;
+        let produced = provider
+            .derive(resource_id, graph, &working, config)
+            .map_err(|e| {
+                format!(
+                    "stored derive function {} into {}: {e}",
+                    config.provider, config.nodegroup
+                )
+            })?;
+        replace_derived(
+            &mut working,
+            graph,
+            resource_id,
+            config,
+            produced,
+            &mut written,
+        )?;
+        if let Some(changed) = changed.as_mut() {
+            changed.insert(config.nodegroup.clone());
+        }
+        ran = true;
+    }
+    if !ran {
+        return Ok(StoredDeriveChanges::default());
+    }
+
+    let before: HashMap<&str, &StaticTile> = tiles
+        .iter()
+        .filter_map(|t| t.tileid.as_deref().map(|id| (id, t)))
+        .collect();
+    let after: HashSet<&str> = working.iter().filter_map(|t| t.tileid.as_deref()).collect();
+    let changes = StoredDeriveChanges {
+        upserted: working
+            .iter()
+            .filter(|t| {
+                t.tileid.as_deref().is_some_and(|id| {
+                    written.contains(id) && before.get(id).is_none_or(|old| !same_tile(old, t))
+                })
+            })
+            .cloned()
+            .collect(),
+        removed: tiles
+            .iter()
+            .filter_map(|t| t.tileid.as_deref())
+            .filter(|id| !after.contains(id))
+            .map(str::to_string)
+            .collect(),
+    };
+    *tiles = working;
+    Ok(changes)
+}
+
+/// Replace `config`'s earlier tiles in `working` with `produced`, as
+/// [`apply_stored_derive_functions`] describes, recording the ids written.
+fn replace_derived(
+    working: &mut Vec<StaticTile>,
+    graph: &dyn GraphLookup,
+    resource_id: &str,
+    config: &ComputeTilesConfig,
+    produced: Vec<StaticTile>,
+    written: &mut HashSet<String>,
+) -> Result<(), String> {
+    let ng = config.nodegroup.as_str();
+    let nodegroup = graph.get_nodegroup_by_id(ng).ok_or_else(|| {
+        format!(
+            "stored derive function {}: no nodegroup {ng} on the graph",
+            config.provider
+        )
+    })?;
+    let single = nodegroup.cardinality.as_deref().is_none_or(|c| c != "n");
+    if let Some(stray) = produced.iter().find(|t| t.nodegroup_id != ng) {
+        return Err(format!(
+            "stored derive function {} into {ng} produced a tile in nodegroup {}",
+            config.provider, stray.nodegroup_id
+        ));
+    }
+
+    // Remove the function's own earlier tiles.
+    let slots = working.iter().filter(|t| t.nodegroup_id == ng).count();
+    working.retain(|t| {
+        let own = t.nodegroup_id == ng
+            && t.tileid.as_deref().is_some_and(|id| {
+                (0..slots).any(|k| {
+                    derived_tile_id(
+                        resource_id,
+                        ng,
+                        t.parenttile_id.as_deref(),
+                        &config.provider,
+                        k,
+                    ) == id
+                })
+            });
+        !own
+    });
+
+    // Number the new tiles per parent, and place them.
+    let mut next: HashMap<Option<String>, usize> = HashMap::new();
+    for mut tile in produced {
+        let k = next.entry(tile.parenttile_id.clone()).or_insert(0);
+        if single && *k > 0 {
+            return Err(format!(
+                "stored derive function {} produced two tiles for cardinality-1 nodegroup \
+                 {ng} under one parent",
+                config.provider
+            ));
+        }
+        let id = derived_tile_id(
+            resource_id,
+            ng,
+            tile.parenttile_id.as_deref(),
+            &config.provider,
+            *k,
+        );
+        *k += 1;
+        if single {
+            let same_slot =
+                |w: &StaticTile| w.nodegroup_id == ng && w.parenttile_id == tile.parenttile_id;
+            if working.iter().any(same_slot) {
+                if !config.overwrite {
+                    continue;
+                }
+                working.retain(|w| !same_slot(w));
+            }
+        }
+        tile.tileid = Some(id.clone());
+        tile.resourceinstance_id = resource_id.to_string();
+        written.insert(id);
+        working.push(tile);
+    }
+    Ok(())
+}
+
+/// Whether two tiles hold the same content (StaticTile has no `PartialEq`).
+fn same_tile(a: &StaticTile, b: &StaticTile) -> bool {
+    a.nodegroup_id == b.nodegroup_id
+        && a.parenttile_id == b.parenttile_id
+        && a.sortorder == b.sortorder
+        && a.data == b.data
 }
 
 /// The Aggregate functions a graph declares, in declaration order. Unlike the
