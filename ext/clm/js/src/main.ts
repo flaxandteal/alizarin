@@ -300,10 +300,11 @@ class ReferenceValueViewModel extends String implements IViewModel {
    */
   async getAncestors(): Promise<ReferenceValueViewModel[]> {
     const result: ReferenceValueViewModel[] = [];
-    let current: ReferenceValueViewModel | null = this;
+    let current: ReferenceValueViewModel | null = await this.parent;
 
-    while ((current = await current.parent) !== null) {
+    while (current !== null) {
       result.push(current);
+      current = await current.parent;
     }
 
     return result;
@@ -404,9 +405,12 @@ class ReferenceValueViewModel extends String implements IViewModel {
     }
     // If pending lookup, return the marker so it can be resolved later
     if (this._pendingLookup) {
+      // The marker keys are the protocol core's marker resolution reads.
       if (this._pendingLookup.type === 'uuid') {
+        // eslint-disable-next-line @typescript-eslint/naming-convention -- core's marker key
         return { __needs_rdm_lookup: true, uuid: this._pendingLookup.uuid };
       } else {
+        // eslint-disable-next-line @typescript-eslint/naming-convention -- core's marker key
         return { __needs_rdm_label_lookup: true, label: this._pendingLookup.label, controlledList: this._pendingLookup.collectionId };
       }
     }

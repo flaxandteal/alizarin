@@ -20,7 +20,7 @@
     "dev": "vite",
     "build": "vite build && tsc -p tsconfig.build.json",
     "preview": "vite preview",
-    "test": "cd ../../.. && npm test -- ext/filelist/js/tests/filelist.test.ts"
+    "test": "cd ../../.. && NODE_OPTIONS='--experimental-wasm-modules' npx vitest --run ext/filelist/js/tests/filelist.test.ts"
   },
   "peerDependencies": {
     "alizarin": "2.0.0-alpha.145",
