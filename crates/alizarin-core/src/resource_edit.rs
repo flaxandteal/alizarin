@@ -91,6 +91,9 @@ impl ResourceEdit {
     /// - A translatable `string` given as a plain string sets only the current
     ///   language, keeping the others; an object sets them all; `null` clears
     ///   the node.
+    /// - An outer node (a value with children) given its tree form,
+    ///   `{"_": value, child: …}`, takes `_` as its own value and sets the
+    ///   children too, as tree-to-tiles reads it (see `set_outer_tree`).
     pub fn set_value(
         &mut self,
         tile_id: Option<&str>,
@@ -101,24 +104,12 @@ impl ResourceEdit {
         registry: Option<&ExtensionTypeRegistry>,
     ) -> Result<String, String> {
         let node = writable_node(alias, model)?;
+        if let Some(tree) = outer_tree(&node, value, model) {
+            return self.set_outer_tree(tile_id, parent_tile_id, &node, tree, model, registry);
+        }
         let nodegroup_id = node.nodegroup_id.clone().unwrap_or_default();
         self.check_loaded(&nodegroup_id)?;
-        let id = match tile_id {
-            Some(id) => {
-                let tile = self
-                    .tiles
-                    .get(id)
-                    .ok_or_else(|| format!("no tile {id} to set {alias} in"))?;
-                if tile.nodegroup_id != nodegroup_id {
-                    return Err(format!(
-                        "{alias} is in nodegroup {nodegroup_id}, not tile {id}'s ({})",
-                        tile.nodegroup_id
-                    ));
-                }
-                id.to_string()
-            }
-            None => self.single_slot(&nodegroup_id, parent_tile_id, alias, model)?,
-        };
+        let id = self.value_slot(tile_id, parent_tile_id, alias, &nodegroup_id, model)?;
 
         let mut tile = self.tiles.get(&id).cloned().expect("slot found or made");
         let current = tile.data.get(&node.nodeid).cloned();
@@ -132,6 +123,87 @@ impl ResourceEdit {
         self.tiles.insert(id.clone(), tile);
         self.touch(&nodegroup_id);
         Ok(id)
+    }
+
+    /// The tile node `alias` of `nodegroup_id` takes its value in: `tile_id`'s
+    /// (which must be of that nodegroup), else its cardinality-1 slot under
+    /// `parent_tile_id`, made if missing.
+    fn value_slot(
+        &mut self,
+        tile_id: Option<&str>,
+        parent_tile_id: Option<&str>,
+        alias: &str,
+        nodegroup_id: &str,
+        model: &GraphModelAccess,
+    ) -> Result<String, String> {
+        match tile_id {
+            Some(id) => {
+                let tile = self
+                    .tiles
+                    .get(id)
+                    .ok_or_else(|| format!("no tile {id} to set {alias} in"))?;
+                if tile.nodegroup_id != nodegroup_id {
+                    return Err(format!(
+                        "{alias} is in nodegroup {nodegroup_id}, not tile {id}'s ({})",
+                        tile.nodegroup_id
+                    ));
+                }
+                Ok(id.to_string())
+            }
+            None => self.single_slot(nodegroup_id, parent_tile_id, alias, model),
+        }
+    }
+
+    /// Set outer node `node` from its tree form, as tree-to-tiles reads one:
+    /// `tree["_"]` is its own value, and every other key one of its children,
+    /// set in its tile (a child in its nodegroup) or in the cardinality-1
+    /// tile of the child's own nodegroup under it. A semantic or multi-valued
+    /// child is refused: add or set it on its own. All or nothing.
+    fn set_outer_tree(
+        &mut self,
+        tile_id: Option<&str>,
+        parent_tile_id: Option<&str>,
+        node: &StaticNode,
+        tree: &Map<String, Value>,
+        model: &GraphModelAccess,
+        registry: Option<&ExtensionTypeRegistry>,
+    ) -> Result<String, String> {
+        let saved = (self.tiles.clone(), self.touched.clone());
+        let result = (|| {
+            let alias = node.alias.as_deref().unwrap_or(&node.nodeid);
+            let nodegroup_id = node.nodegroup_id.clone().unwrap_or_default();
+            self.check_loaded(&nodegroup_id)?;
+            let id = self.value_slot(tile_id, parent_tile_id, alias, &nodegroup_id, model)?;
+            if let Some(own) = tree.get("_") {
+                self.set_value(Some(&id), None, alias, own, model, registry)?;
+            }
+            let children = model
+                .get_edges_internal()
+                .and_then(|edges| edges.get(&node.nodeid))
+                .cloned()
+                .unwrap_or_default();
+            for (key, value) in tree.iter().filter(|(key, _)| key.as_str() != "_") {
+                let child = model
+                    .get_node_by_alias(key)
+                    .filter(|child| children.contains(&child.nodeid))
+                    .ok_or_else(|| format!("{key} isn't a child of {alias}"))?;
+                let child_nodegroup = child.nodegroup_id.as_deref().unwrap_or_default();
+                if child_nodegroup == nodegroup_id {
+                    self.set_value(Some(&id), None, key, value, model, registry)?;
+                } else if child.datatype != "semantic" && is_single(child_nodegroup, model) {
+                    self.set_value(None, Some(&id), key, value, model, registry)?;
+                } else {
+                    return Err(format!(
+                        "{key} is under {alias} in its own nodegroup: add or set it on its own"
+                    ));
+                }
+            }
+            Ok(id)
+        })();
+        if result.is_err() {
+            (self.tiles, self.touched) = saved;
+        }
+        result
     }
 
     /// Add a tile to the nodegroup of node `alias` (its grouping node or any
@@ -546,6 +618,22 @@ fn check_not_derived(
         )),
         None => Ok(()),
     }
+}
+
+/// `value` as `node`'s tree form, if it is one: an object with an `_` key,
+/// given to an outer node (one that holds a value and has children). Without
+/// `_`, an object is the node's own value (a string's languages, say).
+fn outer_tree<'v>(
+    node: &StaticNode,
+    value: &'v Value,
+    model: &GraphModelAccess,
+) -> Option<&'v Map<String, Value>> {
+    let tree = value.as_object().filter(|tree| tree.contains_key("_"))?;
+    let has_children = model
+        .get_edges_internal()
+        .and_then(|edges| edges.get(&node.nodeid))
+        .is_some_and(|children| !children.is_empty());
+    (node.datatype != "semantic" && has_children).then_some(tree)
 }
 
 fn is_single(nodegroup_id: &str, model: &GraphModelAccess) -> bool {

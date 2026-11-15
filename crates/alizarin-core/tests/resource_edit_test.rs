@@ -185,6 +185,97 @@ fn a_plain_string_sets_the_current_language_and_keeps_the_others() {
     );
 }
 
+/// A wrapper for `r1` on a graph whose `kind` is an outer node: a value
+/// (non-localised string) with a child, `kind_note`.
+fn outer_setup() -> (StaticGraph, GraphModelAccess, ResourceInstanceWrapperCore) {
+    set_current_language("ga");
+    let rows = [
+        ",kind,non-localized-string,1",
+        "kind,kind_note,non-localized-string,1",
+    ]
+    .iter()
+    .map(|r| {
+        let f: Vec<&str> = r.split(',').collect();
+        format!(
+            "{},{},{},{},{},{C}E1,{C}P2,,,,,,",
+            f[0], f[1], f[1], f[2], f[3]
+        )
+    })
+    .collect::<Vec<_>>();
+    let (graph, _) = build_graph_from_model_csvs(
+        &format!("name,ontology_class,author,description,is_resource\nPlace,{C}E1,,,true"),
+        &format!("{NODES_HEADER}\n{}", rows.join("\n")),
+        None,
+        "https://example.org/test",
+        Default::default(),
+    )
+    .expect("graph");
+    let model = GraphModelAccess::new_eager(Arc::new(graph.clone()), true);
+    let mut core = ResourceInstanceWrapperCore::new(graph.graphid.clone());
+    core.resource_instance = Some(StaticResourceMetadata {
+        descriptors: Default::default(),
+        graph_id: graph.graphid.clone(),
+        name: "r1".to_string(),
+        resourceinstanceid: "r1".to_string(),
+        publication_id: None,
+        principaluser_id: None,
+        legacyid: None,
+        graph_publication_id: None,
+        createdtime: None,
+        lastmodified: None,
+    });
+    core.load_permitted_tiles(vec![], &model);
+    (graph, model, core)
+}
+
+#[test]
+fn an_outer_node_takes_its_tree_form_as_tree_to_tiles_reads_it() {
+    let (graph, model, mut core) = outer_setup();
+    let mut edit = ResourceEdit::new(&core).unwrap();
+    edit.set_value(
+        None,
+        None,
+        "kind",
+        &json!({"_": "Fort", "kind_note": "Old"}),
+        &model,
+        None,
+    )
+    .unwrap();
+    edit.commit(&mut core, &model, &FunctionsRegistry::new())
+        .unwrap();
+    // "_" is the node's own value; the other keys its children's.
+    assert_eq!(data(&core, &graph, "kind"), vec![&json!("Fort")]);
+    assert_eq!(data(&core, &graph, "kind_note"), vec![&json!("Old")]);
+
+    // An object without "_" is still the node's own value, as before.
+    let mut edit = ResourceEdit::new(&core).unwrap();
+    assert!(edit
+        .set_value(None, None, "kind", &json!({"kind_note": "x"}), &model, None)
+        .is_err());
+}
+
+#[test]
+fn a_tree_naming_a_non_child_changes_nothing() {
+    let (graph, model, mut core) = outer_setup();
+    let mut edit = ResourceEdit::new(&core).unwrap();
+    let err = edit
+        .set_value(
+            None,
+            None,
+            "kind",
+            &json!({"_": "Fort", "elsewhere": "x"}),
+            &model,
+            None,
+        )
+        .unwrap_err();
+    assert!(err.contains("elsewhere isn't a child of kind"), "{err}");
+    // All or nothing: the own value set before the bad key is rolled back.
+    assert!(edit.is_empty());
+    edit.commit(&mut core, &model, &FunctionsRegistry::new())
+        .unwrap();
+    assert!(data(&core, &graph, "kind").is_empty());
+}
+
 #[test]
 fn a_missing_single_valued_tile_is_created_with_its_canonical_id() {
     let (graph, model, mut core) = setup(false, vec![]);

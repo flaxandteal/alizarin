@@ -154,6 +154,50 @@ describe(`ORM editing [${getBackend()} backend]`, () => {
   });
 });
 
+/** A place, with no tiles yet, whose `kind` (a string) has a child `kind_note`. */
+async function placeWithKind(): Promise<any> {
+  const mutator = new GraphMutator(createStaticGraph({ name: "Place", author: "Test" }));
+  mutator.addStringNode(null, "kind", "Kind", "1", LITERAL, NOTE);
+  mutator.addStringNode("kind", "kind_note", "Kind note", "1", LITERAL, NOTE);
+  const graph = parseStaticGraph(JSON.stringify({ graph: [mutator.apply()] }));
+  const wkrm = createWKRM(createStaticGraphMeta({
+    graphid: graph.graphid, name: "Place", slug: "place",
+    relatable_resource_model_ids: [], resource_2_resource_constraints: [], extra_fields: {},
+  }));
+  class Place extends ResourceInstanceViewModel<any> {
+    static _: ResourceInstanceWrapper<any> | null;
+    static __: ResourceModelWrapper<any> | null;
+  }
+  const wrapper = new ResourceModelWrapper(wkrm, graph, Place, true);
+  Place.prototype.__ = wrapper;
+  const resources = parseStaticResources(JSON.stringify({
+    business_data: {
+      resources: [{
+        resourceinstance: {
+          descriptors: { name: "Town", description: "", map_popup: "", slug: "town" },
+          graph_id: graph.graphid, legacyid: null, name: "Town", resourceinstanceid: RESOURCE_ID,
+        },
+        tiles: [],
+        tiles_loaded: true,
+      }],
+    },
+  }));
+  return wrapper.fromStaticResource(resources[0], false, false);
+}
+
+describe(`ORM editing an outer node [${getBackend()} backend]`, () => {
+  test("assigning its tree form sets its own value from _ and its children", async () => {
+    const town = await placeWithKind();
+    town.kind = { _: "Fort", kind_note: "Old" };
+    const delta = town.$commit();
+    expect(delta.upserted.length).toBeGreaterThan(0);
+
+    const kind = await town.kind;
+    expect(`${kind}`).toBe("Fort");
+    expect(`${await kind._.kind_note}`).toBe("Old");
+  });
+});
+
 const EVENT_1 = "bbbbbbbb-0000-0000-0000-000000000001";
 const EVENT_2 = "bbbbbbbb-0000-0000-0000-000000000002";
 

@@ -5,6 +5,7 @@ ResourceEdit, returning the tile delta. Mirrors the TypeScript dual-backend
 tests/dual-backend/ormEdit.test.ts, on the same model.
 """
 
+import inspect
 import json
 import os
 
@@ -249,3 +250,42 @@ async def test_a_value_wrapped_from_core_finds_its_node_on_the_model(with_events
     assert parent_pseudo is not None
     assert parent_pseudo.node.nodeid == nodes["notes"].nodeid
     assert parent_pseudo.node is place._i.model.get_node_objects()[nodes["notes"].nodeid]
+
+
+@pytest.fixture
+def with_kind():
+    """A place, with no tiles yet, whose `kind` (a string) has a child
+    `kind_note`, as the TypeScript test's."""
+    path = os.path.join(os.path.dirname(__file__), "../../../tests/data/models/Group.json")
+    with open(path) as f:
+        base = StaticGraph.from_dict(json.load(f)["graph"][0])
+    mutator = GraphMutator(base)
+    mutator.add_string_node(None, "kind", "Kind", "1", LITERAL, NOTE)
+    mutator.add_string_node("kind", "kind_note", "Kind note", "1", LITERAL, NOTE)
+    graph = mutator.apply()
+
+    gm = GraphManager()
+    gm.register_graph(graph.to_dict())
+    gm.register_resource(
+        {
+            "resourceinstance": {"resourceinstanceid": RESOURCE_ID, "graph_id": graph.graphid, "name": "Town"},
+            "tiles": [],
+        }
+    )
+    viewContext.graphManager = gm
+    yield gm
+    viewContext.graphManager = None
+
+
+@pytest.mark.asyncio
+async def test_assigning_an_outer_nodes_tree_form_sets_its_value_and_children(with_kind):
+    place = await with_kind.getResource(RESOURCE_ID, lazy=False)
+    place.kind = {"_": "Fort", "kind_note": "Old"}
+    delta = place.commit()
+    assert len(delta["upserted"]) > 0
+
+    kind = await place.kind
+    assert kind == "Fort"
+    inner = kind._
+    inner = await inner if inspect.isawaitable(inner) else inner
+    assert await inner.kind_note == "Old"

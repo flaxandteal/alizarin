@@ -265,7 +265,13 @@ class PseudoValue(Generic[VM]):
                 node=self.node,
                 data=self._value,
                 parent=self._parent_wkri,
+                # An inner is semantic (its children), as TypeScript passes it.
+                isInner=self.is_inner,
             )
+            # An outer node's children are reached through its value's `_`:
+            # the inner (semantic) value, as TypeScript attaches it.
+            if self._view_model is not None and self.is_outer and self.inner is not None:
+                self._view_model._ = await self.inner.get_value()
         return self._view_model
 
     async def for_json(self) -> Any:
