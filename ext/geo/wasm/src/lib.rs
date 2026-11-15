@@ -88,6 +88,39 @@ pub fn geo_fold_may_match(summary: JsValue, predicate: JsValue) -> bool {
 }
 
 /// Set the max coordinate count per feature collection (or `null` to disable).
+/// The UTM derive provider, for alizarin's `registerDeriveProvider("utm", {derive})`
+/// on the WASM backend: `lookup(kind, key)` is the host's graph lookup. As the
+/// native bindings' `DeriveProviderInfo`, over the same geo-core provider.
+#[wasm_bindgen(js_name = utmDerive)]
+pub fn utm_derive(
+    resource_id: &str,
+    tiles: JsValue,
+    config: JsValue,
+    lookup: &js_sys::Function,
+) -> Result<JsValue, JsError> {
+    let ask = |kind: u32, key: &str| -> Option<serde_json::Value> {
+        let found = lookup
+            .call2(
+                &JsValue::NULL,
+                &JsValue::from(kind),
+                &JsValue::from_str(key),
+            )
+            .ok()?;
+        if found.is_null() || found.is_undefined() {
+            return None;
+        }
+        serde_wasm_bindgen::from_value(found).ok()
+    };
+    let derived = alizarin_geo_core::utm::derive_json(
+        resource_id,
+        from_js(tiles, "tiles")?,
+        from_js(config, "config")?,
+        ask,
+    )
+    .map_err(|e| JsError::new(&e))?;
+    to_js(&derived)
+}
+
 #[wasm_bindgen(js_name = setCoordLimit)]
 pub fn set_coord_limit(limit: Option<usize>) {
     alizarin_geo_core::set_coord_limit(limit);

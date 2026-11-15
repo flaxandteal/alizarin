@@ -7,9 +7,10 @@
 // once per batch of values, so folding geometry here suits occasional, build-time
 // use rather than a per-view hot path.
 // NAPI backend: wired via the optional @alizarin/geo-napi native peer, if present.
-import { registerExtensionHandler, wasmReady } from "alizarin";
+import { registerExtensionHandler, registerDeriveProvider, wasmReady } from "alizarin";
 import {
   initSync,
+  utmDerive,
   validateGeojson,
   geoFoldIdentity,
   geoFold,
@@ -31,6 +32,11 @@ wasmReady.then(() => {
     foldMayMatch: (summary: unknown, predicate: unknown, _config: unknown) =>
       geoFoldMayMatch(summary, predicate),
   });
+  // The UTM derive function, for graphs whose declarations name provider "utm".
+  registerDeriveProvider("utm", {
+    derive: (resourceId: string, tiles: unknown, config: unknown, lookup: (kind: number, key: string) => unknown) =>
+      utmDerive(resourceId, tiles, config, lookup as any),
+  });
 });
 
 // Also register for the NAPI backend, when it is in use and the native ext
@@ -40,9 +46,13 @@ wasmReady.then(() => {
   try {
     const napiPkg = "@alizarin/napi";
     const extPkg = "@alizarin/geo-napi";
-    const napi = await import(napiPkg) as { registerExtensionHandler(ptr: bigint): unknown };
-    const ext = await import(extPkg) as { geoHandlerPtr(): bigint };
+    const napi = await import(napiPkg) as {
+      registerExtensionHandler(ptr: bigint): unknown;
+      registerDeriveProvider(ptr: bigint): string;
+    };
+    const ext = await import(extPkg) as { geoHandlerPtr(): bigint; utmDeriveProviderPtr(): bigint };
     napi.registerExtensionHandler(ext.geoHandlerPtr());
+    napi.registerDeriveProvider(ext.utmDeriveProviderPtr());
   } catch {
     // Not using the napi backend, or the native ext isn't installed — nothing to do.
   }

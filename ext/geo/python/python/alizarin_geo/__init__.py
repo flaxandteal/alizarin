@@ -38,6 +38,9 @@ def _register_rust_handler() -> bool:
 
         capsule = rust_ext.get_geo_handler_capsule()
         alizarin.register_type_handler(capsule)
+        # The UTM derive function ("utm"), for graphs that declare it.
+        if hasattr(alizarin, "register_derive_provider"):
+            alizarin.register_derive_provider(rust_ext.get_utm_derive_capsule())
         return True
     except ImportError:
         # Rust extension not built yet - this is fine.

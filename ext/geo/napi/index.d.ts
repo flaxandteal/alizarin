@@ -8,5 +8,10 @@
  * `registerExtensionHandler` from `@alizarin/napi`.
  */
 export declare function geoHandlerPtr(): bigint
+/**
+ * The UTM derive provider's `DeriveProviderInfo` pointer, as a `BigInt`. Pass
+ * to `registerDeriveProvider` from `@alizarin/napi`.
+ */
+export declare function utmDeriveProviderPtr(): bigint
 /** Set the max coordinate count per feature collection (mirrors the Python knob). */
 export declare function setCoordLimit(limit?: number | undefined | null): void

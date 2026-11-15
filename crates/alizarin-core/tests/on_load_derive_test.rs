@@ -314,6 +314,34 @@ fn the_tile_source_serves_what_it_holds_and_returns_the_rest() {
 }
 
 #[test]
+fn declared_nodes_resolve_by_alias_or_node_id_and_a_missing_one_is_skipped() {
+    let base = graph("on_load");
+    let headword = node_id(&base, "headword");
+    let with_nodes = |nodes: Value| {
+        let mut graph = base.clone();
+        let mut fxgs = graph.functions_x_graphs.clone().unwrap();
+        fxgs[0].config["nodes"] = nodes;
+        graph.functions_x_graphs = Some(fxgs);
+        graph
+    };
+
+    // By alias (as declared above) and by node id: the same node.
+    for name in ["headword".to_string(), headword.clone()] {
+        let graph = with_nodes(json!({ "source": name }));
+        let functions = alizarin_core::compute_tiles_functions(&graph);
+        assert_eq!(functions.len(), 1);
+        let source = functions[0].node("source").expect("resolved");
+        assert_eq!(source.nodeid, headword);
+        assert_eq!(source.alias.as_deref(), Some("headword"));
+        assert_eq!(source.datatype, "non-localized-string");
+    }
+
+    // A node the graph lacks: on load, the declaration is left out.
+    let graph = with_nodes(json!({ "source": "missing" }));
+    assert!(alizarin_core::compute_tiles_functions(&graph).is_empty());
+}
+
+#[test]
 fn stored_declarations_are_not_derived_on_load() {
     let (graph, model, mut core) = setup("stored");
     core.load_permitted_tiles(vec![headword_tile(&graph, "bád")], &model);

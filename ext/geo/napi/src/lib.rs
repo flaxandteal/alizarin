@@ -16,6 +16,14 @@ pub fn geo_handler_ptr() -> BigInt {
     BigInt::from(ptr)
 }
 
+/// The UTM derive provider's `DeriveProviderInfo` pointer, as a `BigInt`. Pass
+/// to `registerDeriveProvider` from `@alizarin/napi`.
+#[napi(js_name = "utmDeriveProviderPtr")]
+pub fn utm_derive_provider_ptr() -> BigInt {
+    let ptr = alizarin_geo_core::c_abi::utm_derive_provider_info() as usize as u64;
+    BigInt::from(ptr)
+}
+
 /// Set the max coordinate count per feature collection (mirrors the Python knob).
 #[napi(js_name = "setCoordLimit")]
 pub fn set_coord_limit(limit: Option<u32>) {

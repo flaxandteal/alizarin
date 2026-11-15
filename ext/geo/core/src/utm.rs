@@ -66,21 +66,9 @@ pub fn project_utm(lon_deg: f64, lat_deg: f64) -> Result<UtmCoord, String> {
     })
 }
 
-/// Find the first `geojson-feature-collection`-shaped value in the resource's
-/// tiles and return a representative lon/lat (the mean of the first polygon's
-/// exterior ring, or a bare point/position). Returns `None` if no geometry is
-/// present.
-fn representative_lonlat(tiles: &[StaticTile]) -> Option<(f64, f64)> {
-    for tile in tiles {
-        for value in tile.data.values() {
-            if let Some(ll) = lonlat_from_value(value) {
-                return Some(ll);
-            }
-        }
-    }
-    None
-}
-
+/// A representative lon/lat for a geometry value (a feature collection's first
+/// feature, or a bare geometry): the mean of the first polygon's exterior
+/// ring, or a point/position. `None` if it holds no geometry.
 fn lonlat_from_value(value: &Value) -> Option<(f64, f64)> {
     let obj = value.as_object()?;
     // FeatureCollection → first feature's geometry.
@@ -131,34 +119,94 @@ fn ring_centroid(ring: &Value) -> Option<(f64, f64)> {
     Some((sx / n, sy / n))
 }
 
-/// The UTM derive provider. Reads the resource's geometry, projects it, and emits
-/// one tile on the configured output nodegroup.
+/// The roles a UTM declaration's `nodes` may name for its outputs; it must
+/// name at least one, each in the target nodegroup.
+pub const OUTPUT_ROLES: [&str; 4] = ["zone", "hemisphere", "easting", "northing"];
+
+/// The UTM derive provider. Projects the declared `geometry` node's value and
+/// writes each declared output (`zone`, `hemisphere`, `easting`, `northing`)
+/// into its own node of one tile in the target nodegroup, coerced for that
+/// node's datatype. As arches-her's GeoJSON-to-BNG function: its config names
+/// its input and output nodes.
+///
+/// A resource without a geometry value gets no tile (so a stored rerun drops
+/// an earlier one); a value with no projectable geometry is an error.
 pub struct UtmDeriveProvider;
 
 impl DeriveProvider for UtmDeriveProvider {
     fn derive(
         &self,
         resource_id: &str,
-        _graph: &dyn GraphLookup,
+        graph: &dyn GraphLookup,
         tiles: &[StaticTile],
         config: &ComputeTilesConfig,
     ) -> Result<Vec<StaticTile>, String> {
-        let (lon, lat) = representative_lonlat(tiles).ok_or("no geojson geometry to project")?;
+        let geometry = config.node("geometry")?;
+        let outputs: Vec<(&str, &alizarin_core::ResolvedNode)> = OUTPUT_ROLES
+            .iter()
+            .filter_map(|role| config.resolved.get(*role).map(|node| (*role, node)))
+            .collect();
+        if outputs.is_empty() {
+            return Err(format!(
+                "utm: declare at least one output node ({})",
+                OUTPUT_ROLES.join(", ")
+            ));
+        }
+        if let Some((role, _)) = outputs
+            .iter()
+            .find(|(_, node)| node.nodegroup_id.as_deref() != Some(config.nodegroup.as_str()))
+        {
+            return Err(format!(
+                "utm: output '{role}' is not in the target nodegroup {}",
+                config.nodegroup
+            ));
+        }
+
+        let Some(source) = tiles
+            .iter()
+            .find(|t| t.data.get(&geometry.nodeid).is_some_and(|v| !v.is_null()))
+        else {
+            return Ok(vec![]);
+        };
+        let (lon, lat) = lonlat_from_value(&source.data[&geometry.nodeid])
+            .ok_or("utm: the geometry value has no geometry to project")?;
         let utm = project_utm(lon, lat)?;
-        let value = json!({
-            "zone": utm.zone,
-            "hemisphere": if utm.north { "N" } else { "S" },
-            "easting": (utm.easting * 100.0).round() / 100.0,
-            "northing": (utm.northing * 100.0).round() / 100.0,
-        });
+
         let mut data: BTreeMap<String, Value> = BTreeMap::new();
-        data.insert(config.nodegroup.clone(), value);
+        for (role, node) in outputs {
+            let value = match role {
+                "zone" => json!(utm.zone),
+                "hemisphere" => json!(if utm.north { "N" } else { "S" }),
+                "easting" => json!((utm.easting * 100.0).round() / 100.0),
+                _ => json!((utm.northing * 100.0).round() / 100.0),
+            };
+            let coerced = alizarin_core::type_coercion::coerce_value_with_registry(
+                &node.datatype,
+                &value,
+                None,
+                None,
+            );
+            if let Some(error) = coerced.error {
+                return Err(format!("utm: output '{role}' ({}): {error}", node.datatype));
+            }
+            data.insert(node.nodeid.clone(), coerced.tile_data);
+        }
+
+        // A nested target hangs off the same parent as the geometry, as
+        // arches-her's function does.
+        let nested = graph
+            .get_nodegroup_by_id(&config.nodegroup)
+            .is_some_and(|ng| ng.parentnodegroup_id.is_some());
         Ok(vec![StaticTile {
             data,
             nodegroup_id: config.nodegroup.clone(),
             resourceinstance_id: resource_id.to_string(),
             tileid: None,
-            parenttile_id: None,
+            parenttile_id: if nested {
+                source.parenttile_id.clone()
+            } else {
+                None
+            },
             provisionaledits: None,
             sortorder: None,
         }])
@@ -171,6 +219,25 @@ pub fn register_functions(registry: &mut FunctionsRegistry) {
         PROVIDER_KEY,
         RegisteredFunction::Derive(Arc::new(UtmDeriveProvider)),
     );
+}
+
+/// Run [`UtmDeriveProvider`] over JSON (the resource's tiles, its resolved
+/// declaration), with `lookup` answering graph lookups (kinds as core's
+/// `derive_abi::LOOKUP_*`): for a binding without core's types, e.g. the WASM
+/// one, whose JS package registers it as a JS derive provider.
+pub fn derive_json(
+    resource_id: &str,
+    tiles: Value,
+    config: Value,
+    lookup: impl Fn(u32, &str) -> Option<Value>,
+) -> Result<Value, String> {
+    let tiles: Vec<StaticTile> =
+        serde_json::from_value(tiles).map_err(|e| format!("utm: tiles: {e}"))?;
+    let config: ComputeTilesConfig =
+        serde_json::from_value(config).map_err(|e| format!("utm: config: {e}"))?;
+    let graph = alizarin_core::derive_abi::CallbackGraph::new(lookup)?;
+    let derived = UtmDeriveProvider.derive(resource_id, &graph, &tiles, &config)?;
+    serde_json::to_value(derived).map_err(|e| format!("utm: {e}"))
 }
 
 /// Register the UTM derive function into alizarin-core's **global** function
@@ -254,18 +321,194 @@ mod tests {
         assert_eq!(utm_zone(-0.5), 30); // London
     }
 
+    /// A graph with a `boundary` geometry, and `zone`/`hemisphere`/`easting`
+    /// in a `utm-ng` nodegroup, declaring UTM over them with `outputs`.
+    fn utm_graph(outputs: serde_json::Value) -> StaticGraph {
+        let node = |id: &str, ng: &str, datatype: &str| {
+            serde_json::json!({
+                "nodeid": id, "name": id, "alias": id, "datatype": datatype,
+                "nodegroup_id": ng, "graph_id": "g",
+            })
+        };
+        let mut nodes = serde_json::json!({ "geometry": "boundary" });
+        for (role, alias) in outputs.as_object().unwrap() {
+            nodes[role] = alias.clone();
+        }
+        serde_json::from_value(serde_json::json!({
+            "graphid": "g", "name": {"en": "G"},
+            "root": {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "g"},
+            "nodes": [
+                {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "g"},
+                node("boundary", "boundary-ng", "geojson-feature-collection"),
+                node("zone", "utm-ng", "number"),
+                node("hemisphere", "utm-ng", "non-localized-string"),
+                node("easting", "utm-ng", "number"),
+            ],
+            "edges": [],
+            "nodegroups": [
+                {"nodegroupid": "boundary-ng", "cardinality": "1"},
+                {"nodegroupid": "utm-ng", "cardinality": "1"},
+            ],
+            "cards": [], "cards_x_nodes_x_widgets": [],
+            "functions_x_graphs": [{
+                "id": "fxg-utm", "function_id": "60000000-0000-0000-0000-000000000002", "graph_id": "g",
+                "config": {"provider": "utm", "nodegroup": "utm-ng", "member_of": "base", "nodes": nodes}
+            }],
+        }))
+        .expect("graph")
+    }
+
+    /// A resolved UTM declaration into `utm-ng`, with `resolved` given directly:
+    /// role → (node id, nodegroup, datatype).
+    fn resolved_config(nodes: &[(&str, &str, &str, &str)]) -> ComputeTilesConfig {
+        let mut resolved = serde_json::Map::new();
+        for (role, nodeid, nodegroup, datatype) in nodes {
+            resolved.insert(
+                role.to_string(),
+                serde_json::json!({
+                    "nodeid": nodeid, "nodegroup_id": nodegroup,
+                    "datatype": datatype, "alias": nodeid,
+                }),
+            );
+        }
+        serde_json::from_value(serde_json::json!({
+            "provider": "utm", "nodegroup": "utm-ng", "resolved": resolved,
+        }))
+        .unwrap()
+    }
+
+    fn london_tile(parent: Option<&str>) -> StaticTile {
+        let mut data: BTreeMap<String, Value> = BTreeMap::new();
+        data.insert(
+            "boundary".to_string(),
+            serde_json::json!({"type": "FeatureCollection", "features": [{
+                "type": "Feature", "properties": {},
+                "geometry": {"type": "Point", "coordinates": [-0.1278, 51.5074]},
+            }]}),
+        );
+        StaticTile {
+            data,
+            nodegroup_id: "boundary-ng".to_string(),
+            resourceinstance_id: "r1".to_string(),
+            tileid: Some("geo-1".to_string()),
+            parenttile_id: parent.map(str::to_string),
+            provisionaledits: None,
+            sortorder: None,
+        }
+    }
+
     #[test]
-    fn derive_from_geojson_via_registry() {
+    fn a_nested_target_hangs_off_the_geometry_tiles_parent() {
         let graph: StaticGraph = serde_json::from_value(serde_json::json!({
             "graphid": "g", "name": {"en": "G"},
             "root": {"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "g"},
             "nodes": [{"nodeid": "root", "name": "Root", "datatype": "semantic", "graph_id": "g"}],
-            "edges": [], "nodegroups": [], "cards": [], "cards_x_nodes_x_widgets": [],
-            "functions_x_graphs": [{
-                "id": "fxg-utm", "function_id": "60000000-0000-0000-0000-000000000002", "graph_id": "g",
-                "config": {"provider": "utm", "nodegroup": "utm-ng", "member_of": "base", "cache": true}
-            }],
-        })).expect("graph");
+            "edges": [],
+            "nodegroups": [
+                {"nodegroupid": "site-ng", "cardinality": "n"},
+                {"nodegroupid": "utm-ng", "cardinality": "1", "parentnodegroup_id": "site-ng"},
+            ],
+            "cards": [], "cards_x_nodes_x_widgets": [],
+        }))
+        .unwrap();
+        let config = resolved_config(&[
+            (
+                "geometry",
+                "boundary",
+                "boundary-ng",
+                "geojson-feature-collection",
+            ),
+            ("zone", "zone", "utm-ng", "number"),
+        ]);
+        let tiles = UtmDeriveProvider
+            .derive("r1", &graph, &[london_tile(Some("site-1"))], &config)
+            .unwrap();
+        assert_eq!(tiles[0].parenttile_id.as_deref(), Some("site-1"));
+        assert_eq!(tiles[0].data["zone"], 30);
+
+        // A top-level target has no parent, wherever the geometry is.
+        let graph = utm_graph(serde_json::json!({ "zone": "zone" }));
+        let tiles = UtmDeriveProvider
+            .derive("r1", &graph, &[london_tile(Some("site-1"))], &config)
+            .unwrap();
+        assert_eq!(tiles[0].parenttile_id, None);
+    }
+
+    #[test]
+    fn an_output_outside_the_target_nodegroup_is_an_error() {
+        let graph = utm_graph(serde_json::json!({ "zone": "zone" }));
+        let config = resolved_config(&[
+            (
+                "geometry",
+                "boundary",
+                "boundary-ng",
+                "geojson-feature-collection",
+            ),
+            ("easting", "elsewhere", "other-ng", "number"),
+        ]);
+        let err = UtmDeriveProvider
+            .derive("r1", &graph, &[london_tile(None)], &config)
+            .unwrap_err();
+        assert!(
+            err.contains("'easting' is not in the target nodegroup"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn outputs_are_coerced_for_their_nodes_datatype() {
+        let graph = utm_graph(serde_json::json!({ "zone": "zone" }));
+        let config = resolved_config(&[
+            (
+                "geometry",
+                "boundary",
+                "boundary-ng",
+                "geojson-feature-collection",
+            ),
+            ("hemisphere", "hemisphere", "utm-ng", "string"),
+            ("zone", "zone", "utm-ng", "number"),
+        ]);
+        let tiles = UtmDeriveProvider
+            .derive("r1", &graph, &[london_tile(None)], &config)
+            .unwrap();
+        // A translatable string node gets a translatable value; a number, a number.
+        let hemisphere = tiles[0].data["hemisphere"]
+            .as_object()
+            .expect("translatable");
+        let (_, entry) = hemisphere.iter().next().expect("one language");
+        assert_eq!(entry["value"], "N");
+        assert_eq!(tiles[0].data["zone"], 30);
+    }
+
+    #[test]
+    fn a_resource_without_geometry_gets_no_utm_tile_and_outputs_are_required() {
+        let mut reg = default_functions_registry();
+        register_functions(&mut reg);
+
+        let graph = utm_graph(serde_json::json!({ "zone": "zone" }));
+        let mut tiles = Vec::new();
+        apply_derive_functions(&mut tiles, &graph, "r1", &|_| true, &reg);
+        assert!(tiles.is_empty());
+
+        // No output declared: the provider refuses (on load: no tile).
+        let config: ComputeTilesConfig = serde_json::from_value(serde_json::json!({
+            "provider": "utm", "nodegroup": "utm-ng", "nodes": {"geometry": "boundary"}
+        }))
+        .unwrap();
+        let config = config
+            .resolve_nodes(&utm_graph(serde_json::json!({})))
+            .unwrap();
+        let err = UtmDeriveProvider
+            .derive("r1", &graph, &[], &config)
+            .unwrap_err();
+        assert!(err.contains("at least one output"), "{err}");
+    }
+
+    #[test]
+    fn derive_from_geojson_via_registry() {
+        let graph = utm_graph(serde_json::json!({
+            "zone": "zone", "hemisphere": "hemisphere", "easting": "easting",
+        }));
 
         let boundary = serde_json::json!({
             "type": "FeatureCollection",
@@ -294,9 +537,11 @@ mod tests {
             .iter()
             .find(|t| t.nodegroup_id == "utm-ng")
             .expect("utm tile was derived");
-        let v = &utm_tile.data["utm-ng"];
-        assert_eq!(v["zone"], 44);
-        assert_eq!(v["hemisphere"], "N");
+        // Each declared output in its own node; nothing for the undeclared northing.
+        assert_eq!(utm_tile.data["zone"], 44);
+        assert_eq!(utm_tile.data["hemisphere"], "N");
+        assert!(utm_tile.data["easting"].as_f64().unwrap() > 0.0);
+        assert_eq!(utm_tile.data.len(), 3);
     }
 
     /// The plain-ORM path: `register_global()` populates alizarin-core's global

@@ -198,6 +198,39 @@ pub fn geo_handler_type_info() -> *const TypeHandlerInfo {
     }
 }
 
+/// The UTM provider's `derive_fn`: core's shared glue around
+/// [`UtmDeriveProvider`](crate::utm::UtmDeriveProvider).
+///
+/// # Safety
+/// Called by the host with a `DeriveFn`'s arguments, live for the call.
+unsafe extern "C" fn utm_derive(
+    resource_id_ptr: *const u8,
+    resource_id_len: usize,
+    tiles_ptr: *const c_void,
+    config_ptr: *const c_void,
+    graph: *const alizarin_extension_api::HostGraph,
+) -> alizarin_extension_api::DeriveResult {
+    alizarin_core::derive_abi::derive_with(
+        &crate::utm::UtmDeriveProvider,
+        resource_id_ptr,
+        resource_id_len,
+        tiles_ptr,
+        config_ptr,
+        graph,
+    )
+}
+
+/// Pointer to the process-static UTM `DeriveProviderInfo` (provider id
+/// [`PROVIDER_KEY`](crate::utm::PROVIDER_KEY)). A binding hands this to the
+/// host's `registerDeriveProvider`: Python via `PyCapsule`, NAPI via a `BigInt`.
+pub fn utm_derive_provider_info() -> *const alizarin_extension_api::DeriveProviderInfo {
+    static INFO: std::sync::OnceLock<alizarin_extension_api::DeriveProviderInfo> =
+        std::sync::OnceLock::new();
+    INFO.get_or_init(|| {
+        alizarin_core::derive_abi::derive_provider_info(crate::utm::PROVIDER_KEY, utm_derive)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

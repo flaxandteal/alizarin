@@ -39,7 +39,7 @@ pub use cards::{
 };
 pub use computed_tiles::{
     apply_compute_tiles, compute_tiles_functions, ComputeTilesConfig, ComputeTilesProvider,
-    DeriveMode,
+    DeriveMode, ResolvedNode,
 };
 pub use descriptors::{
     DescriptorConfig, DescriptorTypeConfig, StaticResourceDescriptors, AGGREGATE_FUNCTION_ID,

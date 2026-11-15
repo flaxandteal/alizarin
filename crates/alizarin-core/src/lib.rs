@@ -106,6 +106,7 @@ pub use graph::{
     PruneError,
     RegisteredFunction,
     RelatedResourceEntry,
+    ResolvedNode,
     ResourceCache,
     ResourceEntry,
     StaticCard,

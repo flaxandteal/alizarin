@@ -58,6 +58,29 @@ mod python_module {
         }
     }
 
+    /// Capsule name for the UTM derive provider: null-terminated and `'static`.
+    static UTM_CAPSULE_NAME: &[u8] = b"alizarin_geo.utm_derive\0";
+
+    /// Get the UTM derive provider's capsule, for `alizarin.register_derive_provider`.
+    /// Its `DeriveProviderInfo` lives in geo-core, shared with the napi binding.
+    #[pyfunction]
+    pub fn get_utm_derive_capsule(py: Python<'_>) -> PyResult<Py<PyCapsule>> {
+        let ptr = alizarin_geo_core::c_abi::utm_derive_provider_info();
+        // SAFETY: `ptr` points at geo-core's 'static info, and the name is
+        // 'static and null-terminated.
+        unsafe {
+            let capsule = pyo3::ffi::PyCapsule_New(
+                ptr as *mut c_void,
+                UTM_CAPSULE_NAME.as_ptr() as *const std::os::raw::c_char,
+                None,
+            );
+            if capsule.is_null() {
+                return Err(PyErr::fetch(py));
+            }
+            Ok(Py::from_owned_ptr(py, capsule))
+        }
+    }
+
     /// Set the maximum coordinate count per feature collection, or `None` to
     /// disable the check. Applies to the geo-core linked into this extension —
     /// i.e. the one that actually validates. Defaults to
@@ -86,6 +109,7 @@ mod python_module {
     #[pymodule]
     pub fn _rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_function(wrap_pyfunction!(get_geo_handler_capsule, m)?)?;
+        m.add_function(wrap_pyfunction!(get_utm_derive_capsule, m)?)?;
         m.add_function(wrap_pyfunction!(py_set_coord_limit, m)?)?;
         m.add_function(wrap_pyfunction!(py_get_coord_limit, m)?)?;
         m.add_function(wrap_pyfunction!(py_reset_coord_limit, m)?)?;

@@ -310,7 +310,8 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { geoHandlerPtr, setCoordLimit } = nativeBinding
+const { geoHandlerPtr, utmDeriveProviderPtr, setCoordLimit } = nativeBinding
 
 module.exports.geoHandlerPtr = geoHandlerPtr
+module.exports.utmDeriveProviderPtr = utmDeriveProviderPtr
 module.exports.setCoordLimit = setCoordLimit
