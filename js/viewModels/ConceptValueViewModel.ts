@@ -93,16 +93,14 @@ export class ConceptValueViewModel extends String implements IViewModel {
     value: any,
     cacheEntry: ConceptValueCacheEntry | null
   ): Promise<ConceptValueViewModel | null> {
-    const nodeid = node.nodeid;
     const collectionId = node.config?.rdmCollection;
     if (!collectionId) {
       throw new Error(`Node ${node.alias} (${node.nodeid}) missing rdmCollection in config`);
     }
+    // Built from core's value for this node; the tile's data is a copy, so
+    // it is neither read nor written here.
     let val: StaticValue | null = value;
     if (tile) {
-      if (!tile.data.has(nodeid)) {
-        tile.data.set(nodeid, null);
-      }
       if (value !== null) {
         if (value instanceof StaticConcept) {
           if (value.getPrefLabel) {
@@ -145,8 +143,6 @@ export class ConceptValueViewModel extends String implements IViewModel {
                   console.error("Could not find concept for value", value, "for", node.alias, "in collection", collectionId);
                 }
 
-                tile.data.set(nodeid, val ? val.id : null);
-
                 if (!tile || !val) {
                   return null;
                 }
@@ -168,8 +164,6 @@ export class ConceptValueViewModel extends String implements IViewModel {
           if (!val) {
             console.error("Could not find concept for value", value, "for", node.alias, "in collection", collectionId);
           }
-
-          tile.data.set(nodeid, val ? val.id : null);
         }
       }
     }

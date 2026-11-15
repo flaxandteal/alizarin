@@ -25,22 +25,14 @@ export class DateViewModel extends Date implements IViewModel {
     node: StaticNode,
     value: any,
   ): DateViewModel | Promise<DateViewModel | null> | null {
-    const nodeid = node.nodeid;
     if (value instanceof Promise) {
       return value.then((value) =>
         DateViewModel.__create(tile, node, value),
       );
     }
-    if (tile) {
-      if (!tile.data.has(nodeid)) {
-        tile.data.set(nodeid, null);
-      }
-      if (value !== null) {
-        tile.data.set(nodeid, value);
-      }
-    }
 
-    let val: string | {[key: string]: string} | any = tile.data.get(nodeid);
+    // Core's value for this node, as BooleanViewModel's.
+    let val: string | {[key: string]: string} | any = value;
     if (val && typeof val == "object" && val['en'] !== undefined) {
       val = val.en;
     }

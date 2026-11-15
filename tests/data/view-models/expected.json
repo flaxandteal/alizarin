@@ -1,0 +1,41 @@
+{
+  "_doc": "What each datatype's view model reads as, through the ORM, for resource.json on graph.json (one node per datatype, collection.json for the concepts). The same on every backend: tests/dual-backend/viewModels.test.ts (WASM, NAPI) and crates/alizarin-python/tests/test_view_models_shared.py check it. `forJson` is the view model's JSON form; `str` its string form (omitted where it is locale-dependent); `items` each list item's string form.",
+  "string": { "forJson": "Ráth", "str": "Ráth" },
+  "nonlocalized": { "forJson": "RM-001", "str": "RM-001" },
+  "number": { "forJson": 42.5, "str": "42.5" },
+  "boolean": { "forJson": true, "str": "Yes" },
+  "date": { "forJson": "2020-01-31T00:00:00.000Z" },
+  "edtf": { "forJson": "1984?", "str": "1984?" },
+  "url": { "forJson": { "url": "https://example.org", "url_label": "Example" }, "str": "Example" },
+  "geojson": {
+    "forJson": { "type": "FeatureCollection", "features": [{ "type": "Feature", "properties": {}, "geometry": { "type": "Point", "coordinates": [-6.26, 53.35] } }] },
+    "str": "FeatureCollection (Point)"
+  },
+  "concept": { "forJson": { "id": "9c1cd7cb-74af-51fe-8226-b80a59d1c1cc", "value": "Fort" }, "str": "Fort" },
+  "concepts": {
+    "forJson": [
+      { "id": "9c1cd7cb-74af-51fe-8226-b80a59d1c1cc", "value": "Fort" },
+      { "id": "55636b71-cfd7-5837-ac9b-180aa21f9ea4", "value": "Ringfort" }
+    ],
+    "items": ["Fort", "Ringfort"]
+  },
+  "domain": { "forJson": { "id": "6dbde4c3-eeab-4fab-9106-718af3bba238", "selected": false, "text": { "en": "Accepted" } }, "str": "Accepted" },
+  "domains": {
+    "forJson": [
+      { "id": "6dbde4c3-eeab-4fab-9106-718af3bba238", "selected": false, "text": { "en": "Accepted" } },
+      { "id": "7c10f127-3358-4cc9-b4df-75cd6c5f7cd7", "selected": false, "text": { "en": "Returned" } }
+    ],
+    "items": ["Accepted", "Returned"]
+  },
+  "resource": {
+    "forJson": { "type": "(unknown)", "graphId": "", "id": "eeeeeeee-1111-2222-3333-555555555555", "root": null },
+    "str": "[Resource:eeeeeeee-1111-2222-3333-555555555555]"
+  },
+  "resources": {
+    "forJson": [
+      { "type": "(unknown)", "graphId": "", "id": "eeeeeeee-1111-2222-3333-555555555555", "root": null },
+      { "type": "(unknown)", "graphId": "", "id": "eeeeeeee-1111-2222-3333-444444444444", "root": null }
+    ],
+    "items": ["[Resource:eeeeeeee-1111-2222-3333-555555555555]", "[Resource:eeeeeeee-1111-2222-3333-444444444444]"]
+  }
+}

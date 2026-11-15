@@ -247,9 +247,15 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     if (this._cachedValue !== null) {
       const value = await this._cachedValue;
       if (value !== null) {
-        const [newTileValue, ownRelationships] = await (value as any).__asTileData();
-        tileValue = newTileValue;
-        relationships = [...relationships, ...ownRelationships];
+        const tileData = await (value as any).__asTileData();
+        if (this.getSnapshot().datatype === 'semantic') {
+          // A semantic value gives [null, its children's relationships].
+          const [, ownRelationships] = tileData;
+          relationships = [...relationships, ...ownRelationships];
+        } else {
+          // Any other gives its tile value itself, as syncTileData takes it.
+          tileValue = tileData;
+        }
       }
     }
 

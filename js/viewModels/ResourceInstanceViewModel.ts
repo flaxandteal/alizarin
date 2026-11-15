@@ -337,12 +337,10 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
     value: any,
     cacheEntry: ResourceInstanceCacheEntry | null
   ): Promise<ResourceInstanceViewModel<any> | null> {
-    const nodeid = node.nodeid;
+    // Built from core's value for this node; the tile's data is a copy, so
+    // it is neither read nor written here.
     let val: string | null = value;
     if (tile) {
-      if (!tile.data.has(nodeid)) {
-        tile.data.set(nodeid, null);
-      }
       if (value !== null) {
         if (!value && !(value instanceof StaticResource) && !(value instanceof StaticResourceReference)) {
           val = null;
@@ -373,8 +371,6 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
         } else {
           throw new Error("Could not set resource instance from this data");
         }
-
-        tile.data.set(nodeid, val ? [{resourceId: val}] : null);
       }
     }
 

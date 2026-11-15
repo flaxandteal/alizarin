@@ -13,7 +13,7 @@ export class ConceptListViewModel extends Array implements IViewModel {
 
   async forJson() {
     const value = await this._value;
-    return value ? value.map((v) => (v ? v.forJson() : null)) : null;
+    return value ? Promise.all(value.map(async (v) => (v ? v.forJson() : null))) : null;
   }
 
   async __forJsonCache(getMeta: GetMeta): Promise<ConceptListCacheEntry> {
@@ -33,44 +33,32 @@ export class ConceptListViewModel extends Array implements IViewModel {
     value: any,
     cacheEntry: ConceptListCacheEntry | null = null
   ): Promise<ConceptListViewModel> {
-    const nodeid = node.nodeid;
-    let val: (ConceptValueViewModel | Promise<ConceptValueViewModel | null> | null)[] = [];
-    if (!tile.data.has(nodeid)) {
-      tile.data.set(nodeid, null);
-    }
-    if (value !== null) {
-      tile.data.set(nodeid, []);
+    // Built from core's value for this node (the tile's data is a copy):
+    // the list holds its items, resolved, and _value resolves to them.
+    let items: (ConceptValueViewModel | null)[] = [];
+    if (value !== null && value !== undefined) {
       if (!Array.isArray(value)) {
         throw new Error(
-          `Cannot set an (entire) concept list value on node ${nodeid} except via an array: ${JSON.stringify(value)}`,
+          `Cannot set an (entire) concept list value on node ${node.nodeid} except via an array: ${JSON.stringify(value)}`,
         );
       }
-      val = value.map((c, i) => {
+      items = await Promise.all(value.map((c, i) => {
         if (c instanceof ConceptValueViewModel) {
           return c;
         }
         return ConceptValueViewModel.__create(tile, node, c, cacheEntry && cacheEntry._[i] ? cacheEntry._[i] : null);
-      });
-      Promise.all(val).then((vals) => {
-        Promise.all(
-          vals.map(async (c) => {
-            const v = await c;
-            return v ? (await v.getValue()).id : null;
-          })
-        ).then((ids) => {
-          tile.data.set(nodeid, ids);
-        });
-      });
-      value = val;
-    } else {
-      value = [];
+      }));
     }
 
-    const str = new ConceptListViewModel(...value);
-    return str;
+    const list = new ConceptListViewModel();
+    list.push(...items);
+    list._value = Promise.resolve(items);
+    return list;
   }
 
   async __asTileData() {
-    return this._value ? await this._value : null;
+    // Each item's tile form (its value id), not the view models themselves.
+    const value = await this._value;
+    return value ? Promise.all(value.map(async (v) => (v ? v.__asTileData() : null))) : null;
   }
 }

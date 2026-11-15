@@ -39,17 +39,12 @@ export class BooleanViewModel extends Boolean implements IViewModel {
     node: StaticNode,
     value: any,
   ): BooleanViewModel | Promise<BooleanViewModel | null> | null {
-    const nodeid = node.nodeid;
     if (value instanceof Promise) {
       return value.then((value) => BooleanViewModel.__create(tile, node, value));
     }
-    if (tile) {
-      if (value !== null) {
-        tile.data.set(nodeid, value);
-      }
-    }
-
-    const val = tile.data.get(nodeid);
+    // Core's value for this node (the tile's data is a copy, so read from it
+    // or written to, it costs a copy and a write is lost), on every backend.
+    const val = value;
     if (!tile || val === null || val === undefined) {
       return null;
     }

@@ -38,12 +38,10 @@ export class DomainValueViewModel extends String implements IViewModel {
     node: StaticNode,
     value: any,
   ): Promise<DomainValueViewModel | null> {
-    const nodeid = node.nodeid;
+    // Built from core's value for this node; the tile's data is a copy, so
+    // it is neither read nor written here.
     let val: StaticDomainValue | null = value;
     if (tile) {
-      if (!tile.data.has(nodeid)) {
-        tile.data.set(nodeid, null);
-      }
       if (value !== null) {
         if (!value && !(value instanceof StaticDomainValue)) {
           val = null;
@@ -75,10 +73,6 @@ export class DomainValueViewModel extends String implements IViewModel {
           }
         } else {
           throw new Error("Could not set domain value from this data");
-        }
-
-        if (!(val instanceof Promise)) {
-          tile.data.set(nodeid, val ? val.id : null);
         }
       }
     }

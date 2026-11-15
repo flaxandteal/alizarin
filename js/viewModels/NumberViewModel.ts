@@ -26,17 +26,11 @@ export class NumberViewModel extends Number implements IViewModel {
     node: StaticNode,
     value: any,
   ): NumberViewModel | Promise<NumberViewModel | null> | null {
-    const nodeid = node.nodeid;
     if (value instanceof Promise) {
       return value.then((value) => NumberViewModel.__create(tile, node, value));
     }
-    if (tile) {
-      if (value !== null) {
-        tile.data.set(nodeid, value);
-      }
-    }
-
-    const val = tile.data.get(nodeid);
+    // Core's value for this node, as BooleanViewModel's.
+    const val = value;
     if (!tile || val === null || val === undefined) {
       return null;
     }

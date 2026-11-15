@@ -13,7 +13,7 @@ export class ResourceInstanceListViewModel extends Array implements IViewModel {
 
   async forJson() {
     const value = await this._value;
-    return value ? value.map((v) => (v ? v.forJson() : null)) : null;
+    return value ? Promise.all(value.map(async (v) => (v ? v.forJson() : null))) : null;
   }
 
   async __forJsonCache(getMeta: GetMeta): Promise<ResourceInstanceListCacheEntry> {
@@ -32,52 +32,32 @@ export class ResourceInstanceListViewModel extends Array implements IViewModel {
     value: any,
     cacheEntry: ResourceInstanceListCacheEntry | null = null
   ): Promise<ResourceInstanceListViewModel | null> {
-    const nodeid = node.nodeid;
-    let val: (ResourceInstanceViewModel<any> | null | Promise<ResourceInstanceViewModel<any> | null>)[];
-    if (tile) {
-      if (!tile.data.has(nodeid)) {
-        tile.data.set(nodeid, null);
-      }
-      if (value !== null) {
-        tile.data.set(nodeid, []);
-        if (!Array.isArray(value)) {
-          throw new Error(
-            `Cannot set an (entire) resource list value on node ${nodeid} except via an array: ${JSON.stringify(value)}`,
-          );
-        }
-        val = value.map((v, i) => {
-          if (v instanceof ResourceInstanceViewModel) {
-            return v;
-          }
-          return ResourceInstanceViewModel.__create(tile, node, v, cacheEntry && cacheEntry._[i] ? cacheEntry._[i] : null);
-        });
-        Promise.all(
-          val.map(async (c) => {
-            const v = await c;
-            return v ? (await v).id : null;
-          }),
-        ).then((ids) => {
-          tile.data.set(nodeid, ids.map(id => {
-            return {
-              resourceId: id
-            };
-          }));
-          return ids;
-        });
-        value = val;
-      }
-    } else {
-      value = [];
-    }
-
-    if (!tile || !value) {
+    // Built from core's value for this node (the tile's data is a copy):
+    // the list holds its items, resolved, and _value resolves to them.
+    if (!tile || value === null || value === undefined) {
       return null;
     }
-    const str = new ResourceInstanceListViewModel(...value);
-    return str;
+    if (!Array.isArray(value)) {
+      throw new Error(
+        `Cannot set an (entire) resource list value on node ${node.nodeid} except via an array: ${JSON.stringify(value)}`,
+      );
+    }
+    const items = await Promise.all(value.map((v, i) => {
+      if (v instanceof ResourceInstanceViewModel) {
+        return v;
+      }
+      return ResourceInstanceViewModel.__create(tile, node, v, cacheEntry && cacheEntry._[i] ? cacheEntry._[i] : null);
+    }));
+
+    const list = new ResourceInstanceListViewModel();
+    list.push(...items);
+    list._value = Promise.resolve(items);
+    return list;
   }
 
   async __asTileData() {
-    return this._value ? await this._value : null;
+    // Each item's tile form ({resourceId}), not the view models themselves.
+    const value = await this._value;
+    return value ? Promise.all(value.map(async (v) => (v ? v.__asTileData() : null))) : null;
   }
 }

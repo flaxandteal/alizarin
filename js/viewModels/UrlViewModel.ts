@@ -42,30 +42,21 @@ export class UrlViewModel extends String implements IViewModel {
     node: StaticNode,
     value: any,
   ): UrlViewModel | Promise<UrlViewModel | null> | null {
-    const nodeid = node.nodeid;
     if (value instanceof Promise) {
       return value.then((value) => UrlViewModel.__create(tile, node, value));
     }
-    if (tile) {
-      if (!tile.data.has(nodeid)) {
-        tile.data.set(nodeid, {});
-      }
-      if (value !== null) {
-        if (value instanceof UrlViewModel) {
-          value = value._value;
-        } else if (value instanceof Object) {
-          if (!value.url) {
-            throw new Error(`A URL must be null or have a 'url' field: ${value}`);
-          }
-        }
-        tile.data.set(nodeid, {
-          url: value.url,
-          url_label: value.url_label,
-        });
-      }
-    }
 
-    const val = tile.data.get(nodeid);
+    // Core's value for this node, as BooleanViewModel's: a string or Map as
+    // it is, an object (or another UrlViewModel's) as {url, url_label}.
+    let val = value;
+    if (value instanceof UrlViewModel) {
+      val = { url: value._value.url, url_label: value._value.url_label };
+    } else if (value instanceof Object && !(value instanceof Map)) {
+      if (!value.url) {
+        throw new Error(`A URL must be null or have a 'url' field: ${value}`);
+      }
+      val = { url: value.url, url_label: value.url_label };
+    }
     if (!tile || val === null || val === undefined) {
       return null;
     }

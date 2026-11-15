@@ -56,38 +56,16 @@ export class StringViewModel extends String implements IViewModel {
     node: StaticNode,
     value: any,
   ): StringViewModel | Promise<StringViewModel | null> | null {
-    const nodeid = node.nodeid;
     if (value instanceof Promise) {
       return value.then((value) => StringViewModel.__create(tile, node, value));
     }
-    if (tile) {
-      if (!tile.data.has(nodeid)) {
-        tile.data.set(nodeid, {});
-      }
-      if (value !== null) {
-        if (value instanceof Object) {
-          const entries =
-            value instanceof Map ? value.entries() : Object.entries(value);
-          for (const [k, v] of [...entries]) {
-            const val = tile.data.get(nodeid);
-            if (val instanceof Map) {
-              val.set(k, v);
-            } else if (val instanceof Object) {
-              // @ts-expect-error Need better typing of data to make this settable.
-              val[k] = v;
-            } else if (val !== null) {
-              throw new Error("Malformed string in tile data");
-            }
-          }
-        } else {
-          tile.data.set(nodeid, {
-            [DEFAULT_LANGUAGE]: value,
-          });
-        }
-      }
-    }
 
-    const val = tile.data.get(nodeid);
+    // Core's value for this node, as BooleanViewModel's: a plain string is
+    // the default language's.
+    let val = value;
+    if (val !== null && val !== undefined && !(val instanceof Object)) {
+      val = { [DEFAULT_LANGUAGE]: val };
+    }
     if (!tile || val === null || val === undefined) {
       return null;
     }

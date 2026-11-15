@@ -13,7 +13,7 @@ export class DomainValueListViewModel extends Array implements IViewModel {
 
   async forJson() {
     const value = await this._value;
-    return value ? value.map((v) => (v ? v.forJson() : null)) : null;
+    return value ? Promise.all(value.map(async (v) => (v ? v.forJson() : null))) : null;
   }
 
   __forJsonCache(): null {
@@ -25,44 +25,32 @@ export class DomainValueListViewModel extends Array implements IViewModel {
     node: StaticNode,
     value: any,
   ): Promise<DomainValueListViewModel> {
-    const nodeid = node.nodeid;
-    let val: (DomainValueViewModel | Promise<DomainValueViewModel | null> | null)[];
-    if (tile) {
-      if (!tile.data.has(nodeid)) {
-        tile.data.set(nodeid, null);
+    // Built from core's value for this node (the tile's data is a copy):
+    // the list holds its items, resolved, and _value resolves to them.
+    let items: (DomainValueViewModel | null)[] = [];
+    if (tile && value !== null && value !== undefined) {
+      if (!Array.isArray(value)) {
+        throw new Error(
+          `Cannot set an (entire) domain list value on node ${node.nodeid} except via an array: ${JSON.stringify(value)}`,
+        );
       }
-      if (value !== null) {
-        tile.data.set(nodeid, []);
-        if (!Array.isArray(value)) {
-          throw new Error(
-            `Cannot set an (entire) domain list value on node ${nodeid} except via an array: ${JSON.stringify(value)}`,
-          );
+      items = await Promise.all(value.map((c) => {
+        if (c instanceof DomainValueViewModel) {
+          return c;
         }
-        val = value.map((c) => {
-          if (c instanceof DomainValueViewModel) {
-            return c;
-          }
-          return DomainValueViewModel.__create(tile, node, c);
-        });
-        Promise.all(val).then(async (vals) => {
-          const ids = Promise.all(vals.map(async val => val === null ? val : (await val._value).id));
-          ids.then(ids => {
-            tile.data.set(nodeid, ids);
-          });
-        });
-      } else {
-        value = [];
-      }
-    } else {
-      value = [];
+        return DomainValueViewModel.__create(tile, node, c);
+      }));
     }
 
-    const str = new DomainValueListViewModel(...value);
-    return str;
+    const list = new DomainValueListViewModel();
+    list.push(...items);
+    list._value = Promise.resolve(items);
+    return list;
   }
 
   async __asTileData() {
+    // Each item's tile form (its option id), not the view models themselves.
     const value = await this._value;
-    return value ?? null;
+    return value ? Promise.all(value.map(async (v) => (v ? v.__asTileData() : null))) : null;
   }
 }

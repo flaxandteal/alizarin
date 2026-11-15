@@ -22,17 +22,11 @@ export class NonLocalizedStringViewModel extends String implements IViewModel {
     node: StaticNode,
     value: any,
   ): NonLocalizedStringViewModel | Promise<NonLocalizedStringViewModel | null> | null {
-    const nodeid = node.nodeid;
     if (value instanceof Promise) {
       return value.then((value) => NonLocalizedStringViewModel.__create(tile, node, value));
     }
-    if (tile) {
-      if (value !== null) {
-        tile.data.set(nodeid, value);
-      }
-    }
-
-    const val = tile.data.get(nodeid);
+    // Core's value for this node, as BooleanViewModel's.
+    const val = value;
     if (!tile || val === null || val === undefined) {
       return null;
     }

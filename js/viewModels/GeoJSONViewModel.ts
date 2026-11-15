@@ -49,22 +49,14 @@ export class GeoJSONViewModel implements IViewModel, IStringKeyedObject {
     node: StaticNode,
     value: any,
   ): GeoJSONViewModel | Promise<GeoJSONViewModel | null> | null {
-    const nodeid = node.nodeid;
     if (value instanceof Promise) {
       return value.then((value) =>
         GeoJSONViewModel.__create(tile, node, value),
       );
     }
-    if (tile) {
-      if (!tile.data.has(nodeid)) {
-        tile.data.set(nodeid, null);
-      }
-      if (value !== null) {
-        tile.data.set(nodeid, value);
-      }
-    }
 
-    const val = tile.data.get(nodeid);
+    // Core's value for this node, as BooleanViewModel's.
+    const val = value;
     if (!tile || val === null || val === undefined) {
       return null;
     }
