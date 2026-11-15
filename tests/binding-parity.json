@@ -42,7 +42,6 @@
         { "wasm": "serializeRootCards", "napi": null, "python": "serialize_root_cards", "why": { "napi": "gap: card serialisation" } },
         { "wasm": "serializeRootCardsDisplay", "napi": null, "python": "serialize_root_cards_display", "why": { "napi": "gap: card serialisation" } },
         { "wasm": "setLazy", "napi": "setLazy", "python": "set_lazy" },
-        { "wasm": "setTileDataForNode", "napi": "setTileDataForNode", "python": "set_tile_data_for_node", "why": { "all": "gap: unused since applyEdits; remove?" } },
         { "wasm": "tilesLoaded", "napi": "tilesLoaded", "python": null, "why": { "python": "gap" } },
         { "wasm": "toDisplayJson", "napi": "toDisplayJson", "python": "to_display_json" },
         { "wasm": null, "napi": "toDisplayJsonFull", "python": null, "why": { "wasm": "gap: naming", "python": "gap: naming" } },

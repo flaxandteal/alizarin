@@ -921,7 +921,8 @@ impl NapiResourceInstanceWrapper {
     }
 
     /// Export all tiles as a JSON string.
-    /// Returns the wrapper's current tile state (including any mutations from setTileDataForNode).
+    /// Returns the wrapper's stored tiles as they now stand (edits committed by
+    /// `applyEdits` included; on-load derived tiles left out).
     /// Returned as a string for fast boundary crossing — call JSON.parse() on the JS side.
     #[napi]
     pub fn export_tiles_json(&self) -> Result<String> {
@@ -959,18 +960,6 @@ impl NapiResourceInstanceWrapper {
             .get_tile(&tile_id)
             .ok_or_else(|| napi::Error::from_reason(format!("Tile '{}' not found", tile_id)))?;
         serde_json::to_value(tile).map_err(|e| napi::Error::from_reason(e.to_string()))
-    }
-
-    /// Set a single node's data in a tile, mutating in place.
-    /// Returns true if the tile was found and updated.
-    #[napi]
-    pub fn set_tile_data_for_node(
-        &mut self,
-        tile_id: String,
-        node_id: String,
-        value: serde_json::Value,
-    ) -> bool {
-        self.inner.set_tile_data_for_node(&tile_id, &node_id, value)
     }
 
     // =========================================================================

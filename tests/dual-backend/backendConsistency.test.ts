@@ -5,7 +5,7 @@
  *
  * Prevents regressions like:
  *   - NAPI exposing `tileDataJson` instead of `tileData`
- *   - NAPI missing `setTileDataForNode` / `node` getter
+ *   - NAPI missing the `node` getter
  *   - ResourceModelWrapper missing `setDefaultAllowAllNodegroups`
  *
  * Runs under both backends via:
@@ -201,8 +201,7 @@ describe(`Backend consistency [${getBackend()}]`, () => {
   });
 
   // =========================================================================
-  // Instance wrapper methods (prevents bug #2: missing setTileDataForNode,
-  //                            bug #5: missing setLazy/tilesLoaded)
+  // Instance wrapper methods (prevents bug #5: missing setLazy/tilesLoaded)
   // =========================================================================
 
   describe("InstanceWrapper methods", () => {
@@ -211,46 +210,6 @@ describe(`Backend consistency [${getBackend()}]`, () => {
       const result = wrapper.getValuesAtPath("basic_info");
       expect(result).toBeDefined();
       expect(typeof result.totalValues).toBe('number');
-    });
-
-    test("has .setTileDataForNode(tileId, nodeId, value) on the wrapper", () => {
-      expect(typeof wrapper.setTileDataForNode).toBe('function');
-      const tileId = pseudoValue?.tileId;
-      if (tileId) {
-        const result = wrapper.setTileDataForNode(tileId, "fake-node-id", null);
-        expect(typeof result).toBe('boolean');
-      }
-    });
-
-    test("setTileDataForNode write persists through getValuesAtPath", () => {
-      // Regression: in WASM, setTileDataForNode on StaticResource wrote to a
-      // cloned copy, so reads via getValuesAtPath saw stale data.
-      const tileId = pseudoValue.tileId;
-      const nodeId = pseudoValue.nodeId;
-      expect(tileId).toBeDefined();
-
-      // Write a sentinel value
-      const sentinel = { __test: "persist-check" };
-      const ok = wrapper.setTileDataForNode(tileId, nodeId, sentinel);
-      expect(ok).toBe(true);
-
-      // Read it back through getValuesAtPath — must see the sentinel
-      const freshList = wrapper.getValuesAtPath("basic_info.name");
-      expect(freshList.totalValues).toBeGreaterThan(0);
-      let found = false;
-      for (let i = 0; i < freshList.totalValues; i++) {
-        const pv = freshList.getValue(i);
-        if (pv.tileId === tileId) {
-          const td = pv.tileData;
-          // WASM returns Map, NAPI returns plain object
-          const value = td instanceof Map ? td.get('__test') : td?.__test;
-          if (value === "persist-check") {
-            found = true;
-          }
-          break;
-        }
-      }
-      expect(found).toBe(true);
     });
 
     test("has .tilesLoaded() method returning boolean", () => {

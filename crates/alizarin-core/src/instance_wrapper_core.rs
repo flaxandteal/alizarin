@@ -1084,23 +1084,6 @@ impl ResourceInstanceWrapperCore {
         self.tiles.as_ref().and_then(|t| t.get(tile_id))
     }
 
-    /// Set a single node's data in a tile, mutating in place.
-    /// Returns true if the tile was found and updated, false otherwise.
-    pub fn set_tile_data_for_node(
-        &mut self,
-        tile_id: &str,
-        node_id: &str,
-        value: serde_json::Value,
-    ) -> bool {
-        if let Some(tiles) = &mut self.tiles {
-            if let Some(tile) = tiles.get_mut(tile_id) {
-                tile.data.insert(node_id.to_string(), value);
-                return true;
-            }
-        }
-        false
-    }
-
     /// Get tiles for a nodegroup
     pub fn get_tiles_for_nodegroup(&self, nodegroup_id: &str) -> Vec<&StaticTile> {
         let tile_ids = self.nodegroup_index.get(nodegroup_id);

@@ -409,7 +409,7 @@ describe('NapiPseudoValue property names', () => {
 
 // =============================================================================
 // NapiResourceInstanceWrapper methods
-// Regression: NAPI was missing setTileDataForNode, tilesLoaded, setLazy.
+// Regression: NAPI was missing tilesLoaded, setLazy.
 // =============================================================================
 
 describe('NapiResourceInstanceWrapper methods', () => {
@@ -430,29 +430,6 @@ describe('NapiResourceInstanceWrapper methods', () => {
 
   // Ensure graph is registered
   const _modelWrapper = new NapiResourceModelWrapper(graphStr, true);
-
-  it('has setTileDataForNode method', () => {
-    const wrapper = new NapiResourceInstanceWrapper(graphId);
-    wrapper.loadTilesFromResource(JSON.stringify(resource));
-    assert.equal(typeof wrapper.setTileDataForNode, 'function');
-  });
-
-  it('setTileDataForNode mutates tile data', () => {
-    const wrapper = new NapiResourceInstanceWrapper(graphId);
-    wrapper.loadTilesFromResource(JSON.stringify(resource));
-
-    const tileIds = JSON.parse(wrapper.exportTilesJson()).map((t) => t.tileid);
-    assert.ok(tileIds.length > 0, 'should have tiles');
-    const tileId = tileIds[0];
-
-    // Set data and verify it was stored
-    const result = wrapper.setTileDataForNode(tileId, 'test-node-id', [{ name: 'test.jpg' }]);
-    assert.equal(result, true);
-
-    // Read it back
-    const data = wrapper.getTile(tileId).data['test-node-id'];
-    assert.deepEqual(data, [{ name: 'test.jpg' }]);
-  });
 
   it('has tilesLoaded method', () => {
     const wrapper = new NapiResourceInstanceWrapper(graphId);
@@ -495,23 +472,6 @@ describe('NapiResourceInstanceWrapper methods', () => {
       assert.ok(tile.tileid || tile.tileid === null, 'tile should have tileid field');
       assert.ok('data' in tile, 'tile should have data field');
     }
-  });
-
-  it('exportTilesJson reflects setTileDataForNode mutations', () => {
-    const wrapper = new NapiResourceInstanceWrapper(graphId);
-    wrapper.loadTilesFromResource(JSON.stringify(resource));
-
-    const tileIds = JSON.parse(wrapper.exportTilesJson()).map((t) => t.tileid);
-    const tileId = tileIds[0];
-
-    // Mutate a tile
-    wrapper.setTileDataForNode(tileId, 'test-node-id', [{ name: 'mutated.jpg' }]);
-
-    // Export and verify mutation is present
-    const tiles = JSON.parse(wrapper.exportTilesJson());
-    const mutatedTile = tiles.find(t => t.tileid === tileId);
-    assert.ok(mutatedTile, 'mutated tile should be in export');
-    assert.deepEqual(mutatedTile.data['test-node-id'], [{ name: 'mutated.jpg' }]);
   });
 
   it('exportTilesJson returns empty array when no tiles loaded', () => {

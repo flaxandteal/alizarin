@@ -334,7 +334,8 @@ export declare class NapiResourceInstanceWrapper {
   appendFetchedTiles(tilesJs: any, nodegroupId?: string | undefined | null): void
   /**
    * Export all tiles as a JSON string.
-   * Returns the wrapper's current tile state (including any mutations from setTileDataForNode).
+   * Returns the wrapper's stored tiles as they now stand (edits committed by
+   * `applyEdits` included; on-load derived tiles left out).
    * Returned as a string for fast boundary crossing — call JSON.parse() on the JS side.
    */
   exportTilesJson(): string
@@ -342,11 +343,6 @@ export declare class NapiResourceInstanceWrapper {
   pruneResourceTiles(): void
   tilesLoaded(): boolean
   getTile(tileId: string): any
-  /**
-   * Set a single node's data in a tile, mutating in place.
-   * Returns true if the tile was found and updated.
-   */
-  setTileDataForNode(tileId: string, nodeId: string, value: any): boolean
   setLazy(lazy: boolean): void
   isNodegroupLoaded(nodegroupId?: string | undefined | null): boolean
   getMissingNodegroupsForChildren(parentNodeId: string): Array<string>

@@ -2917,26 +2917,6 @@ impl StaticResource {
         }
     }
 
-    /// Set a single key in a tile's data map, mutating in place without cloning.
-    /// Returns true if the tile was found and updated, false otherwise.
-    #[wasm_bindgen(js_name = setTileDataForNode)]
-    pub fn set_tile_data_for_node(&mut self, tile_id: &str, node_id: &str, value: JsValue) -> bool {
-        if let Some(tiles) = &mut self.0.tiles {
-            for tile in tiles.iter_mut() {
-                if tile.tileid.as_deref() == Some(tile_id) {
-                    match serde_wasm_bindgen::from_value::<serde_json::Value>(value) {
-                        Ok(json_val) => {
-                            tile.data.insert(node_id.to_string(), json_val);
-                            return true;
-                        }
-                        Err(_) => return false,
-                    }
-                }
-            }
-        }
-        false
-    }
-
     #[wasm_bindgen(getter)]
     pub fn metadata(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&self.0.metadata).unwrap_or(JsValue::NULL)

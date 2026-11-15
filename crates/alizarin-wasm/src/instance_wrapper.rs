@@ -403,19 +403,6 @@ impl WASMResourceInstanceWrapper {
         }
     }
 
-    /// Set a single node's data in a tile on the wrapper's own tile store.
-    /// Returns true if the tile was found and updated, false otherwise.
-    #[wasm_bindgen(js_name = setTileDataForNode)]
-    pub fn set_tile_data_for_node(&self, tile_id: &str, node_id: &str, value: JsValue) -> bool {
-        match serde_wasm_bindgen::from_value::<serde_json::Value>(value) {
-            Ok(json_val) => self
-                .core
-                .borrow_mut()
-                .set_tile_data_for_node(tile_id, node_id, json_val),
-            Err(_) => false,
-        }
-    }
-
     #[wasm_bindgen(js_name = getResourceId)]
     pub fn get_resource_id(&self) -> Option<String> {
         self.core
@@ -455,7 +442,8 @@ impl WASMResourceInstanceWrapper {
     }
 
     /// Export all tiles as a JSON string.
-    /// Returns the wrapper's current tile state (including any mutations from setTileDataForNode).
+    /// Returns the wrapper's stored tiles as they now stand (edits committed by
+    /// `applyEdits` included; on-load derived tiles left out).
     /// Returned as a string for fast boundary crossing — call JSON.parse() on the JS side.
     #[wasm_bindgen(js_name = exportTilesJson)]
     pub fn export_tiles_json(&self) -> Result<String, JsValue> {
