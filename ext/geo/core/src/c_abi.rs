@@ -13,8 +13,7 @@ use std::sync::Once;
 use alizarin_core::extension_type_registry::ExtensionError;
 use alizarin_extension_api::{
     FoldFn, FoldIdentityFn, FoldMayMatchFn, FoldMergeFn, FoldRemoveFn, FoldResult, FreeFoldFn,
-    FreeValidateFn,
-    TypeHandlerInfo, ValidateFn, ValidateResult,
+    FreeValidateFn, TypeHandlerInfo, ValidateFn, ValidateResult,
 };
 use serde_json::Value;
 
@@ -193,8 +192,7 @@ pub fn geo_handler_type_info() -> *const TypeHandlerInfo {
     unsafe {
         HANDLER_INFO
             .as_ref()
-            .expect("HANDLER_INFO initialised in Once::call_once")
-            as *const TypeHandlerInfo
+            .expect("HANDLER_INFO initialised in Once::call_once") as *const TypeHandlerInfo
     }
 }
 
@@ -246,8 +244,12 @@ mod tests {
             }]
         });
         // Drive the C-ABI fn the way the host would: value by pointer.
-        let result =
-            unsafe { geo_validate(&value as *const serde_json::Value as *const c_void, std::ptr::null()) };
+        let result = unsafe {
+            geo_validate(
+                &value as *const serde_json::Value as *const c_void,
+                std::ptr::null(),
+            )
+        };
         assert!(!result.is_error());
         let slice = unsafe { std::slice::from_raw_parts(result.json_ptr, result.json_len) };
         let out: serde_json::Value = serde_json::from_slice(slice).unwrap();
@@ -258,8 +260,12 @@ mod tests {
     #[test]
     fn bare_geometry_is_rejected() {
         let value = json!({ "type": "Point", "coordinates": [-6.25, 54.6] });
-        let result =
-            unsafe { geo_validate(&value as *const serde_json::Value as *const c_void, std::ptr::null()) };
+        let result = unsafe {
+            geo_validate(
+                &value as *const serde_json::Value as *const c_void,
+                std::ptr::null(),
+            )
+        };
         assert!(!result.is_error());
         let slice = unsafe { std::slice::from_raw_parts(result.json_ptr, result.json_len) };
         let out: serde_json::Value = serde_json::from_slice(slice).unwrap();

@@ -36,7 +36,6 @@ mod python_module {
     // PyCapsule Registration
     // =========================================================================
 
-
     #[pyfunction]
     #[pyo3(name = "set_clm_base_uri")]
     pub fn py_set_clm_base_uri(uri: &str) {

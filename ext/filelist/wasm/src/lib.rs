@@ -17,8 +17,8 @@ pub fn coerce_file_list(value: JsValue) -> Result<JsValue, JsError> {
     let json: serde_json::Value = serde_wasm_bindgen::from_value(value)
         .map_err(|e| JsError::new(&format!("Failed to parse value: {}", e)))?;
 
-    let (tile_data, display_value) = alizarin_filelist_core::coerce_filelist_value(&json)
-        .map_err(|e| JsError::new(&e))?;
+    let (tile_data, display_value) =
+        alizarin_filelist_core::coerce_filelist_value(&json).map_err(|e| JsError::new(&e))?;
 
     let result = serde_json::json!({
         "tileData": tile_data,

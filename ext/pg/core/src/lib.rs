@@ -18,7 +18,7 @@
 //! name (JSONB), descriptors (JSONB), legacyid, createdtime,
 //! resource_instance_lifecycle_state_id, principaluser_id.
 
-use alizarin_core::{StaticResource, StaticTile, get_current_language};
+use alizarin_core::{get_current_language, StaticResource, StaticTile};
 use std::io;
 
 const TAB: &[u8] = b"\t";
@@ -93,10 +93,7 @@ pub fn write_tile_row<W: io::Write>(w: &mut W, tile: &StaticTile) -> io::Result<
 }
 
 /// Write all tiles for a single resource to `w`.
-pub fn write_resource_tiles<W: io::Write>(
-    w: &mut W,
-    resource: &StaticResource,
-) -> io::Result<()> {
+pub fn write_resource_tiles<W: io::Write>(w: &mut W, resource: &StaticResource) -> io::Result<()> {
     if let Some(ref tiles) = resource.tiles {
         for tile in tiles {
             write_tile_row(w, tile)?;
@@ -106,10 +103,7 @@ pub fn write_resource_tiles<W: io::Write>(
 }
 
 /// Write all tiles for a slice of resources to `w`.
-pub fn write_all_tiles<W: io::Write>(
-    w: &mut W,
-    resources: &[StaticResource],
-) -> io::Result<()> {
+pub fn write_all_tiles<W: io::Write>(w: &mut W, resources: &[StaticResource]) -> io::Result<()> {
     for resource in resources {
         write_resource_tiles(w, resource)?;
     }
@@ -127,9 +121,9 @@ pub fn write_resource_instance_row<W: io::Write>(
     let lang = get_current_language();
 
     let name_json = match &ri.descriptors.name {
-        Some(n) => copy_escape(
-            &serde_json::json!({&lang: {"direction": "ltr", "value": n}}).to_string(),
-        ),
+        Some(n) => {
+            copy_escape(&serde_json::json!({&lang: {"direction": "ltr", "value": n}}).to_string())
+        }
         None => "\\N".to_string(),
     };
 
@@ -161,7 +155,7 @@ pub fn write_resource_instance_row<W: io::Write>(
     let legacyid = ri
         .legacyid
         .as_deref()
-        .map(|s| copy_escape(s))
+        .map(copy_escape)
         .unwrap_or_else(|| "\\N".to_string());
 
     let createdtime = opts
@@ -236,8 +230,7 @@ pub fn resources_to_copy(
         created_time,
     };
     let mut buf = Vec::new();
-    write_all_resource_instances(&mut buf, resources, &opts)
-        .expect("writing to Vec never fails");
+    write_all_resource_instances(&mut buf, resources, &opts).expect("writing to Vec never fails");
     String::from_utf8(buf).expect("COPY output is always valid UTF-8")
 }
 

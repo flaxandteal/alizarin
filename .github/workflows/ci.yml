@@ -74,6 +74,10 @@ jobs:
             cargo check --manifest-path "$py_dir/Cargo.toml"
           done
 
+      # Outside the workspace, so the Rust job's fmt and clippy never see them.
+      - name: Check extension formatting and lints
+        run: bash scripts/check-ext-rust.sh
+
   # Python linting
   python-lint:
     name: Python Lint

@@ -2,11 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use rayon::prelude::*;
-use serde_json;
 
 use alizarin_core::{
-    get_global_extension_registry, get_global_rdm_cache, get_graph,
-    RdmCache, StaticGraph,
+    get_global_extension_registry, get_global_rdm_cache, get_graph, RdmCache, StaticGraph,
 };
 
 fn get_registered_graph(graph_id: &str) -> Result<Arc<StaticGraph>, String> {
@@ -59,10 +57,7 @@ mod python_module {
         random_ids: bool,
     ) -> PyResult<PyObject> {
         let trees: Vec<serde_json::Value> = serde_json::from_str(&trees_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to parse trees: {}",
-                e
-            ))
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to parse trees: {}", e))
         })?;
 
         if let Some(ref keys) = id_keys {
@@ -75,14 +70,12 @@ mod python_module {
             }
         }
 
-        let graph = get_registered_graph(&graph_id).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyKeyError, _>(e)
-        })?;
+        let graph = get_registered_graph(&graph_id)
+            .map_err(PyErr::new::<pyo3::exceptions::PyKeyError, _>)?;
 
         let ext_registry = get_global_extension_registry();
 
-        let mut alias_map =
-            build_alias_to_collection_from_graph(&graph, ext_registry.as_ref());
+        let mut alias_map = build_alias_to_collection_from_graph(&graph, ext_registry.as_ref());
         let label_cache: Option<Arc<RdmCache>> = if alias_map.is_empty() {
             None
         } else {
@@ -124,8 +117,7 @@ mod python_module {
             })
             .collect();
 
-        let (successes, errors): (Vec<_>, Vec<_>) =
-            results.into_iter().partition(Result::is_ok);
+        let (successes, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
         let resources: Vec<alizarin_core::StaticResource> =
             successes.into_iter().map(Result::unwrap).collect();
         let errors: Vec<String> = errors.into_iter().map(|e| e.unwrap_err()).collect();

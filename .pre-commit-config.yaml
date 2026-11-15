@@ -13,6 +13,14 @@ repos:
         language: system
         pass_filenames: false
         types: [rust]
+      # The extension crates are outside the workspace, so the two checks above
+      # never see them: check them when their sources change.
+      - id: ext-rust
+        name: extension crates (rustfmt + clippy)
+        entry: bash scripts/check-ext-rust.sh
+        language: system
+        pass_filenames: false
+        files: ^ext/.*\.rs$
       - id: ruff
         name: ruff
         entry: ruff check

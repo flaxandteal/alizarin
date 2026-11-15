@@ -1064,18 +1064,24 @@ mod tests {
         };
 
         // Handler-level: ConceptHierarchical scoped to the controlled list; keys = concept ids.
-        let spec = handler.index_spec(&resolved, Some(&config)).unwrap().unwrap();
+        let spec = handler
+            .index_spec(&resolved, Some(&config))
+            .unwrap()
+            .unwrap();
         assert_eq!(spec.class, expected);
         assert_eq!(spec.keys, vec![NOUN.to_string()]);
 
         // End-to-end via the path consumers read (incl. the ros-madair substrate):
         // `datatype_index_spec("reference", …)` must route through the registered
         // handler and return ConceptHierarchical, NOT DetailOnly.
-        let mut registry =
-            alizarin_core::extension_type_registry::ExtensionTypeRegistry::new();
+        let mut registry = alizarin_core::extension_type_registry::ExtensionTypeRegistry::new();
         register(&mut registry);
-        let via_registry =
-            alizarin_core::datatype_index_spec("reference", &resolved, Some(&config), Some(&registry));
+        let via_registry = alizarin_core::datatype_index_spec(
+            "reference",
+            &resolved,
+            Some(&config),
+            Some(&registry),
+        );
         assert_eq!(via_registry.class, expected);
         assert_eq!(via_registry.keys, vec![NOUN.to_string()]);
     }
@@ -1243,7 +1249,9 @@ mod tests {
             }))
         );
         assert_eq!(
-            handler.node_config(&json!({ "rdmCollection": "rdm-1" })).unwrap()["collectionId"],
+            handler
+                .node_config(&json!({ "rdmCollection": "rdm-1" }))
+                .unwrap()["collectionId"],
             json!("rdm-1"),
             "falls back to rdmCollection"
         );

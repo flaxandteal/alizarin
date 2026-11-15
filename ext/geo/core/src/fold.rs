@@ -38,7 +38,11 @@ pub fn fold(acc: Value, values: &[&Value]) -> Result<Value, ExtensionError> {
 /// it folded no geometry at all; `true` for anything else it can't decide.
 pub fn may_match(summary: &Value, predicate: &Value) -> bool {
     let Some(wanted) = predicate.get("bbox").and_then(|b| {
-        let n: Vec<f64> = b.as_array()?.iter().map(Value::as_f64).collect::<Option<_>>()?;
+        let n: Vec<f64> = b
+            .as_array()?
+            .iter()
+            .map(Value::as_f64)
+            .collect::<Option<_>>()?;
         <[f64; 4]>::try_from(n).ok()
     }) else {
         return true;
@@ -49,7 +53,10 @@ pub fn may_match(summary: &Value, predicate: &Value) -> bool {
     match summary.bbox {
         None => false, // no geometry folded
         Some(have) => {
-            !(have[2] < wanted[0] || have[0] > wanted[2] || have[3] < wanted[1] || have[1] > wanted[3])
+            !(have[2] < wanted[0]
+                || have[0] > wanted[2]
+                || have[3] < wanted[1]
+                || have[1] > wanted[3])
         }
     }
 }
