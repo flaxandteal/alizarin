@@ -478,6 +478,77 @@ class PseudoList extends Array implements IPseudo {
   isOuter: boolean = false;
   /** Whether this list represents a cardinality-1 node (should unwrap to single value in forJson) */
   isSingle: boolean = false;
+  /** Set once built from core's values: from then on push/splice record edits. */
+  __editable: boolean = false;
+  /** The node the list's items are values of. */
+  __alias: string | undefined;
+  /** Each item's tile id, or, for an item pushed since the last commit, its edit's index. */
+  __tileIds: Array<string | number | null> = [];
+
+  /**
+   * Once built: record each item (a tree fragment of values by alias) as a new
+   * tile, applied by the resource's $commit(). As Python's PseudoList.append.
+   */
+  push(...items: any[]): number {
+    if (!this.__editable) {
+      return super.push(...items);
+    }
+    const wrapper = this.parent?.$;
+    if (!wrapper || !this.__alias) {
+      throw Error("Cannot add to this list: it has no resource to edit");
+    }
+    for (const item of items) {
+      const ref = wrapper.recordEdit({
+        op: 'add',
+        alias: this.__alias,
+        parent: this.parenttileId ?? null,
+        values: item ?? {},
+      });
+      this.__tileIds.push(ref);
+      super.push(new AttrPromise((resolve) => resolve(item)));
+    }
+    wrapper.setPendingValue(this.parenttileId ?? null, this.__alias, this);
+    return this.length;
+  }
+
+  /**
+   * Once built: record removing each item's tile (and all under it), applied
+   * by the resource's $commit(). Inserting isn't supported: push adds, and
+   * tile order follows sortorder.
+   */
+  splice(start: number, deleteCount?: number, ...items: any[]): any[] {
+    if (!this.__editable) {
+      return deleteCount === undefined
+        ? super.splice(start)
+        : super.splice(start, deleteCount, ...items);
+    }
+    if (items.length > 0) {
+      throw Error("Add items with push: tile order follows sortorder");
+    }
+    const wrapper = this.parent?.$;
+    if (!wrapper || !this.__alias) {
+      throw Error("Cannot remove from this list: it has no resource to edit");
+    }
+    const from = start < 0 ? Math.max(this.length + start, 0) : Math.min(start, this.length);
+    const count = Math.max(0, Math.min(deleteCount ?? this.length - from, this.length - from));
+    const tileIds = this.__tileIds.slice(from, from + count);
+    if (tileIds.some((id) => typeof id !== 'string')) {
+      throw Error("Cannot remove an item added since the last $commit(): $discard() instead");
+    }
+    for (const tile of tileIds) {
+      wrapper.recordEdit({ op: 'remove', tile });
+    }
+    this.__tileIds.splice(from, count);
+    const removed = Array.from(this).slice(from, from + count);
+    // Array.prototype.splice would make a PseudoList for its result; this
+    // list's own items shift down instead.
+    for (let i = from; i + count < this.length; i++) {
+      this[i] = this[i + count];
+    }
+    this.length -= count;
+    wrapper.setPendingValue(this.parenttileId ?? null, this.__alias, this);
+    return removed;
+  }
 
   isIterable(): boolean {
     return true;
@@ -647,7 +718,16 @@ function wrapRustPseudo(
     for (const wasmValue of wasmValues) {
       const pseudoValue = PseudoValue.fromWasm(wasmValue, wkri);
       list.push(pseudoValue.getValue());
+      list.__tileIds.push(wasmValue.tileId ?? null);
     }
+
+    // What push/splice need to record edits: from now on they do.
+    list.parent = list.parent ?? wkri;
+    list.__alias = wasmList.nodeAlias;
+    list.parenttileId = wasmValues.length > 0
+      ? PseudoValue.fromWasm(wasmValues[0], wkri).getParentTileId() ?? undefined
+      : undefined;
+    list.__editable = true;
 
     return list;
   } else {

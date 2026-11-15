@@ -37,6 +37,25 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
     return `[${this.__.wkrm.modelClassName}:${this.id ?? "-"}]`;
   }
 
+  /**
+   * Apply every value assigned since the last commit (`place.name = ...`,
+   * `place.names.push({...})`), all or nothing, through core: values coerced,
+   * stored Derive functions rerun for what changed. Returns the tiles to write
+   * and the ids to delete; persisting them is the caller's. As Python's
+   * `commit()`.
+   */
+  $commit(): { upserted: StaticTile[]; removed: string[] } {
+    if (!this.$) {
+      throw Error("Nothing to commit: this resource hasn't been retrieved");
+    }
+    return this.$.commitEdits();
+  }
+
+  /** Drop every value assigned since the last commit. As Python's `discard()`. */
+  $discard(): void {
+    this.$?.discardEdits();
+  }
+
   async getName(retrieveIfNeeded: boolean=false): Promise<string> {
     return (await this.getDescriptors(retrieveIfNeeded))?.name;
   }
@@ -277,21 +296,24 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
     }
 
     return new Proxy(this, {
-      // @ts-expect-error Returning a promise for set
-      set: async (object: ResourceInstanceViewModel<RIVM>, key, value): Promise<boolean> => {
+      // Synchronous, so an assignment the graph rules out throws where it's made.
+      set: (object: ResourceInstanceViewModel<RIVM>, key, value): boolean => {
         const k: string = typeof key === 'symbol' ? key.description || '' : key;
         if (key in object) {
           object[key] = value;
         } else if (k in object || k.startsWith('__')) {
           object[k] = value;
+        } else if (object.$) {
+          // Retrieved: a pending edit at the root, recorded (and checked) now
+          object.$.assign(null, null, k, value);
         } else {
-          if (!object.$) {
-            await this.retrieve();
+          // Not retrieved yet: record it once it is (errors reject, as before)
+          void this.retrieve().then(() => {
             if (!object.$) {
               throw new Error("Could not retrieve resource");
             }
-          }
-          object.$.setOrmAttribute(k, value);
+            object.$.assign(null, null, k, value);
+          });
         }
         return true;
       },

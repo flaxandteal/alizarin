@@ -213,6 +213,99 @@ export class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implements IInsta
     }
   }
 
+  // =========================================================================
+  // Editing: assignment records edits; $commit() applies them through core
+  // =========================================================================
+
+  /** Edits recorded since the last commit, as core's `applyEdits` takes them. */
+  private _pendingEdits: any[] = [];
+  /** What reads see until the commit: assigned values and edited lists. */
+  private _pendingValues: Map<string, any> = new Map();
+
+  private static _pendingKey(tileId: string | null | undefined, alias: string): string {
+    return `${tileId ?? ''}/${alias}`;
+  }
+
+  /**
+   * Record `value` for child `key` of semantic `node` (null: the root) within
+   * `tile` (null at the root) as a pending edit. The checks that need only the
+   * graph (an unknown or derived node, a semantic node, a multi-valued one, an
+   * unloaded nodegroup) throw now; coercion happens at commit. As Python's
+   * `ResourceInstanceWrapper.assign`.
+   */
+  assign(tile: StaticTile | null, node: StaticNode | null, key: string, value: any): void {
+    node = node ?? this.model.getRootNode();
+    const child = this.model.getChildNodes(node.nodeid).get(key);
+    if (!child) {
+      throw Error(`${node.alias} has no child ${key}`);
+    }
+    const nodegroupId = child.nodegroup_id;
+    if (tile && tile.nodegroup_id === nodegroupId) {
+      this.recordEdit({ op: 'set', tile: tile.tileid, alias: key, value });
+    } else {
+      const nodegroup = nodegroupId ? this.model.getNodegroupObjects().get(nodegroupId) : undefined;
+      if (nodegroup?.cardinality === 'n') {
+        throw Error(`${key} is multi-valued: push to its list, or set values on one of its items`);
+      }
+      this.recordEdit({ op: 'set', parent: tile?.tileid ?? null, alias: key, value });
+    }
+    this._pendingValues.set(ResourceInstanceWrapper._pendingKey(tile?.tileid, key), value);
+  }
+
+  /** The value `key` was given under `tileId` since the last commit, if any. */
+  pendingValue(tileId: string | null | undefined, key: string): { value: any } | undefined {
+    const pendingKey = ResourceInstanceWrapper._pendingKey(tileId, key);
+    return this._pendingValues.has(pendingKey)
+      ? { value: this._pendingValues.get(pendingKey) }
+      : undefined;
+  }
+
+  /** Make reads of `key` under `tileId` see `value` (an edited list) until the commit. */
+  setPendingValue(tileId: string | null | undefined, key: string, value: any): void {
+    this._pendingValues.set(ResourceInstanceWrapper._pendingKey(tileId, key), value);
+  }
+
+  /**
+   * Record one edit (`{op: "set" | "add" | "remove", ...}`), checking each
+   * node it gives a value against the graph first. Returns its index, which
+   * later edits can name as `{ref: index}`.
+   */
+  recordEdit(op: any): number {
+    const aliases = op.op === 'set' ? [op.alias] : op.op === 'add' ? Object.keys(op.values ?? {}) : [];
+    for (const alias of aliases) {
+      this.wasmWrapper.checkEditable(alias);
+    }
+    this._pendingEdits.push(op);
+    return this._pendingEdits.length - 1;
+  }
+
+  /** Whether there are edits not yet committed. */
+  hasPendingEdits(): boolean {
+    return this._pendingEdits.length > 0;
+  }
+
+  /**
+   * Apply every pending edit through core, all or nothing: values coerced,
+   * stored Derive functions rerun for what changed. Returns the tiles to write
+   * and the ids to delete; persisting them is the caller's. Pending edits are
+   * dropped either way, so a failure leaves the resource as it was.
+   */
+  commitEdits(): { upserted: StaticTile[]; removed: string[] } {
+    const ops = this._pendingEdits;
+    this.discardEdits();
+    if (ops.length === 0) {
+      return { upserted: [], removed: [] };
+    }
+    return this.wasmWrapper.applyEdits(ops);
+  }
+
+  /** Drop every pending edit; reads see the resource as committed. */
+  discardEdits(): void {
+    this._pendingEdits = [];
+    this._pendingValues = new Map();
+    this._pseudoCache = new Map();
+  }
+
   pruneResourceTiles(): undefined {
     this.wasmWrapper.pruneResourceTiles();
   }

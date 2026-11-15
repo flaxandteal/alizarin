@@ -75,7 +75,13 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
           object[k] = value;
           return true;
         }
-        throw Error(`Setting semantic values via proxy (key: ${String(key)}) is not supported`);
+        // A pending edit, applied by the resource's $commit()
+        const wrapper = object.__parentWkri?.$;
+        if (!wrapper) {
+          throw Error(`Cannot set ${k}: this value has no resource to edit`);
+        }
+        wrapper.assign(object.__tile, object.__node, k, value);
+        return true;
       },
       get: (object, key) => {
         const k: string = typeof key === 'symbol' ? key.description || '' : key;
@@ -167,6 +173,11 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
   }
 
   async __get(key: string) {
+    // A value assigned since the last $commit()
+    const pending = this.__parentWkri?.$?.pendingValue(this.__tile?.tileid, key);
+    if (pending) {
+      return pending.value;
+    }
     const childValue = await this.__getChildValue(key);
     if (!childValue) {
       return null;

@@ -57,6 +57,13 @@ interface IInstanceWrapper<T extends IRIVM<T>> {
   loadNodes(aliases: Array<string>): Promise<void>;
   fetchNodegroupTiles(nodegroupId: string | null): Promise<void>;
   fetchNodegroups(nodegroupIds: string[]): Promise<void>;
+  assign(tile: StaticTile | null, node: StaticNode | null, key: string, value: any): void;
+  pendingValue(tileId: string | null | undefined, key: string): { value: any } | undefined;
+  setPendingValue(tileId: string | null | undefined, key: string, value: any): void;
+  recordEdit(op: any): number;
+  hasPendingEdits(): boolean;
+  commitEdits(): { upserted: StaticTile[]; removed: string[] };
+  discardEdits(): void;
   allEntries(): MapIterator<[string, Array<IPseudo> | false | null]>;
   addPseudo(childNode: StaticNode, tile: StaticTile | null, node: StaticNode): IPseudo;
   setOrmAttribute(key: string, value: any): Promise<void>;
