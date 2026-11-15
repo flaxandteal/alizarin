@@ -103,6 +103,13 @@ describe(`ORM editing [${getBackend()} backend]`, () => {
     const title = await town.title;
     expect(title.lang("ga")).toBe("Baile");
     expect(title.lang("en")).toBe("Town");
+
+    // Reads show the current language, falling back to the default.
+    expect(`${await town.title}`).toBe("Baile");
+    setCurrentLanguage("en");
+    expect(`${await town.title}`).toBe("Town");
+    setCurrentLanguage("fr");
+    expect(`${await town.title}`).toBe("Town");
   });
 
   test("push and splice add and remove multi-valued tiles", async () => {

@@ -2,6 +2,7 @@ import { IViewModel } from "../interfaces";
 import { PseudoValue } from "../pseudos";
 import { StaticTile, StaticNode } from "../static-types";
 import { DEFAULT_LANGUAGE, StringTranslatedLanguage } from "./types";
+import { getCurrentLanguage } from "../utils";
 
 export class StringViewModel extends String implements IViewModel {
   _: IViewModel | Promise<IViewModel> | undefined = undefined;
@@ -17,7 +18,9 @@ export class StringViewModel extends String implements IViewModel {
   }
 
   constructor(value: Map<string, StringTranslatedLanguage>, language: string | null = null) {
-    const lang = value.get(language || DEFAULT_LANGUAGE);
+    // The current language (what a plain string is assigned in), falling back
+    // to the default where the value has none: as Python's StringViewModel.
+    const lang = value.get(language || getCurrentLanguage()) ?? value.get(DEFAULT_LANGUAGE);
     let displayValue: string;
     if (lang) {
       if (typeof lang == "string") {

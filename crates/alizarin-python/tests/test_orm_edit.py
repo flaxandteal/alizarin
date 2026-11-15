@@ -83,6 +83,13 @@ async def test_a_plain_string_sets_the_current_language_keeping_the_others(town)
     assert title.lang("ga") == "Baile"
     assert title.lang("en") == "Town"
 
+    # Reads show the current language, falling back to the default.
+    assert await place.title == "Baile"
+    set_current_language("en")
+    assert await place.title == "Town"
+    set_current_language("fr")
+    assert await place.title == "Town"
+
 
 @pytest.mark.asyncio
 async def test_append_and_del_add_and_remove_multi_valued_tiles(town):

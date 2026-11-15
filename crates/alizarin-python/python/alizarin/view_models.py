@@ -1609,8 +1609,13 @@ class StringViewModel(str):
     """
 
     def __new__(cls, value: Dict[str, Union[str, StringTranslatedLanguage]], language: Optional[str] = None):
-        lang = language or DEFAULT_LANGUAGE
-        lang_value = value.get(lang)
+        # The current language (what a plain string is assigned in), falling
+        # back to the default where the value has none: as TypeScript's
+        # StringViewModel.
+        from . import alizarin as _rust
+
+        lang = language or _rust.get_current_language()
+        lang_value = value.get(lang) or value.get(DEFAULT_LANGUAGE)
 
         if lang_value:
             if isinstance(lang_value, str):
