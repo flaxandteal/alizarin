@@ -407,19 +407,16 @@ export declare class NapiResourceInstanceWrapper {
    * permitted.
    */
   makePseudoValue(alias: string, tileId: string | undefined | null, isPermitted: boolean, isSingle: boolean): NapiPseudoList | NapiPseudoValue | null
-  /** Serialize to JSON (tile_data mode — raw values). */
-  toJson(): any
-  /** Serialize to display JSON (resolved labels). */
-  toDisplayJson(rdmCache: NapiRdmCache, nodeConfigManager: NapiNodeConfigManager, language?: string | undefined | null, resourceRegistry?: NapiStaticResourceRegistry | undefined | null): any
   /**
-   * Populate (if needed) and serialize to display JSON in a single synchronous call.
-   *
-   * Combines `populate()` + `toDisplayJson()` to avoid the async microtask
-   * overhead of calling them separately from JS.
+   * Serialize to JSON (tile_data mode — raw values), populating from the
+   * loaded tiles first if needed. As on WASM and Python.
    */
-  toDisplayJsonFull(rdmCache: NapiRdmCache, nodeConfigManager: NapiNodeConfigManager, language?: string | undefined | null, resourceRegistry?: NapiStaticResourceRegistry | undefined | null): any
-  /** Populate (if needed) and serialize to raw JSON in a single synchronous call. */
-  toJsonFull(): any
+  toJson(): any
+  /**
+   * Serialize to display JSON (resolved labels), populating from the loaded
+   * tiles first if needed. As on WASM and Python.
+   */
+  toDisplayJson(rdmCache: NapiRdmCache, nodeConfigManager: NapiNodeConfigManager, language?: string | undefined | null, resourceRegistry?: NapiStaticResourceRegistry | undefined | null): any
   release(): void
 }
 /**

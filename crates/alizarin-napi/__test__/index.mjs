@@ -434,13 +434,12 @@ describe('NapiResourceInstanceWrapper methods', () => {
     assert.equal(wrapper.tilesLoaded(), true);
   });
 
-  it('has toJson method', () => {
+  it('toJson populates from the loaded tiles itself', () => {
     const wrapper = new NapiResourceInstanceWrapper(graphId);
     wrapper.loadTilesFromResource(JSON.stringify(resource));
-    assert.equal(typeof wrapper.toJson, 'function');
-    // toJson requires populate() first; just verify the method exists
-    // and that calling it without populate gives a meaningful error
-    assert.throws(() => wrapper.toJson(), /populate/i);
+    // No populate() first: core populates when serialising, on every binding.
+    const json = wrapper.toJson();
+    assert.ok(json && typeof json === 'object', 'serialised without a separate populate');
   });
 
   it('has setLazy method', () => {

@@ -805,8 +805,8 @@ impl WASMResourceInstanceWrapper {
     /// crossings per resource. By doing the traversal entirely in Rust,
     /// we only cross the boundary once.
     ///
-    /// Prerequisites: `populate()` must have been called to fill the pseudo_cache.
-    /// Fails with an error if tiles have not been loaded.
+    /// Populates from the loaded tiles first if needed (core's, as on NAPI and
+    /// Python). Fails with an error if tiles have not been loaded.
     #[wasm_bindgen(js_name = toJson)]
     pub fn to_json(&self) -> Result<JsValue, JsValue> {
         let start = now_ms();
@@ -814,10 +814,13 @@ impl WASMResourceInstanceWrapper {
         // Check that all tiles have been loaded - fail fast if not
         self.check_tiles_loaded("toJson")?;
 
-        // Core's serialisation, as on NAPI: core's pseudo_cache (populated by
-        // populate()) and the model's own node and edge maps, borrowed, not copied.
+        // Core's serialisation, as on NAPI: core's pseudo_cache and the
+        // model's own node and edge maps, borrowed, not copied.
         let core_ref = self.core.borrow();
         let json = with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+            core_ref
+                .ensure_populated(model)
+                .map_err(|e| JsValue::from_str(&e.to_string()))?;
             let root_alias = model
                 .get_root_node()
                 .map_err(|e| JsValue::from_str(&e))?
@@ -912,9 +915,12 @@ impl WASMResourceInstanceWrapper {
         let ext_registry = crate::extension_registry::build_extension_registry();
 
         // Core's serialisation in display mode: core's pseudo_cache (populated
-        // by populate()) and the model's own maps, borrowed, not copied.
+        // here if needed, as on NAPI and Python) and the model's own maps.
         let core_ref = self.core.borrow();
         let json = with_registry_model::<_, _, JsValue>(&core_ref.graph_id, |model| {
+            core_ref
+                .ensure_populated(model)
+                .map_err(|e| JsValue::from_str(&e.to_string()))?;
             let root_alias = model
                 .get_root_node()
                 .map_err(|e| JsValue::from_str(&e))?

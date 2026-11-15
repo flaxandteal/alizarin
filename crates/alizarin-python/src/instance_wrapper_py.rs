@@ -693,7 +693,13 @@ impl PyResourceInstanceWrapperCore {
         resource_registry: Option<&crate::ResourceRegistry>,
     ) -> PyResult<PyObject> {
         // The model's graph: the registered one, or as pruned since.
-        let graph = self.model()?.get_graph_arc();
+        let model = self.model()?;
+        let graph = model.get_graph_arc();
+
+        // Populated from the loaded tiles first if needed, as on NAPI and WASM.
+        self.inner
+            .ensure_populated(&*model)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
         let nodes_by_alias = graph.nodes_by_alias_arc().ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>("Graph indices not built")

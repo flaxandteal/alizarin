@@ -135,18 +135,14 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
       }
       recordNativeTiming("forJson: retrieve check", performance.now() - t0);
 
+      // Every tile, then one synchronous call: core populates as it
+      // serialises, on either backend.
       t0 = performance.now();
-      if (typeof this.$.wasmWrapper.toJsonFull === 'function') {
-        rootJson = this.$.wasmWrapper.toJsonFull();
-        recordNativeTiming("forJson: toJsonFull", performance.now() - t0);
-      } else {
-        await this.$.populate(false);
-        recordNativeTiming("forJson: populate", performance.now() - t0);
-
-        t0 = performance.now();
-        rootJson = this.$.wasmWrapper.toJson();
-        recordNativeTiming("forJson: toJson", performance.now() - t0);
+      if (!this.$.wasmWrapper.tilesLoaded()) {
+        await this.$.ensureTilesLoaded();
       }
+      rootJson = this.$.wasmWrapper.toJson();
+      recordNativeTiming("forJson: toJson", performance.now() - t0);
     }
     recordNativeTiming("forJson total (viewModels)", performance.now() - forJsonStart);
 
@@ -212,18 +208,13 @@ export class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> implements IStr
       const rdmCache = getBackend() === 'napi' ? getRdmCache() : getGlobalWasmRdmCache();
       const ncm = nodeConfigManager.wasmManager;
 
+      // Every tile, then one synchronous call, as forJson.
       t0 = performance.now();
-      if (typeof this.$.wasmWrapper.toDisplayJsonFull === 'function') {
-        rootJson = this.$.wasmWrapper.toDisplayJsonFull(rdmCache, ncm, lang, staticStore.registry);
-        recordNativeTiming("forDisplayJson: toDisplayJsonFull", performance.now() - t0);
-      } else {
-        await this.$.populate(false);
-        recordNativeTiming("forDisplayJson: populate", performance.now() - t0);
-
-        t0 = performance.now();
-        rootJson = this.$.wasmWrapper.toDisplayJson(rdmCache, ncm, lang, staticStore.registry);
-        recordNativeTiming("forDisplayJson: toDisplayJson", performance.now() - t0);
+      if (!this.$.wasmWrapper.tilesLoaded()) {
+        await this.$.ensureTilesLoaded();
       }
+      rootJson = this.$.wasmWrapper.toDisplayJson(rdmCache, ncm, lang, staticStore.registry);
+      recordNativeTiming("forDisplayJson: toDisplayJson", performance.now() - t0);
     }
     recordNativeTiming("forDisplayJson total (viewModels)", performance.now() - forJsonStart);
 

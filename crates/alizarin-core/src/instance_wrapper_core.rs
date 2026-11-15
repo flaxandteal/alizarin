@@ -905,6 +905,32 @@ impl ResourceInstanceWrapperCore {
         }
     }
 
+    /// Populate the pseudo cache from the loaded tiles if it hasn't been: what
+    /// serialising (`toJson`, `toDisplayJson`) needs, so no binding's caller
+    /// has to populate first. Loads nothing: tiles not loaded aren't there.
+    pub fn ensure_populated(&self, model: &dyn ModelAccess) -> Result<(), SemanticChildError> {
+        let populated = self
+            .pseudo_cache
+            .read()
+            .map(|cache| cache.len() > 1)
+            .unwrap_or(false);
+        if populated {
+            return Ok(());
+        }
+        let root_alias = model
+            .get_root_node()
+            .map_err(SemanticChildError::ModelNotInitialized)?
+            .alias
+            .clone()
+            .ok_or_else(|| SemanticChildError::Other("root node has no alias".to_string()))?;
+        let nodegroup_ids: Vec<String> = model
+            .get_nodegroups()
+            .map(|ngs| crate::sorted_serde::sorted_keys(ngs.keys()))
+            .unwrap_or_default();
+        self.populate(false, &nodegroup_ids, &root_alias, model)
+            .map(|_| ())
+    }
+
     /// Whether the resource's tiles are loaded: once loaded, even with none,
     /// except in lazy mode, where an empty store means nothing fetched yet.
     /// What every binding's `tilesLoaded` reports.

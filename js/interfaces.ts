@@ -56,6 +56,7 @@ interface IInstanceWrapper<T extends IRIVM<T>> {
   model: IModelWrapper<T>;
   loadNodes(aliases: Array<string>): Promise<void>;
   fetchNodegroupTiles(nodegroupId: string | null): Promise<void>;
+  ensureTilesLoaded(): Promise<void>;
   fetchNodegroups(nodegroupIds: string[]): Promise<void>;
   assign(tile: StaticTile | null, node: StaticNode | null, key: string, value: any): void;
   pendingValue(tileId: string | null | undefined, key: string): { value: any } | undefined;

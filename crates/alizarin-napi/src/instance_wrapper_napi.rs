@@ -1264,13 +1264,16 @@ impl NapiResourceInstanceWrapper {
     // JSON serialization
     // =========================================================================
 
-    /// Serialize to JSON (tile_data mode — raw values).
+    /// Serialize to JSON (tile_data mode — raw values), populating from the
+    /// loaded tiles first if needed. As on WASM and Python.
     #[napi]
     pub fn to_json(&self) -> Result<serde_json::Value> {
+        self.ensure_populated()?;
         self.serialize_with_options(SerializationOptions::tile_data(), None, None, None)
     }
 
-    /// Serialize to display JSON (resolved labels).
+    /// Serialize to display JSON (resolved labels), populating from the loaded
+    /// tiles first if needed. As on WASM and Python.
     #[napi]
     pub fn to_display_json(
         &self,
@@ -1279,27 +1282,6 @@ impl NapiResourceInstanceWrapper {
         language: Option<String>,
         resource_registry: Option<&crate::NapiStaticResourceRegistry>,
     ) -> Result<serde_json::Value> {
-        let lang = language.unwrap_or_else(|| "en".to_string());
-        self.serialize_with_options(
-            SerializationOptions::display(&lang),
-            Some(&rdm_cache.inner),
-            Some(&node_config_manager.inner),
-            resource_registry.map(|r| &r.inner),
-        )
-    }
-
-    /// Populate (if needed) and serialize to display JSON in a single synchronous call.
-    ///
-    /// Combines `populate()` + `toDisplayJson()` to avoid the async microtask
-    /// overhead of calling them separately from JS.
-    #[napi]
-    pub fn to_display_json_full(
-        &self,
-        rdm_cache: &NapiRdmCache,
-        node_config_manager: &NapiNodeConfigManager,
-        language: Option<String>,
-        resource_registry: Option<&crate::NapiStaticResourceRegistry>,
-    ) -> Result<serde_json::Value> {
         self.ensure_populated()?;
         let lang = language.unwrap_or_else(|| "en".to_string());
         self.serialize_with_options(
@@ -1308,13 +1290,6 @@ impl NapiResourceInstanceWrapper {
             Some(&node_config_manager.inner),
             resource_registry.map(|r| &r.inner),
         )
-    }
-
-    /// Populate (if needed) and serialize to raw JSON in a single synchronous call.
-    #[napi]
-    pub fn to_json_full(&self) -> Result<serde_json::Value> {
-        self.ensure_populated()?;
-        self.serialize_with_options(SerializationOptions::tile_data(), None, None, None)
     }
 
     // =========================================================================
@@ -1349,35 +1324,10 @@ impl NapiResourceInstanceWrapper {
         self.inner.tile_source = None;
     }
 
+    /// Core's, as WASM and Python serialise.
     fn ensure_populated(&self) -> Result<()> {
-        let needs_populate = {
-            let cache = self
-                .inner
-                .pseudo_cache
-                .read()
-                .map_err(|_| napi::Error::from_reason("Failed to read pseudo cache"))?;
-            cache.len() <= 1
-        };
-
-        if needs_populate {
-            let model = self.model()?;
-            let root_node = model.get_root_node().map_err(napi::Error::from_reason)?;
-            let root_alias = root_node
-                .alias
-                .clone()
-                .ok_or_else(|| napi::Error::from_reason("Root node has no alias"))?;
-
-            let nodegroup_ids: Vec<String> = model
-                .get_nodegroups()
-                .map(|ngs| alizarin_core::sorted_serde::sorted_keys(ngs.keys()))
-                .unwrap_or_default();
-
-            self.inner
-                .populate(false, &nodegroup_ids, &root_alias, &*model)
-                .map_err(sc_err)?;
-        }
-
-        Ok(())
+        let model = self.model()?;
+        self.inner.ensure_populated(&*model).map_err(sc_err)
     }
 
     fn serialize_with_options(
