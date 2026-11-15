@@ -74,6 +74,68 @@ pub fn has_global_rdm_cache() -> bool {
     alizarin_core::has_global_rdm_cache()
 }
 
+// Lookups in the global cache, read in place (get_global_rdm_cache copies
+// the whole cache): what the ORM's concept view models resolve through.
+
+/// A value as `{id, value, conceptId, language}`, as `RustRdmCache.lookup_value`.
+fn value_dict(py: Python, value: &alizarin_core::rdm_cache::RdmValue) -> PyResult<PyObject> {
+    let dict = pyo3::types::PyDict::new_bound(py);
+    dict.set_item("id", &value.id)?;
+    dict.set_item("value", &value.value)?;
+    dict.set_item("conceptId", &value.concept_id)?;
+    dict.set_item("language", &value.language)?;
+    Ok(dict.into())
+}
+
+/// Whether the global RDM cache holds collection `collection_id`.
+#[pyfunction]
+pub fn global_rdm_has_collection(collection_id: &str) -> bool {
+    alizarin_core::get_global_rdm_cache_arc().is_some_and(|c| c.has_collection(collection_id))
+}
+
+/// Value `value_id` of collection `collection_id` in the global RDM cache, as
+/// `{id, value, conceptId, language}`, or None.
+#[pyfunction]
+pub fn global_rdm_lookup_value(
+    py: Python,
+    collection_id: &str,
+    value_id: &str,
+) -> PyResult<Option<PyObject>> {
+    let Some(cache) = alizarin_core::get_global_rdm_cache_arc() else {
+        return Ok(None);
+    };
+    cache
+        .lookup_value(collection_id, value_id)
+        .map(|value| value_dict(py, value))
+        .transpose()
+}
+
+/// The parent of concept `concept_id` in collection `collection_id` in the
+/// global RDM cache, or None at the top.
+#[pyfunction]
+pub fn global_rdm_get_parent_id(collection_id: &str, concept_id: &str) -> Option<String> {
+    alizarin_core::get_global_rdm_cache_arc()?.get_parent_id(collection_id, concept_id)
+}
+
+/// Concept `concept_id`'s preferred label in `language` (else its first) in
+/// the global RDM cache, as `{id, value, conceptId, language}`, or None.
+#[pyfunction]
+pub fn global_rdm_concept_pref_label(
+    py: Python,
+    collection_id: &str,
+    concept_id: &str,
+    language: &str,
+) -> PyResult<Option<PyObject>> {
+    let Some(cache) = alizarin_core::get_global_rdm_cache_arc() else {
+        return Ok(None);
+    };
+    cache
+        .lookup_concept(collection_id, concept_id)
+        .and_then(|concept| concept.get_value(language))
+        .map(|value| value_dict(py, value))
+        .transpose()
+}
+
 /// Add a collection directly to the global RDM cache.
 ///
 /// This modifies the global cache in-place. If no global cache exists,
@@ -1812,6 +1874,10 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_global_rdm_cache, m)?)?;
     m.add_function(wrap_pyfunction!(clear_global_rdm_cache, m)?)?;
     m.add_function(wrap_pyfunction!(has_global_rdm_cache, m)?)?;
+    m.add_function(wrap_pyfunction!(global_rdm_has_collection, m)?)?;
+    m.add_function(wrap_pyfunction!(global_rdm_lookup_value, m)?)?;
+    m.add_function(wrap_pyfunction!(global_rdm_get_parent_id, m)?)?;
+    m.add_function(wrap_pyfunction!(global_rdm_concept_pref_label, m)?)?;
     m.add_function(wrap_pyfunction!(add_collection_to_global_cache, m)?)?;
     m.add_function(wrap_pyfunction!(add_from_skos_xml_to_global_cache, m)?)?;
     m.add_function(wrap_pyfunction!(add_from_skos_json_to_global_cache, m)?)?;

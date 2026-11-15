@@ -743,13 +743,22 @@ class StaticResourceDescriptors:
     name: Optional[str] = None
     description: Optional[str] = None
     map_popup: Optional[str] = None
+    slug: Optional[str] = None
+    # Representative display point, a geojson Point as a string (core's).
+    point: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        data: Dict[str, Any] = {
             "name": self.name,
             "description": self.description,
             "map_popup": self.map_popup,
         }
+        # Left out when unset, as core leaves them out.
+        if self.slug is not None:
+            data["slug"] = self.slug
+        if self.point is not None:
+            data["point"] = self.point
+        return data
 
 
 @dataclass

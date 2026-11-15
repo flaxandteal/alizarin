@@ -24,7 +24,7 @@ from typing import (
     Union,
     runtime_checkable,
 )
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass
 import inspect
 import json
@@ -246,6 +246,17 @@ class IViewModel(Protocol):
 # List View Models
 # ============================================================================
 
+async def _tile_form(item: Any) -> Any:
+    """`item`'s tile data, from its own (name-mangled) __asTileData."""
+    if item is None:
+        return None
+    as_tile_data = getattr(item, f"_{type(item).__name__}__asTileData", None)
+    if as_tile_data is None:
+        return None
+    result = as_tile_data()
+    return await result if inspect.isawaitable(result) else result
+
+
 class ConceptListViewModel(list):
     """
     List of concept values.
@@ -266,9 +277,8 @@ class ConceptListViewModel(list):
         return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
 
     async def for_json(self) -> Optional[List[Any]]:
-        """Convert to JSON array"""
-        value = await self._value if self._value else None
-        return [await v.for_json() if v else None for v in value] if value else None
+        """Convert to JSON array: each item's, as TypeScript's."""
+        return [await v.for_json() if v else None for v in self]
 
     async def __forJsonCache(self, getMeta: GetMeta) -> ConceptListCacheEntry:
         """Build cache entry for this list"""
@@ -294,48 +304,26 @@ class ConceptListViewModel(list):
 
         Matches TypeScript ConceptListViewModel._create
         """
-        nodeid = node.nodeid
-        val: List[Union['ConceptValueViewModel', Awaitable[Optional['ConceptValueViewModel']]]] = []
-
-        if not tile.data.get(nodeid):
-            tile.data[nodeid] = None
-
+        # Built from core's value for this node, as TypeScript's: the list
+        # holds its items, resolved.
+        items: List[Optional['ConceptValueViewModel']] = []
         if value is not None:
-            tile.data[nodeid] = []
             if not isinstance(value, list):
                 raise ValueError(
-                    f"Cannot set concept list value on node {nodeid} except via array: {json.dumps(value)}"
+                    f"Cannot set concept list value on node {node.nodeid} except via array: {json.dumps(value)}"
                 )
-
-            # Create ConceptValueViewModel for each item
-            val = []
             for i, item in enumerate(value):
                 if isinstance(item, ConceptValueViewModel):
-                    val.append(item)
+                    items.append(item)
                 else:
                     cache_item = cacheEntry._[i] if cacheEntry and i < len(cacheEntry._) else None
-                    val.append(ConceptValueViewModel._create(tile, node, item, cache_item))
+                    items.append(await ConceptValueViewModel._create(tile, node, item, cache_item))
 
-            # Extract IDs when all items resolve
-            async def set_tile_data():
-                resolved = [await v if hasattr(v, '__await__') else v for v in val]
-                ids = [
-                    (await v.getValue()).id if v else None
-                    for v in resolved
-                ]
-                tile.data[nodeid] = ids
-
-            # Schedule tile data update (fire-and-forget in Python)
-            import asyncio
-            asyncio.create_task(set_tile_data())
-        else:
-            value = []
-
-        return ConceptListViewModel(*value)
+        return ConceptListViewModel(*items)
 
     async def __asTileData(self) -> Optional[List[Any]]:
-        """Convert to tile data format"""
-        return await self._value if self._value else None
+        """Each item's tile form (its value id)."""
+        return [await _tile_form(v) for v in self]
 
 
 class ResourceInstanceListViewModel(list):
@@ -358,9 +346,8 @@ class ResourceInstanceListViewModel(list):
         return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
 
     async def for_json(self) -> Optional[List[Any]]:
-        """Convert to JSON array"""
-        value = await self._value if self._value else None
-        return [await v.for_json() if v else None for v in value] if value else None
+        """Convert to JSON array: each item's, as TypeScript's."""
+        return [await v.for_json() if v else None for v in self]
 
     async def __forJsonCache(self, getMeta: GetMeta) -> ResourceInstanceListCacheEntry:
         """Build cache entry for this list"""
@@ -386,49 +373,27 @@ class ResourceInstanceListViewModel(list):
 
         Matches TypeScript ResourceInstanceListViewModel._create
         """
-        nodeid = node.nodeid
-
-        if tile:
-            if nodeid not in tile.data:
-                tile.data[nodeid] = None
-
-            if value is not None:
-                tile.data[nodeid] = []
-                if not isinstance(value, list):
-                    raise ValueError(
-                        f"Cannot set resource instance list value on node {nodeid} except via array: {json.dumps(value)}"
-                    )
-
-                # Create ResourceInstanceViewModel for each item
-                val = []
-                for i, item in enumerate(value):
-                    if isinstance(item, ResourceInstanceViewModel):
-                        val.append(item)
-                    else:
-                        cache_item = cacheEntry._[i] if cacheEntry and i < len(cacheEntry._) else None
-                        val.append(ResourceInstanceViewModel._create(tile, node, item, cache_item))
-
-                # Extract IDs when all items resolve
-                async def set_tile_data():
-                    resolved = [await v if hasattr(v, '__await__') else v for v in val]
-                    ids = [v.id if v else None for v in resolved]
-                    tile.data[nodeid] = [{'resourceId': id} for id in ids if id]
-
-                # Schedule tile data update
-                import asyncio
-                asyncio.create_task(set_tile_data())
-                value = val
-        else:
-            value = []
-
-        if not tile or not value:
+        # Built from core's value for this node, as TypeScript's: the list
+        # holds its items, resolved.
+        if not tile or value is None:
             return None
+        if not isinstance(value, list):
+            raise ValueError(
+                f"Cannot set resource instance list value on node {node.nodeid} except via array: {json.dumps(value)}"
+            )
+        items: List[Optional['ResourceInstanceViewModel']] = []
+        for i, item in enumerate(value):
+            if isinstance(item, ResourceInstanceViewModel):
+                items.append(item)
+            else:
+                cache_item = cacheEntry._[i] if cacheEntry and i < len(cacheEntry._) else None
+                items.append(await ResourceInstanceViewModel._create(tile, node, item, cache_item))
 
-        return ResourceInstanceListViewModel(*value)
+        return ResourceInstanceListViewModel(*items)
 
     async def __asTileData(self) -> Optional[List[Any]]:
-        """Convert to tile data format"""
-        return await self._value if self._value else None
+        """Each item's tile form ({resourceId})."""
+        return [await _tile_form(v) for v in self]
 
 
 class DomainValueListViewModel(list):
@@ -451,9 +416,8 @@ class DomainValueListViewModel(list):
         return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
 
     async def for_json(self) -> Optional[List[Any]]:
-        """Convert to JSON array"""
-        value = await self._value if self._value else None
-        return [await v.for_json() if v else None for v in value] if value else None
+        """Convert to JSON array: each item's, as TypeScript's."""
+        return [await v.for_json() if v else None for v in self]
 
     def __forJsonCache(self) -> None:
         """Domain values are on the graph, no caching needed"""
@@ -470,48 +434,26 @@ class DomainValueListViewModel(list):
 
         Matches TypeScript DomainValueListViewModel._create
         """
-        nodeid = node.nodeid
+        # Built from core's value for this node, as TypeScript's: the list
+        # holds its items, resolved.
+        items: List[Optional['DomainValueViewModel']] = []
+        if tile and value is not None:
+            if not isinstance(value, list):
+                raise ValueError(
+                    f"Cannot set domain value list on node {node.nodeid} except via array: {json.dumps(value)}"
+                )
+            for item in value:
+                if isinstance(item, DomainValueViewModel):
+                    items.append(item)
+                else:
+                    created = DomainValueViewModel._create(tile, node, item)
+                    items.append(await created if inspect.isawaitable(created) else created)
 
-        if tile:
-            if nodeid not in tile.data:
-                tile.data[nodeid] = None
-
-            if value is not None:
-                tile.data[nodeid] = []
-                if not isinstance(value, list):
-                    raise ValueError(
-                        f"Cannot set domain value list on node {nodeid} except via array: {json.dumps(value)}"
-                    )
-
-                # Create DomainValueViewModel for each item
-                val = [
-                    item if isinstance(item, DomainValueViewModel) else DomainValueViewModel._create(tile, node, item)
-                    for item in value
-                ]
-
-                # Extract IDs when all items resolve
-                async def set_tile_data():
-                    resolved = [await v if hasattr(v, '__await__') else v for v in val]
-                    ids = [
-                        (await v._value).id if v else None
-                        for v in resolved
-                    ]
-                    tile.data[nodeid] = ids
-
-                # Schedule tile data update
-                import asyncio
-                asyncio.create_task(set_tile_data())
-            else:
-                value = []
-        else:
-            value = []
-
-        return DomainValueListViewModel(*value)
+        return DomainValueListViewModel(*items)
 
     async def __asTileData(self) -> Optional[List[Any]]:
-        """Convert to tile data format"""
-        value = await self._value if self._value else None
-        return value
+        """Each item's tile form (its option id)."""
+        return [await _tile_form(v) for v in self]
 
 
 # ============================================================================
@@ -540,9 +482,10 @@ class ConceptValueViewModel(str):
     def describeFieldGroup(self) -> Optional[Any]:
         return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
 
-    async def for_json(self) -> 'StaticValue':
-        """Convert to JSON (StaticValue)"""
-        return await self._value if hasattr(self._value, '__await__') else self._value
+    async def for_json(self) -> Optional[Dict[str, str]]:
+        """Convert to JSON: {id, value}, as TypeScript's StaticValue serialises."""
+        value = await self._value if hasattr(self._value, '__await__') else self._value
+        return value.to_dict() if value is not None else None
 
     async def __forJsonCache(self, getMeta: GetMeta) -> ConceptValueCacheEntry:
         """Build cache entry"""
@@ -551,7 +494,7 @@ class ConceptValueViewModel(str):
         return ConceptValueCacheEntry(
             id=value.id,
             value=value.value,
-            conceptId=getattr(value, '__conceptId', None),
+            conceptId=getattr(value, '_concept_id', None),
             meta=meta
         )
 
@@ -569,26 +512,24 @@ class ConceptValueViewModel(str):
         from .rdm import RDM
 
         value = await self._value if hasattr(self._value, '__await__') else self._value
-        concept_id = getattr(value, '__conceptId', None)
+        concept_id = getattr(value, '_concept_id', None)
         if not concept_id or not self._collection_id:
             return None
 
-        collection = await RDM.retrieveCollection(self._collection_id)
-        if not hasattr(collection, 'get_parent_id'):
+        collection = await RDM.retrieve_collection(self._collection_id)
+        if not hasattr(collection, 'get_parent_id') or not hasattr(collection, 'get_pref_label'):
             raise RuntimeError(
-                f"Collection {self._collection_id} does not support hierarchy lookups. "
-                "Ensure WASM is initialized and the collection is a StaticCollection."
+                f"Collection {self._collection_id} does not support hierarchy lookups: "
+                "load it into core's RDM cache (set_global_rdm_cache)."
             )
 
         parent_id = collection.get_parent_id(concept_id)
         if not parent_id:
             return None  # Top-level concept
 
-        parent_concept = collection.__allConcepts.get(parent_id)
-        if not parent_concept or not hasattr(parent_concept, 'getPrefLabel'):
+        parent_value = collection.get_pref_label(parent_id)
+        if not parent_value:
             return None
-
-        parent_value = parent_concept.getPrefLabel()
         return ConceptValueViewModel(parent_value, self._collection_id)
 
     async def ancestors(self) -> List['ConceptValueViewModel']:
@@ -659,17 +600,17 @@ class ConceptValueViewModel(str):
                             val = StaticValue(
                                 id=cacheEntry.id,
                                 value=cacheEntry.value,
-                                __concept=None,
-                                __conceptId=cacheEntry.conceptId
+                                _concept=None,
+                                _concept_id=cacheEntry.conceptId
                             )
                             return ConceptValueViewModel(val, collection_id)
                         else:
                             # Look up in RDM
-                            collection = await RDM.retrieveCollection(collection_id)
-                            if not hasattr(collection, 'getConceptValue'):
+                            collection = await RDM.retrieve_collection(collection_id)
+                            if not hasattr(collection, 'get_concept_value'):
                                 raise ValueError(f"Collection {collection.id} must be a StaticCollection, not key/value object")
 
-                            val = collection.getConceptValue(value)
+                            val = collection.get_concept_value(value)
                             if not val:
                                 print(f"ERROR: Could not find concept for value {value} in collection {collection_id} for {node.alias}")
 
@@ -720,9 +661,10 @@ class DomainValueViewModel(str):
     def describeFieldGroup(self) -> Optional[Any]:
         return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
 
-    async def for_json(self) -> 'StaticDomainValue':
-        """Convert to JSON (StaticDomainValue)"""
-        return await self._value if hasattr(self._value, '__await__') else self._value
+    async def for_json(self) -> Optional[Dict[str, Any]]:
+        """Convert to JSON: {id, selected, text}, as TypeScript's serialises."""
+        value = await self._value if hasattr(self._value, '__await__') else self._value
+        return value.to_dict() if value is not None else None
 
     def __forJsonCache(self) -> None:
         """Domain values are on the graph, no caching needed"""
@@ -973,7 +915,7 @@ class ResourceInstanceViewModel:
                 'root': None
             }
 
-        basic = StaticResourceReference(jsonData)
+        basic = StaticResourceReference(**jsonData)
 
         if cascade:
             if not self._i:
@@ -984,7 +926,13 @@ class ResourceInstanceViewModel:
             root = await self._i.get_root_view_model()
             basic.root = await root.for_json()
 
-        return basic
+        # As TypeScript's: unset title and meta are left out; root is null
+        # unless cascaded.
+        return {
+            key: value
+            for key, value in basic.to_dict().items()
+            if value is not None or key == "root"
+        }
 
     async def retrieve(self) -> tuple[Any, Any]:
         """
@@ -1094,9 +1042,12 @@ class DateViewModel(datetime):
         return None
 
     async def for_json(self) -> str:
-        """Convert to ISO string"""
+        """Convert to ISO string, as JavaScript's toISOString gives it: UTC,
+        with milliseconds and Z (a date without a zone is taken as UTC)."""
         try:
-            return self.isoformat()
+            moment = self if self.tzinfo else self.replace(tzinfo=timezone.utc)
+            moment = moment.astimezone(timezone.utc)
+            return f"{moment.strftime('%Y-%m-%dT%H:%M:%S')}.{moment.microsecond // 1000:03d}Z"
         except Exception as e:
             print(f"Warning: {e}")
             return self.__original
@@ -1178,6 +1129,23 @@ class GeoJSONViewModel:
     async def for_json(self) -> Dict[str, Any]:
         """Convert to JSON"""
         return self._value
+
+    def __str__(self) -> str:
+        """Its type and geometry types, e.g. "FeatureCollection (Point)", as
+        TypeScript's toString."""
+        value = self._value or {}
+        kind = value.get("type") or "GeoJSON"
+        if kind == "FeatureCollection" and isinstance(value.get("features"), list):
+            geometry_types = []
+            for feature in value["features"]:
+                geometry_type = ((feature or {}).get("geometry") or {}).get("type")
+                if geometry_type and geometry_type not in geometry_types:
+                    geometry_types.append(geometry_type)
+            if geometry_types:
+                return f"{kind} ({', '.join(geometry_types)})"
+        elif kind == "Feature" and (value.get("geometry") or {}).get("type"):
+            return f"{kind} ({value['geometry']['type']})"
+        return kind
 
     def __asTileData(self) -> Dict[str, Any]:
         """Convert to tile data"""
