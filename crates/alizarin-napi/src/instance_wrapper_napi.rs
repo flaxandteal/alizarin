@@ -975,6 +975,13 @@ impl NapiResourceInstanceWrapper {
         }
     }
 
+    /// Whether tiles arrive per nodegroup as lookups need them. Core's, as on
+    /// WASM and Python.
+    #[napi]
+    pub fn is_lazy(&self) -> bool {
+        self.inner.is_lazy()
+    }
+
     #[napi]
     pub fn is_nodegroup_loaded(&self, nodegroup_id: Option<String>) -> bool {
         match nodegroup_id {

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use alizarin_core::{
     GraphModelAccess, PermissionRule, PopulateResult as CorePopulateResult, PseudoListCore,
     PseudoValueCore, ResourceInstanceWrapperCore, SemanticChildError, SemanticChildResult,
-    StaticResourceMetadata, StaticTile,
+    StaticTile,
 };
 
 use crate::node_config_py::PyNodeConfigManager;
@@ -276,12 +276,6 @@ impl PyResourceInstanceWrapperCore {
         })
     }
 
-    /// Get the graph ID
-    #[getter]
-    fn graph_id(&self) -> String {
-        self.graph_id.clone()
-    }
-
     /// Load tiles into the wrapper
     ///
     /// Args:
@@ -355,23 +349,6 @@ impl PyResourceInstanceWrapperCore {
         if assume_tiles_comprehensive_for_nodegroup {
             self.inner.mark_loaded_comprehensively(&model);
         }
-        Ok(())
-    }
-
-    /// Set resource metadata
-    ///
-    /// Args:
-    ///     metadata_json: JSON string of resource metadata
-    fn set_resource_metadata(&mut self, metadata_json: &str) -> PyResult<()> {
-        let metadata: StaticResourceMetadata =
-            serde_json::from_str(metadata_json).map_err(|e| {
-                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                    "Failed to parse metadata JSON: {}",
-                    e
-                ))
-            })?;
-
-        self.inner.resource_instance = Some(metadata);
         Ok(())
     }
 
@@ -730,16 +707,6 @@ impl PyResourceInstanceWrapperCore {
             .make_pseudo_value(alias, tile_id, is_permitted, is_single, &*model)
             .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)?;
         Ok(PySemanticChildResult::from_core(result))
-    }
-
-    /// Clear the pseudo cache
-    fn clear_cache(&self) {
-        if let Ok(mut cache) = self.inner.pseudo_cache.write() {
-            cache.clear();
-        }
-        if let Ok(mut loaded) = self.inner.loaded_nodegroups.write() {
-            loaded.clear();
-        }
     }
 
     /// Serialize a single card from the populated pseudo_cache.

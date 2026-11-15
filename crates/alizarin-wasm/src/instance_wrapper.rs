@@ -360,6 +360,13 @@ impl WASMResourceInstanceWrapper {
         }
     }
 
+    /// Whether tiles arrive per nodegroup as lookups need them. Core's, as on
+    /// NAPI and Python.
+    #[wasm_bindgen(js_name = isLazy)]
+    pub fn is_lazy(&self) -> bool {
+        self.core.borrow().is_lazy()
+    }
+
     #[wasm_bindgen(js_name = tilesLoaded)]
     pub fn tiles_loaded(&self) -> bool {
         // Core's, as on NAPI: loaded even with no tiles, except in lazy mode.

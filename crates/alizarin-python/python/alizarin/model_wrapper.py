@@ -462,18 +462,14 @@ class ResourceModelWrapper(Generic[RIVM]):
 
         Args:
             nodegroup_id: The nodegroup ID to check
-            tile: The tile to evaluate (required for conditional permissions)
+            tile: Unused, as in TypeScript: core filters tiles on load
 
         Returns:
             True if the nodegroup/tile is permitted
         """
-        ng_id = nodegroup_id or ""
-
-        if tile is not None:
-            tile_json = json.dumps(tile.to_dict() if hasattr(tile, "to_dict") else tile)
-            return self._rust_model.is_tile_permitted(ng_id, tile_json)
-
-        return self._rust_model.is_nodegroup_permitted(ng_id)
+        # A conditional rule permits the nodegroup; core filters its tiles as
+        # they load, so `tile` needs no check here (as in TypeScript).
+        return self._rust_model.is_nodegroup_permitted(nodegroup_id or "")
 
     def prune_graph(self, user: Optional[Any] = None) -> None:
         """

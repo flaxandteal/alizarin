@@ -186,7 +186,6 @@ use alizarin_core::{
     // JSON conversion
     cards_to_tree,
     create_static_resource,
-    evaluate_tile_path,
     // Semantic child matching
     matches_semantic_child as core_matches_semantic_child,
     merge_resources as core_merge_resources,
@@ -198,8 +197,6 @@ use alizarin_core::{
     // Graph model access
     GraphModelAccess,
     MergeAccumulator,
-    // Permission rules
-    PermissionRule,
     StaticGraph as AlizarinCoreStaticGraph,
     StaticNode as AlizarinStaticNode,
     StaticResource as AlizarinStaticResource,
@@ -1700,47 +1697,6 @@ impl PyResourceModelWrapper {
     fn is_nodegroup_permitted(&self, nodegroup_id: &str) -> bool {
         self.model()
             .is_ok_and(|model| model.is_nodegroup_permitted(nodegroup_id))
-    }
-
-    /// Check if a specific tile is permitted by the permission rules.
-    ///
-    /// Args:
-    ///     nodegroup_id: The nodegroup ID
-    ///     tile_json: JSON string of the tile data
-    ///
-    /// Returns:
-    ///     True if the tile is permitted
-    fn is_tile_permitted(&self, py: Python, nodegroup_id: &str, tile_json: &str) -> PyResult<bool> {
-        let tile: AlizarinStaticTile = serde_json::from_str(tile_json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to parse tile JSON: {}",
-                e
-            ))
-        })?;
-
-        let model = self.model()?;
-        let result = model.is_tile_permitted(&tile);
-
-        // Debug logging for conditional filtering
-        if let Some(PermissionRule::Conditional { path, allowed }) =
-            model.get_permission_rule(nodegroup_id)
-        {
-            let tile_id = tile.tileid.as_deref().unwrap_or("(no id)");
-            let value = evaluate_tile_path(&tile, path);
-
-            if let Ok(logging) = py.import_bound("logging") {
-                if let Ok(logger) = logging.call_method1("getLogger", ("alizarin",)) {
-                    let _ = logger.call_method1("debug",
-                        (format!(
-                            "[alizarin] Conditional filter: nodegroup={}, tile={}, path={}, value={:?}, allowed={:?}, permitted={}",
-                            nodegroup_id, tile_id, path, value, allowed, result
-                        ),)
-                    );
-                }
-            }
-        }
-
-        Ok(result)
     }
 
     /// Prune graph to only include permitted nodegroups.

@@ -443,18 +443,20 @@ class ResourceInstanceWrapper(Generic[RIVM]):
         # NAPI and WASM.
         self._rust_core.set_lazy(lazy)
 
-        # Core needs the resource's own metadata (its id, to edit or derive),
-        # as NAPI and WASM wrappers built from a resource have it.
+        tiles_data = [self._tile_to_dict(t) for t in tiles] if tiles else None
         if self.resource is not None:
-            self._rust_core.set_resource_metadata(
-                json.dumps(self.resource.resourceinstance.to_dict())
+            # The resource's own metadata (its id, to edit or derive) with its
+            # tiles, as NAPI and WASM wrappers built from a resource have them.
+            self._rust_core.load_tiles_from_resource(
+                json.dumps(
+                    {
+                        "resourceinstance": self.resource.resourceinstance.to_dict(),
+                        "tiles": tiles_data,
+                    }
+                )
             )
-
-        if tiles:
-            # Convert tiles to JSON for Rust
-            tiles_data = [self._tile_to_dict(t) for t in tiles]
-            tiles_json = json.dumps(tiles_data)
-            self._rust_core.load_tiles(tiles_json)
+        elif tiles_data:
+            self._rust_core.load_tiles(json.dumps(tiles_data))
 
         # Get nodegroup IDs from the model
         nodegroup_ids = list(self.model.get_nodegroup_ids())
@@ -669,8 +671,8 @@ class ResourceInstanceWrapper(Generic[RIVM]):
         return root_vm
 
     def clear_caches(self) -> None:
-        """Clear all caches (Rust Layer 1, Python Layer 2 and 3)."""
-        self._rust_core.clear_cache()
+        """Clear the Python caches (Layers 2 and 3). Core's pseudo cache
+        (Layer 1) needs no clearing: core keeps it in step with its tiles."""
         self._pseudo_cache = {}
         self.value_cache = None
 

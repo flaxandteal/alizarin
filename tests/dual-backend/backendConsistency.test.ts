@@ -230,7 +230,9 @@ describe(`Backend consistency [${getBackend()}]`, () => {
     test("appendFetchedTiles marks just the fetched nodegroup loaded, even with no tiles", () => {
       // A fresh lazy instance has fetched nothing: every child is unknown.
       const lazy = createInstanceWrapperForModel(graph.graphid);
+      expect(lazy.isLazy()).toBe(false);
       lazy.setLazy(true);
+      expect(lazy.isLazy()).toBe(true);
       const rootId = modelWrapper.getRootNode().nodeid;
       const nodegroupOf = (alias: string) =>
         modelWrapper.getNodeObjectsByAlias().get(alias)!.nodegroup_id;

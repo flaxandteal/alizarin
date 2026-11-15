@@ -44,10 +44,7 @@
         { "wasm": "tilesLoaded", "napi": "tilesLoaded", "python": "tiles_loaded" },
         { "wasm": "toDisplayJson", "napi": "toDisplayJson", "python": "to_display_json" },
         { "wasm": "toJson", "napi": "toJson", "python": "to_json" },
-        { "wasm": null, "napi": null, "python": "clear_cache", "why": { "wasm": "gap: Python only; align or remove", "napi": "gap: Python only; align or remove" } },
-        { "wasm": null, "napi": null, "python": "graph_id", "why": { "wasm": "gap: Python only; align or remove", "napi": "gap: Python only; align or remove" } },
-        { "wasm": null, "napi": null, "python": "is_lazy", "why": { "wasm": "gap: Python only; align or remove", "napi": "gap: Python only; align or remove" } },
-        { "wasm": null, "napi": null, "python": "set_resource_metadata", "why": { "wasm": "gap: WASM and NAPI take metadata on construction", "napi": "gap: WASM and NAPI take metadata on construction" } }
+        { "wasm": "isLazy", "napi": "isLazy", "python": "is_lazy" }
       ]
     },
     "modelWrapper": {
@@ -75,7 +72,6 @@
         { "wasm": "getRootNode", "napi": "getRootNode", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
         { "wasm": "graph", "napi": "graph", "python": "graph" },
         { "wasm": "isNodegroupPermitted", "napi": "isNodegroupPermitted", "python": "is_nodegroup_permitted" },
-        { "wasm": null, "napi": null, "python": "is_tile_permitted", "why": { "wasm": "gap: Python only; align or remove", "napi": "gap: Python only; align or remove" } },
         { "wasm": "nodegroups", "napi": "nodegroups", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
         { "wasm": "nodes", "napi": "nodes", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
         { "wasm": "nodesByAlias", "napi": "nodesByAlias", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
