@@ -34,6 +34,14 @@ fn sc_err(e: SemanticChildError) -> napi::Error {
     napi::Error::from_reason(e.to_string())
 }
 
+/// The resolvers and language a display-mode card serialization uses.
+struct CardDisplay<'a> {
+    rdm: &'a RdmCache,
+    ncm: &'a NodeConfigManager,
+    registry: Option<&'a alizarin_core::StaticResourceRegistry>,
+    language: String,
+}
+
 // =============================================================================
 // NapiRdmCache
 // =============================================================================
@@ -1286,6 +1294,105 @@ impl NapiResourceInstanceWrapper {
     }
 
     // =========================================================================
+    // Card serialization (core's, as on WASM and Python)
+    // =========================================================================
+
+    /// Serialize card `cardId` from the pseudo cache (populate the nodegroups
+    /// `nodegroupIdsForCard` lists first). `maxDepth`: null for unlimited, 0
+    /// for this card only.
+    #[napi]
+    pub fn serialize_card(
+        &self,
+        card_id: String,
+        parent_tile_id: Option<String>,
+        parent_nodegroup_id: Option<String>,
+        max_depth: Option<u32>,
+    ) -> Result<serde_json::Value> {
+        self.serialize_cards_with(
+            Some(&card_id),
+            parent_tile_id.as_deref(),
+            parent_nodegroup_id.as_deref(),
+            max_depth,
+            None,
+        )
+    }
+
+    /// Serialize every root card from the pseudo cache.
+    #[napi]
+    pub fn serialize_root_cards(&self, max_depth: Option<u32>) -> Result<serde_json::Value> {
+        self.serialize_cards_with(None, None, None, max_depth, None)
+    }
+
+    /// Serialize card `cardId` in display mode (labels for UUIDs).
+    #[allow(clippy::too_many_arguments)]
+    #[napi]
+    pub fn serialize_card_display(
+        &self,
+        card_id: String,
+        rdm_cache: &NapiRdmCache,
+        node_config_manager: &NapiNodeConfigManager,
+        parent_tile_id: Option<String>,
+        parent_nodegroup_id: Option<String>,
+        max_depth: Option<u32>,
+        language: Option<String>,
+        resource_registry: Option<&crate::NapiStaticResourceRegistry>,
+    ) -> Result<serde_json::Value> {
+        self.serialize_cards_with(
+            Some(&card_id),
+            parent_tile_id.as_deref(),
+            parent_nodegroup_id.as_deref(),
+            max_depth,
+            Some(CardDisplay {
+                rdm: &rdm_cache.inner,
+                ncm: &node_config_manager.inner,
+                registry: resource_registry.map(|r| &r.inner),
+                language: language.unwrap_or_else(|| "en".to_string()),
+            }),
+        )
+    }
+
+    /// Serialize every root card in display mode.
+    #[napi]
+    pub fn serialize_root_cards_display(
+        &self,
+        rdm_cache: &NapiRdmCache,
+        node_config_manager: &NapiNodeConfigManager,
+        max_depth: Option<u32>,
+        language: Option<String>,
+        resource_registry: Option<&crate::NapiStaticResourceRegistry>,
+    ) -> Result<serde_json::Value> {
+        self.serialize_cards_with(
+            None,
+            None,
+            None,
+            max_depth,
+            Some(CardDisplay {
+                rdm: &rdm_cache.inner,
+                ncm: &node_config_manager.inner,
+                registry: resource_registry.map(|r| &r.inner),
+                language: language.unwrap_or_else(|| "en".to_string()),
+            }),
+        )
+    }
+
+    /// The nodegroups card `cardId` and its descendants (to `maxDepth`) need
+    /// populated before `serializeCard`.
+    #[napi]
+    pub fn nodegroup_ids_for_card(
+        &self,
+        card_id: String,
+        max_depth: Option<u32>,
+    ) -> Result<Vec<String>> {
+        let model = self.model()?;
+        ResourceInstanceWrapperCore::nodegroup_ids_for_card(
+            &card_id,
+            max_depth.map(|d| d as usize),
+            &model,
+        )
+        .map_err(napi::Error::from_reason)
+    }
+
+    // =========================================================================
     // Cleanup
     // =========================================================================
 
@@ -1321,6 +1428,59 @@ impl NapiResourceInstanceWrapper {
     fn ensure_populated(&self) -> Result<()> {
         let model = self.model()?;
         self.inner.ensure_populated(&*model).map_err(sc_err)
+    }
+
+    /// Core's `serialize_cards`, in display mode with `display`'s resolvers.
+    fn serialize_cards_with(
+        &self,
+        card_id: Option<&str>,
+        parent_tile_id: Option<&str>,
+        parent_nodegroup_id: Option<&str>,
+        max_depth: Option<u32>,
+        display: Option<CardDisplay>,
+    ) -> Result<serde_json::Value> {
+        let model = self.model()?;
+        let max_depth = max_depth.map(|d| d as usize);
+        let Some(display) = display else {
+            return self
+                .inner
+                .serialize_cards(
+                    card_id,
+                    parent_tile_id,
+                    parent_nodegroup_id,
+                    max_depth,
+                    &model,
+                    None,
+                )
+                .map_err(napi::Error::from_reason);
+        };
+        let opts = SerializationOptions::display(&display.language);
+        let ext_reg = ext_registry();
+        let ser_ctx = SerializationContext {
+            node_config: None,
+            external_resolver: Some(
+                display.rdm as &dyn alizarin_core::type_serialization::ExternalResolver,
+            ),
+            concept_lookup: None,
+            resource_resolver: display
+                .registry
+                .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
+            extension_registry: Some(&ext_reg),
+        };
+        self.inner
+            .serialize_cards(
+                card_id,
+                parent_tile_id,
+                parent_nodegroup_id,
+                max_depth,
+                &model,
+                Some(alizarin_core::card_traversal::CardSerializationParams {
+                    opts: &opts,
+                    ser_ctx: &ser_ctx,
+                    node_config_manager: Some(display.ncm),
+                }),
+            )
+            .map_err(napi::Error::from_reason)
     }
 
     fn serialize_with_options(

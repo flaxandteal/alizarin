@@ -921,6 +921,61 @@ impl ResourceInstanceWrapperCore {
         Ok(())
     }
 
+    /// Serialise card `card_id` (with its parent tile and nodegroup when
+    /// nested), or, given none, every root card as an array, from the pseudo
+    /// cache: populate the nodegroups `nodegroup_ids_for_card` lists first.
+    /// `params` gives display mode; `None` is tile-data mode. What each
+    /// binding's `serializeCard`/`serializeRootCards` (and display forms) call.
+    pub fn serialize_cards(
+        &self,
+        card_id: Option<&str>,
+        parent_tile_id: Option<&str>,
+        parent_nodegroup_id: Option<&str>,
+        max_depth: Option<usize>,
+        model: &crate::graph_model_access::GraphModelAccess,
+        params: Option<crate::card_traversal::CardSerializationParams>,
+    ) -> Result<serde_json::Value, String> {
+        let graph = model.get_graph_arc();
+        let card_index = graph
+            .card_index()
+            .ok_or("Graph has no card index — cards may not be loaded")?;
+        let cache = self
+            .pseudo_cache
+            .read()
+            .map_err(|e| format!("Cache lock failed: {e}"))?;
+        match card_id {
+            Some(card_id) => crate::card_traversal::serialize_card(
+                card_id,
+                card_index,
+                &cache,
+                parent_tile_id,
+                parent_nodegroup_id,
+                &graph,
+                max_depth,
+                params,
+            ),
+            None => Ok(serde_json::Value::Array(
+                crate::card_traversal::serialize_root_cards(
+                    card_index, &cache, &graph, max_depth, params,
+                ),
+            )),
+        }
+    }
+
+    /// The nodegroups card `card_id` and its descendants (to `max_depth`)
+    /// need populated before `serialize_cards`.
+    pub fn nodegroup_ids_for_card(
+        card_id: &str,
+        max_depth: Option<usize>,
+        model: &crate::graph_model_access::GraphModelAccess,
+    ) -> Result<Vec<String>, String> {
+        let graph = model.get_graph_arc();
+        let card_index = graph
+            .card_index()
+            .ok_or("Graph has no card index — cards may not be loaded")?;
+        Ok(card_index.nodegroup_ids_for_card(card_id, max_depth))
+    }
+
     /// Populate the pseudo cache from the loaded tiles if it hasn't been: what
     /// serialising (`toJson`, `toDisplayJson`) needs, so no binding's caller
     /// has to populate first. Loads nothing: tiles not loaded aren't there.

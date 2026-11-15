@@ -93,6 +93,70 @@ fn new_core(graph_id: String) -> alizarin_core::ResourceInstanceWrapperCore {
     alizarin_core::ResourceInstanceWrapperCore::new(graph_id)
 }
 
+/// The resolvers and language a display-mode card serialization uses.
+struct CardDisplay<'a> {
+    rdm: &'a alizarin_core::RdmCache,
+    ncm: &'a alizarin_core::node_config::NodeConfigManager,
+    registry: &'a alizarin_core::StaticResourceRegistry,
+    language: String,
+}
+
+/// Core's `serialize_cards` for `core`, in display mode with `display`'s
+/// resolvers: what the card-serialization methods share, as on NAPI.
+fn serialize_cards_with(
+    core: &alizarin_core::ResourceInstanceWrapperCore,
+    card_id: Option<&str>,
+    parent_tile_id: Option<&str>,
+    parent_nodegroup_id: Option<&str>,
+    max_depth: Option<usize>,
+    display: Option<CardDisplay>,
+) -> Result<JsValue, JsValue> {
+    let result = with_registry_model::<_, _, String>(&core.graph_id, |model| {
+        let Some(display) = display else {
+            return core.serialize_cards(
+                card_id,
+                parent_tile_id,
+                parent_nodegroup_id,
+                max_depth,
+                &model.model_access,
+                None,
+            );
+        };
+        let opts = alizarin_core::SerializationOptions::display(&display.language);
+        let ext_registry = crate::extension_registry::build_extension_registry();
+        let ser_ctx = alizarin_core::type_serialization::SerializationContext {
+            node_config: None,
+            external_resolver: Some(
+                display.rdm as &dyn alizarin_core::type_serialization::ExternalResolver,
+            ),
+            concept_lookup: None,
+            resource_resolver: Some(
+                display.registry as &dyn alizarin_core::type_serialization::ResourceDisplayResolver,
+            ),
+            extension_registry: Some(&ext_registry),
+        };
+        core.serialize_cards(
+            card_id,
+            parent_tile_id,
+            parent_nodegroup_id,
+            max_depth,
+            &model.model_access,
+            Some(alizarin_core::card_traversal::CardSerializationParams {
+                opts: &opts,
+                ser_ctx: &ser_ctx,
+                node_config_manager: Some(display.ncm),
+            }),
+        )
+    })
+    .map_err(|e| JsValue::from_str(&e))?;
+    // Plain objects, not Maps, as NAPI's and toJson's.
+    serde::Serialize::serialize(
+        &result,
+        &serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true),
+    )
+    .map_err(|e| JsValue::from_str(&format!("Failed to serialize: {}", e)))
+}
+
 /// Rust-side WASM resource instance wrapper
 /// Thin wrapper around ResourceInstanceWrapperCore for WASM bindings
 /// Phase 4g: Added PseudoValue cache for parallel access
@@ -580,33 +644,14 @@ impl WASMResourceInstanceWrapper {
         parent_nodegroup_id: Option<String>,
         max_depth: Option<usize>,
     ) -> Result<JsValue, JsValue> {
-        let graph = self.with_model_core(|core| Ok(core.model_access.get_graph_arc()))?;
-
-        let card_index = graph.card_index().ok_or_else(|| {
-            JsValue::from_str("Graph has no card index — cards may not be loaded")
-        })?;
-
-        // Convert WASM pseudo_cache to core types
-        let core_cache: std::collections::HashMap<String, alizarin_core::PseudoListCore> = {
-            let core_ref = self.core.borrow();
-            let cache = core_ref.pseudo_cache.read().unwrap();
-            cache.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-        };
-
-        let result = alizarin_core::serialize_card(
-            &card_id,
-            card_index,
-            &core_cache,
+        serialize_cards_with(
+            &self.core.borrow(),
+            Some(&card_id),
             parent_tile_id.as_deref(),
             parent_nodegroup_id.as_deref(),
-            &graph,
             max_depth,
             None,
         )
-        .map_err(|e| JsValue::from_str(&e))?;
-
-        serde_wasm_bindgen::to_value(&result)
-            .map_err(|e| JsValue::from_str(&format!("Failed to serialize: {}", e)))
     }
 
     /// Serialize all root cards from the populated pseudo_cache.
@@ -616,23 +661,7 @@ impl WASMResourceInstanceWrapper {
     /// @param maxDepth - Max recursion depth (null = unlimited, 0 = root cards only)
     #[wasm_bindgen(js_name = serializeRootCards)]
     pub fn serialize_root_cards(&self, max_depth: Option<usize>) -> Result<JsValue, JsValue> {
-        let graph = self.with_model_core(|core| Ok(core.model_access.get_graph_arc()))?;
-
-        let card_index = graph.card_index().ok_or_else(|| {
-            JsValue::from_str("Graph has no card index — cards may not be loaded")
-        })?;
-
-        let core_cache: std::collections::HashMap<String, alizarin_core::PseudoListCore> = {
-            let core_ref = self.core.borrow();
-            let cache = core_ref.pseudo_cache.read().unwrap();
-            cache.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-        };
-
-        let result =
-            alizarin_core::serialize_root_cards(card_index, &core_cache, &graph, max_depth, None);
-
-        serde_wasm_bindgen::to_value(&result)
-            .map_err(|e| JsValue::from_str(&format!("Failed to serialize: {}", e)))
+        serialize_cards_with(&self.core.borrow(), None, None, None, max_depth, None)
     }
 
     /// Serialize a single card in display mode (resolves UUIDs to labels
@@ -658,54 +687,19 @@ impl WASMResourceInstanceWrapper {
         language: Option<String>,
         resource_registry: &StaticResourceRegistry,
     ) -> Result<JsValue, JsValue> {
-        let graph = self.with_model_core(|core| Ok(core.model_access.get_graph_arc()))?;
-
-        let card_index = graph.card_index().ok_or_else(|| {
-            JsValue::from_str("Graph has no card index — cards may not be loaded")
-        })?;
-
-        let core_cache: std::collections::HashMap<String, alizarin_core::PseudoListCore> = {
-            let core_ref = self.core.borrow();
-            let cache = core_ref.pseudo_cache.read().unwrap();
-            cache.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-        };
-
-        let lang = language.unwrap_or_else(|| "en".to_string());
-        let opts = alizarin_core::SerializationOptions::display(&lang);
-        let rcache = rdm_cache.inner();
-        let ncm = node_config_manager.inner();
-        let core_registry = resource_registry.inner();
-        let ext_registry = crate::extension_registry::build_extension_registry();
-        let ser_ctx = alizarin_core::type_serialization::SerializationContext {
-            node_config: None,
-            external_resolver: Some(
-                rcache as &dyn alizarin_core::type_serialization::ExternalResolver,
-            ),
-            concept_lookup: None,
-            resource_resolver: Some(
-                core_registry as &dyn alizarin_core::type_serialization::ResourceDisplayResolver,
-            ),
-            extension_registry: Some(&ext_registry),
-        };
-
-        let result = alizarin_core::serialize_card(
-            &card_id,
-            card_index,
-            &core_cache,
+        serialize_cards_with(
+            &self.core.borrow(),
+            Some(&card_id),
             parent_tile_id.as_deref(),
             parent_nodegroup_id.as_deref(),
-            &graph,
             max_depth,
-            Some(alizarin_core::card_traversal::CardSerializationParams {
-                opts: &opts,
-                ser_ctx: &ser_ctx,
-                node_config_manager: Some(ncm),
+            Some(CardDisplay {
+                rdm: rdm_cache.inner(),
+                ncm: node_config_manager.inner(),
+                registry: resource_registry.inner(),
+                language: language.unwrap_or_else(|| "en".to_string()),
             }),
         )
-        .map_err(|e| JsValue::from_str(&e))?;
-
-        serde_wasm_bindgen::to_value(&result)
-            .map_err(|e| JsValue::from_str(&format!("Failed to serialize: {}", e)))
     }
 
     /// Serialize all root cards in display mode.
@@ -723,50 +717,19 @@ impl WASMResourceInstanceWrapper {
         language: Option<String>,
         resource_registry: &StaticResourceRegistry,
     ) -> Result<JsValue, JsValue> {
-        let graph = self.with_model_core(|core| Ok(core.model_access.get_graph_arc()))?;
-
-        let card_index = graph.card_index().ok_or_else(|| {
-            JsValue::from_str("Graph has no card index — cards may not be loaded")
-        })?;
-
-        let core_cache: std::collections::HashMap<String, alizarin_core::PseudoListCore> = {
-            let core_ref = self.core.borrow();
-            let cache = core_ref.pseudo_cache.read().unwrap();
-            cache.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-        };
-
-        let lang = language.unwrap_or_else(|| "en".to_string());
-        let opts = alizarin_core::SerializationOptions::display(&lang);
-        let rcache = rdm_cache.inner();
-        let ncm = node_config_manager.inner();
-        let core_registry = resource_registry.inner();
-        let ext_registry = crate::extension_registry::build_extension_registry();
-        let ser_ctx = alizarin_core::type_serialization::SerializationContext {
-            node_config: None,
-            external_resolver: Some(
-                rcache as &dyn alizarin_core::type_serialization::ExternalResolver,
-            ),
-            concept_lookup: None,
-            resource_resolver: Some(
-                core_registry as &dyn alizarin_core::type_serialization::ResourceDisplayResolver,
-            ),
-            extension_registry: Some(&ext_registry),
-        };
-
-        let result = alizarin_core::serialize_root_cards(
-            card_index,
-            &core_cache,
-            &graph,
+        serialize_cards_with(
+            &self.core.borrow(),
+            None,
+            None,
+            None,
             max_depth,
-            Some(alizarin_core::card_traversal::CardSerializationParams {
-                opts: &opts,
-                ser_ctx: &ser_ctx,
-                node_config_manager: Some(ncm),
+            Some(CardDisplay {
+                rdm: rdm_cache.inner(),
+                ncm: node_config_manager.inner(),
+                registry: resource_registry.inner(),
+                language: language.unwrap_or_else(|| "en".to_string()),
             }),
-        );
-
-        serde_wasm_bindgen::to_value(&result)
-            .map_err(|e| JsValue::from_str(&format!("Failed to serialize: {}", e)))
+        )
     }
 
     /// Get nodegroup IDs needed to serialize a card (and its descendants).
@@ -782,13 +745,14 @@ impl WASMResourceInstanceWrapper {
         card_id: String,
         max_depth: Option<usize>,
     ) -> Result<Vec<String>, JsValue> {
-        let graph = self.with_model_core(|core| Ok(core.model_access.get_graph_arc()))?;
-
-        let card_index = graph.card_index().ok_or_else(|| {
-            JsValue::from_str("Graph has no card index — cards may not be loaded")
-        })?;
-
-        Ok(card_index.nodegroup_ids_for_card(&card_id, max_depth))
+        self.with_model_core(|model| {
+            alizarin_core::ResourceInstanceWrapperCore::nodegroup_ids_for_card(
+                &card_id,
+                max_depth,
+                &model.model_access,
+            )
+            .map_err(|e| JsValue::from_str(&e))
+        })
     }
 
     /// This replaces the JS `forJson()` method that makes 98+ WASM boundary

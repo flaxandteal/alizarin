@@ -24,6 +24,8 @@ import {
   createResourceRegistry,
   createStaticGraphMeta,
   parseStaticGraph,
+  getRdmCache,
+  getNodeConfigManager,
 } from '../../js/backend';
 import { IWKRM } from '../../js/interfaces';
 import { staticStore } from '../../js/staticStore';
@@ -244,6 +246,30 @@ describe(`Backend consistency [${getBackend()}]`, () => {
       lazy.appendFetchedTiles([], nodegroupOf("statement"));
       expect(child("statement")).toBeNull();
       expect(child("basic_info")).toMatch(/^TILES_NOT_LOADED:/);
+    });
+
+    test("serializes cards through core, in tile-data and display modes", () => {
+      const basicInfo = modelWrapper.getNodeObjectsByAlias().get("basic_info")!.nodegroup_id;
+      const card = (GroupJSON as any).graph[0].cards.find(
+        (c: any) => c.nodegroup_id === basicInfo,
+      );
+      expect(wrapper.nodegroupIdsForCard(card.cardid, 0)).toEqual([basicInfo]);
+
+      wrapper.toJson(); // populates the pseudo cache
+      const serialized = wrapper.serializeCard(card.cardid, null, null, 0);
+      expect(JSON.stringify(serialized)).toContain("Global Group");
+      expect(wrapper.serializeRootCards(0)).toContainEqual(serialized);
+
+      const display = wrapper.serializeCardDisplay(
+        card.cardid, getRdmCache(), getNodeConfigManager(), null, null, 0, "ga", staticStore.registry,
+      );
+      expect(JSON.stringify(display)).toContain("Grúpa Domhanda");
+      const rootsDisplay = wrapper.serializeRootCardsDisplay(
+        getRdmCache(), getNodeConfigManager(), 0, "ga", staticStore.registry,
+      );
+      expect(rootsDisplay).toContainEqual(display);
+
+      expect(() => wrapper.serializeCard("not-a-card", null, null, 0)).toThrow(/not found/);
     });
   });
 

@@ -59,6 +59,13 @@ pub(crate) fn model_for(graph_id: &str) -> PyResult<Arc<GraphModelAccess>> {
     })
 }
 
+/// The resolvers and language a display-mode card serialization uses.
+struct CardDisplay<'a> {
+    ncm: Option<&'a alizarin_core::node_config::NodeConfigManager>,
+    registry: Option<&'a alizarin_core::StaticResourceRegistry>,
+    language: String,
+}
+
 /// A semantic-child error as a Python exception, keeping core's text
 /// (`TILES_NOT_LOADED:<nodegroups>` for the lazy loader), as on NAPI/WASM.
 fn sc_err(e: SemanticChildError) -> PyErr {
@@ -114,6 +121,66 @@ impl PyResourceInstanceWrapperCore {
     /// Remove the compiled-in tile source.
     pub fn clear_tile_source(&mut self) {
         self.inner.tile_source = None;
+    }
+
+    /// Core's `serialize_cards`, in display mode with `display`'s resolvers
+    /// (concept labels through the global RDM cache): what the
+    /// card-serialization methods share, as on NAPI and WASM.
+    fn serialize_cards_with(
+        &self,
+        py: Python,
+        card_id: Option<&str>,
+        parent_tile_id: Option<&str>,
+        parent_nodegroup_id: Option<&str>,
+        max_depth: Option<usize>,
+        display: Option<CardDisplay>,
+    ) -> PyResult<PyObject> {
+        let model = self.model()?;
+        let result = match display {
+            None => self.inner.serialize_cards(
+                card_id,
+                parent_tile_id,
+                parent_nodegroup_id,
+                max_depth,
+                &model,
+                None,
+            ),
+            Some(display) => {
+                let opts = alizarin_core::SerializationOptions::display(&display.language);
+                let global_rdm = rdm_cache_py::get_global_rdm_cache();
+                let ext_registry = crate::build_extension_registry();
+                let ser_ctx = alizarin_core::type_serialization::SerializationContext {
+                    node_config: None,
+                    external_resolver: global_rdm.as_ref().map(|c| {
+                        c.inner() as &dyn alizarin_core::type_serialization::ExternalResolver
+                    }),
+                    concept_lookup: None,
+                    resource_resolver: display.registry.map(|r| {
+                        r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver
+                    }),
+                    extension_registry: Some(&ext_registry),
+                };
+                self.inner.serialize_cards(
+                    card_id,
+                    parent_tile_id,
+                    parent_nodegroup_id,
+                    max_depth,
+                    &model,
+                    Some(alizarin_core::card_traversal::CardSerializationParams {
+                        opts: &opts,
+                        ser_ctx: &ser_ctx,
+                        node_config_manager: display.ncm,
+                    }),
+                )
+            }
+        }
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+        pythonize::pythonize(py, &result).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert to Python: {}",
+                e
+            ))
+        })
     }
 
     /// Serialise the resource as a node-hierarchy tree with `options`,
@@ -694,37 +761,14 @@ impl PyResourceInstanceWrapperCore {
         parent_nodegroup_id: Option<String>,
         max_depth: Option<usize>,
     ) -> PyResult<PyObject> {
-        // The model's graph: the registered one, or as pruned since.
-        let graph = self.model()?.get_graph_arc();
-
-        let card_index = graph.card_index().ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Graph has no card index — cards may not be loaded",
-            )
-        })?;
-
-        let cache = self.inner.pseudo_cache.read().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
-        })?;
-
-        let result = alizarin_core::serialize_card(
-            &card_id,
-            card_index,
-            &cache,
+        self.serialize_cards_with(
+            py,
+            Some(&card_id),
             parent_tile_id.as_deref(),
             parent_nodegroup_id.as_deref(),
-            &graph,
             max_depth,
             None,
         )
-        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
-
-        pythonize::pythonize(py, &result).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to convert to Python: {}",
-                e
-            ))
-        })
     }
 
     /// Serialize all root cards from the populated pseudo_cache.
@@ -733,28 +777,7 @@ impl PyResourceInstanceWrapperCore {
     ///     max_depth: Max recursion depth (None = unlimited, 0 = root cards only)
     #[pyo3(signature = (max_depth=None))]
     fn serialize_root_cards(&self, py: Python, max_depth: Option<usize>) -> PyResult<PyObject> {
-        // The model's graph: the registered one, or as pruned since.
-        let graph = self.model()?.get_graph_arc();
-
-        let card_index = graph.card_index().ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Graph has no card index — cards may not be loaded",
-            )
-        })?;
-
-        let cache = self.inner.pseudo_cache.read().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
-        })?;
-
-        let result =
-            alizarin_core::serialize_root_cards(card_index, &cache, &graph, max_depth, None);
-
-        pythonize::pythonize(py, &result).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to convert to Python: {}",
-                e
-            ))
-        })
+        self.serialize_cards_with(py, None, None, None, max_depth, None)
     }
 
     /// Serialize a single card in display mode (resolves UUIDs to labels
@@ -780,60 +803,18 @@ impl PyResourceInstanceWrapperCore {
         language: Option<String>,
         resource_registry: Option<&crate::ResourceRegistry>,
     ) -> PyResult<PyObject> {
-        // The model's graph: the registered one, or as pruned since.
-        let graph = self.model()?.get_graph_arc();
-
-        let card_index = graph.card_index().ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Graph has no card index — cards may not be loaded",
-            )
-        })?;
-
-        let cache = self.inner.pseudo_cache.read().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
-        })?;
-
-        let lang = language.unwrap_or_else(|| "en".to_string());
-        let opts = alizarin_core::SerializationOptions::display(&lang);
-
-        let global_rdm = rdm_cache_py::get_global_rdm_cache();
-        let rdm_inner = global_rdm.as_ref().map(|c| c.inner());
-        let core_registry = resource_registry.map(|r| r.inner());
-        let ext_registry = crate::build_extension_registry();
-        let ser_ctx = alizarin_core::type_serialization::SerializationContext {
-            node_config: None,
-            external_resolver: rdm_inner
-                .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
-            concept_lookup: None,
-            resource_resolver: core_registry
-                .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
-            extension_registry: Some(&ext_registry),
-        };
-
-        let ncm = node_config_manager.map(|m| m.inner());
-
-        let result = alizarin_core::serialize_card(
-            &card_id,
-            card_index,
-            &cache,
+        self.serialize_cards_with(
+            py,
+            Some(&card_id),
             parent_tile_id.as_deref(),
             parent_nodegroup_id.as_deref(),
-            &graph,
             max_depth,
-            Some(alizarin_core::card_traversal::CardSerializationParams {
-                opts: &opts,
-                ser_ctx: &ser_ctx,
-                node_config_manager: ncm,
+            Some(CardDisplay {
+                ncm: node_config_manager.map(|m| m.inner()),
+                registry: resource_registry.map(|r| r.inner()),
+                language: language.unwrap_or_else(|| "en".to_string()),
             }),
         )
-        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
-
-        pythonize::pythonize(py, &result).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to convert to Python: {}",
-                e
-            ))
-        })
     }
 
     /// Serialize all root cards in display mode.
@@ -851,56 +832,18 @@ impl PyResourceInstanceWrapperCore {
         language: Option<String>,
         resource_registry: Option<&crate::ResourceRegistry>,
     ) -> PyResult<PyObject> {
-        // The model's graph: the registered one, or as pruned since.
-        let graph = self.model()?.get_graph_arc();
-
-        let card_index = graph.card_index().ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Graph has no card index — cards may not be loaded",
-            )
-        })?;
-
-        let cache = self.inner.pseudo_cache.read().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
-        })?;
-
-        let lang = language.unwrap_or_else(|| "en".to_string());
-        let opts = alizarin_core::SerializationOptions::display(&lang);
-
-        let global_rdm = rdm_cache_py::get_global_rdm_cache();
-        let rdm_inner = global_rdm.as_ref().map(|c| c.inner());
-        let core_registry = resource_registry.map(|r| r.inner());
-        let ext_registry = crate::build_extension_registry();
-        let ser_ctx = alizarin_core::type_serialization::SerializationContext {
-            node_config: None,
-            external_resolver: rdm_inner
-                .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
-            concept_lookup: None,
-            resource_resolver: core_registry
-                .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
-            extension_registry: Some(&ext_registry),
-        };
-
-        let ncm = node_config_manager.map(|m| m.inner());
-
-        let result = alizarin_core::serialize_root_cards(
-            card_index,
-            &cache,
-            &graph,
+        self.serialize_cards_with(
+            py,
+            None,
+            None,
+            None,
             max_depth,
-            Some(alizarin_core::card_traversal::CardSerializationParams {
-                opts: &opts,
-                ser_ctx: &ser_ctx,
-                node_config_manager: ncm,
+            Some(CardDisplay {
+                ncm: node_config_manager.map(|m| m.inner()),
+                registry: resource_registry.map(|r| r.inner()),
+                language: language.unwrap_or_else(|| "en".to_string()),
             }),
-        );
-
-        pythonize::pythonize(py, &result).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to convert to Python: {}",
-                e
-            ))
-        })
+        )
     }
 
     /// The resource as a node-hierarchy tree in display mode: UUIDs resolved
@@ -954,16 +897,9 @@ impl PyResourceInstanceWrapperCore {
         card_id: String,
         max_depth: Option<usize>,
     ) -> PyResult<Vec<String>> {
-        // The model's graph: the registered one, or as pruned since.
-        let graph = self.model()?.get_graph_arc();
-
-        let card_index = graph.card_index().ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Graph has no card index — cards may not be loaded",
-            )
-        })?;
-
-        Ok(card_index.nodegroup_ids_for_card(&card_id, max_depth))
+        let model = self.model()?;
+        ResourceInstanceWrapperCore::nodegroup_ids_for_card(&card_id, max_depth, &model)
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
     }
 
     fn __repr__(&self) -> String {
