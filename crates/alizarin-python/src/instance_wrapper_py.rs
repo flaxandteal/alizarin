@@ -245,15 +245,10 @@ impl PyResourceInstanceWrapperCore {
         self.inner.is_nodegroup_loaded(nodegroup_id)
     }
 
-    /// Mark a nodegroup as loaded
-    fn mark_nodegroup_loaded(&self, nodegroup_id: &str) {
-        self.inner.mark_nodegroup_loaded(nodegroup_id)
-    }
-
     /// Switch lazy tile mode, as on NAPI/WASM: a nodegroup not yet loaded is
     /// then unknown, so semantic child lookups on it raise
-    /// `TILES_NOT_LOADED:<nodegroup>` until its tiles are loaded or it is
-    /// marked loaded. The Python wrapper's `populate(lazy=...)` sets it, and
+    /// `TILES_NOT_LOADED:<nodegroup>` until its tiles are fetched
+    /// (`append_fetched_tiles`). The Python wrapper's `populate(lazy=...)` sets it, and
     /// fetches what lookups list (`fetch_nodegroups`), as TypeScript does.
     fn set_lazy(&mut self, lazy: bool) {
         self.inner.set_lazy(lazy);
@@ -437,25 +432,6 @@ impl PyResourceInstanceWrapperCore {
     /// and the nodegroup load states. Core's, as on NAPI and WASM.
     fn release(&mut self) {
         self.inner.release();
-    }
-
-    /// Get all nodegroup IDs that have tiles
-    fn get_loaded_nodegroup_ids(&self) -> Vec<String> {
-        self.inner.nodegroup_index.keys().cloned().collect()
-    }
-
-    /// Get count of tiles
-    fn tile_count(&self) -> usize {
-        self.inner.tiles.as_ref().map(|t| t.len()).unwrap_or(0)
-    }
-
-    /// Get count of cached pseudos
-    fn cache_size(&self) -> usize {
-        if let Ok(cache) = self.inner.pseudo_cache.read() {
-            cache.len()
-        } else {
-            0
-        }
     }
 
     /// Clear the pseudo cache
@@ -809,8 +785,8 @@ impl PyResourceInstanceWrapperCore {
         format!(
             "RustResourceInstanceWrapperCore(graph_id={}, tiles={}, cached={})",
             self.graph_id,
-            self.tile_count(),
-            self.cache_size()
+            self.inner.tiles.as_ref().map_or(0, |t| t.len()),
+            self.inner.pseudo_cache.read().map_or(0, |c| c.len())
         )
     }
 }

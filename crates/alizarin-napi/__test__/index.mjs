@@ -310,12 +310,6 @@ describe('NapiResourceModelWrapper', () => {
   // buildNodes (no-op) and buildNodesForGraph
   // -------------------------------------------------------------------------
 
-  it('buildNodes is a no-op (does not throw)', () => {
-    const wrapper = new NapiResourceModelWrapper(graphStr, true);
-    // Should not throw
-    wrapper.buildNodes();
-    assert.ok(Object.keys(wrapper.nodes).length > 0, 'nodes still accessible after buildNodes');
-  });
 });
 
 // =============================================================================

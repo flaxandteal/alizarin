@@ -316,22 +316,6 @@ impl WASMResourceInstanceWrapper {
         self.tile_loader.borrow().clone()
     }
 
-    /// Request tiles for a specific nodegroup (or all tiles if nodegroup_id is None)
-    /// Returns the tile loader callback with the nodegroup_id parameter
-    /// JavaScript should await this and call loadTiles() with the result
-    #[wasm_bindgen(js_name = requestTilesForNodegroup)]
-    pub fn request_tiles_for_nodegroup(
-        &self,
-        _nodegroup_id: Option<String>,
-    ) -> Result<js_sys::Function, JsValue> {
-        let loader = self
-            .tile_loader
-            .borrow()
-            .clone()
-            .ok_or_else(|| JsValue::from_str("No tile loader callback set"))?;
-        Ok(loader)
-    }
-
     /// Load tiles from plain JS objects (JSON deserialization)
     /// Use this for initial loading from JSON files
     #[wasm_bindgen(js_name = loadTiles)]

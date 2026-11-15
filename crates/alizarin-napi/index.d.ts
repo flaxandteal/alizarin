@@ -487,7 +487,6 @@ export declare class NapiResourceModelWrapper {
   /** The model's graph, as a `NapiStaticGraph` (as WASM gives its StaticGraph). */
   get graph(): NapiStaticGraph
   set graph(graphJson: string)
-  buildNodes(): void
   buildNodesForGraph(graphJson: string): void
   /** Get the root node of the graph. */
   getRootNode(): any

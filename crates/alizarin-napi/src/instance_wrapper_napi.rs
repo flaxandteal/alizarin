@@ -1746,12 +1746,6 @@ impl NapiResourceModelWrapper {
     // Build nodes (no-op — caches are built eagerly in constructor)
     // =========================================================================
 
-    #[napi(js_name = "buildNodes")]
-    pub fn build_nodes(&self) -> Result<()> {
-        // GraphModelAccess builds caches in from_graph(), so this is a no-op.
-        Ok(())
-    }
-
     #[napi(js_name = "buildNodesForGraph")]
     pub fn build_nodes_for_graph(&mut self, graph_json: String) -> Result<()> {
         let graph: StaticGraph = serde_json::from_str(&graph_json)

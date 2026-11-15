@@ -1008,20 +1008,8 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
   }
 
   buildNodes() {
-    // WASM backend's buildNodes() is actually buildNodesForGraph(graph) on the
-    // raw WASMResourceModelWrapper; NAPI's buildNodes() is a no-op (caches
-    // built eagerly in constructor). Use backend type to dispatch correctly.
-    if (getBackend() === 'napi') {
-      this._backend.buildNodes();
-    } else {
-      // WASM: the raw class uses buildNodesForGraph(graph)
-      const backend = this._backend as any;
-      if (typeof backend.buildNodesForGraph === 'function') {
-        backend.buildNodesForGraph(this._backend.graph);
-      } else {
-        this._backend.buildNodes();
-      }
-    }
+    // Core keeps every backend's model built, so there is nothing to build:
+    // drop the TS-side caches and read them afresh from the backend.
     this._clearCaches();
   }
 

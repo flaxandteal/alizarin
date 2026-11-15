@@ -1572,13 +1572,6 @@ impl PyResourceModelWrapper {
         Ok(PyResourceModelWrapper { graph_id })
     }
 
-    /// Build index caches (nodes, edges, nodegroups, etc.)
-    /// Call after construction or after graph mutation.
-    fn build_nodes(&mut self) -> PyResult<()> {
-        // Core keeps the shared model built; this only checks it exists.
-        self.model().map(|_| ())
-    }
-
     /// Get child nodes for a given node ID, keyed by alias.
     /// Returns a dict of {alias: node_json}.
     fn get_child_nodes(&self, py: Python, node_id: &str) -> PyResult<PyObject> {

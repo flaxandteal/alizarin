@@ -35,7 +35,6 @@
         { "wasm": "populate", "napi": "populate", "python": "populate" },
         { "wasm": "pruneResourceTiles", "napi": "pruneResourceTiles", "python": null, "why": { "python": "gap" } },
         { "wasm": "release", "napi": "release", "python": "release" },
-        { "wasm": "requestTilesForNodegroup", "napi": null, "python": null, "why": { "napi": "gap: used, or removed?", "python": "gap: used, or removed?" } },
         { "wasm": "resolvePath", "napi": "resolvePath", "python": "resolve_path" },
         { "wasm": "serializeCard", "napi": null, "python": "serialize_card", "why": { "napi": "gap: card serialisation" } },
         { "wasm": "serializeCardDisplay", "napi": null, "python": "serialize_card_display", "why": { "napi": "gap: card serialisation" } },
@@ -47,14 +46,10 @@
         { "wasm": null, "napi": "toDisplayJsonFull", "python": null, "why": { "wasm": "gap: naming", "python": "gap: naming" } },
         { "wasm": "toJson", "napi": "toJson", "python": null, "why": { "python": "gap" } },
         { "wasm": null, "napi": "toJsonFull", "python": null, "why": { "wasm": "gap: naming", "python": "gap: naming" } },
-        { "wasm": null, "napi": null, "python": "cache_size", "why": { "wasm": "gap: Python only; align or remove", "napi": "gap: Python only; align or remove" } },
         { "wasm": null, "napi": null, "python": "clear_cache", "why": { "wasm": "gap: Python only; align or remove", "napi": "gap: Python only; align or remove" } },
-        { "wasm": null, "napi": null, "python": "get_loaded_nodegroup_ids", "why": { "wasm": "gap: Python only; align or remove", "napi": "gap: Python only; align or remove" } },
         { "wasm": null, "napi": null, "python": "graph_id", "why": { "wasm": "gap: Python only; align or remove", "napi": "gap: Python only; align or remove" } },
         { "wasm": null, "napi": null, "python": "is_lazy", "why": { "wasm": "gap: Python only; align or remove", "napi": "gap: Python only; align or remove" } },
-        { "wasm": null, "napi": null, "python": "mark_nodegroup_loaded", "why": { "wasm": "gap: Python only; align or remove", "napi": "gap: Python only; align or remove" } },
-        { "wasm": null, "napi": null, "python": "set_resource_metadata", "why": { "wasm": "gap: WASM and NAPI take metadata on construction", "napi": "gap: WASM and NAPI take metadata on construction" } },
-        { "wasm": null, "napi": null, "python": "tile_count", "why": { "wasm": "gap: Python only; align or remove", "napi": "gap: Python only; align or remove" } }
+        { "wasm": null, "napi": null, "python": "set_resource_metadata", "why": { "wasm": "gap: WASM and NAPI take metadata on construction", "napi": "gap: WASM and NAPI take metadata on construction" } }
       ]
     },
     "modelWrapper": {
@@ -62,7 +57,6 @@
       "napi": "NapiResourceModelWrapper",
       "python": "PyResourceModelWrapper",
       "operations": [
-        { "wasm": null, "napi": "buildNodes", "python": "build_nodes", "why": { "wasm": "gap: a no-op on NAPI and Python; remove?" } },
         { "wasm": "buildNodesForGraph", "napi": "buildNodesForGraph", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
         { "wasm": "createPseudoNode", "napi": "createPseudoNode", "python": "create_pseudo_node" },
         { "wasm": "createPseudoNodeChild", "napi": "createPseudoNodeChild", "python": "create_pseudo_node_child" },
