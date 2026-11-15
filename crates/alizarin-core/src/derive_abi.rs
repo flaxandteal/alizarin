@@ -24,8 +24,12 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
 use alizarin_extension_api::{
-    abi_fingerprint, DeriveFn, DeriveProviderInfo, DeriveResult, HostGraph, LOOKUP_NODEGROUP_BY_ID,
-    LOOKUP_NODE_BY_ALIAS, LOOKUP_NODE_BY_ID, LOOKUP_ROOT,
+    abi_fingerprint, DeriveFn, DeriveProviderInfo, DeriveResult, HostGraph,
+};
+/// The lookup kinds [`CallbackGraph`] and a host's lookup use, the same across
+/// the C ABI and from JS (so a WASM binding needn't depend on the ABI crate).
+pub use alizarin_extension_api::{
+    LOOKUP_NODEGROUP_BY_ID, LOOKUP_NODE_BY_ALIAS, LOOKUP_NODE_BY_ID, LOOKUP_ROOT,
 };
 use serde_json::Value;
 

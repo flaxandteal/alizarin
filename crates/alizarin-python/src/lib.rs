@@ -59,6 +59,29 @@ fn register_extension_handler(capsule: &Bound<'_, PyCapsule>) -> PyResult<()> {
     Ok(())
 }
 
+/// Register an extension's derive provider from a PyCapsule wrapping a
+/// `*const DeriveProviderInfo`, under the provider id it carries, which is
+/// returned. As NAPI's `registerDeriveProvider` (a pointer) and WASM's (JS
+/// callbacks).
+#[pyfunction]
+fn register_derive_provider(capsule: &Bound<'_, PyCapsule>) -> PyResult<String> {
+    let ptr = capsule.pointer() as *const alizarin_extension_api::DeriveProviderInfo;
+    // SAFETY: ptr comes from PyCapsule::pointer(), set by the extension when
+    // it created the capsule over its static DeriveProviderInfo; core checks
+    // the ABI fingerprint before reading anything else.
+    unsafe { alizarin_core::derive_abi::register_derive_provider_from_ptr(ptr) }
+        .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
+}
+
+/// Whether a derive provider is registered under `provider_id`. As on NAPI
+/// and WASM.
+#[pyfunction]
+fn has_derive_provider(provider_id: &str) -> bool {
+    alizarin_core::get_global_functions_registry()
+        .derive(provider_id)
+        .is_some()
+}
+
 /// Check if a type handler is registered
 #[pyfunction]
 #[pyo3(name = "has_type_handler")]
@@ -2515,6 +2538,8 @@ fn alizarin(m: &Bound<'_, PyModule>) -> PyResult<()> {
 
     // Extension type handler registration
     m.add_function(wrap_pyfunction!(register_extension_handler, m)?)?;
+    m.add_function(wrap_pyfunction!(register_derive_provider, m)?)?;
+    m.add_function(wrap_pyfunction!(has_derive_provider, m)?)?;
     m.add_function(wrap_pyfunction!(has_extension_handler, m)?)?;
     m.add_function(wrap_pyfunction!(coerce_with_extension, m)?)?;
     m.add_function(wrap_pyfunction!(has_display_renderer, m)?)?;

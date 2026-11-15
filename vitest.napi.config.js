@@ -8,6 +8,9 @@ const NAPI_EXCLUDED = [
   "tests/graph-wasm.test.ts",
   "tests/wasmErrors.test.ts",
   "tests/wasmResourceModelWrapper.test.ts",
+  // A JS-registered derive provider: NAPI's come from an extension's native
+  // module, tested with the geo extension.
+  "tests/deriveProvider.test.ts",
   // To port: they build WASM objects (pkg/ types) directly, not via backend.ts.
   "tests/buildResourceDescriptors.test.ts",
   "tests/graphConfig.test.ts",

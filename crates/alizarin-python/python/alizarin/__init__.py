@@ -306,6 +306,10 @@ from .node_config import (
 from . import alizarin as _alizarin_rust
 register_type_handler = _alizarin_rust.register_type_handler
 has_type_handler = _alizarin_rust.has_type_handler
+# Derive providers from extensions (a capsule over their DeriveProviderInfo),
+# as TypeScript's registerDeriveProvider / hasDeriveProvider.
+register_derive_provider = _alizarin_rust.register_derive_provider
+has_derive_provider = _alizarin_rust.has_derive_provider
 coerce_with_extension = _alizarin_rust.coerce_with_extension
 has_display_renderer = _alizarin_rust.has_display_renderer
 render_display_with_extension = _alizarin_rust.render_display_with_extension
@@ -540,6 +544,8 @@ __all__ = [
     # Extension Registration
     "register_type_handler",
     "has_type_handler",
+    "register_derive_provider",
+    "has_derive_provider",
     "coerce_with_extension",
     "has_display_renderer",
     "render_display_with_extension",

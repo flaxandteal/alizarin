@@ -46,6 +46,28 @@ pub fn register_extension_handler(handler_ptr: BigInt) -> Result<String> {
     unsafe { alizarin_core::register_handler_from_ptr(ptr) }.map_err(napi::Error::from_reason)
 }
 
+/// Register an extension's derive provider from its raw `DeriveProviderInfo`
+/// pointer (as a `BigInt`), under the provider id it carries, which is
+/// returned. As WASM's `registerDeriveProvider` (JS callbacks) and Python's
+/// (a capsule).
+#[napi(js_name = "registerDeriveProvider")]
+pub fn register_derive_provider(info_ptr: BigInt) -> Result<String> {
+    let ptr = info_ptr.get_u64().1 as *const alizarin_extension_api::DeriveProviderInfo;
+    // SAFETY: `ptr` is a `DeriveProviderInfo` from an extension's native
+    // module; core checks its ABI fingerprint before reading anything else.
+    unsafe { alizarin_core::derive_abi::register_derive_provider_from_ptr(ptr) }
+        .map_err(napi::Error::from_reason)
+}
+
+/// Whether a derive provider is registered under `providerId`. As on WASM
+/// and Python.
+#[napi(js_name = "hasDeriveProvider")]
+pub fn has_derive_provider(provider_id: String) -> bool {
+    alizarin_core::get_global_functions_registry()
+        .derive(&provider_id)
+        .is_some()
+}
+
 /// Whether any value folded into `summary` (a `datatype` fold summary, e.g. an
 /// Aggregate node value) could match `predicate`. Conservative: `false` only
 /// when certain, so whatever the summary covers can be skipped. Predicates:

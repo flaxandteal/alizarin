@@ -298,6 +298,38 @@ export function registerExtensionHandler(datatype: string, handler: any): void {
 }
 
 /**
+ * Register a derive provider for the active backend.
+ *
+ * - WASM: `provider` is `{ derive(resourceId, tiles, config, lookup) }`, called
+ *   synchronously; `lookup(kind, key)` answers from the graph during the call
+ *   (0 root, 1 node by alias, 2 node by id, 3 nodegroup by id).
+ * - NAPI: `provider` is the extension's `DeriveProviderInfo` pointer, as a
+ *   BigInt from its native module; `providerId` is checked against it.
+ *
+ * As Python's `register_derive_provider`.
+ */
+export function registerDeriveProvider(providerId: string, provider: any): void {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (typeof provider !== 'bigint') {
+      throw new Error(`On the NAPI backend, register ${providerId} with its native module's pointer`);
+    }
+    const registered = napi.registerDeriveProvider(provider);
+    if (registered !== providerId) {
+      throw new Error(`Expected derive provider ${providerId}, the native module provides ${registered}`);
+    }
+    return;
+  }
+  getWasmModule().registerDeriveProvider(providerId, provider);
+}
+
+/** Whether a derive provider is registered under `providerId` on the active backend. */
+export function hasDeriveProvider(providerId: string): boolean {
+  const mod = _backend === 'napi' ? getNapiModule() : getWasmModule();
+  return mod.hasDeriveProvider(providerId);
+}
+
+/**
  * Whether any value folded into `summary` (a `datatype` fold summary, e.g. an
  * Aggregate node value) could match `predicate`. Conservative: `false` only
  * when certain, so whatever the summary covers (e.g. a Layer) can be skipped.

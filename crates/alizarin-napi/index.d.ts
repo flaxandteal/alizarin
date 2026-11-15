@@ -13,6 +13,18 @@
  */
 export declare function registerExtensionHandler(handlerPtr: bigint): string
 /**
+ * Register an extension's derive provider from its raw `DeriveProviderInfo`
+ * pointer (as a `BigInt`), under the provider id it carries, which is
+ * returned. As WASM's `registerDeriveProvider` (JS callbacks) and Python's
+ * (a capsule).
+ */
+export declare function registerDeriveProvider(infoPtr: bigint): string
+/**
+ * Whether a derive provider is registered under `providerId`. As on WASM
+ * and Python.
+ */
+export declare function hasDeriveProvider(providerId: string): boolean
+/**
  * Whether any value folded into `summary` (a `datatype` fold summary, e.g. an
  * Aggregate node value) could match `predicate`. Conservative: `false` only
  * when certain, so whatever the summary covers can be skipped. Predicates:
