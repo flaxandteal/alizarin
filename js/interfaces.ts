@@ -139,7 +139,6 @@ interface IModelWrapperBackend {
   // PseudoNode creation (WASM-only; may be undefined in NAPI)
   createPseudoNode?(alias?: string | null): any;
   createPseudoNodeChild?(childNode: string, parent: any): any;
-  createPseudoValue?(alias: string | null | undefined, tile: any, parent: any): any;
 };
 
 interface IModelWrapper<T extends IRIVM<T>> {
@@ -153,9 +152,7 @@ interface IModelWrapper<T extends IRIVM<T>> {
   getNodegroupObjects(): Map<string, StaticNodegroup>;
   getEdges(): Map<string, string[]>;
   wkrm: IWKRM;
-  // Phase 4: Methods for PseudoValue creation
   getNodegroupName(nodegroupId: string): string;
-  createPseudoValue(alias: string | null | undefined, tile: any, parent: any): any;
 };
 
 interface IReferenceDataManager {

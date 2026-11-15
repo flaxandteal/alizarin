@@ -15,6 +15,8 @@ const NAPI_EXCLUDED = [
   "tests/buildResourceDescriptors.test.ts",
   "tests/graphConfig.test.ts",
   "tests/graphs.test.ts",
+  // Ported, but blocked: NAPI's pseudo-value node/tile getters return copies
+  // (node.alias undefined, tile.data edits lost), unlike WASM's.
   "tests/pseudos.test.ts",
   "tests/resources.test.ts",
   "tests/static-types.test.ts",

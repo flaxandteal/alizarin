@@ -990,13 +990,6 @@ class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     throw new Error('createPseudoNodeChild not available in current backend');
   }
 
-  createPseudoValue(alias: string | undefined, tile: any, parent: any): any {
-    if (typeof this._backend.createPseudoValue === 'function') {
-      return this._backend.createPseudoValue(alias, tile, parent);
-    }
-    throw new Error('createPseudoValue not available in current backend');
-  }
-
   // =========================================================================
   // Methods with TS-level logic
   // =========================================================================

@@ -172,47 +172,6 @@ pub(crate) struct NodegroupResult {
 }
 
 impl PseudoValueInner {
-    /// Create a new PseudoValueInner with full configuration (parent + is_inner).
-    ///
-    /// For non-inner values, delegates to PseudoValueCore for inner/outer construction.
-    /// For inner values (is_inner_flag=true), constructs directly since inner/outer
-    /// is already handled by the parent.
-    pub fn new(
-        node: Arc<StaticNode>,
-        tile: Option<Arc<StaticTile>>,
-        tile_data: Option<serde_json::Value>,
-        parent: Option<JsValue>,
-        child_node_ids: Vec<String>,
-        is_inner_flag: bool,
-    ) -> Self {
-        if is_inner_flag {
-            // Inner values are constructed directly — no recursive inner/outer
-            let independent = tile.is_none();
-            let core = PseudoValueCore {
-                node,
-                child_node_ids,
-                is_collector: false,
-                inner: None,
-                is_inner: true,
-                tile: tile.clone(),
-                tile_data: None,
-                independent,
-                original_tile: tile,
-            };
-            PseudoValueInner {
-                core,
-                inner: None,
-                value: None,
-                parent,
-                value_loaded: Some(false),
-                accessed: false,
-            }
-        } else {
-            let core = PseudoValueCore::from_node_and_tile(node, tile, tile_data, child_node_ids);
-            Self::from_core(core, parent)
-        }
-    }
-
     /// Wrap a PseudoValueCore with WASM-specific runtime state.
     ///
     /// Recursively wraps core's inner (if present) so the WASM inner/outer

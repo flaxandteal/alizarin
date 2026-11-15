@@ -1,5 +1,4 @@
 use crate::graph::WKRM;
-use crate::pseudo_value::{PseudoValue, PseudoValueInner};
 use crate::pseudos::PseudoNode;
 use wasm_bindgen::prelude::*;
 // WASM wrapper types for external interfaces
@@ -314,75 +313,6 @@ impl WASMResourceModelWrapper {
             made.map(PseudoNode::from_core)
                 .map_err(|e| JsValue::from_str(&e))
         })
-    }
-
-    /// Create a PseudoValue - the new unified pseudo type that includes runtime state
-    /// This will eventually replace createPseudoNode
-    #[wasm_bindgen(js_name = createPseudoValue)]
-    pub fn create_pseudo_value(
-        &mut self,
-        alias: Option<String>,
-        tile: JsValue,
-        parent: JsValue,
-    ) -> Result<PseudoValue, JsValue> {
-        // Get the node by alias or as root
-        let arc_node: Arc<StaticNode> = if let Some(key_str) = alias {
-            self.with_core(|core| {
-                let nodes_by_alias = core
-                    .get_nodes_by_alias_internal()
-                    .ok_or_else(|| JsValue::from_str("Could not access nodes by alias"))?;
-                Ok::<Arc<StaticNode>, JsValue>(Arc::clone(
-                    nodes_by_alias.get(key_str.as_str()).ok_or_else(|| {
-                        JsValue::from_str(&format!("Could not find node with alias: {}", key_str))
-                    })?,
-                ))
-            })?
-        } else {
-            self.with_core(|core| {
-                core.get_root_node()
-                    .map_err(|e| JsValue::from_str(&format!("Could not find root node: {}", e)))
-            })?
-        };
-
-        // Get child node IDs
-        let child_node_ids: Vec<String> = self.with_core(|core| {
-            let child_nodes = core.get_child_nodes(&arc_node.nodeid)?;
-            Ok::<Vec<String>, JsValue>(alizarin_core::sorted_serde::sorted_keys(child_nodes.keys()))
-        })?;
-
-        // Parse tile if provided
-        let tile_arc: Option<Arc<StaticTile>> = if tile.is_null() || tile.is_undefined() {
-            None
-        } else {
-            serde_wasm_bindgen::from_value::<StaticTile>(tile)
-                .ok()
-                .map(Arc::new)
-        };
-
-        // Extract tile data for this node
-        let tile_data = tile_arc
-            .as_ref()
-            .and_then(|t| t.data.get(&arc_node.nodeid))
-            .cloned();
-
-        // Parse parent if provided
-        let parent_opt = if parent.is_null() || parent.is_undefined() {
-            None
-        } else {
-            Some(parent)
-        };
-
-        // Create the PseudoValueInner with proper inner/outer handling
-        let rust_value = PseudoValueInner::new(
-            arc_node,
-            tile_arc,
-            tile_data,
-            parent_opt,
-            child_node_ids,
-            false, // not inner
-        );
-
-        Ok(PseudoValue::from_rust(rust_value))
     }
 
     #[wasm_bindgen(js_name = getRootNode)]

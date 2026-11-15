@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { PseudoUnavailable, PseudoValue, PseudoList } from '../js/pseudos';
-import { StaticNode, StaticTile, createStaticGraph, StaticGraph, StaticGraphMeta } from '../js/static-types';
-import { AttrPromise } from '../js/utils';
+import { StaticNode, StaticTile, createStaticGraph, StaticGraph } from '../js/static-types';
 import { initWasmForTests } from './wasm-init';
-import { WASMResourceModelWrapper, WKRM } from '../pkg/alizarin';
-import { ResourceModelWrapper, GraphMutator } from '../js/graphManager';
+import { ResourceModelWrapper, GraphMutator, createWKRM } from '../js/graphManager';
+import { createInstanceWrapperForModel, createStaticGraphMeta, loadTiles } from '../js/backend';
+import { IWKRM } from '../js/interfaces';
 
 // Mock dependencies
 vi.mock('../js/viewModels', () => ({
@@ -21,8 +21,8 @@ vi.mock('../js/viewModels', () => ({
 }));
 
 // Helper function to create a WKRM instance for testing
-function createTestWKRM(graph: StaticGraph): WKRM {
-  const meta = new StaticGraphMeta({
+function createTestWKRM(graph: StaticGraph): IWKRM {
+  const meta = createStaticGraphMeta({
     graphid: graph.graphid,
     name: "Test Model",  // Use "Test Model" for test expectations
     slug: "test_graph",
@@ -30,31 +30,32 @@ function createTestWKRM(graph: StaticGraph): WKRM {
     resource_2_resource_constraints: [],
     extra_fields: {}
   });
-  return new WKRM(meta);
+  return createWKRM(meta);
 }
 
-// Helper function to create a wrapper with a real WASM model
-function createTestWrapper(graph: StaticGraph): WASMResourceModelWrapper {
-  const wkrm = createTestWKRM(graph);
-  const wrapper = new WASMResourceModelWrapper(
-    wkrm,
-    graph,
-    true
-  );
-  // Stands in for TS's ResourceModelWrapper as a pseudo's `parent.__`, which
-  // keeps its own wkrm (the raw WASM wrapper no longer exposes one).
-  (wrapper as any).wkrm = wkrm;
-  wrapper.buildNodesForGraph(graph);
-
-  // Mark all nodegroups as permitted for testing
-  const nodegroups = wrapper.getNodegroupObjects();
+// The model wrapper a pseudo's `parent.__` is in production, on either backend,
+// with every nodegroup permitted.
+function createTestWrapper(graph: StaticGraph): ResourceModelWrapper<any> {
+  const wrapper = new ResourceModelWrapper(createTestWKRM(graph), graph, undefined, true);
   const permissions = new Map();
-  nodegroups.forEach((_nodegroup, nodegroupId) => {
+  wrapper.getNodegroupObjects().forEach((_nodegroup, nodegroupId) => {
     permissions.set(nodegroupId, true);
   });
   wrapper.setPermittedNodegroups(permissions);
-
   return wrapper;
+}
+
+// A pseudo for `node` on `tile`, made as production's addPseudo makes one:
+// core builds it (makePseudoValue) from the tile, loaded into an instance of
+// the model (`parent.__`). A tile from a nodegroup the model lacks isn't
+// loaded, so the value is independent.
+function makePseudo(node: StaticNode, tile: StaticTile | null, _value: any, parent: any): PseudoValue<any> {
+  const model: ResourceModelWrapper<any> = parent.__;
+  const instance = createInstanceWrapperForModel(model.getGraphId());
+  const loadable = tile && model.getNodegroupObjects().has(tile.nodegroup_id);
+  loadTiles(instance, loadable ? [JSON.parse(JSON.stringify(tile))] : []);
+  const value = instance.makePseudoValue(node.alias, tile?.tileid ?? null, true, true);
+  return PseudoValue.fromWasm(value, parent);
 }
 
 describe('Pseudos', () => {
@@ -145,7 +146,7 @@ describe('Pseudos', () => {
     let tile: StaticTile;
     let parent: any;
     let childNodes: Map<string, StaticNode>;
-    let wrapper: WASMResourceModelWrapper;
+    let wrapper: ResourceModelWrapper<any>;
     let graph: StaticGraph;
 
     beforeEach(() => {
@@ -205,7 +206,7 @@ describe('Pseudos', () => {
     });
 
     it('should create a PseudoValue with basic properties', () => {
-      const pseudo = PseudoValue.create(node, tile, null, parent);
+      const pseudo = makePseudo(node, tile, null, parent);
 
       // tile comes from WasmPseudoValue now, may not be identical object
       expect(pseudo.tile).toBeTruthy();
@@ -215,14 +216,8 @@ describe('Pseudos', () => {
       expect(pseudo.independent).toBe(false);
     });
 
-    it('should throw error when parent is null', () => {
-      expect(() => {
-        PseudoValue.create(node, tile, null, null as any);
-      }).toThrow('Must have a parent or parent class for a pseudo-node');
-    });
-
     it('should mark as independent when tile is null', () => {
-      const pseudo = PseudoValue.create(node, null, null, parent);
+      const pseudo = makePseudo(node, null, null, parent);
 
       expect(pseudo.independent).toBe(true);
     });
@@ -254,28 +249,28 @@ describe('Pseudos', () => {
 
       // Test concept-list (should be iterable)
       const conceptListNode = testWrapper.nodesByAlias!.get("concept_list_node")!;
-      const pseudo1 = PseudoValue.create(conceptListNode, tile, null, testParent);
+      const pseudo1 = makePseudo(conceptListNode, tile, null, testParent);
       expect(pseudo1.isIterable()).toBe(true);
 
       // Test domain-value-list (should be iterable)
       const domainListNode = testWrapper.nodesByAlias!.get("domain_list_node")!;
-      const pseudo2 = PseudoValue.create(domainListNode, tile, null, testParent);
+      const pseudo2 = makePseudo(domainListNode, tile, null, testParent);
       expect(pseudo2.isIterable()).toBe(true);
 
       // Test string (should not be iterable)
       const stringNode = testWrapper.nodesByAlias!.get("string_node")!;
-      const pseudo3 = PseudoValue.create(stringNode, tile, null, testParent);
+      const pseudo3 = makePseudo(stringNode, tile, null, testParent);
       expect(pseudo3.isIterable()).toBe(false);
     });
 
     it('should describe field with model name', () => {
-      const pseudo = PseudoValue.create(node, tile, null, parent);
+      const pseudo = makePseudo(node, tile, null, parent);
 
       expect(pseudo.describeField()).toBe('Test Model - Test Node');
     });
 
     it('should describe field group with nodegroup name', () => {
-      const pseudo = PseudoValue.create(node, tile, null, parent);
+      const pseudo = makePseudo(node, tile, null, parent);
 
       // With real WASM wrappers, nodegroup names match the node name
       expect(pseudo.describeFieldGroup()).toBe('Test Model - Test Node');
@@ -284,7 +279,7 @@ describe('Pseudos', () => {
     it('should return parent tile id', () => {
       const tileWithParent = new StaticTile({
         tileid: 'tile-1',
-        nodegroup_id: 'ng-1',
+        nodegroup_id: node.nodegroup_id!,
         resourceinstance_id: 'res-1',
         data: {},
         parenttile_id: 'parent-tile-1',
@@ -292,7 +287,7 @@ describe('Pseudos', () => {
         sortorder: 0,
       } as any);
 
-      const pseudo = PseudoValue.create(node, tileWithParent, null, parent);
+      const pseudo = makePseudo(node, tileWithParent, null, parent);
 
       expect(pseudo.getParentTileId()).toBe('parent-tile-1');
     });
@@ -303,7 +298,7 @@ describe('Pseudos', () => {
 
       const tileWithData = new StaticTile({
         tileid: 'tile-1',
-        nodegroup_id: 'ng-1',
+        nodegroup_id: node.nodegroup_id!,
         resourceinstance_id: 'res-1',
         data: tileData,
         parenttile_id: null,
@@ -311,7 +306,7 @@ describe('Pseudos', () => {
         sortorder: 0,
       } as any);
 
-      const pseudo = PseudoValue.create(node, tileWithData, 'initial value', parent);
+      const pseudo = makePseudo(node, tileWithData, 'initial value', parent);
 
       expect(tileWithData.data.has('node-1')).toBe(true);
 
@@ -362,7 +357,7 @@ describe('Pseudos', () => {
       childNodesMap.set(childNode.nodeid, childNode);
 
       // Create PseudoValue with children - should create inner/outer automatically
-      const pseudo = PseudoValue.create(parentNode, tile, null, testParent);
+      const pseudo = makePseudo(parentNode, tile, null, testParent);
 
       // The outer pseudo should have isOuter = true
       expect(pseudo.isOuter).toBe(true);
@@ -412,7 +407,7 @@ describe('Pseudos', () => {
       };
 
       // Create PseudoValue with null tile - this triggers the inner tile lookup path
-      const pseudo = PseudoValue.create(parentNode, null, null, testParent);
+      const pseudo = makePseudo(parentNode, null, null, testParent);
 
       // Verify we have the inner/outer structure
       expect(pseudo.isOuter).toBe(true);
@@ -467,7 +462,7 @@ describe('Pseudos', () => {
         $: { model: testWrapper },
       };
 
-      const pseudo = PseudoValue.create(semanticNode, tile, null, testParent);
+      const pseudo = makePseudo(semanticNode, tile, null, testParent);
 
       // Semantic nodes should not create inner/outer structure
       expect(pseudo.isOuter).toBe(false);
@@ -475,14 +470,14 @@ describe('Pseudos', () => {
     });
 
     it('should get children from empty value', () => {
-      const pseudo = PseudoValue.create(node, tile, null, parent);
+      const pseudo = makePseudo(node, tile, null, parent);
 
       expect(pseudo.getChildren()).toEqual([]);
       expect(pseudo.getChildren(true)).toEqual([]);
     });
 
     it('should return length of children', () => {
-      const pseudo = PseudoValue.create(node, tile, null, parent);
+      const pseudo = makePseudo(node, tile, null, parent);
 
       expect(pseudo.getLength()).toBe(0);
     });
@@ -493,7 +488,7 @@ describe('Pseudos', () => {
     let tile: StaticTile;
     let parent: any;
     let childNodes: Map<string, StaticNode>;
-    let wrapper: WASMResourceModelWrapper;
+    let wrapper: ResourceModelWrapper<any>;
     let graph: StaticGraph;
 
     beforeEach(() => {
@@ -560,7 +555,7 @@ describe('Pseudos', () => {
 
     describe('getNodePlaceholder', () => {
       it('should return simple placeholder for non-iterable node', () => {
-        const pseudo = PseudoValue.create(node, tile, null, parent);
+        const pseudo = makePseudo(node, tile, null, parent);
 
         // WasmPseudoValue has getNodePlaceholder on the node property
         // but the new PseudoValue exposes node as the WasmPseudoValue itself
@@ -571,7 +566,7 @@ describe('Pseudos', () => {
       it('should return placeholder with [*] for iterable node', () => {
         const iterableNode = wrapper.nodesByAlias!.get("iterable_alias")!;
 
-        const pseudo = PseudoValue.create(iterableNode, tile, null, parent);
+        const pseudo = makePseudo(iterableNode, tile, null, parent);
 
         // Check iterable detection works
         expect(pseudo.isIterable()).toBe(true);
@@ -582,8 +577,8 @@ describe('Pseudos', () => {
         const parentNode = wrapper.nodesByAlias!.get("test_alias")!;
         const childNode = wrapper.nodesByAlias!.get("child")!;
 
-        const parentPseudo = PseudoValue.create(parentNode, tile, null, parent);
-        const childPseudo = PseudoValue.create(childNode, tile, null, parent);
+        const parentPseudo = makePseudo(parentNode, tile, null, parent);
+        const childPseudo = makePseudo(childNode, tile, null, parent);
         childPseudo.parentValue = parentPseudo;
 
         // Check parent relationship is established
@@ -595,8 +590,8 @@ describe('Pseudos', () => {
         const parentNode = wrapper.nodesByAlias!.get("iterable_alias")!;
         const childNode = wrapper.nodesByAlias!.get("child")!;
 
-        const parentPseudo = PseudoValue.create(parentNode, tile, null, parent);
-        const childPseudo = PseudoValue.create(childNode, tile, null, parent);
+        const parentPseudo = makePseudo(parentNode, tile, null, parent);
+        const childPseudo = makePseudo(childNode, tile, null, parent);
         childPseudo.parentValue = parentPseudo;
 
         // Check parent is iterable
@@ -656,11 +651,11 @@ describe('Pseudos', () => {
           $: { model: nestedWrapper },
         };
 
-        const grandparentPseudo = PseudoValue.create(level1Node, tile, null, nestedParent);
-        const parentPseudo = PseudoValue.create(level2Node, tile, null, nestedParent);
+        const grandparentPseudo = makePseudo(level1Node, tile, null, nestedParent);
+        const parentPseudo = makePseudo(level2Node, tile, null, nestedParent);
         parentPseudo.parentValue = grandparentPseudo;
 
-        const childPseudo = PseudoValue.create(level3Node, tile, null, nestedParent);
+        const childPseudo = makePseudo(level3Node, tile, null, nestedParent);
         childPseudo.parentValue = parentPseudo;
 
         // Check deep nesting works
@@ -706,7 +701,7 @@ describe('Pseudos', () => {
           $: { model: testWrapper },
         };
 
-        const pseudo = PseudoValue.create(parentNode, tile, null, testParent);
+        const pseudo = makePseudo(parentNode, tile, null, testParent);
 
         // Non-semantic nodes with children automatically create inner/outer structure
         // The child nodes are on the inner node, not the outer node
@@ -721,7 +716,7 @@ describe('Pseudos', () => {
         // Use a leaf node that has no children
         const leafNode = wrapper.nodesByAlias!.get("child")!;
 
-        const pseudo = PseudoValue.create(leafNode, tile, null, parent);
+        const pseudo = makePseudo(leafNode, tile, null, parent);
 
         // Leaf node should not have inner/outer structure
         expect(pseudo.isOuter).toBe(false);
@@ -1039,9 +1034,8 @@ describe('Pseudos', () => {
     it('should create PseudoNode for single cardinality node', () => {
       const result = wrapper.createPseudoNode('test_node', true);
 
-      // Rust createPseudoNode returns a WASM PseudoNode object
+      // Core's PseudoNode, on either backend
       expect(result).toBeDefined();
-      expect(result).toHaveProperty('__wbg_ptr');
     });
 
     it('should create PseudoNode for cardinality n collector node', () => {
@@ -1077,9 +1071,8 @@ describe('Pseudos', () => {
 
       const result = testWrapper.createPseudoNode('collector_node', false);
 
-      // Rust createPseudoNode returns a WASM PseudoNode object
+      // Core's PseudoNode, on either backend
       expect(result).toBeDefined();
-      expect(result).toHaveProperty('__wbg_ptr');
     });
 
     it('should create PseudoNode even for list when single=true', () => {
@@ -1114,9 +1107,8 @@ describe('Pseudos', () => {
 
       const result = testWrapper.createPseudoNode('collector_node', true);
 
-      // Rust createPseudoNode returns a WASM PseudoNode object
+      // Core's PseudoNode, on either backend
       expect(result).toBeDefined();
-      expect(result).toHaveProperty('__wbg_ptr');
     });
 
     it('should create PseudoNode when node is not permitted', () => {
@@ -1132,10 +1124,9 @@ describe('Pseudos', () => {
 
       const result = unpermittedWrapper.createPseudoNode('test_node', true);
 
-      // Rust createPseudoNode returns a WASM PseudoNode object regardless of permissions
-      // Permission checking happens at a different layer
+      // Core's PseudoNode regardless of permissions, on either backend:
+      // permission checking happens at a different layer
       expect(result).toBeDefined();
-      expect(result).toHaveProperty('__wbg_ptr');
     });
 
     it('should create PseudoNode when tile is provided', () => {
@@ -1183,9 +1174,8 @@ describe('Pseudos', () => {
 
       const result = testWrapper.createPseudoNode('collector_node', false, tile);
 
-      // Rust createPseudoNode returns a WASM PseudoNode object
+      // Core's PseudoNode, on either backend
       expect(result).toBeDefined();
-      expect(result).toHaveProperty('__wbg_ptr');
     });
   });
 });

@@ -223,22 +223,6 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     this._wasm.parent = parent; // Store in Rust too for callbacks
   }
 
-  // Legacy constructor support - create via model wrapper
-  static create<VM extends IViewModel>(
-    nodeOrAlias: StaticNode | string,
-    tile: StaticTile | null,
-    value: any,
-    parent: IRIVM<any>,
-  ): PseudoValue<VM> {
-    if (!parent || !parent.__) {
-      throw new Error('Must have a parent or parent class for a pseudo-node');
-    }
-    // Use model wrapper to create WasmPseudoValue
-    const alias = typeof nodeOrAlias === 'string' ? nodeOrAlias : nodeOrAlias.alias;
-    const wasm = parent.__.createPseudoValue(alias, tile, parent);
-    return PseudoValue.fromWasm(wasm, parent);
-  }
-
   getParentTileId(): string | null {
     const tile = this._wasm.tile;
     return tile ? tile.parenttile_id : null;
