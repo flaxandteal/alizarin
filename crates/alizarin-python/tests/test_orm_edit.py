@@ -120,3 +120,125 @@ async def test_discard_drops_what_was_assigned(town):
     place.discard()
     assert await place.title == "Town"
     assert place.commit()["upserted"] == []
+
+
+@pytest.mark.asyncio
+async def test_deleting_an_item_appended_since_the_last_commit_raises(town):
+    place = await town.getResource(RESOURCE_ID, lazy=False)
+    nicknames = await place.nicknames
+    nicknames.append({"nicknames": "Dublin"})
+    with pytest.raises(ValueError, match="added since the last commit"):
+        del nicknames[1]
+    place.discard()
+
+
+@pytest.mark.asyncio
+async def test_extend_iadd_pop_and_remove_record_edits(town):
+    place = await town.getResource(RESOURCE_ID, lazy=False)
+    nicknames = await place.nicknames
+    nicknames.extend([{"nicknames": "Dublin"}])
+    nicknames += [{"nicknames": "Áth Cliath"}]
+    assert len(place.commit()["upserted"]) == 2
+
+    nicknames = await place.nicknames
+    assert len(nicknames) == 3
+    nicknames.pop()
+    nicknames.remove(nicknames[0])
+    assert len(place.commit()["removed"]) == 2
+    assert len(await place.nicknames) == 1
+
+
+def test_assigning_before_the_resource_is_retrieved_raises():
+    from alizarin.view_models import ResourceInstanceViewModel
+
+    unretrieved = ResourceInstanceViewModel(id=RESOURCE_ID)
+    with pytest.raises(ValueError, match="retrieve this resource first"):
+        unretrieved.title = "Baile"
+
+
+EVENT_1 = "bbbbbbbb-0000-0000-0000-000000000001"
+EVENT_2 = "bbbbbbbb-0000-0000-0000-000000000002"
+E5 = "http://www.cidoc-crm.org/cidoc-crm/E5_Event"
+
+
+@pytest.fixture
+def with_events():
+    """A place with `events` (semantic, n), each with `notes` (n): the first
+    event has one note, the second none."""
+    path = os.path.join(os.path.dirname(__file__), "../../../tests/data/models/Group.json")
+    with open(path) as f:
+        base = StaticGraph.from_dict(json.load(f)["graph"][0])
+    mutator = GraphMutator(base)
+    mutator.add_semantic_node(None, "events", "Events", "n", E5, NOTE)
+    mutator.add_string_node("events", "notes", "Notes", "n", LITERAL, NOTE)
+    graph = mutator.apply()
+    nodes = {n.alias: n for n in graph.nodes}
+
+    def tile(alias, tile_id, parent, data, sortorder):
+        return {
+            "tileid": tile_id,
+            "nodegroup_id": nodes[alias].nodegroup_id,
+            "resourceinstance_id": RESOURCE_ID,
+            "parenttile_id": parent,
+            "data": data,
+            "sortorder": sortorder,
+        }
+
+    gm = GraphManager()
+    gm.register_graph(graph.to_dict())
+    gm.register_resource({
+        "resourceinstance": {
+            "resourceinstanceid": RESOURCE_ID,
+            "graph_id": graph.graphid,
+            "name": "Town",
+        },
+        "tiles": [
+            tile("events", EVENT_1, None, {}, 0),
+            tile("events", EVENT_2, None, {}, 1),
+            tile("notes", "cccccccc-0000-0000-0000-000000000001", EVENT_1,
+                 {nodes["notes"].nodeid: english("Founded")}, 0),
+        ],
+    })
+    viewContext.graphManager = gm
+    yield gm, nodes
+    viewContext.graphManager = None
+
+
+@pytest.mark.asyncio
+async def test_append_under_an_item_adds_a_tile_with_that_item_as_its_parent(with_events):
+    gm, _ = with_events
+    place = await gm.getResource(RESOURCE_ID, lazy=False)
+    events = await place.events
+    notes = await events[0].notes
+    assert len(notes) == 1
+    notes.append({"notes": "Renamed"})
+    delta = place.commit()
+    assert len(delta["upserted"]) == 1
+    assert delta["upserted"][0]["parenttile_id"] == EVENT_1
+
+
+@pytest.mark.asyncio
+async def test_append_on_an_empty_nested_list_uses_its_container_as_the_parent(with_events):
+    gm, _ = with_events
+    place = await gm.getResource(RESOURCE_ID, lazy=False)
+    events = await place.events
+    notes = await events[1].notes
+    assert notes == []
+    notes.append({"notes": "Planned"})
+    delta = place.commit()
+    assert len(delta["upserted"]) == 1
+    assert delta["upserted"][0]["parenttile_id"] == EVENT_2
+
+
+@pytest.mark.asyncio
+async def test_a_value_wrapped_from_core_finds_its_node_on_the_model(with_events):
+    gm, nodes = with_events
+    place = await gm.getResource(RESOURCE_ID, lazy=False)
+    events = await place.events
+    notes = await events[0].notes
+    note = notes[0]
+    # get_view_model gave the view model its pseudo, where its class reads it.
+    parent_pseudo = note._StringViewModel__parentPseudo
+    assert parent_pseudo is not None
+    assert parent_pseudo.node.nodeid == nodes["notes"].nodeid
+    assert parent_pseudo.node is place._i.model.get_node_objects()[nodes["notes"].nodeid]

@@ -152,10 +152,36 @@ class SemanticViewModel:
             pending = instance_wrapper.pending_value(tile_id, key)
             if pending is not None:
                 return pending[0]
+        from .pseudos import EditableList
+
         child_value = await self.__get_child_value(key)
         if not child_value:
-            return None
-        return await child_value.get_value()
+            # A multi-valued child (its own cardinality-n nodegroup) with no
+            # values yet reads as an empty list that can be appended to, as in
+            # TypeScript; any other child as None.
+            if instance_wrapper is None:
+                return None
+            child = instance_wrapper.model.get_child_nodes(self.__node.nodeid).get(key)
+            if child is None or not child.nodegroup_id:
+                return None
+            if self.__tile is not None and child.nodegroup_id == self.__tile.nodegroup_id:
+                return None
+            nodegroup = instance_wrapper.model.get_nodegroup_objects().get(child.nodegroup_id)
+            if nodegroup is None or nodegroup.cardinality != "n":
+                return None
+            return EditableList(
+                [],
+                wrapper=instance_wrapper,
+                alias=key,
+                parent_tile_id=self.__tile.tileid if self.__tile else None,
+                tile_ids=[],
+            )
+        value = await child_value.get_value()
+
+        # An empty list can't tell its parent tile from its items: it is ours.
+        if isinstance(value, EditableList) and value._parent_tile_id is None and self.__tile:
+            value._parent_tile_id = self.__tile.tileid
+        return value
 
     def __has(self, key: str) -> bool:
         """

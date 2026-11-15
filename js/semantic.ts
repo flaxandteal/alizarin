@@ -5,7 +5,7 @@ import {
   IRIVM,
 } from "./interfaces.ts";
 import { AttrPromise } from "./utils";
-import { wrapRustPseudo } from "./pseudos";
+import { wrapRustPseudo, PseudoList } from "./pseudos";
 import type { PseudoValue } from "./pseudos";
 import {
   StaticTile,
@@ -152,6 +152,10 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
         continue;
       }
       child.parentNode = this.__parentPseudo || null;
+      // An empty list can't tell its parent tile from its items: it is ours.
+      if (Array.isArray(child) && (child as any).parenttileId === undefined) {
+        (child as any).parenttileId = this.__tile?.tileid ?? undefined;
+      }
       // Cache the wrapped child for future use
       this.__childValues.set(alias, child);
       wrappedChildren.push([alias, child]);
@@ -170,6 +174,28 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     timingStats.wrapTotalMs += performance.now() - t4;
 
     return result;
+  }
+
+  /**
+   * An empty, editable list for child `key` when it is multi-valued (its own
+   * cardinality-n nodegroup) and has no values yet, so it can be pushed to;
+   * null for any other child. As Python's SemanticViewModel.
+   */
+  __emptyChildList(key: string): PseudoList | null {
+    const wrapper = this.__parentWkri?.$;
+    const child = wrapper?.model.getChildNodes(this.__node.nodeid).get(key);
+    if (!wrapper || !child?.nodegroup_id || child.nodegroup_id === this.__tile?.nodegroup_id) {
+      return null;
+    }
+    if (wrapper.model.getNodegroupObjects().get(child.nodegroup_id)?.cardinality !== 'n') {
+      return null;
+    }
+    const list = new PseudoList();
+    list.initialize(child, this.__parentWkri);
+    list.__alias = key;
+    list.parenttileId = this.__tile?.tileid ?? undefined;
+    list.__editable = true;
+    return list;
   }
 
   async __get(key: string) {
@@ -255,11 +281,15 @@ class SemanticViewModel implements IStringKeyedObject, IViewModel {
     timingStats.wrapTotalMs += performance.now() - t4;
 
     if (child === null || child === undefined) {
-      return child;
+      return this.__emptyChildList(key) ?? child;
     }
 
     // Set parent node
     child.parentNode = this.__parentPseudo || null;
+    // An empty list can't tell its parent tile from its items: it is ours.
+    if (Array.isArray(child) && (child as any).parenttileId === undefined) {
+      (child as any).parenttileId = this.__tile?.tileid ?? undefined;
+    }
 
     // Cache the child
     this.__childValues.set(key, child);
