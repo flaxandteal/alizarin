@@ -170,9 +170,9 @@ interface IPseudo {
   describeFieldGroup: () => string;
 }
 
-interface ISemantic extends IViewModel {
-  update(mapLike: Map<string, any> | {[key: string]: any}): void;
-}
+// A semantic node's view model. (Its `update` was declared but never
+// implemented: core sets children, through edits or tree-to-tiles.)
+type ISemantic = IViewModel;
 
 interface IGraphManager {
   getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean): Promise<T>;

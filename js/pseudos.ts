@@ -1,5 +1,5 @@
 import { StaticTile, StaticNode } from "./static-types";
-import { ISemantic, IViewModel, IPseudo, IRIVM } from "./interfaces";
+import { IViewModel, IPseudo, IRIVM } from "./interfaces";
 import { getViewModel } from "./viewModels";
 import { AttrPromise } from "./utils";
 import { createStaticTile } from "./backend";
@@ -312,7 +312,7 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     // This node's value: core keeps it in step with the tile (set_tile), on
     // every backend, so the tile's data map needn't be copied out to read it.
     // ViewModels expect null for "no data", not undefined.
-    let data: any = snapshot.tileData ?? null;
+    const data: any = snapshot.tileData ?? null;
 
     // Create tile if needed
     if (!snapshot.hasTile) {
@@ -329,21 +329,10 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     }
     const currentTile = this._wasm.tile;
 
-    // Handle outer/inner data splitting
-    if (this.isOuter && typeof data === 'object' && this.inner && data) {
-      let outerData = undefined;
-      if ("_" in data && !data.constructor) {
-        outerData = data["_"];
-        delete data["_"];
-        this.inner.getValue().then((v: ISemantic | null) => v && v.update(data));
-        data = outerData;
-      } else if (data instanceof Map && data.has("_")) {
-        outerData = data.get("_");
-        data.delete("_");
-        this.inner.getValue().then((v: ISemantic | null) => v && v.update(data));
-        data = outerData;
-      }
-    }
+    // No outer/inner "_" split here: `data` is core's value for this node
+    // alone (an outer node's children have their own), never a "_" tree.
+    // Trees are split where they are read, in core (tree-to-tiles), as on
+    // Python; the inner's children are reached through vm._ (below).
 
     // Call getViewModel
     const vmPromise = getViewModel(
