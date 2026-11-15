@@ -229,11 +229,11 @@ export declare class NapiStaticTile {
   set data(value: any)
   get tileid(): string | null
   set tileid(value?: string | undefined | null)
-  get nodegroupId(): string
+  get nodegroup_id(): string
   get sortorder(): number | null
-  get resourceinstanceId(): string
-  get parenttileId(): string | null
-  set parenttileId(value?: string | undefined | null)
+  get resourceinstance_id(): string
+  get parenttile_id(): string | null
+  set parenttile_id(value?: string | undefined | null)
   get provisionaledits(): any
   /** Generate a tile ID if not already set. */
   ensureId(): string
@@ -344,6 +344,11 @@ export declare class NapiResourceInstanceWrapper {
   tilesLoaded(): boolean
   getTile(tileId: string): any
   setLazy(lazy: boolean): void
+  /**
+   * Whether tiles arrive per nodegroup as lookups need them. Core's, as on
+   * WASM and Python.
+   */
+  isLazy(): boolean
   isNodegroupLoaded(nodegroupId?: string | undefined | null): boolean
   getMissingNodegroupsForChildren(parentNodeId: string): Array<string>
   /**
@@ -417,6 +422,23 @@ export declare class NapiResourceInstanceWrapper {
    * tiles first if needed. As on WASM and Python.
    */
   toDisplayJson(rdmCache: NapiRdmCache, nodeConfigManager: NapiNodeConfigManager, language?: string | undefined | null, resourceRegistry?: NapiStaticResourceRegistry | undefined | null): any
+  /**
+   * Serialize card `cardId` from the pseudo cache (populate the nodegroups
+   * `nodegroupIdsForCard` lists first). `maxDepth`: null for unlimited, 0
+   * for this card only.
+   */
+  serializeCard(cardId: string, parentTileId?: string | undefined | null, parentNodegroupId?: string | undefined | null, maxDepth?: number | undefined | null): any
+  /** Serialize every root card from the pseudo cache. */
+  serializeRootCards(maxDepth?: number | undefined | null): any
+  /** Serialize card `cardId` in display mode (labels for UUIDs). */
+  serializeCardDisplay(cardId: string, rdmCache: NapiRdmCache, nodeConfigManager: NapiNodeConfigManager, parentTileId?: string | undefined | null, parentNodegroupId?: string | undefined | null, maxDepth?: number | undefined | null, language?: string | undefined | null, resourceRegistry?: NapiStaticResourceRegistry | undefined | null): any
+  /** Serialize every root card in display mode. */
+  serializeRootCardsDisplay(rdmCache: NapiRdmCache, nodeConfigManager: NapiNodeConfigManager, maxDepth?: number | undefined | null, language?: string | undefined | null, resourceRegistry?: NapiStaticResourceRegistry | undefined | null): any
+  /**
+   * The nodegroups card `cardId` and its descendants (to `maxDepth`) need
+   * populated before `serializeCard`.
+   */
+  nodegroupIdsForCard(cardId: string, maxDepth?: number | undefined | null): Array<string>
   release(): void
 }
 /**
