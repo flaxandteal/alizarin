@@ -826,6 +826,40 @@ class ResourceInstanceViewModel:
             return f"[Resource:{self.id}]"
         return f"[{self.__.wkrm.modelClassName}:{self.id or '-'}]"
 
+    def __setattr__(self, key: str, value: Any) -> None:
+        """
+        Assigning a node records a pending edit, applied by commit(); a node
+        the graph rules out raises here. Matches TypeScript
+        ResourceInstanceViewModel's proxy set.
+        """
+        if key.startswith("_") or key in ("id", "then", "gm"):
+            object.__setattr__(self, key, value)
+            return
+        instance_wrapper = self.__dict__.get("_i")
+        if instance_wrapper is None:
+            raise ValueError(f"Cannot set {key}: retrieve this resource first")
+        instance_wrapper.assign(None, None, key, value)
+
+    def commit(self) -> Dict[str, Any]:
+        """
+        Apply every value assigned since the last commit (`place.name = ...`,
+        `(await place.names).append({...})`), all or nothing, through core:
+        values coerced, stored Derive functions rerun for what changed. Returns
+        the tiles to write ("upserted") and the ids to delete ("removed");
+        persisting them is the caller's. Matches TypeScript's `$commit()`.
+        """
+        instance_wrapper = self.__dict__.get("_i")
+        if instance_wrapper is None:
+            raise ValueError("Nothing to commit: this resource hasn't been retrieved")
+        return instance_wrapper.commit_edits()
+
+    def discard(self) -> None:
+        """Drop every value assigned since the last commit. Matches TypeScript's
+        `$discard()`."""
+        instance_wrapper = self.__dict__.get("_i")
+        if instance_wrapper is not None:
+            instance_wrapper.discard_edits()
+
     def describeField(self) -> Optional[Any]:
         return self.__parentPseudo.describeField() if self.__parentPseudo else None
 
@@ -1581,6 +1615,9 @@ class StringViewModel(str):
         if lang_value:
             if isinstance(lang_value, str):
                 displayValue = lang_value
+            elif isinstance(lang_value, dict):
+                # Core's tile data: {"value": ..., "direction": ...}
+                displayValue = lang_value.get("value") or ""
             else:
                 displayValue = lang_value.value
         else:

@@ -145,6 +145,13 @@ class SemanticViewModel:
         Returns:
             The child ViewModel value
         """
+        # A value assigned since the last commit()
+        instance_wrapper = getattr(self.__parent_wkri, "_i", None)
+        if instance_wrapper is not None:
+            tile_id = self.__tile.tileid if self.__tile else None
+            pending = instance_wrapper.pending_value(tile_id, key)
+            if pending is not None:
+                return pending[0]
         child_value = await self.__get_child_value(key)
         if not child_value:
             return None
@@ -283,3 +290,16 @@ class SemanticViewModel:
 
         # Return a coroutine that can be awaited
         return get_child()
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """
+        Assigning a child records a pending edit, applied by the resource's
+        commit(). Matches TypeScript SemanticViewModel's proxy set.
+        """
+        if name.startswith("_") or name == "then":
+            object.__setattr__(self, name, value)
+            return
+        instance_wrapper = getattr(self.__parent_wkri, "_i", None)
+        if instance_wrapper is None:
+            raise ValueError(f"Cannot set {name}: this value has no resource to edit")
+        instance_wrapper.assign(self.__tile, self.__node, name, value)

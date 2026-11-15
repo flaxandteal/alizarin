@@ -323,6 +323,10 @@ register_extension_mutation = _alizarin_rust.register_extension_mutation
 has_extension_mutation = _alizarin_rust.has_extension_mutation
 list_extension_mutations = _alizarin_rust.list_extension_mutations
 generate_uuid_v5 = _alizarin_rust.generate_uuid_v5
+# What a plain string is taken as (coercion, edits): core's, as TypeScript's
+# setCurrentLanguage / getCurrentLanguage are.
+get_current_language = _alizarin_rust.get_current_language
+set_current_language = _alizarin_rust.set_current_language
 get_mutation_schema = _alizarin_rust.get_mutation_schema
 build_graph_from_instructions = _alizarin_rust.build_graph_from_instructions
 build_graph_from_csv = _alizarin_rust.build_graph_from_csv
@@ -581,6 +585,8 @@ __all__ = [
     "has_extension_mutation",
     "list_extension_mutations",
     "generate_uuid_v5",
+    "get_current_language",
+    "set_current_language",
     "get_mutation_schema",
     "build_graph_from_instructions",
     "build_graph_from_csv",

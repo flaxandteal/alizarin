@@ -382,6 +382,90 @@ class PseudoValue(Generic[VM]):
 # PseudoList Implementation
 # =============================================================================
 
+class EditableList(list):
+    """
+    A multi-valued child's values, recording edits: `append` (or `extend`,
+    `+=`) adds a tile from a dict of values by alias, and `del`, `pop` and
+    `remove` remove one, all applied by the resource's `commit()`. Matches
+    TypeScript's PseudoList push and splice. Inserting or replacing an item
+    isn't supported: tile order follows sortorder, and an item's values are
+    set on the item.
+    """
+
+    def __init__(
+        self,
+        values: List[Any],
+        wrapper: Optional[Any],
+        alias: str,
+        parent_tile_id: Optional[str],
+        tile_ids: List[Optional[str]],
+    ) -> None:
+        super().__init__(values)
+        self._wrapper = wrapper
+        self._alias = alias
+        self._parent_tile_id = parent_tile_id
+        # Each item's tile id, or, for an item appended since the last commit,
+        # its edit's index.
+        self._tile_ids: List[Any] = list(tile_ids)
+
+    def _require_wrapper(self) -> Any:
+        if self._wrapper is None:
+            raise ValueError(f"Cannot edit {self._alias}: it has no resource to edit")
+        return self._wrapper
+
+    def append(self, item: Any) -> None:
+        wrapper = self._require_wrapper()
+        ref = wrapper.record_edit({
+            "op": "add",
+            "alias": self._alias,
+            "parent": self._parent_tile_id,
+            "values": item or {},
+        })
+        self._tile_ids.append(ref)
+        super().append(item)
+        wrapper.set_pending_value(self._parent_tile_id, self._alias, self)
+
+    def extend(self, items: Any) -> None:
+        for item in items:
+            self.append(item)
+
+    def __iadd__(self, items: Any) -> "EditableList":
+        self.extend(items)
+        return self
+
+    def __delitem__(self, index: Any) -> None:
+        wrapper = self._require_wrapper()
+        positions = range(len(self))[index]
+        positions = list(positions) if isinstance(index, slice) else [positions]
+        tile_ids = [self._tile_ids[i] for i in positions]
+        if any(not isinstance(tile, str) for tile in tile_ids):
+            raise ValueError(
+                "Cannot remove an item added since the last commit(): discard() instead"
+            )
+        for tile in tile_ids:
+            wrapper.record_edit({"op": "remove", "tile": tile})
+        for i in sorted(positions, reverse=True):
+            del self._tile_ids[i]
+            super().__delitem__(i)
+        wrapper.set_pending_value(self._parent_tile_id, self._alias, self)
+
+    def pop(self, index: int = -1) -> Any:
+        item = self[index]
+        del self[index]
+        return item
+
+    def remove(self, value: Any) -> None:
+        del self[self.index(value)]
+
+    def insert(self, index: int, item: Any) -> None:
+        raise ValueError("Add items with append: tile order follows sortorder")
+
+    def __setitem__(self, index: Any, value: Any) -> None:
+        raise ValueError(
+            f"Set values on the {self._alias} item instead of replacing it"
+        )
+
+
 class PseudoList(List[PseudoValue[VM]], Generic[VM]):
     """
     A list of PseudoValue objects.
@@ -486,8 +570,20 @@ class PseudoList(List[PseudoValue[VM]], Generic[VM]):
         return [await v.get_value() for v in sorted(self, key=sortorder_key)]
 
     async def get_value(self) -> List[Optional[VM]]:
-        """Get all values as ViewModels."""
-        return [await v.get_value() for v in self]
+        """
+        Get all values as ViewModels: an EditableList, so append and del
+        record edits, as TypeScript's PseudoList push and splice do.
+        """
+        values = [await v.get_value() for v in self]
+        wrapper = getattr(self._parent_wkri, "_i", None)
+        first_tile = self[0].tile if len(self) > 0 else None
+        return EditableList(
+            values,
+            wrapper=wrapper,
+            alias=self.alias,
+            parent_tile_id=first_tile.parenttile_id if first_tile else None,
+            tile_ids=[v.tile.tileid if v.tile else None for v in self],
+        )
 
     async def for_json(self) -> Any:
         """Get JSON-serializable representation of all values."""

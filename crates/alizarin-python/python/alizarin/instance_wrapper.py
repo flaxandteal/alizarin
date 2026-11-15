@@ -68,6 +68,8 @@ class ResourceInstanceWrapper(Generic[RIVM]):
         "resource",
         "_tile_loader",
         "_traversal_mode",
+        "_pending_edits",
+        "_pending_values",
     )
 
     def __init__(
@@ -106,6 +108,11 @@ class ResourceInstanceWrapper(Generic[RIVM]):
 
         # Traversal mode: "node" (default) or "card"
         self._traversal_mode: str = "node"
+
+        # Edits recorded by assignment since the last commit, as core's
+        # apply_edits takes them, and what reads see until then.
+        self._pending_edits: List[Dict[str, Any]] = []
+        self._pending_values: Dict[str, Any] = {}
 
     @property
     def traversal_mode(self) -> str:
@@ -201,6 +208,105 @@ class ResourceInstanceWrapper(Generic[RIVM]):
             return None
         rust_value = result.as_list() if result.result_type == "list" else result.as_single()
         return wrap_rust_pseudo(rust_value, self.wkri, self.model)
+
+    # =========================================================================
+    # Editing: assignment records edits; commit() applies them through core
+    # =========================================================================
+
+    @staticmethod
+    def _pending_key(tile_id: Optional[str], alias: str) -> str:
+        return f"{tile_id or ''}/{alias}"
+
+    def assign(
+        self,
+        tile: Optional[StaticTile],
+        node: Optional[StaticNode],
+        key: str,
+        value: Any,
+    ) -> None:
+        """
+        Record `value` for child `key` of semantic `node` (None: the root)
+        within `tile` (None at the root) as a pending edit. The checks that
+        need only the graph (an unknown or derived node, a semantic node, a
+        multi-valued one, an unloaded nodegroup) raise now; coercion happens at
+        commit.
+
+        Matches TypeScript ResourceInstanceWrapper.assign.
+        """
+        node = node or self.model.get_root_node()
+        child = self.model.get_child_nodes(node.nodeid).get(key)
+        if child is None:
+            raise AttributeError(f"{node.alias} has no child {key}")
+        tile_id = tile.tileid if tile else None
+        if tile is not None and tile.nodegroup_id == child.nodegroup_id:
+            op = {"op": "set", "tile": tile_id, "alias": key, "value": value}
+        else:
+            nodegroup = self.model.get_nodegroup_objects().get(child.nodegroup_id)
+            if nodegroup is not None and nodegroup.cardinality == "n":
+                raise ValueError(
+                    f"{key} is multi-valued: append to its list, or set values on one of its items"
+                )
+            op = {"op": "set", "parent": tile_id, "alias": key, "value": value}
+        self.record_edit(op)
+        self._pending_values[self._pending_key(tile_id, key)] = value
+
+    def pending_value(self, tile_id: Optional[str], key: str) -> Optional[Tuple[Any]]:
+        """The value `key` was given under `tile_id` since the last commit, as a
+        1-tuple (so None can be a value), or None."""
+        pending_key = self._pending_key(tile_id, key)
+        if pending_key in self._pending_values:
+            return (self._pending_values[pending_key],)
+        return None
+
+    def set_pending_value(self, tile_id: Optional[str], key: str, value: Any) -> None:
+        """Make reads of `key` under `tile_id` see `value` (an edited list)
+        until the commit."""
+        self._pending_values[self._pending_key(tile_id, key)] = value
+
+    def record_edit(self, op: Dict[str, Any]) -> int:
+        """
+        Record one edit (`{"op": "set" | "add" | "remove", ...}`), checking each
+        node it gives a value against the graph first. Returns its index, which
+        later edits can name as `{"ref": index}`.
+
+        Matches TypeScript ResourceInstanceWrapper.recordEdit.
+        """
+        if op["op"] == "set":
+            aliases = [op["alias"]]
+        elif op["op"] == "add":
+            aliases = list(op.get("values") or {})
+        else:
+            aliases = []
+        for alias in aliases:
+            self._rust_core.check_editable(alias)
+        self._pending_edits.append(op)
+        return len(self._pending_edits) - 1
+
+    def has_pending_edits(self) -> bool:
+        """Whether there are edits not yet committed."""
+        return bool(self._pending_edits)
+
+    def commit_edits(self) -> Dict[str, Any]:
+        """
+        Apply every pending edit through core, all or nothing: values coerced,
+        stored Derive functions rerun for what changed. Returns the tiles to
+        write ("upserted") and the ids to delete ("removed"); persisting them
+        is the caller's. Pending edits are dropped either way, so a failure
+        leaves the resource as it was.
+
+        Matches TypeScript ResourceInstanceWrapper.commitEdits.
+        """
+        ops = self._pending_edits
+        self.discard_edits()
+        if not ops:
+            return {"upserted": [], "removed": []}
+        return json.loads(self._rust_core.apply_edits(json.dumps(ops)))
+
+    def discard_edits(self) -> None:
+        """Drop every pending edit; reads see the resource as committed."""
+        self._pending_edits = []
+        self._pending_values = {}
+        self._pseudo_cache = {}
 
     async def retrieve_pseudo(
         self,
@@ -336,6 +442,13 @@ class ResourceInstanceWrapper(Generic[RIVM]):
         # Lazy: tiles not loaded now are fetched as lookups need them, as on
         # NAPI and WASM.
         self._rust_core.set_lazy(lazy)
+
+        # Core needs the resource's own metadata (its id, to edit or derive),
+        # as NAPI and WASM wrappers built from a resource have it.
+        if self.resource is not None:
+            self._rust_core.set_resource_metadata(
+                json.dumps(self.resource.resourceinstance.to_dict())
+            )
 
         if tiles:
             # Convert tiles to JSON for Rust
