@@ -260,8 +260,8 @@ export function getNodeConfigManager(): any {
     if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
     _nodeConfigManager = new napi.NapiNodeConfigManager();
   } else {
-    const { NodeConfigManager } = getWasmModule();
-    _nodeConfigManager = new NodeConfigManager();
+    const { WasmNodeConfigManager } = getWasmModule();
+    _nodeConfigManager = new WasmNodeConfigManager();
   }
   return _nodeConfigManager;
 }
