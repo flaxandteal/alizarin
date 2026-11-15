@@ -12,6 +12,7 @@ Architecture (matching JS/TS):
 
 from __future__ import annotations
 
+import inspect
 import json
 from typing import (
     Any,
@@ -286,11 +287,20 @@ class PseudoValue(Generic[VM]):
         Returns:
             Tuple of (tile_value, relationships)
         """
-        if self._view_model is not None and hasattr(self._view_model, "__asTileData"):
-            tile_data = self._view_model.__asTileData()
-            if hasattr(tile_data, "__await__"):
-                return (None, [])
-            return (tile_data, [])
+        from .view_models import as_tile_data_method
+
+        # The view model's own tile form; its __asTileData is name-mangled, so
+        # a bare hasattr never found it. An async one can't be awaited here:
+        # its value is core's, which this pseudo holds as _value.
+        as_tile_data = (
+            as_tile_data_method(self._view_model) if self._view_model is not None else None
+        )
+        if as_tile_data is not None:
+            tile_data = as_tile_data()
+            if inspect.iscoroutine(tile_data):
+                tile_data.close()
+            elif not inspect.isawaitable(tile_data):
+                return (tile_data, [])
         return (self._value, [])
 
     def is_iterable(self) -> bool:

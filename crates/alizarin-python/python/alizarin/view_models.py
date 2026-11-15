@@ -26,6 +26,7 @@ from typing import (
 )
 from datetime import datetime, timezone
 from dataclasses import dataclass
+import functools
 import inspect
 import json
 
@@ -246,11 +247,32 @@ class IViewModel(Protocol):
 # List View Models
 # ============================================================================
 
+@functools.lru_cache(maxsize=None)
+def _as_tile_data_function(view_model_type: type) -> Optional[Callable[[Any], Any]]:
+    """The __asTileData function a view-model type has, found once per type.
+    Python mangles the name with the defining class
+    (`_StringViewModel__asTileData`), and a subclass (a model's
+    ResourceInstanceViewModel) inherits it under its base's name, so this
+    looks in each class's own __dict__ along the hierarchy: never on the
+    instance, whose __getattr__ (a resource's) would answer for any name."""
+    for cls in view_model_type.__mro__:
+        function = cls.__dict__.get(f"_{cls.__name__}__asTileData")
+        if function is not None:
+            return function
+    return None
+
+
+def as_tile_data_method(view_model: Any) -> Optional[Callable[[], Any]]:
+    """`view_model`'s __asTileData, bound, or None."""
+    function = _as_tile_data_function(type(view_model))
+    return function.__get__(view_model) if function is not None else None
+
+
 async def _tile_form(item: Any) -> Any:
-    """`item`'s tile data, from its own (name-mangled) __asTileData."""
+    """`item`'s tile data, from its own __asTileData."""
     if item is None:
         return None
-    as_tile_data = getattr(item, f"_{type(item).__name__}__asTileData", None)
+    as_tile_data = as_tile_data_method(item)
     if as_tile_data is None:
         return None
     result = as_tile_data()

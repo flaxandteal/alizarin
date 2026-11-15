@@ -64,6 +64,37 @@ async def test_reads_as_expected(resource, alias):
         assert [str(item) for item in value] == expected["items"]
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("alias", sorted(EXPECTED))
+async def test_get_tile_gives_the_stored_value(resource, alias):
+    # The view model's tile form (its __asTileData is name-mangled, so it was
+    # never found), else core's value: the tile's own, either way.
+    nodes = {node["alias"]: node["nodeid"] for node in load("graph.json")["nodes"]}
+    stored = next(tile["data"][nodes[alias]] for tile in load("resource.json")["tiles"] if nodes[alias] in tile["data"])
+    await getattr(resource, alias)
+    pseudos = await resource._i.retrieve_pseudo(alias)
+    pseudo = pseudos[0] if isinstance(pseudos, list) else pseudos
+    tile_value, relationships = pseudo.get_tile()
+    if isinstance(stored, list) and stored and isinstance(stored[0], dict):
+        # Resource references: the tile form keeps resourceId alone.
+        stored = [{"resourceId": ref["resourceId"]} for ref in stored]
+        tile_value = [{"resourceId": ref["resourceId"]} for ref in tile_value]
+    assert tile_value == stored
+    assert relationships == []
+
+
+@pytest.mark.asyncio
+async def test_a_subclass_view_model_has_its_base_class_tile_form():
+    from alizarin.view_models import ResourceInstanceViewModel, _tile_form, as_tile_data_method
+
+    class Place(ResourceInstanceViewModel):
+        pass
+
+    place = Place("eeeeeeee-1111-2222-3333-555555555555", None, None, None)
+    assert as_tile_data_method(place) is not None
+    assert await _tile_form(place) == {"resourceId": "eeeeeeee-1111-2222-3333-555555555555"}
+
+
 def test_every_datatype_in_the_fixture_has_an_expectation():
     aliases = {node["alias"] for node in load("graph.json")["nodes"] if not node["istopnode"]}
     assert set(EXPECTED) == aliases
