@@ -492,11 +492,10 @@ fn json_tree_to_tiles(
         Some(&ext_registry)
     };
 
-    let global_cache = rdm_cache_py::get_global_rdm_cache();
-    let core_cache: Option<CoreRdmCache> = rdm_cache
-        .map(|c| c.inner().clone())
-        .or_else(|| global_cache.as_ref().map(|c| c.inner().clone()));
-    let core_cache_arc: Option<Arc<CoreRdmCache>> = core_cache.map(Arc::new);
+    // The global cache shared, not copied (get_global_rdm_cache copies it).
+    let core_cache_arc: Option<Arc<CoreRdmCache>> = rdm_cache
+        .map(|c| Arc::new(c.inner().clone()))
+        .or_else(alizarin_core::get_global_rdm_cache_arc);
 
     let mut alias_map = build_alias_to_collection_from_graph(&graph, ext_registry_ref);
     if from_camel {
@@ -1790,8 +1789,10 @@ fn resolve_labels_in_tree(
     let graph = get_registered_graph(&graph_id)?;
 
     // Use explicit cache or fall back to global
-    let global_cache = rdm_cache_py::get_global_rdm_cache();
-    let cache_to_use: Option<&rdm_cache_py::RdmCache> = rdm_cache.or(global_cache.as_ref());
+    // The global cache shared, not copied (get_global_rdm_cache copies it).
+    let global_cache = alizarin_core::get_global_rdm_cache_arc();
+    let cache_to_use: Option<&CoreRdmCache> =
+        rdm_cache.map(|c| c.inner()).or(global_cache.as_deref());
 
     let resolved_tree = if let Some(cache) = cache_to_use {
         let ext_registry = build_extension_registry();
@@ -2340,13 +2341,13 @@ fn export_all_graphs_to_dir(out_dir: String) -> PyResult<Vec<String>> {
 #[pyfunction]
 #[pyo3(signature = (out_dir, base_uri))]
 fn export_collections_to_dir(out_dir: String, base_uri: String) -> PyResult<Vec<String>> {
-    let cache = rdm_cache_py::get_global_rdm_cache().ok_or_else(|| {
+    let cache = alizarin_core::get_global_rdm_cache_arc().ok_or_else(|| {
         PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
             "Global RDM cache not set. Call set_global_rdm_cache() first.",
         )
     })?;
 
-    let files = alizarin_core::export_collections(cache.inner(), &base_uri)
+    let files = alizarin_core::export_collections(&cache, &base_uri)
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
 
     let export_data = alizarin_core::PrebuildExportData {
@@ -2365,12 +2366,11 @@ fn export_prebuild(
     base_uri: String,
     graph_ids: Option<Vec<String>>,
 ) -> PyResult<Vec<String>> {
-    let rdm_cache = rdm_cache_py::get_global_rdm_cache();
-    let core_cache = rdm_cache.as_ref().map(|c| c.inner().clone());
+    let core_cache = alizarin_core::get_global_rdm_cache_arc();
 
     alizarin_core::export_prebuild_to_directory(
         graph_ids.as_deref(),
-        core_cache.as_ref(),
+        core_cache.as_deref(),
         &base_uri,
         std::path::Path::new(&out_dir),
     )

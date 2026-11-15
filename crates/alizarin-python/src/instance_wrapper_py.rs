@@ -16,7 +16,6 @@ use alizarin_core::{
 
 use crate::node_config_py::PyNodeConfigManager;
 use crate::pseudo_value_py::{PyPseudoList, PyPseudoValue};
-use crate::rdm_cache_py;
 
 // =============================================================================
 // Permission parsing (shared logic)
@@ -147,13 +146,14 @@ impl PyResourceInstanceWrapperCore {
             ),
             Some(display) => {
                 let opts = alizarin_core::SerializationOptions::display(&display.language);
-                let global_rdm = rdm_cache_py::get_global_rdm_cache();
+                // Shared, not copied (get_global_rdm_cache copies it).
+                let global_rdm = alizarin_core::get_global_rdm_cache_arc();
                 let ext_registry = crate::build_extension_registry();
                 let ser_ctx = alizarin_core::type_serialization::SerializationContext {
                     node_config: None,
-                    external_resolver: global_rdm.as_ref().map(|c| {
-                        c.inner() as &dyn alizarin_core::type_serialization::ExternalResolver
-                    }),
+                    external_resolver: global_rdm
+                        .as_deref()
+                        .map(|c| c as &dyn alizarin_core::type_serialization::ExternalResolver),
                     concept_lookup: None,
                     resource_resolver: display.registry.map(|r| {
                         r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver
@@ -222,8 +222,9 @@ impl PyResourceInstanceWrapperCore {
             ))
         })?;
 
+        // Shared, not copied (get_global_rdm_cache copies it).
         let global_rdm = if resolve {
-            rdm_cache_py::get_global_rdm_cache()
+            alizarin_core::get_global_rdm_cache_arc()
         } else {
             None
         };
@@ -231,8 +232,8 @@ impl PyResourceInstanceWrapperCore {
         let ser_ctx = alizarin_core::type_serialization::SerializationContext {
             node_config: None,
             external_resolver: global_rdm
-                .as_ref()
-                .map(|c| c.inner() as &dyn alizarin_core::type_serialization::ExternalResolver),
+                .as_deref()
+                .map(|c| c as &dyn alizarin_core::type_serialization::ExternalResolver),
             concept_lookup: None,
             resource_resolver: resource_registry
                 .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),

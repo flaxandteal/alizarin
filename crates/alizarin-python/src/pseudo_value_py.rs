@@ -256,8 +256,9 @@ impl PyPseudoValue {
         resource_registry: Option<&crate::ResourceRegistry>,
     ) -> PyResult<PyObject> {
         let lang = language.unwrap_or_else(|| "en".to_string());
-        let global_rdm = crate::rdm_cache_py::get_global_rdm_cache();
-        let rdm_inner = global_rdm.as_ref().map(|c| c.inner());
+        // Shared, not copied (get_global_rdm_cache copies it).
+        let global_rdm = alizarin_core::get_global_rdm_cache_arc();
+        let rdm_inner = global_rdm.as_deref();
         let ncm = node_config_manager.map(|m| m.inner());
         let core_registry = resource_registry.map(|r| r.inner());
         let result = self.inner.serialize_display(
