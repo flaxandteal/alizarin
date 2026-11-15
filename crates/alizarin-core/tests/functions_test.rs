@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use alizarin_core::{
     apply_derive_functions, apply_stored_derive_functions, default_functions_registry,
-    derived_tile_id, ComputeTilesConfig, DeriveProvider, DescriptorProvider, FunctionsRegistry,
+    derived_tile_id, DeriveConfig, DeriveProvider, DescriptorProvider, FunctionsRegistry,
     GraphLookup, RegisteredFunction, StaticGraph, StaticTile,
 };
 
@@ -63,7 +63,7 @@ impl DeriveProvider for LatLngToUtm {
         resource_id: &str,
         _graph: &dyn GraphLookup,
         tiles: &[StaticTile],
-        config: &ComputeTilesConfig,
+        config: &DeriveConfig,
     ) -> Result<Vec<StaticTile>, String> {
         let ll = tiles
             .iter()
@@ -91,7 +91,7 @@ impl DeriveProvider for StubGen {
         resource_id: &str,
         _graph: &dyn GraphLookup,
         _tiles: &[StaticTile],
-        config: &ComputeTilesConfig,
+        config: &DeriveConfig,
     ) -> Result<Vec<StaticTile>, String> {
         Ok(vec![tile(
             &config.nodegroup,
@@ -252,7 +252,7 @@ fn derive_functions_chain_second_sees_first() {
             r: &str,
             _g: &dyn GraphLookup,
             _t: &[StaticTile],
-            c: &ComputeTilesConfig,
+            c: &DeriveConfig,
         ) -> Result<Vec<StaticTile>, String> {
             Ok(vec![tile(&c.nodegroup, r, serde_json::json!({ "v": 1 }))])
         }
@@ -264,7 +264,7 @@ fn derive_functions_chain_second_sees_first() {
             r: &str,
             _g: &dyn GraphLookup,
             t: &[StaticTile],
-            c: &ComputeTilesConfig,
+            c: &DeriveConfig,
         ) -> Result<Vec<StaticTile>, String> {
             let a = t
                 .iter()
@@ -459,7 +459,7 @@ fn stored_leaves_other_tiles_in_a_cardinality_n_target_and_drops_its_surplus() {
             r: &str,
             _g: &dyn GraphLookup,
             t: &[StaticTile],
-            c: &ComputeTilesConfig,
+            c: &DeriveConfig,
         ) -> Result<Vec<StaticTile>, String> {
             Ok(t.iter()
                 .filter(|x| x.nodegroup_id == "latlng")
@@ -508,7 +508,7 @@ fn stored_functions_chain_on_their_targets() {
             r: &str,
             _g: &dyn GraphLookup,
             t: &[StaticTile],
-            c: &ComputeTilesConfig,
+            c: &DeriveConfig,
         ) -> Result<Vec<StaticTile>, String> {
             let utm = t
                 .iter()

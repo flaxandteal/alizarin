@@ -37,7 +37,10 @@ pub use cards::{
     StaticCard, StaticCardsXNodesXWidgets, StaticConstraint, StaticFunctionsXGraphs,
     StaticPublication,
 };
-pub use computed_tiles::{compute_tiles_functions, ComputeTilesConfig, DeriveMode, ResolvedNode};
+pub use computed_tiles::{derive_functions, DeriveConfig, DeriveMode, ResolvedNode};
+// The former names, kept for existing callers.
+#[allow(deprecated)]
+pub use computed_tiles::{compute_tiles_functions, ComputeTilesConfig};
 pub use descriptors::{
     DescriptorConfig, DescriptorTypeConfig, StaticResourceDescriptors, AGGREGATE_FUNCTION_ID,
     COMPUTE_TILES_FUNCTION_ID, DESCRIPTOR_FUNCTION_ID,

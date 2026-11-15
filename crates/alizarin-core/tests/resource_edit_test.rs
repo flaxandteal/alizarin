@@ -7,7 +7,7 @@ use std::sync::Arc;
 use alizarin_core::graph_model_access::GraphModelAccess;
 use alizarin_core::type_coercion::set_current_language;
 use alizarin_core::{
-    build_graph_from_model_csvs, canonical_tile_id, ComputeTilesConfig, DeriveProvider,
+    build_graph_from_model_csvs, canonical_tile_id, DeriveConfig, DeriveProvider,
     FunctionsRegistry, GraphLookup, RegisteredFunction, ResourceEdit, ResourceInstanceWrapperCore,
     StaticGraph, StaticResourceMetadata, StaticTile, COMPUTE_TILES_FUNCTION_ID,
 };
@@ -81,7 +81,7 @@ impl DeriveProvider for Shout {
         resource_id: &str,
         graph: &dyn GraphLookup,
         tiles: &[StaticTile],
-        config: &ComputeTilesConfig,
+        config: &DeriveConfig,
     ) -> Result<Vec<StaticTile>, String> {
         let nickname = node_id(graph, "nickname");
         let mut all: Vec<String> = tiles

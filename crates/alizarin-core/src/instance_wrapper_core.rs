@@ -220,7 +220,7 @@ pub trait ModelAccess {
     /// The graph's on-load Derive declarations. The default finds none; a model
     /// holding the graph ([`GraphModelAccess`](crate::graph_model_access::GraphModelAccess))
     /// parses them once.
-    fn on_load_functions(&self) -> Arc<Vec<crate::ComputeTilesConfig>> {
+    fn on_load_functions(&self) -> Arc<Vec<crate::DeriveConfig>> {
         Arc::new(Vec::new())
     }
 }

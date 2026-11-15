@@ -8,10 +8,10 @@ use std::sync::Arc;
 
 use alizarin_core::graph_model_access::GraphModelAccess;
 use alizarin_core::{
-    build_graph_from_model_csvs, derived_tile_id, with_global_functions_registry_mut,
-    ComputeTilesConfig, DeriveProvider, GraphLookup, PseudoListCore, RegisteredFunction,
-    ResourceInstanceWrapperCore, StaticGraph, StaticResourceMetadata, StaticTile, TileSource,
-    TileSourceError, COMPUTE_TILES_FUNCTION_ID,
+    build_graph_from_model_csvs, derived_tile_id, with_global_functions_registry_mut, DeriveConfig,
+    DeriveProvider, GraphLookup, PseudoListCore, RegisteredFunction, ResourceInstanceWrapperCore,
+    StaticGraph, StaticResourceMetadata, StaticTile, TileSource, TileSourceError,
+    COMPUTE_TILES_FUNCTION_ID,
 };
 use serde_json::{json, Value};
 
@@ -79,7 +79,7 @@ impl DeriveProvider for Forms {
         resource_id: &str,
         graph: &dyn GraphLookup,
         tiles: &[StaticTile],
-        config: &ComputeTilesConfig,
+        config: &DeriveConfig,
     ) -> Result<Vec<StaticTile>, String> {
         let headword = node_id(graph, "headword");
         let word = tiles
@@ -307,7 +307,7 @@ fn the_tile_source_serves_what_it_holds_and_returns_the_rest() {
     // Without a source, everything is the host's to fetch.
     core.tile_source = None;
     assert_eq!(
-        core.fetch_from_tile_source(&[forms_ng.clone()], &model)
+        core.fetch_from_tile_source(std::slice::from_ref(&forms_ng), &model)
             .expect("no source"),
         vec![forms_ng]
     );
@@ -328,7 +328,7 @@ fn declared_nodes_resolve_by_alias_or_node_id_and_a_missing_one_is_skipped() {
     // By alias (as declared above) and by node id: the same node.
     for name in ["headword".to_string(), headword.clone()] {
         let graph = with_nodes(json!({ "source": name }));
-        let functions = alizarin_core::compute_tiles_functions(&graph);
+        let functions = alizarin_core::derive_functions(&graph);
         assert_eq!(functions.len(), 1);
         let source = functions[0].node("source").expect("resolved");
         assert_eq!(source.nodeid, headword);
@@ -338,7 +338,7 @@ fn declared_nodes_resolve_by_alias_or_node_id_and_a_missing_one_is_skipped() {
 
     // A node the graph lacks: on load, the declaration is left out.
     let graph = with_nodes(json!({ "source": "missing" }));
-    assert!(alizarin_core::compute_tiles_functions(&graph).is_empty());
+    assert!(alizarin_core::derive_functions(&graph).is_empty());
 }
 
 #[test]

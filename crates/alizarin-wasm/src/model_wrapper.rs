@@ -195,7 +195,7 @@ impl alizarin_core::ModelAccess for ResourceModelWrapperCore {
         alizarin_core::ModelAccess::get_permitted_nodegroups(&*self.model_access)
     }
 
-    fn on_load_functions(&self) -> Arc<Vec<alizarin_core::ComputeTilesConfig>> {
+    fn on_load_functions(&self) -> Arc<Vec<alizarin_core::DeriveConfig>> {
         alizarin_core::ModelAccess::on_load_functions(&*self.model_access)
     }
 }

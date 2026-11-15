@@ -17,8 +17,7 @@ use proj4rs::Proj;
 use serde_json::{json, Value};
 
 use alizarin_core::{
-    ComputeTilesConfig, DeriveProvider, FunctionsRegistry, GraphLookup, RegisteredFunction,
-    StaticTile,
+    DeriveConfig, DeriveProvider, FunctionsRegistry, GraphLookup, RegisteredFunction, StaticTile,
 };
 
 /// The provider key a `functions_x_graphs` compute-tiles entry names to select
@@ -139,7 +138,7 @@ impl DeriveProvider for UtmDeriveProvider {
         resource_id: &str,
         graph: &dyn GraphLookup,
         tiles: &[StaticTile],
-        config: &ComputeTilesConfig,
+        config: &DeriveConfig,
     ) -> Result<Vec<StaticTile>, String> {
         let geometry = config.node("geometry")?;
         let outputs: Vec<(&str, &alizarin_core::ResolvedNode)> = OUTPUT_ROLES
@@ -233,7 +232,7 @@ pub fn derive_json(
 ) -> Result<Value, String> {
     let tiles: Vec<StaticTile> =
         serde_json::from_value(tiles).map_err(|e| format!("utm: tiles: {e}"))?;
-    let config: ComputeTilesConfig =
+    let config: DeriveConfig =
         serde_json::from_value(config).map_err(|e| format!("utm: config: {e}"))?;
     let graph = alizarin_core::derive_abi::CallbackGraph::new(lookup)?;
     let derived = UtmDeriveProvider.derive(resource_id, &graph, &tiles, &config)?;
@@ -360,7 +359,7 @@ mod tests {
 
     /// A resolved UTM declaration into `utm-ng`, with `resolved` given directly:
     /// role → (node id, nodegroup, datatype).
-    fn resolved_config(nodes: &[(&str, &str, &str, &str)]) -> ComputeTilesConfig {
+    fn resolved_config(nodes: &[(&str, &str, &str, &str)]) -> DeriveConfig {
         let mut resolved = serde_json::Map::new();
         for (role, nodeid, nodegroup, datatype) in nodes {
             resolved.insert(
@@ -491,7 +490,7 @@ mod tests {
         assert!(tiles.is_empty());
 
         // No output declared: the provider refuses (on load: no tile).
-        let config: ComputeTilesConfig = serde_json::from_value(serde_json::json!({
+        let config: DeriveConfig = serde_json::from_value(serde_json::json!({
             "provider": "utm", "nodegroup": "utm-ng", "nodes": {"geometry": "boundary"}
         }))
         .unwrap();

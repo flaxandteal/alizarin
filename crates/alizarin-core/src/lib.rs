@@ -66,8 +66,8 @@ pub use graph::{
     batch_merge_resources,
     build_backedges,
     canonical_tile_id,
-    compute_tiles_functions,
     default_functions_registry,
+    derive_functions,
     derived_tile_id,
     find_root_node,
     is_iterable_datatype,
@@ -85,8 +85,8 @@ pub use graph::{
     AggregateContext,
     AggregateProvider,
     BatchMergeResult,
-    // Computed tiles
-    ComputeTilesConfig,
+    // Derive (computed tiles)
+    DeriveConfig,
     DeriveMode,
     DeriveProvider,
     DescriptorProvider,
@@ -133,6 +133,9 @@ pub use graph::{
     ITERABLE_DATATYPES,
     TILE_NAMESPACE_URI,
 };
+// Former names of DeriveConfig and derive_functions, kept for existing callers.
+#[allow(deprecated)]
+pub use graph::{compute_tiles_functions, ComputeTilesConfig};
 
 // Loader
 pub use loader::{

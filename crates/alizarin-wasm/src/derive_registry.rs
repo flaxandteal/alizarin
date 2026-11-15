@@ -18,9 +18,7 @@ use std::sync::Arc;
 use alizarin_core::derive_abi::{
     LOOKUP_NODEGROUP_BY_ID, LOOKUP_NODE_BY_ALIAS, LOOKUP_NODE_BY_ID, LOOKUP_ROOT,
 };
-use alizarin_core::{
-    ComputeTilesConfig, DeriveProvider, GraphLookup, RegisteredFunction, StaticTile,
-};
+use alizarin_core::{DeriveConfig, DeriveProvider, GraphLookup, RegisteredFunction, StaticTile};
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -88,7 +86,7 @@ impl DeriveProvider for JsDeriveProvider {
         resource_id: &str,
         graph: &dyn GraphLookup,
         tiles: &[StaticTile],
-        config: &ComputeTilesConfig,
+        config: &DeriveConfig,
     ) -> Result<Vec<StaticTile>, String> {
         let derive = JS_DERIVE_PROVIDERS
             .with(|providers| providers.borrow().get(&self.provider_id).cloned())

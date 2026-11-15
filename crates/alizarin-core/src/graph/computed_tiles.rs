@@ -32,7 +32,7 @@ fn default_overwrite() -> bool {
 /// `config` field of a `functions_x_graphs` entry whose `function_id`
 /// is [`COMPUTE_TILES_FUNCTION_ID`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ComputeTilesConfig {
+pub struct DeriveConfig {
     /// Provider dispatch key (e.g. "gramadan"). A JS-registered callback
     /// keyed by this name generates the tiles.
     pub provider: String,
@@ -79,7 +79,7 @@ pub struct ResolvedNode {
     pub alias: Option<String>,
 }
 
-impl ComputeTilesConfig {
+impl DeriveConfig {
     /// The node declared for `role`, resolved: an error naming the role if the
     /// declaration doesn't give one.
     pub fn node(&self, role: &str) -> Result<&ResolvedNode, String> {
@@ -116,25 +116,36 @@ impl ComputeTilesConfig {
                 },
             );
         }
-        Ok(ComputeTilesConfig {
+        Ok(DeriveConfig {
             resolved,
             ..self.clone()
         })
     }
 }
 
-/// Extract compute-tiles function configs from every `functions_x_graphs`
-/// declaration visible through the lookup, with their [`nodes`]
-/// (ComputeTilesConfig::nodes) resolved. For a [`LayeredGraph`] this includes
+/// The former name of [`DeriveConfig`], from before the Derive interface
+/// replaced compute-tiles providers.
+#[deprecated(note = "renamed DeriveConfig")]
+pub type ComputeTilesConfig = DeriveConfig;
+
+/// The former name of [`derive_functions`].
+#[deprecated(note = "renamed derive_functions")]
+pub fn compute_tiles_functions(graph: &dyn GraphLookup) -> Vec<DeriveConfig> {
+    derive_functions(graph)
+}
+
+/// The Derive declarations (compute-tiles functions) of every
+/// `functions_x_graphs` entry visible through the lookup, with their [`nodes`]
+/// (DeriveConfig::nodes) resolved. For a [`LayeredGraph`] this includes
 /// an overlay (computed layer) whose fxg the base graph does not carry. A
 /// declaration that doesn't parse, or names a node the graph lacks, is left out
 /// (the stored-mode reader, `stored_derive_functions`, errors instead).
-pub fn compute_tiles_functions(graph: &dyn GraphLookup) -> Vec<ComputeTilesConfig> {
+pub fn derive_functions(graph: &dyn GraphLookup) -> Vec<DeriveConfig> {
     graph
         .functions_x_graphs()
         .into_iter()
         .filter(|f| f.function_id == COMPUTE_TILES_FUNCTION_ID)
-        .filter_map(|f| serde_json::from_value::<ComputeTilesConfig>(f.config.clone()).ok())
+        .filter_map(|f| serde_json::from_value::<DeriveConfig>(f.config.clone()).ok())
         .filter_map(|config| config.resolve_nodes(graph).ok())
         .collect()
 }
@@ -175,9 +186,9 @@ mod tests {
     }
 
     #[test]
-    fn extract_compute_tiles_functions() {
+    fn extract_derive_functions() {
         let graph = test_graph(vec![compute_fxg()]);
-        let funcs = compute_tiles_functions(&graph);
+        let funcs = derive_functions(&graph);
         assert_eq!(funcs.len(), 1);
         assert_eq!(funcs[0].provider, "test");
         assert_eq!(funcs[0].nodegroup, "forms");
@@ -193,7 +204,7 @@ mod tests {
             "graph_id": "test-graph",
             "config": { "descriptor_types": {} }
         })]);
-        assert!(compute_tiles_functions(&graph).is_empty());
+        assert!(derive_functions(&graph).is_empty());
     }
 
     #[test]
@@ -204,6 +215,6 @@ mod tests {
             "graph_id": "test-graph",
             "config": { "not_a_valid_config": true }
         })]);
-        assert!(compute_tiles_functions(&graph).is_empty());
+        assert!(derive_functions(&graph).is_empty());
     }
 }

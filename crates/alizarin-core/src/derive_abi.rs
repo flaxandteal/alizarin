@@ -35,8 +35,8 @@ use serde_json::Value;
 
 use crate::graph::card_index::CardIndex;
 use crate::graph::{
-    ComputeTilesConfig, DeriveProvider, FunctionsRegistry, GraphLookup, RegisteredFunction,
-    StaticCard, StaticCardsXNodesXWidgets, StaticEdge, StaticNode, StaticNodegroup, StaticTile,
+    DeriveConfig, DeriveProvider, FunctionsRegistry, GraphLookup, RegisteredFunction, StaticCard,
+    StaticCardsXNodesXWidgets, StaticEdge, StaticNode, StaticNodegroup, StaticTile,
     StaticTranslatableString,
 };
 
@@ -114,7 +114,7 @@ impl DeriveProvider for AbiDeriveProvider {
         resource_id: &str,
         graph: &dyn GraphLookup,
         tiles: &[StaticTile],
-        config: &ComputeTilesConfig,
+        config: &DeriveConfig,
     ) -> Result<Vec<StaticTile>, String> {
         let tiles = serde_json::to_value(tiles).map_err(|e| format!("serialize tiles: {e}"))?;
         let config = serde_json::to_value(config).map_err(|e| format!("serialize config: {e}"))?;
@@ -378,9 +378,8 @@ pub unsafe fn derive_with<P: DeriveProvider + ?Sized>(
                 .map_err(|e| format!("resource id: {e}"))?;
         let tiles: Vec<StaticTile> = serde_json::from_value((*(tiles_ptr as *const Value)).clone())
             .map_err(|e| format!("tiles: {e}"))?;
-        let config: ComputeTilesConfig =
-            serde_json::from_value((*(config_ptr as *const Value)).clone())
-                .map_err(|e| format!("config: {e}"))?;
+        let config: DeriveConfig = serde_json::from_value((*(config_ptr as *const Value)).clone())
+            .map_err(|e| format!("config: {e}"))?;
         let host = &*graph;
         let lookup = |kind: u32, key: &str| {
             // SAFETY: the host's lookup, with its own context, for this call.
@@ -447,7 +446,7 @@ mod tests {
             resource_id: &str,
             graph: &dyn GraphLookup,
             tiles: &[StaticTile],
-            config: &ComputeTilesConfig,
+            config: &DeriveConfig,
         ) -> Result<Vec<StaticTile>, String> {
             let source = config.node("source")?;
             let value = tiles

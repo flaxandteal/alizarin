@@ -36,7 +36,7 @@ pub struct GraphModelAccess {
     nodegroups: Option<Arc<HashMap<String, Arc<StaticNodegroup>>>>,
     root_node_id: Option<String>,
     /// The graph's on-load Derive declarations, parsed once.
-    on_load_functions: Option<Arc<Vec<crate::ComputeTilesConfig>>>,
+    on_load_functions: Option<Arc<Vec<crate::DeriveConfig>>>,
 
     /// The rules as set, keyed by nodegroup id.
     explicit_permissions: HashMap<String, PermissionRule>,
@@ -588,7 +588,7 @@ impl ModelAccess for GraphModelAccess {
         self.permitted_nodegroups.clone()
     }
 
-    fn on_load_functions(&self) -> Arc<Vec<crate::ComputeTilesConfig>> {
+    fn on_load_functions(&self) -> Arc<Vec<crate::DeriveConfig>> {
         match &self.on_load_functions {
             Some(functions) => Arc::clone(functions),
             None => Arc::new(on_load_functions_of(&self.graph)),
@@ -597,8 +597,8 @@ impl ModelAccess for GraphModelAccess {
 }
 
 /// The on-load Derive declarations `graph` makes, in declaration order.
-fn on_load_functions_of(graph: &StaticGraph) -> Vec<crate::ComputeTilesConfig> {
-    crate::compute_tiles_functions(graph)
+fn on_load_functions_of(graph: &StaticGraph) -> Vec<crate::DeriveConfig> {
+    crate::derive_functions(graph)
         .into_iter()
         .filter(|f| f.mode == crate::DeriveMode::OnLoad)
         .collect()

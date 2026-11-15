@@ -564,7 +564,7 @@ pub struct HostGraph {
 pub type DeriveResult = IndexSpecResult;
 
 /// Derive tiles for a resource. `tiles_ptr` (the resource's tiles, a JSON
-/// array) and `config_ptr` (its `ComputeTilesConfig`, `resolved` filled in)
+/// array) and `config_ptr` (its `DeriveConfig`, `resolved` filled in)
 /// are `*const serde_json::Value`, live for the call; `graph` answers lookups.
 pub type DeriveFn = unsafe extern "C" fn(
     resource_id_ptr: *const u8,

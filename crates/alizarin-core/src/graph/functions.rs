@@ -24,7 +24,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::computed_tiles::{compute_tiles_functions, ComputeTilesConfig, DeriveMode};
+use super::computed_tiles::{derive_functions, DeriveConfig, DeriveMode};
 use super::descriptors::{AGGREGATE_FUNCTION_ID, COMPUTE_TILES_FUNCTION_ID};
 use super::graph_lookup::GraphLookup;
 use super::tile::{tile_namespace, StaticTile};
@@ -43,7 +43,7 @@ pub trait DeriveProvider: Send + Sync {
         resource_id: &str,
         graph: &dyn GraphLookup,
         tiles: &[StaticTile],
-        config: &ComputeTilesConfig,
+        config: &DeriveConfig,
     ) -> Result<Vec<StaticTile>, String>;
 }
 
@@ -279,7 +279,7 @@ pub fn apply_derive_functions(
     is_member: &dyn Fn(&str) -> bool,
     registry: &FunctionsRegistry,
 ) {
-    for func in compute_tiles_functions(graph) {
+    for func in derive_functions(graph) {
         if func.mode != DeriveMode::OnLoad || !is_member(&func.member_of) {
             continue;
         }
@@ -303,7 +303,7 @@ pub fn apply_derive_functions(
 /// silently skipping a malformed one would leave its stored tiles stale. A
 /// declaration is stored-mode if its config says `"mode": "stored"`; each
 /// must name its `sources`.
-pub fn stored_derive_functions(graph: &dyn GraphLookup) -> Result<Vec<ComputeTilesConfig>, String> {
+pub fn stored_derive_functions(graph: &dyn GraphLookup) -> Result<Vec<DeriveConfig>, String> {
     let mut configs = Vec::new();
     for f in graph
         .functions_x_graphs()
@@ -313,7 +313,7 @@ pub fn stored_derive_functions(graph: &dyn GraphLookup) -> Result<Vec<ComputeTil
         if f.config.get("mode").and_then(|m| m.as_str()) != Some("stored") {
             continue;
         }
-        let config: ComputeTilesConfig = serde_json::from_value(f.config.clone())
+        let config: DeriveConfig = serde_json::from_value(f.config.clone())
             .map_err(|e| format!("derive function {}: invalid config: {e}", f.id))?;
         let config = config.resolve_nodes(graph)?;
         if config.sources.is_empty() {
@@ -467,7 +467,7 @@ fn replace_derived(
     working: &mut Vec<StaticTile>,
     graph: &dyn GraphLookup,
     resource_id: &str,
-    config: &ComputeTilesConfig,
+    config: &DeriveConfig,
     produced: Vec<StaticTile>,
     written: &mut HashSet<String>,
 ) -> Result<(), String> {

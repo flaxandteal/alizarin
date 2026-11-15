@@ -9,7 +9,7 @@ use std::sync::Arc;
 use alizarin_core::{
     apply_stored_derive_functions_to_resources, build_graph_from_model_csvs,
     build_resources_from_business_csv, derived_tile_id, tree_to_tiles,
-    with_global_functions_registry_mut, ComputeTilesConfig, DeriveProvider, GraphLookup,
+    with_global_functions_registry_mut, DeriveConfig, DeriveProvider, GraphLookup,
     RegisteredFunction, StaticGraph, StaticResource, StaticTile, COMPUTE_TILES_FUNCTION_ID,
 };
 use serde_json::{json, Value};
@@ -85,7 +85,7 @@ impl DeriveProvider for Upper {
         resource_id: &str,
         graph: &dyn GraphLookup,
         tiles: &[StaticTile],
-        config: &ComputeTilesConfig,
+        config: &DeriveConfig,
     ) -> Result<Vec<StaticTile>, String> {
         let name = node_id(graph, "name");
         let Some(value) = tiles
