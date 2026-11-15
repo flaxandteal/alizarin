@@ -360,18 +360,9 @@ class ReferenceValueViewModel extends String implements IViewModel {
       }
 
       if (val) {
+        // Its tile form follows (__asTileData); the tile's data is a copy, so
+        // it is not written here, as in alizarin's own view models.
         this._resolvedRef = new StaticReference(val as any);
-        // Update tile data if we have tile reference (always as one-element array)
-        if (this._tile && this._nodeid) {
-          const currentData = this._tile.data.get(this._nodeid);
-          if (Array.isArray(currentData) && currentData.length <= 1) {
-            // Replace the single-element array (may contain unresolved marker)
-            this._tile.data.set(this._nodeid, [this._resolvedRef.toJSON()]);
-          } else if (!Array.isArray(currentData)) {
-            // Legacy bare object — wrap into array
-            this._tile.data.set(this._nodeid, [this._resolvedRef.toJSON()]);
-          }
-        }
       }
 
       return this._resolvedRef;
@@ -441,10 +432,9 @@ class ReferenceValueViewModel extends String implements IViewModel {
     if (!collectionId) {
       throw Error(`Node ${node.alias} (${node.nodeid}) missing controlledList or rdmCollection in config`);
     }
+    // Built from core's value for this node; the tile's data is a copy, so
+    // it is neither read nor written here.
     if (tile) {
-      if (!tile.data.has(nodeid)) {
-        tile.data.set(nodeid, null);
-      }
       if (value !== null) {
         // Unwrap single-element arrays (tile data is always stored as array,
         // but ReferenceValueViewModel works with the inner value)
@@ -467,8 +457,6 @@ class ReferenceValueViewModel extends String implements IViewModel {
           ) {
             // UUID string - create lazy lookup (no fetch yet)
             const pendingLookup: PendingUuidLookup = { type: 'uuid', uuid: value, collectionId };
-            // Store the marker in tile data for now (as one-element array)
-            tile.data.set(nodeid, [{ __needs_rdm_lookup: true, uuid: value }]);
             return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid, collectionId);
           } else {
             throw Error(
@@ -478,26 +466,20 @@ class ReferenceValueViewModel extends String implements IViewModel {
         } else if (typeof value === "object" && value !== null && value.__needs_rdm_lookup && value.uuid) {
           // UUID marked for RDM lookup by the coercion layer - create lazy lookup (no fetch yet)
           const pendingLookup: PendingUuidLookup = { type: 'uuid', uuid: value.uuid, collectionId };
-          // Keep the marker in tile data (as one-element array)
-          tile.data.set(nodeid, [value]);
           return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid, collectionId);
         } else if (typeof value === "object" && value !== null && value.__needs_rdm_label_lookup && value.label) {
           // Label string marked for RDM lookup - create lazy lookup (no fetch yet)
           const lookupCollectionId = value.controlledList || collectionId;
           const pendingLookup: PendingLabelLookup = { type: 'label', label: value.label, collectionId: lookupCollectionId };
-          // Keep the marker in tile data (as one-element array)
-          tile.data.set(nodeid, [value]);
           return new ReferenceValueViewModel(null, pendingLookup, tile, nodeid, lookupCollectionId);
         } else if (Array.isArray(value) && value.length > 0 && "labels" in value[0]) {
           // Handle array of pre-formatted reference values from business data
           // For now, just use the first value
           const ref = new StaticReference(value[0]);
-          tile.data.set(nodeid, [ref.toJSON()]);
           return new ReferenceValueViewModel(ref, undefined, undefined, undefined, collectionId);
         } else if (typeof value === "object" && value !== null && "labels" in value) {
           // Handle single pre-formatted reference value from business data
           const ref = new StaticReference(value);
-          tile.data.set(nodeid, [ref.toJSON()]);
           return new ReferenceValueViewModel(ref, undefined, undefined, undefined, collectionId);
         } else {
           throw Error("Could not set reference from this data: " + JSON.stringify(value));
@@ -574,10 +556,8 @@ class ReferenceListViewModel extends Array<ReferenceValueViewModel> implements I
     _cacheEntry: object | null = null
   ): Promise<ReferenceListViewModel> {
     const nodeid = node.nodeid;
-    if (!tile.data.has(nodeid)) {
-      tile.data.set(nodeid, null);
-    }
-
+    // Built from core's value for this node; the tile's data is a copy, so
+    // it is neither read nor written here.
     if (value === null) {
       const str = new ReferenceListViewModel();
       str._value = Promise.resolve([]);
@@ -602,18 +582,7 @@ class ReferenceListViewModel extends Array<ReferenceValueViewModel> implements I
     const resolvedViewModels = await Promise.all(viewModelPromises);
     const validViewModels = resolvedViewModels.filter((v): v is ReferenceValueViewModel => v !== null);
 
-    // Convert to plain objects for tile data
-    const tileDataRefs = await Promise.all(
-      validViewModels.map(async (vm) => {
-        const ref = await vm.getValue();
-        return ref && typeof ref.toJSON === 'function' ? ref.toJSON() : ref;
-      })
-    );
-
-    // Set tile data with resolved plain objects
-    tile.data.set(nodeid, tileDataRefs);
-
-    // Create the list view model with resolved values
+    // Create the list view model with resolved values (lookups stay lazy)
     const str = new ReferenceListViewModel();
     str.push(...validViewModels);
     str._value = Promise.resolve(validViewModels);

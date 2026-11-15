@@ -313,13 +313,9 @@ class FileListViewModel extends Array<FileItemViewModel | Promise<FileItemViewMo
     const nodeid = node.nodeid;
     let val: (FileItemViewModel | Promise<FileItemViewModel | null> | null)[] = [];
 
-    if (!tile.data.has(nodeid)) {
-      tile.data.set(nodeid, null);
-    }
-
+    // Built from core's value for this node; the tile's data is a copy, so
+    // it is neither read nor written here (as alizarin's own view models).
     if (value !== null && value !== undefined) {
-      tile.data.set(nodeid, []);
-
       // Handle awaitable value
       if (value instanceof Promise) {
         const resolved = await value;
@@ -353,14 +349,6 @@ class FileListViewModel extends Array<FileItemViewModel | Promise<FileItemViewMo
           return new FileItemViewModel(file);
         }
         return null;
-      });
-
-      // Update tile data with resolved values
-      Promise.all(val).then((vals) => {
-        const tileData = vals
-          .filter((v): v is FileItemViewModel => v !== null)
-          .map((v) => v.getValue().toJson());
-        tile.data.set(nodeid, tileData);
       });
     } else {
       val = [];
