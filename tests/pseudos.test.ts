@@ -35,11 +35,15 @@ function createTestWKRM(graph: StaticGraph): WKRM {
 
 // Helper function to create a wrapper with a real WASM model
 function createTestWrapper(graph: StaticGraph): WASMResourceModelWrapper {
+  const wkrm = createTestWKRM(graph);
   const wrapper = new WASMResourceModelWrapper(
-    createTestWKRM(graph),
+    wkrm,
     graph,
     true
   );
+  // Stands in for TS's ResourceModelWrapper as a pseudo's `parent.__`, which
+  // keeps its own wkrm (the raw WASM wrapper no longer exposes one).
+  (wrapper as any).wkrm = wkrm;
   wrapper.buildNodesForGraph(graph);
 
   // Mark all nodegroups as permitted for testing

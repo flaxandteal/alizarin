@@ -161,15 +161,20 @@ impl PyResourceInstanceWrapperCore {
         Ok(())
     }
 
-    /// Merge tiles into the wrapper, keeping already-loaded nodegroups.
-    ///
-    /// The incremental counterpart to `load_tiles` (which replaces): load one
-    /// nodegroup now, merge another on a later path touch, and both stay
-    /// queryable. Idempotent per `tileid`.
+    /// Append tiles, keeping those already loaded: the incremental counterpart
+    /// to `load_tiles` (which replaces). Idempotent per `tileid`. Unless
+    /// `assume_tiles_comprehensive_for_nodegroup` is false, they complete the
+    /// resource, so every nodegroup counts as loaded. As NAPI's and WASM's
+    /// `appendTiles`.
     ///
     /// Args:
     ///     tiles_json: JSON string of tiles array
-    fn merge_tiles(&mut self, tiles_json: &str) -> PyResult<()> {
+    #[pyo3(signature = (tiles_json, assume_tiles_comprehensive_for_nodegroup=true))]
+    fn append_tiles(
+        &mut self,
+        tiles_json: &str,
+        assume_tiles_comprehensive_for_nodegroup: bool,
+    ) -> PyResult<()> {
         let tiles: Vec<StaticTile> = serde_json::from_str(tiles_json).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                 "Failed to parse tiles JSON: {}",
@@ -179,6 +184,9 @@ impl PyResourceInstanceWrapperCore {
 
         let model = self.model()?;
         self.inner.merge_permitted_tiles(tiles, &model);
+        if assume_tiles_comprehensive_for_nodegroup {
+            self.inner.mark_loaded_comprehensively(&model);
+        }
         Ok(())
     }
 

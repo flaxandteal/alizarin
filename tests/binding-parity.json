@@ -7,7 +7,7 @@
       "python": "RustResourceInstanceWrapperCore",
       "operations": [
         { "wasm": "appendFetchedTiles", "napi": "appendFetchedTiles", "python": "append_fetched_tiles" },
-        { "wasm": "appendTiles", "napi": "appendTiles", "python": "merge_tiles", "why": { "python": "gap: named differently, and not comprehensive by default" } },
+        { "wasm": "appendTiles", "napi": "appendTiles", "python": "append_tiles" },
         { "wasm": "applyEdits", "napi": "applyEdits", "python": "apply_edits" },
         { "wasm": "checkEditable", "napi": "checkEditable", "python": "check_editable" },
         { "wasm": "exportTilesJson", "napi": "exportTilesJson", "python": null, "why": { "python": "gap" } },
@@ -66,14 +66,14 @@
         { "wasm": "getNodeIdFromAlias", "napi": "getNodeIdFromAlias", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
         { "wasm": "getNodeObjectFromAlias", "napi": "getNodeObjectFromAlias", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
         { "wasm": "getNodeObjectFromId", "napi": "getNodeObjectFromId", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
-        { "wasm": "getNodeObjects", "napi": "getNodeObjects", "python": "get_nodes", "why": { "python": "gap: named differently" } },
-        { "wasm": "getNodeObjectsByAlias", "napi": "getNodeObjectsByAlias", "python": "get_nodes_by_alias", "why": { "python": "gap: named differently" } },
+        { "wasm": "getNodeObjects", "napi": "getNodeObjects", "python": "get_node_objects" },
+        { "wasm": "getNodeObjectsByAlias", "napi": "getNodeObjectsByAlias", "python": "get_node_objects_by_alias" },
         { "wasm": "getNodegroupIds", "napi": "getNodegroupIds", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
         { "wasm": "getNodegroupName", "napi": "getNodegroupName", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
         { "wasm": "getNodegroupObjects", "napi": "getNodegroupObjects", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
         { "wasm": "getPermittedNodegroups", "napi": "getPermittedNodegroups", "python": null, "why": { "python": "gap" } },
         { "wasm": "getRootNode", "napi": "getRootNode", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
-        { "wasm": "graph", "napi": "graph", "python": "export_graph", "why": { "python": "gap: named differently" } },
+        { "wasm": "graph", "napi": "graph", "python": "graph" },
         { "wasm": "isNodegroupPermitted", "napi": "isNodegroupPermitted", "python": "is_nodegroup_permitted" },
         { "wasm": null, "napi": null, "python": "is_tile_permitted", "why": { "wasm": "gap: Python only; align or remove", "napi": "gap: Python only; align or remove" } },
         { "wasm": "nodegroups", "napi": "nodegroups", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
@@ -81,8 +81,7 @@
         { "wasm": "nodesByAlias", "napi": "nodesByAlias", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
         { "wasm": "pruneGraph", "napi": "pruneGraph", "python": "prune_graph" },
         { "wasm": "setDefaultAllowAllNodegroups", "napi": "setDefaultAllowAllNodegroups", "python": null, "why": { "python": "gap" } },
-        { "wasm": "setPermittedNodegroups", "napi": "setPermittedNodegroups", "python": "set_permitted_nodegroups" },
-        { "wasm": "wkrm", "napi": null, "python": null, "why": { "napi": "gap", "python": "gap" } }
+        { "wasm": "setPermittedNodegroups", "napi": "setPermittedNodegroups", "python": "set_permitted_nodegroups" }
       ]
     }
   }

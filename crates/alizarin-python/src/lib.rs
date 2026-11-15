@@ -1617,8 +1617,8 @@ impl PyResourceModelWrapper {
             .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
     }
 
-    /// Get all nodes as a dict of {node_id: node_json}.
-    #[pyo3(name = "get_nodes")]
+    /// Get all nodes as a dict of {node_id: node_json}. As WASM's and NAPI's
+    /// `getNodeObjects`.
     fn get_node_objects(&self, py: Python) -> PyResult<PyObject> {
         let dict = pyo3::types::PyDict::new_bound(py);
         let model = self.model()?;
@@ -1650,8 +1650,8 @@ impl PyResourceModelWrapper {
         Ok(dict.to_object(py))
     }
 
-    /// Get nodes indexed by alias as a dict of {alias: node_json}.
-    #[pyo3(name = "get_nodes_by_alias")]
+    /// Get nodes indexed by alias as a dict of {alias: node_json}. As WASM's
+    /// and NAPI's `getNodeObjectsByAlias`.
     fn get_node_objects_by_alias(&self, py: Python) -> PyResult<PyObject> {
         let dict = pyo3::types::PyDict::new_bound(py);
         let model = self.model()?;
@@ -1743,8 +1743,9 @@ impl PyResourceModelWrapper {
         })
     }
 
-    /// Export graph as JSON
-    fn export_graph(&self, py: Python) -> PyResult<PyObject> {
+    /// The model's graph, as a dict. As WASM's and NAPI's `graph` getter.
+    #[getter]
+    fn graph(&self, py: Python) -> PyResult<PyObject> {
         let model = self.model()?;
         let graph = model.get_graph();
         pythonize::pythonize(py, graph).map_err(|e| {

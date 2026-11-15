@@ -40,7 +40,6 @@ test("WASMResourceModelWrapper > constructor > should initialize with wkrm and g
   );
 
   assert.isDefined(wrapper);
-  assert.equal(wrapper.wkrm.graphId, graph.graphid);
   assert.equal(wrapper.graph.graphid, graph.graphid);
 });
 

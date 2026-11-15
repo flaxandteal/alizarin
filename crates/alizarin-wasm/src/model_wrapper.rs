@@ -650,11 +650,6 @@ impl WASMResourceModelWrapper {
     }
 
     // Getters
-    #[wasm_bindgen(getter = wkrm)]
-    pub fn get_wkrm(&self) -> WKRM {
-        self.with_core(|core| core.get_wkrm().clone())
-    }
-
     #[wasm_bindgen(getter = graph)]
     pub fn get_graph(&self) -> WasmStaticGraph {
         self.with_core(|core| WasmStaticGraph(core.get_graph().clone()))

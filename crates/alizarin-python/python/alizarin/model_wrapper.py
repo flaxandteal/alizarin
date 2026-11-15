@@ -487,7 +487,7 @@ class ResourceModelWrapper(Generic[RIVM]):
         self._rust_model.prune_graph(None)
 
         # Refresh Python-side graph from Rust export and rebuild caches
-        graph_data = self._rust_model.export_graph()
+        graph_data = self._rust_model.graph
         from .static_types import StaticGraph
         self.graph = StaticGraph.from_dict(graph_data)
 
