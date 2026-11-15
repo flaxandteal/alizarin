@@ -25,7 +25,7 @@
         { "wasm": "setTileLoader", "napi": null, "python": null, "why": { "napi": "ecosystem: host-language tile loading; the TS wrapper holds NAPI's loader", "python": "ecosystem: host-language tile loading; the Python wrapper holds its loader" } },
         { "wasm": "getValuesAtPath", "napi": "getValuesAtPath", "python": "get_values_at_path" },
         { "wasm": "isNodegroupLoaded", "napi": "isNodegroupLoaded", "python": "is_nodegroup_loaded" },
-        { "wasm": null, "napi": "loadFromRegistry", "python": null, "why": { "wasm": "gap", "python": "gap" } },
+        { "wasm": null, "napi": "loadFromRegistry", "python": null, "why": { "wasm": "ecosystem: takes the WASM StaticResource directly, so there is no JSON round trip to avoid", "python": "ecosystem: the Python ORM's resources live in Python, not the Rust registry" } },
         { "wasm": "loadTiles", "napi": "loadTiles", "python": "load_tiles" },
         { "wasm": "loadTilesFromResource", "napi": "loadTilesFromResource", "python": "load_tiles_from_resource" },
         { "wasm": "loadTilesWasm", "napi": null, "python": null, "why": { "napi": "ecosystem: takes WASM-native StaticTile objects", "python": "ecosystem: takes WASM-native StaticTile objects" } },
