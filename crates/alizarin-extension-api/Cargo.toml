@@ -8,6 +8,14 @@ description = "C ABI types for Alizarin extensions"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# For the `wasm` feature's js_json: cycle-safe JSON arguments from JavaScript,
+# shared by alizarin-wasm and every extension's WASM crate.
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys = { version = "0.3", optional = true }
+serde-wasm-bindgen = { version = "0.6", optional = true }
+
+[features]
+wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde-wasm-bindgen"]
 
 [lib]
 crate-type = ["lib"]

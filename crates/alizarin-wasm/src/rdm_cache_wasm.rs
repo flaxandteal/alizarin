@@ -246,9 +246,8 @@ impl WasmRdmCache {
         let tree: serde_json::Value = serde_json::from_str(tree_json)
             .map_err(|e| JsError::new(&format!("Invalid tree JSON: {}", e)))?;
 
-        let alias_map: HashMap<String, String> =
-            serde_wasm_bindgen::from_value(alias_to_collection)
-                .map_err(|e| JsError::new(&format!("Invalid alias map: {}", e)))?;
+        let alias_map: HashMap<String, String> = crate::js_json::from_value(alias_to_collection)
+            .map_err(|e| JsError::new(&format!("Invalid alias map: {}", e)))?;
 
         let resolved = label_resolution::resolve_labels(tree, &alias_map, &self.inner, strict)
             .map_err(|e| JsError::new(&e.message))?;

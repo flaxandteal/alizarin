@@ -137,7 +137,7 @@ impl DeriveProvider for JsDeriveProvider {
                 e.as_string().unwrap_or_else(|| format!("{e:?}"))
             )
         })?;
-        serde_wasm_bindgen::from_value(result)
+        crate::js_json::from_value(result)
             .map_err(|e| format!("derive provider {}: derived tiles: {e}", self.provider_id))
     }
 }

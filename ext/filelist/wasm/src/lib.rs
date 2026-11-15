@@ -14,7 +14,7 @@ use wasm_bindgen::prelude::*;
 /// @returns `{ tileData, displayValue }` with sanitized file-list data
 #[wasm_bindgen(js_name = coerceFileList)]
 pub fn coerce_file_list(value: JsValue) -> Result<JsValue, JsError> {
-    let json: serde_json::Value = serde_wasm_bindgen::from_value(value)
+    let json: serde_json::Value = alizarin_extension_api::js_json::from_value(value)
         .map_err(|e| JsError::new(&format!("Failed to parse value: {}", e)))?;
 
     let (tile_data, display_value) =
@@ -39,7 +39,7 @@ pub fn render_file_list_display(
     tile_data: JsValue,
     language: &str,
 ) -> Result<Option<String>, JsError> {
-    let json: serde_json::Value = serde_wasm_bindgen::from_value(tile_data)
+    let json: serde_json::Value = alizarin_extension_api::js_json::from_value(tile_data)
         .map_err(|e| JsError::new(&format!("Failed to parse tile data: {}", e)))?;
 
     match alizarin_filelist_core::render_filelist_display_value(&json, Some(language)) {

@@ -13,6 +13,8 @@ default = []
 
 [dependencies]
 alizarin-core = { path = "../alizarin-core" }
+# Its cycle-safe js_json, shared with the extensions' WASM crates.
+alizarin-extension-api = { path = "../alizarin-extension-api", features = ["wasm"] }
 wasm-wrapper-derive = { path = "../wasm-wrapper-derive" }
 wasm-bindgen = "0.2.84"
 wasm-bindgen-futures = "0.4"

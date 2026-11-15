@@ -81,7 +81,7 @@ impl WasmCoercionResult {
 #[wasm_bindgen(js_name = coerceNumber)]
 pub fn wasm_coerce_number(value: JsValue) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     WasmCoercionResult {
         inner: coerce_number(&val),
     }
@@ -91,7 +91,7 @@ pub fn wasm_coerce_number(value: JsValue) -> WasmCoercionResult {
 #[wasm_bindgen(js_name = coerceNonLocalizedString)]
 pub fn wasm_coerce_non_localized_string(value: JsValue) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     WasmCoercionResult {
         inner: coerce_non_localized_string(&val),
     }
@@ -101,7 +101,7 @@ pub fn wasm_coerce_non_localized_string(value: JsValue) -> WasmCoercionResult {
 #[wasm_bindgen(js_name = coerceEdtf)]
 pub fn wasm_coerce_edtf(value: JsValue) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     WasmCoercionResult {
         inner: coerce_edtf(&val),
     }
@@ -111,7 +111,7 @@ pub fn wasm_coerce_edtf(value: JsValue) -> WasmCoercionResult {
 #[wasm_bindgen(js_name = coerceDate)]
 pub fn wasm_coerce_date(value: JsValue) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     WasmCoercionResult {
         inner: coerce_date(&val),
     }
@@ -121,11 +121,11 @@ pub fn wasm_coerce_date(value: JsValue) -> WasmCoercionResult {
 #[wasm_bindgen(js_name = coerceValue)]
 pub fn wasm_coerce_value(datatype: &str, value: JsValue, config: JsValue) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     let cfg: Option<serde_json::Value> = if config.is_null() || config.is_undefined() {
         None
     } else {
-        serde_wasm_bindgen::from_value(config).ok()
+        crate::js_json::from_value(config).ok()
     };
     WasmCoercionResult {
         inner: coerce_value(datatype, &val, cfg.as_ref()),
@@ -140,7 +140,7 @@ pub fn wasm_coerce_value(datatype: &str, value: JsValue, config: JsValue) -> Was
 #[wasm_bindgen(js_name = coerceString)]
 pub fn wasm_coerce_string(value: JsValue, language: Option<String>) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     WasmCoercionResult {
         inner: coerce_string(&val, language.as_deref()),
     }
@@ -150,7 +150,7 @@ pub fn wasm_coerce_string(value: JsValue, language: Option<String>) -> WasmCoerc
 #[wasm_bindgen(js_name = coerceUrl)]
 pub fn wasm_coerce_url(value: JsValue) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     WasmCoercionResult {
         inner: coerce_url(&val),
     }
@@ -160,7 +160,7 @@ pub fn wasm_coerce_url(value: JsValue) -> WasmCoercionResult {
 #[wasm_bindgen(js_name = coerceGeoJson)]
 pub fn wasm_coerce_geojson(value: JsValue) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     WasmCoercionResult {
         inner: coerce_geojson(&val),
     }
@@ -174,11 +174,11 @@ pub fn wasm_coerce_geojson(value: JsValue) -> WasmCoercionResult {
 #[wasm_bindgen(js_name = coerceBoolean)]
 pub fn wasm_coerce_boolean(value: JsValue, config: JsValue) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     let cfg: Option<serde_json::Value> = if config.is_null() || config.is_undefined() {
         None
     } else {
-        serde_wasm_bindgen::from_value(config).ok()
+        crate::js_json::from_value(config).ok()
     };
     WasmCoercionResult {
         inner: coerce_boolean(&val, cfg.as_ref()),
@@ -189,11 +189,11 @@ pub fn wasm_coerce_boolean(value: JsValue, config: JsValue) -> WasmCoercionResul
 #[wasm_bindgen(js_name = coerceDomainValue)]
 pub fn wasm_coerce_domain_value(value: JsValue, config: JsValue) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     let cfg: Option<serde_json::Value> = if config.is_null() || config.is_undefined() {
         None
     } else {
-        serde_wasm_bindgen::from_value(config).ok()
+        crate::js_json::from_value(config).ok()
     };
     WasmCoercionResult {
         inner: coerce_domain_value(&val, cfg.as_ref()),
@@ -204,11 +204,11 @@ pub fn wasm_coerce_domain_value(value: JsValue, config: JsValue) -> WasmCoercion
 #[wasm_bindgen(js_name = coerceDomainValueList)]
 pub fn wasm_coerce_domain_value_list(value: JsValue, config: JsValue) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     let cfg: Option<serde_json::Value> = if config.is_null() || config.is_undefined() {
         None
     } else {
-        serde_wasm_bindgen::from_value(config).ok()
+        crate::js_json::from_value(config).ok()
     };
     WasmCoercionResult {
         inner: coerce_domain_value_list(&val, cfg.as_ref()),
@@ -223,11 +223,11 @@ pub fn wasm_coerce_domain_value_list(value: JsValue, config: JsValue) -> WasmCoe
 #[wasm_bindgen(js_name = coerceConceptValue)]
 pub fn wasm_coerce_concept_value(value: JsValue, config: JsValue) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     let cfg: Option<serde_json::Value> = if config.is_null() || config.is_undefined() {
         None
     } else {
-        serde_wasm_bindgen::from_value(config).ok()
+        crate::js_json::from_value(config).ok()
     };
     WasmCoercionResult {
         inner: coerce_concept_value(&val, cfg.as_ref()),
@@ -238,11 +238,11 @@ pub fn wasm_coerce_concept_value(value: JsValue, config: JsValue) -> WasmCoercio
 #[wasm_bindgen(js_name = coerceConceptList)]
 pub fn wasm_coerce_concept_list(value: JsValue, config: JsValue) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     let cfg: Option<serde_json::Value> = if config.is_null() || config.is_undefined() {
         None
     } else {
-        serde_wasm_bindgen::from_value(config).ok()
+        crate::js_json::from_value(config).ok()
     };
     WasmCoercionResult {
         inner: coerce_concept_list(&val, cfg.as_ref()),
@@ -257,11 +257,11 @@ pub fn wasm_coerce_concept_list(value: JsValue, config: JsValue) -> WasmCoercion
 #[wasm_bindgen(js_name = coerceResourceInstance)]
 pub fn wasm_coerce_resource_instance(value: JsValue, config: JsValue) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     let cfg: Option<serde_json::Value> = if config.is_null() || config.is_undefined() {
         None
     } else {
-        serde_wasm_bindgen::from_value(config).ok()
+        crate::js_json::from_value(config).ok()
     };
     WasmCoercionResult {
         inner: coerce_resource_instance(&val, cfg.as_ref()),
@@ -272,11 +272,11 @@ pub fn wasm_coerce_resource_instance(value: JsValue, config: JsValue) -> WasmCoe
 #[wasm_bindgen(js_name = coerceResourceInstanceList)]
 pub fn wasm_coerce_resource_instance_list(value: JsValue, config: JsValue) -> WasmCoercionResult {
     let val: serde_json::Value =
-        serde_wasm_bindgen::from_value(value).unwrap_or(serde_json::Value::Null);
+        crate::js_json::from_value(value).unwrap_or(serde_json::Value::Null);
     let cfg: Option<serde_json::Value> = if config.is_null() || config.is_undefined() {
         None
     } else {
-        serde_wasm_bindgen::from_value(config).ok()
+        crate::js_json::from_value(config).ok()
     };
     WasmCoercionResult {
         inner: coerce_resource_instance_list(&val, cfg.as_ref()),

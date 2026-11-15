@@ -1,6 +1,9 @@
 mod instance_wrapper_napi;
+mod json_arg;
 mod node_config_napi;
+
 use instance_wrapper_napi::NapiRdmCache;
+pub(crate) use json_arg::JsonArg;
 
 use std::collections::HashMap;
 
@@ -77,15 +80,15 @@ pub fn has_derive_provider(provider_id: String) -> bool {
 #[napi(js_name = "foldMayMatch")]
 pub fn fold_may_match(
     datatype: String,
-    summary: Option<serde_json::Value>,
-    predicate: serde_json::Value,
-    config: Option<serde_json::Value>,
+    #[napi(ts_arg_type = "any")] summary: Option<JsonArg>,
+    #[napi(ts_arg_type = "any")] predicate: JsonArg,
+    #[napi(ts_arg_type = "any")] config: Option<JsonArg>,
 ) -> bool {
     alizarin_core::datatype_fold::fold_may_match(
         &datatype,
-        &summary.unwrap_or(serde_json::Value::Null),
-        &predicate,
-        config.as_ref(),
+        &summary.map_or(serde_json::Value::Null, |s| s.0),
+        &predicate.0,
+        config.map(|c| c.0).as_ref(),
         Some(&extension_registry()),
     )
 }
@@ -414,13 +417,13 @@ impl NapiStaticResourceRegistry {
     #[napi]
     pub fn merge_from_resources(
         &mut self,
-        resources: Vec<serde_json::Value>,
+        #[napi(ts_arg_type = "Array<any>")] resources: Vec<JsonArg>,
         store_full: Option<bool>,
         include_caches: Option<bool>,
     ) -> Result<()> {
         let resources = resources
             .into_iter()
-            .map(serde_json::from_value)
+            .map(|resource| serde_json::from_value(resource.0))
             .collect::<std::result::Result<Vec<StaticResource>, _>>()
             .map_err(|e| napi::Error::from_reason(format!("Invalid resource: {}", e)))?;
         self.inner.merge_from_resources(
@@ -433,8 +436,8 @@ impl NapiStaticResourceRegistry {
 
     /// Add a single resource summary given as a JS object.
     #[napi]
-    pub fn insert(&mut self, summary: serde_json::Value) -> Result<()> {
-        let summary: StaticResourceSummary = serde_json::from_value(summary)
+    pub fn insert(&mut self, #[napi(ts_arg_type = "any")] summary: JsonArg) -> Result<()> {
+        let summary: StaticResourceSummary = serde_json::from_value(summary.0)
             .map_err(|e| napi::Error::from_reason(format!("Invalid summary: {}", e)))?;
         self.inner.insert(summary);
         Ok(())
@@ -943,11 +946,11 @@ pub fn compose_resource_layers(
 #[napi(js_name = "extensionCoerce")]
 pub fn extension_coerce(
     datatype: String,
-    value: serde_json::Value,
-    config: Option<serde_json::Value>,
+    #[napi(ts_arg_type = "any")] value: JsonArg,
+    #[napi(ts_arg_type = "any")] config: Option<JsonArg>,
 ) -> Result<Option<serde_json::Value>> {
     let registry = extension_registry();
-    match registry.coerce(&datatype, &value, config.as_ref()) {
+    match registry.coerce(&datatype, &value.0, config.map(|c| c.0).as_ref()) {
         Ok(Some(result)) => {
             let mut output = serde_json::json!({
                 "tileData": result.tile_data,
@@ -969,12 +972,12 @@ pub fn extension_coerce(
 #[napi(js_name = "extensionRenderDisplay")]
 pub fn extension_render_display(
     datatype: String,
-    tile_data: serde_json::Value,
+    #[napi(ts_arg_type = "any")] tile_data: JsonArg,
     language: String,
 ) -> Result<Option<String>> {
     let registry = extension_registry();
     registry
-        .render_display(&datatype, &tile_data, &language, None)
+        .render_display(&datatype, &tile_data.0, &language, None)
         .map_err(|e| napi::Error::from_reason(e.message))
 }
 
@@ -984,12 +987,12 @@ pub fn extension_render_display(
 #[napi(js_name = "extensionResolveMarkers")]
 pub fn extension_resolve_markers(
     datatype: String,
-    tile_data: serde_json::Value,
+    #[napi(ts_arg_type = "any")] tile_data: JsonArg,
     language: String,
 ) -> Result<serde_json::Value> {
     let registry = extension_registry();
     registry
-        .resolve_markers(&datatype, &tile_data, &language)
+        .resolve_markers(&datatype, &tile_data.0, &language)
         .map_err(|e| napi::Error::from_reason(e.message))
 }
 
@@ -1041,10 +1044,10 @@ pub fn parse_skos_xml_to_collection(
 /// Serialize a single SkosCollection to SKOS RDF/XML.
 #[napi(js_name = "collectionToSkosXml")]
 pub fn collection_to_skos_xml_napi(
-    collection_json: serde_json::Value,
+    #[napi(ts_arg_type = "any")] collection_json: JsonArg,
     base_uri: String,
 ) -> Result<String> {
-    let collection: SkosCollection = serde_json::from_value(collection_json).map_err(|e| {
+    let collection: SkosCollection = serde_json::from_value(collection_json.0).map_err(|e| {
         napi::Error::from_reason(format!("Failed to deserialize collection: {}", e))
     })?;
     Ok(alizarin_core::skos::collection_to_skos_xml(
@@ -1056,11 +1059,11 @@ pub fn collection_to_skos_xml_napi(
 /// Serialize multiple SkosCollections to SKOS RDF/XML.
 #[napi(js_name = "collectionsToSkosXml")]
 pub fn collections_to_skos_xml_napi(
-    collections_json: serde_json::Value,
+    #[napi(ts_arg_type = "any")] collections_json: JsonArg,
     base_uri: String,
 ) -> Result<String> {
     let collections: Vec<SkosCollection> =
-        serde_json::from_value(collections_json).map_err(|e| {
+        serde_json::from_value(collections_json.0).map_err(|e| {
             napi::Error::from_reason(format!("Failed to deserialize collections: {}", e))
         })?;
     Ok(alizarin_core::skos::collections_to_skos_xml(
@@ -1155,8 +1158,10 @@ pub fn find_needed_collections(
 /// registry hands back plain objects, so this stands in for the WASM
 /// `StaticResourceSummary.toMetadata()`.
 #[napi]
-pub fn summary_to_metadata(summary: serde_json::Value) -> Result<serde_json::Value> {
-    let summary: StaticResourceSummary = serde_json::from_value(summary)
+pub fn summary_to_metadata(
+    #[napi(ts_arg_type = "any")] summary: JsonArg,
+) -> Result<serde_json::Value> {
+    let summary: StaticResourceSummary = serde_json::from_value(summary.0)
         .map_err(|e| napi::Error::from_reason(format!("Invalid summary: {}", e)))?;
     serde_json::to_value(summary.to_metadata())
         .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))

@@ -5,6 +5,7 @@ pub mod extension_registry;
 pub mod graph;
 pub mod graph_mutator_wasm;
 pub mod instance_wrapper;
+pub mod js_json;
 pub mod json_conversion;
 pub mod label_resolution_wasm;
 pub mod model_wrapper;

@@ -41,7 +41,7 @@ pub fn collection_to_skos_xml_wasm(
     collection_js: JsValue,
     base_uri: &str,
 ) -> Result<String, JsValue> {
-    let collection: SkosCollection = serde_wasm_bindgen::from_value(collection_js)
+    let collection: SkosCollection = crate::js_json::from_value(collection_js)
         .map_err(|e| JsValue::from_str(&format!("Failed to deserialize collection: {}", e)))?;
 
     Ok(collection_to_skos_xml(&collection, base_uri))
@@ -53,7 +53,7 @@ pub fn collections_to_skos_xml_wasm(
     collections_js: JsValue,
     base_uri: &str,
 ) -> Result<String, JsValue> {
-    let collections: Vec<SkosCollection> = serde_wasm_bindgen::from_value(collections_js)
+    let collections: Vec<SkosCollection> = crate::js_json::from_value(collections_js)
         .map_err(|e| JsValue::from_str(&format!("Failed to deserialize collections: {}", e)))?;
 
     Ok(collections_to_skos_xml(&collections, base_uri))

@@ -32,7 +32,7 @@ export declare function hasDeriveProvider(providerId: string): boolean
  * `{bbox: [minx, miny, maxx, maxy]}`); anything undecidable gives `true`. A
  * null summary folded nothing. Equivalent to WASM's and Python's.
  */
-export declare function foldMayMatch(datatype: string, summary: any | undefined | null, predicate: any, config?: any | undefined | null): boolean
+export declare function foldMayMatch(datatype: string, summary: any, predicate: any, config?: any): boolean
 /**
  * The language a plain string is taken as (coercion, edits), as on WASM and
  * Python: core's, process-wide.
@@ -91,7 +91,7 @@ export declare function composeResourceLayers(resourcesJson: string, baseGraphJs
  *
  * Returns `{ tileData, displayValue }` or null if no handler is registered.
  */
-export declare function extensionCoerce(datatype: string, value: any, config?: any | undefined | null): any | null
+export declare function extensionCoerce(datatype: string, value: any, config?: any): any | null
 /**
  * Render a display string for tile data using the extension handler.
  *

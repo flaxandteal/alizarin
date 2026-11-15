@@ -250,6 +250,15 @@ describe(`Backend consistency [${getBackend()}]`, () => {
       expect(child("basic_info")).toMatch(/^TILES_NOT_LOADED:/);
     });
 
+    test("a cyclic argument throws, leaving the process and wrapper usable", () => {
+      // NAPI's argument conversion once recursed until V8 aborted the process.
+      const fresh = createInstanceWrapperForModel(graph.graphid);
+      const op: any = { op: "set", alias: "statement", value: 1 };
+      op.self = op;
+      expect(() => fresh.applyEdits([op])).toThrow();
+      expect(fresh.isLazy()).toBe(false);
+    });
+
     test("serializes cards through core, in tile-data and display modes", () => {
       const basicInfo = modelWrapper.getNodeObjectsByAlias().get("basic_info")!.nodegroup_id;
       const card = (GroupJSON as any).graph[0].cards.find(

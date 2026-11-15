@@ -43,7 +43,7 @@ impl StaticTranslatableString {
 
         // Try to parse as object (translations map)
         if let Ok(translations) =
-            serde_wasm_bindgen::from_value::<HashMap<String, String>>(value.clone())
+            crate::js_json::from_value::<HashMap<String, String>>(value.clone())
         {
             return StaticTranslatableString(CoreTranslatableString::from_translations(
                 translations,
@@ -154,7 +154,7 @@ wasm_wrapper! {
 impl StaticGraphMeta {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticGraphMeta, JsValue> {
-        let data: StaticGraphMeta = serde_wasm_bindgen::from_value(json_data).map_err(|e| {
+        let data: StaticGraphMeta = crate::js_json::from_value(json_data).map_err(|e| {
             let error_msg = format!("Failed to deserialize StaticGraphMeta: {:?}", e);
             web_sys::console::error_1(&error_msg.clone().into());
             JsValue::from_str(&error_msg)
@@ -364,7 +364,7 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(js_name = setJsonLdContext)]
     pub fn set_jsonldcontext(&mut self, value: JsValue) -> Result<(), JsValue> {
-        self.jsonldcontext = serde_wasm_bindgen::from_value(value)?;
+        self.jsonldcontext = crate::js_json::from_value(value)?;
         Ok(())
     }
 
@@ -420,7 +420,7 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(js_name = setPublication)]
     pub fn set_publication(&mut self, value: JsValue) -> Result<(), JsValue> {
-        self.publication = serde_wasm_bindgen::from_value(value)?;
+        self.publication = crate::js_json::from_value(value)?;
         Ok(())
     }
 
@@ -433,7 +433,7 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(js_name = setRelatableResourceModelIds)]
     pub fn set_relatable_resource_model_ids(&mut self, value: JsValue) -> Result<(), JsValue> {
-        self.relatable_resource_model_ids = serde_wasm_bindgen::from_value(value)?;
+        self.relatable_resource_model_ids = crate::js_json::from_value(value)?;
         Ok(())
     }
 
@@ -446,7 +446,7 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(js_name = setResource2ResourceConstraints)]
     pub fn set_resource_2_resource_constraints(&mut self, value: JsValue) -> Result<(), JsValue> {
-        self.resource_2_resource_constraints = serde_wasm_bindgen::from_value(value)?;
+        self.resource_2_resource_constraints = crate::js_json::from_value(value)?;
         Ok(())
     }
 
@@ -512,7 +512,7 @@ wasm_wrapper! {
 impl StaticNode {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticNode, JsValue> {
-        let data: StaticNode = serde_wasm_bindgen::from_value(json_data)?;
+        let data: StaticNode = crate::js_json::from_value(json_data)?;
         Ok(data)
     }
 
@@ -770,7 +770,7 @@ impl StaticNode {
     #[wasm_bindgen(setter = config)]
     pub fn set_config_property(&mut self, value: JsValue) {
         // Transparently deserialize JS object to HashMap
-        match serde_wasm_bindgen::from_value(value) {
+        match crate::js_json::from_value(value) {
             Ok(config) => self.config = config,
             Err(e) => {
                 web_sys::console::error_1(&format!("Failed to set config: {}", e).into());
@@ -819,14 +819,14 @@ impl StaticNode {
         };
 
         // Convert to serde_json::Value to handle partial objects
-        let a: serde_json::Value = match serde_wasm_bindgen::from_value(a_normalized) {
+        let a: serde_json::Value = match crate::js_json::from_value(a_normalized) {
             Ok(v) => v,
             Err(e) => {
                 web_sys::console::error_1(&format!("Failed to deserialize node_a: {:?}", e).into());
                 return JsValue::NULL;
             }
         };
-        let b: serde_json::Value = match serde_wasm_bindgen::from_value(b_normalized) {
+        let b: serde_json::Value = match crate::js_json::from_value(b_normalized) {
             Ok(v) => v,
             Err(e) => {
                 web_sys::console::error_1(&format!("Failed to deserialize node_b: {:?}", e).into());
@@ -860,7 +860,7 @@ wasm_wrapper! {
 impl StaticNodegroup {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticNodegroup, JsValue> {
-        let data: CoreStaticNodegroup = serde_wasm_bindgen::from_value(json_data)?;
+        let data: CoreStaticNodegroup = crate::js_json::from_value(json_data)?;
         Ok(StaticNodegroup(data))
     }
 
@@ -948,7 +948,7 @@ wasm_wrapper! {
 impl StaticConstraint {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticConstraint, JsValue> {
-        let data: CoreStaticConstraint = serde_wasm_bindgen::from_value(json_data)?;
+        let data: CoreStaticConstraint = crate::js_json::from_value(json_data)?;
         Ok(StaticConstraint(data))
     }
 
@@ -973,7 +973,7 @@ impl StaticConstraint {
 
     #[wasm_bindgen(setter = nodes)]
     pub fn set_nodes(&mut self, value: JsValue) {
-        if let Ok(nodes) = serde_wasm_bindgen::from_value(value) {
+        if let Ok(nodes) = crate::js_json::from_value(value) {
             self.0.nodes = nodes;
         }
     }
@@ -998,7 +998,7 @@ wasm_wrapper! {
 impl StaticPublication {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticPublication, JsValue> {
-        let data: CoreStaticPublication = serde_wasm_bindgen::from_value(json_data)?;
+        let data: CoreStaticPublication = crate::js_json::from_value(json_data)?;
         Ok(StaticPublication(data))
     }
 
@@ -1058,7 +1058,7 @@ wasm_wrapper! {
 impl StaticCardsXNodesXWidgets {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticCardsXNodesXWidgets, JsValue> {
-        let data: CoreStaticCardsXNodesXWidgets = serde_wasm_bindgen::from_value(json_data)?;
+        let data: CoreStaticCardsXNodesXWidgets = crate::js_json::from_value(json_data)?;
         Ok(StaticCardsXNodesXWidgets(data))
     }
 
@@ -1086,7 +1086,7 @@ impl StaticCardsXNodesXWidgets {
 
     #[wasm_bindgen(setter = config)]
     pub fn set_config(&mut self, value: JsValue) {
-        if let Ok(config) = serde_wasm_bindgen::from_value(value) {
+        if let Ok(config) = crate::js_json::from_value(value) {
             self.0.config = config;
         }
     }
@@ -1121,7 +1121,7 @@ wasm_wrapper! {
 impl StaticFunctionsXGraphs {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticFunctionsXGraphs, JsValue> {
-        let data: CoreStaticFunctionsXGraphs = serde_wasm_bindgen::from_value(json_data)?;
+        let data: CoreStaticFunctionsXGraphs = crate::js_json::from_value(json_data)?;
         Ok(StaticFunctionsXGraphs(data))
     }
 
@@ -1148,7 +1148,7 @@ impl StaticFunctionsXGraphs {
 
     #[wasm_bindgen(setter = config)]
     pub fn set_config(&mut self, value: JsValue) {
-        if let Ok(config) = serde_wasm_bindgen::from_value(value) {
+        if let Ok(config) = crate::js_json::from_value(value) {
             self.0.config = config;
         }
     }
@@ -1180,7 +1180,7 @@ wasm_wrapper! {
 impl StaticCard {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticCard, JsValue> {
-        let data: CoreStaticCard = serde_wasm_bindgen::from_value(json_data)?;
+        let data: CoreStaticCard = crate::js_json::from_value(json_data)?;
         Ok(StaticCard(data))
     }
 
@@ -1235,7 +1235,7 @@ impl StaticCard {
 
     #[wasm_bindgen(setter = config)]
     pub fn set_config(&mut self, value: JsValue) {
-        if let Ok(config) = serde_wasm_bindgen::from_value(value) {
+        if let Ok(config) = crate::js_json::from_value(value) {
             self.0.config = Some(config);
         }
     }
@@ -1247,7 +1247,7 @@ impl StaticCard {
 
     #[wasm_bindgen(setter = constraints)]
     pub fn set_constraints(&mut self, value: JsValue) {
-        if let Ok(constraints) = serde_wasm_bindgen::from_value(value) {
+        if let Ok(constraints) = crate::js_json::from_value(value) {
             self.0.constraints = constraints;
         }
     }
@@ -1332,7 +1332,7 @@ impl StaticTile {
 impl StaticTile {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticTile, JsValue> {
-        let data: CoreStaticTile = serde_wasm_bindgen::from_value(json_data)?;
+        let data: CoreStaticTile = crate::js_json::from_value(json_data)?;
         Ok(StaticTile(data))
     }
 
@@ -1426,14 +1426,14 @@ impl StaticTile {
                 let mut new_data = BTreeMap::new();
                 map.for_each(&mut |val, key| {
                     if let Some(key_str) = key.as_string() {
-                        if let Ok(json_val) = serde_wasm_bindgen::from_value(val) {
+                        if let Ok(json_val) = crate::js_json::from_value(val) {
                             new_data.insert(key_str, json_val);
                         }
                     }
                 });
                 self.0.data = new_data;
             } else if let Ok(obj_data) =
-                serde_wasm_bindgen::from_value::<BTreeMap<String, serde_json::Value>>(value)
+                crate::js_json::from_value::<BTreeMap<String, serde_json::Value>>(value)
             {
                 self.0.data = obj_data;
             }
@@ -1513,7 +1513,7 @@ impl StaticTile {
     pub fn set_provisionaledits(&mut self, value: JsValue) {
         if value.is_null() {
             self.0.provisionaledits = None;
-        } else if let Ok(edits) = serde_wasm_bindgen::from_value(value) {
+        } else if let Ok(edits) = crate::js_json::from_value(value) {
             self.0.provisionaledits = Some(edits);
         }
     }
@@ -1841,7 +1841,7 @@ wasm_wrapper! {
 impl StaticEdge {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticEdge, JsValue> {
-        let data: CoreStaticEdge = serde_wasm_bindgen::from_value(json_data)?;
+        let data: CoreStaticEdge = crate::js_json::from_value(json_data)?;
         Ok(StaticEdge(data))
     }
 
@@ -1939,7 +1939,7 @@ impl StaticGraph {
     #[wasm_bindgen(constructor)]
     pub fn new(json_data: JsValue) -> Result<StaticGraph, JsValue> {
         // Log the incoming data for debugging
-        let mut data: CoreStaticGraph = serde_wasm_bindgen::from_value(json_data).map_err(|e| {
+        let mut data: CoreStaticGraph = crate::js_json::from_value(json_data).map_err(|e| {
             let error_string = e.to_string();
 
             // Log detailed error information
@@ -2026,7 +2026,7 @@ impl StaticGraph {
 
     #[wasm_bindgen(setter = nodes)]
     pub fn set_nodes(&mut self, value: JsValue) {
-        if let Ok(nodes) = serde_wasm_bindgen::from_value(value) {
+        if let Ok(nodes) = crate::js_json::from_value(value) {
             self.0.nodes = nodes;
             self.0.build_indices();
         }
@@ -2043,7 +2043,7 @@ impl StaticGraph {
 
     #[wasm_bindgen(setter = edges)]
     pub fn set_edges(&mut self, value: JsValue) {
-        if let Ok(edges) = serde_wasm_bindgen::from_value(value) {
+        if let Ok(edges) = crate::js_json::from_value(value) {
             self.0.edges = edges;
         }
     }
@@ -2059,7 +2059,7 @@ impl StaticGraph {
 
     #[wasm_bindgen(setter = nodegroups)]
     pub fn set_nodegroups(&mut self, value: JsValue) {
-        if let Ok(nodegroups) = serde_wasm_bindgen::from_value(value) {
+        if let Ok(nodegroups) = crate::js_json::from_value(value) {
             self.0.nodegroups = nodegroups;
         }
     }
@@ -2081,7 +2081,7 @@ impl StaticGraph {
     #[wasm_bindgen(setter = cards)]
     pub fn set_cards(&mut self, value: JsValue) {
         if let Ok(cards) =
-            serde_wasm_bindgen::from_value::<Option<Vec<alizarin_core::StaticCard>>>(value)
+            crate::js_json::from_value::<Option<Vec<alizarin_core::StaticCard>>>(value)
         {
             self.0.cards = cards;
         }
@@ -2103,7 +2103,7 @@ impl StaticGraph {
 
     #[wasm_bindgen(setter = cards_x_nodes_x_widgets)]
     pub fn set_cards_x_nodes_x_widgets(&mut self, value: JsValue) {
-        if let Ok(cards_x_nodes_x_widgets) = serde_wasm_bindgen::from_value::<
+        if let Ok(cards_x_nodes_x_widgets) = crate::js_json::from_value::<
             Option<Vec<alizarin_core::StaticCardsXNodesXWidgets>>,
         >(value)
         {
@@ -2352,8 +2352,8 @@ impl WKRM {
             meta_js.clone()
         };
 
-        let meta: alizarin_core::StaticGraphMeta =
-            serde_wasm_bindgen::from_value(value_to_deserialize).map_err(|e| {
+        let meta: alizarin_core::StaticGraphMeta = crate::js_json::from_value(value_to_deserialize)
+            .map_err(|e| {
                 let error_msg = format!("Failed to deserialize StaticGraphMeta for WKRM: {:?}", e);
                 web_sys::console::error_1(&error_msg.clone().into());
                 JsValue::from_str(&error_msg)
@@ -2450,7 +2450,7 @@ impl WKRM {
 
     #[wasm_bindgen(setter = meta)]
     pub fn set_meta(&mut self, value: JsValue) {
-        if let Ok(meta) = serde_wasm_bindgen::from_value::<alizarin_core::StaticGraphMeta>(value) {
+        if let Ok(meta) = crate::js_json::from_value::<alizarin_core::StaticGraphMeta>(value) {
             self.meta = meta;
         }
     }
@@ -2562,7 +2562,7 @@ impl StaticResourceSummary {
     #[wasm_bindgen(constructor)]
     pub fn new(data: JsValue) -> Result<StaticResourceSummary, JsValue> {
         let mut summary: CoreStaticResourceSummary =
-            serde_wasm_bindgen::from_value(data).map_err(|e| {
+            crate::js_json::from_value(data).map_err(|e| {
                 JsValue::from_str(&format!(
                     "Failed to deserialize StaticResourceSummary: {:?}",
                     e
@@ -2737,7 +2737,7 @@ impl StaticResourceReference {
     #[wasm_bindgen(constructor)]
     pub fn new(data: JsValue) -> Result<StaticResourceReference, JsValue> {
         let reference: CoreStaticResourceReference =
-            serde_wasm_bindgen::from_value(data).map_err(|e| {
+            crate::js_json::from_value(data).map_err(|e| {
                 JsValue::from_str(&format!(
                     "Failed to deserialize StaticResourceReference: {:?}",
                     e
@@ -2797,7 +2797,7 @@ wasm_wrapper! {
 impl StaticResource {
     #[wasm_bindgen(constructor)]
     pub fn new(data: JsValue) -> Result<StaticResource, JsValue> {
-        let mut core: CoreStaticResource = serde_wasm_bindgen::from_value(data).map_err(|e| {
+        let mut core: CoreStaticResource = crate::js_json::from_value(data).map_err(|e| {
             JsValue::from_str(&format!("Failed to deserialize StaticResource: {:?}", e))
         })?;
 
@@ -2904,7 +2904,7 @@ impl StaticResource {
             self.0.tiles = None;
             self.0.tiles_loaded = Some(false);
         } else {
-            match serde_wasm_bindgen::from_value::<Vec<alizarin_core::StaticTile>>(value) {
+            match crate::js_json::from_value::<Vec<alizarin_core::StaticTile>>(value) {
                 Ok(tiles) => {
                     self.0.tiles_loaded = Some(true);
                     self.0.tiles = Some(tiles);
@@ -2924,7 +2924,7 @@ impl StaticResource {
 
     #[wasm_bindgen(setter)]
     pub fn set_metadata(&mut self, value: JsValue) {
-        if let Ok(metadata) = serde_wasm_bindgen::from_value(value) {
+        if let Ok(metadata) = crate::js_json::from_value(value) {
             self.0.metadata = metadata;
         }
     }
@@ -2942,7 +2942,7 @@ impl StaticResource {
         if value.is_null() || value.is_undefined() {
             self.0.cache = None;
         } else {
-            self.0.cache = serde_wasm_bindgen::from_value(value).ok();
+            self.0.cache = crate::js_json::from_value(value).ok();
         }
     }
 
@@ -2959,7 +2959,7 @@ impl StaticResource {
         if value.is_null() || value.is_undefined() {
             self.0.scopes = None;
         } else {
-            self.0.scopes = serde_wasm_bindgen::from_value(value).ok();
+            self.0.scopes = crate::js_json::from_value(value).ok();
         }
     }
 

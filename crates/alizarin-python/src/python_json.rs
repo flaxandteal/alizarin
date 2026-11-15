@@ -9,8 +9,20 @@ use pyo3::types::{PyDict, PyList};
 /// Convert a Python object to serde_json::Value
 ///
 /// Handles conversion of Python primitives, lists, and dicts to JSON.
-/// Falls back to Python's json.dumps() for complex types.
+/// Falls back to Python's json.dumps() for complex types. A list or dict that
+/// contains itself raises ValueError, as json.dumps does, rather than recursing
+/// until the process overflows its stack.
 pub fn python_to_json(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<serde_json::Value> {
+    to_json_tracked(py, obj, &mut Vec::new())
+}
+
+/// `python_to_json`, with `open` the lists and dicts being converted around
+/// `obj` (by address), so a cycle is caught.
+fn to_json_tracked(
+    py: Python<'_>,
+    obj: &Bound<'_, PyAny>,
+    open: &mut Vec<usize>,
+) -> PyResult<serde_json::Value> {
     if obj.is_none() {
         return Ok(serde_json::Value::Null);
     }
@@ -34,23 +46,32 @@ pub fn python_to_json(py: Python<'_>, obj: &Bound<'_, PyAny>) -> PyResult<serde_
         return Ok(serde_json::Value::String(s));
     }
 
-    // Try as list
-    if let Ok(list) = obj.downcast::<PyList>() {
-        let mut arr = Vec::new();
-        for item in list.iter() {
-            arr.push(python_to_json(py, &item)?);
+    let is_list = obj.downcast::<PyList>().is_ok();
+    let is_dict = !is_list && obj.downcast::<PyDict>().is_ok();
+    if is_list || is_dict {
+        let address = obj.as_ptr() as usize;
+        if open.contains(&address) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "Circular reference detected",
+            ));
         }
-        return Ok(serde_json::Value::Array(arr));
-    }
-
-    // Try as dict
-    if let Ok(dict) = obj.downcast::<PyDict>() {
-        let mut map = serde_json::Map::new();
-        for (k, v) in dict.iter() {
-            let key: String = k.extract()?;
-            map.insert(key, python_to_json(py, &v)?);
-        }
-        return Ok(serde_json::Value::Object(map));
+        open.push(address);
+        let converted = if let Ok(list) = obj.downcast::<PyList>() {
+            let mut arr = Vec::new();
+            for item in list.iter() {
+                arr.push(to_json_tracked(py, &item, open)?);
+            }
+            serde_json::Value::Array(arr)
+        } else {
+            let mut map = serde_json::Map::new();
+            for (k, v) in obj.downcast::<PyDict>()?.iter() {
+                let key: String = k.extract()?;
+                map.insert(key, to_json_tracked(py, &v, open)?);
+            }
+            serde_json::Value::Object(map)
+        };
+        open.pop();
+        return Ok(converted);
     }
 
     // Fall back to JSON serialization via Python's json module

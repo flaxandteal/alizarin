@@ -545,7 +545,7 @@ impl WASMResourceModelWrapper {
         let mut errors: Vec<String> = Vec::new();
         // for_each, not an iterator, to avoid iterator retention.
         permissions.for_each(&mut |value, key| match key.as_string() {
-            Some(key) => match serde_wasm_bindgen::from_value::<serde_json::Value>(value) {
+            Some(key) => match crate::js_json::from_value::<serde_json::Value>(value) {
                 Ok(rule) => {
                     entries.insert(key, rule);
                 }

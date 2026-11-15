@@ -68,7 +68,7 @@ pub fn wasm_find_needed_collections(
     let tree: serde_json::Value = serde_json::from_str(tree_json)
         .map_err(|e| JsError::new(&format!("Invalid tree JSON: {}", e)))?;
 
-    let alias_map: HashMap<String, String> = serde_wasm_bindgen::from_value(alias_to_collection)
+    let alias_map: HashMap<String, String> = crate::js_json::from_value(alias_to_collection)
         .map_err(|e| JsError::new(&format!("Invalid alias map: {}", e)))?;
 
     let needed = find_needed_collections(&tree, &alias_map);
@@ -108,12 +108,11 @@ pub fn wasm_resolve_labels_with_lookup(
     let tree: serde_json::Value = serde_json::from_str(tree_json)
         .map_err(|e| JsError::new(&format!("Invalid tree JSON: {}", e)))?;
 
-    let alias_map: HashMap<String, String> = serde_wasm_bindgen::from_value(alias_to_collection)
+    let alias_map: HashMap<String, String> = crate::js_json::from_value(alias_to_collection)
         .map_err(|e| JsError::new(&format!("Invalid alias map: {}", e)))?;
 
-    let table: HashMap<String, HashMap<String, String>> =
-        serde_wasm_bindgen::from_value(lookup_table)
-            .map_err(|e| JsError::new(&format!("Invalid lookup table: {}", e)))?;
+    let table: HashMap<String, HashMap<String, String>> = crate::js_json::from_value(lookup_table)
+        .map_err(|e| JsError::new(&format!("Invalid lookup table: {}", e)))?;
 
     let lookup = TableLookup { table };
 

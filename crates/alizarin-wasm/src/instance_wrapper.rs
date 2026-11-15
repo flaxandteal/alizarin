@@ -391,7 +391,7 @@ impl WASMResourceInstanceWrapper {
     /// Use this for initial loading from JSON files
     #[wasm_bindgen(js_name = loadTiles)]
     pub fn load_tiles_js(&self, tiles_js: JsValue) -> Result<(), JsValue> {
-        let tiles: Vec<StaticTile> = serde_wasm_bindgen::from_value(tiles_js)
+        let tiles: Vec<StaticTile> = crate::js_json::from_value(tiles_js)
             .map_err(|e| JsValue::from_str(&format!("Failed to deserialize tiles: {:?}", e)))?;
         self.load_tiles(tiles, true)
     }
@@ -401,7 +401,7 @@ impl WASMResourceInstanceWrapper {
     /// Unlike loadTiles, this adds to existing tiles without clearing them
     #[wasm_bindgen(js_name = appendTiles)]
     pub fn append_tiles_js(&self, tiles_js: JsValue) -> Result<(), JsValue> {
-        let tiles: Vec<StaticTile> = serde_wasm_bindgen::from_value(tiles_js)
+        let tiles: Vec<StaticTile> = crate::js_json::from_value(tiles_js)
             .map_err(|e| JsValue::from_str(&format!("Failed to deserialize tiles: {:?}", e)))?;
         self.append_tiles(tiles, true)
     }
@@ -416,7 +416,7 @@ impl WASMResourceInstanceWrapper {
         tiles_js: JsValue,
         nodegroup_id: Option<String>,
     ) -> Result<(), JsValue> {
-        let tiles: Vec<StaticTile> = serde_wasm_bindgen::from_value(tiles_js)
+        let tiles: Vec<StaticTile> = crate::js_json::from_value(tiles_js)
             .map_err(|e| JsValue::from_str(&format!("Failed to deserialize tiles: {:?}", e)))?;
         self.append_fetched_tiles(tiles, nodegroup_id.as_deref())
     }
@@ -1122,7 +1122,7 @@ impl WASMResourceInstanceWrapper {
     /// `{upserted, removed}`. Core's, as on NAPI and Python.
     #[wasm_bindgen(js_name = applyEdits)]
     pub fn apply_edits(&self, ops: JsValue) -> Result<JsValue, JsValue> {
-        let ops: Vec<alizarin_core::EditOp> = serde_wasm_bindgen::from_value(ops)
+        let ops: Vec<alizarin_core::EditOp> = crate::js_json::from_value(ops)
             .map_err(|e| JsValue::from_str(&format!("invalid edits: {e}")))?;
         let mut core = self.core.borrow_mut();
         let graph_id = core.graph_id.clone();

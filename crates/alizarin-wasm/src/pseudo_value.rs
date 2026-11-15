@@ -582,8 +582,7 @@ impl PseudoValue {
             self.inner.borrow_mut().core.set_tile(None);
         } else {
             // Convert JsValue to StaticTile via serde deserialization
-            if let Ok(core_tile) = serde_wasm_bindgen::from_value::<alizarin_core::StaticTile>(tile)
-            {
+            if let Ok(core_tile) = crate::js_json::from_value::<alizarin_core::StaticTile>(tile) {
                 self.inner
                     .borrow_mut()
                     .core
@@ -605,7 +604,7 @@ impl PseudoValue {
             inner.core.tile_data = None;
         } else {
             // Convert JsValue to serde_json::Value for storage
-            match serde_wasm_bindgen::from_value::<serde_json::Value>(value) {
+            match crate::js_json::from_value::<serde_json::Value>(value) {
                 Ok(json_value) => {
                     inner.core.tile_data = Some(json_value);
                 }

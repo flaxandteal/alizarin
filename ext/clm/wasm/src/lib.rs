@@ -23,7 +23,7 @@ pub fn render_reference_display(
     tile_data: JsValue,
     language: &str,
 ) -> Result<Option<String>, JsError> {
-    let json: serde_json::Value = serde_wasm_bindgen::from_value(tile_data)
+    let json: serde_json::Value = alizarin_extension_api::js_json::from_value(tile_data)
         .map_err(|e| JsError::new(&format!("Failed to parse tile data: {}", e)))?;
 
     let display = alizarin_clm_core::render_reference_display_tile(&json, Some(language));
@@ -40,7 +40,7 @@ pub fn render_reference_display(
 /// `alizarin-clm-core`).
 #[wasm_bindgen(js_name = referenceNodeConfig)]
 pub fn reference_node_config(config: JsValue) -> Result<JsValue, JsError> {
-    let json: serde_json::Value = serde_wasm_bindgen::from_value(config)
+    let json: serde_json::Value = alizarin_extension_api::js_json::from_value(config)
         .map_err(|e| JsError::new(&format!("Failed to parse node config: {}", e)))?;
     let out = alizarin_clm_core::reference_node_config(&json);
     // Nulls stay null (not undefined), so the config matches NAPI's and Python's.
@@ -56,7 +56,7 @@ pub fn reference_node_config(config: JsValue) -> Result<JsValue, JsError> {
 /// Whether a reference node displays as a list (it is multi-valued).
 #[wasm_bindgen(js_name = referenceDisplayAsList)]
 pub fn reference_display_as_list(config: JsValue) -> bool {
-    serde_wasm_bindgen::from_value::<serde_json::Value>(config)
+    alizarin_extension_api::js_json::from_value::<serde_json::Value>(config)
         .map(|c| alizarin_clm_core::reference_node_config(&c)["multiValue"] == true)
         .unwrap_or(false)
 }

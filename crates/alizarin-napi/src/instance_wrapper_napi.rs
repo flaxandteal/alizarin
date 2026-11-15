@@ -290,8 +290,8 @@ impl NapiTileData {
     }
 
     #[napi]
-    pub fn set(&mut self, key: String, value: serde_json::Value) {
-        self.entries.lock().unwrap().insert(key, value);
+    pub fn set(&mut self, key: String, #[napi(ts_arg_type = "any")] value: crate::JsonArg) {
+        self.entries.lock().unwrap().insert(key, value.0);
     }
 
     #[napi]
@@ -353,7 +353,7 @@ impl NapiStaticTile {
     /// Exists to prevent TypeError in strict mode when JS does
     /// `tile.data = tile.data || new Map()`.
     #[napi(setter)]
-    pub fn set_data(&mut self, _value: serde_json::Value) {
+    pub fn set_data(&mut self, #[napi(ts_arg_type = "any")] _value: napi::JsUnknown) {
         // No-op: mutations go through NapiTileData.set/delete
     }
 
@@ -555,8 +555,8 @@ impl NapiPseudoValue {
     }
 
     #[napi]
-    pub fn set_tile_data(&mut self, value: serde_json::Value) {
-        self.inner.tile_data = Some(value);
+    pub fn set_tile_data(&mut self, #[napi(ts_arg_type = "any")] value: crate::JsonArg) {
+        self.inner.tile_data = Some(value.0);
     }
 
     // -- Relationship getters --
@@ -886,10 +886,10 @@ impl NapiResourceInstanceWrapper {
     #[napi]
     pub fn append_tiles(
         &mut self,
-        tiles_js: serde_json::Value,
+        #[napi(ts_arg_type = "any")] tiles_js: crate::JsonArg,
         assume_tiles_comprehensive_for_nodegroup: Option<bool>,
     ) -> Result<()> {
-        let tiles: Vec<StaticTile> = serde_json::from_value(tiles_js)
+        let tiles: Vec<StaticTile> = serde_json::from_value(tiles_js.0)
             .map_err(|e| napi::Error::from_reason(format!("Invalid tiles JSON: {e}")))?;
         let model = self.model()?;
         self.inner.merge_permitted_tiles(tiles, &model);
@@ -905,10 +905,10 @@ impl NapiResourceInstanceWrapper {
     #[napi]
     pub fn append_fetched_tiles(
         &mut self,
-        tiles_js: serde_json::Value,
+        #[napi(ts_arg_type = "any")] tiles_js: crate::JsonArg,
         nodegroup_id: Option<String>,
     ) -> Result<()> {
-        let tiles: Vec<StaticTile> = serde_json::from_value(tiles_js)
+        let tiles: Vec<StaticTile> = serde_json::from_value(tiles_js.0)
             .map_err(|e| napi::Error::from_reason(format!("Invalid tiles JSON: {e}")))?;
         let model = self.model()?;
         self.inner
@@ -1011,8 +1011,11 @@ impl NapiResourceInstanceWrapper {
     /// (`[{op: "set" | "add" | "remove", ...}]`), all or nothing, returning
     /// `{upserted, removed}`. Core's, as on WASM and Python.
     #[napi]
-    pub fn apply_edits(&mut self, ops: serde_json::Value) -> Result<serde_json::Value> {
-        let ops: Vec<alizarin_core::EditOp> = serde_json::from_value(ops)
+    pub fn apply_edits(
+        &mut self,
+        #[napi(ts_arg_type = "any")] ops: crate::JsonArg,
+    ) -> Result<serde_json::Value> {
+        let ops: Vec<alizarin_core::EditOp> = serde_json::from_value(ops.0)
             .map_err(|e| napi::Error::from_reason(format!("invalid edits: {e}")))?;
         let model = self.model()?;
         let delta = self
@@ -2098,9 +2101,12 @@ impl NapiResourceModelWrapper {
     /// Set permitted nodegroups. Accepts an object with boolean values or
     /// conditional rule objects { path, allowed }.
     #[napi(js_name = "setPermittedNodegroups")]
-    pub fn set_permitted_nodegroups(&mut self, permissions: serde_json::Value) -> Result<()> {
+    pub fn set_permitted_nodegroups(
+        &mut self,
+        #[napi(ts_arg_type = "any")] permissions: crate::JsonArg,
+    ) -> Result<()> {
         let perms =
-            PermissionRule::rules_from_json(&permissions).map_err(napi::Error::from_reason)?;
+            PermissionRule::rules_from_json(&permissions.0).map_err(napi::Error::from_reason)?;
         alizarin_core::set_model_permissions(&self.graph_id, perms)
             .map_err(napi::Error::from_reason)
     }

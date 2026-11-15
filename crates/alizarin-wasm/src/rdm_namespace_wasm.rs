@@ -166,9 +166,8 @@ pub fn generate_value_uuid(concept_id: &str, value: &str, language: &str) -> Str
 /// @returns A deterministic string representation
 #[wasm_bindgen(js_name = labelsToDeterministicString)]
 pub fn labels_to_deterministic_string(labels: JsValue) -> Result<String, JsError> {
-    let labels_map: std::collections::HashMap<String, String> =
-        serde_wasm_bindgen::from_value(labels)
-            .map_err(|e| JsError::new(&format!("Invalid labels object: {}", e)))?;
+    let labels_map: std::collections::HashMap<String, String> = crate::js_json::from_value(labels)
+        .map_err(|e| JsError::new(&format!("Invalid labels object: {}", e)))?;
 
     Ok(core_labels_to_string(&labels_map))
 }

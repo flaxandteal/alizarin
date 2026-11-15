@@ -107,6 +107,17 @@ def test_descriptors_and_pseudos_come_from_core(loaded):
     assert core.make_pseudo_value("guideline_approval", None, False, True).is_empty
 
 
+def test_a_cyclic_argument_raises_rather_than_crashing(loaded):
+    # Python's dict-to-JSON conversion once recursed until the process
+    # overflowed its stack.
+    model, core, _, _ = loaded
+    rule = {"path": ".x", "allowed": []}
+    rule["self"] = rule
+    with pytest.raises(ValueError, match="Circular reference"):
+        model.set_permitted_nodegroups({GUIDELINE_APPROVAL: rule})
+    assert core.tiles_loaded()
+
+
 def test_pruning_drops_tiles_the_model_no_longer_permits(loaded):
     model, core, resource, _ = loaded
     model.set_permitted_nodegroups({GUIDELINE_APPROVAL: False})

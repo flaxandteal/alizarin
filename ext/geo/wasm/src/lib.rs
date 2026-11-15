@@ -12,7 +12,7 @@ use wasm_bindgen::prelude::*;
 /// @returns a `ValidationResult` — `{ valid, errors, warnings }`
 #[wasm_bindgen(js_name = validateGeojson)]
 pub fn validate_geojson(value: JsValue) -> Result<JsValue, JsError> {
-    let json: serde_json::Value = serde_wasm_bindgen::from_value(value)
+    let json: serde_json::Value = alizarin_extension_api::js_json::from_value(value)
         .map_err(|e| JsError::new(&format!("Failed to parse value: {}", e)))?;
 
     let result = alizarin_geo_core::validate_geojson(&json);
@@ -22,7 +22,7 @@ pub fn validate_geojson(value: JsValue) -> Result<JsValue, JsError> {
 }
 
 fn from_js(value: JsValue, what: &str) -> Result<serde_json::Value, JsError> {
-    serde_wasm_bindgen::from_value(value)
+    alizarin_extension_api::js_json::from_value(value)
         .map_err(|e| JsError::new(&format!("Failed to parse {what}: {e}")))
 }
 
@@ -109,7 +109,7 @@ pub fn utm_derive(
         if found.is_null() || found.is_undefined() {
             return None;
         }
-        serde_wasm_bindgen::from_value(found).ok()
+        alizarin_extension_api::js_json::from_value(found).ok()
     };
     let derived = alizarin_geo_core::utm::derive_json(
         resource_id,

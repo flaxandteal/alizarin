@@ -22,6 +22,10 @@
 
 use std::ffi::c_void;
 
+/// Cycle-safe JSON arguments from JavaScript, for WASM bindings (`wasm` feature).
+#[cfg(feature = "wasm")]
+pub mod js_json;
+
 /// Version of the extension C ABI defined by this crate. Bump on any change to
 /// the shared struct layouts or function signatures below. Extensions stamp
 /// their compiled fingerprint into [`TypeHandlerInfo`]; the host refuses to load
