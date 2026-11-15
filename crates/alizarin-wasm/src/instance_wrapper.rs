@@ -473,23 +473,13 @@ impl WASMResourceInstanceWrapper {
 
     #[wasm_bindgen(js_name = pruneResourceTiles)]
     pub fn prune_resource_tiles(&mut self) -> Result<(), JsValue> {
-        let tiles = self
-            .core
-            .borrow()
-            .tiles
-            .to_owned()
-            .ok_or_else(|| JsValue::from_str("Tiles not initialized"))?;
-
-        let pruned_tiles: alizarin_core::TileStore = self.with_model_core(|core| {
-            Ok(tiles
-                .into_iter()
-                .filter(|(_tile_id, tile)| core.is_tile_permitted(tile))
-                .collect())
-        })?;
-
-        // Use borrow_mut() for assignment
-        self.core.borrow_mut().tiles = Some(pruned_tiles);
-        Ok(())
+        // Core's, as on NAPI and Python: the tiles and their index entries.
+        let mut core = self.core.borrow_mut();
+        let graph_id = core.graph_id.clone();
+        with_registry_model::<_, _, JsValue>(&graph_id, |model| {
+            core.prune_to_permitted(&model.model_access)
+                .map_err(|e| JsValue::from_str(&e))
+        })
     }
 
     /// Release all memory held by this instance.

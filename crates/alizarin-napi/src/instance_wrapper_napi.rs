@@ -933,18 +933,11 @@ impl NapiResourceInstanceWrapper {
     /// Prune tiles to only keep those in permitted nodegroups.
     #[napi(js_name = "pruneResourceTiles")]
     pub fn prune_resource_tiles(&mut self) -> Result<()> {
+        // Core's, as on WASM and Python: the tiles and their index entries.
         let model = self.model()?;
-        let tiles = self
-            .inner
-            .tiles
-            .take()
-            .ok_or_else(|| napi::Error::from_reason("Tiles not initialized".to_string()))?;
-        let pruned: alizarin_core::TileStore = tiles
-            .into_iter()
-            .filter(|(_id, tile)| model.is_tile_permitted(tile))
-            .collect();
-        self.inner.tiles = Some(pruned);
-        Ok(())
+        self.inner
+            .prune_to_permitted(&model)
+            .map_err(napi::Error::from_reason)
     }
 
     #[napi]

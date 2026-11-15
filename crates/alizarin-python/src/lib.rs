@@ -1683,6 +1683,19 @@ impl PyResourceModelWrapper {
             .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
     }
 
+    /// The permitted nodegroups as a nodegroup ID -> bool dict (conditional
+    /// rules count as permitted). As NAPI's and WASM's `getPermittedNodegroups`.
+    fn get_permitted_nodegroups(&self) -> PyResult<HashMap<String, bool>> {
+        Ok(self.model()?.get_permitted_nodegroups_bool())
+    }
+
+    /// Whether nodegroups without an explicit rule are permitted. As NAPI's
+    /// and WASM's `setDefaultAllowAllNodegroups`.
+    fn set_default_allow_all_nodegroups(&mut self, default_allow: bool) -> PyResult<()> {
+        alizarin_core::set_model_default_allow(&self.graph_id, default_allow)
+            .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)
+    }
+
     /// Check if a nodegroup is permitted (for nodegroup-level filtering)
     fn is_nodegroup_permitted(&self, nodegroup_id: &str) -> bool {
         self.model()

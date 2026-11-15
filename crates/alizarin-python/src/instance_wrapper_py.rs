@@ -59,6 +59,32 @@ pub(crate) fn model_for(graph_id: &str) -> PyResult<Arc<GraphModelAccess>> {
     })
 }
 
+/// A semantic-child error as a Python exception, keeping core's text
+/// (`TILES_NOT_LOADED:<nodegroups>` for the lazy loader), as on NAPI/WASM.
+fn sc_err(e: SemanticChildError) -> PyErr {
+    match e {
+        e @ SemanticChildError::TilesNotLoaded { .. } => {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
+        }
+        SemanticChildError::ChildNotFound { alias } => {
+            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
+                "Child node not found: {}",
+                alias
+            ))
+        }
+        SemanticChildError::TilesNotInitialized => {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Tiles not initialized")
+        }
+        SemanticChildError::ModelNotInitialized(msg) => {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Model not initialized: {}",
+                msg
+            ))
+        }
+        SemanticChildError::Other(msg) => PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(msg),
+    }
+}
+
 /// Python wrapper for ResourceInstanceWrapperCore.
 ///
 /// It holds no model of its own: it looks up its graph's shared model on each
@@ -88,6 +114,81 @@ impl PyResourceInstanceWrapperCore {
     /// Remove the compiled-in tile source.
     pub fn clear_tile_source(&mut self) {
         self.inner.tile_source = None;
+    }
+
+    /// Serialise the resource as a node-hierarchy tree with `options`,
+    /// populating from the loaded tiles first if needed: what `to_json` and
+    /// `to_display_json` share. `resolve` resolves concept labels through the
+    /// global RDM cache, as display mode needs.
+    fn serialize(
+        &self,
+        py: Python,
+        options: alizarin_core::SerializationOptions,
+        node_config_manager: Option<&alizarin_core::node_config::NodeConfigManager>,
+        resource_registry: Option<&alizarin_core::StaticResourceRegistry>,
+        resolve: bool,
+    ) -> PyResult<PyObject> {
+        // The model's graph: the registered one, or as pruned since.
+        let model = self.model()?;
+        let graph = model.get_graph_arc();
+
+        // Populated from the loaded tiles first if needed, as on NAPI and WASM.
+        self.inner
+            .ensure_populated(&*model)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+
+        let nodes_by_alias = graph.nodes_by_alias_arc().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>("Graph indices not built")
+        })?;
+        let edges = graph.edges_map().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>("Graph indices not built")
+        })?;
+        let root_alias = graph.root_node().alias.clone().unwrap_or_default();
+
+        let cache = self.inner.pseudo_cache.read().map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
+        })?;
+        let root_list = cache.get(&root_alias).ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Root pseudo not found in cache for alias '{}'",
+                root_alias
+            ))
+        })?;
+
+        let global_rdm = if resolve {
+            rdm_cache_py::get_global_rdm_cache()
+        } else {
+            None
+        };
+        let ext_registry = crate::build_extension_registry();
+        let ser_ctx = alizarin_core::type_serialization::SerializationContext {
+            node_config: None,
+            external_resolver: global_rdm
+                .as_ref()
+                .map(|c| c.inner() as &dyn alizarin_core::type_serialization::ExternalResolver),
+            concept_lookup: None,
+            resource_resolver: resource_registry
+                .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
+            extension_registry: Some(&ext_registry),
+        };
+        let ctx = alizarin_core::pseudo_value_core::VisitorContext {
+            pseudo_cache: &*cache,
+            nodes_by_alias,
+            edges,
+            depth: 0,
+            max_depth: 50,
+            serialization_options: options,
+            serialization_context: ser_ctx,
+            node_config_manager,
+        };
+
+        let json = root_list.to_json(&ctx);
+        pythonize::pythonize(py, &json).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                "Failed to convert to Python: {}",
+                e
+            ))
+        })
     }
 }
 
@@ -356,30 +457,7 @@ impl PyResourceInstanceWrapperCore {
                 &child_alias,
                 model,
             )
-            .map_err(|e| match e {
-                // Core's text (`TILES_NOT_LOADED:<nodegroup>`), as on NAPI/WASM.
-                e @ SemanticChildError::TilesNotLoaded { .. } => {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
-                }
-                SemanticChildError::ChildNotFound { alias } => {
-                    PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!(
-                        "Child node not found: {}",
-                        alias
-                    ))
-                }
-                SemanticChildError::TilesNotInitialized => {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Tiles not initialized")
-                }
-                SemanticChildError::ModelNotInitialized(msg) => {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "Model not initialized: {}",
-                        msg
-                    ))
-                }
-                SemanticChildError::Other(msg) => {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(msg)
-                }
-            })?;
+            .map_err(sc_err)?;
 
         Ok(PySemanticChildResult::from_core(result))
     }
@@ -440,6 +518,151 @@ impl PyResourceInstanceWrapperCore {
     /// and the nodegroup load states. Core's, as on NAPI and WASM.
     fn release(&mut self) {
         self.inner.release();
+    }
+
+    /// Load a whole StaticResource (`{resourceinstance, tiles}`) as a JSON
+    /// string: its metadata and permitted tiles, comprehensive unless told
+    /// otherwise. As NAPI's and WASM's `loadTilesFromResource`.
+    #[pyo3(signature = (resource_json, assume_tiles_comprehensive_for_nodegroup=true))]
+    fn load_tiles_from_resource(
+        &mut self,
+        resource_json: &str,
+        assume_tiles_comprehensive_for_nodegroup: bool,
+    ) -> PyResult<()> {
+        let resource: alizarin_core::StaticResource =
+            serde_json::from_str(resource_json).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "Invalid resource JSON: {e}"
+                ))
+            })?;
+        let model = self.model()?;
+        self.inner.resource_instance = Some(resource.resourceinstance.clone());
+        if let Some(tiles) = resource.tiles {
+            self.inner.load_permitted_tiles(tiles, &model);
+            if assume_tiles_comprehensive_for_nodegroup {
+                self.inner.mark_loaded_comprehensively(&model);
+            }
+        }
+        Ok(())
+    }
+
+    /// The stored tiles as they now stand (committed edits included, on-load
+    /// derived tiles left out), as a JSON string. As NAPI's and WASM's
+    /// `exportTilesJson`.
+    fn export_tiles_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.inner.stored_tiles())
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    }
+
+    /// Drop the tiles (and their index entries) the model no longer permits.
+    /// Core's, as NAPI's and WASM's `pruneResourceTiles`.
+    fn prune_resource_tiles(&mut self) -> PyResult<()> {
+        let model = self.model()?;
+        self.inner
+            .prune_to_permitted(&model)
+            .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)
+    }
+
+    /// Whether tiles have been loaded. Core's, as on NAPI and WASM.
+    fn tiles_loaded(&self) -> bool {
+        self.inner.tiles_loaded()
+    }
+
+    /// The tile `tile_id`, as a dict; KeyError if not loaded.
+    fn get_tile(&self, py: Python, tile_id: &str) -> PyResult<PyObject> {
+        let tile = self.inner.get_tile(tile_id).ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyKeyError, _>(format!("Tile '{}' not found", tile_id))
+        })?;
+        pythonize::pythonize(py, tile)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    }
+
+    /// The resource instance ID, if metadata is loaded.
+    fn get_resource_id(&self) -> Option<String> {
+        self.inner
+            .resource_instance
+            .as_ref()
+            .map(|ri| ri.resourceinstanceid.clone())
+    }
+
+    /// The resource's name: its metadata's, else its descriptors', else
+    /// `<Unnamed>`. Core's, as on NAPI and WASM.
+    fn get_name(&self) -> String {
+        self.inner.display_name()
+    }
+
+    /// The cached descriptors, built from the tiles (and cached) if
+    /// `recompute` or none are cached. Core's, as on NAPI and WASM.
+    #[pyo3(signature = (recompute=false))]
+    fn get_descriptors(&mut self, py: Python, recompute: bool) -> PyResult<PyObject> {
+        let graph_id = self.graph_id.clone();
+        let descriptors = self
+            .inner
+            .descriptors(recompute, || {
+                let graph = model_for(&graph_id)
+                    .map_err(|e| e.to_string())?
+                    .get_graph_arc();
+                Ok((graph, crate::build_extension_registry()))
+            })
+            .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)?;
+        pythonize::pythonize(py, &descriptors)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+    }
+
+    /// Every semantic child of a parent node, by alias. Errors propagate: in
+    /// lazy mode, `TILES_NOT_LOADED:<nodegroups>`. As NAPI's and WASM's
+    /// `getAllSemanticChildValues`.
+    #[pyo3(signature = (parent_tile_id, parent_node_id, parent_nodegroup_id))]
+    fn get_all_semantic_child_values(
+        &self,
+        parent_tile_id: Option<String>,
+        parent_node_id: String,
+        parent_nodegroup_id: Option<String>,
+    ) -> PyResult<HashMap<String, PySemanticChildResult>> {
+        let model = self.model()?;
+        let values = self
+            .inner
+            .get_all_semantic_child_values(
+                parent_tile_id.as_ref(),
+                &parent_node_id,
+                parent_nodegroup_id.as_ref(),
+                &*model,
+            )
+            .map_err(sc_err)?;
+        Ok(values
+            .into_iter()
+            .map(|(alias, value)| (alias, PySemanticChildResult::from_core(value)))
+            .collect())
+    }
+
+    /// The root pseudo value from the cache, if populated.
+    fn get_root_pseudo(&self) -> Option<PyPseudoValue> {
+        let model = self.model().ok()?;
+        let root =
+            alizarin_core::instance_wrapper_core::ModelAccess::get_root_node(&*model).ok()?;
+        let cached = self.inner.get_cached_pseudo(root.alias.as_deref()?)?;
+        cached
+            .values
+            .first()
+            .map(|v| PyPseudoValue::from_core(v.clone()))
+    }
+
+    /// Construct the pseudo for `alias`: a list, a value, or empty when not
+    /// permitted. Core's, as NAPI's and WASM's `makePseudoValue`.
+    #[pyo3(signature = (alias, tile_id, is_permitted, is_single))]
+    fn make_pseudo_value(
+        &self,
+        alias: &str,
+        tile_id: Option<&str>,
+        is_permitted: bool,
+        is_single: bool,
+    ) -> PyResult<PySemanticChildResult> {
+        let model = self.model()?;
+        let result = self
+            .inner
+            .make_pseudo_value(alias, tile_id, is_permitted, is_single, &*model)
+            .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)?;
+        Ok(PySemanticChildResult::from_core(result))
     }
 
     /// Clear the pseudo cache
@@ -680,14 +903,9 @@ impl PyResourceInstanceWrapperCore {
         })
     }
 
-    /// Serialize the populated pseudo_cache as a node-hierarchy display tree.
-    ///
-    /// This is the Python equivalent of WASM's `toDisplayJson()`. It traverses
-    /// the pseudo_cache using the node/edge graph hierarchy (not card hierarchy)
-    /// and serializes in display mode — resolving UUIDs to labels for concepts,
-    /// domain values, booleans, etc.
-    ///
-    /// Prerequisites: `populate()` must have been called.
+    /// The resource as a node-hierarchy tree in display mode: UUIDs resolved
+    /// to labels for concepts, domain values, booleans, etc. Populates from
+    /// the loaded tiles first if needed. As NAPI's and WASM's `toDisplayJson`.
     ///
     /// Args:
     ///     node_config_manager: Optional PyNodeConfigManager for domain/boolean lookups
@@ -700,73 +918,26 @@ impl PyResourceInstanceWrapperCore {
         language: Option<String>,
         resource_registry: Option<&crate::ResourceRegistry>,
     ) -> PyResult<PyObject> {
-        // The model's graph: the registered one, or as pruned since.
-        let model = self.model()?;
-        let graph = model.get_graph_arc();
-
-        // Populated from the loaded tiles first if needed, as on NAPI and WASM.
-        self.inner
-            .ensure_populated(&*model)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-
-        let nodes_by_alias = graph.nodes_by_alias_arc().ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>("Graph indices not built")
-        })?;
-
-        let edges = graph.edges_map().ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>("Graph indices not built")
-        })?;
-
-        let root_node = graph.root_node();
-        let root_alias = root_node.alias.clone().unwrap_or_default();
-
-        let cache = self.inner.pseudo_cache.read().map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("Cache lock failed: {}", e))
-        })?;
-
-        let root_list = cache.get(&root_alias).ok_or_else(|| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Root pseudo not found in cache for alias '{}' — was populate() called?",
-                root_alias
-            ))
-        })?;
-
         let lang = language.unwrap_or_else(|| "en".to_string());
-        let global_rdm = rdm_cache_py::get_global_rdm_cache();
-        let rdm_inner = global_rdm.as_ref().map(|c| c.inner());
-        let ncm = node_config_manager.map(|m| m.inner());
-        let core_registry = resource_registry.map(|r| r.inner());
+        self.serialize(
+            py,
+            alizarin_core::SerializationOptions::display(&lang),
+            node_config_manager.map(|m| m.inner()),
+            resource_registry.map(|r| r.inner()),
+            true,
+        )
+    }
 
-        let ext_registry = crate::build_extension_registry();
-        let ser_ctx = alizarin_core::type_serialization::SerializationContext {
-            node_config: None,
-            external_resolver: rdm_inner
-                .map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
-            concept_lookup: None,
-            resource_resolver: core_registry
-                .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
-            extension_registry: Some(&ext_registry),
-        };
-
-        let ctx = alizarin_core::pseudo_value_core::VisitorContext {
-            pseudo_cache: &*cache,
-            nodes_by_alias,
-            edges,
-            depth: 0,
-            max_depth: 50,
-            serialization_options: alizarin_core::SerializationOptions::display(&lang),
-            serialization_context: ser_ctx,
-            node_config_manager: ncm,
-        };
-
-        let json = root_list.to_json(&ctx);
-
-        pythonize::pythonize(py, &json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to convert to Python: {}",
-                e
-            ))
-        })
+    /// The resource as a node-hierarchy tree of raw tile values. Populates
+    /// from the loaded tiles first if needed. As NAPI's and WASM's `toJson`.
+    fn to_json(&self, py: Python) -> PyResult<PyObject> {
+        self.serialize(
+            py,
+            alizarin_core::SerializationOptions::tile_data(),
+            None,
+            None,
+            false,
+        )
     }
 
     /// Get nodegroup IDs needed to serialize a card (and its descendants).

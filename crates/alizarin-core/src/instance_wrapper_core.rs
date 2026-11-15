@@ -905,6 +905,22 @@ impl ResourceInstanceWrapperCore {
         }
     }
 
+    /// Drop every loaded tile `model` doesn't permit, with its index entry, as
+    /// every binding's `pruneResourceTiles` does. An error if no tiles are
+    /// loaded.
+    pub fn prune_to_permitted(
+        &mut self,
+        model: &crate::graph_model_access::GraphModelAccess,
+    ) -> Result<(), String> {
+        let tiles = self.tiles.as_mut().ok_or("tiles not loaded")?;
+        tiles.retain(|_, tile| model.is_tile_permitted(tile));
+        let kept: HashSet<String> = tiles.keys().cloned().collect();
+        for ids in self.nodegroup_index.values_mut() {
+            ids.retain(|id| kept.contains(id));
+        }
+        Ok(())
+    }
+
     /// Populate the pseudo cache from the loaded tiles if it hasn't been: what
     /// serialising (`toJson`, `toDisplayJson`) needs, so no binding's caller
     /// has to populate first. Loads nothing: tiles not loaded aren't there.
