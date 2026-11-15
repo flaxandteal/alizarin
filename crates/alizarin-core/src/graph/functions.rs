@@ -34,11 +34,9 @@ use crate::slice_source::{GraphSource, SliceMember, SliceSource};
 /// A **Derive** function: read the resource's EXISTING node values (`tiles`) and
 /// produce derived tiles for a target nodegroup.
 ///
-/// The tiles-in input is the key generalisation over the older
-/// [`ComputeTilesProvider`](super::computed_tiles::ComputeTilesProvider): it lets
-/// a *transform* read the value it converts (latlng → UTM reads the latlng tile),
-/// while a *generator* reads its inputs the same way (Gramadán reads the headword
-/// tile). MUST be pure and deterministic.
+/// Taking the tiles lets a *transform* read the value it converts (latlng →
+/// UTM reads the latlng tile), while a *generator* reads its inputs the same
+/// way (Gramadán reads the headword tile). MUST be pure and deterministic.
 pub trait DeriveProvider: Send + Sync {
     fn derive(
         &self,

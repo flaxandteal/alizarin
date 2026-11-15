@@ -60,7 +60,6 @@ pub use graph::{
     apply_aggregate_functions,
     apply_aggregate_functions_in_registry,
     apply_aggregate_functions_to_resource,
-    apply_compute_tiles,
     apply_derive_functions,
     apply_stored_derive_functions,
     apply_stored_derive_functions_to_resources,
@@ -88,7 +87,6 @@ pub use graph::{
     BatchMergeResult,
     // Computed tiles
     ComputeTilesConfig,
-    ComputeTilesProvider,
     DeriveMode,
     DeriveProvider,
     DescriptorProvider,
