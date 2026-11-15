@@ -317,6 +317,7 @@ pub fn stored_derive_functions(graph: &dyn GraphLookup) -> Result<Vec<ComputeTil
         }
         let config: ComputeTilesConfig = serde_json::from_value(f.config.clone())
             .map_err(|e| format!("derive function {}: invalid config: {e}", f.id))?;
+        let config = config.resolve_nodes(graph)?;
         if config.sources.is_empty() {
             return Err(format!(
                 "derive function {}: stored mode needs `sources`, the nodegroups whose \

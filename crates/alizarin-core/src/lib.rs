@@ -15,6 +15,7 @@ pub mod csv_business_data_loader;
 pub mod csv_model_loader;
 pub mod datatype_fold;
 pub mod datatype_index;
+pub mod derive_abi;
 pub mod exporter;
 pub mod extension_abi;
 pub mod extension_type_registry;

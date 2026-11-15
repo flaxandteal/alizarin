@@ -26,7 +26,7 @@ use std::ffi::c_void;
 /// the shared struct layouts or function signatures below. Extensions stamp
 /// their compiled fingerprint into [`TypeHandlerInfo`]; the host refuses to load
 /// an extension whose [`AbiFingerprint`] does not match its own.
-pub const ABI_VERSION: u32 = 4;
+pub const ABI_VERSION: u32 = 5;
 
 /// A compatibility token an extension embeds so the host can confirm — once, at
 /// load — that both sides share the same ABI before any raw pointers cross the
@@ -38,6 +38,7 @@ pub struct AbiFingerprint {
     pub version: u32,
     pub value_size: usize,
     pub handler_info_size: usize,
+    pub derive_info_size: usize,
 }
 
 /// The ABI fingerprint of the crate the caller was compiled against.
@@ -46,6 +47,7 @@ pub fn abi_fingerprint() -> AbiFingerprint {
         version: ABI_VERSION,
         value_size: std::mem::size_of::<serde_json::Value>(),
         handler_info_size: std::mem::size_of::<TypeHandlerInfo>(),
+        derive_info_size: std::mem::size_of::<DeriveProviderInfo>(),
     }
 }
 
@@ -521,6 +523,74 @@ pub type FoldMayMatchFn = unsafe extern "C" fn(
     predicate_ptr: *const c_void,
     config_ptr: *const c_void,
 ) -> bool;
+
+// =============================================================================
+// Derive providers
+// =============================================================================
+//
+// A Derive function (`alizarin_core::DeriveProvider`) compiled into an
+// extension. The host calls it with the resource's tiles and its declaration
+// (nodes already resolved), and hands it [`HostGraph`] for any further lookups
+// into the host's own graph: nothing graph-sized crosses the boundary.
+
+/// [`HostGraph::lookup`] kind: the graph's root node (`key` ignored).
+pub const LOOKUP_ROOT: u32 = 0;
+/// [`HostGraph::lookup`] kind: the node with alias `key`.
+pub const LOOKUP_NODE_BY_ALIAS: u32 = 1;
+/// [`HostGraph::lookup`] kind: the node with id `key`.
+pub const LOOKUP_NODE_BY_ID: u32 = 2;
+/// [`HostGraph::lookup`] kind: the nodegroup with id `key`.
+pub const LOOKUP_NODEGROUP_BY_ID: u32 = 3;
+
+/// Look one thing up in the host's graph: returns a `*const serde_json::Value`
+/// of the node or nodegroup (owned by the host, valid until the derive call
+/// returns, so nothing to free), or null if there is none.
+pub type GraphLookupFn = unsafe extern "C" fn(
+    ctx: *const c_void,
+    kind: u32,
+    key_ptr: *const u8,
+    key_len: usize,
+) -> *const c_void;
+
+/// The host's graph, as lookups: `lookup(ctx, kind, key)`.
+#[repr(C)]
+pub struct HostGraph {
+    pub ctx: *const c_void,
+    pub lookup: GraphLookupFn,
+}
+
+/// Result of a derive call: the derived tiles as a JSON array, or an error.
+/// Same layout as [`IndexSpecResult`]; freed via [`DeriveProviderInfo::free_fn`].
+pub type DeriveResult = IndexSpecResult;
+
+/// Derive tiles for a resource. `tiles_ptr` (the resource's tiles, a JSON
+/// array) and `config_ptr` (its `ComputeTilesConfig`, `resolved` filled in)
+/// are `*const serde_json::Value`, live for the call; `graph` answers lookups.
+pub type DeriveFn = unsafe extern "C" fn(
+    resource_id_ptr: *const u8,
+    resource_id_len: usize,
+    tiles_ptr: *const c_void,
+    config_ptr: *const c_void,
+    graph: *const HostGraph,
+) -> DeriveResult;
+
+/// Free a [`DeriveResult`] allocated by a [`DeriveFn`].
+pub type FreeDeriveFn = unsafe extern "C" fn(result: DeriveResult);
+
+/// A derive provider an extension exports: registered with the host under
+/// `provider_id` (the `provider` its declarations name).
+#[repr(C)]
+pub struct DeriveProviderInfo {
+    pub abi: AbiFingerprint,
+    pub provider_id_ptr: *const u8,
+    pub provider_id_len: usize,
+    pub derive_fn: DeriveFn,
+    pub free_fn: FreeDeriveFn,
+}
+
+// Shared between threads only as fn pointers and 'static ids.
+unsafe impl Send for DeriveProviderInfo {}
+unsafe impl Sync for DeriveProviderInfo {}
 
 /// Callback to lookup a concept by ID in the RDM cache
 ///
