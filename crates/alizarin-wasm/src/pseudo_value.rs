@@ -577,13 +577,17 @@ impl PseudoValue {
     /// Set the tile (for cases where tile changes)
     #[wasm_bindgen(setter, js_name = tile)]
     pub fn set_tile(&self, tile: JsValue) {
+        // Core's, keeping tileData in step, as on NAPI.
         if tile.is_null() || tile.is_undefined() {
-            self.inner.borrow_mut().core.tile = None;
+            self.inner.borrow_mut().core.set_tile(None);
         } else {
             // Convert JsValue to StaticTile via serde deserialization
             if let Ok(core_tile) = serde_wasm_bindgen::from_value::<alizarin_core::StaticTile>(tile)
             {
-                self.inner.borrow_mut().core.tile = Some(Arc::new(core_tile));
+                self.inner
+                    .borrow_mut()
+                    .core
+                    .set_tile(Some(Arc::new(core_tile)));
             }
         }
     }
@@ -829,85 +833,12 @@ impl PseudoValue {
     #[wasm_bindgen(js_name = toSnapshot)]
     pub fn to_snapshot(&self) -> JsValue {
         let inner = self.inner.borrow();
-        let mut map = serde_json::Map::new();
-
-        // Core identity
-        map.insert(
-            "datatype".to_string(),
-            serde_json::Value::String(inner.datatype().to_string()),
-        );
-        map.insert(
-            "nodeId".to_string(),
-            serde_json::Value::String(inner.core.node.nodeid.clone()),
-        );
-        map.insert(
-            "name".to_string(),
-            serde_json::Value::String(inner.core.node.name.clone()),
-        );
-
-        // Node alias
-        if let Some(ref alias) = inner.core.node.alias {
-            map.insert(
-                "alias".to_string(),
-                serde_json::Value::String(alias.to_string()),
-            );
-        }
-
-        // Nodegroup ID
-        if let Some(ref ng_id) = inner.core.node.nodegroup_id {
-            map.insert(
-                "nodegroupId".to_string(),
-                serde_json::Value::String(ng_id.to_string()),
-            );
-        }
-
-        // Sortorder
-        if let Some(so) = inner.core.node.sortorder {
-            map.insert(
-                "sortorder".to_string(),
-                serde_json::Value::Number(so.into()),
-            );
-        }
-
-        // Flags
-        map.insert(
-            "isOuter".to_string(),
-            serde_json::Value::Bool(inner.is_outer()),
-        );
-        map.insert(
-            "isInner".to_string(),
-            serde_json::Value::Bool(inner.core.is_inner),
-        );
-        map.insert(
-            "isCollector".to_string(),
-            serde_json::Value::Bool(inner.core.is_collector),
-        );
+        // Core's, as on NAPI, with WASM's runtime state added.
+        let mut map = inner.core.snapshot();
         map.insert(
             "accessed".to_string(),
             serde_json::Value::Bool(inner.accessed),
         );
-        map.insert(
-            "independent".to_string(),
-            serde_json::Value::Bool(inner.core.independent),
-        );
-        map.insert(
-            "hasTile".to_string(),
-            serde_json::Value::Bool(inner.has_tile()),
-        );
-
-        // Tile data
-        if let Some(ref tile_data) = inner.core.tile_data {
-            if let Ok(json_val) = serde_json::to_value(tile_data) {
-                map.insert("tileData".to_string(), json_val);
-            }
-        }
-
-        // Tile ID
-        if let Some(tile_id) = inner.tile_id() {
-            map.insert("tileId".to_string(), serde_json::Value::String(tile_id));
-        }
-
-        // Value loaded state
         if let Some(vl) = inner.value_loaded {
             map.insert("valueLoaded".to_string(), serde_json::Value::Bool(vl));
         }

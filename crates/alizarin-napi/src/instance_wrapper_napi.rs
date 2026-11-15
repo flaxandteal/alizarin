@@ -367,7 +367,9 @@ impl NapiStaticTile {
         self.tileid = value;
     }
 
-    #[napi(getter)]
+    // Tile fields keep their snake_case names, as on WASM's StaticTile and in
+    // the TS that reads them.
+    #[napi(getter, js_name = "nodegroup_id")]
     pub fn nodegroup_id(&self) -> String {
         self.nodegroup_id.clone()
     }
@@ -377,17 +379,17 @@ impl NapiStaticTile {
         self.sortorder
     }
 
-    #[napi(getter)]
+    #[napi(getter, js_name = "resourceinstance_id")]
     pub fn resourceinstance_id(&self) -> String {
         self.resourceinstance_id.clone()
     }
 
-    #[napi(getter)]
+    #[napi(getter, js_name = "parenttile_id")]
     pub fn parenttile_id(&self) -> Option<String> {
         self.parenttile_id.clone()
     }
 
-    #[napi(setter)]
+    #[napi(setter, js_name = "parenttile_id")]
     pub fn set_parenttile_id(&mut self, value: Option<String>) {
         self.parenttile_id = value;
     }
@@ -588,24 +590,15 @@ impl NapiPseudoValue {
     /// Snapshot all properties in one call (avoids multiple N-API boundary crossings)
     #[napi]
     pub fn to_snapshot(&self) -> serde_json::Value {
-        serde_json::json!({
-            "nodeId": self.inner.node.nodeid,
-            "name": &self.inner.node.name,
-            "alias": self.inner.node.alias,
-            "datatype": &self.inner.node.datatype,
-            "nodegroupId": self.inner.node.nodegroup_id,
-            "sortorder": self.inner.node.sortorder,
-            "isOuter": self.inner.is_outer(),
-            "isInner": self.inner.is_inner,
-            "isCollector": self.inner.is_collector,
-            "accessed": false,
-            "independent": self.inner.independent,
-            "hasTile": self.inner.tile.is_some(),
-            "tileId": self.inner.tile.as_ref().and_then(|t| t.tileid.clone()),
-            "tileData": &self.inner.tile_data,
-            "valueLoaded": self.inner.tile.is_some(),
-            "childNodeIds": &self.inner.child_node_ids,
-        })
+        // Core's (its datatype an inner's "semantic"), as on WASM, with
+        // NAPI's runtime state added.
+        let mut map = self.inner.snapshot();
+        map.insert("accessed".to_string(), serde_json::Value::Bool(false));
+        map.insert(
+            "valueLoaded".to_string(),
+            serde_json::Value::Bool(self.inner.has_tile()),
+        );
+        serde_json::Value::Object(map)
     }
 
     /// Clear tile data
@@ -626,14 +619,9 @@ impl NapiPseudoValue {
 
     #[napi(setter, js_name = "tile")]
     pub fn set_tile(&mut self, tile: Option<&NapiStaticTile>) {
-        match tile {
-            Some(t) => {
-                self.inner.tile = Some(Arc::new(t.to_static_tile()));
-            }
-            None => {
-                self.inner.tile = None;
-            }
-        }
+        // Core's, keeping tileData in step, as on WASM.
+        self.inner
+            .set_tile(tile.map(|t| Arc::new(t.to_static_tile())));
     }
 
     // -- Inner (outer/inner pattern) --

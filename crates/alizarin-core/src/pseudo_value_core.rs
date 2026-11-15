@@ -316,6 +316,44 @@ impl PseudoValueCore {
         self.tile.is_some()
     }
 
+    /// Replace the tile, keeping `tile_data` (this node's value in it) in
+    /// step, as `from_node_and_tile` derives it: an inner holds none. What
+    /// every binding's `tile` setter calls, so a snapshot never goes stale.
+    pub fn set_tile(&mut self, tile: Option<Arc<StaticTile>>) {
+        self.tile_data = if self.is_inner {
+            None
+        } else {
+            tile.as_ref()
+                .and_then(|t| t.data.get(&self.node.nodeid).cloned())
+        };
+        self.tile = tile;
+    }
+
+    /// The structural state hosts read in one crossing (TS `getSnapshot`):
+    /// the same on every binding, which adds only its runtime state
+    /// (`accessed`, `valueLoaded`).
+    pub fn snapshot(&self) -> serde_json::Map<String, Value> {
+        let Value::Object(map) = serde_json::json!({
+            "nodeId": self.node.nodeid,
+            "name": self.node.name,
+            "alias": self.node.alias,
+            "datatype": self.datatype(),
+            "nodegroupId": self.node.nodegroup_id,
+            "sortorder": self.node.sortorder,
+            "isOuter": self.is_outer(),
+            "isInner": self.is_inner,
+            "isCollector": self.is_collector,
+            "independent": self.independent,
+            "hasTile": self.has_tile(),
+            "tileId": self.tile_id(),
+            "tileData": self.tile_data,
+            "childNodeIds": self.child_node_ids,
+        }) else {
+            unreachable!("a json! object literal is an object")
+        };
+        map
+    }
+
     /// Get tile ID if present
     pub fn tile_id(&self) -> Option<String> {
         self.tile.as_ref().and_then(|t| t.tileid.clone())

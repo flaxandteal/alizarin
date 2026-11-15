@@ -69,6 +69,9 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
   // JS-specific: cached loaded value (AttrPromise wrapping VM)
   private _cachedValue: AttrPromise<VM> | null = null;
 
+  // JS-cached node (see `node`)
+  private _node: StaticNode | null = null;
+
   // JS-cached snapshot of commonly-used properties (avoids repeated WASM boundary crossings)
   private _snapshot: {
     datatype: string;
@@ -142,10 +145,13 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     return this._wasm.tile;
   }
 
-  // Node property accessors (proxy to wasm which has PseudoNode-compatible API)
-  get node(): WasmPseudoValue {
-    // WasmPseudoValue now has all PseudoNode getters, so it can act as node
-    return this._wasm;
+  // The node itself (StaticNode fields: nodeid, alias, config...), on every
+  // backend. Fetched once: a node never changes, and each fetch is a copy.
+  get node(): StaticNode {
+    if (this._node === null) {
+      this._node = this._wasm.node;
+    }
+    return this._node!;
   }
 
   get nodeid(): string {
@@ -237,50 +243,38 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
       [this.tile, relationships] = await this.inner.getTile();
     }
 
-    let tileValue;
+    let tileValue = null;
     if (this._cachedValue !== null) {
       const value = await this._cachedValue;
       if (value !== null) {
         const [newTileValue, ownRelationships] = await (value as any).__asTileData();
         tileValue = newTileValue;
         relationships = [...relationships, ...ownRelationships];
-      } else {
-        tileValue = null;
       }
-    } else {
-      tileValue = null;
     }
 
-    const tile = this._wasm.tile;
-    if (!tile) {
+    if (!this.getSnapshot().hasTile) {
       throw Error("No tile available");
     }
-    tile.data = tile.data || new Map();
-    const nodeid = this._wasm.nodeId;
-    if (tileValue === null) {
-      if (tile.data.has(nodeid)) {
-        tile.data.delete(nodeid);
-      }
-    } else {
-      tile.data.set(nodeid, tileValue);
-    }
-    const returnTile = this.independent ? tile : null;
+    // The value lives in core, on every backend: `tile` is a copy, so writing
+    // into its data would be lost.
+    this._wasm.setTileData(tileValue);
+    this._snapshot = null;
+    const returnTile = this.independent ? this._wasm.tile : null;
 
     return [returnTile, relationships];
   }
 
   clear(): void {
+    // Core's: the value lives there, not in a copy of the tile.
     this._wasm.clear();
     this._cachedValue = null;
-    const tile = this._wasm.tile;
-    if (tile && tile.data && tile.data.has(this._wasm.nodeId)) {
-      tile.data.delete(this._wasm.nodeId);
-    }
+    this._snapshot = null;
   }
 
   updateValue(newTile?: StaticTile | null): AttrPromise<VM> {
     if (newTile) {
-      this._wasm.tile = newTile;
+      this.tile = newTile;
     }
 
     // If already cached, return it
@@ -289,10 +283,10 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     }
 
     // Handle case where tile is null but has inner - get tile first, then load
-    if (!this._wasm.tile && this.inner) {
+    if (!this.getSnapshot().hasTile && this.inner) {
       this._cachedValue = new AttrPromise(async (resolve) => {
         const [innerTile] = await this.inner!.getTile();
-        this._wasm.tile = innerTile;
+        this.tile = innerTile;
         // Call the real loading logic directly, bypassing the cache wrapper
         const result = await this._updateValueReal();
         resolve(result);
@@ -306,42 +300,28 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
   }
 
   private _updateValueReal(): AttrPromise<VM> {
-    // Get snapshot once - avoids multiple WASM boundary crossings
+    // Get snapshot once - avoids multiple boundary crossings
     const snapshot = this.getSnapshot();
 
+    // This node's value: core keeps it in step with the tile (set_tile), on
+    // every backend, so the tile's data map needn't be copied out to read it.
+    // ViewModels expect null for "no data", not undefined.
+    let data: any = snapshot.tileData ?? null;
+
     // Create tile if needed
-    if (!this._wasm.tile) {
-      const nodegroupId = snapshot.nodegroupId || "";
-      const sortorder = snapshot.sortorder;
-      this._wasm.tile = createStaticTile({
-        nodegroup_id: nodegroupId,
+    if (!snapshot.hasTile) {
+      this.tile = createStaticTile({
+        nodegroup_id: snapshot.nodegroupId || "",
         tileid: null,
         data: new Map<string, any>(),
-        sortorder: sortorder,
+        sortorder: snapshot.sortorder,
         resourceinstance_id: "",
         parenttile_id: null,
         provisionaledits: null,
         ensureId: () => ""
       });
     }
-
-    // Get data - check tile first, then tileData from snapshot
-    let data: any;
     const currentTile = this._wasm.tile;
-    const nodeid = snapshot.nodeId;
-
-    if (
-      currentTile &&
-      currentTile.data !== null &&
-      currentTile.data.has(nodeid) &&
-      snapshot.datatype !== 'semantic'
-    ) {
-      data = currentTile.data.get(nodeid);
-    } else {
-      // Use null if tileData is undefined (snapshot only includes tileData when present)
-      // ViewModels expect null for "no data", not undefined
-      data = snapshot.tileData ?? null;
-    }
 
     // Handle outer/inner data splitting
     if (this.isOuter && typeof data === 'object' && this.inner && data) {
@@ -363,7 +343,7 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     const vmPromise = getViewModel(
       this,
       currentTile!,
-      this._wasm.node, // Use node object from wasm
+      this.node,
       data,
       this.parent,
       this.isInner
