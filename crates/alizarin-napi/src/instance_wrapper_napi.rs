@@ -948,11 +948,8 @@ impl NapiResourceInstanceWrapper {
 
     #[napi]
     pub fn tiles_loaded(&self) -> bool {
-        self.inner
-            .tiles
-            .as_ref()
-            .map(|t| !self.inner.is_lazy() || !t.is_empty())
-            .unwrap_or(false)
+        // Core's, as on WASM.
+        self.inner.tiles_loaded()
     }
 
     #[napi]

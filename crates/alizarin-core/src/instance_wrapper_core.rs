@@ -905,6 +905,15 @@ impl ResourceInstanceWrapperCore {
         }
     }
 
+    /// Whether the resource's tiles are loaded: once loaded, even with none,
+    /// except in lazy mode, where an empty store means nothing fetched yet.
+    /// What every binding's `tilesLoaded` reports.
+    pub fn tiles_loaded(&self) -> bool {
+        self.tiles
+            .as_ref()
+            .is_some_and(|t| !self.lazy || !t.is_empty())
+    }
+
     /// The tiles that are the resource's data: every loaded tile except those
     /// on-load Derive functions added, which are recomputed on each load and
     /// never stored. What exports write.

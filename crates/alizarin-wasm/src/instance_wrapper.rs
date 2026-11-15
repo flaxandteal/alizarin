@@ -298,13 +298,8 @@ impl WASMResourceInstanceWrapper {
 
     #[wasm_bindgen(js_name = tilesLoaded)]
     pub fn tiles_loaded(&self) -> bool {
-        // Check if tiles exist AND have actual content (not just initialized but empty)
-        // In lazy mode, tiles HashMap is initialized empty, so we need to check for actual content
-        self.core
-            .borrow()
-            .tiles
-            .as_ref()
-            .is_some_and(|t| !t.is_empty())
+        // Core's, as on NAPI: loaded even with no tiles, except in lazy mode.
+        self.core.borrow().tiles_loaded()
     }
 
     /// Set a callback function for lazy-loading tiles

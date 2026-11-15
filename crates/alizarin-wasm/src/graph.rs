@@ -2801,8 +2801,11 @@ impl StaticResource {
             JsValue::from_str(&format!("Failed to deserialize StaticResource: {:?}", e))
         })?;
 
-        // Set tiles loaded flag based on whether tiles exist and are non-empty
-        core.tiles_loaded = Some(core.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false));
+        // As declared, as on NAPI and Python; inferred from the tiles only if not.
+        core.tiles_loaded = Some(
+            core.tiles_loaded
+                .unwrap_or_else(|| core.tiles.as_ref().is_some_and(|t| !t.is_empty())),
+        );
 
         Ok(StaticResource(core))
     }
@@ -2818,8 +2821,11 @@ impl StaticResource {
         let mut core: CoreStaticResource = serde_json::from_str(json_str)
             .map_err(|e| JsValue::from_str(&format!("Failed to parse resource JSON: {}", e)))?;
 
-        // Set tiles loaded flag based on whether tiles exist and are non-empty
-        core.tiles_loaded = Some(core.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false));
+        // As declared, as on NAPI and Python; inferred from the tiles only if not.
+        core.tiles_loaded = Some(
+            core.tiles_loaded
+                .unwrap_or_else(|| core.tiles.as_ref().is_some_and(|t| !t.is_empty())),
+        );
 
         Ok(StaticResource(core))
     }
@@ -2846,8 +2852,11 @@ impl StaticResource {
             .resources
             .into_iter()
             .map(|mut core| {
-                core.tiles_loaded =
-                    Some(core.tiles.as_ref().map(|t| !t.is_empty()).unwrap_or(false));
+                // As declared, as on NAPI and Python; inferred only if not.
+                core.tiles_loaded = Some(
+                    core.tiles_loaded
+                        .unwrap_or_else(|| core.tiles.as_ref().is_some_and(|t| !t.is_empty())),
+                );
                 StaticResource(core)
             })
             .collect();
