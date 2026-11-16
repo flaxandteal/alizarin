@@ -27,7 +27,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "2.0.0-alpha.145"
+version = "2.0.0-alpha.146"
 authors = ["Phil Weir <phil.weir@flaxandteal.co.uk>"]
 edition = "2021"
 
