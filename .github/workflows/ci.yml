@@ -151,7 +151,11 @@ jobs:
 
       - run: npm ci
       - run: npm run build:js
-      - run: npm test
+      # Run every test, not stop at the first failure (vitest.config.js has
+      # bail: 1 for local runs), so CI reports the full failure count. The
+      # whole suite takes seconds. `test:all`, as `npm test -- …` would hand
+      # the flag to its trailing echo.
+      - run: npm run test:all -- --bail=0
       - run: npx eslint js --ext .ts
 
   # NAPI native Node.js addon
