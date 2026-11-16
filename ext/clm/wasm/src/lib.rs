@@ -18,20 +18,15 @@ use wasm_bindgen::prelude::*;
 ///                   single reference object, or null)
 /// @param language - Language code for display (e.g. "en")
 /// @returns Display string, or null when nothing is renderable
-#[wasm_bindgen(js_name = renderReferenceDisplay)]
-pub fn render_reference_display(
-    tile_data: JsValue,
-    language: &str,
-) -> Result<Option<String>, JsError> {
+#[wasm_bindgen(js_name = renderReferenceDisplay, unchecked_return_type = "string | null")]
+pub fn render_reference_display(tile_data: JsValue, language: &str) -> Result<JsValue, JsError> {
     let json: serde_json::Value = alizarin_extension_api::js_json::from_value(tile_data)
         .map_err(|e| JsError::new(&format!("Failed to parse tile data: {}", e)))?;
 
     let display = alizarin_clm_core::render_reference_display_tile(&json, Some(language));
-    if display.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(display))
-    }
+    Ok(alizarin_extension_api::js_json::or_null(
+        Some(display).filter(|d| !d.is_empty()),
+    ))
 }
 
 /// A reference node's config from its raw node config:
@@ -43,14 +38,8 @@ pub fn reference_node_config(config: JsValue) -> Result<JsValue, JsError> {
     let json: serde_json::Value = alizarin_extension_api::js_json::from_value(config)
         .map_err(|e| JsError::new(&format!("Failed to parse node config: {}", e)))?;
     let out = alizarin_clm_core::reference_node_config(&json);
-    // Nulls stay null (not undefined), so the config matches NAPI's and Python's.
-    serde::Serialize::serialize(
-        &out,
-        &serde_wasm_bindgen::Serializer::new()
-            .serialize_maps_as_objects(true)
-            .serialize_missing_as_null(true),
-    )
-    .map_err(|e| JsError::new(&format!("Failed to serialize node config: {}", e)))
+    alizarin_extension_api::js_json::to_value(&out)
+        .map_err(|e| JsError::new(&format!("Failed to serialize node config: {}", e)))
 }
 
 /// Whether a reference node displays as a list (it is multi-valued).

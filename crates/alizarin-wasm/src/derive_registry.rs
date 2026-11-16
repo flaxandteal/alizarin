@@ -75,9 +75,7 @@ unsafe impl Send for JsDeriveProvider {}
 unsafe impl Sync for JsDeriveProvider {}
 
 fn to_js(value: &impl Serialize) -> Result<JsValue, String> {
-    value
-        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
-        .map_err(|e| e.to_string())
+    crate::js_json::to_value(value).map_err(|e| e.to_string())
 }
 
 impl DeriveProvider for JsDeriveProvider {

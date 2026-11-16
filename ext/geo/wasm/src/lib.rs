@@ -17,7 +17,7 @@ pub fn validate_geojson(value: JsValue) -> Result<JsValue, JsError> {
 
     let result = alizarin_geo_core::validate_geojson(&json);
 
-    serde_wasm_bindgen::to_value(&result)
+    alizarin_extension_api::js_json::to_value(&result)
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
@@ -27,8 +27,7 @@ fn from_js(value: JsValue, what: &str) -> Result<serde_json::Value, JsError> {
 }
 
 fn to_js(value: &impl serde::Serialize) -> Result<JsValue, JsError> {
-    value
-        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+    alizarin_extension_api::js_json::to_value(value)
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {e}")))
 }
 

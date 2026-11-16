@@ -11,7 +11,6 @@ use alizarin_core::node_config::{
     NodeConfigDomain as CoreNodeConfigDomain, NodeConfigManager as CoreNodeConfigManager,
     StaticDomainValue as CoreStaticDomainValue,
 };
-use serde::Serialize;
 
 // Import WASM graph type for direct graph loading
 use crate::graph::StaticGraph as WasmStaticGraph;
@@ -48,8 +47,9 @@ impl WasmStaticDomainValue {
     }
 
     /// Get text for a specific language
-    pub fn lang(&self, language: &str) -> Option<String> {
-        self.inner.lang(language).map(|s| s.to_string())
+    #[wasm_bindgen(unchecked_return_type = "string | null")]
+    pub fn lang(&self, language: &str) -> JsValue {
+        crate::js_json::or_null(self.inner.lang(language).map(|s| s.to_string()))
     }
 
     /// Get display string (defaults to English)
@@ -95,9 +95,9 @@ pub struct WasmNodeConfigBoolean {
 #[wasm_bindgen]
 impl WasmNodeConfigBoolean {
     /// Get label for a boolean value in a specific language
-    #[wasm_bindgen(js_name = getLabel)]
-    pub fn get_label(&self, value: bool, language: &str) -> Option<String> {
-        self.inner.get_label(value, language).map(|s| s.to_string())
+    #[wasm_bindgen(js_name = getLabel, unchecked_return_type = "string | null")]
+    pub fn get_label(&self, value: bool, language: &str) -> JsValue {
+        crate::js_json::or_null(self.inner.get_label(value, language).map(|s| s.to_string()))
     }
 
     /// Get true labels as a JS object
@@ -194,17 +194,19 @@ impl WasmNodeConfigDomain {
     }
 
     /// Get the selected option (if any)
-    #[wasm_bindgen(js_name = getSelected)]
-    pub fn get_selected(&self) -> Option<WasmStaticDomainValue> {
-        self.inner.get_selected().map(WasmStaticDomainValue::from)
+    #[wasm_bindgen(js_name = getSelected, unchecked_return_type = "WasmStaticDomainValue | null")]
+    pub fn get_selected(&self) -> JsValue {
+        crate::js_json::or_null(self.inner.get_selected().map(WasmStaticDomainValue::from))
     }
 
     /// Find option by ID
-    #[wasm_bindgen(js_name = valueFromId)]
-    pub fn value_from_id(&self, id: &str) -> Option<WasmStaticDomainValue> {
-        self.inner
-            .value_from_id(id)
-            .map(WasmStaticDomainValue::from)
+    #[wasm_bindgen(js_name = valueFromId, unchecked_return_type = "WasmStaticDomainValue | null")]
+    pub fn value_from_id(&self, id: &str) -> JsValue {
+        crate::js_json::or_null(
+            self.inner
+                .value_from_id(id)
+                .map(WasmStaticDomainValue::from),
+        )
     }
 
     /// Get all option IDs
@@ -270,65 +272,59 @@ impl WasmNodeConfigManager {
     }
 
     /// Get boolean config for a node (returns None if nodeid is null)
-    #[wasm_bindgen(js_name = getBoolean)]
-    pub fn get_boolean(&self, nodeid: Option<String>) -> Option<WasmNodeConfigBoolean> {
-        let nodeid = nodeid?;
-        self.inner
-            .get_boolean(&nodeid)
-            .map(WasmNodeConfigBoolean::from)
+    #[wasm_bindgen(js_name = getBoolean, unchecked_return_type = "WasmNodeConfigBoolean | null")]
+    pub fn get_boolean(&self, nodeid: Option<String>) -> JsValue {
+        crate::js_json::or_null(
+            nodeid
+                .and_then(|id| self.inner.get_boolean(&id))
+                .map(WasmNodeConfigBoolean::from),
+        )
     }
 
     /// Get concept config for a node (returns None if nodeid is null)
-    #[wasm_bindgen(js_name = getConcept)]
-    pub fn get_concept(&self, nodeid: Option<String>) -> Option<WasmNodeConfigConcept> {
-        let nodeid = nodeid?;
-        self.inner
-            .get_concept(&nodeid)
-            .map(WasmNodeConfigConcept::from)
+    #[wasm_bindgen(js_name = getConcept, unchecked_return_type = "WasmNodeConfigConcept | null")]
+    pub fn get_concept(&self, nodeid: Option<String>) -> JsValue {
+        crate::js_json::or_null(
+            nodeid
+                .and_then(|id| self.inner.get_concept(&id))
+                .map(WasmNodeConfigConcept::from),
+        )
     }
 
     /// An extension datatype's node config, as its registered handler supplies
-    /// it (a plain object; its shape is the extension's). `undefined` if the
+    /// it (a plain object; its shape is the extension's). `null` if the
     /// node has none, or no handler for its datatype is registered.
     #[wasm_bindgen(js_name = getExtensionConfig)]
     pub fn get_extension_config(&self, nodeid: Option<String>) -> JsValue {
         let registry = crate::extension_registry::build_extension_registry();
         nodeid
             .and_then(|id| self.inner.get_extension_config(&id, Some(&registry)))
-            .and_then(|config| {
-                // Nulls stay null (not undefined), matching NAPI and Python.
-                config
-                    .serialize(
-                        &serde_wasm_bindgen::Serializer::new()
-                            .serialize_maps_as_objects(true)
-                            .serialize_missing_as_null(true),
-                    )
-                    .ok()
-            })
-            .unwrap_or(JsValue::UNDEFINED)
+            .and_then(|config| crate::js_json::to_value(&config).ok())
+            .unwrap_or(JsValue::NULL)
     }
 
     /// Get domain config for a node (returns None if nodeid is null)
-    #[wasm_bindgen(js_name = getDomain)]
-    pub fn get_domain(&self, nodeid: Option<String>) -> Option<WasmNodeConfigDomain> {
-        let nodeid = nodeid?;
-        self.inner
-            .get_domain(&nodeid)
-            .map(WasmNodeConfigDomain::from)
+    #[wasm_bindgen(js_name = getDomain, unchecked_return_type = "WasmNodeConfigDomain | null")]
+    pub fn get_domain(&self, nodeid: Option<String>) -> JsValue {
+        crate::js_json::or_null(
+            nodeid
+                .and_then(|id| self.inner.get_domain(&id))
+                .map(WasmNodeConfigDomain::from),
+        )
     }
 
     /// Look up domain value by ID (returns None if any param is null)
-    #[wasm_bindgen(js_name = lookupDomainValue)]
-    pub fn lookup_domain_value(
-        &self,
-        nodeid: Option<String>,
-        value_id: Option<String>,
-    ) -> Option<WasmStaticDomainValue> {
-        let nodeid = nodeid?;
-        let value_id = value_id?;
-        self.inner
-            .lookup_domain_value(&nodeid, &value_id)
-            .map(WasmStaticDomainValue::from)
+    #[wasm_bindgen(
+        js_name = lookupDomainValue,
+        unchecked_return_type = "WasmStaticDomainValue | null"
+    )]
+    pub fn lookup_domain_value(&self, nodeid: Option<String>, value_id: Option<String>) -> JsValue {
+        crate::js_json::or_null(
+            nodeid
+                .zip(value_id)
+                .and_then(|(node, value)| self.inner.lookup_domain_value(&node, &value))
+                .map(WasmStaticDomainValue::from),
+        )
     }
 
     /// Check if a node has config (returns false if nodeid is null)
@@ -341,10 +337,11 @@ impl WasmNodeConfigManager {
     }
 
     /// Get the config type for a node (returns None if nodeid is null)
-    #[wasm_bindgen(js_name = getConfigType)]
-    pub fn get_config_type(&self, nodeid: Option<String>) -> Option<String> {
-        let nodeid = nodeid?;
-        self.inner.get_config_type(&nodeid).map(|s| s.to_string())
+    #[wasm_bindgen(js_name = getConfigType, unchecked_return_type = "string | null")]
+    pub fn get_config_type(&self, nodeid: Option<String>) -> JsValue {
+        crate::js_json::or_null(
+            nodeid.and_then(|id| self.inner.get_config_type(&id).map(|s| s.to_string())),
+        )
     }
 
     /// Clear all cached configs

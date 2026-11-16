@@ -209,7 +209,7 @@ fn generate_wasm_methods(args: &WasmWrapperArgs, core_path: &Path) -> TokenStrea
         quote! {
             #[wasm_bindgen(constructor)]
             pub fn new(json_data: ::wasm_bindgen::JsValue) -> Result<#name, ::wasm_bindgen::JsValue> {
-                let data: #core_path = ::serde_wasm_bindgen::from_value(json_data)?;
+                let data: #core_path = crate::js_json::from_value(json_data)?;
                 Ok(#name(data))
             }
         }
@@ -232,7 +232,7 @@ fn generate_wasm_methods(args: &WasmWrapperArgs, core_path: &Path) -> TokenStrea
         quote! {
             #[wasm_bindgen(js_name = toJSON)]
             pub fn to_json(&self) -> ::wasm_bindgen::JsValue {
-                ::serde_wasm_bindgen::to_value(&self.0).unwrap_or(::wasm_bindgen::JsValue::NULL)
+                crate::js_json::to_value(&self.0).unwrap_or(::wasm_bindgen::JsValue::NULL)
             }
         }
     } else {
@@ -260,7 +260,7 @@ fn generate_getter(_name: &syn::Ident, field_name: &str) -> TokenStream2 {
     quote! {
         #[wasm_bindgen(getter = #js_name)]
         pub fn #getter_name(&self) -> ::wasm_bindgen::JsValue {
-            ::serde_wasm_bindgen::to_value(&self.0.#field_ident).unwrap_or(::wasm_bindgen::JsValue::NULL)
+            crate::js_json::to_value(&self.0.#field_ident).unwrap_or(::wasm_bindgen::JsValue::NULL)
         }
     }
 }
@@ -274,7 +274,7 @@ fn generate_setter(_name: &syn::Ident, field_name: &str) -> TokenStream2 {
     quote! {
         #[wasm_bindgen(setter = #js_name)]
         pub fn #setter_name(&mut self, value: ::wasm_bindgen::JsValue) {
-            if let Ok(v) = ::serde_wasm_bindgen::from_value(value) {
+            if let Ok(v) = crate::js_json::from_value(value) {
                 self.0.#field_ident = v;
             }
         }
@@ -501,7 +501,7 @@ pub fn wasm_wrapper(input: TokenStream) -> TokenStream {
         quote! {
             #[wasm_bindgen(getter = #js_name)]
             pub fn #getter_name(&self) -> ::wasm_bindgen::JsValue {
-                ::serde_wasm_bindgen::to_value(&self.0.#field).unwrap_or(::wasm_bindgen::JsValue::NULL)
+                crate::js_json::to_value(&self.0.#field).unwrap_or(::wasm_bindgen::JsValue::NULL)
             }
         }
     }).collect();
@@ -515,7 +515,7 @@ pub fn wasm_wrapper(input: TokenStream) -> TokenStream {
             quote! {
                 #[wasm_bindgen(setter = #js_name)]
                 pub fn #setter_name(&mut self, value: ::wasm_bindgen::JsValue) {
-                    if let Ok(v) = ::serde_wasm_bindgen::from_value(value) {
+                    if let Ok(v) = crate::js_json::from_value(value) {
                         self.0.#field = v;
                     }
                 }
@@ -542,7 +542,7 @@ pub fn wasm_wrapper(input: TokenStream) -> TokenStream {
         quote! {
             #[wasm_bindgen(constructor)]
             pub fn new(json_data: ::wasm_bindgen::JsValue) -> Result<#name, ::wasm_bindgen::JsValue> {
-                let data: #core_type = ::serde_wasm_bindgen::from_value(json_data)?;
+                let data: #core_type = crate::js_json::from_value(json_data)?;
                 Ok(#name(data))
             }
         }
@@ -567,7 +567,7 @@ pub fn wasm_wrapper(input: TokenStream) -> TokenStream {
         quote! {
             #[wasm_bindgen(js_name = toJSON)]
             pub fn to_json(&self) -> ::wasm_bindgen::JsValue {
-                ::serde_wasm_bindgen::to_value(&self.0).unwrap_or(::wasm_bindgen::JsValue::NULL)
+                crate::js_json::to_value(&self.0).unwrap_or(::wasm_bindgen::JsValue::NULL)
             }
         }
     };

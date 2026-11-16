@@ -91,7 +91,7 @@ pub fn tree_to_tiles_enhanced(
         },
     };
 
-    serde_wasm_bindgen::to_value(&wrapper)
+    crate::js_json::to_value(&wrapper)
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
@@ -157,7 +157,7 @@ pub fn tiles_to_tree_enhanced(
             }
 
             // Convert to JS value
-            serde_wasm_bindgen::to_value(&tree)
+            crate::js_json::to_value(&tree)
                 .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
         }
         Err(e) => Err(JsError::new(&e)),
@@ -219,7 +219,7 @@ pub fn cards_to_tree(resource_json: &str, graph: &StaticGraph) -> Result<JsValue
                 map.insert("graph_id".to_string(), Value::String(graph_id.to_string()));
             }
 
-            serde_wasm_bindgen::to_value(&tree)
+            crate::js_json::to_value(&tree)
                 .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
         }
         Err(e) => Err(JsError::new(&e)),
@@ -325,10 +325,7 @@ pub fn batch_trees_to_tiles(
         warnings: &outcome.warnings,
     };
 
-    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-    use serde::Serialize;
-    output
-        .serialize(&serializer)
+    crate::js_json::to_value(&output)
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
@@ -425,10 +422,7 @@ pub fn batch_tiles_to_trees(
         error_count: errors.len(),
     };
 
-    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-    use serde::Serialize;
-    output
-        .serialize(&serializer)
+    crate::js_json::to_value(&output)
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
@@ -448,13 +442,8 @@ pub fn merge_resources_wasm(resources_json: &str) -> Result<JsValue, JsError> {
         .map_err(|e| JsError::new(&format!("Failed to parse resources: {}", e)))?;
 
     match merge_resources(resources) {
-        Ok(result) => {
-            let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-            use serde::Serialize;
-            result
-                .serialize(&serializer)
-                .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
-        }
+        Ok(result) => crate::js_json::to_value(&result)
+            .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e))),
         Err(e) => Err(JsError::new(&e)),
     }
 }
@@ -552,10 +541,7 @@ pub fn batch_merge_resources_wasm(
         return Err(JsError::new(error));
     }
 
-    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-    use serde::Serialize;
-    result
-        .serialize(&serializer)
+    crate::js_json::to_value(&result)
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
@@ -579,8 +565,6 @@ pub fn compose_resource_layers(
     overlay_graphs_json: &str,
     strict: Option<bool>,
 ) -> Result<JsValue, JsError> {
-    use serde::Serialize;
-
     let composed = alizarin_core::graph::compose_resource_layers_from_json(
         resources_json,
         base_graph_json,
@@ -589,9 +573,7 @@ pub fn compose_resource_layers(
     )
     .map_err(|e| JsError::new(&e))?;
 
-    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-    composed
-        .serialize(&serializer)
+    crate::js_json::to_value(&composed)
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 

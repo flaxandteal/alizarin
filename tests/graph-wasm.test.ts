@@ -35,13 +35,13 @@ describe('WASM Graph Module', () => {
         extra_fields: {}
       });
       
-      expect(graphMeta.getAuthor()).toBeUndefined();
-      
+      expect(graphMeta.getAuthor()).toBeNull();
+
       graphMeta.setAuthor('New Author');
       expect(graphMeta.getAuthor()).toBe('New Author');
       
       graphMeta.setAuthor(null);
-      expect(graphMeta.getAuthor()).toBeUndefined(); // Rust Option<String> with None becomes undefined
+      expect(graphMeta.getAuthor()).toBeNull(); // None is null, as on NAPI
     });
 
     it('should get and set isresource', () => {
@@ -52,7 +52,7 @@ describe('WASM Graph Module', () => {
         extra_fields: {}
       });
       
-      expect(graphMeta.getIsResource()).toBeUndefined();
+      expect(graphMeta.getIsResource()).toBeNull();
       
       graphMeta.setIsResource(true);
       expect(graphMeta.getIsResource()).toBe(true);
@@ -130,7 +130,7 @@ describe('WASM Graph Module', () => {
       node.description = new StaticTranslatableString('New description');
       expect(node.description.toString()).toBe('New description');
       node.description = undefined;
-      expect(node.description).toBeUndefined(); // Rust Option<String> with None becomes undefined
+      expect(node.description).toBeNull(); // None is null, as on NAPI
       
       // Test boolean properties
       expect(node.exportable).toBe(true);

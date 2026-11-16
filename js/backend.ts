@@ -502,6 +502,7 @@ export function createStaticTile(data: any): any {
       data.sortorder ?? null,
       data.resourceinstance_id || "",
       data.parenttile_id || null,
+      data.provisionaledits ?? null,
     );
     // If initial data entries provided, populate them
     if (data.data) {

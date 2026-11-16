@@ -114,7 +114,7 @@ describe('Static Types', () => {
       const meta = new StaticGraphMeta({ graphid: 'minimal-graph' } as any);
 
       expect(meta.graphid).toBe('minimal-graph');
-      expect(meta.getAuthor()).toBeUndefined();
+      expect(meta.getAuthor()).toBeNull();
     });
   });
 

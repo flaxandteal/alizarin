@@ -62,29 +62,3 @@ pub fn parse_js_class_list(value: JsValue) -> Option<Vec<String>> {
     }
     None
 }
-
-/// Insert an ontology class list into a `serde_json::Map` using the Arches
-/// wire shape. Empty lists are skipped so callers don't have to pre-filter.
-pub fn insert_classes_json(
-    obj: &mut serde_json::Map<String, serde_json::Value>,
-    key: &str,
-    classes: Option<&Vec<String>>,
-) {
-    match classes {
-        None => {}
-        Some(list) if list.is_empty() => {}
-        Some(list) if list.len() == 1 => {
-            obj.insert(key.to_string(), serde_json::Value::String(list[0].clone()));
-        }
-        Some(list) => {
-            obj.insert(
-                key.to_string(),
-                serde_json::Value::Array(
-                    list.iter()
-                        .map(|s| serde_json::Value::String(s.clone()))
-                        .collect(),
-                ),
-            );
-        }
-    }
-}

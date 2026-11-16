@@ -36,13 +36,14 @@ impl WasmPopulateResult {
     }
 
     /// PORT: js/graphManager.ts:670 - accessing value by alias
-    #[wasm_bindgen(js_name = getValue)]
-    pub fn get_value(&self, alias: Option<String>) -> Option<PseudoList> {
-        let alias = alias?;
-        self.inner
-            .values
-            .get(&alias)
-            .map(|v| PseudoList::from_rust(PseudoListInner::from_core(v.clone())))
+    #[wasm_bindgen(js_name = getValue, unchecked_return_type = "PseudoList | null")]
+    pub fn get_value(&self, alias: Option<String>) -> JsValue {
+        crate::js_json::or_null(alias.and_then(|alias| {
+            self.inner
+                .values
+                .get(&alias)
+                .map(|v| PseudoList::from_rust(PseudoListInner::from_core(v.clone())))
+        }))
     }
 
     /// Get all values as a Map in a single boundary crossing
@@ -59,12 +60,12 @@ impl WasmPopulateResult {
 
     #[wasm_bindgen(getter = allValuesMap)]
     pub fn all_values_map(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.inner.all_values_map).unwrap_or(JsValue::NULL)
+        crate::js_json::to_value(&self.inner.all_values_map).unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(getter = allNodegroupsMap)]
     pub fn all_nodegroups_map(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.inner.all_nodegroups_map).unwrap_or(JsValue::NULL)
+        crate::js_json::to_value(&self.inner.all_nodegroups_map).unwrap_or(JsValue::NULL)
     }
 }
 
@@ -149,12 +150,8 @@ fn serialize_cards_with(
         )
     })
     .map_err(|e| JsValue::from_str(&e))?;
-    // Plain objects, not Maps, as NAPI's and toJson's.
-    serde::Serialize::serialize(
-        &result,
-        &serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true),
-    )
-    .map_err(|e| JsValue::from_str(&format!("Failed to serialize: {}", e)))
+    crate::js_json::to_value(&result)
+        .map_err(|e| JsValue::from_str(&format!("Failed to serialize: {}", e)))
 }
 
 /// Rust-side WASM resource instance wrapper
@@ -382,9 +379,9 @@ impl WASMResourceInstanceWrapper {
     }
 
     /// Get the tile loader callback if set
-    #[wasm_bindgen(js_name = getTileLoader)]
-    pub fn get_tile_loader(&self) -> Option<js_sys::Function> {
-        self.tile_loader.borrow().clone()
+    #[wasm_bindgen(js_name = getTileLoader, unchecked_return_type = "Function | null")]
+    pub fn get_tile_loader(&self) -> JsValue {
+        crate::js_json::or_null(self.tile_loader.borrow().clone())
     }
 
     /// Load tiles from plain JS objects (JSON deserialization)
@@ -458,13 +455,15 @@ impl WASMResourceInstanceWrapper {
         }
     }
 
-    #[wasm_bindgen(js_name = getResourceId)]
-    pub fn get_resource_id(&self) -> Option<String> {
-        self.core
-            .borrow()
-            .resource_instance
-            .as_ref()
-            .map(|r| r.resourceinstanceid.clone())
+    #[wasm_bindgen(js_name = getResourceId, unchecked_return_type = "string | null")]
+    pub fn get_resource_id(&self) -> JsValue {
+        crate::js_json::or_null(
+            self.core
+                .borrow()
+                .resource_instance
+                .as_ref()
+                .map(|r| r.resourceinstanceid.clone()),
+        )
     }
 
     /// Get resource name from metadata
@@ -527,19 +526,15 @@ impl WASMResourceInstanceWrapper {
     /// Phase 4g: Get cached PseudoValue from Rust cache
     /// Returns PseudoList if found, null otherwise
     /// Handles null/undefined alias gracefully by returning None
-    #[wasm_bindgen(js_name = getCachedPseudo)]
-    pub fn get_cached_pseudo(&self, alias: Option<String>) -> Option<PseudoList> {
-        let alias = alias?;
-        {
-            let core_ref = self.core.borrow();
-            let cache = core_ref.pseudo_cache.read().unwrap();
-            if let Some(pseudo_list) = cache.get(&alias) {
-                return Some(PseudoList::from_rust(PseudoListInner::from_core(
-                    pseudo_list.clone(),
-                )));
-            }
-        }
-        None
+    #[wasm_bindgen(js_name = getCachedPseudo, unchecked_return_type = "PseudoList | null")]
+    pub fn get_cached_pseudo(&self, alias: Option<String>) -> JsValue {
+        let core_ref = self.core.borrow();
+        let cache = core_ref.pseudo_cache.read().unwrap();
+        crate::js_json::or_null(
+            alias
+                .and_then(|alias| cache.get(&alias))
+                .map(|list| PseudoList::from_rust(PseudoListInner::from_core(list.clone()))),
+        )
     }
 
     #[wasm_bindgen(js_name = pruneResourceTiles)]
@@ -571,8 +566,12 @@ impl WASMResourceInstanceWrapper {
     /// The root is stored in cache with its alias from the graph model.
     ///
     /// PORT: js/graphManager.ts:330-364 getRoot()
-    #[wasm_bindgen(js_name = getRootPseudo)]
-    pub fn get_root_pseudo(&self) -> Option<PseudoValue> {
+    #[wasm_bindgen(js_name = getRootPseudo, unchecked_return_type = "PseudoValue | null")]
+    pub fn get_root_pseudo(&self) -> JsValue {
+        crate::js_json::or_null(self.root_pseudo())
+    }
+
+    fn root_pseudo(&self) -> Option<PseudoValue> {
         let core_ref = self.core.borrow();
         let root_alias = with_registry_model::<_, _, String>(&core_ref.graph_id, |model| {
             Ok(model.get_root_node()?.alias.clone().unwrap_or_default())
@@ -810,7 +809,7 @@ impl WASMResourceInstanceWrapper {
         })?;
 
         // Convert serde_json::Value to JSON string, then parse to JS object
-        // Note: Using JSON.parse is more reliable than serde_wasm_bindgen::to_value
+        // Note: Using JSON.parse is more reliable than crate::js_json::to_value
         // which can return empty objects in some cases
         let json_string = serde_json::to_string(&json)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize JSON: {}", e)))?;
@@ -1058,7 +1057,7 @@ impl WASMResourceInstanceWrapper {
                 .map_err(|e| JsValue::from_str(&e.to_string()))
         })?;
 
-        Ok(serde_wasm_bindgen::to_value(&serde_json::json!({
+        Ok(crate::js_json::to_value(&serde_json::json!({
             "nodegroupId": info.nodegroup_id,
             "isSingle": info.is_single,
             "targetNodeId": info.target_node.nodeid,
@@ -1130,11 +1129,7 @@ impl WASMResourceInstanceWrapper {
             core.apply_edits(&ops, &model.model_access)
                 .map_err(|e| JsValue::from_str(&e))
         })?;
-        serde::Serialize::serialize(
-            &delta,
-            &serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true),
-        )
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+        crate::js_json::to_value(&delta).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Fetch `nodegroupIds` from the compiled-in tile source, if there is one,
@@ -1302,12 +1297,12 @@ mod adoption_tests {
         w.core.borrow().store_pseudo("greeting".to_string(), list);
 
         assert!(
-            w.get_cached_pseudo(Some("greeting".to_string())).is_some(),
+            !w.get_cached_pseudo(Some("greeting".to_string())).is_null(),
             "a cached list must survive the SharedMut write→read round-trip"
         );
         assert!(
-            w.get_cached_pseudo(Some("absent".to_string())).is_none(),
-            "an uncached alias reads back as None, not a spurious hit"
+            w.get_cached_pseudo(Some("absent".to_string())).is_null(),
+            "an uncached alias reads back as null, not a spurious hit"
         );
     }
 

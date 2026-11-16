@@ -697,6 +697,45 @@ fn batch_trees_to_tiles(
     })
 }
 
+/// A static type's dict as core serialises it: the one definition of
+/// alizarin's output, which WASM and NAPI give too (pinned by
+/// tests/data/output-parity/expected.json). The dataclasses' `to_dict`s return
+/// this, so Python can't drift from it: empty fields core leaves out are left
+/// out, and keys come in core's order.
+///
+/// Args:
+///     kind: the core type: "node", "nodegroup", "edge", "card", "constraint",
+///         "cards_x_nodes_x_widgets", "functions_x_graphs", "publication",
+///         "tile", "resource" or "graph".
+///     value: the dict to normalise.
+#[pyfunction]
+fn canonical_static(py: Python, kind: &str, value: &Bound<'_, PyAny>) -> PyResult<PyObject> {
+    fn via<T: serde::de::DeserializeOwned + serde::Serialize>(
+        json: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        let typed: T = serde_json::from_value(json).map_err(|e| e.to_string())?;
+        serde_json::to_value(&typed).map_err(|e| e.to_string())
+    }
+    let json = python_json::python_to_json(py, value)?;
+    let canonical = match kind {
+        "node" => via::<alizarin_core::StaticNode>(json),
+        "nodegroup" => via::<alizarin_core::StaticNodegroup>(json),
+        "edge" => via::<alizarin_core::StaticEdge>(json),
+        "card" => via::<alizarin_core::StaticCard>(json),
+        "constraint" => via::<alizarin_core::StaticConstraint>(json),
+        "cards_x_nodes_x_widgets" => via::<alizarin_core::StaticCardsXNodesXWidgets>(json),
+        "functions_x_graphs" => via::<alizarin_core::StaticFunctionsXGraphs>(json),
+        "publication" => via::<alizarin_core::StaticPublication>(json),
+        "tile" => via::<alizarin_core::StaticTile>(json),
+        "resource" => via::<alizarin_core::StaticResource>(json),
+        "graph" => via::<alizarin_core::StaticGraph>(json),
+        other => Err(format!("unknown static type: {other}")),
+    }
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("{kind}: {e}")))?;
+    pythonize::pythonize(py, &canonical)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
+}
+
 /// Compose one resource across an ordered layer stack, in memory — the binding
 /// form of the substrate's `hydrate_layers` (no DuckDB).
 ///
@@ -2476,6 +2515,7 @@ fn alizarin(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(batch_trees_to_tiles, m)?)?;
     m.add_function(wrap_pyfunction!(batch_tiles_to_trees, m)?)?;
     m.add_function(wrap_pyfunction!(compose_resource_layers, m)?)?;
+    m.add_function(wrap_pyfunction!(canonical_static, m)?)?;
     m.add_function(wrap_pyfunction!(cards_to_json_tree, m)?)?;
 
     // Streaming iterator (low memory, processes one tree at a time)

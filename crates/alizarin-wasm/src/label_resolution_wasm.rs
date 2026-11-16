@@ -51,7 +51,7 @@ pub fn wasm_build_alias_to_collection_map(
     let registry = crate::extension_registry::build_extension_registry();
     let alias_map = build_alias_to_collection_map(&graph, &config, Some(&registry));
 
-    serde_wasm_bindgen::to_value(&alias_map)
+    crate::js_json::to_value(&alias_map)
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
@@ -119,10 +119,7 @@ pub fn wasm_resolve_labels_with_lookup(
     let resolved = label_resolution::resolve_labels(tree, &alias_map, &lookup, strict)
         .map_err(|e| JsError::new(&e.message))?;
 
-    let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-    use serde::Serialize;
-    resolved
-        .serialize(&serializer)
+    crate::js_json::to_value(&resolved)
         .map_err(|e| JsError::new(&format!("Failed to convert result: {}", e)))
 }
 

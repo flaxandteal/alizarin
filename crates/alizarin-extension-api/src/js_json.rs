@@ -13,7 +13,27 @@
 //! WASM module, each at the same risk.
 
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
+
+/// The one way a WASM binding hands a Rust value to JS: through
+/// `serde_json::Value`, as NAPI does, so both backends give the same plain
+/// objects (no `Map`s), with `None` as `null` (not `undefined`, which
+/// `JSON.stringify` drops) and keys in `serde_json`'s sorted order (not struct
+/// order). `tests/dual-backend/outputParity.test.ts` holds every binding to it.
+pub fn to_value<T: Serialize + ?Sized>(value: &T) -> Result<JsValue, serde_wasm_bindgen::Error> {
+    serde_json::to_value(value)
+        .map_err(|e| serde_wasm_bindgen::Error::new(e.to_string()))?
+        .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
+}
+
+/// An optional result for JS: `None` as `null`, as NAPI gives it.
+/// wasm-bindgen returns `undefined` for an `Option` result, so an exported
+/// function or getter that may have nothing returns `JsValue`, declared with
+/// `unchecked_return_type = "T | null"`, and returns this.
+pub fn or_null<T: Into<JsValue>>(value: Option<T>) -> JsValue {
+    value.map(Into::into).unwrap_or(JsValue::NULL)
+}
 
 #[wasm_bindgen(inline_js = "export function json_text(value) {
   return JSON.stringify(value, (_key, item) => (item instanceof Map ? Object.fromEntries(item) : item));

@@ -3,7 +3,6 @@
 //! NAPI and Python.
 
 use alizarin_core::PseudoNodeCore;
-use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -100,7 +99,7 @@ impl PseudoNode {
         // Reflect::set on Object::new() can't fail.
         let config_obj = js_sys::Object::new();
         for (key, value) in &node.config {
-            let js_value = serde_wasm_bindgen::to_value(value).unwrap_or(JsValue::NULL);
+            let js_value = crate::js_json::to_value(value).unwrap_or(JsValue::NULL);
             js_sys::Reflect::set(&config_obj, &JsValue::from_str(key), &js_value).ok();
         }
         js_sys::Reflect::set(&obj, &"config".into(), &config_obj).ok();
@@ -126,10 +125,8 @@ impl PseudoNode {
     pub fn get_child_nodes(&self) -> JsValue {
         let map = js_sys::Map::new();
         // Create a serializer that uses plain objects instead of Maps
-        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
         for (key, value) in &self.core.child_nodes {
-            // Serialize the StaticNode directly (not via to_json()) with object serializer
-            let node_obj = value.serialize(&serializer).unwrap_or(JsValue::NULL);
+            let node_obj = crate::js_json::to_value(value.as_ref()).unwrap_or(JsValue::NULL);
             map.set(&JsValue::from_str(key), &node_obj);
         }
         map.into()
@@ -156,7 +153,7 @@ impl PseudoNode {
     #[wasm_bindgen(getter = description)]
     pub fn get_description(&self) -> JsValue {
         if let Some(ref description) = self.core.node.description {
-            serde_wasm_bindgen::to_value(&description.to_json()).unwrap_or(JsValue::NULL)
+            crate::js_json::to_value(&description.to_json()).unwrap_or(JsValue::NULL)
         } else {
             JsValue::NULL
         }
@@ -234,9 +231,9 @@ impl PseudoNode {
         self.core.node.istopnode
     }
 
-    #[wasm_bindgen(getter = sortorder)]
-    pub fn get_sortorder(&self) -> Option<i32> {
-        self.core.node.sortorder
+    #[wasm_bindgen(getter = sortorder, unchecked_return_type = "number | null")]
+    pub fn get_sortorder(&self) -> JsValue {
+        crate::js_json::or_null(self.core.node.sortorder)
     }
 
     #[wasm_bindgen(getter = config)]
@@ -244,7 +241,7 @@ impl PseudoNode {
         // Convert HashMap to JavaScript object (not Map!)
         let obj = js_sys::Object::new();
         for (key, value) in &self.core.node.config {
-            let js_value = serde_wasm_bindgen::to_value(value).unwrap_or(JsValue::NULL);
+            let js_value = crate::js_json::to_value(value).unwrap_or(JsValue::NULL);
             js_sys::Reflect::set(&obj, &JsValue::from_str(key), &js_value).ok();
         }
         obj.into()
@@ -276,6 +273,6 @@ impl PseudoNode {
 
     #[wasm_bindgen(js_name = toJSON)]
     pub fn to_json(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.core.node.to_json()).unwrap_or(JsValue::NULL)
+        crate::js_json::to_value(&self.core.node.to_json()).unwrap_or(JsValue::NULL)
     }
 }

@@ -28,7 +28,6 @@ use alizarin_core::StaticTranslatableString as CoreTranslatableString;
 wasm_wrapper! {
     pub struct StaticTranslatableString wraps alizarin_core::StaticTranslatableString {
         no_constructor,
-        no_to_json,
         no_copy,
         impl_default,
     }
@@ -68,15 +67,6 @@ impl StaticTranslatableString {
     #[wasm_bindgen(js_name = toString)]
     pub fn to_string_js(&self) -> String {
         self.0.to_string_default()
-    }
-
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        let js_obj = js_sys::Object::new();
-        for (key, val) in &self.0.translations {
-            js_sys::Reflect::set(&js_obj, &JsValue::from_str(key), &JsValue::from_str(val)).ok();
-        }
-        js_obj.into()
     }
 
     #[wasm_bindgen(js_name = copy)]
@@ -145,7 +135,6 @@ fn json_to_js_value(value: &serde_json::Value) -> JsValue {
 wasm_wrapper! {
     pub struct StaticGraphMeta wraps alizarin_core::StaticGraphMeta {
         no_constructor,
-        no_to_json,
         no_copy,
     }
 }
@@ -172,95 +161,14 @@ impl StaticGraphMeta {
         self.graphid = value;
     }
 
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        // Manual serialization to plain JS object using our helper
-        use serde_json::json;
-
-        let mut obj = serde_json::Map::new();
-
-        if let Some(ref val) = self.author {
-            obj.insert("author".to_string(), json!(val));
-        }
-        if let Some(val) = self.cards {
-            obj.insert("cards".to_string(), json!(val));
-        }
-        if let Some(val) = self.cards_x_nodes_x_widgets {
-            obj.insert("cards_x_nodes_x_widgets".to_string(), json!(val));
-        }
-        if let Some(ref val) = self.color {
-            obj.insert("color".to_string(), json!(val));
-        }
-        if let Some(ref val) = self.description {
-            obj.insert("description".to_string(), json!(val));
-        }
-        if let Some(val) = self.edges {
-            obj.insert("edges".to_string(), json!(val));
-        }
-        obj.insert("graphid".to_string(), json!(self.graphid));
-        if let Some(ref val) = self.iconclass {
-            obj.insert("iconclass".to_string(), json!(val));
-        }
-        if let Some(val) = self.is_editable {
-            obj.insert("is_editable".to_string(), json!(val));
-        }
-        if let Some(val) = self.isresource {
-            obj.insert("isresource".to_string(), json!(val));
-        }
-        if let Some(ref val) = self.jsonldcontext {
-            obj.insert("jsonldcontext".to_string(), json!(val));
-        }
-        if let Some(ref val) = self.name {
-            obj.insert("name".to_string(), json!(val));
-        }
-        if let Some(val) = self.nodegroups {
-            obj.insert("nodegroups".to_string(), json!(val));
-        }
-        if let Some(val) = self.nodes {
-            obj.insert("nodes".to_string(), json!(val));
-        }
-        crate::utils::insert_classes_json(&mut obj, "ontology_id", self.ontology_id.as_ref());
-        if let Some(ref val) = self.publication {
-            obj.insert("publication".to_string(), json!(val));
-        }
-        if !self.relatable_resource_model_ids.is_empty() {
-            obj.insert(
-                "relatable_resource_model_ids".to_string(),
-                json!(self.relatable_resource_model_ids),
-            );
-        }
-        if let Some(r2rc) = self.resource_2_resource_constraints.as_ref() {
-            if !r2rc.is_empty() {
-                obj.insert("resource_2_resource_constraints".to_string(), json!(r2rc));
-            }
-        }
-        if let Some(ref val) = self.root {
-            obj.insert(
-                "root".to_string(),
-                serde_json::to_value(val).unwrap_or(json!(null)),
-            );
-        }
-        if let Some(ref val) = self.slug {
-            obj.insert("slug".to_string(), json!(val));
-        }
-        if let Some(ref val) = self.subtitle {
-            obj.insert("subtitle".to_string(), json!(val));
-        }
-        if let Some(ref val) = self.version {
-            obj.insert("version".to_string(), json!(val));
-        }
-
-        json_to_js_value(&serde_json::Value::Object(obj))
+    #[wasm_bindgen(getter = author, unchecked_return_type = "string | null")]
+    pub fn get_author_property(&self) -> JsValue {
+        crate::js_json::or_null(self.author.clone())
     }
 
-    #[wasm_bindgen(getter = author)]
-    pub fn get_author_property(&self) -> Option<String> {
-        self.author.clone()
-    }
-
-    #[wasm_bindgen(js_name = getAuthor)]
-    pub fn get_author(&self) -> Option<String> {
-        self.author.clone()
+    #[wasm_bindgen(js_name = getAuthor, unchecked_return_type = "string | null")]
+    pub fn get_author(&self) -> JsValue {
+        crate::js_json::or_null(self.author.clone())
     }
 
     #[wasm_bindgen(js_name = setAuthor)]
@@ -268,14 +176,14 @@ impl StaticGraphMeta {
         self.author = value;
     }
 
-    #[wasm_bindgen(getter = isresource)]
-    pub fn get_isresource_property(&self) -> Option<bool> {
-        self.isresource
+    #[wasm_bindgen(getter = isresource, unchecked_return_type = "boolean | null")]
+    pub fn get_isresource_property(&self) -> JsValue {
+        crate::js_json::or_null(self.isresource)
     }
 
-    #[wasm_bindgen(js_name = getIsResource)]
-    pub fn get_isresource(&self) -> Option<bool> {
-        self.isresource
+    #[wasm_bindgen(js_name = getIsResource, unchecked_return_type = "boolean | null")]
+    pub fn get_isresource(&self) -> JsValue {
+        crate::js_json::or_null(self.isresource)
     }
 
     #[wasm_bindgen(js_name = setIsResource)]
@@ -284,9 +192,9 @@ impl StaticGraphMeta {
     }
 
     // Additional getters/setters for all fields
-    #[wasm_bindgen(js_name = getCards)]
-    pub fn get_cards(&self) -> Option<u32> {
-        self.cards
+    #[wasm_bindgen(js_name = getCards, unchecked_return_type = "number | null")]
+    pub fn get_cards(&self) -> JsValue {
+        crate::js_json::or_null(self.cards)
     }
 
     #[wasm_bindgen(js_name = setCards)]
@@ -294,9 +202,9 @@ impl StaticGraphMeta {
         self.cards = value;
     }
 
-    #[wasm_bindgen(js_name = getCardsXNodesXWidgets)]
-    pub fn get_cards_x_nodes_x_widgets(&self) -> Option<u32> {
-        self.cards_x_nodes_x_widgets
+    #[wasm_bindgen(js_name = getCardsXNodesXWidgets, unchecked_return_type = "number | null")]
+    pub fn get_cards_x_nodes_x_widgets(&self) -> JsValue {
+        crate::js_json::or_null(self.cards_x_nodes_x_widgets)
     }
 
     #[wasm_bindgen(js_name = setCardsXNodesXWidgets)]
@@ -304,9 +212,9 @@ impl StaticGraphMeta {
         self.cards_x_nodes_x_widgets = value;
     }
 
-    #[wasm_bindgen(js_name = getColor)]
-    pub fn get_color(&self) -> Option<String> {
-        self.color.clone()
+    #[wasm_bindgen(js_name = getColor, unchecked_return_type = "string | null")]
+    pub fn get_color(&self) -> JsValue {
+        crate::js_json::or_null(self.color.clone())
     }
 
     #[wasm_bindgen(js_name = setColor)]
@@ -314,12 +222,17 @@ impl StaticGraphMeta {
         self.color = value;
     }
 
-    #[wasm_bindgen(getter = description)]
-    pub fn get_description(&self) -> Option<StaticTranslatableString> {
-        self.0
-            .description
-            .clone()
-            .map(StaticTranslatableString::from)
+    #[wasm_bindgen(
+        getter = description,
+        unchecked_return_type = "StaticTranslatableString | null"
+    )]
+    pub fn get_description(&self) -> JsValue {
+        crate::js_json::or_null(
+            self.0
+                .description
+                .clone()
+                .map(StaticTranslatableString::from),
+        )
     }
 
     #[wasm_bindgen(setter = description)]
@@ -327,9 +240,9 @@ impl StaticGraphMeta {
         self.0.description = value.map(|v| v.0);
     }
 
-    #[wasm_bindgen(js_name = getEdges)]
-    pub fn get_edges(&self) -> Option<u32> {
-        self.edges
+    #[wasm_bindgen(js_name = getEdges, unchecked_return_type = "number | null")]
+    pub fn get_edges(&self) -> JsValue {
+        crate::js_json::or_null(self.edges)
     }
 
     #[wasm_bindgen(js_name = setEdges)]
@@ -337,9 +250,9 @@ impl StaticGraphMeta {
         self.edges = value;
     }
 
-    #[wasm_bindgen(js_name = getIconClass)]
-    pub fn get_iconclass(&self) -> Option<String> {
-        self.iconclass.clone()
+    #[wasm_bindgen(js_name = getIconClass, unchecked_return_type = "string | null")]
+    pub fn get_iconclass(&self) -> JsValue {
+        crate::js_json::or_null(self.iconclass.clone())
     }
 
     #[wasm_bindgen(js_name = setIconClass)]
@@ -347,9 +260,9 @@ impl StaticGraphMeta {
         self.iconclass = value;
     }
 
-    #[wasm_bindgen(js_name = getIsEditable)]
-    pub fn get_is_editable(&self) -> Option<bool> {
-        self.is_editable
+    #[wasm_bindgen(js_name = getIsEditable, unchecked_return_type = "boolean | null")]
+    pub fn get_is_editable(&self) -> JsValue {
+        crate::js_json::or_null(self.is_editable)
     }
 
     #[wasm_bindgen(js_name = setIsEditable)]
@@ -359,7 +272,7 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(js_name = getJsonLdContext)]
     pub fn get_jsonldcontext(&self) -> Result<JsValue, JsValue> {
-        Ok(serde_wasm_bindgen::to_value(&self.jsonldcontext)?)
+        Ok(crate::js_json::to_value(&self.jsonldcontext)?)
     }
 
     #[wasm_bindgen(js_name = setJsonLdContext)]
@@ -368,9 +281,9 @@ impl StaticGraphMeta {
         Ok(())
     }
 
-    #[wasm_bindgen(getter = name)]
-    pub fn get_name(&self) -> Option<StaticTranslatableString> {
-        self.0.name.clone().map(StaticTranslatableString::from)
+    #[wasm_bindgen(getter = name, unchecked_return_type = "StaticTranslatableString | null")]
+    pub fn get_name(&self) -> JsValue {
+        crate::js_json::or_null(self.0.name.clone().map(StaticTranslatableString::from))
     }
 
     #[wasm_bindgen(setter = name)]
@@ -378,9 +291,9 @@ impl StaticGraphMeta {
         self.0.name = value.map(|v| v.0);
     }
 
-    #[wasm_bindgen(js_name = getNodeGroups)]
-    pub fn get_nodegroups(&self) -> Option<u32> {
-        self.nodegroups
+    #[wasm_bindgen(js_name = getNodeGroups, unchecked_return_type = "number | null")]
+    pub fn get_nodegroups(&self) -> JsValue {
+        crate::js_json::or_null(self.nodegroups)
     }
 
     #[wasm_bindgen(js_name = setNodeGroups)]
@@ -388,9 +301,9 @@ impl StaticGraphMeta {
         self.nodegroups = value;
     }
 
-    #[wasm_bindgen(js_name = getNodes)]
-    pub fn get_nodes(&self) -> Option<u32> {
-        self.nodes
+    #[wasm_bindgen(js_name = getNodes, unchecked_return_type = "number | null")]
+    pub fn get_nodes(&self) -> JsValue {
+        crate::js_json::or_null(self.nodes)
     }
 
     #[wasm_bindgen(js_name = setNodes)]
@@ -415,7 +328,7 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(js_name = getPublication)]
     pub fn get_publication(&self) -> Result<JsValue, JsValue> {
-        Ok(serde_wasm_bindgen::to_value(&self.publication)?)
+        Ok(crate::js_json::to_value(&self.publication)?)
     }
 
     #[wasm_bindgen(js_name = setPublication)]
@@ -426,7 +339,7 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(js_name = getRelatableResourceModelIds)]
     pub fn get_relatable_resource_model_ids(&self) -> Result<JsValue, JsValue> {
-        Ok(serde_wasm_bindgen::to_value(
+        Ok(crate::js_json::to_value(
             &self.relatable_resource_model_ids,
         )?)
     }
@@ -439,7 +352,7 @@ impl StaticGraphMeta {
 
     #[wasm_bindgen(js_name = getResource2ResourceConstraints)]
     pub fn get_resource_2_resource_constraints(&self) -> Result<JsValue, JsValue> {
-        Ok(serde_wasm_bindgen::to_value(
+        Ok(crate::js_json::to_value(
             &self.resource_2_resource_constraints,
         )?)
     }
@@ -450,12 +363,14 @@ impl StaticGraphMeta {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = getRoot)]
-    pub fn get_root(&self) -> Option<StaticNode> {
-        self.0
-            .root
-            .as_ref()
-            .map(|b| StaticNode::from((**b).clone()))
+    #[wasm_bindgen(js_name = getRoot, unchecked_return_type = "StaticNode | null")]
+    pub fn get_root(&self) -> JsValue {
+        crate::js_json::or_null(
+            self.0
+                .root
+                .as_ref()
+                .map(|b| StaticNode::from((**b).clone())),
+        )
     }
 
     #[wasm_bindgen(js_name = setRoot)]
@@ -463,9 +378,9 @@ impl StaticGraphMeta {
         self.0.root = value.map(|v| Box::new(v.0));
     }
 
-    #[wasm_bindgen(getter = slug)]
-    pub fn get_slug(&self) -> Option<String> {
-        self.slug.clone()
+    #[wasm_bindgen(getter = slug, unchecked_return_type = "string | null")]
+    pub fn get_slug(&self) -> JsValue {
+        crate::js_json::or_null(self.slug.clone())
     }
 
     #[wasm_bindgen(setter = slug)]
@@ -473,9 +388,12 @@ impl StaticGraphMeta {
         self.slug = value;
     }
 
-    #[wasm_bindgen(getter = subtitle)]
-    pub fn get_subtitle(&self) -> Option<StaticTranslatableString> {
-        self.0.subtitle.clone().map(StaticTranslatableString::from)
+    #[wasm_bindgen(
+        getter = subtitle,
+        unchecked_return_type = "StaticTranslatableString | null"
+    )]
+    pub fn get_subtitle(&self) -> JsValue {
+        crate::js_json::or_null(self.0.subtitle.clone().map(StaticTranslatableString::from))
     }
 
     #[wasm_bindgen(setter = subtitle)]
@@ -483,9 +401,9 @@ impl StaticGraphMeta {
         self.0.subtitle = value.map(|v| v.0);
     }
 
-    #[wasm_bindgen(js_name = getVersion)]
-    pub fn get_version(&self) -> Option<String> {
-        self.version.clone()
+    #[wasm_bindgen(js_name = getVersion, unchecked_return_type = "string | null")]
+    pub fn get_version(&self) -> JsValue {
+        crate::js_json::or_null(self.version.clone())
     }
 
     #[wasm_bindgen(js_name = setVersion)]
@@ -503,7 +421,6 @@ impl StaticGraphMeta {
 wasm_wrapper! {
     pub struct StaticNode wraps alizarin_core::StaticNode {
         no_constructor,
-        no_to_json,
         no_copy,
     }
 }
@@ -521,54 +438,10 @@ impl StaticNode {
         self.clone()
     }
 
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        // Manual serialization to plain JS object using our helper
-        use serde_json::json;
-
-        let mut obj = serde_json::Map::new();
-
-        if let Some(ref val) = self.alias {
-            obj.insert("alias".to_string(), json!(val));
-        }
-        obj.insert("config".to_string(), json!(self.config));
-        obj.insert("datatype".to_string(), json!(self.datatype));
-        if let Some(ref val) = self.description {
-            obj.insert("description".to_string(), json!(val));
-        }
-        obj.insert("exportable".to_string(), json!(self.exportable));
-        if let Some(ref val) = self.fieldname {
-            obj.insert("fieldname".to_string(), json!(val));
-        }
-        obj.insert("graph_id".to_string(), json!(self.graph_id));
-        obj.insert("hascustomalias".to_string(), json!(self.hascustomalias));
-        obj.insert("is_collector".to_string(), json!(self.is_collector));
-        obj.insert("isrequired".to_string(), json!(self.isrequired));
-        obj.insert("issearchable".to_string(), json!(self.issearchable));
-        obj.insert("istopnode".to_string(), json!(self.istopnode));
-        obj.insert("name".to_string(), json!(self.name));
-        if let Some(ref val) = self.nodegroup_id {
-            obj.insert("nodegroup_id".to_string(), json!(val));
-        }
-        obj.insert("nodeid".to_string(), json!(self.nodeid));
-        crate::utils::insert_classes_json(&mut obj, "ontologyclass", self.0.ontologyclass.as_ref());
-        if let Some(ref val) = self.parentproperty {
-            obj.insert("parentproperty".to_string(), json!(val));
-        }
-        if let Some(val) = self.sortorder {
-            obj.insert("sortorder".to_string(), json!(val));
-        }
-        if let Some(ref val) = self.sourcebranchpublication_id {
-            obj.insert("sourcebranchpublication_id".to_string(), json!(val));
-        }
-
-        json_to_js_value(&serde_json::Value::Object(obj))
-    }
-
     // Getters and setters for wasm-bindgen
-    #[wasm_bindgen(getter = alias)]
-    pub fn get_alias(&self) -> Option<String> {
-        self.alias.clone()
+    #[wasm_bindgen(getter = alias, unchecked_return_type = "string | null")]
+    pub fn get_alias(&self) -> JsValue {
+        crate::js_json::or_null(self.alias.clone())
     }
 
     #[wasm_bindgen(setter = alias)]
@@ -586,12 +459,17 @@ impl StaticNode {
         self.0.datatype = value;
     }
 
-    #[wasm_bindgen(getter = description)]
-    pub fn get_description(&self) -> Option<StaticTranslatableString> {
-        self.0
-            .description
-            .clone()
-            .map(StaticTranslatableString::from)
+    #[wasm_bindgen(
+        getter = description,
+        unchecked_return_type = "StaticTranslatableString | null"
+    )]
+    pub fn get_description(&self) -> JsValue {
+        crate::js_json::or_null(
+            self.0
+                .description
+                .clone()
+                .map(StaticTranslatableString::from),
+        )
     }
 
     #[wasm_bindgen(setter = description)]
@@ -609,9 +487,9 @@ impl StaticNode {
         self.exportable = value;
     }
 
-    #[wasm_bindgen(getter = fieldname)]
-    pub fn get_fieldname(&self) -> Option<String> {
-        self.fieldname.clone()
+    #[wasm_bindgen(getter = fieldname, unchecked_return_type = "string | null")]
+    pub fn get_fieldname(&self) -> JsValue {
+        crate::js_json::or_null(self.fieldname.clone())
     }
 
     #[wasm_bindgen(setter = fieldname)]
@@ -689,9 +567,9 @@ impl StaticNode {
         self.name = value;
     }
 
-    #[wasm_bindgen(getter = nodegroup_id)]
-    pub fn get_nodegroup_id(&self) -> Option<String> {
-        self.nodegroup_id.clone()
+    #[wasm_bindgen(getter = nodegroup_id, unchecked_return_type = "string | null")]
+    pub fn get_nodegroup_id(&self) -> JsValue {
+        crate::js_json::or_null(self.nodegroup_id.clone())
     }
 
     #[wasm_bindgen(setter = nodegroup_id)]
@@ -724,9 +602,9 @@ impl StaticNode {
         self.0.ontologyclass = crate::utils::parse_js_class_list(value);
     }
 
-    #[wasm_bindgen(getter = parentproperty)]
-    pub fn get_parentproperty(&self) -> Option<String> {
-        self.parentproperty.clone()
+    #[wasm_bindgen(getter = parentproperty, unchecked_return_type = "string | null")]
+    pub fn get_parentproperty(&self) -> JsValue {
+        crate::js_json::or_null(self.parentproperty.clone())
     }
 
     #[wasm_bindgen(setter = parentproperty)]
@@ -734,9 +612,9 @@ impl StaticNode {
         self.parentproperty = value;
     }
 
-    #[wasm_bindgen(getter = sortorder)]
-    pub fn get_sortorder(&self) -> Option<i32> {
-        self.sortorder
+    #[wasm_bindgen(getter = sortorder, unchecked_return_type = "number | null")]
+    pub fn get_sortorder(&self) -> JsValue {
+        crate::js_json::or_null(self.sortorder)
     }
 
     #[wasm_bindgen(setter = sortorder)]
@@ -744,9 +622,12 @@ impl StaticNode {
         self.sortorder = value;
     }
 
-    #[wasm_bindgen(getter = sourcebranchpublication_id)]
-    pub fn get_sourcebranchpublication_id(&self) -> Option<String> {
-        self.sourcebranchpublication_id.clone()
+    #[wasm_bindgen(
+        getter = sourcebranchpublication_id,
+        unchecked_return_type = "string | null"
+    )]
+    pub fn get_sourcebranchpublication_id(&self) -> JsValue {
+        crate::js_json::or_null(self.sourcebranchpublication_id.clone())
     }
 
     #[wasm_bindgen(setter = sourcebranchpublication_id)]
@@ -851,7 +732,6 @@ impl StaticNode {
 wasm_wrapper! {
     pub struct StaticNodegroup wraps alizarin_core::StaticNodegroup {
         no_constructor,
-        no_to_json,
         no_copy,
     }
 }
@@ -869,30 +749,9 @@ impl StaticNodegroup {
         self.clone()
     }
 
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        use serde_json::json;
-        let mut obj = serde_json::Map::new();
-
-        if let Some(ref val) = self.0.cardinality {
-            obj.insert("cardinality".to_string(), json!(val));
-        } else {
-            obj.insert("cardinality".to_string(), json!(null));
-        }
-        obj.insert("legacygroupid".to_string(), json!(null));
-        obj.insert("nodegroupid".to_string(), json!(self.0.nodegroupid));
-        if let Some(ref val) = self.0.parentnodegroup_id {
-            obj.insert("parentnodegroup_id".to_string(), json!(val));
-        } else {
-            obj.insert("parentnodegroup_id".to_string(), json!(null));
-        }
-
-        json_to_js_value(&serde_json::Value::Object(obj))
-    }
-
-    #[wasm_bindgen(getter = cardinality)]
-    pub fn get_cardinality(&self) -> Option<String> {
-        self.0.cardinality.clone()
+    #[wasm_bindgen(getter = cardinality, unchecked_return_type = "string | null")]
+    pub fn get_cardinality(&self) -> JsValue {
+        crate::js_json::or_null(self.0.cardinality.clone())
     }
 
     #[wasm_bindgen(setter = cardinality)]
@@ -900,9 +759,9 @@ impl StaticNodegroup {
         self.0.cardinality = value;
     }
 
-    #[wasm_bindgen(getter = legacygroupid)]
+    #[wasm_bindgen(getter = legacygroupid, unchecked_return_type = "string | null")]
     pub fn get_legacygroupid(&self) -> JsValue {
-        JsValue::NULL
+        crate::js_json::or_null(self.0.legacygroupid.clone())
     }
 
     #[wasm_bindgen(getter = nodegroupid)]
@@ -936,7 +795,6 @@ impl StaticNodegroup {
 wasm_wrapper! {
     pub struct StaticConstraint wraps alizarin_core::StaticConstraint {
         no_constructor,
-        no_to_json,
         no_copy,
         get set card_id,
         get set constraintid,
@@ -952,23 +810,9 @@ impl StaticConstraint {
         Ok(StaticConstraint(data))
     }
 
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        use serde_json::json;
-        let mut obj = serde_json::Map::new();
-        obj.insert("card_id".to_string(), json!(self.0.card_id));
-        obj.insert("constraintid".to_string(), json!(self.0.constraintid));
-        obj.insert("nodes".to_string(), json!(self.0.nodes));
-        obj.insert(
-            "uniquetoallinstances".to_string(),
-            json!(self.0.uniquetoallinstances),
-        );
-        json_to_js_value(&serde_json::Value::Object(obj))
-    }
-
     #[wasm_bindgen(getter = nodes)]
     pub fn get_nodes(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.0.nodes).unwrap_or(JsValue::NULL)
+        crate::js_json::to_value(&self.0.nodes).unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(setter = nodes)]
@@ -986,7 +830,6 @@ impl StaticConstraint {
 wasm_wrapper! {
     pub struct StaticPublication wraps alizarin_core::StaticPublication {
         no_constructor,
-        no_to_json,
         no_copy,
         get set graph_id,
         get set publicationid,
@@ -1005,21 +848,6 @@ impl StaticPublication {
     #[wasm_bindgen]
     pub fn copy(&self) -> StaticPublication {
         self.clone()
-    }
-
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        use serde_json::json;
-        let mut obj = serde_json::Map::new();
-        obj.insert("graph_id".to_string(), json!(self.0.graph_id));
-        if let Some(ref val) = self.0.notes {
-            obj.insert("notes".to_string(), json!(val));
-        } else {
-            obj.insert("notes".to_string(), json!(null));
-        }
-        obj.insert("publicationid".to_string(), json!(self.0.publicationid));
-        obj.insert("published_time".to_string(), json!(self.0.published_time));
-        json_to_js_value(&serde_json::Value::Object(obj))
     }
 
     #[wasm_bindgen(getter = notes)]
@@ -1043,7 +871,6 @@ impl StaticPublication {
 wasm_wrapper! {
     pub struct StaticCardsXNodesXWidgets wraps alizarin_core::StaticCardsXNodesXWidgets {
         no_constructor,
-        no_to_json,
         no_copy,
         get set card_id,
         get set id,
@@ -1060,23 +887,6 @@ impl StaticCardsXNodesXWidgets {
     pub fn new(json_data: JsValue) -> Result<StaticCardsXNodesXWidgets, JsValue> {
         let data: CoreStaticCardsXNodesXWidgets = crate::js_json::from_value(json_data)?;
         Ok(StaticCardsXNodesXWidgets(data))
-    }
-
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        use serde_json::json;
-        let mut obj = serde_json::Map::new();
-        obj.insert("card_id".to_string(), json!(self.0.card_id));
-        obj.insert("config".to_string(), self.0.config.clone());
-        obj.insert("id".to_string(), json!(self.0.id));
-        obj.insert("label".to_string(), json!(self.0.label));
-        obj.insert("node_id".to_string(), json!(self.0.node_id));
-        if let Some(val) = self.0.sortorder {
-            obj.insert("sortorder".to_string(), json!(val));
-        }
-        obj.insert("visible".to_string(), json!(self.0.visible));
-        obj.insert("widget_id".to_string(), json!(self.0.widget_id));
-        json_to_js_value(&serde_json::Value::Object(obj))
     }
 
     #[wasm_bindgen(getter = config)]
@@ -1109,7 +919,6 @@ impl StaticCardsXNodesXWidgets {
 wasm_wrapper! {
     pub struct StaticFunctionsXGraphs wraps alizarin_core::StaticFunctionsXGraphs {
         no_constructor,
-        no_to_json,
         no_copy,
         get set function_id,
         get set graph_id,
@@ -1128,17 +937,6 @@ impl StaticFunctionsXGraphs {
     #[wasm_bindgen]
     pub fn copy(&self) -> StaticFunctionsXGraphs {
         self.clone()
-    }
-
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        use serde_json::json;
-        let mut obj = serde_json::Map::new();
-        obj.insert("config".to_string(), json!(self.0.config));
-        obj.insert("function_id".to_string(), json!(self.0.function_id));
-        obj.insert("graph_id".to_string(), json!(self.0.graph_id));
-        obj.insert("id".to_string(), json!(self.0.id));
-        json_to_js_value(&serde_json::Value::Object(obj))
     }
 
     #[wasm_bindgen(getter = config)]
@@ -1161,7 +959,6 @@ impl StaticFunctionsXGraphs {
 wasm_wrapper! {
     pub struct StaticCard wraps alizarin_core::StaticCard {
         no_constructor,
-        no_to_json,
         no_copy,
         get set active,
         get set cardid,
@@ -1184,53 +981,13 @@ impl StaticCard {
         Ok(StaticCard(data))
     }
 
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        use serde_json::json;
-        let mut obj = serde_json::Map::new();
-
-        obj.insert("active".to_string(), json!(self.0.active));
-        obj.insert("cardid".to_string(), json!(self.0.cardid));
-        obj.insert("component_id".to_string(), json!(self.0.component_id));
-        if let Some(ref val) = self.0.config {
-            obj.insert("config".to_string(), val.clone());
-        }
-        obj.insert("constraints".to_string(), json!(self.0.constraints));
-        if let Some(ref val) = self.0.cssclass {
-            obj.insert("cssclass".to_string(), json!(val));
-        } else {
-            obj.insert("cssclass".to_string(), json!(null));
-        }
-        if let Some(ref val) = self.0.description {
-            obj.insert("description".to_string(), json!(val));
-        } else {
-            obj.insert("description".to_string(), json!(null));
-        }
-        obj.insert("graph_id".to_string(), json!(self.0.graph_id));
-        obj.insert("helpenabled".to_string(), json!(self.0.helpenabled));
-        obj.insert("helptext".to_string(), json!(self.0.helptext));
-        obj.insert("helptitle".to_string(), json!(self.0.helptitle));
-        obj.insert("instructions".to_string(), json!(self.0.instructions));
-        obj.insert("is_editable".to_string(), json!(self.0.is_editable));
-        obj.insert("name".to_string(), json!(self.0.name));
-        obj.insert("nodegroup_id".to_string(), json!(self.0.nodegroup_id));
-        if let Some(val) = self.0.sortorder {
-            obj.insert("sortorder".to_string(), json!(val));
-        } else {
-            obj.insert("sortorder".to_string(), json!(null));
-        }
-        obj.insert("visible".to_string(), json!(self.0.visible));
-
-        json_to_js_value(&serde_json::Value::Object(obj))
-    }
-
     #[wasm_bindgen(getter = config)]
     pub fn get_config(&self) -> JsValue {
         self.0
             .config
             .as_ref()
             .map(json_to_js_value)
-            .unwrap_or(JsValue::UNDEFINED)
+            .unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(setter = config)]
@@ -1242,7 +999,7 @@ impl StaticCard {
 
     #[wasm_bindgen(getter = constraints)]
     pub fn get_constraints(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.0.constraints).unwrap_or(JsValue::NULL)
+        crate::js_json::to_value(&self.0.constraints).unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(setter = constraints)]
@@ -1252,12 +1009,17 @@ impl StaticCard {
         }
     }
 
-    #[wasm_bindgen(getter = description)]
-    pub fn get_description(&self) -> Option<StaticTranslatableString> {
-        self.0
-            .description
-            .as_ref()
-            .map(|d| StaticTranslatableString::from(d.clone()))
+    #[wasm_bindgen(
+        getter = description,
+        unchecked_return_type = "StaticTranslatableString | null"
+    )]
+    pub fn get_description(&self) -> JsValue {
+        crate::js_json::or_null(
+            self.0
+                .description
+                .as_ref()
+                .map(|d| StaticTranslatableString::from(d.clone())),
+        )
     }
 
     #[wasm_bindgen(setter = description)]
@@ -1310,7 +1072,6 @@ impl StaticCard {
 wasm_wrapper! {
     pub struct StaticTile wraps alizarin_core::StaticTile {
         no_constructor,
-        no_to_json,
         no_copy,
     }
 }
@@ -1343,53 +1104,6 @@ impl StaticTile {
             self.0.tileid = Some(uuid::Uuid::new_v4().to_string());
         }
         self.0.tileid.clone().unwrap()
-    }
-
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        use serde_json::json;
-        let mut obj = serde_json::Map::new();
-
-        // Convert HashMap to plain object for data field
-        let data_obj: serde_json::Map<String, serde_json::Value> = self
-            .0
-            .data
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        obj.insert("data".to_string(), json!(data_obj));
-
-        obj.insert("nodegroup_id".to_string(), json!(self.0.nodegroup_id));
-        obj.insert(
-            "resourceinstance_id".to_string(),
-            json!(self.0.resourceinstance_id),
-        );
-
-        if let Some(ref val) = self.0.tileid {
-            obj.insert("tileid".to_string(), json!(val));
-        } else {
-            obj.insert("tileid".to_string(), json!(null));
-        }
-
-        if let Some(ref val) = self.0.parenttile_id {
-            obj.insert("parenttile_id".to_string(), json!(val));
-        } else {
-            obj.insert("parenttile_id".to_string(), json!(null));
-        }
-
-        if let Some(ref val) = self.0.provisionaledits {
-            obj.insert("provisionaledits".to_string(), json!(val));
-        } else {
-            obj.insert("provisionaledits".to_string(), json!(null));
-        }
-
-        if let Some(val) = self.0.sortorder {
-            obj.insert("sortorder".to_string(), json!(val));
-        } else {
-            obj.insert("sortorder".to_string(), json!(null));
-        }
-
-        json_to_js_value(&serde_json::Value::Object(obj))
     }
 
     #[wasm_bindgen(getter = data)]
@@ -1819,7 +1533,6 @@ impl StaticNode {
 wasm_wrapper! {
     pub struct StaticEdge wraps alizarin_core::StaticEdge {
         no_constructor,
-        no_to_json,
         no_copy,
     }
 }
@@ -1837,33 +1550,10 @@ impl StaticEdge {
         self.clone()
     }
 
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        use serde_json::json;
-
-        let mut obj = serde_json::Map::new();
-
-        if let Some(ref val) = self.0.description {
-            obj.insert("description".to_string(), json!(val));
-        }
-        obj.insert("domainnode_id".to_string(), json!(self.0.domainnode_id));
-        obj.insert("edgeid".to_string(), json!(self.0.edgeid));
-        obj.insert("graph_id".to_string(), json!(self.0.graph_id));
-        if let Some(ref val) = self.0.name {
-            obj.insert("name".to_string(), json!(val));
-        }
-        if let Some(ref val) = self.0.ontologyproperty {
-            obj.insert("ontologyproperty".to_string(), json!(val));
-        }
-        obj.insert("rangenode_id".to_string(), json!(self.0.rangenode_id));
-
-        json_to_js_value(&serde_json::Value::Object(obj))
-    }
-
     // Getters
-    #[wasm_bindgen(getter = description)]
-    pub fn get_description(&self) -> Option<String> {
-        self.0.description.clone()
+    #[wasm_bindgen(getter = description, unchecked_return_type = "string | null")]
+    pub fn get_description(&self) -> JsValue {
+        crate::js_json::or_null(self.0.description.clone())
     }
 
     #[wasm_bindgen(getter = domainnode_id)]
@@ -1881,14 +1571,14 @@ impl StaticEdge {
         self.0.graph_id.clone()
     }
 
-    #[wasm_bindgen(getter = name)]
-    pub fn get_name(&self) -> Option<String> {
-        self.0.name.clone()
+    #[wasm_bindgen(getter = name, unchecked_return_type = "string | null")]
+    pub fn get_name(&self) -> JsValue {
+        crate::js_json::or_null(self.0.name.clone())
     }
 
-    #[wasm_bindgen(getter = ontologyproperty)]
-    pub fn get_ontologyproperty(&self) -> Option<String> {
-        self.0.ontologyproperty.clone()
+    #[wasm_bindgen(getter = ontologyproperty, unchecked_return_type = "string | null")]
+    pub fn get_ontologyproperty(&self) -> JsValue {
+        crate::js_json::or_null(self.0.ontologyproperty.clone())
     }
 
     #[wasm_bindgen(getter = rangenode_id)]
@@ -1903,7 +1593,6 @@ use alizarin_core::StaticGraph as CoreStaticGraph;
 wasm_wrapper! {
     pub struct StaticGraph wraps alizarin_core::StaticGraph {
         no_constructor,
-        no_to_json,
         no_copy,
         // Note: Most getters defined manually in impl block below to wrap types properly
         get slug,
@@ -1984,20 +1673,20 @@ impl StaticGraph {
         StaticTranslatableString(self.0.name.clone())
     }
 
-    #[wasm_bindgen(getter = description)]
-    pub fn get_description(&self) -> StaticTranslatableString {
-        match self.0.description {
-            Some(ref description) => StaticTranslatableString(description.clone()),
-            _ => StaticTranslatableString::default(),
-        }
+    #[wasm_bindgen(
+        getter = description,
+        unchecked_return_type = "StaticTranslatableString | null"
+    )]
+    pub fn get_description(&self) -> JsValue {
+        crate::js_json::or_null(self.0.description.clone().map(StaticTranslatableString))
     }
 
-    #[wasm_bindgen(getter = subtitle)]
-    pub fn get_subtitle(&self) -> StaticTranslatableString {
-        match self.0.subtitle {
-            Some(ref subtitle) => StaticTranslatableString(subtitle.clone()),
-            _ => StaticTranslatableString::default(),
-        }
+    #[wasm_bindgen(
+        getter = subtitle,
+        unchecked_return_type = "StaticTranslatableString | null"
+    )]
+    pub fn get_subtitle(&self) -> JsValue {
+        crate::js_json::or_null(self.0.subtitle.clone().map(StaticTranslatableString))
     }
 
     #[wasm_bindgen(getter = nodes)]
@@ -2098,34 +1787,47 @@ impl StaticGraph {
         }
     }
 
+    /// The graph's function attachments, as NAPI's `functions_x_graphs`.
+    #[wasm_bindgen(
+        getter = functions_x_graphs,
+        unchecked_return_type = "StaticFunctionsXGraphs[] | null"
+    )]
+    pub fn get_functions_x_graphs(&self) -> JsValue {
+        crate::js_json::or_null(self.0.functions_x_graphs.as_ref().map(|rows| {
+            rows.iter()
+                .map(|row| JsValue::from(StaticFunctionsXGraphs(row.clone())))
+                .collect::<js_sys::Array>()
+        }))
+    }
+
     #[wasm_bindgen(getter = root)]
     pub fn get_root(&self) -> StaticNode {
         StaticNode(self.0.root.clone())
     }
 
-    #[wasm_bindgen(getter = isresource)]
-    pub fn get_isresource(&self) -> Option<bool> {
-        self.0.isresource
+    #[wasm_bindgen(getter = isresource, unchecked_return_type = "boolean | null")]
+    pub fn get_isresource(&self) -> JsValue {
+        crate::js_json::or_null(self.0.isresource)
     }
 
-    #[wasm_bindgen(getter = author)]
-    pub fn get_author(&self) -> Option<String> {
-        self.0.author.clone()
+    #[wasm_bindgen(getter = author, unchecked_return_type = "string | null")]
+    pub fn get_author(&self) -> JsValue {
+        crate::js_json::or_null(self.0.author.clone())
     }
 
-    #[wasm_bindgen(getter = iconclass)]
-    pub fn get_iconclass(&self) -> Option<String> {
-        self.0.iconclass.clone()
+    #[wasm_bindgen(getter = iconclass, unchecked_return_type = "string | null")]
+    pub fn get_iconclass(&self) -> JsValue {
+        crate::js_json::or_null(self.0.iconclass.clone())
     }
 
-    #[wasm_bindgen(getter = template_id)]
-    pub fn get_template_id(&self) -> Option<String> {
-        self.0.template_id.clone()
+    #[wasm_bindgen(getter = template_id, unchecked_return_type = "string | null")]
+    pub fn get_template_id(&self) -> JsValue {
+        crate::js_json::or_null(self.0.template_id.clone())
     }
 
-    #[wasm_bindgen(getter = version)]
-    pub fn get_version(&self) -> Option<String> {
-        self.0.version.clone()
+    #[wasm_bindgen(getter = version, unchecked_return_type = "string | null")]
+    pub fn get_version(&self) -> JsValue {
+        crate::js_json::or_null(self.0.version.clone())
     }
 
     // Helper methods for modifying collections
@@ -2181,14 +1883,6 @@ impl StaticGraph {
             .unwrap_or(JsValue::NULL)
     }
 
-    /// The whole graph as plain data, core's serialisation (as NAPI's
-    /// `toJSON`), so it parses back into the same graph.
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        let core: &alizarin_core::StaticGraph = self;
-        json_to_js_value(&serde_json::to_value(core).unwrap_or(serde_json::Value::Null))
-    }
-
     /// Get a simplified schema view of the graph showing node aliases and structure.
     ///
     /// Returns a nested object representing the tree with:
@@ -2213,7 +1907,7 @@ impl StaticGraph {
     #[wasm_bindgen(js_name = getSchema)]
     pub fn get_schema(&self) -> Result<JsValue, JsValue> {
         let schema = self.0.get_schema();
-        serde_wasm_bindgen::to_value(&schema)
+        crate::js_json::to_value(&schema)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize schema: {}", e)))
     }
 
@@ -2493,9 +2187,9 @@ impl StaticResourceDescriptors {
         StaticResourceDescriptors(alizarin_core::StaticResourceDescriptors::empty())
     }
 
-    #[wasm_bindgen(getter = mapPopup)]
-    pub fn map_popup(&self) -> Option<String> {
-        self.0.map_popup.clone()
+    #[wasm_bindgen(getter = mapPopup, unchecked_return_type = "string | null")]
+    pub fn map_popup(&self) -> JsValue {
+        crate::js_json::or_null(self.0.map_popup.clone())
     }
 
     #[wasm_bindgen(setter = mapPopup)]
@@ -2528,7 +2222,7 @@ impl StaticResourceMetadata {
     /// the ETL — see WARNING.md.
     #[wasm_bindgen(getter)]
     pub fn descriptors(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.0.descriptors).unwrap_or(JsValue::NULL)
+        crate::js_json::to_value(&self.0.descriptors).unwrap_or(JsValue::NULL)
     }
 }
 
@@ -2536,7 +2230,6 @@ impl StaticResourceMetadata {
 wasm_wrapper! {
     pub struct StaticResourceSummary wraps alizarin_core::StaticResourceSummary {
         no_constructor,
-        no_to_json,
         no_copy,
         get resourceinstanceid,
         get graph_id,
@@ -2665,11 +2358,6 @@ impl StaticResourceSummary {
         StaticResourceSummary(self.0.clone())
     }
 
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.0).unwrap_or(JsValue::NULL)
-    }
-
     #[wasm_bindgen(js_name = toMetadata)]
     pub fn to_metadata(&self) -> StaticResourceMetadata {
         StaticResourceMetadata(self.0.to_metadata())
@@ -2680,12 +2368,12 @@ impl StaticResourceSummary {
     /// `__cache` population in the ETL — see WARNING.md.
     #[wasm_bindgen(getter)]
     pub fn descriptors(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.0.descriptors).unwrap_or(JsValue::NULL)
+        crate::js_json::to_value(&self.0.descriptors).unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(getter)]
     pub fn metadata(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.0.metadata).unwrap_or(JsValue::NULL)
+        crate::js_json::to_value(&self.0.metadata).unwrap_or(JsValue::NULL)
     }
 
     /// Create a summary from a full resource
@@ -2712,7 +2400,6 @@ impl StaticResourceSummary {
 wasm_wrapper! {
     pub struct StaticResourceReference wraps alizarin_core::StaticResourceReference {
         no_constructor,
-        no_to_json,
         no_copy,
         get id,
         get graph_id,
@@ -2737,19 +2424,14 @@ impl StaticResourceReference {
         StaticResourceReference(self.0.clone())
     }
 
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.0).unwrap_or(JsValue::NULL)
+    #[wasm_bindgen(getter = type, unchecked_return_type = "string | null")]
+    pub fn resource_type(&self) -> JsValue {
+        crate::js_json::or_null(self.0.resource_type.clone())
     }
 
-    #[wasm_bindgen(getter = type)]
-    pub fn resource_type(&self) -> Option<String> {
-        self.0.resource_type.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn title(&self) -> Option<String> {
-        self.0.title.clone()
+    #[wasm_bindgen(getter, unchecked_return_type = "string | null")]
+    pub fn title(&self) -> JsValue {
+        crate::js_json::or_null(self.0.title.clone())
     }
 
     #[wasm_bindgen(getter)]
@@ -2757,7 +2439,7 @@ impl StaticResourceReference {
         self.0
             .root
             .as_ref()
-            .and_then(|r| serde_wasm_bindgen::to_value(r).ok())
+            .and_then(|r| crate::js_json::to_value(r).ok())
             .unwrap_or(JsValue::NULL)
     }
 
@@ -2766,7 +2448,7 @@ impl StaticResourceReference {
         self.0
             .meta
             .as_ref()
-            .and_then(|m| serde_wasm_bindgen::to_value(m).ok())
+            .and_then(|m| crate::js_json::to_value(m).ok())
             .unwrap_or(JsValue::NULL)
     }
 }
@@ -2775,7 +2457,6 @@ impl StaticResourceReference {
 wasm_wrapper! {
     pub struct StaticResource wraps alizarin_core::StaticResource {
         no_constructor,
-        no_to_json,
         no_copy,
     }
 }
@@ -2906,7 +2587,7 @@ impl StaticResource {
 
     #[wasm_bindgen(getter)]
     pub fn metadata(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.0.metadata).unwrap_or(JsValue::NULL)
+        crate::js_json::to_value(&self.0.metadata).unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(setter)]
@@ -2953,20 +2634,6 @@ impl StaticResource {
     #[wasm_bindgen(getter = tilesLoaded)]
     pub fn tiles_loaded(&self) -> bool {
         self.0.tiles_loaded.unwrap_or(false)
-    }
-
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> JsValue {
-        // Serialize using serde_json, then convert to plain JS object
-        match serde_json::to_value(&self.0) {
-            Ok(json_value) => json_to_js_value(&json_value),
-            Err(e) => {
-                web_sys::console::error_1(
-                    &format!("Failed to serialize StaticResource: {}", e).into(),
-                );
-                JsValue::NULL
-            }
-        }
     }
 }
 
@@ -3035,7 +2702,7 @@ impl StaticResourceRegistry {
     #[wasm_bindgen(js_name = memoryStats)]
     pub fn memory_stats(&self) -> Result<JsValue, JsValue> {
         let stats = self.0.memory_stats();
-        serde_wasm_bindgen::to_value(&stats)
+        crate::js_json::to_value(&stats)
             .map_err(|e| JsValue::from_str(&format!("Serialization failed: {}", e)))
     }
 
@@ -3043,7 +2710,7 @@ impl StaticResourceRegistry {
     #[wasm_bindgen(js_name = memoryStatsDetailed)]
     pub fn memory_stats_detailed(&self) -> Result<JsValue, JsValue> {
         let stats = self.0.memory_stats_detailed();
-        serde_wasm_bindgen::to_value(&stats)
+        crate::js_json::to_value(&stats)
             .map_err(|e| JsValue::from_str(&format!("Serialization failed: {}", e)))
     }
 
@@ -3056,26 +2723,30 @@ impl StaticResourceRegistry {
         }
     }
 
-    /// Get the graph_id for a resource (or undefined if not known or resource_id is null)
-    #[wasm_bindgen(js_name = getGraphId)]
-    pub fn get_graph_id(&self, resource_id: Option<String>) -> Option<String> {
-        resource_id.and_then(|id| self.0.get_graph_id(&id).map(|s| s.to_string()))
+    /// Get the graph_id for a resource (or null if not known or resource_id is null)
+    #[wasm_bindgen(js_name = getGraphId, unchecked_return_type = "string | null")]
+    pub fn get_graph_id(&self, resource_id: Option<String>) -> JsValue {
+        crate::js_json::or_null(
+            resource_id.and_then(|id| self.0.get_graph_id(&id).map(|s| s.to_string())),
+        )
     }
 
-    /// Get the full summary for a resource (or undefined if not known or resource_id is null)
-    #[wasm_bindgen(js_name = getSummary)]
-    pub fn get_summary(&self, resource_id: Option<String>) -> Option<StaticResourceSummary> {
-        resource_id.and_then(|id| {
+    /// Get the full summary for a resource (or null if not known or resource_id is null)
+    #[wasm_bindgen(js_name = getSummary, unchecked_return_type = "StaticResourceSummary | null")]
+    pub fn get_summary(&self, resource_id: Option<String>) -> JsValue {
+        crate::js_json::or_null(resource_id.and_then(|id| {
             self.0
                 .get_summary(&id)
                 .map(|s| StaticResourceSummary(s.clone()))
-        })
+        }))
     }
 
-    /// Get the full resource if stored (or undefined if only summary, not known, or resource_id is null)
-    #[wasm_bindgen(js_name = getFull)]
-    pub fn get_full(&self, resource_id: Option<String>) -> Option<StaticResource> {
-        resource_id.and_then(|id| self.0.get_full(&id).map(|r| StaticResource(r.clone())))
+    /// Get the full resource if stored (or null if only summary, not known, or resource_id is null)
+    #[wasm_bindgen(js_name = getFull, unchecked_return_type = "StaticResource | null")]
+    pub fn get_full(&self, resource_id: Option<String>) -> JsValue {
+        crate::js_json::or_null(
+            resource_id.and_then(|id| self.0.get_full(&id).map(|r| StaticResource(r.clone()))),
+        )
     }
 
     /// Run a resource's Aggregate functions, with this registry as the slice.
@@ -3095,9 +2766,7 @@ impl StaticResourceRegistry {
             &crate::extension_registry::build_extension_registry(),
         )
         .map_err(|e| JsValue::from_str(&e))?;
-        changed
-            .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsValue::from_str(&e.to_string()))
+        crate::js_json::to_value(&changed).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Expand a resource's Aggregate node values with members added since the
@@ -3120,9 +2789,7 @@ impl StaticResourceRegistry {
             &crate::extension_registry::build_extension_registry(),
         )
         .map_err(|e| JsValue::from_str(&e))?;
-        changed
-            .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsValue::from_str(&e.to_string()))
+        crate::js_json::to_value(&changed).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Add `count` to the pending count each of a resource's Aggregate functions
@@ -3142,9 +2809,7 @@ impl StaticResourceRegistry {
             count.into(),
         )
         .map_err(|e| JsValue::from_str(&e))?;
-        changed
-            .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
-            .map_err(|e| JsValue::from_str(&e.to_string()))
+        crate::js_json::to_value(&changed).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Check if a resource has full data stored (not just summary)
@@ -3303,7 +2968,7 @@ impl StaticResourceRegistry {
             include_caches.unwrap_or(true),
         );
 
-        serde_wasm_bindgen::to_value(&refs)
+        crate::js_json::to_value(&refs)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize refs: {}", e)))
     }
 
@@ -3347,9 +3012,7 @@ impl StaticResourceRegistry {
             unknown_references: &result.unknown_references,
             has_unknown: result.has_unknown_references(),
         };
-        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-        output
-            .serialize(&serializer)
+        crate::js_json::to_value(&output)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
     }
 
@@ -3387,9 +3050,7 @@ impl StaticResourceRegistry {
             unknown_references: &result.unknown_references,
             has_unknown: result.has_unknown_references(),
         };
-        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-        output
-            .serialize(&serializer)
+        crate::js_json::to_value(&output)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
     }
 
@@ -3418,7 +3079,7 @@ impl StaticResourceRegistry {
             .get_node_values_index(&graph.0, node_identifier)
             .map_err(|e| JsValue::from_str(&e))?;
 
-        serde_wasm_bindgen::to_value(&index)
+        crate::js_json::to_value(&index)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
     }
 
@@ -3453,7 +3114,7 @@ impl StaticResourceRegistry {
             )
             .map_err(|e| JsValue::from_str(&e))?;
 
-        serde_wasm_bindgen::to_value(&index)
+        crate::js_json::to_value(&index)
             .map_err(|e| JsValue::from_str(&format!("Failed to serialize result: {}", e)))
     }
 }

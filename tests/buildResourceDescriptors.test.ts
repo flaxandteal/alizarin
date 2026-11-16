@@ -24,8 +24,8 @@ describe('buildResourceDescriptors', () => {
       const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(result).toBeInstanceOf(StaticResourceDescriptors);
-      expect(result.name).toBeUndefined();
-      expect(result.description).toBeUndefined();
+      expect(result.name).toBeNull();
+      expect(result.description).toBeNull();
     });
 
     it('should return empty descriptors when descriptor function is not found', async () => {
@@ -41,7 +41,7 @@ describe('buildResourceDescriptors', () => {
       const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(result).toBeInstanceOf(StaticResourceDescriptors);
-      expect(result.name).toBeUndefined();
+      expect(result.name).toBeNull();
     });
 
     it('should return empty descriptors when config has no descriptor_types', async () => {
@@ -59,7 +59,7 @@ describe('buildResourceDescriptors', () => {
       const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
       expect(result).toBeInstanceOf(StaticResourceDescriptors);
-      expect(result.name).toBeUndefined();
+      expect(result.name).toBeNull();
     });
   });
 
@@ -312,7 +312,7 @@ describe('buildResourceDescriptors', () => {
 
       const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
-      expect(result.name).toBeUndefined();
+      expect(result.name).toBeNull();
     });
 
     it('should skip descriptor when string_template is null/undefined', async () => {
@@ -338,8 +338,8 @@ describe('buildResourceDescriptors', () => {
 
       const result = await buildResourceDescriptors(mockGraph, mockNodes, mockWrapper);
 
-      expect(result.name).toBeUndefined();
-      expect(result.description).toBeUndefined();
+      expect(result.name).toBeNull();
+      expect(result.description).toBeNull();
     });
   });
 

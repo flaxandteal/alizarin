@@ -25,7 +25,7 @@ pub fn coerce_file_list(value: JsValue) -> Result<JsValue, JsError> {
         "displayValue": display_value,
     });
 
-    serde_wasm_bindgen::to_value(&result)
+    alizarin_extension_api::js_json::to_value(&result)
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
@@ -34,17 +34,14 @@ pub fn coerce_file_list(value: JsValue) -> Result<JsValue, JsError> {
 /// @param tileData - The file-list tile data (array or single object)
 /// @param language - Language code for display (e.g. "en")
 /// @returns Display string or null
-#[wasm_bindgen(js_name = renderFileListDisplay)]
-pub fn render_file_list_display(
-    tile_data: JsValue,
-    language: &str,
-) -> Result<Option<String>, JsError> {
+#[wasm_bindgen(js_name = renderFileListDisplay, unchecked_return_type = "string | null")]
+pub fn render_file_list_display(tile_data: JsValue, language: &str) -> Result<JsValue, JsError> {
     let json: serde_json::Value = alizarin_extension_api::js_json::from_value(tile_data)
         .map_err(|e| JsError::new(&format!("Failed to parse tile data: {}", e)))?;
 
-    match alizarin_filelist_core::render_filelist_display_value(&json, Some(language)) {
-        Ok(s) if s.is_empty() => Ok(None),
-        Ok(s) => Ok(Some(s)),
-        Err(e) => Err(JsError::new(&e)),
-    }
+    let display = alizarin_filelist_core::render_filelist_display_value(&json, Some(language))
+        .map_err(|e| JsError::new(&e))?;
+    Ok(alizarin_extension_api::js_json::or_null(
+        Some(display).filter(|d| !d.is_empty()),
+    ))
 }

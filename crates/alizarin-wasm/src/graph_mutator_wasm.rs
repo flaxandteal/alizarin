@@ -187,7 +187,7 @@ pub fn generate_uuid_v5(group_type: &str, group_id: Option<String>, key: &str) -
 #[wasm_bindgen(js_name = getMutationSchema)]
 pub fn get_mutation_schema() -> JsValue {
     let schema = core_get_schema();
-    serde_wasm_bindgen::to_value(&schema).unwrap_or(JsValue::NULL)
+    crate::js_json::to_value(&schema).unwrap_or(JsValue::NULL)
 }
 
 // =============================================================================
@@ -372,7 +372,7 @@ pub fn build_graph_from_model_csvs(
                 "graph": graph,
                 "collections": collections,
             });
-            // Use JSON.parse rather than serde_wasm_bindgen::to_value to ensure
+            // Use JSON.parse rather than crate::js_json::to_value to ensure
             // plain JS objects (serde_wasm_bindgen produces Map objects for
             // serde_json::Value).
             let json_str = serde_json::to_string(&json)
@@ -401,7 +401,7 @@ pub fn validate_model_csvs(
         collections_csv.as_deref(),
     );
 
-    serde_wasm_bindgen::to_value(&diagnostics)
+    crate::js_json::to_value(&diagnostics)
         .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))
 }
 

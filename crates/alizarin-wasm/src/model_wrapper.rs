@@ -252,18 +252,13 @@ impl WASMResourceModelWrapper {
     }
 
     /// Get a registered model by graph_id (returns None if not found or graph_id is null)
-    #[wasm_bindgen(js_name = getModelByGraphId)]
-    pub fn get_model_by_graph_id(graph_id: Option<String>) -> Option<WASMResourceModelWrapper> {
-        let graph_id = graph_id?;
-        MODEL_REGISTRY.with(|registry| {
-            if registry.borrow().contains_key(&graph_id) {
-                Some(WASMResourceModelWrapper {
-                    graph_id: graph_id.clone(),
-                })
-            } else {
-                None
-            }
-        })
+    #[wasm_bindgen(
+        js_name = getModelByGraphId,
+        unchecked_return_type = "WASMResourceModelWrapper | null"
+    )]
+    pub fn get_model_by_graph_id(graph_id: Option<String>) -> JsValue {
+        let registered = graph_id.filter(|id| MODEL_REGISTRY.with(|r| r.borrow().contains_key(id)));
+        crate::js_json::or_null(registered.map(|graph_id| WASMResourceModelWrapper { graph_id }))
     }
 
     /// Check if a model is registered (returns false if graph_id is null)
@@ -588,23 +583,22 @@ impl WASMResourceModelWrapper {
 
     #[wasm_bindgen(getter = edges)]
     pub fn get_edges_prop(&mut self) -> JsValue {
-        self.get_edges().unwrap_or(JsValue::UNDEFINED)
+        self.get_edges().unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(getter = nodes)]
     pub fn get_nodes_prop(&mut self) -> JsValue {
-        self.get_node_objects().unwrap_or(JsValue::UNDEFINED)
+        self.get_node_objects().unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(getter = nodegroups)]
     pub fn get_nodegroups_prop(&mut self) -> JsValue {
-        self.get_nodegroup_objects().unwrap_or(JsValue::UNDEFINED)
+        self.get_nodegroup_objects().unwrap_or(JsValue::NULL)
     }
 
     #[wasm_bindgen(getter = nodesByAlias)]
     pub fn get_nodes_by_alias_prop(&mut self) -> JsValue {
-        self.get_node_objects_by_alias()
-            .unwrap_or(JsValue::UNDEFINED)
+        self.get_node_objects_by_alias().unwrap_or(JsValue::NULL)
     }
 
     /// Prune graph to only include permitted nodegroups and their dependencies

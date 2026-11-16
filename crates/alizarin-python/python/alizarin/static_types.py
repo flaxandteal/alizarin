@@ -10,6 +10,8 @@ import json
 from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass, field
 
+from .alizarin import canonical_static
+
 
 # =============================================================================
 # Translatable String
@@ -1170,3 +1172,37 @@ class StaticDomainValue:
             selected=data.get("selected", False),
             text=data.get("text", {}),
         )
+
+
+# =============================================================================
+# One output: each to_dict above gathers the dataclass's fields, and core
+# serialises them (alizarin.canonical_static), as WASM and NAPI do. So an empty
+# field core leaves out is left out here too, and keys come in core's order.
+# tests/test_output_parity.py holds them to tests/data/output-parity/expected.json.
+# =============================================================================
+
+
+def _through_core(cls, kind: str) -> None:
+    fields = cls.to_dict
+
+    def to_dict(self) -> Dict[str, Any]:
+        return canonical_static(kind, fields(self))
+
+    to_dict.__doc__ = f"The {cls.__name__} as core serialises it (its '{kind}')."
+    cls.to_dict = to_dict
+
+
+for _cls, _kind in (
+    (StaticNode, "node"),
+    (StaticNodegroup, "nodegroup"),
+    (StaticEdge, "edge"),
+    (StaticConstraint, "constraint"),
+    (StaticCard, "card"),
+    (StaticCardsXNodesXWidgets, "cards_x_nodes_x_widgets"),
+    (StaticFunctionsXGraphs, "functions_x_graphs"),
+    (StaticPublication, "publication"),
+    (StaticTile, "tile"),
+    (StaticResource, "resource"),
+    (StaticGraph, "graph"),
+):
+    _through_core(_cls, _kind)

@@ -337,9 +337,9 @@ impl PseudoValue {
     }
 
     /// PORT: js/pseudos.ts - nodeAlias property
-    #[wasm_bindgen(getter, js_name = nodeAlias)]
-    pub fn node_alias(&self) -> Option<String> {
-        self.inner.borrow().node_alias().map(|s| s.to_string())
+    #[wasm_bindgen(getter, js_name = nodeAlias, unchecked_return_type = "string | null")]
+    pub fn node_alias(&self) -> JsValue {
+        crate::js_json::or_null(self.inner.borrow().node_alias().map(|s| s.to_string()))
     }
 
     /// PORT: js/pseudos.ts:52 - node.nodeid
@@ -371,16 +371,16 @@ impl PseudoValue {
     }
 
     /// PORT: js/pseudos.ts - tile.tileid access
-    #[wasm_bindgen(getter, js_name = tileId)]
-    pub fn tile_id(&self) -> Option<String> {
-        self.inner.borrow().tile_id()
+    #[wasm_bindgen(getter, js_name = tileId, unchecked_return_type = "string | null")]
+    pub fn tile_id(&self) -> JsValue {
+        crate::js_json::or_null(self.inner.borrow().tile_id())
     }
 
     /// PORT: js/pseudos.ts:54 - value property (tile data)
     #[wasm_bindgen(getter, js_name = tileData)]
     pub fn tile_data(&self) -> JsValue {
         match &self.inner.borrow().core.tile_data {
-            Some(data) => serde_wasm_bindgen::to_value(data).unwrap_or(JsValue::NULL),
+            Some(data) => crate::js_json::to_value(data).unwrap_or(JsValue::NULL),
             None => JsValue::NULL,
         }
     }
@@ -393,11 +393,11 @@ impl PseudoValue {
 
     /// Get inner value (for outer/inner pattern)
     /// PORT: js/pseudos.ts:61-62, 76-78 - inner property
-    #[wasm_bindgen(getter, js_name = inner)]
-    pub fn get_inner(&self) -> Option<PseudoValue> {
-        self.inner.borrow().inner.as_ref().map(|inner| PseudoValue {
+    #[wasm_bindgen(getter, js_name = inner, unchecked_return_type = "PseudoValue | null")]
+    pub fn get_inner(&self) -> JsValue {
+        crate::js_json::or_null(self.inner.borrow().inner.as_ref().map(|inner| PseudoValue {
             inner: RefCell::new((**inner).clone()),
-        })
+        }))
     }
 
     /// PORT: js/pseudos.ts:72-74 - isOuter getter
@@ -547,12 +547,14 @@ impl PseudoList {
 
     /// Get a specific value
     /// PORT: js/pseudos.ts:336 - Array element access
-    #[wasm_bindgen(js_name = getValue)]
-    pub fn get_value(&self, value_index: usize) -> Option<PseudoValue> {
-        self.inner
-            .values
-            .get(value_index)
-            .map(|v| PseudoValue::from_rust(v.clone()))
+    #[wasm_bindgen(js_name = getValue, unchecked_return_type = "PseudoValue | null")]
+    pub fn get_value(&self, value_index: usize) -> JsValue {
+        crate::js_json::or_null(
+            self.inner
+                .values
+                .get(value_index)
+                .map(|v| PseudoValue::from_rust(v.clone())),
+        )
     }
 
     /// Get all values from all groups as a flat array
@@ -596,12 +598,14 @@ impl WasmNodegroupResult {
     }
 
     /// Get a value by index
-    #[wasm_bindgen(js_name = getValue)]
-    pub fn get_value(&self, index: usize) -> Option<PseudoValue> {
-        self.inner
-            .values
-            .get(index)
-            .map(|v| PseudoValue::from_rust(v.clone()))
+    #[wasm_bindgen(js_name = getValue, unchecked_return_type = "PseudoValue | null")]
+    pub fn get_value(&self, index: usize) -> JsValue {
+        crate::js_json::or_null(
+            self.inner
+                .values
+                .get(index)
+                .map(|v| PseudoValue::from_rust(v.clone())),
+        )
     }
 
     /// Get implied nodegroups

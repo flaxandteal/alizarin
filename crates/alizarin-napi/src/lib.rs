@@ -245,27 +245,27 @@ impl NapiStaticGraph {
     /// The graph's nodes, as on WASM.
     #[napi(getter, ts_return_type = "any[]")]
     pub fn nodes(&self, env: Env) -> Result<napi::JsUnknown> {
-        env.to_js_value(&self.inner.nodes_slice())
+        json_arg::to_js(&env, &self.inner.nodes_slice())
     }
 
     #[napi(getter, ts_return_type = "any")]
     pub fn root(&self, env: Env) -> Result<napi::JsUnknown> {
-        env.to_js_value(&self.inner.root)
+        json_arg::to_js(&env, &self.inner.root)
     }
 
     #[napi(getter, ts_return_type = "any[]")]
     pub fn edges(&self, env: Env) -> Result<napi::JsUnknown> {
-        env.to_js_value(&self.inner.edges_slice())
+        json_arg::to_js(&env, &self.inner.edges_slice())
     }
 
     #[napi(getter, ts_return_type = "any[]")]
     pub fn nodegroups(&self, env: Env) -> Result<napi::JsUnknown> {
-        env.to_js_value(&self.inner.nodegroups_slice())
+        json_arg::to_js(&env, &self.inner.nodegroups_slice())
     }
 
     #[napi(getter, ts_return_type = "any[] | null")]
     pub fn cards(&self, env: Env) -> Result<napi::JsUnknown> {
-        env.to_js_value(&self.inner.cards)
+        json_arg::to_js(&env, &self.inner.cards)
     }
 
     #[napi(
@@ -274,7 +274,7 @@ impl NapiStaticGraph {
         ts_return_type = "any[] | null"
     )]
     pub fn cards_x_nodes_x_widgets(&self, env: Env) -> Result<napi::JsUnknown> {
-        env.to_js_value(&self.inner.cards_x_nodes_x_widgets)
+        json_arg::to_js(&env, &self.inner.cards_x_nodes_x_widgets)
     }
 
     #[napi(
@@ -283,17 +283,17 @@ impl NapiStaticGraph {
         ts_return_type = "any[] | null"
     )]
     pub fn functions_x_graphs(&self, env: Env) -> Result<napi::JsUnknown> {
-        env.to_js_value(&self.inner.functions_x_graphs)
+        json_arg::to_js(&env, &self.inner.functions_x_graphs)
     }
 
     #[napi(getter, ts_return_type = "any")]
     pub fn description(&self, env: Env) -> Result<napi::JsUnknown> {
-        env.to_js_value(&self.inner.description)
+        json_arg::to_js(&env, &self.inner.description)
     }
 
     #[napi(getter, ts_return_type = "any")]
     pub fn subtitle(&self, env: Env) -> Result<napi::JsUnknown> {
-        env.to_js_value(&self.inner.subtitle)
+        json_arg::to_js(&env, &self.inner.subtitle)
     }
 
     #[napi(getter)]

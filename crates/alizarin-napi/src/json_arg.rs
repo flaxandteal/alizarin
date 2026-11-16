@@ -44,3 +44,13 @@ impl FromNapiValue for JsonArg {
             .map_err(|e| napi::Error::from_reason(format!("Invalid JSON value: {e}")))
     }
 }
+
+/// A Rust value as a JS value, through `serde_json::Value`: keys in its sorted
+/// order, as every `serde_json::Value` return and WASM's `js_json::to_value`
+/// give. `env.to_js_value` on a struct writes field order instead, so the same
+/// value stringified differently by route. `tests/dual-backend/outputParity.test.ts`
+/// holds every route to it.
+pub(crate) fn to_js<T: serde::Serialize + ?Sized>(env: &Env, value: &T) -> napi::Result<JsUnknown> {
+    let json = serde_json::to_value(value).map_err(|e| napi::Error::from_reason(e.to_string()))?;
+    env.to_js_value(&json)
+}

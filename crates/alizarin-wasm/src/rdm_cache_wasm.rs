@@ -90,18 +90,18 @@ impl WasmRdmCache {
     /// @param conceptId - The concept UUID
     /// @param language - The language code (e.g., "en")
     /// @returns The label string, or undefined if not found or any param is null
-    #[wasm_bindgen(js_name = lookupLabel)]
+    #[wasm_bindgen(js_name = lookupLabel, unchecked_return_type = "string | null")]
     pub fn lookup_label(
         &self,
         collection_id: Option<String>,
         concept_id: Option<String>,
         language: Option<String>,
-    ) -> Option<String> {
-        let collection_id = collection_id?;
-        let concept_id = concept_id?;
-        let language = language?;
-        self.inner
-            .lookup_label(&collection_id, &concept_id, &language)
+    ) -> JsValue {
+        crate::js_json::or_null(collection_id.zip(concept_id).zip(language).and_then(
+            |((collection, concept), language)| {
+                self.inner.lookup_label(&collection, &concept, &language)
+            },
+        ))
     }
 
     /// Look up full concept info
@@ -117,16 +117,16 @@ impl WasmRdmCache {
     ) -> Result<JsValue, JsError> {
         let collection_id = match collection_id {
             Some(id) => id,
-            None => return Ok(JsValue::UNDEFINED),
+            None => return Ok(JsValue::NULL),
         };
         let concept_id = match concept_id {
             Some(id) => id,
-            None => return Ok(JsValue::UNDEFINED),
+            None => return Ok(JsValue::NULL),
         };
         match self.inner.lookup_concept(&collection_id, &concept_id) {
-            Some(concept) => serde_wasm_bindgen::to_value(concept)
+            Some(concept) => crate::js_json::to_value(concept)
                 .map_err(|e| JsError::new(&format!("Serialization error: {}", e))),
-            None => Ok(JsValue::UNDEFINED),
+            None => Ok(JsValue::NULL),
         }
     }
 
@@ -135,15 +135,17 @@ impl WasmRdmCache {
     /// @param collectionId - The collection to search in
     /// @param conceptId - The concept UUID
     /// @returns The parent concept ID, or undefined if no parent (top-level concept) or any param is null
-    #[wasm_bindgen(js_name = getParentId)]
+    #[wasm_bindgen(js_name = getParentId, unchecked_return_type = "string | null")]
     pub fn get_parent_id(
         &self,
         collection_id: Option<String>,
         concept_id: Option<String>,
-    ) -> Option<String> {
-        let collection_id = collection_id?;
-        let concept_id = concept_id?;
-        self.inner.get_parent_id(&collection_id, &concept_id)
+    ) -> JsValue {
+        crate::js_json::or_null(
+            collection_id
+                .zip(concept_id)
+                .and_then(|(collection, concept)| self.inner.get_parent_id(&collection, &concept)),
+        )
     }
 
     // =========================================================================
@@ -166,11 +168,11 @@ impl WasmRdmCache {
     ) -> Result<JsValue, JsError> {
         let collection_id = match collection_id {
             Some(id) => id,
-            None => return Ok(JsValue::UNDEFINED),
+            None => return Ok(JsValue::NULL),
         };
         let value_id = match value_id {
             Some(id) => id,
-            None => return Ok(JsValue::UNDEFINED),
+            None => return Ok(JsValue::NULL),
         };
         match self.inner.lookup_value(&collection_id, &value_id) {
             Some(value) => {
@@ -180,10 +182,10 @@ impl WasmRdmCache {
                     concept_id: value.concept_id.clone(),
                     language: value.language.clone(),
                 };
-                serde_wasm_bindgen::to_value(&info)
+                crate::js_json::to_value(&info)
                     .map_err(|e| JsError::new(&format!("Serialization error: {}", e)))
             }
-            None => Ok(JsValue::UNDEFINED),
+            None => Ok(JsValue::NULL),
         }
     }
 
@@ -194,17 +196,17 @@ impl WasmRdmCache {
     /// @param collectionId - The collection to search in
     /// @param valueId - The value UUID
     /// @returns The concept ID, or undefined if not found or any param is null
-    #[wasm_bindgen(js_name = getConceptIdForValue)]
+    #[wasm_bindgen(js_name = getConceptIdForValue, unchecked_return_type = "string | null")]
     pub fn get_concept_id_for_value(
         &self,
         collection_id: Option<String>,
         value_id: Option<String>,
-    ) -> Option<String> {
-        let collection_id = collection_id?;
-        let value_id = value_id?;
-        self.inner
-            .get_concept_id_for_value(&collection_id, &value_id)
-            .map(|s| s.to_string())
+    ) -> JsValue {
+        crate::js_json::or_null(collection_id.zip(value_id).and_then(|(collection, value)| {
+            self.inner
+                .get_concept_id_for_value(&collection, &value)
+                .map(|s| s.to_string())
+        }))
     }
 
     /// Validate that a value exists in a collection
@@ -252,9 +254,7 @@ impl WasmRdmCache {
         let resolved = label_resolution::resolve_labels(tree, &alias_map, &self.inner, strict)
             .map_err(|e| JsError::new(&e.message))?;
 
-        let serializer = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
-        resolved
-            .serialize(&serializer)
+        crate::js_json::to_value(&resolved)
             .map_err(|e| JsError::new(&format!("Failed to convert result: {}", e)))
     }
 
@@ -367,16 +367,14 @@ pub fn remove_from_global_rdm_cache(collection_id: &str) -> bool {
 }
 
 /// Lookup a label in the global RDM cache.
-#[wasm_bindgen(js_name = globalRdmLookupLabel)]
-pub fn global_rdm_lookup_label(
-    collection_id: &str,
-    concept_id: &str,
-    language: &str,
-) -> Option<String> {
-    alizarin_core::with_global_rdm_cache(|cache| {
-        cache.lookup_label(collection_id, concept_id, language)
-    })
-    .flatten()
+#[wasm_bindgen(js_name = globalRdmLookupLabel, unchecked_return_type = "string | null")]
+pub fn global_rdm_lookup_label(collection_id: &str, concept_id: &str, language: &str) -> JsValue {
+    crate::js_json::or_null(
+        alizarin_core::with_global_rdm_cache(|cache| {
+            cache.lookup_label(collection_id, concept_id, language)
+        })
+        .flatten(),
+    )
 }
 
 /// Check if a collection exists in the global RDM cache.
@@ -387,10 +385,14 @@ pub fn global_rdm_has_collection(collection_id: &str) -> bool {
 }
 
 /// Get parent concept ID from the global RDM cache.
-#[wasm_bindgen(js_name = globalRdmGetParentId)]
-pub fn global_rdm_get_parent_id(collection_id: &str, concept_id: &str) -> Option<String> {
-    alizarin_core::with_global_rdm_cache(|cache| cache.get_parent_id(collection_id, concept_id))
-        .flatten()
+#[wasm_bindgen(js_name = globalRdmGetParentId, unchecked_return_type = "string | null")]
+pub fn global_rdm_get_parent_id(collection_id: &str, concept_id: &str) -> JsValue {
+    crate::js_json::or_null(
+        alizarin_core::with_global_rdm_cache(|cache| {
+            cache.get_parent_id(collection_id, concept_id)
+        })
+        .flatten(),
+    )
 }
 
 /// Get all collection IDs from the global RDM cache.
@@ -425,38 +427,24 @@ mod tests {
         assert!(cache.has_collection(Some("collection-1".to_string())));
         assert!(!cache.has_collection(Some("collection-2".to_string())));
 
+        // The binding returns a JsValue (null when absent): check the lookup it
+        // wraps, which native tests can call.
         assert_eq!(
-            cache.lookup_label(
-                Some("collection-1".to_string()),
-                Some("concept-1".to_string()),
-                Some("en".to_string())
-            ),
+            cache.inner.lookup_label("collection-1", "concept-1", "en"),
             Some("English Label".to_string())
         );
         assert_eq!(
-            cache.lookup_label(
-                Some("collection-1".to_string()),
-                Some("concept-1".to_string()),
-                Some("de".to_string())
-            ),
+            cache.inner.lookup_label("collection-1", "concept-1", "de"),
             Some("German Label".to_string())
         );
         // Fallback to en
         assert_eq!(
-            cache.lookup_label(
-                Some("collection-1".to_string()),
-                Some("concept-1".to_string()),
-                Some("fr".to_string())
-            ),
+            cache.inner.lookup_label("collection-1", "concept-1", "fr"),
             Some("English Label".to_string())
         );
         // Not found
         assert_eq!(
-            cache.lookup_label(
-                Some("collection-1".to_string()),
-                Some("concept-3".to_string()),
-                Some("en".to_string())
-            ),
+            cache.inner.lookup_label("collection-1", "concept-3", "en"),
             None
         );
     }
@@ -498,17 +486,13 @@ mod tests {
 
         // Test get_concept_id_for_value
         assert_eq!(
-            cache.get_concept_id_for_value(
-                Some("coll-1".to_string()),
-                Some("value-1-en".to_string())
-            ),
-            Some("concept-1".to_string())
+            cache.inner.get_concept_id_for_value("coll-1", "value-1-en"),
+            Some("concept-1")
         );
         assert_eq!(
-            cache.get_concept_id_for_value(
-                Some("coll-1".to_string()),
-                Some("nonexistent".to_string())
-            ),
+            cache
+                .inner
+                .get_concept_id_for_value("coll-1", "nonexistent"),
             None
         );
 
@@ -542,20 +526,11 @@ mod tests {
 
         // Child should have parent
         assert_eq!(
-            cache.get_parent_id(
-                Some("coll-1".to_string()),
-                Some("child-concept".to_string())
-            ),
+            cache.inner.get_parent_id("coll-1", "child-concept"),
             Some("parent-concept".to_string())
         );
 
         // Parent has no parent (top-level)
-        assert_eq!(
-            cache.get_parent_id(
-                Some("coll-1".to_string()),
-                Some("parent-concept".to_string())
-            ),
-            None
-        );
+        assert_eq!(cache.inner.get_parent_id("coll-1", "parent-concept"), None);
     }
 }

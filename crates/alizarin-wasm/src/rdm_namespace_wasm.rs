@@ -76,9 +76,13 @@ pub fn set_rdm_namespace(namespace: &str) -> Result<(), JsError> {
 
 /// Get the current global RDM namespace.
 ///
-/// @returns The namespace UUID as a string, or undefined if not set
-#[wasm_bindgen(js_name = getRdmNamespace)]
-pub fn get_rdm_namespace() -> Option<String> {
+/// @returns The namespace UUID as a string, or null if not set
+#[wasm_bindgen(js_name = getRdmNamespace, unchecked_return_type = "string | null")]
+pub fn get_rdm_namespace() -> JsValue {
+    crate::js_json::or_null(rdm_namespace())
+}
+
+fn rdm_namespace() -> Option<String> {
     alizarin_core::get_rdm_namespace().map(|u| u.to_string())
 }
 
@@ -87,9 +91,13 @@ pub fn get_rdm_namespace() -> Option<String> {
 /// Unlike getRdmNamespace which returns the derived UUID, this returns
 /// the raw input (URL or UUID string). Useful as an RDF base URI.
 ///
-/// @returns The original namespace string, or undefined if not set
-#[wasm_bindgen(js_name = getRdmNamespaceRaw)]
-pub fn get_rdm_namespace_raw() -> Option<String> {
+/// @returns The original namespace string, or null if not set
+#[wasm_bindgen(js_name = getRdmNamespaceRaw, unchecked_return_type = "string | null")]
+pub fn get_rdm_namespace_raw() -> JsValue {
+    crate::js_json::or_null(rdm_namespace_raw())
+}
+
+fn rdm_namespace_raw() -> Option<String> {
     GLOBAL_RDM_NAMESPACE_RAW.with(|ns| ns.borrow().clone())
 }
 
@@ -215,26 +223,26 @@ mod tests {
         // Clear any existing state
         clear_rdm_namespace();
         assert!(!has_rdm_namespace());
-        assert!(get_rdm_namespace().is_none());
+        assert!(rdm_namespace().is_none());
 
         // Set from UUID
         set_rdm_namespace("550e8400-e29b-41d4-a716-446655440000").unwrap();
         assert!(has_rdm_namespace());
         assert_eq!(
-            get_rdm_namespace(),
+            rdm_namespace(),
             Some("550e8400-e29b-41d4-a716-446655440000".to_string())
         );
 
         // Raw should also be stored
         assert_eq!(
-            get_rdm_namespace_raw(),
+            rdm_namespace_raw(),
             Some("550e8400-e29b-41d4-a716-446655440000".to_string())
         );
 
         // Clear
         clear_rdm_namespace();
         assert!(!has_rdm_namespace());
-        assert!(get_rdm_namespace_raw().is_none());
+        assert!(rdm_namespace_raw().is_none());
     }
 
     #[test]
@@ -246,13 +254,13 @@ mod tests {
         assert!(has_rdm_namespace());
 
         // URL should be converted to UUID
-        let ns = get_rdm_namespace().unwrap();
+        let ns = rdm_namespace().unwrap();
         assert_eq!(ns.len(), 36); // UUID length
         assert_ne!(ns, "http://example.org/rdm/");
 
         // Raw should preserve the original URL
         assert_eq!(
-            get_rdm_namespace_raw(),
+            rdm_namespace_raw(),
             Some("http://example.org/rdm/".to_string())
         );
 

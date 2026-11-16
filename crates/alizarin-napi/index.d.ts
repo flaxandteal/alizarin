@@ -219,7 +219,7 @@ export declare class NapiTileData {
   keys(): Array<string>
 }
 export declare class NapiStaticTile {
-  constructor(nodegroupId: string, tileid?: string | undefined | null, sortorder?: number | undefined | null, resourceinstanceId?: string | undefined | null, parenttileId?: string | undefined | null)
+  constructor(nodegroupId: string, tileid?: string | undefined | null, sortorder?: number | undefined | null, resourceinstanceId?: string | undefined | null, parenttileId?: string | undefined | null, provisionaledits?: any[] | null)
   get data(): NapiTileData
   /**
    * Setter is a no-op — data is always accessed via the NapiTileData getter.
@@ -237,6 +237,11 @@ export declare class NapiStaticTile {
   get provisionaledits(): any
   /** Generate a tile ID if not already set. */
   ensureId(): string
+  /**
+   * Core's serialisation, as WASM's tile uses, so empty fields follow the
+   * one rule (see `StaticTile` in core). Without it a tile stringified as `{}`.
+   */
+  toJSON(): any
 }
 export declare class NapiPseudoValue {
   get node(): any

@@ -330,6 +330,7 @@ impl NapiStaticTile {
         sortorder: Option<i32>,
         resourceinstance_id: Option<String>,
         parenttile_id: Option<String>,
+        #[napi(ts_arg_type = "any[] | null")] provisionaledits: Option<crate::JsonArg>,
     ) -> Self {
         NapiStaticTile {
             tileid,
@@ -337,7 +338,10 @@ impl NapiStaticTile {
             sortorder,
             resourceinstance_id: resourceinstance_id.unwrap_or_default(),
             parenttile_id,
-            provisionaledits: None,
+            provisionaledits: match provisionaledits {
+                Some(crate::JsonArg(serde_json::Value::Array(edits))) => Some(edits),
+                _ => None,
+            },
             data_store: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -409,6 +413,13 @@ impl NapiStaticTile {
             self.tileid = Some(uuid::Uuid::new_v4().to_string());
         }
         self.tileid.clone().unwrap()
+    }
+
+    /// Core's serialisation, as WASM's tile uses, so empty fields follow the
+    /// one rule (see `StaticTile` in core). Without it a tile stringified as `{}`.
+    #[napi(js_name = "toJSON")]
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::to_value(self.to_static_tile()).unwrap_or(serde_json::Value::Null)
     }
 }
 
@@ -1581,7 +1592,7 @@ impl NapiPseudoNode {
         let set: napi::JsFunction = map.get_named_property("set")?;
         for (alias, node) in &self.core.child_nodes {
             let key = env.create_string(alias)?.into_unknown();
-            let value = env.to_js_value(&**node)?;
+            let value = crate::json_arg::to_js(&env, &**node)?;
             set.call(Some(&map), &[key, value])?;
         }
         Ok(map)

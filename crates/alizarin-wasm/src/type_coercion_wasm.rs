@@ -43,13 +43,13 @@ impl WasmCoercionResult {
     /// Get the tile data (value for tile.data[nodeid])
     #[wasm_bindgen(getter, js_name = tileData)]
     pub fn tile_data(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.inner.tile_data).unwrap_or(JsValue::NULL)
+        crate::js_json::to_value(&self.inner.tile_data).unwrap_or(JsValue::NULL)
     }
 
     /// Get the display value (for ViewModel construction)
     #[wasm_bindgen(getter, js_name = displayValue)]
     pub fn display_value(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.inner.display_value).unwrap_or(JsValue::NULL)
+        crate::js_json::to_value(&self.inner.display_value).unwrap_or(JsValue::NULL)
     }
 
     /// Check if the result is an error
@@ -59,9 +59,9 @@ impl WasmCoercionResult {
     }
 
     /// Get the error message (if any)
-    #[wasm_bindgen(getter, js_name = error)]
-    pub fn error(&self) -> Option<String> {
-        self.inner.error.clone()
+    #[wasm_bindgen(getter, js_name = error, unchecked_return_type = "string | null")]
+    pub fn error(&self) -> JsValue {
+        crate::js_json::or_null(self.inner.error.clone())
     }
 
     /// Check if the result is null (no value, no error)
