@@ -1844,20 +1844,6 @@ impl NapiResourceModelWrapper {
     }
 
     // =========================================================================
-    // Build nodes (no-op — caches are built eagerly in constructor)
-    // =========================================================================
-
-    #[napi(js_name = "buildNodesForGraph")]
-    pub fn build_nodes_for_graph(&mut self, graph_json: String) -> Result<()> {
-        let graph: StaticGraph = serde_json::from_str(&graph_json)
-            .map_err(|e| napi::Error::from_reason(format!("Invalid graph JSON: {}", e)))?;
-        self.update(|model| {
-            model.rebuild_from_graph(&graph);
-            Ok(())
-        })
-    }
-
-    // =========================================================================
     // Node accessors
     // =========================================================================
 

@@ -43,7 +43,7 @@ test("WASMResourceModelWrapper > constructor > should initialize with wkrm and g
   assert.equal(wrapper.graph.graphid, graph.graphid);
 });
 
-test("WASMResourceModelWrapper > buildNodesForGraph > should populate all caches", () => {
+test("WASMResourceModelWrapper > caches built from the graph > should populate all caches", () => {
   const graph = createStaticGraph({
     name: "Test Graph",
     author: "Test Author",
@@ -75,7 +75,6 @@ test("WASMResourceModelWrapper > buildNodesForGraph > should populate all caches
   // assert.isUndefined(wrapper.nodesByAlias);
 
   // Build nodes
-  wrapper.buildNodesForGraph(mutatedGraph);
 
   // All caches should be populated
   assert.isDefined(wrapper.nodes);
@@ -86,7 +85,7 @@ test("WASMResourceModelWrapper > buildNodesForGraph > should populate all caches
   assert.isTrue(wrapper.nodegroups!.size > 0);
 });
 
-test("WASMResourceModelWrapper > buildNodesForGraph > should build edges correctly", () => {
+test("WASMResourceModelWrapper > caches built from the graph > should build edges correctly", () => {
   const graph = createStaticGraph({
     name: "Test Graph",
     author: "Test Author",
@@ -117,7 +116,6 @@ test("WASMResourceModelWrapper > buildNodesForGraph > should build edges correct
     true
   );
 
-  wrapper.buildNodesForGraph(mutatedGraph);
 
   // Root should have edges to both children
   const rootEdges = wrapper.edges!.get(mutatedGraph.root.nodeid);
@@ -125,7 +123,7 @@ test("WASMResourceModelWrapper > buildNodesForGraph > should build edges correct
   assert.equal(rootEdges!.length, 2);
 });
 
-test("WASMResourceModelWrapper > buildNodesForGraph > should create nodesByAlias map", () => {
+test("WASMResourceModelWrapper > caches built from the graph > should create nodesByAlias map", () => {
   const graph = createStaticGraph({
     name: "Test Graph",
     author: "Test Author",
@@ -148,7 +146,6 @@ test("WASMResourceModelWrapper > buildNodesForGraph > should create nodesByAlias
     true
   );
 
-  wrapper.buildNodesForGraph(mutatedGraph);
 
   assert.isDefined(wrapper.nodesByAlias);
   assert.isTrue(wrapper.nodesByAlias!.has("my_alias"));
@@ -158,7 +155,7 @@ test("WASMResourceModelWrapper > buildNodesForGraph > should create nodesByAlias
   assert.equal(node!.name, "My Field");
 });
 
-test("WASMResourceModelWrapper > buildNodesForGraph > should error when trying to rebuild", () => {
+test("WASMResourceModelWrapper > caches built from the graph > should error when trying to rebuild", () => {
   const graph = createStaticGraph({
     name: "Test Graph",
     author: "Test Author",
@@ -170,12 +167,12 @@ test("WASMResourceModelWrapper > buildNodesForGraph > should error when trying t
     true
   );
 
-  wrapper.buildNodesForGraph(graph);
-
-  // Rebuilding should be idempotent (invalidates + rebuilds caches)
+  // Setting the graph again rebuilds the caches, idempotently.
   assert.doesNotThrow(() => {
-    wrapper.buildNodesForGraph(graph);
-  }, "Rebuilding nodes should be idempotent");
+    wrapper.graph = graph;
+    wrapper.graph = graph;
+  }, "Setting the graph again should be idempotent");
+  assert.equal(wrapper.graph.graphid, graph.graphid);
 });
 
 // ============================================================================
@@ -205,7 +202,6 @@ test("WASMResourceModelWrapper > getNodeObjects > should return all nodes", () =
     true
   );
 
-  wrapper.buildNodesForGraph(mutatedGraph);
   const nodes = wrapper.getNodeObjects();
 
   assert.isDefined(nodes);
@@ -229,7 +225,6 @@ test("WASMResourceModelWrapper > getRootNode > should return root node", () => {
     true
   );
 
-  wrapper.buildNodesForGraph(graph);
   const rootNode = wrapper.getRootNode();
 
   assert.isDefined(rootNode);
@@ -253,7 +248,6 @@ test("WASMResourceModelWrapper > getRootNode > should ensure alias is set", () =
     true
   );
 
-  wrapper.buildNodesForGraph(graph);
   const rootNode = wrapper.getRootNode();
 
   // getRootNode sets alias to empty string if it's undefined
@@ -279,7 +273,6 @@ test.skip("WASMResourceModelWrapper > getRootNode > should throw if no root foun
     true
   );
 
-  wrapper.buildNodesForGraph(graph);
 
   // Manually remove root node to test error
   const rootId = graph.root.nodeid;
@@ -317,7 +310,6 @@ test("WASMResourceModelWrapper > createPseudoNode > should create pseudo node", 
     true
   );
 
-  wrapper.buildNodesForGraph(mutatedGraph);
 
   const testNode = [...wrapper.nodes!.values()].find(n => n.alias === "test_field");
   assert.isDefined(testNode);
@@ -342,7 +334,6 @@ test("WASMResourceModelWrapper > Group model > should build nodes correctly", ()
     true
   );
 
-  wrapper.buildNodesForGraph(graph);
 
   // Check all caches are populated
   assert.isDefined(wrapper.nodes);
@@ -369,7 +360,6 @@ test("WASMResourceModelWrapper > Group model > should get root node correctly", 
     true
   );
 
-  wrapper.buildNodesForGraph(graph);
   const rootNode = wrapper.getRootNode();
 
   assert.isDefined(rootNode);
@@ -393,7 +383,6 @@ test("WASMResourceModelWrapper > should handle graph with no edges", () => {
     true
   );
 
-  wrapper.buildNodesForGraph(graph);
 
   assert.isDefined(wrapper.edges);
   // Root should have no edges
@@ -413,7 +402,6 @@ test("WASMResourceModelWrapper > should handle nodes without nodegroups", () => 
     true
   );
 
-  wrapper.buildNodesForGraph(graph);
 
   // Root node has no nodegroup (can be null or undefined)
   assert.isFalse(!!graph.root.nodegroup_id);

@@ -569,26 +569,19 @@ impl WASMResourceModelWrapper {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = buildNodesForGraph)]
-    pub fn build_nodes_for_graph(&mut self, graph: &WasmStaticGraph) -> Result<(), JsValue> {
-        let graph = graph.0.clone();
-        alizarin_core::update_model(&self.graph_id, |model| {
-            model.rebuild_from_graph(&graph);
-            Ok(())
-        })
-        .map_err(|e| JsValue::from_str(&e))
-    }
-
     // Getters
     #[wasm_bindgen(getter = graph)]
     pub fn get_graph(&self) -> WasmStaticGraph {
         self.with_core(|core| WasmStaticGraph(core.get_graph().clone()))
     }
 
+    /// Replace the model's graph, rebuilding its indices: core's, as NAPI's
+    /// setter. Borrows the graph (a by-value setter consumed the caller's
+    /// object, so it couldn't be used again).
     #[wasm_bindgen(setter = graph)]
-    pub fn set_graph(&mut self, graph: WasmStaticGraph) {
+    pub fn set_graph(&mut self, graph: &WasmStaticGraph) {
         Self::or_throw(alizarin_core::update_model(&self.graph_id, |model| {
-            model.set_graph(Arc::new(graph.0));
+            model.rebuild_from_graph(&graph.0);
             Ok(())
         }));
     }

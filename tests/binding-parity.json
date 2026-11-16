@@ -52,7 +52,6 @@
       "napi": "NapiResourceModelWrapper",
       "python": "PyResourceModelWrapper",
       "operations": [
-        { "wasm": "buildNodesForGraph", "napi": "buildNodesForGraph", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
         { "wasm": "createPseudoNode", "napi": "createPseudoNode", "python": "create_pseudo_node" },
         { "wasm": "createPseudoNodeChild", "napi": "createPseudoNodeChild", "python": "create_pseudo_node_child" },
         { "wasm": "edges", "napi": "edges", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
