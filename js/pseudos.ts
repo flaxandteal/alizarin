@@ -243,29 +243,20 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
       [this.tile, relationships] = await this.inner.getTile();
     }
 
-    let tileValue = null;
-    if (this._cachedValue !== null) {
+    // A semantic value gives [null, its children's relationships]; any other
+    // value's tile data is core's already (edits go through core), so it
+    // needn't be computed here.
+    if (this._cachedValue !== null && this.getSnapshot().datatype === 'semantic') {
       const value = await this._cachedValue;
       if (value !== null) {
-        const tileData = await (value as any).__asTileData();
-        if (this.getSnapshot().datatype === 'semantic') {
-          // A semantic value gives [null, its children's relationships].
-          const [, ownRelationships] = tileData;
-          relationships = [...relationships, ...ownRelationships];
-        } else {
-          // Any other gives its tile value itself, as syncTileData takes it.
-          tileValue = tileData;
-        }
+        const [, ownRelationships] = await (value as any).__asTileData();
+        relationships = [...relationships, ...ownRelationships];
       }
     }
 
     if (!this.getSnapshot().hasTile) {
       throw Error("No tile available");
     }
-    // The value lives in core, on every backend: `tile` is a copy, so writing
-    // into its data would be lost.
-    this._wasm.setTileData(tileValue);
-    this._snapshot = null;
     const returnTile = this.independent ? this._wasm.tile : null;
 
     return [returnTile, relationships];
@@ -350,8 +341,6 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
         if (this.isOuter && this.inner) {
           (vm as any)._ = this.inner.getValue();
         }
-        // Sync tile data to Rust for toTiles()/toResource()
-        this.syncTileData(vm);
       }
       return vm as VM | null;
     };
@@ -359,32 +348,6 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     return new AttrPromise((resolve) => {
       vmPromise.then((vm) => resolve(resolveAttr(vm)));
     }) as AttrPromise<VM>;
-  }
-
-  /**
-   * Sync the ViewModel's tile data to Rust.
-   * Called after VM creation/resolution so toTiles()/toResource() can serialize.
-   */
-  private syncTileData(vm: IViewModel | null): void {
-    if (vm === null) {
-      this._wasm.setTileData(null);
-      return;
-    }
-
-    // Check if the VM has __asTileData method
-    if (typeof (vm as any).__asTileData === 'function') {
-      const tileData = (vm as any).__asTileData();
-      if (tileData instanceof Promise) {
-        // Handle async __asTileData
-        tileData.then((data: any) => {
-          this._wasm.setTileData(data);
-        }).catch((e: Error) => {
-          console.warn("syncTileData: failed to get tile data", e);
-        });
-      } else {
-        this._wasm.setTileData(tileData);
-      }
-    }
   }
 
   public getValue(): AttrPromise<VM | null> {
