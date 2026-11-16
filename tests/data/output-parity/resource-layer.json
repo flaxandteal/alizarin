@@ -1,0 +1,31 @@
+{
+  "resourceinstance": {
+    "descriptors": {"name": "Parity one", "description": "", "map_popup": "", "slug": ""},
+    "graph_id": "0a0a0a0a-0000-4000-8000-000000000001",
+    "legacyid": null,
+    "name": "Parity one",
+    "resourceinstanceid": "0b0b0b0b-0000-4000-8000-000000000001"
+  },
+  "tiles": [
+    {
+      "tileid": "0c0c0c0c-0000-4000-8000-000000000101",
+      "nodegroup_id": "0a0a0a0a-0000-4000-8000-000000000011",
+      "parenttile_id": null,
+      "resourceinstance_id": "0b0b0b0b-0000-4000-8000-000000000001",
+      "sortorder": null,
+      "data": {
+        "0a0a0a0a-0000-4000-8000-000000000011": {"en": {"value": "Fort (overlay)", "direction": "ltr"}}
+      }
+    },
+    {
+      "tileid": "0c0c0c0c-0000-4000-8000-000000000104",
+      "nodegroup_id": "0a0a0a0a-0000-4000-8000-000000000021",
+      "parenttile_id": null,
+      "resourceinstance_id": "0b0b0b0b-0000-4000-8000-000000000001",
+      "sortorder": 2,
+      "data": {
+        "0a0a0a0a-0000-4000-8000-000000000022": {"en": {"value": "Gate", "direction": "ltr"}}
+      }
+    }
+  ]
+}

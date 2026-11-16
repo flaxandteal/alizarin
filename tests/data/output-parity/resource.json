@@ -1,0 +1,45 @@
+{
+  "resourceinstance": {
+    "descriptors": {"name": "Parity one", "description": "", "map_popup": "", "slug": ""},
+    "graph_id": "0a0a0a0a-0000-4000-8000-000000000001",
+    "legacyid": null,
+    "name": "Parity one",
+    "resourceinstanceid": "0b0b0b0b-0000-4000-8000-000000000001"
+  },
+  "tiles": [
+    {
+      "tileid": "0c0c0c0c-0000-4000-8000-000000000001",
+      "nodegroup_id": "0a0a0a0a-0000-4000-8000-000000000011",
+      "parenttile_id": null,
+      "resourceinstance_id": "0b0b0b0b-0000-4000-8000-000000000001",
+      "sortorder": null,
+      "data": {
+        "0a0a0a0a-0000-4000-8000-000000000011": {
+          "ga": {"value": "Ráth", "direction": "ltr"},
+          "en": {"value": "Fort", "direction": "ltr"}
+        }
+      }
+    },
+    {
+      "tileid": "0c0c0c0c-0000-4000-8000-000000000002",
+      "nodegroup_id": "0a0a0a0a-0000-4000-8000-000000000021",
+      "parenttile_id": null,
+      "resourceinstance_id": "0b0b0b0b-0000-4000-8000-000000000001",
+      "sortorder": 0,
+      "provisionaledits": [{"user": "1", "value": {"b": 2, "a": 1}}],
+      "data": {
+        "0a0a0a0a-0000-4000-8000-000000000022": {"en": {"value": "North wall", "direction": "ltr"}}
+      }
+    },
+    {
+      "tileid": "0c0c0c0c-0000-4000-8000-000000000003",
+      "nodegroup_id": "0a0a0a0a-0000-4000-8000-000000000021",
+      "parenttile_id": null,
+      "resourceinstance_id": "0b0b0b0b-0000-4000-8000-000000000001",
+      "sortorder": 1,
+      "data": {
+        "0a0a0a0a-0000-4000-8000-000000000022": null
+      }
+    }
+  ]
+}

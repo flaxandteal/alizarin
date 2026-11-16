@@ -48,6 +48,41 @@ instance-wrapper, registry, export, and extension APIs (top four rows). It does
 does not limit it. `tests/dual-backend/staticStoreRegistry.test.ts` runs the
 `StaticStore` and `all()` → `getRootViewModel` → `toSnapshot` path on both.
 
+## One output: what every backend writes
+
+Surfaces differ; output does not. Wherever two backends both hand out a value,
+they hand out the same JSON, byte for byte, because core's serde is the only
+definition of it:
+
+- **Core serialises; bindings don't.** No binding builds a `toJSON`/`to_dict` by
+  hand. WASM goes through `js_json::to_value`, NAPI through `json_arg::to_js` (or
+  a `serde_json::Value` return), and Python's dataclass `to_dict`s through
+  `alizarin.canonical_static`. Each route goes via `serde_json::Value`, so JS objects
+  are plain (no `Map`s) and keys come in its sorted order.
+- **Empty is `null`, never `undefined`.** An absent optional result is `null`
+  on every backend: WASM getters and functions return `JsValue` typed `T | null`
+  (`js_json::or_null`), never `Option<T>` (which wasm-bindgen makes `undefined`,
+  and `JSON.stringify` drops).
+- **Which empty fields are written is core's choice, and follows Arches' shape.**
+  A tile always writes `tileid`, `parenttile_id` and `sortorder` (`null` when
+  empty), because Arches' business-data importer indexes them directly, and
+  leaves out an empty `provisionaledits`, which it doesn't read. A publication
+  always writes `notes`. Elsewhere a field core marks `skip_serializing_if` is
+  left out when empty, on every backend alike.
+- **Serialisation is byte-stable.** A `HashMap` field of a serialisable core
+  struct either is a `BTreeMap` (small, hot maps such as a tile's `data`) or is
+  written through `crate::sorted_serde::sorted_map`/`sorted_opt_map` (public
+  fields whose Rust type stays). Otherwise a struct serialised straight to a
+  string would come out in hash order, different on each run.
+
+Checked by: `crates/alizarin-core/tests/output_parity_test.rs` (core writes
+`tests/data/output-parity/expected.json`; byte-stability), which
+`tests/dual-backend/outputParity.test.ts` (WASM, NAPI: every route, plus getters)
+and `crates/alizarin-python/tests/test_output_parity.py` hold each binding to,
+and `tests/sourceParity.test.ts`, which lints the sources for the rules above. A
+deliberate change to the output regenerates the golden file
+(`ALIZARIN_UPDATE_GOLDEN=1`), and the diff is the review.
+
 ## Addable on demand
 
 The NAPI gaps are **thin wrappers over existing shared core** —

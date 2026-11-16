@@ -1,0 +1,164 @@
+//! Output parity: core's serialisation of every static type is the one
+//! definition of alizarin's output, and `tests/data/output-parity/expected.json`
+//! records it for the fixture in that directory. Every binding is held to the
+//! same file, byte for byte:
+//!
+//! - WASM and NAPI: `tests/dual-backend/outputParity.test.ts`
+//! - Python: `crates/alizarin-python/tests/test_output_parity.py`
+//!
+//! Each entry is the compact JSON of `serde_json::to_value(x)`, so keys are in
+//! `serde_json`'s sorted order, as a JS object built from it (NAPI, and WASM
+//! through `js_json::to_value`) stringifies.
+//!
+//! A deliberate change to the output: rerun with `ALIZARIN_UPDATE_GOLDEN=1` and
+//! review the diff of `expected.json`.
+
+use alizarin_core::graph::compose_resource_layers_from_json;
+use alizarin_core::{
+    GraphWrapper, StaticPublication, StaticResource, StaticTile, StaticTranslatableString,
+};
+use serde::Serialize;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+
+fn dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/data/output-parity")
+}
+
+fn read(name: &str) -> String {
+    std::fs::read_to_string(dir().join(name)).unwrap()
+}
+
+fn canonical<T: Serialize + ?Sized>(value: &T) -> String {
+    serde_json::to_string(&serde_json::to_value(value).unwrap()).unwrap()
+}
+
+/// Every output the bindings are checked against, by label.
+fn outputs() -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    let mut put = |label: String, json: String| {
+        assert!(out.insert(label.clone(), json).is_none(), "{label} twice");
+    };
+
+    let graph_json = read("graph.json");
+    let graph = serde_json::from_str::<GraphWrapper>(&graph_json)
+        .unwrap()
+        .graph
+        .remove(0);
+    put("graph".into(), canonical(&graph));
+    put("graph.name".into(), canonical(&graph.name));
+    put("graph.root".into(), canonical(&graph.root));
+    for node in &graph.nodes {
+        put(
+            format!("node:{}", node.alias.as_deref().unwrap()),
+            canonical(node),
+        );
+    }
+    for nodegroup in &graph.nodegroups {
+        put(
+            format!("nodegroup:{}", nodegroup.nodegroupid),
+            canonical(nodegroup),
+        );
+    }
+    for edge in &graph.edges {
+        put(format!("edge:{}", edge.edgeid), canonical(edge));
+    }
+    for card in graph.cards.as_deref().unwrap_or_default() {
+        put(format!("card:{}", card.cardid), canonical(card));
+        for constraint in &card.constraints {
+            put(
+                format!("constraint:{}", constraint.constraintid),
+                canonical(constraint),
+            );
+        }
+    }
+    for cxnxw in graph.cards_x_nodes_x_widgets.as_deref().unwrap_or_default() {
+        put(format!("cxnxw:{}", cxnxw.id), canonical(cxnxw));
+    }
+    for fxg in graph.functions_x_graphs.as_deref().unwrap_or_default() {
+        put(format!("fxg:{}", fxg.id), canonical(fxg));
+    }
+    let publication: StaticPublication =
+        serde_json::from_value(graph.publication.clone().unwrap()).unwrap();
+    put("publication".into(), canonical(&publication));
+
+    let resource: StaticResource = serde_json::from_str(&read("resource.json")).unwrap();
+    put("resource".into(), canonical(&resource));
+    put("resource.summary".into(), canonical(&resource.to_summary()));
+    for tile in resource.tiles.as_deref().unwrap_or_default() {
+        put(
+            format!("tile:{}", tile.tileid.as_deref().unwrap()),
+            canonical(tile),
+        );
+    }
+
+    // A tile with every optional field empty, as `createStaticTile` makes one.
+    let mut empty = StaticTile::new_empty("0a0a0a0a-0000-4000-8000-000000000011".into());
+    empty.resourceinstance_id = "0b0b0b0b-0000-4000-8000-000000000001".into();
+    put("tile:empty".into(), canonical(&empty));
+
+    // composeResourceLayers, BRACE's route: the layer copy over the base.
+    let layer: serde_json::Value = serde_json::from_str(&read("resource-layer.json")).unwrap();
+    let base: serde_json::Value = serde_json::from_str(&read("resource.json")).unwrap();
+    let base_graph = serde_json::to_string(&graph).unwrap();
+    let composed = compose_resource_layers_from_json(
+        &serde_json::json!([layer, base]).to_string(),
+        &base_graph,
+        "[]",
+        false,
+    )
+    .unwrap();
+    put("composed".into(), canonical(&composed));
+
+    // A translatable string with several languages: the key order must not
+    // depend on the HashMap it is held in.
+    let mut names = std::collections::HashMap::new();
+    for lang in ["ga", "en", "fr", "de"] {
+        names.insert(lang.to_string(), format!("name-{lang}"));
+    }
+    put(
+        "translatable:many".into(),
+        canonical(&StaticTranslatableString::from_translations(names, None)),
+    );
+    out
+}
+
+#[test]
+fn the_golden_file_is_cores_output() {
+    let path = dir().join("expected.json");
+    let mut actual = serde_json::to_string_pretty(&outputs()).unwrap();
+    actual.push('\n');
+    if std::env::var_os("ALIZARIN_UPDATE_GOLDEN").is_some() {
+        std::fs::write(&path, &actual).unwrap();
+        return;
+    }
+    let expected = std::fs::read_to_string(&path)
+        .expect("tests/data/output-parity/expected.json: run with ALIZARIN_UPDATE_GOLDEN=1");
+    assert_eq!(
+        expected, actual,
+        "core's output changed: if deliberate, rerun with ALIZARIN_UPDATE_GOLDEN=1 and review"
+    );
+}
+
+/// A struct serialised straight to a string (as `exportTilesJson` and the
+/// exporters do) keeps its maps' iteration order, so a `HashMap` field would
+/// make the output differ from run to run. Serialising the same values from
+/// fresh maps many times must always give the same bytes.
+#[test]
+fn direct_serialisation_is_byte_stable() {
+    let graph_json = read("graph.json");
+    let resource_json = read("resource.json");
+    // Parsed afresh each time, so each run fills new HashMaps.
+    let direct = || {
+        let graphs = serde_json::from_str::<GraphWrapper>(&graph_json).unwrap();
+        let resource = serde_json::from_str::<StaticResource>(&resource_json).unwrap();
+        (
+            serde_json::to_string(&graphs.graph).unwrap(),
+            serde_json::to_string(&resource).unwrap(),
+        )
+    };
+    let first = direct();
+    for _ in 0..32 {
+        assert_eq!(first, direct(), "a HashMap field serialised in hash order");
+    }
+}
