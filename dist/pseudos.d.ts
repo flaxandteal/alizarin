@@ -33,6 +33,7 @@ declare class PseudoValue<VM extends IViewModel> implements IPseudo {
     _parentValue: PseudoValue<any> | null;
     private _inner;
     private _cachedValue;
+    private _node;
     private _snapshot;
     private getSnapshot;
     get datatype(): string;
@@ -40,12 +41,11 @@ declare class PseudoValue<VM extends IViewModel> implements IPseudo {
     get isOuter(): boolean;
     get tile(): StaticTile | null;
     set tile(t: StaticTile | null);
-    get value(): any;
     get valueLoaded(): boolean | undefined;
     get accessed(): boolean;
     get independent(): boolean;
     get originalTile(): StaticTile | null;
-    get node(): WasmPseudoValue;
+    get node(): StaticNode;
     get nodeid(): string;
     get inner(): PseudoValue<any> | null;
     get parentValue(): PseudoValue<any> | null;
@@ -61,17 +61,11 @@ declare class PseudoValue<VM extends IViewModel> implements IPseudo {
      * Private constructor - use static factories
      */
     private constructor();
-    static create<VM extends IViewModel>(nodeOrAlias: StaticNode | string, tile: StaticTile | null, value: any, parent: IRIVM<any>): PseudoValue<VM>;
     getParentTileId(): string | null;
     getTile(): Promise<[StaticTile | null, any[]]>;
     clear(): void;
     updateValue(newTile?: StaticTile | null): AttrPromise<VM>;
     private _updateValueReal;
-    /**
-     * Sync the ViewModel's tile data to Rust.
-     * Called after VM creation/resolution so toTiles()/toResource() can serialize.
-     */
-    private syncTileData;
     getValue(): AttrPromise<VM | null>;
     getLength(): number;
     getChildTypes(): Promise<object>;
@@ -92,6 +86,23 @@ declare class PseudoList extends Array implements IPseudo {
     isOuter: boolean;
     /** Whether this list represents a cardinality-1 node (should unwrap to single value in forJson) */
     isSingle: boolean;
+    /** Set once built from core's values: from then on push/splice record edits. */
+    __editable: boolean;
+    /** The node the list's items are values of. */
+    __alias: string | undefined;
+    /** Each item's tile id, or, for an item pushed since the last commit, its edit's index. */
+    __tileIds: Array<string | number | null>;
+    /**
+     * Once built: record each item (a tree fragment of values by alias) as a new
+     * tile, applied by the resource's $commit(). As Python's PseudoList.append.
+     */
+    push(...items: any[]): number;
+    /**
+     * Once built: record removing each item's tile (and all under it), applied
+     * by the resource's $commit(). Inserting isn't supported: push adds, and
+     * tile order follows sortorder.
+     */
+    splice(start: number, deleteCount?: number, ...items: any[]): any[];
     isIterable(): boolean;
     sorted(): Promise<any[]>;
     describeField(): string;

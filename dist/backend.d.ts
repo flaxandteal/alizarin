@@ -31,6 +31,12 @@ export declare function getNapiModule(): any;
  */
 export declare function setNapiModule(mod: any): void;
 /**
+ * Set core's current language (what a plain string is taken as when coerced or
+ * assigned) on every loaded backend, and on any loaded later: so it is one
+ * value, as Python's `set_current_language` is.
+ */
+export declare function setCoreLanguage(lang: string): void;
+/**
  * Safely serialize a value to JSON. NAPI class instances (e.g. NapiStaticGraph)
  * have getter-only properties that are not enumerable, so JSON.stringify produces
  * "{}". This helper detects that case and uses the NAPI object's own toJson/
@@ -92,6 +98,28 @@ export declare function getNodeConfigManager(): any;
  */
 export declare function registerExtensionHandler(datatype: string, handler: any): void;
 /**
+ * Register a derive provider for the active backend.
+ *
+ * - WASM: `provider` is `{ derive(resourceId, tiles, config, lookup) }`, called
+ *   synchronously; `lookup(kind, key)` answers from the graph during the call
+ *   (0 root, 1 node by alias, 2 node by id, 3 nodegroup by id).
+ * - NAPI: `provider` is the extension's `DeriveProviderInfo` pointer, as a
+ *   BigInt from its native module; `providerId` is checked against it.
+ *
+ * As Python's `register_derive_provider`.
+ */
+export declare function registerDeriveProvider(providerId: string, provider: any): void;
+/** Whether a derive provider is registered under `providerId` on the active backend. */
+export declare function hasDeriveProvider(providerId: string): boolean;
+/**
+ * Whether any value folded into `summary` (a `datatype` fold summary, e.g. an
+ * Aggregate node value) could match `predicate`. Conservative: `false` only
+ * when certain, so whatever the summary covers (e.g. a Layer) can be skipped.
+ * Predicates: `{range: {min, max}}` for number/date/edtf, or a handler's own
+ * (geo: `{bbox: [minx, miny, maxx, maxy]}`); anything undecidable is `true`.
+ */
+export declare function foldMayMatch(datatype: string, summary: unknown, predicate: unknown, config?: unknown): boolean;
+/**
  * Create a model wrapper backend (graph schema operations).
  * Returns either a WASMResourceModelWrapper or NapiResourceModelWrapper.
  *
@@ -123,6 +151,20 @@ export declare function createStaticNode(data: any): any;
 export declare function createStaticTile(data: any): any;
 export declare function createStaticEdge(data: any): any;
 export declare function createStaticResource(data: any): any;
+/**
+ * Whether a resource carries its tiles. WASM has a `tilesLoaded` getter; the
+ * plain objects NAPI returns only have `tiles_loaded` when something set it, so
+ * fall back to the rule the WASM constructor applies: tiles present and non-empty.
+ */
+export declare function resourceTilesLoaded(resource: any): boolean;
+/**
+ * Metadata header for a registry summary (a WASM class, or a plain object on NAPI).
+ */
+export declare function summaryToMetadata(summary: any): any;
+/**
+ * Lightweight resource with no tiles, from a registry summary.
+ */
+export declare function createStaticResourceFromSummary(summary: any): any;
 export declare function createStaticNodegroup(data: any): any;
 export declare function createStaticCard(data: any): any;
 export declare function createStaticPublication(data: any): any;
@@ -134,6 +176,11 @@ export declare function createStaticTranslatableString(data: any): any;
  * stringifies again when it needs the data in Rust).
  */
 export declare function parseStaticGraph(jsonText: string): any;
+/**
+ * Apply a core mutation request (JSON) to a graph of the active backend,
+ * giving a new graph of the same kind. Core does the work on every backend.
+ */
+export declare function applyGraphMutations(graph: any, mutationsJson: string): any;
 /**
  * Parse a business_data JSON string into StaticResource[].
  * In WASM mode uses the Rust bulk parser; in NAPI mode JSON.parse.

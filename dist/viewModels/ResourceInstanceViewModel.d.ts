@@ -14,6 +14,19 @@ export declare class ResourceInstanceViewModel<RIVM extends IRIVM<RIVM>> impleme
     [Symbol.toPrimitive]: undefined;
     gm: typeof viewContext.graphManager;
     toString(): string;
+    /**
+     * Apply every value assigned since the last commit (`place.name = ...`,
+     * `place.names.push({...})`), all or nothing, through core: values coerced,
+     * stored Derive functions rerun for what changed. Returns the tiles to write
+     * and the ids to delete; persisting them is the caller's. As Python's
+     * `commit()`.
+     */
+    $commit(): {
+        upserted: StaticTile[];
+        removed: string[];
+    };
+    /** Drop every value assigned since the last commit. As Python's `discard()`. */
+    $discard(): void;
     getName(retrieveIfNeeded?: boolean): Promise<string>;
     getSlug(retrieveIfNeeded?: boolean): Promise<string>;
     getDescription(retrieveIfNeeded?: boolean): Promise<string>;

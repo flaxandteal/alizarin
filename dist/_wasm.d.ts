@@ -24,4 +24,4 @@ declare function _parseSkosXmlToCollection(xmlContent: string, baseUri?: string)
 declare function _collectionToSkosXml(collection: any, baseUri?: string): string;
 declare function _collectionsToSkosXml(collections: any[], baseUri?: string): string;
 export { _parseSkosXml as parseSkosXml, _parseSkosXmlToCollection as parseSkosXmlToCollection, _collectionToSkosXml as collectionToSkosXml, _collectionsToSkosXml as collectionsToSkosXml, };
-export { registerExtensionHandler } from "./backend";
+export { registerExtensionHandler, registerDeriveProvider, hasDeriveProvider } from "./backend";

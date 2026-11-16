@@ -8,7 +8,7 @@ export declare class ResourceInstanceListViewModel extends Array implements IVie
     describeField: () => string;
     describeFieldGroup: () => string;
     _value: Promise<(ResourceInstanceViewModel<any> | null)[]> | null;
-    forJson(): Promise<Promise<{
+    forJson(): Promise<{
         type: string;
         graphId: string;
         id: string;
@@ -18,8 +18,8 @@ export declare class ResourceInstanceListViewModel extends Array implements IVie
             [key: string]: any;
         };
         root: any;
-    }>[]>;
+    }[]>;
     __forJsonCache(getMeta: GetMeta): Promise<ResourceInstanceListCacheEntry>;
     static __create(tile: StaticTile, node: StaticNode, value: any, cacheEntry?: ResourceInstanceListCacheEntry | null): Promise<ResourceInstanceListViewModel | null>;
-    __asTileData(): Promise<ResourceInstanceViewModel<any>[]>;
+    __asTileData(): Promise<import("../interfaces").IStringKeyedObject[]>;
 }

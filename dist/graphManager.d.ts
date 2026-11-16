@@ -1,7 +1,7 @@
 import { ArchesClient, ArchesClientRemote } from './client';
 import { staticStore, StaticStore } from './staticStore';
 import { CardComponent, Widget } from './cards';
-import { StaticTranslatableString, StaticCollection, StaticConstraint, StaticTile, StaticGraph, StaticNode, StaticNodegroup, StaticResource, StaticResourceSummary } from "./static-types";
+import { StaticTranslatableString, StaticCollection, StaticTile, StaticGraph, StaticNode, StaticNodegroup, StaticResource, StaticResourceSummary } from "./static-types";
 import { PseudoValue, PseudoUnavailable } from "./pseudos.ts";
 import { SemanticViewModel, NodeViewModel } from "./viewModels.ts";
 import { GetMeta, IRIVM, IStringKeyedObject, IPseudo, IInstanceWrapper, IViewModel, IWKRM, ResourceInstanceViewModelConstructor, PermissionValue } from "./interfaces";
@@ -41,6 +41,61 @@ export declare class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implement
     constructor(wkri: RIVM, model: ResourceModelWrapper<RIVM>, resource: StaticResource | null | false, // False to disable dynamic resource-loading
     pruneTiles?: boolean, lazy?: boolean, assumeTilesComprehensiveForNodegroup?: boolean);
     ensureTilesLoaded(): Promise<void>;
+    /**
+     * Fetch one nodegroup's tiles (all of them when null) and merge them,
+     * marking exactly that nodegroup loaded, even if it has none: so lazy
+     * lookups fetch each nodegroup once and never read an unfetched one as
+     * empty. Uses the tile loader when one is set, else the static store, on
+     * either backend.
+     */
+    fetchNodegroupTiles(nodegroupId: string | null): Promise<void>;
+    /**
+     * Fetch every nodegroup a lazy lookup listed (`nodegroupsToFetch`,
+     * `getMissingNodegroupsForChildren`, or a `TILES_NOT_LOADED:a,b` error):
+     * from the compiled-in tile source first, where the backend has one, and the
+     * rest through fetchNodegroupTiles. The same on either backend, as Python's
+     * `fetch_nodegroups` is.
+     */
+    fetchNodegroups(nodegroupIds: string[]): Promise<void>;
+    /** Edits recorded since the last commit, as core's `applyEdits` takes them. */
+    private _pendingEdits;
+    /** What reads see until the commit: assigned values and edited lists. */
+    private _pendingValues;
+    private static _pendingKey;
+    /**
+     * Record `value` for child `key` of semantic `node` (null: the root) within
+     * `tile` (null at the root) as a pending edit. The checks that need only the
+     * graph (an unknown or derived node, a semantic node, a multi-valued one, an
+     * unloaded nodegroup) throw now; coercion happens at commit. As Python's
+     * `ResourceInstanceWrapper.assign`.
+     */
+    assign(tile: StaticTile | null, node: StaticNode | null, key: string, value: any): void;
+    /** The value `key` was given under `tileId` since the last commit, if any. */
+    pendingValue(tileId: string | null | undefined, key: string): {
+        value: any;
+    } | undefined;
+    /** Make reads of `key` under `tileId` see `value` (an edited list) until the commit. */
+    setPendingValue(tileId: string | null | undefined, key: string, value: any): void;
+    /**
+     * Record one edit (`{op: "set" | "add" | "remove", ...}`), checking each
+     * node it gives a value against the graph first. Returns its index, which
+     * later edits can name as `{ref: index}`.
+     */
+    recordEdit(op: any): number;
+    /** Whether there are edits not yet committed. */
+    hasPendingEdits(): boolean;
+    /**
+     * Apply every pending edit through core, all or nothing: values coerced,
+     * stored Derive functions rerun for what changed. Returns the tiles to write
+     * and the ids to delete; persisting them is the caller's. Pending edits are
+     * dropped either way, so a failure leaves the resource as it was.
+     */
+    commitEdits(): {
+        upserted: StaticTile[];
+        removed: string[];
+    };
+    /** Drop every pending edit; reads see the resource as committed. */
+    discardEdits(): void;
     pruneResourceTiles(): undefined;
     /**
      * Retrieve pseudo value by alias - queries Rust's pseudo_cache
@@ -95,7 +150,27 @@ export declare class ResourceInstanceWrapper<RIVM extends IRIVM<RIVM>> implement
      */
     release(): void;
 }
-type GraphMutation = (baseGraph: StaticGraph) => StaticGraph;
+/** A core graph mutation, e.g. `{ AddNode: {...} }` (core's `GraphMutation`). */
+type GraphMutation = {
+    [kind: string]: unknown;
+};
+/** Per-node flags, as core's `NodeOptions` takes them. */
+type NodeOptions = {
+    exportable?: boolean;
+    fieldname?: string;
+    hascustomalias?: boolean;
+    is_collector?: boolean;
+    isrequired?: boolean;
+    issearchable?: boolean;
+    istopnode?: boolean;
+    sortorder?: number;
+};
+/**
+ * Fluent builder for graph schema changes. It records core graph mutations
+ * and `apply()` runs them in core, so the same mutations give the same graph,
+ * ids included, on WASM, NAPI and Python (whose GraphMutator is the same).
+ * Cards and widgets for new nodes are created by core when `autocreateCard`.
+ */
 declare class GraphMutator {
     baseGraph: StaticGraph;
     mutations: GraphMutation[];
@@ -103,81 +178,42 @@ declare class GraphMutator {
     constructor(baseGraph: StaticGraph, options?: {
         autocreateCard?: boolean;
     });
-    _generateUuidv5(key: string): string;
-    _generateEdge(fromNode: string, toNode: string, ontologyProperty: string, name?: string, description?: string): any;
-    addSemanticNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options?: {
-        exportable?: boolean;
-        fieldname?: string;
-        hascustomalias?: boolean;
-        is_collector?: boolean;
-        isrequired?: boolean;
-        issearchable?: boolean;
-        istopnode?: boolean;
-        sortorder?: number;
+    addSemanticNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options?: NodeOptions, config?: {
+        [key: string]: any;
+    }): this;
+    addConceptNode(parentAlias: string | null, alias: string, name: string, collection: StaticCollection, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options?: NodeOptions & {
+        is_list?: boolean;
     }, config?: {
         [key: string]: any;
     }): this;
-    addConceptNode(parentAlias: string | null, alias: string, name: string, collection: StaticCollection, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options?: {
-        is_list?: boolean;
-        exportable?: boolean;
-        fieldname?: string;
-        hascustomalias?: boolean;
-        is_collector?: boolean;
-        isrequired?: boolean;
-        issearchable?: boolean;
-        istopnode?: boolean;
-        sortorder?: number;
-    }, config?: {
+    addStringNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options?: NodeOptions, config?: {
         [key: string]: any;
     }): this;
     addCard(nodegroup: string | StaticNodegroup, name: string | StaticTranslatableString, component?: CardComponent, options?: {
         active?: boolean;
-        constraints?: Array<StaticConstraint>;
         cssclass?: string | null;
         helpenabled?: boolean;
         helptext?: string | null | StaticTranslatableString;
         helptitle?: string | null | StaticTranslatableString;
         instructions?: string | null | StaticTranslatableString;
         is_editable?: boolean;
-        description?: string | null;
+        description?: string | null | StaticTranslatableString;
         sortorder?: number | null;
         visible?: boolean;
     }, config?: {
         [key: string]: any;
-    }): void;
-    addStringNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', ontologyClass: string | string[], parentProperty: string, description?: string, options?: {
-        exportable?: boolean;
-        fieldname?: string;
-        hascustomalias?: boolean;
-        is_collector?: boolean;
-        isrequired?: boolean;
-        issearchable?: boolean;
-        istopnode?: boolean;
-        sortorder?: number;
-    }, config?: {
-        [key: string]: any;
     }): this;
-    _addNodegroup(parentAlias: string | null, nodegroupId: string, cardinality: 'n' | '1', name?: StaticTranslatableString): this;
-    _addGenericNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', datatype: string, ontologyClass: string | string[], parentProperty: string, description?: string, options?: {
-        exportable?: boolean;
-        fieldname?: string;
-        hascustomalias?: boolean;
-        is_collector?: boolean;
-        isrequired?: boolean;
-        issearchable?: boolean;
-        istopnode?: boolean;
-        sortorder?: number;
-    }, config?: {
+    _addGenericNode(parentAlias: string | null, alias: string, name: string, cardinality: 'n' | '1', datatype: string, ontologyClass: string | string[], parentProperty: string, description?: string, options?: NodeOptions, config?: {
         [key: string]: any;
     }): this;
     addWidgetToCard(nodeId: string, widget: Widget, name: string, config: {
         [key: string]: any;
     }, options?: {
         sortorder?: number | null;
-        silentSkip?: boolean;
         visible?: boolean;
     }): GraphMutator;
-    apply(): import("../pkg/alizarin").StaticGraph;
+    /** A new graph with the mutations applied, by core; the base graph is untouched. */
+    apply(): StaticGraph;
 }
 /**
  * ResourceModelWrapper — graph schema access with backend delegation.
@@ -199,6 +235,8 @@ declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     private _nodesByAlias;
     private _edges;
     private _nodegroups;
+    private _graph;
+    private _edgeObjects;
     constructor(wkrm: IWKRM, graph: StaticGraph, viewModelClass?: ResourceInstanceViewModelConstructor<RIVM>, defaultAllow?: boolean, store?: StaticStore);
     get graph(): StaticGraph;
     set graph(g: StaticGraph);
@@ -218,7 +256,6 @@ declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     getNodegroupName(nodegroupId: string): string;
     createPseudoNode(alias?: string): any;
     createPseudoNodeChild(childNode: string, parent: any): any;
-    createPseudoValue(alias: string | undefined, tile: any, parent: any): any;
     getRoot(): NodeViewModel;
     buildNodes(): void;
     getNodeObjects(): Map<string, StaticNode>;
@@ -226,6 +263,8 @@ declare class ResourceModelWrapper<RIVM extends IRIVM<RIVM>> {
     getEdges(): Map<string, string[]>;
     getNodegroupObjects(): Map<string, StaticNodegroup>;
     getBranchPublicationIds(accessible?: boolean): string[];
+    /** The graph's edges, cached (unlike `graph.edges`, built on every read). */
+    getEdgeObjects(): any[];
     getCollections(accessible?: boolean): string[];
     pruneGraph(keepFunctions?: string[]): undefined;
     getPruneTiles(pruneTiles?: boolean): boolean;
@@ -272,6 +311,16 @@ declare class GraphManager {
     constructor(archesClient: ArchesClient, store?: StaticStore);
     getPruneTiles(pruneTiles?: boolean): boolean;
     initialize(configurationOptions?: ConfigurationOptions | undefined): Promise<void>;
+    /**
+     * Resolve a model to its WKRM by exact class name, graph id, or a normalised
+     * name ("NPC" / "npc" / "Monster Type" / "monster-type" all match the
+     * "Npc" / "MonsterType" model). Shared by get() and loadGraph() so both accept
+     * the same name forms. (N1: loadGraph previously matched only the exact class
+     * name or graph id, so a first get("npc") that had to load the graph — i.e. the
+     * cache-miss path get() delegates to — still threw despite get()'s own
+     * normalised lookup.)
+     */
+    private resolveWkrm;
     loadGraph<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow?: boolean): Promise<ResourceModelWrapper<RIVM>>;
     get<RIVM extends IRIVM<RIVM>>(modelClass: ResourceInstanceViewModelConstructor<RIVM> | string, defaultAllow?: boolean): Promise<ResourceModelWrapper<RIVM>>;
     getResource<T extends IRIVM<T>>(resourceId: string, lazy?: boolean, pruneTiles?: boolean): Promise<T>;

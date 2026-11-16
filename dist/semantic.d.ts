@@ -1,4 +1,5 @@
 import { IStringKeyedObject, IViewModel, IPseudo, IRIVM } from "./interfaces.ts";
+import { PseudoList } from "./pseudos";
 import type { PseudoValue } from "./pseudos";
 import { StaticTile, StaticNode } from "./static-types";
 export declare function resetTimingStats(): void;
@@ -26,7 +27,13 @@ declare class SemanticViewModel implements IStringKeyedObject, IViewModel {
     constructor(parentWkri: IRIVM<any> | null, tile: StaticTile | null, node: StaticNode);
     toString(): Promise<string>;
     toObject(): Promise<Record<string, any>>;
-    __get(key: string): Promise<IViewModel | IViewModel[]>;
+    /**
+     * An empty, editable list for child `key` when it is multi-valued (its own
+     * cardinality-n nodegroup) and has no values yet, so it can be pushed to;
+     * null for any other child. As Python's SemanticViewModel.
+     */
+    __emptyChildList(key: string): PseudoList | null;
+    __get(key: string): Promise<any>;
     __has(key: string): any;
     __getChildValue(key: string): Promise<IPseudo> | null | undefined;
     static __create(tile: StaticTile, node: StaticNode, _value: any, parent: IRIVM<any> | null): Promise<SemanticViewModel>;

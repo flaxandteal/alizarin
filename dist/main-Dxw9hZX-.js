@@ -1,7 +1,7 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-let AlizarinModel, getTimingStats, CUSTOM_DATATYPES, logTimingStats, index, _parseSkosXml, GraphManager, _parseSkosXmlToCollection, _collectionToSkosXml, _collectionsToSkosXml, CollectionMutator, buildGraphFromModelCsvs, validateModelCsvs, buildResourcesFromBusinessCsv, composeResourceLayers, setBackend, setNapiModule, RDM, StaticStore, setWasmModule, getBackend, autoDetectBackend, createResourceRegistry, parseStaticGraph, getMemoryUsage, formatMemoryUsage, _wrappedInitWasm, registerResolvableDatatype, graphManager, client, slugify, viewModels, staticStore, getCurrentLanguage$2, unregisterResolvableDatatype, renderers, interfaces, createWKRM, getWKRMClass, nodeConfig, nodeConfigManager, ResourceModelWrapper, GraphMutator, setCurrentLanguage, registerExtensionHandler$1, staticTypes, getCurrentLanguage, utils, version, wasmReady, setWasmURL, ensureWasmRdmCache, resetTimingStats;
+let createResourceRegistry, AlizarinModel, resetTimingStats, CUSTOM_DATATYPES, getTimingStats, logTimingStats, index, GraphManager, _parseSkosXml, _parseSkosXmlToCollection, _collectionToSkosXml, _collectionsToSkosXml, CollectionMutator, buildGraphFromModelCsvs, validateModelCsvs, buildResourcesFromBusinessCsv, composeResourceLayers, registerDeriveProvider$1, RDM, StaticStore, hasDeriveProvider$1, foldMayMatch$1, setBackend, setNapiModule, setWasmModule, getBackend, autoDetectBackend, _wrappedInitWasm, registerNodeConfigAdapter, parseStaticGraph, getMemoryUsage, formatMemoryUsage, registerResolvableDatatype, client, graphManager, slugify, viewModels, getCurrentLanguage$2, staticStore, unregisterResolvableDatatype, renderers, interfaces, createWKRM, getWKRMClass, nodeConfigManager, nodeConfig, ResourceModelWrapper, GraphMutator, registerExtensionHandler$1, staticTypes, setCurrentLanguage, utils, version, wasmReady, getCurrentLanguage, setWasmURL, ensureWasmRdmCache;
 let __tla = (async () => {
   var _a, _b, _c, _d, _e, _f;
   const REGEX = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/i;
@@ -166,6 +166,469 @@ let __tla = (async () => {
   }
   v5.DNS = DNS;
   v5.URL = URL$1;
+  let _backend = "wasm";
+  let _napiModule = null;
+  let _wasmModule = null;
+  setWasmModule = function(mod) {
+    _wasmModule = mod;
+    applyCoreLanguage();
+  };
+  function getWasmModule() {
+    if (!_wasmModule) {
+      throw new Error('WASM module not loaded. Call initWasm() first, or use setBackend("napi").');
+    }
+    return _wasmModule;
+  }
+  setBackend = function(backend) {
+    _backend = backend;
+    if (backend === "napi") {
+      _napiModule = getNapiModule();
+    }
+  };
+  getBackend = function() {
+    return _backend;
+  };
+  function getNapiModule() {
+    if (_napiModule) return _napiModule;
+    if (globalThis.__alizarin_napi) {
+      _napiModule = globalThis.__alizarin_napi;
+      return _napiModule;
+    }
+    return null;
+  }
+  setNapiModule = function(mod) {
+    _napiModule = mod;
+    _backend = "napi";
+    globalThis.__alizarin_napi = mod;
+    applyCoreLanguage();
+  };
+  let _coreLanguage;
+  function setCoreLanguage(lang) {
+    _coreLanguage = lang;
+    applyCoreLanguage();
+  }
+  function applyCoreLanguage() {
+    if (_coreLanguage === void 0) {
+      return;
+    }
+    for (const mod of [
+      _wasmModule,
+      getNapiModule()
+    ]) {
+      if (mod && typeof mod.setCurrentLanguage === "function") {
+        mod.setCurrentLanguage(_coreLanguage);
+      }
+    }
+  }
+  function safeStringify(value) {
+    if (value === null || value === void 0) return JSON.stringify(value);
+    if (typeof value === "string") return value;
+    const isNapiObject = value.constructor && value.constructor.name !== "Object" && value.constructor.name !== "Array" && JSON.stringify(value) === "{}";
+    if (isNapiObject) {
+      throw new Error(`Cannot JSON.stringify a ${value.constructor.name} instance \u2014 NAPI class getters are not enumerable. Use a direct method instead.`);
+    }
+    return JSON.stringify(value);
+  }
+  function createInstanceWrapperForResource(resource, registry) {
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
+      const wrapper = new napi.NapiResourceInstanceWrapper(resource.resourceinstance.graph_id);
+      const resourceId = resource.resourceinstance.resourceinstanceid;
+      if (registry && typeof wrapper.loadFromRegistry === "function") {
+        const loaded = wrapper.loadFromRegistry(resourceId, registry);
+        if (!loaded) {
+          loadTilesFromResource(wrapper, resource);
+        }
+      } else {
+        loadTilesFromResource(wrapper, resource);
+      }
+      return wrapper;
+    }
+    const { newWASMResourceInstanceWrapperForResource: newWASMResourceInstanceWrapperForResource2 } = getWasmModule();
+    return newWASMResourceInstanceWrapperForResource2(resource);
+  }
+  function loadTilesFromResource(wrapper, resource, assumeComprehensive) {
+    var _a2;
+    if (_backend === "napi") {
+      wrapper.loadTilesFromResource(JSON.stringify(resource), assumeComprehensive);
+    } else if (((_a2 = resource.constructor) == null ? void 0 : _a2.name) === "StaticResource") {
+      wrapper.loadTilesFromResource(resource, assumeComprehensive);
+    } else {
+      wrapper.loadTiles(resource.tiles || []);
+    }
+  }
+  function createInstanceWrapperForModel(graphId, resourceId) {
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
+      return new napi.NapiResourceInstanceWrapper(graphId, resourceId ?? null);
+    }
+    const { newWASMResourceInstanceWrapperForModel: newWASMResourceInstanceWrapperForModel2 } = getWasmModule();
+    return newWASMResourceInstanceWrapperForModel2(graphId, resourceId ?? null);
+  }
+  createResourceRegistry = function() {
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
+      return new napi.NapiStaticResourceRegistry();
+    }
+    const { StaticResourceRegistry: StaticResourceRegistry2 } = getWasmModule();
+    return new StaticResourceRegistry2();
+  };
+  let _rdmCache = null;
+  function getRdmCache() {
+    if (_rdmCache) return _rdmCache;
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
+      _rdmCache = new napi.NapiRdmCache();
+    } else {
+      const { WasmRdmCache: WasmRdmCache2 } = getWasmModule();
+      _rdmCache = new WasmRdmCache2();
+    }
+    return _rdmCache;
+  }
+  registerExtensionHandler$1 = function(datatype, handler) {
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      if (napi && typeof napi.hasExtensionHandler === "function") {
+        if (!napi.hasExtensionHandler(datatype)) {
+          console.warn(`[alizarin] Extension handler for '${datatype}' not found in NAPI binary`);
+        }
+      }
+      return;
+    }
+    const mod = getWasmModule();
+    mod.registerExtensionHandler(datatype, handler);
+  };
+  registerDeriveProvider$1 = function(providerId, provider) {
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      if (typeof provider !== "bigint") {
+        throw new Error(`On the NAPI backend, register ${providerId} with its native module's pointer`);
+      }
+      const registered = napi.registerDeriveProvider(provider);
+      if (registered !== providerId) {
+        throw new Error(`Expected derive provider ${providerId}, the native module provides ${registered}`);
+      }
+      return;
+    }
+    getWasmModule().registerDeriveProvider(providerId, provider);
+  };
+  hasDeriveProvider$1 = function(providerId) {
+    const mod = _backend === "napi" ? getNapiModule() : getWasmModule();
+    return mod.hasDeriveProvider(providerId);
+  };
+  foldMayMatch$1 = function(datatype, summary, predicate, config) {
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
+      return napi.foldMayMatch(datatype, summary ?? null, predicate, config ?? null);
+    }
+    return getWasmModule().foldMayMatch(datatype, summary ?? null, predicate, config ?? null);
+  };
+  function createResourceModelWrapper(wkrm, graph, defaultAllow) {
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
+      if (napi.NapiStaticGraph && graph instanceof napi.NapiStaticGraph && napi.NapiResourceModelWrapper.fromGraph) {
+        return napi.NapiResourceModelWrapper.fromGraph(graph, defaultAllow);
+      }
+      const graphJson = typeof graph === "string" ? graph : safeStringify(graph);
+      return new napi.NapiResourceModelWrapper(graphJson, defaultAllow);
+    }
+    const { WASMResourceModelWrapper: WASMResourceModelWrapper2 } = getWasmModule();
+    return new WASMResourceModelWrapper2(wkrm, graph, defaultAllow);
+  }
+  function toPascalCase(s) {
+    return s.replace(/[_-]/g, " ").split(/\s+/).filter((word) => word.length > 0).map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join("");
+  }
+  function extractTranslatableName(name) {
+    if (!name) return "Unnamed";
+    if (typeof name === "string") return name;
+    if (typeof name.toStringDefault === "function") return name.toStringDefault();
+    if (typeof name.toString === "function" && name.toString !== Object.prototype.toString) {
+      return name.toString();
+    }
+    if (typeof name === "object") {
+      const values = Object.values(name);
+      if (values.length > 0 && typeof values[0] === "string") return values[0];
+    }
+    return "Unnamed";
+  }
+  class TSWkrm {
+    constructor(meta) {
+      __publicField(this, "graphId");
+      __publicField(this, "modelName");
+      __publicField(this, "modelClassName");
+      __publicField(this, "meta");
+      this.meta = meta;
+      this.graphId = meta.graphid;
+      this.modelName = extractTranslatableName(meta.name);
+      const baseName = meta.slug || this.modelName;
+      this.modelClassName = toPascalCase(baseName);
+    }
+  }
+  createWKRM = function(meta) {
+    if (_backend === "napi") {
+      return new TSWkrm(meta);
+    }
+    const { WKRM: WKRM2 } = getWasmModule();
+    return new WKRM2(meta);
+  };
+  getWKRMClass = function() {
+    if (_backend === "napi") return TSWkrm;
+    const { WKRM: WKRM2 } = getWasmModule();
+    return WKRM2;
+  };
+  function createWasmType(className, data) {
+    if (_backend === "napi") {
+      return data;
+    }
+    const Cls = getWasmModule()[className];
+    if (!Cls) throw new Error(`Unknown WASM type: ${className}`);
+    return new Cls(data);
+  }
+  function createStaticGraphMeta(data) {
+    return createWasmType("StaticGraphMeta", data);
+  }
+  function createStaticGraph$1(data) {
+    if (_backend === "napi") {
+      return getNapiModule().NapiStaticGraph.fromJsonString(JSON.stringify(data));
+    }
+    const Cls = getWasmModule()["StaticGraph"];
+    if (!Cls) throw new Error("Unknown WASM type: StaticGraph");
+    return new Cls(data);
+  }
+  function createStaticNode(data) {
+    return createWasmType("StaticNode", data);
+  }
+  function createStaticTile(data) {
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      const tile = new napi.NapiStaticTile(data.nodegroup_id || "", data.tileid || null, data.sortorder ?? null, data.resourceinstance_id || "", data.parenttile_id || null);
+      if (data.data) {
+        const entries = data.data instanceof Map ? data.data : Object.entries(data.data || {});
+        for (const [key, value] of entries) {
+          tile.data.set(key, value);
+        }
+      }
+      return tile;
+    }
+    return createWasmType("StaticTile", data);
+  }
+  function createStaticResource(data) {
+    return createWasmType("StaticResource", data);
+  }
+  function resourceTilesLoaded(resource) {
+    var _a2;
+    return resource.tilesLoaded ?? resource.tiles_loaded ?? ((_a2 = resource.tiles) == null ? void 0 : _a2.length) > 0;
+  }
+  function summaryToMetadata(summary) {
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
+      return napi.summaryToMetadata(summary);
+    }
+    return summary.toMetadata();
+  }
+  function createStaticResourceFromSummary(summary) {
+    if (_backend === "napi") {
+      return {
+        resourceinstance: summaryToMetadata(summary),
+        metadata: summary.metadata ?? {},
+        tiles_loaded: false
+      };
+    }
+    return getWasmModule().StaticResource.fromSummary(summary);
+  }
+  function createStaticPublication(data) {
+    return createWasmType("StaticPublication", data);
+  }
+  function createStaticTranslatableString(data) {
+    if (_backend === "napi") {
+      if (typeof data === "string") {
+        return {
+          en: data,
+          toString() {
+            return data;
+          },
+          toJSON() {
+            return data;
+          },
+          toStringDefault() {
+            return data;
+          }
+        };
+      }
+      if (typeof data === "object" && data !== null) {
+        const first = Object.values(data)[0] || "";
+        return {
+          ...data,
+          toString() {
+            return data[Object.keys(data)[0]] || "";
+          },
+          toJSON() {
+            return data;
+          },
+          toStringDefault() {
+            return first;
+          }
+        };
+      }
+      return {
+        toString() {
+          return String(data ?? "");
+        },
+        toJSON() {
+          return data;
+        },
+        toStringDefault() {
+          return String(data ?? "");
+        }
+      };
+    }
+    const { StaticTranslatableString: StaticTranslatableString2 } = getWasmModule();
+    return new StaticTranslatableString2(data);
+  }
+  parseStaticGraph = function(jsonText) {
+    var _a2;
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      if ((_a2 = napi == null ? void 0 : napi.NapiStaticGraph) == null ? void 0 : _a2.fromJsonString) {
+        return napi.NapiStaticGraph.fromJsonString(jsonText);
+      }
+      const parsed = JSON.parse(jsonText);
+      if (parsed.graph && Array.isArray(parsed.graph) && parsed.graph.length === 1) {
+        return parsed.graph[0];
+      }
+      return parsed;
+    }
+    const { StaticGraph: StaticGraph2 } = getWasmModule();
+    return StaticGraph2.fromJsonString(jsonText);
+  };
+  function applyGraphMutations(graph, mutationsJson) {
+    const module2 = _backend === "napi" ? getNapiModule() : getWasmModule();
+    return module2.applyMutationsFromJson(graph, mutationsJson);
+  }
+  function parseStaticResources(jsonText) {
+    var _a2;
+    if (_backend === "napi") {
+      const parsed = JSON.parse(jsonText);
+      const resources = (_a2 = parsed == null ? void 0 : parsed.business_data) == null ? void 0 : _a2.resources;
+      return Array.isArray(resources) ? resources : [];
+    }
+    const { StaticResource: StaticResource2 } = getWasmModule();
+    return StaticResource2.fromBusinessDataJsonString(jsonText);
+  }
+  function buildAliasToCollectionMap$1(graphJson, resolvableDatatypes, configKeys) {
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
+      return napi.buildAliasToCollectionMap(graphJson, resolvableDatatypes, configKeys);
+    }
+    const mod = getWasmModule();
+    const result = mod.buildAliasToCollectionMap(graphJson, resolvableDatatypes, configKeys);
+    if (result instanceof Map) return Object.fromEntries(result);
+    return result;
+  }
+  function findNeededCollections$1(treeJson, aliasToCollection) {
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
+      return napi.findNeededCollections(treeJson, aliasToCollection);
+    }
+    const mod = getWasmModule();
+    return mod.findNeededCollections(treeJson, aliasToCollection);
+  }
+  function getDefaultResolvableDatatypes$1() {
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
+      return napi.getDefaultResolvableDatatypes();
+    }
+    const mod = getWasmModule();
+    return mod.getDefaultResolvableDatatypes();
+  }
+  function getDefaultConfigKeys$1() {
+    if (_backend === "napi") {
+      const napi = getNapiModule();
+      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
+      return napi.getDefaultConfigKeys();
+    }
+    const mod = getWasmModule();
+    return mod.getDefaultConfigKeys();
+  }
+  getMemoryUsage = function(registry) {
+    let jsHeapUsed = 0;
+    let jsHeapTotal = 0;
+    let rss = 0;
+    let wasmMemory = 0;
+    if (typeof process !== "undefined" && process.memoryUsage) {
+      const mem = process.memoryUsage();
+      jsHeapUsed = mem.heapUsed;
+      jsHeapTotal = mem.heapTotal;
+      rss = mem.rss;
+      if (_backend === "wasm") {
+        wasmMemory = mem.arrayBuffers || 0;
+      }
+    }
+    const nativeEstimate = Math.max(0, rss - jsHeapTotal - wasmMemory);
+    let registryStats;
+    if (registry && typeof registry.memoryStats === "function") {
+      try {
+        registryStats = registry.memoryStats();
+      } catch {
+      }
+    }
+    return {
+      backend: _backend,
+      jsHeapUsed,
+      jsHeapTotal,
+      wasmMemory,
+      rss,
+      nativeEstimate,
+      registry: registryStats
+    };
+  };
+  formatMemoryUsage = function(memOrRegistry) {
+    let mem;
+    if (!memOrRegistry) {
+      mem = getMemoryUsage();
+    } else if (memOrRegistry.backend) {
+      mem = memOrRegistry;
+    } else {
+      mem = getMemoryUsage(memOrRegistry);
+    }
+    const mb = (bytes) => (bytes / 1024 / 1024).toFixed(0);
+    let base;
+    if (mem.backend === "wasm") {
+      base = `[mem] JS heap: ${mb(mem.jsHeapUsed)}/${mb(mem.jsHeapTotal)}MB | WASM: ${mb(mem.wasmMemory)}MB | RSS: ${mb(mem.rss)}MB`;
+    } else {
+      base = `[mem] JS heap: ${mb(mem.jsHeapUsed)}/${mb(mem.jsHeapTotal)}MB | native(est): ${mb(mem.nativeEstimate)}MB | RSS: ${mb(mem.rss)}MB`;
+    }
+    if (mem.registry) {
+      const r = mem.registry;
+      base += ` | registry: ${r.total} entries (${r.full_count} full, ${r.summary_count} summaries, ${r.total_tiles} tiles)`;
+      if (r.tile_bytes_est > 0 || r.cache_bytes_est > 0) {
+        base += ` | data est: tiles ~${mb(r.tile_bytes_est)}MB, __cache ~${mb(r.cache_bytes_est)}MB (${r.cache_entries} resources)`;
+      }
+    }
+    return base;
+  };
+  autoDetectBackend = function() {
+    var _a2, _b2;
+    if (typeof process !== "undefined" && ((_a2 = process.env) == null ? void 0 : _a2.ALIZARIN_BACKEND)) {
+      const env = process.env.ALIZARIN_BACKEND.toLowerCase();
+      if (env === "napi" || env === "wasm") return env;
+    }
+    if (typeof process !== "undefined" && ((_b2 = process.versions) == null ? void 0 : _b2.node)) {
+      const napi = getNapiModule();
+      if (napi) return "napi";
+    }
+    return "wasm";
+  };
   const DEFAULT_LANGUAGE$1 = "en";
   const SLUG_LENGTH = 20;
   const UUID_NAMESPACE = "1a79f1c8-9505-4bea-a18e-28a053f725ca";
@@ -176,7 +639,9 @@ let __tla = (async () => {
   };
   function setCurrentLanguage$2(lang) {
     currentLanguage = lang;
+    setCoreLanguage(lang);
   }
+  setCoreLanguage(getCurrentLanguage$2());
   function slugify$1(name, maxLength = 100, useUnderscoreForHyphen = false) {
     if (!name || typeof name !== "string") {
       name = `${name}`;
@@ -366,458 +831,9 @@ let __tla = (async () => {
   }, Symbol.toStringTag, {
     value: "Module"
   }));
-  let _backend = "wasm";
-  let _napiModule = null;
-  let _wasmModule = null;
-  setWasmModule = function(mod) {
-    _wasmModule = mod;
-  };
-  function getWasmModule() {
-    if (!_wasmModule) {
-      throw new Error('WASM module not loaded. Call initWasm() first, or use setBackend("napi").');
-    }
-    return _wasmModule;
+  function json_text(value) {
+    return JSON.stringify(value, (_key, item) => item instanceof Map ? Object.fromEntries(item) : item);
   }
-  setBackend = function(backend) {
-    _backend = backend;
-    if (backend === "napi") {
-      _napiModule = getNapiModule();
-    }
-  };
-  getBackend = function() {
-    return _backend;
-  };
-  function getNapiModule() {
-    if (_napiModule) return _napiModule;
-    if (globalThis.__alizarin_napi) {
-      _napiModule = globalThis.__alizarin_napi;
-      return _napiModule;
-    }
-    return null;
-  }
-  setNapiModule = function(mod) {
-    _napiModule = mod;
-    _backend = "napi";
-    globalThis.__alizarin_napi = mod;
-  };
-  function safeStringify(value) {
-    if (value === null || value === void 0) return JSON.stringify(value);
-    if (typeof value === "string") return value;
-    const isNapiObject = value.constructor && value.constructor.name !== "Object" && value.constructor.name !== "Array" && JSON.stringify(value) === "{}";
-    if (isNapiObject) {
-      throw new Error(`Cannot JSON.stringify a ${value.constructor.name} instance \u2014 NAPI class getters are not enumerable. Use a direct method instead.`);
-    }
-    return JSON.stringify(value);
-  }
-  function createInstanceWrapperForResource(resource, registry) {
-    if (_backend === "napi") {
-      const napi = getNapiModule();
-      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
-      const wrapper = new napi.NapiResourceInstanceWrapper(resource.resourceinstance.graph_id);
-      const resourceId = resource.resourceinstance.resourceinstanceid;
-      if (registry && typeof wrapper.loadFromRegistry === "function") {
-        const loaded = wrapper.loadFromRegistry(resourceId, registry);
-        if (!loaded) {
-          loadTilesFromResource(wrapper, resource);
-        }
-      } else {
-        loadTilesFromResource(wrapper, resource);
-      }
-      return wrapper;
-    }
-    const { newWASMResourceInstanceWrapperForResource: newWASMResourceInstanceWrapperForResource2 } = getWasmModule();
-    return newWASMResourceInstanceWrapperForResource2(resource);
-  }
-  function loadTilesFromResource(wrapper, resource, assumeComprehensive) {
-    var _a2;
-    if (_backend === "napi") {
-      wrapper.loadTilesFromResource(JSON.stringify(resource));
-    } else if (((_a2 = resource.constructor) == null ? void 0 : _a2.name) === "StaticResource") {
-      wrapper.loadTilesFromResource(resource, assumeComprehensive);
-    } else {
-      wrapper.loadTiles(resource.tiles || []);
-    }
-  }
-  function createInstanceWrapperForModel(graphId, resourceId) {
-    if (_backend === "napi") {
-      const napi = getNapiModule();
-      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
-      return new napi.NapiResourceInstanceWrapper(graphId, resourceId ?? null);
-    }
-    const { newWASMResourceInstanceWrapperForModel: newWASMResourceInstanceWrapperForModel2 } = getWasmModule();
-    return newWASMResourceInstanceWrapperForModel2(graphId, resourceId ?? null);
-  }
-  createResourceRegistry = function() {
-    if (_backend === "napi") {
-      const napi = getNapiModule();
-      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
-      return new napi.NapiStaticResourceRegistry();
-    }
-    const { StaticResourceRegistry: StaticResourceRegistry2 } = getWasmModule();
-    return new StaticResourceRegistry2();
-  };
-  let _rdmCache = null;
-  function getRdmCache() {
-    if (_rdmCache) return _rdmCache;
-    if (_backend === "napi") {
-      const napi = getNapiModule();
-      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
-      _rdmCache = new napi.NapiRdmCache();
-    } else {
-      const { WasmRdmCache: WasmRdmCache2 } = getWasmModule();
-      _rdmCache = new WasmRdmCache2();
-    }
-    return _rdmCache;
-  }
-  registerExtensionHandler$1 = function(datatype, handler) {
-    if (_backend === "napi") {
-      const napi = getNapiModule();
-      if (napi && typeof napi.hasExtensionHandler === "function") {
-        if (!napi.hasExtensionHandler(datatype)) {
-          console.warn(`[alizarin] Extension handler for '${datatype}' not found in NAPI binary`);
-        }
-      }
-      return;
-    }
-    const mod = getWasmModule();
-    mod.registerExtensionHandler(datatype, handler);
-  };
-  function createResourceModelWrapper(wkrm, graph, defaultAllow) {
-    if (_backend === "napi") {
-      const napi = getNapiModule();
-      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
-      if (napi.NapiStaticGraph && graph instanceof napi.NapiStaticGraph && napi.NapiResourceModelWrapper.fromGraph) {
-        return napi.NapiResourceModelWrapper.fromGraph(graph, defaultAllow);
-      }
-      const graphJson = typeof graph === "string" ? graph : safeStringify(graph);
-      return new napi.NapiResourceModelWrapper(graphJson, defaultAllow);
-    }
-    const { WASMResourceModelWrapper: WASMResourceModelWrapper2 } = getWasmModule();
-    return new WASMResourceModelWrapper2(wkrm, graph, defaultAllow);
-  }
-  function toPascalCase(s) {
-    return s.replace(/[_-]/g, " ").split(/\s+/).filter((word) => word.length > 0).map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join("");
-  }
-  function extractTranslatableName(name) {
-    if (!name) return "Unnamed";
-    if (typeof name === "string") return name;
-    if (typeof name.toStringDefault === "function") return name.toStringDefault();
-    if (typeof name.toString === "function" && name.toString !== Object.prototype.toString) {
-      return name.toString();
-    }
-    if (typeof name === "object") {
-      const values = Object.values(name);
-      if (values.length > 0 && typeof values[0] === "string") return values[0];
-    }
-    return "Unnamed";
-  }
-  class TSWkrm {
-    constructor(meta) {
-      __publicField(this, "graphId");
-      __publicField(this, "modelName");
-      __publicField(this, "modelClassName");
-      __publicField(this, "meta");
-      this.meta = meta;
-      this.graphId = meta.graphid;
-      this.modelName = extractTranslatableName(meta.name);
-      const baseName = meta.slug || this.modelName;
-      this.modelClassName = toPascalCase(baseName);
-    }
-  }
-  createWKRM = function(meta) {
-    if (_backend === "napi") {
-      return new TSWkrm(meta);
-    }
-    const { WKRM: WKRM2 } = getWasmModule();
-    return new WKRM2(meta);
-  };
-  getWKRMClass = function() {
-    if (_backend === "napi") return TSWkrm;
-    const { WKRM: WKRM2 } = getWasmModule();
-    return WKRM2;
-  };
-  function createWasmType(className, data) {
-    if (_backend === "napi") {
-      return data;
-    }
-    const Cls = getWasmModule()[className];
-    if (!Cls) throw new Error(`Unknown WASM type: ${className}`);
-    return new Cls(data);
-  }
-  function createStaticGraphMeta(data) {
-    return createWasmType("StaticGraphMeta", data);
-  }
-  function createStaticGraph$1(data) {
-    if (_backend === "napi") {
-      const graph = {
-        ...data
-      };
-      if (graph.name != null && typeof graph.name !== "function") {
-        graph.name = createStaticTranslatableString(graph.name);
-      }
-      if (graph.description != null && typeof graph.description !== "function") {
-        graph.description = createStaticTranslatableString(graph.description);
-      }
-      if (graph.subtitle != null && typeof graph.subtitle !== "function") {
-        graph.subtitle = createStaticTranslatableString(graph.subtitle);
-      }
-      graph.nodes = graph.nodes ? [
-        ...graph.nodes
-      ] : [];
-      graph.edges = graph.edges ? [
-        ...graph.edges
-      ] : [];
-      graph.nodegroups = graph.nodegroups ? [
-        ...graph.nodegroups
-      ] : [];
-      graph.cards = graph.cards ? [
-        ...graph.cards || []
-      ] : [];
-      graph.cards_x_nodes_x_widgets = graph.cards_x_nodes_x_widgets ? [
-        ...graph.cards_x_nodes_x_widgets
-      ] : [];
-      graph.pushNode = function(node) {
-        this.nodes.push(node);
-      };
-      graph.pushEdge = function(edge) {
-        this.edges.push(edge);
-      };
-      graph.pushNodegroup = function(ng) {
-        this.nodegroups.push(ng);
-      };
-      graph.pushCard = function(card) {
-        this.cards.push(card);
-      };
-      graph.pushCardXNodeXWidget = function(cxnxw) {
-        this.cards_x_nodes_x_widgets.push(cxnxw);
-      };
-      graph.copy = function() {
-        return createStaticGraph$1(this);
-      };
-      graph.toJSON = function() {
-        const { pushNode: _pushNode, pushEdge: _pushEdge, pushNodegroup: _pushNodegroup, pushCard: _pushCard, pushCardXNodeXWidget: _pushCardXNodeXWidget, copy: _copy, toJSON: _toJSON, ...rest } = this;
-        return rest;
-      };
-      return graph;
-    }
-    const Cls = getWasmModule()["StaticGraph"];
-    if (!Cls) throw new Error("Unknown WASM type: StaticGraph");
-    return new Cls(data);
-  }
-  function createStaticNode(data) {
-    return createWasmType("StaticNode", data);
-  }
-  function createStaticTile(data) {
-    if (_backend === "napi") {
-      const napi = getNapiModule();
-      const tile = new napi.NapiStaticTile(data.nodegroup_id || "", data.tileid || null, data.sortorder ?? null, data.resourceinstance_id || "", data.parenttile_id || null);
-      if (data.data) {
-        const entries = data.data instanceof Map ? data.data : Object.entries(data.data || {});
-        for (const [key, value] of entries) {
-          tile.data.set(key, value);
-        }
-      }
-      return tile;
-    }
-    return createWasmType("StaticTile", data);
-  }
-  function createStaticEdge(data) {
-    return createWasmType("StaticEdge", data);
-  }
-  function createStaticResource(data) {
-    return createWasmType("StaticResource", data);
-  }
-  function createStaticNodegroup(data) {
-    return createWasmType("StaticNodegroup", data);
-  }
-  function createStaticCard(data) {
-    return createWasmType("StaticCard", data);
-  }
-  function createStaticPublication(data) {
-    return createWasmType("StaticPublication", data);
-  }
-  function createStaticCardsXNodesXWidgets(data) {
-    return createWasmType("StaticCardsXNodesXWidgets", data);
-  }
-  function createStaticTranslatableString(data) {
-    if (_backend === "napi") {
-      if (typeof data === "string") {
-        return {
-          en: data,
-          toString() {
-            return data;
-          },
-          toJSON() {
-            return data;
-          },
-          toStringDefault() {
-            return data;
-          }
-        };
-      }
-      if (typeof data === "object" && data !== null) {
-        const first = Object.values(data)[0] || "";
-        return {
-          ...data,
-          toString() {
-            return data[Object.keys(data)[0]] || "";
-          },
-          toJSON() {
-            return data;
-          },
-          toStringDefault() {
-            return first;
-          }
-        };
-      }
-      return {
-        toString() {
-          return String(data ?? "");
-        },
-        toJSON() {
-          return data;
-        },
-        toStringDefault() {
-          return String(data ?? "");
-        }
-      };
-    }
-    const { StaticTranslatableString: StaticTranslatableString2 } = getWasmModule();
-    return new StaticTranslatableString2(data);
-  }
-  parseStaticGraph = function(jsonText) {
-    var _a2;
-    if (_backend === "napi") {
-      const napi = getNapiModule();
-      if ((_a2 = napi == null ? void 0 : napi.NapiStaticGraph) == null ? void 0 : _a2.fromJsonString) {
-        return napi.NapiStaticGraph.fromJsonString(jsonText);
-      }
-      const parsed = JSON.parse(jsonText);
-      if (parsed.graph && Array.isArray(parsed.graph) && parsed.graph.length === 1) {
-        return parsed.graph[0];
-      }
-      return parsed;
-    }
-    const { StaticGraph: StaticGraph2 } = getWasmModule();
-    return StaticGraph2.fromJsonString(jsonText);
-  };
-  function parseStaticResources(jsonText) {
-    var _a2;
-    if (_backend === "napi") {
-      const parsed = JSON.parse(jsonText);
-      const resources = (_a2 = parsed == null ? void 0 : parsed.business_data) == null ? void 0 : _a2.resources;
-      return Array.isArray(resources) ? resources : [];
-    }
-    const { StaticResource: StaticResource2 } = getWasmModule();
-    return StaticResource2.fromBusinessDataJsonString(jsonText);
-  }
-  function buildAliasToCollectionMap$1(graphJson, resolvableDatatypes, configKeys) {
-    if (_backend === "napi") {
-      const napi = getNapiModule();
-      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
-      return napi.buildAliasToCollectionMap(graphJson, resolvableDatatypes, configKeys);
-    }
-    const mod = getWasmModule();
-    const result = mod.buildAliasToCollectionMap(graphJson, resolvableDatatypes, configKeys);
-    if (result instanceof Map) return Object.fromEntries(result);
-    return result;
-  }
-  function findNeededCollections$1(treeJson, aliasToCollection) {
-    if (_backend === "napi") {
-      const napi = getNapiModule();
-      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
-      return napi.findNeededCollections(treeJson, aliasToCollection);
-    }
-    const mod = getWasmModule();
-    return mod.findNeededCollections(treeJson, aliasToCollection);
-  }
-  function getDefaultResolvableDatatypes$1() {
-    if (_backend === "napi") {
-      const napi = getNapiModule();
-      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
-      return napi.getDefaultResolvableDatatypes();
-    }
-    const mod = getWasmModule();
-    return mod.getDefaultResolvableDatatypes();
-  }
-  function getDefaultConfigKeys$1() {
-    if (_backend === "napi") {
-      const napi = getNapiModule();
-      if (!napi) throw new Error("NAPI backend selected but @alizarin/napi not available");
-      return napi.getDefaultConfigKeys();
-    }
-    const mod = getWasmModule();
-    return mod.getDefaultConfigKeys();
-  }
-  getMemoryUsage = function(registry) {
-    let jsHeapUsed = 0;
-    let jsHeapTotal = 0;
-    let rss = 0;
-    let wasmMemory = 0;
-    if (typeof process !== "undefined" && process.memoryUsage) {
-      const mem = process.memoryUsage();
-      jsHeapUsed = mem.heapUsed;
-      jsHeapTotal = mem.heapTotal;
-      rss = mem.rss;
-      if (_backend === "wasm") {
-        wasmMemory = mem.arrayBuffers || 0;
-      }
-    }
-    const nativeEstimate = Math.max(0, rss - jsHeapTotal - wasmMemory);
-    let registryStats;
-    if (registry && typeof registry.memoryStats === "function") {
-      try {
-        registryStats = registry.memoryStats();
-      } catch {
-      }
-    }
-    return {
-      backend: _backend,
-      jsHeapUsed,
-      jsHeapTotal,
-      wasmMemory,
-      rss,
-      nativeEstimate,
-      registry: registryStats
-    };
-  };
-  formatMemoryUsage = function(memOrRegistry) {
-    let mem;
-    if (!memOrRegistry) {
-      mem = getMemoryUsage();
-    } else if (memOrRegistry.backend) {
-      mem = memOrRegistry;
-    } else {
-      mem = getMemoryUsage(memOrRegistry);
-    }
-    const mb = (bytes) => (bytes / 1024 / 1024).toFixed(0);
-    let base;
-    if (mem.backend === "wasm") {
-      base = `[mem] JS heap: ${mb(mem.jsHeapUsed)}/${mb(mem.jsHeapTotal)}MB | WASM: ${mb(mem.wasmMemory)}MB | RSS: ${mb(mem.rss)}MB`;
-    } else {
-      base = `[mem] JS heap: ${mb(mem.jsHeapUsed)}/${mb(mem.jsHeapTotal)}MB | native(est): ${mb(mem.nativeEstimate)}MB | RSS: ${mb(mem.rss)}MB`;
-    }
-    if (mem.registry) {
-      const r = mem.registry;
-      base += ` | registry: ${r.total} entries (${r.full_count} full, ${r.summary_count} summaries, ${r.total_tiles} tiles)`;
-      if (r.tile_bytes_est > 0 || r.cache_bytes_est > 0) {
-        base += ` | data est: tiles ~${mb(r.tile_bytes_est)}MB, __cache ~${mb(r.cache_bytes_est)}MB (${r.cache_entries} resources)`;
-      }
-    }
-    return base;
-  };
-  autoDetectBackend = function() {
-    var _a2, _b2;
-    if (typeof process !== "undefined" && ((_a2 = process.env) == null ? void 0 : _a2.ALIZARIN_BACKEND)) {
-      const env = process.env.ALIZARIN_BACKEND.toLowerCase();
-      if (env === "napi" || env === "wasm") return env;
-    }
-    if (typeof process !== "undefined" && ((_b2 = process.versions) == null ? void 0 : _b2.node)) {
-      const napi = getNapiModule();
-      if (napi) return "napi";
-    }
-    return "wasm";
-  };
   let wasm;
   let cachedUint8ArrayMemory0 = null;
   function getUint8ArrayMemory0() {
@@ -982,7 +998,7 @@ ${val.stack}`;
   } : new FinalizationRegistry((state) => {
     wasm.__wbindgen_export_6.get(state.dtor)(state.a, state.b);
   });
-  function makeMutClosure(arg0, arg1, dtor, f2) {
+  function makeClosure(arg0, arg1, dtor, f2) {
     const state = {
       a: arg0,
       b: arg1,
@@ -991,16 +1007,13 @@ ${val.stack}`;
     };
     const real = (...args) => {
       state.cnt++;
-      const a = state.a;
-      state.a = 0;
       try {
-        return f2(a, state.b, ...args);
+        return f2(state.a, state.b, ...args);
       } finally {
         if (--state.cnt === 0) {
-          wasm.__wbindgen_export_6.get(state.dtor)(a, state.b);
+          wasm.__wbindgen_export_6.get(state.dtor)(state.a, state.b);
+          state.a = 0;
           CLOSURE_DTORS.unregister(state);
-        } else {
-          state.a = a;
         }
       }
     };
@@ -1043,463 +1056,8 @@ ${val.stack}`;
     WASM_VECTOR_LEN = arg.length;
     return ptr;
   }
-  function newWASMResourceInstanceWrapperForResource(resource) {
-    _assertClass(resource, StaticResource$1);
-    const ret = wasm.newWASMResourceInstanceWrapperForResource(resource.__wbg_ptr);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return WASMResourceInstanceWrapper.__wrap(ret[0]);
-  }
-  function newWASMResourceInstanceWrapperForModel(graph_id, resource_id) {
-    const ptr0 = passStringToWasm0(graph_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    var ptr1 = isLikeNone(resource_id) ? 0 : passStringToWasm0(resource_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len1 = WASM_VECTOR_LEN;
-    const ret = wasm.newWASMResourceInstanceWrapperForModel(ptr0, len0, ptr1, len1);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return WASMResourceInstanceWrapper.__wrap(ret[0]);
-  }
-  function mergeResources(resources_json) {
-    const ptr0 = passStringToWasm0(resources_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.mergeResources(ptr0, len0);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function batchTilesToTrees(resources_json, graph, strict) {
-    const ptr0 = passStringToWasm0(resources_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    _assertClass(graph, StaticGraph$1);
-    const ret = wasm.batchTilesToTrees(ptr0, len0, graph.__wbg_ptr, strict);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function batchTreesToTiles(trees_json, graph, from_camel, strict, id_keys_json, random_ids, resolve_markers, scopes_json) {
-    const ptr0 = passStringToWasm0(trees_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    _assertClass(graph, StaticGraph$1);
-    var ptr1 = isLikeNone(id_keys_json) ? 0 : passStringToWasm0(id_keys_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len1 = WASM_VECTOR_LEN;
-    var ptr2 = isLikeNone(scopes_json) ? 0 : passStringToWasm0(scopes_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len2 = WASM_VECTOR_LEN;
-    const ret = wasm.batchTreesToTiles(ptr0, len0, graph.__wbg_ptr, from_camel, strict, ptr1, len1, isLikeNone(random_ids) ? 16777215 : random_ids ? 1 : 0, isLikeNone(resolve_markers) ? 16777215 : resolve_markers ? 1 : 0, ptr2, len2);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function batchMergeResources(batches_json, recompute_descriptors, strict) {
-    const ptr0 = passStringToWasm0(batches_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.batchMergeResources(ptr0, len0, isLikeNone(recompute_descriptors) ? 16777215 : recompute_descriptors ? 1 : 0, isLikeNone(strict) ? 16777215 : strict ? 1 : 0);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function cardsToTree(resource_json, graph) {
-    const ptr0 = passStringToWasm0(resource_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    _assertClass(graph, StaticGraph$1);
-    const ret = wasm.cardsToTree(ptr0, len0, graph.__wbg_ptr);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function composeResourceLayers$1(resources_json, base_graph_json, overlay_graphs_json, strict) {
-    const ptr0 = passStringToWasm0(resources_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(base_graph_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ptr2 = passStringToWasm0(overlay_graphs_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len2 = WASM_VECTOR_LEN;
-    const ret = wasm.composeResourceLayers(ptr0, len0, ptr1, len1, ptr2, len2, isLikeNone(strict) ? 16777215 : strict ? 1 : 0);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function treeToTiles(tree_json, graph, from_camel, strict, id_key, random_ids) {
-    const ptr0 = passStringToWasm0(tree_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    _assertClass(graph, StaticGraph$1);
-    var ptr1 = isLikeNone(id_key) ? 0 : passStringToWasm0(id_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len1 = WASM_VECTOR_LEN;
-    const ret = wasm.treeToTiles(ptr0, len0, graph.__wbg_ptr, from_camel, strict, ptr1, len1, isLikeNone(random_ids) ? 16777215 : random_ids ? 1 : 0);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function tilesToTree(resource_json, graph) {
-    const ptr0 = passStringToWasm0(resource_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    _assertClass(graph, StaticGraph$1);
-    const ret = wasm.tilesToTree(ptr0, len0, graph.__wbg_ptr);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function hasRdmNamespace() {
-    const ret = wasm.hasRdmNamespace();
-    return ret !== 0;
-  }
-  function generateValueUuid(concept_id, value, language) {
-    let deferred4_0;
-    let deferred4_1;
-    try {
-      const ptr0 = passStringToWasm0(concept_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len0 = WASM_VECTOR_LEN;
-      const ptr1 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len1 = WASM_VECTOR_LEN;
-      const ptr2 = passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len2 = WASM_VECTOR_LEN;
-      const ret = wasm.generateValueUuid(ptr0, len0, ptr1, len1, ptr2, len2);
-      deferred4_0 = ret[0];
-      deferred4_1 = ret[1];
-      return getStringFromWasm0(ret[0], ret[1]);
-    } finally {
-      wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
-    }
-  }
-  function getRdmNamespace() {
-    const ret = wasm.getRdmNamespace();
-    let v1;
-    if (ret[0] !== 0) {
-      v1 = getStringFromWasm0(ret[0], ret[1]).slice();
-      wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
-    }
-    return v1;
-  }
-  function parseRdmNamespace(namespace) {
-    let deferred3_0;
-    let deferred3_1;
-    try {
-      const ptr0 = passStringToWasm0(namespace, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len0 = WASM_VECTOR_LEN;
-      const ret = wasm.parseRdmNamespace(ptr0, len0);
-      var ptr2 = ret[0];
-      var len2 = ret[1];
-      if (ret[3]) {
-        ptr2 = 0;
-        len2 = 0;
-        throw takeFromExternrefTable0(ret[2]);
-      }
-      deferred3_0 = ptr2;
-      deferred3_1 = len2;
-      return getStringFromWasm0(ptr2, len2);
-    } finally {
-      wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
-    }
-  }
-  function clearRdmNamespace() {
-    wasm.clearRdmNamespace();
-  }
-  function generateConceptUuid(collection_id, label) {
-    let deferred4_0;
-    let deferred4_1;
-    try {
-      const ptr0 = passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len0 = WASM_VECTOR_LEN;
-      const ptr1 = passStringToWasm0(label, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len1 = WASM_VECTOR_LEN;
-      const ret = wasm.generateConceptUuid(ptr0, len0, ptr1, len1);
-      var ptr3 = ret[0];
-      var len3 = ret[1];
-      if (ret[3]) {
-        ptr3 = 0;
-        len3 = 0;
-        throw takeFromExternrefTable0(ret[2]);
-      }
-      deferred4_0 = ptr3;
-      deferred4_1 = len3;
-      return getStringFromWasm0(ptr3, len3);
-    } finally {
-      wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
-    }
-  }
-  function generateCollectionUuid(name) {
-    let deferred3_0;
-    let deferred3_1;
-    try {
-      const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len0 = WASM_VECTOR_LEN;
-      const ret = wasm.generateCollectionUuid(ptr0, len0);
-      var ptr2 = ret[0];
-      var len2 = ret[1];
-      if (ret[3]) {
-        ptr2 = 0;
-        len2 = 0;
-        throw takeFromExternrefTable0(ret[2]);
-      }
-      deferred3_0 = ptr2;
-      deferred3_1 = len2;
-      return getStringFromWasm0(ptr2, len2);
-    } finally {
-      wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
-    }
-  }
-  function labelsToDeterministicString(labels) {
-    let deferred2_0;
-    let deferred2_1;
-    try {
-      const ret = wasm.labelsToDeterministicString(labels);
-      var ptr1 = ret[0];
-      var len1 = ret[1];
-      if (ret[3]) {
-        ptr1 = 0;
-        len1 = 0;
-        throw takeFromExternrefTable0(ret[2]);
-      }
-      deferred2_0 = ptr1;
-      deferred2_1 = len1;
-      return getStringFromWasm0(ptr1, len1);
-    } finally {
-      wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
-    }
-  }
-  function getRdmNamespaceRaw() {
-    const ret = wasm.getRdmNamespaceRaw();
-    let v1;
-    if (ret[0] !== 0) {
-      v1 = getStringFromWasm0(ret[0], ret[1]).slice();
-      wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
-    }
-    return v1;
-  }
-  function setRdmNamespace(namespace) {
-    const ptr0 = passStringToWasm0(namespace, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.setRdmNamespace(ptr0, len0);
-    if (ret[1]) {
-      throw takeFromExternrefTable0(ret[0]);
-    }
-  }
-  function printRscvTimings() {
-    wasm.printRscvTimings();
-  }
-  function getRscvTimings() {
-    const ret = wasm.getRscvTimings();
-    return ret;
-  }
-  function clearRscvTimings() {
-    wasm.clearRscvTimings();
-  }
-  function hasExtensionMutation(name) {
-    const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.hasExtensionMutation(ptr0, len0);
-    return ret !== 0;
-  }
-  function buildResourcesFromBusinessCsv$1(csv_data, graph_json, collections_json, default_language, strict_concepts, uuid_namespace) {
-    const ptr0 = passStringToWasm0(csv_data, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(graph_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ptr2 = passStringToWasm0(collections_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len2 = WASM_VECTOR_LEN;
-    var ptr3 = isLikeNone(default_language) ? 0 : passStringToWasm0(default_language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len3 = WASM_VECTOR_LEN;
-    var ptr4 = isLikeNone(uuid_namespace) ? 0 : passStringToWasm0(uuid_namespace, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len4 = WASM_VECTOR_LEN;
-    const ret = wasm.buildResourcesFromBusinessCsv(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, isLikeNone(strict_concepts) ? 16777215 : strict_concepts ? 1 : 0, ptr4, len4);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function applyMutationsCreate(mutations_json, graph) {
-    const ptr0 = passStringToWasm0(mutations_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    let ptr1 = 0;
-    if (!isLikeNone(graph)) {
-      _assertClass(graph, StaticGraph$1);
-      ptr1 = graph.__destroy_into_raw();
-    }
-    const ret = wasm.applyMutationsCreate(ptr0, len0, ptr1);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return StaticGraph$1.__wrap(ret[0]);
-  }
-  function applyMutationsFromJson(graph, mutations_json) {
-    _assertClass(graph, StaticGraph$1);
-    const ptr0 = passStringToWasm0(mutations_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.applyMutationsFromJson(graph.__wbg_ptr, ptr0, len0);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return StaticGraph$1.__wrap(ret[0]);
-  }
-  function registerExtensionMutation(name, handler, conformance) {
-    const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    var ptr1 = isLikeNone(conformance) ? 0 : passStringToWasm0(conformance, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len1 = WASM_VECTOR_LEN;
-    const ret = wasm.registerExtensionMutation(ptr0, len0, handler, ptr1, len1);
-    if (ret[1]) {
-      throw takeFromExternrefTable0(ret[0]);
-    }
-  }
-  function buildGraphFromModelCsvs$1(graph_csv, nodes_csv, collections_csv, rdm_namespace) {
-    const ptr0 = passStringToWasm0(graph_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(nodes_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    var ptr2 = isLikeNone(collections_csv) ? 0 : passStringToWasm0(collections_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len2 = WASM_VECTOR_LEN;
-    const ptr3 = passStringToWasm0(rdm_namespace, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len3 = WASM_VECTOR_LEN;
-    const ret = wasm.buildGraphFromModelCsvs(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function applyMutationsWithExtensions(graph, mutations_json) {
-    _assertClass(graph, StaticGraph$1);
-    const ptr0 = passStringToWasm0(mutations_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.applyMutationsWithExtensions(graph.__wbg_ptr, ptr0, len0);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return StaticGraph$1.__wrap(ret[0]);
-  }
-  function getMutationSchema() {
-    const ret = wasm.getMutationSchema();
-    return ret;
-  }
-  function unregisterExtensionMutation(name) {
-    const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    wasm.unregisterExtensionMutation(ptr0, len0);
-  }
-  function getRegisteredExtensionMutations() {
-    const ret = wasm.getRegisteredExtensionMutations();
-    return ret;
-  }
-  function validateModelCsvs$1(graph_csv, nodes_csv, collections_csv) {
-    const ptr0 = passStringToWasm0(graph_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(nodes_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    var ptr2 = isLikeNone(collections_csv) ? 0 : passStringToWasm0(collections_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len2 = WASM_VECTOR_LEN;
-    const ret = wasm.validateModelCsvs(ptr0, len0, ptr1, len1, ptr2, len2);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function generateUuidV5(group_type, group_id, key) {
-    let deferred4_0;
-    let deferred4_1;
-    try {
-      const ptr0 = passStringToWasm0(group_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len0 = WASM_VECTOR_LEN;
-      var ptr1 = isLikeNone(group_id) ? 0 : passStringToWasm0(group_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len1 = WASM_VECTOR_LEN;
-      const ptr2 = passStringToWasm0(key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len2 = WASM_VECTOR_LEN;
-      const ret = wasm.generateUuidV5(ptr0, len0, ptr1, len1, ptr2, len2);
-      deferred4_0 = ret[0];
-      deferred4_1 = ret[1];
-      return getStringFromWasm0(ret[0], ret[1]);
-    } finally {
-      wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
-    }
-  }
-  function coerceDate(value) {
-    const ret = wasm.coerceDate(value);
-    return WasmCoercionResult.__wrap(ret);
-  }
-  function coerceBoolean(value, config) {
-    const ret = wasm.coerceBoolean(value, config);
-    return WasmCoercionResult.__wrap(ret);
-  }
-  function coerceNonLocalizedString(value) {
-    const ret = wasm.coerceNonLocalizedString(value);
-    return WasmCoercionResult.__wrap(ret);
-  }
-  function coerceValue(datatype, value, config) {
-    const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.coerceValue(ptr0, len0, value, config);
-    return WasmCoercionResult.__wrap(ret);
-  }
-  function coerceConceptValue(value, config) {
-    const ret = wasm.coerceConceptValue(value, config);
-    return WasmCoercionResult.__wrap(ret);
-  }
-  function coerceDomainValueList(value, config) {
-    const ret = wasm.coerceDomainValueList(value, config);
-    return WasmCoercionResult.__wrap(ret);
-  }
-  function coerceUrl(value) {
-    const ret = wasm.coerceUrl(value);
-    return WasmCoercionResult.__wrap(ret);
-  }
-  function coerceResourceInstance(value, config) {
-    const ret = wasm.coerceResourceInstance(value, config);
-    return WasmCoercionResult.__wrap(ret);
-  }
-  function coerceEdtf(value) {
-    const ret = wasm.coerceEdtf(value);
-    return WasmCoercionResult.__wrap(ret);
-  }
-  function getCurrentLanguage$1() {
-    let deferred1_0;
-    let deferred1_1;
-    try {
-      const ret = wasm.getCurrentLanguage();
-      deferred1_0 = ret[0];
-      deferred1_1 = ret[1];
-      return getStringFromWasm0(ret[0], ret[1]);
-    } finally {
-      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-    }
-  }
-  function coerceDomainValue(value, config) {
-    const ret = wasm.coerceDomainValue(value, config);
-    return WasmCoercionResult.__wrap(ret);
-  }
-  function setCurrentLanguage$1(language) {
-    const ptr0 = passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    wasm.setCurrentLanguage(ptr0, len0);
-  }
-  function coerceConceptList(value, config) {
-    const ret = wasm.coerceConceptList(value, config);
-    return WasmCoercionResult.__wrap(ret);
-  }
-  function coerceResourceInstanceList(value, config) {
-    const ret = wasm.coerceResourceInstanceList(value, config);
-    return WasmCoercionResult.__wrap(ret);
-  }
-  function coerceNumber(value) {
-    const ret = wasm.coerceNumber(value);
-    return WasmCoercionResult.__wrap(ret);
-  }
-  function coerceString(value, language) {
-    var ptr0 = isLikeNone(language) ? 0 : passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    var len0 = WASM_VECTOR_LEN;
-    const ret = wasm.coerceString(value, ptr0, len0);
-    return WasmCoercionResult.__wrap(ret);
-  }
-  function coerceGeoJson(value) {
-    const ret = wasm.coerceGeoJson(value);
-    return WasmCoercionResult.__wrap(ret);
+  function main() {
+    wasm.main();
   }
   function getDefaultConfigKeys() {
     const ret = wasm.getDefaultConfigKeys();
@@ -1513,11 +1071,14 @@ ${val.stack}`;
     wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
     return v1;
   }
-  function isValidUuid(s) {
-    const ptr0 = passStringToWasm0(s, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+  function resolveLabelsWithLookup(tree_json, alias_to_collection, lookup_table, strict) {
+    const ptr0 = passStringToWasm0(tree_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.isValidUuid(ptr0, len0);
-    return ret !== 0;
+    const ret = wasm.resolveLabelsWithLookup(ptr0, len0, alias_to_collection, lookup_table, strict);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
   }
   function buildAliasToCollectionMap(graph_json, resolvable_datatypes, config_keys) {
     const ptr0 = passStringToWasm0(graph_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -1543,25 +1104,527 @@ ${val.stack}`;
     wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
     return v2;
   }
-  function resolveLabelsWithLookup(tree_json, alias_to_collection, lookup_table, strict) {
-    const ptr0 = passStringToWasm0(tree_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+  function isValidUuid(s) {
+    const ptr0 = passStringToWasm0(s, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.resolveLabelsWithLookup(ptr0, len0, alias_to_collection, lookup_table, strict);
+    const ret = wasm.isValidUuid(ptr0, len0);
+    return ret !== 0;
+  }
+  function exportGraphs(graph_ids) {
+    const ptr0 = passArrayJsValueToWasm0(graph_ids, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.exportGraphs(ptr0, len0);
     if (ret[2]) {
       throw takeFromExternrefTable0(ret[1]);
     }
     return takeFromExternrefTable0(ret[0]);
   }
-  function parseSkosXmlToCollection(xml_content, base_uri) {
-    const ptr0 = passStringToWasm0(xml_content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+  function getRegisteredGraphIds() {
+    const ret = wasm.getRegisteredGraphIds();
+    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v1;
+  }
+  function buildPrebuildExport(base_uri) {
+    const ptr0 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.parseSkosXmlToCollection(ptr0, len0, ptr1, len1);
+    const ret = wasm.buildPrebuildExport(ptr0, len0);
     if (ret[2]) {
       throw takeFromExternrefTable0(ret[1]);
     }
     return takeFromExternrefTable0(ret[0]);
+  }
+  function exportAllGraphs() {
+    const ret = wasm.exportAllGraphs();
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function globalRdmHasCollection(collection_id) {
+    const ptr0 = passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.globalRdmHasCollection(ptr0, len0);
+    return ret !== 0;
+  }
+  function globalRdmLookupLabel(collection_id, concept_id, language) {
+    const ptr0 = passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(concept_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.globalRdmLookupLabel(ptr0, len0, ptr1, len1, ptr2, len2);
+    let v42;
+    if (ret[0] !== 0) {
+      v42 = getStringFromWasm0(ret[0], ret[1]).slice();
+      wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    }
+    return v42;
+  }
+  function setGlobalRdmCache(cache) {
+    _assertClass(cache, WasmRdmCache);
+    wasm.setGlobalRdmCache(cache.__wbg_ptr);
+  }
+  function globalRdmGetParentId(collection_id, concept_id) {
+    const ptr0 = passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(concept_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.globalRdmGetParentId(ptr0, len0, ptr1, len1);
+    let v3;
+    if (ret[0] !== 0) {
+      v3 = getStringFromWasm0(ret[0], ret[1]).slice();
+      wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    }
+    return v3;
+  }
+  function clearGlobalRdmCache() {
+    wasm.clearGlobalRdmCache();
+  }
+  function addToGlobalRdmCacheFromSkosXml(xml_content, base_uri) {
+    const ptr0 = passStringToWasm0(xml_content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.addToGlobalRdmCacheFromSkosXml(ptr0, len0, ptr1, len1);
+    if (ret[3]) {
+      throw takeFromExternrefTable0(ret[2]);
+    }
+    var v3 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v3;
+  }
+  function removeFromGlobalRdmCache(collection_id) {
+    const ptr0 = passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.removeFromGlobalRdmCache(ptr0, len0);
+    return ret !== 0;
+  }
+  function addCollectionToGlobalRdmCache(collection_id, concepts_json) {
+    const ptr0 = passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(concepts_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ret = wasm.addCollectionToGlobalRdmCache(ptr0, len0, ptr1, len1);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  function hasGlobalRdmCache() {
+    const ret = wasm.hasGlobalRdmCache();
+    return ret !== 0;
+  }
+  function globalRdmGetCollectionIds() {
+    const ret = wasm.globalRdmGetCollectionIds();
+    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v1;
+  }
+  function clearRscvTimings() {
+    wasm.clearRscvTimings();
+  }
+  function getRscvTimings() {
+    const ret = wasm.getRscvTimings();
+    return ret;
+  }
+  function printRscvTimings() {
+    wasm.printRscvTimings();
+  }
+  function hasDeriveProvider(provider_id) {
+    const ptr0 = passStringToWasm0(provider_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.hasDeriveProvider(ptr0, len0);
+    return ret !== 0;
+  }
+  function registerDeriveProvider(provider_id, options) {
+    const ptr0 = passStringToWasm0(provider_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.registerDeriveProvider(ptr0, len0, options);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  function tilesToTree(resource_json, graph) {
+    const ptr0 = passStringToWasm0(resource_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    _assertClass(graph, StaticGraph$1);
+    const ret = wasm.tilesToTree(ptr0, len0, graph.__wbg_ptr);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function mergeResources(resources_json) {
+    const ptr0 = passStringToWasm0(resources_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.mergeResources(ptr0, len0);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function batchTilesToTrees(resources_json, graph, strict) {
+    const ptr0 = passStringToWasm0(resources_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    _assertClass(graph, StaticGraph$1);
+    const ret = wasm.batchTilesToTrees(ptr0, len0, graph.__wbg_ptr, strict);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function composeResourceLayers$1(resources_json, base_graph_json, overlay_graphs_json, strict) {
+    const ptr0 = passStringToWasm0(resources_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(base_graph_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passStringToWasm0(overlay_graphs_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.composeResourceLayers(ptr0, len0, ptr1, len1, ptr2, len2, isLikeNone(strict) ? 16777215 : strict ? 1 : 0);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function batchMergeResources(batches_json, recompute_descriptors, strict) {
+    const ptr0 = passStringToWasm0(batches_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.batchMergeResources(ptr0, len0, isLikeNone(recompute_descriptors) ? 16777215 : recompute_descriptors ? 1 : 0, isLikeNone(strict) ? 16777215 : strict ? 1 : 0);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function cardsToTree(resource_json, graph) {
+    const ptr0 = passStringToWasm0(resource_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    _assertClass(graph, StaticGraph$1);
+    const ret = wasm.cardsToTree(ptr0, len0, graph.__wbg_ptr);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function treeToTiles(tree_json, graph, from_camel, strict, id_key, random_ids, tile_namespace) {
+    const ptr0 = passStringToWasm0(tree_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    _assertClass(graph, StaticGraph$1);
+    var ptr1 = isLikeNone(id_key) ? 0 : passStringToWasm0(id_key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len1 = WASM_VECTOR_LEN;
+    var ptr2 = isLikeNone(tile_namespace) ? 0 : passStringToWasm0(tile_namespace, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len2 = WASM_VECTOR_LEN;
+    const ret = wasm.treeToTiles(ptr0, len0, graph.__wbg_ptr, from_camel, strict, ptr1, len1, isLikeNone(random_ids) ? 16777215 : random_ids ? 1 : 0, ptr2, len2);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function batchTreesToTiles(trees_json, graph, from_camel, strict, id_keys_json, random_ids, resolve_markers, scopes_json, tile_namespace) {
+    const ptr0 = passStringToWasm0(trees_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    _assertClass(graph, StaticGraph$1);
+    var ptr1 = isLikeNone(id_keys_json) ? 0 : passStringToWasm0(id_keys_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len1 = WASM_VECTOR_LEN;
+    var ptr2 = isLikeNone(scopes_json) ? 0 : passStringToWasm0(scopes_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len2 = WASM_VECTOR_LEN;
+    var ptr3 = isLikeNone(tile_namespace) ? 0 : passStringToWasm0(tile_namespace, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len3 = WASM_VECTOR_LEN;
+    const ret = wasm.batchTreesToTiles(ptr0, len0, graph.__wbg_ptr, from_camel, strict, ptr1, len1, isLikeNone(random_ids) ? 16777215 : random_ids ? 1 : 0, isLikeNone(resolve_markers) ? 16777215 : resolve_markers ? 1 : 0, ptr2, len2, ptr3, len3);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function hasExtensionHandler(datatype) {
+    const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.hasExtensionHandler(ptr0, len0);
+    return ret !== 0;
+  }
+  function unregisterExtensionHandler(datatype) {
+    const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    wasm.unregisterExtensionHandler(ptr0, len0);
+  }
+  function getRegisteredExtensionHandlers() {
+    const ret = wasm.getRegisteredExtensionHandlers();
+    return ret;
+  }
+  function foldMayMatch(datatype, summary, predicate, config) {
+    const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.foldMayMatch(ptr0, len0, summary, predicate, config);
+    return ret !== 0;
+  }
+  function registerExtensionHandler(datatype, options) {
+    const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.registerExtensionHandler(ptr0, len0, options);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  function applyMutationsFromJson(graph, mutations_json) {
+    _assertClass(graph, StaticGraph$1);
+    const ptr0 = passStringToWasm0(mutations_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.applyMutationsFromJson(graph.__wbg_ptr, ptr0, len0);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return StaticGraph$1.__wrap(ret[0]);
+  }
+  function unregisterExtensionMutation(name) {
+    const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    wasm.unregisterExtensionMutation(ptr0, len0);
+  }
+  function getMutationSchema() {
+    const ret = wasm.getMutationSchema();
+    return ret;
+  }
+  function validateModelCsvs$1(graph_csv, nodes_csv, collections_csv) {
+    const ptr0 = passStringToWasm0(graph_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(nodes_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    var ptr2 = isLikeNone(collections_csv) ? 0 : passStringToWasm0(collections_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len2 = WASM_VECTOR_LEN;
+    const ret = wasm.validateModelCsvs(ptr0, len0, ptr1, len1, ptr2, len2);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function buildResourcesFromBusinessCsv$1(csv_data, graph_json, collections_json, default_language, strict_concepts, uuid_namespace) {
+    const ptr0 = passStringToWasm0(csv_data, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(graph_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passStringToWasm0(collections_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len2 = WASM_VECTOR_LEN;
+    var ptr3 = isLikeNone(default_language) ? 0 : passStringToWasm0(default_language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len3 = WASM_VECTOR_LEN;
+    var ptr4 = isLikeNone(uuid_namespace) ? 0 : passStringToWasm0(uuid_namespace, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len4 = WASM_VECTOR_LEN;
+    const ret = wasm.buildResourcesFromBusinessCsv(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3, isLikeNone(strict_concepts) ? 16777215 : strict_concepts ? 1 : 0, ptr4, len4);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function applyMutationsWithExtensions(graph, mutations_json) {
+    _assertClass(graph, StaticGraph$1);
+    const ptr0 = passStringToWasm0(mutations_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.applyMutationsWithExtensions(graph.__wbg_ptr, ptr0, len0);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return StaticGraph$1.__wrap(ret[0]);
+  }
+  function hasExtensionMutation(name) {
+    const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.hasExtensionMutation(ptr0, len0);
+    return ret !== 0;
+  }
+  function generateUuidV5(group_type, group_id, key) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+      const ptr0 = passStringToWasm0(group_type, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len0 = WASM_VECTOR_LEN;
+      var ptr1 = isLikeNone(group_id) ? 0 : passStringToWasm0(group_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      var len1 = WASM_VECTOR_LEN;
+      const ptr2 = passStringToWasm0(key, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len2 = WASM_VECTOR_LEN;
+      const ret = wasm.generateUuidV5(ptr0, len0, ptr1, len1, ptr2, len2);
+      deferred4_0 = ret[0];
+      deferred4_1 = ret[1];
+      return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+      wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+  }
+  function buildGraphFromModelCsvs$1(graph_csv, nodes_csv, collections_csv, rdm_namespace) {
+    const ptr0 = passStringToWasm0(graph_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(nodes_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    var ptr2 = isLikeNone(collections_csv) ? 0 : passStringToWasm0(collections_csv, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len2 = WASM_VECTOR_LEN;
+    const ptr3 = passStringToWasm0(rdm_namespace, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len3 = WASM_VECTOR_LEN;
+    const ret = wasm.buildGraphFromModelCsvs(ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+  }
+  function applyMutationsCreate(mutations_json, graph) {
+    const ptr0 = passStringToWasm0(mutations_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    let ptr1 = 0;
+    if (!isLikeNone(graph)) {
+      _assertClass(graph, StaticGraph$1);
+      ptr1 = graph.__destroy_into_raw();
+    }
+    const ret = wasm.applyMutationsCreate(ptr0, len0, ptr1);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return StaticGraph$1.__wrap(ret[0]);
+  }
+  function registerExtensionMutation(name, handler, conformance) {
+    const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    var ptr1 = isLikeNone(conformance) ? 0 : passStringToWasm0(conformance, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.registerExtensionMutation(ptr0, len0, handler, ptr1, len1);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  function getRegisteredExtensionMutations() {
+    const ret = wasm.getRegisteredExtensionMutations();
+    return ret;
+  }
+  function generateValueUuid(concept_id, value, language) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+      const ptr0 = passStringToWasm0(concept_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len0 = WASM_VECTOR_LEN;
+      const ptr1 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len1 = WASM_VECTOR_LEN;
+      const ptr2 = passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len2 = WASM_VECTOR_LEN;
+      const ret = wasm.generateValueUuid(ptr0, len0, ptr1, len1, ptr2, len2);
+      deferred4_0 = ret[0];
+      deferred4_1 = ret[1];
+      return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+      wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+  }
+  function parseRdmNamespace(namespace) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+      const ptr0 = passStringToWasm0(namespace, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len0 = WASM_VECTOR_LEN;
+      const ret = wasm.parseRdmNamespace(ptr0, len0);
+      var ptr2 = ret[0];
+      var len2 = ret[1];
+      if (ret[3]) {
+        ptr2 = 0;
+        len2 = 0;
+        throw takeFromExternrefTable0(ret[2]);
+      }
+      deferred3_0 = ptr2;
+      deferred3_1 = len2;
+      return getStringFromWasm0(ptr2, len2);
+    } finally {
+      wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+  }
+  function getRdmNamespace() {
+    const ret = wasm.getRdmNamespace();
+    let v1;
+    if (ret[0] !== 0) {
+      v1 = getStringFromWasm0(ret[0], ret[1]).slice();
+      wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    }
+    return v1;
+  }
+  function generateCollectionUuid(name) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+      const ptr0 = passStringToWasm0(name, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len0 = WASM_VECTOR_LEN;
+      const ret = wasm.generateCollectionUuid(ptr0, len0);
+      var ptr2 = ret[0];
+      var len2 = ret[1];
+      if (ret[3]) {
+        ptr2 = 0;
+        len2 = 0;
+        throw takeFromExternrefTable0(ret[2]);
+      }
+      deferred3_0 = ptr2;
+      deferred3_1 = len2;
+      return getStringFromWasm0(ptr2, len2);
+    } finally {
+      wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+  }
+  function clearRdmNamespace() {
+    wasm.clearRdmNamespace();
+  }
+  function hasRdmNamespace() {
+    const ret = wasm.hasRdmNamespace();
+    return ret !== 0;
+  }
+  function setRdmNamespace(namespace) {
+    const ptr0 = passStringToWasm0(namespace, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.setRdmNamespace(ptr0, len0);
+    if (ret[1]) {
+      throw takeFromExternrefTable0(ret[0]);
+    }
+  }
+  function generateConceptUuid(collection_id, label) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+      const ptr0 = passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len0 = WASM_VECTOR_LEN;
+      const ptr1 = passStringToWasm0(label, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len1 = WASM_VECTOR_LEN;
+      const ret = wasm.generateConceptUuid(ptr0, len0, ptr1, len1);
+      var ptr3 = ret[0];
+      var len3 = ret[1];
+      if (ret[3]) {
+        ptr3 = 0;
+        len3 = 0;
+        throw takeFromExternrefTable0(ret[2]);
+      }
+      deferred4_0 = ptr3;
+      deferred4_1 = len3;
+      return getStringFromWasm0(ptr3, len3);
+    } finally {
+      wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+  }
+  function getRdmNamespaceRaw() {
+    const ret = wasm.getRdmNamespaceRaw();
+    let v1;
+    if (ret[0] !== 0) {
+      v1 = getStringFromWasm0(ret[0], ret[1]).slice();
+      wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    }
+    return v1;
+  }
+  function labelsToDeterministicString(labels) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+      const ret = wasm.labelsToDeterministicString(labels);
+      var ptr1 = ret[0];
+      var len1 = ret[1];
+      if (ret[3]) {
+        ptr1 = 0;
+        len1 = 0;
+        throw takeFromExternrefTable0(ret[2]);
+      }
+      deferred2_0 = ptr1;
+      deferred2_1 = len1;
+      return getStringFromWasm0(ptr1, len1);
+    } finally {
+      wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
   }
   function collectionToSkosXml(collection_js, base_uri) {
     let deferred3_0;
@@ -1570,6 +1633,27 @@ ${val.stack}`;
       const ptr0 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
       const ret = wasm.collectionToSkosXml(collection_js, ptr0, len0);
+      var ptr2 = ret[0];
+      var len2 = ret[1];
+      if (ret[3]) {
+        ptr2 = 0;
+        len2 = 0;
+        throw takeFromExternrefTable0(ret[2]);
+      }
+      deferred3_0 = ptr2;
+      deferred3_1 = len2;
+      return getStringFromWasm0(ptr2, len2);
+    } finally {
+      wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+  }
+  function collectionsToSkosXml(collections_js, base_uri) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+      const ptr0 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len0 = WASM_VECTOR_LEN;
+      const ret = wasm.collectionsToSkosXml(collections_js, ptr0, len0);
       var ptr2 = ret[0];
       var len2 = ret[1];
       if (ret[3]) {
@@ -1595,169 +1679,125 @@ ${val.stack}`;
     }
     return takeFromExternrefTable0(ret[0]);
   }
-  function collectionsToSkosXml(collections_js, base_uri) {
-    let deferred3_0;
-    let deferred3_1;
-    try {
-      const ptr0 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len0 = WASM_VECTOR_LEN;
-      const ret = wasm.collectionsToSkosXml(collections_js, ptr0, len0);
-      var ptr2 = ret[0];
-      var len2 = ret[1];
-      if (ret[3]) {
-        ptr2 = 0;
-        len2 = 0;
-        throw takeFromExternrefTable0(ret[2]);
-      }
-      deferred3_0 = ptr2;
-      deferred3_1 = len2;
-      return getStringFromWasm0(ptr2, len2);
-    } finally {
-      wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
-    }
-  }
-  function exportGraphs(graph_ids) {
-    const ptr0 = passArrayJsValueToWasm0(graph_ids, wasm.__wbindgen_malloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.exportGraphs(ptr0, len0);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function buildPrebuildExport(base_uri) {
-    const ptr0 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.buildPrebuildExport(ptr0, len0);
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function exportAllGraphs() {
-    const ret = wasm.exportAllGraphs();
-    if (ret[2]) {
-      throw takeFromExternrefTable0(ret[1]);
-    }
-    return takeFromExternrefTable0(ret[0]);
-  }
-  function getRegisteredGraphIds() {
-    const ret = wasm.getRegisteredGraphIds();
-    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-    return v1;
-  }
-  function getRegisteredExtensionHandlers() {
-    const ret = wasm.getRegisteredExtensionHandlers();
-    return ret;
-  }
-  function unregisterExtensionHandler(datatype) {
-    const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    wasm.unregisterExtensionHandler(ptr0, len0);
-  }
-  function registerExtensionHandler(datatype, options) {
-    const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.registerExtensionHandler(ptr0, len0, options);
-    if (ret[1]) {
-      throw takeFromExternrefTable0(ret[0]);
-    }
-  }
-  function hasExtensionHandler(datatype) {
-    const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.hasExtensionHandler(ptr0, len0);
-    return ret !== 0;
-  }
-  function main() {
-    wasm.main();
-  }
-  function removeFromGlobalRdmCache(collection_id) {
-    const ptr0 = passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.removeFromGlobalRdmCache(ptr0, len0);
-    return ret !== 0;
-  }
-  function hasGlobalRdmCache() {
-    const ret = wasm.hasGlobalRdmCache();
-    return ret !== 0;
-  }
-  function addToGlobalRdmCacheFromSkosXml(xml_content, base_uri) {
+  function parseSkosXmlToCollection(xml_content, base_uri) {
     const ptr0 = passStringToWasm0(xml_content, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
     const ptr1 = passStringToWasm0(base_uri, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.addToGlobalRdmCacheFromSkosXml(ptr0, len0, ptr1, len1);
-    if (ret[3]) {
-      throw takeFromExternrefTable0(ret[2]);
+    const ret = wasm.parseSkosXmlToCollection(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
     }
-    var v3 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-    return v3;
+    return takeFromExternrefTable0(ret[0]);
   }
-  function globalRdmGetParentId(collection_id, concept_id) {
-    const ptr0 = passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(concept_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.globalRdmGetParentId(ptr0, len0, ptr1, len1);
-    let v3;
-    if (ret[0] !== 0) {
-      v3 = getStringFromWasm0(ret[0], ret[1]).slice();
-      wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
-    }
-    return v3;
+  function coerceBoolean(value, config) {
+    const ret = wasm.coerceBoolean(value, config);
+    return WasmCoercionResult.__wrap(ret);
   }
-  function clearGlobalRdmCache() {
-    wasm.clearGlobalRdmCache();
+  function coerceDomainValueList(value, config) {
+    const ret = wasm.coerceDomainValueList(value, config);
+    return WasmCoercionResult.__wrap(ret);
   }
-  function addCollectionToGlobalRdmCache(collection_id, concepts_json) {
-    const ptr0 = passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(concepts_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ret = wasm.addCollectionToGlobalRdmCache(ptr0, len0, ptr1, len1);
-    if (ret[1]) {
-      throw takeFromExternrefTable0(ret[0]);
+  function getCurrentLanguage$1() {
+    let deferred1_0;
+    let deferred1_1;
+    try {
+      const ret = wasm.getCurrentLanguage();
+      deferred1_0 = ret[0];
+      deferred1_1 = ret[1];
+      return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+      wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
     }
   }
-  function globalRdmLookupLabel(collection_id, concept_id, language) {
-    const ptr0 = passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+  function coerceUrl(value) {
+    const ret = wasm.coerceUrl(value);
+    return WasmCoercionResult.__wrap(ret);
+  }
+  function setCurrentLanguage$1(language) {
+    const ptr0 = passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ptr1 = passStringToWasm0(concept_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len1 = WASM_VECTOR_LEN;
-    const ptr2 = passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-    const len2 = WASM_VECTOR_LEN;
-    const ret = wasm.globalRdmLookupLabel(ptr0, len0, ptr1, len1, ptr2, len2);
-    let v42;
-    if (ret[0] !== 0) {
-      v42 = getStringFromWasm0(ret[0], ret[1]).slice();
-      wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    wasm.setCurrentLanguage(ptr0, len0);
+  }
+  function coerceConceptValue(value, config) {
+    const ret = wasm.coerceConceptValue(value, config);
+    return WasmCoercionResult.__wrap(ret);
+  }
+  function coerceNonLocalizedString(value) {
+    const ret = wasm.coerceNonLocalizedString(value);
+    return WasmCoercionResult.__wrap(ret);
+  }
+  function coerceString(value, language) {
+    var ptr0 = isLikeNone(language) ? 0 : passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.coerceString(value, ptr0, len0);
+    return WasmCoercionResult.__wrap(ret);
+  }
+  function coerceEdtf(value) {
+    const ret = wasm.coerceEdtf(value);
+    return WasmCoercionResult.__wrap(ret);
+  }
+  function coerceDomainValue(value, config) {
+    const ret = wasm.coerceDomainValue(value, config);
+    return WasmCoercionResult.__wrap(ret);
+  }
+  function coerceResourceInstance(value, config) {
+    const ret = wasm.coerceResourceInstance(value, config);
+    return WasmCoercionResult.__wrap(ret);
+  }
+  function coerceDate(value) {
+    const ret = wasm.coerceDate(value);
+    return WasmCoercionResult.__wrap(ret);
+  }
+  function coerceNumber(value) {
+    const ret = wasm.coerceNumber(value);
+    return WasmCoercionResult.__wrap(ret);
+  }
+  function coerceResourceInstanceList(value, config) {
+    const ret = wasm.coerceResourceInstanceList(value, config);
+    return WasmCoercionResult.__wrap(ret);
+  }
+  function coerceConceptList(value, config) {
+    const ret = wasm.coerceConceptList(value, config);
+    return WasmCoercionResult.__wrap(ret);
+  }
+  function coerceValue(datatype, value, config) {
+    const ptr0 = passStringToWasm0(datatype, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.coerceValue(ptr0, len0, value, config);
+    return WasmCoercionResult.__wrap(ret);
+  }
+  function coerceGeoJson(value) {
+    const ret = wasm.coerceGeoJson(value);
+    return WasmCoercionResult.__wrap(ret);
+  }
+  function newWASMResourceInstanceWrapperForResource(resource) {
+    _assertClass(resource, StaticResource$1);
+    const ret = wasm.newWASMResourceInstanceWrapperForResource(resource.__wbg_ptr);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
     }
-    return v42;
+    return WASMResourceInstanceWrapper.__wrap(ret[0]);
   }
-  function globalRdmGetCollectionIds() {
-    const ret = wasm.globalRdmGetCollectionIds();
-    var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-    return v1;
-  }
-  function globalRdmHasCollection(collection_id) {
-    const ptr0 = passStringToWasm0(collection_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+  function newWASMResourceInstanceWrapperForModel(graph_id, resource_id) {
+    const ptr0 = passStringToWasm0(graph_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
     const len0 = WASM_VECTOR_LEN;
-    const ret = wasm.globalRdmHasCollection(ptr0, len0);
-    return ret !== 0;
+    var ptr1 = isLikeNone(resource_id) ? 0 : passStringToWasm0(resource_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len1 = WASM_VECTOR_LEN;
+    const ret = wasm.newWASMResourceInstanceWrapperForModel(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+      throw takeFromExternrefTable0(ret[1]);
+    }
+    return WASMResourceInstanceWrapper.__wrap(ret[0]);
   }
-  function setGlobalRdmCache(cache) {
-    _assertClass(cache, WasmRdmCache);
-    wasm.setGlobalRdmCache(cache.__wbg_ptr);
+  function __wbg_adapter_10(arg0, arg1, arg2, arg3) {
+    const ptr0 = passStringToWasm0(arg3, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.closure94_externref_shim(arg0, arg1, arg2, ptr0, len0);
+    return ret;
   }
-  function __wbg_adapter_12(arg0, arg1, arg2) {
-    wasm.closure210_externref_shim(arg0, arg1, arg2);
-  }
-  function __wbg_adapter_803(arg0, arg1, arg2, arg3) {
-    wasm.closure614_externref_shim(arg0, arg1, arg2, arg3);
+  function __wbg_adapter_769(arg0, arg1, arg2, arg3) {
+    wasm.closure665_externref_shim(arg0, arg1, arg2, arg3);
   }
   const ExampleEdgeWrapperFinalization = typeof FinalizationRegistry === "undefined" ? {
     register: () => {
@@ -2051,13 +2091,6 @@ ${val.stack}`;
       const ret = wasm.pseudonode_get_description(this.__wbg_ptr);
       return ret;
     }
-    get parentNode() {
-      const ret = wasm.pseudonode_get_parent_node(this.__wbg_ptr);
-      return ret;
-    }
-    set parentNode(value) {
-      wasm.pseudonode_set_parent_node(this.__wbg_ptr, value);
-    }
     get isCollector() {
       const ret = wasm.pseudonode_get_is_collector(this.__wbg_ptr);
       return ret !== 0;
@@ -2083,22 +2116,15 @@ ${val.stack}`;
       return ret;
     }
     getNodePlaceholder() {
-      let deferred2_0;
-      let deferred2_1;
+      let deferred1_0;
+      let deferred1_1;
       try {
         const ret = wasm.pseudonode_getNodePlaceholder(this.__wbg_ptr);
-        var ptr1 = ret[0];
-        var len1 = ret[1];
-        if (ret[3]) {
-          ptr1 = 0;
-          len1 = 0;
-          throw takeFromExternrefTable0(ret[2]);
-        }
-        deferred2_0 = ptr1;
-        deferred2_1 = len1;
-        return getStringFromWasm0(ptr1, len1);
+        deferred1_0 = ret[0];
+        deferred1_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
       } finally {
-        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
       }
     }
     get childNodeAliases() {
@@ -2170,14 +2196,6 @@ ${val.stack}`;
       const ptr = this.__destroy_into_raw();
       wasm.__wbg_pseudovalue_free(ptr, 0);
     }
-    get exportable() {
-      const ret = wasm.pseudovalue_exportable(this.__wbg_ptr);
-      return ret !== 0;
-    }
-    get isrequired() {
-      const ret = wasm.pseudovalue_isrequired(this.__wbg_ptr);
-      return ret !== 0;
-    }
     get nodeAlias() {
       const ret = wasm.pseudovalue_nodeAlias(this.__wbg_ptr);
       let v1;
@@ -2186,13 +2204,6 @@ ${val.stack}`;
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
       }
       return v1;
-    }
-    set parent(parent) {
-      wasm.pseudovalue_set_parent(this.__wbg_ptr, parent);
-    }
-    get description() {
-      const ret = wasm.pseudovalue_description(this.__wbg_ptr);
-      return ret;
     }
     get independent() {
       const ret = wasm.pseudovalue_independent(this.__wbg_ptr);
@@ -2210,73 +2221,9 @@ ${val.stack}`;
       const ret = wasm.pseudovalue_isCollector(this.__wbg_ptr);
       return ret !== 0;
     }
-    get issearchable() {
-      const ret = wasm.pseudovalue_issearchable(this.__wbg_ptr);
-      return ret !== 0;
-    }
     get nodegroupId() {
       const ret = wasm.pseudovalue_nodegroupId(this.__wbg_ptr);
       return ret;
-    }
-    updateValue(get_view_model) {
-      const ret = wasm.pseudovalue_updateValue(this.__wbg_ptr, get_view_model);
-      if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-      }
-      return takeFromExternrefTable0(ret[0]);
-    }
-    get valueLoaded() {
-      const ret = wasm.pseudovalue_valueLoaded(this.__wbg_ptr);
-      return ret;
-    }
-    hasTileData() {
-      const ret = wasm.pseudovalue_hasTileData(this.__wbg_ptr);
-      return ret !== 0;
-    }
-    get ontologyclass() {
-      const ret = wasm.pseudovalue_ontologyclass(this.__wbg_ptr);
-      return ret;
-    }
-    setTileData(value) {
-      wasm.pseudovalue_setTileData(this.__wbg_ptr, value);
-    }
-    get hascustomalias() {
-      const ret = wasm.pseudovalue_hascustomalias(this.__wbg_ptr);
-      return ret !== 0;
-    }
-    get parentproperty() {
-      const ret = wasm.pseudovalue_parentproperty(this.__wbg_ptr);
-      return ret;
-    }
-    get tileDataJson() {
-      const ret = wasm.pseudovalue_tileDataJson(this.__wbg_ptr);
-      return ret;
-    }
-    toDisplayValue(rdm_cache, node_config_manager, language, resource_registry) {
-      _assertClass(rdm_cache, WasmRdmCache);
-      _assertClass(node_config_manager, WasmNodeConfigManager);
-      var ptr0 = isLikeNone(language) ? 0 : passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len0 = WASM_VECTOR_LEN;
-      _assertClass(resource_registry, StaticResourceRegistry);
-      const ret = wasm.pseudovalue_toDisplayValue(this.__wbg_ptr, rdm_cache.__wbg_ptr, node_config_manager.__wbg_ptr, ptr0, len0, resource_registry.__wbg_ptr);
-      return ret;
-    }
-    getChildNodeId(index2) {
-      const ret = wasm.pseudovalue_getChildNodeId(this.__wbg_ptr, index2);
-      let v1;
-      if (ret[0] !== 0) {
-        v1 = getStringFromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
-      }
-      return v1;
-    }
-    get childNodeAliases() {
-      const ret = wasm.pseudovalue_childNodeAliases(this.__wbg_ptr);
-      return ret;
-    }
-    get childNodeIdsCount() {
-      const ret = wasm.pseudovalue_childNodeIdsCount(this.__wbg_ptr);
-      return ret >>> 0;
     }
     get name() {
       let deferred1_0;
@@ -2294,32 +2241,12 @@ ${val.stack}`;
       const ret = wasm.pseudovalue_node(this.__wbg_ptr);
       return StaticNode$1.__wrap(ret);
     }
-    get size() {
-      const ret = wasm.pseudovalue_size(this.__wbg_ptr);
-      return ret >>> 0;
-    }
     get tile() {
       const ret = wasm.pseudovalue_tile(this.__wbg_ptr);
       return ret;
     }
-    get alias() {
-      const ret = wasm.pseudovalue_alias(this.__wbg_ptr);
-      return ret;
-    }
     clear() {
       wasm.pseudovalue_clear(this.__wbg_ptr);
-    }
-    get value() {
-      const ret = wasm.pseudovalue_value(this.__wbg_ptr);
-      return ret;
-    }
-    get config() {
-      const ret = wasm.pseudovalue_config(this.__wbg_ptr);
-      return ret;
-    }
-    get parent() {
-      const ret = wasm.pseudovalue_parent(this.__wbg_ptr);
-      return ret;
     }
     get nodeId() {
       let deferred1_0;
@@ -2342,27 +2269,11 @@ ${val.stack}`;
       }
       return v1;
     }
-    get accessed() {
-      const ret = wasm.pseudovalue_accessed(this.__wbg_ptr);
-      return ret !== 0;
-    }
     get datatype() {
       let deferred1_0;
       let deferred1_1;
       try {
         const ret = wasm.pseudovalue_datatype(this.__wbg_ptr);
-        deferred1_0 = ret[0];
-        deferred1_1 = ret[1];
-        return getStringFromWasm0(ret[0], ret[1]);
-      } finally {
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-      }
-    }
-    get graphId() {
-      let deferred1_0;
-      let deferred1_1;
-      try {
-        const ret = wasm.pseudovalue_graphId(this.__wbg_ptr);
         deferred1_0 = ret[0];
         deferred1_1 = ret[1];
         return getStringFromWasm0(ret[0], ret[1]);
@@ -2385,28 +2296,9 @@ ${val.stack}`;
     set tile(tile) {
       wasm.pseudovalue_set_tile(this.__wbg_ptr, tile);
     }
-    get fieldname() {
-      const ret = wasm.pseudovalue_fieldname(this.__wbg_ptr);
-      return ret;
-    }
     get inner() {
       const ret = wasm.pseudovalue_inner(this.__wbg_ptr);
       return ret === 0 ? void 0 : PseudoValue2.__wrap(ret);
-    }
-    getValue(get_view_model) {
-      const ret = wasm.pseudovalue_getValue(this.__wbg_ptr, get_view_model);
-      if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-      }
-      return takeFromExternrefTable0(ret[0]);
-    }
-    get istopnode() {
-      const ret = wasm.pseudovalue_istopnode(this.__wbg_ptr);
-      return ret !== 0;
-    }
-    get sortorder() {
-      const ret = wasm.pseudovalue_sortorder(this.__wbg_ptr);
-      return ret;
     }
     get tileData() {
       const ret = wasm.pseudovalue_tileData(this.__wbg_ptr);
@@ -3964,14 +3856,6 @@ ${val.stack}`;
       const ret = wasm.staticresource_resourceinstance(this.__wbg_ptr);
       return StaticResourceMetadata.__wrap(ret);
     }
-    setTileDataForNode(tile_id, node_id, value) {
-      const ptr0 = passStringToWasm0(tile_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len0 = WASM_VECTOR_LEN;
-      const ptr1 = passStringToWasm0(node_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len1 = WASM_VECTOR_LEN;
-      const ret = wasm.staticresource_setTileDataForNode(this.__wbg_ptr, ptr0, len0, ptr1, len1, value);
-      return ret !== 0;
-    }
     static fromBusinessDataJsonString(json_str) {
       const ptr0 = passStringToWasm0(json_str, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
@@ -4361,6 +4245,35 @@ ${val.stack}`;
       wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
       return v2;
     }
+    markAggregatePending(target_id, count) {
+      const ptr0 = passStringToWasm0(target_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len0 = WASM_VECTOR_LEN;
+      const ret = wasm.staticresourceregistry_markAggregatePending(this.__wbg_ptr, ptr0, len0, count);
+      if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+      }
+      return takeFromExternrefTable0(ret[0]);
+    }
+    applyAggregateAdditions(target_id, added_ids) {
+      const ptr0 = passStringToWasm0(target_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len0 = WASM_VECTOR_LEN;
+      const ptr1 = passArrayJsValueToWasm0(added_ids, wasm.__wbindgen_malloc);
+      const len1 = WASM_VECTOR_LEN;
+      const ret = wasm.staticresourceregistry_applyAggregateAdditions(this.__wbg_ptr, ptr0, len0, ptr1, len1);
+      if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+      }
+      return takeFromExternrefTable0(ret[0]);
+    }
+    applyAggregateFunctions(target_id) {
+      const ptr0 = passStringToWasm0(target_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len0 = WASM_VECTOR_LEN;
+      const ret = wasm.staticresourceregistry_applyAggregateFunctions(this.__wbg_ptr, ptr0, len0);
+      if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+      }
+      return takeFromExternrefTable0(ret[0]);
+    }
     mergeFromResourcesJson(resources_json, store_full, include_caches) {
       const ptr0 = passStringToWasm0(resources_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
@@ -4629,10 +4542,6 @@ ${val.stack}`;
       StaticTileFinalization.register(this, this.__wbg_ptr, this);
       return this;
     }
-    copy() {
-      const ret = wasm.statictile_copy(this.__wbg_ptr);
-      return StaticTile2.__wrap(ret);
-    }
     toJSON() {
       const ret = wasm.statictile_toJSON(this.__wbg_ptr);
       return ret;
@@ -4655,11 +4564,6 @@ ${val.stack}`;
       } finally {
         wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
       }
-    }
-    intoCore() {
-      const ptr = this.__destroy_into_raw();
-      const ret = wasm.statictile_intoCore(ptr);
-      return ret;
     }
   };
   if (Symbol.dispose) StaticTile$1.prototype[Symbol.dispose] = StaticTile$1.prototype.free;
@@ -4757,8 +4661,8 @@ ${val.stack}`;
       const ptr = this.__destroy_into_raw();
       wasm.__wbg_wasmresourceinstancewrapper_free(ptr, 0);
     }
-    toResource() {
-      const ret = wasm.wasmresourceinstancewrapper_toResource(this.__wbg_ptr);
+    applyEdits(ops) {
+      const ret = wasm.wasmresourceinstancewrapper_applyEdits(this.__wbg_ptr, ops);
       if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
       }
@@ -4777,26 +4681,19 @@ ${val.stack}`;
       const ret = wasm.wasmresourceinstancewrapper_tilesLoaded(this.__wbg_ptr);
       return ret !== 0;
     }
-    getTileData(tile_id, node_id) {
-      var ptr0 = isLikeNone(tile_id) ? 0 : passStringToWasm0(tile_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len0 = WASM_VECTOR_LEN;
-      var ptr1 = isLikeNone(node_id) ? 0 : passStringToWasm0(node_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len1 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_getTileData(this.__wbg_ptr, ptr0, len0, ptr1, len1);
-      if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-      }
-      return takeFromExternrefTable0(ret[0]);
-    }
     loadTiles(tiles_js) {
       const ret = wasm.wasmresourceinstancewrapper_loadTiles(this.__wbg_ptr, tiles_js);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
       }
     }
-    getTileCount() {
-      const ret = wasm.wasmresourceinstancewrapper_getTileCount(this.__wbg_ptr);
-      return ret >>> 0;
+    checkEditable(alias) {
+      const ptr0 = passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len0 = WASM_VECTOR_LEN;
+      const ret = wasm.wasmresourceinstancewrapper_checkEditable(this.__wbg_ptr, ptr0, len0);
+      if (ret[1]) {
+        throw takeFromExternrefTable0(ret[0]);
+      }
     }
     serializeCard(card_id, parent_tile_id, parent_nodegroup_id, max_depth) {
       const ptr0 = passStringToWasm0(card_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -4864,28 +4761,6 @@ ${val.stack}`;
       }
       return takeFromExternrefTable0(ret[0]);
     }
-    ensureNodegroup(all_values_js, all_nodegroups_js, nodegroup_id, add_if_missing, nodegroup_permissions_js, do_implied_nodegroups) {
-      const ptr0 = passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len0 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_ensureNodegroup(this.__wbg_ptr, all_values_js, all_nodegroups_js, ptr0, len0, add_if_missing, nodegroup_permissions_js, do_implied_nodegroups);
-      if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-      }
-      return WasmEnsureNodegroupResult.__wrap(ret[0]);
-    }
-    getAllTileIds() {
-      const ret = wasm.wasmresourceinstancewrapper_getAllTileIds(this.__wbg_ptr);
-      var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-      wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-      return v1;
-    }
-    cachePseudoList(alias, wasm_list) {
-      const ptr0 = passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len0 = WASM_VECTOR_LEN;
-      _assertClass(wasm_list, PseudoList$1);
-      var ptr1 = wasm_list.__destroy_into_raw();
-      wasm.wasmresourceinstancewrapper_cachePseudoList(this.__wbg_ptr, ptr0, len0, ptr1);
-    }
     exportTilesJson() {
       let deferred2_0;
       let deferred2_1;
@@ -4922,16 +4797,6 @@ ${val.stack}`;
       }
       return takeFromExternrefTable0(ret[0]);
     }
-    cachePseudoValue(alias, wasm_value) {
-      const ptr0 = passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len0 = WASM_VECTOR_LEN;
-      _assertClass(wasm_value, PseudoValue$1);
-      var ptr1 = wasm_value.__destroy_into_raw();
-      wasm.wasmresourceinstancewrapper_cachePseudoValue(this.__wbg_ptr, ptr0, len0, ptr1);
-    }
-    clearPseudoCache() {
-      wasm.wasmresourceinstancewrapper_clearPseudoCache(this.__wbg_ptr);
-    }
     getValuesAtPath(path, filter_tile_id) {
       const ptr0 = passStringToWasm0(path, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
@@ -4943,15 +4808,22 @@ ${val.stack}`;
       }
       return PseudoList$1.__wrap(ret[0]);
     }
-    getNodegroupCount() {
-      const ret = wasm.wasmresourceinstancewrapper_getNodegroupCount(this.__wbg_ptr);
-      return ret >>> 0;
-    }
     isNodegroupLoaded(nodegroup_id) {
       var ptr0 = isLikeNone(nodegroup_id) ? 0 : passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourceinstancewrapper_isNodegroupLoaded(this.__wbg_ptr, ptr0, len0);
       return ret !== 0;
+    }
+    nodegroupsToFetch(nodegroup_id) {
+      const ptr0 = passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      const len0 = WASM_VECTOR_LEN;
+      const ret = wasm.wasmresourceinstancewrapper_nodegroupsToFetch(this.__wbg_ptr, ptr0, len0);
+      if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+      }
+      var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+      wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+      return v2;
     }
     pruneResourceTiles() {
       const ret = wasm.wasmresourceinstancewrapper_pruneResourceTiles(this.__wbg_ptr);
@@ -4966,18 +4838,16 @@ ${val.stack}`;
       }
       return takeFromExternrefTable0(ret[0]);
     }
-    findSemanticChildren(parent_tile_id, parent_node_id, parent_nodegroup_id) {
-      var ptr0 = isLikeNone(parent_tile_id) ? 0 : passStringToWasm0(parent_tile_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len0 = WASM_VECTOR_LEN;
-      const ptr1 = passStringToWasm0(parent_node_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len1 = WASM_VECTOR_LEN;
-      var ptr2 = isLikeNone(parent_nodegroup_id) ? 0 : passStringToWasm0(parent_nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len2 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_findSemanticChildren(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
-      if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
+    fetchFromTileSource(nodegroup_ids) {
+      const ptr0 = passArrayJsValueToWasm0(nodegroup_ids, wasm.__wbindgen_malloc);
+      const len0 = WASM_VECTOR_LEN;
+      const ret = wasm.wasmresourceinstancewrapper_fetchFromTileSource(this.__wbg_ptr, ptr0, len0);
+      if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
       }
-      return takeFromExternrefTable0(ret[0]);
+      var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
+      wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+      return v2;
     }
     nodegroupIdsForCard(card_id, max_depth) {
       const ptr0 = passStringToWasm0(card_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -5008,28 +4878,13 @@ ${val.stack}`;
       }
       return takeFromExternrefTable0(ret[0]);
     }
-    setTileDataForNode(tile_id, node_id, value) {
-      const ptr0 = passStringToWasm0(tile_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len0 = WASM_VECTOR_LEN;
-      const ptr1 = passStringToWasm0(node_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len1 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_setTileDataForNode(this.__wbg_ptr, ptr0, len0, ptr1, len1, value);
-      return ret !== 0;
-    }
-    toDisplayJsonSimple(language) {
-      var ptr0 = isLikeNone(language) ? 0 : passStringToWasm0(language, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    appendFetchedTiles(tiles_js, nodegroup_id) {
+      var ptr0 = isLikeNone(nodegroup_id) ? 0 : passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       var len0 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_toDisplayJsonSimple(this.__wbg_ptr, ptr0, len0);
-      if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
+      const ret = wasm.wasmresourceinstancewrapper_appendFetchedTiles(this.__wbg_ptr, tiles_js, ptr0, len0);
+      if (ret[1]) {
+        throw takeFromExternrefTable0(ret[0]);
       }
-      return takeFromExternrefTable0(ret[0]);
-    }
-    hasTilesForNodegroup(nodegroup_id) {
-      const ptr0 = passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len0 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_hasTilesForNodegroup(this.__wbg_ptr, ptr0, len0);
-      return ret !== 0;
     }
     loadTilesFromResource(resource, assume_tiles_comprehensive_for_nodegroup) {
       _assertClass(resource, StaticResource$1);
@@ -5037,29 +4892,6 @@ ${val.stack}`;
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
       }
-    }
-    getTileIdsByNodegroup(nodegroup_id) {
-      var ptr0 = isLikeNone(nodegroup_id) ? 0 : passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len0 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_getTileIdsByNodegroup(this.__wbg_ptr, ptr0, len0);
-      var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-      wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-      return v2;
-    }
-    tryAcquireNodegroupLock(nodegroup_id) {
-      const ptr0 = passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len0 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_tryAcquireNodegroupLock(this.__wbg_ptr, ptr0, len0);
-      return ret !== 0;
-    }
-    requestTilesForNodegroup(_nodegroup_id) {
-      var ptr0 = isLikeNone(_nodegroup_id) ? 0 : passStringToWasm0(_nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len0 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_requestTilesForNodegroup(this.__wbg_ptr, ptr0, len0);
-      if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-      }
-      return takeFromExternrefTable0(ret[0]);
     }
     serializeRootCardsDisplay(rdm_cache, node_config_manager, max_depth, language, resource_registry) {
       _assertClass(rdm_cache, WasmRdmCache);
@@ -5101,35 +4933,6 @@ ${val.stack}`;
       }
       return takeFromExternrefTable0(ret[0]);
     }
-    retrieveSemanticChildValue(parent_tile_id, parent_node_id, parent_nodegroup_id, child_alias) {
-      var ptr0 = isLikeNone(parent_tile_id) ? 0 : passStringToWasm0(parent_tile_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len0 = WASM_VECTOR_LEN;
-      const ptr1 = passStringToWasm0(parent_node_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len1 = WASM_VECTOR_LEN;
-      var ptr2 = isLikeNone(parent_nodegroup_id) ? 0 : passStringToWasm0(parent_nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len2 = WASM_VECTOR_LEN;
-      const ptr3 = passStringToWasm0(child_alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len3 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_retrieveSemanticChildValue(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3);
-      return ret;
-    }
-    isNodegroupLoadedOrLoading(nodegroup_id) {
-      var ptr0 = isLikeNone(nodegroup_id) ? 0 : passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len0 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_isNodegroupLoadedOrLoading(this.__wbg_ptr, ptr0, len0);
-      return ret !== 0;
-    }
-    valuesFromResourceNodegroup(existing_values_js, nodegroup_tile_ids, nodegroup_id, _node_objs_js, _edges_js) {
-      const ptr0 = passArrayJsValueToWasm0(nodegroup_tile_ids, wasm.__wbindgen_malloc);
-      const len0 = WASM_VECTOR_LEN;
-      const ptr1 = passStringToWasm0(nodegroup_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      const len1 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourceinstancewrapper_valuesFromResourceNodegroup(this.__wbg_ptr, existing_values_js, ptr0, len0, ptr1, len1, _node_objs_js, _edges_js);
-      if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-      }
-      return WasmValuesFromNodegroupResult.__wrap(ret[0]);
-    }
     getMissingNodegroupsForChildren(parent_node_id) {
       const ptr0 = passStringToWasm0(parent_node_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
@@ -5140,6 +4943,10 @@ ${val.stack}`;
       var v2 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
       wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
       return v2;
+    }
+    isLazy() {
+      const ret = wasm.wasmresourceinstancewrapper_isLazy(this.__wbg_ptr);
+      return ret !== 0;
     }
     release() {
       wasm.wasmresourceinstancewrapper_release(this.__wbg_ptr);
@@ -5186,13 +4993,6 @@ ${val.stack}`;
     setLazy(lazy) {
       wasm.wasmresourceinstancewrapper_setLazy(this.__wbg_ptr, lazy);
     }
-    toTiles() {
-      const ret = wasm.wasmresourceinstancewrapper_toTiles(this.__wbg_ptr);
-      if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-      }
-      return takeFromExternrefTable0(ret[0]);
-    }
   }
   if (Symbol.dispose) WASMResourceInstanceWrapper.prototype[Symbol.dispose] = WASMResourceInstanceWrapper.prototype.free;
   const WASMResourceModelWrapperFinalization = typeof FinalizationRegistry === "undefined" ? {
@@ -5219,30 +5019,12 @@ ${val.stack}`;
       const ptr = this.__destroy_into_raw();
       wasm.__wbg_wasmresourcemodelwrapper_free(ptr, 0);
     }
-    build_nodes() {
-      const ret = wasm.wasmresourcemodelwrapper_build_nodes(this.__wbg_ptr);
-      if (ret[1]) {
-        throw takeFromExternrefTable0(ret[0]);
-      }
-    }
     pruneGraph(keep_functions) {
       var ptr0 = isLikeNone(keep_functions) ? 0 : passArrayJsValueToWasm0(keep_functions, wasm.__wbindgen_malloc);
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourcemodelwrapper_pruneGraph(this.__wbg_ptr, ptr0, len0);
       if (ret[1]) {
         throw takeFromExternrefTable0(ret[0]);
-      }
-    }
-    getGraphId() {
-      let deferred1_0;
-      let deferred1_1;
-      try {
-        const ret = wasm.wasmresourcemodelwrapper_getGraphId(this.__wbg_ptr);
-        deferred1_0 = ret[0];
-        deferred1_1 = ret[1];
-        return getStringFromWasm0(ret[0], ret[1]);
-      } finally {
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
       }
     }
     getRootNode() {
@@ -5268,12 +5050,6 @@ ${val.stack}`;
         throw takeFromExternrefTable0(ret[1]);
       }
       return takeFromExternrefTable0(ret[0]);
-    }
-    setGraphEdges(edges) {
-      wasm.wasmresourcemodelwrapper_setGraphEdges(this.__wbg_ptr, edges);
-    }
-    setGraphNodes(nodes) {
-      wasm.wasmresourcemodelwrapper_setGraphNodes(this.__wbg_ptr, nodes);
     }
     getNodeObjects() {
       const ret = wasm.wasmresourcemodelwrapper_getNodeObjects(this.__wbg_ptr);
@@ -5321,15 +5097,6 @@ ${val.stack}`;
         wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
       }
     }
-    createPseudoValue(alias, tile, parent) {
-      var ptr0 = isLikeNone(alias) ? 0 : passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len0 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmresourcemodelwrapper_createPseudoValue(this.__wbg_ptr, ptr0, len0, tile, parent);
-      if (ret[2]) {
-        throw takeFromExternrefTable0(ret[1]);
-      }
-      return PseudoValue$1.__wrap(ret[0]);
-    }
     get nodegroups() {
       const ret = wasm.wasmresourcemodelwrapper_get_nodegroups_prop(this.__wbg_ptr);
       return ret;
@@ -5339,16 +5106,6 @@ ${val.stack}`;
       var len0 = WASM_VECTOR_LEN;
       const ret = wasm.wasmresourcemodelwrapper_isModelRegistered(ptr0, len0);
       return ret !== 0;
-    }
-    setGraphNodegroups(nodegroups) {
-      wasm.wasmresourcemodelwrapper_setGraphNodegroups(this.__wbg_ptr, nodegroups);
-    }
-    buildNodesForGraph(graph) {
-      _assertClass(graph, StaticGraph$1);
-      const ret = wasm.wasmresourcemodelwrapper_buildNodesForGraph(this.__wbg_ptr, graph.__wbg_ptr);
-      if (ret[1]) {
-        throw takeFromExternrefTable0(ret[0]);
-      }
     }
     static getModelByGraphId(graph_id) {
       var ptr0 = isLikeNone(graph_id) ? 0 : passStringToWasm0(graph_id, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -5472,10 +5229,6 @@ ${val.stack}`;
       WASMResourceModelWrapperFinalization.register(this, this.__wbg_ptr, this);
       return this;
     }
-    get wkrm() {
-      const ret = wasm.wasmresourcemodelwrapper_get_wkrm(this.__wbg_ptr);
-      return WKRM.__wrap(ret);
-    }
     getEdges() {
       const ret = wasm.wasmresourcemodelwrapper_getEdges(this.__wbg_ptr);
       if (ret[2]) {
@@ -5489,8 +5242,7 @@ ${val.stack}`;
     }
     set graph(graph) {
       _assertClass(graph, StaticGraph$1);
-      var ptr0 = graph.__destroy_into_raw();
-      wasm.wasmresourcemodelwrapper_set_graph(this.__wbg_ptr, ptr0);
+      wasm.wasmresourcemodelwrapper_set_graph(this.__wbg_ptr, graph.__wbg_ptr);
     }
   }
   if (Symbol.dispose) WASMResourceModelWrapper.prototype[Symbol.dispose] = WASMResourceModelWrapper.prototype.free;
@@ -5501,13 +5253,6 @@ ${val.stack}`;
     }
   } : new FinalizationRegistry((ptr) => wasm.__wbg_wkrm_free(ptr >>> 0, 1));
   class WKRM {
-    static __wrap(ptr) {
-      ptr = ptr >>> 0;
-      const obj = Object.create(WKRM.prototype);
-      obj.__wbg_ptr = ptr;
-      WKRMFinalization.register(obj, obj.__wbg_ptr, obj);
-      return obj;
-    }
     __destroy_into_raw() {
       const ptr = this.__wbg_ptr;
       this.__wbg_ptr = 0;
@@ -5644,58 +5389,6 @@ ${val.stack}`;
     }
   }
   if (Symbol.dispose) WasmCoercionResult.prototype[Symbol.dispose] = WasmCoercionResult.prototype.free;
-  const WasmEnsureNodegroupResultFinalization = typeof FinalizationRegistry === "undefined" ? {
-    register: () => {
-    },
-    unregister: () => {
-    }
-  } : new FinalizationRegistry((ptr) => wasm.__wbg_wasmensurenodegroupresult_free(ptr >>> 0, 1));
-  class WasmEnsureNodegroupResult {
-    static __wrap(ptr) {
-      ptr = ptr >>> 0;
-      const obj = Object.create(WasmEnsureNodegroupResult.prototype);
-      obj.__wbg_ptr = ptr;
-      WasmEnsureNodegroupResultFinalization.register(obj, obj.__wbg_ptr, obj);
-      return obj;
-    }
-    __destroy_into_raw() {
-      const ptr = this.__wbg_ptr;
-      this.__wbg_ptr = 0;
-      WasmEnsureNodegroupResultFinalization.unregister(this);
-      return ptr;
-    }
-    free() {
-      const ptr = this.__destroy_into_raw();
-      wasm.__wbg_wasmensurenodegroupresult_free(ptr, 0);
-    }
-    getAllValues() {
-      const ret = wasm.wasmensurenodegroupresult_getAllValues(this.__wbg_ptr);
-      return ret;
-    }
-    getValueAliases() {
-      const ret = wasm.wasmensurenodegroupresult_getValueAliases(this.__wbg_ptr);
-      var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-      wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-      return v1;
-    }
-    get allNodegroupsMap() {
-      const ret = wasm.wasmensurenodegroupresult_all_nodegroups_map(this.__wbg_ptr);
-      return ret;
-    }
-    get impliedNodegroups() {
-      const ret = wasm.wasmensurenodegroupresult_implied_nodegroups(this.__wbg_ptr);
-      var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-      wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-      return v1;
-    }
-    getValue(alias) {
-      var ptr0 = isLikeNone(alias) ? 0 : passStringToWasm0(alias, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len0 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmensurenodegroupresult_getValue(this.__wbg_ptr, ptr0, len0);
-      return ret === 0 ? void 0 : PseudoList$1.__wrap(ret);
-    }
-  }
-  if (Symbol.dispose) WasmEnsureNodegroupResult.prototype[Symbol.dispose] = WasmEnsureNodegroupResult.prototype.free;
   const WasmNodeConfigBooleanFinalization = typeof FinalizationRegistry === "undefined" ? {
     register: () => {
     },
@@ -5868,12 +5561,6 @@ ${val.stack}`;
       const ret = wasm.wasmnodeconfigmanager_getConcept(this.__wbg_ptr, ptr0, len0);
       return ret === 0 ? void 0 : WasmNodeConfigConcept.__wrap(ret);
     }
-    getReference(nodeid) {
-      var ptr0 = isLikeNone(nodeid) ? 0 : passStringToWasm0(nodeid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
-      var len0 = WASM_VECTOR_LEN;
-      const ret = wasm.wasmnodeconfigmanager_getReference(this.__wbg_ptr, ptr0, len0);
-      return ret === 0 ? void 0 : WasmNodeConfigReference.__wrap(ret);
-    }
     fromGraphJson(graph_json) {
       const ptr0 = passStringToWasm0(graph_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
       const len0 = WASM_VECTOR_LEN;
@@ -5901,6 +5588,12 @@ ${val.stack}`;
       const ret = wasm.wasmnodeconfigmanager_lookupDomainValue(this.__wbg_ptr, ptr0, len0, ptr1, len1);
       return ret === 0 ? void 0 : WasmStaticDomainValue.__wrap(ret);
     }
+    getExtensionConfig(nodeid) {
+      var ptr0 = isLikeNone(nodeid) ? 0 : passStringToWasm0(nodeid, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+      var len0 = WASM_VECTOR_LEN;
+      const ret = wasm.wasmnodeconfigmanager_getExtensionConfig(this.__wbg_ptr, ptr0, len0);
+      return ret;
+    }
     constructor() {
       const ret = wasm.wasmnodeconfigmanager_new();
       this.__wbg_ptr = ret >>> 0;
@@ -5916,69 +5609,6 @@ ${val.stack}`;
     }
   }
   if (Symbol.dispose) WasmNodeConfigManager.prototype[Symbol.dispose] = WasmNodeConfigManager.prototype.free;
-  const WasmNodeConfigReferenceFinalization = typeof FinalizationRegistry === "undefined" ? {
-    register: () => {
-    },
-    unregister: () => {
-    }
-  } : new FinalizationRegistry((ptr) => wasm.__wbg_wasmnodeconfigreference_free(ptr >>> 0, 1));
-  class WasmNodeConfigReference {
-    static __wrap(ptr) {
-      ptr = ptr >>> 0;
-      const obj = Object.create(WasmNodeConfigReference.prototype);
-      obj.__wbg_ptr = ptr;
-      WasmNodeConfigReferenceFinalization.register(obj, obj.__wbg_ptr, obj);
-      return obj;
-    }
-    __destroy_into_raw() {
-      const ptr = this.__wbg_ptr;
-      this.__wbg_ptr = 0;
-      WasmNodeConfigReferenceFinalization.unregister(this);
-      return ptr;
-    }
-    free() {
-      const ptr = this.__destroy_into_raw();
-      wasm.__wbg_wasmnodeconfigreference_free(ptr, 0);
-    }
-    get multiValue() {
-      const ret = wasm.wasmnodeconfigreference_multiValue(this.__wbg_ptr);
-      return ret !== 0;
-    }
-    get rdmCollection() {
-      let deferred1_0;
-      let deferred1_1;
-      try {
-        const ret = wasm.wasmnodeconfigreference_rdmCollection(this.__wbg_ptr);
-        deferred1_0 = ret[0];
-        deferred1_1 = ret[1];
-        return getStringFromWasm0(ret[0], ret[1]);
-      } finally {
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-      }
-    }
-    get controlledList() {
-      let deferred1_0;
-      let deferred1_1;
-      try {
-        const ret = wasm.wasmnodeconfigreference_controlledList(this.__wbg_ptr);
-        deferred1_0 = ret[0];
-        deferred1_1 = ret[1];
-        return getStringFromWasm0(ret[0], ret[1]);
-      } finally {
-        wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
-      }
-    }
-    getCollectionId() {
-      const ret = wasm.wasmnodeconfigreference_getCollectionId(this.__wbg_ptr);
-      let v1;
-      if (ret[0] !== 0) {
-        v1 = getStringFromWasm0(ret[0], ret[1]).slice();
-        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
-      }
-      return v1;
-    }
-  }
-  if (Symbol.dispose) WasmNodeConfigReference.prototype[Symbol.dispose] = WasmNodeConfigReference.prototype.free;
   const WasmNodegroupResultFinalization = typeof FinalizationRegistry === "undefined" ? {
     register: () => {
     },
@@ -6319,42 +5949,6 @@ ${val.stack}`;
     }
   }
   if (Symbol.dispose) WasmStaticDomainValue.prototype[Symbol.dispose] = WasmStaticDomainValue.prototype.free;
-  const WasmValuesFromNodegroupResultFinalization = typeof FinalizationRegistry === "undefined" ? {
-    register: () => {
-    },
-    unregister: () => {
-    }
-  } : new FinalizationRegistry((ptr) => wasm.__wbg_wasmvaluesfromnodegroupresult_free(ptr >>> 0, 1));
-  class WasmValuesFromNodegroupResult {
-    static __wrap(ptr) {
-      ptr = ptr >>> 0;
-      const obj = Object.create(WasmValuesFromNodegroupResult.prototype);
-      obj.__wbg_ptr = ptr;
-      WasmValuesFromNodegroupResultFinalization.register(obj, obj.__wbg_ptr, obj);
-      return obj;
-    }
-    __destroy_into_raw() {
-      const ptr = this.__wbg_ptr;
-      this.__wbg_ptr = 0;
-      WasmValuesFromNodegroupResultFinalization.unregister(this);
-      return ptr;
-    }
-    free() {
-      const ptr = this.__destroy_into_raw();
-      wasm.__wbg_wasmvaluesfromnodegroupresult_free(ptr, 0);
-    }
-    getAllValues() {
-      const ret = wasm.wasmvaluesfromnodegroupresult_getAllValues(this.__wbg_ptr);
-      return ret;
-    }
-    get impliedNodegroups() {
-      const ret = wasm.wasmvaluesfromnodegroupresult_implied_nodegroups(this.__wbg_ptr);
-      var v1 = getArrayJsValueFromWasm0(ret[0], ret[1]).slice();
-      wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
-      return v1;
-    }
-  }
-  if (Symbol.dispose) WasmValuesFromNodegroupResult.prototype[Symbol.dispose] = WasmValuesFromNodegroupResult.prototype.free;
   const EXPECTED_RESPONSE_TYPES = /* @__PURE__ */ new Set([
     "basic",
     "cors",
@@ -6406,6 +6000,12 @@ ${val.stack}`;
       getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
       getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
     };
+    imports.wbg.__wbg_apply_dc50eb58583d2a57 = function() {
+      return handleError(function(arg0, arg1, arg2) {
+        const ret = arg0.apply(arg1, arg2);
+        return ret;
+      }, arguments);
+    };
     imports.wbg.__wbg_call_13410aac570ffff7 = function() {
       return handleError(function(arg0, arg1) {
         const ret = arg0.call(arg1);
@@ -6424,25 +6024,11 @@ ${val.stack}`;
         return ret;
       }, arguments);
     };
-    imports.wbg.__wbg_call_e1bdd86bd1bc0f12 = function() {
-      return handleError(function(arg0, arg1, arg2, arg3, arg4, arg5) {
-        const ret = arg0.call(arg1, arg2, arg3, arg4, arg5);
-        return ret;
-      }, arguments);
-    };
-    imports.wbg.__wbg_clearMarks_2fe4daebbf1cc506 = function(arg0, arg1) {
+    imports.wbg.__wbg_clearMarks_ce381cc8a373b312 = function(arg0, arg1) {
       performance.clearMarks(getStringFromWasm0(arg0, arg1));
     };
     imports.wbg.__wbg_crypto_574e78ad8b13b65f = function(arg0) {
       const ret = arg0.crypto;
-      return ret;
-    };
-    imports.wbg.__wbg_done_75ed0ee6dd243d9d = function(arg0) {
-      const ret = arg0.done;
-      return ret;
-    };
-    imports.wbg.__wbg_entries_2be2f15bd5554996 = function(arg0) {
-      const ret = Object.entries(arg0);
       return ret;
     };
     imports.wbg.__wbg_error_7534b8e9a36f1ab4 = function(arg0, arg1) {
@@ -6469,7 +6055,7 @@ ${val.stack}`;
           const a = state0.a;
           state0.a = 0;
           try {
-            return __wbg_adapter_803(a, state0.b, arg02, arg12);
+            return __wbg_adapter_769(a, state0.b, arg02, arg12);
           } finally {
             state0.a = a;
           }
@@ -6478,10 +6064,6 @@ ${val.stack}`;
       } finally {
         state0.a = state0.b = 0;
       }
-    };
-    imports.wbg.__wbg_from_88bc52ce20ba6318 = function(arg0) {
-      const ret = Array.from(arg0);
-      return ret;
     };
     imports.wbg.__wbg_getRandomValues_b8f5dbd5f3995a9e = function() {
       return handleError(function(arg0, arg1) {
@@ -6518,16 +6100,6 @@ ${val.stack}`;
       const ret = result;
       return ret;
     };
-    imports.wbg.__wbg_instanceof_Map_ebb01a5b6b5ffd0b = function(arg0) {
-      let result;
-      try {
-        result = arg0 instanceof Map;
-      } catch (_) {
-        result = false;
-      }
-      const ret = result;
-      return ret;
-    };
     imports.wbg.__wbg_instanceof_Uint8Array_9a8378d955933db7 = function(arg0) {
       let result;
       try {
@@ -6546,9 +6118,11 @@ ${val.stack}`;
       const ret = Number.isSafeInteger(arg0);
       return ret;
     };
-    imports.wbg.__wbg_iterator_f370b34483c71a1c = function() {
-      const ret = Symbol.iterator;
-      return ret;
+    imports.wbg.__wbg_jsontext_5c3f7cedc91e6042 = function() {
+      return handleError(function(arg0) {
+        const ret = json_text(arg0);
+        return ret;
+      }, arguments);
     };
     imports.wbg.__wbg_length_186546c51cd61acd = function(arg0) {
       const ret = arg0.length;
@@ -6561,11 +6135,15 @@ ${val.stack}`;
     imports.wbg.__wbg_log_6c7b5f4f00b8ce3f = function(arg0) {
       console.log(arg0);
     };
-    imports.wbg.__wbg_mark_0acebce628eec819 = function(arg0, arg1) {
+    imports.wbg.__wbg_mark_5926aca76e9f06f8 = function(arg0, arg1) {
       performance.mark(getStringFromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbg_measure_9f6f5a83a79cb9cb = function(arg0, arg1, arg2) {
+    imports.wbg.__wbg_measure_c5db7ef9634aa3f6 = function(arg0, arg1, arg2) {
       performance.measure(getStringFromWasm0(arg0, arg1), arg2);
+    };
+    imports.wbg.__wbg_message_125a1b2998b3552a = function(arg0) {
+      const ret = arg0.message;
+      return ret;
     };
     imports.wbg.__wbg_msCrypto_a61aeb35a24c1329 = function(arg0) {
       const ret = arg0.msCrypto;
@@ -6578,27 +6156,6 @@ ${val.stack}`;
     imports.wbg.__wbg_new_1f3a344cf3123716 = function() {
       const ret = new Array();
       return ret;
-    };
-    imports.wbg.__wbg_new_2e3c58a15f39f5f9 = function(arg0, arg1) {
-      try {
-        var state0 = {
-          a: arg0,
-          b: arg1
-        };
-        var cb0 = (arg02, arg12) => {
-          const a = state0.a;
-          state0.a = 0;
-          try {
-            return __wbg_adapter_803(a, state0.b, arg02, arg12);
-          } finally {
-            state0.a = a;
-          }
-        };
-        const ret = new Promise(cb0);
-        return ret;
-      } finally {
-        state0.a = state0.b = 0;
-      }
     };
     imports.wbg.__wbg_new_2ff1f68f3676ea53 = function() {
       const ret = /* @__PURE__ */ new Map();
@@ -6620,22 +6177,16 @@ ${val.stack}`;
       const ret = new Uint8Array(arg0 >>> 0);
       return ret;
     };
-    imports.wbg.__wbg_next_5b3530e612fde77d = function(arg0) {
-      const ret = arg0.next;
-      return ret;
-    };
-    imports.wbg.__wbg_next_692e82279131b03c = function() {
-      return handleError(function(arg0) {
-        const ret = arg0.next();
-        return ret;
-      }, arguments);
-    };
     imports.wbg.__wbg_node_905d3e251edff8a2 = function(arg0) {
       const ret = arg0.node;
       return ret;
     };
-    imports.wbg.__wbg_now_2b0b9fcb26e94b5b = function() {
+    imports.wbg.__wbg_now_677fd0bf2e3554df = function() {
       const ret = performance.now();
+      return ret;
+    };
+    imports.wbg.__wbg_of_e2ad25a0f5713368 = function(arg0, arg1, arg2, arg3) {
+      const ret = Array.of(arg0, arg1, arg2, arg3);
       return ret;
     };
     imports.wbg.__wbg_parse_442f5ba02e5eaf8b = function() {
@@ -6663,13 +6214,6 @@ ${val.stack}`;
       const ret = arg0.push(arg1);
       return ret;
     };
-    imports.wbg.__wbg_queueMicrotask_25d0739ac89e8c88 = function(arg0) {
-      queueMicrotask(arg0);
-    };
-    imports.wbg.__wbg_queueMicrotask_4488407636f5bf24 = function(arg0) {
-      const ret = arg0.queueMicrotask;
-      return ret;
-    };
     imports.wbg.__wbg_randomFillSync_ac0988aba3254290 = function() {
       return handleError(function(arg0, arg1) {
         arg0.randomFillSync(arg1);
@@ -6680,10 +6224,6 @@ ${val.stack}`;
         const ret = module.require;
         return ret;
       }, arguments);
-    };
-    imports.wbg.__wbg_resolve_4055c623acdd6a1b = function(arg0) {
-      const ret = Promise.resolve(arg0);
-      return ret;
     };
     imports.wbg.__wbg_set_3f1d0b984ed272ed = function(arg0, arg1, arg2) {
       arg0[arg1] = arg2;
@@ -6774,18 +6314,6 @@ ${val.stack}`;
       const ret = arg0.subarray(arg1 >>> 0, arg2 >>> 0);
       return ret;
     };
-    imports.wbg.__wbg_then_b33a773d723afa3e = function(arg0, arg1, arg2) {
-      const ret = arg0.then(arg1, arg2);
-      return ret;
-    };
-    imports.wbg.__wbg_then_e22500defe16819f = function(arg0, arg1) {
-      const ret = arg0.then(arg1);
-      return ret;
-    };
-    imports.wbg.__wbg_value_dd9372230531eade = function(arg0) {
-      const ret = arg0.value;
-      return ret;
-    };
     imports.wbg.__wbg_versions_c01dfd4722a88165 = function(arg0) {
       const ret = arg0.versions;
       return ret;
@@ -6796,12 +6324,6 @@ ${val.stack}`;
     imports.wbg.__wbg_wasmstaticdomainvalue_new = function(arg0) {
       const ret = WasmStaticDomainValue.__wrap(arg0);
       return ret;
-    };
-    imports.wbg.__wbg_wbindgenbigintgetasi64_ac743ece6ab9bba1 = function(arg0, arg1) {
-      const v = arg1;
-      const ret = typeof v === "bigint" ? v : void 0;
-      getDataViewMemory0().setBigInt64(arg0 + 8 * 1, isLikeNone(ret) ? BigInt(0) : ret, true);
-      getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
     };
     imports.wbg.__wbg_wbindgenbooleanget_3fe6f642c7d97746 = function(arg0) {
       const v = arg0;
@@ -6828,8 +6350,8 @@ ${val.stack}`;
       const ret = arg0 in arg1;
       return ret;
     };
-    imports.wbg.__wbg_wbindgenisbigint_ecb90cc08a5a9154 = function(arg0) {
-      const ret = typeof arg0 === "bigint";
+    imports.wbg.__wbg_wbindgenisfalsy_03f4059e2ea4ee87 = function(arg0) {
+      const ret = !arg0;
       return ret;
     };
     imports.wbg.__wbg_wbindgenisfunction_8cee7dce3725ae74 = function(arg0) {
@@ -6853,10 +6375,6 @@ ${val.stack}`;
       const ret = arg0 === void 0;
       return ret;
     };
-    imports.wbg.__wbg_wbindgenjsvaleq_e6f2ad59ccae1b58 = function(arg0, arg1) {
-      const ret = arg0 === arg1;
-      return ret;
-    };
     imports.wbg.__wbg_wbindgenjsvallooseeq_9bec8c9be826bed1 = function(arg0, arg1) {
       const ret = arg0 == arg1;
       return ret;
@@ -6878,10 +6396,6 @@ ${val.stack}`;
     imports.wbg.__wbg_wbindgenthrow_451ec1a8469d7eb6 = function(arg0, arg1) {
       throw new Error(getStringFromWasm0(arg0, arg1));
     };
-    imports.wbg.__wbindgen_cast_1bdc4f01f604fc02 = function(arg0, arg1) {
-      const ret = makeMutClosure(arg0, arg1, 209, __wbg_adapter_12);
-      return ret;
-    };
     imports.wbg.__wbindgen_cast_2241b6af4c4b2941 = function(arg0, arg1) {
       const ret = getStringFromWasm0(arg0, arg1);
       return ret;
@@ -6900,6 +6414,10 @@ ${val.stack}`;
     };
     imports.wbg.__wbindgen_cast_d6cd19b81560fd6e = function(arg0) {
       const ret = arg0;
+      return ret;
+    };
+    imports.wbg.__wbindgen_cast_da5301566140c6c7 = function(arg0, arg1) {
+      const ret = makeClosure(arg0, arg1, 93, __wbg_adapter_10);
       return ret;
     };
     imports.wbg.__wbindgen_init_externref_table = function() {
@@ -6985,18 +6503,15 @@ ${val.stack}`;
     WASMResourceModelWrapper,
     WKRM,
     WasmCoercionResult,
-    WasmEnsureNodegroupResult,
     WasmNodeConfigBoolean,
     WasmNodeConfigConcept,
     WasmNodeConfigDomain,
     WasmNodeConfigManager,
-    WasmNodeConfigReference,
     WasmNodegroupResult,
     WasmPopulateResult,
     WasmRdmCache,
     WasmSpan,
     WasmStaticDomainValue,
-    WasmValuesFromNodegroupResult,
     addCollectionToGlobalRdmCache,
     addToGlobalRdmCacheFromSkosXml,
     applyMutationsCreate,
@@ -7035,6 +6550,7 @@ ${val.stack}`;
     exportAllGraphs,
     exportGraphs,
     findNeededCollections,
+    foldMayMatch,
     generateCollectionUuid,
     generateConceptUuid,
     generateUuidV5,
@@ -7053,6 +6569,7 @@ ${val.stack}`;
     globalRdmGetParentId,
     globalRdmHasCollection,
     globalRdmLookupLabel,
+    hasDeriveProvider,
     hasExtensionHandler,
     hasExtensionMutation,
     hasGlobalRdmCache,
@@ -7068,6 +6585,7 @@ ${val.stack}`;
     parseSkosXml,
     parseSkosXmlToCollection,
     printRscvTimings,
+    registerDeriveProvider,
     registerExtensionHandler,
     registerExtensionMutation,
     removeFromGlobalRdmCache,
@@ -8008,7 +7526,7 @@ ${val.stack}`;
     async getMeta(id, onlyIfCached = true) {
       const summary = this.registry.getSummary(id);
       if (summary) {
-        return summary.toMetadata();
+        return summaryToMetadata(summary);
       }
       if (!onlyIfCached && this.archesClient) {
         const resource = await this.loadOne(id);
@@ -8077,7 +7595,7 @@ ${val.stack}`;
       for (const resource of resources) {
         if (limit && count >= limit) return;
         yielded.add(resource.resourceinstance.resourceinstanceid);
-        yield StaticResourceSummary.fromResource(resource);
+        yield this.registry.getSummary(resource.resourceinstance.resourceinstanceid);
         count++;
       }
       if (this.archesClient && (!limit || count < limit)) {
@@ -8097,7 +7615,7 @@ ${val.stack}`;
     }
     async loadTiles(id, nodegroupId) {
       const cached = this.registry.getFull(id);
-      if (cached && cached.tilesLoaded) {
+      if (cached && resourceTilesLoaded(cached)) {
         const tiles = cached.tiles ?? [];
         return nodegroupId ? tiles.filter((tile) => tile.nodegroup_id === nodegroupId) : tiles;
       }
@@ -8109,7 +7627,7 @@ ${val.stack}`;
     }
     async ensureFullResource(id) {
       const cached = this.registry.getFull(id);
-      if (cached && cached.tilesLoaded) {
+      if (cached && resourceTilesLoaded(cached)) {
         return cached;
       }
       if (this.archesClient) {
@@ -8137,185 +7655,6 @@ ${val.stack}`;
     }
   };
   staticStore = new StaticStore();
-  class CardComponent {
-    constructor(id, name) {
-      __publicField(this, "id");
-      __publicField(this, "name");
-      this.id = id;
-      this.name = name;
-    }
-  }
-  class Widget {
-    constructor(id, name, datatype, defaultConfig) {
-      __publicField(this, "id");
-      __publicField(this, "name");
-      __publicField(this, "datatype");
-      __publicField(this, "defaultConfig");
-      this.id = id;
-      this.name = name;
-      this.datatype = datatype;
-      this.defaultConfig = defaultConfig;
-    }
-    getDefaultConfig() {
-      return JSON.parse(this.defaultConfig);
-    }
-  }
-  const DEFAULT_CARD_COMPONENT = new CardComponent("f05e4d3a-53c1-11e8-b0ea-784f435179ea", "Default Card");
-  const _WIDGET_VALUES = [
-    [
-      "10000000-0000-0000-0000-000000000001",
-      "text-widget",
-      "string",
-      '{ "placeholder": "Enter text", "width": "100%", "maxLength": null}'
-    ],
-    [
-      "10000000-0000-0000-0000-000000000002",
-      "concept-select-widget",
-      "concept",
-      '{ "placeholder": "Select an option", "options": [] }'
-    ],
-    [
-      "10000000-0000-0000-0000-000000000012",
-      "concept-multiselect-widget",
-      "concept-list",
-      '{ "placeholder": "Select an option", "options": [] }'
-    ],
-    [
-      "10000000-0000-0000-0000-000000000015",
-      "domain-select-widget",
-      "domain-value",
-      '{ "placeholder": "Select an option" }'
-    ],
-    [
-      "10000000-0000-0000-0000-000000000016",
-      "domain-multiselect-widget",
-      "domain-value-list",
-      '{ "placeholder": "Select an option" }'
-    ],
-    [
-      "10000000-0000-0000-0000-000000000003",
-      "switch-widget",
-      "boolean",
-      '{ "subtitle": "Click to switch"}'
-    ],
-    [
-      "10000000-0000-0000-0000-000000000004",
-      "datepicker-widget",
-      "date",
-      `{
-      "placeholder": "Enter date",
-      "viewMode": "days",
-      "dateFormat": "YYYY-MM-DD",
-      "minDate": false,
-      "maxDate": false
-    }`
-    ],
-    [
-      "10000000-0000-0000-0000-000000000005",
-      "rich-text-widget",
-      "string",
-      "{}"
-    ],
-    [
-      "10000000-0000-0000-0000-000000000006",
-      "radio-boolean-widget",
-      "boolean",
-      '{"trueLabel": "Yes", "falseLabel": "No"}'
-    ],
-    [
-      "10000000-0000-0000-0000-000000000007",
-      "map-widget",
-      "geojson-feature-collection",
-      `{
-      "basemap": "streets",
-      "geometryTypes": [{"text":"Point", "id":"Point"}, {"text":"Line", "id":"Line"}, {"text":"Polygon", "id":"Polygon"}],
-      "overlayConfigs": [],
-      "overlayOpacity": 0.0,
-      "geocodeProvider": "MapzenGeocoder",
-      "zoom": 0,
-      "maxZoom": 20,
-      "minZoom": 0,
-      "centerX": 0,
-      "centerY": 0,
-      "pitch": 0.0,
-      "bearing": 0.0,
-      "geocodePlaceholder": "Search",
-      "geocoderVisible": true,
-      "featureColor": null,
-      "featureLineWidth": null,
-      "featurePointSize": null
-    }`
-    ],
-    [
-      "10000000-0000-0000-0000-000000000008",
-      "number-widget",
-      "number",
-      '{ "placeholder": "Enter number", "width": "100%", "min":"", "max":""}'
-    ],
-    [
-      "10000000-0000-0000-0000-000000000009",
-      "concept-radio-widget",
-      "concept",
-      '{ "options": [] }'
-    ],
-    [
-      "10000000-0000-0000-0000-000000000013",
-      "concept-checkbox-widget",
-      "concept-list",
-      '{ "options": [] }'
-    ],
-    [
-      "10000000-0000-0000-0000-000000000017",
-      "domain-radio-widget",
-      "domain-value",
-      "{}"
-    ],
-    [
-      "10000000-0000-0000-0000-000000000018",
-      "domain-checkbox-widget",
-      "domain-value-list",
-      "{}"
-    ],
-    [
-      "10000000-0000-0000-0000-000000000019",
-      "file-widget",
-      "file-list",
-      '{"acceptedFiles": "", "maxFilesize": "200"}'
-    ]
-  ];
-  const WIDGETS = Object.fromEntries(_WIDGET_VALUES.map((constructor) => [
-    constructor[1],
-    new Widget(...constructor)
-  ]));
-  function getDefaultWidgetForNode(node, preferences = {}) {
-    const datatype = node.datatype;
-    if (datatype in preferences) {
-      return WIDGETS[preferences[datatype]];
-    }
-    if (datatype === "semantic") {
-      throw Error("Not default widget for a semantic node");
-    } else if (datatype === "number") {
-      return WIDGETS["number-widget"];
-    } else if (datatype === "string") {
-      return WIDGETS["text-widget"];
-    } else if (datatype === "concept") {
-      return WIDGETS["concept-select-widget"];
-    } else if (datatype === "concept-list") {
-      return WIDGETS["concept-multiselect-widget"];
-    } else if (datatype === "domain-value") {
-      return WIDGETS["domain-select-widget"];
-    } else if (datatype === "domain-value-list") {
-      return WIDGETS["domain-multiselect-widget"];
-    } else if (datatype === "geojson-feature-collection") {
-      return WIDGETS["geojson-feature-collection"];
-    } else if (datatype === "boolean") {
-      return WIDGETS["switch-widget"];
-    } else if (datatype === "date") {
-      return WIDGETS["datepicker-widget"];
-    } else {
-      throw Error(`No default widget for ${datatype} datatype - perhaps you could supply a manual preference`);
-    }
-  }
   const DEFAULT_LANGUAGE = "en";
   class ViewContext {
     constructor() {
@@ -9126,24 +8465,10 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       return this._wasm.rdmCollection;
     }
   }
-  class StaticNodeConfigReference {
-    constructor(wasmConfig) {
-      __publicField(this, "_wasm");
-      this._wasm = wasmConfig;
-    }
-    get controlledList() {
-      return this._wasm.controlledList;
-    }
-    get rdmCollection() {
-      return this._wasm.rdmCollection;
-    }
-    get multiValue() {
-      return this._wasm.multiValue;
-    }
-    getCollectionId() {
-      return this._wasm.getCollectionId() ?? void 0;
-    }
-  }
+  const extensionAdapters = /* @__PURE__ */ new Map();
+  registerNodeConfigAdapter = function(datatype, adapter) {
+    extensionAdapters.set(datatype, adapter);
+  };
   class StaticNodeConfigDomain {
     constructor(wasmConfig) {
       __publicField(this, "_wasm");
@@ -9248,12 +8573,11 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
           const wasm2 = wasmManager.getConcept(nodeid);
           return wasm2 ? new StaticNodeConfigConcept(wasm2) : null;
         }
-        case "reference": {
-          const wasm2 = wasmManager.getReference(nodeid);
-          return wasm2 ? new StaticNodeConfigReference(wasm2) : null;
+        default: {
+          const adapter = extensionAdapters.get(datatype);
+          const config = adapter ? wasmManager.getExtensionConfig(nodeid) : null;
+          return config ? adapter(config) : null;
         }
-        default:
-          return null;
       }
     }
     clear() {
@@ -9274,8 +8598,8 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
     StaticNodeConfigBoolean,
     StaticNodeConfigConcept,
     StaticNodeConfigDomain,
-    StaticNodeConfigReference,
-    nodeConfigManager
+    nodeConfigManager,
+    registerNodeConfigAdapter
   }, Symbol.toStringTag, {
     value: "Module"
   }));
@@ -9298,20 +8622,21 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         this.__cacheEntry = cacheEntry;
       }
       return new Proxy(this, {
-        set: async (object, key, value) => {
+        set: (object, key, value) => {
           const k = typeof key === "symbol" ? key.description || "" : key;
           if (key in object) {
             object[key] = value;
           } else if (k in object || k.startsWith("__")) {
             object[k] = value;
+          } else if (object.$) {
+            object.$.assign(null, null, k, value);
           } else {
-            if (!object.$) {
-              await this.retrieve();
+            void this.retrieve().then(() => {
               if (!object.$) {
                 throw new Error("Could not retrieve resource");
               }
-            }
-            object.$.setOrmAttribute(k, value);
+              object.$.assign(null, null, k, value);
+            });
           }
           return true;
         },
@@ -9342,6 +8667,16 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         return `[Resource:${this.id}]`;
       }
       return `[${this.__.wkrm.modelClassName}:${this.id ?? "-"}]`;
+    }
+    $commit() {
+      if (!this.$) {
+        throw Error("Nothing to commit: this resource hasn't been retrieved");
+      }
+      return this.$.commitEdits();
+    }
+    $discard() {
+      var _a2;
+      (_a2 = this.$) == null ? void 0 : _a2.discardEdits();
     }
     async getName(retrieveIfNeeded = false) {
       var _a2;
@@ -9419,16 +8754,11 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         }
         recordNativeTiming("forJson: retrieve check", performance.now() - t0);
         t0 = performance.now();
-        if (typeof this.$.wasmWrapper.toJsonFull === "function") {
-          rootJson = this.$.wasmWrapper.toJsonFull();
-          recordNativeTiming("forJson: toJsonFull", performance.now() - t0);
-        } else {
-          await this.$.populate(false);
-          recordNativeTiming("forJson: populate", performance.now() - t0);
-          t0 = performance.now();
-          rootJson = this.$.wasmWrapper.toJson();
-          recordNativeTiming("forJson: toJson", performance.now() - t0);
+        if (!this.$.wasmWrapper.tilesLoaded()) {
+          await this.$.ensureTilesLoaded();
         }
+        rootJson = this.$.wasmWrapper.toJson();
+        recordNativeTiming("forJson: toJson", performance.now() - t0);
       }
       recordNativeTiming("forJson total (viewModels)", performance.now() - forJsonStart);
       if (!cascade && this.__cacheEntry) {
@@ -9479,16 +8809,11 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         const rdmCache = getBackend() === "napi" ? getRdmCache() : getGlobalWasmRdmCache();
         const ncm = nodeConfigManager.wasmManager;
         t0 = performance.now();
-        if (typeof this.$.wasmWrapper.toDisplayJsonFull === "function") {
-          rootJson = this.$.wasmWrapper.toDisplayJsonFull(rdmCache, ncm, lang, staticStore.registry);
-          recordNativeTiming("forDisplayJson: toDisplayJsonFull", performance.now() - t0);
-        } else {
-          await this.$.populate(false);
-          recordNativeTiming("forDisplayJson: populate", performance.now() - t0);
-          t0 = performance.now();
-          rootJson = this.$.wasmWrapper.toDisplayJson(rdmCache, ncm, lang, staticStore.registry);
-          recordNativeTiming("forDisplayJson: toDisplayJson", performance.now() - t0);
+        if (!this.$.wasmWrapper.tilesLoaded()) {
+          await this.$.ensureTilesLoaded();
         }
+        rootJson = this.$.wasmWrapper.toDisplayJson(rdmCache, ncm, lang, staticStore.registry);
+        recordNativeTiming("forDisplayJson: toDisplayJson", performance.now() - t0);
       }
       recordNativeTiming("forDisplayJson total (viewModels)", performance.now() - forJsonStart);
       if (!cascade && this.__cacheEntry) {
@@ -9541,12 +8866,8 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       ];
     }
     static async __create(tile, node, value, cacheEntry) {
-      const nodeid = node.nodeid;
       let val = value;
       if (tile) {
-        if (!tile.data.has(nodeid)) {
-          tile.data.set(nodeid, null);
-        }
         if (value !== null) {
           if (!value && !(value instanceof StaticResource) && !(value instanceof StaticResourceReference)) {
             val = null;
@@ -9571,11 +8892,6 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
           } else {
             throw new Error("Could not set resource instance from this data");
           }
-          tile.data.set(nodeid, val ? [
-            {
-              resourceId: val
-            }
-          ] : null);
         }
       }
       if (!tile || !val) {
@@ -9597,7 +8913,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
     }
     async forJson() {
       const value = await this._value;
-      return value ? value.map((v) => v ? v.forJson() : null) : null;
+      return value ? Promise.all(value.map(async (v) => v ? v.forJson() : null)) : null;
     }
     async __forJsonCache(getMeta) {
       return new ResourceInstanceListCacheEntry({
@@ -9611,52 +8927,31 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       });
     }
     static async __create(tile, node, value, cacheEntry = null) {
-      const nodeid = node.nodeid;
-      let val;
-      if (tile) {
-        if (!tile.data.has(nodeid)) {
-          tile.data.set(nodeid, null);
-        }
-        if (value !== null) {
-          tile.data.set(nodeid, []);
-          if (!Array.isArray(value)) {
-            throw new Error(`Cannot set an (entire) resource list value on node ${nodeid} except via an array: ${JSON.stringify(value)}`);
-          }
-          val = value.map((v, i) => {
-            if (v instanceof ResourceInstanceViewModel) {
-              return v;
-            }
-            return ResourceInstanceViewModel.__create(tile, node, v, cacheEntry && cacheEntry._[i] ? cacheEntry._[i] : null);
-          });
-          Promise.all(val.map(async (c) => {
-            const v = await c;
-            return v ? (await v).id : null;
-          })).then((ids) => {
-            tile.data.set(nodeid, ids.map((id) => {
-              return {
-                resourceId: id
-              };
-            }));
-            return ids;
-          });
-          value = val;
-        }
-      } else {
-        value = [];
-      }
-      if (!tile || !value) {
+      if (!tile || value === null || value === void 0) {
         return null;
       }
-      const str = new ResourceInstanceListViewModel(...value);
-      return str;
+      if (!Array.isArray(value)) {
+        throw new Error(`Cannot set an (entire) resource list value on node ${node.nodeid} except via an array: ${JSON.stringify(value)}`);
+      }
+      const items = await Promise.all(value.map((v, i) => {
+        if (v instanceof ResourceInstanceViewModel) {
+          return v;
+        }
+        return ResourceInstanceViewModel.__create(tile, node, v, cacheEntry && cacheEntry._[i] ? cacheEntry._[i] : null);
+      }));
+      const list = new ResourceInstanceListViewModel();
+      list.push(...items);
+      list._value = Promise.resolve(items);
+      return list;
     }
     async __asTileData() {
-      return this._value ? await this._value : null;
+      const value = await this._value;
+      return value ? Promise.all(value.map(async (v) => v ? v.__asTileData() : null)) : null;
     }
   }
   class StringViewModel extends String {
     constructor(value, language = null) {
-      const lang = value.get(language || DEFAULT_LANGUAGE);
+      const lang = value.get(language || getCurrentLanguage$2()) ?? value.get(DEFAULT_LANGUAGE);
       let displayValue;
       if (lang) {
         if (typeof lang == "string") {
@@ -9693,37 +8988,15 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       }
     }
     static __create(tile, node, value) {
-      const nodeid = node.nodeid;
       if (value instanceof Promise) {
         return value.then((value2) => StringViewModel.__create(tile, node, value2));
       }
-      if (tile) {
-        if (!tile.data.has(nodeid)) {
-          tile.data.set(nodeid, {});
-        }
-        if (value !== null) {
-          if (value instanceof Object) {
-            const entries = value instanceof Map ? value.entries() : Object.entries(value);
-            for (const [k, v] of [
-              ...entries
-            ]) {
-              const val2 = tile.data.get(nodeid);
-              if (val2 instanceof Map) {
-                val2.set(k, v);
-              } else if (val2 instanceof Object) {
-                val2[k] = v;
-              } else if (val2 !== null) {
-                throw new Error("Malformed string in tile data");
-              }
-            }
-          } else {
-            tile.data.set(nodeid, {
-              [DEFAULT_LANGUAGE]: value
-            });
-          }
-        }
+      let val = value;
+      if (val !== null && val !== void 0 && !(val instanceof Object)) {
+        val = {
+          [DEFAULT_LANGUAGE]: val
+        };
       }
-      const val = tile.data.get(nodeid);
       if (!tile || val === null || val === void 0) {
         return null;
       }
@@ -9755,19 +9028,10 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       return null;
     }
     static __create(tile, node, value) {
-      const nodeid = node.nodeid;
       if (value instanceof Promise) {
         return value.then((value2) => DateViewModel.__create(tile, node, value2));
       }
-      if (tile) {
-        if (!tile.data.has(nodeid)) {
-          tile.data.set(nodeid, null);
-        }
-        if (value !== null) {
-          tile.data.set(nodeid, value);
-        }
-      }
-      let val = tile.data.get(nodeid);
+      let val = value;
       if (val && typeof val == "object" && val["en"] !== void 0) {
         val = val.en;
       }
@@ -9830,19 +9094,10 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       return null;
     }
     static __create(tile, node, value) {
-      const nodeid = node.nodeid;
       if (value instanceof Promise) {
         return value.then((value2) => _GeoJSONViewModel.__create(tile, node, value2));
       }
-      if (tile) {
-        if (!tile.data.has(nodeid)) {
-          tile.data.set(nodeid, null);
-        }
-        if (value !== null) {
-          tile.data.set(nodeid, value);
-        }
-      }
-      const val = tile.data.get(nodeid);
+      const val = value;
       if (!tile || val === null || val === void 0) {
         return null;
       }
@@ -9934,16 +9189,10 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       return this.toString();
     }
     static __create(tile, node, value) {
-      const nodeid = node.nodeid;
       if (value instanceof Promise) {
         return value.then((value2) => EDTFViewModel.__create(tile, node, value2));
       }
-      if (tile) {
-        if (value !== null) {
-          tile.data.set(nodeid, value);
-        }
-      }
-      const val = tile.data.get(nodeid);
+      const val = value;
       if (!tile || val === null || val === void 0) {
         return null;
       }
@@ -9969,16 +9218,10 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       return this.toString();
     }
     static __create(tile, node, value) {
-      const nodeid = node.nodeid;
       if (value instanceof Promise) {
         return value.then((value2) => NonLocalizedStringViewModel.__create(tile, node, value2));
       }
-      if (tile) {
-        if (value !== null) {
-          tile.data.set(nodeid, value);
-        }
-      }
-      const val = tile.data.get(nodeid);
+      const val = value;
       if (!tile || val === null || val === void 0) {
         return null;
       }
@@ -10007,16 +9250,10 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       return this.valueOf();
     }
     static __create(tile, node, value) {
-      const nodeid = node.nodeid;
       if (value instanceof Promise) {
         return value.then((value2) => NumberViewModel.__create(tile, node, value2));
       }
-      if (tile) {
-        if (value !== null) {
-          tile.data.set(nodeid, value);
-        }
-      }
-      const val = tile.data.get(nodeid);
+      const val = value;
       if (!tile || val === null || val === void 0) {
         return null;
       }
@@ -10048,16 +9285,10 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       return this.valueOf();
     }
     static __create(tile, node, value) {
-      const nodeid = node.nodeid;
       if (value instanceof Promise) {
         return value.then((value2) => BooleanViewModel.__create(tile, node, value2));
       }
-      if (tile) {
-        if (value !== null) {
-          tile.data.set(nodeid, value);
-        }
-      }
-      const val = tile.data.get(nodeid);
+      const val = value;
       if (!tile || val === null || val === void 0) {
         return null;
       }
@@ -10102,29 +9333,24 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       return this._value.url;
     }
     static __create(tile, node, value) {
-      const nodeid = node.nodeid;
       if (value instanceof Promise) {
         return value.then((value2) => UrlViewModel.__create(tile, node, value2));
       }
-      if (tile) {
-        if (!tile.data.has(nodeid)) {
-          tile.data.set(nodeid, {});
+      let val = value;
+      if (value instanceof UrlViewModel) {
+        val = {
+          url: value._value.url,
+          url_label: value._value.url_label
+        };
+      } else if (value instanceof Object && !(value instanceof Map)) {
+        if (!value.url) {
+          throw new Error(`A URL must be null or have a 'url' field: ${value}`);
         }
-        if (value !== null) {
-          if (value instanceof UrlViewModel) {
-            value = value._value;
-          } else if (value instanceof Object) {
-            if (!value.url) {
-              throw new Error(`A URL must be null or have a 'url' field: ${value}`);
-            }
-          }
-          tile.data.set(nodeid, {
-            url: value.url,
-            url_label: value.url_label
-          });
-        }
+        val = {
+          url: value.url,
+          url_label: value.url_label
+        };
       }
-      const val = tile.data.get(nodeid);
       if (!tile || val === null || val === void 0) {
         return null;
       }
@@ -10168,12 +9394,8 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       return (await this._value).lang(lang);
     }
     static async __create(tile, node, value) {
-      const nodeid = node.nodeid;
       let val = value;
       if (tile) {
-        if (!tile.data.has(nodeid)) {
-          tile.data.set(nodeid, null);
-        }
         if (value !== null) {
           if (!value && !(value instanceof StaticDomainValue)) {
             val = null;
@@ -10195,9 +9417,6 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
             }
           } else {
             throw new Error("Could not set domain value from this data");
-          }
-          if (!(val instanceof Promise)) {
-            tile.data.set(nodeid, val ? val.id : null);
           }
         }
       }
@@ -10223,47 +9442,32 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
     }
     async forJson() {
       const value = await this._value;
-      return value ? value.map((v) => v ? v.forJson() : null) : null;
+      return value ? Promise.all(value.map(async (v) => v ? v.forJson() : null)) : null;
     }
     __forJsonCache() {
       return null;
     }
     static async __create(tile, node, value) {
-      const nodeid = node.nodeid;
-      let val;
-      if (tile) {
-        if (!tile.data.has(nodeid)) {
-          tile.data.set(nodeid, null);
+      let items = [];
+      if (tile && value !== null && value !== void 0) {
+        if (!Array.isArray(value)) {
+          throw new Error(`Cannot set an (entire) domain list value on node ${node.nodeid} except via an array: ${JSON.stringify(value)}`);
         }
-        if (value !== null) {
-          tile.data.set(nodeid, []);
-          if (!Array.isArray(value)) {
-            throw new Error(`Cannot set an (entire) domain list value on node ${nodeid} except via an array: ${JSON.stringify(value)}`);
+        items = await Promise.all(value.map((c) => {
+          if (c instanceof DomainValueViewModel) {
+            return c;
           }
-          val = value.map((c) => {
-            if (c instanceof DomainValueViewModel) {
-              return c;
-            }
-            return DomainValueViewModel.__create(tile, node, c);
-          });
-          Promise.all(val).then(async (vals) => {
-            const ids = Promise.all(vals.map(async (val2) => val2 === null ? val2 : (await val2._value).id));
-            ids.then((ids2) => {
-              tile.data.set(nodeid, ids2);
-            });
-          });
-        } else {
-          value = [];
-        }
-      } else {
-        value = [];
+          return DomainValueViewModel.__create(tile, node, c);
+        }));
       }
-      const str = new DomainValueListViewModel(...value);
-      return str;
+      const list = new DomainValueListViewModel();
+      list.push(...items);
+      list._value = Promise.resolve(items);
+      return list;
     }
     async __asTileData() {
       const value = await this._value;
-      return value ?? null;
+      return value ? Promise.all(value.map(async (v) => v ? v.__asTileData() : null)) : null;
     }
   }
   class ConceptValueViewModel extends String {
@@ -10325,16 +9529,12 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
     }
     static async __create(tile, node, value, cacheEntry) {
       var _a2;
-      const nodeid = node.nodeid;
       const collectionId = (_a2 = node.config) == null ? void 0 : _a2.rdmCollection;
       if (!collectionId) {
         throw new Error(`Node ${node.alias} (${node.nodeid}) missing rdmCollection in config`);
       }
       let val = value;
       if (tile) {
-        if (!tile.data.has(nodeid)) {
-          tile.data.set(nodeid, null);
-        }
         if (value !== null) {
           if (value instanceof StaticConcept) {
             if (value.getPrefLabel) {
@@ -10370,7 +9570,6 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
                   if (!val2) {
                     console.error("Could not find concept for value", value, "for", node.alias, "in collection", collectionId);
                   }
-                  tile.data.set(nodeid, val2 ? val2.id : null);
                   if (!tile || !val2) {
                     return null;
                   }
@@ -10388,7 +9587,6 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
             if (!val) {
               console.error("Could not find concept for value", value, "for", node.alias, "in collection", collectionId);
             }
-            tile.data.set(nodeid, val ? val.id : null);
           }
         }
       }
@@ -10414,7 +9612,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
     }
     async forJson() {
       const value = await this._value;
-      return value ? value.map((v) => v ? v.forJson() : null) : null;
+      return value ? Promise.all(value.map(async (v) => v ? v.forJson() : null)) : null;
     }
     async __forJsonCache(getMeta) {
       return new ConceptListCacheEntry({
@@ -10430,39 +9628,26 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       });
     }
     static async __create(tile, node, value, cacheEntry = null) {
-      const nodeid = node.nodeid;
-      let val = [];
-      if (!tile.data.has(nodeid)) {
-        tile.data.set(nodeid, null);
-      }
-      if (value !== null) {
-        tile.data.set(nodeid, []);
+      let items = [];
+      if (value !== null && value !== void 0) {
         if (!Array.isArray(value)) {
-          throw new Error(`Cannot set an (entire) concept list value on node ${nodeid} except via an array: ${JSON.stringify(value)}`);
+          throw new Error(`Cannot set an (entire) concept list value on node ${node.nodeid} except via an array: ${JSON.stringify(value)}`);
         }
-        val = value.map((c, i) => {
+        items = await Promise.all(value.map((c, i) => {
           if (c instanceof ConceptValueViewModel) {
             return c;
           }
           return ConceptValueViewModel.__create(tile, node, c, cacheEntry && cacheEntry._[i] ? cacheEntry._[i] : null);
-        });
-        Promise.all(val).then((vals) => {
-          Promise.all(vals.map(async (c) => {
-            const v = await c;
-            return v ? (await v.getValue()).id : null;
-          })).then((ids) => {
-            tile.data.set(nodeid, ids);
-          });
-        });
-        value = val;
-      } else {
-        value = [];
+        }));
       }
-      const str = new ConceptListViewModel(...value);
-      return str;
+      const list = new ConceptListViewModel();
+      list.push(...items);
+      list._value = Promise.resolve(items);
+      return list;
     }
     async __asTileData() {
-      return this._value ? await this._value : null;
+      const value = await this._value;
+      return value ? Promise.all(value.map(async (v) => v ? v.__asTileData() : null)) : null;
     }
   }
   _e = Symbol.toPrimitive;
@@ -10526,7 +9711,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       }
       const domainId = this.__parentPseudo.nodeid;
       const rangeId = childNode.nodeid;
-      const edges = this.__parentWkrm.graph.edges.filter((edge) => edge.domainnode_id === domainId && edge.rangenode_id === rangeId);
+      const edges = this.__parentWkrm.getEdgeObjects().filter((edge) => edge.domainnode_id === domainId && edge.rangenode_id === rangeId);
       if (edges.length !== 1) {
         throw new Error(`Number of edges from ${domainId}->${rangeId} != 1`);
       }
@@ -10581,12 +9766,18 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       this.__node = node;
       return new Proxy(this, {
         set: (object, key, value) => {
+          var _a2;
           const k = typeof key === "symbol" ? key.description || "" : key;
           if (k.startsWith("__") || key in object) {
             object[k] = value;
             return true;
           }
-          throw Error(`Setting semantic values via proxy (key: ${String(key)}) is not supported`);
+          const wrapper = (_a2 = object.__parentWkri) == null ? void 0 : _a2.$;
+          if (!wrapper) {
+            throw Error(`Cannot set ${k}: this value has no resource to edit`);
+          }
+          wrapper.assign(object.__tile, object.__node, k, value);
+          return true;
         },
         get: (object, key) => {
           const k = typeof key === "symbol" ? key.description || "" : key;
@@ -10618,7 +9809,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       return `[[${entries.join(",")}]]`;
     }
     async toObject() {
-      var _a2;
+      var _a2, _b2;
       if (!this.__parentWkri || !this.__parentWkri.$) {
         return {};
       }
@@ -10628,22 +9819,10 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       const missingNodegroups = wasmWrapper.getMissingNodegroupsForChildren(this.__node.nodeid);
       timingStats.wasmCalls++;
       timingStats.wasmTotalMs += performance.now() - t0;
-      if (missingNodegroups.length > 0) {
-        const tileLoader = wasmWrapper.getTileLoader();
-        if (tileLoader) {
-          for (const nodegroupId of missingNodegroups) {
-            const t1 = performance.now();
-            const tiles = await tileLoader(nodegroupId);
-            timingStats.wasmTotalMs += performance.now() - t1;
-            if (tiles && tiles.length > 0) {
-              const t2 = performance.now();
-              wasmWrapper.appendTiles(tiles);
-              timingStats.wasmCalls++;
-              timingStats.wasmTotalMs += performance.now() - t2;
-            }
-          }
-        }
-      }
+      const t1 = performance.now();
+      await this.__parentWkri.$.fetchNodegroups(missingNodegroups);
+      timingStats.wasmCalls++;
+      timingStats.wasmTotalMs += performance.now() - t1;
       const t3 = performance.now();
       const childValuesMap = wasmWrapper.getAllSemanticChildValues(((_a2 = this.__tile) == null ? void 0 : _a2.tileid) || null, this.__node.nodeid, this.__node.nodegroup_id || null);
       timingStats.wasmCalls++;
@@ -10660,6 +9839,9 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
           continue;
         }
         child.parentNode = this.__parentPseudo || null;
+        if (Array.isArray(child) && child.parenttileId === void 0) {
+          child.parenttileId = ((_b2 = this.__tile) == null ? void 0 : _b2.tileid) ?? void 0;
+        }
         this.__childValues.set(alias, child);
         wrappedChildren.push([
           alias,
@@ -10678,7 +9860,29 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       timingStats.wrapTotalMs += performance.now() - t4;
       return result;
     }
+    __emptyChildList(key) {
+      var _a2, _b2, _c2, _d2;
+      const wrapper = (_a2 = this.__parentWkri) == null ? void 0 : _a2.$;
+      const child = wrapper == null ? void 0 : wrapper.model.getChildNodes(this.__node.nodeid).get(key);
+      if (!wrapper || !(child == null ? void 0 : child.nodegroup_id) || child.nodegroup_id === ((_b2 = this.__tile) == null ? void 0 : _b2.nodegroup_id)) {
+        return null;
+      }
+      if (((_c2 = wrapper.model.getNodegroupObjects().get(child.nodegroup_id)) == null ? void 0 : _c2.cardinality) !== "n") {
+        return null;
+      }
+      const list = new PseudoList();
+      list.initialize(child, this.__parentWkri);
+      list.__alias = key;
+      list.parenttileId = ((_d2 = this.__tile) == null ? void 0 : _d2.tileid) ?? void 0;
+      list.__editable = true;
+      return list;
+    }
     async __get(key) {
+      var _a2, _b2, _c2;
+      const pending = (_c2 = (_a2 = this.__parentWkri) == null ? void 0 : _a2.$) == null ? void 0 : _c2.pendingValue((_b2 = this.__tile) == null ? void 0 : _b2.tileid, key);
+      if (pending) {
+        return pending.value;
+      }
       const childValue = await this.__getChildValue(key);
       if (!childValue) {
         return null;
@@ -10690,6 +9894,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       return childAliases.includes(key);
     }
     async __getChildValue(key) {
+      var _a2;
       const parent = this.__parentWkri;
       const tile = this.__tile;
       const node = this.__node;
@@ -10710,19 +9915,11 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       } catch (e) {
         const errorStr = (e == null ? void 0 : e.message) || String(e);
         if (errorStr.startsWith("TILES_NOT_LOADED:")) {
-          const nodegroupId = errorStr.split(":")[1].split(" ")[0];
-          const tileLoader = wasmWrapper.getTileLoader();
-          if (tileLoader) {
-            const t1 = performance.now();
-            const tiles = await tileLoader(nodegroupId);
-            timingStats.wasmTotalMs += performance.now() - t1;
-            if (tiles && tiles.length > 0) {
-              const t2 = performance.now();
-              wasmWrapper.appendTiles(tiles);
-              timingStats.wasmCalls++;
-              timingStats.wasmTotalMs += performance.now() - t2;
-            }
-          }
+          const nodegroupIds = errorStr.slice("TILES_NOT_LOADED:".length).split(" ")[0].split(",");
+          const t1 = performance.now();
+          await parent.$.fetchNodegroups(nodegroupIds);
+          timingStats.wasmCalls++;
+          timingStats.wasmTotalMs += performance.now() - t1;
           const t3 = performance.now();
           rustValue = wasmWrapper.getSemanticChildValue((tile == null ? void 0 : tile.tileid) || null, node.nodeid, node.nodegroup_id || null, key);
           timingStats.wasmCalls++;
@@ -10736,9 +9933,12 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       timingStats.wrapCalls++;
       timingStats.wrapTotalMs += performance.now() - t4;
       if (child === null || child === void 0) {
-        return child;
+        return this.__emptyChildList(key) ?? child;
       }
       child.parentNode = this.__parentPseudo || null;
+      if (Array.isArray(child) && child.parenttileId === void 0) {
+        child.parenttileId = ((_a2 = this.__tile) == null ? void 0 : _a2.tileid) ?? void 0;
+      }
       this.__childValues.set(key, child);
       return child;
     }
@@ -10931,13 +10131,13 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       __publicField(this, "_parentValue", null);
       __publicField(this, "_inner", null);
       __publicField(this, "_cachedValue", null);
+      __publicField(this, "_node", null);
       __publicField(this, "_snapshot", null);
       if (!parent) {
         throw Error("Must have a parent or parent class for a pseudo-node");
       }
       this._wasm = wasm2;
       this.parent = parent;
-      this._wasm.parent = parent;
     }
     getSnapshot() {
       if (!this._snapshot) {
@@ -10961,9 +10161,6 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       this._wasm.tile = t;
       this._snapshot = null;
     }
-    get value() {
-      return this._wasm.value;
-    }
     get valueLoaded() {
       const v = this.getSnapshot().valueLoaded;
       if (v === void 0) return void 0;
@@ -10979,7 +10176,10 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       return this._wasm.tile;
     }
     get node() {
-      return this._wasm;
+      if (this._node === null) {
+        this._node = this._wasm.node;
+      }
+      return this._node;
     }
     get nodeid() {
       return this.getSnapshot().nodeId;
@@ -11025,14 +10225,6 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       const pv = new PseudoValue(wasm2, parent);
       return pv;
     }
-    static create(nodeOrAlias, tile, value, parent) {
-      if (!parent || !parent.__) {
-        throw new Error("Must have a parent or parent class for a pseudo-node");
-      }
-      const alias = typeof nodeOrAlias === "string" ? nodeOrAlias : nodeOrAlias.alias;
-      const wasm2 = parent.__.createPseudoValue(alias, tile, parent);
-      return PseudoValue.fromWasm(wasm2, parent);
-    }
     getParentTileId() {
       const tile = this._wasm.tile;
       return tile ? tile.parenttile_id : null;
@@ -11043,36 +10235,20 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       if (this.inner) {
         [this.tile, relationships] = await this.inner.getTile();
       }
-      let tileValue;
-      if (this._cachedValue !== null) {
+      if (this._cachedValue !== null && this.getSnapshot().datatype === "semantic") {
         const value = await this._cachedValue;
         if (value !== null) {
-          const [newTileValue, ownRelationships] = await value.__asTileData();
-          tileValue = newTileValue;
+          const [, ownRelationships] = await value.__asTileData();
           relationships = [
             ...relationships,
             ...ownRelationships
           ];
-        } else {
-          tileValue = null;
         }
-      } else {
-        tileValue = null;
       }
-      const tile = this._wasm.tile;
-      if (!tile) {
+      if (!this.getSnapshot().hasTile) {
         throw Error("No tile available");
       }
-      tile.data = tile.data || /* @__PURE__ */ new Map();
-      const nodeid = this._wasm.nodeId;
-      if (tileValue === null) {
-        if (tile.data.has(nodeid)) {
-          tile.data.delete(nodeid);
-        }
-      } else {
-        tile.data.set(nodeid, tileValue);
-      }
-      const returnTile = this.independent ? tile : null;
+      const returnTile = this.independent ? this._wasm.tile : null;
       return [
         returnTile,
         relationships
@@ -11081,22 +10257,19 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
     clear() {
       this._wasm.clear();
       this._cachedValue = null;
-      const tile = this._wasm.tile;
-      if (tile && tile.data && tile.data.has(this._wasm.nodeId)) {
-        tile.data.delete(this._wasm.nodeId);
-      }
+      this._snapshot = null;
     }
     updateValue(newTile) {
       if (newTile) {
-        this._wasm.tile = newTile;
+        this.tile = newTile;
       }
       if (this._cachedValue !== null) {
         return this._cachedValue;
       }
-      if (!this._wasm.tile && this.inner) {
+      if (!this.getSnapshot().hasTile && this.inner) {
         this._cachedValue = new AttrPromise(async (resolve) => {
           const [innerTile] = await this.inner.getTile();
-          this._wasm.tile = innerTile;
+          this.tile = innerTile;
           const result = await this._updateValueReal();
           resolve(result);
         });
@@ -11107,74 +10280,33 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
     }
     _updateValueReal() {
       const snapshot = this.getSnapshot();
-      if (!this._wasm.tile) {
-        const nodegroupId = snapshot.nodegroupId || "";
-        const sortorder = snapshot.sortorder;
-        this._wasm.tile = createStaticTile({
-          nodegroup_id: nodegroupId,
+      const data = snapshot.tileData ?? null;
+      if (!snapshot.hasTile) {
+        this.tile = createStaticTile({
+          nodegroup_id: snapshot.nodegroupId || "",
           tileid: null,
           data: /* @__PURE__ */ new Map(),
-          sortorder,
+          sortorder: snapshot.sortorder,
           resourceinstance_id: "",
           parenttile_id: null,
           provisionaledits: null,
           ensureId: () => ""
         });
       }
-      let data;
       const currentTile = this._wasm.tile;
-      const nodeid = snapshot.nodeId;
-      if (currentTile && currentTile.data !== null && currentTile.data.has(nodeid) && snapshot.datatype !== "semantic") {
-        data = currentTile.data.get(nodeid);
-      } else {
-        data = snapshot.tileData ?? null;
-      }
-      if (this.isOuter && typeof data === "object" && this.inner && data) {
-        let outerData = void 0;
-        if ("_" in data && !data.constructor) {
-          outerData = data["_"];
-          delete data["_"];
-          this.inner.getValue().then((v) => v && v.update(data));
-          data = outerData;
-        } else if (data instanceof Map && data.has("_")) {
-          outerData = data.get("_");
-          data.delete("_");
-          this.inner.getValue().then((v) => v && v.update(data));
-          data = outerData;
-        }
-      }
-      const vmPromise = getViewModel(this, currentTile, this._wasm.node, data, this.parent, this.isInner);
+      const vmPromise = getViewModel(this, currentTile, this.node, data, this.parent, this.isInner);
       const resolveAttr = (vm) => {
         if (vm !== null && vm instanceof Object) {
           vm.__parentPseudo = this;
           if (this.isOuter && this.inner) {
             vm._ = this.inner.getValue();
           }
-          this.syncTileData(vm);
         }
         return vm;
       };
       return new AttrPromise((resolve) => {
         vmPromise.then((vm) => resolve(resolveAttr(vm)));
       });
-    }
-    syncTileData(vm) {
-      if (vm === null) {
-        this._wasm.setTileData(null);
-        return;
-      }
-      if (typeof vm.__asTileData === "function") {
-        const tileData = vm.__asTileData();
-        if (tileData instanceof Promise) {
-          tileData.then((data) => {
-            this._wasm.setTileData(data);
-          }).catch((e) => {
-            console.warn("syncTileData: failed to get tile data", e);
-          });
-        } else {
-          this._wasm.setTileData(tileData);
-        }
-      }
     }
     getValue() {
       return this.updateValue();
@@ -11221,27 +10353,84 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       __publicField(this, "ghostChildren", null);
       __publicField(this, "isOuter", false);
       __publicField(this, "isSingle", false);
+      __publicField(this, "__editable", false);
+      __publicField(this, "__alias");
+      __publicField(this, "__tileIds", []);
+    }
+    push(...items) {
+      var _a2;
+      if (!this.__editable) {
+        return super.push(...items);
+      }
+      const wrapper = (_a2 = this.parent) == null ? void 0 : _a2.$;
+      if (!wrapper || !this.__alias) {
+        throw Error("Cannot add to this list: it has no resource to edit");
+      }
+      for (const item of items) {
+        const ref = wrapper.recordEdit({
+          op: "add",
+          alias: this.__alias,
+          parent: this.parenttileId ?? null,
+          values: item ?? {}
+        });
+        this.__tileIds.push(ref);
+        super.push(new AttrPromise((resolve) => resolve(item)));
+      }
+      wrapper.setPendingValue(this.parenttileId ?? null, this.__alias, this);
+      return this.length;
+    }
+    splice(start, deleteCount, ...items) {
+      var _a2;
+      if (!this.__editable) {
+        return deleteCount === void 0 ? super.splice(start) : super.splice(start, deleteCount, ...items);
+      }
+      if (items.length > 0) {
+        throw Error("Add items with push: tile order follows sortorder");
+      }
+      const wrapper = (_a2 = this.parent) == null ? void 0 : _a2.$;
+      if (!wrapper || !this.__alias) {
+        throw Error("Cannot remove from this list: it has no resource to edit");
+      }
+      const from = start < 0 ? Math.max(this.length + start, 0) : Math.min(start, this.length);
+      const count = Math.max(0, Math.min(deleteCount ?? this.length - from, this.length - from));
+      const tileIds = this.__tileIds.slice(from, from + count);
+      if (tileIds.some((id) => typeof id !== "string")) {
+        throw Error("Cannot remove an item added since the last $commit(): $discard() instead");
+      }
+      for (const tile of tileIds) {
+        wrapper.recordEdit({
+          op: "remove",
+          tile
+        });
+      }
+      this.__tileIds.splice(from, count);
+      const removed = Array.from(this).slice(from, from + count);
+      for (let i = from; i + count < this.length; i++) {
+        this[i] = this[i + count];
+      }
+      this.length -= count;
+      wrapper.setPendingValue(this.parenttileId ?? null, this.__alias, this);
+      return removed;
     }
     isIterable() {
       return true;
     }
     async sorted() {
       const resolved = await Promise.all(this.map(async (pn) => await pn));
-      const sorted = resolved.sort((a, b) => {
-        const vals = [
-          a,
-          b
-        ].map((val) => {
-          if (val && a.__parentPseudo && a.__parentPseudo.tile) {
-            if (val.__parentPseudo.tile.sortorder > 0) ;
-            return val.__parentPseudo.tile.sortorder;
-          } else {
-            return 0;
-          }
-        });
-        return vals[0] - vals[1];
+      const sortorder = (val) => {
+        var _a2, _b2;
+        return (_b2 = (_a2 = val == null ? void 0 : val.__parentPseudo) == null ? void 0 : _a2.tile) == null ? void 0 : _b2.sortorder;
+      };
+      return resolved.sort((a, b) => {
+        const [x, y] = [
+          sortorder(a),
+          sortorder(b)
+        ];
+        if (x == null || y == null) {
+          return Number(x == null) - Number(y == null);
+        }
+        return x - y;
       });
-      return sorted;
     }
     describeField() {
       if (!this.node) {
@@ -11335,7 +10524,12 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       for (const wasmValue of wasmValues) {
         const pseudoValue = PseudoValue.fromWasm(wasmValue, wkri);
         list.push(pseudoValue.getValue());
+        list.__tileIds.push(wasmValue.tileId ?? null);
       }
+      list.parent = list.parent ?? wkri;
+      list.__alias = wasmList.nodeAlias;
+      list.parenttileId = wasmValues.length > 0 ? PseudoValue.fromWasm(wasmValues[0], wkri).getParentTileId() ?? void 0 : void 0;
+      list.__editable = true;
       return list;
     } else {
       return PseudoValue.fromWasm(rustValue, wkri);
@@ -11363,6 +10557,8 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       __publicField(this, "metadata");
       __publicField(this, "tilesLoaded", false);
       __publicField(this, "pruneTiles", true);
+      __publicField(this, "_pendingEdits", []);
+      __publicField(this, "_pendingValues", /* @__PURE__ */ new Map());
       const constructorStart = performance.now();
       this.wkri = wkri;
       this.model = model;
@@ -11400,7 +10596,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         tilesLoaded = this.wasmWrapper.tilesLoaded();
         recordNativeTiming("tilesLoaded (constructor)", performance.now() - t0);
       }
-      if (!tilesLoaded && resource && resource.tilesLoaded && typeof this.wasmWrapper.loadTilesFromResource === "function") {
+      if (!tilesLoaded && resource && resourceTilesLoaded(resource) && typeof this.wasmWrapper.loadTilesFromResource === "function") {
         t0 = performance.now();
         loadTilesFromResource(this.wasmWrapper, resource, assumeTilesComprehensiveForNodegroup);
         recordNativeTiming("loadTilesFromResource", performance.now() - t0);
@@ -11428,10 +10624,102 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         }
         const resourceId = this.wasmWrapper.getResourceId();
         const fullResource = await this.model.staticStore.ensureFullResource(resourceId);
-        if (fullResource && fullResource.tilesLoaded) {
+        if (fullResource && resourceTilesLoaded(fullResource)) {
           loadTilesFromResource(this.wasmWrapper, fullResource, true);
         }
       }
+    }
+    async fetchNodegroupTiles(nodegroupId) {
+      const tileLoader = typeof this.wasmWrapper.getTileLoader === "function" ? this.wasmWrapper.getTileLoader() : null;
+      let tiles;
+      if (tileLoader) {
+        tiles = await tileLoader(nodegroupId);
+      } else {
+        const resourceId = this.wasmWrapper.getResourceId();
+        if (!resourceId) {
+          return;
+        }
+        tiles = await this.model.staticStore.loadTiles(resourceId, nodegroupId);
+      }
+      this.wasmWrapper.appendFetchedTiles(tiles ?? [], nodegroupId);
+    }
+    async fetchNodegroups(nodegroupIds) {
+      if (nodegroupIds.length === 0) {
+        return;
+      }
+      const remaining = this.wasmWrapper.fetchFromTileSource(nodegroupIds);
+      for (const nodegroupId of remaining) {
+        await this.fetchNodegroupTiles(nodegroupId);
+      }
+    }
+    static _pendingKey(tileId, alias) {
+      return `${tileId ?? ""}/${alias}`;
+    }
+    assign(tile, node, key, value) {
+      node = node ?? this.model.getRootNode();
+      const child = this.model.getChildNodes(node.nodeid).get(key);
+      if (!child) {
+        throw Error(`${node.alias} has no child ${key}`);
+      }
+      const nodegroupId = child.nodegroup_id;
+      if (tile && tile.nodegroup_id === nodegroupId) {
+        this.recordEdit({
+          op: "set",
+          tile: tile.tileid,
+          alias: key,
+          value
+        });
+      } else {
+        const nodegroup = nodegroupId ? this.model.getNodegroupObjects().get(nodegroupId) : void 0;
+        if ((nodegroup == null ? void 0 : nodegroup.cardinality) === "n") {
+          throw Error(`${key} is multi-valued: push to its list, or set values on one of its items`);
+        }
+        this.recordEdit({
+          op: "set",
+          parent: (tile == null ? void 0 : tile.tileid) ?? null,
+          alias: key,
+          value
+        });
+      }
+      this._pendingValues.set(ResourceInstanceWrapper._pendingKey(tile == null ? void 0 : tile.tileid, key), value);
+    }
+    pendingValue(tileId, key) {
+      const pendingKey = ResourceInstanceWrapper._pendingKey(tileId, key);
+      return this._pendingValues.has(pendingKey) ? {
+        value: this._pendingValues.get(pendingKey)
+      } : void 0;
+    }
+    setPendingValue(tileId, key, value) {
+      this._pendingValues.set(ResourceInstanceWrapper._pendingKey(tileId, key), value);
+    }
+    recordEdit(op) {
+      const aliases = op.op === "set" ? [
+        op.alias
+      ] : op.op === "add" ? Object.keys(op.values ?? {}) : [];
+      for (const alias of aliases) {
+        this.wasmWrapper.checkEditable(alias);
+      }
+      this._pendingEdits.push(op);
+      return this._pendingEdits.length - 1;
+    }
+    hasPendingEdits() {
+      return this._pendingEdits.length > 0;
+    }
+    commitEdits() {
+      const ops = this._pendingEdits;
+      this.discardEdits();
+      if (ops.length === 0) {
+        return {
+          upserted: [],
+          removed: []
+        };
+      }
+      return this.wasmWrapper.applyEdits(ops);
+    }
+    discardEdits() {
+      this._pendingEdits = [];
+      this._pendingValues = /* @__PURE__ */ new Map();
+      this._pseudoCache = /* @__PURE__ */ new Map();
     }
     pruneResourceTiles() {
       this.wasmWrapper.pruneResourceTiles();
@@ -11493,15 +10781,13 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       const pathInfo = this.wasmWrapper.resolvePath(path);
       const { nodegroupId } = pathInfo;
       if (!this.wasmWrapper.isNodegroupLoaded(nodegroupId)) {
-        const resourceId = this.wasmWrapper.getResourceId();
-        if (resourceId) {
-          const tiles = await this.model.staticStore.loadTiles(resourceId, nodegroupId);
-          if (tiles && tiles.length > 0) {
-            this.wasmWrapper.appendTiles(tiles);
-          }
-        } else {
+        if (!this.wasmWrapper.getResourceId()) {
           return null;
         }
+        const toFetch = this.wasmWrapper.nodegroupsToFetch(nodegroupId);
+        await this.fetchNodegroups(toFetch.length ? toFetch : [
+          nodegroupId
+        ]);
       }
       const pseudo = this.getValuesAtPath(path, filterTileId);
       if (!pseudo) return null;
@@ -11681,6 +10967,14 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       this.resource = void 0;
     }
   }
+  function mutation(kind, params) {
+    return {
+      [kind]: params
+    };
+  }
+  function translatable(value) {
+    return typeof value === "string" ? value : value.toJSON();
+  }
   GraphMutator = class {
     constructor(baseGraph, options = {}) {
       __publicField(this, "baseGraph");
@@ -11690,24 +10984,6 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       this.mutations = [];
       this.autocreateCard = options.autocreateCard === void 0 || options.autocreateCard;
     }
-    _generateUuidv5(key) {
-      return generateUuidv5([
-        "graph",
-        this.baseGraph.graphid
-      ], key);
-    }
-    _generateEdge(fromNode, toNode, ontologyProperty, name, description) {
-      const edgeId = this._generateUuidv5(`node-${fromNode}-${toNode}`);
-      return createStaticEdge({
-        description: description || null,
-        domainnode_id: fromNode,
-        edgeid: edgeId,
-        graph_id: this.baseGraph.graphid,
-        name: name || null,
-        rangenode_id: toNode,
-        ontologyproperty: ontologyProperty
-      });
-    }
     addSemanticNode(parentAlias, alias, name, cardinality, ontologyClass, parentProperty, description, options = {}, config) {
       return this._addGenericNode(parentAlias, alias, name, cardinality, "semantic", ontologyClass, parentProperty, description, options, config);
     }
@@ -11716,151 +10992,68 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       if (collection == null ? void 0 : collection.id) {
         config["rdmCollection"] = collection.id;
       }
-      return this._addGenericNode(parentAlias, alias, name, cardinality, options.is_list ? "concept-list" : "concept", ontologyClass, parentProperty, description, options, config);
-    }
-    addCard(nodegroup, name, component, options = {}, config) {
-      const nodegroupId = typeof nodegroup === "string" ? nodegroup : nodegroup.nodegroupid;
-      const cardName = typeof name === "object" && name !== null && "toJSON" in name ? name : createStaticTranslatableString(name);
-      const cardComponent = component || DEFAULT_CARD_COMPONENT;
-      const helptext = (options == null ? void 0 : options.helptext) && (typeof options.helptext === "object" && options.helptext !== null && "toJSON" in options.helptext ? options.helptext : createStaticTranslatableString(options.helptext));
-      const helptitle = (options == null ? void 0 : options.helptitle) && (typeof options.helptitle === "object" && options.helptitle !== null && "toJSON" in options.helptitle ? options.helptitle : createStaticTranslatableString(options.helptitle));
-      const instructions = (options == null ? void 0 : options.instructions) && (typeof options.instructions === "object" && options.instructions !== null && "toJSON" in options.instructions ? options.instructions : createStaticTranslatableString(options.instructions));
-      this.mutations.push((graph) => {
-        const cards = graph.cards || [];
-        if (cards.filter((card2) => card2.nodegroup_id === nodegroup).length > 0) {
-          throw Error(`This nodegroup, ${nodegroupId}, already has a card`);
-        }
-        const cardId = this._generateUuidv5(`card-ng-${nodegroupId}`);
-        const card = createStaticCard({
-          active: options.active === void 0 ? true : options.active,
-          cardid: cardId,
-          component_id: cardComponent.id,
-          config: config || void 0,
-          constraints: options.constraints || [],
-          cssclass: options.cssclass || null,
-          description: options.description || null,
-          graph_id: graph.graphid,
-          helpenabled: !!(options.helpenabled || options.helpenabled === void 0 && (helptext || helptitle)),
-          helptext: helptext || createStaticTranslatableString(""),
-          helptitle: helptitle || createStaticTranslatableString(""),
-          instructions: instructions || createStaticTranslatableString(""),
-          is_editable: options.is_editable === void 0 ? true : options.is_editable,
-          name: cardName,
-          nodegroup_id: nodegroupId,
-          sortorder: options.sortorder || null,
-          visible: options.visible === void 0 ? true : options.visible
-        });
-        graph.pushCard(card);
-        return graph;
-      });
+      const { is_list, ...nodeOptions } = options;
+      return this._addGenericNode(parentAlias, alias, name, cardinality, is_list ? "concept-list" : "concept", ontologyClass, parentProperty, description, nodeOptions, config);
     }
     addStringNode(parentAlias, alias, name, cardinality, ontologyClass, parentProperty, description, options = {}, config) {
       return this._addGenericNode(parentAlias, alias, name, cardinality, "string", ontologyClass, parentProperty, description, options, config);
     }
-    _addNodegroup(parentAlias, nodegroupId, cardinality, name) {
-      this.mutations.push((graph) => {
-        const prnt = parentAlias === null ? graph.root : graph.nodes.find((node) => node.alias === parentAlias);
-        if (!prnt) {
-          throw Error(`Missing parent for nodegroup: ${parentAlias}`);
-        }
-        const nodegroup = createStaticNodegroup({
-          cardinality,
-          legacygroupid: null,
-          nodegroupid: nodegroupId,
-          parentnodegroup_id: prnt.nodegroup_id
-        });
-        graph.pushNodegroup(nodegroup);
-        return graph;
-      });
-      if (this.autocreateCard) {
-        this.addCard(nodegroupId, name || "(unnamed)");
-      }
+    addCard(nodegroup, name, component, options = {}, config) {
+      const optional = (value) => value ? translatable(value) : null;
+      this.mutations.push(mutation("AddCard", {
+        nodegroup_id: typeof nodegroup === "string" ? nodegroup : nodegroup.nodegroupid,
+        name: translatable(name),
+        component_id: (component == null ? void 0 : component.id) ?? null,
+        options: {
+          active: options.active ?? null,
+          cssclass: options.cssclass ?? null,
+          helpenabled: options.helpenabled ?? null,
+          helptext: optional(options.helptext),
+          helptitle: optional(options.helptitle),
+          instructions: optional(options.instructions),
+          is_editable: options.is_editable ?? null,
+          description: optional(options.description),
+          sortorder: options.sortorder ?? null,
+          visible: options.visible ?? null
+        },
+        config: config ?? null
+      }));
       return this;
     }
     _addGenericNode(parentAlias, alias, name, cardinality, datatype, ontologyClass, parentProperty, description, options = {}, config) {
-      const nodeId = this._generateUuidv5(`node-${alias}`);
-      const node = {
+      this.mutations.push(mutation("AddNode", {
+        parent_alias: parentAlias,
         alias,
-        config: config || {},
-        datatype,
-        description: description || void 0,
-        exportable: options.exportable || false,
-        fieldname: options.fieldname || void 0,
-        graph_id: this.baseGraph.graphid,
-        hascustomalias: options.hascustomalias || false,
-        is_collector: options.is_collector || false,
-        isrequired: options.isrequired || false,
-        issearchable: options.issearchable || true,
-        istopnode: options.istopnode || false,
         name,
-        nodegroup_id: "",
-        nodeid: nodeId,
-        parentproperty: parentProperty,
-        sortorder: options.sortorder || 0,
-        ontologyclass: ontologyClass,
-        sourcebranchpublication_id: void 0
-      };
-      if (cardinality === "n" || parentAlias === null) {
-        node.nodegroup_id = nodeId;
-        this._addNodegroup(parentAlias, node.nodegroup_id, cardinality, createStaticTranslatableString(name));
-      }
-      this.mutations.push((graph) => {
-        const prnt = parentAlias === null ? graph.root : graph.nodes.find((node2) => node2.alias === parentAlias);
-        if (!prnt) {
-          throw Error(`Parent node does not exist: ${parentAlias}`);
-        }
-        node.nodegroup_id = node.nodegroup_id !== "" ? node.nodegroup_id : prnt.nodegroup_id || "";
-        const newNode = createStaticNode(node);
-        graph.pushNode(newNode);
-        const edge = this._generateEdge(prnt.nodeid, nodeId, parentProperty);
-        graph.pushEdge(edge);
-        return graph;
-      });
-      if (this.autocreateCard && datatype !== "semantic") {
-        const widget = getDefaultWidgetForNode(node);
-        const config2 = widget.getDefaultConfig();
-        config2.label = name;
-        this.addWidgetToCard(nodeId, widget, name, config2, {
-          sortorder: node.sortorder,
-          silentSkip: true
-        });
-      }
+        cardinality,
+        datatype,
+        ontology_class: ontologyClass,
+        parent_property: parentProperty,
+        description: description ?? null,
+        config: config ?? null,
+        options
+      }));
       return this;
     }
     addWidgetToCard(nodeId, widget, name, config, options = {}) {
-      this.mutations.push((graph) => {
-        var _a2;
-        const node = graph.nodes.find((node2) => node2.nodeid === nodeId);
-        if (!node) {
-          throw Error(`Tried to add card to graph ${graph.graphid} for node ${nodeId} but it was not found.`);
-        }
-        const card = (_a2 = graph.cards) == null ? void 0 : _a2.find((card2) => card2.nodegroup_id === node.nodegroup_id);
-        if (card) {
-          const cardXNodeXWidgetId = this._generateUuidv5(`cxnxw-${nodeId}-${widget.id}`);
-          const cardXNodeXWidget = createStaticCardsXNodesXWidgets({
-            card_id: card.cardid,
-            config,
-            id: cardXNodeXWidgetId,
-            label: createStaticTranslatableString(name),
-            node_id: nodeId,
-            sortorder: options.sortorder || 0,
-            visible: options.visible === void 0 || options.visible,
-            widget_id: widget.id
-          });
-          graph.pushCardXNodeXWidget(cardXNodeXWidget);
-        } else if (!options.silentSkip) {
-          throw Error(`Failed adding widget for ${nodeId} to card for ${node.nodegroup_id} on graph ${graph.graphid}, as no card for this nodegroup (yet?)`);
-        }
-        return graph;
-      });
+      this.mutations.push(mutation("AddWidgetToCard", {
+        node_id: nodeId,
+        widget_id: widget.id,
+        label: name,
+        config,
+        sortorder: options.sortorder ?? null,
+        visible: options.visible ?? null
+      }));
       return this;
     }
     apply() {
-      if (!this.baseGraph.copy) {
-        throw Error("Attempt to build a mutator without a proper StaticGraph base graph");
-      }
-      const graph = this.baseGraph.copy();
-      return this.mutations.reduce((graph2, mutation) => mutation(graph2), graph);
+      return applyGraphMutations(this.baseGraph, JSON.stringify({
+        mutations: this.mutations,
+        options: {
+          autocreate_card: this.autocreateCard,
+          autocreate_widget: this.autocreateCard
+        }
+      }));
     }
   };
   ResourceModelWrapper = class {
@@ -11875,6 +11068,8 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       __publicField(this, "_nodesByAlias", null);
       __publicField(this, "_edges", null);
       __publicField(this, "_nodegroups", null);
+      __publicField(this, "_graph", null);
+      __publicField(this, "_edgeObjects", null);
       this.wkrm = wkrm;
       this._backend = createResourceModelWrapper(wkrm, graph, defaultAllow);
       this.pruneTiles = !defaultAllow;
@@ -11882,7 +11077,10 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       this.staticStore = store;
     }
     get graph() {
-      return this._backend.graph;
+      if (!this._graph) {
+        this._graph = this._backend.graph;
+      }
+      return this._graph;
     }
     set graph(g) {
       this._backend.graph = typeof g === "string" ? g : safeStringify(g);
@@ -11921,6 +11119,8 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       this._nodesByAlias = null;
       this._edges = null;
       this._nodegroups = null;
+      this._graph = null;
+      this._edgeObjects = null;
     }
     getRootNode() {
       return this._backend.getRootNode();
@@ -11963,28 +11163,12 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       }
       throw new Error("createPseudoNodeChild not available in current backend");
     }
-    createPseudoValue(alias, tile, parent) {
-      if (typeof this._backend.createPseudoValue === "function") {
-        return this._backend.createPseudoValue(alias, tile, parent);
-      }
-      throw new Error("createPseudoValue not available in current backend");
-    }
     getRoot() {
       const node = this.getRootNode();
       const pseudoNode = this.createPseudoNode(node.alias);
       return new NodeViewModel(pseudoNode, this);
     }
     buildNodes() {
-      if (getBackend() === "napi") {
-        this._backend.buildNodes();
-      } else {
-        const backend = this._backend;
-        if (typeof backend.buildNodesForGraph === "function") {
-          backend.buildNodesForGraph(this._backend.graph);
-        } else {
-          this._backend.buildNodes();
-        }
-      }
       this._clearCaches();
     }
     getNodeObjects() {
@@ -12026,7 +11210,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
     getBranchPublicationIds(accessible) {
       const accessibleOnly = accessible || false;
       const nodes = [
-        ...this.graph.nodes.values()
+        ...this.getNodeObjects().values()
       ];
       return [
         ...nodes.reduce((acc, node) => {
@@ -12043,10 +11227,18 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         }, /* @__PURE__ */ new Set())
       ];
     }
+    getEdgeObjects() {
+      if (!this._edgeObjects) {
+        this._edgeObjects = [
+          ...this.graph.edges
+        ];
+      }
+      return this._edgeObjects;
+    }
     getCollections(accessible) {
       const accessibleOnly = accessible || false;
       const nodes = [
-        ...this.graph.nodes.values()
+        ...this.getNodeObjects().values()
       ];
       return [
         ...nodes.reduce((acc, node) => {
@@ -12099,7 +11291,7 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
     }
     async *summaryGenerator(staticSummaries, lazy = true) {
       for await (const summary of staticSummaries) {
-        const summaryResource = StaticResource.fromSummary(summary);
+        const summaryResource = createStaticResourceFromSummary(summary);
         yield this.fromStaticResource(summaryResource, lazy, false);
       }
     }
@@ -12310,22 +11502,24 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
       }
       this._initialized = true;
     }
-    async loadGraph(modelClass, defaultAllow = true) {
-      let modelClassName;
-      if (typeof modelClass == "string") {
-        modelClassName = modelClass;
-      } else {
-        modelClassName = modelClass.name;
+    resolveWkrm(modelClassName) {
+      var _a2;
+      const exact = this.wkrms.get(modelClassName);
+      if (exact !== void 0) {
+        return exact;
       }
-      let wkrm = this.wkrms.get(modelClassName);
+      const target = normalizeModelName(modelClassName);
+      return [
+        ...this.wkrms.values()
+      ].find((w) => w.graphId === modelClassName) ?? ((_a2 = [
+        ...this.wkrms.entries()
+      ].find(([name]) => normalizeModelName(name) === target)) == null ? void 0 : _a2[1]);
+    }
+    async loadGraph(modelClass, defaultAllow = true) {
+      const modelClassName = typeof modelClass == "string" ? modelClass : modelClass.name;
+      const wkrm = this.resolveWkrm(modelClassName);
       if (wkrm === void 0) {
-        wkrm = [
-          ...this.wkrms.values()
-        ].find((wkrm2) => wkrm2.graphId === modelClassName);
-        if (wkrm === void 0) {
-          throw Error(`Only loading graphs for which metadata is present, not ${modelClassName}`);
-        }
-        modelClass = wkrm.modelClassName;
+        throw Error(`Only loading graphs for which metadata is present, not ${modelClassName}`);
       }
       const wrapper = this.graphs.get(wkrm.graphId);
       if (wrapper !== void 0) {
@@ -12336,19 +11530,11 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         throw Error(`Could not load graph ${wkrm.graphId}`);
       }
       nodeConfigManager.loadFromGraph(graph);
-      let model;
-      if (typeof modelClass == "string") {
-        modelClassName = modelClass;
-        model = makeResourceModelWrapper(void 0, wkrm, graph, defaultAllow, this.staticStore);
-      } else {
-        modelClassName = modelClass.name;
-        model = makeResourceModelWrapper(modelClass, wkrm, graph, defaultAllow, this.staticStore);
-      }
+      const model = typeof modelClass == "string" ? makeResourceModelWrapper(void 0, wkrm, graph, defaultAllow, this.staticStore) : makeResourceModelWrapper(modelClass, wkrm, graph, defaultAllow, this.staticStore);
       this.graphs.set(graph.graphid, model.prototype.__);
       return model.prototype.__;
     }
     async get(modelClass, defaultAllow = true) {
-      var _a2;
       let modelClassName;
       if (typeof modelClass == "string") {
         modelClassName = modelClass;
@@ -12356,17 +11542,9 @@ ${possiblePaths.map((p) => `  - ${p}`).join("\n")}`);
         modelClassName = modelClass.name;
       }
       await this.initialize(void 0);
-      let wkrm = this.wkrms.get(modelClassName);
+      const wkrm = this.resolveWkrm(modelClassName);
       if (wkrm === void 0) {
-        const target = normalizeModelName(modelClassName);
-        wkrm = [
-          ...this.wkrms.values()
-        ].find((w) => w.graphId === modelClassName) ?? ((_a2 = [
-          ...this.wkrms.entries()
-        ].find(([name]) => normalizeModelName(name) === target)) == null ? void 0 : _a2[1]);
-        if (wkrm === void 0) {
-          throw Error(`Cannot find model requested: ${modelClassName}`);
-        }
+        throw Error(`Cannot find model requested: ${modelClassName}`);
       }
       const wrapper = this.graphs.get(wkrm.graphId);
       if (wrapper === void 0) {
@@ -12984,7 +12162,7 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}
   }, Symbol.toStringTag, {
     value: "Module"
   }));
-  version = "2.0.0-alpha.137";
+  version = "2.0.0-alpha.145";
   registerAlizarinTimingGetter(getTimingStats);
   registerWasmTimingGetter(getWasmTimings);
   let _wasmReadyResolve;
@@ -13008,58 +12186,62 @@ ${value.split("\n").map((x) => `    ${x}`).join("\n")}
   slugify = slugify$1;
 })();
 export {
+  createResourceRegistry as $,
   AlizarinModel as A,
-  getTimingStats as B,
+  resetTimingStats as B,
   CUSTOM_DATATYPES as C,
-  logTimingStats as D,
-  index as E,
-  _parseSkosXml as F,
+  getTimingStats as D,
+  logTimingStats as E,
+  index as F,
   GraphManager as G,
-  _parseSkosXmlToCollection as H,
-  _collectionToSkosXml as I,
-  _collectionsToSkosXml as J,
-  CollectionMutator as K,
-  buildGraphFromModelCsvs as L,
-  validateModelCsvs as M,
-  buildResourcesFromBusinessCsv as N,
-  composeResourceLayers as O,
-  setBackend as P,
-  setNapiModule as Q,
+  _parseSkosXml as H,
+  _parseSkosXmlToCollection as I,
+  _collectionToSkosXml as J,
+  _collectionsToSkosXml as K,
+  CollectionMutator as L,
+  buildGraphFromModelCsvs as M,
+  validateModelCsvs as N,
+  buildResourcesFromBusinessCsv as O,
+  composeResourceLayers as P,
+  registerDeriveProvider$1 as Q,
   RDM as R,
   StaticStore as S,
-  setWasmModule as T,
-  getBackend as U,
-  autoDetectBackend as V,
-  createResourceRegistry as W,
-  parseStaticGraph as X,
-  getMemoryUsage as Y,
-  formatMemoryUsage as Z,
+  hasDeriveProvider$1 as T,
+  foldMayMatch$1 as U,
+  setBackend as V,
+  setNapiModule as W,
+  setWasmModule as X,
+  getBackend as Y,
+  autoDetectBackend as Z,
   _wrappedInitWasm as _,
   __tla,
-  registerResolvableDatatype as a,
-  graphManager as b,
+  registerNodeConfigAdapter as a,
+  parseStaticGraph as a0,
+  getMemoryUsage as a1,
+  formatMemoryUsage as a2,
+  registerResolvableDatatype as b,
   client as c,
-  slugify as d,
-  viewModels as e,
-  staticStore as f,
+  graphManager as d,
+  slugify as e,
+  viewModels as f,
   getCurrentLanguage$2 as g,
-  unregisterResolvableDatatype as h,
-  renderers as i,
-  interfaces as j,
-  createWKRM as k,
-  getWKRMClass as l,
-  nodeConfig as m,
+  staticStore as h,
+  unregisterResolvableDatatype as i,
+  renderers as j,
+  interfaces as k,
+  createWKRM as l,
+  getWKRMClass as m,
   nodeConfigManager as n,
-  ResourceModelWrapper as o,
-  GraphMutator as p,
-  setCurrentLanguage as q,
+  nodeConfig as o,
+  ResourceModelWrapper as p,
+  GraphMutator as q,
   registerExtensionHandler$1 as r,
   staticTypes as s,
-  getCurrentLanguage as t,
+  setCurrentLanguage as t,
   utils as u,
   version as v,
   wasmReady as w,
-  setWasmURL as x,
-  ensureWasmRdmCache as y,
-  resetTimingStats as z
+  getCurrentLanguage as x,
+  setWasmURL as y,
+  ensureWasmRdmCache as z
 };

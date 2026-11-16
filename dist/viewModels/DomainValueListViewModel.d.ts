@@ -8,8 +8,8 @@ export declare class DomainValueListViewModel extends Array implements IViewMode
     describeField: () => string;
     describeFieldGroup: () => string;
     _value: Promise<(DomainValueViewModel | null)[]> | null;
-    forJson(): Promise<Promise<import("../static-types").StaticDomainValue>[]>;
+    forJson(): Promise<import("../static-types").StaticDomainValue[]>;
     __forJsonCache(): null;
     static __create(tile: StaticTile, node: StaticNode, value: any): Promise<DomainValueListViewModel>;
-    __asTileData(): Promise<DomainValueViewModel[]>;
+    __asTileData(): Promise<string[]>;
 }

@@ -39,6 +39,21 @@ interface IInstanceWrapper<T extends IRIVM<T>> {
     resource: StaticResource | null | false;
     model: IModelWrapper<T>;
     loadNodes(aliases: Array<string>): Promise<void>;
+    fetchNodegroupTiles(nodegroupId: string | null): Promise<void>;
+    ensureTilesLoaded(): Promise<void>;
+    fetchNodegroups(nodegroupIds: string[]): Promise<void>;
+    assign(tile: StaticTile | null, node: StaticNode | null, key: string, value: any): void;
+    pendingValue(tileId: string | null | undefined, key: string): {
+        value: any;
+    } | undefined;
+    setPendingValue(tileId: string | null | undefined, key: string, value: any): void;
+    recordEdit(op: any): number;
+    hasPendingEdits(): boolean;
+    commitEdits(): {
+        upserted: StaticTile[];
+        removed: string[];
+    };
+    discardEdits(): void;
     allEntries(): MapIterator<[string, Array<IPseudo> | false | null]>;
     addPseudo(childNode: StaticNode, tile: StaticTile | null, node: StaticNode): IPseudo;
     setOrmAttribute(key: string, value: any): Promise<void>;
@@ -99,7 +114,6 @@ interface IModelWrapperBackend {
     pruneGraph(keepFunctions?: string[]): void;
     createPseudoNode?(alias?: string | null): any;
     createPseudoNodeChild?(childNode: string, parent: any): any;
-    createPseudoValue?(alias: string | null | undefined, tile: any, parent: any): any;
 }
 interface IModelWrapper<T extends IRIVM<T>> {
     all(params: {
@@ -115,7 +129,6 @@ interface IModelWrapper<T extends IRIVM<T>> {
     getEdges(): Map<string, string[]>;
     wkrm: IWKRM;
     getNodegroupName(nodegroupId: string): string;
-    createPseudoValue(alias: string | null | undefined, tile: any, parent: any): any;
 }
 interface IReferenceDataManager {
     retrieveCollection(id: string): Promise<StaticCollection>;
@@ -134,11 +147,7 @@ interface IPseudo {
     describeField: () => string;
     describeFieldGroup: () => string;
 }
-interface ISemantic extends IViewModel {
-    update(mapLike: Map<string, any> | {
-        [key: string]: any;
-    }): void;
-}
+type ISemantic = IViewModel;
 interface IGraphManager {
     getResource<T extends IRIVM<T>>(resourceId: string, lazy: boolean): Promise<T>;
 }

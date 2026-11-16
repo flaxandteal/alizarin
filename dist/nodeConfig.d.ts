@@ -6,7 +6,7 @@
  */
 import { INodeConfig } from './interfaces';
 import { StaticNode, StaticDomainValue, StaticGraph } from './static-types';
-import { WasmNodeConfigBoolean, WasmNodeConfigConcept, WasmNodeConfigDomain, WasmNodeConfigReference } from '../pkg/alizarin';
+import { WasmNodeConfigBoolean, WasmNodeConfigConcept, WasmNodeConfigDomain } from '../pkg/alizarin';
 declare class StaticNodeConfigBoolean implements INodeConfig {
     private _wasm;
     constructor(wasmConfig: WasmNodeConfigBoolean);
@@ -24,14 +24,13 @@ declare class StaticNodeConfigConcept implements INodeConfig {
     constructor(wasmConfig: WasmNodeConfigConcept);
     get rdmCollection(): string;
 }
-declare class StaticNodeConfigReference implements INodeConfig {
-    private _wasm;
-    constructor(wasmConfig: WasmNodeConfigReference);
-    get controlledList(): string;
-    get rdmCollection(): string;
-    get multiValue(): boolean;
-    getCollectionId(): string | undefined;
-}
+/**
+ * Builds an extension datatype's config from the config its registered handler
+ * supplies (a plain object whose shape the extension defines).
+ */
+type NodeConfigAdapter = (config: any) => INodeConfig;
+/** Register how an extension datatype's node config is presented. */
+declare function registerNodeConfigAdapter(datatype: string, adapter: NodeConfigAdapter): void;
 declare class StaticNodeConfigDomain implements INodeConfig {
     private _wasm;
     private _optionsCache;
@@ -43,7 +42,7 @@ declare class StaticNodeConfigDomain implements INodeConfig {
     getSelected(): StaticDomainValue | undefined;
     valueFromId(id: string): StaticDomainValue | undefined;
 }
-type NodeConfigType = StaticNodeConfigBoolean | StaticNodeConfigConcept | StaticNodeConfigDomain | StaticNodeConfigReference;
+type NodeConfigType = StaticNodeConfigBoolean | StaticNodeConfigConcept | StaticNodeConfigDomain | INodeConfig;
 declare class NodeConfigManager {
     private _backendManager;
     private _cache;
@@ -58,4 +57,5 @@ declare class NodeConfigManager {
     hasGraph(graphId: string): boolean;
 }
 declare const nodeConfigManager: NodeConfigManager;
-export { nodeConfigManager, StaticNodeConfigDomain, StaticNodeConfigBoolean, StaticNodeConfigConcept, StaticNodeConfigReference, NodeConfigManager, };
+export { nodeConfigManager, StaticNodeConfigDomain, StaticNodeConfigBoolean, StaticNodeConfigConcept, NodeConfigManager, registerNodeConfigAdapter, };
+export type { NodeConfigAdapter };

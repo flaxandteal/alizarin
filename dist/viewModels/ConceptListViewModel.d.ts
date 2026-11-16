@@ -8,8 +8,8 @@ export declare class ConceptListViewModel extends Array implements IViewModel {
     describeField: () => string;
     describeFieldGroup: () => string;
     _value: Promise<(ConceptValueViewModel | null)[]> | null;
-    forJson(): Promise<Promise<import("../static-types").StaticValue>[]>;
+    forJson(): Promise<import("../static-types").StaticValue[]>;
     __forJsonCache(getMeta: GetMeta): Promise<ConceptListCacheEntry>;
     static __create(tile: StaticTile, node: StaticNode, value: any, cacheEntry?: ConceptListCacheEntry | null): Promise<ConceptListViewModel>;
-    __asTileData(): Promise<ConceptValueViewModel[]>;
+    __asTileData(): Promise<string[]>;
 }
