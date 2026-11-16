@@ -26,6 +26,8 @@ def public_methods(cls) -> list:
 @pytest.mark.parametrize("name", sorted(CLASSES))
 def test_exactly_the_listed_methods(name):
     spec = CLASSES[name]
+    if spec["python"] is None:
+        pytest.skip(f"no native Python {name}: {spec['why']['python']}")
     cls = getattr(rust, spec["python"])
     expected = sorted(op["python"] for op in spec["operations"] if op["python"] is not None)
     assert public_methods(cls) == expected

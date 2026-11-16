@@ -32,7 +32,7 @@ describe(`binding parity [${backend} backend]`, () => {
   for (const [name, spec] of Object.entries((manifest as any).classes)) {
     const { operations } = spec as any;
 
-    test(`${name}: exactly the listed methods`, () => {
+    test.skipIf((spec as any)[backend] === null)(`${name}: exactly the listed methods`, () => {
       const cls = module[(spec as any)[backend]];
       expect(cls, `${(spec as any)[backend]} is exported`).toBeDefined();
       const expected = operations
@@ -46,7 +46,8 @@ describe(`binding parity [${backend} backend]`, () => {
       const unexplained = operations
         .flatMap((op: any) =>
           (['wasm', 'napi', 'python'] as Binding[])
-            .filter((b) => op[b] === null && !(op.why?.[b] || op.why?.all))
+            // A binding without the class at all explains it once, on the class.
+            .filter((b) => op[b] === null && !(op.why?.[b] || op.why?.all || (spec as any).why?.[b]))
             .map((b) => `${b} lacks ${op.wasm ?? op.napi ?? op.python}`),
         );
       expect(unexplained).toEqual([]);

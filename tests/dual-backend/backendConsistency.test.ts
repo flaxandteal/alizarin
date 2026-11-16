@@ -162,15 +162,12 @@ describe(`Backend consistency [${getBackend()}]`, () => {
       expect(typeof pseudoValue.isCollector).toBe('boolean');
     });
 
-    test("has .sortorder property", () => {
+    test("has core's .hasTile, .isInner and .isOuter flags (booleans)", () => {
+      // The rest of the surface is pinned by tests/binding-parity.json.
       expect(pseudoValue).toBeDefined();
-      // sortorder can be number or null
-      expect(() => pseudoValue.sortorder).not.toThrow();
-    });
-
-    test("has .valueLoaded property (boolean)", () => {
-      expect(pseudoValue).toBeDefined();
-      expect(typeof pseudoValue.valueLoaded).toBe('boolean');
+      expect(typeof pseudoValue.hasTile).toBe('boolean');
+      expect(typeof pseudoValue.isInner).toBe('boolean');
+      expect(typeof pseudoValue.isOuter).toBe('boolean');
     });
   });
 

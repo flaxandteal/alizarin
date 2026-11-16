@@ -1336,19 +1336,6 @@ impl StaticTile {
         Ok(StaticTile(data))
     }
 
-    pub fn copy(&self) -> StaticTile {
-        StaticTile(self.0.clone())
-    }
-
-    /// Extract the inner core type, consuming the wrapper
-    /// This avoids serialization overhead when transferring between WASM contexts
-    #[wasm_bindgen(js_name = intoCore)]
-    pub fn into_core(self) -> JsValue {
-        // Return self as JsValue - caller can use unchecked access
-        // This is a marker that the object is a valid StaticTile
-        JsValue::from(self)
-    }
-
     #[wasm_bindgen(js_name = ensureId)]
     pub fn ensure_id(&mut self) -> String {
         if self.0.tileid.is_none() {

@@ -204,7 +204,7 @@ fn semantic_child_to_js(result: SemanticChildResult) -> JsValue {
             PseudoList::from_rust(PseudoListInner::from_core(list)).into()
         }
         SemanticChildResult::Single(value) => {
-            PseudoValue::from_rust(PseudoValueInner::from_core(value, None)).into()
+            PseudoValue::from_rust(PseudoValueInner::from_core(value)).into()
         }
         SemanticChildResult::Empty => JsValue::NULL,
     }
@@ -590,7 +590,7 @@ impl WASMResourceInstanceWrapper {
         root_list
             .values
             .first()
-            .map(|v| PseudoValue::from_rust(PseudoValueInner::from_core(v.clone(), None)))
+            .map(|v| PseudoValue::from_rust(PseudoValueInner::from_core(v.clone())))
     }
 
     /// Convert the entire resource to JSON using Rust-side traversal.

@@ -1,5 +1,5 @@
 {
-  "_doc": "Every public method of each binding's wrapper classes, by binding. A null name must be explained in `why`: 'ecosystem: ...' for a deliberate difference, 'gap: ...' for one still to fix. tests/dual-backend/bindingParity.test.ts (WASM, NAPI) and crates/alizarin-python/tests/test_binding_parity.py check each binding has exactly these, so a method added to one binding only fails until it is listed here.",
+  "_doc": "Every public method of each binding's wrapper, pseudo-value and tile classes, by binding. A class a binding lacks is null, explained once in the class's `why`. A null name must be explained in `why`: 'ecosystem: ...' for a deliberate difference, 'gap: ...' for one still to fix. tests/dual-backend/bindingParity.test.ts (WASM, NAPI) and crates/alizarin-python/tests/test_binding_parity.py check each binding has exactly these, so a method added to one binding only fails until it is listed here.",
   "classes": {
     "instanceWrapper": {
       "wasm": "WASMResourceInstanceWrapper",
@@ -76,6 +76,64 @@
         { "wasm": "pruneGraph", "napi": "pruneGraph", "python": "prune_graph" },
         { "wasm": "setDefaultAllowAllNodegroups", "napi": "setDefaultAllowAllNodegroups", "python": "set_default_allow_all_nodegroups" },
         { "wasm": "setPermittedNodegroups", "napi": "setPermittedNodegroups", "python": "set_permitted_nodegroups" }
+      ]
+    },
+    "pseudoValue": {
+      "wasm": "PseudoValue",
+      "napi": "NapiPseudoValue",
+      "python": "RustPseudoValue",
+      "operations": [
+        { "wasm": "clear", "napi": "clear", "python": "clear" },
+        { "wasm": "datatype", "napi": "datatype", "python": "datatype" },
+        { "wasm": "hasTile", "napi": "hasTile", "python": "has_tile" },
+        { "wasm": "independent", "napi": "independent", "python": "independent" },
+        { "wasm": "inner", "napi": "inner", "python": "get_inner" },
+        { "wasm": "isCollector", "napi": "isCollector", "python": "is_collector" },
+        { "wasm": "isInner", "napi": "isInner", "python": "is_inner" },
+        { "wasm": "isIterable", "napi": "isIterable", "python": "is_iterable" },
+        { "wasm": "isOuter", "napi": "isOuter", "python": "is_outer" },
+        { "wasm": "name", "napi": "name", "python": "name" },
+        { "wasm": "node", "napi": "node", "python": "get_node_json" },
+        { "wasm": "nodeAlias", "napi": "nodeAlias", "python": "alias" },
+        { "wasm": "nodeId", "napi": "nodeId", "python": "node_id" },
+        { "wasm": "nodegroupId", "napi": "nodegroupId", "python": "nodegroup_id" },
+        { "wasm": "tile", "napi": "tile", "python": "get_tile_json" },
+        { "wasm": "tileData", "napi": "tileData", "python": "get_tile_data" },
+        { "wasm": "tileId", "napi": "tileId", "python": "tile_id" },
+        { "wasm": "toSnapshot", "napi": "toSnapshot", "python": null, "why": { "python": "ecosystem: TS caches a snapshot to save boundary crossings; Python reads the properties" } },
+        { "wasm": null, "napi": null, "python": "set_inner", "why": { "wasm": "ecosystem: Python's ORM sets the inner of the pseudo it wraps; TS reads core's", "napi": "ecosystem: Python's ORM sets the inner of the pseudo it wraps; TS reads core's" } }
+      ]
+    },
+    "pseudoList": {
+      "wasm": "PseudoList",
+      "napi": "NapiPseudoList",
+      "python": "RustPseudoList",
+      "operations": [
+        { "wasm": "getAllValues", "napi": "getAllValues", "python": "get_all_values" },
+        { "wasm": "getValue", "napi": "getValue", "python": null, "why": { "python": "ecosystem: Python indexes the list (list[i])" } },
+        { "wasm": "isIterable", "napi": "isIterable", "python": null, "why": { "python": "ecosystem: a Python list is iterable" } },
+        { "wasm": "isLoaded", "napi": "isLoaded", "python": "is_loaded" },
+        { "wasm": "isSingle", "napi": "isSingle", "python": "is_single" },
+        { "wasm": "nodeAlias", "napi": "nodeAlias", "python": "alias" },
+        { "wasm": "totalValues", "napi": "totalValues", "python": null, "why": { "python": "ecosystem: Python takes len(list)" } },
+        { "wasm": null, "napi": null, "python": "add_value", "why": { "wasm": "ecosystem: Python's ORM builds its lists; TS takes core's", "napi": "ecosystem: Python's ORM builds its lists; TS takes core's" } },
+        { "wasm": null, "napi": null, "python": "matching_entries", "why": { "wasm": "ecosystem: Python's ORM filters semantic children here; TS through getSemanticChildValue", "napi": "ecosystem: Python's ORM filters semantic children here; TS through getSemanticChildValue" } }
+      ]
+    },
+    "staticTile": {
+      "wasm": "StaticTile",
+      "napi": "NapiStaticTile",
+      "python": null,
+      "why": { "python": "ecosystem: Python's StaticTile is a Python dataclass, not a native class" },
+      "operations": [
+        { "wasm": "data", "napi": "data", "python": null },
+        { "wasm": "ensureId", "napi": "ensureId", "python": null },
+        { "wasm": "nodegroup_id", "napi": "nodegroup_id", "python": null },
+        { "wasm": "parenttile_id", "napi": "parenttile_id", "python": null },
+        { "wasm": "provisionaledits", "napi": "provisionaledits", "python": null },
+        { "wasm": "resourceinstance_id", "napi": "resourceinstance_id", "python": null },
+        { "wasm": "sortorder", "napi": "sortorder", "python": null },
+        { "wasm": "tileid", "napi": "tileid", "python": null }
       ]
     }
   }

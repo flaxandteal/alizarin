@@ -246,24 +246,14 @@ export declare class NapiPseudoValue {
   get nodegroupId(): string | null
   get isCollector(): boolean
   get independent(): boolean
-  get exportable(): boolean
-  get isrequired(): boolean
-  get issearchable(): boolean
-  get ontologyclass(): any
-  get hascustomalias(): boolean
-  get parentproperty(): string | null
-  get description(): any
+  /** Core's structural flags, as on WASM and Python. */
+  get hasTile(): boolean
+  get isInner(): boolean
+  get isOuter(): boolean
   get name(): any
   get tileId(): string | null
   get tileData(): any
-  get valueLoaded(): boolean
-  hasTileData(): boolean
-  setTileData(value: any): void
-  get childNodeAliases(): any
-  getChildNodeId(index: number): string | null
   isIterable(): boolean
-  /** Get sortorder from the tile */
-  get sortorder(): any
   /** Snapshot all properties in one call (avoids multiple N-API boundary crossings) */
   toSnapshot(): any
   /** Clear tile data */
@@ -272,8 +262,6 @@ export declare class NapiPseudoValue {
   set tile(tile?: NapiStaticTile | undefined | null)
   /** Get the inner PseudoValueCore wrapped as NapiPseudoValue. */
   get inner(): NapiPseudoValue | null
-  /** Returns null — value is managed JS-side via _cachedValue. */
-  get value(): any
 }
 export declare class NapiPseudoList {
   get nodeAlias(): string
@@ -506,7 +494,6 @@ export declare class NapiResourceModelWrapper {
   /** The model's graph, as a `NapiStaticGraph` (as WASM gives its StaticGraph). */
   get graph(): NapiStaticGraph
   set graph(graphJson: string)
-  buildNodesForGraph(graphJson: string): void
   /** Get the root node of the graph. */
   getRootNode(): any
   /**

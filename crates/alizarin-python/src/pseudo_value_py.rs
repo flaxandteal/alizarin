@@ -1,4 +1,4 @@
-use crate::python_json::{json_to_python, python_to_json};
+use crate::python_json::json_to_python;
 /// PyO3 bindings for PseudoValueCore/PseudoListCore from alizarin-core
 ///
 /// These provide Rust-backed pseudo values for Python, matching the
@@ -147,12 +147,6 @@ impl PyPseudoValue {
         self.inner.independent
     }
 
-    /// Get child node IDs
-    #[getter]
-    fn child_node_ids(&self) -> Vec<String> {
-        self.inner.child_node_ids.clone()
-    }
-
     /// Get the tile as JSON string (if present)
     fn get_tile_json(&self) -> PyResult<Option<String>> {
         match &self.inner.tile {
@@ -160,22 +154,6 @@ impl PyPseudoValue {
                 let json = serde_json::to_string(tile.as_ref()).map_err(|e| {
                     PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
                         "Failed to serialize tile: {}",
-                        e
-                    ))
-                })?;
-                Ok(Some(json))
-            }
-            None => Ok(None),
-        }
-    }
-
-    /// Get the tile data as JSON string (if present)
-    fn get_tile_data_json(&self) -> PyResult<Option<String>> {
-        match &self.inner.tile_data {
-            Some(data) => {
-                let json = serde_json::to_string(data).map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                        "Failed to serialize tile_data: {}",
                         e
                     ))
                 })?;
@@ -215,60 +193,15 @@ impl PyPseudoValue {
         self.inner.inner = Some(Box::new(inner.inner.clone()));
     }
 
-    /// Mark this as an inner node
-    fn set_is_inner(&mut self, is_inner: bool) {
-        self.inner.is_inner = is_inner;
+    /// Clear this node's value. As WASM's and NAPI's `clear`.
+    fn clear(&mut self) {
+        self.inner.tile_data = None;
     }
 
-    /// Set tile data from JSON
-    fn set_tile_data_json(&mut self, json: &str) -> PyResult<()> {
-        let data: serde_json::Value = serde_json::from_str(json).map_err(|e| {
-            PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                "Failed to parse tile_data: {}",
-                e
-            ))
-        })?;
-        self.inner.tile_data = Some(data);
-        Ok(())
-    }
-
-    /// Set tile data from Python object
-    fn set_tile_data(&mut self, py: Python<'_>, data: &Bound<'_, PyAny>) -> PyResult<()> {
-        let json_value = python_to_json(py, data)?;
-        self.inner.tile_data = Some(json_value);
-        Ok(())
-    }
-
-    /// Serialize this value in display mode (resolves UUIDs to labels).
-    ///
-    /// Uses the global RDM cache for concept resolution.
-    /// Only serializes this node's own tile_data — no child traversal.
-    ///
-    /// Args:
-    ///     node_config_manager: Optional PyNodeConfigManager for domain/boolean lookups
-    ///     language: Language code (defaults to "en")
-    #[pyo3(signature = (node_config_manager=None, language=None, resource_registry=None))]
-    fn to_display_value(
-        &self,
-        py: Python<'_>,
-        node_config_manager: Option<&crate::node_config_py::PyNodeConfigManager>,
-        language: Option<String>,
-        resource_registry: Option<&crate::ResourceRegistry>,
-    ) -> PyResult<PyObject> {
-        let lang = language.unwrap_or_else(|| "en".to_string());
-        // Shared, not copied (get_global_rdm_cache copies it).
-        let global_rdm = alizarin_core::get_global_rdm_cache_arc();
-        let rdm_inner = global_rdm.as_deref();
-        let ncm = node_config_manager.map(|m| m.inner());
-        let core_registry = resource_registry.map(|r| r.inner());
-        let result = self.inner.serialize_display(
-            &lang,
-            ncm,
-            rdm_inner.map(|r| r as &dyn alizarin_core::type_serialization::ExternalResolver),
-            core_registry
-                .map(|r| r as &dyn alizarin_core::type_serialization::ResourceDisplayResolver),
-        );
-        json_to_python(py, &result)
+    /// Whether this node's datatype is a list. Core's, as WASM's and NAPI's
+    /// `isIterable`.
+    fn is_iterable(&self) -> bool {
+        alizarin_core::is_iterable_datatype(&self.inner.node.datatype)
     }
 
     fn __repr__(&self) -> String {
@@ -319,16 +252,6 @@ impl PyPseudoList {
     fn new(alias: String, is_single: bool) -> Self {
         PyPseudoList {
             inner: PseudoListCore::new_with_cardinality(alias, is_single),
-        }
-    }
-
-    /// Create from a list of PyPseudoValue objects
-    #[staticmethod]
-    #[pyo3(signature = (alias, values, is_single=false))]
-    fn from_values(alias: String, values: Vec<PyPseudoValue>, is_single: bool) -> Self {
-        let cores: Vec<PseudoValueCore> = values.into_iter().map(|v| v.inner).collect();
-        PyPseudoList {
-            inner: PseudoListCore::from_values_with_cardinality(alias, cores, is_single),
         }
     }
 
@@ -408,12 +331,6 @@ impl PyPseudoList {
             .into_iter()
             .map(|v| PyPseudoValue { inner: v.clone() })
             .collect()
-    }
-
-    /// Merge another list into this one
-    fn merge(&mut self, other: &PyPseudoList) {
-        let other_clone = other.inner.clone();
-        self.inner.merge(other_clone);
     }
 
     fn __repr__(&self) -> String {

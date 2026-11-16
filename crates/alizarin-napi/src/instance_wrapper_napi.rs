@@ -489,39 +489,22 @@ impl NapiPseudoValue {
         self.inner.independent
     }
 
+    // The node's own fields are on `node`, not repeated here.
+
+    /// Core's structural flags, as on WASM and Python.
     #[napi(getter)]
-    pub fn exportable(&self) -> bool {
-        self.inner.node.exportable
+    pub fn has_tile(&self) -> bool {
+        self.inner.has_tile()
     }
 
     #[napi(getter)]
-    pub fn isrequired(&self) -> bool {
-        self.inner.node.isrequired
+    pub fn is_inner(&self) -> bool {
+        self.inner.is_inner
     }
 
     #[napi(getter)]
-    pub fn issearchable(&self) -> bool {
-        self.inner.node.issearchable
-    }
-
-    #[napi(getter)]
-    pub fn ontologyclass(&self) -> serde_json::Value {
-        serde_json::to_value(&self.inner.node.ontologyclass).unwrap_or(serde_json::Value::Null)
-    }
-
-    #[napi(getter)]
-    pub fn hascustomalias(&self) -> bool {
-        self.inner.node.hascustomalias
-    }
-
-    #[napi(getter)]
-    pub fn parentproperty(&self) -> Option<String> {
-        self.inner.node.parentproperty.clone()
-    }
-
-    #[napi(getter)]
-    pub fn description(&self) -> serde_json::Value {
-        serde_json::to_value(&self.inner.node.description).unwrap_or(serde_json::Value::Null)
+    pub fn is_outer(&self) -> bool {
+        self.inner.is_outer()
     }
 
     #[napi(getter)]
@@ -544,47 +527,9 @@ impl NapiPseudoValue {
             .unwrap_or(serde_json::Value::Null)
     }
 
-    #[napi(getter)]
-    pub fn value_loaded(&self) -> bool {
-        self.inner.tile.is_some()
-    }
-
-    #[napi]
-    pub fn has_tile_data(&self) -> bool {
-        self.inner.tile_data.is_some()
-    }
-
-    #[napi]
-    pub fn set_tile_data(&mut self, #[napi(ts_arg_type = "any")] value: crate::JsonArg) {
-        self.inner.tile_data = Some(value.0);
-    }
-
-    // -- Relationship getters --
-
-    #[napi(getter)]
-    pub fn child_node_aliases(&self) -> serde_json::Value {
-        serde_json::to_value(&self.inner.child_node_ids).unwrap_or(serde_json::Value::Null)
-    }
-
-    #[napi]
-    pub fn get_child_node_id(&self, index: u32) -> Option<String> {
-        self.inner.child_node_ids.get(index as usize).cloned()
-    }
-
     #[napi]
     pub fn is_iterable(&self) -> bool {
         alizarin_core::is_iterable_datatype(&self.inner.node.datatype)
-    }
-
-    /// Get sortorder from the tile
-    #[napi(getter)]
-    pub fn sortorder(&self) -> serde_json::Value {
-        self.inner
-            .tile
-            .as_ref()
-            .and_then(|t| t.sortorder)
-            .map(|s| serde_json::Value::Number(s.into()))
-            .unwrap_or(serde_json::Value::Null)
     }
 
     /// Snapshot all properties in one call (avoids multiple N-API boundary crossings)
@@ -633,12 +578,6 @@ impl NapiPseudoValue {
             .inner
             .as_ref()
             .map(|i| NapiPseudoValue { inner: *i.clone() })
-    }
-
-    /// Returns null — value is managed JS-side via _cachedValue.
-    #[napi(getter)]
-    pub fn value(&self) -> serde_json::Value {
-        serde_json::Value::Null
     }
 }
 

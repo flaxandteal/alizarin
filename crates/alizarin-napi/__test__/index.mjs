@@ -390,14 +390,11 @@ describe('NapiPseudoValue property names', () => {
     assert.equal(typeof pseudoValue.isCollector, 'boolean');
   });
 
-  it('exposes sortorder', () => {
-    // sortorder can be number or null — just verify it doesn't throw
-    const _sortorder = pseudoValue.sortorder;
-    assert.ok(true);
-  });
-
-  it('exposes valueLoaded (boolean)', () => {
-    assert.equal(typeof pseudoValue.valueLoaded, 'boolean');
+  it("exposes core's hasTile, isInner and isOuter flags (booleans)", () => {
+    // The rest of the surface is pinned by tests/binding-parity.json.
+    assert.equal(typeof pseudoValue.hasTile, 'boolean');
+    assert.equal(typeof pseudoValue.isInner, 'boolean');
+    assert.equal(typeof pseudoValue.isOuter, 'boolean');
   });
 });
 

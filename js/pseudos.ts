@@ -122,10 +122,6 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     this._snapshot = null;
   }
 
-  get value(): any {
-    return this._wasm.value;
-  }
-
   get valueLoaded(): boolean | undefined {
     const v = this.getSnapshot().valueLoaded;
     if (v === undefined) return undefined;
@@ -226,7 +222,6 @@ class PseudoValue<VM extends IViewModel> implements IPseudo {
     }
     this._wasm = wasm;
     this.parent = parent;
-    this._wasm.parent = parent; // Store in Rust too for callbacks
   }
 
   getParentTileId(): string | null {
