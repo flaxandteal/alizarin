@@ -127,7 +127,7 @@ pub struct NodeConfigDomain {
     #[serde(default)]
     pub options: Vec<StaticDomainValue>,
     /// i18n configuration
-    #[serde(default)]
+    #[serde(default, serialize_with = "crate::sorted_serde::sorted_map")]
     pub i18n_config: HashMap<String, String>,
 }
 

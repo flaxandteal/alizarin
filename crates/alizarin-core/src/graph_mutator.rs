@@ -5030,7 +5030,7 @@ pub struct GraphInstruction {
     #[serde(default)]
     pub object: String,
     /// Additional parameters
-    #[serde(default)]
+    #[serde(default, serialize_with = "crate::sorted_serde::sorted_map")]
     pub params: HashMap<String, serde_json::Value>,
 }
 

@@ -23,7 +23,7 @@ pub struct StaticNode {
     pub exportable: bool,
     #[serde(default)]
     pub sortorder: Option<i32>,
-    #[serde(default)]
+    #[serde(default, serialize_with = "crate::sorted_serde::sorted_map")]
     pub config: HashMap<String, serde_json::Value>,
     #[serde(default)]
     pub parentproperty: Option<String>,

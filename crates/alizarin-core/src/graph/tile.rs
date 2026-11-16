@@ -180,13 +180,17 @@ pub struct StaticTile {
     pub data: BTreeMap<String, serde_json::Value>,
     pub nodegroup_id: String,
     pub resourceinstance_id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    // Arches' shape, on every backend: the keys Arches' business-data importer
+    // indexes directly (`tileid`, `parenttile_id`, `sortorder`) are always
+    // written, `null` when empty; `provisionaledits`, which it doesn't read,
+    // is left out when empty. See notes/backend-support-matrix.md.
+    #[serde(default)]
     pub tileid: Option<String>,
     #[serde(default)]
     pub parenttile_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provisionaledits: Option<Vec<serde_json::Value>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub sortorder: Option<i32>,
 }
 

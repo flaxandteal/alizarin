@@ -16,7 +16,9 @@ pub struct StaticConstraint {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct StaticPublication {
     pub graph_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    // Always written, `null` when empty, as Arches' graph export writes it
+    // (and as a graph's raw `publication` keeps it).
+    #[serde(default)]
     pub notes: Option<String>,
     pub publicationid: String,
     pub published_time: String,

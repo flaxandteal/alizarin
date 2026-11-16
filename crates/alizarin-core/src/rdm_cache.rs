@@ -89,7 +89,11 @@ pub struct RdmConcept {
     )]
     pub pref_label: BTreeMap<String, RdmValue>,
     /// Alternative labels by language code
-    #[serde(default, rename = "altLabels")]
+    #[serde(
+        default,
+        rename = "altLabels",
+        serialize_with = "crate::sorted_serde::sorted_map"
+    )]
     pub alt_labels: HashMap<String, Vec<String>>,
     /// Broader concepts (parent IDs)
     #[serde(default)]
@@ -98,7 +102,11 @@ pub struct RdmConcept {
     #[serde(default)]
     pub narrower: Vec<String>,
     /// Scope notes by language
-    #[serde(default, rename = "scopeNote")]
+    #[serde(
+        default,
+        rename = "scopeNote",
+        serialize_with = "crate::sorted_serde::sorted_map"
+    )]
     pub scope_note: HashMap<String, String>,
     /// Explicit sort order from the source data. Respected on export when set;
     /// falls back to concept id so output is deterministic either way.
