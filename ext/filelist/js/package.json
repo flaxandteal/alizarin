@@ -1,6 +1,6 @@
 {
   "name": "@alizarin/filelist",
-  "version": "2.0.0-alpha.146",
+  "version": "2.0.0-alpha.147",
   "description": "Alizarin display serializers and view models for file-list datatypes",
   "license": "AGPL-3.0",
   "repository": {
@@ -23,9 +23,9 @@
     "test": "cd ../../.. && NODE_OPTIONS='--experimental-wasm-modules' npx vitest --run ext/filelist/js/tests/filelist.test.ts"
   },
   "peerDependencies": {
-    "alizarin": "2.0.0-alpha.146",
-    "@alizarin/napi": "2.0.0-alpha.146",
-    "@alizarin/filelist-napi": "2.0.0-alpha.146"
+    "alizarin": "2.0.0-alpha.147",
+    "@alizarin/napi": "2.0.0-alpha.147",
+    "@alizarin/filelist-napi": "2.0.0-alpha.147"
   },
   "peerDependenciesMeta": {
     "@alizarin/napi": {

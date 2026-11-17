@@ -1,6 +1,6 @@
 [package]
 name = "alizarin-geo-wasm"
-version = "2.0.0-alpha.146"
+version = "2.0.0-alpha.147"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 description = "WASM bindings for alizarin-geo-core (geojson validation)"
@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 alizarin-geo-core = { path = "../core" }
 # Its cycle-safe js_json for arguments from JavaScript.
-alizarin-extension-api = { path = "../../../crates/alizarin-extension-api", version = "=2.0.0-alpha.146", features = ["wasm"] }
+alizarin-extension-api = { path = "../../../crates/alizarin-extension-api", version = "=2.0.0-alpha.147", features = ["wasm"] }
 wasm-bindgen = "0.2.84"
 # To call the host's JS graph lookup from the UTM derive provider.
 js-sys = "0.3"
