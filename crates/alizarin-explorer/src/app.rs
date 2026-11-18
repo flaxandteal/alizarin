@@ -733,18 +733,12 @@ impl App {
         self.tree_nodes[self.tree_selected].expanded = false;
 
         // Remove children
-        let mut remove_count = 0;
-        for i in (self.tree_selected + 1)..self.tree_nodes.len() {
-            if self.tree_nodes[i].depth > current_depth {
-                remove_count += 1;
-            } else {
-                break;
-            }
-        }
-
-        for _ in 0..remove_count {
-            self.tree_nodes.remove(self.tree_selected + 1);
-        }
+        let start = self.tree_selected + 1;
+        let remove_count = self.tree_nodes[start..]
+            .iter()
+            .take_while(|node| node.depth > current_depth)
+            .count();
+        self.tree_nodes.drain(start..start + remove_count);
     }
 
     pub fn selected_graph(&self) -> Option<&StaticGraph> {

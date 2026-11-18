@@ -2,7 +2,9 @@ import { resolve } from "path";
 import { readFileSync } from "fs";
 import { defineConfig } from "vitest/config";
 
-function wasmInlinePlugin() {
+// Extension packages import their `.wasm` as bytes for `initSync`, as the build
+// inlines it. Shared with vitest.napi.config.js.
+export function wasmInlinePlugin() {
   return {
     name: 'wasm-inline',
     enforce: 'pre',

@@ -1,5 +1,6 @@
 import { resolve } from "path";
 import { configDefaults, defineConfig } from "vitest/config";
+import { wasmInlinePlugin } from "./vitest.config.js";
 
 // Every TS test runs on NAPI too, unless listed here. Shrink the "to port" and
 // "NAPI gap" lists as they're fixed; only "WASM-only by design" should remain.
@@ -21,6 +22,8 @@ const NAPI_EXCLUDED = [
 ];
 
 export default defineConfig({
+  // Extensions' own WASM still loads under NAPI (their JS helpers use it).
+  plugins: [wasmInlinePlugin()],
   define: {
     __ALIZARIN_VERSION__: JSON.stringify("test"),
   },

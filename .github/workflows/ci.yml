@@ -255,12 +255,13 @@ jobs:
       - name: Validate MDX syntax
         run: npx --yes remark-cli docs/ --use remark-mdx --frail --quiet
 
-  # Trigger docs site rebuild when docs change on main
+  # Trigger a docs site rebuild on pushes to the branch it builds from
+  # (alizarin-docs' ALIZARIN_DOCS_REF: release/2.0 while 2.0 is developed there).
   notify-docs:
     name: Notify docs site
     runs-on: ubuntu-latest
     needs: [docs-lint]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release/2.0') && github.event_name == 'push'
     steps:
       - name: Generate token
         id: app-token
