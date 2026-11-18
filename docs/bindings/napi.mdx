@@ -8,8 +8,10 @@ The NAPI binding provides a native Node.js addon built with `napi-rs`. It serves
 ## Installation
 
 ```bash
-npm install @alizarin/napi
+npm install alizarin@alpha @alizarin/napi@alpha
 ```
+
+`@alizarin/napi` is a backend for the `alizarin` ORM, so install both, from the 2.0 `alpha` tag (`latest` is an old line).
 
 Pre-built binaries are included for:
 - Linux x64
@@ -24,15 +26,13 @@ Pre-built binaries are also available from [GitHub Releases](https://github.com/
 The NAPI backend is used through the same JS/TS ORM API. Switch backends with:
 
 ```typescript
-import { setBackend, setNapiModule } from 'alizarin';
+import { setNapiModule, graphManager } from 'alizarin';
 
-// Load the native addon
-const napi = require('@alizarin/napi');
-setNapiModule(napi);
-setBackend('napi');
+// Register the native addon; this also selects the NAPI backend
+setNapiModule(require('@alizarin/napi'));
 
 // Now all ORM operations use native code
-const Person = await gm.loadGraph('Person');
+const Person = await graphManager.loadGraph('Person');
 const people = await Person.all(); // native speed
 ```
 
@@ -46,6 +46,8 @@ The NAPI module also exposes lower-level classes for direct use without the ORM 
 |-------|-------------|
 | `NapiStaticGraph` | Parse and register graph definitions |
 | `NapiStaticResourceRegistry` | Index and query resources with native performance |
+| `NapiResourceModelWrapper` | Graph-level model wrapper: nodes, nodegroups, permissions |
+| `NapiResourceInstanceWrapper` | Per-resource wrapper the ORM drives: tile loading, `checkEditable` / `applyEdits`, `toJson` / `toDisplayJson`, card serialisation |
 | `NapiPrebuildExporter` | Export graphs and resources to a prebuild directory |
 | `NapiRdmCache` | Reference data concept cache |
 
@@ -94,17 +96,22 @@ exporter.exportAllGraphs('/path/to/output');
 | Function | Description |
 |----------|-------------|
 | `buildGraphFromCsvs(graphCsv, nodesCsv, collectionsCsv, rdmNamespace)` | Build graph definition from CSV strings |
-| `buildBusinessDataFromCsv(csvData, graphJson, collectionsJson)` | Build resource instances from CSV data |
+| `buildBusinessDataFromCsv(csvData, graphJson, collectionsJson, ...)` | Build resource instances from CSV data |
+| `composeResourceLayers(resourcesJson, baseGraphJson, overlayGraphsJson, strict?)` | Compose [resource layers](/docs/resource-layers) |
+| `resourceLifecycleState(resourceJson, lifecycleJson)` | Resolve a resource's [lifecycle](/docs/lifecycles) state |
+| `transitionResourceLifecycle(resourceJson, lifecycleJson, target, strict = true)` | Move a resource to another lifecycle state |
 | `importPrebuild(prebuildDir, baseUri)` | Load graphs and resources from a prebuild directory |
 | `extensionCoerce(datatype, value, config)` | Call extension coercion |
 | `extensionRenderDisplay(datatype, tileData, language)` | Call extension display renderer |
+
+The module-level functions take JSON strings; through the ORM you would call `resourceLifecycleState` / `transitionResourceLifecycle` from `alizarin` instead, which accept objects and route to NAPI when it is the selected backend. As on every backend, results are core's JSON, with `null` (never `undefined`) for absent values.
 
 ## When to Use NAPI vs WASM
 
 | | WASM | NAPI |
 |-|------|------|
 | **Runtime** | Browser + Node.js | Node.js only |
-| **Install** | `npm install alizarin` (bundled) | `npm install @alizarin/napi` |
+| **Install** | `npm install alizarin@alpha` (WASM binary ships in the package) | `npm install alizarin@alpha @alizarin/napi@alpha` |
 | **Performance** | Good | Better (native) |
 | **Memory** | Limited by WASM linear memory | Full system memory |
 | **Dataset size** | Small to medium | Any size |

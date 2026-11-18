@@ -10,8 +10,10 @@ The primary Alizarin binding. A full ORM layer over Arches graph data, powered b
 ## Installation
 
 ```bash
-npm install alizarin
+npm install alizarin@alpha
 ```
+
+The `alpha` tag is the 2.0 line; `latest` still points at 1.0.
 
 Works in browsers and Node.js. Node.js requires `--experimental-wasm-modules`.
 
@@ -37,6 +39,13 @@ for (const person of people) {
   console.log(await person.birthDate);     // DateViewModel
   console.log(await person.role);          // ConceptValueViewModel — a String subclass; stringifies to its label
 }
+```
+
+Values are edited by assignment and applied with `$commit()`, which checks them against the graph, coerces them through core and returns the tile changes for you to persist:
+
+```typescript
+person.forename = 'Áine';                 // throws here if the graph rules it out
+const { upserted, removed } = person.$commit();  // or person.$discard()
 ```
 
 Run a live version against the sample Aonach Mór heritage-risk data (press ▶):
@@ -71,9 +80,11 @@ These client classes are exposed under the `client` namespace export (`import { 
 | `StringViewModel` | `string` |
 | `NumberViewModel` | `number` |
 | `DateViewModel` | `date` |
-| `ConceptValueViewModel` | `concept`, `concept-list` |
+| `NonLocalizedStringViewModel` | `non-localized-string` |
+| `ConceptValueViewModel` / `ConceptListViewModel` | `concept` / `concept-list` |
+| `DomainValueViewModel` / `DomainValueListViewModel` | `domain-value` / `domain-value-list` |
 | `GeoJSONViewModel` | `geojson-feature-collection` |
-| `ResourceInstanceListViewModel` | `resource-instance-list` |
+| `ResourceInstanceViewModel` / `ResourceInstanceListViewModel` | `resource-instance` / `resource-instance-list` |
 | `SemanticViewModel` | Nested nodegroup structures |
 | `BooleanViewModel` | `boolean` |
 | `EDTFViewModel` | `edtf` |
@@ -86,6 +97,9 @@ These client classes are exposed under the `client` namespace export (`import { 
 | `buildGraphFromModelCsvs()` | Build a graph definition from CSV files |
 | `validateModelCsvs()` | Validate CSV model definitions |
 | `buildResourcesFromBusinessCsv()` | Create resource instances from CSV data |
+| `composeResourceLayers()` | Compose [resource layers](/docs/resource-layers) into one resource |
+| `resourceLifecycleState(resource, lifecycle)` | Resolve a resource's [lifecycle](/docs/lifecycles) state |
+| `transitionResourceLifecycle(resource, lifecycle, target, strict = true)` | Move a resource to another lifecycle state; returns a transition record and event |
 | `parseSkosXml()` | Parse SKOS RDF/XML vocabularies |
 | `setCurrentLanguage()` / `getCurrentLanguage()` | i18n control |
 | `setWasmURL()` | Customise WASM binary location |
@@ -93,11 +107,11 @@ These client classes are exposed under the `client` namespace export (`import { 
 
 ## Backend Selection
 
-By default, the WASM backend is used. In Node.js, you can switch to the [NAPI backend](/docs/bindings/napi) for better performance:
+By default, the WASM backend is used. In Node.js, you can switch to the [NAPI backend](/docs/bindings/napi) for better performance by registering the native module, which also selects it:
 
 ```typescript
-import { setBackend } from 'alizarin';
-setBackend('napi');
+import { setNapiModule } from 'alizarin';
+setNapiModule(require('@alizarin/napi'));
 ```
 
 ## Further Reading

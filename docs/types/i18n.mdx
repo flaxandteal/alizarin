@@ -12,7 +12,7 @@ language, but you can also read any specific language directly.
 ## Current language
 
 Set the app-wide language with `setCurrentLanguage(code)`; read it with
-`getCurrentLanguage()`. New string view models resolve against it:
+`getCurrentLanguage()`. String values read after the switch resolve against it:
 
 ```typescript
 import { setCurrentLanguage, getCurrentLanguage } from 'alizarin';
@@ -44,7 +44,10 @@ names are translated (North District / Ceantar Thuaidh); coined placenames
 
 ## Notes
 
-- A missing translation falls back to the default language (`.lang(code)` returns
-  `undefined` for a language the value doesn't carry).
-- [Concept](/docs/types/concepts) labels are language-dependent too — switching
-  the current language re-resolves them from the collection.
+- When the value has no translation for the current language, the view model
+  falls back to the default language. `.lang(code)` does not fall back: it returns
+  `undefined` for a language the value doesn't carry.
+- Assigning a plain string to a localized field (`site.name = 'Baile'`, then
+  `$commit()`) sets the current language's value and keeps the other languages.
+- [Concept](/docs/types/concepts) labels don't follow the current language: the
+  stored value-id names one specific label.

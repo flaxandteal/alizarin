@@ -18,8 +18,8 @@ Simple, primitive-like values. See [Basic types](/docs/types/basic).
 | `string` | `StringViewModel` | Localized string; extends `String`, stringifies to the current language |
 | `non-localized-string` | `NonLocalizedStringViewModel` | A plain, single-language string |
 | `number` | `NumberViewModel` | Numeric value |
-| `boolean` | `BooleanViewModel` | True/false |
-| `url` | `UrlViewModel` | A URL string |
+| `boolean` | `BooleanViewModel` | True/false; stringifies to the node config's label |
+| `url` | `UrlViewModel` | A URL; stringifies to its label (or the URL) |
 
 ## Complex view models
 
@@ -30,6 +30,7 @@ Values with non-trivial rendering or structure:
 | `date` | `DateViewModel` | [Dates & EDTF](/docs/types/dates-edtf) |
 | `edtf` | `EDTFViewModel` | [Dates & EDTF](/docs/types/dates-edtf) |
 | `concept` / `concept-list` | `ConceptValueViewModel` / `ConceptListViewModel` | [Concepts](/docs/types/concepts) |
+| `domain-value` / `domain-value-list` | `DomainValueViewModel` / `DomainValueListViewModel` | options from the node config |
 | `geojson-feature-collection` | `GeoJSONViewModel` | [Geospatial](/docs/types/geospatial) |
 | `resource-instance` / `-list` | `ResourceInstanceViewModel` / `…ListViewModel` | followed as relationships |
 | _(nested nodegroup)_ | `SemanticViewModel` | groups child nodes |
@@ -56,7 +57,7 @@ const all = await (await resource.contributors).flattened();  // [a, b, c]
 ## Extension types
 
 Custom datatypes provided by out-of-tree extensions (registered over the
-[Extension ABI](/docs/extension-abi)): **CLM references** and **file/image lists**.
+[Extension ABI](/docs/extension-abi)): **CLM references** and **file/image lists**, plus the optional geo extension for `geojson-feature-collection`.
 See [Extension types](/docs/types/extensions).
 
 <div className="fd-callout">

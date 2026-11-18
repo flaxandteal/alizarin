@@ -1,0 +1,152 @@
+---
+title: Resource lifecycles
+description: Resolve a resource's Arches lifecycle state and move it between states, consistently across layers
+---
+
+Arches 8 attaches a **lifecycle** to each resource model: a small state graph,
+such as the default *Standard* lifecycle **Draft → Active → Retired**. Each
+resource instance is in one state. Alizarin reads the lifecycle from the
+exported graph, resolves each resource's state, and moves resources between
+states. It behaves the same on WASM, NAPI and Python.
+
+Alizarin does **not** enforce Arches' per-state edit/delete permissions
+(`can_edit_resource_instances`, `can_delete_resource_instances`). They are kept
+in the graph for round-trip and for host apps to apply.
+
+## Where the data lives
+
+| | Field | Notes |
+|---|---|---|
+| **Lifecycle** | `graph.resource_instance_lifecycle` | Exactly as the Arches graph exporter writes it: states with `id`, `name`, `is_initial_state`, and `next_…` / `previous_…` state lists. `null` when the graph has none. |
+| **State** | `resourceinstance.resource_instance_lifecycle_state_id` | Stored **only where set**. Absent means the lifecycle's **initial** state, which is how Arches assigns new resources. |
+| **Conflict** | `resourceinstance.lifecycle_state_conflict` | Written only when composed layers disagreed (see [below](#across-layers)). |
+
+Arches' own business-data export does not include an instance's state, so data
+straight from Arches resolves to the initial state until a state is set.
+
+## Reading a resource's state
+
+```typescript
+import { resourceLifecycleState } from 'alizarin';
+
+const state = resourceLifecycleState(resource, graph.resource_instance_lifecycle);
+// { status: 'state', state_id: 'f75bb034-…', is_initial: false, conflict: [] }
+```
+
+```python
+import alizarin, json
+
+state = alizarin.resource_lifecycle_state(
+    json.dumps(resource), json.dumps(graph["resource_instance_lifecycle"])
+)
+```
+
+`status` is one of:
+
+| `status` | Meaning |
+|---|---|
+| `state` | A state of the lifecycle. `is_initial` says whether it is the initial one. |
+| `unknown` | The resource stores an id this lifecycle doesn't define (e.g. data moved between Arches installs with different custom lifecycles). Alizarin never guesses a replacement. |
+| `conflict` | Layers disagreed; `conflict` lists the ids. |
+
+A graph with **no** lifecycle (branches, draft graphs, pre-Arches-8 exports) is
+treated as a single permanent state: `state_id` is `null`, and nothing can move
+out of it.
+
+## Moving between states
+
+```typescript
+import { transitionResourceLifecycle } from 'alizarin';
+
+const { resource: record, event } = transitionResourceLifecycle(
+  resource, graph.resource_instance_lifecycle, ACTIVE_STATE_ID,
+);
+// event: { resourceinstanceid, from: '9375c9a7-…', to: 'f75bb034-…' }
+```
+
+```python
+result = alizarin.transition_resource_lifecycle(
+    json.dumps(resource), json.dumps(lifecycle), active_state_id
+)
+record, event = result["resource"], result["event"]
+```
+
+The result is a **transition record**: the resource's header with the new state
+and **no tiles**. Nothing is saved for you. Store the record as the topmost layer
+over the resource (or merge it in), and keep the `event` if you want a history;
+Alizarin has no edit log of its own.
+
+### Strict by default
+
+A transition is **strict** unless you ask otherwise:
+
+- the target must be a **permitted move**: one of the current state's `next`
+  **or** `previous` states (Arches' UI offers both);
+- a resource in an `unknown` or `conflict` state cannot be moved.
+
+For Standard that makes the permitted moves a chain, **Draft ↔ Active ↔ Retired**:
+Active → Draft is allowed, Draft → Retired directly is not.
+
+Pass `strict: false` (Python `strict=False`) to get Arches' own server-side
+check instead, which only requires the target to belong to the lifecycle. Do it
+at the call site, deliberately: a transition that checks nothing else is rarely
+what you want.
+
+```typescript
+transitionResourceLifecycle(resource, lifecycle, RETIRED_STATE_ID, false); // skip the edge check
+```
+
+To permit more moves *by default*, change the lifecycle, not the call: add the
+edges to the lifecycle in Arches (or to the graph you load). Removing edges is
+how you restrict behaviour.
+
+## Across layers
+
+When [resource layers](/docs/resource-layers) are composed, the lifecycle state
+is **not** taken from whichever layer is on top. That would let an overlay
+silently promote a Draft to Active, or demote it, just by layer order. Instead:
+
+| Layers | Composed state |
+|---|---|
+| A layer sets no state | Defers to the other layers. |
+| Layers with tiles agree | That state. |
+| Layers with tiles **disagree** | **Conflict**, with a warning naming the ids. Strict transitions refuse to move it. |
+| A **transition record** (a header with no tiles) | Its state wins over everything below it, and resolves any Conflict. |
+
+So the way to change a state across layers is a transition record, not a layer
+that happens to carry a different state. To fix a Conflict, run a non-strict
+transition and store the record on top:
+
+```typescript
+const { resource: fix } = transitionResourceLifecycle(composed, lifecycle, ACTIVE_STATE_ID, false);
+// event.from is null, event.resolved_conflict lists the ids that disagreed
+```
+
+The lifecycle itself follows the model, so it always comes from the **base**
+graph. An overlay graph that redefines it is ignored for lifecycle purposes
+(and reported by `LayeredGraph::lifecycle_warnings` in Rust).
+
+If you genuinely need a resource to exist in several states at once (a published
+version alongside a working draft), make them **separate resources** with their
+own ids, as Arches' resource-version manager does.
+
+## In Rust
+
+Rust callers, such as an indexer working over a whole corpus, should use the
+compiled lifecycle cached on the graph rather than the JSON functions:
+
+```rust
+use alizarin_core::graph::{transition, EffectiveState};
+
+let lifecycle = graph.lifecycle()?;              // compiled once, cached
+match lifecycle.effective_state(&resource.resourceinstance) {
+    EffectiveState::State { id, is_initial, .. } => { /* … */ }
+    EffectiveState::Unknown(id) => { /* … */ }
+    EffectiveState::Conflict(ids) => { /* … */ }
+}
+let (record, event) = transition(&resource.resourceinstance, lifecycle, target, true)?;
+```
+
+Checking a state is a scan of a few ids plus a bit test, so it costs nothing at
+corpus scale. A malformed lifecycle doesn't stop the graph loading; the error
+appears from `graph.lifecycle()`.

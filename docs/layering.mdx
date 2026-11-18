@@ -20,6 +20,12 @@ shared Rust core. The payoff is de-duplication: a rule fixed in the core is fixe
 for every language at once, and boundaries are where bugs concentrate — so the
 more logic sits in the shared core, the fewer places there are to re-bug.
 
+The same goes for **output**. No binding hand-builds its own JSON: each returns
+core's serialisation, so the WASM, NAPI and Python results are byte-identical,
+with an absent value always `null`, never `undefined`. Editing (`ResourceEdit`),
+graph mutation, derive functions, layer composition and lifecycle transitions
+all follow this rule — each binding is a one-line call into core.
+
 ## Resolve in the core, format in the host
 
 The core produces **resolved, typed values**; the consumer owns **presentation**.
@@ -69,18 +75,23 @@ versioned `AbiFingerprint` handshake: a mismatched extension is refused at load
 rather than corrupting memory. New capabilities are additive and version-gated —
 the boundary can grow without breaking existing handlers silently.
 
-## Role-specialised bindings
+## Parity across bindings
 
-The three bindings are **not** an identical API. Each exposes the surface its
-deployment needs — the browser has no CSV ingestion, the Node builder has no
-standalone tree↔tile conversion, the notebook has everything. This is a
-deliberate, documented contract, not partial work: target the binding for your
-environment, and consult the per-binding surface rather than assuming parity.
+The three bindings are held **in parity**. A feature that lands in one binding
+only is unfinished: new behaviour goes into all three, with tests that pin each
+binding's methods to a shared manifest and each binding's output to a golden
+file written by the core. Where a binding deliberately lacks something — NAPI's
+Node builder, for instance, has no standalone tree↔tile conversion or per-value
+coercion, and some methods exist only where the host language needs them — the
+gap is written down with its reason, not left implicit. Consult the per-binding
+surface for those few differences; otherwise, expect the same behaviour
+everywhere.
 
 ## Why it matters
 
 The layering is what makes Alizarin portable and maintainable: the same behaviour
-across browser, Node and Python; correctness verified once; and a public
+across browser, Node and Python, down to the bytes of the output; correctness
+verified once; and a public
 extension point that third parties can build on without forking the core. Hold
 the seams and the system scales; blur them — leak presentation into the core,
 structure into a handler, or logic into a binding — and you pay for it in every

@@ -5,18 +5,46 @@ description: How to get up and running
 
 ## Installing Alizarin
 
+Alizarin 2.0 is published as prereleases (`2.0.0-alpha.N`), under npm's `alpha`
+tag, so ask for it explicitly — a bare `npm install alizarin` gives you the older
+stable line:
+
 ```sh
-npm install alizarin
+# JavaScript / TypeScript (WASM; browser and Node.js)
+npm install alizarin@alpha
+
+# Optional native Node.js backend, and extension datatypes
+npm install @alizarin/napi@alpha
+npm install @alizarin/clm@alpha @alizarin/filelist@alpha @alizarin/geo@alpha
+
+# Python — pin the alpha you want (see below)
+pip install "alizarin==2.0.0a147"
 ```
 
+On PyPI, the paused `2.0.0bN` betas sort *above* the current alphas, so
+`pip install --pre alizarin` picks an older beta. Pin the alpha version instead
+(the npm `alpha` tag already points at the current one).
+
 At present, `alizarin` has not reached a stable distribution, so you
-will likely prefer to check out our [Github repo](https://github.com/flaxandteal/alizarin).
+may prefer to check out our [Github repo](https://github.com/flaxandteal/alizarin).
 
 ## Running Tests
 
 ```bash
+# WASM backend
 npm test
+
+# NAPI backend (build the native module first, in crates/alizarin-napi)
+npx napi build --platform --release
+npx vitest run --config vitest.napi.config.js
+
+# Python backend (in crates/alizarin-python, inside a virtualenv)
+maturin develop --release
+pytest
 ```
+
+The three backends are held to the same output, so a change should pass all
+three.
 
 ## Linting
 

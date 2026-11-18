@@ -40,5 +40,5 @@ some intervals (`1990/1995`) — alongside a `boolean` and a `url` field
 
 <AlizarinComponent module='/types/examples/scalars-edtf-boolean-url.tsx' />
 
-`EDTFViewModel` isn't a plain string, so coerce it (`` `${period}` ``) before
-rendering — the same rule as `date`.
+`EDTFViewModel` extends `String`, so it is a `String` object rather than a
+primitive; coerce it (`` `${period}` ``) before rendering — the same rule as `date`.

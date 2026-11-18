@@ -19,13 +19,16 @@ The whole read API in a few lines — point at a model, list its resources, awai
 
 ## Features
 
-- **Universal Compatibility**: Works in both browser and Node.js environments
+- **One Core, Three Backends**: A shared Rust core behind the browser/Node (WASM), native Node (NAPI) and Python bindings, which write the same output, byte for byte
 - **Type-Safe**: Full TypeScript support with comprehensive type definitions
 - **Lazy Loading**: Optimized data fetching with on-demand tile loading
 - **Graph-Based ORM**: Intuitive API for working with Arches' complex graph structures
+- **Editing**: Assign values on a resource, then commit them (`$commit()` in TypeScript, `commit()` in Python) as a checked, coerced tile delta
 - **Multiple Data Sources**: Support for remote servers, static JSON files, and local data
-- **Internationalization**: Built-in support for multilingual content
-- **Schema Manipulation**: Programmatically create and modify graph schemas
+- **Internationalization**: Built-in support for multilingual content, shown in the current language
+- **Schema Manipulation**: Programmatically create and modify graph schemas, the same way on every backend ([Graph Mutations](/docs/mutations))
+- **Graph Functions**: Descriptors, derived (computed) tiles and aggregates declared on the graph ([Functions](/docs/functions))
+- **Layers and Lifecycles**: Compose a resource across [data layers](/docs/resource-layers) and move it through its Arches [lifecycle](/docs/lifecycles)
 - **Caching**: Intelligent caching for improved performance
 
 ## License

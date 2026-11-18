@@ -17,7 +17,6 @@ mutation_request = {
     "mutations": [
         {
             "AddNode": {
-                "parent_alias": "root",
                 "alias": "person_name",
                 "name": "Name",
                 "cardinality": "1",
@@ -40,6 +39,12 @@ result_json = alizarin.apply_mutations_from_json(
 )
 ```
 
+Every binding runs these through the same core graph mutator, so a request gives
+the same graph, ids included, wherever it runs. From TypeScript, use
+[`GraphMutator`](/docs/graphs#modifying-graph-schemas) (WASM or NAPI); the NAPI
+module also exposes `applyMutationsFromJson(graph, json)`,
+`applyMutationsCreate(json, graph?)` and `getMutationSchema()` directly.
+
 ## Request Options
 
 | Option | Type | Default | Description |
@@ -56,7 +61,7 @@ Add a new node to the graph.
 ```json
 {
     "AddNode": {
-        "parent_alias": "root",
+        "parent_alias": "parent_node",
         "alias": "my_node",
         "name": "My Node",
         "cardinality": "1",
@@ -78,14 +83,14 @@ Add a new node to the graph.
 - `name` - Display name
 - `cardinality` - `"1"` (single) or `"n"` (multiple)
 - `datatype` - Node type: `semantic`, `string`, `number`, `date`, `boolean`, `concept`, `concept-list`, `resource-instance`, `resource-instance-list`, `reference`, etc.
-- `ontology_class` - CRM class (e.g., `E41_Appellation`)
 - `parent_property` - CRM property connecting to parent (e.g., `P1_is_identified_by`)
+- `options` - Node options (see below); `{}` for none
 
 **Optional fields:**
-- `parent_alias` - Parent node alias (defaults to root if not specified)
+- `parent_alias` - Parent node alias (omit for the root node; the root's alias is the graph's, not `root`)
+- `ontology_class` - CRM class (e.g., `E41_Appellation`), or an array of classes
 - `description` - Node description
 - `config` - Datatype-specific configuration (e.g., `{"controlledList": "uuid"}` for references)
-- `options` - Node options (see below)
 
 **Node Options:**
 | Option | Type | Description |
@@ -93,7 +98,7 @@ Add a new node to the graph.
 | `exportable` | boolean | Include in exports |
 | `fieldname` | string | Override field name |
 | `hascustomalias` | boolean | Has custom alias |
-| `is_collector` | boolean | Force the node to own its own nodegroup (`nodeid == nodegroup_id`), matching Arches collector semantics. When `true`, a dedicated nodegroup is created even for cardinality-1 nodes. Defaults to `true` for semantic cardinality-N nodes. |
+| `is_collector` | boolean | Force the node to own its own nodegroup (`nodeid == nodegroup_id`), matching Arches collector semantics. When `true`, a dedicated nodegroup is created even for cardinality-1 nodes. Unset by default; the CSV/instruction path sets it for semantic cardinality-N nodes. |
 | `isrequired` | boolean | Required field |
 | `issearchable` | boolean | Include in search |
 | `istopnode` | boolean | Is root node |
@@ -131,7 +136,7 @@ Add an edge between nodes.
 
 ### AddCard
 
-Add a card for a nodegroup.
+Add a card for a nodegroup. `options` is required (`{}` for none).
 
 ```json
 {
@@ -151,7 +156,7 @@ Add a card for a nodegroup.
 
 ### AddWidgetToCard
 
-Add a widget to a card.
+Add a widget to a card. `config` is required (`{}` for none).
 
 ```json
 {
@@ -180,6 +185,9 @@ Add an entire branch/subgraph to the graph.
     }
 }
 ```
+
+`alias_prefix` and `name_prefix` are also accepted, to distinguish several copies
+of one branch.
 
 ### UpdateSubgraph
 
@@ -218,7 +226,7 @@ Update node properties (cannot change datatype).
 }
 ```
 
-All fields except `node_id` are optional - only provided fields are updated.
+All fields except `node_id` are optional - only provided fields are updated. `parent_property` may also be given; `options` accepts `exportable`, `fieldname`, `isrequired`, `issearchable` and `sortorder`.
 
 ### ChangeNodeType
 
@@ -250,6 +258,8 @@ Rename a node's alias and/or display name.
     }
 }
 ```
+
+`realign_card` (default `true`) also renames the node's card and widget label to match.
 
 ### ConceptChangeCollection
 
@@ -346,7 +356,19 @@ Add a function mapping to the graph.
 }
 ```
 
-The `function_id` can be a UUID or an arbitrary string (converted to a deterministic UUID v5).
+The `function_id` can be a UUID or an arbitrary string (converted to a deterministic UUID v5). Mapping the same function twice is an error.
+
+### SetDescriptorFunction
+
+Make a function the graph's descriptor function, removing any other descriptor function (the default one, or any whose config has `descriptor_types`). It is added with an empty config; fill it with `SetDescriptorTemplate`.
+
+```json
+{
+    "SetDescriptorFunction": {
+        "function_id": "com.flaxandteal.app/descriptor"
+    }
+}
+```
 
 ### SetDescriptorTemplate
 
@@ -403,6 +425,7 @@ Update a graph's name, description, subtitle, or author.
     "RenameGraph": {
         "name": {"en": "New Name"},
         "description": {"en": "Updated description"},
+        "subtitle": {"en": "Updated subtitle"},
         "author": "New Author"
     }
 }
@@ -431,6 +454,37 @@ Set `sourcebranchpublication_id` on a subtree, traversing from a root node via e
     "CoppiceSubgraph": {
         "subject": "root_node_alias",
         "publication_id": "bf05dedf-85d1-4e1b-8929-7cb42b534b87"
+    }
+}
+```
+
+### UpdateWidgetConfig
+
+Merge keys into the config of a node's widget (found by node alias or id).
+
+```json
+{
+    "UpdateWidgetConfig": {
+        "node_id": "my_node",
+        "config": {"placeholder": "Enter a name"}
+    }
+}
+```
+
+### CreateGraph
+
+Create a new graph from scratch. Only valid as the first mutation of a request passed to `apply_mutations_create` (Python) / `applyMutationsCreate` (NAPI), with no base graph.
+
+```json
+{
+    "CreateGraph": {
+        "name": "Heritage Item",
+        "is_resource": true,
+        "root_alias": "heritage_item",
+        "root_ontology_class": "E18_Physical_Thing",
+        "graph_id": "optional-uuid",
+        "author": "Optional author",
+        "description": "Optional description"
     }
 }
 ```
@@ -496,6 +550,9 @@ result = alizarin.apply_mutations_from_json(graph_json, mutations_json)
 
 # With extension support
 result = alizarin.apply_mutations_with_extensions(graph_json, mutations_json)
+
+# Create a new graph (first mutation CreateGraph), or mutate graph_json if given
+result = alizarin.apply_mutations_create(mutations_json, graph_json=None)
 
 # Get mutation schema documentation
 schema = alizarin.get_mutation_schema()
@@ -577,14 +634,18 @@ result_json = alizarin.build_graph_from_csv(mutation_csv)
 | Action | Subject | Object | Key Params |
 |--------|---------|--------|------------|
 | `load_graph` | graph_id | - | - |
-| `create_model` | root_alias | graphid (optional) | `name`, `ontology_class`, `slug` |
-| `create_branch` | root_alias | graphid (optional) | `name`, `ontology_class`, `slug` |
+| `create_model` | root_alias | graphid (optional) | `name`, `ontology_class`, `ontology_id`, `slug` |
+| `create_branch` | root_alias | graphid (optional) | `name`, `ontology_class`, `ontology_id`, `slug` |
 | `add_node` | parent_alias | new_alias | `datatype`, `name`, `ontology_class`, `cardinality`, `parent_property`, `options.is_collector` |
 | `add_edge` | from_alias | to_alias | `ontology_property` |
 | `add_nodegroup` | node_alias | - | `cardinality` |
 | `add_card` | nodegroup_id | card_name | `component_id` |
-| `add_widget` | node_alias | - | `widget_id` |
+| `add_widget` | node_alias | - | `widget_id`, `label`, `config` |
+| `update_widget_config` | node_alias | - | `config` |
+| `add_subgraph` | target_alias | - | `subgraph` (JSON), `ontology_property`, `alias_suffix`, `alias_prefix`, `name_prefix` |
+| `update_subgraph` | target_alias | - | as `add_subgraph`, plus `remove_orphaned` |
 | `add_function` | function_id | - | `config` |
+| `set_descriptor_function` | function_id | - | - |
 | `set_descriptor_template` | descriptor_type | string_template | - |
 | `rename_node` | old_alias | new_alias | `name`, `description` |
 | `rename_card` | card_id | - | `name`, `description`, `language` |
@@ -599,6 +660,7 @@ result_json = alizarin.build_graph_from_csv(mutation_csv)
 | `delete_node` | node_alias | - | - |
 | `delete_nodegroup` | nodegroup_id | - | - |
 | `delete_card` | card_id | - | - |
+| `delete_widget` | widget_mapping_id | - | - |
 | `delete_function` | function_mapping_id | - | - |
 
 ¹ Provided by the CLM extension, not core. Any unrecognised action is dispatched as an extension mutation named after the action string, so the CLM handler must be registered under its full `clm.reference_change_collection` name (import `alizarin_clm`) for this row to resolve. See [Extension Mutations](#extension-mutations).

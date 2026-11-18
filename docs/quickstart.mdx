@@ -30,7 +30,10 @@ models.
 ### Basic Usage
 
 ```typescript
-import { client, graphManager, staticStore, RDM } from 'alizarin';
+import { client, graphManager, staticStore, RDM, wasmReady } from 'alizarin';
+
+// The ORM runs on a Rust core: wait for it to load
+await wasmReady;
 
 // Point the shared graphManager (and the stores it uses) at an Arches instance
 const archesClient = new client.ArchesClientRemote('https://your-arches-instance.org');
@@ -55,9 +58,10 @@ for (const monument of monuments) {
 ### Working with Static Data
 
 ```typescript
-import { client, graphManager, staticStore, RDM } from 'alizarin';
+import { client, graphManager, staticStore, RDM, wasmReady } from 'alizarin';
 
 // The same flow, but reading pre-exported static JSON (no live server needed)
+await wasmReady;
 const archesClient = new client.ArchesClientRemoteStatic('/data/exports');
 graphManager.archesClient = archesClient;
 staticStore.archesClient = archesClient;
@@ -82,3 +86,23 @@ for (const person of people) {
   console.log(await person.surname);
 }
 ```
+
+### Editing Resources
+
+Assign to a field, then commit. Each assignment is checked against the graph
+when it is made; `$commit()` coerces the values in the core, reruns any stored
+[derive functions](/docs/functions) for what changed, and returns the tile delta.
+Persisting it is up to you — committing does no I/O.
+
+```typescript
+const person = (await PersonModel.all())[0];
+person.forename = 'Áine';          // a plain string sets the current language
+const { upserted, removed } = person.$commit();
+// person.$discard() drops uncommitted assignments instead
+```
+
+Python's ORM edits the same way, with `commit()` and `discard()`.
+
+From here, see [Graph Mutations](/docs/mutations) for changing models,
+[Resource layers](/docs/resource-layers) for composing a resource across data
+layers, and [Resource lifecycles](/docs/lifecycles) for lifecycle state.

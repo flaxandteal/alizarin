@@ -3,15 +3,17 @@ title: Python
 description: PyO3 bindings for data pipelines and Arches integration
 ---
 
-The Python binding exposes `alizarin-core` functionality via PyO3. It provides tile/JSON conversion, graph mutation, RDM caching, SKOS parsing, and extension support — the same operations used by [AORM](https://github.com/flaxandteal/arches-orm/) and Arches-adjacent tooling.
+The Python binding exposes `alizarin-core` functionality via PyO3. It provides tile/JSON conversion, graph mutation, RDM caching, SKOS parsing, extension support, resource layers and lifecycles — the same operations used by [AORM](https://github.com/flaxandteal/arches-orm/) and Arches-adjacent tooling — plus an ORM layer (`GraphManager`, `ResourceModelWrapper`, view models) mirroring the JS/TS one.
 
 ## Installation
 
 ```bash
-pip install alizarin
+pip install alizarin==2.0.0a147
 ```
 
-Wheels are available for Python 3.9–3.13 on Linux, macOS and Windows.
+Pin the exact version: the paused `2.0.0b*` releases sort above the current alphas, so `pip install --pre alizarin` would pick a stale beta.
+
+Wheels are built against the stable ABI (`abi3`), so one wheel serves Python 3.9 and later, on Linux, macOS and Windows.
 
 ## Quick Example
 
@@ -38,6 +40,33 @@ tiles = alizarin.json_tree_to_tiles(
 )
 ```
 
+## ORM and editing
+
+The ORM reads and edits resources as in JS/TS: values are edited by assignment (checked against the graph immediately) and applied with `commit()`, which returns the tile changes for you to persist.
+
+```python
+from alizarin.graph_manager import GraphManager
+from alizarin.view_models import viewContext
+
+gm = GraphManager()
+gm.register_graph(graph_dict)
+gm.register_resource(resource_dict)
+viewContext.graphManager = gm
+
+place = await gm.getResource(resource_id, lazy=False)   # inside an async function
+place.title = "Baile"          # a plain string sets the current language's value
+delta = place.commit()         # {"upserted": [...tiles], "removed": [...tile ids]}; or place.discard()
+```
+
+## Resource lifecycles
+
+`resource_lifecycle_state(resource_json, lifecycle_json)` resolves a resource's state, and `transition_resource_lifecycle(resource_json, lifecycle_json, target, strict=True)` returns a transition record and event. Both take JSON strings; see [Resource lifecycles](/docs/lifecycles).
+
+```python
+state = alizarin.resource_lifecycle_state(json.dumps(resource), json.dumps(graph["resource_instance_lifecycle"]))
+# {'status': 'state', 'state_id': 'f75bb034-…', 'is_initial': False, 'conflict': []}
+```
+
 ## API Surface
 
 ### JSON Conversion
@@ -47,8 +76,8 @@ tiles = alizarin.json_tree_to_tiles(
 | `tiles_to_json_tree(resource_json)` | Tiles to nested JSON tree |
 | `build_tree_from_tiles(tiles_json, resource_id, graph_id)` | Pre-extracted tiles to tree |
 | `batch_tiles_to_trees(...)` | Parallel batch tiles-to-tree conversion |
-| `cards_to_json_tree(resource_json)` | Tiles to card-structured tree |
-| `json_tree_to_tiles(tree, resource_id, graph_id, from_camel, strict, rdm_cache, id_key, scopes)` | Tree back to tiles format |
+| `alizarin.alizarin.cards_to_json_tree(resource_json)` | Tiles to card-structured tree (in the compiled submodule, not re-exported) |
+| `json_tree_to_tiles(tree_json, resource_id, graph_id, from_camel, strict, rdm_cache, id_key, scopes, tile_namespace)` | Tree back to tiles format |
 | `batch_trees_to_tiles(trees, graph_id, from_camel, strict, ...)` | Parallel batch conversion |
 | `resolve_labels_in_tree(...)` | Resolve human labels to concept UUIDs in a tree |
 
@@ -64,6 +93,10 @@ tiles = alizarin.json_tree_to_tiles(
 | `batch_merge_resources(batches_json, recompute_descriptors, strict)` | Batch merge across multiple JSON batches |
 | `streamed_merge_from_files(file_paths, chunk_size, ...)` | Memory-efficient stream-merge of resources from files |
 | `ResourceRegistry` | Class: create and manage a resource registry |
+| `compose_resource_layers(resources_json, base_graph_json, overlay_graphs_json, strict=False)` | Compose [resource layers](/docs/resource-layers) |
+| `build_resources_from_business_csv(csv_data, graph_json, collections_json, ...)` | Build resource instances from business-data CSV |
+| `resource_lifecycle_state(resource_json, lifecycle_json)` | Resolve a resource's [lifecycle](/docs/lifecycles) state |
+| `transition_resource_lifecycle(resource_json, lifecycle_json, target, strict=True)` | Move a resource to another lifecycle state |
 
 ### Graph Mutations
 
@@ -99,6 +132,8 @@ All mutations are applied via JSON requests — see [Graph Mutations](/docs/muta
 
 ### SKOS Vocabularies
 
+These live in the compiled submodule (`from alizarin import alizarin as core; core.parse_skos_xml(...)`); they are not re-exported at the package top level.
+
 | Function | Description |
 |----------|-------------|
 | `parse_skos_xml(xml, base_uri)` | Parse SKOS RDF/XML |
@@ -112,9 +147,9 @@ All mutations are applied via JSON requests — see [Graph Mutations](/docs/muta
 |----------|-------------|
 | `register_type_handler(capsule)` | Register custom datatype handler |
 | `has_type_handler(type_name)` | Check if a type handler is registered |
-| `coerce_with_extension(type_name, value, config)` | Call extension coercion |
+| `coerce_with_extension(type_name, value_json, config_json=None)` | Call extension coercion |
 | `render_display_with_extension(...)` | Call extension display renderer |
-| `register_widget_for_datatype(datatype, widget)` | Map datatype to widget |
+| `register_widget_for_datatype(datatype, widget_name)` | Map datatype to widget |
 | `get_widget_for_datatype(datatype)` | Get widget for a datatype |
 | `register_list_datatype(datatype)` | Register a datatype as list-valued |
 
@@ -122,8 +157,8 @@ All mutations are applied via JSON requests — see [Graph Mutations](/docs/muta
 
 | Function | Description |
 |----------|-------------|
-| `import_prebuild(prebuild_dir, base_uri)` | Load graphs, collections, and resources from a prebuild/pkg directory |
-| `export_prebuild(...)` | Export graphs, collections, and business data to a directory |
+| `import_prebuild(prebuild_dir, base_uri="http://localhost:8000/", ...)` | Load graphs, collections, and resources from a prebuild/pkg directory |
+| `export_prebuild(out_dir, base_uri, graph_ids=None)` | Export graphs, collections, and business data to a directory |
 
 ### Ontology Validation
 

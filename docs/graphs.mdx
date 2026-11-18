@@ -37,6 +37,15 @@ action,subject,object,params.name,params.datatype,params.cardinality,params.opti
 add_node,parent_group,impact,Impact,reference,1,true
 ```
 
+### Functions and lifecycle
+
+Besides nodes, edges, nodegroups and cards, a graph carries its
+`functions_x_graphs` — the [descriptor, derive and aggregate functions](/docs/functions)
+core applies to its resources — and, from Arches 8, a
+`resource_instance_lifecycle`: the states its resources move between (see
+[Resource lifecycles](/docs/lifecycles)). Both travel with the graph and survive
+mutation and export.
+
 ### Model metadata entries
 
 The graph-list response (the `models` map a client's `getGraphs()` returns, e.g.
@@ -76,6 +85,11 @@ adds a `local_reference` field under the root node, and applies, returning a new
 graph (press ▶):
 
 <AlizarinComponent module='/examples/graph-mutator.tsx' />
+
+`GraphMutator` records the changes and `apply()` runs them through core's graph
+mutator, so the same calls give the same graph, ids included, on WASM and NAPI.
+Python has the same class (`alizarin.GraphMutator`, with snake_case methods such
+as `add_string_node`).
 
 `GraphMutator` is the **programmatic** route, for changes computed at runtime. For
 **static** model definitions, the declarative CSV/JSON format — the `add_node` row

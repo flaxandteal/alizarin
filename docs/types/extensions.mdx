@@ -15,7 +15,7 @@ To use one, install and import its package — it self-registers on `wasmReady`:
 import 'alizarin';
 import '@alizarin/clm';       // registers the `reference` datatype
 import '@alizarin/filelist';  // registers the `file-list` datatype
-import '@alizarin/geo';       // registers `geojson-feature-collection` validation
+import '@alizarin/geo';       // registers `geojson-feature-collection` validation, folding and the UTM derive
 ```
 
 The docs harness imports `@alizarin/clm` and `@alizarin/filelist`, so the reference
@@ -43,25 +43,29 @@ The `file-list` datatype wraps an array of files. `FileListViewModel` **extends
 
 ## geojson (geo)
 
-`@alizarin/geo` is a **validate-only** extension for the
-`geojson-feature-collection` datatype: coercion and the
-[`GeoJSONViewModel`](/docs/types/geospatial) stay in core, but the extension
-checks GeoJSON structure, coordinate ranges and polygon-ring integrity at
-generation time. It's the reference example of the ABI's
-[`validate` capability](/docs/extension-abi) — the JS `registerExtensionHandler`
-now accepts a `validate(value, config)` callback that returns a
-`{ valid, errors, warnings }` result:
+`@alizarin/geo` adds behaviour to the `geojson-feature-collection` datatype
+without replacing it: coercion and the
+[`GeoJSONViewModel`](/docs/types/geospatial) stay in core. The extension
+registers:
+
+- **validation** — GeoJSON structure, coordinate ranges and polygon-ring
+  integrity, through the ABI's [`validate` capability](/docs/extension-abi)
+  (a `validate(value, config)` callback returning `{ valid, errors, warnings }`);
+- **folding** — a geometry summary (`{count, bbox, geometry_types}`) for
+  [fold and aggregate functions](/docs/functions#aggregate-functions);
+- a **`utm` derive provider** — UTM zone and easting/northing computed at load
+  from a resource's geometry, for graphs whose derive functions name provider
+  `utm` (see [Functions](/docs/functions)).
 
 ```typescript
-import '@alizarin/geo'; // registers validation for geojson-feature-collection
-// internally: registerExtensionHandler('geojson-feature-collection', {
-//   validate: (value) => validateGeojson(value),  // runs in the geo WASM module
-// });
+import '@alizarin/geo';
+// internally, once wasmReady resolves:
+//   registerExtensionHandler('geojson-feature-collection', { validate, foldIdentity, fold, ... });
+//   registerDeriveProvider('utm', { derive: utmDerive });
 ```
 
 Unlike `reference`/`file-list`, geo has no view-model surface of its own — you
-still read boundaries through `GeoJSONViewModel`; registering the extension just
-adds validation to the pipeline.
+still read boundaries through `GeoJSONViewModel`.
 
 ## Live example
 

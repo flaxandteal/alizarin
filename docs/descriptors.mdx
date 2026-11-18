@@ -36,10 +36,16 @@ import { slugify } from 'alizarin';
 slugify('Heritage site — Trá Theas'); // "heritage-site-tr-the"
 ```
 
-It strips accents and punctuation, lowercases, hyphenates, and truncates — and
-because it's a pure function, the **same name always yields the same slug**
-(see [Deterministic IDs](/docs/determinism)). A slug can also be configured as a
-descriptor type (`<Slug>`) so `getSlug()` returns it directly.
+It lowercases, hyphenates whitespace, drops every other character outside
+`a–z`, `0–9` and `-` (so `á` is lost, not transliterated), and truncates to 20
+characters — and because it's a pure function, the **same name always yields
+the same slug** (see [Deterministic IDs](/docs/determinism)).
+
+A slug can also be configured as a `slug` descriptor type (e.g. a
+`string_template` of `<Slug>`), so `getSlug()` returns it directly. Core
+slugifies that template's output with its own, slightly different rule: any run
+of characters outside `a–z` and `0–9` becomes one hyphen, and the limit is 80
+characters, so it need not equal `slugify(name)`.
 
 ## Live example
 

@@ -91,6 +91,14 @@ const { resource } = composeResourceLayers(
 The same resource id appears in both layers, so this is a state change on one
 entity — no duplicate Hollowmere, no lookup table.
 
+## Lifecycle state across layers
+
+A resource's [lifecycle state](/docs/lifecycles) is **not** taken from the
+topmost layer. Layers with tiles that give the resource different states compose
+to a **Conflict** (with a warning); a layer that sets no state defers to the
+others; and a header-only **transition record** (no tiles) sets the state over
+everything below it. See [Resource lifecycles](/docs/lifecycles#across-layers).
+
 ## Model overlays
 
 The `overlayGraphs` argument stacks **model** overlays under a

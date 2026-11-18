@@ -15,10 +15,12 @@ The minimal query every binding answers identically — load a model, get its re
 
 | Binding | Runtime | Install | Best for |
 |---------|---------|---------|----------|
-| [JS/TS (WASM)](/docs/bindings/javascript) | Browser, Node.js | `npm install alizarin` | Frontend apps, SSG, general Node.js |
-| [Node.js (NAPI)](/docs/bindings/napi) | Node.js only | `npm install @alizarin/napi` | High-throughput Node.js, large datasets |
-| [Python](/docs/bindings/python) | Python 3.9+ | `pip install alizarin` | ETL pipelines, Arches integration, scripting |
-| [Rust](/docs/bindings/rust) | Native | `cargo add alizarin-core` | Custom tooling, embedding, maximum performance |
+| [JS/TS (WASM)](/docs/bindings/javascript) | Browser, Node.js | `npm install alizarin@alpha` | Frontend apps, SSG, general Node.js |
+| [Node.js (NAPI)](/docs/bindings/napi) | Node.js only | `npm install alizarin@alpha @alizarin/napi@alpha` | High-throughput Node.js, large datasets |
+| [Python](/docs/bindings/python) | Python 3.9+ | `pip install alizarin==2.0.0a147` | ETL pipelines, Arches integration, scripting |
+| [Rust](/docs/bindings/rust) | Native | `cargo add alizarin-core@=2.0.0-alpha.147` | Custom tooling, embedding, maximum performance |
+
+2.0 is on prerelease `alpha` versions: npm's `latest` tag still points at 1.0, and the paused 2.0 betas sort above the alphas on PyPI and crates.io, so install by tag or exact version as above.
 
 ## Architecture
 
@@ -41,22 +43,44 @@ All bindings wrap `alizarin-core`, a pure Rust crate that handles:
          (browser+Node)   (Node.js only)  (pip install)
 ```
 
-The JS/TS binding adds an ORM layer (`GraphManager`, `ResourceModelWrapper`, view models) on top of the WASM core. The NAPI binding provides a native alternative backend for the same JS/TS ORM. Python and Rust expose the core functions directly.
+The JS/TS binding adds an ORM layer (`GraphManager`, `ResourceModelWrapper`, view models) on top of the WASM core. The NAPI binding provides a native alternative backend for the same JS/TS ORM. Python has its own ORM layer (`GraphManager`, `ResourceModelWrapper`, view models) mirroring the JS/TS one, alongside the core functions. Rust exposes the core directly.
+
+## What each binding offers
+
+The bindings are not identical surfaces: each exposes what its deployment target needs, over the same core.
+
+| Capability | WASM | NAPI | Python |
+|---|:--:|:--:|:--:|
+| Instance / view-model wrapper, ORM editing | ✓ | ✓ | ✓ |
+| Resource registry, graph / prebuild export | ✓ | ✓ | ✓ |
+| SKOS / RDM parse, extension coerce / render / resolve | ✓ | ✓ | ✓ |
+| [Resource layers](/docs/resource-layers) (`composeResourceLayers`) | ✓ | ✓ | ✓ |
+| [Resource lifecycles](/docs/lifecycles) (state / transitions) | ✓ | ✓ | ✓ |
+| CSV → business data | ✓ | ✓ | ✓ |
+| Standalone tree ↔ tiles batch conversion | ✓ | — | ✓ |
+| Standalone `coerce*` value functions | ✓ | — | ✓ |
+| Standalone card-display serialisation | ✓ | —¹ | ✓ |
+
+¹ NAPI serialises cards through the instance wrapper (`serializeCard`, `serializeCardDisplay`, `toDisplayJson`) instead.
+
+Where two bindings both return a value, they return the same JSON: core does the serialising on every backend, and an absent value is `null`, never `undefined`.
 
 ## Backend Selection (JS/TS)
 
-The JS/TS package supports two backends — WASM and NAPI — with identical API:
+The JS/TS package supports two backends — WASM and NAPI — behind the same ORM API:
 
 ```typescript
-import { setBackend, autoDetectBackend } from 'alizarin';
+import { setNapiModule, setBackend, getBackend } from 'alizarin';
 
-// Auto-detect: uses NAPI if available, falls back to WASM
-autoDetectBackend();
+// WASM is the default: browser-compatible, a few MB of WASM binary.
+// For NAPI (Node.js only), register the native module, which also selects it:
+setNapiModule(require('@alizarin/napi'));
 
-// Or explicitly choose:
-setBackend('wasm');  // Browser-compatible, ~2MB WASM binary
-setBackend('napi');  // Node.js only, native speed, no WASM overhead
+getBackend();        // 'napi'
+setBackend('wasm');  // switch back
 ```
+
+`autoDetectBackend()` *reports* the best choice (`'napi'` when a NAPI module is registered or `ALIZARIN_BACKEND=napi` is set, otherwise `'wasm'`) without switching to it; pass its result to `setBackend()` if you want it applied.
 
 <Cards>
   <Card title="JavaScript / TypeScript" href="/docs/bindings/javascript" />

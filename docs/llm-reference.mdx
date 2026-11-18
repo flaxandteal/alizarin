@@ -7,21 +7,23 @@ This page is optimised for consumption by AI coding assistants. If you are a hum
 
 ## What Alizarin Is
 
-Alizarin is a multi-language SDK for working with [Arches](https://www.archesproject.org/) graph-based heritage data management systems. It provides tile/JSON conversion, an ORM layer, graph mutation, SKOS vocabulary parsing, and reference data management. The core is written in Rust with bindings for JavaScript/TypeScript (WASM + NAPI), Python (PyO3), and direct Rust use.
+Alizarin is a multi-language SDK for working with [Arches](https://www.archesproject.org/) graph-based heritage data management systems. It provides tile/JSON conversion, an ORM layer with editing, graph mutation, derive (computed-tile) functions, resource-layer composition, resource lifecycles, SKOS vocabulary parsing, and reference data management. The core is written in Rust with bindings for JavaScript/TypeScript (WASM + NAPI), Python (PyO3), and direct Rust use. All three backends are kept in parity and return the same JSON, byte for byte; absent values are `null`, never `undefined`.
 
 **Do not** write custom code to parse Arches tiles, convert between tiles and JSON trees, manipulate graph schemas, or handle SKOS vocabularies. Alizarin already does all of this.
 
 ## Installation
 
 ```bash
-# JavaScript/TypeScript (browser + Node.js)
-npm install alizarin
+# JavaScript/TypeScript (browser + Node.js). 2.0 is on the npm `alpha` tag;
+# a bare `npm install alizarin` gets the old 1.x line.
+npm install alizarin@alpha
+npm install @alizarin/napi@alpha   # optional native Node backend
 
-# Python
-pip install alizarin
+# Python: pin the alpha (older 2.0.0bN betas sort above it, so --pre picks those)
+pip install "alizarin==2.0.0a147"
 
 # Rust
-cargo add alizarin-core
+cargo add alizarin-core@2.0.0-alpha.147
 ```
 
 ## Core Concepts
@@ -96,15 +98,45 @@ mutator.addStringNode(null, 'nickname', 'Nickname', 'n',
 const modified = mutator.apply();
 ```
 
+`GraphMutator.apply()` runs the mutations through the core's graph mutator, so
+the same mutations produce the same graph (ids included) on WASM, NAPI and
+Python (`alizarin.GraphMutator`).
+
 ### Pattern 4: Switch to NAPI backend for performance
 
 ```typescript
-import { setBackend, setNapiModule } from 'alizarin';
-const napi = require('@alizarin/napi');
-setNapiModule(napi);
-setBackend('napi');
+import { setNapiModule } from 'alizarin';
+setNapiModule(require('@alizarin/napi')); // also selects the 'napi' backend
 // All subsequent ORM calls use native code
 ```
+
+### Pattern 5: Edit a resource
+
+```typescript
+// Assign, then commit. Assignment is checked against the graph immediately
+// (unknown/derived/semantic node, multi-valued node, unloaded nodegroup throw).
+person.forename = 'Áine';             // plain strings set the current language
+const names = await person.nicknames; // multi-valued: push / splice the list
+names.push({ nicknames: 'Ani' });
+const { upserted, removed } = person.$commit(); // tile delta; no I/O
+// person.$discard() drops uncommitted edits.
+```
+
+There is **no** `setTileDataForNode`; edit by assignment (or the wrapper's
+`checkEditable` / `applyEdits`, which the assignment sugar calls). Python's ORM
+is the same with `place.title = ...`, `place.commit()` and `place.discard()`.
+
+### Pattern 6: Lifecycle state
+
+```typescript
+import { resourceLifecycleState, transitionResourceLifecycle } from 'alizarin';
+const state = resourceLifecycleState(resource, graph.resource_instance_lifecycle);
+const { resource: record, event } = transitionResourceLifecycle(
+  resource, graph.resource_instance_lifecycle, targetStateId);
+```
+
+See [Resource lifecycles](/docs/lifecycles) and [Resource layers](/docs/resource-layers)
+(`composeResourceLayers`).
 
 ## Python Patterns
 
@@ -125,27 +157,43 @@ tiles = alizarin.json_tree_to_tiles(tree_json, resource_id, graph_id,
 ### Register and look up a graph
 
 ```python
-alizarin.register_graph(graph_json)
+graph_id = alizarin.register_graph(graph_json)
 graph = alizarin.get_graph_json(graph_id)
+model = alizarin.load_model(graph_id)   # ResourceModelWrapper
 ```
 
 ### Mutate a graph
 
 ```python
 result = alizarin.apply_mutations_from_json(graph_json, mutations_json)
+# or fluently, as in TypeScript:
+mutator = alizarin.GraphMutator(graph)
+```
+
+### Lifecycle state
+
+```python
+state = alizarin.resource_lifecycle_state(json.dumps(resource), json.dumps(lifecycle))
+result = alizarin.transition_resource_lifecycle(
+    json.dumps(resource), json.dumps(lifecycle), target_state_id)
 ```
 
 ### Parse SKOS vocabularies
 
 ```python
-collection = alizarin.parse_skos_xml_to_collection(xml_string, base_uri)
+# Add to the global RDM cache (returns the collection ids added)
+ids = alizarin.add_from_skos_xml_to_global_cache(xml_string, base_uri)
+
+# Or just parse; the parse functions live on the native module
+from alizarin import alizarin as native
+collection = native.parse_skos_xml_to_collection(xml_string, base_uri)
 ```
 
 ### Batch operations (parallel)
 
 ```python
 tiles = alizarin.batch_trees_to_tiles(trees_json, graph_id, from_camel=True)
-merged = alizarin.batch_merge_resources(resources_json)
+merged = alizarin.batch_merge_resources([batch1_json, batch2_json])  # list of JSON strings
 ```
 
 ## Graph Mutation CSV Format
@@ -161,7 +209,7 @@ add_node,heritage_item,description,Description,string,1,E62_String,P3_has_note
 ```
 
 **CSV columns:**
-- `action`: `load_graph`, `create_model`, `create_branch`, `add_node`, `add_edge`, `add_nodegroup`, `add_card`, `add_widget`, `add_function`, `set_descriptor_template`, `rename_node`, `rename_card`, `rename_graph`, `realign_card_from_node`, `update_node`, `change_node_type`, `change_cardinality`, `coppice_subgraph`, `concept_change_collection`, `delete_node`, `delete_nodegroup`, `delete_card`, `delete_widget`, `delete_function`. Any unrecognised action is dispatched as an extension mutation by that name (e.g. `clm.reference_change_collection` from the CLM extension).
+- `action`: `load_graph`, `create_model`, `create_branch`, `add_node`, `add_edge`, `add_nodegroup`, `add_card`, `add_widget`, `add_subgraph`, `update_subgraph`, `add_function`, `set_descriptor_function`, `set_descriptor_template`, `update_widget_config`, `rename_node`, `rename_card`, `rename_graph`, `realign_card_from_node`, `update_node`, `change_node_type`, `change_cardinality`, `coppice_subgraph`, `concept_change_collection`, `delete_node`, `delete_nodegroup`, `delete_card`, `delete_widget`, `delete_function`. Any unrecognised action is dispatched as an extension mutation by that name (e.g. `clm.reference_change_collection` from the CLM extension).
 - `subject`: The parent alias (or model alias for `create_model`, graph ID for `load_graph`)
 - `object`: The new element's alias
 - `params.*`: Mutation-specific parameters (name, datatype, cardinality, ontology_class, parent_property, config, description, publication_id, alias_prefix, name_prefix). Supports **dot-notation** for nested values (e.g., `params.options.is_collector` becomes `{"options": {"is_collector": true}}`).
@@ -176,13 +224,17 @@ add_node,heritage_item,description,Description,string,1,E62_String,P3_has_note
 
 2. **Don't build graph JSON by hand.** Use the CSV mutation format or `GraphMutator`. Graphs have internal consistency requirements (nodegroup membership, edge integrity, card/widget linkage).
 
-3. **Don't write custom SKOS parsers.** Use `parseSkosXml()` (JS) or `parse_skos_xml_to_collection()` (Python).
+3. **Don't write custom SKOS parsers.** Use `parseSkosXml()` (JS) or `add_from_skos_xml_to_global_cache()` / the native module's `parse_skos_xml_to_collection()` (Python).
 
 4. **Don't re-implement concept lookups.** Use the RDM system: `RDM.archesClient = archesClient` in JS (an `ArchesClient` instance, not the `client` namespace), or `add_from_skos_xml_to_global_cache()`/`resolve_labels()` in Python.
 
 5. **Don't convert between camelCase and snake_case manually for Arches data.** The `from_camel` parameter in `json_tree_to_tiles()` handles this.
 
 6. **Don't use raw HTTP to query Arches if Alizarin can do it.** `ArchesClientRemote` wraps the Arches REST API with proper pagination, error handling, and caching.
+
+7. **Don't write tile data directly.** Assign to view-model fields and call `$commit()` (JS) / `commit()` (Python); the core checks, coerces and reruns derive functions. Older APIs such as `setTileDataForNode`, `toJsonFull`, `buildNodesForGraph` and `createPseudoValue` have been removed.
+
+8. **Don't test for `undefined` in Alizarin output.** Absent values are `null` on every backend.
 
 ## License
 

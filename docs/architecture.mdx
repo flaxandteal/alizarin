@@ -19,6 +19,7 @@ custom datatypes plug into the core.
    Rust core                      alizarin-core │  (over the C ABI) — never
         coercion · serialization · validation · instance resolution
         card resolution · RDM cache · datatype indexing · registries
+        edits · graph mutation · graph functions · layers · lifecycles
                                        │        ▼  compiled into the base crates
    Static data model     StaticGraph · StaticResource · StaticTile · StaticNode
 ```
@@ -46,7 +47,16 @@ common currency across every layer. See
 - **Card resolution** — projecting a resource onto its card tree,
 - **RDM cache** — controlled-list concepts, hierarchy and SKOS,
 - **Datatype indexing** — the coarse "head" index for downstream query engines,
-- **Global registries** — graphs, the RDM cache, extensions, widgets.
+- **Editing** — `ResourceEdit`: checked, coerced edits committed as a tile delta,
+- **Graph mutation** — the mutator every binding's `GraphMutator` runs through,
+- **Graph functions** — descriptors, derived tiles and aggregates ([Functions](/docs/functions)),
+- **Layers and lifecycles** — [resource-layer](/docs/resource-layers) composition and
+  [lifecycle](/docs/lifecycles) state and transitions,
+- **Global registries** — graphs, one shared model per graph, the RDM cache,
+  extensions, derive providers, widgets.
+
+The core also owns the **output**: every binding hands back core's
+serialisation, byte for byte, with absent values as `null` (never `undefined`).
 
 Each is covered in [Core Internals](/docs/core-internals).
 
@@ -55,7 +65,10 @@ Each is covered in [Core Internals](/docs/core-internals).
 Custom datatypes register a handler in the core's `ExtensionTypeRegistry`,
 declaring up to six capabilities (coerce, display, resolve-markers, validate,
 search-render, index-spec). Every core pipeline routes through the registry when
-a handler is present.
+a handler is present. A handler may also supply **fold** hooks, which aggregate
+functions use to summarise a datatype across many resources. Extensions can
+separately provide **derive providers** (`registerDeriveProvider`) that compute
+tiles for a graph's derive functions.
 
 **The base crates carry no extension dependencies.** `alizarin-core`,
 `-wasm`, `-napi` and `-python` know nothing about CLM, file-list or geo — an
@@ -67,8 +80,8 @@ is a thin front-end that hands the core a handler over a frozen C ABI:
 - **NAPI** — the extension's native package passes the pointer through JS as a
   `BigInt` (no static linking — the base `alizarin-napi` no longer bundles handlers).
 - **WASM** — a JS-callback surface (`registerExtensionHandler(datatype, { coerce,
-  renderDisplay, resolveMarkers, validate })`), since portable code can't pass raw
-  pointers.
+  renderDisplay, resolveMarkers, validate, fold… })`), since portable code can't
+  pass raw pointers.
 
 Each extension ships a JS/WASM package (`@alizarin/<x>`) and an optional native
 peer (`@alizarin/<x>-napi`); a single `import '@alizarin/<x>'` wires whichever
@@ -89,15 +102,18 @@ backend is present. See [Extension ABI](/docs/extension-abi) for the contract an
 
 - **JS/TS (WASM)** — the full ORM layer (below). Browsers and Node.js.
 - **JS/TS (NAPI)** — an alternative native backend for the same ORM; swap in on
-  Node.js via `setBackend('napi')`.
-- **Python** — direct function exports for tile conversion, graph mutation, RDM
-  caching and SKOS. Used by [AORM](https://github.com/flaxandteal/arches-orm/)
-  and ETL pipelines.
+  Node.js via `setNapiModule(require('@alizarin/napi'))`.
+- **Python** — an ORM mirroring the TypeScript one (model and instance wrappers,
+  view models, `GraphMutator`, editing with `commit()`), plus direct function
+  exports for tile conversion, graph mutation, RDM caching and SKOS. Used by
+  [AORM](https://github.com/flaxandteal/arches-orm/) and ETL pipelines.
 - **Rust** — the core crate directly, for maximum performance or new bindings.
 
-The bindings are **role-specialised**, not identical (the browser has no CSV
-ingestion; the Node builder has no standalone conversion). See the
-[Bindings](/docs/bindings) pages.
+The bindings are kept **in parity**: a feature lands on all three, and where two
+bindings both return a value they return the same JSON. The few deliberate
+differences are written down and tested (for instance, NAPI has no standalone
+tree↔tile conversion or per-value `coerce*` functions, which its Node builder
+consumers don't use). See the [Bindings](/docs/bindings) pages.
 
 ## The JS/TS ORM consumer layer
 
@@ -113,7 +129,8 @@ The JS/TS binding adds an ergonomic ORM over the core:
 
 - **`graphManager`** — the shared singleton registry for graphs and resources
 - **`ResourceModelWrapper`** — ORM wrapper over a graph model (`.all()`, …)
-- **`GraphMutator`** — fluent API for programmatic schema changes
+- **`GraphMutator`** — fluent API for programmatic schema changes, applied by the
+  core's graph mutator
 
 ### View models
 
@@ -126,6 +143,7 @@ Proxy-backed, lazily-hydrated typed access: `ResourceInstanceViewModel`,
 ```typescript
 // graphManager, staticStore and RDM are shared singletons exported from
 // 'alizarin'; client classes live under the `client` namespace export.
+await wasmReady;
 
 // 1. Point the shared graphManager (and the stores it uses) at a client
 const archesClient = new client.ArchesClientRemote("https://my-arches-instance.org");
@@ -144,6 +162,10 @@ const people = await PersonModel.all();
 const person = people[0];
 console.log(await person.name);      // Transparent, awaited property access
 console.log(await person.birthDate); // Typed, parsed values
+
+// 5. Edit by assignment; $commit() returns the tile delta to persist
+person.name = "Áine";
+const { upserted, removed } = person.$commit();
 ```
 
 A live version of the same lazy, relationship-following access (press ▶):

@@ -1,6 +1,6 @@
 ---
 title: Extension ABI
-description: Frozen C ABI contract for out-of-tree datatype extensions (ABI v2)
+description: Frozen C ABI contract for out-of-tree datatype extensions and derive providers (ABI v5)
 ---
 
 Out-of-tree datatype extensions plug into alizarin through a small C ABI. An
@@ -10,9 +10,11 @@ code — and hands it to the host, which adapts it into the shared
 no extension dependencies**: extensions plug in at the boundary, never by
 compile-time linking. The machinery that reads a `TypeHandlerInfo` and calls its
 fn-pointers lives once in `alizarin-core` (`extension_abi`); the bindings are thin
-front-ends over it.
+front-ends over it. The same ABI also carries
+[derive providers](#derive-providers) (a `DeriveProviderInfo`), whose host side
+lives in `alizarin-core` (`derive_abi`).
 
-This document is the committed contract for 2.0. `ABI_VERSION` is **2**.
+This document is the committed contract for 2.0. `ABI_VERSION` is **5**.
 
 > **How each binding registers the same `TypeHandlerInfo`:**
 > - **Python** — wraps the pointer in a `PyCapsule`; `import alizarin_clm` calls
@@ -22,17 +24,20 @@ This document is the committed contract for 2.0. `ABI_VERSION` is **2**.
 >   (base `alizarin-napi` no longer compiles the handler cores in).
 > - **WASM** — a *different*, JS-callback mechanism (portable code can't pass raw
 >   pointers): `registerExtensionHandler(datatype, { coerce, renderDisplay,
->   resolveMarkers, validate })`. "Freeze the extension ABI" means freeze this
+>   resolveMarkers, validate, nodeConfig, displayAsList, foldIdentity, fold,
+>   foldMerge, foldRemove, foldMayMatch })`, each optional (at least one of
+>   `coerce`, `renderDisplay`, `resolveMarkers`, `validate`, `nodeConfig` or
+>   `foldIdentity` is required). "Freeze the extension ABI" means freeze this
 >   C-ABI capsule/pointer contract; the JS-callback surface is versioned with the
 >   `alizarin` package.
 
 ## The surface
 
 `TypeHandlerInfo` (in `alizarin-extension-api`) carries a datatype name, an
-`AbiFingerprint`, and optional function pointers for **six** capabilities — the
-full set the `ExtensionTypeHandler` trait declares. Each capability a handler
-provides is a `Some(fn)`; the rest are `None`, and the host reports
-`HandlerCapabilities` from which pointers are present.
+`AbiFingerprint`, and optional function pointers for each capability the
+`ExtensionTypeHandler` trait declares. Each capability a handler provides is a
+`Some(fn)`; the rest are `None`, and the host reports `HandlerCapabilities` from
+which pointers are present.
 
 | Capability | Fn pointer (+ free) | Contract |
 |---|---|---|
@@ -42,11 +47,15 @@ provides is a `Some(fn)`; the rest are `None`, and the host reports
 | validate | `validate_fn` / `free_validate_fn` | value **by pointer** + config → `ValidationResult` |
 | search render | `render_search_fn` / `free_render_search_fn` | value **by pointer** + language → `Option<Value>` (search-indexable JSON) |
 | index spec | `index_spec_fn` / `free_index_spec_fn` | value **by pointer** + config → `Option<IndexSpec>` (semantic `IndexClass` + **raw** keys) |
+| node config | `node_config_fn` / `free_node_config_fn` | raw node config **by pointer** → the datatype's normalised config (`null` for none); core models only its own datatypes' configs |
+| list display | `display_as_list_fn` (no free) | raw node config **by pointer** → `bool`: does a value display as a list of labels? |
+| fold | `fold_identity_fn`, `fold_fn`, `fold_merge_fn`, `fold_remove_fn` / `free_fold_fn` | reduce many values into a summary (for [aggregate functions](/docs/functions#aggregate-functions)). A summary from `fold_identity_fn` opts in, and then `fold_fn` and `fold_merge_fn` are required; `fold_remove_fn` is optional (`null` ⇒ host re-folds). Values pass **by pointer**, a batch as an array of pointers |
+| fold match | `fold_may_match_fn` (no free) | summary + predicate **by pointer** → `bool`; conservative, `false` only when nothing folded can match |
 
-The four newer capabilities pass the value **by pointer** (`*const
+Everything after the first three capabilities passes values **by pointer** (`*const
 serde_json::Value`) — no per-value serialization on the hot path. The small
 result (a serialized struct or an error string) is the only thing marshalled
-back, and it is freed via the paired `free_*` pointer.
+back, and it is freed via the paired `free_*` pointer (where there is one).
 
 ### Design principle: declare semantics, not structure
 
@@ -68,7 +77,7 @@ structural knowledge into the handler.
 
 ```rust
 AbiFingerprint {
-    version: ABI_VERSION,                          // 2
+    version: ABI_VERSION,                          // 5
     value_size: size_of::<serde_json::Value>(),
     handler_info_size: size_of::<TypeHandlerInfo>(),
 }
@@ -105,8 +114,46 @@ and cut a coordinated release.
 
 `ABI_VERSION` history:
 - **1** — coerce, display, resolve_markers, validate; fingerprint handshake.
-- **2** — added `render_search` and `index_spec` (completes parity with the
-  `ExtensionTypeHandler` trait's six capabilities).
+- **2** — added `render_search` and `index_spec`.
+- **3** — added `node_config` and `display_as_list` (reference node config moved
+  out of core into the CLM extension).
+- **4** — added the fold functions (`fold_identity`, `fold`, `fold_merge`,
+  `fold_remove`, `fold_may_match`).
+- **5** — added `DeriveProviderInfo` and `HostGraph`, so extensions can provide
+  derive functions.
+
+## Derive providers
+
+An extension can also export a [derive function](/docs/functions#derive-functions-computed-tiles)
+as a `DeriveProviderInfo`: an `AbiFingerprint`, the provider id that graph
+declarations name in their `provider` key (e.g. `"utm"`), a `derive_fn` and its
+`free_fn`. The host registers it in the global functions registry under that id,
+checking the fingerprint first.
+
+Each call passes the resource id, its tiles (a JSON array) and its
+`DeriveConfig` — with the declared `nodes` already **resolved** to node id,
+nodegroup, datatype and alias — all **by pointer**, plus a `HostGraph`: a
+`lookup(ctx, kind, key)` callback answering the graph's root
+(`LOOKUP_ROOT`), a node by alias or id, or a nodegroup by id. Nothing
+graph-sized crosses the boundary; a provider that needs listings (every node,
+edges, cards) must run in-process. The result is the derived tiles as a JSON
+array, freed via `free_fn`.
+
+The extension side is written once against core's `DeriveProvider` trait:
+`alizarin_core::derive_abi::derive_with` adapts the C call to it, and
+`derive_provider_info(id, derive_fn)` builds the static info. Each binding
+registers the same provider:
+
+- **Python** — `alizarin.register_derive_provider(capsule)`, returning the
+  provider id.
+- **NAPI** — `registerDeriveProvider(ptr)` on `@alizarin/napi` with a `BigInt`
+  pointer, returning the provider id.
+- **WASM** — `registerDeriveProvider(providerId, { derive(resourceId, tiles,
+  config, lookup) })` from `alizarin`, where `lookup(kind, key)` uses the same
+  kinds (0 root, 1 node by alias, 2 node by id, 3 nodegroup by id).
+
+`hasDeriveProvider(providerId)` (`has_derive_provider` in Python) reports
+whether one is registered.
 
 ## Writing an extension (sketch)
 
@@ -133,9 +180,10 @@ Each binding hands that pointer to the host:
 ```
 
 The in-tree extensions are the reference implementations: `ext/clm` (coerce +
-display + resolve_markers + index_spec — a `reference` is a controlled-list value,
-so it head-indexes as `ConceptHierarchical`, exactly like the core `concept`
-datatype), `ext/filelist` (coerce + display), `ext/geo` (validate).
+display + resolve_markers + index_spec + node_config + display_as_list — a
+`reference` is a controlled-list value, so it head-indexes as
+`ConceptHierarchical`, exactly like the core `concept` datatype), `ext/filelist`
+(coerce + display), `ext/geo` (validate + fold, and the `utm` derive provider).
 
 ## Packaging (npm)
 
@@ -153,6 +201,8 @@ try {
   const napi = await import("@alizarin/napi");
   const ext  = await import("@alizarin/<x>-napi");
   napi.registerExtensionHandler(ext.xHandlerPtr());
+  // and, for an extension with a derive provider (as geo's utm):
+  // napi.registerDeriveProvider(ext.xDeriveProviderPtr());
 } catch { /* WASM-only consumer, or the napi ext isn't installed */ }
 ```
 

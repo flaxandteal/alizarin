@@ -1,21 +1,21 @@
 ---
 title: Functions
-description: Load-time functions attached to a graph — descriptors and derived tiles
+description: Functions attached to a graph — descriptors, derived tiles and aggregates
 ---
 
 import AlizarinComponent from '@/app/alizarin.tsx';
 
-A graph can carry **functions** that run when a resource is loaded, declared in
-its `functions_x_graphs`. They travel with the graph definition and are applied
-by the core — a UUID-keyed registry mirroring the
-[extension datatype](/docs/extension-abi) pattern. There are two kinds today.
+A graph can carry **functions**, declared in its `functions_x_graphs`. They
+travel with the graph definition and are applied by the core, the same way on
+every binding — a keyed registry mirroring the
+[extension datatype](/docs/extension-abi) pattern. There are three kinds today.
 
 ## Descriptor functions
 
 A **descriptor** function turns a resource's tiles into a display string using a
-`string_template`. It computes the resource's **name**, **description** and
-**map-popup** at load — none of these is stored on a tile; they're derived from
-node values every time.
+`string_template`. It computes the resource's **name**, **description**,
+**map-popup** and, optionally, **slug** — none of these is stored on a tile;
+they're derived from node values every time.
 
 The config lives in `functions_x_graphs` (function id
 `60000000-0000-0000-0000-000000000001`):
@@ -47,40 +47,108 @@ resource — it's produced by the function from the `Name` node value.
 
 ## Derive functions (computed tiles)
 
-A **derive** function (compute-tiles) goes further: it reads a resource's
-existing node values and **generates whole nodegroup tiles** just-in-time — tiles
-that were never stored. This is how, for example,
-[`alizarin-gramadan`](https://github.com/flaxandteal/alizarin) derives Irish
-grammatical inflections (an t-ainmní, an ginideach, …) from a base name node the
-moment the resource loads.
+A **derive** function goes further: it reads a resource's existing node values
+and **generates whole nodegroup tiles**. This is how, for example, `alizarin-geo`
+computes a geometry's UTM zone, easting and northing, and how a provider such as
+`alizarin-gramadan` can derive Irish grammatical inflections (an t-ainmní, an
+ginideach, …) from a base name node.
 
-Unlike datatype extensions, derive providers are **compiled-in Rust crates**
-(implementing `DeriveProvider`, self-registered by UUID), so they're reached
-identically from the native, NAPI, WASM and Python bindings without duplication.
-The `functions_x_graphs` entry names a `provider` key; the registered provider
-fills the declared `nodegroup`:
+The `functions_x_graphs` entry (function id
+`60000000-0000-0000-0000-000000000002`) names a `provider` key, the target
+`nodegroup`, and the nodes the function reads and writes, by role, each by alias
+or node id:
 
 ```json
 {
-  "function_id": "…compute-tiles id…",
-  "config": { "provider": "gramadan", "nodegroup": "…", "layer": "…" }
+  "function_id": "60000000-0000-0000-0000-000000000002",
+  "config": {
+    "provider": "utm",
+    "nodegroup": "…",
+    "mode": "stored",
+    "sources": ["…geometry nodegroup…"],
+    "nodes": { "geometry": "boundary", "easting": "utm_easting", "northing": "utm_northing" }
+  }
 }
 ```
 
+Core resolves `nodes` against the graph before the provider runs, so a missing
+alias fails loudly. A declaration runs in one of two **modes**:
+
+- **`on_load`** (the default) — computed in core's load path on every binding,
+  each time the resource loads, and **never stored**: exports leave these tiles
+  out, so readers need the provider. A target nodegroup that already holds other
+  tiles is left alone (attested data wins). In lazy mode it waits until its
+  `sources` nodegroups are loaded.
+- **`stored`** — rerun whenever one of its `sources` (required) changes: on
+  `applyEdits`, when a tree is converted to tiles, and in the CSV business-data
+  loader. Its tiles are **stored** with the resource, so readers need no
+  provider and a static index can search them. In a cardinality-1 target,
+  `overwrite` (default `true`) decides whether its tile replaces one someone
+  else wrote.
+
+Either way, derived tiles get **predictable ids** (a UUIDv5 of the
+parent tile or resource, nodegroup, provider and index), so a rerun replaces the
+function's own earlier tiles and nothing else. A derived nodegroup can't be
+edited directly; edit its sources instead.
+
+Providers implement core's `DeriveProvider` trait and register under their key,
+on each binding: `registerDeriveProvider` / `hasDeriveProvider` in TypeScript
+(WASM: JS callbacks; NAPI: a native pointer), `register_derive_provider` /
+`has_derive_provider` in Python. Extensions ship them over the
+[extension ABI](/docs/extension-abi#derive-providers). A declaration whose
+provider isn't registered yields no tiles. (`ComputeTilesConfig` is a deprecated
+alias of core's `DeriveConfig`.)
+
+## Aggregate functions
+
+An **aggregate** function writes node values on a resource computed from a
+*slice* of **other** resources — for example, a Layer resource's span values
+(the range of its members' dates, or the bounding box of their geometry). Core
+ships one provider, a **fold**: it reduces one node's values across the slice
+using the datatype's fold capability, giving `{min, max, count}` for `number`,
+`date` and `edtf`, and `{bbox, geometry_types, count}` for geometries (with
+`alizarin-geo` registered).
+
+```json
+{
+  "function_id": "60000000-0000-0000-0000-000000000003",
+  "config": {
+    "provider": "60000000-0000-0000-0000-000000000004",
+    "config": { "items": [
+      { "tileid": "span-height", "graph": "…member graph id…",
+        "path": "height", "datatype": "number",
+        "into": { "span_value": "summary", "span_resources": "resources" } }
+    ] },
+    "pending": { "tileid": "freshness", "alias": "pending_count" }
+  }
+}
+```
+
+Each item may also filter members with `where`, or write one summary per value
+with `group_by`. Aggregates never run on load: call them explicitly on a resource
+registry, typically at build time — `applyAggregateFunctions(targetId)`,
+`applyAggregateAdditions(targetId, addedIds)` (fold in new members without a
+full rerun) and `markAggregatePending(targetId, count)`, or their snake_case
+equivalents in Python. Each returns the node values it changed, as
+`[{tileid, nodeid, value}]`. `foldMayMatch(datatype, summary, predicate)` then
+answers whether anything folded into a summary could match a range or bbox, so
+a whole layer can be skipped.
+
 ### Purity is the contract
 
-Both kinds **must be pure and deterministic** — output depends only on the input
-node values, never on time, randomness or external state. That's what lets the
-core cache computed tiles and skip recomputation, and it keeps
-[IDs deterministic](/docs/determinism) so the same input always yields the same
-output. A derive provider that reached out to a network or a clock would break
-both guarantees.
+All three kinds **must be pure and deterministic** — output depends only on the
+input node values (and, for an aggregate, the slice), never on time, randomness,
+visit order or external state. That's what lets derived tiles be cached or
+stored and trusted, and it keeps [IDs deterministic](/docs/determinism) so the
+same input always yields the same output. A derive provider that reached out to
+a network or a clock would break both guarantees.
 
 ## Which to use
 
-| | Descriptor | Derive (compute-tiles) |
-|---|---|---|
-| Produces | a display string (name/description/map-popup) | full nodegroup tiles |
-| Configured by | `string_template` | a `provider` key |
-| Registered as | built-in template engine | a compiled Rust `DeriveProvider` |
-| Runnable in JS | yes (above) | via its provider crate |
+| | Descriptor | Derive (computed tiles) | Aggregate |
+|---|---|---|---|
+| Produces | a display string (name/description/map-popup/slug) | full nodegroup tiles | node values on the calling resource |
+| Reads | the resource's tiles | the resource's tiles | other resources (a slice) |
+| Configured by | `string_template` | a `provider` key, `nodes`, `mode` | a `provider` UUID and its `config` |
+| Runs | on load | on load, or on writes (`stored`) | when called |
+| Registered as | built-in template engine | a `DeriveProvider`, per binding or over the extension ABI | compiled into core (the fold) |

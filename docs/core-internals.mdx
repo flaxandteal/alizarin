@@ -14,15 +14,21 @@ types (`graph/` submodules):
 
 - `StaticGraph` (`graph::static_graph`) — a resource model: nodes, nodegroups,
   edges, cards, and `cards_x_nodes_x_widgets`.
-- `StaticResource` / `StaticResourceSummary` / `StaticResourceMetadata` /
-  `StaticResourceDescriptors` (`graph::resources`) — a resource instance and its
-  lightweight summary/descriptors.
+- `StaticResource` / `StaticResourceSummary` / `StaticResourceMetadata`
+  (`graph::resources`) and `StaticResourceDescriptors` (`graph::descriptors`) — a
+  resource instance and its lightweight summary/descriptors.
 - `StaticTile` (`graph::tile`) — a tile: `data` keyed by node id.
 - `StaticNode`, `StaticNodegroup`, `StaticEdge`, `StaticCard`
   (`graph::nodes`, `graph::cards`), and `CardIndex` (`graph::card_index`) which
   indexes cards → widgets → child cards for traversal.
 
-These are what the pipelines below read and write.
+- `StaticLifecycle` / `StaticLifecycleState` (`graph::lifecycle`) — an Arches
+  lifecycle state graph; see [Resource lifecycles](/docs/lifecycles).
+
+These are what the pipelines below read and write. Their serde is the **only**
+definition of Alizarin's output: every binding returns it as is, empty optional
+fields are written as `null`, and hash-ordered maps are written sorted
+(`sorted_serde`), so output is byte-stable across runs and backends.
 
 ## Coercion — tree → tiles
 
@@ -30,8 +36,8 @@ These are what the pipelines below read and write.
 author) into tiled `business_data`:
 
 - `convert_single_tree` / `batch_convert_trees` (returning a `BatchOutcome` of
-  resources, errors, and validation warnings) — the pipeline behind each
-  binding's `batch_trees_to_tiles`.
+  resources, errors, and validation warnings) — the pipeline behind the WASM
+  (`batchTreesToTiles`) and Python `batch_trees_to_tiles` functions.
 - Per-datatype coercion lives in `type_coercion` (`scalars`, `strings`, `domain`,
   `rdm`, `resources`, …), each producing tile data plus a resolved display value.
 - CSV ingestion: `csv_model_loader` (graph definitions from CSV) and
@@ -59,10 +65,49 @@ binding output). It is Rust-native — no per-value round-trip to the host.
 
 `instance_wrapper_core` (`ResourceInstanceWrapperCore`) and `pseudo_value_core`
 (`PseudoValueCore` / `PseudoListCore`) are the shared, lazy resolution engine —
-the thing the JS view models and the card serializer both sit on. A
-`PseudoValueCore` holds an `Arc<StaticNode>`, an `Arc<StaticTile>` and the raw
-`tile_data`; cardinality is decided by `is_node_single_cardinality`. Resolution
-is lazy: values are materialised per node on demand.
+the thing every binding's view models and the card serializer sit on. A
+`PseudoValueCore` holds an `Arc<StaticNode>`, an optional `Arc<StaticTile>` and
+the raw `tile_data`; cardinality is decided by `is_node_single_cardinality`, and
+pseudo lists keep their values in tile `sortorder`. Resolution is lazy: values
+are materialised per node on demand, and the core owns the lazy state (which
+nodegroups are loaded) and populates what it needs when serialising.
+Tiles can come from a host callback or a compiled-in `TileSource`
+(`tile_source`); on-load derive functions run in this load path.
+
+`pseudo_node_core` (`PseudoNodeCore`) is the tile-free counterpart: a model's
+nodes as a navigable tree, behind `getRoot` / `NodeViewModel` on every binding.
+Each binding's model wrapper shares one `GraphModelAccess` per graph
+(`graph_model_access`, held in the model registry), which carries the graph's
+indices and its nodegroup permissions (`permissions`).
+
+## Editing
+
+`resource_edit` (`ResourceEdit`) is the core under every ORM's
+edit-by-assignment. Each edit is checked when made (`check_editable`: unknown,
+semantic or derived node, permissions, a lazily unloaded nodegroup) and coerced
+as tree→tiles coerces; `apply_edits` commits a batch all or nothing, reruns the
+stored derive functions for the nodegroups touched, and returns a `TileDelta`
+(`upserted` tiles, `removed` ids). Committing does no I/O.
+
+## Graph mutation
+
+`graph_mutator` applies `GraphMutation`s (add/rename/delete nodes, nodegroups,
+cards, widgets, functions, …) to a `StaticGraph`, including from the CSV
+instruction format. Every binding's `GraphMutator` and `apply_mutations_*`
+functions run through it, so the same mutations give the same graph, ids
+included, everywhere. See [Graph Mutations](/docs/mutations).
+
+## Graph functions, layers and lifecycles
+
+- `graph::functions` / `graph::computed_tiles` — descriptor and **derive**
+  functions (`DeriveConfig`, on-load or stored), with providers registered from
+  extensions over `derive_abi`; see [Functions](/docs/functions).
+- `fold` / `datatype_fold` / `fold_aggregate` — **aggregate** functions that fold
+  a node's values across a slice of resources (`slice_source`).
+- `graph::layered_graph` and `compose_resource_layers_from_json` — composing a
+  resource across [data layers](/docs/resource-layers).
+- `graph::lifecycle` — lifecycle state and transitions
+  (`lifecycle_state_from_json`, `transition_from_json`).
 
 ## Card resolution
 
@@ -96,12 +141,15 @@ Custom datatypes register handlers in the `ExtensionTypeRegistry`
 (`extension_type_registry`). A handler declares up to six capabilities via
 `HandlerCapabilities` — coerce, display render, resolve markers, validate, search
 render, index spec — and every pipeline above routes through the registry when a
-handler is present. Out-of-tree handlers plug in over a frozen C ABI; see
-[Extension ABI](/docs/extension-abi).
+handler is present. A handler may also implement the fold hooks that aggregate
+functions use. Out-of-tree handlers plug in over a frozen C ABI, read once in
+`extension_abi`; see [Extension ABI](/docs/extension-abi).
 
 ## Global registries
 
 `registry` holds the process-wide state the pipelines consult: the graph
-registry (`Arc<StaticGraph>` by id), the global RDM cache (`Arc<RdmCache>`), the
-extension registry, and the widget / list-datatype / model-permission
-registries.
+registry (`Arc<StaticGraph>` by id), the model registry (one shared
+`GraphModelAccess` per graph, with its permissions), the global RDM cache
+(`Arc<RdmCache>`), the extension registry, and the widget / list-datatype
+registries, and the global functions registry, where derive providers are
+registered.

@@ -37,6 +37,6 @@ The same boundaries as plain data — feature count and geometry type per site
   docs Content-Security-Policy must allow the tile host.
 - Coercion and `GeoJSONViewModel` are **core** — geospatial reads work with no
   extension installed. The optional `@alizarin/geo` extension adds **validation**
-  (GeoJSON structure, coordinate ranges, ring integrity) over the
-  [extension ABI](/docs/extension-abi)'s `validate` capability; register it with
+  (GeoJSON structure, coordinate ranges, ring integrity), geometry **folding** for
+  aggregates, and a **UTM derive provider**; register it with
   `import '@alizarin/geo'`. See [Extension types](/docs/types/extensions#geojson-geo).

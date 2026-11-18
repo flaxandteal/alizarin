@@ -9,10 +9,10 @@ description: The shared engine behind all Alizarin bindings
 
 ```toml
 [dependencies]
-alizarin-core = "2.0.0-beta.1"
+alizarin-core = "=2.0.0-alpha.147"
 ```
 
-The crate is published to [crates.io](https://crates.io/crates/alizarin-core).
+The crate is published to [crates.io](https://crates.io/crates/alizarin-core). 2.0 prereleases are on the `alpha` line; pin the exact version with `=`, since a caret requirement would also accept the paused `2.0.0-beta.*` releases, which sort above the alphas.
 
 ## Quick Example
 
@@ -62,15 +62,18 @@ let (business_data, diagnostics) = tree_to_tiles_with_options(
 | `tree_to_tiles_with_options()` | `json_conversion` | Convert JSON tree back to tiles |
 | `build_tree_from_tiles()` | `json_conversion` | Build tree from pre-extracted tiles |
 | `parse_resources_from_json_str()` | `graph` | Parse business data JSON |
-| `merge_resources()` | `graph` | Merge two resource tile sets |
+| `merge_resources()` | `graph` | Merge resources sharing an id into one (with warnings) |
 | `build_graph_from_model_csvs()` | `csv_model_loader` | Build graph from CSV definitions |
 | `build_resources_from_business_csv()` | `csv_business_data_loader` | Build resources from CSV |
 | `resolve_labels()` | `label_resolution` | Resolve label strings to concept UUIDs |
 | `prune_graph()` | `graph` | Remove unused nodes from a graph |
+| `StaticGraph::lifecycle()` | `graph` | The graph's compiled, cached [lifecycle](/docs/lifecycles) (`LifecycleIndex`) |
+| `transition()` | `graph` | Move a resource to another lifecycle state; returns a transition record and event |
+| `lifecycle_state_from_json()` / `transition_from_json()` | `graph` | JSON-boundary forms the bindings wrap |
 
 ## Module Overview
 
-The crate is organised into ~29 top-level public modules. The most commonly used:
+The crate is organised into ~39 top-level public modules. The most commonly used:
 
 - **`graph`** — Core data structures (`StaticGraph`, `StaticNode`, `StaticEdge`, etc.)
 - **`json_conversion`** — Tile/tree bidirectional conversion
@@ -79,10 +82,23 @@ The crate is organised into ~29 top-level public modules. The most commonly used
 - **`rdm_cache`** / **`rdm_namespace`** — Reference data management
 - **`skos`** — SKOS RDF/XML parsing and serialization
 - **`type_coercion`** — Multi-phase value coercion across Arches datatypes
-- **`registry`** — Resource indexing and lookup
+- **`registry`** — Global graph registry (graphs by id, for functions that look them up)
+- **`resource_edit`** — `ResourceEdit` / `EditOp`: the edits behind every binding's assign-and-commit
 - **`loader`** — Prebuild directory loading
 - **`label_resolution`** — Resolve human labels to concept UUIDs
 - **`extension_type_registry`** — Plugin system for custom datatypes
+
+## Lifecycles
+
+```rust
+use alizarin_core::graph::{transition, EffectiveState};
+
+let lifecycle = graph.lifecycle()?;   // compiled once, cached on the graph
+if let EffectiveState::State { id, .. } = lifecycle.effective_state(&resource.resourceinstance) { /* … */ }
+let (record, event) = transition(&resource.resourceinstance, lifecycle, target, true)?;
+```
+
+`StaticResourceMetadata` carries the stored state as `resource_instance_lifecycle_state_id`, and `lifecycle_state_conflict` when composed layers disagreed. See [Resource lifecycles](/docs/lifecycles).
 
 ## Further Reading
 

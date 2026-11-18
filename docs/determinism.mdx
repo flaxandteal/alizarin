@@ -5,9 +5,10 @@ description: Stable UUIDs for diffable, cacheable input and output
 
 import AlizarinComponent from '@/app/alizarin.tsx';
 
-Alizarin generates identifiers **deterministically**: an ID is a
+Wherever it has a stable key, alizarin generates identifiers
+**deterministically**: an ID is a
 [UUIDv5](https://www.rfc-editor.org/rfc/rfc4122#section-4.3) computed from a
-namespace and a key, never a random `v4`. The same input always produces the same
+namespace and a key, not a random `v4`. The same input always produces the same
 ID — which is what makes exports **diffable** and pipelines **cacheable**.
 
 ## The primitive
@@ -35,8 +36,17 @@ UUID. There is no clock, counter or randomness involved.
   the same CSVs + namespace produce the same graph, byte for byte.
 - **RDM concepts** — collection and concept ids are generated from the namespace,
   so [controlled lists](/docs/types/concepts) are stable across rebuilds.
+- **Tile ids** — when a resource is built from a tree or from business-data
+  CSV, every cardinality-1 tile gets a canonical id from the resource,
+  nodegroup and parent tile. Multi-valued tiles are numbered per nodegroup only
+  when you pass a layer namespace (so independently built layers can't mint the
+  same id); without one they keep the ids they have, or get random ones.
+- **Resource ids** — taken from the data, from configured id keys, or from the
+  resource's slug; random only if you ask for random ids.
 - **Computed tiles** — [derive functions](/docs/functions#derive-functions-computed-tiles)
-  must be pure, so their generated tile ids are reproducible and cacheable.
+  must be pure, and their tiles get predictable ids (from the resource or parent
+  tile, nodegroup, provider and index), so a rerun replaces exactly its own
+  earlier tiles.
 
 ## Live example
 

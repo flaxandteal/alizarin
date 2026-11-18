@@ -40,6 +40,10 @@ prebuild/
 └── package_config.json         # Package metadata
 ```
 
+Alizarin reads `graphs/`, `business_data/`, `reference_data/`, `ontologies/` and
+`preindex/`, and writes `graphs/` and `reference_data/` on export. The other
+entries are part of the Arches package layout; alizarin leaves them alone.
+
 ## Subdirectory Reference
 
 ### `graphs/`
@@ -58,13 +62,15 @@ Graph definitions split into two subdirectories based on the `isresource` flag.
             "nodegroups": [...],
             "edges": [...],
             "cards": [...],
-            "cards_x_nodes_x_widgets": [...]
+            "cards_x_nodes_x_widgets": [...],
+            "functions_x_graphs": [...],
+            "resource_instance_lifecycle": {...}
         }
     ]
 }
 ```
 
-Files are named after the graph's display name (filesystem-safe). On import, all graphs are registered in the global registry.
+Files are named after the graph's display name (filesystem-safe). On import, all graphs are registered in the global registry. Graph fields alizarin doesn't model are kept, so a graph round-trips; `functions_x_graphs` carries its [functions](/docs/functions) and `resource_instance_lifecycle` (Arches 8) its [lifecycle](/docs/lifecycles).
 
 ### `business_data/`
 
@@ -80,6 +86,7 @@ Resource instance data. Files can be nested in subdirectories — the loader rec
                     "resourceinstanceid": "uuid",
                     "graph_id": "graph-uuid",
                     "name": "Display Name",
+                    "resource_instance_lifecycle_state_id": "state-uuid",
                     "descriptors": {
                         "en": {"name": "Name", "description": "...", "slug": "slug"}
                     }
@@ -99,7 +106,7 @@ Resource instance data. Files can be nested in subdirectories — the loader rec
 }
 ```
 
-Bare resources (without the `business_data` wrapper) are also accepted.
+Bare resources (without the `business_data` wrapper) are also accepted. `resource_instance_lifecycle_state_id` is optional: absent means the lifecycle's initial state (see [Resource lifecycles](/docs/lifecycles)).
 
 ### `reference_data/`
 
@@ -148,7 +155,12 @@ Standard Arches package metadata:
 ```python
 import alizarin
 
-result = alizarin.import_prebuild("./prebuild", base_uri="http://localhost:8000/")
+result = alizarin.import_prebuild(
+    "./prebuild",
+    base_uri="http://localhost:8000/",
+    extra_reference_data_dirs=None,  # optional: more SKOS directories
+    extra_ontology_dirs=None,        # optional: more RDFS/OWL directories
+)
 # result = {
 #     "graph_ids": ["uuid1", "uuid2", ...],
 #     "collection_ids": ["uuid1", "uuid2", ...],
@@ -156,7 +168,7 @@ result = alizarin.import_prebuild("./prebuild", base_uri="http://localhost:8000/
 # }
 ```
 
-This registers all graphs, loads SKOS collections into the global RDM cache, and creates an ontology validator if ontology files are present.
+This registers all graphs, loads SKOS collections into the global RDM cache, and creates an ontology validator if ontology files are present. It also sets the RDM namespace from `base_uri`, so generated concept ids are deterministic. Business data is not loaded; read it with a resource registry or the business-data loaders.
 
 ### Export
 
@@ -169,15 +181,15 @@ files_written = alizarin.export_prebuild(
     base_uri="http://localhost:8000/"
 )
 
-# Export specific graphs only (graph_ids first, then output directory)
-files_written = alizarin.export_graphs_to_dir(["graph-uuid-1", "graph-uuid-2"], "./output")
-
-# Export all registered graphs
-files_written = alizarin.export_all_graphs_to_dir("./output")
-
-# Export RDM collections as SKOS XML
-files_written = alizarin.export_collections_to_dir("./output", base_uri="http://localhost:8000/")
+# Export specific graphs only (plus the RDM cache)
+files_written = alizarin.export_prebuild(
+    "./output",
+    "http://localhost:8000/",
+    graph_ids=["graph-uuid-1", "graph-uuid-2"],
+)
 ```
+
+The narrower `export_graphs_to_dir(graph_ids, out_dir)`, `export_all_graphs_to_dir(out_dir)` and `export_collections_to_dir(out_dir, base_uri)` exist on the native module (`alizarin.alizarin`) but are not re-exported from `alizarin`.
 
 ### Round-trip workflow
 
