@@ -82,6 +82,14 @@ jobs:
         run: |
           pip install dist/*.whl
 
+      # test_utm.py drives the UTM derive provider, which alizarin_geo registers.
+      - name: Build and install alizarin_geo
+        working-directory: ext/geo/python
+        shell: bash
+        run: |
+          maturin build --release --out dist
+          pip install --no-deps dist/*.whl
+
       - name: Run tests
         working-directory: crates/alizarin-python
         run: pytest tests/ -v
