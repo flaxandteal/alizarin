@@ -1,9 +1,9 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
 var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-import { w as wasmReady, r as registerExtensionHandler, C as CUSTOM_DATATYPES, g as getCurrentLanguage, a as registerNodeConfigAdapter, b as registerResolvableDatatype, n as nodeConfigManager, R as RDM, __tla as __tla_0 } from "./main-Bo5oe65v.js";
-import { __tla as __tla_1 } from "./main-Bo5oe65v.js";
-import { A, L, G, q, p, S, Z, M, O, c, J, K, P, $, l, z, U, a2, Y, x, a1, D, m, d, T, _, k, E, o, H, I, a0, Q, j, B, V, t, W, X, y, e, h, s, F, i, u, N, v, f } from "./main-Bo5oe65v.js";
+import { w as wasmReady, r as registerExtensionHandler, C as CUSTOM_DATATYPES, g as getCurrentLanguage, a as registerNodeConfigAdapter, b as registerResolvableDatatype, n as nodeConfigManager, R as RDM, __tla as __tla_0 } from "./main-Cm0hdULV.js";
+import { __tla as __tla_1 } from "./main-Cm0hdULV.js";
+import { A, L, G, q, p, S, a0, M, O, c, J, K, P, a1, l, z, W, a4, $, x, a3, D, m, d, V, _, k, E, o, H, I, a2, U, j, B, Q, X, t, Y, Z, y, e, h, s, F, T, i, u, N, v, f } from "./main-Cm0hdULV.js";
 let __tla = Promise.all([
   (() => {
     try {
@@ -1174,46 +1174,48 @@ export {
   p as ResourceModelWrapper,
   S as StaticStore,
   __tla,
-  Z as autoDetectBackend,
+  a0 as autoDetectBackend,
   M as buildGraphFromModelCsvs,
   O as buildResourcesFromBusinessCsv,
   c as client,
   J as collectionToSkosXml,
   K as collectionsToSkosXml,
   P as composeResourceLayers,
-  $ as createResourceRegistry,
+  a1 as createResourceRegistry,
   l as createWKRM,
   z as ensureWasmRdmCache,
-  U as foldMayMatch,
-  a2 as formatMemoryUsage,
-  Y as getBackend,
+  W as foldMayMatch,
+  a4 as formatMemoryUsage,
+  $ as getBackend,
   x as getCurrentLanguage,
-  a1 as getMemoryUsage,
+  a3 as getMemoryUsage,
   D as getTimingStats,
   m as getWKRMClass,
   d as graphManager,
-  T as hasDeriveProvider,
+  V as hasDeriveProvider,
   _ as initWasm,
   k as interfaces,
   E as logTimingStats,
   o as nodeConfig,
   H as parseSkosXml,
   I as parseSkosXmlToCollection,
-  a0 as parseStaticGraph,
-  Q as registerDeriveProvider,
+  a2 as parseStaticGraph,
+  U as registerDeriveProvider,
   registerExtensionHandler,
   registerResolvableDatatype,
   j as renderers,
   B as resetTimingStats,
-  V as setBackend,
+  Q as resourceLifecycleState,
+  X as setBackend,
   t as setCurrentLanguage,
-  W as setNapiModule,
-  X as setWasmModule,
+  Y as setNapiModule,
+  Z as setWasmModule,
   y as setWasmURL,
   e as slugify,
   h as staticStore,
   s as staticTypes,
   F as tracing,
+  T as transitionResourceLifecycle,
   i as unregisterResolvableDatatype,
   u as utils,
   N as validateModelCsvs,
