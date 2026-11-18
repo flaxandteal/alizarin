@@ -30,6 +30,8 @@ json_tree_to_tiles: Optional[Any] = None
 batch_trees_to_tiles: Optional[Any] = None
 batch_tiles_to_trees: Optional[Any] = None
 compose_resource_layers: Optional[Any] = None
+resource_lifecycle_state: Optional[Any] = None
+transition_resource_lifecycle: Optional[Any] = None
 build_resources_from_business_csv: Optional[Any] = None
 merge_resources: Optional[Any] = None
 batch_merge_resources: Optional[Any] = None
@@ -58,6 +60,8 @@ try:
     batch_trees_to_tiles = _alizarin_rust.batch_trees_to_tiles
     batch_tiles_to_trees = _alizarin_rust.batch_tiles_to_trees
     compose_resource_layers = _alizarin_rust.compose_resource_layers
+    resource_lifecycle_state = _alizarin_rust.resource_lifecycle_state
+    transition_resource_lifecycle = _alizarin_rust.transition_resource_lifecycle
     build_resources_from_business_csv = _alizarin_rust.build_resources_from_business_csv
     merge_resources = _alizarin_rust.merge_resources
     batch_merge_resources = _alizarin_rust.batch_merge_resources
@@ -452,6 +456,8 @@ __all__ = [
     "json_tree_to_tiles",
     "batch_trees_to_tiles",
     "compose_resource_layers",
+    "resource_lifecycle_state",
+    "transition_resource_lifecycle",
     "build_resources_from_business_csv",
     "batch_tiles_to_trees",
     "merge_resources",

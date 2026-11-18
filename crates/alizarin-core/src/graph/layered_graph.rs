@@ -93,6 +93,32 @@ impl LayeredGraph {
         &self.layers[0]
     }
 
+    /// The model's lifecycle. It follows the model's identity, so it always
+    /// comes from the base; see [`Self::lifecycle_warnings`] for overlays
+    /// that try to redefine it.
+    pub fn lifecycle(&self) -> Result<&super::lifecycle::LifecycleIndex, String> {
+        self.base().lifecycle()
+    }
+
+    /// One warning per overlay whose `resource_instance_lifecycle` differs
+    /// from the base's. Such overlays are ignored for lifecycle purposes.
+    pub fn lifecycle_warnings(&self) -> Vec<String> {
+        let base = &self.base().resource_instance_lifecycle;
+        self.layers[1..]
+            .iter()
+            .filter(|g| {
+                g.resource_instance_lifecycle.is_some() && g.resource_instance_lifecycle != *base
+            })
+            .map(|g| {
+                format!(
+                    "Overlay '{}' redefines resource_instance_lifecycle; \
+                     the base graph's lifecycle is used",
+                    g.graphid
+                )
+            })
+            .collect()
+    }
+
     /// Number of layers (including the base).
     pub fn layer_count(&self) -> usize {
         self.layers.len()

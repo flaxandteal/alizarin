@@ -8,6 +8,7 @@ use super::card_index::CardIndex;
 use super::cards::{StaticCard, StaticCardsXNodesXWidgets, StaticFunctionsXGraphs};
 use super::descriptors::{DescriptorConfig, StaticResourceDescriptors, DESCRIPTOR_FUNCTION_ID};
 use super::graph_lookup::GraphLookup;
+use super::lifecycle::LifecycleIndex;
 use super::nodes::{StaticEdge, StaticNode, StaticNodegroup};
 use super::tile::StaticTile;
 use super::translatable::StaticTranslatableString;
@@ -106,6 +107,11 @@ pub struct StaticGraph {
     /// Internal lookup tables. Built lazily on first use, never serialized.
     #[serde(skip)]
     indices: std::sync::OnceLock<Indices>,
+
+    /// `resource_instance_lifecycle` compiled on first use. Kept apart from
+    /// `indices` so a malformed lifecycle only fails lifecycle calls.
+    #[serde(skip)]
+    lifecycle_index: std::sync::OnceLock<Result<LifecycleIndex, String>>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -222,6 +228,16 @@ impl StaticGraph {
 
     pub fn invalidate_indices(&mut self) {
         self.indices = std::sync::OnceLock::new();
+        self.lifecycle_index = std::sync::OnceLock::new();
+    }
+
+    /// This graph's lifecycle, compiled once. A graph without one gets the
+    /// synthetic Perpetual; a malformed one is an error here, not at load.
+    pub fn lifecycle(&self) -> Result<&LifecycleIndex, String> {
+        self.lifecycle_index
+            .get_or_init(|| LifecycleIndex::from_value(self.resource_instance_lifecycle.as_ref()))
+            .as_ref()
+            .map_err(Clone::clone)
     }
 
     /// Get the root node

@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiResourceInstanceWrapper, NapiPseudoNode, NapiResourceModelWrapper, NapiStaticDomainValue, NapiNodeConfigBoolean, NapiNodeConfigConcept, NapiNodeConfigDomain, registerExtensionHandler, registerDeriveProvider, hasDeriveProvider, foldMayMatch, getCurrentLanguage, setCurrentLanguage, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, applyMutationsFromJson, applyMutationsCreate, getMutationSchema, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, applyAggregateFunctionsFromFile, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
+const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiResourceInstanceWrapper, NapiPseudoNode, NapiResourceModelWrapper, NapiStaticDomainValue, NapiNodeConfigBoolean, NapiNodeConfigConcept, NapiNodeConfigDomain, registerExtensionHandler, registerDeriveProvider, hasDeriveProvider, foldMayMatch, getCurrentLanguage, setCurrentLanguage, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, applyMutationsFromJson, applyMutationsCreate, getMutationSchema, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, resourceLifecycleState, transitionResourceLifecycle, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, applyAggregateFunctionsFromFile, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
 
 module.exports.NapiRdmCache = NapiRdmCache
 module.exports.NapiNodeConfigManager = NapiNodeConfigManager
@@ -341,6 +341,8 @@ module.exports.getMutationSchema = getMutationSchema
 module.exports.buildGraphFromCsvs = buildGraphFromCsvs
 module.exports.buildBusinessDataFromCsv = buildBusinessDataFromCsv
 module.exports.composeResourceLayers = composeResourceLayers
+module.exports.resourceLifecycleState = resourceLifecycleState
+module.exports.transitionResourceLifecycle = transitionResourceLifecycle
 module.exports.extensionCoerce = extensionCoerce
 module.exports.extensionRenderDisplay = extensionRenderDisplay
 module.exports.extensionResolveMarkers = extensionResolveMarkers

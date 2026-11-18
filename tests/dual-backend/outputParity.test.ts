@@ -32,6 +32,7 @@ import {
 } from "../../js/backend";
 import { ResourceModelWrapper } from "../../js/graphManager";
 import { composeResourceLayers } from "../../js/csvModelLoader";
+import { resourceLifecycleState, transitionResourceLifecycle } from "../../js/lifecycle";
 
 const DIR = path.join(__dirname, "../data/output-parity");
 const read = (name: string) => fs.readFileSync(path.join(DIR, name), "utf8");
@@ -43,6 +44,9 @@ const graphFixture = JSON.parse(graphText).graph[0];
 const resourceFixture = JSON.parse(read("resource.json"));
 const layerFixture = JSON.parse(read("resource-layer.json"));
 const RESOURCE_ID = resourceFixture.resourceinstance.resourceinstanceid;
+/** Arches' Standard lifecycle, as in graph.json. */
+const ACTIVE = "f75bb034-36e3-4ab4-8167-f520cf0b4c58";
+const RETIRED = "d95d9c0e-0e2c-4450-93a3-d788b91abcc8";
 
 /** Keys sorted at every level: for routes that return a string serialised
  * straight from a struct (field order, identical on every backend because
@@ -131,6 +135,23 @@ function routes(): [string, string, () => any][] {
     "composed",
     () => composeResourceLayers([layerFixture, resourceFixture], graphFixture, [], false),
   ]);
+  // Lifecycles: the base is Active and the layer copy Draft, so the composed
+  // resource is a Conflict.
+  const lifecycle = graphFixture.resource_instance_lifecycle;
+  const composed = () => composeResourceLayers([layerFixture, resourceFixture], graphFixture, [], false).resource;
+  out.push(["resourceLifecycleState", "lifecycle:state", () => resourceLifecycleState(resourceFixture, lifecycle)]);
+  out.push(["resourceLifecycleState(composed)", "lifecycle:state:composed", () => resourceLifecycleState(composed(), lifecycle)]);
+  out.push(["resourceLifecycleState(no lifecycle)", "lifecycle:state:none", () => resourceLifecycleState(resourceFixture, null)]);
+  out.push([
+    "transitionResourceLifecycle",
+    "lifecycle:transition",
+    () => transitionResourceLifecycle(resourceFixture, lifecycle, RETIRED),
+  ]);
+  out.push([
+    "transitionResourceLifecycle(composed, non-strict)",
+    "lifecycle:transition:resolve",
+    () => transitionResourceLifecycle(composed(), lifecycle, ACTIVE, false),
+  ]);
   return out;
 }
 
@@ -160,6 +181,14 @@ describe(`output parity [${backend} backend]`, () => {
     resourceFixture.tiles.forEach((t: any, i: number) => {
       expect(JSON.stringify(sortKeys(exported[i])), `exportTilesJson()[${i}]`).toBe(golden[`tile:${t.tileid}`]);
     });
+  });
+
+  test("a lifecycle transition is strict unless asked otherwise", () => {
+    const lifecycle = graphFixture.resource_instance_lifecycle;
+    const draft = { ...resourceFixture, resourceinstance: { ...resourceFixture.resourceinstance } };
+    delete draft.resourceinstance.resource_instance_lifecycle_state_id; // initial: Draft
+    expect(() => transitionResourceLifecycle(draft, lifecycle, RETIRED)).toThrow(/not permitted/);
+    expect(transitionResourceLifecycle(draft, lifecycle, RETIRED, false).event.to).toBe(RETIRED);
   });
 
   test("a pseudo value's tile is core's JSON", () => {

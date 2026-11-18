@@ -577,4 +577,45 @@ pub fn compose_resource_layers(
         .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
 }
 
+/// A resource's lifecycle state resolved against its graph's lifecycle.
+///
+/// `resource_json` is a `StaticResource`; `lifecycle_json` is the graph's
+/// `resource_instance_lifecycle` (`"null"` for none). An absent stored state is
+/// the initial state; an undefined id is `"unknown"`; layers that disagreed
+/// give `"conflict"`. Returns `{ status, state_id, is_initial, conflict }`.
+#[wasm_bindgen(js_name = resourceLifecycleState)]
+pub fn resource_lifecycle_state(
+    resource_json: &str,
+    lifecycle_json: &str,
+) -> Result<JsValue, JsError> {
+    let report = alizarin_core::graph::lifecycle_state_from_json(resource_json, lifecycle_json)
+        .map_err(|e| JsError::new(&e))?;
+    crate::js_json::to_value(&report)
+        .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
+}
+
+/// Move a resource to lifecycle state `target`, returning `{ resource, event }`:
+/// a tiles-free overlay record to compose over the resource, and the change.
+///
+/// `strict` (default `true`) requires a permitted edge (`next ∪ previous`) and
+/// refuses to leave a conflict or unknown state; pass `false` explicitly for
+/// Arches' membership-only check.
+#[wasm_bindgen(js_name = transitionResourceLifecycle)]
+pub fn transition_resource_lifecycle(
+    resource_json: &str,
+    lifecycle_json: &str,
+    target: &str,
+    strict: Option<bool>,
+) -> Result<JsValue, JsError> {
+    let result = alizarin_core::graph::transition_from_json(
+        resource_json,
+        lifecycle_json,
+        target,
+        strict.unwrap_or(true),
+    )
+    .map_err(|e| JsError::new(&e))?;
+    crate::js_json::to_value(&result)
+        .map_err(|e| JsError::new(&format!("Failed to serialize result: {}", e)))
+}
+
 // Tests for transform_keys_to_snake are in alizarin-core/src/string_utils.rs

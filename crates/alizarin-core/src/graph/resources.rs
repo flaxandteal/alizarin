@@ -25,6 +25,16 @@ pub struct StaticResourceMetadata {
     pub createdtime: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lastmodified: Option<String>,
+    /// Stored lifecycle state; absent means the lifecycle's initial state.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "resource_instance_lifecycle_state"
+    )]
+    pub resource_instance_lifecycle_state_id: Option<String>,
+    /// Distinct states that composed layers disagreed on; non-empty means Conflict.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lifecycle_state_conflict: Vec<String>,
 }
 
 /// Summary info for a resource (used for lazy loading)
@@ -49,6 +59,10 @@ pub struct StaticResourceSummary {
     pub legacyid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graph_publication_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_instance_lifecycle_state_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lifecycle_state_conflict: Vec<String>,
 }
 
 impl StaticResourceSummary {
@@ -65,6 +79,8 @@ impl StaticResourceSummary {
             graph_publication_id: self.graph_publication_id.clone(),
             createdtime: self.createdtime.clone(),
             lastmodified: self.lastmodified.clone(),
+            resource_instance_lifecycle_state_id: self.resource_instance_lifecycle_state_id.clone(),
+            lifecycle_state_conflict: self.lifecycle_state_conflict.clone(),
         }
     }
 }
@@ -176,6 +192,11 @@ impl StaticResource {
             principaluser_id: self.resourceinstance.principaluser_id,
             legacyid: self.resourceinstance.legacyid.clone(),
             graph_publication_id: self.resourceinstance.graph_publication_id.clone(),
+            resource_instance_lifecycle_state_id: self
+                .resourceinstance
+                .resource_instance_lifecycle_state_id
+                .clone(),
+            lifecycle_state_conflict: self.resourceinstance.lifecycle_state_conflict.clone(),
         }
     }
 }
@@ -297,6 +318,8 @@ impl From<RelatedResourceEntry> for StaticResourceSummary {
             principaluser_id: None,
             legacyid: None,
             graph_publication_id: None,
+            resource_instance_lifecycle_state_id: None,
+            lifecycle_state_conflict: Vec::new(),
         }
     }
 }
@@ -1443,8 +1466,20 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
     }
 
     // Clone first resource's metadata before we consume the vector
-    let first_instance = resources[0].resourceinstance.clone();
+    let mut first_instance = resources[0].resourceinstance.clone();
     let resource_id = first_instance.resourceinstanceid.clone();
+
+    // Lifecycle state is folded across layers, not taken from the topmost
+    // header: layers that disagree make a Conflict (see `fold_layer_states`).
+    let layer_states: Vec<_> = resources
+        .iter()
+        .map(|r| {
+            let has_tiles = r.tiles.as_ref().is_some_and(|t| !t.is_empty());
+            (has_tiles, r.resourceinstance.stored_state())
+        })
+        .collect();
+    let folded = super::lifecycle::fold_layer_states(&layer_states);
+    drop(layer_states);
 
     // Verify all resources have the same resourceinstanceid
     for (i, r) in resources.iter().enumerate().skip(1) {
@@ -1463,6 +1498,16 @@ pub fn merge_resources(resources: Vec<StaticResource>) -> Result<MergeResult, St
     let mut merged_cache: ResourceCache = ResourceCache::default();
     let mut merged_scopes: Option<serde_json::Value> = None;
     let mut first_scopes_index: Option<usize> = None;
+
+    if !folded.conflict.is_empty() {
+        warnings.push(format!(
+            "Layers disagree on lifecycle state {:?}; marked as Conflict. \
+             Resolve it with a transition record.",
+            folded.conflict
+        ));
+    }
+    first_instance.resource_instance_lifecycle_state_id = folded.state_id;
+    first_instance.lifecycle_state_conflict = folded.conflict;
 
     for (i, resource) in resources.into_iter().enumerate() {
         // Merge tiles with duplicate detection
@@ -2179,6 +2224,8 @@ mod tests {
                 graph_publication_id: None,
                 createdtime: None,
                 lastmodified: None,
+                resource_instance_lifecycle_state_id: None,
+                lifecycle_state_conflict: Vec::new(),
             },
             tiles: Some(vec![]),
             metadata: HashMap::new(),
@@ -2224,6 +2271,8 @@ mod tests {
                 graph_publication_id: None,
                 createdtime: None,
                 lastmodified: None,
+                resource_instance_lifecycle_state_id: None,
+                lifecycle_state_conflict: Vec::new(),
             },
             tiles: Some(tiles),
             metadata: HashMap::new(),
@@ -2628,6 +2677,8 @@ mod tests {
                 graph_publication_id: None,
                 createdtime: None,
                 lastmodified: None,
+                resource_instance_lifecycle_state_id: None,
+                lifecycle_state_conflict: Vec::new(),
             },
             tiles: Some(tiles),
             metadata: HashMap::new(),
@@ -2687,5 +2738,78 @@ mod tests {
             .expect("merge")
             .warnings
             .is_empty());
+    }
+
+    fn with_state(mut r: StaticResource, state: &str) -> StaticResource {
+        r.resourceinstance.resource_instance_lifecycle_state_id = Some(state.to_string());
+        r
+    }
+
+    #[test]
+    fn merge_resources_marks_disagreeing_lifecycle_states_as_conflict() {
+        let overlay = with_state(mk_resource("r1", vec![t("a", "ng", None, &[])]), "draft");
+        let base = with_state(mk_resource("r1", vec![t("b", "ng", None, &[])]), "active");
+        let result = merge_resources(vec![overlay, base]).expect("merge");
+        let ri = &result.resource.resourceinstance;
+        assert_eq!(ri.resource_instance_lifecycle_state_id, None);
+        assert_eq!(ri.lifecycle_state_conflict, vec!["active", "draft"]);
+        assert!(result.warnings.iter().any(|w| w.contains("Conflict")));
+
+        // A silent overlay keeps the base state, without warning.
+        let overlay = mk_resource("r1", vec![t("a", "ng", None, &[])]);
+        let base = with_state(mk_resource("r1", vec![t("b", "ng", None, &[])]), "active");
+        let result = merge_resources(vec![overlay, base]).expect("merge");
+        assert_eq!(
+            result
+                .resource
+                .resourceinstance
+                .resource_instance_lifecycle_state_id
+                .as_deref(),
+            Some("active")
+        );
+        assert!(result.warnings.is_empty());
+    }
+
+    #[test]
+    fn merge_resources_lets_a_transition_record_resolve_a_conflict() {
+        let record = with_state(mk_resource("r1", vec![]), "retired");
+        let overlay = with_state(mk_resource("r1", vec![t("a", "ng", None, &[])]), "draft");
+        let base = with_state(mk_resource("r1", vec![t("b", "ng", None, &[])]), "active");
+        let result = merge_resources(vec![record, overlay, base]).expect("merge");
+        let ri = &result.resource.resourceinstance;
+        assert_eq!(
+            ri.resource_instance_lifecycle_state_id.as_deref(),
+            Some("retired")
+        );
+        assert!(ri.lifecycle_state_conflict.is_empty());
+        assert_eq!(result.resource.tiles.as_ref().map(Vec::len), Some(2));
+    }
+
+    #[test]
+    fn lifecycle_state_survives_parse_and_summary() {
+        let json = r#"{"resourceinstance": {"descriptors": {}, "graph_id": "g", "name": "n",
+            "resourceinstanceid": "r1", "resource_instance_lifecycle_state_id": "active"},
+            "tiles": []}"#;
+        let parsed = parse_resources_from_json_str(json).expect("parse");
+        let ri = &parsed[0].resourceinstance;
+        assert_eq!(
+            ri.resource_instance_lifecycle_state_id.as_deref(),
+            Some("active")
+        );
+        let out = serde_json::to_value(&parsed[0]).unwrap();
+        assert_eq!(
+            out["resourceinstance"]["resource_instance_lifecycle_state_id"],
+            "active"
+        );
+        assert!(out["resourceinstance"]
+            .get("lifecycle_state_conflict")
+            .is_none());
+        assert_eq!(
+            parsed[0]
+                .to_summary()
+                .resource_instance_lifecycle_state_id
+                .as_deref(),
+            Some("active")
+        );
     }
 }

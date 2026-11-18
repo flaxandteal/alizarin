@@ -774,6 +774,60 @@ fn compose_resource_layers(
     })
 }
 
+/// A resource's lifecycle state resolved against its graph's lifecycle.
+///
+/// Args:
+///     resource_json: A StaticResource as JSON.
+///     lifecycle_json: The graph's resource_instance_lifecycle as JSON ("null" for none).
+///
+/// Returns:
+///     {status: "state" | "unknown" | "conflict", state_id, is_initial, conflict}
+#[pyfunction]
+fn resource_lifecycle_state(
+    py: Python,
+    resource_json: String,
+    lifecycle_json: String,
+) -> PyResult<PyObject> {
+    let report = alizarin_core::graph::lifecycle_state_from_json(&resource_json, &lifecycle_json)
+        .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+    pythonize::pythonize(py, &report).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to convert result: {}", e))
+    })
+}
+
+/// Move a resource to lifecycle state `target`.
+///
+/// Args:
+///     resource_json: A StaticResource as JSON.
+///     lifecycle_json: The graph's resource_instance_lifecycle as JSON ("null" for none).
+///     target: The state id to move to.
+///     strict: Require a permitted edge (next or previous) and refuse to leave a
+///         conflict or unknown state. Pass False explicitly for Arches'
+///         membership-only check.
+///
+/// Returns:
+///     {resource: <tiles-free overlay record>, event: {resourceinstanceid, from, to, ...}}
+#[pyfunction]
+#[pyo3(signature = (resource_json, lifecycle_json, target, strict=true))]
+fn transition_resource_lifecycle(
+    py: Python,
+    resource_json: String,
+    lifecycle_json: String,
+    target: String,
+    strict: bool,
+) -> PyResult<PyObject> {
+    let result = alizarin_core::graph::transition_from_json(
+        &resource_json,
+        &lifecycle_json,
+        &target,
+        strict,
+    )
+    .map_err(PyErr::new::<pyo3::exceptions::PyValueError, _>)?;
+    pythonize::pythonize(py, &result).map_err(|e| {
+        PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("Failed to convert result: {}", e))
+    })
+}
+
 // =============================================================================
 // ResourceRegistry - For relationship resolution and cache population
 // =============================================================================
@@ -2515,6 +2569,8 @@ fn alizarin(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(batch_trees_to_tiles, m)?)?;
     m.add_function(wrap_pyfunction!(batch_tiles_to_trees, m)?)?;
     m.add_function(wrap_pyfunction!(compose_resource_layers, m)?)?;
+    m.add_function(wrap_pyfunction!(resource_lifecycle_state, m)?)?;
+    m.add_function(wrap_pyfunction!(transition_resource_lifecycle, m)?)?;
     m.add_function(wrap_pyfunction!(canonical_static, m)?)?;
     m.add_function(wrap_pyfunction!(cards_to_json_tree, m)?)?;
 

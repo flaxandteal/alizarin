@@ -2341,6 +2341,15 @@ impl StaticResourceSummary {
                         .get("graph_publication_id")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string()),
+                    resource_instance_lifecycle_state_id: ri
+                        .get("resource_instance_lifecycle_state_id")
+                        .or_else(|| ri.get("resource_instance_lifecycle_state"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    lifecycle_state_conflict: ri
+                        .get("lifecycle_state_conflict")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok())
+                        .unwrap_or_default(),
                 };
 
                 if summary.name.is_empty() {
@@ -2392,6 +2401,8 @@ impl StaticResourceSummary {
             principaluser_id: ri.principaluser_id,
             legacyid: ri.legacyid.clone(),
             graph_publication_id: ri.graph_publication_id.clone(),
+            resource_instance_lifecycle_state_id: ri.resource_instance_lifecycle_state_id.clone(),
+            lifecycle_state_conflict: ri.lifecycle_state_conflict.clone(),
         })
     }
 }

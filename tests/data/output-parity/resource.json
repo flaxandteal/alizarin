@@ -4,7 +4,8 @@
     "graph_id": "0a0a0a0a-0000-4000-8000-000000000001",
     "legacyid": null,
     "name": "Parity one",
-    "resourceinstanceid": "0b0b0b0b-0000-4000-8000-000000000001"
+    "resourceinstanceid": "0b0b0b0b-0000-4000-8000-000000000001",
+    "resource_instance_lifecycle_state_id": "f75bb034-36e3-4ab4-8167-f520cf0b4c58"
   },
   "tiles": [
     {

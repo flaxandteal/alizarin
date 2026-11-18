@@ -87,6 +87,18 @@ export declare function buildBusinessDataFromCsv(csvData: string, graphJson: str
  */
 export declare function composeResourceLayers(resourcesJson: string, baseGraphJson: string, overlayGraphsJson: string, strict?: boolean | undefined | null): any
 /**
+ * A resource's lifecycle state resolved against its graph's lifecycle
+ * (`lifecycle_json` is the graph's `resource_instance_lifecycle`, `"null"` for
+ * none). Returns `{ status, state_id, is_initial, conflict }`.
+ */
+export declare function resourceLifecycleState(resourceJson: string, lifecycleJson: string): any
+/**
+ * Move a resource to lifecycle state `target`, returning `{ resource, event }`.
+ * `strict` defaults to `true` (permitted edges only); pass `false` explicitly
+ * for Arches' membership-only check.
+ */
+export declare function transitionResourceLifecycle(resourceJson: string, lifecycleJson: string, target: string, strict?: boolean | undefined | null): any
+/**
  * Coerce a value using the registered extension handler for the given datatype.
  *
  * Returns `{ tileData, displayValue }` or null if no handler is registered.

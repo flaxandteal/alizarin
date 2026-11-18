@@ -14,6 +14,7 @@
 //! - `descriptors` - Resource descriptor configuration
 //! - `resources` - Resource types and metadata
 //! - `meta` - Lightweight graph metadata
+//! - `lifecycle` - Resource instance lifecycles: compiled index, state resolution, transitions
 //! - `static_graph` - StaticGraph and its lazy self-indexing
 
 pub mod card_index;
@@ -23,6 +24,7 @@ mod descriptors;
 mod functions;
 mod graph_lookup;
 mod layered_graph;
+mod lifecycle;
 mod meta;
 mod nodes;
 mod prune;
@@ -57,6 +59,11 @@ pub use functions::{
 };
 pub use graph_lookup::GraphLookup;
 pub use layered_graph::LayeredGraph;
+pub use lifecycle::{
+    lifecycle_state_from_json, transition, transition_from_json, EffectiveState, LifecycleIndex,
+    LifecycleStateReport, StaticLifecycle, StaticLifecycleState, StoredState, TransitionEvent,
+    TransitionResult, MAX_LIFECYCLE_STATES,
+};
 pub use meta::StaticGraphMeta;
 pub use nodes::{StaticEdge, StaticNode, StaticNodegroup};
 pub use prune::{build_backedges, find_root_node, prune_graph, PruneError};

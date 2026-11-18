@@ -62,6 +62,10 @@ struct BusinessDataResourceInstance {
     legacyid: Option<String>,
     #[serde(default)]
     graph_publication_id: Option<String>,
+    #[serde(default, alias = "resource_instance_lifecycle_state")]
+    resource_instance_lifecycle_state_id: Option<String>,
+    #[serde(default)]
+    lifecycle_state_conflict: Vec<String>,
 }
 
 /// Descriptors that may appear in either format:
@@ -130,6 +134,8 @@ impl BusinessDataResource {
             principaluser_id: ri.principaluser_id,
             legacyid: ri.legacyid.clone(),
             graph_publication_id: ri.graph_publication_id.clone(),
+            resource_instance_lifecycle_state_id: ri.resource_instance_lifecycle_state_id.clone(),
+            lifecycle_state_conflict: ri.lifecycle_state_conflict.clone(),
         }
     }
 }
@@ -212,6 +218,10 @@ struct BusinessDataResourceInstanceFull {
     legacyid: Option<String>,
     #[serde(default)]
     graph_publication_id: Option<String>,
+    #[serde(default, alias = "resource_instance_lifecycle_state")]
+    resource_instance_lifecycle_state_id: Option<String>,
+    #[serde(default)]
+    lifecycle_state_conflict: Vec<String>,
 }
 
 impl BusinessDataResourceFull {
@@ -236,6 +246,10 @@ impl BusinessDataResourceFull {
                 principaluser_id: ri.principaluser_id,
                 legacyid: ri.legacyid.clone(),
                 graph_publication_id: ri.graph_publication_id.clone(),
+                resource_instance_lifecycle_state_id: ri
+                    .resource_instance_lifecycle_state_id
+                    .clone(),
+                lifecycle_state_conflict: ri.lifecycle_state_conflict.clone(),
             },
             tiles: self.tiles.clone(),
             metadata: self.metadata.clone().unwrap_or_default(),

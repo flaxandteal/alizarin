@@ -1254,6 +1254,8 @@ pub fn new_wasm_resource_instance_wrapper_for_model(
             graph_publication_id: None,
             createdtime: None,
             lastmodified: None,
+            resource_instance_lifecycle_state_id: None,
+            lifecycle_state_conflict: Vec::new(),
         });
     }
 

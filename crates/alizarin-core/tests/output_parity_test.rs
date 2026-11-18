@@ -13,13 +13,19 @@
 //! A deliberate change to the output: rerun with `ALIZARIN_UPDATE_GOLDEN=1` and
 //! review the diff of `expected.json`.
 
-use alizarin_core::graph::compose_resource_layers_from_json;
+use alizarin_core::graph::{
+    compose_resource_layers_from_json, lifecycle_state_from_json, transition_from_json,
+};
 use alizarin_core::{
     GraphWrapper, StaticPublication, StaticResource, StaticTile, StaticTranslatableString,
 };
 use serde::Serialize;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+
+/// Arches' Standard lifecycle, as in `graph.json`.
+const ACTIVE: &str = "f75bb034-36e3-4ab4-8167-f520cf0b4c58";
+const RETIRED: &str = "d95d9c0e-0e2c-4450-93a3-d788b91abcc8";
 
 fn dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/data/output-parity")
@@ -109,6 +115,32 @@ fn outputs() -> BTreeMap<String, String> {
     )
     .unwrap();
     put("composed".into(), canonical(&composed));
+
+    // Lifecycles: the base is Active and the layer copy Draft, so the
+    // composed resource above is a Conflict.
+    let lifecycle = serde_json::to_string(&graph.resource_instance_lifecycle).unwrap();
+    let resource_json = read("resource.json");
+    let composed_json = serde_json::to_string(&composed.resource).unwrap();
+    put(
+        "lifecycle:state".into(),
+        canonical(&lifecycle_state_from_json(&resource_json, &lifecycle).unwrap()),
+    );
+    put(
+        "lifecycle:state:composed".into(),
+        canonical(&lifecycle_state_from_json(&composed_json, &lifecycle).unwrap()),
+    );
+    put(
+        "lifecycle:state:none".into(),
+        canonical(&lifecycle_state_from_json(&resource_json, "null").unwrap()),
+    );
+    put(
+        "lifecycle:transition".into(),
+        canonical(&transition_from_json(&resource_json, &lifecycle, RETIRED, true).unwrap()),
+    );
+    put(
+        "lifecycle:transition:resolve".into(),
+        canonical(&transition_from_json(&composed_json, &lifecycle, ACTIVE, false).unwrap()),
+    );
 
     // A translatable string with several languages: the key order must not
     // depend on the HashMap it is held in.

@@ -36,6 +36,10 @@ GRAPH = load("graph.json")["graph"][0]
 RESOURCE = load("resource.json")
 LAYER = load("resource-layer.json")
 
+# Arches' Standard lifecycle, as in graph.json.
+ACTIVE = "f75bb034-36e3-4ab4-8167-f520cf0b4c58"
+RETIRED = "d95d9c0e-0e2c-4450-93a3-d788b91abcc8"
+
 
 def dumped(value) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -101,9 +105,55 @@ def routes():
             lambda: alizarin.compose_resource_layers(json.dumps([LAYER, RESOURCE]), json.dumps(GRAPH), "[]", False),
         )
     )
+    # Lifecycles: the base is Active and the layer copy Draft, so the composed
+    # resource is a Conflict.
+    lifecycle = json.dumps(GRAPH["resource_instance_lifecycle"])
+
+    def composed():
+        return json.dumps(
+            alizarin.compose_resource_layers(json.dumps([LAYER, RESOURCE]), json.dumps(GRAPH), "[]", False)["resource"]
+        )
+
+    out += [
+        (
+            "resource_lifecycle_state",
+            "lifecycle:state",
+            lambda: alizarin.resource_lifecycle_state(json.dumps(RESOURCE), lifecycle),
+        ),
+        (
+            "resource_lifecycle_state(composed)",
+            "lifecycle:state:composed",
+            lambda: alizarin.resource_lifecycle_state(composed(), lifecycle),
+        ),
+        (
+            "resource_lifecycle_state(no lifecycle)",
+            "lifecycle:state:none",
+            lambda: alizarin.resource_lifecycle_state(json.dumps(RESOURCE), "null"),
+        ),
+        (
+            "transition_resource_lifecycle",
+            "lifecycle:transition",
+            lambda: alizarin.transition_resource_lifecycle(json.dumps(RESOURCE), lifecycle, RETIRED),
+        ),
+        (
+            "transition_resource_lifecycle(composed, non-strict)",
+            "lifecycle:transition:resolve",
+            lambda: alizarin.transition_resource_lifecycle(composed(), lifecycle, ACTIVE, strict=False),
+        ),
+    ]
     return out
 
 
 @pytest.mark.parametrize("route,label,get", routes(), ids=[r[0] for r in routes()])
 def test_route_gives_cores_json(route, label, get):
     assert dumped(get()) == GOLDEN[label]
+
+
+def test_lifecycle_transition_is_strict_unless_asked_otherwise():
+    lifecycle = json.dumps(GRAPH["resource_instance_lifecycle"])
+    draft = json.loads(json.dumps(RESOURCE))
+    del draft["resourceinstance"]["resource_instance_lifecycle_state_id"]  # initial: Draft
+    with pytest.raises(ValueError, match="not permitted"):
+        alizarin.transition_resource_lifecycle(json.dumps(draft), lifecycle, RETIRED)
+    result = alizarin.transition_resource_lifecycle(json.dumps(draft), lifecycle, RETIRED, strict=False)
+    assert result["event"]["to"] == RETIRED

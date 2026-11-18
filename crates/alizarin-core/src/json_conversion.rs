@@ -66,6 +66,8 @@ pub fn create_static_resource(
             graph_publication_id: None,
             createdtime: None,
             lastmodified: None,
+            resource_instance_lifecycle_state_id: None,
+            lifecycle_state_conflict: Vec::new(),
         },
         tiles: Some(tiles),
         metadata: HashMap::new(),
@@ -282,6 +284,8 @@ pub fn build_tree_from_tiles(
         graph_publication_id: None,
         createdtime: None,
         lastmodified: None,
+        resource_instance_lifecycle_state_id: None,
+        lifecycle_state_conflict: Vec::new(),
     };
 
     resource_tiles_to_tree(&tiles, &metadata, &*graph)
@@ -922,6 +926,8 @@ fn single_tree_to_resource(
             graph_publication_id: None,
             createdtime: None,
             lastmodified: None,
+            resource_instance_lifecycle_state_id: None,
+            lifecycle_state_conflict: Vec::new(),
         },
         tiles: Some(tiles),
         metadata: HashMap::new(),
@@ -1866,6 +1872,8 @@ mod tests {
                         graph_publication_id: None,
                         createdtime: None,
                         lastmodified: None,
+                        resource_instance_lifecycle_state_id: None,
+                        lifecycle_state_conflict: Vec::new(),
                     },
                     tiles: Some(tiles),
                     metadata: HashMap::new(),

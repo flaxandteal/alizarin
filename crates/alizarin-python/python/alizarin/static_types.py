@@ -780,6 +780,10 @@ class StaticResourceMetadata:
     graph_publication_id: Optional[str] = None
     createdtime: Optional[str] = None
     lastmodified: Optional[str] = None
+    # Stored lifecycle state; None means the lifecycle's initial state.
+    resource_instance_lifecycle_state_id: Optional[str] = None
+    # Distinct states composed layers disagreed on; non-empty means Conflict.
+    lifecycle_state_conflict: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -793,6 +797,8 @@ class StaticResourceMetadata:
             "graph_publication_id": self.graph_publication_id,
             "createdtime": self.createdtime,
             "lastmodified": self.lastmodified,
+            "resource_instance_lifecycle_state_id": self.resource_instance_lifecycle_state_id,
+            "lifecycle_state_conflict": list(self.lifecycle_state_conflict),
         }
 
     @classmethod
@@ -811,6 +817,10 @@ class StaticResourceMetadata:
             graph_publication_id=data.get("graph_publication_id"),
             createdtime=data.get("createdtime"),
             lastmodified=data.get("lastmodified"),
+            resource_instance_lifecycle_state_id=data.get(
+                "resource_instance_lifecycle_state_id", data.get("resource_instance_lifecycle_state")
+            ),
+            lifecycle_state_conflict=list(data.get("lifecycle_state_conflict") or []),
         )
 
 

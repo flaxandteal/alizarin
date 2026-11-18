@@ -936,6 +936,41 @@ pub fn compose_resource_layers(
         .map_err(|e| napi::Error::from_reason(format!("Failed to serialize result: {e}")))
 }
 
+/// A resource's lifecycle state resolved against its graph's lifecycle
+/// (`lifecycle_json` is the graph's `resource_instance_lifecycle`, `"null"` for
+/// none). Returns `{ status, state_id, is_initial, conflict }`.
+#[napi]
+pub fn resource_lifecycle_state(
+    resource_json: String,
+    lifecycle_json: String,
+) -> Result<serde_json::Value> {
+    let report = alizarin_core::graph::lifecycle_state_from_json(&resource_json, &lifecycle_json)
+        .map_err(napi::Error::from_reason)?;
+    serde_json::to_value(&report)
+        .map_err(|e| napi::Error::from_reason(format!("Failed to serialize result: {e}")))
+}
+
+/// Move a resource to lifecycle state `target`, returning `{ resource, event }`.
+/// `strict` defaults to `true` (permitted edges only); pass `false` explicitly
+/// for Arches' membership-only check.
+#[napi]
+pub fn transition_resource_lifecycle(
+    resource_json: String,
+    lifecycle_json: String,
+    target: String,
+    strict: Option<bool>,
+) -> Result<serde_json::Value> {
+    let result = alizarin_core::graph::transition_from_json(
+        &resource_json,
+        &lifecycle_json,
+        &target,
+        strict.unwrap_or(true),
+    )
+    .map_err(napi::Error::from_reason)?;
+    serde_json::to_value(&result)
+        .map_err(|e| napi::Error::from_reason(format!("Failed to serialize result: {e}")))
+}
+
 // ============================================================================
 // Extension handler direct access
 // ============================================================================

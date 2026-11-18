@@ -118,6 +118,8 @@ fn setup(
         graph_publication_id: None,
         createdtime: None,
         lastmodified: None,
+        resource_instance_lifecycle_state_id: None,
+        lifecycle_state_conflict: Vec::new(),
     });
     core.load_permitted_tiles(tiles, &model);
     (graph, model, core)
@@ -223,6 +225,8 @@ fn outer_setup() -> (StaticGraph, GraphModelAccess, ResourceInstanceWrapperCore)
         graph_publication_id: None,
         createdtime: None,
         lastmodified: None,
+        resource_instance_lifecycle_state_id: None,
+        lifecycle_state_conflict: Vec::new(),
     });
     core.load_permitted_tiles(vec![], &model);
     (graph, model, core)

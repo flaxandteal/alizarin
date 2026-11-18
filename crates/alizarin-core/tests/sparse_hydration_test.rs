@@ -94,6 +94,8 @@ fn metadata(graph: &StaticGraph) -> StaticResourceMetadata {
         graph_publication_id: None,
         createdtime: None,
         lastmodified: None,
+        resource_instance_lifecycle_state_id: None,
+        lifecycle_state_conflict: Vec::new(),
     }
 }
 

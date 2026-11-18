@@ -6,6 +6,8 @@ import * as staticTypes from "./static-types";
 import { CollectionMutator } from "./collectionMutator";
 import { buildGraphFromModelCsvs, validateModelCsvs, buildResourcesFromBusinessCsv, composeResourceLayers } from "./csvModelLoader";
 import type { CsvModelDiagnostic, CsvModelBuildResult, BusinessDataResult, ComposedResourceResult } from "./csvModelLoader";
+import { resourceLifecycleState, transitionResourceLifecycle } from "./lifecycle";
+import type { LifecycleStateReport, TransitionEvent, TransitionResult } from "./lifecycle";
 import * as utils from "./utils";
 import * as viewModels from "./viewModels";
 import * as renderers from "./renderers";
@@ -63,6 +65,9 @@ export type {
   CsvModelBuildResult,
   BusinessDataResult,
   ComposedResourceResult,
+  LifecycleStateReport,
+  TransitionEvent,
+  TransitionResult,
 };
 export {
   AlizarinModel,
@@ -110,6 +115,9 @@ export {
   validateModelCsvs,
   buildResourcesFromBusinessCsv,
   composeResourceLayers,
+  // Resource instance lifecycles
+  resourceLifecycleState,
+  transitionResourceLifecycle,
   // Extension function
   registerExtensionHandler,
   // Derive providers from extensions (UTM, Gramadán, ...)

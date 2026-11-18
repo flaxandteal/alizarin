@@ -120,6 +120,8 @@ fn setup(mode: &str) -> (StaticGraph, GraphModelAccess, ResourceInstanceWrapperC
         graph_publication_id: None,
         createdtime: None,
         lastmodified: None,
+        resource_instance_lifecycle_state_id: None,
+        lifecycle_state_conflict: Vec::new(),
     });
     (graph, model, core)
 }
