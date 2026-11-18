@@ -1067,8 +1067,13 @@ class DateViewModel(datetime):
         """Convert to ISO string, as JavaScript's toISOString gives it: UTC,
         with milliseconds and Z (a date without a zone is taken as UTC)."""
         try:
-            moment = self if self.tzinfo else self.replace(tzinfo=timezone.utc)
-            moment = moment.astimezone(timezone.utc)
+            # A plain datetime: newer Pythons' replace() and astimezone() build
+            # the subclass, whose __new__ takes a string, not the fields.
+            moment = datetime(
+                self.year, self.month, self.day,
+                self.hour, self.minute, self.second, self.microsecond,
+                self.tzinfo or timezone.utc,
+            ).astimezone(timezone.utc)
             return f"{moment.strftime('%Y-%m-%dT%H:%M:%S')}.{moment.microsecond // 1000:03d}Z"
         except Exception as e:
             print(f"Warning: {e}")
