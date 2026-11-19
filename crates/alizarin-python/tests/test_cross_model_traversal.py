@@ -62,77 +62,36 @@ def graph_manager(group_graph, person_graph):
         "tiles": []
     }
 
-    # Create tiles for the Person (name -> forenames -> forename)
-    # Find the node IDs we need
-    person_nodes = {n.get('alias'): n for n in person_graph.get('nodes', [])}
-
-    name_node = person_nodes.get('name')
-    forenames_node = person_nodes.get('forenames')
-    forename_node = person_nodes.get('forename')
-
-    if name_node and forenames_node and forename_node:
-        # Create forename tile
-        forename_tile_id = str(uuid.uuid4())
-        forename_tile = {
-            "tileid": forename_tile_id,
-            "nodegroup_id": forename_node.get('nodegroup_id'),
-            "resourceinstance_id": person_id,
-            "parenttile_id": None,  # Will be set after creating parent
-            "data": {
-                forename_node['nodeid']: "Alice"
-            },
-            "sortorder": 0
-        }
-
-        # Create forenames semantic tile (parent of forename)
-        forenames_tile_id = str(uuid.uuid4())
-        forenames_tile = {
-            "tileid": forenames_tile_id,
-            "nodegroup_id": forenames_node.get('nodegroup_id'),
-            "resourceinstance_id": person_id,
-            "parenttile_id": None,  # Will be set after creating parent
-            "data": {},
-            "sortorder": 0
-        }
-
-        # Create name semantic tile (parent of forenames)
-        name_tile_id = str(uuid.uuid4())
-        name_tile = {
-            "tileid": name_tile_id,
-            "nodegroup_id": name_node.get('nodegroup_id'),
-            "resourceinstance_id": person_id,
-            "parenttile_id": None,
-            "data": {},
-            "sortorder": 0
-        }
-
-        # Set parent relationships
-        forenames_tile["parenttile_id"] = name_tile_id
-        forename_tile["parenttile_id"] = forenames_tile_id
-
-        person_resource["tiles"] = [name_tile, forenames_tile, forename_tile]
+    # name -> forenames -> forename: all three nodes are in name's nodegroup,
+    # so it is one tile, with forename's value in Arches' per-language form.
+    person_nodes = {n['alias']: n for n in person_graph['nodes']}
+    forename_node = person_nodes['forename']
+    person_resource["tiles"] = [{
+        "tileid": str(uuid.uuid4()),
+        "nodegroup_id": forename_node['nodegroup_id'],
+        "resourceinstance_id": person_id,
+        "parenttile_id": None,
+        "data": {
+            forename_node['nodeid']: {"en": {"direction": "ltr", "value": "Alice"}},
+        },
+        "sortorder": 0
+    }]
 
     # Register the Person resource
     gm.register_resource(person_resource)
 
     # Create a Group resource with members pointing to the Person
     group_id = str(uuid.uuid4())
-    group_nodes = {n.get('alias'): n for n in group_graph.get('nodes', [])}
-    members_node = group_nodes.get('members')
-
+    members_node = {n['alias']: n for n in group_graph['nodes']}['members']
     group_resource = {
         "resourceinstance": {
             "resourceinstanceid": group_id,
             "graph_id": group_graph_id,
             "name": "Test Group"
         },
-        "tiles": []
-    }
-
-    if members_node:
-        members_tile = {
+        "tiles": [{
             "tileid": str(uuid.uuid4()),
-            "nodegroup_id": members_node.get('nodegroup_id'),
+            "nodegroup_id": members_node['nodegroup_id'],
             "resourceinstance_id": group_id,
             "parenttile_id": None,
             "data": {
@@ -141,8 +100,8 @@ def graph_manager(group_graph, person_graph):
                 ]
             },
             "sortorder": 0
-        }
-        group_resource["tiles"] = [members_tile]
+        }]
+    }
 
     gm.register_resource(group_resource)
 
@@ -191,24 +150,20 @@ async def test_cross_model_traversal_to_related_resource(graph_manager):
         # Get members
         members = await group.members
 
-        # members could be a list or list-like object
-        if members is not None and hasattr(members, '__len__') and len(members) > 0:
-            # Get first member - this is a ResourceInstanceViewModel
-            first_member = members[0]
+        assert len(members) == 1
+        first_member = members[0]
+        assert first_member.id == graph_manager._test_person_id
+        # Not loaded yet: reading through it must retrieve() the Person.
+        assert first_member._i is None
 
-            # The member should have an ID pointing to the Person
-            assert first_member is not None
-
-            # Accessing a property should trigger retrieve() and load the Person
-            # This is the key test - crossing from Group to Person model
-            try:
-                # Try to access the name property on the Person
-                name = await first_member.name
-                assert name is not None, "Should be able to access name on related Person"
-            except Exception as e:
-                # It's acceptable if the test data doesn't have full tile structure
-                # The important thing is that retrieve() was called
-                print(f"Cross-model access attempted (may fail with incomplete test data): {e}")
+        # Crossing from the Group model to the Person model. No try/except:
+        # an error here is the failure this test exists to catch.
+        # name's nodegroup has cardinality n (a list); forenames and forename
+        # are in the same tile, so single.
+        name = await first_member.name
+        forename = await (await name[0].forenames).forename
+        assert str(forename) == "Alice"
+        assert first_member._i is not None
 
     finally:
         viewContext.graphManager = None

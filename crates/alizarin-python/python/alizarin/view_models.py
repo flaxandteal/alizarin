@@ -968,7 +968,7 @@ class ResourceInstanceViewModel:
         if not viewContext.graphManager:
             raise ValueError("Cannot traverse resource relationships without a GraphManager")
 
-        replacement = await viewContext.graphManager.get_root_view_model(self.id, True)
+        replacement = await viewContext.graphManager.getResource(self.id, True)
 
         # Extract wrappers from replacement resource
         iw = replacement._i
