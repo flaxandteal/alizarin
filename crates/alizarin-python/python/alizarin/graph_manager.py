@@ -381,7 +381,6 @@ class GraphManager:
             ValueError: If resource or graph not found
         """
         from .model_wrapper import ResourceModelWrapper
-        from .view_models import ResourceInstanceViewModel
 
         # Look up resource (from temp storage)
         resource = self._resources.get(resource_id)
@@ -395,7 +394,34 @@ class GraphManager:
         if graph_id not in self._models:
             self._models[graph_id] = ResourceModelWrapper.from_graph_id(graph_id)
 
-        model = self._models[graph_id]
+        return await self._wrap_resource(resource, self._models[graph_id], lazy)
+
+    async def all_for_model(
+        self,
+        model: Any,
+        limit: Optional[int] = None,
+        lazy: bool = False,
+    ) -> List[IRIVM]:
+        """
+        Every registered resource of model's graph, in registration order, as
+        ResourceInstanceViewModels of model (the store behind
+        ResourceModelWrapper.all, as staticStore.loadAll is in TypeScript).
+        """
+        graph_id = model.graph.graphid
+        resources = [
+            resource for resource in self._resources.values()
+            if resource.resourceinstance.graph_id == graph_id
+        ]
+        if limit:
+            resources = resources[:limit]
+        return [await self._wrap_resource(resource, model, lazy) for resource in resources]
+
+    async def _wrap_resource(self, resource: Any, model: Any, lazy: bool) -> IRIVM:
+        """resource as a ResourceInstanceViewModel of model, populated."""
+        from .view_models import ResourceInstanceViewModel
+
+        resource_id = resource.resourceinstance.resourceinstanceid
+        graph_id = resource.resourceinstance.graph_id
 
         # Create ResourceInstanceViewModel
         rivm = ResourceInstanceViewModel(

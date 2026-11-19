@@ -524,16 +524,27 @@ class ResourceModelWrapper(Generic[RIVM]):
         params: Optional[Dict[str, Any]] = None,
     ) -> List[RIVM]:
         """
-        Get all resources of this model.
+        Get all resources of this model: those registered with the current
+        GraphManager (viewContext.graphManager) for its graph.
+
+        Matches TypeScript ResourceModelWrapper.all.
 
         Args:
-            params: Optional parameters (limit, lazy, etc.)
+            params: Optional parameters: limit, and lazy (default False, as in
+                TypeScript). pruneTiles is accepted and, as in getResource, unused.
 
         Returns:
-            List of resource instances
+            List of resource instances, empty without a GraphManager
         """
-        # TBD: implement resource loading from client
-        return []
+        from .view_models import viewContext
+
+        params = params or {}
+        manager = viewContext.graphManager
+        if manager is None:
+            return []
+        return await manager.all_for_model(
+            self, limit=params.get("limit"), lazy=bool(params.get("lazy", False))
+        )
 
 
 __all__ = [
