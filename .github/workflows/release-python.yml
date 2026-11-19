@@ -29,10 +29,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15-intel, macos-latest, windows-latest]
-        # One interpreter is enough: abi3-py39 makes a cp39-abi3 wheel whatever
-        # builds it. 3.10, as setup-python has no 3.9 on ubuntu-latest (26.04).
-        python-version: ['3.10']
+        # 24.04, not ubuntu-latest (26.04): setup-python has no 3.9 for 26.04.
+        os: [ubuntu-24.04, macos-15-intel, macos-latest, windows-latest]
+        # Only need Python 3.9 since we use abi3-py39 (compatible with 3.9+)
+        python-version: ['3.9']
 
     steps:
       - uses: actions/checkout@v4
@@ -50,7 +50,7 @@ jobs:
 
       # Build for the specific Python version
       - name: Build wheels (Linux)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         uses: PyO3/maturin-action@v1
         with:
           working-directory: crates/alizarin-python
@@ -109,10 +109,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15-intel, macos-latest, windows-latest]
-        # One interpreter is enough: abi3-py39 makes a cp39-abi3 wheel whatever
-        # builds it. 3.10, as setup-python has no 3.9 on ubuntu-latest (26.04).
-        python-version: ['3.10']
+        # 24.04, not ubuntu-latest (26.04): setup-python has no 3.9 for 26.04.
+        os: [ubuntu-24.04, macos-15-intel, macos-latest, windows-latest]
+        # Only need Python 3.9 since we use abi3-py39 (compatible with 3.9+)
+        python-version: ['3.9']
 
     steps:
       - uses: actions/checkout@v4
@@ -148,7 +148,7 @@ jobs:
 
       # Build all Python extensions
       - name: Build extension wheels (Linux)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           for ext_dir in ext/*/python/; do
             [ -f "${ext_dir}Cargo.toml" ] || continue  # not just -d: skip phantom dirs (stale-cache target/ under an old ext name)
@@ -160,7 +160,7 @@ jobs:
           done
 
       - name: Build extension wheels (macOS/Windows)
-        if: matrix.os != 'ubuntu-latest'
+        if: matrix.os != 'ubuntu-24.04'
         run: |
           for ext_dir in ext/*/python/; do
             [ -f "${ext_dir}Cargo.toml" ] || continue  # not just -d: skip phantom dirs (stale-cache target/ under an old ext name)
