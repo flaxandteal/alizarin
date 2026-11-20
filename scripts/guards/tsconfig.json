@@ -1,0 +1,10 @@
+{
+  // Strict tsc for scripts/guards/type_baselines.py: the core library only.
+  // tests/ and js/full.ts (the bundle importing ext/*/js/src) pull in
+  // extension and NAPI builds that differ between machines and CI jobs, so
+  // their counts wouldn't be stable.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "strict": true, "noEmit": true },
+  "include": ["../../js"],
+  "exclude": ["../../js/full.ts"]
+}

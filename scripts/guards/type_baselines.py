@@ -30,7 +30,8 @@ def mypy_counts():
         [
             sys.executable, "-m", "mypy",
             str(ROOT / "crates/alizarin-python/python/alizarin"),
-            "--ignore-missing-imports", "--follow-imports=silent", "--no-error-summary",
+            "--config-file", str(ROOT / "scripts/guards/mypy.ini"),
+            "--no-error-summary",
         ],
         capture_output=True, text=True, cwd=ROOT,
     ).stdout
@@ -40,7 +41,7 @@ def mypy_counts():
 def tsc_counts():
     tsc = ROOT / "node_modules/.bin/tsc"
     out = subprocess.run(
-        [str(tsc), "-p", str(ROOT / "tsconfig.json"), "--noEmit", "--strict"],
+        [str(tsc), "-p", str(ROOT / "scripts/guards/tsconfig.json")],
         capture_output=True, text=True, cwd=ROOT,
     ).stdout
     return collections.Counter(re.findall(r"error (TS\d+):", out))
