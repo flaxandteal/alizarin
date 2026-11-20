@@ -27,16 +27,20 @@ class FileItemViewModel(str):
     def __new__(cls, file_item: FileListItem):
         return str.__new__(cls, file_item.to_display_string())
 
+    def __getnewargs__(self):
+        # copy and pickle rebuild through __new__, which takes the item, not the string.
+        return (self._file,)
+
     def __init__(self, file_item: FileListItem):
         self._file: FileListItem = file_item
         self._: Optional[Union['IViewModel', Awaitable['IViewModel']]] = None
         self.__parentPseudo: Optional['IPseudo'] = None
 
     def describe_field(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describe_field_group(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     async def for_json(self) -> Dict[str, Any]:
         """Convert to JSON (FileListItem dict)."""
@@ -97,10 +101,10 @@ class FileListViewModel(list):
         self.__parentPseudo: Optional['IPseudo'] = None
 
     def describe_field(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describe_field_group(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     async def for_json(self) -> Optional[List[Dict[str, Any]]]:
         """Convert to JSON array."""

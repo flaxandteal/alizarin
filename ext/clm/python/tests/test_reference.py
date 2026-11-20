@@ -503,6 +503,15 @@ class TestReferenceViewModels:
         assert str(vm) == "Item 1>1"
         assert vm.get_value().list_id == "2730d609-3a8d-49dc-bf51-6ac34e80294a"
 
+        # Copy and pickle rebuild it from the reference (PARITY-RESEARCH.md F-5).
+        import copy
+        import pickle
+
+        for copied in (copy.copy(vm), copy.deepcopy(vm), pickle.loads(pickle.dumps(vm))):
+            assert type(copied) is ReferenceValueViewModel
+            assert str(copied) == "Item 1>1"
+            assert copied.get_value().list_id == "2730d609-3a8d-49dc-bf51-6ac34e80294a"
+
     @pytest.mark.asyncio
     async def test_reference_list_viewmodel_from_array(self):
         """Should create ReferenceListViewModel from array of references."""

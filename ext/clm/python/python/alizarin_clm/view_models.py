@@ -36,6 +36,10 @@ class ReferenceValueViewModel(str):
     def __new__(cls, reference: StaticReference, collection_id: Optional[str] = None):
         return str.__new__(cls, reference.to_display_string())
 
+    def __getnewargs__(self):
+        # copy and pickle rebuild through __new__, which takes the reference, not the string.
+        return (self._ref, self._collection_id)
+
     def __init__(self, reference: StaticReference, collection_id: Optional[str] = None):
         self._ref: StaticReference = reference
         self._: Optional[Union['IViewModel', Awaitable['IViewModel']]] = None
@@ -43,10 +47,10 @@ class ReferenceValueViewModel(str):
         self._collection_id: Optional[str] = collection_id
 
     def describe_field(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describe_field_group(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     async def for_json(self) -> Dict[str, Any]:
         """Convert to JSON (StaticReference dict)."""
@@ -262,10 +266,10 @@ class ReferenceListViewModel(list):
         self._value: Optional[Awaitable[List[Optional[ReferenceValueViewModel]]]] = None
 
     def describe_field(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describe_field_group(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     async def for_json(self) -> Optional[List[Dict[str, Any]]]:
         """Convert to JSON array."""

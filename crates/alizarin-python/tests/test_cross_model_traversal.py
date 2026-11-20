@@ -170,6 +170,26 @@ async def test_cross_model_traversal_to_related_resource(graph_manager):
 
 
 @pytest.mark.asyncio
+async def test_view_model_describes_its_field(graph_manager):
+    """
+    A view model describes its field through its parent pseudo
+    (PARITY-RESEARCH.md C-1: it called the pseudo's missing describeField).
+    """
+    viewContext.graphManager = graph_manager
+
+    try:
+        person = await graph_manager.getResource(graph_manager._test_person_id)
+        name = await person.name
+        forename = await (await name[0].forenames).forename
+        forename_node = {n['alias']: n for n in load_graph('Person')['nodes']}['forename']
+        assert forename.describeField() == "forename"
+        assert forename.describeFieldGroup() == forename_node['nodegroup_id']
+
+    finally:
+        viewContext.graphManager = None
+
+
+@pytest.mark.asyncio
 async def test_graph_manager_resource_lookup(graph_manager):
     """
     Test that GraphManager can look up resources by ID.

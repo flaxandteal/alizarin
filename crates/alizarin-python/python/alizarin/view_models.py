@@ -22,6 +22,7 @@ from typing import (
     TYPE_CHECKING,
     TypeVar,
     Union,
+    cast,
     runtime_checkable,
 )
 from datetime import datetime, timezone
@@ -293,10 +294,10 @@ class ConceptListViewModel(list):
         self._value: Optional[Awaitable[List[Optional['ConceptValueViewModel']]]] = None
 
     def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     async def for_json(self) -> Optional[List[Any]]:
         """Convert to JSON array: each item's, as TypeScript's."""
@@ -362,10 +363,10 @@ class ResourceInstanceListViewModel(list):
         self._value: Optional[Awaitable[List[Optional['ResourceInstanceViewModel']]]] = None
 
     def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     async def for_json(self) -> Optional[List[Any]]:
         """Convert to JSON array: each item's, as TypeScript's."""
@@ -432,10 +433,10 @@ class DomainValueListViewModel(list):
         self._value: Optional[Awaitable[List[Optional['DomainValueViewModel']]]] = None
 
     def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     async def for_json(self) -> Optional[List[Any]]:
         """Convert to JSON array: each item's, as TypeScript's."""
@@ -492,6 +493,10 @@ class ConceptValueViewModel(str):
     def __new__(cls, value: 'StaticValue', collection_id: Optional[str] = None):
         return str.__new__(cls, value.value)
 
+    def __getnewargs__(self):
+        # copy and pickle rebuild through __new__, which takes the value, not the string.
+        return (self._value, self._collection_id)
+
     def __init__(self, value: 'StaticValue', collection_id: Optional[str] = None):
         self._: Optional[Union[IViewModel, Awaitable[IViewModel]]] = None
         self.__parentPseudo: Optional['IPseudo'] = None
@@ -499,10 +504,10 @@ class ConceptValueViewModel(str):
         self._collection_id: Optional[str] = collection_id
 
     def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     async def for_json(self) -> Optional[Dict[str, str]]:
         """Convert to JSON: {id, value}, as TypeScript's StaticValue serialises."""
@@ -678,10 +683,10 @@ class DomainValueViewModel(str):
         self._value: Union['StaticDomainValue', Awaitable['StaticDomainValue']] = value
 
     def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     async def for_json(self) -> Optional[Dict[str, Any]]:
         """Convert to JSON: {id, selected, text}, as TypeScript's serialises."""
@@ -825,10 +830,10 @@ class ResourceInstanceViewModel:
             instance_wrapper.discard_edits()
 
     def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     async def __has(self, key: str) -> Optional[bool]:
         """Check if key exists (lazy-load, so returns Optional[bool])"""
@@ -1036,7 +1041,11 @@ class DateViewModel(datetime):
     Matches TypeScript DateViewModel extends Date.
     """
 
-    def __new__(cls, val: str):
+    def __new__(cls, val: str, *fields: Any, **kwargs: Any):
+        if fields or kwargs or not isinstance(val, str):
+            # datetime's own signatures, which replace(), arithmetic, copy and
+            # pickle call the subclass with: fields, or the pickled state.
+            return datetime.__new__(cls, cast(Any, val), *fields, **kwargs)
         try:
             dt = datetime.fromisoformat(val.replace('Z', '+00:00'))
         except (ValueError, TypeError):
@@ -1048,17 +1057,17 @@ class DateViewModel(datetime):
             dt.tzinfo
         )
 
-    def __init__(self, val: str):
-        self.__original = val
+    def __init__(self, val: str, *fields: Any, **kwargs: Any):
+        self.__original = val if isinstance(val, str) and not (fields or kwargs) else self.isoformat()
         self._: Optional[Union[IViewModel, Awaitable[IViewModel]]] = None
         self.__parentPseudo: Optional['PseudoValue'] = None
         self.then = None  # Not thenable
 
     def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     def __forJsonCache(self) -> None:
         return None
@@ -1137,10 +1146,10 @@ class GeoJSONViewModel:
         self.then = None  # Not thenable
 
     def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     def __forJsonCache(self) -> None:
         return None
@@ -1228,10 +1237,10 @@ class EDTFViewModel(str):
         self.__parentPseudo: Optional['PseudoValue'] = None
 
     def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     def __forJsonCache(self) -> None:
         return None
@@ -1289,10 +1298,10 @@ class NonLocalizedStringViewModel(str):
         self.__parentPseudo: Optional['PseudoValue'] = None
 
     def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     def __forJsonCache(self) -> None:
         return None
@@ -1353,10 +1362,10 @@ class NumberViewModel(float):
         return str(float(self))
 
     def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     def __forJsonCache(self) -> None:
         return None
@@ -1432,10 +1441,10 @@ class BooleanViewModel:
             ) if self.__config else 'false'
 
     def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     def __forJsonCache(self) -> None:
         return None
@@ -1505,16 +1514,20 @@ class UrlViewModel(str):
         displayValue = value.url_label or value.url
         return str.__new__(cls, displayValue)
 
+    def __getnewargs__(self):
+        # copy and pickle rebuild through __new__, which takes the value, not the string.
+        return (self._value,)
+
     def __init__(self, value: Url):
         self._value: Url = value
         self._: Optional[Union[IViewModel, Awaitable[IViewModel]]] = None
         self.__parentPseudo: Optional['PseudoValue'] = None
 
     def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     def __forJsonCache(self) -> None:
         return None
@@ -1624,7 +1637,13 @@ class StringViewModel(str):
             # Fallback to empty string
             displayValue = ""
 
-        return str.__new__(cls, displayValue)
+        instance = str.__new__(cls, displayValue)
+        instance._language = lang
+        return instance
+
+    def __getnewargs__(self):
+        # copy and pickle rebuild through __new__, which takes the value, not the string.
+        return (self._value, self._language)
 
     def __init__(self, value: Dict[str, Union[str, StringTranslatedLanguage]], language: Optional[str] = None):
         self._value: Dict[str, Union[str, StringTranslatedLanguage]] = value
@@ -1632,10 +1651,10 @@ class StringViewModel(str):
         self.__parentPseudo: Optional['PseudoValue'] = None
 
     def describeField(self) -> Optional[Any]:
-        return self.__parentPseudo.describeField() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field() if self.__parentPseudo else None
 
     def describeFieldGroup(self) -> Optional[Any]:
-        return self.__parentPseudo.describeFieldGroup() if self.__parentPseudo else None
+        return self.__parentPseudo.describe_field_group() if self.__parentPseudo else None
 
     def __forJsonCache(self) -> None:
         return None
