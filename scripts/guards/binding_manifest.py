@@ -8,14 +8,17 @@ and adds: every other exported class, grouped with its counterparts in the
 other bindings (CLASS_GROUPS), methods matched by snake_case name or the
 renames in METHOD_RENAMES; and every free function under its canonical name
 (snake_case; FUNCTION_RENAMES groups the ones spelt differently per binding).
-Where a binding lacks something and the manifest has no reason yet, the
-reason is "gap: unclassified", to be replaced by a real ecosystem:/gap: one.
+Where a binding lacks something, the reason comes from REASONS, else the
+manifest's existing one, else "gap: unclassified" (to be given a rule here).
+Classes outside CURATED are rebuilt on every run, so edit them here, not in
+the JSON.
 
 Usage (run with the repo's .venv, so `alizarin` imports):
   node scripts/guards/binding_surface.mjs > /tmp/js.json
   .venv/bin/python scripts/guards/binding_manifest.py /tmp/js.json > /tmp/manifest.json
 Then review the diff against tests/binding-parity.json before replacing it.
 """
+import fnmatch
 import inspect
 import json
 import pathlib
@@ -47,18 +50,27 @@ CLASS_GROUPS = {
 # Same method, different spelling: class key -> [(canonical, {binding: name})].
 METHOD_RENAMES = {
     "populateResult": [
-        ("get_value_aliases", {"wasm": "aliases", "napi": "aliases", "python": "get_value_aliases"}),
-        ("get_all_values", {"wasm": "getValues", "napi": "getValues", "python": "get_all_values"}),
-        ("all_nodegroups_map", {"wasm": "getNodegroupsMap", "napi": "getNodegroupsMap", "python": "all_nodegroups_map"}),
-    ],
-    "staticDomainValue": [
-        ("to_json", {"wasm": "toJson", "napi": "toJson", "python": "to_dict"}),
+        ("get_value_aliases", {"wasm": "getValueAliases", "napi": "getValueAliases", "python": "aliases"}),
+        ("get_all_values", {"wasm": "getAllValues", "napi": "getAllValues", "python": "get_values"}),
+        ("all_nodegroups_map", {"wasm": "allNodegroupsMap", "napi": "allNodegroupsMap", "python": "get_nodegroups_map"}),
     ],
     "nodeConfigManager": [
         ("from_graph", {"wasm": "fromGraph", "napi": "buildFromGraph", "python": None}),
-        ("from_graph_json", {"wasm": "fromGraphJson", "napi": "buildFromGraphJson", "python": None}),
+        ("from_graph_json", {"wasm": "fromGraphJson", "napi": "buildFromGraphJson", "python": "load_graph_json"}),
+    ],
+    "rdmCache": [
+        ("add_collections_from_skos_xml", {"wasm": "addCollectionsFromSkosXml", "python": "add_from_skos_xml"}),
+        ("length", {"wasm": "length", "napi": "collectionCount"}),
     ],
 }
+
+# Classes kept exactly as written in the manifest (hand-curated, with their own
+# renames); every other class is rebuilt from the surfaces on each run.
+CURATED = {"instanceWrapper", "modelWrapper", "pseudoList", "pseudoValue", "staticTile"}
+
+# Extra keys for rebuilt classes. stringLike: js/_wasm.ts copies String.prototype
+# onto the WASM class, so the TS test ignores those names.
+CLASS_FLAGS = {"staticTranslatableString": {"stringLike": True}}
 
 # Same function, different spelling: canonical -> {binding: name}. Canonical is
 # core's name where core has one, else the majority spelling.
@@ -79,7 +91,122 @@ FUNCTION_RENAMES = {
     "add_collection_to_global_rdm_cache": {"wasm": "addCollectionToGlobalRdmCache", "python": "add_collection_to_global_cache"},
     "add_to_global_rdm_cache_from_skos_xml": {"wasm": "addToGlobalRdmCacheFromSkosXml", "python": "add_from_skos_xml_to_global_cache"},
     "get_registered_extension_mutations": {"wasm": "getRegisteredExtensionMutations", "python": "list_extension_mutations"},
+    "global_rdm_lookup_label": {"wasm": "globalRdmLookupLabel", "python": "global_rdm_concept_pref_label"},
 }
+
+ECO_FS = "ecosystem: reads or writes the filesystem, which WASM has not"
+GAP_FS = "gap: Node has a filesystem; NAPI lacks this file-based form"
+ECO_PLAIN_JSON = "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)"
+ECO_DATACLASS = "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
+GAP_RDM_GLOBAL = "gap: the global RDM cache functions differ per binding (A-6)"
+GAP_NAMESPACE = "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
+GAP_EXTENSIONS = "gap: the extension registry functions differ per binding (A-6, G)"
+GAP_TREES = "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
+
+# Why a binding lacks something (PARITY-RESEARCH.md A-6/A-7). Keys are
+# "fn:<canonical>", "class:<key>" or "op:<class key>.<canonical>", with fnmatch
+# wildcards; the first rule with a reason for the binding wins.
+REASONS = [
+    # Runtime and language differences.
+    ("fn:init_sync", {"napi": "ecosystem: wasm-bindgen bootstrap; native modules initialise on import",
+                      "python": "ecosystem: wasm-bindgen bootstrap; native modules initialise on import"}),
+    ("fn:main", {"napi": "ecosystem: wasm-bindgen start function", "python": "ecosystem: wasm-bindgen start function"}),
+    ("fn:*rscv_timings", {"napi": "ecosystem: WASM-build timing instrumentation (js/tracing)",
+                          "python": "ecosystem: WASM-build timing instrumentation (js/tracing)"}),
+    ("class:wasmSpan", {"napi": "ecosystem: WASM-build timing instrumentation (js/tracing)",
+                        "python": "ecosystem: WASM-build timing instrumentation (js/tracing)"}),
+    ("fn:new_wasmresource_instance_wrapper_for_*", {
+        "napi": "ecosystem: WASM factory used by js/backend.ts; NAPI constructs NapiResourceInstanceWrapper directly",
+        "python": "ecosystem: WASM factory used by js/backend.ts; Python constructs its wrapper class directly"}),
+    ("class:pyPseudoListIterator", {"wasm": "ecosystem: Python iterator protocol object", "napi": "ecosystem: Python iterator protocol object"}),
+    ("class:treeToTilesIterator", {"wasm": "ecosystem: Python iterator protocol object", "napi": "ecosystem: Python iterator protocol object"}),
+    ("class:napiTileData", {"wasm": "ecosystem: NAPI's live view of StaticTile.data; WASM returns the map itself",
+                            "python": "ecosystem: NAPI's live view of StaticTile.data; Python returns the dict itself"}),
+    ("op:pseudoNode.to_json", {"wasm": "ecosystem: spelt toJSON, the JSON.stringify protocol (filtered as plumbing)",
+                               "napi": "ecosystem: spelt toJSON, the JSON.stringify protocol (filtered as plumbing)"}),
+    ("op:rdmCache.length", {"python": "ecosystem: len(cache)"}),
+    ("op:nodeConfigManager.length", {"python": "ecosystem: len(manager)"}),
+    ("fn:*_to_dir", {"wasm": ECO_FS, "napi": GAP_FS}),
+    ("fn:streamed_merge_from_files", {"wasm": ECO_FS, "napi": GAP_FS}),
+    ("fn:export_prebuild", {"wasm": ECO_FS + " (build_prebuild_export returns it instead)", "napi": GAP_FS + " (NapiPrebuildExporter)"}),
+    ("fn:import_prebuild", {"wasm": ECO_FS}),
+    ("fn:apply_aggregate_functions_from_file", {"wasm": ECO_FS}),
+    # Static types: core classes on WASM, plain JSON on NAPI, dataclasses in Python.
+    ("class:static*", {"napi": ECO_PLAIN_JSON, "python": ECO_DATACLASS}),
+    ("class:wKRM", {"napi": ECO_PLAIN_JSON, "python": ECO_DATACLASS}),
+    ("op:staticGraph.*", {"wasm": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)",
+                          "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"}),
+    ("fn:canonical_static", {"wasm": "ecosystem: WASM's static classes already serialise through core",
+                             "napi": "gap: B-7, NAPI needs canonicalStatic so js/backend.ts createStatic* goes through core"}),
+    ("fn:summary_to_metadata", {"wasm": "gap: B-8, WASM does this inside StaticResource.fromSummary; one core *_from_json for both",
+                                "python": "gap: B-8, not bound in Python"}),
+    ("class:rustRdmCollection", {"wasm": "ecosystem: JS gets RDM collections as plain JSON", "napi": "ecosystem: JS gets RDM collections as plain JSON"}),
+    ("class:rustRdmConcept", {"wasm": "ecosystem: JS gets RDM concepts as plain JSON", "napi": "ecosystem: JS gets RDM concepts as plain JSON"}),
+    # To remove rather than add elsewhere.
+    ("class:example*Wrapper", {"napi": "gap: macro demo (crates/alizarin-wasm/src/wasm_wrappers.rs) leaked into the WASM API; remove it",
+                               "python": "gap: macro demo (crates/alizarin-wasm/src/wasm_wrappers.rs) leaked into the WASM API; remove it"}),
+    ("class:wasmNodegroupResult", {"napi": "gap: exported but never constructed (crates/alizarin-wasm/src/pseudo_value.rs); remove it",
+                                   "python": "gap: exported but never constructed (crates/alizarin-wasm/src/pseudo_value.rs); remove it"}),
+    # Function families bound unevenly.
+    ("fn:coerce_with_extension", {"wasm": GAP_EXTENSIONS}),
+    ("fn:coerce_*", {"napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"}),
+    ("class:coercionResult", {"napi": "gap: NAPI has no standalone coercion functions (A-6)"}),
+    ("fn:*rdm_namespace*", {"wasm": GAP_NAMESPACE, "napi": GAP_NAMESPACE, "python": GAP_NAMESPACE}),
+    ("fn:generate_*uuid*", {"wasm": GAP_NAMESPACE, "napi": GAP_NAMESPACE, "python": GAP_NAMESPACE}),
+    ("fn:labels_to_deterministic_string", {"napi": GAP_NAMESPACE, "python": GAP_NAMESPACE}),
+    ("fn:*global_rdm*", {"wasm": GAP_RDM_GLOBAL, "napi": GAP_RDM_GLOBAL, "python": GAP_RDM_GLOBAL}),
+    ("fn:*global_cache*", {"wasm": GAP_RDM_GLOBAL, "napi": GAP_RDM_GLOBAL, "python": GAP_RDM_GLOBAL}),
+    ("fn:*extension*", {"wasm": GAP_EXTENSIONS, "napi": GAP_EXTENSIONS, "python": GAP_EXTENSIONS}),
+    ("fn:has_display_renderer", {"wasm": GAP_EXTENSIONS, "napi": GAP_EXTENSIONS}),
+    ("fn:*widget*", {"wasm": "gap: core's widget registry (registry.rs) is bound only in Python",
+                     "napi": "gap: core's widget registry (registry.rs) is bound only in Python"}),
+    ("fn:*datatype*", {"wasm": "gap: core's datatype registry (registry.rs) is bound only in Python",
+                       "napi": "gap: core's datatype registry (registry.rs) is bound only in Python",
+                       "python": "gap: label-resolution defaults not bound in Python (A-6)"}),
+    ("fn:*_tree*", {"wasm": GAP_TREES, "napi": GAP_TREES, "python": GAP_TREES}),
+    ("fn:*tiles*", {"wasm": GAP_TREES, "napi": GAP_TREES, "python": GAP_TREES}),
+    ("fn:*merge_resources", {"napi": GAP_TREES}),
+    ("fn:matches_semantic_child", {"wasm": "gap: core's semantic-child match is bound only in Python",
+                                   "napi": "gap: core's semantic-child match is bound only in Python"}),
+    ("class:rustSemanticChildResult", {"wasm": "gap: core's semantic-child match is bound only in Python",
+                                       "napi": "gap: core's semantic-child match is bound only in Python"}),
+    ("fn:resolve_labels*", {"wasm": "gap: label resolution is bound with a different signature per binding (A-6)",
+                            "napi": "gap: label resolution is bound with a different signature per binding (A-6)",
+                            "python": "gap: label resolution is bound with a different signature per binding (A-6)"}),
+    ("fn:build_alias_to_collection_map", {"python": "gap: label-resolution helpers not bound in Python (A-6)"}),
+    ("fn:get_default_config_keys", {"python": "gap: label-resolution defaults not bound in Python (A-6)"}),
+    ("fn:*graph*", {"wasm": "gap: graph registry, builders and exports are bound unevenly (A-6)",
+                    "napi": "gap: graph registry, builders and exports are bound unevenly (A-6); js/csvModelLoader.ts falls back to WASM",
+                    "python": "gap: graph registry, builders and exports are bound unevenly (A-6)"}),
+    ("fn:set_descriptor_template", {"wasm": "gap: graph registry, builders and exports are bound unevenly (A-6)",
+                                    "napi": "gap: graph registry, builders and exports are bound unevenly (A-6)"}),
+    ("fn:validate_model_csvs", {"napi": "gap: missing on NAPI; js/csvModelLoader.ts validates through WASM even under NAPI"}),
+    ("fn:build_prebuild_export", {"napi": "gap: NAPI exposes this as NapiPrebuildExporter", "python": "gap: Python only exports to a directory (export_prebuild)"}),
+    ("class:napiPrebuildExporter", {"wasm": "gap: WASM exposes this as build_prebuild_export",
+                                    "python": "gap: Python exposes this as export_prebuild"}),
+    ("class:ontologyValidator", {"wasm": "gap: core's OntologyValidator is bound only in Python",
+                                 "napi": "gap: core's OntologyValidator is bound only in Python"}),
+    # Methods per class.
+    ("op:coercionResult.warnings", {"python": "gap: Python's CoercionResult has no warnings (A-7)"}),
+    ("op:nodeConfigManager.from_graph", {"python": "gap: Python builds only from graph JSON (load_graph_json) (A-7)"}),
+    ("op:populateResult.all_values_map", {"python": "gap: not bound in Python (A-7)"}),
+    ("op:staticDomainValue.display", {"python": "gap: not bound in Python (A-7)"}),
+    ("op:staticDomainValue.to_dict", {"wasm": "gap: JS StaticDomainValue has no toJSON, so no core serialisation (A-7)",
+                                      "napi": "gap: JS StaticDomainValue has no toJSON, so no core serialisation (A-7)"}),
+    ("op:pseudoNode.*", {"python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"}),
+    ("op:rdmCache.*", {"wasm": "gap: RdmCache's methods differ per binding (A-7)", "napi": "gap: RdmCache's methods differ per binding (A-7)",
+                       "python": "gap: RdmCache's methods differ per binding (A-7)"}),
+    ("op:resourceRegistry.*", {"wasm": "gap: the resource registry's methods differ per binding (A-7, B-11)",
+                               "napi": "gap: the resource registry's methods differ per binding (A-7, B-11)",
+                               "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"}),
+]
+
+
+def reason(key, binding, fallback=UNCLASSIFIED):
+    for pattern, per in REASONS:
+        if fnmatch.fnmatchcase(key, pattern) and binding in per:
+            return per[binding]
+    return fallback
 
 
 def snake(name):
@@ -123,7 +250,7 @@ def build_operations(key, names, surfaces):
         entry = dict(op)
         missing = [b for b in BINDINGS if op[b] is None and names[b] is not None]
         if missing:
-            entry["why"] = {b: UNCLASSIFIED for b in missing}
+            entry["why"] = {b: reason(f"op:{key}.{canonical}", b) for b in missing}
         out.append(entry)
     return out
 
@@ -132,16 +259,14 @@ def main():
     js = json.loads(pathlib.Path(sys.argv[1]).read_text())
     surfaces = {"wasm": js["wasm"], "napi": js["napi"], "python": python_surface()}
     manifest = json.loads(MANIFEST.read_text())
-    classes = manifest["classes"]
+    classes = {key: spec for key, spec in manifest["classes"].items() if key in CURATED}
 
     # Every class some binding exports, grouped; anything ungrouped stands alone.
     grouped = {(b, n) for spec in classes.values() for b in BINDINGS if (n := spec.get(b))}
     for key, names in CLASS_GROUPS.items():
         names = dict(zip(BINDINGS, names))
         grouped |= {(b, n) for b, n in names.items() if n}
-        if key in classes:
-            continue
-        spec = {**names, "why": {b: UNCLASSIFIED for b in BINDINGS if names[b] is None} or None}
+        spec = {**names, "why": {b: reason(f"class:{key}", b) for b in BINDINGS if names[b] is None} or None}
         spec["operations"] = build_operations(key, names, surfaces)
         classes[key] = spec
     for b in BINDINGS:
@@ -154,7 +279,8 @@ def main():
             names = {x: (cls if x == b else None) for x in BINDINGS}
             classes[key] = {
                 **names,
-                "why": {x: UNCLASSIFIED for x in BINDINGS if x != b},
+                "why": {x: reason(f"class:{key}", x) for x in BINDINGS if x != b},
+                **CLASS_FLAGS.get(key, {}),
                 "operations": build_operations(key, names, surfaces),
             }
 
@@ -168,7 +294,7 @@ def main():
     previous = manifest.get("functions", {})
     for canonical, entry in functions.items():
         old_why = previous.get(canonical, {}).get("why", {})
-        missing = {b: old_why.get(b, UNCLASSIFIED) for b in BINDINGS if entry[b] is None}
+        missing = {b: reason(f"fn:{canonical}", b, old_why.get(b, UNCLASSIFIED)) for b in BINDINGS if entry[b] is None}
         if missing:
             entry["why"] = missing
 

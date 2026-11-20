@@ -6,7 +6,7 @@
       "napi": null,
       "python": "CoercionResult",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions (A-6)"
       },
       "operations": [
         {
@@ -39,7 +39,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python's CoercionResult has no warnings (A-7)"
           }
         }
       ]
@@ -49,8 +49,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: macro demo (crates/alizarin-wasm/src/wasm_wrappers.rs) leaked into the WASM API; remove it",
+        "python": "gap: macro demo (crates/alizarin-wasm/src/wasm_wrappers.rs) leaked into the WASM API; remove it"
       },
       "operations": [
         {
@@ -90,8 +90,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: macro demo (crates/alizarin-wasm/src/wasm_wrappers.rs) leaked into the WASM API; remove it",
+        "python": "gap: macro demo (crates/alizarin-wasm/src/wasm_wrappers.rs) leaked into the WASM API; remove it"
       },
       "operations": [
         {
@@ -502,8 +502,8 @@
       "napi": "NapiPrebuildExporter",
       "python": null,
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: WASM exposes this as build_prebuild_export",
+        "python": "gap: Python exposes this as export_prebuild"
       },
       "operations": [
         {
@@ -533,8 +533,8 @@
       "napi": "NapiTileData",
       "python": null,
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "ecosystem: NAPI's live view of StaticTile.data; WASM returns the map itself",
+        "python": "ecosystem: NAPI's live view of StaticTile.data; Python returns the dict itself"
       },
       "operations": [
         {
@@ -644,16 +644,13 @@
           "napi": "buildFromGraph",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python builds only from graph JSON (load_graph_json) (A-7)"
           }
         },
         {
           "wasm": "fromGraphJson",
           "napi": "buildFromGraphJson",
-          "python": null,
-          "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
-          }
+          "python": "load_graph_json"
         },
         {
           "wasm": "getBoolean",
@@ -690,16 +687,7 @@
           "napi": "length",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
-          }
-        },
-        {
-          "wasm": null,
-          "napi": null,
-          "python": "load_graph_json",
-          "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "ecosystem: len(manager)"
           }
         },
         {
@@ -714,8 +702,8 @@
       "napi": null,
       "python": "OntologyValidator",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: core's OntologyValidator is bound only in Python",
+        "napi": "gap: core's OntologyValidator is bound only in Python"
       },
       "operations": [
         {
@@ -742,66 +730,22 @@
       "why": null,
       "operations": [
         {
-          "wasm": null,
-          "napi": null,
-          "python": "aliases",
-          "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
-          }
-        },
-        {
-          "wasm": null,
-          "napi": null,
-          "python": null,
-          "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
-          }
-        },
-        {
           "wasm": "allNodegroupsMap",
           "napi": "allNodegroupsMap",
-          "python": null,
-          "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
-          }
+          "python": "get_nodegroups_map"
         },
         {
           "wasm": "allValuesMap",
           "napi": "allValuesMap",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
-          }
-        },
-        {
-          "wasm": null,
-          "napi": null,
-          "python": null,
-          "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: not bound in Python (A-7)"
           }
         },
         {
           "wasm": "getAllValues",
           "napi": "getAllValues",
-          "python": null,
-          "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
-          }
-        },
-        {
-          "wasm": null,
-          "napi": null,
-          "python": "get_nodegroups_map",
-          "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
-          }
+          "python": "get_values"
         },
         {
           "wasm": "getValue",
@@ -809,31 +753,9 @@
           "python": "get_value"
         },
         {
-          "wasm": null,
-          "napi": null,
-          "python": null,
-          "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
-          }
-        },
-        {
           "wasm": "getValueAliases",
           "napi": "getValueAliases",
-          "python": null,
-          "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
-          }
-        },
-        {
-          "wasm": null,
-          "napi": null,
-          "python": "get_values",
-          "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
-          }
+          "python": "aliases"
         }
       ]
     },
@@ -932,7 +854,7 @@
           "napi": "config",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"
           }
         },
         {
@@ -945,7 +867,7 @@
           "napi": "description",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"
           }
         },
         {
@@ -953,7 +875,7 @@
           "napi": "exportable",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"
           }
         },
         {
@@ -961,7 +883,7 @@
           "napi": "fieldname",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"
           }
         },
         {
@@ -974,7 +896,7 @@
           "napi": "graphId",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"
           }
         },
         {
@@ -982,7 +904,7 @@
           "napi": "hascustomalias",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"
           }
         },
         {
@@ -1015,7 +937,7 @@
           "napi": "isrequired",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"
           }
         },
         {
@@ -1023,7 +945,7 @@
           "napi": "issearchable",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"
           }
         },
         {
@@ -1031,7 +953,7 @@
           "napi": "istopnode",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"
           }
         },
         {
@@ -1059,7 +981,7 @@
           "napi": "ontologyclass",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"
           }
         },
         {
@@ -1067,7 +989,7 @@
           "napi": "parentproperty",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"
           }
         },
         {
@@ -1080,7 +1002,7 @@
           "napi": "sortorder",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"
           }
         },
         {
@@ -1088,7 +1010,7 @@
           "napi": "sourcebranchpublicationId",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: Python's PseudoNode exposes the other node fields only through `node` (A-7)"
           }
         },
         {
@@ -1096,8 +1018,8 @@
           "napi": null,
           "python": "to_json",
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "ecosystem: spelt toJSON, the JSON.stringify protocol (filtered as plumbing)",
+            "napi": "ecosystem: spelt toJSON, the JSON.stringify protocol (filtered as plumbing)"
           }
         }
       ]
@@ -1216,8 +1138,8 @@
       "napi": null,
       "python": "PyPseudoListIterator",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "ecosystem: Python iterator protocol object",
+        "napi": "ecosystem: Python iterator protocol object"
       },
       "operations": []
     },
@@ -1232,8 +1154,8 @@
           "napi": null,
           "python": "add_collection",
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1244,19 +1166,9 @@
         {
           "wasm": "addCollectionsFromSkosXml",
           "napi": null,
-          "python": null,
-          "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
-          }
-        },
-        {
-          "wasm": null,
-          "napi": null,
           "python": "add_from_skos_xml",
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1269,17 +1181,8 @@
           "napi": null,
           "python": "clear_collection",
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
-          }
-        },
-        {
-          "wasm": null,
-          "napi": "collectionCount",
-          "python": null,
-          "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1287,8 +1190,8 @@
           "napi": null,
           "python": "fetch_if_missing",
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1296,8 +1199,8 @@
           "napi": null,
           "python": "get_collection",
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1305,7 +1208,7 @@
           "napi": null,
           "python": "get_collection_ids",
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1313,7 +1216,7 @@
           "napi": null,
           "python": "get_concept_id_for_value",
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1328,11 +1231,10 @@
         },
         {
           "wasm": "length",
-          "napi": null,
+          "napi": "collectionCount",
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "ecosystem: len(cache)"
           }
         },
         {
@@ -1340,8 +1242,8 @@
           "napi": "loadCollectionJson",
           "python": null,
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
+            "python": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1349,8 +1251,8 @@
           "napi": "loadFromSkosJson",
           "python": null,
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
+            "python": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1358,8 +1260,8 @@
           "napi": null,
           "python": "loader",
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1367,8 +1269,8 @@
           "napi": null,
           "python": "lookup_all_by_label",
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1376,8 +1278,8 @@
           "napi": null,
           "python": "lookup_by_label",
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1385,7 +1287,7 @@
           "napi": null,
           "python": "lookup_concept",
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1393,8 +1295,8 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: RdmCache's methods differ per binding (A-7)",
+            "python": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1402,7 +1304,7 @@
           "napi": null,
           "python": "lookup_value",
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1410,7 +1312,7 @@
           "napi": "removeCollection",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1418,7 +1320,7 @@
           "napi": "resolveLabels",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1426,8 +1328,8 @@
           "napi": null,
           "python": "search_all",
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1435,8 +1337,8 @@
           "napi": null,
           "python": "update_collection",
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1444,8 +1346,8 @@
           "napi": null,
           "python": "update_collection_nested",
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1453,8 +1355,8 @@
           "napi": null,
           "python": "validate_concept",
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: RdmCache's methods differ per binding (A-7)",
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         },
         {
@@ -1462,7 +1364,7 @@
           "napi": null,
           "python": "validate_value",
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: RdmCache's methods differ per binding (A-7)"
           }
         }
       ]
@@ -1488,7 +1390,7 @@
           "napi": "contains",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
           }
         },
         {
@@ -1496,7 +1398,7 @@
           "napi": null,
           "python": "get_all_full",
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: the resource registry's methods differ per binding (A-7, B-11)"
           }
         },
         {
@@ -1509,8 +1411,8 @@
           "napi": "getFilteredTileValues",
           "python": null,
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: the resource registry's methods differ per binding (A-7, B-11)",
+            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
           }
         },
         {
@@ -1523,7 +1425,7 @@
           "napi": null,
           "python": "get_graph_id",
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: the resource registry's methods differ per binding (A-7, B-11)"
           }
         },
         {
@@ -1556,8 +1458,8 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: the resource registry's methods differ per binding (A-7, B-11)",
+            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
           }
         },
         {
@@ -1565,7 +1467,7 @@
           "napi": null,
           "python": "is_empty",
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: the resource registry's methods differ per binding (A-7, B-11)"
           }
         },
         {
@@ -1573,7 +1475,7 @@
           "napi": "length",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
           }
         },
         {
@@ -1581,7 +1483,7 @@
           "napi": "loadFromBusinessDataBytes",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
           }
         },
         {
@@ -1594,7 +1496,7 @@
           "napi": "memoryStats",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
           }
         },
         {
@@ -1602,7 +1504,7 @@
           "napi": "memoryStatsDetailed",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
           }
         },
         {
@@ -1610,8 +1512,8 @@
           "napi": "mergeFromBusinessDataJson",
           "python": null,
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: the resource registry's methods differ per binding (A-7, B-11)",
+            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
           }
         },
         {
@@ -1624,7 +1526,7 @@
           "napi": "mergeFromResourcesJson",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
           }
         },
         {
@@ -1632,7 +1534,7 @@
           "napi": null,
           "python": "populate_caches",
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: the resource registry's methods differ per binding (A-7, B-11)"
           }
         },
         {
@@ -1640,7 +1542,7 @@
           "napi": "populateCachesFromJson",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: the resource registry's methods differ per binding (A-7, B-11)"
           }
         }
       ]
@@ -1650,8 +1552,8 @@
       "napi": null,
       "python": "RustRdmCollection",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "ecosystem: JS gets RDM collections as plain JSON",
+        "napi": "ecosystem: JS gets RDM collections as plain JSON"
       },
       "operations": [
         {
@@ -1781,8 +1683,8 @@
       "napi": null,
       "python": "RustRdmConcept",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "ecosystem: JS gets RDM concepts as plain JSON",
+        "napi": "ecosystem: JS gets RDM concepts as plain JSON"
       },
       "operations": [
         {
@@ -1837,8 +1739,8 @@
       "napi": null,
       "python": "RustSemanticChildResult",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: core's semantic-child match is bound only in Python",
+        "napi": "gap: core's semantic-child match is bound only in Python"
       },
       "operations": [
         {
@@ -1873,8 +1775,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -1969,8 +1871,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -2020,8 +1922,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -2057,7 +1959,7 @@
           "napi": "display",
           "python": null,
           "why": {
-            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "python": "gap: not bound in Python (A-7)"
           }
         },
         {
@@ -2085,8 +1987,8 @@
           "napi": null,
           "python": "to_dict",
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: JS StaticDomainValue has no toJSON, so no core serialisation (A-7)",
+            "napi": "gap: JS StaticDomainValue has no toJSON, so no core serialisation (A-7)"
           }
         }
       ]
@@ -2096,8 +1998,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -2147,8 +2049,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -2183,7 +2085,7 @@
       "napi": "NapiStaticGraph",
       "python": null,
       "why": {
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -2206,7 +2108,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2224,7 +2126,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2232,7 +2134,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2255,7 +2157,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2263,7 +2165,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2271,7 +2173,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2279,7 +2181,7 @@
           "napi": "graphId",
           "python": null,
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2297,7 +2199,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2310,7 +2212,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2333,7 +2235,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2341,7 +2243,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2349,7 +2251,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2357,7 +2259,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2365,7 +2267,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2373,7 +2275,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2381,7 +2283,7 @@
           "napi": "register",
           "python": null,
           "why": {
-            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "wasm": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2389,7 +2291,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2397,7 +2299,7 @@
           "napi": null,
           "python": null,
           "why": {
-            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+            "napi": "gap: NapiStaticGraph and StaticGraph expose different fields and builders (A-7)"
           }
         },
         {
@@ -2437,8 +2339,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -2653,8 +2555,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -2774,8 +2676,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -2810,8 +2712,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -2846,8 +2748,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -2892,8 +2794,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -2933,8 +2835,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -2999,8 +2901,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -3045,8 +2947,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -3140,11 +3042,11 @@
       "wasm": "StaticTranslatableString",
       "napi": null,
       "python": null,
-      "stringLike": true,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
+      "stringLike": true,
       "operations": [
         {
           "wasm": "copy",
@@ -3168,8 +3070,8 @@
       "napi": null,
       "python": "TreeToTilesIterator",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "ecosystem: Python iterator protocol object",
+        "napi": "ecosystem: Python iterator protocol object"
       },
       "operations": [
         {
@@ -3189,8 +3091,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: plain JSON objects, built by js/backend.ts createStatic*/createWKRM (which skip core's parse: B-7)",
+        "python": "ecosystem: pure-Python dataclasses in python/alizarin/static_types.py (whose parsing drifts from core: B-5)"
       },
       "operations": [
         {
@@ -3220,8 +3122,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: exported but never constructed (crates/alizarin-wasm/src/pseudo_value.rs); remove it",
+        "python": "gap: exported but never constructed (crates/alizarin-wasm/src/pseudo_value.rs); remove it"
       },
       "operations": [
         {
@@ -3246,8 +3148,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: WASM-build timing instrumentation (js/tracing)",
+        "python": "ecosystem: WASM-build timing instrumentation (js/tracing)"
       },
       "operations": [
         {
@@ -3269,7 +3171,7 @@
       "napi": null,
       "python": "add_collection_to_global_cache",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "add_from_skos_json_to_global_cache": {
@@ -3277,8 +3179,8 @@
       "napi": null,
       "python": "add_from_skos_json_to_global_cache",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: the global RDM cache functions differ per binding (A-6)",
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "add_to_global_rdm_cache_from_skos_xml": {
@@ -3286,7 +3188,7 @@
       "napi": null,
       "python": "add_from_skos_xml_to_global_cache",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "apply_aggregate_functions_from_file": {
@@ -3294,7 +3196,7 @@
       "napi": "applyAggregateFunctionsFromFile",
       "python": "apply_aggregate_functions_from_file",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "ecosystem: reads or writes the filesystem, which WASM has not"
       }
     },
     "apply_mutations_create": {
@@ -3312,7 +3214,7 @@
       "napi": null,
       "python": "apply_mutations_with_extensions",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the extension registry functions differ per binding (A-6, G)"
       }
     },
     "batch_merge_resources": {
@@ -3320,7 +3222,7 @@
       "napi": null,
       "python": "batch_merge_resources",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
       }
     },
     "batch_tiles_to_trees": {
@@ -3328,7 +3230,7 @@
       "napi": null,
       "python": "batch_tiles_to_trees",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
       }
     },
     "batch_trees_to_tiles": {
@@ -3336,7 +3238,7 @@
       "napi": null,
       "python": "batch_trees_to_tiles",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
       }
     },
     "build_alias_to_collection_map": {
@@ -3344,7 +3246,7 @@
       "napi": "buildAliasToCollectionMap",
       "python": null,
       "why": {
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "python": "gap: label-resolution helpers not bound in Python (A-6)"
       }
     },
     "build_graph_from_csv": {
@@ -3352,8 +3254,8 @@
       "napi": null,
       "python": "build_graph_from_csv",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: graph registry, builders and exports are bound unevenly (A-6)",
+        "napi": "gap: graph registry, builders and exports are bound unevenly (A-6); js/csvModelLoader.ts falls back to WASM"
       }
     },
     "build_graph_from_instructions": {
@@ -3361,8 +3263,8 @@
       "napi": null,
       "python": "build_graph_from_instructions",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: graph registry, builders and exports are bound unevenly (A-6)",
+        "napi": "gap: graph registry, builders and exports are bound unevenly (A-6); js/csvModelLoader.ts falls back to WASM"
       }
     },
     "build_graph_from_model_csvs": {
@@ -3375,8 +3277,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI exposes this as NapiPrebuildExporter",
+        "python": "gap: Python only exports to a directory (export_prebuild)"
       }
     },
     "build_resources_from_business_csv": {
@@ -3389,8 +3291,8 @@
       "napi": null,
       "python": "build_tree_from_tiles",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all",
+        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
       }
     },
     "canonical_static": {
@@ -3398,8 +3300,8 @@
       "napi": null,
       "python": "canonical_static",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "ecosystem: WASM's static classes already serialise through core",
+        "napi": "gap: B-7, NAPI needs canonicalStatic so js/backend.ts createStatic* goes through core"
       }
     },
     "cards_to_tree": {
@@ -3407,7 +3309,7 @@
       "napi": null,
       "python": "cards_to_json_tree",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
       }
     },
     "clear_global_rdm_cache": {
@@ -3415,7 +3317,7 @@
       "napi": null,
       "python": "clear_global_rdm_cache",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "clear_rdm_namespace": {
@@ -3423,7 +3325,7 @@
       "napi": null,
       "python": "clear_rdm_namespace",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
       }
     },
     "clear_rscv_timings": {
@@ -3431,8 +3333,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: WASM-build timing instrumentation (js/tracing)",
+        "python": "ecosystem: WASM-build timing instrumentation (js/tracing)"
       }
     },
     "coerce_boolean": {
@@ -3440,7 +3342,7 @@
       "napi": null,
       "python": "coerce_boolean",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_concept_list": {
@@ -3448,7 +3350,7 @@
       "napi": null,
       "python": "coerce_concept_list",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_concept_value": {
@@ -3456,7 +3358,7 @@
       "napi": null,
       "python": "coerce_concept_value",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_date": {
@@ -3464,7 +3366,7 @@
       "napi": null,
       "python": "coerce_date",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_domain_value": {
@@ -3472,7 +3374,7 @@
       "napi": null,
       "python": "coerce_domain_value",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_domain_value_list": {
@@ -3480,7 +3382,7 @@
       "napi": null,
       "python": "coerce_domain_value_list",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_edtf": {
@@ -3488,7 +3390,7 @@
       "napi": null,
       "python": "coerce_edtf",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_geojson": {
@@ -3496,7 +3398,7 @@
       "napi": null,
       "python": "coerce_geojson",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_non_localized_string": {
@@ -3504,7 +3406,7 @@
       "napi": null,
       "python": "coerce_non_localized_string",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_number": {
@@ -3512,7 +3414,7 @@
       "napi": null,
       "python": "coerce_number",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_resource_instance": {
@@ -3520,7 +3422,7 @@
       "napi": null,
       "python": "coerce_resource_instance",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_resource_instance_list": {
@@ -3528,7 +3430,7 @@
       "napi": null,
       "python": "coerce_resource_instance_list",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_string": {
@@ -3536,7 +3438,7 @@
       "napi": null,
       "python": "coerce_string",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_url": {
@@ -3544,7 +3446,7 @@
       "napi": null,
       "python": "coerce_url",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_value": {
@@ -3552,7 +3454,7 @@
       "napi": null,
       "python": "coerce_value",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: NAPI has no standalone coercion functions; its ORM coerces inside the instance wrapper (A-6)"
       }
     },
     "coerce_with_extension": {
@@ -3560,7 +3462,7 @@
       "napi": "extensionCoerce",
       "python": "coerce_with_extension",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: the extension registry functions differ per binding (A-6, G)"
       }
     },
     "collection_to_skos_xml": {
@@ -3578,8 +3480,8 @@
       "napi": null,
       "python": "compose_collections_from_csv_in_global_cache",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: the global RDM cache functions differ per binding (A-6)",
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "compose_collections_in_global_cache": {
@@ -3587,8 +3489,8 @@
       "napi": null,
       "python": "compose_collections_in_global_cache",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: the global RDM cache functions differ per binding (A-6)",
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "compose_resource_layers": {
@@ -3601,8 +3503,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: graph registry, builders and exports are bound unevenly (A-6); js/csvModelLoader.ts falls back to WASM",
+        "python": "gap: graph registry, builders and exports are bound unevenly (A-6)"
       }
     },
     "export_all_graphs_to_dir": {
@@ -3610,8 +3512,8 @@
       "napi": null,
       "python": "export_all_graphs_to_dir",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "ecosystem: reads or writes the filesystem, which WASM has not",
+        "napi": "gap: Node has a filesystem; NAPI lacks this file-based form"
       }
     },
     "export_collections_to_dir": {
@@ -3619,8 +3521,8 @@
       "napi": null,
       "python": "export_collections_to_dir",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "ecosystem: reads or writes the filesystem, which WASM has not",
+        "napi": "gap: Node has a filesystem; NAPI lacks this file-based form"
       }
     },
     "export_graphs": {
@@ -3628,8 +3530,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: graph registry, builders and exports are bound unevenly (A-6); js/csvModelLoader.ts falls back to WASM",
+        "python": "gap: graph registry, builders and exports are bound unevenly (A-6)"
       }
     },
     "export_graphs_to_dir": {
@@ -3637,8 +3539,8 @@
       "napi": null,
       "python": "export_graphs_to_dir",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "ecosystem: reads or writes the filesystem, which WASM has not",
+        "napi": "gap: Node has a filesystem; NAPI lacks this file-based form"
       }
     },
     "export_prebuild": {
@@ -3646,8 +3548,8 @@
       "napi": null,
       "python": "export_prebuild",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "ecosystem: reads or writes the filesystem, which WASM has not (build_prebuild_export returns it instead)",
+        "napi": "gap: Node has a filesystem; NAPI lacks this file-based form (NapiPrebuildExporter)"
       }
     },
     "extension_resolve_markers": {
@@ -3655,8 +3557,8 @@
       "napi": "extensionResolveMarkers",
       "python": null,
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: the extension registry functions differ per binding (A-6, G)",
+        "python": "gap: the extension registry functions differ per binding (A-6, G)"
       }
     },
     "find_needed_collections": {
@@ -3674,8 +3576,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings",
+        "python": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
       }
     },
     "generate_concept_uuid": {
@@ -3683,8 +3585,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings",
+        "python": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
       }
     },
     "generate_uuid_v5": {
@@ -3692,7 +3594,7 @@
       "napi": null,
       "python": "generate_uuid_v5",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
       }
     },
     "generate_value_uuid": {
@@ -3700,8 +3602,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings",
+        "python": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
       }
     },
     "get_current_language": {
@@ -3714,7 +3616,7 @@
       "napi": "getDefaultConfigKeys",
       "python": null,
       "why": {
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "python": "gap: label-resolution defaults not bound in Python (A-6)"
       }
     },
     "get_default_resolvable_datatypes": {
@@ -3722,7 +3624,7 @@
       "napi": "getDefaultResolvableDatatypes",
       "python": null,
       "why": {
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "python": "gap: label-resolution defaults not bound in Python (A-6)"
       }
     },
     "get_global_rdm_cache": {
@@ -3730,8 +3632,8 @@
       "napi": null,
       "python": "get_global_rdm_cache",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: the global RDM cache functions differ per binding (A-6)",
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "get_graph_json": {
@@ -3739,8 +3641,8 @@
       "napi": null,
       "python": "get_graph_json",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: graph registry, builders and exports are bound unevenly (A-6)",
+        "napi": "gap: graph registry, builders and exports are bound unevenly (A-6); js/csvModelLoader.ts falls back to WASM"
       }
     },
     "get_graph_schema": {
@@ -3748,8 +3650,8 @@
       "napi": null,
       "python": "get_graph_schema",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: graph registry, builders and exports are bound unevenly (A-6)",
+        "napi": "gap: graph registry, builders and exports are bound unevenly (A-6); js/csvModelLoader.ts falls back to WASM"
       }
     },
     "get_mutation_schema": {
@@ -3762,7 +3664,7 @@
       "napi": null,
       "python": "get_rdm_namespace",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
       }
     },
     "get_rdm_namespace_raw": {
@@ -3770,8 +3672,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings",
+        "python": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
       }
     },
     "get_registered_extension_handlers": {
@@ -3784,7 +3686,7 @@
       "napi": null,
       "python": "list_extension_mutations",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the extension registry functions differ per binding (A-6, G)"
       }
     },
     "get_registered_graph_ids": {
@@ -3792,7 +3694,7 @@
       "napi": null,
       "python": "get_registered_graph_ids",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: graph registry, builders and exports are bound unevenly (A-6); js/csvModelLoader.ts falls back to WASM"
       }
     },
     "get_rscv_timings": {
@@ -3800,8 +3702,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: WASM-build timing instrumentation (js/tracing)",
+        "python": "ecosystem: WASM-build timing instrumentation (js/tracing)"
       }
     },
     "get_widget_for_datatype": {
@@ -3809,17 +3711,8 @@
       "napi": null,
       "python": "get_widget_for_datatype",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
-      }
-    },
-    "global_rdm_concept_pref_label": {
-      "wasm": null,
-      "napi": null,
-      "python": "global_rdm_concept_pref_label",
-      "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: core's widget registry (registry.rs) is bound only in Python",
+        "napi": "gap: core's widget registry (registry.rs) is bound only in Python"
       }
     },
     "global_rdm_get_collection_ids": {
@@ -3827,8 +3720,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)",
+        "python": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "global_rdm_get_parent_id": {
@@ -3836,7 +3729,7 @@
       "napi": null,
       "python": "global_rdm_get_parent_id",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "global_rdm_has_collection": {
@@ -3844,16 +3737,15 @@
       "napi": null,
       "python": "global_rdm_has_collection",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "global_rdm_lookup_label": {
       "wasm": "globalRdmLookupLabel",
       "napi": null,
-      "python": null,
+      "python": "global_rdm_concept_pref_label",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "global_rdm_lookup_value": {
@@ -3861,8 +3753,8 @@
       "napi": null,
       "python": "global_rdm_lookup_value",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: the global RDM cache functions differ per binding (A-6)",
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "has_derive_provider": {
@@ -3875,8 +3767,8 @@
       "napi": null,
       "python": "has_display_renderer",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: the extension registry functions differ per binding (A-6, G)",
+        "napi": "gap: the extension registry functions differ per binding (A-6, G)"
       }
     },
     "has_extension_handler": {
@@ -3889,7 +3781,7 @@
       "napi": null,
       "python": "has_extension_mutation",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the extension registry functions differ per binding (A-6, G)"
       }
     },
     "has_global_rdm_cache": {
@@ -3897,7 +3789,7 @@
       "napi": null,
       "python": "has_global_rdm_cache",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "has_rdm_namespace": {
@@ -3905,7 +3797,7 @@
       "napi": null,
       "python": "has_rdm_namespace",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
       }
     },
     "import_prebuild": {
@@ -3913,7 +3805,7 @@
       "napi": "importPrebuild",
       "python": "import_prebuild",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "ecosystem: reads or writes the filesystem, which WASM has not"
       }
     },
     "init_sync": {
@@ -3921,8 +3813,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: wasm-bindgen bootstrap; native modules initialise on import",
+        "python": "ecosystem: wasm-bindgen bootstrap; native modules initialise on import"
       }
     },
     "is_list_datatype": {
@@ -3930,8 +3822,8 @@
       "napi": null,
       "python": "is_list_datatype",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: core's datatype registry (registry.rs) is bound only in Python",
+        "napi": "gap: core's datatype registry (registry.rs) is bound only in Python"
       }
     },
     "is_valid_uuid": {
@@ -3944,8 +3836,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings",
+        "python": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
       }
     },
     "list_datatypes": {
@@ -3953,8 +3845,8 @@
       "napi": null,
       "python": "list_datatypes",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: core's datatype registry (registry.rs) is bound only in Python",
+        "napi": "gap: core's datatype registry (registry.rs) is bound only in Python"
       }
     },
     "main": {
@@ -3962,8 +3854,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: wasm-bindgen start function",
+        "python": "ecosystem: wasm-bindgen start function"
       }
     },
     "matches_semantic_child": {
@@ -3971,8 +3863,8 @@
       "napi": null,
       "python": "matches_semantic_child",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: core's semantic-child match is bound only in Python",
+        "napi": "gap: core's semantic-child match is bound only in Python"
       }
     },
     "merge_resources": {
@@ -3980,7 +3872,7 @@
       "napi": null,
       "python": "merge_resources",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
       }
     },
     "new_wasmresource_instance_wrapper_for_model": {
@@ -3988,8 +3880,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: WASM factory used by js/backend.ts; NAPI constructs NapiResourceInstanceWrapper directly",
+        "python": "ecosystem: WASM factory used by js/backend.ts; Python constructs its wrapper class directly"
       }
     },
     "new_wasmresource_instance_wrapper_for_resource": {
@@ -3997,8 +3889,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: WASM factory used by js/backend.ts; NAPI constructs NapiResourceInstanceWrapper directly",
+        "python": "ecosystem: WASM factory used by js/backend.ts; Python constructs its wrapper class directly"
       }
     },
     "parse_rdm_namespace": {
@@ -4006,8 +3898,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings",
+        "python": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
       }
     },
     "parse_skos_xml": {
@@ -4025,8 +3917,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "ecosystem: WASM-build timing instrumentation (js/tracing)",
+        "python": "ecosystem: WASM-build timing instrumentation (js/tracing)"
       }
     },
     "register_derive_provider": {
@@ -4044,7 +3936,7 @@
       "napi": null,
       "python": "register_extension_mutation",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the extension registry functions differ per binding (A-6, G)"
       }
     },
     "register_graph": {
@@ -4052,8 +3944,8 @@
       "napi": null,
       "python": "register_graph",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: graph registry, builders and exports are bound unevenly (A-6)",
+        "napi": "gap: graph registry, builders and exports are bound unevenly (A-6); js/csvModelLoader.ts falls back to WASM"
       }
     },
     "register_list_datatype": {
@@ -4061,8 +3953,8 @@
       "napi": null,
       "python": "register_list_datatype",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: core's datatype registry (registry.rs) is bound only in Python",
+        "napi": "gap: core's datatype registry (registry.rs) is bound only in Python"
       }
     },
     "register_widget": {
@@ -4070,8 +3962,8 @@
       "napi": null,
       "python": "register_widget",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: core's widget registry (registry.rs) is bound only in Python",
+        "napi": "gap: core's widget registry (registry.rs) is bound only in Python"
       }
     },
     "register_widget_for_datatype": {
@@ -4079,8 +3971,8 @@
       "napi": null,
       "python": "register_widget_for_datatype",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: core's widget registry (registry.rs) is bound only in Python",
+        "napi": "gap: core's widget registry (registry.rs) is bound only in Python"
       }
     },
     "registered_widgets": {
@@ -4088,8 +3980,8 @@
       "napi": null,
       "python": "registered_widgets",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: core's widget registry (registry.rs) is bound only in Python",
+        "napi": "gap: core's widget registry (registry.rs) is bound only in Python"
       }
     },
     "remove_from_global_rdm_cache": {
@@ -4097,8 +3989,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)",
+        "python": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "render_display_with_extension": {
@@ -4106,7 +3998,7 @@
       "napi": "extensionRenderDisplay",
       "python": "render_display_with_extension",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: the extension registry functions differ per binding (A-6, G)"
       }
     },
     "resolve_labels": {
@@ -4114,8 +4006,8 @@
       "napi": null,
       "python": "resolve_labels",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: label resolution is bound with a different signature per binding (A-6)",
+        "napi": "gap: label resolution is bound with a different signature per binding (A-6)"
       }
     },
     "resolve_labels_in_tree": {
@@ -4123,8 +4015,8 @@
       "napi": null,
       "python": "resolve_labels_in_tree",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all",
+        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
       }
     },
     "resolve_labels_with_lookup": {
@@ -4132,8 +4024,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: label resolution is bound with a different signature per binding (A-6)",
+        "python": "gap: label resolution is bound with a different signature per binding (A-6)"
       }
     },
     "resource_lifecycle_state": {
@@ -4151,8 +4043,8 @@
       "napi": null,
       "python": "set_descriptor_template",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: graph registry, builders and exports are bound unevenly (A-6)",
+        "napi": "gap: graph registry, builders and exports are bound unevenly (A-6)"
       }
     },
     "set_global_rdm_cache": {
@@ -4160,7 +4052,7 @@
       "napi": null,
       "python": "set_global_rdm_cache",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "set_rdm_namespace": {
@@ -4168,7 +4060,7 @@
       "napi": null,
       "python": "set_rdm_namespace",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
       }
     },
     "streamed_merge_from_files": {
@@ -4176,8 +4068,8 @@
       "napi": null,
       "python": "streamed_merge_from_files",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "ecosystem: reads or writes the filesystem, which WASM has not",
+        "napi": "gap: Node has a filesystem; NAPI lacks this file-based form"
       }
     },
     "summary_to_metadata": {
@@ -4185,8 +4077,8 @@
       "napi": "summaryToMetadata",
       "python": null,
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: B-8, WASM does this inside StaticResource.fromSummary; one core *_from_json for both",
+        "python": "gap: B-8, not bound in Python"
       }
     },
     "tiles_to_tree": {
@@ -4194,7 +4086,7 @@
       "napi": null,
       "python": "tiles_to_json_tree",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
       }
     },
     "transition_resource_lifecycle": {
@@ -4207,7 +4099,7 @@
       "napi": null,
       "python": "json_tree_to_tiles",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: B-9, tile/tree conversion is hand-written per binding and missing on NAPI; one core function for all"
       }
     },
     "unregister_extension_handler": {
@@ -4215,8 +4107,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the extension registry functions differ per binding (A-6, G)",
+        "python": "gap: the extension registry functions differ per binding (A-6, G)"
       }
     },
     "unregister_extension_mutation": {
@@ -4224,8 +4116,8 @@
       "napi": null,
       "python": null,
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: the extension registry functions differ per binding (A-6, G)",
+        "python": "gap: the extension registry functions differ per binding (A-6, G)"
       }
     },
     "update_collection_in_global_cache": {
@@ -4233,8 +4125,8 @@
       "napi": null,
       "python": "update_collection_in_global_cache",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: the global RDM cache functions differ per binding (A-6)",
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "update_collection_nested_in_global_cache": {
@@ -4242,8 +4134,8 @@
       "napi": null,
       "python": "update_collection_nested_in_global_cache",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: the global RDM cache functions differ per binding (A-6)",
+        "napi": "gap: the global RDM cache functions differ per binding (A-6)"
       }
     },
     "validate_model_csvs": {
@@ -4251,7 +4143,7 @@
       "napi": null,
       "python": "validate_model_csvs",
       "why": {
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "napi": "gap: missing on NAPI; js/csvModelLoader.ts validates through WASM even under NAPI"
       }
     },
     "widget_mappings": {
@@ -4259,8 +4151,8 @@
       "napi": null,
       "python": "widget_mappings",
       "why": {
-        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
-        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+        "wasm": "gap: core's widget registry (registry.rs) is bound only in Python",
+        "napi": "gap: core's widget registry (registry.rs) is bound only in Python"
       }
     }
   }
