@@ -1,50 +1,337 @@
 {
-  "_doc": "Every public method of each binding's wrapper, pseudo-value and tile classes, by binding. A class a binding lacks is null, explained once in the class's `why`. A null name must be explained in `why`: 'ecosystem: ...' for a deliberate difference, 'gap: ...' for one still to fix. tests/dual-backend/bindingParity.test.ts (WASM, NAPI) and crates/alizarin-python/tests/test_binding_parity.py check each binding has exactly these, so a method added to one binding only fails until it is listed here.",
+  "_doc": "Every public class, method and free function of each binding, by binding, under one canonical name (snake_case; spelt camelCase in TS). A null name must be explained in `why`: 'ecosystem: ...' for a deliberate difference, 'gap: ...' for one still to fix ('gap: unclassified' awaits a decision). A class a binding lacks is null, explained once in the class's `why`. tests/dual-backend/bindingParity.test.ts (WASM, NAPI) and crates/alizarin-python/tests/test_binding_parity.py check each binding exports exactly what is listed here, so anything added to one binding only fails until it is listed. Rebuild with scripts/guards/binding_manifest.py.",
   "classes": {
+    "coercionResult": {
+      "wasm": "WasmCoercionResult",
+      "napi": null,
+      "python": "CoercionResult",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "displayValue",
+          "napi": null,
+          "python": "display_value"
+        },
+        {
+          "wasm": "error",
+          "napi": null,
+          "python": "error"
+        },
+        {
+          "wasm": "isError",
+          "napi": null,
+          "python": "is_error"
+        },
+        {
+          "wasm": "isNull",
+          "napi": null,
+          "python": "is_null"
+        },
+        {
+          "wasm": "tileData",
+          "napi": null,
+          "python": "tile_data"
+        },
+        {
+          "wasm": "warnings",
+          "napi": null,
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        }
+      ]
+    },
+    "exampleEdgeWrapper": {
+      "wasm": "ExampleEdgeWrapper",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "copy",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "domainnode_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "edgeid",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "name",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "ontologyproperty",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "rangenode_id",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "exampleNodegroupWrapper": {
+      "wasm": "ExampleNodegroupWrapper",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "cardinality",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "copy",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "nodegroupid",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "parentnodegroup_id",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
     "instanceWrapper": {
       "wasm": "WASMResourceInstanceWrapper",
       "napi": "NapiResourceInstanceWrapper",
       "python": "RustResourceInstanceWrapperCore",
       "operations": [
-        { "wasm": "appendFetchedTiles", "napi": "appendFetchedTiles", "python": "append_fetched_tiles" },
-        { "wasm": "appendTiles", "napi": "appendTiles", "python": "append_tiles" },
-        { "wasm": "applyEdits", "napi": "applyEdits", "python": "apply_edits" },
-        { "wasm": "checkEditable", "napi": "checkEditable", "python": "check_editable" },
-        { "wasm": "exportTilesJson", "napi": "exportTilesJson", "python": "export_tiles_json" },
-        { "wasm": "fetchFromTileSource", "napi": "fetchFromTileSource", "python": "fetch_from_tile_source" },
-        { "wasm": "getAllSemanticChildValues", "napi": "getAllSemanticChildValues", "python": "get_all_semantic_child_values" },
-        { "wasm": "getCachedPseudo", "napi": "getCachedPseudo", "python": "get_cached_pseudo" },
-        { "wasm": "getDescriptors", "napi": "getDescriptors", "python": "get_descriptors" },
-        { "wasm": "getMissingNodegroupsForChildren", "napi": "getMissingNodegroupsForChildren", "python": "get_missing_nodegroups_for_children" },
-        { "wasm": "getName", "napi": "getName", "python": "get_name" },
-        { "wasm": "getResourceId", "napi": "getResourceId", "python": "get_resource_id" },
-        { "wasm": "getRootPseudo", "napi": "getRootPseudo", "python": "get_root_pseudo" },
-        { "wasm": "getSemanticChildValue", "napi": "getSemanticChildValue", "python": "get_semantic_child_value" },
-        { "wasm": "getTile", "napi": "getTile", "python": "get_tile" },
-        { "wasm": "getTileLoader", "napi": null, "python": null, "why": { "napi": "ecosystem: host-language tile loading; the TS wrapper holds NAPI's loader", "python": "ecosystem: host-language tile loading; the Python wrapper holds its loader" } },
-        { "wasm": "setTileLoader", "napi": null, "python": null, "why": { "napi": "ecosystem: host-language tile loading; the TS wrapper holds NAPI's loader", "python": "ecosystem: host-language tile loading; the Python wrapper holds its loader" } },
-        { "wasm": "getValuesAtPath", "napi": "getValuesAtPath", "python": "get_values_at_path" },
-        { "wasm": "isNodegroupLoaded", "napi": "isNodegroupLoaded", "python": "is_nodegroup_loaded" },
-        { "wasm": null, "napi": "loadFromRegistry", "python": null, "why": { "wasm": "ecosystem: takes the WASM StaticResource directly, so there is no JSON round trip to avoid", "python": "ecosystem: the Python ORM's resources live in Python, not the Rust registry" } },
-        { "wasm": "loadTiles", "napi": "loadTiles", "python": "load_tiles" },
-        { "wasm": "loadTilesFromResource", "napi": "loadTilesFromResource", "python": "load_tiles_from_resource" },
-        { "wasm": "loadTilesWasm", "napi": null, "python": null, "why": { "napi": "ecosystem: takes WASM-native StaticTile objects", "python": "ecosystem: takes WASM-native StaticTile objects" } },
-        { "wasm": "makePseudoValue", "napi": "makePseudoValue", "python": "make_pseudo_value" },
-        { "wasm": "nodegroupIdsForCard", "napi": "nodegroupIdsForCard", "python": "nodegroup_ids_for_card" },
-        { "wasm": "nodegroupsToFetch", "napi": "nodegroupsToFetch", "python": "nodegroups_to_fetch" },
-        { "wasm": "populate", "napi": "populate", "python": "populate" },
-        { "wasm": "pruneResourceTiles", "napi": "pruneResourceTiles", "python": "prune_resource_tiles" },
-        { "wasm": "release", "napi": "release", "python": "release" },
-        { "wasm": "resolvePath", "napi": "resolvePath", "python": "resolve_path" },
-        { "wasm": "serializeCard", "napi": "serializeCard", "python": "serialize_card" },
-        { "wasm": "serializeCardDisplay", "napi": "serializeCardDisplay", "python": "serialize_card_display" },
-        { "wasm": "serializeRootCards", "napi": "serializeRootCards", "python": "serialize_root_cards" },
-        { "wasm": "serializeRootCardsDisplay", "napi": "serializeRootCardsDisplay", "python": "serialize_root_cards_display" },
-        { "wasm": "setLazy", "napi": "setLazy", "python": "set_lazy" },
-        { "wasm": "tilesLoaded", "napi": "tilesLoaded", "python": "tiles_loaded" },
-        { "wasm": "toDisplayJson", "napi": "toDisplayJson", "python": "to_display_json" },
-        { "wasm": "toJson", "napi": "toJson", "python": "to_json" },
-        { "wasm": "isLazy", "napi": "isLazy", "python": "is_lazy" }
+        {
+          "wasm": "appendFetchedTiles",
+          "napi": "appendFetchedTiles",
+          "python": "append_fetched_tiles"
+        },
+        {
+          "wasm": "appendTiles",
+          "napi": "appendTiles",
+          "python": "append_tiles"
+        },
+        {
+          "wasm": "applyEdits",
+          "napi": "applyEdits",
+          "python": "apply_edits"
+        },
+        {
+          "wasm": "checkEditable",
+          "napi": "checkEditable",
+          "python": "check_editable"
+        },
+        {
+          "wasm": "exportTilesJson",
+          "napi": "exportTilesJson",
+          "python": "export_tiles_json"
+        },
+        {
+          "wasm": "fetchFromTileSource",
+          "napi": "fetchFromTileSource",
+          "python": "fetch_from_tile_source"
+        },
+        {
+          "wasm": "getAllSemanticChildValues",
+          "napi": "getAllSemanticChildValues",
+          "python": "get_all_semantic_child_values"
+        },
+        {
+          "wasm": "getCachedPseudo",
+          "napi": "getCachedPseudo",
+          "python": "get_cached_pseudo"
+        },
+        {
+          "wasm": "getDescriptors",
+          "napi": "getDescriptors",
+          "python": "get_descriptors"
+        },
+        {
+          "wasm": "getMissingNodegroupsForChildren",
+          "napi": "getMissingNodegroupsForChildren",
+          "python": "get_missing_nodegroups_for_children"
+        },
+        {
+          "wasm": "getName",
+          "napi": "getName",
+          "python": "get_name"
+        },
+        {
+          "wasm": "getResourceId",
+          "napi": "getResourceId",
+          "python": "get_resource_id"
+        },
+        {
+          "wasm": "getRootPseudo",
+          "napi": "getRootPseudo",
+          "python": "get_root_pseudo"
+        },
+        {
+          "wasm": "getSemanticChildValue",
+          "napi": "getSemanticChildValue",
+          "python": "get_semantic_child_value"
+        },
+        {
+          "wasm": "getTile",
+          "napi": "getTile",
+          "python": "get_tile"
+        },
+        {
+          "wasm": "getTileLoader",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "ecosystem: host-language tile loading; the TS wrapper holds NAPI's loader",
+            "python": "ecosystem: host-language tile loading; the Python wrapper holds its loader"
+          }
+        },
+        {
+          "wasm": "setTileLoader",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "ecosystem: host-language tile loading; the TS wrapper holds NAPI's loader",
+            "python": "ecosystem: host-language tile loading; the Python wrapper holds its loader"
+          }
+        },
+        {
+          "wasm": "getValuesAtPath",
+          "napi": "getValuesAtPath",
+          "python": "get_values_at_path"
+        },
+        {
+          "wasm": "isNodegroupLoaded",
+          "napi": "isNodegroupLoaded",
+          "python": "is_nodegroup_loaded"
+        },
+        {
+          "wasm": null,
+          "napi": "loadFromRegistry",
+          "python": null,
+          "why": {
+            "wasm": "ecosystem: takes the WASM StaticResource directly, so there is no JSON round trip to avoid",
+            "python": "ecosystem: the Python ORM's resources live in Python, not the Rust registry"
+          }
+        },
+        {
+          "wasm": "loadTiles",
+          "napi": "loadTiles",
+          "python": "load_tiles"
+        },
+        {
+          "wasm": "loadTilesFromResource",
+          "napi": "loadTilesFromResource",
+          "python": "load_tiles_from_resource"
+        },
+        {
+          "wasm": "loadTilesWasm",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "ecosystem: takes WASM-native StaticTile objects",
+            "python": "ecosystem: takes WASM-native StaticTile objects"
+          }
+        },
+        {
+          "wasm": "makePseudoValue",
+          "napi": "makePseudoValue",
+          "python": "make_pseudo_value"
+        },
+        {
+          "wasm": "nodegroupIdsForCard",
+          "napi": "nodegroupIdsForCard",
+          "python": "nodegroup_ids_for_card"
+        },
+        {
+          "wasm": "nodegroupsToFetch",
+          "napi": "nodegroupsToFetch",
+          "python": "nodegroups_to_fetch"
+        },
+        {
+          "wasm": "populate",
+          "napi": "populate",
+          "python": "populate"
+        },
+        {
+          "wasm": "pruneResourceTiles",
+          "napi": "pruneResourceTiles",
+          "python": "prune_resource_tiles"
+        },
+        {
+          "wasm": "release",
+          "napi": "release",
+          "python": "release"
+        },
+        {
+          "wasm": "resolvePath",
+          "napi": "resolvePath",
+          "python": "resolve_path"
+        },
+        {
+          "wasm": "serializeCard",
+          "napi": "serializeCard",
+          "python": "serialize_card"
+        },
+        {
+          "wasm": "serializeCardDisplay",
+          "napi": "serializeCardDisplay",
+          "python": "serialize_card_display"
+        },
+        {
+          "wasm": "serializeRootCards",
+          "napi": "serializeRootCards",
+          "python": "serialize_root_cards"
+        },
+        {
+          "wasm": "serializeRootCardsDisplay",
+          "napi": "serializeRootCardsDisplay",
+          "python": "serialize_root_cards_display"
+        },
+        {
+          "wasm": "setLazy",
+          "napi": "setLazy",
+          "python": "set_lazy"
+        },
+        {
+          "wasm": "tilesLoaded",
+          "napi": "tilesLoaded",
+          "python": "tiles_loaded"
+        },
+        {
+          "wasm": "toDisplayJson",
+          "napi": "toDisplayJson",
+          "python": "to_display_json"
+        },
+        {
+          "wasm": "toJson",
+          "napi": "toJson",
+          "python": "to_json"
+        },
+        {
+          "wasm": "isLazy",
+          "napi": "isLazy",
+          "python": "is_lazy"
+        }
       ]
     },
     "modelWrapper": {
@@ -52,56 +339,502 @@
       "napi": "NapiResourceModelWrapper",
       "python": "PyResourceModelWrapper",
       "operations": [
-        { "wasm": "createPseudoNode", "napi": "createPseudoNode", "python": "create_pseudo_node" },
-        { "wasm": "createPseudoNodeChild", "napi": "createPseudoNodeChild", "python": "create_pseudo_node_child" },
-        { "wasm": "edges", "napi": "edges", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
-        { "wasm": "getChildNodeAliases", "napi": "getChildNodeAliases", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
-        { "wasm": "getChildNodes", "napi": "getChildNodes", "python": "get_child_nodes" },
-        { "wasm": "getEdges", "napi": "getEdges", "python": "get_edges" },
-        { "wasm": "getNodeIdFromAlias", "napi": "getNodeIdFromAlias", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
-        { "wasm": "getNodeObjectFromAlias", "napi": "getNodeObjectFromAlias", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
-        { "wasm": "getNodeObjectFromId", "napi": "getNodeObjectFromId", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
-        { "wasm": "getNodeObjects", "napi": "getNodeObjects", "python": "get_node_objects" },
-        { "wasm": "getNodeObjectsByAlias", "napi": "getNodeObjectsByAlias", "python": "get_node_objects_by_alias" },
-        { "wasm": "getNodegroupIds", "napi": "getNodegroupIds", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
-        { "wasm": "getNodegroupName", "napi": "getNodegroupName", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
-        { "wasm": "getNodegroupObjects", "napi": "getNodegroupObjects", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
-        { "wasm": "getPermittedNodegroups", "napi": "getPermittedNodegroups", "python": "get_permitted_nodegroups" },
-        { "wasm": "getRootNode", "napi": "getRootNode", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
-        { "wasm": "graph", "napi": "graph", "python": "graph" },
-        { "wasm": "isNodegroupPermitted", "napi": "isNodegroupPermitted", "python": "is_nodegroup_permitted" },
-        { "wasm": "nodegroups", "napi": "nodegroups", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
-        { "wasm": "nodes", "napi": "nodes", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
-        { "wasm": "nodesByAlias", "napi": "nodesByAlias", "python": null, "why": { "python": "ecosystem: Python's model wrapper reads its own StaticGraph" } },
-        { "wasm": "pruneGraph", "napi": "pruneGraph", "python": "prune_graph" },
-        { "wasm": "setDefaultAllowAllNodegroups", "napi": "setDefaultAllowAllNodegroups", "python": "set_default_allow_all_nodegroups" },
-        { "wasm": "setPermittedNodegroups", "napi": "setPermittedNodegroups", "python": "set_permitted_nodegroups" }
+        {
+          "wasm": "createPseudoNode",
+          "napi": "createPseudoNode",
+          "python": "create_pseudo_node"
+        },
+        {
+          "wasm": "createPseudoNodeChild",
+          "napi": "createPseudoNodeChild",
+          "python": "create_pseudo_node_child"
+        },
+        {
+          "wasm": "edges",
+          "napi": "edges",
+          "python": null,
+          "why": {
+            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
+          }
+        },
+        {
+          "wasm": "getChildNodeAliases",
+          "napi": "getChildNodeAliases",
+          "python": null,
+          "why": {
+            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
+          }
+        },
+        {
+          "wasm": "getChildNodes",
+          "napi": "getChildNodes",
+          "python": "get_child_nodes"
+        },
+        {
+          "wasm": "getEdges",
+          "napi": "getEdges",
+          "python": "get_edges"
+        },
+        {
+          "wasm": "getNodeIdFromAlias",
+          "napi": "getNodeIdFromAlias",
+          "python": null,
+          "why": {
+            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
+          }
+        },
+        {
+          "wasm": "getNodeObjectFromAlias",
+          "napi": "getNodeObjectFromAlias",
+          "python": null,
+          "why": {
+            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
+          }
+        },
+        {
+          "wasm": "getNodeObjectFromId",
+          "napi": "getNodeObjectFromId",
+          "python": null,
+          "why": {
+            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
+          }
+        },
+        {
+          "wasm": "getNodeObjects",
+          "napi": "getNodeObjects",
+          "python": "get_node_objects"
+        },
+        {
+          "wasm": "getNodeObjectsByAlias",
+          "napi": "getNodeObjectsByAlias",
+          "python": "get_node_objects_by_alias"
+        },
+        {
+          "wasm": "getNodegroupIds",
+          "napi": "getNodegroupIds",
+          "python": null,
+          "why": {
+            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
+          }
+        },
+        {
+          "wasm": "getNodegroupName",
+          "napi": "getNodegroupName",
+          "python": null,
+          "why": {
+            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
+          }
+        },
+        {
+          "wasm": "getNodegroupObjects",
+          "napi": "getNodegroupObjects",
+          "python": null,
+          "why": {
+            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
+          }
+        },
+        {
+          "wasm": "getPermittedNodegroups",
+          "napi": "getPermittedNodegroups",
+          "python": "get_permitted_nodegroups"
+        },
+        {
+          "wasm": "getRootNode",
+          "napi": "getRootNode",
+          "python": null,
+          "why": {
+            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
+          }
+        },
+        {
+          "wasm": "graph",
+          "napi": "graph",
+          "python": "graph"
+        },
+        {
+          "wasm": "isNodegroupPermitted",
+          "napi": "isNodegroupPermitted",
+          "python": "is_nodegroup_permitted"
+        },
+        {
+          "wasm": "nodegroups",
+          "napi": "nodegroups",
+          "python": null,
+          "why": {
+            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
+          }
+        },
+        {
+          "wasm": "nodes",
+          "napi": "nodes",
+          "python": null,
+          "why": {
+            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
+          }
+        },
+        {
+          "wasm": "nodesByAlias",
+          "napi": "nodesByAlias",
+          "python": null,
+          "why": {
+            "python": "ecosystem: Python's model wrapper reads its own StaticGraph"
+          }
+        },
+        {
+          "wasm": "pruneGraph",
+          "napi": "pruneGraph",
+          "python": "prune_graph"
+        },
+        {
+          "wasm": "setDefaultAllowAllNodegroups",
+          "napi": "setDefaultAllowAllNodegroups",
+          "python": "set_default_allow_all_nodegroups"
+        },
+        {
+          "wasm": "setPermittedNodegroups",
+          "napi": "setPermittedNodegroups",
+          "python": "set_permitted_nodegroups"
+        }
       ]
     },
-    "pseudoValue": {
-      "wasm": "PseudoValue",
-      "napi": "NapiPseudoValue",
-      "python": "RustPseudoValue",
+    "napiPrebuildExporter": {
+      "wasm": null,
+      "napi": "NapiPrebuildExporter",
+      "python": null,
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
       "operations": [
-        { "wasm": "clear", "napi": "clear", "python": "clear" },
-        { "wasm": "datatype", "napi": "datatype", "python": "datatype" },
-        { "wasm": "hasTile", "napi": "hasTile", "python": "has_tile" },
-        { "wasm": "independent", "napi": "independent", "python": "independent" },
-        { "wasm": "inner", "napi": "inner", "python": "get_inner" },
-        { "wasm": "isCollector", "napi": "isCollector", "python": "is_collector" },
-        { "wasm": "isInner", "napi": "isInner", "python": "is_inner" },
-        { "wasm": "isIterable", "napi": "isIterable", "python": "is_iterable" },
-        { "wasm": "isOuter", "napi": "isOuter", "python": "is_outer" },
-        { "wasm": "name", "napi": "name", "python": "name" },
-        { "wasm": "node", "napi": "node", "python": "get_node_json" },
-        { "wasm": "nodeAlias", "napi": "nodeAlias", "python": "alias" },
-        { "wasm": "nodeId", "napi": "nodeId", "python": "node_id" },
-        { "wasm": "nodegroupId", "napi": "nodegroupId", "python": "nodegroup_id" },
-        { "wasm": "tile", "napi": "tile", "python": "get_tile_json" },
-        { "wasm": "tileData", "napi": "tileData", "python": "get_tile_data" },
-        { "wasm": "tileId", "napi": "tileId", "python": "tile_id" },
-        { "wasm": "toSnapshot", "napi": "toSnapshot", "python": null, "why": { "python": "ecosystem: TS caches a snapshot to save boundary crossings; Python reads the properties" } },
-        { "wasm": null, "napi": null, "python": "set_inner", "why": { "wasm": "ecosystem: Python's ORM sets the inner of the pseudo it wraps; TS reads core's", "napi": "ecosystem: Python's ORM sets the inner of the pseudo it wraps; TS reads core's" } }
+        {
+          "wasm": null,
+          "napi": "buildExportData",
+          "python": null
+        },
+        {
+          "wasm": null,
+          "napi": "exportAllGraphs",
+          "python": null
+        },
+        {
+          "wasm": null,
+          "napi": "exportGraphs",
+          "python": null
+        },
+        {
+          "wasm": null,
+          "napi": "getRegisteredGraphIds",
+          "python": null
+        }
+      ]
+    },
+    "napiTileData": {
+      "wasm": null,
+      "napi": "NapiTileData",
+      "python": null,
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": null,
+          "napi": "delete",
+          "python": null
+        },
+        {
+          "wasm": null,
+          "napi": "get",
+          "python": null
+        },
+        {
+          "wasm": null,
+          "napi": "has",
+          "python": null
+        },
+        {
+          "wasm": null,
+          "napi": "keys",
+          "python": null
+        },
+        {
+          "wasm": null,
+          "napi": "set",
+          "python": null
+        }
+      ]
+    },
+    "nodeConfigBoolean": {
+      "wasm": "WasmNodeConfigBoolean",
+      "napi": "NapiNodeConfigBoolean",
+      "python": "RustNodeConfigBoolean",
+      "why": null,
+      "operations": [
+        {
+          "wasm": "falseLabel",
+          "napi": "falseLabel",
+          "python": "false_label"
+        },
+        {
+          "wasm": "getLabel",
+          "napi": "getLabel",
+          "python": "get_label"
+        },
+        {
+          "wasm": "trueLabel",
+          "napi": "trueLabel",
+          "python": "true_label"
+        }
+      ]
+    },
+    "nodeConfigConcept": {
+      "wasm": "WasmNodeConfigConcept",
+      "napi": "NapiNodeConfigConcept",
+      "python": "RustNodeConfigConcept",
+      "why": null,
+      "operations": [
+        {
+          "wasm": "rdmCollection",
+          "napi": "rdmCollection",
+          "python": "rdm_collection"
+        }
+      ]
+    },
+    "nodeConfigDomain": {
+      "wasm": "WasmNodeConfigDomain",
+      "napi": "NapiNodeConfigDomain",
+      "python": "RustNodeConfigDomain",
+      "why": null,
+      "operations": [
+        {
+          "wasm": "getOptionIds",
+          "napi": "getOptionIds",
+          "python": "get_option_ids"
+        },
+        {
+          "wasm": "getSelected",
+          "napi": "getSelected",
+          "python": "get_selected"
+        },
+        {
+          "wasm": "options",
+          "napi": "options",
+          "python": "options"
+        },
+        {
+          "wasm": "valueFromId",
+          "napi": "valueFromId",
+          "python": "value_from_id"
+        }
+      ]
+    },
+    "nodeConfigManager": {
+      "wasm": "WasmNodeConfigManager",
+      "napi": "NapiNodeConfigManager",
+      "python": "RustNodeConfigManager",
+      "why": null,
+      "operations": [
+        {
+          "wasm": "clear",
+          "napi": "clear",
+          "python": "clear"
+        },
+        {
+          "wasm": "fromGraph",
+          "napi": "buildFromGraph",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "fromGraphJson",
+          "napi": "buildFromGraphJson",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "getBoolean",
+          "napi": "getBoolean",
+          "python": "get_boolean"
+        },
+        {
+          "wasm": "getConcept",
+          "napi": "getConcept",
+          "python": "get_concept"
+        },
+        {
+          "wasm": "getConfigType",
+          "napi": "getConfigType",
+          "python": "get_config_type"
+        },
+        {
+          "wasm": "getDomain",
+          "napi": "getDomain",
+          "python": "get_domain"
+        },
+        {
+          "wasm": "getExtensionConfig",
+          "napi": "getExtensionConfig",
+          "python": "get_extension_config"
+        },
+        {
+          "wasm": "hasConfig",
+          "napi": "hasConfig",
+          "python": "has_config"
+        },
+        {
+          "wasm": "length",
+          "napi": "length",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "load_graph_json",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "lookupDomainValue",
+          "napi": "lookupDomainValue",
+          "python": "lookup_domain_value"
+        }
+      ]
+    },
+    "ontologyValidator": {
+      "wasm": null,
+      "napi": null,
+      "python": "OntologyValidator",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "class_count"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "is_valid_class"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "validate_edge"
+        }
+      ]
+    },
+    "populateResult": {
+      "wasm": "WasmPopulateResult",
+      "napi": "NapiPopulateResult",
+      "python": "RustPopulateResult",
+      "why": null,
+      "operations": [
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "aliases",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": null,
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "allNodegroupsMap",
+          "napi": "allNodegroupsMap",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "allValuesMap",
+          "napi": "allValuesMap",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": null,
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "getAllValues",
+          "napi": "getAllValues",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "get_nodegroups_map",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "getValue",
+          "napi": "getValue",
+          "python": "get_value"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": null,
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "getValueAliases",
+          "napi": "getValueAliases",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "get_values",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        }
       ]
     },
     "pseudoList": {
@@ -109,32 +842,3426 @@
       "napi": "NapiPseudoList",
       "python": "RustPseudoList",
       "operations": [
-        { "wasm": "getAllValues", "napi": "getAllValues", "python": "get_all_values" },
-        { "wasm": "getValue", "napi": "getValue", "python": null, "why": { "python": "ecosystem: Python indexes the list (list[i])" } },
-        { "wasm": "isIterable", "napi": "isIterable", "python": null, "why": { "python": "ecosystem: a Python list is iterable" } },
-        { "wasm": "isLoaded", "napi": "isLoaded", "python": "is_loaded" },
-        { "wasm": "isSingle", "napi": "isSingle", "python": "is_single" },
-        { "wasm": "nodeAlias", "napi": "nodeAlias", "python": "alias" },
-        { "wasm": "totalValues", "napi": "totalValues", "python": null, "why": { "python": "ecosystem: Python takes len(list)" } },
-        { "wasm": null, "napi": null, "python": "add_value", "why": { "wasm": "ecosystem: Python's ORM builds its lists; TS takes core's", "napi": "ecosystem: Python's ORM builds its lists; TS takes core's" } },
-        { "wasm": null, "napi": null, "python": "matching_entries", "why": { "wasm": "ecosystem: Python's ORM filters semantic children here; TS through getSemanticChildValue", "napi": "ecosystem: Python's ORM filters semantic children here; TS through getSemanticChildValue" } }
+        {
+          "wasm": "getAllValues",
+          "napi": "getAllValues",
+          "python": "get_all_values"
+        },
+        {
+          "wasm": "getValue",
+          "napi": "getValue",
+          "python": null,
+          "why": {
+            "python": "ecosystem: Python indexes the list (list[i])"
+          }
+        },
+        {
+          "wasm": "isIterable",
+          "napi": "isIterable",
+          "python": null,
+          "why": {
+            "python": "ecosystem: a Python list is iterable"
+          }
+        },
+        {
+          "wasm": "isLoaded",
+          "napi": "isLoaded",
+          "python": "is_loaded"
+        },
+        {
+          "wasm": "isSingle",
+          "napi": "isSingle",
+          "python": "is_single"
+        },
+        {
+          "wasm": "nodeAlias",
+          "napi": "nodeAlias",
+          "python": "alias"
+        },
+        {
+          "wasm": "totalValues",
+          "napi": "totalValues",
+          "python": null,
+          "why": {
+            "python": "ecosystem: Python takes len(list)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "add_value",
+          "why": {
+            "wasm": "ecosystem: Python's ORM builds its lists; TS takes core's",
+            "napi": "ecosystem: Python's ORM builds its lists; TS takes core's"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "matching_entries",
+          "why": {
+            "wasm": "ecosystem: Python's ORM filters semantic children here; TS through getSemanticChildValue",
+            "napi": "ecosystem: Python's ORM filters semantic children here; TS through getSemanticChildValue"
+          }
+        }
+      ]
+    },
+    "pseudoNode": {
+      "wasm": "PseudoNode",
+      "napi": "NapiPseudoNode",
+      "python": "PseudoNode",
+      "why": null,
+      "operations": [
+        {
+          "wasm": "alias",
+          "napi": "alias",
+          "python": "alias"
+        },
+        {
+          "wasm": "childNodeAliases",
+          "napi": "childNodeAliases",
+          "python": "child_node_aliases"
+        },
+        {
+          "wasm": "childNodes",
+          "napi": "childNodes",
+          "python": "child_nodes"
+        },
+        {
+          "wasm": "config",
+          "napi": "config",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "datatype",
+          "napi": "datatype",
+          "python": "datatype"
+        },
+        {
+          "wasm": "description",
+          "napi": "description",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "exportable",
+          "napi": "exportable",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "fieldname",
+          "napi": "fieldname",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "getNodePlaceholder",
+          "napi": "getNodePlaceholder",
+          "python": "get_node_placeholder"
+        },
+        {
+          "wasm": "graphId",
+          "napi": "graphId",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "hascustomalias",
+          "napi": "hascustomalias",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "inner",
+          "napi": "inner",
+          "python": "inner"
+        },
+        {
+          "wasm": "isCollector",
+          "napi": "isCollector",
+          "python": "is_collector"
+        },
+        {
+          "wasm": "isInner",
+          "napi": "isInner",
+          "python": "is_inner"
+        },
+        {
+          "wasm": "isIterable",
+          "napi": "isIterable",
+          "python": "is_iterable"
+        },
+        {
+          "wasm": "isOuter",
+          "napi": "isOuter",
+          "python": "is_outer"
+        },
+        {
+          "wasm": "isrequired",
+          "napi": "isrequired",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "issearchable",
+          "napi": "issearchable",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "istopnode",
+          "napi": "istopnode",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "name",
+          "napi": "name",
+          "python": "name"
+        },
+        {
+          "wasm": "node",
+          "napi": "node",
+          "python": "node"
+        },
+        {
+          "wasm": "nodegroup_id",
+          "napi": "nodegroup_id",
+          "python": "nodegroup_id"
+        },
+        {
+          "wasm": "nodeid",
+          "napi": "nodeid",
+          "python": "nodeid"
+        },
+        {
+          "wasm": "ontologyclass",
+          "napi": "ontologyclass",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "parentproperty",
+          "napi": "parentproperty",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "size",
+          "napi": "size",
+          "python": "size"
+        },
+        {
+          "wasm": "sortorder",
+          "napi": "sortorder",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "sourcebranchpublicationId",
+          "napi": "sourcebranchpublicationId",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "to_json",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        }
+      ]
+    },
+    "pseudoValue": {
+      "wasm": "PseudoValue",
+      "napi": "NapiPseudoValue",
+      "python": "RustPseudoValue",
+      "operations": [
+        {
+          "wasm": "clear",
+          "napi": "clear",
+          "python": "clear"
+        },
+        {
+          "wasm": "datatype",
+          "napi": "datatype",
+          "python": "datatype"
+        },
+        {
+          "wasm": "hasTile",
+          "napi": "hasTile",
+          "python": "has_tile"
+        },
+        {
+          "wasm": "independent",
+          "napi": "independent",
+          "python": "independent"
+        },
+        {
+          "wasm": "inner",
+          "napi": "inner",
+          "python": "get_inner"
+        },
+        {
+          "wasm": "isCollector",
+          "napi": "isCollector",
+          "python": "is_collector"
+        },
+        {
+          "wasm": "isInner",
+          "napi": "isInner",
+          "python": "is_inner"
+        },
+        {
+          "wasm": "isIterable",
+          "napi": "isIterable",
+          "python": "is_iterable"
+        },
+        {
+          "wasm": "isOuter",
+          "napi": "isOuter",
+          "python": "is_outer"
+        },
+        {
+          "wasm": "name",
+          "napi": "name",
+          "python": "name"
+        },
+        {
+          "wasm": "node",
+          "napi": "node",
+          "python": "get_node_json"
+        },
+        {
+          "wasm": "nodeAlias",
+          "napi": "nodeAlias",
+          "python": "alias"
+        },
+        {
+          "wasm": "nodeId",
+          "napi": "nodeId",
+          "python": "node_id"
+        },
+        {
+          "wasm": "nodegroupId",
+          "napi": "nodegroupId",
+          "python": "nodegroup_id"
+        },
+        {
+          "wasm": "tile",
+          "napi": "tile",
+          "python": "get_tile_json"
+        },
+        {
+          "wasm": "tileData",
+          "napi": "tileData",
+          "python": "get_tile_data"
+        },
+        {
+          "wasm": "tileId",
+          "napi": "tileId",
+          "python": "tile_id"
+        },
+        {
+          "wasm": "toSnapshot",
+          "napi": "toSnapshot",
+          "python": null,
+          "why": {
+            "python": "ecosystem: TS caches a snapshot to save boundary crossings; Python reads the properties"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "set_inner",
+          "why": {
+            "wasm": "ecosystem: Python's ORM sets the inner of the pseudo it wraps; TS reads core's",
+            "napi": "ecosystem: Python's ORM sets the inner of the pseudo it wraps; TS reads core's"
+          }
+        }
+      ]
+    },
+    "pyPseudoListIterator": {
+      "wasm": null,
+      "napi": null,
+      "python": "PyPseudoListIterator",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": []
+    },
+    "rdmCache": {
+      "wasm": "WasmRdmCache",
+      "napi": "NapiRdmCache",
+      "python": "RustRdmCache",
+      "why": null,
+      "operations": [
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "add_collection",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "addCollectionFromJson",
+          "napi": "addCollectionFromJson",
+          "python": "add_collection_from_json"
+        },
+        {
+          "wasm": "addCollectionsFromSkosXml",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "add_from_skos_xml",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "clear",
+          "napi": "clear",
+          "python": "clear"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "clear_collection",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": "collectionCount",
+          "python": null,
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "fetch_if_missing",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "get_collection",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "getCollectionIds",
+          "napi": null,
+          "python": "get_collection_ids",
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "getConceptIdForValue",
+          "napi": null,
+          "python": "get_concept_id_for_value",
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "getParentId",
+          "napi": "getParentId",
+          "python": "get_parent_id"
+        },
+        {
+          "wasm": "hasCollection",
+          "napi": "hasCollection",
+          "python": "has_collection"
+        },
+        {
+          "wasm": "length",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": "loadCollectionJson",
+          "python": null,
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": "loadFromSkosJson",
+          "python": null,
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "loader",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "lookup_all_by_label",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "lookup_by_label",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "lookupConcept",
+          "napi": null,
+          "python": "lookup_concept",
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "lookupLabel",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "lookupValue",
+          "napi": null,
+          "python": "lookup_value",
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "removeCollection",
+          "napi": "removeCollection",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "resolveLabels",
+          "napi": "resolveLabels",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "search_all",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "update_collection",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "update_collection_nested",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "validate_concept",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "validateValue",
+          "napi": null,
+          "python": "validate_value",
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        }
+      ]
+    },
+    "resourceRegistry": {
+      "wasm": "StaticResourceRegistry",
+      "napi": "NapiStaticResourceRegistry",
+      "python": "ResourceRegistry",
+      "why": null,
+      "operations": [
+        {
+          "wasm": "applyAggregateAdditions",
+          "napi": "applyAggregateAdditions",
+          "python": "apply_aggregate_additions"
+        },
+        {
+          "wasm": "applyAggregateFunctions",
+          "napi": "applyAggregateFunctions",
+          "python": "apply_aggregate_functions"
+        },
+        {
+          "wasm": "contains",
+          "napi": "contains",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "getAllFull",
+          "napi": null,
+          "python": "get_all_full",
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "getAllFullForGraph",
+          "napi": "getAllFullForGraph",
+          "python": "get_all_full_for_graph"
+        },
+        {
+          "wasm": null,
+          "napi": "getFilteredTileValues",
+          "python": null,
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "getFull",
+          "napi": "getFull",
+          "python": "get_full"
+        },
+        {
+          "wasm": "getGraphId",
+          "napi": null,
+          "python": "get_graph_id",
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "getNodeValuesIndex",
+          "napi": "getNodeValuesIndex",
+          "python": "get_node_values_index"
+        },
+        {
+          "wasm": "getSummary",
+          "napi": "getSummary",
+          "python": "get_summary"
+        },
+        {
+          "wasm": "getValueToResourcesIndex",
+          "napi": "getValueToResourcesIndex",
+          "python": "get_value_to_resources_index"
+        },
+        {
+          "wasm": "hasFull",
+          "napi": "hasFull",
+          "python": "has_full"
+        },
+        {
+          "wasm": "insert",
+          "napi": "insert",
+          "python": "insert"
+        },
+        {
+          "wasm": "insertFromJson",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "isEmpty",
+          "napi": null,
+          "python": "is_empty",
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "length",
+          "napi": "length",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "loadFromBusinessDataBytes",
+          "napi": "loadFromBusinessDataBytes",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "markAggregatePending",
+          "napi": "markAggregatePending",
+          "python": "mark_aggregate_pending"
+        },
+        {
+          "wasm": "memoryStats",
+          "napi": "memoryStats",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "memoryStatsDetailed",
+          "napi": "memoryStatsDetailed",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": "mergeFromBusinessDataJson",
+          "python": null,
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "mergeFromResources",
+          "napi": "mergeFromResources",
+          "python": "merge_from_resources"
+        },
+        {
+          "wasm": "mergeFromResourcesJson",
+          "napi": "mergeFromResourcesJson",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "populateCaches",
+          "napi": null,
+          "python": "populate_caches",
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "populateCachesFromJson",
+          "napi": "populateCachesFromJson",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        }
+      ]
+    },
+    "rustRdmCollection": {
+      "wasm": null,
+      "napi": null,
+      "python": "RustRdmCollection",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "add_child_from_label"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "add_concept"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "add_from_label"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "find_all_by_label"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "find_by_label"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "from_labels"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "from_nested_labels"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "get_concept"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "get_concept_id_for_value"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "get_concept_ids"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "get_parent_id"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "get_top_concepts"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "get_value_by_id"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "get_value_ids"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "has_concept"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "has_value"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "id"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "name"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "node_type"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "search"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "to_simplified_json"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "to_skos_xml"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "update_from_labels"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "update_from_nested_labels"
+        }
+      ]
+    },
+    "rustRdmConcept": {
+      "wasm": null,
+      "napi": null,
+      "python": "RustRdmConcept",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "alt_labels"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "broader"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "from_label"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "get_label"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "id"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "narrower"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "pref_label"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "to_dict"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "uri"
+        }
+      ]
+    },
+    "rustSemanticChildResult": {
+      "wasm": null,
+      "napi": null,
+      "python": "RustSemanticChildResult",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "as_list"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "as_single"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "is_empty"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "result_type"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "to_list"
+        }
+      ]
+    },
+    "staticCard": {
+      "wasm": "StaticCard",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "active",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "cardid",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "component_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "config",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "constraints",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "cssclass",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "description",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "graph_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "helpenabled",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "helptext",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "helptitle",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "instructions",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "is_editable",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "name",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "nodegroup_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "sortorder",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "visible",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "staticCardsXNodesXWidgets": {
+      "wasm": "StaticCardsXNodesXWidgets",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "card_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "config",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "label",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "node_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "sortorder",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "visible",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "widget_id",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "staticConstraint": {
+      "wasm": "StaticConstraint",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "card_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "constraintid",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "nodes",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "uniquetoallinstances",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "staticDomainValue": {
+      "wasm": "WasmStaticDomainValue",
+      "napi": "NapiStaticDomainValue",
+      "python": "RustStaticDomainValue",
+      "why": null,
+      "operations": [
+        {
+          "wasm": "display",
+          "napi": "display",
+          "python": null,
+          "why": {
+            "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "id",
+          "napi": "id",
+          "python": "id"
+        },
+        {
+          "wasm": "lang",
+          "napi": "lang",
+          "python": "lang"
+        },
+        {
+          "wasm": "selected",
+          "napi": "selected",
+          "python": "selected"
+        },
+        {
+          "wasm": "text",
+          "napi": "text",
+          "python": "text"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "to_dict",
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        }
+      ]
+    },
+    "staticEdge": {
+      "wasm": "StaticEdge",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "copy",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "description",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "domainnode_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "edgeid",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "graph_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "name",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "ontologyproperty",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "rangenode_id",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "staticFunctionsXGraphs": {
+      "wasm": "StaticFunctionsXGraphs",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "config",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "copy",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "function_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "graph_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "id",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "staticGraph": {
+      "wasm": "StaticGraph",
+      "napi": "NapiStaticGraph",
+      "python": null,
+      "why": {
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "author",
+          "napi": "author",
+          "python": null
+        },
+        {
+          "wasm": "cards",
+          "napi": "cards",
+          "python": null
+        },
+        {
+          "wasm": "cards_x_nodes_x_widgets",
+          "napi": "cards_x_nodes_x_widgets",
+          "python": null
+        },
+        {
+          "wasm": "color",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "config",
+          "napi": "config",
+          "python": null
+        },
+        {
+          "wasm": "copy",
+          "napi": "copy",
+          "python": null
+        },
+        {
+          "wasm": "deploymentdate",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "deploymentfile",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "description",
+          "napi": "description",
+          "python": null
+        },
+        {
+          "wasm": "edges",
+          "napi": "edges",
+          "python": null
+        },
+        {
+          "wasm": "functions_x_graphs",
+          "napi": "functions_x_graphs",
+          "python": null
+        },
+        {
+          "wasm": "getNodeByAlias",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "getNodeById",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "getSchema",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": "graphId",
+          "python": null,
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "graphid",
+          "napi": "graphid",
+          "python": null
+        },
+        {
+          "wasm": "iconclass",
+          "napi": "iconclass",
+          "python": null
+        },
+        {
+          "wasm": "is_editable",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "isresource",
+          "napi": "isresource",
+          "python": null
+        },
+        {
+          "wasm": "jsonldcontext",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "name",
+          "napi": "name",
+          "python": null
+        },
+        {
+          "wasm": "nodegroups",
+          "napi": "nodegroups",
+          "python": null
+        },
+        {
+          "wasm": "nodes",
+          "napi": "nodes",
+          "python": null
+        },
+        {
+          "wasm": "ontology_id",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "pushCard",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "pushCardXNodeXWidget",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "pushEdge",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "pushNode",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "pushNodegroup",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": null,
+          "napi": "register",
+          "python": null,
+          "why": {
+            "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "relatable_resource_model_ids",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "resource_2_resource_constraints",
+          "napi": null,
+          "python": null,
+          "why": {
+            "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+          }
+        },
+        {
+          "wasm": "root",
+          "napi": "root",
+          "python": null
+        },
+        {
+          "wasm": "setDescriptorTemplate",
+          "napi": "setDescriptorTemplate",
+          "python": null
+        },
+        {
+          "wasm": "slug",
+          "napi": "slug",
+          "python": null
+        },
+        {
+          "wasm": "subtitle",
+          "napi": "subtitle",
+          "python": null
+        },
+        {
+          "wasm": "template_id",
+          "napi": "template_id",
+          "python": null
+        },
+        {
+          "wasm": "version",
+          "napi": "version",
+          "python": null
+        }
+      ]
+    },
+    "staticGraphMeta": {
+      "wasm": "StaticGraphMeta",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "author",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "description",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getAuthor",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getCards",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getCardsXNodesXWidgets",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getColor",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getEdges",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getIconClass",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getIsEditable",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getIsResource",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getJsonLdContext",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getNodeGroups",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getNodes",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getOntologyId",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getPublication",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getRelatableResourceModelIds",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getResource2ResourceConstraints",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getRoot",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getVersion",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "graphid",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "isresource",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "name",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setAuthor",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setCards",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setCardsXNodesXWidgets",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setColor",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setEdges",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setIconClass",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setIsEditable",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setIsResource",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setJsonLdContext",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setNodeGroups",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setNodes",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setOntologyId",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setPublication",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setRelatableResourceModelIds",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setResource2ResourceConstraints",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setRoot",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setVersion",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "slug",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "subtitle",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "staticNode": {
+      "wasm": "StaticNode",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "alias",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "config",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "copy",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "datatype",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "description",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "exportable",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "fieldname",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "getConfig",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "graph_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "hascustomalias",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "is_collector",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "isrequired",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "issearchable",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "istopnode",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "name",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "nodegroup_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "nodeid",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "ontologyclass",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "parentproperty",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setConfig",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "sortorder",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "sourcebranchpublication_id",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "staticNodegroup": {
+      "wasm": "StaticNodegroup",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "cardinality",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "copy",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "legacygroupid",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "nodegroupid",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "parentnodegroup_id",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "staticPublication": {
+      "wasm": "StaticPublication",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "copy",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "graph_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "notes",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "publicationid",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "published_time",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "staticResource": {
+      "wasm": "StaticResource",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "__cache",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "__scopes",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "copy",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "metadata",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "resourceinstance",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "tiles",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "tilesLoaded",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "staticResourceDescriptors": {
+      "wasm": "StaticResourceDescriptors",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "copy",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "description",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "isEmpty",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "mapPopup",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "name",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "slug",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "staticResourceMetadata": {
+      "wasm": "StaticResourceMetadata",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "copy",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "createdtime",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "descriptors",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "graph_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "graph_publication_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "lastmodified",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "legacyid",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "name",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "principaluser_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "publication_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "resourceinstanceid",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "staticResourceReference": {
+      "wasm": "StaticResourceReference",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "copy",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "graph_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "meta",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "root",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "title",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "type",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "staticResourceSummary": {
+      "wasm": "StaticResourceSummary",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "copy",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "descriptors",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "graph_id",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "metadata",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "name",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "resourceinstanceid",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "toMetadata",
+          "napi": null,
+          "python": null
+        }
       ]
     },
     "staticTile": {
       "wasm": "StaticTile",
       "napi": "NapiStaticTile",
       "python": null,
-      "why": { "python": "ecosystem: Python's StaticTile is a Python dataclass, not a native class" },
+      "why": {
+        "python": "ecosystem: Python's StaticTile is a Python dataclass, not a native class"
+      },
       "operations": [
-        { "wasm": "data", "napi": "data", "python": null },
-        { "wasm": "ensureId", "napi": "ensureId", "python": null },
-        { "wasm": "nodegroup_id", "napi": "nodegroup_id", "python": null },
-        { "wasm": "parenttile_id", "napi": "parenttile_id", "python": null },
-        { "wasm": "provisionaledits", "napi": "provisionaledits", "python": null },
-        { "wasm": "resourceinstance_id", "napi": "resourceinstance_id", "python": null },
-        { "wasm": "sortorder", "napi": "sortorder", "python": null },
-        { "wasm": "tileid", "napi": "tileid", "python": null }
+        {
+          "wasm": "data",
+          "napi": "data",
+          "python": null
+        },
+        {
+          "wasm": "ensureId",
+          "napi": "ensureId",
+          "python": null
+        },
+        {
+          "wasm": "nodegroup_id",
+          "napi": "nodegroup_id",
+          "python": null
+        },
+        {
+          "wasm": "parenttile_id",
+          "napi": "parenttile_id",
+          "python": null
+        },
+        {
+          "wasm": "provisionaledits",
+          "napi": "provisionaledits",
+          "python": null
+        },
+        {
+          "wasm": "resourceinstance_id",
+          "napi": "resourceinstance_id",
+          "python": null
+        },
+        {
+          "wasm": "sortorder",
+          "napi": "sortorder",
+          "python": null
+        },
+        {
+          "wasm": "tileid",
+          "napi": "tileid",
+          "python": null
+        }
       ]
+    },
+    "staticTranslatableString": {
+      "wasm": "StaticTranslatableString",
+      "napi": null,
+      "python": null,
+      "stringLike": true,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "copy",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "lang",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "translations",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "treeToTilesIterator": {
+      "wasm": null,
+      "napi": null,
+      "python": "TreeToTilesIterator",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "current_index"
+        },
+        {
+          "wasm": null,
+          "napi": null,
+          "python": "total"
+        }
+      ]
+    },
+    "wKRM": {
+      "wasm": "WKRM",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "graphId",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "meta",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "modelClassName",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "modelName",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "wasmNodegroupResult": {
+      "wasm": "WasmNodegroupResult",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "getValue",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "impliedNodegroups",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "valueCount",
+          "napi": null,
+          "python": null
+        }
+      ]
+    },
+    "wasmSpan": {
+      "wasm": "WasmSpan",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      },
+      "operations": [
+        {
+          "wasm": "end",
+          "napi": null,
+          "python": null
+        },
+        {
+          "wasm": "setAttribute",
+          "napi": null,
+          "python": null
+        }
+      ]
+    }
+  },
+  "functions": {
+    "add_collection_to_global_rdm_cache": {
+      "wasm": "addCollectionToGlobalRdmCache",
+      "napi": null,
+      "python": "add_collection_to_global_cache",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "add_from_skos_json_to_global_cache": {
+      "wasm": null,
+      "napi": null,
+      "python": "add_from_skos_json_to_global_cache",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "add_to_global_rdm_cache_from_skos_xml": {
+      "wasm": "addToGlobalRdmCacheFromSkosXml",
+      "napi": null,
+      "python": "add_from_skos_xml_to_global_cache",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "apply_aggregate_functions_from_file": {
+      "wasm": null,
+      "napi": "applyAggregateFunctionsFromFile",
+      "python": "apply_aggregate_functions_from_file",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "apply_mutations_create": {
+      "wasm": "applyMutationsCreate",
+      "napi": "applyMutationsCreate",
+      "python": "apply_mutations_create"
+    },
+    "apply_mutations_from_json": {
+      "wasm": "applyMutationsFromJson",
+      "napi": "applyMutationsFromJson",
+      "python": "apply_mutations_from_json"
+    },
+    "apply_mutations_with_extensions": {
+      "wasm": "applyMutationsWithExtensions",
+      "napi": null,
+      "python": "apply_mutations_with_extensions",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "batch_merge_resources": {
+      "wasm": "batchMergeResources",
+      "napi": null,
+      "python": "batch_merge_resources",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "batch_tiles_to_trees": {
+      "wasm": "batchTilesToTrees",
+      "napi": null,
+      "python": "batch_tiles_to_trees",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "batch_trees_to_tiles": {
+      "wasm": "batchTreesToTiles",
+      "napi": null,
+      "python": "batch_trees_to_tiles",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "build_alias_to_collection_map": {
+      "wasm": "buildAliasToCollectionMap",
+      "napi": "buildAliasToCollectionMap",
+      "python": null,
+      "why": {
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "build_graph_from_csv": {
+      "wasm": null,
+      "napi": null,
+      "python": "build_graph_from_csv",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "build_graph_from_instructions": {
+      "wasm": null,
+      "napi": null,
+      "python": "build_graph_from_instructions",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "build_graph_from_model_csvs": {
+      "wasm": "buildGraphFromModelCsvs",
+      "napi": "buildGraphFromCsvs",
+      "python": "build_graph_from_model_csvs"
+    },
+    "build_prebuild_export": {
+      "wasm": "buildPrebuildExport",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "build_resources_from_business_csv": {
+      "wasm": "buildResourcesFromBusinessCsv",
+      "napi": "buildBusinessDataFromCsv",
+      "python": "build_resources_from_business_csv"
+    },
+    "build_tree_from_tiles": {
+      "wasm": null,
+      "napi": null,
+      "python": "build_tree_from_tiles",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "canonical_static": {
+      "wasm": null,
+      "napi": null,
+      "python": "canonical_static",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "cards_to_tree": {
+      "wasm": "cardsToTree",
+      "napi": null,
+      "python": "cards_to_json_tree",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "clear_global_rdm_cache": {
+      "wasm": "clearGlobalRdmCache",
+      "napi": null,
+      "python": "clear_global_rdm_cache",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "clear_rdm_namespace": {
+      "wasm": "clearRdmNamespace",
+      "napi": null,
+      "python": "clear_rdm_namespace",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "clear_rscv_timings": {
+      "wasm": "clearRscvTimings",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_boolean": {
+      "wasm": "coerceBoolean",
+      "napi": null,
+      "python": "coerce_boolean",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_concept_list": {
+      "wasm": "coerceConceptList",
+      "napi": null,
+      "python": "coerce_concept_list",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_concept_value": {
+      "wasm": "coerceConceptValue",
+      "napi": null,
+      "python": "coerce_concept_value",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_date": {
+      "wasm": "coerceDate",
+      "napi": null,
+      "python": "coerce_date",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_domain_value": {
+      "wasm": "coerceDomainValue",
+      "napi": null,
+      "python": "coerce_domain_value",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_domain_value_list": {
+      "wasm": "coerceDomainValueList",
+      "napi": null,
+      "python": "coerce_domain_value_list",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_edtf": {
+      "wasm": "coerceEdtf",
+      "napi": null,
+      "python": "coerce_edtf",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_geojson": {
+      "wasm": "coerceGeoJson",
+      "napi": null,
+      "python": "coerce_geojson",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_non_localized_string": {
+      "wasm": "coerceNonLocalizedString",
+      "napi": null,
+      "python": "coerce_non_localized_string",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_number": {
+      "wasm": "coerceNumber",
+      "napi": null,
+      "python": "coerce_number",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_resource_instance": {
+      "wasm": "coerceResourceInstance",
+      "napi": null,
+      "python": "coerce_resource_instance",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_resource_instance_list": {
+      "wasm": "coerceResourceInstanceList",
+      "napi": null,
+      "python": "coerce_resource_instance_list",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_string": {
+      "wasm": "coerceString",
+      "napi": null,
+      "python": "coerce_string",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_url": {
+      "wasm": "coerceUrl",
+      "napi": null,
+      "python": "coerce_url",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_value": {
+      "wasm": "coerceValue",
+      "napi": null,
+      "python": "coerce_value",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "coerce_with_extension": {
+      "wasm": null,
+      "napi": "extensionCoerce",
+      "python": "coerce_with_extension",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "collection_to_skos_xml": {
+      "wasm": "collectionToSkosXml",
+      "napi": "collectionToSkosXml",
+      "python": "skos_collection_to_xml"
+    },
+    "collections_to_skos_xml": {
+      "wasm": "collectionsToSkosXml",
+      "napi": "collectionsToSkosXml",
+      "python": "skos_collections_to_xml"
+    },
+    "compose_collections_from_csv_in_global_cache": {
+      "wasm": null,
+      "napi": null,
+      "python": "compose_collections_from_csv_in_global_cache",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "compose_collections_in_global_cache": {
+      "wasm": null,
+      "napi": null,
+      "python": "compose_collections_in_global_cache",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "compose_resource_layers": {
+      "wasm": "composeResourceLayers",
+      "napi": "composeResourceLayers",
+      "python": "compose_resource_layers"
+    },
+    "export_all_graphs": {
+      "wasm": "exportAllGraphs",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "export_all_graphs_to_dir": {
+      "wasm": null,
+      "napi": null,
+      "python": "export_all_graphs_to_dir",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "export_collections_to_dir": {
+      "wasm": null,
+      "napi": null,
+      "python": "export_collections_to_dir",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "export_graphs": {
+      "wasm": "exportGraphs",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "export_graphs_to_dir": {
+      "wasm": null,
+      "napi": null,
+      "python": "export_graphs_to_dir",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "export_prebuild": {
+      "wasm": null,
+      "napi": null,
+      "python": "export_prebuild",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "extension_resolve_markers": {
+      "wasm": null,
+      "napi": "extensionResolveMarkers",
+      "python": null,
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "find_needed_collections": {
+      "wasm": "findNeededCollections",
+      "napi": "findNeededCollections",
+      "python": "get_needed_collections"
+    },
+    "fold_may_match": {
+      "wasm": "foldMayMatch",
+      "napi": "foldMayMatch",
+      "python": "fold_may_match"
+    },
+    "generate_collection_uuid": {
+      "wasm": "generateCollectionUuid",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "generate_concept_uuid": {
+      "wasm": "generateConceptUuid",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "generate_uuid_v5": {
+      "wasm": "generateUuidV5",
+      "napi": null,
+      "python": "generate_uuid_v5",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "generate_value_uuid": {
+      "wasm": "generateValueUuid",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "get_current_language": {
+      "wasm": "getCurrentLanguage",
+      "napi": "getCurrentLanguage",
+      "python": "get_current_language"
+    },
+    "get_default_config_keys": {
+      "wasm": "getDefaultConfigKeys",
+      "napi": "getDefaultConfigKeys",
+      "python": null,
+      "why": {
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "get_default_resolvable_datatypes": {
+      "wasm": "getDefaultResolvableDatatypes",
+      "napi": "getDefaultResolvableDatatypes",
+      "python": null,
+      "why": {
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "get_global_rdm_cache": {
+      "wasm": null,
+      "napi": null,
+      "python": "get_global_rdm_cache",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "get_graph_json": {
+      "wasm": null,
+      "napi": null,
+      "python": "get_graph_json",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "get_graph_schema": {
+      "wasm": null,
+      "napi": null,
+      "python": "get_graph_schema",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "get_mutation_schema": {
+      "wasm": "getMutationSchema",
+      "napi": "getMutationSchema",
+      "python": "get_mutation_schema"
+    },
+    "get_rdm_namespace": {
+      "wasm": "getRdmNamespace",
+      "napi": null,
+      "python": "get_rdm_namespace",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "get_rdm_namespace_raw": {
+      "wasm": "getRdmNamespaceRaw",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "get_registered_extension_handlers": {
+      "wasm": "getRegisteredExtensionHandlers",
+      "napi": "getRegisteredExtensionHandlers",
+      "python": "get_registered_extension_handlers"
+    },
+    "get_registered_extension_mutations": {
+      "wasm": "getRegisteredExtensionMutations",
+      "napi": null,
+      "python": "list_extension_mutations",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "get_registered_graph_ids": {
+      "wasm": "getRegisteredGraphIds",
+      "napi": null,
+      "python": "get_registered_graph_ids",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "get_rscv_timings": {
+      "wasm": "getRscvTimings",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "get_widget_for_datatype": {
+      "wasm": null,
+      "napi": null,
+      "python": "get_widget_for_datatype",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "global_rdm_concept_pref_label": {
+      "wasm": null,
+      "napi": null,
+      "python": "global_rdm_concept_pref_label",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "global_rdm_get_collection_ids": {
+      "wasm": "globalRdmGetCollectionIds",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "global_rdm_get_parent_id": {
+      "wasm": "globalRdmGetParentId",
+      "napi": null,
+      "python": "global_rdm_get_parent_id",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "global_rdm_has_collection": {
+      "wasm": "globalRdmHasCollection",
+      "napi": null,
+      "python": "global_rdm_has_collection",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "global_rdm_lookup_label": {
+      "wasm": "globalRdmLookupLabel",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "global_rdm_lookup_value": {
+      "wasm": null,
+      "napi": null,
+      "python": "global_rdm_lookup_value",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "has_derive_provider": {
+      "wasm": "hasDeriveProvider",
+      "napi": "hasDeriveProvider",
+      "python": "has_derive_provider"
+    },
+    "has_display_renderer": {
+      "wasm": null,
+      "napi": null,
+      "python": "has_display_renderer",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "has_extension_handler": {
+      "wasm": "hasExtensionHandler",
+      "napi": "hasExtensionHandler",
+      "python": "has_type_handler"
+    },
+    "has_extension_mutation": {
+      "wasm": "hasExtensionMutation",
+      "napi": null,
+      "python": "has_extension_mutation",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "has_global_rdm_cache": {
+      "wasm": "hasGlobalRdmCache",
+      "napi": null,
+      "python": "has_global_rdm_cache",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "has_rdm_namespace": {
+      "wasm": "hasRdmNamespace",
+      "napi": null,
+      "python": "has_rdm_namespace",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "import_prebuild": {
+      "wasm": null,
+      "napi": "importPrebuild",
+      "python": "import_prebuild",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "init_sync": {
+      "wasm": "initSync",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "is_list_datatype": {
+      "wasm": null,
+      "napi": null,
+      "python": "is_list_datatype",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "is_valid_uuid": {
+      "wasm": "isValidUuid",
+      "napi": "isValidUuid",
+      "python": "is_valid_uuid"
+    },
+    "labels_to_deterministic_string": {
+      "wasm": "labelsToDeterministicString",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "list_datatypes": {
+      "wasm": null,
+      "napi": null,
+      "python": "list_datatypes",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "main": {
+      "wasm": "main",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "matches_semantic_child": {
+      "wasm": null,
+      "napi": null,
+      "python": "matches_semantic_child",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "merge_resources": {
+      "wasm": "mergeResources",
+      "napi": null,
+      "python": "merge_resources",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "new_wasmresource_instance_wrapper_for_model": {
+      "wasm": "newWASMResourceInstanceWrapperForModel",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "new_wasmresource_instance_wrapper_for_resource": {
+      "wasm": "newWASMResourceInstanceWrapperForResource",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "parse_rdm_namespace": {
+      "wasm": "parseRdmNamespace",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "parse_skos_xml": {
+      "wasm": "parseSkosXml",
+      "napi": "parseSkosXml",
+      "python": "parse_skos_xml"
+    },
+    "parse_skos_xml_to_collection": {
+      "wasm": "parseSkosXmlToCollection",
+      "napi": "parseSkosXmlToCollection",
+      "python": "parse_skos_xml_to_collection"
+    },
+    "print_rscv_timings": {
+      "wasm": "printRscvTimings",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "register_derive_provider": {
+      "wasm": "registerDeriveProvider",
+      "napi": "registerDeriveProvider",
+      "python": "register_derive_provider"
+    },
+    "register_extension_handler": {
+      "wasm": "registerExtensionHandler",
+      "napi": "registerExtensionHandler",
+      "python": "register_type_handler"
+    },
+    "register_extension_mutation": {
+      "wasm": "registerExtensionMutation",
+      "napi": null,
+      "python": "register_extension_mutation",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "register_graph": {
+      "wasm": null,
+      "napi": null,
+      "python": "register_graph",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "register_list_datatype": {
+      "wasm": null,
+      "napi": null,
+      "python": "register_list_datatype",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "register_widget": {
+      "wasm": null,
+      "napi": null,
+      "python": "register_widget",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "register_widget_for_datatype": {
+      "wasm": null,
+      "napi": null,
+      "python": "register_widget_for_datatype",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "registered_widgets": {
+      "wasm": null,
+      "napi": null,
+      "python": "registered_widgets",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "remove_from_global_rdm_cache": {
+      "wasm": "removeFromGlobalRdmCache",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "render_display_with_extension": {
+      "wasm": null,
+      "napi": "extensionRenderDisplay",
+      "python": "render_display_with_extension",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "resolve_labels": {
+      "wasm": null,
+      "napi": null,
+      "python": "resolve_labels",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "resolve_labels_in_tree": {
+      "wasm": null,
+      "napi": null,
+      "python": "resolve_labels_in_tree",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "resolve_labels_with_lookup": {
+      "wasm": "resolveLabelsWithLookup",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "resource_lifecycle_state": {
+      "wasm": "resourceLifecycleState",
+      "napi": "resourceLifecycleState",
+      "python": "resource_lifecycle_state"
+    },
+    "set_current_language": {
+      "wasm": "setCurrentLanguage",
+      "napi": "setCurrentLanguage",
+      "python": "set_current_language"
+    },
+    "set_descriptor_template": {
+      "wasm": null,
+      "napi": null,
+      "python": "set_descriptor_template",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "set_global_rdm_cache": {
+      "wasm": "setGlobalRdmCache",
+      "napi": null,
+      "python": "set_global_rdm_cache",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "set_rdm_namespace": {
+      "wasm": "setRdmNamespace",
+      "napi": null,
+      "python": "set_rdm_namespace",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "streamed_merge_from_files": {
+      "wasm": null,
+      "napi": null,
+      "python": "streamed_merge_from_files",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "summary_to_metadata": {
+      "wasm": null,
+      "napi": "summaryToMetadata",
+      "python": null,
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "tiles_to_tree": {
+      "wasm": "tilesToTree",
+      "napi": null,
+      "python": "tiles_to_json_tree",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "transition_resource_lifecycle": {
+      "wasm": "transitionResourceLifecycle",
+      "napi": "transitionResourceLifecycle",
+      "python": "transition_resource_lifecycle"
+    },
+    "tree_to_tiles": {
+      "wasm": "treeToTiles",
+      "napi": null,
+      "python": "json_tree_to_tiles",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "unregister_extension_handler": {
+      "wasm": "unregisterExtensionHandler",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "unregister_extension_mutation": {
+      "wasm": "unregisterExtensionMutation",
+      "napi": null,
+      "python": null,
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "python": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "update_collection_in_global_cache": {
+      "wasm": null,
+      "napi": null,
+      "python": "update_collection_in_global_cache",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "update_collection_nested_in_global_cache": {
+      "wasm": null,
+      "napi": null,
+      "python": "update_collection_nested_in_global_cache",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "validate_model_csvs": {
+      "wasm": "validateModelCsvs",
+      "napi": null,
+      "python": "validate_model_csvs",
+      "why": {
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
+    },
+    "widget_mappings": {
+      "wasm": null,
+      "napi": null,
+      "python": "widget_mappings",
+      "why": {
+        "wasm": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)",
+        "napi": "gap: unclassified (PARITY-RESEARCH.md A-6/A-7)"
+      }
     }
   }
 }

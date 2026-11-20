@@ -1,8 +1,9 @@
 /**
- * Binding parity: each wrapper class has exactly the methods
- * tests/binding-parity.json lists for this backend, and every one it lacks is
- * explained there (ecosystem or gap). A method added to one binding only fails
- * here until it is listed. Python checks the same manifest in
+ * Binding parity: the module exports exactly the classes and free functions
+ * tests/binding-parity.json lists for this backend, each class has exactly
+ * the listed methods, and everything it lacks is explained there (ecosystem
+ * or gap). Anything added to one binding only fails here until it is listed.
+ * Python checks the same manifest in
  * crates/alizarin-python/tests/test_binding_parity.py.
  *
  * Runs under both:
@@ -19,9 +20,13 @@ type Binding = 'wasm' | 'napi' | 'python';
 /** WASM-bindgen's and NAPI's own plumbing, not part of either API. */
 const PLUMBING = new Set(['constructor', 'free', '__destroy_into_raw', '__getClassname', 'toJSON', 'toString']);
 
-function methods(cls: any): string[] {
+/** String.prototype's names, which js/_wasm.ts copies onto `stringLike` classes. */
+const STRING_LIKE = new Set([...Object.getOwnPropertyNames(String.prototype), 'length']);
+
+function methods(cls: any, stringLike = false): string[] {
   return Object.getOwnPropertyNames(cls.prototype)
     .filter((name) => !PLUMBING.has(name) && !name.startsWith('__wbg'))
+    .filter((name) => !(stringLike && STRING_LIKE.has(name)))
     .sort();
 }
 
@@ -39,7 +44,7 @@ describe(`binding parity [${backend} backend]`, () => {
         .map((op: any) => op[backend])
         .filter((m: string | null) => m !== null)
         .sort();
-      expect(methods(cls)).toEqual(expected);
+      expect(methods(cls, (spec as any).stringLike)).toEqual(expected);
     });
 
     test(`${name}: every missing method is explained`, () => {
@@ -53,4 +58,28 @@ describe(`binding parity [${backend} backend]`, () => {
       expect(unexplained).toEqual([]);
     });
   }
+
+  const functions = Object.entries((manifest as any).functions ?? {}) as [string, any][];
+
+  test('every listed function is exported, and every missing one explained', () => {
+    const problems = functions.flatMap(([canonical, spec]) => {
+      if (spec[backend] === null) {
+        return spec.why?.[backend] ? [] : [`${canonical}: missing on ${backend}, with no why`];
+      }
+      return typeof module[spec[backend]] === 'function' ? [] : [`${canonical}: ${spec[backend]} is not exported`];
+    });
+    expect(problems).toEqual([]);
+  });
+
+  test('nothing is exported that the manifest does not list', () => {
+    const listed = new Set([
+      ...Object.values((manifest as any).classes).map((spec: any) => spec[backend]),
+      ...functions.map(([, spec]) => spec[backend]),
+    ]);
+    const unlisted = Object.keys(module)
+      .filter((name) => name !== 'default' && !name.startsWith('__') && typeof module[name] === 'function')
+      .filter((name) => !listed.has(name))
+      .sort();
+    expect(unlisted).toEqual([]);
+  });
 });

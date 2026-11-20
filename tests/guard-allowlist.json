@@ -1,7 +1,6 @@
 {
   "_doc": "Known findings the guards tolerate, each with a reason: a PARITY-RESEARCH.md finding id it waits on, or 'fine:' why it is acceptable. Ratchet: a fix deletes its entry and entries are never added back for new code. Guards: scripts/guards/test_integrity.py (testIntegrity), crates/alizarin-python/tests/conftest.py (skips), scripts/guards/type_baselines.py (typeBaselines), crates/alizarin-python/tests/test_guard_core_roundtrip.py (coreRoundTrip).",
   "testIntegrity": {
-    "crates/alizarin-python/tests/test_binding_parity.py::test_exactly_the_listed_methods::skip-in-body::fno native Python {name}: {spec[why][python]}": "fine: skips exactly the manifest's documented null (ecosystem/gap) entries",
     "crates/alizarin-python/tests/test_rdm_collection.py::test_batch_conversion_with_explicit_cache::skip-in-body::Concept node has no rdmCollection config": "D-4",
     "crates/alizarin-python/tests/test_rdm_collection.py::test_batch_conversion_with_explicit_cache::skip-in-body::No concept nodes in test graph": "D-4",
     "crates/alizarin-python/tests/test_rdm_collection.py::test_batch_conversion_with_rdm_cache::assert-under-if::node_id in tile_data": "D-2",
@@ -65,9 +64,7 @@
     "tests/type-coercion.test.ts::-::expect-under-if::if (expectedDisplayValue !== undefined) {": "fine: parametrised expectation",
     "tests/wasmResourceModelWrapper.test.ts::-::skip::test.skip(\"WASMResourceModelWrapper > getRootNode > should throw if no root foun": "D-9"
   },
-  "skips": {
-    "tests/test_binding_parity.py::test_exactly_the_listed_methods[staticTile]": "ecosystem: Python's StaticTile is a Python dataclass, not a native class"
-  },
+  "skips": {},
   "typeBaselines": {
     "mypy": {
       "arg-type": 13,
