@@ -33,3 +33,11 @@ repos:
         language: system
         pass_filenames: false
         types_or: [ts, javascript]
+      # Tests that can pass without checking anything (PARITY-RESEARCH.md, D);
+      # known ones are listed in tests/guard-allowlist.json.
+      - id: test-integrity
+        name: test integrity guard
+        entry: python3 scripts/guards/test_integrity.py
+        language: system
+        pass_filenames: false
+        files: (^tests/|/tests/|^tests/guard-allowlist\.json$)

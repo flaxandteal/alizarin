@@ -88,13 +88,24 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          # 3.12 and the pinned mypy: the baseline counts depend on both.
+          python-version: '3.12'
 
       - name: Install ruff
         run: pip install ruff
 
       - name: Run ruff
         run: ruff check
+
+      # Guards from PARITY-RESEARCH.md; known findings are listed in
+      # tests/guard-allowlist.json, and a fix deletes its entry.
+      - name: Guard - test integrity
+        run: python3 scripts/guards/test_integrity.py
+
+      - name: Guard - mypy baseline
+        run: |
+          pip install mypy==2.4.1
+          python3 scripts/guards/type_baselines.py --mypy
 
   # WASM + TypeScript build and tests
   wasm-and-typescript:
@@ -157,6 +168,8 @@ jobs:
       # the flag to its trailing echo.
       - run: npm run test:all -- --bail=0
       - run: npx eslint js --ext .ts
+      - name: Guard - strict tsc baseline
+        run: python3 scripts/guards/type_baselines.py --tsc
 
   # NAPI native Node.js addon
   napi:
