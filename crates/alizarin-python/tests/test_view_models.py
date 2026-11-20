@@ -414,9 +414,9 @@ class TestViewModelIntegration:
 
         for vm_class, node, data in viewmodels:
             vm = await vm_class._create(tile, node, data)
-            if vm is not None:
-                result = await vm.for_json()
-                assert result is not None, f"{vm_class.__name__}.for_json() returned None"
+            assert vm is not None, f"{vm_class.__name__}._create returned None"
+            result = await vm.for_json()
+            assert result is not None, f"{vm_class.__name__}.for_json() returned None"
 
 
 if __name__ == "__main__":

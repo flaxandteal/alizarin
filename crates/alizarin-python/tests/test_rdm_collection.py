@@ -301,22 +301,21 @@ def test_batch_conversion_with_rdm_cache():
             tiles = resource['tiles']
             assert len(tiles) > 0, f"Resource {i} should have tiles"
 
-            # Find the tile containing our concept node
-            for tile in tiles:
-                tile_data = tile.get('data', {})
-                node_id = concept_node['nodeid']
+            # The tiles holding our concept node: there must be one
+            node_id = concept_node['nodeid']
+            found = [tile['data'][node_id] for tile in tiles if node_id in tile.get('data', {})]
+            assert found, f"Resource {i} has no tile holding {node_alias}"
 
-                if node_id in tile_data:
-                    value = tile_data[node_id]
-                    print(f"Resource {i} - {node_alias} resolved to: {value}")
+            for value in found:
+                print(f"Resource {i} - {node_alias} resolved to: {value}")
 
-                    # Value should be a UUID, not the original label
-                    assert value is not None
-                    # concept-list stores an array of UUIDs; concept stores a single UUID
-                    values_to_check = value if isinstance(value, list) else [value]
-                    for v in values_to_check:
-                        assert cache.validate_concept(collection_id, v), \
-                            f"Resolved value {v} should be a valid concept ID"
+                # Value should be a UUID, not the original label
+                assert value is not None
+                # concept-list stores an array of UUIDs; concept stores a single UUID
+                values_to_check = value if isinstance(value, list) else [value]
+                for v in values_to_check:
+                    assert cache.validate_concept(collection_id, v), \
+                        f"Resolved value {v} should be a valid concept ID"
 
         print("\n✓ Label resolution successful!")
         print(f"  Converted {len(resources)} resources")
@@ -1048,19 +1047,17 @@ def test_skos_roundtrip():
                 tiles = resource.get('tiles', [])
                 assert len(tiles) > 0, f"Resource {i} should have tiles"
 
-                # Find tile with our concept node
-                for tile in tiles:
-                    tile_data = tile.get('data', {})
-                    node_id = concept_node['nodeid']
-                    if node_id in tile_data:
-                        resolved_value = tile_data[node_id]
-                        # concept-list stores an array of UUIDs; concept stores a single UUID
-                        values_to_check = resolved_value if isinstance(resolved_value, list) else [resolved_value]
-                        for v in values_to_check:
-                            assert cache.validate_concept(collection_id, v), \
-                                "Resolved value should be a valid concept UUID"
-                        print(f"  Resource {i}: Label resolved to UUID in tiles")
-                        break
+                # The first tile holding our concept node: there must be one
+                node_id = concept_node['nodeid']
+                found = [tile['data'][node_id] for tile in tiles if node_id in tile.get('data', {})]
+                assert found, f"Resource {i} has no tile holding the concept node"
+                resolved_value = found[0]
+                # concept-list stores an array of UUIDs; concept stores a single UUID
+                values_to_check = resolved_value if isinstance(resolved_value, list) else [resolved_value]
+                for v in values_to_check:
+                    assert cache.validate_concept(collection_id, v), \
+                        "Resolved value should be a valid concept UUID"
+                print(f"  Resource {i}: Label resolved to UUID in tiles")
 
             print("\n✓ SKOS Roundtrip Complete!")
             print(f"  1. Created collection with {len(original_labels)} concepts")
