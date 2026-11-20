@@ -294,7 +294,7 @@ class StaticCard:
             component_id=data.get("component_id", ""),
             name=data.get("name", ""),
             visible=data.get("visible", True),
-            is_editable=data.get("is_editable", True),
+            is_editable=data.get("is_editable"),
             config=data.get("config"),
             constraints=data.get("constraints", []),
             cssclass=data.get("cssclass"),
@@ -366,9 +366,17 @@ class StaticPublication:
     graph_id: str
     notes: Optional[str] = None
     published_time: Optional[str] = None
+    # Core keeps a graph's publication as raw JSON, so any other keys
+    # (user_id, most_recent_edit_id, ...) are kept for StaticGraph to write back.
+    extra: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
+        return self.as_raw()
+
+    def as_raw(self) -> Dict[str, Any]:
+        """The publication as read, which is what a graph keeps."""
         return {
+            **self.extra,
             "publicationid": self.publicationid,
             "graph_id": self.graph_id,
             "notes": self.notes,
@@ -377,11 +385,13 @@ class StaticPublication:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> StaticPublication:
+        known = ("publicationid", "graph_id", "notes", "published_time")
         return cls(
             publicationid=data["publicationid"],
             graph_id=data["graph_id"],
             notes=data.get("notes"),
             published_time=data.get("published_time"),
+            extra={k: v for k, v in data.items() if k not in known},
         )
 
 
@@ -630,7 +640,7 @@ class StaticGraph:
             "deploymentfile": self.deploymentfile,
             "is_editable": self.is_editable,
             "jsonldcontext": self.jsonldcontext,
-            "publication": self.publication.to_dict() if self.publication else None,
+            "publication": self.publication.as_raw() if self.publication else None,
             "relatable_resource_model_ids": self.relatable_resource_model_ids,
             "resource_2_resource_constraints": self.resource_2_resource_constraints,
             "slug": self.slug,
@@ -936,7 +946,7 @@ class StaticResource:
     def from_dict(cls, data: Dict[str, Any]) -> StaticResource:
         # Parse tiles
         tiles = None
-        if "tiles" in data and data["tiles"]:
+        if data.get("tiles") is not None:
             tiles = [StaticTile.from_dict(t) for t in data["tiles"]]
 
         # Parse resourceinstance metadata
