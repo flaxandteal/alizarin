@@ -7,7 +7,32 @@ entries is tracked in `PARITY-RESEARCH.md`.
 
 ## Unreleased
 
+### Added
+- NAPI: `setRdmNamespace`, `getRdmNamespace`, `getRdmNamespaceRaw`,
+  `hasRdmNamespace`, `clearRdmNamespace`, as on WASM. Python:
+  `get_rdm_namespace_raw`. TypeScript: `setRdmNamespace` and
+  `getRdmNamespaceRaw` exported from `alizarin`, on either backend. Core now
+  keeps the string the namespace was set from (it was a WASM-only global).
+
 ### Fixed
+- NAPI: `ArchesClientLocal` parsed collections from SKOS XML against
+  `http://localhost/` whatever namespace was set, since NAPI had none; it uses
+  the namespace's string, as WASM does.
+- Python: `StaticGraph.to_dict` keeps the keys of a graph's `publication`
+  that it does not model (`user_id`, `most_recent_edit_id`), as core does;
+  `StaticPublication` holds them in `extra`.
+- Python: a card's `is_editable: null` stays `None` (it became `True`), and a
+  resource's `tiles: []` is written back as `[]` (it was dropped), as core
+  does.
+- Python: `StringViewModel`, `DateViewModel`, `UrlViewModel`,
+  `ConceptValueViewModel`, and clm's `ReferenceValueViewModel` and filelist's
+  `FileItemViewModel` survive `copy.copy`, `copy.deepcopy` and `pickle` (they
+  raised). `DateViewModel` supports `datetime` arithmetic, `replace()` and
+  `astimezone()` (they raised); the results are `DateViewModel`s.
+- Python: `describeField()` / `describeFieldGroup()` on view models (core, clm,
+  filelist) raised `AttributeError` once the view model had its parent; they
+  return the field's description. (It still differs from TypeScript's, which
+  prefixes the model name.)
 - Python: `ResourceModelWrapper.all()` returns the model's registered
   resources (it returned `[]`). `params` takes `limit` and `lazy` (default
   `False`, as in TypeScript).

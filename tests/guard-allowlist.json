@@ -69,14 +69,13 @@
     "mypy": {
       "arg-type": 13,
       "assignment": 9,
-      "attr-defined": 43,
+      "attr-defined": 16,
       "index": 2,
       "misc": 8,
       "name-defined": 5,
-      "no-redef": 4,
       "override": 3,
       "return-value": 11,
-      "union-attr": 77,
+      "union-attr": 2,
       "valid-type": 1,
       "var-annotated": 1
     },
@@ -102,18 +101,11 @@
     }
   },
   "coreRoundTrip": {
-    "tests/data/aggregate/business_data.json::resource.tiles::dropped by Python": "B-3",
-    "tests/data/branches/Addresses.json::graph.cards[].is_editable::NoneType vs bool": "B-2",
-    "tests/data/branches/Addresses.json::graph.publication.most_recent_edit_id::dropped by Python": "B-1",
-    "tests/data/models/Heritage Item.json::graph.publication.most_recent_edit_id::dropped by Python": "B-1",
-    "tests/data/models/Person.json::graph.publication.user_id::dropped by Python": "B-1",
-    "tests/definitions/models/22477f01-1a44-11e9-b0a9-000d3ab1e588.json::graph.publication.user_id::dropped by Python": "B-1",
     "tests/definitions/resources/_07883c9e-b25c-11e9-975a-a4d18cec433a.json::resource.resourceinstance.descriptors.description::added by Python": "B-4",
     "tests/definitions/resources/_07883c9e-b25c-11e9-975a-a4d18cec433a.json::resource.resourceinstance.descriptors.map_popup::added by Python": "B-4",
     "tests/definitions/resources/_07883c9e-b25c-11e9-975a-a4d18cec433a.json::resource.resourceinstance.descriptors.name::added by Python": "B-4",
     "tests/definitions/resources/d2368123-9628-49a2-b3dd-78ac6ee3e911.json::resource.resourceinstance.descriptors.description::added by Python": "B-4",
     "tests/definitions/resources/d2368123-9628-49a2-b3dd-78ac6ee3e911.json::resource.resourceinstance.descriptors.map_popup::added by Python": "B-4",
-    "tests/definitions/resources/d2368123-9628-49a2-b3dd-78ac6ee3e911.json::resource.resourceinstance.descriptors.name::added by Python": "B-4",
-    "tests/fixtures/validation/invalid-business-data.json::resource.tiles::dropped by Python": "B-3"
+    "tests/definitions/resources/d2368123-9628-49a2-b3dd-78ac6ee3e911.json::resource.resourceinstance.descriptors.name::added by Python": "B-4"
   }
 }
