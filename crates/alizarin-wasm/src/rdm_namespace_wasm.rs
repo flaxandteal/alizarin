@@ -25,7 +25,6 @@
 //! const conceptId = generateConceptUuid(collectionId, "ConceptA");
 //! ```
 
-use std::cell::RefCell;
 use uuid::Uuid;
 use wasm_bindgen::prelude::*;
 
@@ -38,14 +37,8 @@ use alizarin_core::rdm_namespace::{
 };
 
 // =============================================================================
-// Global Namespace Storage
+// Global Namespace Storage (in alizarin-core, with the raw string it was set from)
 // =============================================================================
-
-// WASM-only: keep the raw namespace string (URL or UUID) for use as an RDF base URI.
-// The parsed UUID namespace is stored in alizarin-core's global.
-thread_local! {
-    static GLOBAL_RDM_NAMESPACE_RAW: RefCell<Option<String>> = const { RefCell::new(None) };
-}
 
 /// Set the global RDM namespace for deterministic UUID generation.
 ///
@@ -65,13 +58,7 @@ thread_local! {
 /// setRdmNamespace("550e8400-e29b-41d4-a716-446655440000");
 #[wasm_bindgen(js_name = setRdmNamespace)]
 pub fn set_rdm_namespace(namespace: &str) -> Result<(), JsError> {
-    alizarin_core::set_rdm_namespace(namespace).map_err(|e| JsError::new(&e))?;
-
-    GLOBAL_RDM_NAMESPACE_RAW.with(|ns| {
-        *ns.borrow_mut() = Some(namespace.to_string());
-    });
-
-    Ok(())
+    alizarin_core::set_rdm_namespace(namespace).map_err(|e| JsError::new(&e))
 }
 
 /// Get the current global RDM namespace.
@@ -94,11 +81,7 @@ fn rdm_namespace() -> Option<String> {
 /// @returns The original namespace string, or null if not set
 #[wasm_bindgen(js_name = getRdmNamespaceRaw, unchecked_return_type = "string | null")]
 pub fn get_rdm_namespace_raw() -> JsValue {
-    crate::js_json::or_null(rdm_namespace_raw())
-}
-
-fn rdm_namespace_raw() -> Option<String> {
-    GLOBAL_RDM_NAMESPACE_RAW.with(|ns| ns.borrow().clone())
+    crate::js_json::or_null(alizarin_core::get_rdm_namespace_raw())
 }
 
 /// Check if a global RDM namespace is set.
@@ -113,9 +96,6 @@ pub fn has_rdm_namespace() -> bool {
 #[wasm_bindgen(js_name = clearRdmNamespace)]
 pub fn clear_rdm_namespace() {
     alizarin_core::clear_rdm_namespace();
-    GLOBAL_RDM_NAMESPACE_RAW.with(|ns| {
-        *ns.borrow_mut() = None;
-    });
 }
 
 // =============================================================================
@@ -235,14 +215,14 @@ mod tests {
 
         // Raw should also be stored
         assert_eq!(
-            rdm_namespace_raw(),
+            alizarin_core::get_rdm_namespace_raw(),
             Some("550e8400-e29b-41d4-a716-446655440000".to_string())
         );
 
         // Clear
         clear_rdm_namespace();
         assert!(!has_rdm_namespace());
-        assert!(rdm_namespace_raw().is_none());
+        assert!(alizarin_core::get_rdm_namespace_raw().is_none());
     }
 
     #[test]
@@ -260,7 +240,7 @@ mod tests {
 
         // Raw should preserve the original URL
         assert_eq!(
-            rdm_namespace_raw(),
+            alizarin_core::get_rdm_namespace_raw(),
             Some("http://example.org/rdm/".to_string())
         );
 

@@ -44,7 +44,6 @@ PyResourceModelWrapper: Optional[Any] = None
 import_prebuild: Optional[Any] = None
 export_prebuild: Optional[Any] = None
 get_registered_graph_ids: Optional[Any] = None
-_alizarin_rust: Optional[Any] = None
 
 try:
     # Try importing from the built extension (maturin puts it in the package)
@@ -380,6 +379,7 @@ compose_collections_from_csv_in_global_cache = _alizarin_rust.compose_collection
 # RDM namespace configuration for deterministic UUID generation
 set_rdm_namespace = _alizarin_rust.set_rdm_namespace
 get_rdm_namespace = _alizarin_rust.get_rdm_namespace
+get_rdm_namespace_raw = _alizarin_rust.get_rdm_namespace_raw
 has_rdm_namespace = _alizarin_rust.has_rdm_namespace
 clear_rdm_namespace = _alizarin_rust.clear_rdm_namespace
 resolve_labels = _alizarin_rust.resolve_labels
@@ -584,6 +584,7 @@ __all__ = [
     # RDM Namespace (for deterministic UUID generation)
     "set_rdm_namespace",
     "get_rdm_namespace",
+    "get_rdm_namespace_raw",
     "has_rdm_namespace",
     "clear_rdm_namespace",
     "resolve_labels",

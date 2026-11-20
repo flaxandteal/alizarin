@@ -156,6 +156,19 @@ export declare function findNeededCollections(treeJson: string, aliasToCollectio
  * `StaticResourceSummary.toMetadata()`.
  */
 export declare function summaryToMetadata(summary: any): any
+/**
+ * Set the global RDM namespace (UUID or http(s) URL) for deterministic UUID
+ * generation; the string itself is kept as the RDF base URI.
+ */
+export declare function setRdmNamespace(namespace: string): void
+/** The global RDM namespace's UUID, or null if not set. */
+export declare function getRdmNamespace(): string | null
+/** The string the global RDM namespace was set from, or null if not set. */
+export declare function getRdmNamespaceRaw(): string | null
+/** Whether a global RDM namespace is set. */
+export declare function hasRdmNamespace(): boolean
+/** Clear the global RDM namespace. */
+export declare function clearRdmNamespace(): void
 /** Check if a string is a valid UUID. */
 export declare function isValidUuid(s: string): boolean
 /** Get the default resolvable datatypes (concept, concept-list). */

@@ -101,6 +101,7 @@ exporter.exportAllGraphs('/path/to/output');
 | `resourceLifecycleState(resourceJson, lifecycleJson)` | Resolve a resource's [lifecycle](/docs/lifecycles) state |
 | `transitionResourceLifecycle(resourceJson, lifecycleJson, target, strict = true)` | Move a resource to another lifecycle state |
 | `importPrebuild(prebuildDir, baseUri)` | Load graphs and resources from a prebuild directory |
+| `setRdmNamespace(namespace)` / `getRdmNamespace()` / `getRdmNamespaceRaw()` / `hasRdmNamespace()` / `clearRdmNamespace()` | The global RDM namespace (UUID or URL): deterministic IDs, and the base URI for SKOS XML. From `alizarin`, `setRdmNamespace` routes to the selected backend |
 | `extensionCoerce(datatype, value, config)` | Call extension coercion |
 | `extensionRenderDisplay(datatype, tileData, language)` | Call extension display renderer |
 

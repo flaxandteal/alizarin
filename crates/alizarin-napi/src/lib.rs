@@ -1202,6 +1202,37 @@ pub fn summary_to_metadata(
         .map_err(|e| napi::Error::from_reason(format!("Serialization failed: {}", e)))
 }
 
+/// Set the global RDM namespace (UUID or http(s) URL) for deterministic UUID
+/// generation; the string itself is kept as the RDF base URI.
+#[napi(js_name = "setRdmNamespace")]
+pub fn set_rdm_namespace(namespace: String) -> napi::Result<()> {
+    alizarin_core::set_rdm_namespace(&namespace).map_err(napi::Error::from_reason)
+}
+
+/// The global RDM namespace's UUID, or null if not set.
+#[napi(js_name = "getRdmNamespace")]
+pub fn get_rdm_namespace() -> Option<String> {
+    alizarin_core::get_rdm_namespace().map(|u| u.to_string())
+}
+
+/// The string the global RDM namespace was set from, or null if not set.
+#[napi(js_name = "getRdmNamespaceRaw")]
+pub fn get_rdm_namespace_raw() -> Option<String> {
+    alizarin_core::get_rdm_namespace_raw()
+}
+
+/// Whether a global RDM namespace is set.
+#[napi(js_name = "hasRdmNamespace")]
+pub fn has_rdm_namespace() -> bool {
+    alizarin_core::has_rdm_namespace()
+}
+
+/// Clear the global RDM namespace.
+#[napi(js_name = "clearRdmNamespace")]
+pub fn clear_rdm_namespace() {
+    alizarin_core::clear_rdm_namespace();
+}
+
 /// Check if a string is a valid UUID.
 #[napi(js_name = "isValidUuid")]
 pub fn is_valid_uuid(s: String) -> bool {

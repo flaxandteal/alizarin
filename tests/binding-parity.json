@@ -3322,11 +3322,8 @@
     },
     "clear_rdm_namespace": {
       "wasm": "clearRdmNamespace",
-      "napi": null,
-      "python": "clear_rdm_namespace",
-      "why": {
-        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
-      }
+      "napi": "clearRdmNamespace",
+      "python": "clear_rdm_namespace"
     },
     "clear_rscv_timings": {
       "wasm": "clearRscvTimings",
@@ -3661,20 +3658,13 @@
     },
     "get_rdm_namespace": {
       "wasm": "getRdmNamespace",
-      "napi": null,
-      "python": "get_rdm_namespace",
-      "why": {
-        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
-      }
+      "napi": "getRdmNamespace",
+      "python": "get_rdm_namespace"
     },
     "get_rdm_namespace_raw": {
       "wasm": "getRdmNamespaceRaw",
-      "napi": null,
-      "python": null,
-      "why": {
-        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings",
-        "python": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
-      }
+      "napi": "getRdmNamespaceRaw",
+      "python": "get_rdm_namespace_raw"
     },
     "get_registered_extension_handlers": {
       "wasm": "getRegisteredExtensionHandlers",
@@ -3794,11 +3784,8 @@
     },
     "has_rdm_namespace": {
       "wasm": "hasRdmNamespace",
-      "napi": null,
-      "python": "has_rdm_namespace",
-      "why": {
-        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
-      }
+      "napi": "hasRdmNamespace",
+      "python": "has_rdm_namespace"
     },
     "import_prebuild": {
       "wasm": null,
@@ -4057,11 +4044,8 @@
     },
     "set_rdm_namespace": {
       "wasm": "setRdmNamespace",
-      "napi": null,
-      "python": "set_rdm_namespace",
-      "why": {
-        "napi": "gap: H-3, RDM namespaces and deterministic UUIDs must agree across bindings"
-      }
+      "napi": "setRdmNamespace",
+      "python": "set_rdm_namespace"
     },
     "streamed_merge_from_files": {
       "wasm": null,

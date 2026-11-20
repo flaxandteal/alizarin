@@ -13,6 +13,8 @@ lazy_static::lazy_static! {
     /// Global namespace UUID for deterministic RDM ID generation.
     /// Must be set before creating collections/concepts from labels.
     static ref GLOBAL_RDM_NAMESPACE: RwLock<Option<Uuid>> = RwLock::new(None);
+    /// The string it was set from (URL or UUID), for use as an RDF base URI.
+    static ref GLOBAL_RDM_NAMESPACE_RAW: RwLock<Option<String>> = RwLock::new(None);
 }
 
 /// Set the global RDM namespace for deterministic UUID generation.
@@ -28,12 +30,23 @@ pub fn set_rdm_namespace(namespace: &str) -> Result<(), String> {
     if let Ok(mut guard) = GLOBAL_RDM_NAMESPACE.write() {
         *guard = Some(uuid);
     }
+    if let Ok(mut guard) = GLOBAL_RDM_NAMESPACE_RAW.write() {
+        *guard = Some(namespace.to_string());
+    }
     Ok(())
 }
 
 /// Get the current global RDM namespace, if set.
 pub fn get_rdm_namespace() -> Option<Uuid> {
     GLOBAL_RDM_NAMESPACE.read().ok().and_then(|guard| *guard)
+}
+
+/// Get the string the global RDM namespace was set from (URL or UUID), if set.
+pub fn get_rdm_namespace_raw() -> Option<String> {
+    GLOBAL_RDM_NAMESPACE_RAW
+        .read()
+        .ok()
+        .and_then(|guard| guard.clone())
 }
 
 /// Check if a global RDM namespace is set.
@@ -48,6 +61,9 @@ pub fn has_rdm_namespace() -> bool {
 /// Clear the global RDM namespace.
 pub fn clear_rdm_namespace() {
     if let Ok(mut guard) = GLOBAL_RDM_NAMESPACE.write() {
+        *guard = None;
+    }
+    if let Ok(mut guard) = GLOBAL_RDM_NAMESPACE_RAW.write() {
         *guard = None;
     }
 }

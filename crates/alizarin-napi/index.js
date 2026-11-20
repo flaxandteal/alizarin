@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiResourceInstanceWrapper, NapiPseudoNode, NapiResourceModelWrapper, NapiStaticDomainValue, NapiNodeConfigBoolean, NapiNodeConfigConcept, NapiNodeConfigDomain, registerExtensionHandler, registerDeriveProvider, hasDeriveProvider, foldMayMatch, getCurrentLanguage, setCurrentLanguage, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, applyMutationsFromJson, applyMutationsCreate, getMutationSchema, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, resourceLifecycleState, transitionResourceLifecycle, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, applyAggregateFunctionsFromFile, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
+const { NapiRdmCache, NapiNodeConfigManager, NapiTileData, NapiStaticTile, NapiPseudoValue, NapiPseudoList, NapiPopulateResult, NapiResourceInstanceWrapper, NapiPseudoNode, NapiResourceModelWrapper, NapiStaticDomainValue, NapiNodeConfigBoolean, NapiNodeConfigConcept, NapiNodeConfigDomain, registerExtensionHandler, registerDeriveProvider, hasDeriveProvider, foldMayMatch, getCurrentLanguage, setCurrentLanguage, NapiPrebuildExporter, NapiStaticGraph, NapiStaticResourceRegistry, applyMutationsFromJson, applyMutationsCreate, getMutationSchema, buildGraphFromCsvs, buildBusinessDataFromCsv, composeResourceLayers, resourceLifecycleState, transitionResourceLifecycle, extensionCoerce, extensionRenderDisplay, extensionResolveMarkers, hasExtensionHandler, getRegisteredExtensionHandlers, parseSkosXml, parseSkosXmlToCollection, collectionToSkosXml, collectionsToSkosXml, applyAggregateFunctionsFromFile, buildAliasToCollectionMap, findNeededCollections, summaryToMetadata, setRdmNamespace, getRdmNamespace, getRdmNamespaceRaw, hasRdmNamespace, clearRdmNamespace, isValidUuid, getDefaultResolvableDatatypes, getDefaultConfigKeys, importPrebuild } = nativeBinding
 
 module.exports.NapiRdmCache = NapiRdmCache
 module.exports.NapiNodeConfigManager = NapiNodeConfigManager
@@ -356,6 +356,11 @@ module.exports.applyAggregateFunctionsFromFile = applyAggregateFunctionsFromFile
 module.exports.buildAliasToCollectionMap = buildAliasToCollectionMap
 module.exports.findNeededCollections = findNeededCollections
 module.exports.summaryToMetadata = summaryToMetadata
+module.exports.setRdmNamespace = setRdmNamespace
+module.exports.getRdmNamespace = getRdmNamespace
+module.exports.getRdmNamespaceRaw = getRdmNamespaceRaw
+module.exports.hasRdmNamespace = hasRdmNamespace
+module.exports.clearRdmNamespace = clearRdmNamespace
 module.exports.isValidUuid = isValidUuid
 module.exports.getDefaultResolvableDatatypes = getDefaultResolvableDatatypes
 module.exports.getDefaultConfigKeys = getDefaultConfigKeys

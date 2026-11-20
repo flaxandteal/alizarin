@@ -695,6 +695,34 @@ export function isValidUuid(s: string): boolean {
 }
 
 /**
+ * Set the global RDM namespace (UUID or http(s) URL) for deterministic IDs;
+ * the string itself is the base URI for SKOS collections read from XML.
+ * Backend-aware: calls WASM or NAPI implementation.
+ */
+export function setRdmNamespace(namespace: string): void {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    napi.setRdmNamespace(namespace);
+    return;
+  }
+  getWasmModule().setRdmNamespace(namespace);
+}
+
+/**
+ * The string the global RDM namespace was set from, or null if not set.
+ * Backend-aware: calls WASM or NAPI implementation.
+ */
+export function getRdmNamespaceRaw(): string | null {
+  if (_backend === 'napi') {
+    const napi = getNapiModule();
+    if (!napi) throw new Error('NAPI backend selected but @alizarin/napi not available');
+    return napi.getRdmNamespaceRaw();
+  }
+  return getWasmModule().getRdmNamespaceRaw();
+}
+
+/**
  * Get the default resolvable datatypes.
  * Backend-aware: calls WASM or NAPI implementation.
  */

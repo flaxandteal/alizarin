@@ -388,7 +388,7 @@ class ArchesClientLocal extends ArchesClient {
         if (napi && typeof napi.parseSkosXmlToCollection === 'function') {
           const xmlPath = jsonPath.replace(/\.json$/, '.xml');
           const xmlContent = await fs.promises.readFile(xmlPath, "utf8");
-          const baseUri = (napi.getRdmNamespaceRaw && napi.getRdmNamespaceRaw()) || "http://localhost/";
+          const baseUri = napi.getRdmNamespaceRaw() || "http://localhost/";
           return napi.parseSkosXmlToCollection(xmlContent, baseUri);
         }
         throw new Error(`Collection ${collectionId} not found as JSON and SKOS XML parsing unavailable in NAPI mode`);

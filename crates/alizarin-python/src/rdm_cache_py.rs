@@ -361,6 +361,16 @@ pub fn get_rdm_namespace() -> Option<String> {
     alizarin_core::get_rdm_namespace().map(|u| u.to_string())
 }
 
+/// Get the string the global RDM namespace was set from (URL or UUID), for
+/// use as an RDF base URI.
+///
+/// Returns:
+///     The original namespace string, or None if not set
+#[pyfunction]
+pub fn get_rdm_namespace_raw() -> Option<String> {
+    alizarin_core::get_rdm_namespace_raw()
+}
+
 /// Check if a global RDM namespace is set.
 #[pyfunction]
 pub fn has_rdm_namespace() -> bool {
@@ -1895,6 +1905,7 @@ pub fn register_module(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Global RDM namespace functions for deterministic UUID generation
     m.add_function(wrap_pyfunction!(set_rdm_namespace, m)?)?;
     m.add_function(wrap_pyfunction!(get_rdm_namespace, m)?)?;
+    m.add_function(wrap_pyfunction!(get_rdm_namespace_raw, m)?)?;
     m.add_function(wrap_pyfunction!(has_rdm_namespace, m)?)?;
     m.add_function(wrap_pyfunction!(clear_rdm_namespace, m)?)?;
 
