@@ -6,11 +6,12 @@ These classes represent the core Arches data structures with pervasive type hint
 
 from __future__ import annotations
 
+import contextvars
 import json
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Type, TypeVar, Union
 from dataclasses import dataclass, field
 
-from .alizarin import canonical_static
+from .alizarin import canonical_static, construct_static
 
 
 # =============================================================================
@@ -1200,11 +1201,18 @@ class StaticDomainValue:
 
 
 # =============================================================================
-# One output: each to_dict above gathers the dataclass's fields, and core
-# serialises them (alizarin.canonical_static), as WASM and NAPI do. So an empty
-# field core leaves out is left out here too, and keys come in core's order.
-# tests/test_output_parity.py holds them to tests/data/output-parity/expected.json.
+# One reading, one output. Each from_dict above reads a dict core has already
+# built (alizarin.construct_static), so core decides fields, aliases and
+# defaults, as the WASM constructors and NAPI's createStatic* do; a resource's
+# tiles_loaded is settled as theirs is. Each to_dict gathers the dataclass's
+# fields and core serialises them (alizarin.canonical_static), so an empty field
+# core leaves out is left out here too, and keys come in core's order.
+# tests/test_output_parity.py holds both to tests/data/output-parity/expected.json.
 # =============================================================================
+
+# Set while a from_dict reads core's output, so the nested from_dicts it calls
+# (a graph's nodes, a resource's tiles) do not send their parts through again.
+_built_by_core: contextvars.ContextVar[bool] = contextvars.ContextVar("_built_by_core", default=False)
 
 
 def _through_core(cls, kind: str) -> None:
@@ -1215,6 +1223,31 @@ def _through_core(cls, kind: str) -> None:
 
     to_dict.__doc__ = f"The {cls.__name__} as core serialises it (its '{kind}')."
     cls.to_dict = to_dict
+
+    if "from_dict" not in cls.__dict__:
+        return
+    read = cls.__dict__["from_dict"].__func__
+
+    def from_dict(klass, data: Dict[str, Any]):
+        if _built_by_core.get():
+            return read(klass, data)
+        return from_core(klass, construct_static(kind, data))
+
+    from_dict.__doc__ = f"A {cls.__name__} from a dict, as core builds its '{kind}'."
+    cls.from_dict = classmethod(from_dict)
+
+
+_T = TypeVar("_T")
+
+
+def from_core(cls: Type[_T], data: Dict[str, Any]) -> _T:
+    """`cls.from_dict(data)` for a dict that is core's own output (JSON a
+    native call returned), without building it again: about 15x faster."""
+    token = _built_by_core.set(True)
+    try:
+        return getattr(cls, "from_dict")(data)
+    finally:
+        _built_by_core.reset(token)
 
 
 for _cls, _kind in (

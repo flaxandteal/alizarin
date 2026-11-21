@@ -70,6 +70,18 @@ entries is tracked in `PARITY-RESEARCH.md`.
   - A malformed `business_data` wrapper is reported as such (the error was
     about a bare resource's missing `resourceinstance`).
   - The loader reads about 30% faster.
+- Python: the static types' `from_dict` read their input through core
+  (`construct_static`), as WASM's constructors and NAPI's `createStatic*` do,
+  instead of parsing it themselves. **Breaking**, where Python's own parse
+  differed:
+  - a dict missing a field core requires is a `ValueError` (Python filled in
+    defaults, e.g. `StaticNode.from_dict({"nodeid": …})` gave `name=""`).
+    Give the field.
+  - `StaticResource.from_dict` settles `tiles_loaded` (as given, else whether
+    it has tiles), as WASM's `new StaticResource(…)` does; `to_dict` then
+    includes it.
+  `alizarin.static_types.from_core(cls, data)` reads a dict that is already
+  core's output (from a native call) without building it again.
 - A resource's descriptors (`getDescriptors()`, `getName()`; Python
   `get_descriptors()`) take the resource's stored `name` when the graph's
   descriptor function gives none, or the graph has none (it was `null`).

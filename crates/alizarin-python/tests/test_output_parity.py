@@ -87,11 +87,12 @@ def routes():
     out.append(
         ("StaticPublication", "publication", lambda: StaticPublication.from_dict(GRAPH["publication"]).to_dict())
     )
-    out.append(("StaticResource", "resource", lambda: StaticResource.from_dict(RESOURCE).to_dict()))
+    # Built from input, as WASM's `new StaticResource(...)` builds it.
+    out.append(("StaticResource", "resource:constructed", lambda: StaticResource.from_dict(RESOURCE).to_dict()))
     out.append(
         (
             "StaticResource(per-language descriptors)",
-            "resource",
+            "resource:constructed",
             lambda: StaticResource.from_dict(RESOURCE_BY_LANGUAGE).to_dict(),
         )
     )

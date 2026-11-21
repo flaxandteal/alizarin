@@ -148,7 +148,7 @@ class PseudoValue(Generic[VM]):
         model: Optional[Any] = None,
     ) -> "PseudoValue[Any]":
         """Create PseudoValue from RustPseudoValue (preferred constructor)."""
-        from .static_types import StaticNode, StaticTile
+        from .static_types import StaticNode, StaticTile, from_core
 
         # Get node - try from model first, otherwise reconstruct from Rust JSON
         node_id = rust_value.node_id
@@ -160,14 +160,14 @@ class PseudoValue(Generic[VM]):
             node_json_str = rust_value.get_node_json()
             if node_json_str:
                 node_dict = json.loads(node_json_str)
-                node = StaticNode.from_dict(node_dict)
+                node = from_core(StaticNode, node_dict)
 
         # Reconstruct tile from Rust JSON
         tile = None
         tile_json_str = rust_value.get_tile_json()
         if tile_json_str:
             tile_dict = json.loads(tile_json_str)
-            tile = StaticTile.from_dict(tile_dict)
+            tile = from_core(StaticTile, tile_dict)
 
         # Get tile data
         tile_data = rust_value.get_tile_data()

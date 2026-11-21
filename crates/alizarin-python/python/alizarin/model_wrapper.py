@@ -132,7 +132,7 @@ class ResourceModelWrapper(Generic[RIVM]):
             >>> # model is ready to use - nodes are already built
         """
         from . import get_graph_json
-        from .static_types import StaticGraph
+        from .static_types import StaticGraph, from_core
         from .graph_manager import WKRM
 
         graph_json_str = get_graph_json(graph_id)
@@ -140,7 +140,7 @@ class ResourceModelWrapper(Generic[RIVM]):
             raise ValueError(f"Graph not found for ID: {graph_id}")
 
         graph_data = json.loads(graph_json_str)
-        graph = StaticGraph.from_dict(graph_data)
+        graph = from_core(StaticGraph, graph_data)
         wkrm = WKRM.from_meta(graph.meta)
 
         model = cls(wkrm, graph)
@@ -484,8 +484,8 @@ class ResourceModelWrapper(Generic[RIVM]):
 
         # Refresh Python-side graph from Rust export and rebuild caches
         graph_data = self._rust_model.graph
-        from .static_types import StaticGraph
-        self.graph = StaticGraph.from_dict(graph_data)
+        from .static_types import StaticGraph, from_core
+        self.graph = from_core(StaticGraph, graph_data)
 
         self.nodes = None
         self.edges = None

@@ -10,7 +10,7 @@ import json
 from typing import Any, Dict, List, Optional, Union
 
 from .alizarin import apply_mutations_from_json
-from .static_types import StaticGraph
+from .static_types import StaticGraph, from_core
 
 OntologyClass = Union[str, List[str]]
 
@@ -151,7 +151,7 @@ class GraphMutator:
         mutated = apply_mutations_from_json(
             json.dumps(self.base_graph.to_dict()), json.dumps(request)
         )
-        return StaticGraph.from_dict(json.loads(mutated))
+        return from_core(StaticGraph, json.loads(mutated))
 
     def _add_node(
         self,

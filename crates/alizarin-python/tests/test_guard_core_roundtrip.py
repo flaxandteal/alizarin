@@ -2,10 +2,10 @@
 Python's static types round-trip as core does (PARITY-RESEARCH.md, B-5).
 
 For every graph and business-data resource in the repo's test fixtures,
-core's parse-and-serialise (canonical_static) and Python's
-StaticX.from_dict(raw).to_dict() must agree. to_dict already goes through
-core, so a difference is something Python's from_dict dropped, added or
-changed. Today's differences are listed, with their finding ids, under
+core's build-and-serialise (construct_static, as WASM's constructors) and
+Python's StaticX.from_dict(raw).to_dict() must agree. Both ends go through
+core, so a difference is a field core has that the dataclass does not carry
+from one to the other (dropped, added or changed). Today's differences are listed, with their finding ids, under
 "coreRoundTrip" in tests/guard-allowlist.json; the test fails on a new one
 and on a listed one that has gone (delete its entry).
 """
@@ -13,7 +13,7 @@ and on a listed one that has gone (delete its entry).
 import json
 import pathlib
 
-from alizarin.alizarin import canonical_static
+from alizarin.alizarin import construct_static
 from alizarin.static_types import StaticGraph, StaticResource
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -65,7 +65,7 @@ def current_differences():
     found = set()
     for rel, kind, cls, raw in _objects():
         try:
-            core = canonical_static(kind, raw)
+            core = construct_static(kind, raw)
         except ValueError:
             continue  # core rejects it: not a round-trip question
         try:
